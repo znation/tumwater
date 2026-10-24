@@ -99,6 +99,10 @@ test("every verification holds a shared permit: with one free, one reviews while
         : "";
     const restore = fakePi(
       [
+        // Part 3g/3: a merged change queues a post-merge review whatever its role, and it reuses
+        // this reviewer — skip those (advertised by `-post-` in the session label) so they neither
+        // count toward the in-flight samples nor touch the release flags this verify test stages.
+        `for a in "$@"; do case "$a" in tumwater-review-*-post-*) exit 0;; esac; done`,
         leasedRoleShell(),
         `d='${flags}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
         `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${flags}/samples.log'`,
@@ -221,6 +225,10 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
   const runDir = tmpdir();
   await withPi(
     [
+      // Part 3g/3: skip the merged changes' post-merge reviews (a `-post-` session) so they
+      // neither count toward the in-flight samples nor hold for three peers — the overlap being
+      // pinned is the three verifications', before any merge.
+      `for a in "$@"; do case "$a" in tumwater-review-*-post-*) exit 0;; esac; done`,
       `d='${runDir}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
       `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${runDir}/samples.log'`,
       `i=0; while [ $(ls "$d" | wc -l) -lt 3 ] && [ $i -lt 300 ]; do sleep 0.05; i=$((i+1)); done`,
@@ -259,6 +267,9 @@ test("a verification runs in a pooled slot (purpose vet while it works, no lease
   const flags = tmpdir("vet-slot-");
   await withPi(
     [
+      // Part 3g/3: skip the merged change's post-merge review (a `-post-` session) so its run
+      // does not overwrite the during.json slot snapshot taken by the verification under test.
+      `for a in "$@"; do case "$a" in tumwater-review-*-post-*) exit 0;; esac; done`,
       `printf '%s\\n' "$PWD" >> '${flags}/cwd'`,
       `cp '${slotsStatePath(root)}' '${flags}/during.json' 2>/dev/null`,
       APPROVE(),

@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3g/3: every merged commit queues a post-landing review, whatever its role (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; independent of the other parts in files; touches src/merge/merge-drain.ts test/merge-drain.test.ts test/post-merge-review.test.ts) — done 2026-10-24 by the feature role
+
+**Previously held 3**
+
+**Goal.** The post-landing review stops being a `review.afterMerge`-only path: a merge queues a review for the commit it landed whatever role produced it, so being reviewed becomes a property of every change rather than of a role list. This is the bridge that lets part 3h/3 remove the pre-merge model reviewer without leaving a role unreviewed.
+
+**Approach.**
+- In `postReviewDue` (src/merge/merge-drain.ts) drop the `!isAfterMergeRole(config, role)` test and the `role` parameter it alone used: keep the `config.review.enabled` gate and the exempt-diff test (`treeDiffFiles` + `isExemptDiff`), so a `"changed"` merge with review on and a non-exempt diff queues a `PostReview` via `addPostReview` in `settleOne`. The role still rides the queued entry.
+- `reviewMergedCommit` (src/review/post-merge-review.ts) already reviews any entry with no role test, so it needs no change here.
+- Reword merge-drain.ts's `postReviewDue` doc and the `settleOne` comment from the `review.afterMerge` role's review to every merged role.
+
+**Files touched.** src/merge/merge-drain.ts test/merge-drain.test.ts test/post-merge-review.test.ts
+
+**Acceptance criteria.**
+- A `"changed"` merge from a role absent from `review.afterMerge` queues a `PostReview` entry for its commit; an exempt-only diff queues none, and with `review.enabled` false none queues.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/merge-drain.test.ts: `every merged role queues a post-landing review` — a `"changed"` merge from a role not in `review.afterMerge` lands a `PostReview` entry; an exempt-only diff queues none.
+- test/post-merge-review.test.ts: the existing post-review cases still pass for a role absent from `review.afterMerge`.
+
 ### The `qa` observer's flow-coverage ledger goes stale silently: a `qa coverage` doctor warn and a standing amber `qa-stale` alert, the twin of `ci-stale` (planned 2026-10-24 by the plan role; independent in behavior of every eligible plan, and adds one surface rather than changing an existing one — the in-flight `Forward, never back` part 3b/6 edits the same `src/ui/team-alerts.ts`, `src/ui/status-payload.ts`, `docs/cli.md`, `docs/how-it-works.md`, `test/team-alerts.test.ts` and `test/status-payload.test.ts` in neighbouring blocks, and `Every commit is verified on main` parts 3a/3 and 3b/3-3j/3 edit `docs/invariants.md`/`docs/how-it-works.md` as neighbouring clauses, so whichever lands second rebases there; none of them edits `src/run/qa-coverage.ts`, `src/doctor/doctor-project-checks.ts`, `src/ui/status-render.ts` or `src/ui/tui/tui.tsx`; touches src/run/qa-coverage.ts src/doctor/doctor-project-checks.ts src/doctor/doctor.ts src/ui/status-payload.ts src/ui/team-alerts.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/cli.md docs/how-it-works.md docs/invariants.md test/qa-coverage.test.ts test/doctor-checks.test.ts test/team-alerts.test.ts test/status-payload.test.ts) — done 2026-10-24 by the feature role
 
 **Goal.** `qa` is the only role that exercises the product's own flows like a user, and each run records the one flow it exercised into `.tumwater/state/qa-coverage.json` (`recordFlow`, src/run/qa-coverage.ts, from the run's `FLOW:` verdict at src/run/run-verdict.ts). That ledger's only reads are on demand — `tumwater role qa` (`rolePayload`'s `flowCoverage`, src/roles/role-view.ts) and the dashboard role drawer — so if qa is disabled, paused, wedged, or failing before it records, nothing says so and the team silently loses its only flow-level observer. The `ci` role already has exactly this surface for its own ledger: a `ci parity` doctor row and the standing amber `ci-stale` alert, both reading the one `ciParityStalled` predicate (src/run/ci-parity.ts). Give the qa ledger the same: a ledger whose newest exercise is over three days old raises a `qa coverage` doctor warn and one standing amber `qa-stale` alert on `tumwater status`, the dashboard and the TUI.

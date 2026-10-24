@@ -195,14 +195,17 @@ test("a listed role's change merges with no review before it, then is queued and
   });
 });
 
-/** Merges a listed role's commit that touches `file`; returns the root once the merge drained. */
+/** Merges a commit from a role absent from `review.afterMerge` (improve) that touches `file`;
+ * returns the root once the merge drained. Part 3g/3 makes review-after-landing a property of
+ * every change rather than of the afterMerge list, so the exempt and disabled gates are what
+ * these cases hold against, whatever the role. */
 async function mergeListed(file: string, review: { enabled: boolean }): Promise<string> {
   const root = makeRepo();
   const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, file), "work\n"), "work by improve", { reset: true });
   await setRef(root, mergeRefName("improve"), sha);
   enqueueMerge(root, entry("improve", sha));
   const base = defaultConfig();
-  const config = { ...base, review: { ...base.review, ...review, afterMerge: ["improve"] } };
+  const config = { ...base, review: { ...base.review, ...review, afterMerge: [] } };
   await withPi(APPROVE(), async () => {
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"], undefined, config), { config });
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the merge");

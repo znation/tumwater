@@ -7,10 +7,13 @@ import { mergeTasks } from "../src/merge/merge-pipeline.js";
 import { enqueueMerge, queueDepth, staleHeadFile } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readMergeMarker, writeMergeMarker } from "../src/merge/merge-slot.js";
-import { mergeQueueDir } from "../src/paths.js";
-import { drained, entry, makePipeline, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
+import { mergeQueueDir, mergeRefName } from "../src/paths.js";
+import { readPostReviews } from "../src/review/post-merge-review.js";
+import { setRef } from "../src/git/git.js";
+import { APPROVE, drained, entry, makePipeline, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
-import { mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { withPi } from "./fakes/fake-pi.js";
+import { mainSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
 
 /** First slice of the merge-drain suite (merge-pipeline.test.ts carries the rest, and
  * merge-drain-verify.test.ts the verification-permit tests) — split so node --test runs the slices
@@ -119,4 +122,47 @@ test("a full dedupe cache never wedges the drain: every already-merged entry sti
   assert.equal(queueDepth(root), 0, "every entry deduped against the new head");
   assert.equal(pipeline.verifying.size, 0, "no verification ever started: everything was already merged");
   assert.equal(readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"), false, "still no outcome was written");
+});
+
+test("every merged role queues a post-landing review, whatever its role", async () => {
+  // A "changed" merge from a role NOT listed in review.afterMerge (improve) queues a PostReview
+  // for its commit — part 3g makes review-after-landing a property of every change, not of the
+  // review.afterMerge role list. improve is absent from the default list, so its pre-merge gate
+  // still runs the model reviewer (the APPROVE shim) and the merge then queues the review.
+  const root = makeRepo();
+  const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, "code.txt"), "work\n"), "work by improve", { reset: true });
+  await setRef(root, mergeRefName("improve"), sha);
+  enqueueMerge(root, entry("improve", sha));
+  const shutdown = new AbortController();
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"], shutdown.signal), { signal: shutdown.signal });
+  await withPi(APPROVE(), async () => {
+    try {
+      // Stop the instant the entry is queued — before the post-landing review (a real subprocess
+      // behind the fake shim) can settle it away, so the queued entry is what is asserted.
+      await pumpUntil(ctx, pipeline, () => readPostReviews(root).length > 0, "the unlisted role's post-landing review to queue");
+    } finally {
+      // The drain queues the PostReview and starts its review task (p.postReview) behind the fake
+      // pi. Abort it and await it BEFORE withPi restores the real pi: aborting routes the task to
+      // return without settling the queued entry (so the length assertion below still sees it), and
+      // awaiting it here keeps the fake pi on PATH for the whole of its reviewer run instead of
+      // letting that run outlive the test against the restored real pi (the offline principle).
+      shutdown.abort();
+      await Promise.allSettled([...(pipeline.postReview ? [pipeline.postReview.promise] : []), ...mergeTasks(pipeline).map((t) => t.promise)]);
+    }
+  });
+  const queued = readPostReviews(root);
+  assert.equal(queued.length, 1, "a merge from a role absent from review.afterMerge queues a PostReview");
+  assert.equal(queued[0]!.role, "improve");
+  assert.equal(queued[0]!.commit, sha, "the review names the merged commit");
+
+  // An exempt-only diff (NOTES.md) queues none for the same role.
+  const exempt = makeRepo();
+  const shaExempt = pinOffMain(exempt, (d) => fs.writeFileSync(path.join(d, "NOTES.md"), "work\n"), "work by improve", { reset: true });
+  await setRef(exempt, mergeRefName("improve"), shaExempt);
+  enqueueMerge(exempt, entry("improve", shaExempt));
+  await withPi(APPROVE(), async () => {
+    const { ctx, pipeline } = makePipeline(exempt, runnersFor(exempt, ["improve"]));
+    await pumpUntil(ctx, pipeline, drained(exempt, pipeline), "the exempt merge");
+  });
+  assert.equal(readPostReviews(exempt).length, 0, "an exempt-only diff queues no post-merge review");
 });

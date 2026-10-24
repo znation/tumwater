@@ -261,27 +261,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/roles.test.ts and test/runner-ids.test.ts: drop the `BASELINE_BLOCKED_ROLES`/`baselineBlocked` cases; keep the catalog and `OBSERVER_ROLES` checks.
 - test/gate-notes.test.ts: drop the `buildMainKnownRedNote` cases; keep the `buildMainRedNote` cases.
 
-### Every commit is verified on main, part 3g/3: every merged commit queues a post-landing review, whatever its role (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; independent of the other parts in files; touches src/merge/merge-drain.ts test/merge-drain.test.ts test/post-merge-review.test.ts)
-
-**Previously held 3**
-
-**Goal.** The post-landing review stops being a `review.afterMerge`-only path: a merge queues a review for the commit it landed whatever role produced it, so being reviewed becomes a property of every change rather than of a role list. This is the bridge that lets part 3h/3 remove the pre-merge model reviewer without leaving a role unreviewed.
-
-**Approach.**
-- In `postReviewDue` (src/merge/merge-drain.ts) drop the `!isAfterMergeRole(config, role)` test and the `role` parameter it alone used: keep the `config.review.enabled` gate and the exempt-diff test (`treeDiffFiles` + `isExemptDiff`), so a `"changed"` merge with review on and a non-exempt diff queues a `PostReview` via `addPostReview` in `settleOne`. The role still rides the queued entry.
-- `reviewMergedCommit` (src/review/post-merge-review.ts) already reviews any entry with no role test, so it needs no change here.
-- Reword merge-drain.ts's `postReviewDue` doc and the `settleOne` comment from the `review.afterMerge` role's review to every merged role.
-
-**Files touched.** src/merge/merge-drain.ts test/merge-drain.test.ts test/post-merge-review.test.ts
-
-**Acceptance criteria.**
-- A `"changed"` merge from a role absent from `review.afterMerge` queues a `PostReview` entry for its commit; an exempt-only diff queues none, and with `review.enabled` false none queues.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/merge-drain.test.ts: `every merged role queues a post-landing review` — a `"changed"` merge from a role not in `review.afterMerge` lands a `PostReview` entry; an exempt-only diff queues none.
-- test/post-merge-review.test.ts: the existing post-review cases still pass for a role absent from `review.afterMerge`.
-
 ### Every commit is verified on main, part 3h/3: the pre-merge gate runs no model reviewer — only a secret leak, a brief-block edit or a protected edit refuses a diff (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; requires part 3g/3 landed, since a role not on `review.afterMerge` must have its post-landing review queued before its pre-merge model review goes; touches src/review/review.ts src/review/diff-rules.ts docs/how-it-works.md test/review.test.ts)
 
 **Previously held 3**

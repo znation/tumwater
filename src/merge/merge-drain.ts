@@ -12,7 +12,7 @@ import { isJsonObject, stringList } from "../files/json-object.js";
 import { recordRevertedChange } from "./merge-core.js";
 import { revertedPendingPath } from "../paths.js";
 
-import { addPostReview, isAfterMergeRole, settlePostReview } from "../review/post-merge-review.js";
+import { addPostReview, settlePostReview } from "../review/post-merge-review.js";
 import { drainPostReviews } from "./merge-post-review.js";
 import { subscribeEvents } from "../events/events.js";
 import { treeDiffFiles } from "../git/git-diff.js";
@@ -33,11 +33,11 @@ import {
 import { drainVerify, MERGE_TIER } from "./merge-verify.js";
 import type { RunResult } from "../run/run-outcome.js";
 
-/** Whether a merged change from `role` still needs a post-merge review: the pre-merge gate skips
- * review when it is disabled or the diff is exempt, so those changes queue none either. A
- * diff that cannot be read queues the review. */
-async function postReviewDue(config: TumwaterConfig, root: string, commit: string, role: string): Promise<boolean> {
-  if (!config.review.enabled || !isAfterMergeRole(config, role)) return false;
+/** Whether a merged change still needs a post-merge review: the pre-merge gate skips review when
+ * it is disabled or the diff is exempt, so those changes queue none either. A diff that cannot be
+ * read queues the review. */
+async function postReviewDue(config: TumwaterConfig, root: string, commit: string): Promise<boolean> {
+  if (!config.review.enabled) return false;
   const files = await treeDiffFiles(root, `${commit}^`, commit);
   return files === null || !isExemptDiff(files, config.review.exemptPaths);
 }
@@ -275,8 +275,8 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
   const task = (async () => {
     let results: Array<RunResult | undefined>;
     let threw = false;
-    // The commit each merged role produced, from its `merged` event: the post-merge review of a
-    // role listed in review.afterMerge is queued once the change settles as merged.
+    // The commit each merged role produced, from its `merged` event: the post-merge review of
+    // every merged role is queued once the change settles as merged.
     const mergedCommits = new Map<string, string>();
     const unsubscribe = subscribeEvents((e) => {
       if (e.type === "merged" && typeof e.commit === "string") mergedCommits.set(e.source, e.commit);
@@ -288,7 +288,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
       const v = picks[s]!;
       settled.add(s);
       const mergedCommit = mergedCommits.get(v.entry.role);
-      if (result === "changed" && mergedCommit !== undefined && (await postReviewDue(ctx.liveConfig, root, mergedCommit, v.entry.role))) {
+      if (result === "changed" && mergedCommit !== undefined && (await postReviewDue(ctx.liveConfig, root, mergedCommit))) {
         addPostReview(root, { commit: mergedCommit, role: v.entry.role, summary: v.entry.summary, ...(v.entry.body !== undefined ? { body: v.entry.body } : {}) });
       }
       await settleMergeOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file, mainBranch);

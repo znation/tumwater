@@ -136,10 +136,15 @@ test("a settled merge detaches its shutdown listener: the long-lived stop signal
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]), { signal: shutdown.signal });
     assert.equal(getEventListeners(shutdown.signal, "abort").length, 0, "nothing is wired before a merge starts");
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the entry to merge");
+    // Part 3g/3: the merged change now queues a post-merge review whatever its role, and that
+    // review task also wires itself to the long-lived shutdown signal. Wait for it to start and
+    // settle so nothing is left wired before the detached-count assertion.
+    await pumpUntil(ctx, pipeline, () => pipeline.postReview !== null, "the post-review to start");
+    await pumpUntil(ctx, pipeline, () => pipeline.postReview === null, "the post-review to settle");
     assert.equal(
       getEventListeners(shutdown.signal, "abort").length,
       0,
-      "the verification's and merge's wiring detached as each task settled",
+      "the verification's, merge's and post-review's wiring detached as each task settled",
     );
   });
 });
@@ -392,7 +397,13 @@ test("a red stack merges its passing prefix, rejects the change red alone, and m
     assert.equal(beta.lastResult, "rejected");
     assert.match(beta.lastReview!.reasons[0]!, /: planted failure: beta breaks the suite$/);
     assert.deepEqual(eventsOfType(root, "review_rejected").map((e) => e.source), ["beta"]);
-    assert.equal(eventsOfType(root, "review_start").length, 3, "one review per change, all in the verifications");
+    // Part 3g/3: the merged changes (alpha, gamma) also queue post-merge reviews, which log their
+    // own review_start (afterMerge: true) — count the verifications' reviews only.
+    assert.equal(
+      eventsOfType(root, "review_start").filter((e) => e.afterMerge !== true).length,
+      3,
+      "one review per change, all in the verifications",
+    );
     assert.equal(await refSha(root, mergeRefName("beta")), null, "the rejection deleted beta's pin");
     assert.equal(await isMergedInto(root, shas.beta!, "main"), false);
     assert.deepEqual(
@@ -814,7 +825,11 @@ for (const headVerdict of ["reject", "approve"] as const) {
     const headReply = headVerdict === "reject" ? "VERDICT: reject\n1. no" : "VERDICT: approve";
     const restore = fakePi(
       [
-        // Tell the two reviewer runs apart by the session name pi is handed.
+        // Tell the two reviewer runs apart by the session name pi is handed. A part 3g/3
+        // post-merge review advertises itself with `-post-` in its session label (reviewing the
+        // merged commit after the pipeline), which this stage-sequence test is not about — skip
+        // it so it neither records stages nor answers, keeping the rec the pre-merge gate's only.
+        `for a in "$@"; do case "$a" in tumwater-review-*-post-*) exit 0;; esac; done`,
         `r=none; for a in "$@"; do case "$a" in tumwater-review-alpha-*) r=alpha ;; tumwater-review-beta-*) r=beta ;; esac; done`,
         `echo "$r:$(${stagesOf})" >> '${rec}'`,
         `if [ "$r" = alpha ]; then printf '%s\\n' '${assistantLine(headReply)}'; else printf '%s\\n' '${assistantLine("VERDICT: approve")}'; fi`,
