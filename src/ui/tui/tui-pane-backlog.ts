@@ -5,7 +5,7 @@ import { entryKey, plansReleasedBy, releasedPartsNote } from "../../backlog/back
 import { plannedPlanEntries } from "../../backlog/backlog.js";
 import { allLiveClaims } from "../../runner/runner-state-load.js";
 import { requestWake } from "../../operator/operator-intent.js";
-import { moveEntrySelection, pageMarkdownBody, visibleBacklogIndexes, type labeledBacklogEntries } from "./tui-backlog.js";
+import { isOpenBacklogLabel, moveEntrySelection, pageMarkdownBody, visibleBacklogIndexes, type labeledBacklogEntries } from "./tui-backlog.js";
 import { arrowDir, pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
@@ -65,6 +65,11 @@ export function createBacklogPane(
   // entries the up/down arms and the list render show. Cleared when the operator applies an
   // empty pattern.
   let backlogGrep: string | null = null;
+  // The pane's active Ready-only filter (Ctrl+O): when true, up/down and the list render keep
+  // only the open plans and bugs no hold keeps from being picked, the terminal twin of
+  // `tumwater backlog --ready`. Session-scoped like backlogGrep; reset() leaves it across view
+  // cycles.
+  let backlogReadyOnly = false;
 
   const clearBacklogSelection = (): void => {
     // Clear the project-status pane's selection and its body scroll after a recorded answer or
@@ -162,6 +167,23 @@ export function createBacklogPane(
     ctx: TuiPaneCtx,
   ): boolean => {
     if (
+      key.ctrl && key.name === "o" &&
+      promptLineFree(ctx.es) &&
+      session.view === session.roleIds.length + 1
+    ) {
+      // Ctrl+O flips the Ready-only filter: keep only the open plans and bugs no hold keeps
+      // from being picked (questions and the answered/done/fixed rows stay), the terminal twin
+      // of `tumwater backlog --ready` and the dashboard Backlog card's Ready only toggle. A
+      // second press restores the full list.
+      backlogReadyOnly = !backlogReadyOnly;
+      // Clear the selection and its body scroll, like the search path does, so a held entry
+      // selected before the toggle does not keep rendering in entry mode once Ready only drops it.
+      selectedEntry = null;
+      entryScroll = 0;
+      session.requestRender();
+      return true;
+    }
+    if (
       key.ctrl && key.name === "x" &&
       promptLineFree(ctx.es) &&
       session.view === session.roleIds.length + 1
@@ -240,10 +262,17 @@ export function createBacklogPane(
       // An open answer editor pins the selection (its position was taken from it).
       if (!ctx.es.answerFor && !ctx.es.entryEditFor) {
         const entries = session.flat();
-        // With a search applied, up/down step only through the matching open entries (their
-        // unfiltered indexes), wrapping at that list's ends; without one, they keep browsing
-        // the whole flat list (open entries plus the read-only answered/done/fixed rows).
-        const visible = backlogGrep === null ? undefined : visibleBacklogIndexes(entries, backlogGrep);
+        // With a search or the Ready-only filter applied, up/down step only through the kept
+        // entries (their unfiltered indexes), wrapping at that list's ends; without either they
+        // keep browsing the whole flat list (open entries plus the read-only answered/done/fixed
+        // rows). A Ready-only filter without a search still shows the answered/done/fixed rows
+        // (only the held open entries drop), so up/down walks those too — stepping through the
+        // entries the pane still renders, per the acceptance criterion.
+        const visible = backlogGrep === null
+          ? (backlogReadyOnly
+              ? entries.map((e, i) => (!isOpenBacklogLabel(e.label) || e.hold === null || e.hold === undefined ? i : -1)).filter((i) => i >= 0)
+              : undefined)
+          : visibleBacklogIndexes(entries, backlogGrep, backlogReadyOnly);
         selectedEntry = moveEntrySelection(entries.length, selectedEntry, arrow, visible);
         entryScroll = 0; // a newly opened entry starts at its body's head
       }
@@ -288,7 +317,7 @@ export function createBacklogPane(
       session.requestRender();
     },
     state() {
-      return { selectedEntry, entryScroll, releaseArmed: session.releaseArmed, backlogGrep };
+      return { selectedEntry, entryScroll, releaseArmed: session.releaseArmed, backlogGrep, backlogReadyOnly };
     },
   } satisfies TuiPaneModule & { clearBacklogSelection(): void; grep(): string | null; applySearch(pattern: string | null): void };
 }

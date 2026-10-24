@@ -249,6 +249,9 @@ interface TuiKeysState {
   /** The Backlog pane's active free-text search (the `/` editor), or null when none; names the
    * filtered active entries under the pane's `search:` header. */
   backlogGrep: string | null;
+  /** The Backlog pane's Ready-only filter (Ctrl+O): whether the list keeps only the open plans
+   * and bugs no hold keeps from being picked, the terminal twin of `tumwater backlog --ready`. */
+  backlogReadyOnly: boolean;
   transcriptGrep: string | null;
   /** The History pane's session model filter (Ctrl+X), or null for every model; named in the
    * pane's `model:` header and in the hint line. */

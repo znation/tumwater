@@ -15,17 +15,22 @@ import { LOGS_SINCE_MAX_MS } from "../src/events/event-window.js";
 function backlogScope(backlogTab = "queued", extra: Record<string, unknown> = {}) {
   const panels: Record<string, string> = {};
   const getJsonPaths: string[] = [];
+  // The Ready-only toggle's DOM stub: renderBacklog writes hidden/checked to it (and reads the
+  // shared element record), so the assertions can observe both with no real DOM.
+  const els: Record<string, { checked?: boolean; hidden?: boolean; value?: string; addEventListener?: () => void }> = {};
   const scope = clientScope<{
     renderBacklog(d: object): void;
     beginQueuedEdit(role: string, file: string, text: string): void;
     endQueuedEdit(): void;
     setBacklogTab(tab: string): void;
     setBacklogGrep(text: string): void;
+    setBacklogReady(on: boolean): void;
     beginBacklogNew(kind: string): void;
     toggleBacklogSeries(name: string): void;
-  }>(["format", "labels", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "setBacklogGrep", "beginBacklogNew", "toggleBacklogSeries"], {
+  }>(["format", "labels", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "setBacklogGrep", "setBacklogReady", "beginBacklogNew", "toggleBacklogSeries"], {
     backlogTab,
     backlogGrep: "",
+    backlogReady: false,
     backlogBodyHits: null,
     getJson: async (path: string) => { getJsonPaths.push(path); return {}; },
     paintPanel: (id: string, html: string) => { panels[id] = html; },
@@ -33,9 +38,10 @@ function backlogScope(backlogTab = "queued", extra: Record<string, unknown> = {}
     openEntryKey: () => null,
     store: () => {},
     lastStatus: undefined,
+    $: (id: string) => (els[id] ||= { addEventListener: () => {} }),
     ...extra,
   });
-  return { scope, panels, getJsonPaths };
+  return { scope, panels, getJsonPaths, els };
 }
 
 test("the Queued tab shows how long each prompt has waited, and unstamped ones as today", () => {
@@ -227,6 +233,33 @@ test("the Plans tab lists pickable rows first and blocked rows under a Blocked d
   const bugsHtml = bugs.panels["backlog"] ?? "";
   assert.ok(bugsHtml.indexOf("Live") < bugsHtml.indexOf("Blocked (1)"));
   assert.ok(bugsHtml.indexOf("Blocked (1)") < bugsHtml.indexOf("Dead"));
+});
+
+test("the Ready only toggle hides the Blocked section and stays off the Questions tab", () => {
+  const { scope, panels, els } = backlogScope("plans");
+  const payload = {
+    questions: [], bugs: [], bugHolds: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {},
+    plans: ["Pick me (planned 2026-10-01)", "Hold me (planned 2026-10-02)"],
+    planHolds: ["", " [blocked: refused]"],
+    planBlocked: [false, true],
+  };
+  scope.renderBacklog(payload);
+  let html = panels["backlog"] ?? "";
+  assert.equal(els["backlogreadywrap"]?.hidden, false, "the toggle label is visible on the Plans tab");
+  assert.ok(html.includes("Blocked (1)"), "the Blocked divider renders before toggling");
+  assert.ok(html.includes("Hold me"), "the held row renders before toggling");
+  scope.setBacklogReady(true);
+  html = panels["backlog"] ?? "";
+  assert.ok(!html.includes("Hold me"), "the held row is gone with Ready only on");
+  assert.ok(!html.includes("Blocked ("), "the Blocked divider is gone with Ready only on");
+  assert.ok(html.includes("Pick me"), "the pickable row remains");
+
+  const q = backlogScope("questions");
+  q.scope.renderBacklog({ ...payload, plans: [], questions: ["Which one? (asked 2026-10-01)"] });
+  assert.equal(q.els["backlogreadywrap"]?.hidden, true, "the toggle label is hidden on the Questions tab");
+  const qhtml = q.panels["backlog"] ?? "";
+  assert.ok(qhtml.includes("Which one?"), "the Questions rows render unchanged");
+  assert.ok(!qhtml.includes("Blocked ("), "questions carry no Blocked divider");
 });
 
 test("the Plans tab shows a blocked series as one row that expands on click", () => {
@@ -1015,6 +1048,21 @@ test("a Backlog Search with no match paints its own empty state", () => {
   const bugs = backlogScope("bugs", { backlogGrep: "zzz" });
   bugs.scope.renderBacklog({ ...grepBase, plans: ["Alpha"] });
   assert.match(bugs.panels["backlog"] ?? "", /No open bugs/);
+});
+
+test("Ready only + Search that matches only a held row still paints the empty state", () => {
+  // A search whose only match is a held/Blocked row would, under Ready only, render no rows;
+  // the empty state must appear rather than leave just the New plan button. (regression for the
+  // revision objection: `shown` used to count blocked matches before Ready only dropped them.)
+  const { scope, panels } = backlogScope("plans", { backlogGrep: "Hold", backlogReady: true });
+  scope.renderBacklog({
+    ...grepBase,
+    plans: ["Alpha", "Hold me (planned 2026-10-02)"],
+    planHolds: ["", " [blocked: refused]"],
+    planBlocked: [false, true],
+  });
+  assert.match(panels["backlog"] ?? "", /Nothing matches this search/, "only-matched held rows under Ready only get the empty state");
+  assert.ok(!(panels["backlog"] ?? "").includes("Hold me"), "the held row stays dropped under Ready only");
 });
 
 test("setBacklogGrep repaints and an empty search restores the tab byte-for-byte", () => {

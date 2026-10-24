@@ -121,6 +121,23 @@ test("visibleBacklogIndexes returns only open entries, matching heading or body 
   assert.deepEqual(visibleBacklogIndexes(entries, "gizmo"), [], "a term matching nothing returns none");
 });
 
+test("visibleBacklogIndexes drops held entries when readyOnly", () => {
+  const entries = [
+    { label: "plan", title: "Eligible plan", body: "", hold: null },
+    { label: "plan", title: "Held plan", body: "", hold: { blockedBy: ["x"] } },
+    { label: "bug", title: "Eligible bug", body: "", hold: null },
+    { label: "question", title: "A question", body: "", hold: null },
+    { label: "done", title: "Done thing", body: "", hold: null },
+  ] as Array<{ label: string; title: string; body: string; hold: { blockedBy: string[] } | null }>;
+  assert.deepEqual(
+    visibleBacklogIndexes(entries, null, true),
+    [0, 2, 3],
+    "ready-only keeps the eligible plan, bug and question indexes and drops the held plan",
+  );
+  assert.deepEqual(visibleBacklogIndexes(entries, null, false), [0, 1, 2, 3], "with ready-only off every open index returns");
+  assert.deepEqual(visibleBacklogIndexes(entries, "Eligible", true), [0, 2], "a / pattern still composes with ready-only");
+});
+
 test("entryBodyWindow at offset zero clips each line and keeps the head within budget", () => {
   const body = "a very long first line that will not fit\nsecond line\nthird line";
   assert.deepEqual(entryBodyWindow(body, 0, 2, 10), { lines: ["a very lo…", "second li…"], total: 3 });
@@ -277,6 +294,12 @@ test("paneBody's backlog list and entry mode show the same eligibility mark besi
     "the list row carries the mark beside the title",
   );
   assert.ok(listText.includes("Base, part 1/2: x (planned 2026-10-01)"), "the eligible row is unmarked");
+
+  // Ready-only keeps the eligible plan and drops the held one from the list render.
+  const readyText = paneBody({ kind: "backlog" }, { ...opts, state: { ...state, backlogReadyOnly: true } }).body
+    .map((l) => l.map((x) => x.text).join(""));
+  assert.ok(readyText.includes("Base, part 1/2: x (planned 2026-10-01)"), "the eligible row stays under ready-only");
+  assert.ok(!readyText.includes("Later, part 2/2: y"), "the held row is dropped under ready-only");
 
   const header = paneBody({ kind: "backlog" }, { ...opts, state: { ...state, selectedEntry: 1 } }).body[0]!;
   assert.equal(

@@ -95,6 +95,7 @@ export const GUI_PAGE = `<!doctype html>
           <h2 id="backlog-title">Backlog</h2>
           <div class="spacer"></div>
           <div class="seg" id="backlogtabs" role="tablist" aria-label="Backlog sections"></div>
+          <label id="backlogreadywrap"><input class="field" id="backlogready" type="checkbox"><span>Ready only</span></label>
           <label><span class="sr-only">Search</span><input class="field" id="backloggrep" type="search" placeholder="Search backlog…" autocomplete="off"></label>
         </header>
         <div id="backlog" class="list"></div>

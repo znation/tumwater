@@ -8,6 +8,7 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
   // ---- backlog: questions, plans, bugs, and queued prompts ----
   let backlogTab = recall("backlog") || "";
   let backlogGrep = recall("backlog-grep") || "";
+  let backlogReady = recall("backlog-ready") === "1";
   let backlogBodyHits = null;
   // backlog:start
   // The Queued tab's in-place editor state, beside the tab choice its rows paint from:
@@ -39,6 +40,13 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
     store("backlog-grep", backlogGrep);
     if (backlogStatus) renderBacklog(backlogStatus);
     fetchBacklogMatch();
+  }
+  // The Ready only toggle: remembered like the Search text, and the last payload repainted
+  // through it so the Plans/Bugs tabs drop their Blocked section at once.
+  function setBacklogReady(on) {
+    backlogReady = on;
+    store("backlog-ready", on ? "1" : "");
+    if (backlogStatus) renderBacklog(backlogStatus);
   }
   // The server's body matches for the current Search text: { needle, plans: [index…], … } from
   // /api/backlog-match. A stale answer (the box changed meanwhile) is dropped, and a failed
@@ -97,6 +105,14 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
       items[k].length + "</span></button>").join(""));
     const [key, , ic, tone, emptyTitle, emptyText] = BACKLOG.find((s) => s[0] === backlogTab);
     const list = items[key];
+    // Ready only keeps the pickable open plans/bugs (skipping the held/Blocked section); the
+    // toggle is hidden on the Questions and Inbox tabs, where an open row is never held.
+    const readyOnly = backlogReady && (key === "plans" || key === "bugs");
+    // Hide the whole toggle (input and its visible label) off the Plans/Bugs tabs, so its
+    // text does not stay on screen and remain clickable on the Questions/Inbox tabs.
+    const readyTabs = key === "plans" || key === "bugs";
+    $("backlogreadywrap").hidden = !readyTabs;
+    $("backlogready").checked = backlogReady;
     // Search narrows rows by the text each one shows, or by a body match from /api/backlog-match;
     // indexes stay the payload's own. Inbox rows also match their full text there (the queued key).
     const needle = backlogGrep.toLowerCase();
@@ -154,7 +170,10 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
         const t = splitTitle(title);
         const mark = holds[i] || "";
         if (!hit(t.title + " " + t.meta + " " + mark, key, i)) return "";
-        shown++;
+        // Ready-only drops the held/Blocked section entirely, so a blocked match is not rendered
+        // and must not count toward shown — otherwise a search that only matches blocked rows
+        // would suppress the "Nothing matches this search" empty state below.
+        if (!readyOnly || !blocked[i]) shown++;
         return "<div class='list-item t-" + tone + (open === key + ":" + i ? " active" : "") + "'><span class='li-icon'>" + icon(ic) + "</span>" +
           "<button type='button' class='li-open backloglink' data-file='" + key + "' data-index='" + i + "'><span class='li-title'>" + esc(t.title) + "</span>" +
           (t.meta ? "<span class='li-meta'>" + esc(t.meta) + "</span>" : "") +
@@ -176,7 +195,7 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
         held.push("<div class='list-item list-series'><button type='button' class='li-open' data-action='seriestoggle' data-series='" + esc(s.name) + "'><span class='li-title'>" + esc(s.label) + "</span><span class='li-meta'>blocked: each waits on an earlier part</span></button></div>");
         if (openSeries.has(s.name)) rows.forEach((r2, j) => { if (blocked[j] && series[j] && series[j].name === s.name) held.push(r2); });
       });
-      html = ready.join("") + (heldCount ? "<div class='list-item list-divider'><span class='li-meta'>Blocked (" + heldCount + ")</span></div>" + held.join("") : "");
+      html = ready.join("") + (readyOnly ? "" : (heldCount ? "<div class='list-item list-divider'><span class='li-meta'>Blocked (" + heldCount + ")</span></div>" + held.join("") : ""));
     }
     const answered = (key === "questions" ? (d.answeredQuestions || []) : []).map((a, i) => ({ a, i })).filter((x) => hit(x.a.title + " " + (x.a.decision || ""), "answered", x.i));
     shown += answered.length;
@@ -217,9 +236,12 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
     if (b) setBacklogTab(b.dataset.tab);
   });
   // Like #feedgrep, the box is static markup set once at load: the 1s poll repaints only the rows,
-  // never the box, so it cannot overwrite what the operator is typing.
+  // never the box, so it cannot overwrite what the operator is typing. The Ready only checkbox is
+  // bound the same way beside it.
   $("backloggrep").value = backlogGrep;
   $("backloggrep").addEventListener("input", (ev) => setBacklogGrep(ev.target.value));
+  $("backlogready").checked = backlogReady;
+  $("backlogready").addEventListener("change", (ev) => setBacklogReady(ev.target.checked));
   $("backlog").addEventListener("click", async (ev) => {
     const ser = clickClosest(ev, "button[data-action='seriestoggle']");
     if (ser) { toggleBacklogSeries(ser.dataset.series); return; }

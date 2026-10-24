@@ -331,6 +331,24 @@ test("history recall: a submitted prompt comes back on Up", () => {
   assert.equal(keys.state().input, "", "Down past the newest entry returns to the blank line");
 });
 
+test("Ctrl+O on the Backlog view toggles ready-only", () => {
+  const root = makeRoot();
+  fs.writeFileSync(path.join(root, "PLANS.md"), "## Planned\n\n### A plan (planned 2026-10-02 by test)\n\nbody\n");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.setLineBudgets(5, 4);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → backlog (roleIds.length+1 = 1)
+  assert.equal(keys.state().view, 1);
+  assert.equal(keys.state().backlogReadyOnly, false, "off by default");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().backlogReadyOnly, true, "the first Ctrl+O turns Ready only on");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().backlogReadyOnly, false, "the second Ctrl+O restores the full list");
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage (a non-Backlog view)
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().backlogReadyOnly, false, "Ctrl+O on a non-Backlog view never sets it");
+});
+
 test("Ctrl+T cycles the views and PgDn/PgUp page a selected backlog entry's body", () => {
   const root = makeRoot();
   fs.writeFileSync(

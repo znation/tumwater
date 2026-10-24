@@ -140,17 +140,20 @@ export function isOpenBacklogLabel(label: string): boolean {
 /** The flat entries a `/` text search keeps visible: with no pattern, every open entry's index
  * (label plan, bug or question); with a pattern, only the open entries whose heading or body
  * matches it case-insensitively (the exported entryMatches, the same rule the finished-entry
- * listings use). It never returns an answered/done/fixed index. Pure, so it is unit-testable
- * without a TTY — the pane calls it before moveEntrySelection so up/down step within the
- * matching indexes. */
+ * listings use). When `readyOnly` is true it keeps only the open entries no hold keeps from
+ * being picked (`hold === null`; questions and the answered/done/fixed rows carry null and so
+ * stay), the terminal twin of `tumwater backlog --ready`; `/` composes with it. It never
+ * returns an answered/done/fixed index. Pure, so it is unit-testable without a TTY — the pane
+ * calls it before moveEntrySelection so up/down step within the matching indexes. */
 export function visibleBacklogIndexes(
-  entries: ReadonlyArray<{ label: string } & BacklogEntry>,
+  entries: ReadonlyArray<{ label: string; hold?: EntryHold | null } & BacklogEntry>,
   pattern: string | null,
+  readyOnly = false,
 ): number[] {
   const open = (e: { label: string }): boolean => isOpenBacklogLabel(e.label);
   const out: number[] = [];
   entries.forEach((e, i) => {
-    if (open(e) && (pattern === null || entryMatches(e, pattern))) out.push(i);
+    if (open(e) && (pattern === null || entryMatches(e, pattern)) && (!readyOnly || e.hold === null || e.hold === undefined)) out.push(i);
   });
   return out;
 }

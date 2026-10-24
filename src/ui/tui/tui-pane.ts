@@ -31,6 +31,9 @@ interface TuiPaneState {
   entryScroll: number;
   /** The Backlog pane's active `/` search pattern (null = no filter). */
   backlogGrep?: string | null;
+  /** The Backlog pane's Ready-only filter (Ctrl+O): the list keeps only the open plans and
+   * bugs no hold keeps from being picked (null = full list). */
+  backlogReadyOnly?: boolean;
 
   /** The Queued pane's row selection (null = list mode) and the rows it indexes (the same
    * renderQueuedList traversal `tumwater prompt --list` prints). A set selection shows the
@@ -156,9 +159,11 @@ export function paneBody(
     // fixed rows are read-only and hidden while a search is applied); entry mode still opens
     // `flat[sel]`, the unfiltered index the selection holds.
     const grep = state.backlogGrep ?? null;
-    const shown = grep === null
-      ? flat
-      : flat.filter((e) => isOpenBacklogLabel(e.label) && entryMatches(e, grep));
+    const shown = flat.filter((e) => {
+      if (grep !== null && !(isOpenBacklogLabel(e.label) && entryMatches(e, grep))) return false;
+      if (state.backlogReadyOnly && isOpenBacklogLabel(e.label) && e.hold !== null) return false;
+      return true;
+    });
     // A stale selection (an entry removed since the last render) clamps to the last; no
     // entries at all falls back to list mode.
     const sel = state.selectedEntry === null || flat.length === 0 ? null : Math.min(state.selectedEntry, flat.length - 1);

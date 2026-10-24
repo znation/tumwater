@@ -556,7 +556,10 @@ validation, and atomic write, so you never have to hand-edit the file.
   through the same path `tumwater prompt --edit` uses — and can be moved to the front of its role's
   queue, the same reorder `tumwater prompt --top` makes, addressed by the row's queue file; an open question's Answer button opens its
   drawer, whose Record answer form writes the decision to QUESTIONS.md as `tumwater questions
-  answer` does. Clicking a role opens its details — its notes and next run's prompt included — and
+  answer` does. The Backlog card's Plans and Bugs tabs keep only the entries an operator could
+  pick when the Ready only toggle is on — hiding their held/`Blocked (n)` section while every
+  entry action still addresses the whole-file position — the browser twin of `tumwater backlog
+  --ready` and the TUI Backlog pane's Ctrl+O. Clicking a role opens its details — its notes and next run's prompt included — and
   its live transcript (`#role/<name>` links straight to it). A "Show prompts" button re-reads it through
   `GET /api/transcript?…&prompt=1` with each agent run's prompt, the text `tumwater logs --transcript <id> --prompt` prints; `&grep=<text>` keeps only the entries containing the text, each under its run's separator, as `tumwater logs --transcript <id> --grep` does. The role drawer's search box sends that `&grep=`. Its History, Usage, Failures, and
   Pending views match `tumwater history`, `tumwater report`, `tumwater report --failures`, and

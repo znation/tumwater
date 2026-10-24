@@ -145,7 +145,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   // When not on the change step the hint carries no Ctrl+Y at all: neither the stat-only
   // toggle nor the full-patch toggle appears.
   assert.doesNotMatch(hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }), /Ctrl\+Y/);
-  assert.match(hint({ kind: "backlog" }), /↑↓ open entries · \/ search entries · Ctrl\+X cancel entry · Ctrl\+R release entry · Ctrl\+V top entry · Ctrl\+E edit entry · Ctrl\+N new plan\/bug · Ctrl\+A answer question · PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "backlog" }), /↑↓ open entries · \/ search entries · Ctrl\+O ready only · Ctrl\+X cancel entry · Ctrl\+R release entry · Ctrl\+V top entry · Ctrl\+E edit entry · Ctrl\+N new plan\/bug · Ctrl\+A answer question · PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "usage", scope: "feature", window: null }), /Ctrl\+G scope: feature/);
   assert.match(hint({ kind: "failures", scope: "clean", window: "1h" }), /Ctrl\+G scope: clean/);
