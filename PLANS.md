@@ -365,4 +365,24 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 **Tests.**
 - test/budget-gates.test.ts / test/budget.test.ts: existing assertions stay green unchanged; add one test that the view module returns the same fallback view and `fromKey` for a fixed config/window state, so the moved body is pinned in its new home.
 
+### Move `pollTeamGates`'s budget wiring into `src/budget` (planned 2026-10-24 by the organize role)
+
+**Goal.** `src/gates/gate-polls.ts`'s `pollTeamGates` (lines 206–621, ~415 lines) is the orchestrator's wiring hub, but ~115 of those lines are budget-and-window wiring inlined right after the `pollBudgetGate` destructure (lines 237–358): the demotions publish (the `fallbackDemotions`/`fallbackDemoted`/`budget`/`chain` info fields), the `fallback_switched` event and `prevChain`/`switched` bookkeeping, the per-runner `gateRoleConfig` + `budgetFallbackActive` assignment, the cap-reopen/window hand-back, and the per-role `budgetPausedRoles`/`windowMovedRoles` subject sets. That wiring is the budget concern's second half: the `Split pollBudgetGate` plan above moves `pollBudgetGate`'s view derivation into `src/budget`; this is its twin — it moves the budget *wiring* out of `pollTeamGates` into the same module, so the whole budget concern (verdict, edge events, fallback view, and the demotion/hand-back/subject-set wiring) lives under `src/budget` and `pollTeamGates` becomes a thin pass that calls each gate module. Today a budget change (a new demotion, a new hand-back rule) forces a read of both `budget-gates.ts` and this wiring block a directory apart, and the same `publishInfoFields`/accounts idiom repeats.
+
+**Approach.** Do not start the split now; this entry is the plan. When implemented, it is one coherent restructure (no behavior change) that lands after the `Split pollBudgetGate`'s fallback-and-view half plan above (whose `BudgetGatePoll` shape this wiring reads unchanged, and which is the natural owner of the region's imports). `src/budget` is the home of the spell it calls (`budget.js`, `fallback-breaker.js`, and the new `budget-fallback-view.js`), so the wiring goes there.
+- New `src/budget/budget-wiring.ts` exports one entry that takes what the inlined block reads (`root`, `states`, `runners`, `liveConfig`, `accounts`, `info`, the `BudgetGatePoll` view fields it uses: `gate`/`roleConfig`/`directorConfig`/`onFallback`/`resumed`/`windowResumedBackends`/`windowTiers`/`fallbackPairs`/`priceResolved`/`servingResolved`/`budgetActive`/`chain`, and the budget `breakers`/`engaged`/`prevChain` from `states.budget`) and returns what the block wrote so `pollTeamGates` keeps the same post-block locals it reads later for the pause/streak folds and the final return — the `budgetPausedRoles`/`windowMovedRoles` sets and the updated `gate`/`roleConfig`/`directorConfig`/`budgetActive`/`servingResolved`/`priceResolved`/`windowTiers` values, plus the `fallback_switched`/`budget_handback` event and `publishInfoFields` side effects it already performs. `pollTeamGates` (src/gates/gate-polls.ts) keeps its other blocks untouched and its `TeamGatePoll` return shape identical.
+- Move the doc-bearing helpers and constants the block uses alongside it (`fallbackDemotion`, `runOnPair`, `subscriptionBackendOf`, `MODEL_TIERS`/`priceResolved` reads) where they are not already imported by other blocks of `pollTeamGates`; re-export what `gate-polls.ts` still exports so no importer's name changes. The `accounts` read stays in `pollTeamGates` (the window/team-hold block below uses it too) and is passed in.
+- Docs: docs/invariants.md's budget-gate and hand-back paragraphs re-point their `src/` bind lines that name `pollTeamGates`'s budget wiring at the new module.
+
+**Files touched.** src/gates/gate-polls.ts src/budget/budget-wiring.ts (new) docs/invariants.md test/gate-polls.test.ts test/budget.test.ts (the split must not change an existing assertion)
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with no assertion change except import-path edits, and `grep -rn "budget-wiring"` finds its one production importer (gate-polls.ts) plus its new test.
+- `pollTeamGates`'s call site still produces the same `TeamGatePoll` — byte-identical fields, same ordering — and its `publishInfoFields` output for the budget/chain/disk keys is unchanged.
+- The wiring module's doc comment names it the budget wiring (demotions publish, hand-back, per-role subject sets) and cites the same plan references (`part 5b/8`, `part 5c/8`, `2e/9`) the moved comments carry.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/gate-polls.test.ts / test/budget.test.ts: existing assertions stay green unchanged; add one test that the wiring module publishes the same `fallbackDemotions`/`budget`/`chain` info fields and returns the same `budgetPausedRoles`/`windowMovedRoles` sets for a fixed gate/view state, so the moved body is pinned in its new home.
+
 ## Done
