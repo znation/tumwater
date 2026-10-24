@@ -6,8 +6,9 @@
 import { suggestClosest } from "../text/suggest.js";
 
 
-/** Machine names HELP quotes verbatim; the scripting series renames them. */
-const SUMMARY_JSON_KEYS = "{ loops, total }"; // vocabulary-ok: --json keys until the scripting series
+/** The role-grouped summary's JSON keys, quoted verbatim in `history --summary --json` help
+ * (its `--by model` twin is the hardcoded `{ models, total }` beside it). */
+const SUMMARY_JSON_KEYS = "{ roles, total }";
 
 export const HELP = `tumwater — an autonomous development team, built on pi
 
