@@ -18,6 +18,7 @@ export function createSlotsEditor(session: TuiEditorSession): TuiEditorModule {
     mode: "slots",
     openCtrl: "w",
     configKey: "worktreeSlots",
+    plainIntegerKey: true,
     prefill: (s) => String(loadConfigSafe(s.root).config?.worktreeSlots ?? ""),
     openFlash:
       "edit the team's worktree pool size (worktreeSlots, an integer ≥ 1; empty restores the default of maxConcurrent + 1): Enter to save, Esc to cancel",

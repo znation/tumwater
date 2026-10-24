@@ -268,6 +268,13 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     const card = $("settingscard");
     card.innerHTML = renderSettings(d);
   }
+  // The plain-integer team rows (the run-concurrency knobs): for these the browser's
+  // JSON.parse below would read an exponent spelling ("2e0" → 2) past validateConfig's
+  // integer check before it ever leaves the browser — the same silent misread that the
+  // config-set CLI path and the TUI team-key editors refuse — so refuse it here, naming
+  // the row and leaving the field as typed. A non-exponent invalid still goes to the
+  // server, whose validateConfig names the key.
+  const PLAIN_INTEGER_KEYS = ["maxConcurrent", "maxConcurrentChecks", "worktreeSlots"];
   // The one delegated submit listener for the panel: save the row's key with the field's
   // current text, and flash the outcome — "Saved <key>" on 200 (with the old value when the
   // key was unset before), the server's message otherwise. No polling, no repaint: the
@@ -275,6 +282,16 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   async function saveSetting(form) {
     const key = form.dataset.key;
     const input = form.querySelector("input");
+    const typed = input.value.trim();
+    if (
+      PLAIN_INTEGER_KEYS.includes(key) &&
+      typed !== "" &&
+      !/^\d*\.?\d+$/.test(typed) &&
+      /^\d+(\.\d+)?[eE][+-]?\d+$/.test(typed)
+    ) {
+      showFlash("error: " + key + " must be a plain integer — no exponent notation");
+      return;
+    }
     // JSON-or-literal, matching tumwater config set: a field holding 30 or an agents
     // object sends the parsed value; anything else (a model selector like gpt-5) sends the
     // literal string. Without the parse an object field would arrive as a quoted string.

@@ -6,6 +6,7 @@
  * branches live in the topic tests below. Uses the shared fake-TTY harness in
  * fixtures/tui-fixtures.ts. */
 import path from "node:path";
+import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig, saveConfig } from "../src/config/config.js";
@@ -154,5 +155,20 @@ test("Ctrl+F, Ctrl+Q and Ctrl+R stay inert while the run-cap editor holds the li
     assert.match(tui.lastFrame(), /max concurrent runs set to 9/);
     assert.equal(tui.lines().at(-1), "director \u203a draft prompt");
     assert.equal(readConfig(repo).maxConcurrent, 9);
+  });
+});
+
+test("an exponent spelling of the run cap is refused, naming the key and writing nothing", async () => {
+  const repo = await makeTuiRepo();
+  const before = fs.readFileSync(configPath(repo), "utf8");
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "n", { ctrl: true });
+    tui.key(undefined, "backspace"); // clear the prefilled "6"
+    for (const ch of "4e1") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /maxConcurrent/);
+    assert.match(tui.lastFrame(), /exponent/);
+    assert.equal(tui.lines().at(-1), "run cap › 4e1", "an exponent spelling is rejected and kept");
+    assert.equal(fs.readFileSync(configPath(repo), "utf8"), before, "an exponent spelling is not written");
   });
 });

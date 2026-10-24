@@ -19,6 +19,7 @@ export function createConcurrencyEditor(session: TuiEditorSession): TuiEditorMod
     mode: "concurrency",
     openCtrl: "n",
     configKey: "maxConcurrent",
+    plainIntegerKey: true,
     prefill: (s) => String(loadConfigSafe(s.root).config?.maxConcurrent ?? ""),
     openFlash:
       "edit the team's run cap (maxConcurrent, an integer ≥ 1; empty restores the default): Enter to save, Esc to cancel",

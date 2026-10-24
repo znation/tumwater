@@ -65,6 +65,21 @@ export function setDailyBudgetUsd(
   return result.ok && unchanged ? { ok: true, unchanged: true } : result;
 }
 
+/** The top-level team keys whose value is a plain positive integer (validateConfig's
+ * POSITIVE_INTEGER checks, config-validation.ts): the run-concurrency knobs plus the legacy
+ * merge batch cap. For these, an exponent spelling like "4e1" is itself a JSON number (40)
+ * that setConfigKey's JSON.parse would read past validateConfig's integer check and silently
+ * write — the same silent misread the per-role instances/interval guards, the TUI team-key
+ * editors, and the GUI Settings rows refuse — so setConfigKey refuses it, naming the key and
+ * writing nothing. The per-provider map (maxConcurrentPerProvider.<provider>) has its own
+ * checkProviderConcurrencyCap screen and is not in this set. */
+const PLAIN_INTEGER_TOP_LEVEL_KEYS = new Set([
+  "maxConcurrent",
+  "mergeBatchMax",
+  "maxConcurrentChecks",
+  "worktreeSlots",
+]);
+
 /** Set ONE top-level key of tumwater.json from its raw CLI text (`tumwater config set`'s
  * engine): the key must be a member of TOP_LEVEL_KEYS — the same protection checkKnownKeys
  * gives the file itself, so `config set modle x` cannot write a dead key the runtime would
@@ -90,6 +105,27 @@ export function setConfigKey(
   key = canonicalConfigKey(key);
   const parsed = parseConfigKey(key);
   if (parsed.kind === "error") return fail(parsed.error);
+  // Shape, before the JSON.parse, for every plain-positive-integer key this verb can write —
+  // the top-level run-concurrency knobs and legacy merge batch cap, plus the integer-bound
+  // team-scope keys that arrive as a dotted key (`maxConcurrentPerProvider.<provider>`,
+  // `roles.<id>.instances`, the `bootstrap.untilPlansDone` section field): refuse an exponent
+  // spelling ("4e1" → 40) that JSON.parse would read past validateConfig's integer check and
+  // silently write, naming the key and writing nothing — the twin of the per-role guards, the
+  // TUI team-key editors, and the GUI Settings rows. A non-exponent invalid falls through for
+  // validateConfig (whose message names the key). Empty clears the key below.
+  const trimmed = rawValue.trim();
+  const isPlainIntegerKey =
+    (parsed.kind === "top" && PLAIN_INTEGER_TOP_LEVEL_KEYS.has(key)) ||
+    (parsed.kind === "map" && parsed.map === "maxConcurrentPerProvider") ||
+    (parsed.kind === "role" && parsed.field === "instances") ||
+    (parsed.kind === "section" && parsed.section === "bootstrap" && parsed.field === "untilPlansDone");
+  if (
+    isPlainIntegerKey &&
+    trimmed !== "" &&
+    !/^\d*\.?\d+$/.test(trimmed) &&
+    /^\d+(\.\d+)?[eE][+-]?\d+$/.test(trimmed)
+  )
+    return fail(`${key} must be a plain integer — no exponent notation`);
   let unchanged: true | undefined; // set by a mutation callback when value equals the resolved one
   let value: unknown;
   try {

@@ -24,6 +24,13 @@ interface TeamConfigKeySpec {
    * empty or whitespace-only line, otherwise `setConfigKey` recanonicalizes and
    * JSON-parses the line so validateConfig owns the value's truth. */
   configKey: string;
+  /** Set for the team keys whose value is a plain integer (maxConcurrent, worktreeSlots):
+   * an exponent spelling like "2e0" is itself a JSON number (2) that setConfigKey's
+   * JSON.parse would read past validateConfig's integer check and silently write — the
+   * same silent misread the per-role instances/interval/cap guards refuse — so this
+   * refuses it here, naming the key and staying in edit mode. A non-exponent spelling
+   * falls through to validateConfig, whose message names the key. */
+  plainIntegerKey?: boolean;
   /** The line the editor opens pre-filled with — one fresh read per open is the smallest
    * honest source, and a broken config degrades to no pre-fill with the write reporting
    * the error. */
@@ -96,6 +103,19 @@ export function createTeamConfigKeyEditor(
       // invalid value flashes and STAYS in edit mode so the operator can fix it (the file is
       // untouched); success restores the saved prompt text.
       const text = session.input.trim();
+      // Shape, before the write, for the plain-integer team keys: an exponent spelling is
+      // itself a JSON number that setConfigKey's JSON.parse would read past validateConfig
+      // and silently write, so refuse it here and stay in edit mode (the twin of the per-role
+      // instances/interval guards); a non-exponent invalid falls through to validateConfig.
+      if (
+        spec.plainIntegerKey &&
+        text !== "" &&
+        !/^\d*\.?\d+$/.test(text) &&
+        /^\d+(\.\d+)?[eE][+-]?\d+$/.test(text)
+      ) {
+        session.flashMessage(`${spec.configKey} must be a plain integer — no exponent notation`);
+        return true;
+      }
       const result =
         text === ""
           ? unsetConfigKey(session.root, spec.configKey)

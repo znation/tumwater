@@ -87,6 +87,34 @@ test("set of a JSON-literal value stores the parsed type", async () => {
   assert.equal(out.stdout, "set maxDailyCostUsd to 20\n", "JSON-parseable text keeps its type");
 });
 
+test("set of an exponent spelling of a plain-integer key fails without writing", async () => {
+  const root = makeRepo();
+  writeConfig(root, {});
+  // "4e1" is itself the JSON number 40 — the silent misread the shape screen refuses — so
+  // `config set maxConcurrent 4e1` must not write 40; the plain-integer team keys share the
+  // guard (maxConcurrent, worktreeSlots, maxConcurrentChecks, plus the team-scope
+  // maxConcurrentPerProvider.<provider>, roles.<id>.instances, and the bootstrap.untilPlansDone
+  // section field) so a fingerprint non-numeric key (maxDailyCostUsd) is untouched.
+  const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
+  for (const [key, val] of [
+    ["maxConcurrent", "4e1"],
+    ["worktreeSlots", "3e1"],
+    ["maxConcurrentChecks", "1e2"],
+    ["maxConcurrentPerProvider.deepinfra", "4e1"],
+    ["roles.feature.instances", "2e1"],
+    ["bootstrap.untilPlansDone", "4e1"],
+  ] as const) {
+    const out = await attemptAsync(() => cmdConfig(root, ["set", key, val]));
+    assert.ok(out.exited && out.code === 1, `${key}: an exponent spelling is refused`);
+    assert.match(out.stderr, new RegExp(`${key} must be a plain integer`), `${key}: the message names the key`);
+  }
+  assert.equal(
+    fs.readFileSync(path.join(root, "tumwater.json"), "utf8"),
+    before,
+    "the file stays byte-identical after every refused exponent spelling",
+  );
+});
+
 test("set of a type-invalid value fails and leaves the file byte-identical", async () => {
   const root = makeRepo();
   writeConfig(root, { model: "m1", maxDailyCostUsd: 5 });

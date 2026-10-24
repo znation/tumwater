@@ -6,6 +6,8 @@ import { readJson } from "./helpers/json-read.js";
 import { setConfigKey } from "../src/config/config-write.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 
+const configPath = (repo: string): string => path.join(repo, "tumwater.json");
+
 // Ctrl+W worktree-pool editor on the prompt line: the terminal twin of the dashboard Settings
 // `Worktree slots` field and `tumwater config set worktreeSlots`. The Activity view opens it
 // pre-filled from tumwater.json's `worktreeSlots` (empty when unset), Enter saves through the
@@ -158,5 +160,19 @@ test("Ctrl+W excludes the Ctrl+R restart and the `/` search while it holds the l
     // held.search while held.slots is already set — breaking the mutual exclusion).
     tui.key("/", "/");
     assert.equal(tui.lines().at(-1), "worktree slots › /", "`/` types into the editor, search stays closed");
+  });
+});
+
+test("an exponent spelling of the worktree pool size is refused, naming the key and writing nothing", async () => {
+  const repo = await makeTuiRepo();
+  const before = fs.readFileSync(configPath(repo), "utf8");
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "w", { ctrl: true });
+    for (const ch of "3e1") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /worktreeSlots/);
+    assert.match(tui.lastFrame(), /exponent/);
+    assert.equal(tui.lines().at(-1), "worktree slots › 3e1", "an exponent spelling is rejected and kept");
+    assert.equal(fs.readFileSync(configPath(repo), "utf8"), before, "an exponent spelling is not written");
   });
 });
