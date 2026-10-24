@@ -1,14 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  PAUSE_EXPIRED_SUFFIX,
+  PREFILL_REASON,
   agree,
   backendKindPhrase,
   budgetPhrase,
+  consecutiveFailuresWarning,
   describeToolCall,
   firstReason,
   holdPhrase,
+  mainRedNotMine,
+  mainRedPhrase,
+  moreSuffix,
+  orchestratorStopPhrase,
+  pauseReasonSuffix,
   plural,
+  rolePausePhrase,
+  roleResumePhrase,
+  rolesPhrase,
   shortSpanPhrase,
+  teamPausePhrase,
+  teamResumePhrase,
 } from "../src/text/phrases.js";
 
 // text/phrases.ts is the single home of the team's shared wording fragments (the tool-call label,
@@ -142,4 +155,96 @@ test("holdPhrase clamps an unreadable or negative hold to 0s and adds the relaps
   assert.equal(holdPhrase(-5000, undefined), "for 0s");
   assert.equal(holdPhrase("x", "y"), "for 0s");
   assert.equal(holdPhrase(undefined, undefined), "for 0s");
+});
+
+// --- mainRedPhrase / mainRedNotMine (main's red-tip naming) ---
+
+// mainRedPhrase is the spine of every "main <short-sha> is red" warning, shared by the team-wide
+// red-main banner (main-red.ts), the review gate, the merge check (merge-check-failures.ts), and
+// the redeploy hold (redeployer.ts). shortSha slices to at most 8 chars and a non-string reads as
+// the "?" textOr fallback.
+test("mainRedPhrase names main by its short sha", () => {
+  assert.equal(mainRedPhrase("0123456789abcdef"), "main 01234567 is red");
+  assert.equal(mainRedPhrase(undefined), "main ? is red", "an unreadable sha degrades, never undefined");
+});
+
+test("mainRedNotMine appends the not-this-change's-failure consequence", () => {
+  assert.equal(
+    mainRedNotMine("0123456789abcdef"),
+    "main 01234567 is red — not this change's failure",
+  );
+});
+
+// --- pauseReasonSuffix (the quoted reason on a pause line) ---
+
+test("pauseReasonSuffix quotes the reason only when one is given", () => {
+  assert.equal(pauseReasonSuffix("budget spent"), ' — "budget spent"');
+  assert.equal(pauseReasonSuffix(undefined), "");
+  assert.equal(pauseReasonSuffix(""), "");
+});
+
+// --- consecutiveFailuresWarning (the crossing-the-streak warning) ---
+
+test("consecutiveFailuresWarning counts the failing runs in a row", () => {
+  assert.equal(consecutiveFailuresWarning(3, "a review rejection"), "3 runs failed in a row: a review rejection");
+  assert.equal(consecutiveFailuresWarning(1, "recovery failure"), "1 runs failed in a row: recovery failure");
+});
+
+// --- team/role pause and resume base lines (event feed and failure digest wording) ---
+
+test("team pause/resume phrases hold the shared base wording", () => {
+  assert.equal(teamPausePhrase(), "team paused — roles start no new runs");
+  assert.equal(teamResumePhrase(), "team resumed — roles run again");
+  assert.equal(PAUSE_EXPIRED_SUFFIX, " (its timed pause ran out)");
+});
+
+test("role pause/resume phrases coerce any role value, never undefined", () => {
+  assert.equal(rolePausePhrase("bugfix #2"), "role bugfix #2 paused — it starts no new runs");
+  assert.equal(roleResumePhrase("bugfix #2"), "role bugfix #2 resumed — it runs again");
+  // The digest byte-slices role fields, so a raw (non-string) value must still render.
+  assert.equal(rolePausePhrase(42), "role 42 paused — it starts no new runs");
+  assert.equal(roleResumePhrase(undefined), "role undefined resumed — it runs again");
+});
+
+// --- orchestratorStopPhrase (the shutdown line and its cause) ---
+
+test("orchestratorStopPhrase names each cause and falls back to the bare line", () => {
+  assert.equal(orchestratorStopPhrase("restart"), "tumwater stopped to restart onto the new build");
+  assert.equal(orchestratorStopPhrase("once"), "tumwater stopped — the --once round settled");
+  assert.equal(orchestratorStopPhrase("signal"), "tumwater stopped on a stop signal");
+  assert.equal(orchestratorStopPhrase("error"), "tumwater stopped — its polling failed");
+  // A missing or unknown cause (any event logged before the field existed) renders the bare line.
+  assert.equal(orchestratorStopPhrase(undefined), "tumwater stopped");
+  assert.equal(orchestratorStopPhrase("reboot"), "tumwater stopped");
+});
+
+// --- rolesPhrase (the A, B, C roles list) ---
+
+test("rolesPhrase joins string roles, falls back, drops foreign entries, and caps the tail", () => {
+  assert.equal(rolesPhrase(["a", "b", "c"], "none"), "a, b, c");
+  assert.equal(rolesPhrase(undefined, "none"), "none");
+  assert.equal(rolesPhrase("not an array", "none"), "none");
+  // A hand-edited field's foreign entry must never join as "[object Object]" or leak undefined.
+  assert.equal(rolesPhrase(["a", 42, "b"], "none"), "a, b");
+  assert.equal(rolesPhrase([], "none"), "none");
+});
+
+test("rolesPhrase caps extra roles with max and renders through format when given", () => {
+  assert.equal(rolesPhrase(["a", "b", "c"], "none", 2), "a, b");
+  assert.equal(rolesPhrase(["a", "b"], "none", 0), "none", "an exhausted cap reads as the fallback");
+  const slice = (r: unknown) => String(r).slice(0, 3);
+  assert.equal(rolesPhrase(["role-1", "role-2"], "none", undefined, slice), "rol, rol");
+});
+
+// --- moreSuffix (the capped-list remainder) ---
+
+test("moreSuffix is empty at zero and appends the parenthesized remainder past it", () => {
+  assert.equal(moreSuffix(0), "");
+  assert.equal(moreSuffix(3), " (+3 more)");
+});
+
+// --- PREFILL_REASON (the over-long value's prefill note) ---
+
+test("PREFILL_REASON is the shared over-long-prompt/prefill note", () => {
+  assert.equal(PREFILL_REASON, "it rides into every run's prefill");
 });
