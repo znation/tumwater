@@ -680,9 +680,16 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
   await setRef(repo, rejectedRefName("improve"), sha);
 
   const prompts = path.join(tmpdir(), "revision-prompts.log");
+  // The run must always resolve "queued" only after the fake pi has run, and any pi
+  // invocation appends to `prompts` (the shim's first line), so an ENOENT reading it is a
+  // pi-less short-circuit — not a pi run that went elsewhere. `piRan` is the unambiguous
+  // marker the next flake's readout uses to tell those two apart (BUGS.md, quarantined
+  // 2026-10-24).
+  const piRan = path.join(tmpdir(), "revision-pi-marker");
   await withPi(
     [
       `printf '%s\n' "$@" >> "${prompts}"`,
+      `touch "${piRan}"`,
       `echo resolved > seed.txt`,
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: revised with markers resolved")}'`,
       `echo new > new.txt`,
@@ -694,7 +701,28 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
       const outcome = await runner.run();
 
       assert.equal(outcome.result, "queued");
-      const prompt = fs.readFileSync(prompts, "utf8");
+      let prompt: string;
+      try {
+        prompt = fs.readFileSync(prompts, "utf8");
+      } catch (err) {
+        // The run resolved "queued" but the fake pi never wrote its prompts file: either a
+        // pi-less short-circuit or a pi invocation that wrote elsewhere. Dump what actually
+        // happened — the pi marker, the runner's post-run revision/handback state, the
+        // logged events, and the queued merge — so the next occurrence reads out its cause.
+        assert.fail(
+          `"queued" outcome but no prompts file (piRanMark=${fs.existsSync(piRan)}): ` +
+            `state=${JSON.stringify({
+              revision: runner.state.revision,
+              conflictHandback: runner.state.conflictHandback,
+            })} ` +
+            `events=${JSON.stringify({
+              revision: eventsOfType(repo, "revision").map((e) => e.action),
+              handback: eventsOfType(repo, "conflict_handback").map((e) => e.reason),
+              mergeQueued: eventsOfType(repo, "merge_queued").length,
+            })} ` +
+            `queue=${JSON.stringify(queuedMerges(repo))} original=${String(err)}`,
+        );
+      }
       assert.match(prompt, /revision 1\b/);
       assert.match(prompt, /conflict-handback/);
       assert.match(prompt, /Conflicted files:\n- seed\.txt/);
