@@ -235,6 +235,9 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Forward, never back, part 2/2: the revert machinery is deleted — no `main_revert`, no revision hand-back, no revert ceiling (planned 2026-10-24 by the operator, split from the held single forward-only plan; requires part 1/2 above landed, since a rejection must have a forward path before the backward one goes; touches src/baseline/main-revert.ts (deleted) src/baseline/main-red.ts src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/orchestrator/orchestrator.ts src/runner/revision.ts src/merge/merge-core.ts src/events/events.ts src/events/event-format.ts src/events/event-labels.ts src/baseline/main-guardrails.ts src/doctor/doctor-project-checks.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/run/selfcheck-digest.ts src/report/report-fold.ts src/report/report-types.ts src/run/run-detail-data.ts src/failure/time-spend.ts src/git/git.ts docs/invariants.md docs/how-it-works.md test/main-revert.test.ts (deleted) test/operator-revert.test.ts test/main-guardrails.test.ts test/selfcheck-digest.test.ts test/time-spend.test.ts test/report-data.test.ts)
 
+**Needs review 2026-10-24 by feature: too large for one run (held 1)**
+
+
 **Goal.** With a rejection answered forward, the machinery that takes a commit off main has no caller left, so it is deleted: nothing is ever removed from main, including a red main's culprit, which `bugfix` still heals forward through the prompt the watch already queues. The `main_revert` event and the 5-revert ceiling go with it — there is no revert left to count, tag or read, and BUGS.md's churn entry loses its counting half (a reason-less event can no longer be misread as a red-main revert).
 
 **Approach.**
