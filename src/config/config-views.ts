@@ -359,7 +359,7 @@ export function resolvedModelFields(
  * no model id is resolved (pi's own default) — the key stays absent rather than empty, the
  * same empty-means-unset rule resolvedModelFields applies to the raw halves. One home of
  * that assembly and guard, shared by the two run-start event writers (runner-run.ts's run_start,
- * review.ts's review_start) and the per-role status snapshot (status-data.ts) so the three
+ * review-run.ts's review_start) and the per-role status snapshot (status-data.ts) so the three
  * observability surfaces cannot disagree about which model a run starts on. A non-pi backend is
  * named as the selector's provider namespace (backendQualifiedSelector), so a claude run reads
  * `claude/claude-sonnet-5-5` in every surface instead of a bare model id. */
