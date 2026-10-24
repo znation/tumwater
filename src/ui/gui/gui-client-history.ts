@@ -262,14 +262,24 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   }
   // The Show/Hide patch button under a card whose run pinned a commit, then the sub-state: the
   // loading note, the error message, or the patch itself while open.
+  // The shared header of a card add-on (patch or transcript): the Show/Hide button, the
+  // Loading span and the error div, all driven by the field's three-state record. Returns
+  // the built prefix plus whether the field is showing, so the caller appends its own
+  // detail body (the patch/transcript pre) only while the field is open — kind is the field
+  // name, the data-hist-<kind> button hint and the user-facing label, so the two cards
+  // cannot drift their header.
+  function histFieldScaffoldHtml(kind, field, key) {
+    const label = field.state === "ok" && field.open ? "Hide " + kind : "Show " + kind;
+    let out = "<button type='button' class='btn btn-sm' data-hist-" + kind + "='" + esc(key) + "'>" + label + "</button>";
+    if (field.state === "loading") out += " <span class='muted'>Loading " + kind + "…</span>";
+    else if (field.state === "error") out += "<div class='err'>" + esc(field.message || "the " + kind + " failed to load") + "</div>";
+    return { out, open: field.state === "ok" && field.open };
+  }
   function histPatchHtml(entry, key) {
     const p = entry.patch || {};
-    const label = p.state === "ok" && p.open ? "Hide patch" : "Show patch";
-    let out = "<button type='button' class='btn btn-sm' data-hist-patch='" + esc(key) + "'>" + label + "</button>";
-    if (p.state === "loading") out += " <span class='muted'>Loading patch…</span>";
-    else if (p.state === "error") out += "<div class='err'>" + esc(p.message || "the patch failed to load") + "</div>";
-    else if (p.state === "ok" && p.open) out += "<pre class='mono hist-detail-patch'>" + esc(p.text) + "</pre>";
-    return out;
+    const base = histFieldScaffoldHtml("patch", p, key);
+    if (base.open) base.out += "<pre class='mono hist-detail-patch'>" + esc(p.text) + "</pre>";
+    return base.out;
   }
   // Toggle the patch for the card at key ("role#run"): flip a loaded one, else fetch it once
   // (an errored one refetches) and repaint around the request.
@@ -296,23 +306,20 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
     }
     renderHistory();
   }
-  // The Show/Hide transcript button, then its sub-state, exactly like histPatchHtml.
+  // The Show/Hide transcript button, then its sub-state, through the shared scaffold.
   function histTranscriptHtml(entry, key) {
     const t = entry.transcript || {};
-    const label = t.state === "ok" && t.open ? "Hide transcript" : "Show transcript";
-    let out = "<button type='button' class='btn btn-sm' data-hist-transcript='" + esc(key) + "'>" + label + "</button>";
-    if (t.state === "loading") out += " <span class='muted'>Loading transcript…</span>";
-    else if (t.state === "error") out += "<div class='err'>" + esc(t.message || "the transcript failed to load") + "</div>";
-    else if (t.state === "ok" && t.open) {
-      out += " <button type='button' class='btn btn-sm' data-hist-transcript-prompts='" + esc(key) + "'>" + (t.prompts ? "Hide prompts" : "Show prompts") + "</button>";
-      if (t.promptsLoading) out += " <span class='muted'>Loading prompts…</span>";
-      if (t.promptsError) out += "<div class='err'>" + esc(t.promptsError) + "</div>";
-      out += " <input type='search' class='field' data-hist-transcript-grep='" + esc(key) + "' placeholder='Search transcript' aria-label='Search transcript' autocomplete='off' value='" + esc(t.grep || "") + "'>";
-      if (t.grepLoading) out += " <span class='muted'>Searching transcript…</span>";
-      if (t.grepError) out += "<div class='err'>" + esc(t.grepError) + "</div>";
-      out += "<pre class='mono hist-detail-transcript'>" + esc(t.grep && typeof t.grepText === "string" ? t.grepText : t.prompts ? t.promptText : t.text) + "</pre>";
+    const base = histFieldScaffoldHtml("transcript", t, key);
+    if (base.open) {
+      base.out += " <button type='button' class='btn btn-sm' data-hist-transcript-prompts='" + esc(key) + "'>" + (t.prompts ? "Hide prompts" : "Show prompts") + "</button>";
+      if (t.promptsLoading) base.out += " <span class='muted'>Loading prompts…</span>";
+      if (t.promptsError) base.out += "<div class='err'>" + esc(t.promptsError) + "</div>";
+      base.out += " <input type='search' class='field' data-hist-transcript-grep='" + esc(key) + "' placeholder='Search transcript' aria-label='Search transcript' autocomplete='off' value='" + esc(t.grep || "") + "'>";
+      if (t.grepLoading) base.out += " <span class='muted'>Searching transcript…</span>";
+      if (t.grepError) base.out += "<div class='err'>" + esc(t.grepError) + "</div>";
+      base.out += "<pre class='mono hist-detail-transcript'>" + esc(t.grep && typeof t.grepText === "string" ? t.grepText : t.prompts ? t.promptText : t.text) + "</pre>";
     }
-    return out;
+    return base.out;
   }
   // Toggle the transcript for the card at key ("role#run"), the way toggleHistPatch does the patch.
   async function toggleHistTranscript(key) {
