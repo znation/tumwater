@@ -1,6 +1,7 @@
 import type { RunnerState } from "../runner/runner-state.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress-data.js";
 import { compactTokens } from "../text/format.js";
+import { pad2 } from "../text/datetime.js";
 
 /** The in-flight run's PROGRESS display model (split from status-model.ts, which keeps the
  * role-phase ladder, the merge cells, and the row derivations): how an in-flight run renders
@@ -18,7 +19,7 @@ import { compactTokens } from "../text/format.js";
 export function duration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m${pad2(s % 60)}s`;
   const totalMinutes = Math.round(s / 60);
   return `${Math.floor(totalMinutes / 60)}h${totalMinutes % 60}m`;
 }
