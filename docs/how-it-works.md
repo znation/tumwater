@@ -525,7 +525,8 @@ validation, and atomic write, so you never have to hand-edit the file.
 - `gui --all-interfaces` has no authentication unless you pass `--token <secret>`. Clients send the
   token as `Authorization: Bearer <token>` or `?token=`.
 - The web dashboard opens on Team: alerts for whatever needs you (a failing or stuck role, a
-  failing check on main, a spent budget, an available update, open questions, refused entries,
+  failing check on main, a spent budget, an available update, open questions, a question
+  that has waited a week for an answer, refused entries,
   a stale bug, a failed notify page, a broken plan dependency clause, a dirty primary checkout
   refusing merges, a stranded inbox prompt,
   a stalled merge queue, a merge-queue file the reader skips, a waiting bug held a week, a plan stalled by a

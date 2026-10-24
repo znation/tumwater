@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
-import { statusPayload, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS, mainRuleFailures, MAIN_RULE_FAILURE_WINDOW_MS } from "../src/ui/status-payload.js";
+import { statusPayload, staleOpenQuestions, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS, mainRuleFailures, MAIN_RULE_FAILURE_WINDOW_MS } from "../src/ui/status-payload.js";
 import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkPostReviews } from "../src/doctor/doctor-backlog.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool } from "../src/doctor/doctor-contention-checks.js";
@@ -354,6 +354,36 @@ test("status payload carries open questions, fresh per poll", async () => {
   ]);
   payload = statusPayload(repo) as { questions: string[] };
   assert.deepEqual(payload.questions, [], "an answered question is no longer open");
+});
+
+test("staleOpenQuestions picks the 7+ day set and the payload carries it", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui stale questions test");
+  const now = Date.parse("2026-10-24T12:00:00Z");
+  const stamp = (n: number) => new Date(now - n * 86_400_000).toISOString().slice(0, 10);
+  writeBacklogFile(repo, "QUESTIONS.md", [
+    { heading: "## Open", body: `### Q0: undated tenet\n\n**Context:** none.` },
+    { heading: "## Open", body: `### Q1: fresh rule (asked by director ${stamp(6)})\n\n**Context:** none.` },
+    { heading: "## Open", body: `### Q2: stale rule (asked by director ${stamp(8)})\n\n**Context:** none.` },
+  ]);
+  // Only the dated question at/over the 7-day threshold is stale, with its position and days.
+  assert.deepEqual(staleOpenQuestions(repo, now), [
+    { index: 2, position: 3, title: "Q2: stale rule", days: 8 },
+  ]);
+  // The status payload for that repo carries a stale-questions amber alert with the Answer action.
+  const payload = statusPayload(repo, now) as { alerts: Array<{ key: string; title: string; actions: Array<{ label: string; act: string }> }> };
+  const alert = payload.alerts.find((a) => a.key === "stale-questions");
+  assert.notEqual(alert, undefined);
+  assert.match(alert!.title, /^1 open question waited 7\+ days for an answer$/);
+  assert.deepEqual(alert!.actions, [{ label: "Answer", act: "questions" }]);
+  // A repo whose only question is fresh carries no stale-questions alert.
+  const clean = makeRepo();
+  await initProject(clean, "gui stale questions clean test");
+  writeBacklogFile(clean, "QUESTIONS.md", [
+    { heading: "## Open", body: `### Q: recent rule (asked by director ${stamp(1)})\n\n**Context:** none.` },
+  ]);
+  const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
+  assert.equal(cleanPayload.alerts.find((a) => a.key === "stale-questions"), undefined);
 });
 
 // Queued director prompts ride /api/status as truncated previews in execution order; the

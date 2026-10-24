@@ -39,6 +39,20 @@ export interface StaleBug {
   days: number;
 }
 
+/** A stale open question the doctor's 7-day rule warns about (src/doctor/doctor-backlog-bugs.ts
+ * checkStaleQuestions, STALE_QUESTION_DAYS): an open QUESTIONS.md entry whose `(asked by …)` stamp
+ * is at least 7 days old. Computed in src/ui/status-payload.ts's staleOpenQuestions from the same
+ * threshold and the same questionFilingDate parser the doctor's check uses, so the alert and the
+ * doctor cannot drift on the rule. Its 1-based position is the `questions --list`/`tumwater
+ * questions answer <n>` number; its 0-based index is the `## Open` position kept only as the
+ * file-order tiebreak; its title is stamp-stripped for prose; days is its whole-day age. */
+export interface StaleQuestion {
+  index: number;
+  position: number;
+  title: string;
+  days: number;
+}
+
 /** A failed notify page the doctor's 1-day rule warns about (src/doctor/doctor-notify.ts,
  * NOTIFY_CHECK_WINDOW_MS): a warning event within the last day from a notify hook that failed
  * to page — a nonzero exit, a kill, or a failed start. Computed in src/ui/status-payload.ts's
@@ -487,6 +501,7 @@ function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
 
 interface BacklogAlertsInput {
   questions: readonly string[];
+  staleQuestions: readonly StaleQuestion[];
   refused: readonly RefusedEntry[];
   operatorHeld: readonly RefusedEntry[];
   stalledPlans: readonly StalledPlan[];
@@ -506,6 +521,7 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
   const {
     questions,
+    staleQuestions,
     refused,
     operatorHeld,
     stalledPlans,
@@ -520,6 +536,29 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       tone: "indigo",
       title: `${plural(questions.length, "question needs", "questions need")} your answer`,
       detail: entryListDetail(questions),
+      actions: [{ label: "Answer", act: "questions" }],
+    });
+  }
+  // A stale question (doctor's STALE_QUESTION_DAYS rule, src/doctor/doctor-backlog-bugs.ts
+  // checkStaleQuestions) has waited a week without an answer — a role is stuck behind a decision,
+  // the exact class every other backlog row raises as an amber alert — so it asks (amber) the way
+  // the stale-bug alert does, naming the oldest question, its age, and the `tumwater questions
+  // answer` fix. Its callers pass it oldest-first (status-payload.ts staleOpenQuestions sorts
+  // most-days-waited first), so the first element is the most-stale question and is named with its
+  // position and days; the rest are folded through entryListDetail like the questions and refused
+  // alerts, so the wording and counts cannot drift. The `questions` action opens the Questions tab,
+  // so the alert carries no row address.
+  if (staleQuestions.length) {
+    const first = staleQuestions[0]!;
+    const rest = staleQuestions.slice(1);
+    out.push({
+      key: "stale-questions", // vocabulary-ok: the stale-questions amber alert's key
+      tone: "amber",
+      title: `${plural(staleQuestions.length, "open question waited", "open questions waited")} 7+ days for an answer`,
+      detail:
+        `#${first.position} "${first.title}" has waited ${first.days}d for an answer` +
+        moreDetail(rest.map((q) => q.title)) +
+        ` · answer it with \`tumwater questions answer ${first.position} "<decision>"\`, or close it in QUESTIONS.md`,
       actions: [{ label: "Answer", act: "questions" }],
     });
   }
@@ -1230,10 +1269,11 @@ export function teamAlerts(
   droppedPostReviews: DroppedPostReviews | null = null,
   mainRuleFailure: MainRuleFailure | null = null,
   staleClaims: readonly ClaimState[] = [],
+  staleQuestions: readonly StaleQuestion[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
-  out.push(...buildBacklogAlerts({ questions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }));
+  out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles }));

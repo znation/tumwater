@@ -555,6 +555,27 @@ test("stale open bugs raise a standing amber alert right after the refused alert
   assert.deepEqual(teamAlerts(base, [], [], now, [], []), []);
 });
 
+test("the stale-questions alert names the oldest and folds the rest", () => {
+  const now = Date.now();
+  const two = teamAlerts(base, ["Q?"], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [
+    { index: 2, position: 3, title: "Which database?", days: 8 },
+    { index: 4, position: 5, title: "Tabs or spaces?", days: 7 },
+  ]);
+  // The questions arg makes the indigo questions alert precede the amber stale-questions one.
+  assert.deepEqual(two.map((a) => a.key), ["questions", "stale-questions"]);
+  const sq = two.filter((a) => a.key === "stale-questions");
+  assert.deepEqual(sq.map((a) => [a.key, a.tone, a.title]), [["stale-questions", "amber", "2 open questions waited 7+ days for an answer"]]);
+  const d = sq[0]!.detail ?? "";
+  assert.ok(d.startsWith('#3 "Which database?" has waited 8d for an answer'), d);
+  assert.ok(d.includes("· Tabs or spaces?"), d);
+  assert.ok(d.includes("tumwater questions answer 3 \"<decision>\""), d);
+  assert.ok(d.includes("or close it in QUESTIONS.md"), d);
+  assert.deepEqual(sq[0]!.actions, [{ label: "Answer", act: "questions" }]);
+  // A short-argument call (the existing pattern) raises no stale-questions alert.
+  assert.deepEqual(teamAlerts(base, [], [], now), []);
+  assert.equal(teamAlerts(base, [], [], now, [], [], [{ index: 0, position: 1, title: "B", days: 3 }]).filter((a) => a.key === "stale-questions").length, 0);
+});
+
 function daysAgo(n: number, now: number): string {
   return new Date(now - n * 86_400_000).toISOString().slice(0, 10);
 }

@@ -1,5 +1,6 @@
 import { answeredQuestionSummaries } from "../backlog/question-answer.js";
-import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries, openBugs, openQuestions, plannedPlans, openBugEntries, filingDate, ageInDays, type BacklogEntry } from "../backlog/backlog.js";
+import { questionFilingDate } from "../backlog/question-answer.js";
+import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries, openBugs, openQuestions, openQuestionEntries, plannedPlans, openBugEntries, filingDate, ageInDays, type BacklogEntry } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress, backlogMarks, operatorHeldEntries, refusedEntries, refusalNote, stalledPlanEntries, waitingNote } from "../backlog/backlog-eligibility.js";
 import { finishedTitle, groupBlockedSeries, partsLabel, strandedPlanEntriesFor, stripEntryStamp } from "../backlog/backlog-structure.js";
 import { validationGapProblems } from "../doctor/doctor-backlog-plans.js";
@@ -20,13 +21,13 @@ import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { byDaysThenIndex } from "../collections.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { staleClaimEntries } from "../scheduling/claim-entries.js";
-import { teamAlerts, type FlappedChecks, type NotifyFailure, type PlanDependencyProblem, type PrimaryOverwriteBlock, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
+import { teamAlerts, type FlappedChecks, type NotifyFailure, type PlanDependencyProblem, type PrimaryOverwriteBlock, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleQuestion, type StaleWaitingBug } from "./team-alerts.js";
 import { duplicatedBacklogHeadings, planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { quarantineWarning, revertsFor } from "../baseline/main-guardrails.js";
 import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
 import { flappedChecksPhrase } from "../doctor/doctor-project-checks.js";
 import { readPostReviews, postMergeChurn, POST_MERGE_REJECT_WINDOW_MS, type PostMergeRejection } from "../review/post-merge-review.js";
-import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles, atRiskPostReviews, atRiskPostReviewsPhrase } from "../doctor/doctor-backlog.js";
+import { staleQueuedMergeRows, STALE_BUG_DAYS, STALE_QUESTION_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles, atRiskPostReviews, atRiskPostReviewsPhrase } from "../doctor/doctor-backlog.js";
 import { NOTIFY_CHECK_WINDOW_MS } from "../doctor/doctor-notify.js";
 import { matchedRegressedFixes, regressedFixCandidates, regressedFixesPhrase, staleWaitingBugRows, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
 
@@ -63,6 +64,27 @@ export function staleOpenBugs(root: string, now = Date.now()): StaleBug[] {
       if (stamp === null) return [];
       const days = ageInDays(stamp, now);
       return days >= STALE_BUG_DAYS ? [{ index, position: index + 1, title: stripEntryStamp(entry.title), days }] : [];
+    })
+    .sort(byDaysThenIndex);
+}
+
+/** The open questions the doctor's 7-day rule (src/doctor/doctor-backlog-bugs.ts
+ * checkStaleQuestions, STALE_QUESTION_DAYS) calls stale: an open QUESTIONS.md entry whose
+ * `(asked by …)` stamp is at least 7 days old. This is the always-on feed for the stale-questions
+ * team alert — the shared rule's twin on every observer surface, computed from the same threshold
+ * and the same questionFilingDate parser the doctor's check uses, so the two cannot drift on which
+ * questions are stale. An undated heading is skipped (like the doctor's check); questions carry no
+ * refused or waiting note to filter. The returned objects carry the 1-based position (for
+ * `tumwater questions answer <n>`), the 0-based index (kept only as the file-order tiebreak), the
+ * stamp-stripped title, and the whole-day age. Returned oldest-first — most days waited, ties in
+ * file order — so a caller naming the first element names the most-stale question. */
+export function staleOpenQuestions(root: string, now = Date.now()): StaleQuestion[] {
+  return openQuestionEntries(root)
+    .flatMap((entry, index) => {
+      const stamp = questionFilingDate(entry.title);
+      if (stamp === null) return [];
+      const days = ageInDays(stamp, now);
+      return days >= STALE_QUESTION_DAYS ? [{ index, position: index + 1, title: stripEntryStamp(entry.title), days }] : [];
     })
     .sort(byDaysThenIndex);
 }
@@ -669,6 +691,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now)),
   };
 }
