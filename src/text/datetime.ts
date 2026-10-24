@@ -33,7 +33,8 @@ export function pad2(n: number): string {
 }
 
 /** The local wall-clock `HH:MM` of an instant, the hours/minutes-only shape the burn-rate
- * forecast, the window badge, and the role view's fallback line share. */
+ * forecast, the window badge, the role view's fallback line, and the failure digest's
+ * transition stamps (failure-render.ts's stateChangeStamp) share. */
 export function clockHm(ms: number): string {
   const d = new Date(ms);
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
@@ -68,7 +69,7 @@ export function formatDate(d: Date): string {
 
 /** Wall-clock time as zero-padded `HH:MM:SS` in local time — the clock half formatTimestamp
  * builds, and the direct rendering of the status table's last-run cell (status-render.ts's
- * lastRunCell), doctor-project-checks's probe-at stamp, failure-render's state-change stamp, and
+ * lastRunCell), doctor-project-checks's probe-at stamp, and
  * operator-intent's pause/deadline wording, so a local time of day reads the same shape at
  * every surface. */
 export function formatTime(d: Date): string {
