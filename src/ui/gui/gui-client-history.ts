@@ -271,30 +271,37 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
     else if (p.state === "ok" && p.open) out += "<pre class='mono hist-detail-patch'>" + esc(p.text) + "</pre>";
     return out;
   }
-  // Toggle the patch for the card at key ("role#run"): flip a loaded one, else fetch it once
-  // (an errored one refetches) and repaint around the request.
-  async function toggleHistPatch(key) {
+  // Fetch or toggle one card add-on field (the patch or the transcript) at key ("role#run").
+  // kind is the field name, the "&kind=1" query the /api/run reply answers, and the field
+  // read off it, so the patch and transcript cannot drift their fetch/toggle shape: flip a
+  // loaded one, else fetch it once (an errored one refetches) and repaint around the request.
+  async function toggleHistDetailField(key, kind) {
     const entry = histDetails.get(key);
     if (!entry || entry.state !== "ok") return;
-    if (entry.patch && entry.patch.state === "ok") {
-      entry.patch.open = !entry.patch.open;
+    const field = entry[kind];
+    if (field && field.state === "ok") {
+      field.open = !field.open;
       renderHistory();
       return;
     }
-    if (entry.patch && entry.patch.state === "loading") return;
+    if (field && field.state === "loading") return;
     const at = key.lastIndexOf("#");
-    entry.patch = { state: "loading" };
+    entry[kind] = { state: "loading" };
     renderHistory();
     try {
       const d = await getJson(
-        "/api/run?role=" + encodeURIComponent(key.slice(0, at)) + "&run=" + encodeURIComponent(key.slice(at + 1)) + "&patch=1",
+        "/api/run?role=" + encodeURIComponent(key.slice(0, at)) + "&run=" + encodeURIComponent(key.slice(at + 1)) + "&" + kind + "=1",
       );
-      if (!d || typeof d.patch !== "string") throw new Error("/api/run answered without a patch field");
-      entry.patch = { state: "ok", text: d.patch, open: true };
+      if (!d || typeof d[kind] !== "string") throw new Error("/api/run answered without a " + kind + " field");
+      entry[kind] = { state: "ok", text: d[kind], open: true };
     } catch (err) {
-      entry.patch = { state: "error", message: err && err.message ? err.message : "the patch failed to load" };
+      entry[kind] = { state: "error", message: err && err.message ? err.message : "the " + kind + " failed to load" };
     }
     renderHistory();
+  }
+  // Toggle the patch for the card at key ("role#run") through the shared field fetcher.
+  function toggleHistPatch(key) {
+    return toggleHistDetailField(key, "patch");
   }
   // The Show/Hide transcript button, then its sub-state, exactly like histPatchHtml.
   function histTranscriptHtml(entry, key) {
@@ -314,29 +321,10 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
     }
     return out;
   }
-  // Toggle the transcript for the card at key ("role#run"), the way toggleHistPatch does the patch.
-  async function toggleHistTranscript(key) {
-    const entry = histDetails.get(key);
-    if (!entry || entry.state !== "ok") return;
-    if (entry.transcript && entry.transcript.state === "ok") {
-      entry.transcript.open = !entry.transcript.open;
-      renderHistory();
-      return;
-    }
-    if (entry.transcript && entry.transcript.state === "loading") return;
-    const at = key.lastIndexOf("#");
-    entry.transcript = { state: "loading" };
-    renderHistory();
-    try {
-      const d = await getJson(
-        "/api/run?role=" + encodeURIComponent(key.slice(0, at)) + "&run=" + encodeURIComponent(key.slice(at + 1)) + "&transcript=1",
-      );
-      if (!d || typeof d.transcript !== "string") throw new Error("/api/run answered without a transcript field");
-      entry.transcript = { state: "ok", text: d.transcript, open: true };
-    } catch (err) {
-      entry.transcript = { state: "error", message: err && err.message ? err.message : "the transcript failed to load" };
-    }
-    renderHistory();
+  // Toggle the transcript for the card at key ("role#run"), the way toggleHistPatch does the
+  // patch, through the shared toggleHistDetailField helper.
+  function toggleHistTranscript(key) {
+    return toggleHistDetailField(key, "transcript");
   }
   function clearHistTranscriptGrep(t) {
     delete t.grep;
