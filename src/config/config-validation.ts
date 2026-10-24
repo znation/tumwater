@@ -158,6 +158,21 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     checkBooleanField(problems, obj, prefix, key);
   const checkStringArray = (obj: Record<string, unknown>, prefix: string, key: string): void =>
     checkStringArrayField(problems, obj, prefix, key);
+  // The window-reserve map validation shared by a backend's nested `windowReserve` (via
+  // checkBackendConfig) and the top-level `claudeWindowReserve` legacy spelling, so their
+  // object/empty-type/fraction messages cannot drift. `label` is the message path — the
+  // `.windowReserve`-suffixed prefix for a backend, `claudeWindowReserve` at top level.
+  const checkWindowReserve = (label: string, value: unknown): void => {
+    if (!isJsonObject(value)) {
+      problems.push(`${label} must be an object mapping window types to fractions (got ${show(value)})`);
+      return;
+    }
+    for (const [type, v] of Object.entries(value)) {
+      if (type.trim() === "") problems.push(`${label}.<empty> — a window type must not be empty`);
+      else if (typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > 1)
+        problems.push(`${label}.${type} must be a fraction above 0 and at most 1 (got ${show(v)})`);
+    }
+  };
 
   // claude's and codex's per-backend config dir (plans/notes-command.md "Keeping funes out
   // of team runs" and plans/codex-backend.md §4): a leading `~` expands; the value must be an
@@ -174,16 +189,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
           `${prefix}.configDir must be an absolute path after ~ expansion (got ${show(entry.configDir)})`,
         );
     if (entry.windowReserve === undefined) return;
-    const wr = entry.windowReserve;
-    if (!isJsonObject(wr)) {
-      problems.push(`${prefix}.windowReserve must be an object mapping window types to fractions (got ${show(wr)})`);
-      return;
-    }
-    for (const [type, value] of Object.entries(wr)) {
-      if (type.trim() === "") problems.push(`${prefix}.windowReserve.<empty> — a window type must not be empty`);
-      else if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1)
-        problems.push(`${prefix}.windowReserve.${type} must be a fraction above 0 and at most 1 (got ${show(value)})`);
-    }
+    checkWindowReserve(`${prefix}.windowReserve`, entry.windowReserve);
   };
 
   // codex's `-c <key>=…` / `--config <key>=…` passthrough (plans/codex-backend.md §2/§3): a
@@ -564,18 +570,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   }
 
   // The subscription-window reserve: a map from window type to a fraction, 0 < f <= 1.
-  if (r.claudeWindowReserve !== undefined) {
-    const map = r.claudeWindowReserve;
-    if (!isJsonObject(map)) {
-      problems.push(`claudeWindowReserve must be an object mapping window types to fractions (got ${show(map)})`);
-    } else {
-      for (const [type, value] of Object.entries(map)) {
-        if (type.trim() === "") problems.push(`claudeWindowReserve.<empty> — a window type must not be empty`);
-        else if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1)
-          problems.push(`claudeWindowReserve.${type} must be a fraction above 0 and at most 1 (got ${show(value)})`);
-      }
-    }
-  }
+  if (r.claudeWindowReserve !== undefined)
+    checkWindowReserve("claudeWindowReserve", r.claudeWindowReserve);
   // The reserve's two spellings are mutually exclusive (plans/codex-backend.md part 2b/9): the
   // nested key is the current one; `claudeWindowReserve` is kept as claude's older spelling. A
   // file holding both is ambiguous about which drives the window, so it is rejected naming both.
