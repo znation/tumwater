@@ -286,6 +286,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       const noteAgeLine = noteSavedAt !== null ? " " + esc(fmtLastRun(noteSavedAt)) : "";
       const nextPrompt = typeof view.nextPrompt === "string" && view.nextPrompt.trim() !== "" ? view.nextPrompt : null;
       const outcomes = Array.isArray(view.recentOutcomes) ? view.recentOutcomes : [];
+      // The qa observer's flow-coverage ledger (rolePayload's flowCoverage, the same coverageRows
+      // order the prompt block and "tumwater role qa" use): each flow's last exercise and result.
+      // Ages ride fmtAgo like the other list rows; a flow never exercised reads "never exercised".
+      const flowCoverage = Array.isArray(view.flowCoverage) ? view.flowCoverage : null;
       const canEdit = r.role !== "director";
       const editing = canEdit && noteEditing && noteEditing.role === r.role;
       const buttons = !canEdit ? "" : "<span style='margin-left:auto'><button type='button' class='btn btn-sm' data-act='note-edit' data-arg='" + esc(r.role) + "'>Edit</button>" +
@@ -297,6 +301,22 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         : note ? "<pre class='mono'>" + esc(note) + "</pre>" + (editing || !noteAgeLine ? "" : "<p class='muted' style='font-size:13px'>Last saved " + noteAgeLine + "</p>") : "<p class='muted'>No notes yet.</p>";
       body = "<div class='sec-head'><h3>Notes</h3>" + (editing ? "" : buttons) + "</div>" + noteBody +
         "<details><summary>Next run's prompt</summary>" + (nextPrompt ? "<pre class='mono'>" + esc(nextPrompt) + "</pre>" : "<p class='muted'>Nothing to run (empty inbox).</p>") + "</details>" +
+        // The qa flow-coverage ledger (rolePayload's flowCoverage), the drawer twin of the
+        // CLI's "## Flow coverage" section — each flow's last exercise and result in coverageRows
+        // order. No backticks allowed here (this whole script is one big String.raw template).
+        (flowCoverage && flowCoverage.length ? "<section><div class='sec-head'><h3>Flow coverage" +
+          "<span class='muted' style='font-size:13px'>· " + flowCoverage.length + "</span></h3></div>" +
+          "<ul class='run-list'>" + flowCoverage.map((f) => {
+            const flow = typeof f.flow === "string" ? f.flow : "";
+            const never = f.lastRunAt == null;
+            const text = never
+              ? flow + ": never exercised"
+              : flow + ": " + fmtAgo(Number(f.lastRunAt)) + ", " +
+                (f.result === "bug"
+                  ? "bug filed (BUGS.md: \"" + (typeof f.summary === "string" ? f.summary : "see BUGS.md") + "\")"
+                  : "passed");
+            return "<li><span class='when'>" + esc(flow) + "</span><span class='clamp1'>" + esc(text) + "</span></li>";
+          }).join("") + "</ul></section>" : "") +
         // The role's recent run outcomes (rolePayload's recentOutcomes, read from the event
         // log), rendered like the Recent runs list above: each with its relative age, result
         // label, summary, and duration. Mirrors the Recent run outcomes section of

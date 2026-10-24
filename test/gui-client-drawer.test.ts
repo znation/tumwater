@@ -736,6 +736,43 @@ test("a role with no recent outcomes shows no Recent outcomes section", async ()
   assert.doesNotMatch(t.paintedFor("drawerrole"), /Recent outcomes/);
 });
 
+// The qa flow-coverage ledger (rolePayload's flowCoverage) ripples into the role drawer like
+// the recent run outcomes: a Flow coverage section naming each flow's last exercise and result.
+test("the drawer renders the qa flow coverage and shows none without it", async () => {
+  const t = openDrawer(["toggleRole"], {
+    status: workingStatus(),
+    responses: {
+      "/api/role?role=qa": {
+        notes: null,
+        nextPrompt: null,
+        flowCoverage: [
+          { flow: "init", lastRunAt: Date.now() - 5 * 60_000, result: "passed" },
+          { flow: "gui", lastRunAt: null, result: null },
+          { flow: "review", lastRunAt: Date.now() - 60_000, result: "bug", summary: "<id> & \"quoted\"" },
+        ],
+      },
+    },
+  });
+  t.scope.toggleRole("qa");
+  await flush();
+  const role = t.paintedFor("drawerrole");
+  assert.match(role, /<h3>Flow coverage/);
+  assert.match(role, /init/);
+  assert.match(role, /gui.*never exercised/);
+  // A bug summary is escaped exactly once: the literal &lt;id&gt; (not &amp;lt;id&amp;gt;).
+  assert.match(role, /&lt;id&gt; &amp; &quot;quoted&quot;/);
+  assert.doesNotMatch(role, /&amp;lt;id/);
+
+  // A payload without flowCoverage (the existing notes/prompt cases) renders no such section.
+  const t2 = openDrawer(["toggleRole"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: "a note", nextPrompt: null } },
+  });
+  t2.scope.toggleRole("clean");
+  await flush();
+  assert.doesNotMatch(t2.paintedFor("drawerrole"), /Flow coverage/);
+});
+
 // The role drawer's Configuration section mirrors `tumwater role <id>`'s field labels and
 // wording family from the same /api/role payload (rolePayload), so the page and the CLI read
 // one role's configuration identically: model/tier, provider cap, image reading (with the

@@ -29,7 +29,7 @@ export const QA_FLOWS: readonly string[] = [
 /** How a flow went: `passed` (the flow worked as documented) or `bug` (a BUGS.md entry was
  * filed). The result token is load-bearing: `run (real)` commits a `## Verified` note on a
  * passing run, so "the run changed files" cannot stand in for "a bug was found". */
-type QaFlowResult = "passed" | "bug";
+export type QaFlowResult = "passed" | "bug";
 
 /** One flow's last exercise. `summary` is the bug headline for a `bug` result, shown in the
  * next coverage block so the model can see what was already reported. */
@@ -40,7 +40,18 @@ interface QaFlowEntry {
 }
 
 /** The ledger: flow name → its last exercise. */
-type QaCoverage = Record<string, QaFlowEntry>;
+export type QaCoverage = Record<string, QaFlowEntry>;
+
+/** One flow's row in the operator-facing coverage view (`coverageRows`) — the flow name plus
+ * its last exercise and result, or nulls for a flow never exercised. `summary` is the bug
+ * headline for a `bug` result, present only when the ledger records one (a pass or an
+ * unexercised flow never carries it). */
+export interface CoverageRow {
+  flow: string;
+  lastRunAt: number | null;
+  result: QaFlowResult | null;
+  summary?: string;
+}
 
 function isResult(value: unknown): value is QaFlowResult {
   return value === "passed" || value === "bug";
@@ -80,31 +91,45 @@ export function recordFlow(
   writeJsonAtomic(qaCoveragePath(root), { flows: coverage });
 }
 
-/** Render the coverage block for the next `qa` prompt. Never-exercised flows lead (age = ∞),
- * then exercised flows oldest-first, so "exercise the flow at the top" actually rotates through
- * the whole menu instead of re-picking whatever is cheapest. The flow universe is `QA_FLOWS`
- * plus any recorded name (a project-specific flow still surfaces). */
-export function renderCoverageBlock(coverage: QaCoverage, now: number = Date.now()): string {
+/** The coverage as ordered rows — the one universe (menu plus recorded project-specific flows)
+ * and one ordering (never-exercised first, then exercised stalest-first, ties in menu order)
+ * that the next `qa` prompt's block and the operator-facing views share, so they cannot drift.
+ * Never-exercised flows lead (age = ∞), then exercised flows oldest-first, so "exercise the
+ * flow at the top" actually rotates through the whole menu instead of re-picking whatever is
+ * cheapest. The flow universe is `QA_FLOWS` plus any recorded name (a project-specific flow
+ * still surfaces, appended after the menu). */
+export function coverageRows(coverage: QaCoverage, now: number = Date.now()): CoverageRow[] {
   const names = [...QA_FLOWS];
   for (const name of Object.keys(coverage)) {
     if (!names.includes(name)) names.push(name);
   }
-  const rows = names
+  return names
     .map((name, index) => ({ name, index, entry: coverage[name] }))
     .sort((a, b) => {
       const ageA = a.entry ? now - a.entry.lastRunAt : Number.POSITIVE_INFINITY;
       const ageB = b.entry ? now - b.entry.lastRunAt : Number.POSITIVE_INFINITY;
       if (ageA !== ageB) return ageB - ageA; // stalest first; never-exercised (∞) leads
       return a.index - b.index; // stable: keep the menu order among equals
-    });
-  const lines = rows.map(({ name, entry }) => {
-    if (!entry) return `  ${name} — never exercised`;
-    const age = formatAge(now - entry.lastRunAt);
+    })
+    .map(({ name, entry }) => ({
+      flow: name,
+      lastRunAt: entry?.lastRunAt ?? null,
+      result: entry?.result ?? null,
+      ...(entry?.summary !== undefined ? { summary: entry.summary } : {}),
+    }));
+}
+
+/** Render the coverage block for the next `qa` prompt — the same rows `coverageRows` orders,
+ * one line each (a two-space-prefixed row, never-exercised flows first). */
+export function renderCoverageBlock(coverage: QaCoverage, now: number = Date.now()): string {
+  const lines = coverageRows(coverage, now).map(({ flow, lastRunAt, result, summary }) => {
+    if (lastRunAt === null) return `  ${flow} — never exercised`;
+    const age = formatAge(now - lastRunAt);
     const status =
-      entry.result === "bug"
-        ? `bug filed (BUGS.md: "${entry.summary ?? "see BUGS.md"}")`
+      result === "bug"
+        ? `bug filed (BUGS.md: "${summary ?? "see BUGS.md"}")`
         : "passed";
-    return `  ${name} — ${age} ago, ${status}`;
+    return `  ${flow} — ${age} ago, ${status}`;
   });
   return [
     "Flow coverage (from this team's own record; least recently exercised first):",

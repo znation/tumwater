@@ -32,6 +32,7 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
 import { readAccount, windowEntries } from "../agent/subscription-account.js";
 import { CONFIG_BASENAME, configPath, roleNotesPath } from "../paths.js";
+import { coverageRows, readQaCoverage, type CoverageRow } from "../run/qa-coverage.js";
 import { readTextOrNull, statOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
 import { finiteNumber, objectOrEmpty } from "../files/json-object.js";
@@ -192,6 +193,13 @@ export interface RoleViewPayload {
    * never-run role. Read straight from the event log so the command runs with the team
    * stopped and never touches the live state. */
   recentOutcomes?: Array<{ ts: number; result: string; durationMs?: number; summary?: string }>;
+  /** The `qa` observer's flow-coverage ledger (plans/observer-roles.md 2/2), surfaced to its
+   * one reader: each flow's last exercise and result in the prompt block's order
+   * (never-exercised first, then stalest-first) via qa-coverage.ts's `coverageRows`. Present
+   * only for the canonical `qa` id, so every other role's `--json` payload and Markdown render
+   * stay byte-identical. The ledger read degrades to empty coverage on a missing or torn file
+   * exactly as `readQaCoverage` already does. */
+  flowCoverage?: CoverageRow[];
   /** The role's own spend over its retained event window — tokens, real cost, and notional
    * (subscription) cost summed from the same `run_end` events `recentOutcomes` reads, each
    * folded through the shared `eventUsage` finiteness guard so a torn field contributes 0.
@@ -473,6 +481,12 @@ export function rolePayload(
     find: role === DIRECTOR_ROLE ? null : resolved.find,
     notes: note,
     noteSavedAt,
+    // The qa observer's flow-coverage ledger (plans/observer-roles.md 2/2) — each flow's last
+    // exercise and result in the prompt block's order (never-exercised first, then
+    // stalest-first). Present only for the canonical qa id, so every other role's --json
+    // payload and Markdown render stay byte-identical. The ledger read degrades to empty
+    // coverage on a missing or torn file exactly as readQaCoverage already does.
+    ...(role === "qa" ? { flowCoverage: coverageRows(readQaCoverage(root), now.getTime()) } : {}),
     inboxCount: queuedRolePromptCount(root, role),
     // The resolved primary seam's declared context window in tokens, or null when it cannot
     // be known (a non-pi seam, an unresolvable provider/model pair, or a model with no

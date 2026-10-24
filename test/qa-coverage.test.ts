@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   QA_FLOWS,
+  coverageRows,
   readQaCoverage,
   recordFlow,
   renderCoverageBlock,
 } from "../src/run/qa-coverage.js";
+import type { QaCoverage, QaFlowResult } from "../src/run/qa-coverage.js";
 import { qaCoveragePath } from "../src/paths.js";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
@@ -184,4 +186,39 @@ test("renderCoverageBlock surfaces a recorded flow outside the built-in menu", (
 test("renderCoverageBlock on an empty ledger lists every flow as never exercised", () => {
   const block = renderCoverageBlock({}, NOW);
   for (const flow of QA_FLOWS) assert.match(block, new RegExp(`  ${flow.replace(/[()]/g, "\\$&")} — never exercised`));
+});
+
+test("coverageRows keeps the prompt block's order and shape", () => {
+  // A coverage with a recent recorded `status` and no `gui` entry: the menu flow `gui`
+  // (never exercised) must lead the recorded stalest-first flow, in the ordering the prompt
+  // block and the operator views share from this one function.
+  const coverage: QaCoverage = {
+    status: { lastRunAt: NOW - 4 * HOUR, result: "passed" },
+    prompt: { lastRunAt: NOW - 2 * DAY, result: "bug", summary: "prompt --list misnumbered" },
+  };
+  const rows = coverageRows(coverage, NOW);
+  const gui = rows.find((r) => r.flow === "gui")!;
+  const status = rows.find((r) => r.flow === "status")!;
+  const prompt = rows.find((r) => r.flow === "prompt")!;
+  assert.deepEqual(gui, { flow: "gui", lastRunAt: null, result: null });
+  const statusResult: QaFlowResult = status.result!; // the exported result union is load-bearing
+  assert.equal(statusResult, "passed");
+  assert.deepEqual(status, { flow: "status", lastRunAt: NOW - 4 * HOUR, result: "passed" });
+  assert.deepEqual(prompt, {
+    flow: "prompt",
+    lastRunAt: NOW - 2 * DAY,
+    result: "bug",
+    summary: "prompt --list misnumbered",
+  });
+  assert.ok(rows.indexOf(gui) < rows.indexOf(status), "never-exercised gui leads the exercised status");
+  assert.ok(rows.indexOf(prompt) < rows.indexOf(status), "stalest exercised flow comes first");
+  // The same coverage renders the same lines as the prompt block's existing cases — the
+  // refactor maps renderCoverageBlock over these rows, so the block and the rows cannot drift.
+  const block = renderCoverageBlock(
+    { status: { lastRunAt: NOW - 4 * HOUR, result: "passed" }, prompt: { lastRunAt: NOW - 2 * DAY, result: "bug", summary: "prompt --list misnumbered" } },
+    NOW,
+  );
+  assert.match(block, /  status — 4h ago, passed/);
+  assert.match(block, /  prompt — 2d ago, bug filed \(BUGS\.md: "prompt --list misnumbered"\)/);
+  assert.match(block, /  gui — never exercised/);
 });

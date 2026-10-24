@@ -1,7 +1,7 @@
 import { joinParts } from "../text/text.js";
 import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, usd } from "../text/format.js";
-import { clockHm, formatTimestamp, humanAgo, nextRunPhrase, secondsUntil } from "../text/datetime.js";
+import { clockHm, formatAge, formatTimestamp, humanAgo, nextRunPhrase, secondsUntil } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import { windowLabel } from "../agent/subscription-account.js";
 import { backendDisplayName } from "../agent/backend-traits.js";
@@ -69,6 +69,27 @@ function inspectBodyLines(p: RoleViewPayload, now: number): string[] {
         now,
       )}) — a snapshot of the past; verify its claims against the code._`,
     );
+  }
+  // The qa observer's flow-coverage ledger (role-view.ts's flowCoverage, qa-coverage.ts's
+  // coverageRows): each flow's last exercise and result, in the same order and wording family
+  // as the prompt block (never-exercised first, then stalest-first), without the prompt's
+  // intro sentence — the operator twin of the ledger that is otherwise the observer's only
+  // memory. Present only for qa, so every other role's render stays byte-identical.
+  if (p.flowCoverage) {
+    lines.push("## Flow coverage", "");
+    for (const row of p.flowCoverage) {
+      if (row.lastRunAt === null) {
+        lines.push(`- ${row.flow}: never exercised`);
+      } else {
+        const age = formatAge(now - row.lastRunAt);
+        const status =
+          row.result === "bug"
+            ? `bug filed (BUGS.md: "${row.summary ?? "see BUGS.md"}")`
+            : "passed";
+        lines.push(`- ${row.flow}: ${age} ago, ${status}`);
+      }
+    }
+    lines.push("");
   }
   lines.push(...fencedOrNone("Next run's prompt", p.nextPrompt, "nothing to do this run"));
   // run-prompt.ts dequeues exactly one queued prompt per run, so with more than one

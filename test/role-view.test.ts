@@ -23,8 +23,10 @@ import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeAccount } from "../src/agent/subscription-account.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { recordFlow } from "../src/run/qa-coverage.js";
 
 const NO_MODELS = "/nonexistent/tumwater-test-models.json"; // readPiProviders degrades to []
+const NOW = 1_800_000_000_000;
 
 function root(): string {
   const dir = tmpdir();
@@ -416,6 +418,22 @@ test("the State line distinguishes disabled from paused, alone and together", ()
   assert.match(renderRoleMarkdown(rolePayload(dir, "qa", NO_MODELS)), /- State: disabled, not paused/);
   pauseRoles(dir, ["qa"]);
   assert.match(renderRoleMarkdown(rolePayload(dir, "qa", NO_MODELS)), /- State: disabled, paused/);
+});
+
+test("rolePayload carries qa's flow coverage and no other role's", () => {
+  const dir = root();
+  recordFlow(dir, "status", "passed", undefined, NOW);
+  const qa = rolePayload(dir, "qa", NO_MODELS);
+  const statusRow = qa.flowCoverage!.find((r) => r.flow === "status");
+  assert.deepEqual(statusRow, { flow: "status", lastRunAt: NOW, result: "passed" });
+  // A menu flow never exercised reads as null lastRunAt and result.
+  assert.deepEqual(qa.flowCoverage!.find((r) => r.flow === "gui"), {
+    flow: "gui",
+    lastRunAt: null,
+    result: null,
+  });
+  // Every other role's payload carries no flowCoverage field.
+  assert.equal(rolePayload(dir, "clean", NO_MODELS).flowCoverage, undefined);
 });
 
 test("a custom role renders as user-defined, on the maintenance tier", () => {
