@@ -137,6 +137,7 @@ export interface FailureReportData {
   warnings: ClusterSection;
   reviewFailures: ClusterSection;
   rejections: ClusterSection;
+  postMergeRejections: number; // the window's `review_rejected` events with `afterMerge: true`, counted before any cluster filter, so it equals the subset `tumwater report`'s `postMergeRejectionsByRole` sums
   mergeFailures: ClusterSection; // blocked or conflicted merge_failed clusters (top MERGE_FAILURE_TOP), by result and role, with the role's nearest preceding warning as the reason
   merged: MergedCommit[];
   mergedTotal: number; // all merges in the window, before the newest-MERGED_TOP cut
@@ -480,17 +481,21 @@ function assembleFailureReport(
     (m) => URGENT_WARNING.test(m),
   );
   // Rejections cluster on (role, reasons[0]) — the field the event feed renders — so two
-  // different rejection reasons from the same role stay separate rows. The section's total
-  // counts every `review_rejected` in the window, reasons or not, so it equals the Deltas
-  // column and the render's remainder line cross-checks against it.
+  // different rejection reasons from the same role stay separate rows, and an already-landed
+  // one (ev.afterMerge === true) splits apart from a same-reason pre-merge one so the row names
+  // the post-merge class that starts a revert. The section's total counts every `review_rejected`
+  // in the window, reasons or not, so it equals the Deltas column and the render's remainder
+  // line cross-checks against it.
   const rejectedEvents = current.filter((ev) => ev.type === "review_rejected");
+  const postMergeRejections = rejectedEvents.filter((ev) => ev.afterMerge === true).length;
   const rejections = section(
     clusterMessages(
       rejectedEvents
         .filter((ev) => Array.isArray(ev.reasons))
         .map((ev) => {
           const reasons = ev.reasons as unknown[];
-          return { message: firstReason(reasons), role: eventRole(ev), ts: ev.ts, keyPrefix: `${eventRole(ev)}\u0000` };
+          const message = ev.afterMerge === true ? `post-merge rejection: ${firstReason(reasons)}` : firstReason(reasons);
+          return { message, role: eventRole(ev), ts: ev.ts, keyPrefix: `${eventRole(ev)}\u0000` };
         }),
       REJECTION_TOP,
     ),
@@ -564,6 +569,7 @@ function assembleFailureReport(
     warnings,
     reviewFailures,
     rejections,
+    postMergeRejections,
     mergeFailures,
     merged,
     mergedTotal: allMerged.length,

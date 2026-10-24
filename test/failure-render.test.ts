@@ -154,6 +154,34 @@ test("review rejections cluster on (role, reasons[0]), not role alone", () => {
   assert.equal(data.rejections.clusters.length, 3);
 });
 
+test("the digest marks post-merge rejections and counts them", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "bugfix", type: "review_rejected", head: "a".repeat(40), reasons: ["half done"], afterMerge: true }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "review_rejected", head: "b".repeat(40), reasons: ["half done"] }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0), loop: "bugfix", type: "review_rejected", head: "c".repeat(40), afterMerge: true }, // no reasons // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data = collectFailureReport(root, 1);
+  const postMerge = data.rejections.clusters.find((c) => c.example === "post-merge rejection: half done");
+  const preMerge = data.rejections.clusters.find((c) => c.example === "half done");
+  assert.equal(data.postMergeRejections, 2);
+  assert.equal(postMerge?.count, 1);
+  assert.equal(preMerge?.count, 1);
+  assert.equal(data.rejections.clusters.length, 2);
+  assert.equal(data.rejections.total, 3);
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /post-merge rejections/);
+  assert.match(md, /post-merge rejection: half done/);
+
+  const root2 = tmpdir();
+  writeEvents(root2, [
+    { ts: at(0), loop: "bugfix", type: "review_rejected", head: "a".repeat(40), reasons: ["half done"] }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data2 = collectFailureReport(root2, 1);
+  assert.equal(data2.postMergeRejections, 0);
+  assert.doesNotMatch(renderFailureMarkdown(data2), /post-merge/);
+});
+
 test("run errors cluster only on error-result runs; merge review failures get their own section", () => {
   const root = tmpdir();
   writeEvents(root, [
