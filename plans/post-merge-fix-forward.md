@@ -82,12 +82,41 @@ reverts in the one merge slot.
 | F | **Cut rejections at the source**: narrow `review.afterMerge` for the noisy role, or raise the authoring bar | config only | Re-buys the reviewer thrash the tiering was built to fix — the same 53% reject rate, now serial and pre-merge again |
 | G | **Operator accept-unreviewed** (exists today: `tumwater reviews --accept <n>`, the dashboard's two-click Accept) | operator attention | Nothing structural; it is a per-entry override, not a policy |
 
+## Measurement (2026-10-24): the trailing window's 11 rejections, classified
+
+Landing order 1 below, done. The 11 `tumwater(tumwater): Revert <sha>` commits main took off in
+the trailing day (`git log --grep="Revert [0-9a-f]"`), each classified from the reviewer's own
+reasons in its body — the same 11 the `reverts off main` alert counts, because the alert's count
+is these and not a red-main burst (BUGS.md's churn entry, "Diagnosis 2026-10-24").
+
+| revert | base role | the reviewer's reasons, classified |
+|---|---|---|
+| `2d56b0a9` | bugfix | the diff removes nothing its summary names; a duplicate test; a comment contradicting its own assertions — editorial/claim |
+| `a2eb229d` | bugfix | a fixed bug left under `## Open`; gate warnings without the `✖ ` glyph silently missed — **behavioral** |
+| `b735cbd5` | bugfix | the body claims `RevertGuardrail` fields that are not in the diff; the branch is untested — **the stated change is absent** |
+| `1c348fdf` | dedupe | an unclaimed second change; two falsified claims — editorial/claim |
+| `c99611ca` | dedupe | no test exercises the restored throw; RISK unsupported — coverage |
+| `beac3bd1` | dedupe | `gitTryStarted` → `gitTry` drops `gitCouldNotStart`, contradicting `pickBase`'s documented contract — **behavioral** |
+| `4f9ed36b` | clean | the doc comment undercounts the fields the rule governs — editorial |
+| `7c65c1b78` | organize | "only doc comments changed" against a ~200-line move; half-done cross-refs — editorial/claim |
+| `a6616585` | organize | stale cross-references to the moved code's old home; stray blank lines — editorial |
+| `2b05cb2e` | clean | half-applied at two twin sites; the new branch untested — editorial + coverage |
+| `5d5e9196` | dedupe | the doc comment misattributes `ompNote` to the wrong check — editorial |
+
+**8 of 11 are claim/doc/coverage slips** — a diff disagreeing with its own summary, a stale
+cross-reference, an undercounted comment, a half-applied multi-site fix, an untested restore. All
+eight are the class a forward follow-up repairs on top of main in one authoring run. **3 carry
+something the forward arm would leave live on main** until the follow-up lands: `beac3bd1` (a
+dropped `gitCouldNotStart` throw), `a2eb229d` (recurrences silently missed) and `b735cbd5` (a body
+whose stated change is not in the diff).
+
 ## What could land, in order
 
 1. **Measure first** (no code): classify the trailing window's rejections — behavioral vs
    editorial — from the `reasons` already in the log, by base role. This decides whether C is safe
    for the whole class or needs D's split. The churn alert cannot answer it today: its rows are
-   runner ids, filed 2026-10-24 as BUGS.md's churn entry.
+   runner ids, filed 2026-10-24 as BUGS.md's churn entry. **Done 2026-10-24 — see the Measurement
+   section: 8 of 11 editorial.**
 2. **Convergence accounting for any forward arm.** Give a forward fix the record a revert gets
    (`state.lastReview.verdict`, round counting, `REVISION_FINAL_ON_REPEAT`/`REVISION_BACKSTOP`)
    and the same terminal `exhausted` state — including the plan hold `recordRevertedChange` is
@@ -115,7 +144,11 @@ reverts in the one merge slot.
 
 1. Does the **reviewer's verdict** carry the class (D), or does the operator narrow
    `review.afterMerge` (F) and keep every post-merge rejection reverting? The trailing window's 12
-   reason texts answer it.
+   reason texts answer it. **The measurement (2026-10-24) answers it for the class: 8 of 11 are
+   editorial — forwarding is right for the majority, and the 3 that are not are exactly the ones a
+   revert protects. Whether the class gate (D) or the blanket forward (C — what PLANS.md's
+   three-part series implements today) lands is the operator's call, and this measurement is the
+   evidence either way.**
 2. Is "main stays green but holds rejected content, until the follow-up lands" acceptable for a
    bounded window? The red-main watch cannot see it — the next post-merge review of the follow-up
    is the only check that will.
