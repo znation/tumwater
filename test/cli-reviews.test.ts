@@ -40,7 +40,7 @@ test("reviews lists each entry in FIFO order with its role, sha, summary and sta
   assert.equal(r.code, 0);
   assert.match(r.stdout, /post-merge review queue \(2 entries\):/);
   assert.ok(r.stdout.indexOf("1. improve") < r.stdout.indexOf("2. clean"), "improve first, FIFO");
-  assert.match(r.stdout, /rejected — waiting to revert: no tests/);
+  assert.match(r.stdout, /rejected: no tests/);
 });
 
 test("reviews prints an entry's waiting age and omits it for an entry without a timestamp", async () => {
@@ -64,7 +64,7 @@ test("reviews prints an entry's waiting age and omits it for an entry without a 
     r.stdout,
     new RegExp(`1\\. improve ${'a'.repeat(8)} · \\d+[mhd] ago · tidy the parser`),
   );
-  assert.match(r.stdout, new RegExp(`2\\. clean ${'b'.repeat(8)} · rejected · \\[rejected — waiting to revert: no tests\\]`));
+  assert.match(r.stdout, new RegExp(`2\\. clean ${'b'.repeat(8)} · rejected · \\[rejected: no tests\\]`));
 });
 
 test("reviews --role keeps only the listed roles' entries under their whole-queue positions", async () => {
@@ -276,6 +276,6 @@ test("reviews --accept refuses a rejected entry", async () => {
   const before = readPostReviews(repo);
   const r = await cli(repo, "reviews", "--accept", "2");
   assert.notEqual(r.code, 0);
-  assert.match(r.stderr, /post-merge review 2 is rejected and waiting on its revert — let the revert run, then review the revision/);
+  assert.match(r.stderr, /post-merge review 2 is rejected — it stays on main with the reviewer's reasons, so there is nothing to accept/);
   assert.deepEqual(readPostReviews(repo), before, "a rejected entry changes no file");
 });
