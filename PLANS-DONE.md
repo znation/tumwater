@@ -5,6 +5,21 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Interlock relief, part 4/4: Docs state which roles wait on their merge and which do not (planned 2026-10-23 by user; design in plans/interlock-relief.md "What lands" item 2; requires part 3/4 landed; touches docs/how-it-works.md docs/glossary.md plans/merge-queue.md) — done 2026-10-23 by the feature role
+
+**Previously held 1**
+
+**Goal.** An operator reading the merge-pipeline section can predict which roles author through a queued change and which park, and why the split follows `review.afterMerge`.
+
+**Approach.**
+- docs/how-it-works.md, the merge-pipeline/scheduling sections: the interlock paragraph states the two tiers and the stage exclusions (pre-approval, conflict, main-red) as behavior, one paragraph, no new terms.
+- docs/glossary.md: the `waiting to merge` status row gains the half-sentence "for pre-merge-review roles, this also holds the role's next run" — the scoped behavior is the row's whole difference.
+- plans/merge-queue.md's invariant 3 is updated to the scoped form with a pointer to plans/interlock-relief.md.
+
+**Acceptance criteria.**
+- The three docs agree on the tiers and the excluded stages; grep finds no remaining unscoped "a role with a queued change never runs" claim outside plans/ as historical record.
+- `npm run test:gate` passes (docs only).
+
 ### A post-merge review one failed run from being dropped raises a standing amber alert on the dashboard, the TUI and `tumwater status`, and a new `post-merge reviews` doctor row names it (planned 2026-10-23 by the plan role; independent in behavior — it reads only `.tumwater/state/post-review.json` through the existing `readPostReviews`, which no waiting entry touches, and it leaves `src/review/post-merge-review.ts` and the existing `teamAlerts` blocks unedited; the in-flight Capacity-contention, flapped-checks, regressed-fixes and post-merge-churn alerts each append one defaulted trailing `teamAlerts` parameter and one amber block in src/ui/team-alerts.ts and edit src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx, docs/how-it-works.md and test/team-alerts.test.ts, so whichever lands second rebases over a neighbouring parameter, block or reader; it shares src/doctor/doctor-backlog.ts and test/doctor-backlog.test.ts with no waiting entry; touches src/doctor/doctor-backlog.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/doctor-backlog.test.ts test/status-payload.test.ts test/team-alerts.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** `drainPostReviews` (src/merge/merge-post-review.ts) retries a post-merge review that ends without a verdict; each failed run increments the entry's `failures`, and at `POST_REVIEW_FAILURE_LIMIT` (3, src/review/post-merge-review.ts) it drops the entry and logs only a warning — `dropping the post-merge review of <sha> after 3 failed runs; it stays on main unreviewed`. The entry is gone, the commit is on main permanently beyond the review gate, and nothing escalates it: `tumwater reviews` (its `[N failed review runs]` suffix, src/review/post-review-render.ts) and the dashboard/TUI Pending views list the state but never call it a problem, and no doctor row or team alert read `readPostReviews` before this change (the `post-merge reviews` row and the always-on `post-merge-risk` alert are the first readers, through `atRiskPostReviews`). At `failures === POST_REVIEW_FAILURE_LIMIT - 1` the next failed run drops the commit, so that at-risk window is the last moment an operator can act: fix the reviewer backend, or accept the commit as unreviewed deliberately. This adds the missing judgment: a `post-merge reviews` doctor row and a standing amber alert off one shared traversal and one shared sentence, so both surfaces select the same entries and say the same thing.

@@ -20,21 +20,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The decision (either branch) is recorded with its evidence in PLANS-DONE.md when closed; a raised cap is accompanied by one week of load-watch in the dogfood instance.
 - `npm run test:gate` passes (config change only; no code).
 
-### Interlock relief, part 4/4: Docs state which roles wait on their merge and which do not (planned 2026-10-23 by user; design in plans/interlock-relief.md "What lands" item 2; requires part 3/4 landed; touches docs/how-it-works.md docs/glossary.md plans/merge-queue.md)
-
-**Previously held 1**
-
-**Goal.** An operator reading the merge-pipeline section can predict which roles author through a queued change and which park, and why the split follows `review.afterMerge`.
-
-**Approach.**
-- docs/how-it-works.md, the merge-pipeline/scheduling sections: the interlock paragraph states the two tiers and the stage exclusions (pre-approval, conflict, main-red) as behavior, one paragraph, no new terms.
-- docs/glossary.md: the `waiting to merge` status row gains the half-sentence "for pre-merge-review roles, this also holds the role's next run" — the scoped behavior is the row's whole difference.
-- plans/merge-queue.md's invariant 3 is updated to the scoped form with a pointer to plans/interlock-relief.md.
-
-**Acceptance criteria.**
-- The three docs agree on the tiers and the excluded stages; grep finds no remaining unscoped "a role with a queued change never runs" claim outside plans/ as historical record.
-- `npm run test:gate` passes (docs only).
-
 ### `tumwater reviews --accept <n>` retires a pending post-merge review the operator deliberately accepts unreviewed: the action the at-risk alert's advice names (planned 2026-10-23 by the plan role; independent of every in-flight plan's files — it edits no src/ui, src/doctor, src/merge, src/orchestrator, src/runner or src/roles file and only reads `readPostReviews`/`settlePostReview` from src/review/post-merge-review.ts, so the in-flight post-merge-churn plan's additions there and the at-risk plan's doctor/status readers do not collide; docs/invariants.md and docs/cli.md are shared with no waiting entry; touches src/review/post-review-accept.ts (new) src/cli/cli-review-commands.ts src/cli/help.ts docs/cli.md docs/invariants.md test/post-review-accept.test.ts (new) test/cli-reviews.test.ts)
 
 **Goal.** A pending post-merge review leaves `.tumwater/state/post-review.json` two ways, both decided by the drain (`drainPostReviews`, src/merge/merge-post-review.ts): a verdict approves it or rejects it (revert), and a run that ends without a verdict counts toward `POST_REVIEW_FAILURE_LIMIT`, after which the entry is dropped with a warning and the commit stays on main unreviewed. There is no third, deliberate path. The `post-merge reviews` doctor row and the `post-merge-risk` amber alert planned in PLANS.md end their shared sentence with "fix the reviewer backend or accept the commit unreviewed deliberately", but `tumwater reviews` is documented read-only (`src/cli/cli-review-commands.ts`, `docs/cli.md`) and nothing writes the store except the drain, so an operator who decides the unreviewed commit is acceptable cannot act on the advice: the queue keeps retrying until the reviewer backend recovers or the automatic drop happens. Add the missing action, as `tumwater queue --cancel <n>`'s sibling (src/merge/merge-cancel.ts): remove the Nth entry `tumwater reviews` lists, on purpose, with one warning recording who/what was retired.

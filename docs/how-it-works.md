@@ -166,6 +166,16 @@ discards a role's in-flight merge.
   entry back and a sibling takes it; pausing the whole role keeps every claim.
 - `maxConcurrent` caps parallel runs and approvals together. Merges go first, then
   work roles (feature, bugfix, plan), then maintenance roles.
+- **Merge interlock.** A role with a queued change does not start a new run while the
+  pipeline is still resolving how that change lands: its entry is pre-approval (verifying,
+  or not yet picked up), in a conflict or main-red hold, or its branch is already ahead of
+  main — a fresh run would race it, and its rejection must reach the author's next prompt.
+  That is the whole story for a pre-merge-review role, whose rejection arrives before the
+  merge, so the hold lasts the whole time its change queued. A post-merge-review role — one
+  opted in by its own `review.afterMerge`, whose verdict arrives after the merge — is
+  admitted again once its change is approved and waiting for the merge slot or the merge is
+  in flight: its branch is reset to main every tick, so a queued approved change never
+  blocks it.
 - `maxConcurrentPerProvider` (optional) caps how many of those runs each model provider serves
   at once, beside the team total: a run starts only when BOTH its provider and the team
   have headroom, and a full provider never holds back a run on another

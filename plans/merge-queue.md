@@ -39,9 +39,17 @@ long-lived, and no change accumulates more than one commit ahead of main.
 2. **Linear history.** Landing stays rebase-onto-main then fast-forward
    (`mergeToMain` in src/landing/landing-merge.ts). No merge
    commits, no remote is touched.
-3. **One in-flight landing per loop.** A loop with a queued or landing change is not eligible
-   to tick. This is what preserves today's review-feedback contract: `state.lastReview`'s
-   rejection reasons always reach the author's *next* prompt (`LoopRunner.tickPrompt` in
+3. **One in-flight landing per loop.** A loop with a queued or landing change is not
+   eligible to tick while its entry is in a stage that races its branch — pre-approval
+   (`verifying`, or not yet picked up), conflict or main-red resolution — or while its
+   branch is already ahead of main. A pre-merge-review role keeps that hold for the whole
+   time its change is queued, because its rejection arrives before the merge. A
+   post-merge-review role (one opted in by its own `review.afterMerge`) becomes eligible
+   again once its queued change is approved and waiting for the merge slot or the merge is
+   in flight; its branch is reset to main every tick, so an approved queued change never
+   blocks it (see plans/interlock-relief.md for the scoping and the trade). This is what
+   preserves today's review-feedback contract: `state.lastReview`'s rejection reasons
+   always reach the author's *next* prompt (`LoopRunner.tickPrompt` in
    src/loop/loop.ts), and a loop
    can never stack two commits on one another. The throughput win comes from *cross-loop*
    parallelism — loop B authors while loop A's change is under review — not from letting one loop
