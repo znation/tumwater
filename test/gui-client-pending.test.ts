@@ -503,7 +503,7 @@ test("postReviewsHtml is empty until a commit waits and names each entry otherwi
   assert.match(html, /feature abcdef12 · add the thing/);
   assert.match(html, /bugfix 01234567 · fix the thing · <span class='mono'>\[2 failed review runs — last: boom\]<\/span>/);
   assert.match(html, /docs 11111111 · doc the no-verdict · <span class='mono'>\[2 failed review runs\]<\/span>/);
-  assert.match(html, /clean fedcba98 · tidy · <span class='mono'>\[rejected: &lt;revert&gt;; slow\]<\/span>/);
+  assert.match(html, /clean fedcba98 · tidy · <span class='mono'>\[rejected — waiting to revert: &lt;revert&gt;; slow\]<\/span>/);
   // A non-rejected entry carries a two-click Accept naming its full commit; a rejected entry
   // renders none (the server would refuse it).
   assert.match(html, /data-accept='abcdef1234567890'>Accept</);

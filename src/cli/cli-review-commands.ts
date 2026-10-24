@@ -107,7 +107,7 @@ async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
     fail(`no post-merge review at position ${position} (post-merge review queue holds ${outcome.depth})`);
   }
   if (outcome.status === "rejected") {
-    fail(`post-merge review ${position} is rejected — it stays on main with the reviewer's reasons, so there is nothing to accept`);
+    fail(`post-merge review ${position} is rejected and waiting on its revert — let the revert run, then review the revision`);
   }
   if (outcome.status === "settled") {
     fail(`post-merge review ${position} already merged its fix on main — nothing to accept`);

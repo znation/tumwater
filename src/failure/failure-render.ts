@@ -293,7 +293,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   renderClusters(lines, "Top review failure clusters", data.reviewFailures, "review failures");
   renderClusters(lines, "Top rejection clusters", data.rejections, "rejections");
   if (data.postMergeRejections > 0) {
-    lines.push(`_${plural(data.postMergeRejections, "post-merge rejection", "post-merge rejections")} — the commit already reached main, so each stays on main with the reviewer's reasons_`);
+    lines.push(`_${plural(data.postMergeRejections, "post-merge rejection", "post-merge rejections")} — the commit already reached main, so each starts a revert and a re-author_`);
   }
   renderClusters(lines, "Merge failures", data.mergeFailures, "merge failures");
 

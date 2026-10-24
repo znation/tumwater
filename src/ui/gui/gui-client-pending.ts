@@ -225,7 +225,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // entry renders a stand-in rather than undefined/NaN.
   // The status suffix — the browser twin of postReviewStatusLabel
   // (src/review/post-merge-review-render.ts):
-  // the rejected reasons when 'rejected' is set, else the
+  // the rejected reasons (still waiting on the revert) when 'rejected' is set, else the
   // verdict-less failed-review-run count when positive, else "". Hand-kept copy because the
   // script cannot import the server renderer; pinned by the client test against the CLI wording.
   const squashText = (s, max) => {
@@ -258,7 +258,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       case "fixed":
         return "[fixed — the repair " + shortSha(e.fixed) + " already merged on main]";
       case "rejected":
-        return "[rejected: " + e.rejected.map((r) => squashText(r, 60)).join("; ") + "]";
+        return "[rejected — waiting to revert: " + e.rejected.map((r) => squashText(r, 60)).join("; ") + "]";
       case "failing":
         if (e && typeof e.lastFailure === "string" && e.lastFailure.length > 0) {
           return "[" + plural(e.failures, "failed review run") + " — last: " + squashText(e.lastFailure, 80) + "]";
@@ -294,7 +294,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
         age +
         " · " + esc(e.summary || "—") +
         (label ? " · <span class='mono'>" + esc(label) + "</span>" : "") + "</div>";
-      // A two-click Accept on every well-formed entry not rejected and not already
+      // A two-click Accept on every well-formed entry not waiting on its revert and not already
       // settled fixed (the server refuses both, so it renders no button): armed by the first
       // click, fired by the second within 5 s (the confirmSlot guard), so a stray click cannot
       // accept an entry unreviewed. Threaded the way pendingQueueHtml threads cancelArmedSha.
