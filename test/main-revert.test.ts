@@ -80,6 +80,20 @@ test("a successful revert logs main_revert with the culprit's patch-id", async (
   assert.equal(reverts[0]?.patchId, expected, "main_revert carries the culprit's patch-id");
 });
 
+test("main_revert logs reason main-red for a red-main culprit and post-review for a post-review culprit", async () => {
+  const { root, found } = await redMain("improve");
+  await runMainRevert(root, "main", defaultConfig(), found[0]!);
+  assert.equal(eventsOfType(root, "main_revert").length, 1);
+  assert.equal(eventsOfType(root, "main_revert")[0]?.reason, "main-red", "a red-main culprit logs reason main-red");
+
+  const { root: r, found: found2 } = await redMain("improve");
+  const postCulprit: MainCulprit = { ...found2[0]!, postReview: { reasons: ["breaks the contract"] } };
+  await runMainRevert(r, "main", defaultConfig(), postCulprit);
+  const postReverts = eventsOfType(r, "main_revert");
+  assert.equal(postReverts.length, 1);
+  assert.equal(postReverts[0]?.reason, "post-review", "a post-review culprit logs reason post-review");
+});
+
 test("a failing gate on the revert keeps main red and queues the heal prompt naming the verdict", async () => {
   const { root, b, found } = await redMain("improve");
   const before = headSha(root);

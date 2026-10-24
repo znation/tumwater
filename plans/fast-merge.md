@@ -363,8 +363,11 @@ before and after is a one-off job done by hand, not part of this.
   culprit's) and `merged` gains `patchId` (the merged commit's), on the single and the batch merge
   path alike. Both come from `patchId` (src/git/git.ts): `-U0`, so re-applying the same diff onto a
   moved main keeps the id. An event without `patchId` (an older build) matches nothing.
-- Warn also when more than 5 `main_revert` events fall in the last 24 h, reverts after a
-  post-merge review included.
+- Warn also when more than 5 red-main `main_revert` events fall in the last 24 h. Rejection
+  reverts are told apart from red-main ones by the event's `reason` (post-review | main-red)
+  and are never counted toward the ceiling or called false: a post-merge-review rejection is
+  an intended revision cycle, carried instead by `tumwater report`'s post-merge-rejection
+  table. An event without `reason` (an older build) defaults to main-red.
 - The detail names each false-looking revert (culprit sha and which test failed) and the count
   when over the limit.
 
