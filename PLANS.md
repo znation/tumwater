@@ -240,6 +240,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Every commit is verified on main, part 3h/3: the pre-merge gate runs no model reviewer — only a secret leak, a brief-block edit or a protected edit refuses a diff (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; requires part 3g/3 landed, since a role not on `review.afterMerge` must have its post-landing review queued before its pre-merge model review goes; touches src/review/review.ts src/review/diff-rules.ts docs/how-it-works.md test/review.test.ts)
 
+**Needs review 2026-10-24 by feature: too large for one run (held 4)** — dropping the reviewer also breaks most of test/review-precheck.test.ts (tests that assert the reviewer runs after a green pre-check, plus the approval-reuse, prompt, nudge and second-slot-overlap cases for a feature this part deletes), which the plan does not list; that file needs a rewrite comparable to test/review.test.ts, so the files-touched list and its test plan must be corrected before it can land.
+
 **Previously held 3**
 
 **Goal.** `reviewAheadOfMain` (src/review/review.ts) stops running the pre-merge model reviewer: after the deterministic diff rules, the exempt check and the build pre-check it approves, so every merged change is judged once, by the post-landing review (part 3g/3). The pre-merge rejection set shrinks to the findings a later commit cannot repair: a leaked credential (`secretLeakReason`), a brief-block edit (`briefEditReason`) and a protected edit (`protectedEditReason`). A conflict marker, a false fix claim and a broken backlog structure no longer refuse here — the main watch still reports them on main's tip.
