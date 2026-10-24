@@ -46,7 +46,7 @@ function removeAcceptedEntry(root: string, entry: PostReview): AcceptPostReviewO
  * the line `tumwater reviews` printed. An out-of-range position writes nothing and returns the
  * current readable depth; otherwise it runs the same `removeAcceptedEntry` the sha variant
  * shares, so the two never drift on what accepting means (see `removeAcceptedEntry` for the
- * removal, the revert-guard, the warning, and the never-throws guarantee). */
+ * removal, the rejected-guard, the warning, and the never-throws guarantee). */
 export function acceptPostReview(root: string, position: number): AcceptPostReviewOutcome {
   const entries = readPostReviews(root);
   if (position < 1 || position > entries.length) return { status: "out-of-range", depth: entries.length };

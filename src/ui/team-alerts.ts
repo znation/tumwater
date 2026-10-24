@@ -1033,7 +1033,7 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
       key: "post-merge-churn",
       tone: "amber",
       title: `${plural(postMergeChurn.count, "post-merge review rejection", "post-merge review rejections")} in the last day`,
-      detail: `${postMergeChurn.roles.map((r) => `${roleLabel(r.role)} ×${r.count}`).join(", ")} — each commit already reached main, so a post-merge rejection costs a revert and a re-author; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
+      detail: `${postMergeChurn.roles.map((r) => `${roleLabel(r.role)} ×${r.count}`).join(", ")} — each commit already reached main, so a post-merge rejection keeps it on main with the reviewer's reasons; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
       actions: seeFailures(),
     });
   }

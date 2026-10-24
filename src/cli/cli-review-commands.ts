@@ -90,8 +90,8 @@ export async function cmdReviews(root: string, args: string[]): Promise<void> {
  * review `tumwater reviews` lists, accepting the commit unreviewed at the operator's request.
  * Parsed the way `cmdQueueCancel` parses `--cancel`: `--accept <n>` the one valued flag,
  * `--json` the one boolean (at most once), `--help`/`-h` tolerated, anything else refused. An
- * out-of-range position fails naming the current depth; an entry already rejected and waiting
- * on its revert is refused (the revert must run first, then the revision can be reviewed). */
+ * out-of-range position fails naming the current depth; an entry already rejected is refused
+ * (it stays on main with the reviewer's reasons, so there is nothing to accept). */
 async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
   const { json, position, rest } = scanPositionArgs(args, "--accept", "--accept 2");
   // The vocabulary an accept invocation accepts is exactly --accept and --json, both consumed
