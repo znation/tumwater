@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DAY_MS, HOUR_MS, daysBetween, dayAt, dayKey, dayLabel, dayWindow, formatClock, formatDate, formatTime, formatTimestamp, humanAgo, humanSeconds, humanUntil, pad2, reportWindow, secondsSince, secondsUntil } from "../src/text/datetime.js";
+import { DAY_MS, HOUR_MS, boundedWindowLine, clockHm, daysBetween, dayAt, dayKey, dayLabel, dayWindow, formatAge, formatClock, formatDate, formatTime, formatTimestamp, humanAgo, humanSeconds, humanUntil, monthDay, nextRunPhrase, pad2, reportWindow, secondsSince, secondsUntil, sinceWindowLine } from "../src/text/datetime.js";
 import { clockOf, dateOf } from "./helpers/oracles.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
@@ -167,4 +167,58 @@ test('secondsSince and secondsUntil round to whole seconds and never go negative
   assert.equal(humanAgo(now - 120_000, now), "2m ago");
   assert.equal(humanAgo(now - 3 * 3600_000, now), "3h ago");
   assert.equal(humanAgo(now + 60_000, now), "0s ago");
+});
+
+test("clockHm renders the local HH:MM wall clock, zero-padded", () => {
+  assert.equal(clockHm(new Date(2026, 2, 1, 14, 30, 45).getTime()), "14:30");
+  assert.equal(clockHm(new Date(2026, 2, 1, 3, 7, 9).getTime()), "03:07", "single-digit hour/minutes pad");
+  assert.equal(clockHm(new Date(2026, 2, 1, 23, 59, 59).getTime()), "23:59");
+  // Direct pin against the raw-local-parts clock (never a UTC readback), so a drift to UTC
+  // rendering fails here rather than matching a timezone-dependent constructor.
+  const d = new Date(2026, 2, 1, 9, 5, 0);
+  assert.equal(clockHm(d.getTime()), `${pad2(d.getHours())}:${pad2(d.getMinutes())}`);
+});
+
+test("monthDay drops the redundant year from a day key", () => {
+  assert.equal(monthDay("2026-09-11"), "09-11");
+  assert.equal(monthDay("2026-12-31"), "12-31");
+  assert.equal(monthDay("2026-01-05"), "01-05", "single-digit month/day keep their zero-pads");
+});
+
+test("formatAge floors to whole units, clamps at zero, and skips the seconds bucket", () => {
+  assert.equal(formatAge(0), "0m");
+  assert.equal(formatAge(30_000), "0m", "a sub-minute age floors to 0m, never Ns");
+  assert.equal(formatAge(-5_000), "0m", "an age never reads negative");
+  assert.equal(formatAge(45 * 60_000), "45m");
+  assert.equal(formatAge(90 * 60_000), "1h", "a floor to a whole hour drops the half hour");
+  assert.equal(formatAge(23 * 3600_000), "23h");
+  assert.equal(formatAge(24 * 3600_000), "1d", "a full day reads days, not 24h");
+  assert.equal(formatAge(2 * 86400_000 + 12 * 3600_000), "2d");
+});
+
+test("nextRunPhrase names the due case, a bare/Sleeping/in durations, and their combinations", () => {
+  // The due case wins whatever the backoff/withIn flags say once the schedule is due.
+  assert.equal(nextRunPhrase(0, false, "due", false), "due");
+  assert.equal(nextRunPhrase(-10, true, "due now", true), "due now");
+  // A future schedule renders the humanSeconds span, choosing between the cell's bare label
+  // and the role view's `in <duration>` prose, and the wake-added `sleeping ` prefix.
+  assert.equal(nextRunPhrase(120, false, "due", false), "2m");
+  assert.equal(nextRunPhrase(120, true, "due", false), "sleeping 2m");
+  assert.equal(nextRunPhrase(120, false, "due", true), "in 2m");
+  assert.equal(nextRunPhrase(120, true, "due", true), "sleeping in 2m");
+  assert.equal(nextRunPhrase(90 * 86400, false, "due", false), "90d");
+});
+
+test("sinceWindowLine renders the trailing window header with the start instant in local time", () => {
+  // A timezone-less ISO parses as local and formatTimestamp renders the same local wall clock,
+  // so the literal is deterministic on any host.
+  assert.equal(sinceWindowLine("7d", "2026-09-01T10:00:00"), "window: last 7d (since 2026-09-01 10:00:00)");
+  assert.equal(sinceWindowLine("90m", "2026-08-29T23:05:00"), "window: last 90m (since 2026-08-29 23:05:00)");
+});
+
+test("boundedWindowLine renders the since/until span header with both instant ends in local time", () => {
+  assert.equal(
+    boundedWindowLine("12h", "2d", "2026-09-01T10:00:00", "2026-09-03T14:30:00"),
+    "window: 12h to 2d ago (since 2026-09-01 10:00:00, until 2026-09-03 14:30:00)",
+  );
 });
