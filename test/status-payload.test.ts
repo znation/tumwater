@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
-import { statusPayload, capacityContention } from "../src/ui/status-payload.js";
+import { statusPayload, capacityContention, flappedChecksAlert } from "../src/ui/status-payload.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool } from "../src/doctor/doctor-contention-checks.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { initProject } from "../src/init/init.js";
@@ -28,6 +28,9 @@ import { todayStamp } from "../src/budget/budget.js";
 import { writeEvents, writeLogLines, writeOrchestratorMarker, writeMarker } from "./fixtures/log-fixtures.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
+import { warnEvent } from "../src/events/events.js";
+import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
+import { checkFlakyChecks } from "../src/doctor/doctor-project-checks.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
@@ -789,4 +792,22 @@ test("capacityContention carries the doctor's warnings and nothing under thresho
     { ts: now - 60_000, source: "tumwater", type: "check_wait", role: "feature", scope: "gate", waitedMs: 60_000 },
   ]);
   assert.deepEqual(capacityContention(quiet, now), []);
+});
+
+test("flappedChecksAlert carries the doctor's phrase and nothing under the bar", () => {
+  const root = makeRepo();
+  warnEvent(root, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 3s");
+  warnEvent(root, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 9s");
+  const out = flappedChecksAlert(root);
+  assert.equal(out?.count, 1);
+  assert.equal(out?.detail, checkFlakyChecks(root).detail);
+  // A root with a single warning — a routine one-off flake — raises none.
+  const one = makeRepo();
+  warnEvent(one, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 3s");
+  assert.equal(flappedChecksAlert(one), null);
+  // A warning 25 h old, under the now seam, raises none.
+  const old = makeRepo();
+  warnEvent(old, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 3s");
+  warnEvent(old, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 9s");
+  assert.equal(flappedChecksAlert(old, Date.now() + 25 * 3600_000), null);
 });

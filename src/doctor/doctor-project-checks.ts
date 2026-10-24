@@ -27,7 +27,7 @@ import { eventLogState, readEventsSince, type EventLogState } from "../events/ev
 import { EVENTS_KEEP, type HarnessEvent } from "../events/events.js";
 import { finiteNumber } from "../files/json-object.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
-import { flakeCounts, KNOWN_FLAKE_WINDOW_MS, loadQuarantine } from "../review/known-flakes.js";
+import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
@@ -243,29 +243,36 @@ export function checkBuildCheck(
  * (src/review/known-flakes.ts); that record is internal to the gate's matching, so a genuinely
  * flaky check silently burns a re-run per merge and hides real instability — exactly the
  * information that explains intermittent rejections. This check reads the same window and folds the
- * same normalized headline the gate matches with (flakeCounts, so the prefix slice-offset and
+ * same normalized headline the gate matches with (repeatedFlakeCounts over flakeCounts, so the
+ * prefix slice-offset and
  * cluster normalization cannot drift), and warns only when a normalized check flapped more than
  * once, so a routine one-off flake stays quiet. ok/warn only — never a fail — so a flaky suite
  * cannot fail a scripted doctor pre-flight (the checkStalledPlans precedent; the exit-code rule is
  * outcome.ts's). */
 export function checkFlakyChecks(root: string, now: number = Date.now()): CheckOutcome {
   const { events } = readEventsSince(root, KNOWN_FLAKE_WINDOW_MS);
-  const flapped = flakeCounts(events).filter(([, n]) => n >= 2);
+  const flapped = repeatedFlakeCounts(events);
   const phrases: string[] = [];
-  if (flapped.length > 0) {
-    const render = ([k, n]: [string, number]) => `"${k}" ×${n}`;
-    const [first, ...rest] = flapped;
-    const more =
-      rest.length > 0 ? ` (and ${rest.length} more: ${rest.map(render).join(", ")})` : "";
-    phrases.push(
-      `${agree(flapped.length, "check", "checks")} flapped more than once in the last 24h: ${render(first!)}${more}`,
-    );
-  }
+  const flappedPhrase = flappedChecksPhrase(flapped);
+  if (flappedPhrase !== null) phrases.push(flappedPhrase);
   const q = quarantineWarning(loadQuarantine(root), now);
   if (q !== null) phrases.push(`${q} — see \`tumwater quarantine\``);
   if (phrases.length === 0)
     return okOutcome("no check flapped more than once in the last 24h");
   return warnOutcome(phrases.join("; "));
+}
+
+/** The one home of the doctor's `flaky checks` sentence: names each check that flapped more than
+ * once, most frequent first, with how many times it flapped — the same wording the always-on
+ * flapped-checks alert carries, so the doctor row and the alert cannot drift. null when `flapped`
+ * is empty (nothing crossed the bar). */
+export function flappedChecksPhrase(flapped: readonly [string, number][]): string | null {
+  if (flapped.length === 0) return null;
+  const render = ([k, n]: [string, number]) => `"${k}" ×${n}`;
+  const [first, ...rest] = flapped;
+  const more =
+    rest.length > 0 ? ` (and ${rest.length} more: ${rest.map(render).join(", ")})` : "";
+  return `${agree(flapped.length, "check", "checks")} flapped more than once in the last 24h: ${render(first!)}${more}`;
 }
 
 /** Build provenance — is the harness about to run (this process's dist/) the code main

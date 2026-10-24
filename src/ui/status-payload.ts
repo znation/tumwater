@@ -17,10 +17,11 @@ import { readSlotsState } from "../git/slots-state.js";
 import { configForStatus } from "../status/status-polls.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
-import { teamAlerts, type NotifyFailure, type PlanDependencyProblem, type PrimaryOverwriteBlock, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
+import { teamAlerts, type FlappedChecks, type NotifyFailure, type PlanDependencyProblem, type PrimaryOverwriteBlock, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
 import { duplicatedBacklogHeadings, planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { quarantineWarning, revertsFor } from "../baseline/main-guardrails.js";
-import { loadQuarantine } from "../review/known-flakes.js";
+import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
+import { flappedChecksPhrase } from "../doctor/doctor-project-checks.js";
 import { readPostReviews } from "../review/post-merge-review.js";
 import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles } from "../doctor/doctor-backlog.js";
 import { NOTIFY_CHECK_WINDOW_MS } from "../doctor/doctor-notify.js";
@@ -205,6 +206,17 @@ export function quarantineAlert(root: string, now = Date.now()): QuarantinedTest
   if (warning === null) return null;
   const oldest = entries.reduce((a, b) => (b.firstSeen < a.firstSeen ? b : a));
   return { count: entries.length, oldestTest: oldest.test, oldestFirstSeen: oldest.firstSeen, warning };
+}
+/** Checks that flapped more than once in the doctor's window, the always-on twin of the doctor's
+ * `flaky checks` row (src/doctor/doctor-project-checks.ts checkFlakyChecks): the same
+ * repeatedFlakeCounts over the same KNOWN_FLAKE_WINDOW_MS event window and the same
+ * flappedChecksPhrase the doctor shows, so the alert and the doctor cannot drift on the count or
+ * the wording. null when no check flapped twice in the window (or the log is unreadable). */
+export function flappedChecksAlert(root: string, now = Date.now()): FlappedChecks | null {
+  const events = eventsSince(root, KNOWN_FLAKE_WINDOW_MS, now, (e) => e.type === "warning");
+  const flapped = repeatedFlakeCounts(events);
+  const detail = flappedChecksPhrase(flapped);
+  return detail === null ? null : { count: flapped.length, detail };
 }
 /** A revert off main that looks false or a revert burst, the always-on twin of the doctor's
  * `main's check` revert rule (src/baseline/main-guardrails.ts revertGuardrail): the same
@@ -529,6 +541,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now)),
   };
 }

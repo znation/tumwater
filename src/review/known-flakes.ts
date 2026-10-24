@@ -65,6 +65,20 @@ export function flakeCounts(events: readonly HarnessEvent[]): [string, number][]
   return [...counts.entries()].sort((a, b) => b[1] - a[1]);
 }
 
+/** The bar at which a normalized check counts as flapping: one warning in the window is a
+ * routine one-off the gate's single re-run already absorbed, while two means the check flapped
+ * again and pays that re-run on every merge it touches — the one threshold the doctor's `flaky
+ * checks` row and the always-on flapped-checks alert share, folded through
+ * repeatedFlakeCounts. */
+const FLAKE_REPEAT_WARN = 2;
+
+/** The normalized checks in `events` that flapped at least FLAKE_REPEAT_WARN times, most
+ * frequent first — the filter flakeCounts feeds both the doctor and the status alert, so the
+ * threshold lives in the one home. Pure. */
+export function repeatedFlakeCounts(events: readonly HarnessEvent[]): [string, number][] {
+  return flakeCounts(events).filter(([, n]) => n >= FLAKE_REPEAT_WARN);
+}
+
 /** A Set of the flakeWarningKeys at or after `now - windowMs` of the gate's own window. */
 export function flakeKeys(
   events: readonly HarnessEvent[],

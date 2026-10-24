@@ -17,6 +17,7 @@ import { mergeQueueDir, quarantinePath } from "../src/paths.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { warnEvent } from "../src/events/events.js";
 import { notifyExitWarning } from "../src/events/notify.js";
+import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 
 // team-alerts.ts's teamAlerts: what needs the operator, phrased once for the dashboard's alert
 // banners and the TUI's attention lines.
@@ -1329,4 +1330,32 @@ test("a capacity bottleneck raises one standing amber alert carrying the doctor'
   const contentionAlert = payload.alerts.find((a) => a.key === "contention");
   assert.equal(contentionAlert?.tone, "amber");
   assert.match(contentionAlert?.title ?? "", /capacity bottleneck/);
+});
+
+test("a flapping check raises one standing amber alert carrying the doctor's phrase", () => {
+  const now = Date.now();
+  const flapped = { count: 2, detail: 'checks flapped more than once in the last 24h: "database test failed" ×3 (and 1 more: "network test failed" ×2)' };
+  // flappedChecks is the 22nd positional argument, after contention ([]); one position
+  // earlier it would land in the contention slot and raise no flapped-checks alert.
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], flapped);
+  const only = one.filter((a) => a.key === "flapped-checks");
+  assert.equal(only.length, 1);
+  assert.equal(only[0]!.tone, "amber");
+  assert.match(only[0]!.title, /2 checks have flapped/);
+  assert.match(only[0]!.detail ?? "", /flapped more than once in the last 24h/);
+  assert.match(only[0]!.detail ?? "", /tumwater bug/);
+  assert.deepEqual(only[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
+  // A null last argument adds none.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null), []);
+  // End to end through statusPayload over the seeded warnings, pinning the argument position.
+  const root = makeRepo();
+  warnEvent(root, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 3s");
+  warnEvent(root, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 9s");
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; tone?: string; title?: string; detail?: string }> };
+  const flappedAlert = payload.alerts.find((a) => a.key === "flapped-checks");
+  assert.equal(flappedAlert?.tone, "amber");
+  assert.match(flappedAlert?.title ?? "", /1 check has flapped/);
+  assert.match(flappedAlert?.detail ?? "", /tumwater bug/);
+  const clean = makeRepo();
+  assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "flapped-checks"), undefined);
 });

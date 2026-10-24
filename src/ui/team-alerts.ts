@@ -129,6 +129,16 @@ export interface QuarantinedTests {
   oldestFirstSeen: number;
   warning: string;
 }
+/** Checks that flapped more than once in the last day — the always-on twin of the doctor's
+ * `flaky checks` row (src/doctor/doctor-project-checks.ts checkFlakyChecks): `count` is the
+ * number of distinct flapping checks and `detail` is the doctor's own flapped phrase. Computed
+ * in src/ui/status-payload.ts's flappedChecksAlert from the same repeatedFlakeCounts and
+ * flappedChecksPhrase the doctor calls, so the alert and the doctor cannot drift on the count
+ * or the wording. */
+export interface FlappedChecks {
+  count: number;
+  detail: string;
+}
 /** One `## ` section heading that appears more than once in a backlog file — the always-on twin
  * of the doctor's `backlog headings` rule (src/doctor/doctor-backlog-plans.ts, computed by the
  * shared duplicatedBacklogHeadings, which itself shares scanBacklogHeadings with the doctor's
@@ -257,7 +267,8 @@ function localizeInstants(text: string): string {
  * checkout refusing merges, a stranded inbox
  * prompt, a stalled merge queue, a
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
- * review or Needs replan note, a stale or oversized flake quarantine, a revert off main that
+ * review or Needs replan note, checks that flapped more than once in the last day, a stale or
+ * oversized flake quarantine, a revert off main that
  * looks false or a revert burst, the fleet waiting on capacity slots (workspace, provider or
  * check), a plan filed under the wrong backlog section, a duplicated
  * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
@@ -304,6 +315,7 @@ export function teamAlerts(
   notifyFailure: NotifyFailure | null = null,
   primaryOverwrite: PrimaryOverwriteBlock | null = null,
   contention: readonly CapacityBottleneck[] = [],
+  flappedChecks: FlappedChecks | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -787,6 +799,22 @@ export function teamAlerts(
       title: `${plural(quarantined.count, "test")} in the flake quarantine — the gate is excusing their failures`,
       detail:
         `${quarantined.warning} · oldest: ${squash(quarantined.oldestTest, 80)} (${humanAgo(quarantined.oldestFirstSeen, now)}) — a quarantined test counts as a known failure until its filed bug leaves BUGS.md \`## Open\`, so fix the test or file the missing bug`,
+      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+    });
+  }
+  // Checks that flapped more than once in the last day — the always-on twin of the doctor's
+  // `flaky checks` row (doctor-project-checks.ts checkFlakyChecks): the gate's single re-run
+  // absorbs a one-off flake, but a check flapping twice silently pays that re-run on every
+  // merge it touches, so the tally belongs on every observer surface while it happens.
+  // status-payload.ts's flappedChecksAlert feeds it from the same repeatedFlakeCounts and
+  // flappedChecksPhrase the doctor calls, so the alert and the doctor cannot drift on the
+  // count or the wording.
+  if (flappedChecks) {
+    out.push({
+      key: "flapped-checks",
+      tone: "amber",
+      title: `${plural(flappedChecks.count, "check has", "checks have")} flapped more than once in the last day`,
+      detail: `${flappedChecks.detail} — a flapping check pays the gate's one re-run on every merge it touches; fix it or file it with \`tumwater bug\``,
       actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }

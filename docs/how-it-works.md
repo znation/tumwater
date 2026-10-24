@@ -267,7 +267,8 @@ discards a role's in-flight merge.
   retries on a later poll when the checkout is dirty or off main). A test leaves quarantine when its
   entry is no longer under `## Open`; a later flake puts it back. The 24 h headline excuse
   (`known-flaky failure, merge kept`) remains for failures that name no test.
-  `tumwater doctor`'s `flaky checks` row and the selfcheck digest warn when a quarantined test's
+  `tumwater doctor`'s `flaky checks` row (an always-on alert, not just a doctor row, when a
+  check flapped more than once in the last day) and the selfcheck digest warn when a quarantined test's
   age passes 3 days (naming the oldest, with its BUGS.md heading or "not filed") or when the list
   holds more than 10 tests. `tumwater quarantine [--json]` lists the current list — every entry
   oldest first with its age, flake count, last sighting and filed bug.
@@ -472,8 +473,10 @@ validation, and atomic write, so you never have to hand-edit the file.
   a stale bug, a failed notify page, a broken plan dependency clause, a dirty primary checkout
   refusing merges, a stranded inbox prompt,
   a stalled merge queue, a merge-queue file the reader skips, a waiting bug held a week, a plan stalled by a
-  Needs review or Needs replan note, a stale or oversized flake quarantine, a revert off main that
-  looks false or a revert burst, the fleet waiting on capacity slots (workspace, provider or check) — the doctor's three contention rows read the same waits and name the knob, a plan filed under the wrong
+  Needs review or Needs replan note, checks that flapped more than once in the last day, a
+  stale or oversized flake quarantine, a revert off main that looks false or a revert burst,
+  the fleet waiting on capacity slots (workspace, provider or check) — the doctor's three
+  contention rows read the same waits and name the knob, a plan filed under the wrong
   backlog section, a duplicated backlog section heading, a Fixed record whose Validation gap trace is missing or unrecognized, a pause), the prompt
   box, today's progress, the roles grouped by what they are doing,
   the backlog, and the notable activity — a `Loop picker` and a case-insensitive Search box narrow
