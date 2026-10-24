@@ -10,7 +10,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { imageReroute } from "../agent/image-input.js";
 import type { RunOutcome } from "./run-outcome.js";
-import type { FlowResult, FiledResult } from "../verdict/reply-contract.js";
+import type { CiResult, FlowResult, FiledResult } from "../verdict/reply-contract.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { isDirty, deleteRef } from "../git/git.js";
@@ -20,6 +20,7 @@ import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../git/commit-message.js";
 import { errorMessage } from "../text/text.js";
 import { recordFlow } from "./qa-coverage.js";
+import { recordParity } from "./ci-parity.js";
 import { recordFiled } from "./feedback-filings.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
@@ -63,6 +64,8 @@ interface RunVerdictContext {
   flow: FlowResult | null;
   /** The `feedback` observer's FILED record, or null for every other role. */
   filed: FiledResult | null;
+  /** The `ci` observer's CI record, or null for every other role. */
+  ci: CiResult | null;
   warn(message: string): void;
   /** Merge the worktree branch on main with the role's shared wiring (refusal-note merges). */
   merge(wt: string, summary: string): Promise<RunOutcome["result"]>;
@@ -369,6 +372,17 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
         recordFiled(ctx.root, ctx.filed.issue, ctx.filed.title);
       } catch (err) {
         ctx.warn(`feedback filing #${ctx.filed.issue} not recorded: ${errorMessage(err)}`);
+      }
+    }
+    // A fulfilled ci run that declared its coverage records it in the parity ledger so the
+    // next fresh session's block knows what the last run covered (part 3/3). The ledger is
+    // bookkeeping that never fails the run: a failed write warns and the no_change outcome
+    // stands. A cut-off run records nothing — truncation is not a coverage the run declared.
+    if (ctx.ci && !diagnosis.cutOff) {
+      try {
+        recordParity(ctx.root, ctx.ci.sha, ctx.ci.result);
+      } catch (err) {
+        ctx.warn(`ci parity not recorded: ${errorMessage(err)}`);
       }
     }
     // A prompt-driven (director) run that answers a question in prose ends `no_change` with

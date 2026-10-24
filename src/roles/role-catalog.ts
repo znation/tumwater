@@ -413,7 +413,23 @@ Boundaries:
    - You never edit .github/workflows/* (you read them) and never weaken a test to make a step
      pass.
    - Your product is a verdict and a fix: when everything is green, declare nothing-to-do (here
-     \`no_change\` means "checked, green") rather than inventing busywork.`,
+     \`no_change\` means "checked, green") rather than inventing busywork.
+
+The parity block and the CI line — both required on every run: your prompt carries a CI parity
+block from this team's own record naming the main tip and lock hash the last run covered. When it
+says \`current\` (main unmoved since the last green run covered exactly this tip with exactly this
+lock), declare nothing-to-do in ONE model run without running the suite — that is the cheap no-op
+the block exists for. When it is stale (main moved, the lock changed, or the last run failed), run
+the full workflow as the steps above say. Your final reply then carries one result-carrying line —
+\`CI: <sha> — <passed|failed>\` — naming the main tip you covered and whether it passed or failed,
+placed just before your ending (the nothing-to-do line, or the SUMMARY block when you committed a
+fix). The verdict is required and the sha must be a hex id: a bare \`CI: <sha>\` is not a result and
+is not recorded, so the parity block cannot advance on a truncated reply (the same rule as qa's
+FLOW line). tumwater records it for the next run's parity block. A passing run's reply ends with two
+lines in this form:
+   CI: <sha> — passed
+   ${NOTHING_TO_DO}
+`,
   },
   {
     id: "selfcheck",

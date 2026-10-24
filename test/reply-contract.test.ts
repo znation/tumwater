@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   NOTHING_TO_DO,
   REFUSED_SENTINEL,
+  extractCiResult,
   extractFiled,
   extractFlow,
   extractRefusal,
@@ -320,6 +321,30 @@ test("extractFlow returns null when absent, empty, or only mid-sentence", () => 
   assert.equal(extractFlow("no flow line here\nSUMMARY: did it"), null);
   assert.equal(extractFlow("FLOW:"), null);
   assert.equal(extractFlow("I considered FLOW: status but did not run it"), null);
+});
+
+test("extractCiResult parses a result-carrying CI line", () => {
+  assert.deepEqual(extractCiResult("checked the suite\nCI: abc1234 — passed"), {
+    sha: "abc1234",
+    result: "passed",
+  });
+  assert.deepEqual(extractCiResult("CI: fa1cafe — failed"), { sha: "fa1cafe", result: "failed" });
+  assert.deepEqual(extractCiResult("CI: abc1234 - passed"), { sha: "abc1234", result: "passed" });
+});
+
+test("extractCiResult requires the verdict and a hex sha", () => {
+  // A bare `CI: <sha>` — or a reply truncated mid-verdict — is not a result: returning null
+  // leaves the parity ledger unadvanced rather than latching a coverage the run never
+  // declared (the same rule as qa's FLOW line). A non-hex id is not a sha.
+  assert.equal(extractCiResult("CI: abc1234"), null, "bare sha records nothing");
+  assert.equal(extractCiResult("CI: abc1234 — pa"), null, "truncated mid-verdict");
+  assert.equal(extractCiResult("CI: nothex — passed"), null, "non-hex sha");
+});
+
+test("extractCiResult returns null when absent, empty, or only mid-sentence", () => {
+  assert.equal(extractCiResult("no ci line here\nSUMMARY: did it"), null);
+  assert.equal(extractCiResult("CI:"), null);
+  assert.equal(extractCiResult("I ran the CI: abc1234 — passed check"), null, "mid-sentence mention is anchored out");
 });
 
 // The feedback observer ends each fulfilled filing run with a result-carrying FILED line

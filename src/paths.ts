@@ -165,6 +165,14 @@ export function qaCoveragePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "qa-coverage.json");
 }
 
+/** The `ci` observer's CI-parity ledger (run/ci-parity.ts): which main tip and lock hash each
+ * run covered and how it went. Runtime state under .tumwater/state/, never committed — a
+ * passing check must leave the repo untouched, or every cheap pass would move main and wake
+ * the team.*/
+export function ciParityPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "ci-parity.json");
+}
+
 /** The `feedback` observer's per-install filing ledger (run/feedback-filings.ts): which GitHub
  * issues this install already filed on znation/tumwater, so the next fresh session's prompt can
  * render a "previously filed" block without re-deriving its dedupe from the network alone.

@@ -199,6 +199,27 @@ export function extractFlow(text: string): FlowResult | null {
   return { flow: match[1].trim(), result: match[2]!.toLowerCase() as "passed" | "bug" };
 }
 
+/** The result of one `ci` run: which main tip it covered, and how that coverage went. */
+export interface CiResult {
+  sha: string;
+  result: "passed" | "failed";
+}
+
+/** Extract the `ci` run's result-carrying `CI: <sha> — <passed|failed>` line (plans, part
+ * 3/3); null when absent. Built on `labeledLine`, so the label is anchored at line start and
+ * a mid-sentence mention is ignored. The verdict is required and the sha must be a hex id: a
+ * bare `CI: <sha>` — or a reply truncated mid-verdict (`CI: abc123 — pa`) — is not a result,
+ * and returning null leaves the parity ledger unadvanced rather than latching a coverage the
+ * run never declared (the same lesson as qa's FLOW line, BUGS.md 2026-09-23). Splits on the
+ * dash/em-dash token before the verdict. */
+export function extractCiResult(text: string): CiResult | null {
+  const value = labeledLine(text, "CI");
+  if (!value) return null;
+  const match = /^([0-9a-f]{7,64})\s*[—-]\s*(passed|failed)\s*$/i.exec(value);
+  if (!match?.[1]) return null;
+  return { sha: match[1].toLowerCase(), result: match[2]!.toLowerCase() as "passed" | "failed" };
+}
+
 /** The result of one `feedback` run's filing: which GitHub issue it filed, and its title. */
 export interface FiledResult {
   issue: number;

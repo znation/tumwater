@@ -63,6 +63,7 @@ test("defaultConfig gives the slow-clock roles their clocks and no other role on
   const config = defaultConfig();
   assert.equal(configForRole(config, "steward").minRunIntervalSeconds, 21600);
   assert.equal(configForRole(config, "qa").minRunIntervalSeconds, 7200);
+  assert.equal(configForRole(config, "ci").minRunIntervalSeconds, 7200);
   assert.equal(configForRole(config, "selfcheck").minRunIntervalSeconds, 7200);
   assert.equal(configForRole(config, "feedback").minRunIntervalSeconds, 7200);
   // The bookkeeping roles: readme batches merges into one sync per half hour, plan re-audits
@@ -72,7 +73,7 @@ test("defaultConfig gives the slow-clock roles their clocks and no other role on
   // Organize restructures at most hourly — at the global clock it reorganized the whole tree
   // one directory per run.
   assert.equal(configForRole(config, "organize").minRunIntervalSeconds, 3600);
-  const slow = new Set(["steward", "qa", "selfcheck", "feedback", "readme", "plan", "organize"]);
+  const slow = new Set(["steward", "qa", "ci", "selfcheck", "feedback", "readme", "plan", "organize"]);
   for (const id of allRoleIds()) {
     if (slow.has(id)) continue;
     // Every other role falls back to the global interval.

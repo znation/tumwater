@@ -434,6 +434,14 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
       ctx.warn(`feedback filing #${ctx.filed.issue} not recorded: ${errorMessage(err)}`);
     }
   }
+  // No ci parity is recorded here. qa flow and feedback filings above are durable books of
+  // their own result, which is why a changed run still files them; but a parity entry says
+  // "this main tip is green", and a run that changed the tree has not verified main — its
+  // work is not on main until the queued merge lands. Writing it now (with the model-named
+  // tip and the pre-merge lock hash) would leave a false `current` if the fix never lands,
+  // making the next ci run skip the full suite while main still fails it. The sole recorder
+  // of parity is resolveRunVerdict's no_change path, which runs only when main actually
+  // passed and nothing needed changing.
   return {
     result: "queued",
     summary: finalSummary,

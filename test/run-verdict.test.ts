@@ -8,8 +8,9 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { loadConfig } from "../src/config/config.js";
-import { configRequestPath, qaCoveragePath, feedbackFilingsPath } from "../src/paths.js";
+import { configRequestPath, qaCoveragePath, feedbackFilingsPath, ciParityPath } from "../src/paths.js";
 import { readQaCoverage } from "../src/run/qa-coverage.js";
+import { readCiParity } from "../src/run/ci-parity.js";
 import { readFeedbackFilings } from "../src/run/feedback-filings.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { writeConfig } from "./fixtures/repo-fixtures.js";
@@ -39,6 +40,7 @@ function makeCtx(root: string, wt: string, role: string, over: Record<string, un
     pi: piRunResult({ nothingToDo: true }),
     flow: null,
     filed: null,
+    ci: null,
     warn: (m: string) => warns.push(m),
     merge: async (w: string, summary: string) => {
       merges.push({ wt: w, summary });
@@ -197,6 +199,54 @@ test("a no_change feedback run with filed records the ledger entry", async () =>
   assert.equal(filings.length, 1);
   assert.equal(filings[0]!.issue, 12);
   assert.equal(filings[0]!.title, "a bug");
+});
+
+test("a no_change ci run with a CI line records its parity coverage", async () => {
+  const { root, wt } = await initializedWorktree("ci");
+  const pi: PiRunResult = piRunResult({ nothingToDo: true, finalText: "TUMWATER_NOTHING_TO_DO" });
+
+  const { ctx } = makeCtx(root, wt, "ci", { pi, ci: { sha: "abc1234", result: "passed" } });
+  const outcome = await resolveRunVerdict(ctx);
+
+  assert.equal(outcome?.result, "no_change");
+  const entry = readCiParity(root);
+  assert.ok(entry, "the ci run's declared coverage is recorded");
+  assert.equal(entry!.tip, "abc1234");
+  assert.equal(entry!.result, "passed");
+  assert.ok(fs.existsSync(ciParityPath(root)), "the ledger lives under .tumwater/state");
+});
+
+test("a cut-off ci run's CI line records nothing", async () => {
+  const { root, wt } = await initializedWorktree("ci");
+  // The run was truncated before declaring its outcome, so its mid-stream CI line must not
+  // advance the coverage — the same guard qa's FLOW line carries.
+  const pi: PiRunResult = piRunResult({
+    nothingToDo: false,
+    finalMessageContentless: true,
+    finalText: "CI: abc1234 — passed",
+  });
+  const { ctx } = makeCtx(root, wt, "ci", { pi, ci: { sha: "abc1234", result: "passed" } });
+  await resolveRunVerdict(ctx);
+  assert.equal(readCiParity(root), null, "truncation is not a coverage the run declared");
+});
+
+test("a failed ci parity write warns and the no_change run stands", async () => {
+  const { root, wt } = await initializedWorktree("ci");
+  const pi: PiRunResult = piRunResult({ nothingToDo: true, finalText: "TUMWATER_NOTHING_TO_DO" });
+
+  const { ctx, warns } = makeCtx(root, wt, "ci", { pi, ci: { sha: "abc1234", result: "passed" } });
+  const undo = failRenameSyncOn(ciParityPath(root), "EACCES fake");
+  let outcome;
+  try {
+    outcome = await resolveRunVerdict(ctx);
+  } finally {
+    undo();
+  }
+
+  assert.equal(outcome?.result, "no_change");
+  assert.equal(readCiParity(root), null, "the ledger write failed");
+  assert.equal(warns.length, 1);
+  assert.match(warns[0]!, /ci parity not recorded: EACCES fake/);
 });
 
 test("a cut-off feedback run with filed records nothing", async () => {

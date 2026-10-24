@@ -71,6 +71,7 @@ function verdictCtx(
     pi: piRunResult({ nothingToDo: true }),
     flow: null,
     filed: null,
+    ci: null,
     warn: () => {},
     merge: async () => "changed" as const,
     finishAbortedRun: async () => ({ result: "aborted" as const }),

@@ -53,7 +53,7 @@ import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "..
 import { changedFiles } from "../git/git-diff.js";
 import { handlePiResultPhase } from "./runner-outcome.js";
 import { mainRedGate, mainRedHealNote } from "../baseline/main-red.js";
-import { extractFlow, extractFiled } from "../verdict/reply-contract.js";
+import { extractCiResult, extractFlow, extractFiled } from "../verdict/reply-contract.js";
 
 /** The model-fallback episode context a run start resolves (src/runner/model-fallback.ts): the
  * tier's fallback pair (null when the feature is off), whether this run is the due probe, and
@@ -761,6 +761,11 @@ async function runWithWorktreePhase(
   // below — an interrupted or failed run must not record a filing it never declared. The
   // harness records it, never pi.
   const filed = ctx.baseRole === "feedback" ? extractFiled(pi.finalText) : null;
+  // The `ci` observer's reply ends with a result-carrying `CI: <sha> — <passed|failed>` line
+  // (plans, part 3/3). Extracted once here, recorded only at the success returns below — an
+  // interrupted or failed run must not record a coverage it never declared. The harness
+  // records it, never pi.
+  const ci = ctx.baseRole === "ci" ? extractCiResult(pi.finalText) : null;
 
-  return handlePiResultPhase(ctx, pi, userPrompt, revisionRound, wt, flow, filed, piStartedAt, cfg);
+  return handlePiResultPhase(ctx, pi, userPrompt, revisionRound, wt, flow, filed, ci, piStartedAt, cfg);
 }

@@ -5,6 +5,33 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### A `ci` role runs the CI workflow's own jobs at main's tip and fixes what fails, part 3/3: its parity block and `CI:` result line make its no-op decision cheap (planned 2026-10-24 by the operator, split from the held single `ci` plan; requires part 1/3 landed — the block is the role's own record and the `CI:` line is what it reads back — and lands before its repeated full-suite runs get expensive; touches src/config/config.ts src/run/ci-parity.ts src/prompt/prompt.ts src/verdict/reply-contract.ts src/runner/runner-outcome.ts src/run/run-verdict.ts docs/config.md test/reply-contract.test.ts test/qa-coverage.test.ts) — done 2026-10-24 by the feature role
+
+**Previously held 1**
+
+**Goal.** Without a record of what it covered, the role must run the whole CI job — minutes of suite plus e2e — every tick to answer a question its own history already holds. The parity block and the `CI:` result line make that decision cheap: the role reads the tip and the `package-lock.json` hash its last green run covered, and declares nothing-to-do when main has not moved since and the lock file is unchanged.
+
+**Approach.**
+- src/config/config.ts: seed `minRunIntervalSeconds` for `ci` at the observer trio's `7200` (docs/config.md's row), so parity costs at most one full suite plus e2e every two hours; the per-role override works as for every other role.
+- src/run/ci-parity.ts (new) + src/prompt/prompt.ts (its `ciParity` field, :315): the same-shaped `ciParity` prompt field — the tip the last recorded green parity run covered, its `package-lock.json` hash, and how it went — rendered by a module of its own, and omitted entirely when the record is missing or unreadable, exactly as the qa coverage block is.
+- src/verdict/reply-contract.ts: `extractCiResult` beside `extractFlow` (:194) — `CI: <sha> — passed|failed`, split and validated with the same `labeledLine`/verdict-required rules (a bare `CI: <sha>`, a non-hex id, or a reply truncated mid-verdict is not a result and is not recorded). The run outcome carries it (src/runner/runner-outcome.ts, src/run/run-verdict.ts) and the parity block reads it back, so a fresh session that remembers nothing still knows what the last run covered.
+- docs: docs/config.md's `minRunIntervalSeconds` row names `ci` with `7200` (the `Observer` line in docs/glossary.md and the observer paragraph in docs/how-it-works.md belong to part 1/3).
+- No change to `.github/workflows/*`, to `check.gateCommand`, to `npm run test:gate`'s definition, to the main watch's check or to the post-merge review. The merge gate stays fast and affected-only — that is the point of a role whose cadence is its own. An implementation that finds itself slowing the gate, or editing a workflow file, has gone off-plan.
+
+**Files touched.** src/config/config.ts src/prompt/prompt.ts src/run/ci-parity.ts src/verdict/reply-contract.ts src/runner/runner-outcome.ts src/runner/runner-run.ts src/run/run-verdict.ts src/run/run-stage.ts src/paths.ts src/roles/role-catalog.ts docs/config.md docs/invariants.md test/config.test.ts test/prompt-roles.test.ts test/reply-contract.test.ts test/ci-parity.test.ts test/run-verdict.test.ts test/run-resume.test.ts test/revision.test.ts
+
+**Acceptance criteria.**
+- Its prompt carries a CI parity block naming the tip and lock hash of the last green run; with main unmoved since that run and the lock hash unchanged the role declares nothing-to-do without running the suite (one model run, no suite run).
+- A `CI:` line is required on every run and a bare `CI: <sha>` records nothing, so the parity block cannot advance on a truncated reply (the `FLOW:` line's own rule).
+- The merge gate is untouched: `npm run test:gate` still runs only the affected tests, and no test that pins its command changes.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/reply-contract.test.ts: `extractCiResult` mirrors the FLOW cases — `CI: abc1234 — passed` and `CI: abc1234 — failed` parse, a mid-sentence mention does not, and `CI: abc1234` alone (or a reply truncated mid-verdict, or a non-hex id) records nothing.
+- test/ci-parity.test.ts (new): the parity block renders "current" for the recorded green tip with a matching lock hash, "stale" naming both shas and hashes when main moved or the lock hash changed (or the last run failed), and is omitted entirely for a missing or malformed record rather than rendering an empty verdict.
+
+**Note (2026-10-24 by the feature role).** Implemented as planned; `npm run test:gate` passes. The plan's file list did not name every path the wired change touched, so they were added to it in the same change: src/run/runner-run.ts (extracts the `CI:` line for the `ci` role), src/run/run-stage.ts (a comment pins that the staged/merge path never records parity — a changed run has not verified main, so a written entry would leave a false `current` if the fix never landed; the sole recorder is resolveRunVerdict's no_change path), src/paths.ts (the ledger path builder, `ciParityPath`), src/roles/role-catalog.ts (the `ci` find text now names the parity block and the required `CI:` line — without it the role would never emit the line the whole mechanism reads back), docs/invariants.md (INV-BW2, the ci-parity twin of INV-BW1), and the tests whose observer-context literals gained the field (test/run-verdict.test.ts adds the parity-recording, cut-off, and failed-write cases; test/run-resume.test.ts/test/revision.test.ts compile-time `ci: null`). The qa-coverage-adjacent parity test is a new test/ci-parity.test.ts, and test/config.test.ts pins the new `ci` 7200 default to the slow-clock set.
+
 ### Every commit is verified on main, part 2/3: the newest head is the culprit — the bisect is deleted (planned 2026-10-24 by the operator, split from the held single plan; requires part 1/3 landed, so a rule failure added there is attributed to the tip the same way a build red is; part 3/3 below then takes the pre-merge blocks off; touches src/baseline/main-watch.ts src/baseline/main-culprit.ts (deleted) docs/how-it-works.md docs/invariants.md test/main-watch.test.ts) — done 2026-10-24 by the feature role
 
 **Previously held 1**

@@ -20,6 +20,7 @@ import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 import { readEventsSince } from "../events/event-window.js";
 import { selfcheckDigest } from "./selfcheck-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
+import { parityBlockFor } from "./ci-parity.js";
 import { readFeedbackFilings, renderFilingsBlock } from "./feedback-filings.js";
 import { roleNotesPath } from "../paths.js";
 import * as path from "node:path";
@@ -200,6 +201,17 @@ export function assembleRunPrompt(
         coverage = undefined;
       }
     }
+    // The `ci` observer's parity block: what the last run covered (tip and lock hash) so a
+    // fresh session can decide nothing-to-do without re-running the whole suite (part 3/3).
+    // Runtime state, and a missing/unreadable record degrades to no block, exactly like qa's.
+    let ciParity: string | undefined;
+    if (base === "ci") {
+      try {
+        ciParity = parityBlockFor(root, config);
+      } catch {
+        ciParity = undefined;
+      }
+    }
     // The `feedback` observer's per-install filing ledger: what this install already filed as
     // GitHub issues on znation/tumwater, so the fresh session's charter dedupes against a
     // "previously filed" block instead of the network alone. Runtime state, and a missing or
@@ -260,6 +272,7 @@ export function assembleRunPrompt(
       principles,
       digest,
       coverage,
+      ciParity,
       filings,
       backlogStructure,
       backlogIndex: assigned ? undefined : backlogIndex,

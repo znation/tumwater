@@ -11,7 +11,7 @@ import type { RunnerRunContext } from "./runner-run.js";
 import type { RunOutcome, RunResult } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { ResolvedModelConfig } from "../config/config-views.js";
-import type { FlowResult, FiledResult } from "../verdict/reply-contract.js";
+import type { CiResult, FlowResult, FiledResult } from "../verdict/reply-contract.js";
 import { mergeToMain } from "../merge/merge-to-main.js";
 import { MERGE_LOCK_WAIT_MS } from "../paths.js";
 import { resolveRunVerdict } from "../run/run-verdict.js";
@@ -52,7 +52,8 @@ async function mergePhase(ctx: RunnerRunContext, wt: string, summary: string): P
  * stays here. `userPrompt` is the raw director prompt this run is executing (null for role
  * runners) so unfulfilled outcomes can re-queue it; `revisionRound` is the revision this run holds
  * (undefined when it is not a revision); `flow` is the qa observer's FLOW line (null for every
- * other role); `filed` is the feedback observer's FILED line (null for every other role). */
+ * other role); `filed` is the feedback observer's FILED line (null for every other role);
+ * `ci` is the ci observer's CI line (null for every other role). */
 export async function handlePiResultPhase(
   ctx: RunnerRunContext,
   pi: PiRunResult,
@@ -61,6 +62,7 @@ export async function handlePiResultPhase(
   wt: string,
   flow: FlowResult | null,
   filed: FiledResult | null,
+  ci: CiResult | null,
   piStartedAt: number,
   cfg: ResolvedModelConfig,
 ): Promise<RunOutcome> {
@@ -82,6 +84,7 @@ export async function handlePiResultPhase(
     pi,
     flow,
     filed,
+    ci,
     // The image-reroute arm resolves its target from the live config and the current
     // regime, and names the model this run ran on as the handoff's `from`.
     config: ctx.config,

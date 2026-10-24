@@ -4289,7 +4289,7 @@ ones" and "the probe cache round-trips and a verdict expires after the 7-day TTL
 survives); `test/status-data-models.test.ts` — "a foreign entry in the probe cache leaves
 collectImageProbeFailures and snapshot standing".
 
-## QA flow coverage: a failed ledger write never fails a run
+## Observer run ledgers: a failed ledger write never fails a run
 
 ### INV-BW1: a failed qa-coverage.json write warns and the run keeps its outcome
 
@@ -4304,6 +4304,25 @@ count toward the role's error streak.
 queued" and "a qa flow record from the reply is written into the coverage file" (on the healthy path
 the flow is still recorded); `test/run-verdict.test.ts` — "a failed qa coverage write warns and the
 no_change run stands" and "a no_change run records its qa flow".
+
+### INV-BW2: a failed ci-parity write warns and the run keeps its outcome
+
+**Guarantee.** A `recordParity` write failure in `resolveRunVerdict` warns once and the run keeps
+its `no_change` outcome, so a full disk or read-only `.tumwater` does not count toward the role's
+error streak — the same degraded-bookkeeping policy as the qa coverage ledger (INV-BW1). A `ci` run
+records its declared `CI:` coverage only on a success return, never on a cut-off run, so the parity
+block cannot advance on a truncated reply. The staged path records nothing: a run that changed the
+tree has not verified main (its work is not on main until the queued merge lands), so a rejected or
+unlanded fix cannot leave a false `current` that makes the next ci run skip the full suite.
+
+**Binds.** `src/run/run-verdict.ts` (`resolveRunVerdict`),
+`src/run/ci-parity.ts` (`recordParity`).
+
+**Pinned by.** `test/run-verdict.test.ts` — "a no_change ci run with a CI line records its parity
+coverage" and "a cut-off ci run's CI line records nothing"; `test/ci-parity.test.ts` — the
+read/record/render and missing-or-malformed-degrades-to-no-data unit coverage. The staged path
+records nothing is structurally guaranteed: `RunStageContext` (src/run/run-stage.ts) has no `ci`
+field and `recordParity` has a single call site in `resolveRunVerdict`.
 
 ## OpenCode catalog cache: a foreign entry reads as an unknown model
 

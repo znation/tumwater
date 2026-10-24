@@ -50,6 +50,10 @@ export function defaultConfig(): ResolvedModelConfig {
   roles.steward = { enabled: true, minRunIntervalSeconds: 21600 };
   // QA exercises the product like a user on a ~2 h clock: user flows change slower than code.
   roles.qa = { enabled: true, minRunIntervalSeconds: 7200 };
+  // CI verifies main's parity with the workflow on the same ~2 h clock: a full suite plus e2e
+  // is minutes of work, so it must be at most an hourly-ish cost, and the parity block makes
+  // the no-op a single model run when main has not moved (part 3/3).
+  roles.ci = { enabled: true, minRunIntervalSeconds: 7200 };
   // Selfcheck and feedback are the two opt-in roles, both on the same ~2 h clock: the digest is
   // a windowed view, so a run a couple of hours apart reads a new window rather than re-filing
   // the same cluster. Selfcheck's evidence is this harness's own event log and its charter files

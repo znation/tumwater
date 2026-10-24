@@ -108,31 +108,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/gui-client-pending.test.ts: update the rejected-label assertion.
 - test/gui-post-review-accept.test.ts: update the GUI 409 error assertion.
 
-### A `ci` role runs the CI workflow's own jobs at main's tip and fixes what fails, part 3/3: its parity block and `CI:` result line make its no-op decision cheap (planned 2026-10-24 by the operator, split from the held single `ci` plan; requires part 1/3 landed — the block is the role's own record and the `CI:` line is what it reads back — and lands before its repeated full-suite runs get expensive; touches src/config/config.ts src/run/ci-parity.ts src/prompt/prompt.ts src/verdict/reply-contract.ts src/runner/runner-outcome.ts src/run/run-verdict.ts docs/config.md test/reply-contract.test.ts test/qa-coverage.test.ts)
-
-**Previously held 1**
-
-**Goal.** Without a record of what it covered, the role must run the whole CI job — minutes of suite plus e2e — every tick to answer a question its own history already holds. The parity block and the `CI:` result line make that decision cheap: the role reads the tip and the `package-lock.json` hash its last green run covered, and declares nothing-to-do when main has not moved since and the lock file is unchanged.
-
-**Approach.**
-- src/config/config.ts: seed `minRunIntervalSeconds` for `ci` at the observer trio's `7200` (docs/config.md's row), so parity costs at most one full suite plus e2e every two hours; the per-role override works as for every other role.
-- src/run/ci-parity.ts (new) + src/prompt/prompt.ts (its `flowCoverage` field, :314): the same-shaped `ciParity` prompt field — the tip the last recorded green parity run covered, its `package-lock.json` hash, and each step's outcome — rendered by a module of its own, and omitted entirely when the record is missing or unreadable, exactly as the qa coverage block is.
-- src/verdict/reply-contract.ts: `ciResultLine` beside `flowLine` (:187) — `CI: <sha> — passed|failed`, split and validated with the same `labeledLine`/verdict-required rules (a bare `CI: <sha>`, or a reply truncated mid-verdict, is not a result and is not recorded). The run outcome carries it (src/runner/runner-outcome.ts:54, src/run/run-verdict.ts) and the parity block reads it back, so a fresh session that remembers nothing still knows what the last run covered.
-- docs: docs/config.md's `minRunIntervalSeconds` row names `ci` with `7200` (the `Observer` line in docs/glossary.md and the observer paragraph in docs/how-it-works.md belong to part 1/3).
-- No change to `.github/workflows/*`, to `check.gateCommand`, to `npm run test:gate`'s definition, to the main watch's check or to the post-merge review. The merge gate stays fast and affected-only — that is the point of a role whose cadence is its own. An implementation that finds itself slowing the gate, or editing a workflow file, has gone off-plan.
-
-**Files touched.** src/config/config.ts src/prompt/prompt.ts src/run/ci-parity.ts src/verdict/reply-contract.ts src/runner/runner-outcome.ts src/run/run-verdict.ts docs/config.md test/prompt-roles.test.ts test/reply-contract.test.ts test/qa-coverage.test.ts
-
-**Acceptance criteria.**
-- Its prompt carries a CI parity block naming the tip and lock hash of the last green run; with main unmoved since that run and the lock hash unchanged the role declares nothing-to-do without running the suite (one model run, no suite run).
-- A `CI:` line is required on every run and a bare `CI: <sha>` records nothing, so the parity block cannot advance on a truncated reply (the `FLOW:` line's own rule).
-- The merge gate is untouched: `npm run test:gate` still runs only the affected tests, and no test that pins its command changes.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/reply-contract.test.ts: `ciResultLine` mirrors the FLOW cases — `CI: abc1234 — passed` and `CI: abc1234 — failed` parse, a mid-sentence mention does not, and `CI: abc1234` alone (or a reply truncated mid-verdict) records nothing.
-- test/qa-coverage.test.js (or a new test/ci-parity.test.js): the parity block renders "current" for the recorded green tip with a matching lock hash, "stale" naming both shas and hashes when main moved or the lock hash changed, and is omitted entirely for a missing or malformed record rather than rendering an empty verdict.
-
 ### Forward, never back, part 1a/6: the harness commits a reviewer's worktree edit as one fix commit and lands it on main, so a review run can repair what it found (planned 2026-10-24 by the plan role, split from the held part 1/6; part 1/6 below turns on the fix-forward prompt this part makes landable; a change to how a commit reaches main, so the switch that depends on it is a separate part and merges only once this one is the running build; touches src/review/post-merge-review.ts src/merge/merge-post-review.ts src/verdict/reply-contract.ts src/paths.ts test/post-merge-review.test.ts test/reply-contract.test.ts)
 
 **Previously held 3**

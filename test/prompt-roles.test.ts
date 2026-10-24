@@ -247,6 +247,29 @@ test("the ci role sits right after qa, and selfcheck right after ci, in catalog 
   assert.ok(selfcheck, "roleById('selfcheck') returns a role");
   assert.equal(selfcheck.title, "self-check: files tumwater bugs from its own failure log");
 });
+test("the ci find carries the parity block and the CI line contract", () => {
+  const ci = roleById("ci");
+  assert.ok(ci, "roleById('ci') returns a role");
+  const find = oneLine(ci.find);
+  assert.match(find, /your prompt carries a CI parity block from this team's own record/);
+  assert.match(find, /declare nothing-to-do in ONE model run without running the suite/);
+  assert.match(find, /CI: <sha> — <passed\|failed>/);
+  assert.match(find, /a bare `CI: <sha>` is not a result and is not recorded/);
+  assert.match(find, /tumwater records it for the next run's parity block/);
+  assert.ok(ci.find.includes(`   CI: <sha> — passed
+   ${NOTHING_TO_DO}`), "the passing run's two-line ending is spelled out");
+});
+test("buildRunPrompt renders the ciParity block only when one is passed", () => {
+  const ci = roleById("ci");
+  assert.ok(ci);
+  const withParity = buildRunPrompt({
+    role: ci,
+    ciParity: "CI parity (from this team's own record):\n  current — main is unmoved",
+  });
+  assert.ok(withParity.includes("CI parity (from this team's own record"));
+  const without = buildRunPrompt({ role: ci });
+  assert.ok(!without.includes("CI parity (from this team's own record:"), "no block when none is injected");
+});
 test("the selfcheck find text carries tumwater-response rule, one bug, and the dedup check", () => {
   const find = oneLine(selfcheck!.find);
   assert.match(find, /File ONE bug in BUGS\.md's ## Open section per run/);
