@@ -285,13 +285,13 @@ discards a role's in-flight merge.
   deterministic rejects and the gate check, then merges with no reviewer run. The `merged` commit
   is recorded in `.tumwater/state/post-review.json`, and the merge poll runs one review at a time
   over `git diff <commit>^ <commit>` when a permit is free (`review_start`, `review_verdict` and
-  `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection goes to the revert
-  slot as above, with the reviewer's reasons in place of the failing tests, and the commit goes
-  back to its role as a revision. A review that ends three times with no verdict is dropped with a
+  `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection never reverts
+  (Forward, never back 1/6): the entry keeps the reviewer's reasons and the commit stays on main,
+  never re-reviewed. A review that ends three times with no verdict is dropped with a
   warning. Two or more post-merge rejections in a day raise one standing amber alert naming each
-  role on the dashboard, the TUI and `tumwater status` — the pre-revert signal to narrow
-  `review.afterMerge` for the noisy role or raise the authoring bar before the revert ceiling is
-  hit. The `tumwater doctor` audit names the same roles in its `post-merge churn` row.
+  role on the dashboard, the TUI and `tumwater status` — the signal to narrow
+  `review.afterMerge` for the noisy role or raise the authoring bar. The `tumwater doctor` audit
+  names the same roles in its `post-merge churn` row.
   While the reviewer's provider stands under a failure hold, or its strong tier is unresolvable
   under the review gate, the roles a pre-merge review gates are held — but a role on
   `review.afterMerge` is not: it merges without a reviewer, so it keeps authoring and its
