@@ -288,13 +288,14 @@ discards a role's in-flight merge.
   deterministic rejects and the gate check, then merges with no reviewer run. The `merged` commit
   is recorded in `.tumwater/state/post-review.json`, and the merge poll runs one review at a time
   over `git diff <commit>^ <commit>` when a permit is free (`review_start`, `review_verdict` and
-  `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection goes to the revert
-  slot as above, with the reviewer's reasons in place of the failing tests, and the commit goes
-  back to its role as a revision. A review that ends three times with no verdict is dropped with a
-  warning. Two or more post-merge rejections in a day raise one standing amber alert naming each
-  role on the dashboard, the TUI and `tumwater status` — the pre-revert signal to narrow
-  `review.afterMerge` for the noisy role or raise the authoring bar before the revert ceiling is
-  hit. The `tumwater doctor` audit names the same roles in its `post-merge churn` row.
+  `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection answers with the
+  reviewer's own landed fix commit through the ordinary change path when the review carries a
+  `FIX:` line (Forward, never back); otherwise the commit stays on main with the reviewer's
+  reasons recorded, and the entry is not re-reviewed. A review that ends three times with no
+  verdict is dropped with a warning. Two or more post-merge rejections in a day raise one
+  standing amber alert naming each role on the dashboard, the TUI and `tumwater status`, the
+  signal to narrow `review.afterMerge` for the noisy role or raise the authoring bar. The
+  `tumwater doctor` audit names the same roles in its `post-merge churn` row.
   While the reviewer's provider stands under a failure hold, or its strong tier is unresolvable
   under the review gate, the roles a pre-merge review gates are held — but a role on
   `review.afterMerge` is not: it merges without a reviewer, so it keeps authoring and its
@@ -565,8 +566,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   post-merge review queue as a Post-merge reviews card mirroring `tumwater reviews` with a Role picker that keeps only the chosen role's entries, the `tumwater reviews --role` twin, and a State picker that keeps only the chosen states — waiting, failing, rejected, each entry counted in the first state it matches — the `tumwater reviews --status` twin — the merged
   commits `review.afterMerge` put aside for post-merge review, each row naming the wait since the
   commit was queued for review (`<age> ago`, omitted for an entry an older file wrote without a
-  timestamp) matching `tumwater queue`'s age, each with its rejected (still
-  waiting on the revert) or failed-review status, and each row a two-click Accept posting
+  timestamp) matching `tumwater queue`'s age, each with its rejected (stays on main with the reviewer's reasons) or failed-review status, and each row a two-click Accept posting
   `POST /api/post-review-accept`, the browser twin of `tumwater reviews --accept <n>` (which the
   `post-merge-risk` alert's shared advice names as the deliberate accept-unreviewed action). A review one failed run from the
   `POST_REVIEW_FAILURE_LIMIT` drop raises the standing amber post-merge-risk alert on every

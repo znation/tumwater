@@ -1012,11 +1012,11 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
       actions: seeFailures(),
     });
   }
-  // Last day's post-merge review rejections — the pre-revert signal for the `review.afterMerge`
-  // tiering (src/review/post-merge-review.ts `reviewMergedCommit`). A post-merge rejection is the
-  // costly kind: the commit already reached main, so the rejection starts a revert and a
-  // re-author, and the always-on signal for a day crossing POST_MERGE_REJECT_WARN is this alert
-  // ahead of the `reverts` ceiling. status-payload.ts's postMergeChurnAlert feeds it from the
+  // Last day's post-merge review rejections — the signal for the `review.afterMerge`
+  // tiering (src/review/post-merge-review.ts `reviewMergedCommit`). A post-merge rejection is
+  // the costly kind: the commit already reached main and stays there with the reviewer's
+  // reasons, and the always-on signal for a day crossing POST_MERGE_REJECT_WARN is this alert.
+  // status-payload.ts's postMergeChurnAlert feeds it from the
   // same `afterMerge: true` `review_rejected` events the report's postMergeRejectionsByRole
   // folds, so the alert and the report cannot disagree on which rejections are post-merge.
   if (postMergeChurn) {
@@ -1024,7 +1024,7 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
       key: "post-merge-churn",
       tone: "amber",
       title: `${plural(postMergeChurn.count, "post-merge review rejection", "post-merge review rejections")} in the last day`,
-      detail: `${postMergeChurn.roles.map((r) => `${roleLabel(r.role)} ×${r.count}`).join(", ")} — each commit already reached main, so a post-merge rejection costs a revert and a re-author; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
+      detail: `${postMergeChurn.roles.map((r) => `${roleLabel(r.role)} ×${r.count}`).join(", ")} — each commit already reached main and stays there with the reviewer's reasons; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
       actions: seeFailures(),
     });
   }

@@ -150,8 +150,9 @@ export function defaultConfig(): ResolvedModelConfig {
     // Reviewer as a regular role (part 1/4): the high-volume, low-blast-radius roles — bugfix,
     // readme, organize, plus clean, dedupe, coverage — are reviewed AFTER they merge, on their
     // merged commit (src/review/post-merge-review.ts), instead of holding the merge queue for a
-    // reviewer run on their (usually trivial) diff; a rejection reverts the commit back to the
-    // author as a revision. feature, director, perf, improve and custom roles stay pre-merge. A
+    // reviewer run on their (usually trivial) diff; a rejection keeps the commit on main
+    // with the reviewer's reasons. feature, director, perf, improve and custom roles stay
+    // pre-merge. A
     // config that omits `review.afterMerge` inherits this, and `"afterMerge": []` opts out (back
     // to reviewing before merging).
     review: { enabled: true, exemptPaths: ["*.md", "docs/**"], afterMerge: ["bugfix", "clean", "coverage", "dedupe", "organize", "readme"] },

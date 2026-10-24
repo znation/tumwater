@@ -121,8 +121,8 @@ interface ReviewConfig {
    * ** across segments). */
   exemptPaths: string[];
   /** Base role ids whose changes merge once the gate passes, with no review first; a review of
-   * the merged commit follows, and a rejection reverts it and hands it back to its author
-   * (plans/fast-merge.md, Lever 7). Never `director`. Absent means every role is reviewed
+   * the merged commit follows, and a rejection keeps the commit on main with the reviewer's
+   * reasons (plans/fast-merge.md, Lever 7). Never `director`. Absent means every role is reviewed
    * before merging. */
   afterMerge?: string[];
   /** pi provider override for reviewer runs; falls back to the top-level value. */

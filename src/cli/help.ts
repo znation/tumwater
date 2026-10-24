@@ -258,7 +258,7 @@ Usage:
                                    /post-review.json) in FIFO order: one line per merged commit
                                    waiting for its review — position, role, short sha, summary,
                                    and either its rejected reasons
-                                   (\`[rejected — waiting to revert: …]\`) or its
+                                   (\`[rejected: …]\`) or its
                                    failed-review-run count (\`[N failed review runs]\`); an empty
                                    queue prints \`post-merge review queue empty\`; --json prints
                                    the normalized { pending: [...] } list for scripts; --role
@@ -270,7 +270,7 @@ Usage:
                                    composes with --role; --accept <n>
                                    removes the Nth queued entry (the position \`tumwater reviews\`
                                    prints) as deliberately accepted unreviewed, logging a warning;
-                                   it refuses an entry already rejected and waiting on its revert;
+                                   it refuses an already-rejected entry (nothing to accept);
                                    no ready-repo gate for the read, a missing or torn file degrades
                                    to the empty or well-formed list
   tumwater backlog [--ready] [--grep <text>] [-f/--follow] [--json]

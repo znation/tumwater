@@ -255,12 +255,11 @@ export interface PostMergeChurn {
 /** The always-on feed for the `post-merge-churn` team alert (src/ui/team-alerts.ts): a day in
  * which at least `POST_MERGE_REJECT_WARN` already-merged commits were turned back by post-merge
  * review, each rejection written by reviewMergedCommit as a `review_rejected` event with
- * `afterMerge: true`. Post-merge is the costly kind — the commit already reached main, so the
- * rejection starts a revert and a re-author — and it is the pre-revert signal for the
- * `review.afterMerge` tiering, ahead of the `reverts` alert's revert ceiling. Reads the same
- * events the report's `postMergeRejectionsByRole` fills, so the two cannot disagree; null when
- * the window holds fewer than `POST_MERGE_REJECT_WARN` post-merge rejections, or none. A read
- * error skips the row (the capacityContention precedent). */
+ * `afterMerge: true`. Post-merge is the costly kind — the commit already reached main and
+ * stays there with the reviewer's reasons, signalling the `review.afterMerge` tiering.
+ * Reads the same events the report's `postMergeRejectionsByRole` folds, so the two cannot
+ * disagree; null when the window holds fewer than `POST_MERGE_REJECT_WARN` post-merge
+ * rejections, or none. A read error skips the row (the capacityContention precedent). */
 export function postMergeChurnAlert(root: string, now = Date.now()): PostMergeChurn | null {
   try {
     const events = eventsSince(root, POST_MERGE_REJECT_WINDOW_MS, now, (e) => e.type === "review_rejected");
