@@ -175,6 +175,25 @@ test("a role whose merge is already queued is not enqueued twice", async () => {
   assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin is untouched");
 });
 
+test("a queued merge with a relief commit ahead of main recovers relief_wait, not already_queued", async () => {
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  enqueueMerge(root, { role: ROLE, sha: "a".repeat(40), run: 3, summary: "queued change", enqueuedAt: Date.now() });
+  fs.appendFileSync(path.join(wt, "relief.txt"), "held work\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "relief run held this commit");
+  const tip = headSha(wt);
+
+  const recovered = await recoverLeftover(makeCtx(root, wt));
+
+  assert.equal(recovered?.kind, "relief_wait");
+  assert.equal(recovered?.kind === "relief_wait" && recovered.entry.summary, "queued change");
+  assert.equal(queuedMerges(root).length, 1, "the queue still holds just the one entry");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), null, "no pin is created for the held commit");
+  assert.equal(headSha(wt), tip, "the held commit stays on the branch");
+  assert.equal(eventsOfType(root, "merge_queued").length, 0, "nothing extra is enqueued");
+});
+
 // BUGS.md 2026-09-19: recovery re-merged a high-friction commit without its flag (and its
 // body), so the reviewer skipped the extra scrutiny the flag exists to trigger. Both are
 // already durable in the commit message the harness stamped; recovery reads them back.
@@ -271,6 +290,32 @@ test("an unpinned commit ahead of main (crash in the commit→pin window) is ado
   // The unpinned commit was adopted into the pin scheme: an under-cap review failure keeps this
   // ref for the strike cap's retry exactly as for a normally pinned one.
   assert.equal(await refSha(root, mergeRefName(ROLE)), tip, "the fallback adopts the pin");
+});
+
+test("a no-pin ahead-of-main commit named by a reviewer hold or main_red retry is not adopted", async () => {
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.appendFileSync(path.join(wt, "held.txt"), "held work\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "commit the hold names");
+  const tip = headSha(wt);
+  assert.equal(await refSha(root, mergeRefName(ROLE)), null, "fixture sanity: no pin");
+
+  const mainRedRetry = { head: headSha(root), entry: { role: ROLE, run: 1, summary: "x", enqueuedAt: 0 } };
+  const red = await recoverLeftover({ ...makeCtx(root, wt), mainRedRetry });
+
+  assert.equal(red?.kind, "main_red_wait");
+  assert.equal(red?.kind === "main_red_wait" ? red.sha : null, tip);
+  assert.deepEqual(queuedMerges(root), [], "nothing is queued");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the main_red tip is not adopted into a pin");
+  assert.equal(headSha(wt), tip, "the commit stays on the branch");
+
+  const reviewError = { sha: tip, selector: "gpt-x", message: "reviewer config is broken" };
+  const held = await recoverLeftover({ ...makeCtx(root, wt), mergeReviewError: reviewError });
+
+  assert.deepEqual(held, { kind: "held", sha: tip, message: "reviewer config is broken" });
+  assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the held tip is not adopted into a pin");
+  assert.equal(headSha(wt), tip, "the commit stays on the branch");
 });
 
 test("a failed pin adoption is logged and queues nothing: the commit stays on the branch", async () => {

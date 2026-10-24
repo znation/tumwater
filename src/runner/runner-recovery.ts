@@ -1,7 +1,7 @@
 import type { RunOutcome } from "../run/run-outcome.js";
 import type { RunnerState } from "./runner-state.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
-import { setRef } from "../git/git.js";
+import { aheadOfMain, headOf, setRef } from "../git/git.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { mergeRefName } from "../paths.js";
 import { shortSha } from "../text/format.js";
@@ -85,7 +85,9 @@ export async function pinAndResetPhase(ctx: RecoveryContext, wt: string, sha: st
  * (`priorMergeFailure`), re-queuing it is a retry of a PERSISTENT failure the `queued` result
  * cannot express, so it rides the outcome's recoveryFailure into the error streak and the
  * warning that names the stuck gate (BUGS.md 2026-09-21). A role whose merge is still queued
- * ends `queued` on that entry — nothing enqueued twice, nothing reset. A leftover that could
+ * ends `queued` on that entry — nothing enqueued twice, nothing reset; a queued entry whose
+ * branch also holds a relief commit ahead of main ends `skipped`, leaving both untouched. A
+ * leftover that could
  * not be pinned stays on the branch and the run fails like a fresh run's failed pin. Every
  * arm is `recoveredLeftover`: no model ran, so the run is no evidence about the backend. */
 export async function finishRecoveryRunPhase(
@@ -116,9 +118,22 @@ export async function finishRecoveryRunPhase(
     return { result: "main_red", summary: recovered.message, error: recovered.message, recoveredLeftover: true };
   }
   const { entry } = recovered;
+  if (recovered.kind === "relief_wait") {
+    // The role still has a queued change and its branch holds a second commit ahead of main
+    // (a prior relief run staged it unpinned). Leave the worktree exactly as it is — the held
+    // commit must survive until the queue entry drains — and end skipped, no authoring run
+    // (plans/interlock-relief.md part 2/4).
+    return { result: "skipped", recoveredLeftover: true };
+  }
   if (recovered.kind === "enqueued") {
     ctx.setRecoveryFailure(priorMergeFailure);
-    await resetWorktreeToMain(wt, ctx.mainBranch);
+    // Reset the worktree only when the branch is at main or its tip IS the re-queued pin: an
+    // unpinned relief commit (part 1/4) sitting ahead of main on a different tip must survive,
+    // or the reset would discard it before it ever merges.
+    const reset =
+      (await aheadOfMain(wt, ctx.mainBranch).catch(() => 0)) <= 0 ||
+      (await headOf(wt, "HEAD").catch(() => null)) === entry.sha;
+    if (reset) await resetWorktreeToMain(wt, ctx.mainBranch);
   }
   return {
     result: "queued",

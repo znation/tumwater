@@ -3,6 +3,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunOutcome } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RunnerState } from "./runner-state.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { branchExists, deleteRef, commitMessage, changeBaseRev, headOf } from "../git/git.js";
 import { git, gitTry } from "../git/git-run.js";
@@ -550,7 +551,20 @@ async function runWithWorktreePhase(
       s.conflictHandback = undefined;
       s.conflictDiscard = { sha: recovered.sha, summary: recovered.summary, attempts: recovered.attempts, at: Date.now() };
       prompt = appendPromptNote(prompt, buildConflictDiscardNote(recovered.summary, recovered.attempts));
-    } else if (recovered) return ctx.finishRecoveryRun(recovered, userPrompt, wt, priorMergeFailure);
+    } else if (
+      recovered &&
+      !(
+        recovered.kind === "already_queued" &&
+        (ctx.config.review.afterMerge ?? []).includes(baseRoleOf(ctx.role))
+      )
+    ) {
+      // Every recovery kind ends the run here — EXCEPT `already_queued` for a post-merge-review
+      // role, whose arm the scheduler admits (plans/interlock-relief.md part 3/4) and whose
+      // branch is at main: that one falls through to author below instead of ending. Every
+      // other kind, `relief_wait` (a held commit ahead of main beside a queued entry) included,
+      // ends the run.
+      return ctx.finishRecoveryRun(recovered, userPrompt, wt, priorMergeFailure);
+    }
     await resetWorktreeToMain(wt, ctx.mainBranch);
     // A promptless recovery run found nothing to salvage (or deleted a stale pin): it authors
     // nothing, so it ends here rather than reach the authoring run with a null prompt.

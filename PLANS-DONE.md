@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Interlock relief, part 2/4: Recovery preserves a held branch commit and lets an approved queued author run (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision"; split of the oversized Interlock relief part 1/2; requires part 1/4 landed — the held-on-branch staging; the scheduler admission is part 3/4; touches src/runner/leftover.ts src/runner/runner-recovery.ts src/runner/runner-run.ts test/leftover.test.ts test/runner-leftover-recovery.test.ts test/runner-recovery.test.ts) — done 2026-10-23 by the feature role
+
+**Previously held 1**
+
+**Goal.** Once part 1/4 stages a second commit on the branch, recovery must let a scheduler-admitted run author instead of ending on `already_queued`, report an already-held branch commit as a wait without discarding it, and keep a main-red or reviewer-config hold from being repointed by pin adoption.
+
+**Approach.**
+- src/runner/leftover.ts (`recoverLeftover`): when the role has a queued entry, return a new `relief_wait` recovery when the branch is ahead of main (the held commit) and `already_queued` when it is at main; add `relief_wait` to the `LeftoverRecovery` union. In the no-pin branch, when `mergeReviewError` or `mainRedRetry` names the branch tip, return `held`/`main_red_wait` with that tip's sha WITHOUT adopting it into `refs/tumwater/merge/<role>`: adopting would repoint the ref and lose the kept sha.
+- src/runner/runner-run.ts: the `already_queued` arm still ends the run except for a post-merge-review role (`(ctx.config.review.afterMerge ?? []).includes(baseRoleOf(ctx.role))`), where it falls through to author — that fall-through IS the run the scheduler admitted. Every other recovery kind, `relief_wait` included, ends the run.
+- src/runner/runner-recovery.ts (`finishRecoveryRunPhase`): `relief_wait` ends `{ result: "skipped", recoveredLeftover: true }` without resetting the worktree (the held commit must survive). `enqueued` resets only when the branch is at main or its tip IS the re-queued pin, so an unpinned relief commit is not discarded.
+
+**Acceptance criteria.**
+- A role with a queued entry and a branch commit ahead of main recovers `relief_wait`; with the branch at main it recovers `already_queued`.
+- A post-merge-review role whose recovery is `already_queued` falls through to author; a pre-merge-review role ends the run as today; every other recovery kind ends the run.
+- `relief_wait` ends `skipped` with `recoveredLeftover: true` and leaves the branch commit in place; `enqueued` resets only when the branch is at main or its tip is the re-queued pin.
+- A recovery run with a branch commit ahead of main, no pin, and `mainRedRetry` (or `mergeReviewError`) set creates or repoints no `refs/tumwater/merge/<role>`, leaves the branch commit in place, and ends on the held/`main_red` path.
+- `npm run test:gate` passes.
+
+**Tests.** test/leftover.test.ts (branch-ahead `relief_wait`; the no-pin held-record guard does not adopt); test/runner-recovery.test.ts and test/runner-leftover-recovery.test.ts (the recovery arms and the conditional reset, plus the `already_queued` fall-through versus the pre-merge end).
+
 ### Capacity contention in the last day raises a standing amber alert on the dashboard, the TUI and `tumwater status`: the always-on twin of the doctor's three `_wait` contention rows (planned 2026-10-23 by the plan role; independent of every waiting entry in behavior — it reads events the doctor already reads and edits no src/merge, src/orchestrator, src/runner, src/roles, src/review, src/cli, src/gui or src/build file; the in-flight Merges-refused alert shares src/ui/team-alerts.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx, docs/how-it-works.md and test/team-alerts.test.ts, and the parked notify and revert alerts share src/ui/status-payload.ts, so whichever lands second rebases over a neighbouring parameter, block, reader or sentence; touches src/doctor/doctor-contention-checks.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** `tumwater doctor` has three sibling rows — `workspaces` (`checkWorktreePool`), `provider contention` (`checkProviderContention`) and `check contention` (`checkCheckContention`) — that each fold a window of `*_wait` events with `sumWaits` (src/doctor/doctor-contention-checks.ts) and warn at ten minutes total, naming the knob to raise (`worktreeSlots`, `maxConcurrentPerProvider.<key>`/`maxConcurrent`, `maxConcurrentChecks`). An operator only sees them by running the doctor; the status header's `workspacesBadge`, `permitsBadge` and `checksBadge` show only the instantaneous wait counts, and the 24 h total is the tuning signal that says the cap is too small. Add the always-on twin: a standing amber `contention` alert on all three observer surfaces when the last day's waits cross any row's threshold, carrying the doctor's own detail so the alert and the doctor cannot drift.

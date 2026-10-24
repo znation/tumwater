@@ -175,3 +175,46 @@ test("finishRecoveryRunPhase queues a freshly enqueued pin, resets the worktree,
   assert.deepEqual(failures, ["the prior failure"], "a re-queued persistent failure rides into the error streak");
   assert.equal(headSha(wt), mainSha(root), "the worktree is freed once the pin owns the commit");
 });
+
+test("finishRecoveryRunPhase ends a relief_wait skipped and leaves the held commit on the branch", async () => {
+  const { root, wt } = await initializedWorktree();
+  const { ctx } = makeCtx(root);
+  fs.writeFileSync(path.join(wt, "held.txt"), "held commit on the branch\n");
+  commitIn(wt, "held relief commit");
+  const heldTip = headSha(wt);
+  const entry: MergeEntry = { role: "improve", sha: "sha1", run: 3, summary: "the queued one", enqueuedAt: 0 };
+
+  const outcome = await finishRecoveryRunPhase(ctx, { kind: "relief_wait", entry }, null, wt, undefined);
+
+  assert.deepEqual(outcome, { result: "skipped", recoveredLeftover: true });
+  assert.equal(headSha(wt), heldTip, "the held commit is left in place, not reset away");
+});
+
+test("finishRecoveryRunPhase keeps an unpinned relief commit when enqueuing a different pin", async () => {
+  const { root, wt } = await initializedWorktree();
+  const { ctx } = makeCtx(root);
+  fs.writeFileSync(path.join(wt, "held.txt"), "held commit on the branch\n");
+  commitIn(wt, "held relief commit");
+  const heldTip = headSha(wt);
+  // The re-queued pin is a DIFFERENT commit; the branch is ahead with the held commit.
+  const entry: MergeEntry = { role: "improve", sha: "sha1", run: 4, summary: "the summary", enqueuedAt: 0 };
+
+  const outcome = await finishRecoveryRunPhase(ctx, { kind: "enqueued", entry }, null, wt, undefined);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(headSha(wt), heldTip, "the held commit survives: the branch is NOT reset");
+});
+
+test("finishRecoveryRunPhase resets the worktree when the branch tip IS the re-queued pin", async () => {
+  const { root, wt } = await initializedWorktree();
+  const { ctx } = makeCtx(root);
+  fs.writeFileSync(path.join(wt, "pinned.txt"), "work\n");
+  commitIn(wt, "the pinned commit");
+  const tip = headSha(wt);
+  const entry: MergeEntry = { role: "improve", sha: tip, run: 4, summary: "the summary", enqueuedAt: 0 };
+
+  const outcome = await finishRecoveryRunPhase(ctx, { kind: "enqueued", entry }, null, wt, undefined);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(headSha(wt), mainSha(root), "the branch is reset once its tip is the re-queued pin's commit");
+});

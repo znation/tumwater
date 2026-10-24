@@ -115,6 +115,10 @@ export interface LeftoverContext {
  *   until the slot has merged it;
  * - `already_queued`: the role already has a merge on the queue (the interlock normally keeps
  *   such a role from running at all) — nothing is enqueued twice and no ref is touched;
+ * - `relief_wait`: the role already has a merge on the queue AND its branch holds a second
+ *   commit ahead of main staged unpinned by a prior relief run (plans/interlock-relief.md
+ *   part 1/4) — neither re-queued nor reset, left on the branch for the run after the queued
+ *   entry drains;
  * - `unpinned`: the commit sits on the branch ahead of main and adopting it into the merge
  *   ref failed — a merge without a pin loses the ref lifecycle the queue depends on, so the
  *   commit stays on the branch for the next run, like a fresh run's failed pin;
@@ -134,6 +138,7 @@ export interface LeftoverContext {
 export type LeftoverRecovery =
   | { kind: "enqueued"; entry: MergeEntry }
   | { kind: "already_queued"; entry: MergeEntry }
+  | { kind: "relief_wait"; entry: MergeEntry }
   | { kind: "unpinned"; sha: string }
   | { kind: "held"; sha: string; message: string }
   | { kind: "main_red_wait"; sha: string; message: string }
@@ -160,7 +165,16 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   // One merge ref per role, so at most one outstanding merge per role: a second entry beside
   // one the slot has yet to finish would share — and fight over — the same ref.
   const queued = queuedMerges(ctx.root).find((e) => e.role === ctx.role);
-  if (queued) return { kind: "already_queued", entry: queued };
+  if (queued) {
+    // A role with a queued entry whose branch is still ahead of main holds a second commit
+    // staged unpinned by a prior relief run (plans/interlock-relief.md part 1/4). Neither
+    // re-queue it (the one-entry-per-role queue gate owns that spot) nor touch the branch:
+    // `relief_wait` ends the run and leaves the commit for the run after the entry drains.
+    if ((await aheadOfMain(ctx.wt, ctx.mainBranch).catch(() => 0)) > 0) {
+      return { kind: "relief_wait", entry: queued };
+    }
+    return { kind: "already_queued", entry: queued };
+  }
   const ref = mergeRefName(ctx.role);
   let sha = await refSha(ctx.root, ref).catch(() => null);
   if (sha) {
@@ -175,6 +189,16 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     if (ahead <= 0) return null;
     sha = await headOf(ctx.wt, "HEAD").catch(() => null);
     if (!sha) return null;
+    // Hold checks BEFORE adopting: when a reviewer-config hold or a main_red retry names this
+    // tip, adopting it into the merge ref would create/repoint the pin and lose the kept sha
+    // the wait exists to preserve. Return the hold path without touching the ref (BUGS.md
+    // 2026-10-06, the main_red wait), leaving the commit on the branch.
+    const heldTip = reviewHold(ctx.mergeReviewError, sha);
+    if (heldTip) return { kind: "held", sha, message: heldTip.message };
+    if (ctx.mainRedRetry) {
+      const message = `kept change ${shortSha(sha)} waits for main to move past red ${shortSha(ctx.mainRedRetry.head)} before its next merge`;
+      return { kind: "main_red_wait", sha, message };
+    }
     // Adopt the unpinned commit into the pin scheme so every downstream outcome — kept on an
     // under-cap review failure (the strike cap's retry), deleted on reject/merge/discard,
     // discarded on a user abort — behaves exactly as for a normally pinned one. A failed

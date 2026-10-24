@@ -19,7 +19,7 @@ import { setRef } from "../src/git/git.js";
 import { ERROR_STREAK_WARN } from "../src/run/run-apply.js";
 import { mergeRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { headMerge, queueDepth } from "../src/merge/merge-queue.js";
+import { enqueueMerge, headMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { rolePhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeRoleRunner, roleWt, runAbortedDirectorMerge } from "./fixtures/runner-fixtures.js";
@@ -377,6 +377,50 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
       // The role worktree is clean at main whatever recovery did.
       assertClean(roleWt(repo, "improve"));
       assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
+    },
+  );
+});
+
+// The interlock relief (plans/interlock-relief.md part 2/4): when a post-merge-review role has
+// a queued change and its branch is at main, recovery reports `already_queued`, and for a
+// post-merge-review role that arm falls through to author instead of ending the run — the
+// fall-through IS the run the scheduler admits (part 3/4). A pre-merge-review role's
+// `already_queued` still ends the run, as today.
+test("a post-merge-review role with an already_queued recovery falls through to author", async () => {
+  const repo = await initializedRepo();
+  enqueueMerge(repo, { role: "bugfix", sha: "a".repeat(40), run: 3, summary: "queued change", enqueuedAt: Date.now() });
+  const authored = path.join(tmpdir(), "authored");
+  await withPi(
+    [
+      `touch "${authored}"`,
+      `printf '%s\n' '${assistantLine("ok\nSUMMARY: follow-up work")}'`,
+      `echo followup > followup.txt`,
+    ].join("\n"),
+    async () => {
+      const runner = makeRoleRunner(repo, "bugfix");
+      const outcome = await runner.run();
+
+      assert.ok(fs.existsSync(authored), "the already_queued post-merge run reached the author");
+      // The authored follow-up is held on the branch (part 1/4): the role still has a queued entry.
+      assert.equal(outcome.result, "queued", "the run ended queued, holding its commit on the branch");
+      assert.equal(headMerge(repo)?.entry.sha, "a".repeat(40), "the queued entry is untouched");
+    },
+  );
+});
+
+test("a pre-merge-review role with an already_queued recovery still ends the run", async () => {
+  const repo = await initializedRepo();
+  enqueueMerge(repo, { role: "improve", sha: "a".repeat(40), run: 3, summary: "queued change", enqueuedAt: Date.now() });
+  const authored = path.join(tmpdir(), "authored");
+  await withPi(
+    [`touch "${authored}"`, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
+    async () => {
+      const runner = makeRoleRunner(repo, "improve");
+      const outcome = await runner.run();
+
+      assert.equal(outcome.result, "queued", "the pre-merge role ends on the recovery run");
+      assert.ok(!fs.existsSync(authored), "no authoring run: recovery ended the run");
+      assert.equal(headMerge(repo)?.entry.sha, "a".repeat(40));
     },
   );
 });
