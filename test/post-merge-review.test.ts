@@ -6,13 +6,12 @@ import { defaultConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { drainPostReviews } from "../src/merge/merge-post-review.js";
-import { drainMerge } from "../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
 import { addPostReview, readPostReviews, POST_REVIEW_FAILURE_LIMIT, postMergeRejectionCounts } from "../src/review/post-merge-review.js";
 import type { HarnessEvent } from "../src/events/events.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
-import { postReviewPath, rejectedRefName, reviewFixRef } from "../src/paths.js";
+import { postReviewPath, reviewFixRef } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { gateFixture, reviewGate } from "./fixtures/gate-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
@@ -88,14 +87,6 @@ function setup(verdict: string) {
   return { root, commit, runner, ctx };
 }
 
-/** Polls until the async revert skip check has filled the revert slot. */
-async function drainUntilRevert(ctx: MergePipelineContext, p: ReturnType<typeof newMergePipeline>): Promise<void> {
-  for (let i = 0; i < 200 && p.revert === null; i++) {
-    drainPostReviews(ctx, p);
-    await sleep(10);
-  }
-}
-
 test("an approving post-merge review ends the entry and logs afterMerge events", async () => {
   const { root, ctx } = setup("VERDICT: approve\n1. fine");
   const p = newMergePipeline();
@@ -105,28 +96,32 @@ test("an approving post-merge review ends the entry and logs afterMerge events",
   assert.equal(eventsOfType(root, "review_verdict")[0]?.afterMerge, true);
 });
 
-test("a rejecting post-merge review reverts the commit and hands it back as a revision", async () => {
-  const { root, commit, runner, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+test("a rejecting post-merge review never fills the revert slot and keeps the commit on main", async () => {
+  const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
   const p = newMergePipeline();
   drainPostReviews(ctx, p);
   await p.postReview!.promise;
   assert.equal(eventsOfType(root, "review_rejected")[0]?.afterMerge, true);
-  await drainUntilRevert(ctx, p); // the rejection moves to the revert slot
-  assert.equal(p.revert?.commit, commit);
-  drainMerge(ctx, p);
-  await p.merge!.promise;
-  assert.equal(readPostReviews(root).length, 0);
-  assert.ok(!fs.existsSync(path.join(root, "x.txt")));
-  assert.equal(runner.state.revision?.sha, commit);
-  assert.match(runner.state.lastReview?.reasons[0] ?? "", /breaks the contract/);
-  assert.equal(sh(root, "git", "rev-parse", rejectedRefName("improve")).trim(), commit);
+  // Several more polls with an idle merge slot: the rejection must never route to a revert.
+  for (let i = 0; i < 5; i++) {
+    drainPostReviews(ctx, p);
+    await sleep(10);
+  }
+  assert.equal(p.revert, null, "a post-merge rejection never fills the revert slot");
+  assert.equal(headSha(root), commit, "the rejected commit stays on main");
+  // The rejection is recorded in post-review.json, answered only by the reviewer's own fix
+  // (part 1a/6), and never re-reviewed.
+  const entries = readPostReviews(root);
+  assert.equal(entries.length, 1);
+  assert.deepEqual(entries[0]!.rejected, ["breaks the contract"]);
 });
 
-test("a post-merge rejection of an already-archived entry restores the live entry and fetches the revision", async () => {
+test("a post-merge rejection leaves an archived entry archived: nothing walks the change back", async () => {
   // The commit-time archive sweep (archiveNewFinishedEntries, src/backlog/backlog-archive.ts) moves
-  // a finished `## Planned` entry out of the live file and into the archive on merge. A post-merge
-  // rejection must not strand that change: reverting the merged commit restores the live entry, and
-  // handBackReverted gives the author a revision carrying the reviewer's reasons.
+  // a finished `## Planned` entry out of the live file and into the archive on merge. Under
+  // Forward, never back (part 1/6) a post-merge rejection is answered by the reviewer's own fix,
+  // never a revert, so the merged commit's archive is NOT walked back: the entry stays archived,
+  // the archive file stays, and the commit stays on main.
   const root = makeRepo();
   const planned = `# Plans\n\n## Planned\n\n### The archived entry (planned 2026-10-23 by user)\n\nSome body.\n\n## Done\n\n_None yet._\n`;
   fs.writeFileSync(path.join(root, "PLANS.md"), planned);
@@ -157,33 +152,25 @@ test("a post-merge rejection of an already-archived entry restores the live entr
   const p = newMergePipeline();
   drainPostReviews(ctx, p);
   await p.postReview!.promise;
-  await drainUntilRevert(ctx, p); // the rejection moves to the revert slot
-  assert.equal(p.revert?.commit, commit);
-  drainMerge(ctx, p);
-  await p.merge!.promise;
-  assert.equal(readPostReviews(root).length, 0);
-  // The live entry is back under `## Planned`, not stranded in the finished section, and the
-  // archive file the merged commit created is gone with the revert.
+  assert.equal(p.revert, null, "the rejection never fills the revert slot");
+  assert.equal(headSha(root), commit, "the rejected commit stays on main");
   const plans = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
-  assert.match(plans, /## Planned\n\n### The archived entry/);
-  assert.ok(plans.includes("## Done\n\n_None yet._"), "the archived entry is not stranded in the finished section");
-  assert.ok(!fs.existsSync(path.join(root, "PLANS-DONE.md")), "the archive file the merged commit created is gone with the revert");
-  assert.equal(runner.state.revision?.sha, commit);
-  assert.match(runner.state.lastReview?.reasons[0] ?? "", /the change must not land/);
-  assert.equal(sh(root, "git", "rev-parse", rejectedRefName("improve")).trim(), commit);
+  assert.ok(plans.includes("## Planned\n\n_None yet._"), "the archived entry stays archived — no revert restores it");
+  assert.ok(fs.existsSync(path.join(root, "PLANS-DONE.md")), "the archive file the merged commit created stays");
 });
 
-test("a rejected entry stays queued until its revert ran: a replaced revert slot is refilled next poll", async () => {
+test("a rejected entry stays recorded in post-review.json and never takes the revert slot", async () => {
   const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
   const p = newMergePipeline();
   drainPostReviews(ctx, p);
   await p.postReview!.promise;
-  await drainUntilRevert(ctx, p);
-  assert.equal(p.revert?.commit, commit);
-  assert.equal(readPostReviews(root).length, 1, "the rejection is kept while the slot holds it");
-  p.revert = null as typeof p.revert; // the main-red watch replaced the slot, or a shutdown dropped it
-  await drainUntilRevert(ctx, p);
-  assert.equal(p.revert?.commit, commit, "the next poll puts it back");
+  assert.ok(readPostReviews(root).some((e) => e.commit === commit && e.rejected !== undefined), "the rejection is kept as the record");
+  // Whatever the slot state, further polls never route the rejection to a revert.
+  for (let i = 0; i < 5; i++) {
+    drainPostReviews(ctx, p);
+    await sleep(10);
+  }
+  assert.equal(p.revert, null, "the revert slot stays free across polls");
 });
 
 test("a listed role's change merges with no review before it, then is queued and reviewed after", async () => {
@@ -312,25 +299,20 @@ test("a torn post-review.json entry is dropped and the well-formed one is still 
   assert.equal(readPostReviews(root).length, 0);
 });
 
-test("a failed post-review.json write after a revert warns and still frees the merge slot", async () => {
+test("a failed post-review.json write on a rejection warns and does not wedge the pipeline", async () => {
   const { root, ctx } = setup("VERDICT: reject\n1. bad");
   const p = newMergePipeline();
-  drainPostReviews(ctx, p);
-  await p.postReview!.promise;
-  await drainUntilRevert(ctx, p);
-  assert.ok(p.revert);
   const undo = failRenameSyncOn(postReviewPath(root), "pr write refused");
   try {
-    drainMerge(ctx, p);
-    await p.merge!.promise;
+    drainPostReviews(ctx, p);
+    await p.postReview!.promise;
   } finally {
     undo();
   }
-  assert.equal(p.merge, null);
-  assert.equal(readPostReviews(root).length, 1);
+  assert.equal(p.postReview, null, "the review task freed the slot");
+  assert.equal(p.revert, null, "no revert starts even when the rejection's write fails");
   const warnings = eventsOfType(root, "warning").filter((e) => e.source === "tumwater");
-  assert.equal(warnings.length, 1);
-  assert.match(String(warnings[0]!.message), /pr write refused/);
+  assert.ok(warnings.some((e) => String(e.message).includes("pr write refused")), "the failed write warns");
 });
 
 test("readPostReviews drops a non-numeric enqueuedAt and omits the field when absent", () => {
@@ -382,24 +364,7 @@ test("addPostReview stamps enqueuedAt and a re-queued entry and a failed run kee
   assert.equal(kept[0]!.enqueuedAt, 1_000);
 });
 
-test("a failed post-review.json write in the revert skip check still logs why it does not revert", async () => {
-  const { root, commit, ctx } = setup("VERDICT: approve\n1. fine");
-  fs.writeFileSync(
-    postReviewPath(root),
-    JSON.stringify({ pending: [{ commit, role: "director", summary: "s", rejected: ["r"] }] }),
-  );
-  const p = newMergePipeline();
-  const undo = failRenameSyncOn(postReviewPath(root), "pr write refused");
-  try {
-    drainPostReviews(ctx, p);
-    const messages = () => eventsOfType(root, "warning").map((e) => String(e.message));
-    for (let i = 0; i < 200 && !messages().some((m) => m.includes("not reverting")); i++) await sleep(10);
-    assert.ok(messages().some((m) => m.includes("not reverting")));
-    assert.ok(messages().some((m) => m.includes("pr write refused")));
-  } finally {
-    undo();
-  }
-});
+
 
 test("the poll drains a fleet-scale queue in FIFO order, reviewing each commit exactly once", async () => {
   // reviewer-as-regular-role part 2a/4: post-merge review was built for three slow maintenance
@@ -442,11 +407,10 @@ test("the poll drains a fleet-scale queue in FIFO order, reviewing each commit e
   assert.equal(eventsOfType(root, "review_verdict").length, 10, "every reviewed commit got a verdict");
 });
 
-test("a queued rejection fills the revert slot while the poll reviews the first unreviewed commit", async () => {
-  // The rejected-first branch of drainPostReviews: with an unreviewed entry both ahead of and
-  // behind a rejected one, the rejected commit routes to the revert slot (checked first) and the
-  // review picks the first UNREVIEWED entry in queue order, so it is neither re-reviewed nor
-  // reordered.
+test("a queued rejection is neither re-reviewed nor reverted while the poll reviews the first unreviewed commit", async () => {
+  // With an unreviewed entry both ahead of and behind a rejected one, the review picks the first
+  // UNREVIEWED entry in queue order, so the rejected one is neither re-reviewed nor reordered — and
+  // (Forward, never back 1/6) it never fills the revert slot either.
   const root = makeRepo(); // already has a root "seed" commit
   const commits: string[] = [];
   for (let i = 0; i < 3; i++) {
@@ -481,8 +445,10 @@ test("a queued rejection fills the revert slot while the poll reviews the first 
   drainPostReviews(ctx, p);
   await p.postReview!.promise;
   assert.equal(eventsOfType(root, "review_start")[0]?.head, a, "FIFO: the first unreviewed commit is picked, skipping the rejected one");
-  await drainUntilRevert(ctx, p);
-  assert.equal(p.revert?.commit, rejectedB, "the rejected entry fills the revert slot");
+  assert.equal(p.revert, null, "the rejected entry never fills the revert slot");
+  const kept = readPostReviews(root);
+  const b = kept.find((e) => e.commit === rejectedB)!;
+  assert.deepEqual(b.rejected, ["breaks the contract"], "the rejected entry stays recorded, never re-reviewed");
 });
 
 test("a verdict-less review past the failure limit drops the entry, warns, and starts no revert", async () => {

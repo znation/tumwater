@@ -183,7 +183,11 @@ interface PriorReviewPrompt {
  * test derives the accepted forms from it. `priorReview` is present only when this merge is a
  * revision of a previously rejected change (plans/revise-rejected.md part 2/2): it names the round
  * and shows the prior objections plus the interdiff so the re-review checks each one first.
- * Omitted, the prompt is unchanged from a fresh change's. */
+ * Omitted, the prompt is unchanged from a fresh change's. `postMerge` marks the post-merge review
+ * of a commit already on main (review.afterMerge): a finding the reviewer can repair is the work —
+ * it makes the minimal fix in the worktree, leaves the edit, and ends with the verdict line plus a
+ * `FIX:` line — so the instruction and the repair rule render only for that caller, and every other
+ * (pre-merge) caller's prompt is byte-identical. */
 export function buildReviewPrompt(
   diff: string,
   summary?: string,
@@ -194,6 +198,7 @@ export function buildReviewPrompt(
   today?: string,
   priorReview?: PriorReviewPrompt,
   knownMainFailures?: string[],
+  postMerge?: boolean,
 ): string {
   const parts = [
     `You are an adversarial code reviewer for tumwater, which runs a team of AI roles on this project. ${OLDER_NAMES_SENTENCE} A
@@ -245,6 +250,15 @@ Do not count them against the change unless the diff touches what they test.`,
       `Design principles this project holds — your review standard; a violation of one is a finding:\n<principles>\n${principles}\n</principles>`,
     );
   }
+  if (postMerge) {
+    parts.push(
+      `This review judges a change already on main, so a finding you can repair IS the work: make the
+minimal fix right here in the worktree, leave the edit in place, and end with your verdict line plus
+a \`FIX:\` line naming the files you changed — tumwater commits and merges your repair as one fix.
+Fix only what the diff shows is wrong, nothing more. A finding you cannot repair in this worktree is
+recorded as numbered reasons, exactly as a pre-merge rejection is.`,
+    );
+  }
   // The base the diff is measured from, named in the prompt: main moves while a merge is approved,
   // and a reviewer that double-checks scope with `git diff main` reads a newer merge, reversed, as
   // part of the change (BUGS.md 2026-10-06). Sentence only when a base is given; the callers that
@@ -263,6 +277,19 @@ Do not count them against the change unless the diff touches what they test.`,
   directory, reinstalling dependencies there (for an npm project, \`npm ci\`; otherwise its
   equivalent) — counts as running it. Running one
   specific test file for a concrete reason you can name is fine.`;
+  // The worktree rule differs by mode: a pre-merge reviewer must not touch the tree it is judging,
+  // while a post-merge reviewer's whole point is to repair what it finds in this worktree (the
+  // harness commits the edit). The pre-merge text is byte-identical to the line it replaces.
+  const worktreeRule = postMerge
+    ? `- Make your repair directly in this worktree and leave it: the files you edit are what
+  tumwater commits as one fix commit. Never run a git command that changes state (no git add,
+  commit, merge, rebase, reset) — tumwater owns every git operation and commits for you. Reading
+  files and git history is fine; a scratch copy under the system temp directory is fine when you
+  need to run something.`
+    : `- Do not edit any file in the worktree. Never run a command that changes state (no git
+  add/commit/merge/rebase/reset, no writes in the worktree) — your only output channel is the
+  verdict below. Reading files and git history is fine; a scratch copy under the system temp
+  directory is fine when you need to run something.`;
   parts.push(
     `Review adversarially: hunt for correctness bugs, violations of the project's principles,
 unjustified complexity growth, and incomplete or half-done work. Work in this order:
@@ -302,15 +329,14 @@ Reject only for concrete, verifiable defects you can name; when the change is co
 for its stated purpose, and within the principles, taste alone is not a rejection.
 
 Rules for this run:
-- Do not edit any file in the worktree. Never run a command that changes state (no git
-  add/commit/merge/rebase/reset, no writes in the worktree) — your only output channel is the
-  verdict below. Reading files and git history is fine; a scratch copy under the system temp
-  directory is fine when you need to run something.${noRerunRule}
+${worktreeRule}${noRerunRule}
 ${TEST_RUNNER_RULE}
 - ${KILL_BY_PID_RULE}
 - Weigh the change against its stated purpose; do not approve work you did not actually check.
 - End your reply with exactly one line in this form:
-  ${VERDICT_ENDING.replace(/\n/g, "\n  ")}`,
+  ${VERDICT_ENDING.replace(/\n/g, "\n  ")}${postMerge ? `
+  plus, when you repaired a finding, one \`FIX:\` line naming the comma-separated files you edited:
+  FIX: <files you changed>` : ""}`,
   );
   return parts.join("\n\n");
 }

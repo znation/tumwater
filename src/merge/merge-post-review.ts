@@ -1,4 +1,3 @@
-import { revertSkipReason } from "../baseline/main-revert.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
 import { reviewRunConfig, seamConcurrencyKey } from "../config/config-views.js";
 import { subscribeEvents, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -21,31 +20,13 @@ import { mergeToMain } from "./merge-to-main.js";
 import { MERGE_TIER, resolveAuthor, VERIFY_TIER } from "./merge-verify.js";
 import type { RunResult } from "../run/run-outcome.js";
 
-/** Pipelines with a revert skip check in flight, so a poll does not start a second one. */
-const skipChecks = new WeakSet<MergePipeline>();
-
-/** One poll of the post-merge reviews (review.afterMerge): a reviewed-and-rejected commit goes to
- * the revert slot when it and the merge slot are free, and the next unreviewed commit starts its
- * review when a permit is free right now. One review at a time; starts a task and returns. */
+/** One poll of the post-merge reviews (review.afterMerge): a rejected-and-not-fixed commit is
+ * answered by the reviewer's own landed fix (Forward, never back 1/6) — never by a revert — and
+ * the next unreviewed commit starts its review when a permit is free right now. One review at a
+ * time; starts a task and returns. */
 export function drainPostReviews(ctx: MergePipelineContext, p: MergePipeline): void {
   const pending = readPostReviews(ctx.root);
   if (pending.length === 0) return;
-  const rejected = pending.find((e) => e.rejected !== undefined);
-  // The entry stays in the file until its revert has run (startRevert settles it), so a shutdown,
-  // or the main-red watch replacing the slot, only delays the revert to a later poll.
-  if (rejected && p.revert === null && p.merge === null && !skipChecks.has(p)) {
-    // Check the skip reason before filling the slot: drainMerge starts the revert in the same poll.
-    skipChecks.add(p);
-    const culprit = { commit: rejected.commit, runner: rejected.role, failingTests: [], tip: rejected.commit, postReview: { reasons: rejected.rejected! } };
-    void revertSkipReason(ctx.root, ctx.mainBranch, culprit)
-      .then((skip) => {
-        if (skip !== null) {
-          settlePostReview(ctx.root, rejected.commit, null);
-          warnEventBestEffort(ctx.root, rejected.role, `not reverting ${shortSha(rejected.commit)} after its post-merge rejection: ${skip}`);
-        } else if (p.revert === null && p.merge === null) p.revert = culprit;
-      })
-      .finally(() => skipChecks.delete(p));
-  }
   if (p.postReview !== null || ctx.startHeld()) return;
   // A `fixed` entry is a settled record naming both shas (the reviewed commit and its landed fix)
   // — it is not a pending unreviewed commit, so it is never re-reviewed (Forward never back 1a/6).

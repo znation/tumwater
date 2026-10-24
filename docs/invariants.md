@@ -4249,15 +4249,14 @@ well-formed one is still reviewed".
 ### INV-BT2: a failed post-review.json write warns and never throws
 
 **Guarantee.** A failed post-review.json write warns under `tumwater` and never throws, so a
-revert's settle still frees the merge slot and a skip check still logs its reason.
+rejection's settle leaves the entry for the next poll instead of wedging the pipeline and no
+revert starts.
 
 **Binds.** `src/review/post-merge-review.ts` (`writePostReviews`, `addPostReview`,
 `settlePostReview`).
 
-**Pinned by.** `test/post-merge-review.test.ts` — "a failed post-review.json write after a revert
-warns and still frees the merge slot", "a failed post-review.json write in the revert skip check
-still logs why it does not revert", and "a rejecting post-merge review reverts the commit and hands
-it back as a revision" (on the healthy path the entry is still dropped).
+**Pinned by.** `test/post-merge-review.test.ts` — "a failed post-review.json write on a rejection
+warns and does not wedge the pipeline".
 
 ### INV-BT3: a commit whose diff git cannot produce fails its review, and a git that could not start counts nothing
 

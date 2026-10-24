@@ -214,7 +214,7 @@ export async function reviewMergedCommit(
       const pi = await runGatePi({
         cwd: wt,
         kind: "gate",
-        prompt: buildReviewPrompt(diff, entry.summary, entry.body, readPrinciples(root), undefined, `${commit}^`),
+        prompt: buildReviewPrompt(diff, entry.summary, entry.body, readPrinciples(root), undefined, `${commit}^`, undefined, undefined, undefined, true),
         config: reviewCfg,
         sessionDir: reviewRunSessionDir(root, role, `post-${shortSha(commit)}`),
         sessionName: `tumwater-review-${role}-post-${shortSha(commit)}`,

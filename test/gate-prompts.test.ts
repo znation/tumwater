@@ -334,6 +334,29 @@ test("buildReviewPrompt always says tumwater is running the project's check", ()
   assert.equal([...withCheck.matchAll(/VERDICT:/g)].length, 2);
 });
 
+// A post-merge review (review.afterMerge) judges a commit already on main, so a finding it can
+// repair IS the work: the prompt tells the reviewer to make the minimal fix in the worktree and
+// end with a FIX: line — but only for that caller. Every pre-merge caller's prompt is unchanged.
+test("buildReviewPrompt's fix-forward clause and FIX: line reach only the post-merge caller", () => {
+  const pre = buildReviewPrompt("diff body");
+  assert.ok(!pre.includes("repair IS the work"), "no fix-forward clause for a pre-merge reviewer");
+  assert.ok(!pre.includes("FIX:"), "no FIX: line instruction for a pre-merge reviewer");
+  assert.match(pre, /Do not edit any file in the worktree/, "the pre-merge worktree rule is unchanged");
+  assert.equal([...pre.matchAll(/VERDICT:/g)].length, 2, "the pre-merge verdict contract is untouched");
+  // The post-merge (tenth-arg) caller gets the repair instruction and the FIX: closing line.
+  const post = buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true);
+  assert.match(post, /a finding you can repair IS the work/);
+  assert.match(oneLine(post), /make the\s+minimal fix right here in the worktree/);
+  assert.match(post, /leave the edit in place/);
+  assert.match(post, /tumwater commits and merges your repair as one fix/);
+  assert.match(post, /recorded as numbered reasons/);
+  assert.match(post, /Make your repair directly in this worktree and leave it/, "the post-merge worktree rule lets the reviewer edit");
+  assert.match(post, /one \`FIX:\` line naming the comma-separated files you edited/);
+  assert.match(post, /FIX: <files you changed>/);
+  // The post-merge prompt still advertises exactly the two verdict forms.
+  assert.equal([...post.matchAll(/VERDICT:/g)].length, 2, "the post-merge verdict contract is untouched");
+});
+
 // A resumed review continues the timed-out reviewer's own session, so re-sending the diff
 // would waste the context the resume exists to preserve. The prompt names the frozen base and
 // the unchanged patch-id, and keeps the same VERDICT contract as the full review prompt.
