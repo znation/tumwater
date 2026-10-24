@@ -120,7 +120,7 @@ export function collectReportSince(
           commits: acc.commits,
           costUsd: acc.costUsd + (acc.mergeCostUsd ?? 0),
           ...(acc.notionalCostUsd > 0 ? { notionalCostUsd: acc.notionalCostUsd } : {}),
-          ...(Object.keys(acc.notionalByBackend).length > 0 ? { notionalByBackend: acc.notionalByBackend } : {}),
+          ...nonemptyObj("notionalByBackend", acc.notionalByBackend),
           mergeRuns: acc.mergeRuns ?? 0,
           mergeTokens: acc.mergeTokens ?? 0,
           mergeCostUsd: acc.mergeCostUsd ?? 0,
@@ -169,7 +169,7 @@ export function collectReportSince(
     // A result code is not a role, so a role-scoped window carries an empty map (a code
     // never baseRoleOf to the role) — the render gates the reason line to the team report.
     mergeFailedByReason: scopedByRole(acc.mergeFailedByReason, bases),
-    ...(Object.keys(notionalByRole).length > 0 ? { notionalByRole } : {}),
+    ...nonemptyObj("notionalByRole", notionalByRole),
     // Provider spend is a team attribution (a provider is not a role), so a role-scoped
     // window carries empty maps — providers never baseRoleOf to the role — and the render
     // gates the provider lines to the team report anyway. Always present, empty when none.
@@ -177,14 +177,12 @@ export function collectReportSince(
     notionalByProvider: scopedByRole(acc.notionalByProvider, bases),
     // Backend spend is a team attribution (a backend is not a role), so a role-scoped window
     // omits it — the same absent-when-empty rule the day collector applies.
-    ...(Object.keys(scopedByRole(acc.notionalByBackend, bases)).length > 0
-      ? { notionalByBackend: scopedByRole(acc.notionalByBackend, bases) }
-      : {}),
+    ...nonemptyObj("notionalByBackend", scopedByRole(acc.notionalByBackend, bases)),
     // Model attribution is team-only (a model is not a role, so no model folds to the
     // scoped role), the same full-map-for-team / empty-for-scoped rule costByProvider
     // follows. Always present so the render can gate on the window's own events.
     runsByModel: scopedByRole(acc.runsByModel, bases),
-    ...(Object.keys(deferred).length > 0 ? { deferredByReason: deferred } : {}),
+    ...nonemptyObj("deferredByReason", deferred),
     // Main's red time is main's own (G1's rule), not any role's, so a role-scoped window
     // carries 0 — the type's always-present default for the team-only field.
     mainRedMs:
@@ -222,6 +220,14 @@ function setMapIfNonempty(day: ReportDay, key: string, map: Record<string, numbe
   if (map !== undefined && Object.keys(map).length > 0) {
     (day as unknown as Record<string, Record<string, number>>)[key] = map;
   }
+}
+
+/** Build one object-literal spread cell for a per-slice role/product map only when the map has
+ * entries (`map` non-empty), so an entry-free window omits the field instead of carrying an
+ * empty map. The single home of that guard — the window and totals object-literal spreads all
+ * followed it inline before. */
+function nonemptyObj<K extends string>(key: K, map: Record<string, number>): Partial<Record<K, Record<string, number>>> {
+  return Object.keys(map).length > 0 ? ({ [key]: map } as Record<K, Record<string, number>>) : {};
 }
 
 /** Aggregate team usage over exactly `days` local calendar days ending today, from the event
@@ -519,11 +525,11 @@ export function collectReport(root: string, days: number, role?: string | readon
     totals: {
       ...totals,
       ...(notionalCostUsd > 0 ? { notionalCostUsd } : {}),
-      ...(Object.keys(notionalByBackend).length > 0 ? { notionalByBackend } : {}),
+      ...nonemptyObj("notionalByBackend", notionalByBackend),
       ...(mergeFailed > 0 ? { mergeFailed } : {}),
       ...(plansAdded > 0 ? { plansAdded } : {}),
       ...(bugsFiled > 0 ? { bugsFiled } : {}),
-      ...(Object.keys(validationGaps).length > 0 ? { validationGapsByTag: validationGaps } : {}),
+      ...nonemptyObj("validationGapsByTag", validationGaps),
     },
     coversFullWindow,
   };
