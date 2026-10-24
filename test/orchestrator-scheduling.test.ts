@@ -17,9 +17,11 @@ import { statePath } from "../src/paths.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
 import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
+import { newMergePipeline, type ApprovedMerge, type InFlightMerge } from "../src/merge/merge-pipeline.js";
+import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { setRef } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
-import { initializedRepo, mainSha, tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
+import { initializedRepo, initializedWorktree, commitIn, mainSha, tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { eventsOfType, unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
@@ -56,6 +58,8 @@ function schedulingCtx(root: string, runners: readonly RoleRunner[], roleProvide
   return {
     root,
     runners,
+    mainBranch: "main",
+    merges: newMergePipeline(),
     once: new OnceRound([], false),
     now: T0 + 10_000,
     mainHead: "",
@@ -921,6 +925,82 @@ test("a runner waiting on its queued change holds no place: a second runner star
   const keys = [feature2, feature3].map((r) => r.state.claim?.key);
   assert.equal(new Set([...keys, feature.state.claim?.key]).size, 3, "no two runners hold one claim");
   assert.equal(keys.includes("alpha"), false, "the new runs take other entries than the waiting one");
+});
+
+// Interlock relief (parts 1-3/4): the queued/in-flight merge interlock scopes a POST-MERGE-review
+// role to the stages that actually race its branch (an approved-and-waiting or in-flight-merge
+// queued change no longer parks the author), while a pre-merge role keeps the full interlock.
+// bugfix is a post-merge role (defaultConfig's review.afterMerge lists it); feature is pre-merge.
+
+test("interlock relief: a queued post-merge role is admitted once its change is approved; a queued pre-merge role stays held", async () => {
+  const { root } = await initializedWorktree("bugfix"); // the bugfix branch exists at main
+  const bugfix = fakeRunner("bugfix", defaultConfig());
+  const feature = fakeRunner("feature", defaultConfig());
+  const providers = new Map([
+    ["bugfix", undefined],
+    ["feature", undefined],
+  ]);
+  const sha = mainSha(root);
+  enqueueMerge(root, { role: "bugfix", sha, run: 1, summary: "approved", enqueuedAt: Date.now() });
+  enqueueMerge(root, { role: "feature", sha, run: 1, summary: "verifying", enqueuedAt: Date.now() });
+
+  const ctx = schedulingCtx(root, [bugfix, feature], providers);
+  ctx.merges.approved.set("bugfix", {} as unknown as ApprovedMerge); // approved-and-waiting
+  ctx.merges.verifying.set("feature", {} as InFlightMerge); // still pre-approval
+  const reasons = await pollRunnerReasons(ctx);
+  assert.equal(reasons.has(bugfix), true, "an approved queued change no longer parks the post-merge author");
+  assert.equal(reasons.has(feature), false, "a pre-merge role with any queued change stays skipped");
+});
+
+test("interlock relief: a queued post-merge role is admitted while its change is in the merge's fast-forward", async () => {
+  const { root } = await initializedWorktree("bugfix"); // the bugfix branch exists at main
+  const bugfix = fakeRunner("bugfix", defaultConfig());
+  const sha = mainSha(root);
+  enqueueMerge(root, { role: "bugfix", sha, run: 1, summary: "merging", enqueuedAt: Date.now() });
+
+  const ctx = schedulingCtx(root, [bugfix], new Map([["bugfix", undefined]]));
+  ctx.merges.merge = { roles: ["bugfix"] } as InFlightMerge; // in the merge's fast-forward, approved already
+  assert.equal((await pollRunnerReasons(ctx)).has(bugfix), true, "an in-flight-merge queued change no longer parks the post-merge author");
+});
+
+test("interlock relief: a queued post-merge role is held in a pre-approval or conflict-resolving stage, or not yet picked up", async () => {
+  const repo = await initializedRepo();
+  const bugfix = fakeRunner("bugfix", defaultConfig());
+  const providers = new Map([["bugfix", undefined]]);
+  const sha = mainSha(repo);
+
+  // Not yet picked up: queued, in no pipeline set, so held from its stage (no branch query).
+  enqueueMerge(repo, { role: "bugfix", sha, run: 1, summary: "queued", enqueuedAt: Date.now() });
+  assert.equal(
+    (await pollRunnerReasons(schedulingCtx(repo, [bugfix], providers))).has(bugfix),
+    false,
+    "a queued-but-unpicked post-merge change stays held",
+  );
+
+  // Verifying (pre-approval).
+  const verifying = schedulingCtx(repo, [bugfix], providers);
+  verifying.merges.verifying.set("bugfix", {} as InFlightMerge);
+  assert.equal((await pollRunnerReasons(verifying)).has(bugfix), false, "a verifying queued post-merge change stays held");
+
+  // Resolving a conflict: approved, but the live marker says the resolver is mid-run.
+  const resolving = schedulingCtx(repo, [bugfix], providers);
+  resolving.merges.approved.set("bugfix", {} as unknown as ApprovedMerge);
+  writeMergeMarker(repo, { role: "bugfix", sha, summary: "resolving", startedAt: Date.now(), stage: "resolving" });
+  assert.equal((await pollRunnerReasons(resolving)).has(bugfix), false, "a conflict-resolving queued post-merge change stays held");
+});
+
+test("interlock relief: a queued post-merge role is held while its branch is already ahead of main", async () => {
+  const { root, wt } = await initializedWorktree("bugfix");
+  // A prior relief run held a commit on the role's branch: it sits ahead of main, so even an
+  // approved queued change must not let the author start (a fresh run would race that commit).
+  fs.writeFileSync(path.join(wt, "held.txt"), "held\n");
+  commitIn(wt, "held relief commit");
+  const bugfix = fakeRunner("bugfix", defaultConfig());
+  const sha = mainSha(root);
+  enqueueMerge(root, { role: "bugfix", sha, run: 1, summary: "approved", enqueuedAt: Date.now() });
+  const ctx = schedulingCtx(root, [bugfix], new Map([["bugfix", undefined]]));
+  ctx.merges.approved.set("bugfix", {} as unknown as ApprovedMerge);
+  assert.equal((await pollRunnerReasons(ctx)).has(bugfix), false, "a post-merge role whose branch is ahead of main does not start");
 });
 
 test("running runners count against instances, and admissions in one poll count too", async () => {

@@ -20,27 +20,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The decision (either branch) is recorded with its evidence in PLANS-DONE.md when closed; a raised cap is accompanied by one week of load-watch in the dogfood instance.
 - `npm run test:gate` passes (config change only; no code).
 
-### Interlock relief, part 3/4: Scheduler admits a post-merge author whose queued change is approved or merging (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision" and "What lands"; split of the oversized Interlock relief part 1/2; requires parts 1/4 and 2/4 landed; one switch: `review.afterMerge` opts a role into both post-merge review and this relief (Reviewer as a regular role, part 1/4, landed); evidence: queue waits before landing ran median 5 min, max 3 h 17 m over 58 h, and the interlock parks the author for the whole window; touches src/git/git.ts src/orchestrator/orchestrator-poll.ts src/orchestrator/scheduling-scope.ts src/orchestrator/scheduling-skip.ts test/orchestrator-scheduling.test.ts)
-
-**Previously held 1**
-
-**Goal.** plans/merge-queue.md invariant 3 ("a loop with a queued or landing change is not eligible to tick") preserves the `state.lastReview` feedback contract. For post-merge-review roles that contract no longer needs the pre-merge pipeline: scope the interlock per role and per stage, so an author whose change is approved-and-waiting or in the merge's fast-forward is not parked, while the stages that actually race the author's branch stay exclusive.
-
-**Approach.**
-- The stage is NOT a new queue field. `queuedMergeRoles` (src/merge/merge-queue.ts) says a role HAS a queued change; the stage comes from the pipeline the poll already shares (`SchedulingPassCtx.merges: MergePipeline`, src/merge/merge-pipeline.ts: `verifying`, `approved`, `merge.roles`) plus the live in-flight marker's per-change `stage` (`readMergeMarker` + `isMergeChange`, src/merge/merge-slot.ts). Do not add a stage to `MergeEntry`: the queue holds only unattempted entries, and its other readers (`claims.ts`, `status-*`, `gate-polls.ts`) consume the role set, not a stage. A queued post-merge role is held while its entry is pre-approval (`verifying`, or not yet picked up), in `resolve-wait`/`resolving`, or while its branch is already ahead of main (a prior relief run's held commit) — and admitted once `approved` or in `merge` and not resolving.
-- The tiering follows each runner's own config `review.afterMerge` (base role ids; `baseRoleOf`). A role on that list gets the scoped interlock; a pre-merge-review role keeps today's full interlock (its rejection must reach the runner before it authors again — the contract's original case).
-- src/orchestrator/scheduling-scope.ts: add `mainBranch: string` and `merges: MergePipeline` to `SchedulingPassCtx`, and `interlockedHold: Set<string>` to `SchedulingScope`. In `buildSchedulingScope`, fill `interlockedHold` for each queued post-merge role in a non-admissible stage or with `aheadOfMainBranch(root, branchName(role), mainBranch) > 0`.
-- src/orchestrator/scheduling-skip.ts, the `queuedRoles.has(runner.role)` block: skip when the role is not a post-merge role OR `interlockedHold.has(runner.role)`; otherwise fall through to author. Pre-merge roles and non-admissible stages are unchanged.
-- src/orchestrator/orchestrator-poll.ts: pass `mainBranch` and `ctx.merges` into `pollRunnerReasons`.
-- src/git/git.ts: add `export async function aheadOfMainBranch(root, branch, mainBranch)` returning `countCommitsInRange(root, \`${mainBranch}..refs/heads/${branch}\`)` — the role's branch may live in a leased pool slot, so read it from the shared root, not a worktree path (`aheadOfMain` is unchanged).
-- plans/merge-queue.md invariant 3 and the docs are part 4/4; this part changes the scheduling code only.
-
-**Acceptance criteria.**
-- A post-merge-review role with an `approved` queued entry starts its next run in the same poll it would have started in with an empty queue; the same role with an entry `verifying`, not yet picked up, or in `resolve-wait`/`resolving` does not start (test over the stages). A pre-merge-review role (feature) with any queued entry still does not start — today's behavior, test unchanged. A post-merge role whose branch is ahead of main does not start.
-- `npm run test:gate` passes.
-
-**Tests.** test/orchestrator-scheduling.test.ts (the `schedulingCtx` helper gains `mainBranch` and `merges`; stage-scoped admission and the branch-ahead hold over a post-merge and a pre-merge role).
-
 ### Interlock relief, part 4/4: Docs state which roles wait on their merge and which do not (planned 2026-10-23 by user; design in plans/interlock-relief.md "What lands" item 2; requires part 3/4 landed; touches docs/how-it-works.md docs/glossary.md plans/merge-queue.md)
 
 **Previously held 1**

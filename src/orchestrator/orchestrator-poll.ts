@@ -347,6 +347,8 @@ export async function pollSchedule(
   const reasons = await pollRunnerReasons({
     root,
     runners,
+    mainBranch: ctx.mainBranch,
+    merges: ctx.merges,
     once: ctx.once,
     now,
     mainHead,

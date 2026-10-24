@@ -496,6 +496,14 @@ export async function aheadOfMain(wt: string, mainBranch: string): Promise<numbe
   return countCommitsInRange(wt, `${mainBranch}..HEAD`);
 }
 
+/** Commits ahead of main on a role's own branch, read from the shared root (a role's branch
+ * may live in a leased pool slot, whose worktree path is not stable — the interlock relief's
+ * branch-ahead hold, parts 1-3/4). Unlike aheadOfMain (a worktree's own HEAD), the branch is
+ * named explicitly: `git rev-list --count <main>..refs/heads/<branch>`. */
+export async function aheadOfMainBranch(root: string, branch: string, mainBranch: string): Promise<number> {
+  return countCommitsInRange(root, `${mainBranch}..refs/heads/${branch}`);
+}
+
 /** The patch-id of the change `head` makes on top of `base`: `git diff` over `base...head` (from
  * their merge-base, the same range aheadOfMainDiff hands the reviewer) piped into
  * `git patch-id`. The diff is `-U0`: the change's own lines only, no context. Two shas carrying

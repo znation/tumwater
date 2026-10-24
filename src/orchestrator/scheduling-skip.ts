@@ -8,6 +8,7 @@ import type { RoleRunner } from "../runner/runner.js";
 import { logEventBestEffort } from "../events/events.js";
 import { baseRoleOf, configuredInstances, runnerPaused } from "../roles/runner-ids.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
+import { isAfterMergeRole } from "../review/post-merge-review.js";
 import { deferRunReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { freshlyWoken } from "../runner/runner-state.js";
@@ -47,6 +48,7 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
     deferredDue,
     workMergedSince,
     queuedRoles,
+    interlockedHold,
     pinnedDirector,
     claimGroups,
     writing,
@@ -152,9 +154,17 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
   // results — but the merge's outcome replaces it before the interlock lets the role back into
   // this pass), and skipping here saves that branch's workMergedSince git-range query for the
   // skipped role.
+  // Interlock relief (parts 1-3/4): a post-merge-review role (its own config `review.afterMerge`
+  // names it) with a queued change is held only while it is in a non-admissible stage — the
+  // pre-approval/conflict/branch-ahead holds buildSchedulingScope put in `interlockedHold` — and
+  // otherwise falls through to author (the merge no longer parks it). A pre-merge-review role,
+  // and a post-merge role still in a held stage, keep the full interlock: their rejection must
+  // reach the runner before it authors again.
   if (queuedRoles.has(runner.role)) {
-    noteSkip(root, runner, undefined);
-    return { skip: true };
+    if (!isAfterMergeRole(runner.config, runner.role) || interlockedHold.has(runner.role)) {
+      noteSkip(root, runner, undefined);
+      return { skip: true };
+    }
   }
   // The role's `instances` limit on concurrent runs: a multi-runner base admits a runner only
   // while fewer than `instances` of its runners are running. A parked runner (queued change)

@@ -13,6 +13,11 @@ import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
 import { hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "../runner/runner-state.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
+import { readMergeMarker, mergeChanges } from "../merge/merge-slot.js";
+import type { MergePipeline } from "../merge/merge-pipeline.js";
+import { isAfterMergeRole } from "../review/post-merge-review.js";
+import { aheadOfMainBranch, branchExists } from "../git/git.js";
+import { branchName } from "../paths.js";
 import { hasUnmergedPin } from "../runner/leftover.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
@@ -29,6 +34,10 @@ import {
 export interface SchedulingPassCtx {
   root: string;
   runners: readonly RoleRunner[];
+  mainBranch: string;
+  /** The merge pipeline's live state (src/merge/merge-pipeline.ts): the queued change's stage
+   * (verifying/approved/merge) the per-role interlock relief reads. */
+  merges: MergePipeline;
   once: OnceRound;
   now: number;
   mainHead: string;
@@ -129,6 +138,11 @@ export interface SchedulingScope {
   deferredDue: Map<string, boolean>;
   workMergedSince: WorkMergedCache;
   queuedRoles: Set<string>;
+  /** The queued post-merge-review roles (their own config `review.afterMerge` names them) held
+   * by the scoped interlock this poll: pre-approval, conflict-resolving, or a branch already
+   * ahead of main. A queued post-merge role absent from this set falls through the interlock to
+   * author; a pre-merge role is never here (it keeps the full interlock). */
+  interlockedHold: Set<string>;
   pinnedDirector: boolean;
   claimGroups: Map<string, ClaimGroup>;
   /** Runs writing code per multi-runner base role, advanced in place by the loop. */
@@ -162,6 +176,8 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   const {
     root,
     runners,
+    mainBranch,
+    merges,
     once,
     now,
     mainHead,
@@ -198,6 +214,41 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   // clock, since its only other run is an operator prompt. A queued or in-flight pin is the
   // merge-queue interlock's to hold, so the leftover reason is not offered then.
   const pinnedDirector = !queuedRoles.has(DIRECTOR_ROLE) && (await hasUnmergedPin(root, DIRECTOR_ROLE));
+  // Merge-queue interlock relief (parts 1-3/4): for a post-merge-review role — one whose own
+  // config `review.afterMerge` names it — the queued/in-flight interlock is scoped to the stages
+  // that actually race the author's branch. `interlockedHold` holds exactly the QUEUED post-merge
+  // roles in a non-admissible stage: pre-approval (`verifying`, or queued but not yet picked up —
+  // absent from the pipeline's approved/merge sets), conflict resolution (`resolve-wait`/
+  // `resolving`, read from the live marker), or a branch already ahead of main (a prior relief
+  // run's held commit). An approved-and-waiting or in-flight-merge queued change no longer parks
+  // the author. Pre-merge-review roles keep the full interlock (their rejection must reach the
+  // runner before it authors again), so they are never added here; scheduling-skip.ts skips a
+  // queued role unless it is BOTH post-merge AND absent from interlockedHold.
+  const interlockedHold = new Set<string>();
+  if (queuedRoles.size > 0) {
+    const marker = readMergeMarker(root);
+    const markerChanges = marker ? mergeChanges(marker) : [];
+    for (const runner of runners) {
+      const role = runner.role;
+      if (!queuedRoles.has(role) || !isAfterMergeRole(runner.config, role)) continue;
+      const inApproved = merges.approved.has(role);
+      const inMerge = (merges.merge?.roles ?? []).includes(role);
+      const stage = markerChanges.find((c) => c.role === role)?.stage;
+      const resolving = stage === "resolve-wait" || stage === "resolving";
+      const heldFromStage = !(inApproved || inMerge) || resolving;
+      // The branch-ahead git query is only paid when the stage is already admissible — a role
+      // held from its stage needs no extra spawn. The role's branch may live in a leased pool
+      // slot, so it is read from the shared root, not a worktree path. A missing branch (role
+      // retire --force deletes it while the queue entry lingers, or a manual `git branch -D`) is
+      // not "ahead", so it must not throw the poll out of the whole orchestrator run — check it
+      // exists before paying the sharp rev-list query.
+      const ahead =
+        heldFromStage || !(await branchExists(root, branchName(role)))
+          ? 0
+          : await aheadOfMainBranch(root, branchName(role), mainBranch);
+      if (heldFromStage || ahead > 0) interlockedHold.add(role);
+    }
+  }
   // Parallel work instances (plans/parallel-work-instances.md "Claims", part 4/7): a base role
   // with more than one runner assigns each due instance a distinct eligible entry, and releases
   // the claims whose entry left, turned ineligible, was disabled or went stale. Computed once
@@ -351,6 +402,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     deferredDue,
     workMergedSince,
     queuedRoles,
+    interlockedHold,
     pinnedDirector,
     claimGroups,
     writing,

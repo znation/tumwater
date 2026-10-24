@@ -34,8 +34,11 @@ export interface InFlightMerge {
 }
 
 /** A change the verify stage approved (or found exempt), waiting for the merge slot: still
- * queued — its author stays interlocked until it merges — with the head its gate approved in
- * its merge ref (`sha`) and the approval's patch-id in its state (2a). In memory only: after a
+ * queued — a pre-merge-review role's author stays interlocked until it merges, while a
+ * post-merge-review role's author is admitted once the change is approved (interlock relief,
+ * parts 1-3/4: the scoped interlock no longer parks an approved-and-waiting author) — with the
+ * head its gate approved in its merge ref (`sha`) and the approval's patch-id in its state (2a).
+ * In memory only: after a
  * restart the entry is verified again, and its review carries over through the patch-id while
  * its check runs once more. It holds no task, so `tumwater abort --role` only flags it
  * (AbortableMerge); the next drain settles it as "aborted" and discards its pin. */
