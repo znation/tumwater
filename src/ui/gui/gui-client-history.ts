@@ -281,6 +281,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
     if (base.open) base.out += "<pre class='mono hist-detail-patch'>" + esc(p.text) + "</pre>";
     return base.out;
   }
+  // The card key is "role#run"; every drill-down fetch names its run the same way — split the
+  // key once and append the caller's extra /api/run query (kind=1, a transcript grep, prompts —
+  // possibly empty), so the patch, transcript, and prompt fetchers cannot drift their URL shape.
+  function runApiUrl(key, query) {
+    const at = key.lastIndexOf("#");
+    return "/api/run?role=" + encodeURIComponent(key.slice(0, at)) + "&run=" + encodeURIComponent(key.slice(at + 1)) + (query ? "&" + query : "");
+  }
   // Fetch or toggle one card add-on field (the patch or the transcript) at key ("role#run").
   // kind is the field name, the "&kind=1" query the /api/run reply answers, and the field
   // read off it, so the patch and transcript cannot drift their fetch/toggle shape: flip a
@@ -295,12 +302,11 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       return;
     }
     if (field && field.state === "loading") return;
-    const at = key.lastIndexOf("#");
     entry[kind] = { state: "loading" };
     renderHistory();
     try {
       const d = await getJson(
-        "/api/run?role=" + encodeURIComponent(key.slice(0, at)) + "&run=" + encodeURIComponent(key.slice(at + 1)) + "&" + kind + "=1",
+        runApiUrl(key, kind + "=1"),
       );
       if (!d || typeof d[kind] !== "string") throw new Error("/api/run answered without a " + kind + " field");
       entry[kind] = { state: "ok", text: d[kind], open: true };
@@ -356,10 +362,9 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
     delete t.grepText;
     delete t.grepError;
     renderHistory();
-    const at = key.lastIndexOf("#");
     try {
       const d = await getJson(
-        "/api/run?role=" + encodeURIComponent(key.slice(0, at)) + "&run=" + encodeURIComponent(key.slice(at + 1)) + "&transcript=1" + (t.prompts ? "&prompt=1" : "") + "&grep=" + encodeURIComponent(grep),
+        runApiUrl(key, "transcript=1" + (t.prompts ? "&prompt=1" : "") + "&grep=" + encodeURIComponent(grep)),
       );
       if (entry.transcript !== t || t.grep !== grep) return;
       if (!d || typeof d.transcript !== "string") throw new Error("/api/run answered without a transcript field");
@@ -383,13 +388,12 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       renderHistory();
       return;
     }
-    const at = key.lastIndexOf("#");
     t.promptsLoading = true;
     delete t.promptsError;
     renderHistory();
     try {
       const d = await getJson(
-        "/api/run?role=" + encodeURIComponent(key.slice(0, at)) + "&run=" + encodeURIComponent(key.slice(at + 1)) + "&transcript=1&prompt=1",
+        runApiUrl(key, "transcript=1&prompt=1"),
       );
       if (!d || typeof d.transcript !== "string") throw new Error("/api/run answered without a transcript field");
       t.promptText = d.transcript;
