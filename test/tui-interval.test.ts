@@ -9,9 +9,9 @@ import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 // the dashboard drawer's `Min run interval` row and `tumwater role <id> --min-run-interval`.
 // Pre-filled with the viewed role's own `roles.<base>.minRunIntervalSeconds` override read from
 // the FILE, Enter writes through the shared setConfigKey/unsetConfigKey family, an empty or
-// whitespace-only line clears the key, a non-numeric or negative value flashes the
-// checkMinRunInterval message and stays open, and Esc and Ctrl+T cancel by restoring the prompt
-// draft. The unit-level scope on tui-keys.test.ts pins the instance→base and director writes;
+// whitespace-only line clears the key, a non-plain-decimal value (negative, hex/exponent, or
+// non-numeric) flashes the shape message and stays open, and Esc and Ctrl+T cancel by restoring
+// the prompt draft. The unit-level scope on tui-keys.test.ts pins the instance→base and director
 // this file drives the full TUI.
 test("Ctrl+S edits the viewed role's min run interval; Enter saves, empty clears, invalid stays open, Esc and Ctrl+T exit", async () => {
   const repo = await makeTuiRepo(); // one enabled role: clean
@@ -79,8 +79,8 @@ test("Ctrl+S edits the viewed role's min run interval; Enter saves, empty clears
     tui.key(undefined, "return"); // back to the unset file for the checks below
     assert.equal(fs.readFileSync(cfgPath, "utf8"), before);
 
-    // A non-numeric value flashes the checkMinRunInterval message naming the dotted key, STAYS
-    // in edit mode with the text kept, and writes nothing.
+    // A non-plain-decimal value flashes the shape message naming the dotted key, STAYS in edit
+    // mode with the text kept, and writes nothing.
     tui.key(undefined, "s", { ctrl: true });
     for (const ch of "nope") tui.key(ch, ch);
     tui.key(undefined, "return");
@@ -95,6 +95,22 @@ test("Ctrl+S edits the viewed role's min run interval; Enter saves, empty clears
     assert.match(tui.lastFrame(), /roles\.clean\.minRunIntervalSeconds/);
     assert.equal(tui.lines().at(-1), "min run interval › -5", "a negative value is rejected and kept");
     assert.equal(fs.readFileSync(cfgPath, "utf8"), before, "a negative value is not written");
+
+    // A hex or exponent spelling is rejected as shape too — bare Number() would otherwise
+    // silently read "0x10" as 16s and "1e2" as 100s, exactly the misread the sibling budget
+    // editor's plain-decimal rule guards against. Same stay-open / nothing-written behavior.
+    for (let i = 0; i < 2; i++) tui.key(undefined, "backspace");
+    for (const ch of "0x10") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /plain second count/);
+    assert.equal(tui.lines().at(-1), "min run interval › 0x10", "a hex spelling is rejected and kept");
+    assert.equal(fs.readFileSync(cfgPath, "utf8"), before, "a hex spelling is not written");
+    for (let i = 0; i < 4; i++) tui.key(undefined, "backspace");
+    for (const ch of "1e2") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /plain second count/);
+    assert.equal(tui.lines().at(-1), "min run interval › 1e2", "an exponent spelling is rejected and kept");
+    assert.equal(fs.readFileSync(cfgPath, "utf8"), before, "an exponent spelling is not written");
 
     // Esc cancels back to prompt mode with the previous text restored.
     tui.key(undefined, "escape");

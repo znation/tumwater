@@ -287,8 +287,20 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     requireKnownRole(root, id);
     if (id === DIRECTOR_ROLE) fail("the director has no daily cap");
     const base = baseRoleOf(id);
+    const cfgKey = `maxDailyCostUsdPerRole.${base}`;
     const cap = flagValue(rest, "--cap") ?? "";
-    writeRoleConfigKey(root, base, clearCap, cap, `maxDailyCostUsdPerRole.${base}`, "daily cap", (v) => plainDecimalToJson(v) ?? v, (v) => v);
+    // Shape, before the write: a spelling that is not a plain decimal but that JSON.parse
+    // would still read as a non-negative USD amount (an exponent like "1e2" → 100) would
+    // otherwise sail past both plainDecimalToJson (which only rewrites JSON-unparseable
+    // spellings like `05`) and checkDailyBudgetUsd's non-negative check and silently write
+    // the misread — the same silent misread the TUI Ctrl+B budget editor and the GUI cap
+    // drawer now reject. Every non-exponent spelling JSON reads as a non-negative USD is
+    // already a plain decimal, so the exponent form is exactly the silent-write set; hex,
+    // negative and non-numeric spellings fall through to the write path, whose
+    // validateConfig message names the key.
+    if (cap.trim() !== "" && plainDecimalToJson(cap) === null && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(cap.trim()))
+      fail(`${cfgKey} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation`);
+    writeRoleConfigKey(root, base, clearCap, cap, cfgKey, "daily cap", (v) => plainDecimalToJson(v) ?? v, (v) => v);
     return;
   }
   // The min-run-interval write: the terminal twin of `config set
@@ -303,8 +315,20 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     if (rest.includes("--json")) fail("--json does not apply to a min-run-interval write");
     requireKnownRole(root, id);
     const base = baseRoleOf(id);
+    const cfgKey = `roles.${base}.minRunIntervalSeconds`;
     const secs = flagValue(rest, "--min-run-interval") ?? "";
-    writeRoleConfigKey(root, base, clearInterval, secs, `roles.${base}.minRunIntervalSeconds`, "min run interval", (v) => plainDecimalToJson(v) ?? v, (v) => `${v}s`);
+    // Shape, before the write: a spelling that is not a plain decimal but that JSON.parse
+    // would still read as a non-negative second count (an exponent like "1e2" → 100) would
+    // otherwise sail past both plainDecimalToJson (which only rewrites JSON-unparseable
+    // spellings like `05`) and validateConfig's non-negative check and silently write the
+    // misread — the same silent misread the TUI Ctrl+S editor and the GUI interval drawer
+    // now reject. Every non-exponent spelling JSON reads as a non-negative count is already a
+    // plain decimal, so the exponent form is exactly the silent-write set; hex, negative and
+    // non-numeric spellings fall through to the write path, whose validateConfig message
+    // names the key.
+    if (secs.trim() !== "" && plainDecimalToJson(secs) === null && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(secs.trim()))
+      fail(`${cfgKey} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation`);
+    writeRoleConfigKey(root, base, clearInterval, secs, cfgKey, "min run interval", (v) => plainDecimalToJson(v) ?? v, (v) => `${v}s`);
     return;
   }
   // The instances write: the terminal twin of `config set roles.<base>.instances <n>`, the

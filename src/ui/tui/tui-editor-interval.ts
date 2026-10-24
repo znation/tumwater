@@ -2,6 +2,7 @@ import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
 import { checkMinRunInterval } from "../../config/config-keys.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import { rawRoleField } from "../../roles/role-view.js";
+import { gotSuffix } from "../../text/text.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
@@ -10,7 +11,9 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * row. It owns its mode flag, its saved-draft pair, and the role pinned when it opened, so a
  * roster shift cannot redirect the write. Enter writes through the shared
  * setConfigKey/unsetConfigKey family the CLI and the drawer use — so checkMinRunInterval
- * (naming `roles.<base>.minRunIntervalSeconds`) and validateConfig own the value's truth — and
+ * (naming `roles.<base>.minRunIntervalSeconds`) and validateConfig own the value's truth — a
+ * non-plain-decimal spelling (hex/exponent, negative, or non-numeric) flashes the editor's own
+ * shape message first, mirroring the budget editor's plain-decimal rule, and stays open — and
  * Esc, Ctrl+S again, and Ctrl+T cancel by restoring the prompt draft. Unlike the quiet editor
  * there is no director refusal: `tumwater role director --min-run-interval` is accepted, so the
  * director edits too. Mutually exclusive with the other editors on the one prompt line via the
@@ -99,6 +102,19 @@ export function createIntervalEditor(session: TuiEditorSession): TuiEditorModule
         } else {
           session.flashMessage(result.error); // broken config or write failure — stay in edit mode
         }
+        return true;
+      }
+      // Plain decimal seconds only — bare Number() would also read hex ("0x10" → 16) and
+      // exponent ("1e2" → 100) as an interval, neither of which an operator means when
+      // typing a second count; the budget editor's parseBudgetInput applies the same
+      // plain-decimal rule in the TUI, the CLI's --min-run-interval uses plainDecimalToJson,
+      // and the GUI drawer's interval-save arm applies the same shape guard.
+      // Non-plain spellings flash their own shape message — which, like checkMinRunInterval's
+      // bounds wording below, names cfgKey so a rejected entry tells which per-role key the
+      // editor was about to write — and STAY in edit mode (negative and non-numeric text hit
+      // this shape arm too, so the operator sees one consistent message).
+      if (!/^\d*\.?\d+$/.test(text)) {
+        session.flashMessage(`${cfgKey} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation${gotSuffix(text)}`);
         return true;
       }
       const value = Number(text);

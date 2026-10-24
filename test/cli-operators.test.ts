@@ -708,7 +708,29 @@ test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval wri
     assert.match(r.stderr, /maxDailyCostUsdPerRole.feature/);
     assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, `file unchanged on ${bad}`);
   }
+
+  // An exponent spelling like "1e2" is itself a JSON number (100), so it would silently write 100
+  // past plainDecimalToJson and checkDailyBudgetUsd alike — exactly the misread the TUI Ctrl+B
+  // budget editor and the GUI cap drawer now refuse, so the CLI refuses it too, naming the key and
+  // leaving the file unchanged. Hex and negative spellings stay on the write path's own refusal.
+  for (const bad of ["1e2", "0.5e2"]) {
+    r = await cli(repo, "role", "feature", "--cap", bad);
+    assert.equal(r.code, 1, bad);
+    assert.match(r.stderr, /maxDailyCostUsdPerRole.feature/);
+    assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, `file unchanged on ${bad}`);
+  }
   for (const bad of ["-1", "2147484", "abc"]) {
+    r = await cli(repo, "role", "feature", "--min-run-interval", bad);
+    assert.equal(r.code, 1, bad);
+    assert.match(r.stderr, /roles\.feature\.minRunIntervalSeconds/);
+    assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, `file unchanged on ${bad}`);
+  }
+
+  // An exponent spelling like "1e2" is itself a JSON number (100), so it would silently write
+  // 100 past plainDecimalToJson and validateConfig alike — exactly the misread the TUI Ctrl+S
+  // editor and the GUI interval drawer now refuse, so the CLI refuses it too, naming the key and
+  // leaving the file unchanged. Hex and negative spellings stay on the write path's own refusal.
+  for (const bad of ["1e2", "0.5e2"]) {
     r = await cli(repo, "role", "feature", "--min-run-interval", bad);
     assert.equal(r.code, 1, bad);
     assert.match(r.stderr, /roles\.feature\.minRunIntervalSeconds/);

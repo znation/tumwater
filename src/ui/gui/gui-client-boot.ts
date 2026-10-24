@@ -274,6 +274,13 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         return;
       }
       const raw = input.value.trim();
+      // A type=number input also accepts exponent/hex spellings the browser parses ("1e2" →
+      // 100, "0x10" → 16), so badInput alone cannot reject them — the plain-decimal shape rule
+      // the CLI's --min-run-interval and the TUI Ctrl+S editor apply catches them here too.
+      if (raw !== "" && !/^\d*\.?\d+$/.test(raw)) {
+        showFlash("error: the interval must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation");
+        return;
+      }
       const value = raw === "" ? null : Number(raw);
       postAction("/api/role-interval", { role: arg, minRunIntervalSeconds: value }, (d) => {
         intervalEditing = null;

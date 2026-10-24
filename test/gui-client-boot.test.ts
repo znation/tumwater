@@ -559,6 +559,14 @@ test("interval-edit opens the editor, interval-save posts the interval (empty in
   scope.runAct("interval-save", "clean");
   assert.deepEqual(posts, []);
   assert.deepEqual(flashes, ["error: the interval must be a number of 0 or more — leave it empty for the team default"]);
+  // A type=number input accepts exponent/hex spellings the browser parses ("1e2" → 100), so
+  // badInput is false — the plain-decimal shape guard must reject it, not silently save 100s.
+  flashes.length = 0;
+  field.validity.badInput = false;
+  field.value = "1e2";
+  scope.runAct("interval-save", "clean");
+  assert.deepEqual(posts, [], "an exponent spelling is not posted");
+  assert.deepEqual(flashes, ["error: the interval must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation"]);
   // interval-discard closes the editor, posting nothing.
   events.length = 0;
   scope.runAct("interval-discard", "clean");
