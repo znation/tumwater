@@ -509,6 +509,12 @@ Usage:
                                    written to roles.<id>.instances for the base id
   tumwater role <id> --clear-instances
                                    Clear that role's instance count (back to 1)
+  tumwater role <id> --review-after-merge
+                                   Review that role's commits after they merge, written
+                                   to review.afterMerge (the base id for an instance)
+  tumwater role <id> --clear-review-after-merge
+                                   Review it before merge again, removing it from
+                                   review.afterMerge
   tumwater prompt <text...>        Send a message to the director's inbox
   tumwater prompt --file <path>    Send a message read from a file ("-" reads stdin)
   tumwater prompt --role <id> <text...>
