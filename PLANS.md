@@ -206,6 +206,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Previously held 1**
 
+**Needs review 2026-10-24 by feature: too large for one run (held 2)**
+
 **Goal.** Nothing is ever taken off main for a post-merge finding. Today a rejection pays a revert commit, a gate run on the revert inside the single merge slot, a hand-back to the author and a second review — 11 such cycles in the trailing day of 2026-10-23/24, every one a doc/claim slip (plans/post-merge-fix-forward.md "Measurement"), and 8 of 11 are the class a forward follow-up repairs on top of main in one run. The decision: the commit stays; the reviewer that already reads it fixes what it found and commits the fix on top of main; its own fix commits enter the same queue and it reviews them on a later iteration. Self-review is deliberate: at this project's 53% reject rate (plans/reviewer-as-role.md) the author and the reviewer were already rewriting the same text by turns, so the second reader was mostly nominal. The red-main revert is untouched here; parts 4/6–6/6 delete it.
 
 **Approach.**
