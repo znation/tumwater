@@ -108,6 +108,13 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   function entryTitleAt(file, index) {
     return ((lastStatus && lastStatus[file]) || [])[Number(index)];
   }
+  // The backlog drawer rows carry their file as "bugs" or "plans"; three other words derive
+  // from it — the singular kind the drawer's POST carries, the display filename the toasts name,
+  // and the role that picks a newly eligible entry up. One discriminator, three derived values,
+  // so the mapping cannot drift among the cancel/release/top/edit drawers that all spell it out.
+  function kindOf(file) { return file === "bugs" ? "bug" : "plan"; }
+  function entryFile(file) { return file === "bugs" ? "BUGS.md" : "PLANS.md"; }
+  function pickupRole(file) { return file === "bugs" ? "bugfix" : "feature"; }
   function runAct(act, arg) {
     // Six drawer edits end identically: clear the edit's in-progress flag, reload the role
     // row, and toast the server's message (or a fallback when it sends none). Only the flag to
@@ -139,7 +146,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         // The refused banner's action names the entry it points at as file:index; open the
         // card on that file's tab and land on the row, the way a .backloglink click does.
         const [file, index] = arg.split(":");
-        setBacklogTab(file === "bugs" ? "bugs" : "plans");
+        setBacklogTab(file);
         toggleEntry(file, Number(index));
       }
       $("backlogcard").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -164,20 +171,20 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       if (title === undefined) return;
       if (!entryCancelArmed(arg, title)) { armEntryCancel(arg, title); return; }
       disarmEntryCancel();
-      postAction("/api/backlog-cancel", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title }, (d) => {
+      postAction("/api/backlog-cancel", { kind: kindOf(file), position: Number(index) + 1, title }, (d) => {
         closeDrawer();
         return d && d.status === "cancelled"
-          ? "Cancelled “" + splitTitle(title).title + "” from " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + uncommittedTail(d) + (d.workingNote ? " — " + d.workingNote : "") + (d.releasedNote ? " — " + d.releasedNote : "")
+          ? "Cancelled “" + splitTitle(title).title + "” from " + entryFile(file) + uncommittedTail(d) + (d.workingNote ? " — " + d.workingNote : "") + (d.releasedNote ? " — " + d.releasedNote : "")
           : "That entry was already removed or moved — refreshed";
       });
     } else if (act === "entry-release") {
       const [file, index] = arg.split(":");
       const title = entryTitleAt(file, index);
       if (title === undefined) return;
-      postAction("/api/backlog-release", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title }, (d) => {
+      postAction("/api/backlog-release", { kind: kindOf(file), position: Number(index) + 1, title }, (d) => {
         closeDrawer();
         if (d && d.status === "released") {
-          return "Released “" + splitTitle(title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + " — lifted " + (d.lifted === "refused" ? "the Refused note" : d.lifted === "waiting-for-failure" ? "the Waiting-for-the-next-failure note" : "the held-for-operator note") + " — " + (d.heldNote || (file === "bugs" ? "bugfix" : "feature") + " will pick it up") + uncommittedTail(d); // vocabulary-ok: the held-for-operator note's release wording
+          return "Released “" + splitTitle(title).title + "” in " + entryFile(file) + " — lifted " + (d.lifted === "refused" ? "the Refused note" : d.lifted === "waiting-for-failure" ? "the Waiting-for-the-next-failure note" : "the held-for-operator note") + " — " + (d.heldNote || pickupRole(file) + " will pick it up") + uncommittedTail(d); // vocabulary-ok: the held-for-operator note's release wording
         }
         return d && d.status === "not_refused"
           ? "That entry carries no Refused, Waiting for the next failure, or held-for-operator note — refreshed" // vocabulary-ok: the held-for-operator note's release wording
@@ -187,10 +194,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       const [file, index] = arg.split(":");
       const title = entryTitleAt(file, index);
       if (title === undefined) return;
-      postAction("/api/backlog-top", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title }, (d) => {
+      postAction("/api/backlog-top", { kind: kindOf(file), position: Number(index) + 1, title }, (d) => {
         closeDrawer();
         if (d && d.status === "moved_to_top") {
-          return "Moved “" + splitTitle(title).title + "” to the top of " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + " — " + (d.heldNote || (file === "bugs" ? "bugfix" : "feature") + " takes it next") + uncommittedTail(d);
+          return "Moved “" + splitTitle(title).title + "” to the top of " + entryFile(file) + " — " + (d.heldNote || pickupRole(file) + " takes it next") + uncommittedTail(d);
         }
         return d && d.status === "already_first"
           ? "That entry is already first — refreshed"
@@ -213,13 +220,13 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       const newTitle = titleBox ? titleBox.value.trim() : "";
       if (title === undefined) return;
       if (!newTitle) { showFlash("Write a title first"); return; }
-      postAction("/api/backlog-edit", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title, newTitle, newBody: bodyBox ? bodyBox.value : "" }, (d) => {
+      postAction("/api/backlog-edit", { kind: kindOf(file), position: Number(index) + 1, title, newTitle, newBody: bodyBox ? bodyBox.value : "" }, (d) => {
         stopEntryEdit();
         closeDrawer();
         return d && d.status === "edited"
-          ? "Edited “" + splitTitle(d.title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + (d.heldNote ? " — " + d.heldNote : "") + uncommittedTail(d)
+          ? "Edited “" + splitTitle(d.title).title + "” in " + entryFile(file) + (d.heldNote ? " — " + d.heldNote : "") + uncommittedTail(d)
           : d && d.status === "unchanged"
-          ? "No change to “" + splitTitle(d.title).title + "” — " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + " was not written"
+          ? "No change to “" + splitTitle(d.title).title + "” — " + entryFile(file) + " was not written"
           : "That entry was removed or moved — refreshed";
       });
     } else if (act === "note-edit") {
