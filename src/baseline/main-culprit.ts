@@ -1,4 +1,5 @@
 import { cachedBaselineVerdict, checkMainBaseline } from "./main-baseline.js";
+import { mergingRoleOf } from "../events/event-read.js";
 import { baselineCheckLogger } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
 import { gitTry } from "../git/git-run.js";
@@ -7,16 +8,12 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
 import { gateMainWorktreePath } from "../paths.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import { onlyQuarantined } from "../review/known-flakes.js";
-import { readEvents } from "../events/event-read.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { shortSha } from "../text/format.js";
 
 /** How many first-parent commits below the red tip the search for a last green looks at. */
 const CULPRIT_SEARCH_MAX = 50;
-
-/** How many recent events the owner lookup reads; an older `merged` event counts as none. */
-const OWNER_EVENT_TAIL = 2000;
 
 type RedCulprit =
   | { kind: "culprit"; commit: string; runner?: string; failingTests: string[]; green: string }
@@ -86,13 +83,11 @@ export async function findRedCulprit(
       return { kind: "unattributed", reason: `red did not reproduce at ${shortSha(commit)}` };
     }
     const failingTests = red.failingTests ?? []; // G was just verified green, so it carries none to subtract
-    const merged = readEvents(root, OWNER_EVENT_TAIL)
-      .reverse()
-      .find((ev) => ev.type === "merged" && ev.commit === commit);
+    const runner = mergingRoleOf(root, commit);
     return {
       kind: "culprit",
       commit,
-      ...(merged ? { runner: merged.source } : {}),
+      ...(runner !== undefined ? { runner } : {}),
       failingTests,
       green,
     };

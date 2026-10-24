@@ -233,7 +233,12 @@ discards a role's in-flight merge.
   a doc-only tip inherits its green). It logs a `main_check` event with the failing test titles and
   saves reds beside the greens in `.tumwater/state/baseline-verdicts.json`. On a red tip it also
   bisects the first-parent commits since the last green and logs a `main_culprit` event naming the
-  commit, its merging runner and the failing tests (or a warning when it cannot name one). No run or
+  commit, its merging runner and the failing tests (or a warning when it cannot name one). The watch
+  also runs the review gate's five deterministic diff rules — conflict markers, protected edits,
+  secret leaks, a false-fix claim on a doc-only tip, and backlog structure — against each first-parent
+  commit's own diff in the watched range, attributed to that commit's own merging role; a violation is
+  logged as a warning naming the rule and the head (the same reason text the
+  gate would reject with), deterministically within one poll, with no confirming re-run. No run or
   merge waits for the watch. It hands the named commit to the merge slot, which reverts it before
   any merge pick (serialized with merges): it checks out main's tip in the `_merge` worktree,
   commits the inverse as `tumwater(tumwater): Revert <short sha>`, runs `check.gateCommand` on it

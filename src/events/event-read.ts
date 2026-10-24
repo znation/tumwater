@@ -147,6 +147,23 @@ export function runSpanMs(ev: HarnessEvent, starts: Map<string, number>): number
   return startTs === undefined || endTs === null ? null : Math.max(0, endTs - startTs);
 }
 
+/** How many recent events the merged-event owner lookup reads; an older `merged` event counts
+ * as none. */
+const MERGED_EVENT_TAIL = 2000;
+
+/** The role whose `merged` event named `commit` — the owner of a main head, shared by the red
+ * culprit attribution (main-culprit.ts) and the watch's diff-rule naming (main-watch.ts), so the
+ * two consumers read one definition. undefined when no recent merged event names the head. Lives
+ * here on the event READ side (not in main-watch.ts) because both consumers import each other's
+ * module otherwise: main-watch.ts imports findRedCulprit from main-culprit.ts, so a
+ * main-culprit.ts -> main-watch.ts owner-lookup edge would leave the pair mutually dependent at
+ * runtime (docs/code-metrics.md records "no runtime import cycles"). */
+export function mergingRoleOf(root: string, commit: string): string | undefined {
+  return readEvents(root, MERGED_EVENT_TAIL)
+    .reverse()
+    .find((ev) => ev.type === "merged" && ev.commit === commit)?.source;
+}
+
 /** Normalize a raw `main_revert` reason to the events.ts contract: `post-review` for a
  * post-merge review rejection, `main-red` otherwise, including absent or unknown reasons. */
 export function revertReasonOf(ev: HarnessEvent): "post-review" | "main-red" {

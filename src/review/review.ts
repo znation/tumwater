@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
-import { headOf, patchId } from "../git/git.js";
+import { changeBaseRev, headOf, patchId } from "../git/git.js";
 import { aheadOfMainFiles } from "../git/git-diff.js";
 import type { PriorReview } from "../merge/merge-queue.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
@@ -13,15 +13,11 @@ import { errorMessage, parseNonNegativeInt } from "../text/text.js";
 import { firstReason } from "../text/phrases.js";
 import type { SleepSampler } from "../build/host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";
-import { falseFixReason } from "../verdict/fix-claim.js";
-import { conflictMarkerReason } from "../merge/merge-git.js";
-import { protectedEditReason } from "./protected-edits.js";
-import { secretLeakReason } from "./secret-leaks.js";
-import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { idleWithoutProviderLease } from "../concurrency/provider-lease.js";
 import { setMergeStage } from "../merge/merge-slot.js";
 import type { SlotLeaseHandle } from "../git/worktree-pool.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
+import { diffRuleReasons } from "./diff-rules.js";
 
 export { REVIEW_FAILURE_LIMIT } from "./review-run.js";
 import { restoreReviewedHead, runReviewer, withRuns } from "./review-run.js";
@@ -297,43 +293,26 @@ async function reviewAttempt(
   }
 
   const files = await aheadOfMainFiles(wt, mainBranch);
-  // A change handed back to its author with the conflict markers left in place (PLANS.md
-  // "Robust conflict landing, part 2/2") must not merge raw `<<<<<<<` lines. The stage check
-  // flags them for one fix-up turn, but only this deterministic gate rejection makes it a
-  // hard stop — an md-only diff skips the reviewer entirely, so nothing else would catch it.
-  const markerReason = conflictMarkerReason(wt, files);
-  if (markerReason !== undefined) return reject([markerReason]);
-  // The prompt block and PRINCIPLES.md are markdown, so the exempt fast path below would merge
-  // an edit to either unreviewed; reject it here, for md-only and code diffs alike.
-  const protectedReason = await protectedEditReason(wt, mainBranch, files, role);
-  if (protectedReason !== undefined) return reject([protectedReason]);
-  // A leaked credential is just as invisible to the exempt fast path: reject it here too.
-  const secretReason = await secretLeakReason(wt, mainBranch, files);
-  if (secretReason !== undefined) return reject([secretReason]);
-  if (isExemptDiff(files, config.review.exemptPaths)) {
-    // The exemption is a fast path, not a blind eye: an md-only diff that moves a bug to
-    // Fixed must have its fix's symbols on this tree, or it records code that does not
-    // exist (BUGS.md 2026-09-22 — 9cea8c3 merged a Fix paragraph naming runScriptGroup
-    // and signalTree with no source behind it). A deterministic rejection, like the
-    // pre-check below: no pi run consumed, reasons injected into the author's next run.
-    const falseFix = await falseFixReason(wt, mainBranch, files);
-    if (falseFix) return reject([falseFix]);
-    // Same cross-check as the merge path (backlog-structure.ts): an md-only diff that
-    // duplicates or drops a `## ` section heading would merge unreviewed — md-only edits skip
-    // the reviewer by design, and a malformed backlog stays invisible until an entry ends up
-    // on the wrong side of a heading (PLANS.md 2026-09-25, 52cbadd1).
-    const structure = await backlogStructureReason(wt, mainBranch, files);
-    if (structure) return reject([structure]);
+  // The five deterministic diff rules (conflict markers, protected edits, secret leaks, a false
+  // fix claim on an exempt md-only diff, and backlog structure) are judged by diffRuleReasons in
+  // the gate's own order and scope — the one call site the gate and the main watch share (the
+  // watch runs them on main's tip, "Every commit is verified on main, part 1/3"). A rejection is
+  // a hard stop and deterministic, like the pre-check below: no pi run consumed, reasons
+  // injected into the author's next run. A conflict marker must not merge raw `<<<<<<<` lines
+  // (PLANS.md "Robust conflict landing, part 2/2"), and an md-only diff skips the reviewer, so
+  // each rule below is what catches a change the reviewer would never see: an edit to the brief
+  // prompt block or PRINCIPLES.md (protectedEditReason), a leaked credential
+  // (secretLeakReason), an md-only fix claim with no backing code (falseFixReason, BUGS.md
+  // 2026-09-22), and a duplicated or dropped `## ` section heading (backlogStructureReason,
+  // PLANS.md 2026-09-25).
+  const baseRev = await changeBaseRev(wt, mainBranch);
+  const exempt = isExemptDiff(files, config.review.exemptPaths);
+  const [firstFinding] = await diffRuleReasons(wt, baseRev, files, role, exempt);
+  if (firstFinding !== undefined) return reject([firstFinding]);
+  if (exempt) {
     state.reviewResume = undefined;
     return { decision: "exempt" };
   }
-
-  // The backlog-structure check for code diffs too, before the build pre-check: a change that
-  // duplicates or drops a `## ` section heading in PLANS.md, BUGS.md, or QUESTIONS.md cannot
-  // merge, and the rejection is deterministic — no pi run and no check run spent on a tree the
-  // heading set already condemns.
-  const structure = await backlogStructureReason(wt, mainBranch, files);
-  if (structure) return reject([structure]);
 
   // Deterministic build pre-check — after BOTH early returns above (an md-only diff cannot
   // break the build) and before any reviewer run or the phase/event that would show

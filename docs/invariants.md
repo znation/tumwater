@@ -421,6 +421,11 @@ deadline-clock half and the remaining flake regressions are pinned by the cases 
 The gate rejects some changes without running a reviewer, because the exempt fast path for
 markdown would otherwise merge them unreviewed.
 
+The main watch (part 1/3 of the every-commit-verified-on-main plan) runs the same deterministic
+diff rules on main's new tip after it lands, in the gate's own order and scope — naming the rule
+and the head in a warning when one fires. The pre-merge rejections below stay in place through
+part 3/3.
+
 ### INV-G1: a role cannot merge a change to the brief block, or to PRINCIPLES.md unless it is the director or steward
 
 **Guarantee.** A change that alters, removes, or deletes the text between the `tumwater:prompt`
@@ -428,7 +433,8 @@ markers of README.md or TUMWATER.md (a block that merely moves passes), or that 
 PRINCIPLES.md from a role whose base is neither `director` nor `steward`, is rejected before
 review — md-only diffs included — and flagged at staging for one fix-up turn.
 
-**Binds.** `src/review/protected-edits.ts`, `src/review/review.ts`, `src/run/stage-check.ts`.
+**Binds.** `src/review/protected-edits.ts`, `src/review/review.ts`, `src/run/stage-check.ts`,
+`src/baseline/main-watch.ts` (the tip check).
 
 **Pinned by.** `test/protected-edits.test.ts` (the per-case reasons), `test/review.test.ts` — "gate
 rejects an md-only edit to the brief text block with no pi run" and "gate rejects an md-only
@@ -445,7 +451,8 @@ content did not hold is rejected before review —
 md-only diffs included — and flagged at staging for one fix-up turn. The reason names the file and
 variable or pi source, never the value.
 
-**Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/run/stage-check.ts`.
+**Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/run/stage-check.ts`,
+`src/baseline/main-watch.ts` (the tip check).
 
 **Pinned by.** `test/secret-leaks.test.ts` — "piCredentialValues returns literal apiKey, header,
 key, access and refresh values", "piCredentialValues skips interpolations, commands and short dummy
