@@ -70,7 +70,7 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
         if (failures >= POST_REVIEW_FAILURE_LIMIT) {
           warnEventBestEffort(root, entry.role, `dropping the post-merge review of ${shortSha(entry.commit)} after ${failures} failed runs; it stays on main unreviewed`);
           settlePostReview(root, entry.commit, null);
-        } else settlePostReview(root, entry.commit, { ...entry, failures });
+        } else settlePostReview(root, entry.commit, { ...entry, failures, lastFailure: outcome.detail });
       }
     } catch (err) {
       warnEventBestEffort(root, TUMWATER_SOURCE, `the post-merge review of ${shortSha(entry.commit)} could not run: ${errorMessage(err)}`);

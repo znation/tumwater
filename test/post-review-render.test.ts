@@ -44,6 +44,16 @@ test("an entry with positive failures carries the failed-review-run count", () =
   assert.match(out, /\[2 failed review runs\]/);
 });
 
+test("a failing entry names its last failure reason beside the count", () => {
+  assert.equal(
+    postReviewStatusLabel(e({ failures: 2, lastFailure: "no parseable VERDICT line in the reviewer's reply" })),
+    "[2 failed review runs — last: no parseable VERDICT line in the reviewer's reply]",
+  );
+  assert.equal(postReviewStatusLabel(e({ failures: 2 })), "[2 failed review runs]");
+  const long = "x".repeat(200);
+  assert.equal(postReviewStatusLabel(e({ failures: 1, lastFailure: long })), "[1 failed review run — last: " + "x".repeat(79) + "…]");
+});
+
 test("an entry with neither rejected nor failures carries no suffix", () => {
   const out = renderPostReviews([e({})]);
   assert.ok(!out.includes("["), out);

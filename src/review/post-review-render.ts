@@ -14,14 +14,19 @@ import type { PostReview } from "./post-merge-review.js";
 /** The bracketed status suffix one post-merge review entry carries on every observer surface
  * (`tumwater reviews`, the dashboard's Post-merge reviews card, and the TUI Pending pane's
  * review block): the reviewer's rejected reasons, still waiting on the revert, when `rejected`
- * is set; else the number of verdict-less review runs when `failures` is positive; else `""`.
- * Reasons are squashed to 60 as `tumwater reviews` has always printed them. Extracted so the
+ * is set; else the number of verdict-less review runs when `failures` is positive, naming the
+ * last failure's reason beside the count when `lastFailure` is a non-empty string; else `""`.
+ * Reasons are squashed to 60 as `tumwater reviews` has always printed them, and the failure
+ * detail to 80. Extracted so the
  * CLI, the dashboard and the TUI share one status wording and cannot drift. */
 export function postReviewStatusLabel(entry: PostReview): string {
   if (entry.rejected !== undefined) {
     return `[rejected — waiting to revert: ${entry.rejected.map((r) => squash(r, 60)).join("; ")}]`;
   }
   if (typeof entry.failures === "number" && entry.failures > 0) {
+    if (typeof entry.lastFailure === "string" && entry.lastFailure.length > 0) {
+      return `[${plural(entry.failures, "failed review run")} — last: ${squash(entry.lastFailure, 80)}]`;
+    }
     return `[${plural(entry.failures, "failed review run")}]`;
   }
   return "";

@@ -27,6 +27,9 @@ export interface PostReview {
   body?: string;
   /** Review runs that ended without a verdict. */
   failures?: number;
+  /** The most recent verdict-less run's detail: replaced on each failed run and cleared when the
+   * entry is settled or removed. */
+  lastFailure?: string;
   rejected?: string[];
 }
 
@@ -71,19 +74,21 @@ export function isAfterMergeRole(config: TumwaterConfig, role: string): boolean 
 }
 
 /** The queued entries. A torn or hand-edited entry (not an object with a string commit, role and
- * summary, or a `rejected` that is not an array) is dropped, and the next write leaves it out. */
+ * summary, or a `rejected` that is not an array — a non-string `lastFailure` is dropped like the
+ * other fields) is dropped, and the next write leaves it out. */
 export function readPostReviews(root: string): PostReview[] {
   const saved = readJsonFile<{ pending?: unknown }>(postReviewPath(root));
   if (!Array.isArray(saved?.pending)) return [];
   const entries: PostReview[] = [];
   for (const raw of saved.pending as unknown[]) {
     if (!isJsonObject(raw)) continue;
-    const { commit, role, summary, body, failures, rejected } = raw;
+    const { commit, role, summary, body, failures, lastFailure, rejected } = raw;
     if (typeof commit !== "string" || typeof role !== "string" || typeof summary !== "string") continue;
     if (rejected !== undefined && !Array.isArray(rejected)) continue;
     const entry: PostReview = { commit, role, summary };
     if (typeof body === "string") entry.body = body;
     if (typeof failures === "number" && Number.isFinite(failures)) entry.failures = failures;
+    if (typeof lastFailure === "string") entry.lastFailure = lastFailure;
     if (Array.isArray(rejected)) entry.rejected = rejected.filter((r): r is string => typeof r === "string");
     entries.push(entry);
   }

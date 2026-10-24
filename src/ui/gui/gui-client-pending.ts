@@ -224,6 +224,9 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       return "[rejected — waiting to revert: " + e.rejected.map((r) => squashText(r, 60)).join("; ") + "]";
     }
     if (e && typeof e.failures === "number" && e.failures > 0) {
+      if (e && typeof e.lastFailure === "string" && e.lastFailure.length > 0) {
+        return "[" + plural(e.failures, "failed review run") + " — last: " + squashText(e.lastFailure, 80) + "]";
+      }
       return "[" + plural(e.failures, "failed review run") + "]";
     }
     return "";

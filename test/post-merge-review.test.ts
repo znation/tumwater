@@ -254,7 +254,29 @@ test("a merged commit whose diff git cannot produce fails its review, never appr
   await p.postReview!.promise;
   assert.equal(reviews.count, 0, "no reviewer ran over an empty diff");
   assert.equal(eventsOfType(root, "review_verdict").length, 0);
-  assert.deepEqual(readPostReviews(root), [{ commit: first, role: "improve", summary: "seed", failures: 1 }]);
+  const keptEntries = readPostReviews(root);
+  assert.equal(keptEntries.length, 1);
+  const kept = keptEntries[0]!;
+  assert.deepEqual(
+    { commit: kept.commit, role: kept.role, summary: kept.summary, failures: kept.failures },
+    { commit: first, role: "improve", summary: "seed", failures: 1 },
+  );
+  assert.match(kept.lastFailure ?? "", /^git diff .* failed/, "the run's failure detail is recorded beside the count");
+});
+
+test("a later failed run replaces the recorded last failure reason", async () => {
+  const { root, runner, ctx } = setup("VERDICT: approve\n1. fine");
+  const reviews = countReviews(runner);
+  // The repository's first commit has no parent, so `git diff C^ C` fails for real each run.
+  const first = sh(root, "git", "rev-list", "--max-parents=0", "HEAD");
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [{ commit: first, role: "improve", summary: "seed", failures: 1, lastFailure: "old detail" }] }));
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(reviews.count, 0, "no reviewer ran over an empty diff");
+  const kept = readPostReviews(root).at(0)!;
+  assert.equal(kept.failures, 2);
+  assert.match(kept.lastFailure ?? "", /^git diff .* failed/, "the later run's reason replaces the old detail");
 });
 
 test("a post-merge review git could not start keeps its entry without counting a failed run", async () => {
