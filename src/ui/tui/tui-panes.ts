@@ -47,6 +47,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     session.notesClearArmed = null;
     session.armedKillOrphans = session.killOrphansArmed;
     session.killOrphansArmed = false;
+    session.armedDropBrokenPins = session.dropBrokenPinsArmed;
+    session.dropBrokenPinsArmed = false;
     session.armedRevert = session.revertArmed;
     session.revertArmed = null;
     session.armedQueue = session.queueArmed;
@@ -157,6 +159,15 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     }
     if (key.ctrl && key.name === "k") return health.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "w") return history.handleKey?.(key, ctx) ?? false;
+    // Health owns Ctrl+S (drop broken pins) ahead of the pane router's fallthrough; off the
+    // Health view it falls through so the quiet-hours (Activity), trailing-window (History)
+    // and min-run-interval (Transcript) arms keep their current meanings.
+    if (key.ctrl && key.name === "s" && session.view === session.roleIds.length + 7) {
+      // On the Health view the drop-pins arm consumes Ctrl+S only on an empty prompt line; a
+      // non-empty prompt or a held editor falls through so History's trailing-window cycle still
+      // takes the key, exactly as it did before the drop-pins arm existed.
+      if (health.handleKey?.(key, ctx)) return true;
+    }
     if (key.ctrl && key.name === "s") return history.handleKey?.(key, ctx) ?? false;
     // Ctrl+P on Usage/Failures steps the report window back; every other view is History's.
     if (key.ctrl && key.name === "p" && (session.view === session.roleIds.length + 2 || session.view === session.roleIds.length + 3)) {

@@ -2,6 +2,7 @@ import { REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
 import type { ChangeOverlapsView, TeamChangeView, RoleChangeView } from "../../change/change-data.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { OrphanKillReport } from "../../doctor/doctor-orphans.js";
+import type { BrokenPinDrop } from "../../doctor/doctor-contention-checks.js";
 import type { BacklogCommitReport } from "../../doctor/doctor-backlog.js";
 import type { previewRevert, revertMergedCommit } from "../../operator/revert.js";
 import type { RunDetail } from "../../run/run-detail-data.js";
@@ -34,6 +35,7 @@ export interface TuiPanesDeps {
   collectOverlaps(root: string): Promise<ChangeOverlapsView>;
   runDoctor(root: string, probeImages: "never" | "all"): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
+  dropBrokenPins(root: string): Promise<BrokenPinDrop>;
   commitBacklog(root: string): Promise<BacklogCommitReport>;
   previewRevert: typeof previewRevert;
   revertCommit: typeof revertMergedCommit;
@@ -168,6 +170,10 @@ export interface TuiPaneSession {
   armedKillOrphans: boolean;
   /** The Health pane's pending second Ctrl+K; moved to `armedKillOrphans` by beginKey. */
   killOrphansArmed: boolean;
+  /** The armed broken-pin drop (first Ctrl+S on the Health pane), read by the second. */
+  armedDropBrokenPins: boolean;
+  /** The Health pane's pending second Ctrl+S; moved to `armedDropBrokenPins` by beginKey. */
+  dropBrokenPinsArmed: boolean;
   /** The armed run revert (first Ctrl+V on a History trail): the full sha a second Ctrl+V
    * reverts. */
   armedRevert: string | null;
@@ -194,6 +200,7 @@ export interface TuiPaneSession {
   collectOverlaps(root: string): Promise<ChangeOverlapsView>;
   runDoctor(root: string, probeImages: "never" | "all"): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
+  dropBrokenPins(root: string): Promise<BrokenPinDrop>;
   commitBacklog(root: string): Promise<BacklogCommitReport>;
   previewRevert: typeof previewRevert;
   revertCommit: typeof revertMergedCommit;
@@ -221,6 +228,8 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     notesClearArmed: null,
     armedKillOrphans: false,
     killOrphansArmed: false,
+    armedDropBrokenPins: false,
+    dropBrokenPinsArmed: false,
     armedRevert: null,
     revertArmed: null,
     armedQueue: null,
@@ -238,6 +247,7 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     collectOverlaps: deps.collectOverlaps,
     runDoctor: deps.runDoctor,
     killOrphans: deps.killOrphans,
+    dropBrokenPins: deps.dropBrokenPins,
     commitBacklog: deps.commitBacklog,
     previewRevert: deps.previewRevert,
     revertCommit: deps.revertCommit,

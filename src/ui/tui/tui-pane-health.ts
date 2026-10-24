@@ -5,6 +5,7 @@ import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import { runManualReclaim } from "../../operator/operator-intent.js";
 import { testNotifyHook } from "../../cli/notify-command.js";
 import { resyncRootInstall, rootInstallResyncLines } from "../../build/dep-install.js";
+import { brokenPinDropLines } from "../../doctor/doctor-contention-checks.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
@@ -182,6 +183,42 @@ export function createHealthPane(session: TuiPaneSession) {
       void session.killOrphans(session.root).then(
         (report) => {
           session.flashMessage(orphanKillLines(report).join("; "));
+          void run();
+          session.paneScroll = 0;
+          session.requestRender();
+        },
+        (err: unknown) => {
+          session.flashError(err);
+          session.requestRender();
+        },
+      );
+      return true;
+    }
+    if (key.ctrl && key.name === "s" && promptLineFree(ctx.es) && (ctx.es.input ?? "") === "" && session.view === session.roleIds.length + 7) {
+      // Ctrl+S on the Health pane, pressed twice, drops each broken refs/tumwater/ pin (one
+      // whose commit is gone) — the terminal twin of `tumwater doctor --drop-broken-pins` and
+      // the dashboard Health card's Drop broken pins, all reached through the same
+      // dropBrokenPins. The first press only arms (beginKey disarms on any other key) and
+      // flashes what a second press does; the second flashes the same lines the CLI prints,
+      // joined with "; ", then re-runs the checks so the tumwater pins row reflects the drop.
+      // A failure flashes instead of killing the TUI. Ctrl+S stays the prompt-line editor's
+      // save-to-wherever while text is typed or an editor holds the line, and keeps its
+      // quiet-hours (Activity), trailing-window (History) and min-run-interval (Transcript)
+      // meanings off the Health view.
+      if (!session.armedDropBrokenPins) {
+        session.dropBrokenPinsArmed = true;
+        session.flashMessage(
+          "press Ctrl+S again to drop each broken refs/tumwater/ pin whose commit is gone — any other key keeps them",
+        );
+        session.requestRender();
+        return true;
+      }
+      session.flashMessage("dropping broken pins …");
+      session.requestRender();
+      void session.dropBrokenPins(session.root).then(
+        (report) => {
+          const lines = brokenPinDropLines(report);
+          session.flashMessage(lines.length > 0 ? lines.join("; ") : "no broken pins to drop");
           void run();
           session.paneScroll = 0;
           session.requestRender();

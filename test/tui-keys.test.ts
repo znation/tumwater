@@ -5018,6 +5018,91 @@ test("Ctrl+K off the Health view never kills", () => {
   assert.equal(h.kills(), 0);
 });
 
+function dropBrokenPinsHarness(onView: number, drop: { dropped: { ref: string; sha: string }[]; failed: { ref: string; reason: string }[] }) {
+  const root = makeRoot();
+  const report: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "ok", name: "node", detail: "fine" }],
+    routing: [],
+    verdict: "ok",
+  } as DoctorReport;
+  let drops = 0;
+  let doctors = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => {
+      doctors += 1;
+      return Promise.resolve(report);
+    },
+    dropBrokenPins: () => {
+      drops += 1;
+      return Promise.resolve(drop);
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < onView; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  return { keys, drops: () => drops, doctors: () => doctors };
+}
+
+test("Ctrl+S twice on the Health view drops the broken pins and flashes the lines", async () => {
+  const h = dropBrokenPinsHarness(7, {
+    dropped: [{ ref: "refs/tumwater/feature-1", sha: "abc1234" }],
+    failed: [],
+  });
+  assert.equal(h.keys.state().view, 7);
+  await Promise.resolve();
+  const before = h.doctors();
+  h.keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(h.drops(), 0);
+  assert.match(h.keys.state().flash!, /press Ctrl\+S again/);
+  h.keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(h.drops(), 1);
+  await waitFor(() => (h.keys.state().flash ?? "").includes("refs/tumwater/feature-1"), "the drop flash");
+  assert.equal(h.keys.state().flash, "1 dropped broken pin: refs/tumwater/feature-1 names abc1234");
+  assert.equal(h.doctors(), before + 1);
+});
+
+test("Ctrl+S twice on the Health view flashes no broken pins to drop when the report is empty", async () => {
+  const h = dropBrokenPinsHarness(7, { dropped: [], failed: [] });
+  h.keys.handleKey(undefined, { ctrl: true, name: "s" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "s" });
+  await waitFor(() => (h.keys.state().flash ?? "") === "no broken pins to drop", "the no-drop flash");
+  assert.equal(h.keys.state().flash, "no broken pins to drop");
+});
+
+test("a key between two Ctrl+S presses on the Health view disarms the drop", () => {
+  const h = dropBrokenPinsHarness(7, { dropped: [{ ref: "refs/tumwater/feature-1", sha: "abc1234" }], failed: [] });
+  h.keys.handleKey(undefined, { ctrl: true, name: "s" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "o" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(h.drops(), 0);
+});
+
+test("Ctrl+S on the Health view with text typed on the prompt line drops no pins and falls through to the window cycle", () => {
+  const h = dropBrokenPinsHarness(7, { dropped: [{ ref: "refs/tumwater/feature-1", sha: "abc1234" }], failed: [] });
+  h.keys.handleKey("x", { name: "x" });
+  assert.equal(h.keys.state().input, "x");
+  h.keys.handleKey(undefined, { ctrl: true, name: "s" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(h.drops(), 0);
+  // The drop arm is guarded to an empty prompt line, so with text typed it must NOT swallow the
+  // key: it falls through to History's Ctrl+S trailing-window cycle, exactly as it did before
+  // the drop-pins arm existed. Asserting only drops() === 0 would still pass under a router that
+  // swallowed the key after health.handleKey returned false, so assert the fallthrough observable
+  // instead — History's window advanced (null → 1h → 6h) across the two presses.
+  assert.equal(h.keys.state().historySince, "6h", "the key fell through to History's Ctrl+S, not swallowed");
+});
+
+test("Ctrl+S off the Health view never drops", () => {
+  const h = dropBrokenPinsHarness(0, { dropped: [{ ref: "refs/tumwater/feature-1", sha: "abc1234" }], failed: [] });
+  h.keys.handleKey(undefined, { ctrl: true, name: "s" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(h.drops(), 0);
+});
+
 test("Ctrl+A on the Health view commits the dirty backlog and flashes the lines", async () => {
   const root = makeRoot();
   const report: DoctorReport = {
