@@ -123,6 +123,10 @@ export async function drainVerify(ctx: MergePipelineContext, p: MergePipeline): 
     // The dedupe awaited git: a task that settled meanwhile may have dropped this very entry
     // (its role was busy when the queue was listed) or claimed its role. Start nothing for it.
     if (!fs.existsSync(file) || liveRoles(p).has(entry.role)) continue;
+    // A pre-merge entry during a reviewer hold stays queued instead of starting a parked verify
+    // that fills the verify limit; a review.afterMerge role's entry keeps draining (its review
+    // runs after merging, so the hold is not for it) — ctx's role-scoped start gate decides.
+    if (ctx.startHeld(entry.role)) continue;
     startVerify(ctx, p, entry, file);
   }
 }
@@ -167,7 +171,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
       const lease = await acquireUnlessAborted(semaphore, VERIFY_TIER, verify.controller.signal, reviewKey);
       verify.parked = false;
       if (lease === null) return; // a shutdown while parked
-      if (verify.controller.signal.aborted || ctx.startHeld()) {
+      if (verify.controller.signal.aborted || ctx.startHeld(role)) {
         lease.release(); // stopping, or a restart / team hold closed the gate while it waited
         return;
       }

@@ -59,7 +59,8 @@ export async function pollRunnerReasons(
 
 /** The team-hold key of the reviewer's seam, read from the config merges actually review under
  * (the poll's roleConfig, which a used-up claude window or the cap has moved to a fallback), so
- * a reviewer that left claude no longer holds the whole team on the claude hold. */
+ * a reviewer that left claude no longer holds the roles a pre-merge review gates on the claude
+ * hold. */
 export function reviewHoldKey(roleConfig: TumwaterConfig): string | undefined {
   return seamHoldKey(reviewRunConfig(roleConfig));
 }
@@ -87,7 +88,8 @@ interface DeferralInputs {
  * pass admits exactly one of them as the probe — a probe blind to the pair's tier would lift
  * the pause for every role, and a probe with no eligible runner must not hijack the poll's
  * other launches. The review-on strong pause (budgetGate): with the review gate on, an
- * unresolvable strong tier means nothing could merge, so EVERY role is held — the per-tier
+ * unresolvable strong tier means nothing could merge, so every role a pre-merge review gates is
+ * held (a `review.afterMerge` role is exempt — its review runs after merging) — the per-tier
  * pause set alone would let small/default roles author changes no reviewer could judge. The
  * probe of the strong pair pierces this hold for exactly the probed tier's roles too. */
 export function pollDeferralInputs(

@@ -5,7 +5,7 @@
  * reserve and exit — and moved here without reordering any of them. */
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-info.js";
-import { runnerEnabled } from "../roles/runner-ids.js";
+import { baseRoleOf, runnerEnabled } from "../roles/runner-ids.js";
 import type { newLiveConfigReload } from "../config/config-live.js";
 import type { FallbackBreakerPolicy } from "../budget/fallback-breaker.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -114,6 +114,21 @@ export function newPollState(): PollState {
  * so another team-wide hold on new runs can close the same gate point. */
 function runStartHeld(state: PollState): boolean {
   return state.holdForRestart || state.restart || state.diskHeld;
+}
+
+/** The one start-gate rule for merges: a restart/disk hold's `held` counts against every role,
+ * while a hold on the reviewer's provider (`reviewHeld`) parks only the entries a pre-merge
+ * review gates — a role on `review.afterMerge` keeps draining (it merges without a reviewer),
+ * and no role at all (the conservative team-wide verdict a caller that cannot name a role
+ * reads) still holds. Shared by pollMergeDrain's startHeld and the merge tests, so the
+ * production wiring and its coverage cannot drift. */
+export function mergeStartHeld(
+  held: boolean,
+  reviewHeld: boolean,
+  afterMergeRoles: ReadonlySet<string>,
+  role?: string,
+): boolean {
+  return held || (reviewHeld && (role === undefined || !afterMergeRoles.has(baseRoleOf(role))));
 }
 
 /** What the request-and-watch step hands the rest of the poll. */
@@ -231,16 +246,18 @@ export function pollGatesAndHolds(
   ]);
 
   // The failure hold, keyed per provider (PLANS.md 2026-10-05): a role is held when ITS
-  // run model's provider stands under a hold, and every role is held when the
-  // reviewer's provider is (with the review gate on, nothing could merge — and the merge
-  // queue reads the same reviewHeld verdict). Key presence in the map is relapse
-  // memory, not a hold: heldProviders() reads only standing holds (`until` non-null),
-  // so a lifted hold never keeps blocking.
+  // run model's provider stands under a hold, and the roles a pre-merge review gates are held
+  // when the reviewer's provider is (with the review gate on their approved change could not
+  // merge without a reviewer — while a role on `review.afterMerge` merges without one, so it is
+  // exempt, and the merge queue reads the same scoped reviewHeld verdict). Key presence in the
+  // map is relapse memory, not a hold: heldProviders() reads only standing holds (`until`
+  // non-null), so a lifted hold never keeps blocking.
   const teamHeldProviders = heldProviders(gateStates.teamHold);
   const teamHeldNow = () => heldProviders(gateStates.teamHold);
   // The reviewer's seam is read from the config merges actually review under — the poll's
   // roleConfig, which a used-up claude window or the cap has already moved to a fallback —
-  // so a reviewer that left claude no longer holds the whole team on the claude hold.
+  // so a reviewer that left claude no longer holds the roles a pre-merge review gates on the
+  // claude hold.
   const reviewSeamKey = reviewHoldKey(gates.roleConfig);
   return {
     ...gates,
@@ -302,19 +319,25 @@ export async function pollRedeploy(
   return false;
 }
 
-/** Merge queue 3/5 — drain the durable merge queue while neither a restart nor a failure
- * hold is pending (the scheduler's WHEN; merge-drain.ts owns the HOW — the verification
- * stage, its merge slot, and the dedupe against main). A held poll starts no verify and no
- * merge, exactly as it starts no run; what is already in flight carries on, and a verify
- * parked for its permit meets the same start gate as a parked run when the permit comes. */
+/** Merge queue 3/5 — drain the durable merge queue while neither a restart nor a disk hold is
+ * pending (the scheduler's WHEN; merge-drain.ts owns the HOW — the verification stage, its
+ * merge slot, and the dedupe against main). A restart or disk hold stops the whole drain, as it
+ * starts no run; what is already in flight carries on, and a verify parked for its permit
+ * meets the same start gate as a parked run when the permit comes. A hold on the reviewer's
+ * provider parks only the entries a pre-merge review gates, per the role-scoped mergeStartHeld:
+ * a `review.afterMerge` role's approved/queued changes keep draining. */
 export async function pollMergeDrain(
   ctx: PollContext,
   state: PollState,
   { liveConfig, mainHead }: PollInputs,
   gates: PollGates,
 ): Promise<void> {
-  if (state.holdForRestart || gates.reviewHeld || state.diskHeld) return;
+  if (state.holdForRestart || state.diskHeld) return;
   const { root, mainBranch } = ctx;
+  // The roles whose review runs after merging (plans post-merge-review role): while the
+  // reviewer is held, their approved/queued changes keep draining, so the per-entry start gate
+  // exempts them from the reviewer-hold leg below.
+  const afterMergeRoles = new Set((liveConfig.review.afterMerge ?? []).map(baseRoleOf));
   // A `main_red` pin the pipeline kept goes back on the queue once main's head has moved.
   for (const r of ctx.runners) await requeueMainRedPin(root, mainBranch, r.state, mainHead);
   await drainMergeQueue(
@@ -328,7 +351,7 @@ export async function pollMergeDrain(
       roleConfig: gates.roleConfig,
       directorConfig: gates.directorConfig,
       piDefault: ctx.piDefault,
-      startHeld: () => runStartHeld(state) || gates.reviewHeldNow(),
+      startHeld: (role) => mergeStartHeld(runStartHeld(state), gates.reviewHeldNow(), afterMergeRoles, role),
     },
     ctx.merges,
   );
@@ -344,6 +367,10 @@ export async function pollSchedule(
 ): Promise<void> {
   const { root, runners, gateStates } = ctx;
   const inputs = pollDeferralInputs(root, runners, liveConfig, gateStates, gates, ctx.breakerNow());
+  // The roles whose review runs after merging: while the reviewer is held their runs stay
+  // launchable (the pre-merge gate skips their review), so the permit-time start gate exempts
+  // them from the reviewer-hold leg below, exactly as the scheduling pass and merge drain do.
+  const afterMergeRoles = new Set((liveConfig.review.afterMerge ?? []).map(baseRoleOf));
   const reasons = await pollRunnerReasons({
     root,
     runners,
@@ -367,6 +394,7 @@ export async function pollSchedule(
     heldProviders: gates.teamHeldProviders,
     windowHeldProviders: windowHeldProviders(gateStates.teamHold),
     reviewHeld: gates.reviewHeld,
+    afterMergeRoles,
     roleProviders: gates.roleProviders,
     openBugsNow: inputs.openBugsNow,
     workBacklogOpen: inputs.workBacklogOpen,
@@ -397,7 +425,8 @@ export async function pollSchedule(
     startHeld: (role) =>
       runStartHeld(state) ||
       (role !== DIRECTOR_ROLE
-        ? gates.reviewHeldNow() || gates.teamHeldNow().has(gates.roleProviders.get(role))
+        ? (!afterMergeRoles.has(baseRoleOf(role)) && gates.reviewHeldNow()) ||
+          gates.teamHeldNow().has(gates.roleProviders.get(role))
         : windowHeldProviders(gateStates.teamHold).has(gates.roleProviders.get(role))),
   });
 }

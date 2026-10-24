@@ -262,6 +262,13 @@ discards a role's in-flight merge.
   role on the dashboard, the TUI and `tumwater status` — the pre-revert signal to narrow
   `review.afterMerge` for the noisy role or raise the authoring bar before the revert ceiling is
   hit.
+  While the reviewer's provider stands under a failure hold, or its strong tier is unresolvable
+  under the review gate, the roles a pre-merge review gates are held — but a role on
+  `review.afterMerge` is not: it merges without a reviewer, so it keeps authoring and its
+  approved/queued changes keep draining through the scheduler and merge pulse's role-scoped start
+  gate. The post-merge review queue holds only where that gate's no-role form holds — a restart or
+  disk hold, or a hold on the reviewer's provider — and never on the unresolvable strong tier,
+  which never reaches the post-merge review queue.
 - A test that fails and then passes on the same tree is quarantined at once: the gate's re-run, a
   red in-lock merge check's one immediate re-run (the change then merges), and the watch's
   confirming re-run each add the failing tests the failed run named to

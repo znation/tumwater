@@ -65,10 +65,17 @@ export interface SchedulingPassCtx {
    * an earlier draft of this pass). */
   probeRoles: ReadonlySet<string>;
   /** With the review gate on, an unresolvable strong tier means nothing could merge, so every
-   * role is held (the director exempt) — not only the strong ones. budgetGate's second pause
-   * cause, split from the per-tier set so the dashboards can name the tiers' own holds
-   * separately from this team-wide one. */
+   * role a pre-merge review gates is held (the director exempt) — not only the strong ones.
+   * budgetGate's second pause cause, split from the per-tier set so the dashboards can name the
+   * tiers' own holds separately from this team-wide one. A role on `review.afterMerge` (whose
+   * review runs after merging) is exempt, exactly as the reviewer's provider hold exempts it. */
   reviewStrongPaused: boolean;
+  /** The base role ids listed in `review.afterMerge` (src/review/post-merge-review.ts): the
+   * roles whose review runs after merging, so while the review gate's team holds (the
+   * reviewer's provider under a failure hold, or an unresolvable strong tier) they keep
+   * authoring and their approved/queued changes keep draining. Only these exempt the scoped
+   * team holds — every other role is held exactly as before. */
+  afterMergeRoles: ReadonlySet<string>;
   /** The providers whose team-wide failure hold stands (team/team-hold.ts heldProviders —
    * `until` non-null; key presence is relapse memory, not a hold). A role starts no new
    * run while ITS provider is held (the director exempt). */
@@ -76,8 +83,9 @@ export interface SchedulingPassCtx {
   /** The subset of `heldProviders` held by a subscription window (team-hold.ts
    * windowHeldProviders): the one hold the director is NOT exempt from. */
   windowHeldProviders: ReadonlySet<string | undefined>;
-  /** The reviewer's provider is held while the review gate is on: nothing could merge, so
-   * EVERY role is blocked, not just roles running on that provider. */
+  /** The reviewer's provider is held while the review gate is on: the roles a pre-merge review
+   * gates are blocked (a role on `review.afterMerge` merges without a reviewer, so it is
+   * exempt), not just roles running on that provider. */
   reviewHeld: boolean;
   /** Each runner's run model provider (configForRole at poll time): the key the
    * heldProviders check reads for that role. */
@@ -125,6 +133,7 @@ export interface SchedulingScope {
   budgetPausedRoles: ReadonlySet<string>;
   probeRoles: ReadonlySet<string>;
   reviewStrongPaused: boolean;
+  afterMergeRoles: ReadonlySet<string>;
   roleQuietHeld: ReadonlySet<string>;
   heldProviders: ReadonlySet<string | undefined>;
   windowHeldProviders: ReadonlySet<string | undefined>;
@@ -190,6 +199,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     budgetPausedRoles,
     probeRoles,
     reviewStrongPaused,
+    afterMergeRoles,
     roleQuietHeld,
     heldProviders,
     windowHeldProviders,
@@ -324,13 +334,15 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   // disjunct — a role held by either window (or both, held once) starts no new runs;
   // the director stays exempt by the same role check that covers the other disjuncts.
   // The budget hold, per role (part 5c/8): a tier that resolved to pause holds its own roles,
-  // and — with review on — an unresolvable strong tier holds every role (nothing could merge).
-  // The probe of a demoted pair pierces the hold for EXACTLY the probed pair's tier's roles:
-  // the earlier draft's pair-blind pierce lifted the pause team-wide on any due probe.
-  // Quiet hours fold in beside the operator pause — the schedule is not probe-worthy the way a
-  // paused budget is.
+  // and — with review on — an unresolvable strong tier holds every role a pre-merge review
+  // gates (nothing could merge) — except a role on `review.afterMerge`, whose review runs
+  // after merging, so it keeps authoring. The probe of a demoted pair pierces the hold for
+  // EXACTLY the probed pair's tier's roles: the earlier draft's pair-blind pierce lifted the
+  // pause team-wide on any due probe.
   const budgetHolds = (role: string): boolean =>
-    (reviewStrongPaused || budgetPausedRoles.has(role)) && !probeRoles.has(role);
+    (budgetPausedRoles.has(role) ||
+      (reviewStrongPaused && !afterMergeRoles.has(baseRoleOf(role)))) &&
+    !probeRoles.has(role);
   const operatorPauseBlocks = (role: string): boolean =>
     (userPaused || quietNow || roleQuietHeld.has(role) || budgetHolds(role)) &&
     role !== DIRECTOR_ROLE;
@@ -389,6 +401,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     budgetPausedRoles,
     probeRoles,
     reviewStrongPaused,
+    afterMergeRoles,
     roleQuietHeld,
     heldProviders,
     windowHeldProviders,

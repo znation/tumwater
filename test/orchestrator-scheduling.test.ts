@@ -28,11 +28,12 @@ import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { HOUR } from "./helpers/oracles.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
-// holds the roles whose run model is on P while roles on a healthy provider Q keep running,
-// the reviewer's provider being held blocks EVERY role (with the review gate on, nothing
-// could merge), and — the seam the 2026-10-06 review called out as untested — a storm, its
-// lift, and the SUBSEQUENT poll run through scheduling end with the previously held role
-// admitted again: a lifted hold never keeps blocking.
+// holds the roles whose run model is on P while roles on a healthy provider Q keep running;
+// with the review gate on, a hold on the reviewer's provider (or an unresolvable strong tier)
+// holds the roles a pre-merge review gates while a role on `review.afterMerge` keeps running;
+// and — the seam the 2026-10-06 review called out as untested — a storm, its lift, and the
+// SUBSEQUENT poll run through scheduling end with the previously held role admitted again:
+// a lifted hold never keeps blocking.
 
 const T0 = 1_000_000_000;
 
@@ -72,6 +73,7 @@ function schedulingCtx(root: string, runners: readonly RoleRunner[], roleProvide
     budgetPausedRoles: new Set<string>(),
     probeRoles: new Set<string>(),
     reviewStrongPaused: false,
+    afterMergeRoles: new Set(defaultConfig().review.afterMerge ?? []),
     roleQuietHeld: new Set<string>(),
     heldProviders: new Set<string | undefined>() as ReadonlySet<string | undefined>,
     windowHeldProviders: new Set<string | undefined>() as ReadonlySet<string | undefined>,
@@ -451,7 +453,7 @@ test("a deferred maintenance role records its deferral once per episode", async 
   assert.equal(fs.existsSync(file), false, "the unchanged verdict does not rewrite the state file");
 });
 
-test("the reviewer's provider being held blocks every role through scheduling, and only while it stands", async () => {
+test("the reviewer's provider being held holds a pre-merge role but admits a review.afterMerge role, and only while it stands", async () => {
   const root = tmpdir("tumwater-scheduling-review-");
   const runners = [fakeRunner("feature", defaultConfig()), fakeRunner("dedupe", defaultConfig())];
   const roleProviders = new Map([
@@ -459,17 +461,34 @@ test("the reviewer's provider being held blocks every role through scheduling, a
     ["dedupe", "Q"],
   ]);
 
-  // A storm on the strong tier's provider P while the review gate is on: nothing could merge,
-  // so every role is blocked — not just roles running on P.
+  // A storm on the reviewer's provider while the review gate is on: the roles a pre-merge
+  // review gates are held (feature could not merge without a reviewer), while a role on
+  // review.afterMerge (dedupe — its review runs after merging) is admitted.
   const heldCtx = schedulingCtx(root, runners, roleProviders);
   heldCtx.reviewHeld = true;
   const reasonsHeld = await pollRunnerReasons(heldCtx);
-  assert.equal(reasonsHeld.size, 0, "no role starts a run while the reviewer's provider is held");
+  assert.equal(reasonsHeld.has(runners[0]!), false, "a pre-merge-review role starts no run while the reviewer's provider is held");
+  assert.equal(reasonsHeld.has(runners[1]!), true, "a review.afterMerge role keeps authoring while the reviewer's provider is held");
 
-  // When the review hold lifts, the roles run again.
+  // When the review hold lifts, both roles run again.
   const openCtx = schedulingCtx(root, runners, roleProviders);
   const reasonsOpen = await pollRunnerReasons(openCtx);
   assert.equal(reasonsOpen.size, 2, "both roles run again once the review hold lifts");
+});
+
+test("an unresolvable strong tier under the review gate holds a pre-merge role but admits a review.afterMerge role", async () => {
+  const root = tmpdir("tumwater-scheduling-review-strong-");
+  const runners = [fakeRunner("feature", defaultConfig()), fakeRunner("dedupe", defaultConfig())];
+  const roleProviders = new Map([
+    ["feature", "Q"],
+    ["dedupe", "Q"],
+  ]);
+
+  const heldCtx = schedulingCtx(root, runners, roleProviders);
+  heldCtx.reviewStrongPaused = true;
+  const reasonsHeld = await pollRunnerReasons(heldCtx);
+  assert.equal(reasonsHeld.has(runners[0]!), false, "an unresolvable strong tier holds a pre-merge-review role");
+  assert.equal(reasonsHeld.has(runners[1]!), true, "a review.afterMerge role is admitted under the strong-tier hold");
 });
 
 /** Put a directory where the append-only events log belongs: every logEvent under `root`

@@ -510,7 +510,7 @@ export function pollBudgetGate(
       }
       // A reviewer pinned to a subscription backend under such a tier would likewise end up on
       // the tier's priced primary; it goes to the tier's fallback pair instead (a held reviewer
-      // would stop the whole team).
+      // would park the roles a pre-merge review gates).
       const rm = liveConfig.review.model;
       const reviewTier: ModelTier = isTierName(rm) ? rm : "strong";
       const reviewPair = priceResolved[reviewTier].pair;

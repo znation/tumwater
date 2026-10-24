@@ -41,6 +41,7 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
     windowHeldProviders,
     roleProviders,
     reviewHeld,
+    afterMergeRoles,
     heldProviders,
     openBugsNow,
     workBacklogOpen,
@@ -114,9 +115,10 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
     return { skip: true };
   if (
     runner.role !== DIRECTOR_ROLE &&
-    (reviewHeld || heldProviders.has(roleProviders.get(runner.role)))
+    (heldProviders.has(roleProviders.get(runner.role)) ||
+      (reviewHeld && !afterMergeRoles.has(baseRoleOf(runner.role))))
   )
-    return { skip: true }; // nor while ITS provider's failure storm holds — or the reviewer's (nothing could merge)
+    return { skip: true }; // nor while ITS provider's failure storm holds — or the reviewer's, which a pre-merge review gates (a review.afterMerge role is exempt)
   // The role's OWN queue decides inbox due-ness: the director counts its historical
   // inbox, every other role its per-role queue (tumwater prompt --role <id>) — so a
   // queued prompt makes its role due by itself, no wake marker needed (isEligible).

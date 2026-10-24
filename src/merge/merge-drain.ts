@@ -49,13 +49,15 @@ async function postReviewDue(config: TumwaterConfig, root: string, commit: strin
   return files === null || !isExemptDiff(files, config.review.exemptPaths);
 }
 
-/** One poll of the merge queue (the scheduler's WHEN: after the gates, never while a restart or
- * a team hold is pending): start a verification for every queued change the pipeline does not
- * already hold (drainVerify, in merge-verify.ts), and start the merge when the slot is free and
- * something is approved (drainMerge). A queued merge is COMMITTED work awaiting completion, not
- * a new run, so the budget and user-pause gates deliberately do not hold it (pausing it would
- * leave main behind while the interlock blocks that role's next run forever). Starts tasks and
- * returns; never awaits them — authors keep running behind them, which is the entire point. */
+/** One poll of the merge queue (the scheduler's WHEN: after the gates, never while a restart
+ * or a disk hold is pending — a reviewer-provider hold does not stop the whole drain, it parks
+ * only the entries a pre-merge review gates, per the role-scoped startHeld): start a
+ * verification for every queued change the pipeline does not already hold (drainVerify, in
+ * merge-verify.ts), and start the merge when the slot is free and something is approved
+ * (drainMerge). A queued merge is COMMITTED work awaiting completion, not a new run, so the
+ * budget and user-pause gates deliberately do not hold it (pausing it would leave main behind
+ * while the interlock blocks that role's next run forever). Starts tasks and returns; never
+ * awaits them — authors keep running behind them, which is the entire point. */
 export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
   await drainVerify(ctx, p);
   await assignPendingReverts(ctx);
