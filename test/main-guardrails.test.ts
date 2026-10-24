@@ -218,6 +218,25 @@ test("revertWarnings: more than 5 reverts in 24 h warn naming the count; 5 do no
   assert.equal(REVERT_RATE_LIMIT, 5);
 });
 
+test("revertWarnings: post-merge-rejection reverts alone never trip the rate ceiling", () => {
+  const now = 1_000_000_000_000;
+  // Eight post-review reverts (the live 2026-10-23 condition) carry empty failingTests and
+  // `reason: "post-review"`: they are intended revision cycles, not red-main reverts, so the
+  // ceiling must not read them as a flaky-revert habit and no false-looking phrase can fire.
+  const reverts = Array.from({ length: 8 }, (_, i) =>
+    ev({ type: "main_revert", ts: now - i * MIN, commit: `rrrrrrrr${i}`, reason: "post-review", failingTests: [] }),
+  );
+  assert.equal(revertGuardrail(reverts, [], now), null);
+  assert.deepEqual(revertWarnings(reverts, [], now), []);
+  // The same count but as red-main reverts still fires the burst, for just the red-main set.
+  const red = Array.from({ length: 6 }, (_, i) =>
+    ev({ type: "main_revert", ts: now - i * MIN, commit: `cccccccc${i}` }),
+  );
+  const out = revertWarnings(red, [], now);
+  assert.equal(out.length, 1);
+  assert.match(out[0]!, /6 reverts in the last 24 h/);
+});
+
 test("the guardrail constants match the documented thresholds", () => {
   assert.equal(RED_MAIN_WARN_MS, 30 * MIN);
   assert.equal(QUARANTINE_AGE_MS, 3 * DAY_MS);

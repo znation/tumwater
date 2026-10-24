@@ -822,6 +822,10 @@ export function teamAlerts(
   // A revert off main — the always-on twin of the doctor's `main's check` revert rule
   // (main-guardrails.ts revertGuardrail, REVERT_RATE_LIMIT): a false revert is working code
   // lost and a burst is a flaky-revert habit, both worth the operator's eye while they happen.
+  // The count and ceiling cover only red-main reverts (`reason: "main-red"` on the
+  // main_revert event); a post-merge-review rejection (`reason: "post-review"`) is an intended
+  // revision cycle carried by `tumwater report`'s post-merge-rejection table, never here, so
+  // the detail's "fix the failing test" advice always has a referent.
   // status-payload.ts's revertAlert feeds it from the same revertGuardrail the doctor calls,
   // so the alert and the doctor cannot drift on the trigger or the phrases.
   if (reverts) {

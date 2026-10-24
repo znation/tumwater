@@ -244,8 +244,11 @@ discards a role's in-flight merge.
   since (or a later `main_check`'s `quarantined` list names it), or its change later merged again
   unchanged with main staying green (a later `merged` event carries the culprit's `patchId` and the
   first `main_check` after it that ran the check passed) — and on more than 5 reverts in 24 h,
-  naming each false-looking revert's culprit sha and the count when over the limit. `main_revert`
-  and `merged` events carry the culprit's and the merged commit's `patchId` (src/git/git.ts, `-U0`)
+  naming each false-looking revert's culprit sha and the count when over the limit.
+  Rejection reverts are told apart from red-main ones by the `main_revert` event's `reason`
+  (post-review | main-red): a post-merge-review rejection is an intended revision cycle, so it
+  is never counted toward the ceiling or called false — `tumwater report`'s post-merge-rejection
+  table carries it instead. `main_revert` and `merged` events carry the culprit's and the merged commit's `patchId` (src/git/git.ts, `-U0`)
   so the second test reads the event log.
 - A role listed in `review.afterMerge` is reviewed after merging: its change still passes the
   deterministic rejects and the gate check, then merges with no reviewer run. The `merged` commit

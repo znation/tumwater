@@ -998,6 +998,18 @@ test("revertAlert and the surfaces carry a revert alert from a false revert, and
   assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /revert off main/);
 });
 
+test("post-merge-rejection reverts alone raise no reverts alert on any surface", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  // Eight `reason: "post-review"` reverts (the live 2026-10-23 condition) are intended
+  // revision cycles, so the revert guardrail counts none of them and no reverts alert appears
+  // — the detail's "fix the failing test" advice would have no referent here.
+  writeEvents(root, Array.from({ length: 8 }, (_, i) => ({ ts: now - i * 60_000, source: "tumwater", type: "main_revert", commit: `rrrrrrrr${i}`, reason: "post-review", failingTests: [] })));
+  assert.equal(revertAlert(root, now), null);
+  assert.equal((statusPayload(root, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "reverts"), undefined);
+  assert.doesNotMatch(renderStatus(root, snapshot(root, undefined, now)), /revert off main/);
+});
+
 test("quarantineAlert and the surfaces carry a quarantine alert from an old or oversized list, and none from a fresh one", () => {
   const now = Date.now();
   const root = makeRepo();

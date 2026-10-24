@@ -131,6 +131,7 @@ export async function runMainRevert(
         revert: reverted.sha,
         runner: c.runner,
         failingTests: c.failingTests,
+        reason: c.postReview ? "post-review" : "main-red",
         ...(culpritPatch ? { patchId: culpritPatch } : {}),
       });
       await onReverted?.(c).catch((err: unknown) =>

@@ -202,12 +202,19 @@ export function revertGuardrail(
   const reverts = events.filter(
     (e) => e.type === "main_revert" && typeof e.ts === "number" && e.ts >= cutoff,
   );
-  if (reverts.length === 0) return null;
+  // A rejection revert (`reason: "post-review"` — a post-merge review rejecting an already
+  // landed commit, main-revert.ts) is an intended revision cycle, not a red-main revert: it
+  // carries no failingTests and a revision gets a new patch-id, so it can never look false and
+  // counting it against the daily ceiling reads a deliberate mechanism as a flaky-revert
+  // habit. Only red-main reverts count toward the rate; older events without `reason`
+  // predate the split and default to main-red.
+  const redReverts = reverts.filter((r) => r.reason !== "post-review");
+  if (redReverts.length === 0) return null;
   const phrases: string[] = [];
-  if (reverts.length > REVERT_RATE_LIMIT) {
-    phrases.push(`${reverts.length} reverts in the last 24 h — over the ${REVERT_RATE_LIMIT}-revert ceiling`);
+  if (redReverts.length > REVERT_RATE_LIMIT) {
+    phrases.push(`${redReverts.length} reverts in the last 24 h — over the ${REVERT_RATE_LIMIT}-revert ceiling`);
   }
-  for (const r of reverts) {
+  for (const r of redReverts) {
     const culprit =
       typeof r.commit === "string" ? r.commit : typeof r.sha === "string" ? r.sha : "";
     const reason = revertLooksFalse(r, events, quarantine);
@@ -224,7 +231,7 @@ export function revertGuardrail(
       );
     }
   }
-  return phrases.length > 0 ? { count: reverts.length, phrases } : null;
+  return phrases.length > 0 ? { count: redReverts.length, phrases } : null;
 }
 
 /** G2 over `events` and the quarantine list, as the doctor and selfcheck digest read it: the
