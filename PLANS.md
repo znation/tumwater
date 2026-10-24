@@ -439,32 +439,111 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 **Tests.**
 - `test/budget-wiring.test.ts`: add one test that `budgetPausedSubjects` returns the expected `budgetPausedRoles`/`windowMovedRoles` for a fixed runners/view state — a moved tier whose own backend is out, a healthy backend on the same tier, a tier whose `servingResolved[tier].pair` is null, and the director — pinning the moved body in its new home.
 
-### Split `src/ui/team-alerts.ts`'s `teamAlerts` function into per-domain alert-builder modules (planned 2026-10-24 by the organize role; independent of every eligible plan — this edits only src/ui/team-alerts.ts and new src/ui/team-alerts/* modules plus test/team-alerts.test.ts, none of which the `ci`, `Every commit is verified` or budget series touch; the Forward-never-back series edits src/ui/team-alerts.ts's `reverts` block and its Let-never-fill-the-revert-slot siblings are blocked/refused rather than claimed, so this plan touches that module's other blocks only and rebases if one of those lands first; touches src/ui/team-alerts.ts src/ui/team-alerts/* (new) test/team-alerts.test.ts)
-**Needs review 2026-10-24 by feature: too large for one run (held 1)** — the whole 750-line `teamAlerts` split into 4 new builders plus an assembler, byte-identical against the 1494-line test's ~16 key-order pins, and the plan's two structures conflict as written (it promises each builder owns a contiguous slice and the assembler just concatenates, but the code's emitted order interleaves across the four domains — budget 1–5, roles 6–8, budget 9, backlog 10–24, merge 25–30, budget 31–35, merge 36, budget 37, roles 38–39), so reconciling the order-preserving assembly with the fixed per-block module map needs a design decision a single gate-green run cannot hold alongside a correct move of ~30 blocks.
+### Split `teamAlerts` into ordered slice builders, part 1/5: the status/capacity and role-phase alerts move into `buildStatusAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; opens the series — parts 2/5–5/5 each require the part before them landed; touches src/ui/team-alerts.ts)
 
-**Goal.** `src/ui/team-alerts.ts` is the project's largest production module at 1053 lines, 5.3x the 197-line median (2026-10-24 survey), and almost all of it is one 750-line function, `teamAlerts` (lines 298–~1050), that appends ~30 alerts in a fixed order — budget and fallback, disk, install, role phases, build, backlog/doctor feeds, quiet, provider hold, paused, contention, images — each a self-contained `if (...) { out.push({...}) }` block sharing the same nine-parameter `snap` Pick plus twenty feed parameters. The whole function lives in the ui layer beside `status-payload.ts`'s feed derivation and `status-render.ts`'s rendering, so each alert's block competes with twenty-nine others for one function's screen, and the module's doc comment and the blocks' own comments (which cite the doctor rules, plans, and BUGS fixes each alert mirrors) are buried in one giant body. It cannot be split in a single organize run: the blocks are ordered and the 1494-line test pins the exact key order (line 166 `["mainred", "failing", "stuck", "build", "questions", "paused"]` and twenty more), so a naive per-block extraction must preserve interleaved ordering across modules and the shared `TeamAlert`/`AlertRole` types and helpers stay in one home. This plan states the target structure for a future run or series to land whole.
+**Previously held 1**
 
-**Approach.** One coherent restructure, no behavior change. Extract the ~30 alert blocks into per-domain builder modules under `src/ui/team-alerts/`, each exporting one `build*Alerts(ctx): TeamAlert[]` that owns a contiguous slice of the alert order; `teamAlerts` becomes a thin assembler that concatenates the modules' slices in the exact current order so the emitted key sequence is byte-identical.
-- `src/ui/team-alerts.ts` keeps the public surface — `teamAlerts`, `alertNeedsYou`, the `TeamAlert`, `AlertRole` and feed-interface types — and the shared helpers the blocks call (`entryListDetail`, `moreDetail`, `openRoleActions`, `seeFailures`, `andJoin`, `listRoles`, `listRoleIds`, `stuckDetail`, `localizeInstants`). It gains a `TeamAlertContext` type bundling the current `snap` Pick, `questions`, `roles`, `now`, `refused`, `operatorHeld`, `staleBugs`, `stalePrompts`, `staleMerges`, `planDependency`, `staleWaitingBugs`, `skippedMergeFiles`, `stalledPlans`, `quarantined`, `strandedPlans`, `duplicatedHeadings`, `validationGaps`, `reverts`, `notifyFailure`, `primaryOverwrite`, `contention`, `flappedChecks`, `regressedFixes`, `postMergeChurn`, `postReviewRisk`, `droppedPostReviews`, and constructs it from its existing parameters; `teamAlerts` calls each builder in order and returns the concatenation.
-- New `src/ui/team-alerts/` builders, each owning a contiguous slice and importing the context type and the shared helpers:
-  - `team-alert-budget.ts`: chain, fallback/budget, role-cap, disk, install, build, maintenance, provider-hold, quiet, paused, stopped, contention (the budget/disk/build/infra slice, in current order).
-  - `team-alert-backlog.ts`: questions, refused, operator-held, stalled-plans, plan-dependencies, stranded-plans, backlog-headings, validation-gaps, stale-bugs, notify, waiting-bugs, stale-prompts, stale-merges, skipped-merges, primary-overwrite (the backlog/doctor-feed slice).
-  - `team-alert-merge.ts`: quarantine, flapped-checks, reverts, post-merge-churn, post-merge-risk, dropped-post-reviews, regressed-fixes (the merge/main-watch slice).
-  - `team-alert-roles.ts`: mainred, failing, stuck, images, images-probe (the role-phase slice).
-  Each block moves verbatim — same `key`, `tone`, `title`, `detail`, `actions`, and the same comment above it (the doctor-rule and plan cites travel with the block) — with its locals scoped to the builder. Doc comment in `team-alerts.ts` re-points the module's split summary.
-- `test/team-alerts.test.ts` needs no assertion change: it imports `teamAlerts` from `src/ui/team-alerts.ts` and asserts the concatenated key order, which the assembler preserves. If the plan lands as one run, update the `from "../ui/team-alerts.js"` import only if a test's relative path crosses a new directory (it does not — the import stays the same path). `grep -rn "team-alerts" src test docs` then finds the module, its four builders, and the test.
+**Goal.** `teamAlerts` is one ~750-line function appending ~41 alerts in a fixed order, and its reviewers rejected the one-run move of every block into four `src/ui/team-alerts/*` modules: the emitted order interleaves the domains, so a fixed module map plus an order-preserving assembler needs a design decision a single gate-green run cannot hold. This series instead extracts contiguous runs of the alert order into module-level builder functions inside `src/ui/team-alerts.ts`, one part per run; `teamAlerts` calls each builder at the position of the run it replaces, so the emitted `key` order is unchanged and no cross-module ordering or shared context type is needed. The shared helpers (`entryListDetail`, `moreDetail`, `openRoleActions`, `seeFailures`, `andJoin`, `listRoles`, `listRoleIds`, `stuckDetail`, `localizeInstants`) stay in the module, in scope for every builder, and each builder takes a local input type naming exactly the fields its blocks read. Moving the builders into `src/ui/team-alerts/*` modules is deliberately out of scope for this series. Part 1 moves the first ten alerts: `chain`, `fallback`, `budget`, `role-cap`, `disk`, `install`, `mainred`, `failing`, `stuck`, `build`.
 
-**Files touched.** src/ui/team-alerts.ts src/ui/team-alerts/team-alert-budget.ts (new) src/ui/team-alerts/team-alert-backlog.ts (new) src/ui/team-alerts/team-alert-merge.ts (new) src/ui/team-alerts/team-alert-roles.ts (new) test/team-alerts.test.ts
+**Approach.**
+- Add `interface StatusAlertsInput` beside the existing module-level helper functions, holding `snap` (the same Pick of `budget`, `chain`, `disk`, `rootInstallDrift`, `capPaused`, `budgetPausedRoles`, `build` that the ten blocks read) and `roles: readonly AlertRole[]`.
+- Move the ten `if (...) { out.push({...}) }` blocks verbatim — each with its preceding comment and its `key`/`tone`/`title`/`detail`/`actions` literal — into `function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[]`, keeping the block-local derivations that currently sit in `teamAlerts`'s body (`b`, `onFallback`, `capPausedRoles`, `drift`, `red`, `failing`, `stuck`) inside the builder in their current order. The builder declares its own `const out: TeamAlert[] = []` and returns it.
+- In `teamAlerts`, replace the moved run with `out.push(...buildStatusAlerts({ snap, roles }))` at the same position, right after the function's `const out: TeamAlert[] = []` line; the remaining blocks and the function's signature and doc comment are untouched.
+
+**Files touched.** src/ui/team-alerts.ts
 
 **Acceptance criteria.**
-- `teamAlerts`'s returned array is byte-identical for every existing test scenario: same alerts, same order of `key`s; `test/team-alerts.test.ts` passes with no assertion change.
-- `src/ui/team-alerts.ts` shrinks to the types, helpers, context, the assembler and `alertNeedsYou`; `grep -n "^export function teamAlerts\|^export function alertNeedsYou" src/ui/team-alerts.ts` finds both, and no alert block's `key`/`tone`/`title`/`detail`/`actions` literal or its preceding comment moved to a different module than this plan names.
-- `teamAlerts` reads no alert-body variable and owns only the context construction and the ordered concatenation; every `out.push` block lives in a builder.
-- `grep -rn "team-alerts" src test docs` finds the module, the four builders, and the test import/spec, with no stale path.
+- `teamAlerts` emits the same alerts in the same `key` order for every existing test scenario; `test/team-alerts.test.ts` passes with no assertion change.
+- Every block of the slice — its guard, its `key` literal and its comment — appears only inside `buildStatusAlerts`; no alert's wording was rewritten.
+- `grep -n "buildStatusAlerts" src/ui/team-alerts.ts` finds the declaration and exactly one call, and the call sits after the type/helper declarations and before the `questions` block (the block part 2/5 later moves).
 - `npm run test:gate` passes.
 
 **Tests.**
-- `test/team-alerts.test.ts`: unchanged, still green (the ordering assertions at lines 166, 490, 531, 553, 628, 718, 741, 849, 919, 961, 964, 1079, 1206, 1262, 1301, 1309 pin the concatenated order).
+- `test/team-alerts.test.ts`: unchanged, still green (its ordering assertions pin the concatenated key order).
+
+### Split `teamAlerts` into ordered slice builders, part 2/5: the backlog hold and doctor-feed alerts move into `buildBacklogAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 1/5 landed, since it edits the `teamAlerts` body part 1/5 restructures; touches src/ui/team-alerts.ts)
+
+**Previously held 1**
+
+**Goal.** Part 2 moves the next eight contiguous alerts of `teamAlerts`, in order: `questions`, `refused`, `operator-held`, `stalled-plans`, `plan-dependencies`, `stranded-plans`, `backlog-headings`, `validation-gaps`. Same rule as part 1/5: the run moves verbatim into a named builder called at the same position, so the emitted order is unchanged.
+
+**Approach.**
+- Add `interface BacklogAlertsInput` holding exactly `questions: readonly string[]`, `refused: readonly RefusedEntry[]`, `operatorHeld: readonly RefusedEntry[]`, `stalledPlans: readonly StalledPlan[]`, `planDependency: PlanDependencyProblem | null`, `strandedPlans: readonly StrandedPlanEntry[]`, `duplicatedHeadings: readonly BacklogHeadingDuplicate[]`, `validationGaps: readonly ValidationGapProblem[]`.
+- Move the eight blocks, comments and block-local derivations (`first`, the `moreDetail` folds) included, into `function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[]`.
+- In `teamAlerts`, replace the run with `out.push(...buildBacklogAlerts({ questions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }))` at the same position, between the part 1/5 call and the `stale-bugs` block.
+
+**Files touched.** src/ui/team-alerts.ts
+
+**Acceptance criteria.**
+- The eight `key` literals appear only inside `buildBacklogAlerts`; the slice's guards and comments moved with them and no wording changed.
+- `grep -n "buildBacklogAlerts" src/ui/team-alerts.ts` finds the declaration and exactly one call.
+- `test/team-alerts.test.ts` passes with no assertion change; `npm run test:gate` passes.
+
+**Tests.**
+- `test/team-alerts.test.ts`: unchanged, still green.
+
+### Split `teamAlerts` into ordered slice builders, part 3/5: the backlog feed alerts move into `buildBacklogFeedAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 2/5 landed, since it edits the `teamAlerts` body part 2/5 restructures; touches src/ui/team-alerts.ts)
+
+**Previously held 1**
+
+**Goal.** Part 3 moves the next seven contiguous alerts: `stale-bugs`, `notify`, `waiting-bugs`, `stale-prompts`, `stale-merges`, `skipped-merges`, `primary-overwrite`. Same rule as part 1/5.
+
+**Approach.**
+- Add `interface BacklogFeedAlertsInput` holding `staleBugs: readonly StaleBug[]`, `notifyFailure: NotifyFailure | null`, `staleWaitingBugs: readonly StaleWaitingBug[]`, `stalePrompts: readonly StalePrompt[]`, `staleMerges: readonly StaleMerge[]`, `skippedMergeFiles: readonly string[]`, `primaryOverwrite: PrimaryOverwriteBlock | null`.
+- Move the seven blocks, comments and block-local derivations (`first`, `rest`, the `moreDetail` folds) including their `joinWithMore`/`roleLabel` uses, into `function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[]`.
+- In `teamAlerts`, replace the run with `out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite }))` at the same position, between the part 2/5 call and the `quarantine` block.
+
+**Files touched.** src/ui/team-alerts.ts
+
+**Acceptance criteria.**
+- The seven `key` literals appear only inside `buildBacklogFeedAlerts`; the slice's guards and comments moved with them and no wording changed.
+- `grep -n "buildBacklogFeedAlerts" src/ui/team-alerts.ts` finds the declaration and exactly one call.
+- `test/team-alerts.test.ts` passes with no assertion change; `npm run test:gate` passes.
+
+**Tests.**
+- `test/team-alerts.test.ts`: unchanged, still green.
+
+### Split `teamAlerts` into ordered slice builders, part 4/5: the main-watch and merge alerts move into `buildMergeAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 3/5 landed, since it edits the `teamAlerts` body part 3/5 restructures; touches src/ui/team-alerts.ts)
+
+**Previously held 1**
+
+**Goal.** Part 4 moves the next six contiguous alerts: `quarantine`, `flapped-checks`, `reverts`, `post-merge-churn`, `post-merge-risk`, `dropped-post-reviews`. Same rule as part 1/5.
+
+**Approach.**
+- Add `interface MergeAlertsInput` holding `quarantined: QuarantinedTests | null`, `flappedChecks: FlappedChecks | null`, `reverts: RevertWarning | null`, `postMergeChurn: PostMergeChurn | null`, `postReviewRisk: PostReviewRisk | null`, `droppedPostReviews: DroppedPostReviews | null`, and `roles: readonly AlertRole[]` (the `reverts` and `dropped-post-reviews` blocks read it).
+- Move the six blocks, comments and `seeFailures()` uses into `function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[]`.
+- In `teamAlerts`, replace the run with `out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, roles }))` at the same position, between the part 3/5 call and the `quiet` block.
+
+**Files touched.** src/ui/team-alerts.ts
+
+**Acceptance criteria.**
+- The six `key` literals appear only inside `buildMergeAlerts`; the slice's guards and comments moved with them and no wording changed.
+- `grep -n "buildMergeAlerts" src/ui/team-alerts.ts` finds the declaration and exactly one call.
+- `test/team-alerts.test.ts` passes with no assertion change; `npm run test:gate` passes.
+
+**Tests.**
+- `test/team-alerts.test.ts`: unchanged, still green.
+
+### Split `teamAlerts` into ordered slice builders, part 5/5: the tail alerts (quiet, maintenance, provider hold, paused, contention, regressed fixes, stopped, images) move into `buildTailAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 4/5 landed, since it edits the `teamAlerts` body part 4/5 restructures; touches src/ui/team-alerts.ts)
+
+**Previously held 1**
+
+**Goal.** Part 5 moves the remaining contiguous alerts: `quiet`, `maintenance`, `provider-hold`, `paused`, `contention`, `regressed-fixes`, `stopped`, `images` (both branches), `images-probe`, leaving `teamAlerts` itself as the ordered assembly of five builder calls. Same rule as part 1/5.
+
+**Approach.**
+- Add `interface TailAlertsInput` holding `snap` (the Pick of `inQuietHours`, `quietHours`, `maintenanceQuota`, `providerHolds`, `paused`, `pausedUntil`, `running`, `imageProbeFailures`), `now: number`, `contention: readonly CapacityBottleneck[]`, `regressedFixes: RegressedFixAlert | null`, and `roles: readonly AlertRole[]`.
+- Move the blocks, comments, the `textOnly`/`noTarget`/`targets`/`mq` computations and the `listRoles`/`listRoleIds`/`openRoleActions`/`seeFailures` uses into `function buildTailAlerts(input: TailAlertsInput): TeamAlert[]`.
+- In `teamAlerts`, replace the run with `out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles }))`; `teamAlerts` then holds only the `const out`, the five `out.push(...build…Alerts(...))` calls, and `return out`.
+
+**Files touched.** src/ui/team-alerts.ts
+
+**Acceptance criteria.**
+- The nine `key` literals appear only inside `buildTailAlerts`; the slice's guards and comments moved with them and no wording changed.
+- `teamAlerts`'s body is the five `out.push(...build…Alerts(...))` calls in the fixed order `buildStatusAlerts`, `buildBacklogAlerts`, `buildBacklogFeedAlerts`, `buildMergeAlerts`, `buildTailAlerts`, with no remaining alert `out.push({...})` block; `grep -c "build.*Alerts(" src/ui/team-alerts.ts` counts the five declarations and five calls.
+- `test/team-alerts.test.ts` passes with no assertion change; `npm run test:gate` passes.
+
+**Tests.**
+- `test/team-alerts.test.ts`: unchanged, still green.
 
 ### The dashboard role drawer gains a one-click Review after-merge toggle, the browser twin of `tumwater role <id> --review-after-merge` (planned 2026-10-24 by the plan role; the just-landed CLI plan deliberately left the dashboard role drawer out (its "What it deliberately does not change" names it), and no planned or done entry adds it; independent of every eligible plan — the in-flight `ci` parts edit src/roles/role-catalog.ts, src/roles/roles.ts and src/roles/role-labels.ts, the "Every commit is verified on main" parts edit src/baseline, src/merge and src/config, and the budget-wiring parts edit src/gates and src/budget, none of which is src/roles/role-view.ts, src/gui/gui-config-commands.ts, src/gui/gui-endpoint-commands.ts, src/gui/gui-server.ts, src/ui/gui/gui-client-drawer-config.ts, test/role-view.test.ts, test/gui-endpoints.test.ts or test/gui-client-drawer.test.ts. It shares src/ui/gui/gui-client-boot.ts with the in-flight `--release` plan (that plan edits the entry-release flash, this one the role `runAct` action chain) and docs/cli.md with it (that plan edits the two `--release` clauses, this one the `tumwater role <id>` sentence of the Check-state row), so whichever lands second rebases there; touches src/roles/role-view.ts src/gui/gui-config-commands.ts src/gui/gui-endpoint-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-drawer-config.ts src/ui/gui/gui-client-boot.ts docs/cli.md test/role-view.test.ts test/gui-endpoints.test.ts test/gui-client-drawer.test.ts test/gui-client-boot.test.ts)
 
