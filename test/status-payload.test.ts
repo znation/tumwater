@@ -9,8 +9,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
-import { statusPayload, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS } from "../src/ui/status-payload.js";
+import { statusPayload, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert } from "../src/ui/status-payload.js";
 import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
+import { checkPostReviews } from "../src/doctor/doctor-backlog.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool } from "../src/doctor/doctor-contention-checks.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { initProject } from "../src/init/init.js";
@@ -877,4 +878,17 @@ test("postMergeChurnAlert fires on a day's post-merge rejection burst", () => {
   assert.equal(postMergeChurnAlert(old, now), null);
   // The window constant is the day the alert actually reads under.
   assert.equal(POST_MERGE_REJECT_WINDOW_MS, 24 * 60 * 60_000);
+});
+
+test("postReviewRiskAlert carries the doctor's sentence for an at-risk review", () => {
+  const commit = "ab12cd3e".padEnd(40, "f");
+  const root = makeRepo();
+  writeJsonFile(postReviewPath(root), { pending: [{ commit, role: "improve", summary: "add x", failures: 2 }] });
+  const out = postReviewRiskAlert(root);
+  assert.equal(out?.count, 1);
+  assert.equal(out?.detail, checkPostReviews(root).detail);
+  // A review below the bar and a missing file each raise none.
+  writeJsonFile(postReviewPath(root), { pending: [{ commit, role: "improve", summary: "add x", failures: 1 }] });
+  assert.equal(postReviewRiskAlert(root), null);
+  assert.equal(postReviewRiskAlert(makeRepo()), null);
 });

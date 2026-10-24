@@ -23,7 +23,7 @@ import { quarantineWarning, revertsFor } from "../baseline/main-guardrails.js";
 import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
 import { flappedChecksPhrase } from "../doctor/doctor-project-checks.js";
 import { readPostReviews, postMergeRejectionCounts, POST_MERGE_REJECT_WARN, type PostMergeRejection } from "../review/post-merge-review.js";
-import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles } from "../doctor/doctor-backlog.js";
+import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles, atRiskPostReviews, atRiskPostReviewsPhrase } from "../doctor/doctor-backlog.js";
 import { NOTIFY_CHECK_WINDOW_MS } from "../doctor/doctor-notify.js";
 import { matchedRegressedFixes, regressedFixCandidates, regressedFixesPhrase, staleWaitingBugRows, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
 
@@ -271,6 +271,22 @@ export function flappedChecksAlert(root: string, now = Date.now()): FlappedCheck
   const flapped = repeatedFlakeCounts(events);
   const detail = flappedChecksPhrase(flapped);
   return detail === null ? null : { count: flapped.length, detail };
+}
+/** A post-merge review one failed run from being dropped, the always-on twin of the doctor's
+ * `post-merge reviews` row (src/doctor/doctor-backlog.ts checkPostReviews): the same
+ * atRiskPostReviews traversal and atRiskPostReviewsPhrase the doctor shows, so the alert and the
+ * doctor cannot drift on the selection or the wording. count is the at-risk reviews, detail the
+ * doctor's sentence. null when no queued review is at risk (or the file is missing or torn —
+ * readPostReviews never throws and the read is one small JSON file, so it is poll-cheap). */
+export interface PostReviewRisk {
+  count: number;
+  detail: string;
+}
+/** @see PostReviewRisk */
+export function postReviewRiskAlert(root: string): PostReviewRisk | null {
+  const rows = atRiskPostReviews(root);
+  const detail = atRiskPostReviewsPhrase(rows);
+  return detail === null ? null : { count: rows.length, detail };
 }
 /** A revert off main that looks false or a revert burst, the always-on twin of the doctor's
  * `main's check` revert rule (src/baseline/main-guardrails.ts revertGuardrail): the same
@@ -595,6 +611,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root)),
   };
 }

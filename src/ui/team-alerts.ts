@@ -139,6 +139,15 @@ export interface FlappedChecks {
   count: number;
   detail: string;
 }
+/** A post-merge review one failed run from being dropped, the always-on twin of the doctor's
+ * `post-merge reviews` row (src/doctor/doctor-backlog.ts checkPostReviews): fed from
+ * status-payload.ts's postReviewRiskAlert, which reads the same atRiskPostReviews traversal and
+ * atRiskPostReviewsPhrase the doctor shows, so the alert and the doctor cannot drift on the
+ * selection or the wording. count is the at-risk reviews, detail the doctor's sentence. */
+export interface PostReviewRisk {
+  count: number;
+  detail: string;
+}
 /** One `## ` section heading that appears more than once in a backlog file — the always-on twin
  * of the doctor's `backlog headings` rule (src/doctor/doctor-backlog-plans.ts, computed by the
  * shared duplicatedBacklogHeadings, which itself shares scanBacklogHeadings with the doctor's
@@ -270,7 +279,8 @@ function localizeInstants(text: string): string {
  * review or Needs replan note, checks that flapped more than once in the last day, a stale or
  * oversized flake quarantine, a revert off main that
  * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
- * already reached main, the fleet waiting on capacity slots (workspace, provider or
+ * already reached main, a post-merge review one failed run from being dropped, the fleet waiting
+ * on capacity slots (workspace, provider or
  * check), a plan filed under the wrong backlog section, a duplicated
  * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
  * stopped team.
@@ -319,6 +329,7 @@ export function teamAlerts(
   flappedChecks: FlappedChecks | null = null,
   regressedFixes: RegressedFixAlert | null = null,
   postMergeChurn: PostMergeChurn | null = null,
+  postReviewRisk: PostReviewRisk | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -852,6 +863,20 @@ export function teamAlerts(
       tone: "amber",
       title: `${plural(postMergeChurn.count, "post-merge review rejection", "post-merge review rejections")} in the last day`,
       detail: `${postMergeChurn.roles.map((r) => `${roleLabel(r.role)} ×${r.count}`).join(", ")} — each commit already reached main, so a post-merge rejection costs a revert and a re-author; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
+      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+    });
+  }
+  // A post-merge review one failed run from being dropped — the always-on twin of the doctor's
+  // `post-merge reviews` row (src/doctor/doctor-backlog.ts checkPostReviews) — the last moment
+  // an operator can fix the reviewer backend or deliberately accept the commit unreviewed.
+  // postReviewRiskAlert feeds it from the same atRiskPostReviews traversal and phrase the doctor
+  // calls, so the alert and the doctor cannot drift on the trigger or the wording.
+  if (postReviewRisk) {
+    out.push({
+      key: "post-merge-risk",
+      tone: "amber",
+      title: `${plural(postReviewRisk.count, "post-merge review is", "post-merge reviews are")} one failed run from being dropped`,
+      detail: postReviewRisk.detail,
       actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }

@@ -2,6 +2,8 @@ import { roleLabel } from "../roles/role-labels.js";
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
+import { shortSha } from "../text/format.js";
+import { readPostReviews, POST_REVIEW_FAILURE_LIMIT } from "../review/post-merge-review.js";
 import { humanSeconds, secondsSince, HOUR_MS, DAY_MS } from "../text/datetime.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventsSince } from "../events/event-window.js";
@@ -22,8 +24,9 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
 /** The doctor's backlog modules' shared scaffolding and the check groups that do not read a
- * single backlog document: the merge-queue and queued-prompt checks (checkStaleQueuedMerges,
- * checkMergeQueueFiles, checkStalePrompts and the mergeWaitPhrase helper) and the uncommitted-
+ * single backlog document: the merge-queue, post-merge-review and queued-prompt checks
+ * (checkStaleQueuedMerges, checkMergeQueueFiles, checkPostReviews, checkStalePrompts and the
+ * mergeWaitPhrase helper) and the uncommitted-
  * edits-in-the-primary-checkout check. This module also hosts the helpers and constants the
  * per-document checks import — readDoc and its checked wrapper readDocChecked, andMore, and the
  * age/heading-trim bounds — so the per-document reads cannot drift. The per-document
@@ -193,6 +196,67 @@ export function checkMergeQueueFiles(root: string): CheckOutcome {
   const more = andMore(rest, (f) => f, "file(s)");
   return warnOutcome(`the merge queue holds ${plural(files.length, "file")} the reader skips — ${first!}${more}; ` +
     `a torn or foreign file is never cleared, so nothing ages it or surfaces its merge — remove it (a crashed enqueue's merge ref still recovers on the next run)`);
+}
+
+/** A post-merge review (src/review/post-merge-review.ts, POST_REVIEW_FAILURE_LIMIT) whose
+ * `failures` is at or above POST_REVIEW_AT_RISK_FAILURES — the entry the next failed run drops.
+ * `commit` is the reviewed commit's full sha, `role` the reviewing role, `summary` its one-line
+ * change, `failures` how many runs have ended without a verdict. */
+interface AtRiskPostReview {
+  commit: string;
+  role: string;
+  summary: string;
+  failures: number;
+}
+
+/** The failures count at which a post-merge review is one failed run from being dropped: one
+ * below POST_REVIEW_FAILURE_LIMIT, so the drain's drop limit and this at-risk bar cannot drift
+ * (the STALE_BUG_DAYS precedent). A review at this bar has as many unreviewed failures as the
+ * drain allows before it drops the commit from the queue forever. */
+export const POST_REVIEW_AT_RISK_FAILURES = POST_REVIEW_FAILURE_LIMIT - 1;
+
+/** The post-merge reviews one failed run from being dropped, in file (FIFO) order: every entry
+ * whose `failures` is at least POST_REVIEW_AT_RISK_FAILURES, each with `commit`, `role`,
+ * `summary` and `failures` carried out (a missing failures reads as 0, so it is never at risk).
+ * A review that has already been rejected is left out: the drain settles a rejection as
+ * `{ ...entry, rejected }` (it preserves `failures`) and never re-runs it, so a rejected commit
+ * is not waiting on a verdict and must not read as one failed run from being dropped.
+ * One traversal shared by the doctor's `post-merge reviews` row (checkPostReviews) and the
+ * always-on `post-merge-risk` team alert (src/ui/status-payload.ts postReviewRiskAlert), so the
+ * two surfaces select the same entries and cannot drift. Reads .tumwater/state/post-review.json
+ * through readPostReviews, which degrades a missing or torn file to the well-formed subset or
+ * `[]` and never throws. */
+export function atRiskPostReviews(root: string): AtRiskPostReview[] {
+  return readPostReviews(root)
+    .filter((e) => e.rejected === undefined && (e.failures ?? 0) >= POST_REVIEW_AT_RISK_FAILURES)
+    .map((e) => ({ commit: e.commit, role: e.role, summary: e.summary, failures: e.failures ?? 0 }));
+}
+
+/** The doctor's one sentence naming the post-merge reviews one failed run from being dropped
+ * (the checkStaleQueuedMerges phrase precedent): the first in full — role, short commit, summary
+ * and the failures count — the rest folded through andMore, and the one sentence every surface
+ * shows, so the doctor row and the alert cannot drift on the wording. null for an empty list. */
+export function atRiskPostReviewsPhrase(rows: readonly AtRiskPostReview[]): string | null {
+  const [first, ...rest] = rows;
+  if (!first) return null;
+  const more = andMore(rest, (r) => `${roleLabel(r.role)} ${shortSha(r.commit)}`);
+  return `the post-merge review of ${roleLabel(first.role)} ${shortSha(first.commit)} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has ended without a verdict ${first.failures} times${more}; ` +
+    `one more failed run drops it and the commit stays on main unreviewed — fix the reviewer backend or accept the commit unreviewed deliberately`;
+}
+
+/** A post-merge review one failed run from being dropped (src/review/post-merge-review.ts, the
+ * drain drops an entry at POST_REVIEW_FAILURE_LIMIT failed runs) — the last moment an operator
+ * can fix the reviewer backend or deliberately accept the commit unreviewed before the drain
+ * drops it from the queue and it stays on main unreviewed. Reads .tumwater/state/post-review.json
+ * through the shared atRiskPostReviews traversal the always-on post-merge-risk team alert
+ * (src/ui/status-payload.ts postReviewRiskAlert) uses, so the two surfaces cannot drift. A warn,
+ * never a fail — the checkStaleQueuedMerges precedent: a failing reviewer is operator signal,
+ * not a broken environment; readPostReviews never throws (a missing or torn file degrades to the
+ * well-formed subset or `[]`), so the check needs no read-error arm. */
+export function checkPostReviews(root: string): CheckOutcome {
+  const rows = atRiskPostReviews(root);
+  const phrase = atRiskPostReviewsPhrase(rows);
+  return phrase === null ? okOutcome("no post-merge review is one failed run from being dropped") : warnOutcome(phrase);
 }
 
 /** How long a queued prompt may wait for its role to dequeue it before the stale-prompt check

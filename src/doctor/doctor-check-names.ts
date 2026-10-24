@@ -73,6 +73,7 @@ export const DOCTOR_CHECK_NAMES = [
   "regressed fixes",
   "stale merge-queue entries",
   "merge-queue files",
+  "post-merge reviews",
   "stale prompts",
   "uncommitted backlog",
   "update",

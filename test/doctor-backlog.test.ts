@@ -5,7 +5,7 @@ import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps, duplicatedBacklogHeadings, planDependencyProblem, validationGapProblems, type DuplicatedBacklogHeading } from "../src/doctor/doctor-backlog-plans.js";
 import { ageInDays } from "../src/backlog/backlog.js";
 import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, staleWaitingBugRows, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
-import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, skippedMergeQueueFiles, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
+import { checkMergeQueueFiles, checkPostReviews, atRiskPostReviews, atRiskPostReviewsPhrase, POST_REVIEW_AT_RISK_FAILURES, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, skippedMergeQueueFiles, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
 import type { DirtyBacklogFiles } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
@@ -13,7 +13,9 @@ import type { HarnessEvent } from "../src/events/events.js";
 import { enqueueMerge, queuedMergeFiles, readMergeQueue, unreadableMergeQueueFiles } from "../src/merge/merge-queue.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
-import { mergeQueueDir } from "../src/paths.js";
+import { mergeQueueDir, postReviewPath } from "../src/paths.js";
+import { writeJsonFile } from "../src/files/json-files.js";
+import { POST_REVIEW_FAILURE_LIMIT } from "../src/review/post-merge-review.js";
 import { shortSpanPhrase } from "../src/text/phrases.js";
 import { stampedSubject } from "../src/git/commit-message.js";
 import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -1169,4 +1171,46 @@ test("skippedMergeQueueFiles names checkout-relative paths for every skipped fil
   const clean = queueRoot();
   enqueueMerge(clean, advice("improve", "tidy parser"));
   assert.deepEqual(skippedMergeQueueFiles(clean), []);
+});
+
+test("checkPostReviews warns one failed run before the drop and reads ok below the bar", () => {
+  const commit = "ab12cd3e".padEnd(40, "f");
+  const root = makeRepo();
+  writeJsonFile(postReviewPath(root), { pending: [{ commit, role: "improve", summary: "add x", failures: POST_REVIEW_FAILURE_LIMIT - 1 }] });
+  const out = checkPostReviews(root);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /improve/);
+  assert.match(out.detail, /ab12cd3e/);
+  assert.match(out.detail, /commit stays on main unreviewed/);
+  // A review below the bar and a missing file each read ok.
+  writeJsonFile(postReviewPath(root), { pending: [{ commit, role: "improve", summary: "add x", failures: 1 }] });
+  assert.equal(checkPostReviews(root).level, "ok");
+  assert.equal(checkPostReviews(makeRepo()).level, "ok");
+});
+
+test("atRiskPostReviews and atRiskPostReviewsPhrase preserve order, exclude undefined failures, and read null on empty", () => {
+  const root = makeRepo();
+  writeJsonFile(postReviewPath(root), {
+    pending: [
+      { commit: "2".repeat(40), role: "feature", summary: "a", failures: POST_REVIEW_AT_RISK_FAILURES },
+      { commit: "3".repeat(40), role: "improve", summary: "b" },
+      { commit: "4".repeat(40), role: "clean", summary: "c", failures: POST_REVIEW_AT_RISK_FAILURES },
+      { commit: "5".repeat(40), role: "feature", summary: "d", failures: POST_REVIEW_AT_RISK_FAILURES, rejected: ["no"] },
+    ],
+  });
+  const rows = atRiskPostReviews(root);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((r) => [r.role, r.failures]), [["feature", POST_REVIEW_AT_RISK_FAILURES], ["clean", POST_REVIEW_AT_RISK_FAILURES]]);
+  assert.equal(atRiskPostReviewsPhrase([]), null);
+  const phrase = atRiskPostReviewsPhrase([
+    { commit: "ab12cd3e".padEnd(40, "f"), role: "feature", summary: "add y", failures: POST_REVIEW_AT_RISK_FAILURES },
+  ]);
+  assert.match(phrase ?? "", /feature ab12cd3e/);
+  assert.match(phrase ?? "", /add y/);
+  assert.match(phrase ?? "", new RegExp(`${POST_REVIEW_AT_RISK_FAILURES} times`));
+  const multi = atRiskPostReviewsPhrase([
+    { commit: "1".repeat(40), role: "feature", summary: "a", failures: 2 },
+    { commit: "2".repeat(40), role: "improve", summary: "b", failures: 3 },
+  ]);
+  assert.match(multi ?? "", /and 1 more: improve 22222222/);
 });

@@ -14,6 +14,8 @@ import { writeEvents } from "./fixtures/log-fixtures.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { mergeQueueDir, quarantinePath } from "../src/paths.js";
+import { writeJsonFile } from "../src/files/json-files.js";
+import { postReviewPath } from "../src/paths.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { warnEvent } from "../src/events/events.js";
 import { notifyExitWarning } from "../src/events/notify.js";
@@ -1435,4 +1437,30 @@ test("a post-merge rejection burst raises one standing amber alert", () => {
   const churnAlert = payload.alerts.find((a) => a.key === "post-merge-churn");
   assert.equal(churnAlert?.tone, "amber");
   assert.match(churnAlert?.title ?? "", /post-merge review rejections/);
+});
+
+test("an at-risk post-merge review raises one standing amber alert", () => {
+  const now = Date.now();
+  const postReviewRisk = { count: 1, detail: 'the post-merge review of improve ab12cd3e — "add x" — has ended without a verdict 2 times; one more failed run drops it and the commit stays on main unreviewed — fix the reviewer backend or accept the commit unreviewed deliberately' };
+  // postReviewRisk is the 25th positional argument, after postMergeChurn and regressedFixes;
+  // one position earlier it would land in the post-merge-churn slot and raise no alert.
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, postReviewRisk);
+  const only = one.filter((a) => a.key === "post-merge-risk");
+  assert.equal(only.length, 1);
+  assert.equal(only[0]!.tone, "amber");
+  assert.match(only[0]!.title, /one failed run from being dropped/);
+  assert.equal(only[0]!.detail, postReviewRisk.detail);
+  assert.deepEqual(only[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
+  // A null last argument adds none.
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null).find((a) => a.key === "post-merge-risk"), undefined);
+  // End to end through statusPayload over a seeded at-risk review, pinning the argument position.
+  const root = makeRepo();
+  writeJsonFile(postReviewPath(root), { pending: [{ commit: "ab12cd3e".padEnd(40, "f"), role: "improve", summary: "add x", failures: 2 }] });
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; tone?: string; title?: string; detail?: string }> };
+  const alert = payload.alerts.find((a) => a.key === "post-merge-risk");
+  assert.equal(alert?.tone, "amber");
+  assert.match(alert?.title ?? "", /one failed run from being dropped/);
+  assert.match(alert?.detail ?? "", /improve ab12cd3e/);
+  const clean = makeRepo();
+  assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "post-merge-risk"), undefined);
 });

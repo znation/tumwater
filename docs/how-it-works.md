@@ -489,9 +489,10 @@ validation, and atomic write, so you never have to hand-edit the file.
   a stalled merge queue, a merge-queue file the reader skips, a waiting bug held a week, a plan stalled by a
   Needs review or Needs replan note, checks that flapped more than once in the last day, a
   stale or oversized flake quarantine, a revert off main that looks false or a revert burst,
-  a burst of post-merge review rejections, each an already-merged commit, the fleet waiting on
-  capacity slots (workspace, provider or check) — the doctor's three contention rows read the same
-  waits and name the knob, a plan filed under the wrong
+  a burst of post-merge review rejections, each an already-merged commit,
+  a post-merge review one failed run from being dropped,
+  the fleet waiting on capacity slots (workspace, provider or check) — the doctor's three
+  contention rows read the same waits and name the knob, a plan filed under the wrong
   backlog section, a duplicated backlog section heading, a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose quoted test failed again in the last day, a pause), the prompt
   box, today's progress, the roles grouped by what they are doing,
   the backlog, and the notable activity — a `Loop picker` and a case-insensitive Search box narrow
@@ -518,7 +519,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   under their whole-queue positions, mirroring `tumwater queue --role <id>`. It also paints the
   post-merge review queue as a Post-merge reviews card mirroring `tumwater reviews` — the merged
   commits `review.afterMerge` put aside for post-merge review, each with its rejected (still
-  waiting on the revert) or failed-review status. Its Settings view shows the
+  waiting on the revert) or failed-review status. A review one failed run from the
+  `POST_REVIEW_FAILURE_LIMIT` drop raises the standing amber post-merge-risk alert on every
+  surface and a `post-merge reviews` doctor row. Its Settings view shows the
   curated top-level config keys (provider, model, fallback, the daily spend cap, quiet hours, the
   notify hook) with inline Save and Clear buttons: Save writes through the same path `tumwater
   config set` uses, and Clear retracts through the same path `tumwater config unset` uses, so the
