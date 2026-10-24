@@ -258,7 +258,10 @@ discards a role's in-flight merge.
   slot as above, with the reviewer's reasons in place of the failing tests, and the commit goes
   back to its role as a revision. A revert that conflicts leaves the commit on main and puts the
   reasons in the role's inbox. A review that ends three times with no verdict is dropped with a
-  warning.
+  warning. Two or more post-merge rejections in a day raise one standing amber alert naming each
+  role on the dashboard, the TUI and `tumwater status` — the pre-revert signal to narrow
+  `review.afterMerge` for the noisy role or raise the authoring bar before the revert ceiling is
+  hit.
 - A test that fails and then passes on the same tree is quarantined at once: the gate's re-run, a
   red in-lock merge check's one immediate re-run (the change then merges), and the watch's
   confirming re-run each add the failing tests the failed run named to
@@ -479,8 +482,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   a stalled merge queue, a merge-queue file the reader skips, a waiting bug held a week, a plan stalled by a
   Needs review or Needs replan note, checks that flapped more than once in the last day, a
   stale or oversized flake quarantine, a revert off main that looks false or a revert burst,
-  the fleet waiting on capacity slots (workspace, provider or check) — the doctor's three
-  contention rows read the same waits and name the knob, a plan filed under the wrong
+  a burst of post-merge review rejections, each an already-merged commit, the fleet waiting on
+  capacity slots (workspace, provider or check) — the doctor's three contention rows read the same
+  waits and name the knob, a plan filed under the wrong
   backlog section, a duplicated backlog section heading, a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose quoted test failed again in the last day, a pause), the prompt
   box, today's progress, the roles grouped by what they are doing,
   the backlog, and the notable activity — a `Loop picker` and a case-insensitive Search box narrow

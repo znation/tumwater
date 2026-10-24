@@ -1346,8 +1346,9 @@ test("a capacity bottleneck raises one standing amber alert carrying the doctor'
 test("a flapping check raises one standing amber alert carrying the doctor's phrase", () => {
   const now = Date.now();
   const flapped = { count: 2, detail: 'checks flapped more than once in the last 24h: "database test failed" ×3 (and 1 more: "network test failed" ×2)' };
-  // flappedChecks is the 22nd positional argument, after contention ([]); one position
-  // earlier it would land in the contention slot and raise no flapped-checks alert.
+  // flappedChecks is the 18th argument after `now` (the 22nd positional overall), after
+  // contention ([]); one position earlier it would land in the contention slot and raise no
+  // flapped-checks alert.
   const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], flapped);
   const only = one.filter((a) => a.key === "flapped-checks");
   assert.equal(only.length, 1);
@@ -1376,8 +1377,9 @@ test("a regressed Fixed record raises one standing amber alert carrying the doct
   const y = stampDaysAgo(1, now);
   const detail = `BUGS.md Fixed record "quoted test regressed" quotes a test that failed again after its ${y} fix (${now}: ✖ aQuotedTestNameThatIsLongEnough failed again) — file it as a new bug with \`tumwater bug\`, quoting the test name and citing the Fixed record`;
   const regressed = { count: 1, detail };
-  // regressedFixes is the 23rd positional argument, after contention and flappedChecks; one
-  // position earlier it would land in the flapped-checks slot and raise no regressed-fixes alert.
+  // regressedFixes is the 19th argument after `now` (the 23rd positional overall), after
+  // contention and flappedChecks; one position earlier it would land in the flapped-checks slot
+  // and raise no regressed-fixes alert.
   const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, regressed);
   assert.deepEqual(alerts.map((a) => [a.key, a.tone]), [["regressed-fixes", "amber"]]);
   assert.match(alerts[0]!.title ?? "", /Fixed test has regressed/);
@@ -1401,3 +1403,30 @@ function stampDaysAgo(n: number, now: number = Date.now()): string {
   const d = new Date(now - n * 86400000);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+test("a post-merge rejection burst raises one standing amber alert", () => {
+  const now = Date.now();
+  const churn = { count: 2, roles: [{ role: "bugfix", count: 1 }, { role: "clean", count: 1 }] };
+  // postMergeChurn is the 20th argument after `now` (the 24th positional overall), after
+  // contention, flappedChecks and regressedFixes; one position earlier it would land in the
+  // regressed-fixes slot and raise no post-merge-churn alert.
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, churn);
+  assert.deepEqual(alerts.map((a) => [a.key, a.tone]), [["post-merge-churn", "amber"]]);
+  assert.match(alerts[0]!.title ?? "", /post-merge review rejections/);
+  assert.match(alerts[0]!.detail ?? "", /bugfix/);
+  assert.match(alerts[0]!.detail ?? "", /review\.afterMerge/);
+  assert.deepEqual(alerts[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
+  // A null last argument adds none.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null), []);
+  // The full pipeline carries the same warning through statusPayload's alerts over seeded events,
+  // pinning the argument position end to end.
+  const root = makeRepo();
+  writeEvents(root, [
+    { ts: now - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true },
+    { ts: now - 60_000, source: "clean", type: "review_rejected", afterMerge: true },
+  ]);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; tone?: string; title?: string }> };
+  const churnAlert = payload.alerts.find((a) => a.key === "post-merge-churn");
+  assert.equal(churnAlert?.tone, "amber");
+  assert.match(churnAlert?.title ?? "", /post-merge review rejections/);
+});

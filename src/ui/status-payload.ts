@@ -22,7 +22,7 @@ import { duplicatedBacklogHeadings, planDependencyProblem } from "../doctor/doct
 import { quarantineWarning, revertsFor } from "../baseline/main-guardrails.js";
 import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
 import { flappedChecksPhrase } from "../doctor/doctor-project-checks.js";
-import { readPostReviews } from "../review/post-merge-review.js";
+import { readPostReviews, postMergeRejectionCounts, POST_MERGE_REJECT_WARN, type PostMergeRejection } from "../review/post-merge-review.js";
 import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles } from "../doctor/doctor-backlog.js";
 import { NOTIFY_CHECK_WINDOW_MS } from "../doctor/doctor-notify.js";
 import { matchedRegressedFixes, regressedFixCandidates, regressedFixesPhrase, staleWaitingBugRows, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
@@ -217,6 +217,36 @@ export function primaryOverwriteBlocks(root: string, now = Date.now()): PrimaryO
   const hits = eventsSince(root, PRIMARY_OVERWRITE_WINDOW_MS, now, (e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(PRIMARY_OVERWRITE_MARKER));
   const latest = hits[hits.length - 1];
   return latest ? { count: hits.length, latestTs: latest.ts, message: String(latest.message) } : null;
+}
+
+/** How far back the post-merge-churn alert looks — one day, the 24 h event-window convention
+ * every event-reading alert uses (PRIMARY_OVERWRITE_WINDOW_MS sorts beside it). */
+export const POST_MERGE_REJECT_WINDOW_MS = 24 * 60 * 60_000;
+/** A trailing day of at least `POST_MERGE_REJECT_WARN` post-merge `review_rejected` events:
+ * which already-landed commits were turned back, and by how many per role. count is the total
+ * rejections in the window, roles each role's per-role total (count-desc, role-asc). */
+export interface PostMergeChurn {
+  count: number;
+  roles: readonly PostMergeRejection[];
+}
+/** The always-on feed for the `post-merge-churn` team alert (src/ui/team-alerts.ts): a day in
+ * which at least `POST_MERGE_REJECT_WARN` already-merged commits were turned back by post-merge
+ * review, each rejection written by reviewMergedCommit as a `review_rejected` event with
+ * `afterMerge: true`. Post-merge is the costly kind — the commit already reached main, so the
+ * rejection starts a revert and a re-author — and it is the pre-revert signal for the
+ * `review.afterMerge` tiering, ahead of the `reverts` alert's revert ceiling. Reads the same
+ * events the report's `postMergeRejectionsByRole` fills, so the two cannot disagree; null when
+ * the window holds fewer than `POST_MERGE_REJECT_WARN` post-merge rejections, or none. A read
+ * error skips the row (the capacityContention precedent). */
+export function postMergeChurnAlert(root: string, now = Date.now()): PostMergeChurn | null {
+  try {
+    const rows = postMergeRejectionCounts(eventsSince(root, POST_MERGE_REJECT_WINDOW_MS, now, (e) => e.type === "review_rejected"));
+    const count = rows.reduce((n, r) => n + r.count, 0);
+    return count >= POST_MERGE_REJECT_WARN ? { count, roles: rows } : null;
+  } catch {
+    // A read error skips the row, so the alert never cries wolf on an unreadable log.
+    return null;
+  }
 }
 
 /** A stale or oversized flake quarantine, the always-on twin of the doctor's `flaky checks` row
@@ -565,6 +595,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now)),
   };
 }

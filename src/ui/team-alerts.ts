@@ -11,7 +11,7 @@ import type { StatusSnapshot } from "../status/status-data.js";
 import type { RevertGuardrail } from "../baseline/main-guardrails.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
-import type { CapacityBottleneck, RegressedFixAlert } from "./status-payload.js";
+import type { CapacityBottleneck, PostMergeChurn, RegressedFixAlert } from "./status-payload.js";
 import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
@@ -269,7 +269,8 @@ function localizeInstants(text: string): string {
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
  * review or Needs replan note, checks that flapped more than once in the last day, a stale or
  * oversized flake quarantine, a revert off main that
- * looks false or a revert burst, the fleet waiting on capacity slots (workspace, provider or
+ * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
+ * already reached main, the fleet waiting on capacity slots (workspace, provider or
  * check), a plan filed under the wrong backlog section, a duplicated
  * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
  * stopped team.
@@ -317,6 +318,7 @@ export function teamAlerts(
   contention: readonly CapacityBottleneck[] = [],
   flappedChecks: FlappedChecks | null = null,
   regressedFixes: RegressedFixAlert | null = null,
+  postMergeChurn: PostMergeChurn | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -834,6 +836,22 @@ export function teamAlerts(
       tone: "amber",
       title: `${plural(reverts.count, "revert off main", "reverts off main")} in the last day`,
       detail: `${reverts.phrases.join("; ")} — the main watch takes a change off main when main's full check flags it; fix the failing test or the revert repeats`,
+      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+    });
+  }
+  // Last day's post-merge review rejections — the pre-revert signal for the `review.afterMerge`
+  // tiering (src/review/post-merge-review.ts `reviewMergedCommit`). A post-merge rejection is the
+  // costly kind: the commit already reached main, so the rejection starts a revert and a
+  // re-author, and the always-on signal for a day crossing POST_MERGE_REJECT_WARN is this alert
+  // ahead of the `reverts` ceiling. status-payload.ts's postMergeChurnAlert feeds it from the
+  // same `afterMerge: true` `review_rejected` events the report's postMergeRejectionsByRole
+  // folds, so the alert and the report cannot disagree on which rejections are post-merge.
+  if (postMergeChurn) {
+    out.push({
+      key: "post-merge-churn",
+      tone: "amber",
+      title: `${plural(postMergeChurn.count, "post-merge review rejection", "post-merge review rejections")} in the last day`,
+      detail: `${postMergeChurn.roles.map((r) => `${roleLabel(r.role)} ×${r.count}`).join(", ")} — each commit already reached main, so a post-merge rejection costs a revert and a re-author; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
       actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }

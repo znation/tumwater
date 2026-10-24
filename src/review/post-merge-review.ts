@@ -11,6 +11,8 @@ import { buildReviewPrompt } from "../prompt/gate-prompts.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { shortSha } from "../text/format.js";
 import { errorMessage } from "../text/text.js";
+import { eventRole } from "../events/event-read.js";
+import type { HarnessEvent } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { GateRunsPi } from "../runner/runner-pi.js";
 import { parseVerdict } from "./review-verdict.js";
@@ -30,6 +32,38 @@ export interface PostReview {
 
 /** A commit's review is dropped, with a warning, after this many runs with no verdict. */
 export const POST_REVIEW_FAILURE_LIMIT = 3;
+
+/** A role's trailing-day total of post-merge `review_rejected` events, one entry per role with
+ * at least one, sorted by count descending then role id ascending so the churn alert's phrase is
+ * deterministic. count is how many already-landed commits the role had turned back. */
+export interface PostMergeRejection {
+  role: string;
+  count: number;
+}
+
+/** The bar a day's post-merge rejections must reach before the `post-merge-churn` amber alert
+ * (src/ui/team-alerts.ts) fires: one post-merge rejection is the tiering's ordinary cost, two in
+ * a day is a role whose already-landed changes keep being turned back — the pre-revert signal
+ * for an operator to narrow `review.afterMerge` or raise the authoring bar. */
+export const POST_MERGE_REJECT_WARN = 2;
+
+/** Group the `afterMerge: true` `review_rejected` events of `events` by role — the same
+ * `e.type === "review_rejected" && e.afterMerge === true` test the report fold
+ * (src/report/report-fold.ts `postMergeRejectionsByRole`) applies, so the churn alert and the
+ * report cannot disagree on which rejections are post-merge. Pre-merge rejections and other
+ * event types contribute nothing. */
+export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostMergeRejection[] {
+  const byRole = new Map<string, number>();
+  for (const ev of events) {
+    if (ev.type === "review_rejected" && ev.afterMerge === true) {
+      const role = eventRole(ev);
+      byRole.set(role, (byRole.get(role) ?? 0) + 1);
+    }
+  }
+  return [...byRole.entries()]
+    .map(([role, count]) => ({ role, count }))
+    .sort((a, b) => b.count - a.count || (a.role < b.role ? -1 : a.role > b.role ? 1 : 0));
+}
 
 /** Whether `role`'s changes are reviewed after merging instead of before. */
 export function isAfterMergeRole(config: TumwaterConfig, role: string): boolean {

@@ -8,7 +8,8 @@ import { Semaphore } from "../src/concurrency/semaphore.js";
 import { drainPostReviews } from "../src/merge/merge-post-review.js";
 import { drainMerge } from "../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
-import { addPostReview, readPostReviews, POST_REVIEW_FAILURE_LIMIT } from "../src/review/post-merge-review.js";
+import { addPostReview, readPostReviews, POST_REVIEW_FAILURE_LIMIT, postMergeRejectionCounts } from "../src/review/post-merge-review.js";
+import type { HarnessEvent } from "../src/events/events.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { postReviewPath, rejectedRefName } from "../src/paths.js";
@@ -440,4 +441,19 @@ test("a verdict-less review past the failure limit drops the entry, warns, and s
       .some((m) => m.includes("stays on main unreviewed")),
     "the drop warns that the commit stays on main unreviewed",
   );
+});
+
+test("postMergeRejectionCounts groups a day's post-merge rejections and ignores pre-merge ones", () => {
+  const events: HarnessEvent[] = [
+    { ts: 1, source: "bugfix", type: "review_rejected", afterMerge: true }, // 1 of 2 bugfix
+    { ts: 2, source: "bugfix", type: "review_rejected", afterMerge: true }, // 2 of 2 bugfix
+    { ts: 3, source: "clean", type: "review_rejected", afterMerge: true }, // 1 of 1 clean
+    { ts: 4, source: "coverage", type: "review_rejected" }, // pre-merge: afterMerge absent
+    { ts: 5, source: "coverage", type: "review_rejected", afterMerge: false }, // pre-merge: afterMerge false
+    { ts: 6, source: "bugfix", type: "review_verdict", afterMerge: true }, // a verdict, not a rejection
+  ];
+  assert.deepEqual(postMergeRejectionCounts(events), [
+    { role: "bugfix", count: 2 },
+    { role: "clean", count: 1 },
+  ]);
 });

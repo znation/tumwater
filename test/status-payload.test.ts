@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
-import { statusPayload, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS } from "../src/ui/status-payload.js";
+import { statusPayload, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS } from "../src/ui/status-payload.js";
 import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool } from "../src/doctor/doctor-contention-checks.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
@@ -847,4 +847,34 @@ test("regressedFixesAlert carries the doctor's sentence for a fix whose test fai
   writeEvents(old, [{ ts: now - 25 * 3600_000, source: "review", type: "warning", message: "✖ aQuotedTestNameThatIsLongEnough failed again" }]);
   assert.ok(25 * 3600_000 > REGRESSED_FIX_WINDOW_MS, "the 25h-old failure predates the alert's daily window");
   assert.equal(regressedFixesAlert(old, now), null);
+});
+
+test("postMergeChurnAlert fires on a day's post-merge rejection burst", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  writeEvents(root, [
+    { ts: now - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true },
+    { ts: now - 60_000, source: "clean", type: "review_rejected", afterMerge: true },
+    { ts: now - 60_000, source: "coverage", type: "review_rejected" }, // pre-merge: absent afterMerge
+  ]);
+  const burst = postMergeChurnAlert(root, now);
+  assert.ok(burst !== null, "two post-merge rejections cross the warn bar");
+  assert.equal(burst!.count, 2, "only the afterMerge rejections count");
+  assert.deepEqual(burst!.roles, [
+    { role: "bugfix", count: 1 },
+    { role: "clean", count: 1 },
+  ]);
+  // One post-merge rejection stays under POST_MERGE_REJECT_WARN.
+  const single = makeRepo();
+  writeEvents(single, [{ ts: now - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true }]);
+  assert.equal(postMergeChurnAlert(single, now), null);
+  // A post-merge rejection 25 h old sits outside the window under the pinned `now`.
+  const old = makeRepo();
+  writeEvents(old, [
+    { ts: now - 25 * 3600_000, source: "bugfix", type: "review_rejected", afterMerge: true },
+    { ts: now - 25 * 3600_000, source: "clean", type: "review_rejected", afterMerge: true },
+  ]);
+  assert.equal(postMergeChurnAlert(old, now), null);
+  // The window constant is the day the alert actually reads under.
+  assert.equal(POST_MERGE_REJECT_WINDOW_MS, 24 * 60 * 60_000);
 });
