@@ -306,41 +306,28 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 **Tests.**
 - test/time-spend.test.ts / test/report-data.test.ts: drop the `reverted` loss-cause and `revertsByRole` cases, and keep one case pinning that an `operator_revert` still folds into the report's operator-revert count while no automatic revert does.
 
-### Every commit is verified on main, part 3/3: the pre-merge blocks come off — no in-lock gate run, no pre-merge model verdict, no red-main authoring block (planned 2026-10-24 by the operator, split from the held single plan; requires part 2/3 landed, since a landing stops being checked on the way in only once the whole deterministic set runs on the watched tip and the tip is the culprit; touches src/merge/merge-verify.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/review/review.ts src/review/review-followup.ts (deleted) src/baseline/main-red.ts src/roles/roles.ts src/runner/runner-run.ts src/doctor/doctor-holds.ts src/config/config-schema.ts src/config/config-views.ts src/config/config.ts src/orchestrator/ docs/config.md docs/how-it-works.md test/merge-verify.test.ts test/merge-to-main.test.ts test/review.test.ts test/main-red.test.ts test/runner-run.test.ts test/config.test.ts)
+### Every commit is verified on main, part 3a/3: the red-main authoring block comes off — a code role authors on a red main and the `ci` healer is handed the failing tests (planned 2026-10-24 by the operator, split from the held part 3/3; the pre-merge blocks themselves come off in parts 3c/3–3f/3 below; touches src/baseline/main-red.ts src/roles/roles.ts src/runner/runner-run.ts docs/how-it-works.md test/main-red.test.ts test/main-red-heal.test.ts test/roles.test.ts test/runner-ids.test.ts)
 
-**Needs review 2026-10-24 by feature: too large for one run (held 2)**
+**Previously held 2**
 
-**Previously held 1**
-
-**Goal.** A commit is never stopped on its way to main. With the watch verifying every new tip, the checks that stood in front of a landing are redundant and go: the in-lock gate run (142–330 s per merge, plans/fast-merge.md), the pre-merge model verdict and the permit it holds, the batch check with its largest-passing-prefix bisect, and the red-main authoring block, which existed only to avoid diffs the pre-merge verdict would reject. The trade becomes explicit: a broken commit sits on main between its landing and its fix (minutes), and the fix is the healer's.
+**Goal.** Main's redness stops blocking authoring. `mainRedGate` (src/baseline/main-red.ts) and `baselineBlocked`/`BASELINE_BLOCKED_ROLES` (src/roles/roles.ts) exist only to keep a code role from spending an authoring run whose diff the pre-merge check would reject; with the pre-merge blocks coming off (parts 3c/3–3f/3) nothing is left to reject it, so the block only stalls every code role while main is red. The information survives where it is useful: the prompt's known-red note (`mainRedHealNote`) naming the failing tests and their owner, and the `ci` healer hand-off.
 
 **Approach.**
-- Delete the merge path's blocking checks: `mergeApprovedChange`'s in-lock gate run, src/merge/merge-verify.ts's pre-merge review step and the `VERIFY_TIER` permit it holds, src/merge/merge-batch.ts's scope-`batch` check and its largest-passing-prefix bisect (with `mergeBatchMax`'s per-pick attribution), and src/review/review-followup.ts's pre-merge revision round. A merge becomes: rebase onto the tip and take the fast-forward under the merge lock.
-- `review.afterMerge` goes: every role lands first and is reviewed by the one post-landing pass. Config-schema, config-views, the `tumwater config` and docs surfaces and the tests that pin the key go with it; `review.exemptPaths` and the post-review model knobs stay.
-- The precheck rules keep their non-verdict callers — the merge pre-flight's dirty-checkout refusal, the backlog archive's protected-edit guard — so the module does not disappear, only its role as a gate on a role's own diff.
-- The red-main authoring block goes with the pre-merge verdict: `mainRedGate` and `baselineBlocked`/`BASELINE_BLOCKED_ROLES` (src/baseline/main-red.ts, src/roles/roles.ts) exist only to stop a code role spending an authoring run whose diff the pre-merge check would reject — with nothing left to reject it, every role authors on a red main. The information survives where it is useful: the prompt's known-red note (`buildMainKnownRedNote`) naming the failing tests and their owner, and the healer hand-off the `ci` plan above routes to the ci role. The doctor's `main red` row (`doctor-holds.ts`'s held-code-role list) and the outcome the block returns go with it.
-- The gate-scope checks that are still on the change's own tree go too: `review-precheck.ts`'s reject (:203-212) and `merge-check-failures.ts`'s `merge_blocked`/`review_rejected` attribution lose their producers, and with them the merge-side `main_red` keep (src/merge/merge-core.ts:275-280) and `requeueMainRedPin`'s wait (src/merge/merge-requeue.ts:65,85-112) — there is no in-lock verdict left for main's redness to excuse. A check failure attributed to a landing is the watch's now, and its repair is the healer's (`ci`, per the `ci` plan).
-- Two gate rules stay pre-merge, deliberately, and the plan should say so where it deletes the others: **secret leaks** (src/review/review.ts:301, src/review/secret-leaks.ts) and **protected edits** (src/review/review.ts:298, INV-G1's `protected-edits.ts`). Neither is a wrong-but-green change a later commit repairs: a leaked credential is in the history the moment it lands and has to be rotated, and the protected-edit rule is the operator's policy boundary rather than a correctness verdict. Everything else the gate rejects moves forward — conflict markers (review.ts:294), a false fix claim (review.ts:309) and backlog structure (review.ts:315,325) are all things the post-landing check repairs, and parts 1/3 and 2/3's watch set already runs them.
-- The reviewer's provider holds stop gating the team: `reviewHeld`/`reviewStrongPaused` (src/orchestrator/scheduling-skip.ts:118-121, orchestrator-poll.ts:354,425-430) exist to keep a change from landing while the reviewer's provider is down. With `review.afterMerge` gone, `afterMergeRoles` is empty and the `!afterMergeRoles.has(...)` exemption collapses, so the hold as written would defer *every* role and every merge. Re-scope it to the post-landing review queue alone: a review parks, a landing does not. The permanent config-error hold (`mergeReviewError`, src/merge/merge-core.ts:283-306, read at src/runner/leftover.ts:118-124) goes with the pre-merge verdict it belongs to.
-- One stranding path is fixed rather than deleted: a torn or foreign queue head silently strands every change behind it (`merge-queue.ts`'s `staleHeadFile`/`readMergeQueue`, dropped in `merge-verify.ts`'s `dropTornHead`). Drop the bad head loudly (a warning naming the file and its role) and re-queue its change, so nothing can wait forever on one unreadable file — the "nothing blocks a landing" rule has to hold for a change the queue cannot even read.
-- No change to the refusals that are not verdicts about a change's quality, and the plan says so where it deletes the others so nobody reads the deletion as a licence to remove these too: the dirty-primary-checkout pre-flight (`merge-to-main.ts:172-175`, `merge-git.ts:415` — the 2026-10-23 incident's guard), a rebase conflict and its `MERGE_CONFLICT_LIMIT` hand-back (`leftover.ts:36`), a fast-forward that loses to a main move (`merge-git.ts:345`), the startup/redeploy stage check (`build-stage.ts:89,182`), and every team gate that holds *new runs* rather than a landing (budget, per-role cap, pause, streak, quiet hours, disk floor, maintenance quota, bootstrap, provider storms — `src/gates/*`, `src/team/team-hold.ts`). A conflicted tree cannot be landed and a leaked credential cannot be un-leaked; those are the two rules the plan keeps on the way in, and the rest of this list never was about a change's quality.
-- Docs: docs/config.md drops `review.afterMerge` and says which checks the remaining merge path keeps (docs/how-it-works.md's merge paragraph and docs/invariants.md's re-pointed guarantees are part 3/3's).
+- Delete `mainRedGate` (src/baseline/main-red.ts) and its call in `runner-run.ts` (the `blocked` branch that reads `mainRedGate(ctx.root, ctx.role, wt, undefined, …)`), so a code role's run on a red main proceeds. Keep `mainRedHealNote`, `mainRedHealPrompt`, `queueCulpritHeal` and `baselineCheckLogger` — the known-red note and the healer hand-off the watch and the `ci` plan read.
+- Delete `baselineBlocked` and `BASELINE_BLOCKED_ROLES` (src/roles/roles.ts) and every reader; `DEFERRABLE_ROLES` and `OBSERVER_ROLES` (which keeps `ci`) stay, so the healer still schedules while main is red.
+- Leave `heldByMainRed` (src/status/status-polls.ts), the status phase's `main red` label and the doctor's `main red` row in place: a merge verification still sets a role's `main_red` until part 3f/3 removes it, so the row still has a producer.
+- docs/how-it-works.md's red-main paragraph now says every code role authors on a red main with the known-red note and the `ci` role repairs it; drop the "authoring is blocked" wording.
 
-**Files touched.** src/baseline/main-red.ts src/roles/roles.ts src/runner/runner-run.ts src/doctor/doctor-holds.ts src/merge/merge-verify.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-queue.ts src/merge/merge-core.ts src/merge/merge-check-failures.ts src/review/review.ts src/review/review-precheck.ts src/review/review-followup.ts (deleted) src/orchestrator/scheduling-skip.ts src/orchestrator/orchestrator-poll.ts src/runner/leftover.ts src/config/config-schema.ts src/config/config-views.ts src/config/config.ts src/orchestrator/ docs/config.md test/main-red.test.ts test/runner-run.test.ts test/merge-verify.test.ts test/merge-to-main.test.ts test/review.test.ts test/merge-queue.test.ts test/config.test.ts
+**Files touched.** src/baseline/main-red.ts src/roles/roles.ts src/runner/runner-run.ts docs/how-it-works.md test/main-red.test.ts test/main-red-heal.test.ts test/roles.test.ts test/runner-ids.test.ts
 
 **Acceptance criteria.**
-- A merge takes no gate run: the merge slot's per-change work is the rebase, the commit and the fast-forward, and the only refusal left on the path to main is a dirty or conflicted tree.
-- Authoring is never blocked by main's redness: `mainRedGate`, `baselineBlocked` and `BASELINE_BLOCKED_ROLES` are gone, no run ends `main_red`, and a role beginning a run on a red main gets the known-red note naming the failing tests and their owner instead. The doctor's `main red` held-role row is gone with them.
-- `review.afterMerge` no longer exists in the schema, the config views, the docs or any code path, and every role's commit reaches the queue of unreviewed commits.
-- No pre-merge check can refuse a change except the two named: secret leaks and protected edits still reject a diff (`review_rejected` with their reason), and no other rule can — conflict markers, a false fix claim, backlog structure and the declared check are all reported by the watch on main instead. `reviewHeld`/`reviewStrongPaused` defer no role but the post-landing review, and a torn queue head warns and re-queues rather than stranding its change.
+- A code role's run on a red main proceeds, carries the known-red note naming the failing tests and their owner, and no authoring run ends `main_red`; `mainRedGate`, `baselineBlocked` and `BASELINE_BLOCKED_ROLES` no longer exist.
+- `mainRedHealNote`/`mainRedHealPrompt` and the `ci` healer hand-off are unchanged.
 - `npm run test:gate` passes.
 
 **Tests.**
-- test/merge-to-main.test.ts: `a merge runs no gate command` — merge a change with a gate command declared and assert no build-check run was started and the fast-forward landed; keep the conflict and dirty-checkout refusal cases.
-- test/main-red.test.ts / test/runner-run.test.ts: `a red main blocks no run` — a code role's run on a red main proceeds with the known-red note and never returns the `main_red` outcome; `baselineBlocked` no longer exists, and the doctor renders no `main red` held-role row.
-- test/review.test.ts: `only a secret leak and a protected edit refuse a diff` — one case per rule: a conflict marker, a false fix claim and a broken backlog structure each land with a `warning`-only path and no `review_rejected`, while a leaked credential and a protected edit still end `review_rejected` with their reason and leave the pin deleted.
-- test/merge-verify.test.ts / test/merge-queue.test.ts: `a torn queue head warns and re-queues its change` — plant an unreadable head file and assert one warning names it, the change is re-queued rather than dropped, and the queue advances past it.
-- test/config.test.ts: `review.afterMerge is gone` — the key is absent from the schema, from a rendered default config and from `tumwater config`'s listing, while an old config carrying it still loads (the path every removed key takes).
+- test/main-red.test.ts and test/main-red-heal.test.ts: drop the `mainRedGate` cases (the gate no longer exists) and assert `mainRedHealNote` still names the failing tests for a code role on a red main.
+- test/roles.test.ts and test/runner-ids.test.ts: drop the `BASELINE_BLOCKED_ROLES`/`baselineBlocked` cases; keep the catalog and `OBSERVER_ROLES` checks.
 
 ### `tumwater doctor --drop-broken-pins` drops the `refs/tumwater/` pins whose commit is gone, and the dashboard Health card does too — the reap for the one doctor row whose only remedy is a manual `git update-ref -d` (planned 2026-10-24 by the plan role; independent of every eligible plan in behavior — the `ci` parts edit src/roles and src/run, the "Every commit is verified on main" parts edit src/baseline and src/merge, the `teamAlerts` parts edit src/ui/team-alerts.ts, the Pending Ctrl+O plan edits the TUI Pending pane, and the notable-cull plan edits the CLI `logs` feed and the TUI Activity pane; it shares src/cli/cli-flag-specs.ts and src/cli.ts with the notable-cull plan (that plan adds `NOTABLE_FLAG` for `logs`, this one `DROP_BROKEN_PINS_FLAG` for `doctor` — additive sibling lines, so whichever lands second rebases there) and docs/cli.md's doctor row with the notable-cull and Pending plans (this one edits the `doctor` row only, they edit the `logs` and TUI-keys rows); touches src/doctor/doctor-contention-checks.ts src/cli/cli-flag-specs.ts src/cli.ts src/cli/help.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-settings.ts src/ui/gui/gui-client-boot.ts docs/cli.md test/doctor-checks.test.ts test/doctor.test.ts test/gui-endpoints.test.ts test/gui-client-settings.test.ts)
 
@@ -395,5 +382,125 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/tui-backlog.test.ts: `visibleBacklogIndexes drops held entries when readyOnly` — a flat list of an eligible plan, a held plan, an eligible bug and a question yields only the eligible plan, bug and question indexes with `readyOnly` true, and every open index with it false; a `/` pattern still composes. Extend the existing `paneBody` backlog cases with a `backlogReadyOnly: true` state asserting the held plan's title is absent and the eligible one is present.
 - test/tui-keys.test.ts: `Ctrl+O on the Backlog view toggles ready-only` — feed a Ctrl+O key with the Backlog view selected, assert the pane's `state().backlogReadyOnly` flips and a second press restores it, and that Ctrl+O on a non-Backlog view does not set it.
 - test/gui-client-team.test.ts: `the Ready only toggle hides the Blocked section` — extend `backlogScope`'s expose list with the toggle, seed a payload carrying a pickable and a held plan, assert the rendered html carries the `Blocked` divider and the held row, toggle and re-render, and assert the held title and divider are gone while the pickable row remains.
+
+
+### Every commit is verified on main, part 3b/3: a torn merge-queue head is dropped loudly and its change re-queued, so no landing waits forever on one unreadable file (planned 2026-10-24 by the operator, split from the held part 3/3; independent of parts 3a/3 and 3c/3–3f/3; touches src/merge/merge-queue.ts src/merge/merge-verify.ts docs/invariants.md test/merge-queue.test.ts)
+
+**Previously held 2**
+
+**Goal.** A torn or foreign queue head makes `headMerge` read null forever, and `dropTornHead` (src/merge/merge-verify.ts) drops it with a warning that names only the file. Nothing re-queues the change the file was meant to carry, so it waits for next-run leftover recovery while every healthy entry behind it is stranded for that poll. Drop the bad head loudly enough to name its role and put its change back on the queue, so the "nothing blocks a landing" rule holds even for a file the queue cannot read.
+
+**Approach.**
+- `staleHeadFile` (src/merge/merge-queue.ts) keeps returning the unreadable head; `dropTornHead` (src/merge/merge-verify.ts) reads the file's raw bytes before dropping it. `MergeEntry` serializes `role` first, so a torn write keeps a `"role":"<id>"` substring: recover it with a tolerant match (`/"role"\s*:\s*"([^"]+)"/`), not a JSON parse.
+- When a role is recovered, read that role's merge pin with `mergeRefName(role)` (src/paths.ts, `refs/tumwater/merge/<role>`); when it resolves, enqueue a fresh `MergeEntry` for that sha with `enqueueMerge` (the shape leftover recovery builds) before dropping the torn file, so the same poll's `queuedMergeFiles` sees it. A torn head with no recoverable role or no pin drops with the existing warning plus the file's role when known.
+- `readMergeQueue`/`dropMerge` and the rest of `drainVerify` are unchanged.
+
+**Files touched.** src/merge/merge-queue.ts src/merge/merge-verify.ts docs/invariants.md test/merge-queue.test.ts
+
+**Acceptance criteria.**
+- A torn head is dropped and its recovered change is re-queued in the same poll (a subsequent `headMerge` reads the re-queued entry, not null); the warning names the torn file and, when recovered, its role.
+- A foreign or unrecoverable head is dropped with the file named and the queue advances; no healthy entry behind a torn head waits.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/merge-queue.test.ts: `a torn queue head is dropped and its change re-queued` — write a partially-serialized head carrying `role`/`sha`, run the drain's torn-head step, and assert the file is gone, a fresh entry for the same sha is queued, and one warning names the file; a head with no readable role drops with the warning and no re-queue.
+
+### Every commit is verified on main, part 3c/3: review moves after landing — no role is reviewed before its commit merges, and only a secret leak or a protected edit refuses a diff (planned 2026-10-24 by the operator, split from the held part 3/3; requires part 2/3 landed; independent of parts 3a/3 and 3b/3; part 3d/3 below deletes the `review.afterMerge` surfaces this part leaves inert, and part 3e/3 deletes the pre-merge reviewer plumbing this part leaves unreferenced; touches src/review/review.ts src/merge/merge-drain.ts src/merge/merge-core.ts src/runner/runner-run.ts src/runner/leftover.ts src/orchestrator/scheduling-skip.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-scope.ts src/orchestrator/orchestrator-poll.ts docs/how-it-works.md test/review.test.ts test/post-merge-review.test.ts test/merge-drain.test.ts)
+
+**Previously held 2**
+
+**Goal.** Every role's change lands first and is reviewed after it lands, as `review.afterMerge` roles already are. The pre-merge model verdict (`runReviewer`, src/review/review-run.ts) and its retry/revise rounds go, so the gate becomes deterministic: a diff is refused on the way in only for a **secret leak** or a **protected edit** — the two findings a later commit cannot repair (a leaked credential is in history and must be rotated; the protected-edit rule is the operator's policy boundary). A conflict marker, a false fix claim and backlog structure no longer refuse here; the watch already runs all five rules on main's tip (parts 1/3–2/3).
+
+**Approach.**
+- `reviewAheadOfMain` (src/review/review.ts) stops calling `runReviewer`: after the deterministic rules and the build pre-check it returns `{ decision: "approved" }` for every role with `lastApprovedHead = head` and the pre-check's `verifiedHead`, the path `review.afterMerge` roles take today. Its reject set shrinks to `secretLeakReason` and `protectedEditReason`; `diffRuleReasons`'s conflict-marker, false-fix and backlog-structure findings are dropped from the reject list (the watch still reports them).
+- Every merged commit is queued for the post-landing review: `merge-drain.ts`'s `postReviewDue` drops its `isAfterMergeRole` test (keeping `config.review.enabled` and the exempt-diff test), so `settleOne` calls `addPostReview` for every `"changed"` result and `reviewMergedCommit` reviews every role.
+- A role's `already_queued` recovery arm falls through to authoring for every role, not only `review.afterMerge` ones: `runner-run.ts`'s recovery condition drops its `reviewedAfterMerge` test (the interlock relief now applies team-wide).
+- The reviewer provider holds defer only the post-landing review, never a role or a landing: `scheduling-skip.ts`, `orchestrator-scheduling.ts`, `scheduling-scope.ts` and `orchestrator-poll.ts` lose `afterMergeRoles` and each `!afterMergeRoles.has(...)` exemption — with no pre-merge verdict to gate, a held reviewer parks the review queue, not the team.
+- Remove the permanent `mergeReviewError` config-error hold (`merge-core.ts` and `leftover.ts`'s `reviewHold` read): with no pre-merge reviewer there is no request a bad reviewer selector can make fail, so it must not hold a landing.
+- `review.afterMerge` stays in the schema and its CLI/GUI surfaces for part 3d/3 to remove; here it is inert (only the display surfaces still read it). `review-run.ts`/`review-followup.ts` stay compiling and unreferenced for part 3e/3.
+
+**Files touched.** src/review/review.ts src/merge/merge-drain.ts src/merge/merge-core.ts src/runner/runner-run.ts src/runner/leftover.ts src/orchestrator/scheduling-skip.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-scope.ts src/orchestrator/orchestrator-poll.ts docs/how-it-works.md test/review.test.ts test/post-merge-review.test.ts test/merge-drain.test.ts
+
+**Acceptance criteria.**
+- No role is reviewed before its commit merges: `reviewAheadOfMain` runs no pi reviewer, and every `"changed"` merge queues a post-landing review.
+- The pre-merge gate refuses a diff only for a secret leak or a protected edit; a conflict marker, a false fix claim and a broken backlog structure approve and are reported by the watch on main's tip.
+- A reviewer provider hold defers no role and no landing, only the post-landing review; no `mergeReviewError` hold exists, and a role with an `already_queued` recovery authors instead of ending.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/review.test.ts: `only a secret leak and a protected edit refuse a pre-merge diff` — a leaked credential and a protected edit end `review_rejected` with their reason, while a conflict marker, a false fix claim and a broken backlog structure approve with no reviewer run.
+- test/merge-drain.test.ts / test/post-merge-review.test.ts: `every merged role queues a post-landing review` — a `"changed"` merge from a role absent from `review.afterMerge` lands a `PostReview` entry; an exempt-only diff queues none.
+
+### Every commit is verified on main, part 3d/3: `review.afterMerge` and every surface that sets or shows it are deleted (planned 2026-10-24 by the operator, split from the held part 3/3; requires part 3c/3 landed, since the key no longer changes behavior; touches src/config/config-schema.ts src/config/config-validation.ts src/config/config-views.ts src/config/config.ts src/review/post-merge-review.ts src/cli/cli-role-command.ts src/cli/help.ts src/roles/role-view.ts src/roles/role-render.ts src/gui/gui-config-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-drawer-config.ts src/ui/gui/gui-client-boot.ts docs/config.md docs/cli.md test/config.test.ts test/role-view.test.ts test/gui-endpoints.test.ts test/gui-client-drawer.test.ts)
+
+**Previously held 2**
+
+**Goal.** With every role reviewed after landing (part 3c/3), `review.afterMerge` no longer chooses anything: it is a knob that would move a role between two paths that are now the same. Delete it and the three ways it is set and shown, so the record has one review policy.
+
+**Approach.**
+- Remove the key: `REVIEW_KEYS` and the `afterMerge` field in `config-schema.ts`, the naming check in `config-validation.ts`, `reviewedAfterMerge` in `config-views.ts`, `isAfterMergeRole` in `post-merge-review.ts`, the default in `config.ts`, and docs/config.md. An old config carrying it still loads (the path every removed key takes).
+- Delete the write surfaces: `tumwater role <id> --review-after-merge`/`--clear-review-after-merge` (`cli-role-command.ts`, `src/cli/help.ts`), the `/api/role-review-after-merge` route and `handleRoleReviewAfterMerge` (`gui-config-commands.ts`, `gui-server.ts`) and the dashboard role drawer toggle with its `runAct` chain (`gui-client-drawer-config.ts`, `gui-client-boot.ts`).
+- Delete the read/display surfaces: `role-view.ts`'s `reviewedAfterMerge` field and `role-render.ts`'s row.
+- Update docs/cli.md and docs/config.md so no surface names the flag, key or toggle.
+
+**Files touched.** src/config/config-schema.ts src/config/config-validation.ts src/config/config-views.ts src/config/config.ts src/review/post-merge-review.ts src/cli/cli-role-command.ts src/cli/help.ts src/roles/role-view.ts src/roles/role-render.ts src/gui/gui-config-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-drawer-config.ts src/ui/gui/gui-client-boot.ts docs/config.md docs/cli.md test/config.test.ts test/role-view.test.ts test/gui-endpoints.test.ts test/gui-client-drawer.test.ts
+
+**Acceptance criteria.**
+- `review.afterMerge` is absent from the schema, a rendered default config, `tumwater config`'s listing and docs; an old config carrying it still loads.
+- `tumwater role <id> --review-after-merge`/`--clear-review-after-merge`, the `/api/role-review-after-merge` route and the dashboard drawer toggle no longer exist; `tumwater role <id>` prints no review-after-merge row.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/config.test.ts: `review.afterMerge is gone` — absent from the schema, the default and the listing, while an old config still loads.
+- test/role-view.test.ts / test/gui-endpoints.test.ts / test/gui-client-drawer.test.ts: drop the review-after-merge cases; assert the flags and route are unknown and the drawer renders no toggle.
+
+### Every commit is verified on main, part 3e/3: the pre-merge reviewer plumbing is deleted — `review-run.ts`, `review-followup.ts` and the review resume state (planned 2026-10-24 by the operator, split from the held part 3/3; requires part 3c/3 landed, since nothing calls the reviewer once every role is reviewed after landing; touches src/review/review-run.ts (deleted) src/review/review-followup.ts (deleted) src/review/review.ts src/prompt/gate-prompts.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/request-timeouts.ts docs/how-it-works.md test/review.test.ts)
+
+**Previously held 2**
+
+**Goal.** Part 3c/3 leaves the pre-merge reviewer unreferenced; delete it so the gate is one thing and no reviewer prompt, resume session or retry budget lingers.
+
+**Approach.**
+- Delete `src/review/review-followup.ts` and `src/review/review-run.ts`. `review.ts` keeps the deterministic rules and build pre-check and builds its `GateResult` without `runReviewer`, `withRuns` and `restoreReviewedHead`; the small helpers it still needs (`reject`/`keep`, the pi-run fields) move into `review.ts` when a reader remains.
+- Delete the reviewer resume machinery from `RunnerState` (`reviewResume`, and `REVIEW_RESUME_LIMIT`/`APPROVED_PATCH_IDS_MAX`/`approvedPatchIds` when the deterministic dedupe no longer reads the patch ids) and its healing in `runner-state-load.ts`; keep `lastApprovedHead` while the deterministic same-head dedupe uses it.
+- Delete `buildReviewResumePrompt` and the reviewer-only parts of `buildReviewPrompt` from `src/prompt/gate-prompts.ts`; `buildReviewPrompt` stays because `post-merge-review.ts` reads it.
+- Drop the `review-followup.ts` mention from `src/request-timeouts.ts`'s comment and update docs/how-it-works.md's review paragraph to name the one post-landing review.
+
+**Files touched.** src/review/review-run.ts (deleted) src/review/review-followup.ts (deleted) src/review/review.ts src/prompt/gate-prompts.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/request-timeouts.ts docs/how-it-works.md test/review.test.ts
+
+**Acceptance criteria.**
+- `review-run.ts` and `review-followup.ts` no longer exist; no code imports them, and no reviewer prompt, resume session or no-rerun nudge remains.
+- The gate still runs its deterministic rules and build pre-check and returns the same verdicts part 3c/3 established.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/review.test.ts: the part 3c/3 deterministic cases still pass with the reviewer files gone; no case imports a review-run/review-followup symbol.
+
+### Every commit is verified on main, part 3f/3: the merge slot runs no in-lock gate check and no batch check — a merge is a rebase and a fast-forward (planned 2026-10-24 by the operator, split from the held part 3/3; requires part 3e/3 landed, since the gate-scope checks lose their producers once the pre-merge reviewer is gone; touches src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/merge/merge-core.ts src/merge/merge-check-failures.ts src/merge/merge-requeue.ts src/review/review-precheck.ts src/runner/leftover.ts src/doctor/doctor-holds.ts src/status/status-polls.ts src/ui/status-model.ts docs/how-it-works.md docs/invariants.md test/merge-to-main.test.ts test/merge-verify.test.ts test/main-red.test.ts)
+
+**Previously held 2**
+
+**Goal.** With the watch verifying every new tip, the checks that stood in front of a landing are redundant. Delete the merge slot's in-lock build re-check and the batch check with its largest-passing-prefix bisect, so a merge is: rebase onto the tip, take the fast-forward under the merge lock. A broken commit then sits on main between its landing and the watch's fix, which is the `ci` healer's job.
+
+**Approach.**
+- Delete the in-lock re-check from `mergeApprovedChange` (src/merge/merge-to-main.ts): the `runScopedBuildCheck`/`mergeCommand` run and its `merge_blocked` cause. The fast-forward, the conflict resolver, the dirty-checkout refusal and the `MERGE_CONFLICT_LIMIT` hand-back stay (a conflicted tree cannot be landed).
+- Delete the batch path from `mergeApproved` (src/merge/merge-batch.ts): the shared scope-`batch` check, its `BATCH_RESTACK_ATTEMPTS` re-stack and its per-pick bisect/fallback, and whatever in `merge-stack.ts` only that path used. Every approved change merges one at a time through the now-check-free `mergeApprovedChange`.
+- The gate-scope check producers go: `review-precheck.ts`'s build-check reject and `merge-check-failures.ts`'s `merge_blocked`/`review_rejected` attribution lose their callers; the merge-side `main_red` keep (`merge-core.ts`), `requeueMainRedPin`'s wait (`merge-requeue.ts`) and leftover's `main_red` wait go with the in-lock verdict that produced them.
+- With no producer left, remove the merge verdict `main_red`: `heldByMainRed` and `mainCheckRecovered` (`src/status/status-polls.ts`), the status phase's `main red` label (`src/ui/status-model.ts`) and the doctor's held-code-role list inside `checkMainRed` (`src/doctor/doctor-holds.ts`) go; the red-main warning that names an unheld red stays.
+- Keep the two rules part 3c/3 left pre-merge (secret leaks and protected edits) and the refusals that are not quality verdicts: the dirty-checkout pre-flight (`merge-to-main.ts`), a rebase conflict and its hand-back, a lost fast-forward race, and the startup/redeploy stage check.
+- Docs: docs/how-it-works.md's merge paragraph says a merge is a rebase and a fast-forward; docs/invariants.md's merge-check guarantees are re-pointed to the watch.
+
+**Files touched.** src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/merge/merge-core.ts src/merge/merge-check-failures.ts src/merge/merge-requeue.ts src/review/review-precheck.ts src/runner/leftover.ts src/doctor/doctor-holds.ts src/status/status-polls.ts src/ui/status-model.ts docs/how-it-works.md docs/invariants.md test/merge-to-main.test.ts test/merge-verify.test.ts test/main-red.test.ts
+
+**Acceptance criteria.**
+- A merge runs no build check: the merge slot's per-change work is the rebase, the commit and the fast-forward, and the only pre-merge refusals left are a dirty or conflicted tree, a secret leak and a protected edit.
+- `mergeApproved` has no batch/stack/bisect path; every approved change is merged through the one-change `mergeApprovedChange`.
+- No run or merge verdict is `main_red`; the status `main red` label and the doctor's held-code-role list are gone, while the red-main warning stays.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/merge-to-main.test.ts: `a merge runs no gate command` — with a declared check, no build-check run starts and the fast-forward lands; the dirty-checkout and conflict cases stay.
+- test/main-red.test.ts: `heldByMainRed is gone` — no code role is reported held by main's redness, and the unheld red warning still renders.
+- test/merge-verify.test.ts: the batch/stack cases are dropped; one-change merges still land.
 
 ## Done
