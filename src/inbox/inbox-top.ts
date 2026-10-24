@@ -1,7 +1,7 @@
 import path from "node:path";
-import { existsSync, renameSync } from "node:fs";
+import { renameSync } from "node:fs";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
-import { queueFileName, queueFileStamp, removeQueueFile } from "../files/file-queue.js";
+import { lowestStampName, queueFileStamp, removeQueueFile } from "../files/file-queue.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { roleInboxDir } from "../paths.js";
 import { assertQueueFileName } from "./inbox-cancel.js";
@@ -43,15 +43,10 @@ function moveFileToTop(root: string, role: string, file: string): TopOutcome {
   const stamps = queuedFiles(root, role)
     .map((f) => queueFileStamp(path.basename(f)))
     .filter((s): s is number => s !== null);
-  let stamp = (stamps.length > 0 ? Math.min(...stamps) : Date.now()) - 1;
-  const dir = path.dirname(file);
-  let newFile = path.join(dir, queueFileName(stamp, 0, ".md"));
   // A concurrent writer may have just taken a name we computed — step one lower rather than
   // overwrite it; the pid in queueFileName keeps two concurrent tops' names apart too.
-  while (existsSync(newFile)) {
-    stamp--;
-    newFile = path.join(dir, queueFileName(stamp, 0, ".md"));
-  }
+  const dir = path.dirname(file);
+  const newFile = lowestStampName(stamps, dir, ".md");
   // The attachments travel with the prompt to the new stem, so the fulfil/cancel sweep finds
   // them; a move that could not carry one attachment is warned but never fails the reorder.
   const moved = movePromptImages(file, newFile, text);

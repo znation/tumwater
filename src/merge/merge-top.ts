@@ -9,7 +9,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { logEventBestEffort } from "../events/events.js";
 import { errCode } from "../errno.js";
-import { queueFileName, queueFileStamp } from "../files/file-queue.js";
+import { queueFileStamp, lowestStampName } from "../files/file-queue.js";
 import { queuedMergeFiles } from "./merge-queue.js";
 
 /** What moving the Nth queued merge to the front did: `topped` names the moved entry's role,
@@ -62,13 +62,8 @@ function topQueuedFile(root: string, files: ReturnType<typeof queuedMergeFiles>,
   const stamps = files
     .map((q) => queueFileStamp(path.basename(q.file)))
     .filter((s): s is number => s !== null);
-  let stamp = (stamps.length > 0 ? Math.min(...stamps) : Date.now()) - 1;
   const dir = path.dirname(target.file);
-  let newFile = path.join(dir, queueFileName(stamp, 0, ".json"));
-  while (fs.existsSync(newFile)) {
-    stamp--;
-    newFile = path.join(dir, queueFileName(stamp, 0, ".json"));
-  }
+  const newFile = lowestStampName(stamps, dir, ".json");
   try {
     fs.renameSync(target.file, newFile);
   } catch (err) {
