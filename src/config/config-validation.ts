@@ -158,6 +158,15 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     checkBooleanField(problems, obj, prefix, key);
   const checkStringArray = (obj: Record<string, unknown>, prefix: string, key: string): void =>
     checkStringArrayField(problems, obj, prefix, key);
+  // The prefill-capped prompt length check shared by a custom role's `task` and a role's
+  // `instructions`: both ride into every run's prefill, so both are capped with the same
+  // tooLongMessage shape and PREFILL_REASON and cannot drift. A non-string never trips it —
+  // the blank/empty validity is the caller's concern (isNonBlankString for task, checkString
+  // for instructions). `max` is the field's own cap constant.
+  const checkPromptLength = (label: string, value: unknown, max: number): void => {
+    if (typeof value === "string" && value.length > max)
+      problems.push(tooLongMessage(label, value.length, max, PREFILL_REASON));
+  };
   // The window-reserve map validation shared by a backend's nested `windowReserve` (via
   // checkBackendConfig) and the top-level `claudeWindowReserve` legacy spelling, so their
   // object/empty-type/fraction messages cannot drift. `label` is the message path — the
@@ -442,15 +451,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         // checkString rule uses the same trim-based emptiness test.
         if (!isNonBlankString(task)) {
           problems.push(`${where}.task must be a non-empty string (got ${show(task)})`);
-        } else if (task.length > CUSTOM_TASK_MAX_CHARS) {
-          problems.push(
-            tooLongMessage(
-              `${where}.task`,
-              task.length,
-              CUSTOM_TASK_MAX_CHARS,
-              PREFILL_REASON,
-            ),
-          );
+        } else {
+          checkPromptLength(`${where}.task`, task, CUSTOM_TASK_MAX_CHARS);
         }
       });
     }
@@ -474,16 +476,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         // Empty is a deliberate "no extra instructions". A non-empty value rides into every
         // one of this role's run prefills, so it is capped like a custom role's task.
         checkString(o, `roles.${id}.`, "instructions");
-        const instructions = o.instructions;
-        if (typeof instructions === "string" && instructions.length > ROLE_INSTRUCTIONS_MAX_CHARS)
-          problems.push(
-            tooLongMessage(
-              `roles.${id}.instructions`,
-              instructions.length,
-              ROLE_INSTRUCTIONS_MAX_CHARS,
-              PREFILL_REASON,
-            ),
-          );
+        checkPromptLength(`roles.${id}.instructions`, o.instructions, ROLE_INSTRUCTIONS_MAX_CHARS);
         checkModelTripleEntry(o, `roles.${id}.`, `roles.${id}`);
         checkBoolean(o, `roles.${id}.`, "enabled");
         checkNumber(o, `roles.${id}.`, "minRunIntervalSeconds", DURATION_NON_NEGATIVE);
