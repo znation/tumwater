@@ -407,6 +407,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Every commit is verified on main, part 3c/3: review moves after landing — no role is reviewed before its commit merges, and only a secret leak or a protected edit refuses a diff (planned 2026-10-24 by the operator, split from the held part 3/3; requires part 2/3 landed; independent of parts 3a/3 and 3b/3; part 3d/3 below deletes the `review.afterMerge` surfaces this part leaves inert, and part 3e/3 deletes the pre-merge reviewer plumbing this part leaves unreferenced; touches src/review/review.ts src/merge/merge-drain.ts src/merge/merge-core.ts src/runner/runner-run.ts src/runner/leftover.ts src/orchestrator/scheduling-skip.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-scope.ts src/orchestrator/orchestrator-poll.ts docs/how-it-works.md test/review.test.ts test/post-merge-review.test.ts test/merge-drain.test.ts)
 
+**Needs review 2026-10-24 by feature: too large for one run (held 3)**
+
 **Previously held 2**
 
 **Goal.** Every role's change lands first and is reviewed after it lands, as `review.afterMerge` roles already are. The pre-merge model verdict (`runReviewer`, src/review/review-run.ts) and its retry/revise rounds go, so the gate becomes deterministic: a diff is refused on the way in only for a **secret leak** or a **protected edit** — the two findings a later commit cannot repair (a leaked credential is in history and must be rotated; the protected-edit rule is the operator's policy boundary). A conflict marker, a false fix claim and backlog structure no longer refuse here; the watch already runs all five rules on main's tip (parts 1/3–2/3).
