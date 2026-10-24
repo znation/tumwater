@@ -12,7 +12,7 @@ import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure
 import { statusPayload, staleOpenQuestions, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS, mainRuleFailures, MAIN_RULE_FAILURE_WINDOW_MS, qaCoverageAlert } from "../src/ui/status-payload.js";
 import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkPostReviews } from "../src/doctor/doctor-backlog.js";
-import { checkCheckContention, checkProviderContention, checkWorktreePool } from "../src/doctor/doctor-contention-checks.js";
+import { checkCheckContention, checkProviderContention, checkWorktreePool, staleWorkspacePins } from "../src/doctor/doctor-contention-checks.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { initProject } from "../src/init/init.js";
 import { dequeuePrompt } from "../src/inbox/inbox.js";
@@ -855,6 +855,58 @@ test("capacityContention carries the doctor's warnings and nothing under thresho
   ]);
   assert.deepEqual(capacityContention(quiet, now), []);
 });
+
+test("the status payload carries the doctor's stale workspace pin as the workspace-pins alert", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "stale pin alert test");
+  const now = Date.now();
+  // A single slot pinned for 25 h: the shared staleWorkspacePins predicate feeds both the
+  // doctor's `worktree pool` row and the standing amber workspace-pins alert, so their details
+  // cannot drift on the role, the slot or the age.
+  writeSlotsState(repo, {
+    slots: [
+      {
+        dir: slotWorktreePath(repo, 1),
+        lease: null,
+        pinnedFor: "feature",
+        pinnedAt: now - 25 * 3_600_000,
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+    ],
+  });
+  const payload = statusPayload(repo, now) as { alerts: Array<{ key: string; tone: string; detail: string }> };
+  const alert = payload.alerts.find((a) => a.key === "workspace-pins");
+  assert.ok(alert, "a stale pin raises the workspace-pins alert");
+  assert.equal(alert.tone, "amber");
+  assert.ok(alert.detail.includes("feature"));
+  assert.ok(alert.detail.includes("_slot-1"));
+  assert.ok(alert.detail.includes("25h"));
+
+  // The alert's selection is the same staleWorkspacePins predicate the doctor row renders, and
+  // its role/dir/hour phrase matches the row's stale-pin clause for that predicate.
+  assert.deepEqual(staleWorkspacePins(repo, now), [{ role: "feature", dir: "_slot-1", ageMs: 25 * 3_600_000 }]);
+  const poolDetail = checkWorktreePool(repo, now).detail ?? "";
+  assert.ok(poolDetail.includes("feature pinned on _slot-1 for 25h"));
+  assert.ok(alert.detail.includes("feature pinned on _slot-1 for 25h"));
+
+  // A fresh pin raises no alert.
+  writeSlotsState(repo, {
+    slots: [
+      {
+        dir: slotWorktreePath(repo, 1),
+        lease: null,
+        pinnedFor: "feature",
+        pinnedAt: now - 1_000,
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+    ],
+  });
+  const fresh = statusPayload(repo, now) as { alerts: Array<{ key: string }> };
+  assert.equal(fresh.alerts.find((a) => a.key === "workspace-pins"), undefined);
+});
+
 test("flappedChecksAlert carries the doctor's phrase and nothing under the bar", () => {
   const root = makeRepo();
   warnEvent(root, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 3s");

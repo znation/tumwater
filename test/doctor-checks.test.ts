@@ -38,6 +38,7 @@ import {
   checkTumwaterPins,
   checkWorkInstances,
   checkWorktreePool,
+  staleWorkspacePins,
   brokenPinDropLines,
   dropBrokenPins,
   leftoverRetireLines,
@@ -812,6 +813,64 @@ test("checkWorktreePool reports the pool, warns on a 25 h pin and on leftover le
   assert.match(leftover.detail, /_land-feature/);
   assert.doesNotMatch(leftover.detail, /director/);
   assert.doesNotMatch(leftover.detail, /_slot-1/);
+});
+
+test("staleWorkspacePins is the doctor row's stale-pin selector", () => {
+  const root = readyRepo();
+  const now = Date.now();
+  // The 25 h pin the row's case writes: staleWorkspacePins names the same selection the doctor
+  // renders, so the alert and the row cannot drift on what a stale pin is.
+  writeSlotsState(root, {
+    slots: [
+      {
+        dir: slotWorktreePath(root, 1),
+        lease: null,
+        pinnedFor: "feature",
+        pinnedAt: now - 25 * 3_600_000,
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+      {
+        dir: slotWorktreePath(root, 2),
+        lease: null,
+        pinnedFor: "feature",
+        pinnedAt: now - 1_000,
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+      {
+        dir: slotWorktreePath(root, 3),
+        lease: null,
+        pinnedFor: null,
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+    ],
+  });
+  assert.deepEqual(staleWorkspacePins(root, now), [
+    { role: "feature", dir: "_slot-1", ageMs: 25 * 3_600_000 },
+  ]);
+  // A fresh pin and an unpinned slot yield no stale pins.
+  writeSlotsState(root, {
+    slots: [
+      {
+        dir: slotWorktreePath(root, 1),
+        lease: null,
+        pinnedFor: "feature",
+        pinnedAt: now - 1_000,
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+      {
+        dir: slotWorktreePath(root, 2),
+        lease: null,
+        pinnedFor: null,
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+    ],
+  });
+  assert.deepEqual(staleWorkspacePins(root, now), []);
 });
 
 // Parallel work instances, part 6/7: the work-instance doctor check — ok with no claims,

@@ -58,6 +58,34 @@ export function checkMergeLock(root: string): CheckOutcome {
  * a pooled checkout nobody will reuse (plans/worktree-pool.md, "Observability"). */
 const PIN_STALE_MS = DAY_MS;
 
+/** One stale pin the worktree-pool row (checkWorktreePool) and the standing `workspace-pins`
+ * alert (status-payload.ts) share: a slot held out of the pool by a run that never resumed.
+ * role is the slot's pinnedFor, dir the slot's directory name, ageMs the pin's whole-ms age. */
+export interface StaleWorkspacePin {
+  role: string;
+  dir: string;
+  ageMs: number;
+}
+
+/** The single selector of a stale workspace pin, shared by the doctor's `worktree pool` row
+ * (checkWorktreePool) and the always-on `workspace-pins` alert, so the two cannot drift on
+ * what a stale pin is: every pinned-for slot whose pin is older than PIN_STALE_MS. Empty when
+ * nothing is pinned old enough — an unpinned pool, a malformed or absent slots.json, or a
+ * timeouted (non-finite) pinnedAt all read as no stale pin, exactly the tolerance
+ * checkWorktreePool has today. `now` is a test seam. */
+export function staleWorkspacePins(root: string, now = Date.now()): StaleWorkspacePin[] {
+  return readSlotsState(root).slots
+    .filter(
+      (slot) =>
+        slot.pinnedFor !== null && slot.pinnedAt != null && now - slot.pinnedAt > PIN_STALE_MS,
+    )
+    .map((slot) => ({
+      role: slot.pinnedFor as string,
+      dir: path.basename(slot.dir),
+      ageMs: now - (slot.pinnedAt as number),
+    }));
+}
+
 /** Directory names under the worktrees root that the pool no longer owns: a legacy per-role
  * `<role>` checkout (the pre-pool layout) or a `_land-<role>` checkout from the merge queue. The
  * dedicated `director`, `_slot-<n>`, `_merge`, `_main`, `_gate-main` and `_build` checkouts are
@@ -206,27 +234,24 @@ export function checkWaitContention(waits: readonly HarnessEvent[], config: Tumw
 /** Worktree pool (plans/worktree-pool.md, part 5/5): report the pooled slots and warn on the
  * states an operator should act on — a legacy `<role>` or `_land-*` checkout the pool migration
  * left behind, a pin older than PIN_STALE_MS (a paused role holding a checkout), and the last
- * 24 h of `slot_wait` events totalling SLOT_WAIT_WARN_TOTAL_MS (the pool is too small). Read-only,
+ * 24 h of `slot_wait` events totalling SLOT_WAIT_WARN_TOTAL_MS (the pool is too small). The stale
+ * pin is also the standing `workspace-pins` alert's selection (staleWorkspacePins). Read-only,
  * like every doctor check; `now` is a test seam for the pin-age arithmetic. */
 export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome {
   const slots = readSlotsState(root).slots;
   const leased = slots.filter((slot) => slot.lease !== null);
   const pins = slots.filter((slot) => slot.pinnedFor !== null);
-  const stale = pins.filter(
-    (slot) => slot.pinnedAt != null && now - slot.pinnedAt > PIN_STALE_MS,
-  );
+  const stale = staleWorkspacePins(root, now);
   const leftover = leftoverWorktreeDirs(root);
   const parts = [`${plural(slots.length, "workspace")}, ${leased.length} leased, ${pins.length} pinned`];
   if (leftover.length > 0) parts.push(`legacy worktrees still present: ${leftover.join(", ")}`);
   if (stale.length > 0) {
+    // The stale-pin clause renders the shared staleWorkspacePins selection (the same list the
+    // standing `workspace-pins` alert carries), so the row's wording and the alert's selection
+    // cannot disagree on what a stale pin is or how old it is.
     parts.push(
       stale
-        .map(
-          (slot) =>
-            `${textOr(slot.pinnedFor)} pinned on ${path.basename(slot.dir)} for ${Math.round(
-              (now - (slot.pinnedAt ?? now)) / 3_600_000,
-            )}h`,
-        )
+        .map((pin) => `${textOr(pin.role)} pinned on ${pin.dir} for ${Math.round(pin.ageMs / 3_600_000)}h`)
         .join("; "),
     );
   }

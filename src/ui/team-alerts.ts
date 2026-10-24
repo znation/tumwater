@@ -12,6 +12,7 @@ import type { RevertGuardrail } from "../baseline/main-guardrails.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert, QaCoverageStale } from "./status-payload.js";
+import type { StaleWorkspacePin } from "../doctor/doctor-contention-checks.js";
 import type { RefusedEntry, StalledEntry } from "../backlog/backlog-eligibility.js";
 import type { ClaimState } from "../scheduling/claim-entries.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
@@ -1145,12 +1146,15 @@ interface TailAlertsInput {
   contention: readonly CapacityBottleneck[];
   regressedFixes: RegressedFixAlert | null;
   roles: readonly AlertRole[];
+  workspacePins: readonly StaleWorkspacePin[];
 }
 
-/** The quiet-hours, maintenance, provider-hold, pause, capacity-contention, regressed-fix,
- * stopped and image-input alerts, in emission order: a run of quiet hours holding the team, a
+/** The quiet-hours, maintenance, provider-hold, pause, capacity-contention, stale-workspace-pin,
+ * regressed-fix, stopped and image-input alerts, in emission order: a run of quiet hours
+ * holding the team, a
  * maintenance allowance held at its rolling cap, a standing provider failure hold, an operator
- * pause with its countdown, the last day's capacity contention, a fixed test that regressed, a
+ * pause with its countdown, the last day's capacity contention, a stale workspace pin, a
+ * fixed test that regressed, a
  * stopped tumwater, and roles that cannot or may not read images. Extracted from teamAlerts
  * (part 5/5 of the teamAlerts split) so the shared module stays small; the input names exactly
  * the fields this run reads, including `now`, which the pause countdown and provider-hold
@@ -1158,7 +1162,7 @@ interface TailAlertsInput {
  * occupy, so the emitted key order is unchanged. */
 function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
-  const { snap, now, contention, regressedFixes, roles } = input;
+  const { snap, now, contention, regressedFixes, roles, workspacePins } = input;
 
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
   // the team holding to a schedule is not a problem, but an operator watching idle roles
@@ -1238,6 +1242,23 @@ function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       title: plural(contention.length, "capacity bottleneck in the last day", "capacity bottlenecks in the last day"),
       detail: contention.map((c) => `${c.name}: ${squash(c.detail, 200)}`).join(" · "),
       actions: [],
+    });
+  }
+  // A stale workspace pin — the always-on twin of the doctor's `worktree pool` row's stuck-pin
+  // clause (doctor-contention-checks.ts checkWorktreePool): a slot pinned past a day by a run
+  // that never resumed silently shrinks the pool, and no other observer surface names it until
+  // an operator runs `tumwater doctor`. status-payload.ts feeds it the same staleWorkspacePins
+  // predicate the doctor's row uses, so the alert and the row cannot drift on what is stale;
+  // the "Open <role>" buttons reach the role drawer like the other role alerts.
+  if (workspacePins.length > 0) {
+    out.push({
+      key: "workspace-pins",
+      tone: "amber",
+      title: plural(workspacePins.length, "workspace pinned past a day", "workspaces pinned past a day"),
+      detail: `${workspacePins
+        .map((p) => `${p.role} pinned on ${p.dir} for ${Math.round(p.ageMs / 3_600_000)}h`)
+        .join("; ")} — a pinned workspace is held out of the pool; resume the role, or retire its leftovers and run \`tumwater doctor\``,
+      actions: openRoleActions(workspacePins),
     });
   }
   // A Fixed record whose quoted test failed again in the trailing day — the always-on twin of
@@ -1372,13 +1393,14 @@ export function teamAlerts(
   staleQuestions: readonly StaleQuestion[] = [],
   fixClaims: readonly FixClaimProblem[] = [],
   qaCoverage: QaCoverageStale | null = null,
+  workspacePins: readonly StaleWorkspacePin[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, validationGaps, fixClaims }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, qaCoverage, now }));
-  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles }));
+  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins }));
 
   return out;
 }

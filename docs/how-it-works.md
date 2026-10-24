@@ -133,7 +133,10 @@ discards a role's in-flight merge.
   pinned so the resumed session runs in the same directory; a lease that waits 30 s or more
   logs a `slot_wait` event so `worktreeSlots` can be sized from real contention; `tumwater
   doctor`'s "worktree pool" row sums the last 24 h of those waits and warns once they total 10
-  minutes, naming the number to raise `worktreeSlots` above. While every workspace is leased,
+  minutes, naming the number to raise `worktreeSlots` above. A workspace pinned longer than a
+  day by a run that never resumed raises the same standing amber `workspace-pins` alert on
+  `tumwater status`, the dashboard and the TUI that the doctor's `worktree pool` row warns about,
+  cleared by resuming the role or retiring its leftovers. While every workspace is leased,
   `tumwater status`, the TUI header and the dashboard's team panel show `workspaces
   <leased>/<worktreeSlots>`, plus `, <n> waiting` when runs queue for one. Outside the pool sit the director's
   own `.tumwater/worktrees/director`, the merge step's `_merge`, the review gate's `_gate-main`,

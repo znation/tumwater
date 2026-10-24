@@ -4,7 +4,7 @@ import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugE
 import { backlogHolds, backlogInProgress, backlogMarks, operatorHeldEntries, refusedEntries, refusalNote, stalledEntries, waitingNote } from "../backlog/backlog-eligibility.js";
 import { finishedTitle, groupBlockedSeries, partsLabel, strandedPlanEntriesFor, stripEntryStamp } from "../backlog/backlog-structure.js";
 import { fixClaimProblems, validationGapProblems } from "../doctor/doctor-backlog-plans.js";
-import { checkWaitContention, providerWaitContention, slotWaitContention, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
+import { checkWaitContention, providerWaitContention, slotWaitContention, staleWorkspacePins, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
 import { readEvents } from "../events/event-read.js";
 import { eventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -246,6 +246,10 @@ export function primaryOverwriteBlocks(root: string, now = Date.now()): PrimaryO
  * (src/review/post-merge-review.ts) while existing imports (test/status-payload.test.ts) keep
  * working. */
 export { POST_MERGE_REJECT_WINDOW_MS };
+/** Re-export so the always-on alert's stale-pin selector stays in its one home
+ * (src/doctor/doctor-contention-checks.ts) while tui.tsx keeps importing every alert feed from
+ * this one module. */
+export { staleWorkspacePins };
 /** A trailing day of at least `POST_MERGE_REJECT_WARN` post-merge `review_rejected` events:
  * which already-landed commits were turned back, and by how many per role. count is the total
  * rejections in the window, roles each role's per-role total (count-desc, role-asc). */
@@ -723,6 +727,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), qaCoverageAlert(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), qaCoverageAlert(root, now), staleWorkspacePins(root, now)),
   };
 }

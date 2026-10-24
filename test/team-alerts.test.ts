@@ -1643,6 +1643,35 @@ test("a stalled qa coverage raises the qa-stale alert", () => {
   assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], [], null).find((a) => a.key === "qa-stale"), undefined);
 });
 
+test("a stale workspace pin raises the workspace-pins alert", () => {
+  const now = Date.now();
+  // workspacePins is the trailing parameter; the 27 preceding values (refused…fixClaims then
+  // qaCoverage, passed explicitly) are passed so the trailing slot lands, pinning the position.
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], [], null, [{ role: "feature", dir: "_slot-1", ageMs: 25 * 3_600_000 }]);
+  const only = alerts.filter((a) => a.key === "workspace-pins");
+  assert.equal(only.length, 1);
+  assert.equal(only[0]!.tone, "amber");
+  assert.match(only[0]!.title, /workspace pinned past a day/);
+  assert.ok(only[0]!.detail.includes("feature"));
+  assert.ok(only[0]!.detail.includes("_slot-1"));
+  assert.ok(only[0]!.detail.includes("25h"));
+  assert.ok(only[0]!.detail.includes("tumwater doctor"));
+  assert.deepEqual(only[0]!.actions, [{ label: "Open feature", act: "role", arg: "feature" }]);
+
+  // An empty list adds no alert.
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], [], null, []).filter((a) => a.key === "workspace-pins").length, 0);
+
+  // Two pins pluralize the title and name both.
+  const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], [], null, [
+    { role: "feature", dir: "_slot-1", ageMs: 25 * 3_600_000 },
+    { role: "bugfix", dir: "_slot-2", ageMs: 50 * 3_600_000 },
+  ]).filter((a) => a.key === "workspace-pins");
+  assert.equal(two.length, 1);
+  assert.match(two[0]!.title, /workspaces pinned past a day/);
+  assert.ok(two[0]!.detail.includes("feature"));
+  assert.ok(two[0]!.detail.includes("bugfix"));
+});
+
 test("the stale-claims alert names a gone and an idle claim", () => {
   const now = Date.now();
   // staleClaims is the trailing parameter; the 23 preceding defaults (refused…mainRuleFailure)
