@@ -42,14 +42,14 @@ function fencedOrNone(label: string, text: string | null, noneNote = "none"): st
  * so the terminal and the CLI show one role's notes and assembled prompt identically.
  * `renderRoleMarkdown` splices these at the same position, so the extracted function and the
  * full document cannot drift. */
-export function inspectMarkdownLines(p: RoleViewPayload): string[] {
+export function inspectMarkdownLines(p: RoleViewPayload, now = Date.now()): string[] {
   const running = chainStepLine(p);
-  return [...(running ? [running, ""] : []), ...inspectBodyLines(p)];
+  return [...(running ? [running, ""] : []), ...inspectBodyLines(p, now)];
 }
 
 /** The notes, prompt and disclosure blocks alone — what renderRoleMarkdown splices after
  * its own Team lines, which already carry the fallback-step bullet. */
-function inspectBodyLines(p: RoleViewPayload): string[] {
+function inspectBodyLines(p: RoleViewPayload, now: number): string[] {
   const lines: string[] = [];
   lines.push(
     ...fencedOrNone(
@@ -58,6 +58,18 @@ function inspectBodyLines(p: RoleViewPayload): string[] {
       "none yet — the role's own earlier runs write them, and the director has none",
     ),
   );
+  // The operator twin of the `<role-notes>` prompt block's save age: name when the note was
+  // last saved, so a note from five minutes ago and one from five days ago read differently.
+  // Present only when there is a note (noteSavedAt is null with none), so a note-less role's
+  // render is byte-identical to today's.
+  if (p.noteSavedAt !== null) {
+    lines.push(
+      `_Last saved ${formatTimestamp(p.noteSavedAt)} (${humanAgo(
+        p.noteSavedAt,
+        now,
+      )}) — a snapshot of the past; verify its claims against the code._`,
+    );
+  }
   lines.push(...fencedOrNone("Next run's prompt", p.nextPrompt, "nothing to do this run"));
   // run-prompt.ts dequeues exactly one queued prompt per run, so with more than one
   // waiting the block above shows only the oldest — say so, so the count line and the
@@ -326,6 +338,6 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
       "none — the director is driven by its inbox, not by instructions",
     ),
   );
-  lines.push(...inspectBodyLines(p));
+  lines.push(...inspectBodyLines(p, now));
   return lines.join("\n").trimEnd();
 }

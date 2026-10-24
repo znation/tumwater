@@ -604,6 +604,30 @@ test("a role with no notes or queued prompt shows the placeholder lines", async 
   assert.match(role, /Nothing to run \(empty inbox\)\./);
 });
 
+test("the drawer's Notes section names when the note was last saved, and a note-less role adds no age line", async () => {
+  const t = openDrawer(["toggleRole"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: "a stale note", nextPrompt: null, noteSavedAt: Date.now() - 6 * 60_000 } },
+  });
+  t.scope.toggleRole("clean");
+  await flush();
+  const role = t.paintedFor("drawerrole");
+  assert.match(role, /a stale note/);
+  assert.match(role, /Last saved /);
+  assert.match(role, /ago/);
+
+  // A note-less payload (no noteSavedAt) still shows only the placeholder, no age line.
+  const t2 = openDrawer(["toggleRole"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null } },
+  });
+  t2.scope.toggleRole("clean");
+  await flush();
+  const role2 = t2.paintedFor("drawerrole");
+  assert.match(role2, /No notes yet\./);
+  assert.doesNotMatch(role2, /Last saved/);
+});
+
 test("the role drawer renders its notes and next prompt, refetching when the drawer switches roles", async () => {
   const statusRow = (role: string) => ({
     role, phase: "sleeping", inFlight: false, currentWork: "", lastResult: "changed", lastSummary: "x",

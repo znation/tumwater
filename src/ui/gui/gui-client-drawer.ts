@@ -279,6 +279,11 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     else {
       const view = r.view && typeof r.view === "object" ? r.view : {};
       const note = typeof view.notes === "string" && view.notes.trim() !== "" ? view.notes : null;
+      // When the note was last saved (role-view's noteSavedAt, the stat's mtimeMs) — the
+      // drawer twin of the prompt block's last-saved age, made muted so a stale note reads
+      // as stale. A non-numeric/missing field adds nothing, so a no-note drawer stays as today.
+      const noteSavedAt = typeof view.noteSavedAt === "number" && Number.isFinite(view.noteSavedAt) ? view.noteSavedAt : null;
+      const noteAgeLine = noteSavedAt !== null ? " " + esc(fmtLastRun(noteSavedAt)) : "";
       const nextPrompt = typeof view.nextPrompt === "string" && view.nextPrompt.trim() !== "" ? view.nextPrompt : null;
       const outcomes = Array.isArray(view.recentOutcomes) ? view.recentOutcomes : [];
       const canEdit = r.role !== "director";
@@ -289,7 +294,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         ? "<textarea id='noteedittext' rows='12' class='mono' style='width:100%'>" + esc(noteEditing.text) + "</textarea>" +
           "<div><button type='button' class='btn btn-sm btn-primary' data-act='note-save' data-arg='" + esc(r.role) + "'>Save</button> " +
           "<button type='button' class='btn btn-sm' data-act='note-discard' data-arg='" + esc(r.role) + "'>Discard</button></div>"
-        : note ? "<pre class='mono'>" + esc(note) + "</pre>" : "<p class='muted'>No notes yet.</p>";
+        : note ? "<pre class='mono'>" + esc(note) + "</pre>" + (editing || !noteAgeLine ? "" : "<p class='muted' style='font-size:13px'>Last saved " + noteAgeLine + "</p>") : "<p class='muted'>No notes yet.</p>";
       body = "<div class='sec-head'><h3>Notes</h3>" + (editing ? "" : buttons) + "</div>" + noteBody +
         "<details><summary>Next run's prompt</summary>" + (nextPrompt ? "<pre class='mono'>" + esc(nextPrompt) + "</pre>" : "<p class='muted'>Nothing to run (empty inbox).</p>") + "</details>" +
         // The role's recent run outcomes (rolePayload's recentOutcomes, read from the event

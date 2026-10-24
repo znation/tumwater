@@ -85,7 +85,7 @@ export function activityEvents(root: string, role: string | null, grep: string |
  * view windows: inspectMarkdownLines over the role's rolePayload. Split out of the keypress
  * handler so the Ctrl+N branch can catch a collector throw and flash it. */
 export function roleInspectMarkdown(root: string, role: string): string {
-  return inspectMarkdownLines(rolePayload(root, role)).join("\n");
+  return inspectMarkdownLines(rolePayload(root, role), Date.now()).join("\n");
 }
 
 /** The pane's body lines and the note a short body is replaced with (tui.tsx's frame

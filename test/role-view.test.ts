@@ -378,6 +378,9 @@ test("a role's notes renders verbatim, or reads as none yet", () => {
   writeFileDeep(notes, "the scheduler lives in team.ts\n");
   const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
   assert.match(md, /## Notes\n\n```\nthe scheduler lives in team\.ts\n```/);
+  // With a note, the Notes block names when it was last saved (the operator twin of the
+  // prompt block's `last saved` age); a note-less role adds no such line.
+  assert.match(md, /_Last saved .* — a snapshot of the past; verify its claims against the code\._/);
   assert.equal(rolePayload(dir, "feature", NO_MODELS).notes, "the scheduler lives in team.ts\n");
 
   // Empty or missing degrades to the placeholder, never a throw or a blank section.
@@ -385,6 +388,26 @@ test("a role's notes renders verbatim, or reads as none yet", () => {
   const blank = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
   assert.equal(rolePayload(dir, "feature", NO_MODELS).notes, null);
   assert.match(blank, /## Notes\n\n_\(none yet/);
+  assert.doesNotMatch(blank, /_Last saved/);
+});
+
+test("rolePayload carries the note's save time, and null without a note", () => {
+  const dir = root();
+  const notes = roleNotesPath(dir, "feature");
+  writeFileDeep(notes, "a deliberately stale note\n");
+  const pinned = new Date("2026-10-20T09:30:00Z").getTime();
+  fs.utimesSync(notes, new Date(pinned), new Date(pinned));
+  const saved = rolePayload(dir, "feature", NO_MODELS).noteSavedAt;
+  // Within filesystem mtime granularity of the pinned instant.
+  assert.ok(saved !== null && Math.abs(saved - pinned) < 2000);
+
+  // Empty or missing note: noteSavedAt is null exactly like notes.
+  fs.writeFileSync(notes, "");
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).noteSavedAt, null);
+  fs.rmSync(notes, { force: true });
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).noteSavedAt, null);
+  // The director has no note at all.
+  assert.equal(rolePayload(dir, "director", NO_MODELS).noteSavedAt, null);
 });
 
 test("the State line distinguishes disabled from paused, alone and together", () => {

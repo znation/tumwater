@@ -32,7 +32,7 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
 import { readAccount, windowEntries } from "../agent/subscription-account.js";
 import { CONFIG_BASENAME, configPath, roleNotesPath } from "../paths.js";
-import { readTextOrNull } from "../files/files.js";
+import { readTextOrNull, statOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
 import { finiteNumber, objectOrEmpty } from "../files/json-object.js";
 import { canonicalRoleId } from "./legacy-role-ids.js";
@@ -153,6 +153,12 @@ export interface RoleViewPayload {
   /** The role's notes (PLANS.md "Role notebook"): the note its own earlier runs wrote, or
    * null when there is none (missing, empty, or unreadable). Always null for the director. */
   notes: string | null;
+  /** The epoch-ms instant the note file was last modified (`fs.statSync(...).mtimeMs`) — the
+   * operator twin of the `<role-notes>` prompt block's `last saved <day>` age, so the role
+   * view can name how stale a note is. Null exactly when `notes` is null (a missing, empty
+   * or unreadable note is still "no note yet"). Always null for the director, which has no
+   * note. The stat shares the one note path with the read; no second file read. */
+  noteSavedAt: number | null;
   /** Prompts currently queued for this role (the director's count includes the shared
    * inbox, which IS its queue). */
   inboxCount: number;
@@ -392,10 +398,15 @@ export function rolePayload(
   }
   // The role's notes, read for display. The same degradation as every other read here: a
   // missing, empty, or unreadable file is simply "no note yet". The director has none.
+  // Alongside the read, the same path is stat'd once for the note's save instant (mtimeMs),
+  // null when there is no note.
   let note: string | null = null;
+  let noteSavedAt: number | null = null;
   if (role !== DIRECTOR_ROLE) {
-    const text = readTextOrNull(roleNotesPath(root, role));
+    const notesPath = roleNotesPath(root, role);
+    const text = readTextOrNull(notesPath);
     note = text !== null && text.trim() !== "" ? text : null;
+    if (note !== null) noteSavedAt = statOrNull(notesPath)?.mtimeMs ?? null;
   }
   // The windows the scheduler applies (gates/gate-polls.ts), through the same parser and
   // predicate; the director is exempt from both gates.
@@ -461,6 +472,7 @@ export function rolePayload(
     instructions: cfg.roles[baseRoleOf(role)]?.instructions ?? null,
     find: role === DIRECTOR_ROLE ? null : resolved.find,
     notes: note,
+    noteSavedAt,
     inboxCount: queuedRolePromptCount(root, role),
     // The resolved primary seam's declared context window in tokens, or null when it cannot
     // be known (a non-pi seam, an unresolvable provider/model pair, or a model with no
