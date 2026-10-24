@@ -619,6 +619,15 @@ test("instances-edit opens the editor, instances-save posts the count (empty inp
   scope.runAct("instances-save", "feature");
   assert.deepEqual(posts, []);
   assert.deepEqual(flashes, ["error: the instances must be an integer from 1 to 8 — leave it empty for the default 1"]);
+  // A type=number input accepts exponent spellings the browser parses ("2e0" → 2), so badInput
+  // is false — the plain-decimal shape guard must reject it, not silently save 2.
+  flashes.length = 0;
+  posts.length = 0;
+  field.validity.badInput = false;
+  field.value = "2e0";
+  scope.runAct("instances-save", "feature");
+  assert.deepEqual(posts, [], "an exponent spelling is not posted");
+  assert.deepEqual(flashes, ["error: the instances must be a plain integer like 2 — no +/-, exponent, or hex notation — leave it empty for the default 1"]);
   // instances-discard closes the editor, posting nothing.
   events.length = 0;
   scope.runAct("instances-discard", "feature");

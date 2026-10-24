@@ -829,6 +829,17 @@ test("role --instances/--clear-instances write the role's parallel-runner count"
   r = await cli(repo, "role", "feature", "--instances", "2");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /feature: instances is already 2, so tumwater.json was not written/);
+  // An exponent spelling like "2e0" is itself a JSON number (2), so it would silently write 2
+  // past plainDecimalToJson and validateConfig's INSTANCE_COUNT integer check alike — the same
+  // silent misread the cap and min-run-interval writes refuse, so this refuses it too, naming
+  // the key and leaving the file unchanged.
+  const bytesAfterTwo = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  for (const bad of ["2e0", "3e0"]) {
+    r = await cli(repo, "role", "feature", "--instances", bad);
+    assert.equal(r.code, 1, bad);
+    assert.match(r.stderr, /roles\.feature\.instances/);
+    assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytesAfterTwo, `file unchanged on ${bad}`);
+  }
   r = await cli(repo, "role", "feature", "--instances", "");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /feature: instances cleared/);

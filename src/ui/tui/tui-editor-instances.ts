@@ -30,6 +30,15 @@ export function createInstancesEditor(session: TuiEditorSession): TuiEditorModul
         const r = unsetConfigKey(s.root, cfgKey);
         return r.ok && r.oldValue === undefined ? { ok: true, noop: true } : r;
       }
+      // Shape, before the write: an exponent spelling like "2e0" is itself a JSON number (2),
+      // so setConfigKey's JSON.parse would read it past validateConfig's INSTANCE_COUNT integer
+      // check and silently write 2 — the same silent misread the CLI's --instances guard
+      // refuses (and the dashboard drawer's instance editor), so this refuses it too, naming
+      // the key and staying in edit mode. A non-exponent spelling falls through to
+      // validateConfig, whose message names the key.
+      if (!/^\d*\.?\d+$/.test(text) && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(text)) {
+        return { ok: false, error: `${cfgKey} must be a plain integer from 1 to 8 — no exponent notation` };
+      }
       const r = setConfigKey(s.root, cfgKey, text);
       return r.ok && r.unchanged ? { ok: true, noop: true } : r;
     },

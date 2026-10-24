@@ -106,6 +106,18 @@ test("Ctrl+G edits the viewed role's parallel-runner count; Enter saves, empty c
     assert.equal(tui.lines().at(-1), "instances › 9", "an out-of-range value is rejected and kept");
     assert.equal(fs.readFileSync(cfgPath, "utf8"), before, "an out-of-range value is not written");
 
+    // An exponent spelling like "2e0" is itself a JSON number (2) that setConfigKey's JSON.parse
+    // would otherwise read as a valid count and silently write past validateConfig — the editor's
+    // shape guard (the twin of the CLI's --instances and the drawer's instance editor guard)
+    // refuses it instead, naming the key, keeping the line, and writing nothing.
+    for (let i = 0; i < 1; i++) tui.key(undefined, "backspace");
+    for (const ch of "2e0") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /roles\.feature\.instances/);
+    assert.match(tui.lastFrame(), /exponent/);
+    assert.equal(tui.lines().at(-1), "instances › 2e0", "an exponent spelling is rejected and kept");
+    assert.equal(fs.readFileSync(cfgPath, "utf8"), before, "an exponent spelling is not written");
+
     // Esc cancels back to prompt mode with the previous text restored.
     tui.key(undefined, "escape");
     assert.equal(tui.lines().at(-1), "director › draft prompt");

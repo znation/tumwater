@@ -345,7 +345,19 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     const cfg = loaded.config ?? defaultConfig();
     if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
     const base = baseRoleOf(id);
+    const cfgKey = `roles.${base}.instances`;
     const n = flagValue(rest, "--instances") ?? "";
+    // Shape, before the write: a spelling that is not a plain integer but that JSON.parse
+    // would still read as a 1–8 count (an exponent like "2e0" → 2) would otherwise sail past
+    // both plainDecimalToJson and validateConfig's INSTANCE_COUNT integer check and silently
+    // write the misread — the same silent misread the cap and min-run-interval writes refuse.
+    // Every non-exponent spelling that JSON reads as an integer in range is already a plain
+    // integer, so the exponent form is exactly the silent-write set; every exponent — in range
+    // or out ("9e0" → 9 too) — is refused here, while fractional, hex, negative and plain
+    // out-of-range integer spellings fall through to the write path, whose validateConfig
+    // message names the key.
+    if (n.trim() !== "" && plainDecimalToJson(n) === null && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(n.trim()))
+      fail(`${cfgKey} must be a plain integer from 1 to 8 — no exponent notation`);
     // An absent count already means 1 (instanceCount's default), so asking for 1 is a no-op —
     // but only for a role that may split; any other role falls through to validateConfig's refusal.
     // A tumwater.json that fails to load is no basis for "already": fall through to the failure.

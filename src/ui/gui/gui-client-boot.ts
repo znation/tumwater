@@ -305,6 +305,15 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         return;
       }
       const raw = input.value.trim();
+      // A type=number input also accepts exponent spellings the browser parses ("2e0" → 2), so
+      // badInput alone cannot reject them — the plain-decimal shape rule the CLI's --instances
+      // and the TUI Ctrl+G editor apply catches them here too, so a silent misread is an error
+      // instead of silently writing 2. (A rejected "2.5" is a real number the browser accepts,
+      // so it posts and validateConfig's 1–8 integer rule 400s it.)
+      if (raw !== "" && !/^\d*\.?\d+$/.test(raw)) {
+        showFlash("error: the instances must be a plain integer like 2 — no +/-, exponent, or hex notation — leave it empty for the default 1");
+        return;
+      }
       const value = raw === "" ? null : Number(raw);
       postAction("/api/role-instances", { role: arg, instances: value }, (d) => {
         instancesEditing = null;
