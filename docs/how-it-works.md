@@ -523,7 +523,11 @@ validation, and atomic write, so you never have to hand-edit the file.
   dashboard's Roles card and role drawer reach the same reset). `wake` does the opposite: it ends
   every role's sleep so they run within one poll.
 - `gui --all-interfaces` has no authentication unless you pass `--token <secret>`. Clients send the
-  token as `Authorization: Bearer <token>` or `?token=`.
+  token as `Authorization: Bearer <token>` or `?token=`. The token travels to the dashboard by an
+  environment variable (`TUMWATER_GUI_TOKEN`) rather than the command line, which any local user
+  can read via `ps`. A `--token` typed on the command line still works, but it stays visible in
+  `ps` for that invocation (the flag prints a warning saying so); to keep the secret off the
+  process table entirely, export `TUMWATER_GUI_TOKEN` instead.
 - The web dashboard opens on Team: alerts for whatever needs you (a failing or stuck role, a
   failing check on main, a spent budget, an available update, open questions, refused entries,
   a stale bug, a failed notify page, a broken plan dependency clause, a dirty primary checkout

@@ -39,7 +39,12 @@ one-command start.
 `tumwater start --gui --all-interfaces --token <secret>` forwards both onto the
 dashboard child, exposing the dashboard — and with it the director prompt — to your
 whole network behind the token gate, so the one-command start can serve the LAN as
-`gui --all-interfaces --token <secret>` would on its own.
+`gui --all-interfaces --token <secret>` would on its own. The token reaches the
+dashboard child by environment (`TUMWATER_GUI_TOKEN`), never on its command line:
+argv is world-readable via `ps`, so a secret there is readable by any local user and
+is re-written onto every self-reload. To keep the secret out of the process table
+entirely, export `TUMWATER_GUI_TOKEN` instead of passing `--token` (the direct flag
+prints a warning that it stays visible in `ps` for the invocations that use it).
 
 ## Watch, check, steer, control, audit
 

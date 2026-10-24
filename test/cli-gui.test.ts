@@ -9,7 +9,7 @@ import { distDir, buildInfoPath } from "../src/build/build-info.js";
 import { initProject } from "../src/init/init.js";
 import { pidAlive } from "../src/process/process.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
-import { cmdGui, GUI_TOKEN_ENV, lanAddresses, type GuiSeams } from "../src/gui/gui-command.js";
+import { GUI_TOKEN_ENV, cmdGui, lanAddresses, type GuiSeams } from "../src/gui/gui-command.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { SUPERVISED_ENV } from "../src/process/supervisor.js";
@@ -28,6 +28,18 @@ async function freeTcpPort(): Promise<number> {
   const port = (probe.address() as { port: number }).port;
   await new Promise<void>((resolve) => probe.close(() => resolve()));
   return port;
+}
+
+/** The OS command line of a live process as a peer sees it: /proc/<pid>/cmdline on Linux
+ * (NUL-joined), falling back to `ps -p <pid> -o command=` elsewhere (macOS and other Unixes).
+ * Reads the world-readable process table — the exact channel argv secrets leak through — so a
+ * test can assert the dashboard's token is not there. */
+function readCommandLine(pid: number): string {
+  try {
+    return fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").join(" ");
+  } catch {
+    return execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8" }).trim();
+  }
 }
 
 /** Spawn `tumwater gui` on a probed free port and wait for `ready`. The probe releases its port
@@ -383,6 +395,48 @@ test("gui --all-interfaces --token prints the protected warning and token-bearin
   }
 });
 
+// BUGS.md 2026-10-24: the honest hardening this change ships is that the dashboard's gate token
+// reaches the server by ENV, so a real `gui` process never carries it on its (world-readable)
+// command line. The in-process seam tests can't prove that — they hand cmdGui a synthetic argv
+// and read process.env, neither of which is the kernel's cmdline the way /proc/<pid>/cmdline or
+// `ps` shows it. So spawn a real dashboard server with the token only in its environment (the
+// exact hand-off a `run --gui` supervisor makes — no --token flag) and read the spawned child's
+// OWN command line back from the OS: the secret must be absent there while still gating the
+// server.
+test("a real gui process launched with the gate token by env keeps it off its own command line", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui env token cmdline");
+  const token = "cmdline-s3cret";
+  const prev = process.env[GUI_TOKEN_ENV];
+  process.env[GUI_TOKEN_ENV] = token;
+  try {
+    // No --token flag: the secret arrives by env exactly as a supervised dashboard child gets it.
+    const { gui, port } = await spawnGuiOnFreePort(
+      repo,
+      [],
+      (p) => (b) => b.includes(`tumwater gui at http://127.0.0.1:${p}/?token=${token}`),
+      "the env-carried token banner",
+    );
+    try {
+      // The token is absent from the child's OS command line even though the server is gated.
+      const pid = gui.child.pid;
+      assert.ok(pid !== undefined, "the spawned gui child has a pid");
+      const cmdline = readCommandLine(pid);
+      assert.ok(!cmdline.includes(token), `token leaked into the dashboard's command line: ${cmdline}`);
+
+      // ...and it is really gated: a request without the token is refused.
+      const bare = await fetch(`http://127.0.0.1:${port}/`);
+      assert.equal(bare.status, 401);
+      assert.deepEqual(await bare.json(), { error: "token required" });
+    } finally {
+      gui.kill();
+    }
+  } finally {
+    if (prev === undefined) delete process.env[GUI_TOKEN_ENV];
+    else process.env[GUI_TOKEN_ENV] = prev;
+  }
+});
+
 test("the gui reloads onto a newer build: closes, re-execs, re-binds the same port, and the reloaded server dies with its wrapper", async () => {
   // startGui's reload glue (`server.close(); reexecSelf();`) is the one part of the
   // self-reload story with no injected seam: self-reload.test.ts pins the watch and the
@@ -542,9 +596,11 @@ test("cmdGui --all-interfaces names the LAN URLs and the exposure warning, token
   ]);
 
   // With a token every printed URL — banner and LAN lines alike — carries the ?token= suffix
-  // an operator can open directly, and the warning names the token as the gate.
+  // an operator can open directly, and the warning names the token as the gate. The direct
+  // `--token` flag also gets the ps-exposure warning (first line), since the secret transits
+  // the command line.
   const gated: string[] = [];
-  const prevToken = process.env[GUI_TOKEN_ENV]; // cmdGui's --token path seeds this env var
+  const prevToken = process.env[GUI_TOKEN_ENV]; // restored below so a seeded value cannot leak across tests
   try {
     await cmdGui(repo, ["--all-interfaces", "--token", "s3cret"], {
       startGui: startRecorder(started),
@@ -558,12 +614,52 @@ test("cmdGui --all-interfaces names the LAN URLs and the exposure warning, token
     else process.env[GUI_TOKEN_ENV] = prevToken;
   }
   assert.deepEqual(gated, [
+    "--token on the command line is visible to any local user in ps; prefer TUMWATER_GUI_TOKEN to keep the secret off the process list",
     "tumwater gui at http://127.0.0.1:7180/?token=s3cret — Ctrl+C to stop",
     "             also at http://192.168.1.50:7180/?token=s3cret",
     "             also at http://10.0.0.2:7180/?token=s3cret",
     "listening on ALL interfaces — token-protected; prompting the director requires the token",
   ]);
   assert.deepEqual(started.slice(-1), [{ port: 7180, allInterfaces: true, token: "s3cret" }]);
+});
+
+// BUGS.md 2026-10-24: the gate token must reach the server by environment, never argv — a ps
+// /proc cmdline is world-readable. cmdGui reads the token from the `--token` flag OR
+// TUMWATER_GUI_TOKEN. A `run --gui`/`start --gui` supervisor passes the token to its dashboard
+// child via GUI_TOKEN_ENV (never in the child's args), so this also pins that the environment
+// carries the token into cmdGui when no `--token` is present.
+test("cmdGui gates on the gate token from the flag or the environment", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cmdGui token env");
+  const prev = process.env[GUI_TOKEN_ENV];
+  const restore = () => {
+    if (prev === undefined) delete process.env[GUI_TOKEN_ENV];
+    else process.env[GUI_TOKEN_ENV] = prev;
+  };
+  try {
+    // A direct `--token` flag gates the server on the typed secret (which stays visible in ps,
+    // per the honest warning — cmdGui does not pretend to scrub its own argv).
+    const fromFlag: Array<{ port: number; allInterfaces: boolean; token: string }> = [];
+    await cmdGui(repo, ["--token", "s3cret"], {
+      startGui: startRecorder(fromFlag),
+      say: () => {},
+      serve: QUIET_SERVE,
+    });
+    assert.deepEqual(fromFlag, [{ port: 7180, allInterfaces: false, token: "s3cret" }]);
+
+    // A supervisor-spawned child arrives with the token in the environment (and no `--token`
+    // in its args): cmdGui must still gate on it.
+    process.env[GUI_TOKEN_ENV] = "s3cret";
+    const fromEnv: Array<{ port: number; allInterfaces: boolean; token: string }> = [];
+    await cmdGui(repo, [], {
+      startGui: startRecorder(fromEnv),
+      say: () => {},
+      serve: QUIET_SERVE,
+    });
+    assert.deepEqual(fromEnv, [{ port: 7180, allInterfaces: false, token: "s3cret" }]);
+  } finally {
+    restore();
+  }
 });
 
 test("cmdGui reads the gate token from GUI_TOKEN_ENV when no --token is on the command line", async () => {
