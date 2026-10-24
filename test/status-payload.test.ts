@@ -9,7 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
-import { statusPayload } from "../src/ui/status-payload.js";
+import { statusPayload, capacityContention } from "../src/ui/status-payload.js";
+import { checkCheckContention, checkProviderContention, checkWorktreePool } from "../src/doctor/doctor-contention-checks.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { initProject } from "../src/init/init.js";
 import { dequeuePrompt } from "../src/inbox/inbox.js";
@@ -755,4 +756,37 @@ test("statusPayload carries the post-merge review queue", () => {
   // A torn entry is dropped exactly as readPostReviews drops it today.
   writeJsonFile(postReviewPath(empty), { pending: [{ commit: "n" }] });
   assert.deepEqual((statusPayload(empty) as { postReviews: unknown[] }).postReviews, []);
+});
+
+test("capacityContention carries the doctor's warnings and nothing under threshold", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  writeEvents(root, [
+    { ts: now - 60_000, source: "tumwater", type: "slot_wait", message: "waited", role: "feature", purpose: "run", waitedMs: 600_000 },
+    { ts: now - 60_000, source: "tumwater", type: "provider_wait", role: "feature", key: "omlx", waitedMs: 600_000 },
+    { ts: now - 60_000, source: "tumwater", type: "check_wait", role: "feature", scope: "gate", heldBy: ["review merge"], waitedMs: 600_000 },
+  ]);
+  const feed = capacityContention(root, now);
+  const names = feed.map((c) => c.name);
+  assert.ok(names.includes("workspace slots"));
+  assert.ok(names.includes("provider slots"));
+  assert.ok(names.includes("check slots"));
+  const byName = Object.fromEntries(feed.map((c) => [c.name, c.detail])) as Record<string, string>;
+  // The alert detail is exactly the provider/check doctor rows' detail — the shared rule the
+  // doctor wraps — so the trigger and the advice cannot drift.
+  assert.equal(byName["provider slots"], checkProviderContention(root, undefined, now).detail);
+  assert.equal(byName["check slots"], checkCheckContention(root, undefined, now).detail);
+  // The workspace doctor row embeds the same wait clause the alert carries (its detail joins
+  // that clause onto the pool summary), so the two cannot drift on the wait or the knob.
+  const poolDetail = checkWorktreePool(root, now).detail ?? "";
+  const workspaceClause = feed.find((c) => c.name === "workspace slots")!.detail;
+  assert.ok(poolDetail.includes(workspaceClause));
+  // One minute of each wait stays under every row's ten-minute threshold.
+  const quiet = makeRepo();
+  writeEvents(quiet, [
+    { ts: now - 60_000, source: "tumwater", type: "slot_wait", message: "waited", role: "feature", purpose: "run", waitedMs: 60_000 },
+    { ts: now - 60_000, source: "tumwater", type: "provider_wait", role: "feature", key: "omlx", waitedMs: 60_000 },
+    { ts: now - 60_000, source: "tumwater", type: "check_wait", role: "feature", scope: "gate", waitedMs: 60_000 },
+  ]);
+  assert.deepEqual(capacityContention(quiet, now), []);
 });

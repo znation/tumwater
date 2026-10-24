@@ -1304,3 +1304,29 @@ test("statusPayload and renderStatus carry a validation-gaps alert from BUGS.md,
   assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "validation-gaps"), undefined);
   assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /validation-gap problem/);
 });
+
+test("a capacity bottleneck raises one standing amber alert carrying the doctor's detail", () => {
+  const now = Date.now();
+  const contention = [{ name: "provider slots", detail: "2 waits for a provider slot in the last 24h, 20m total, longest 10m (the omlx slot) — raise maxConcurrentPerProvider.omlx above 1" }];
+  // contention is the 21st positional argument, after primaryOverwrite; one position earlier it
+  // would land in the primaryOverwrite slot and raise no contention alert.
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, contention);
+  assert.deepEqual(alerts.map((a) => [a.key, a.tone]), [["contention", "amber"]]);
+  assert.match(alerts[0]!.title ?? "", /1 capacity bottleneck/);
+  assert.match(alerts[0]!.detail ?? "", /provider slots:/);
+  assert.match(alerts[0]!.detail ?? "", /raise maxConcurrentPerProvider\.omlx/);
+  assert.deepEqual(alerts[0]!.actions, []);
+  // An empty last argument adds no alert.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null), []);
+  // The full pipeline carries the same warning through statusPayload's alerts over seeded waits,
+  // pinning the argument position end to end.
+  const root = makeRepo();
+  writeEvents(root, [
+    { ts: now - 60_000, source: "tumwater", type: "slot_wait", message: "waited", role: "feature", purpose: "run", waitedMs: 600_000 },
+    { ts: now - 60_000, source: "tumwater", type: "provider_wait", role: "feature", key: "omlx", waitedMs: 600_000 },
+  ]);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; tone?: string; title?: string }> };
+  const contentionAlert = payload.alerts.find((a) => a.key === "contention");
+  assert.equal(contentionAlert?.tone, "amber");
+  assert.match(contentionAlert?.title ?? "", /capacity bottleneck/);
+});

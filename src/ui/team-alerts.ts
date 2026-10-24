@@ -11,6 +11,7 @@ import type { StatusSnapshot } from "../status/status-data.js";
 import type { RevertGuardrail } from "../baseline/main-guardrails.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
+import type { CapacityBottleneck } from "./status-payload.js";
 import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
@@ -257,7 +258,8 @@ function localizeInstants(text: string): string {
  * prompt, a stalled merge queue, a
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
  * review or Needs replan note, a stale or oversized flake quarantine, a revert off main that
- * looks false or a revert burst, a plan filed under the wrong backlog section, a duplicated
+ * looks false or a revert burst, the fleet waiting on capacity slots (workspace, provider or
+ * check), a plan filed under the wrong backlog section, a duplicated
  * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
  * stopped team.
  * `now` is passed so a timed
@@ -301,6 +303,7 @@ export function teamAlerts(
   reverts: RevertWarning | null = null,
   notifyFailure: NotifyFailure | null = null,
   primaryOverwrite: PrimaryOverwriteBlock | null = null,
+  contention: readonly CapacityBottleneck[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -864,6 +867,21 @@ export function teamAlerts(
         : `The team is paused${pauseReasonSuffix(snap.pauseReason)}`,
       detail: "Roles start no new runs. Runs in progress finish, and the director still runs your prompts.",
       actions: [{ label: "Resume now", act: "resume" }],
+    });
+  }
+  // Last day's capacity contention — the always-on twin of the doctor's `workspaces`,
+  // `provider contention` and `check contention` rows (doctor-contention-checks.ts). The
+  // instantaneous badges show only current waits, and the 24 h total is the tuning signal that
+  // says a cap is too small; status-payload.ts's capacityContention feeds it from the same
+  // `*_wait` events and ten-minute thresholds the doctor sums, so the alert and the doctor
+  // cannot drift on the trigger or the knob-raising advice.
+  if (contention.length > 0) {
+    out.push({
+      key: "contention",
+      tone: "amber",
+      title: plural(contention.length, "capacity bottleneck in the last day", "capacity bottlenecks in the last day"),
+      detail: contention.map((c) => `${c.name}: ${squash(c.detail, 200)}`).join(" · "),
+      actions: [],
     });
   }
   if (!snap.running) {

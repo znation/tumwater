@@ -3,6 +3,7 @@ import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugE
 import { backlogHolds, backlogInProgress, backlogMarks, operatorHeldEntries, refusedEntries, refusalNote, stalledPlanEntries, waitingNote } from "../backlog/backlog-eligibility.js";
 import { finishedTitle, groupBlockedSeries, partsLabel, strandedPlanEntriesFor, stripEntryStamp } from "../backlog/backlog-structure.js";
 import { validationGapProblems } from "../doctor/doctor-backlog-plans.js";
+import { checkWaitContention, providerWaitContention, slotWaitContention, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
 import { readEvents } from "../events/event-read.js";
 import { eventsSince } from "../events/event-window.js";
 import { isNotifyFailure } from "../events/notify.js";
@@ -12,6 +13,8 @@ import { dailyCost } from "../budget/budget.js";
 import { queueEntryMergeLabel } from "../merge/merge-queue-render.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
+import { readSlotsState } from "../git/slots-state.js";
+import { configForStatus } from "../status/status-polls.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts, type NotifyFailure, type PlanDependencyProblem, type PrimaryOverwriteBlock, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
@@ -122,6 +125,53 @@ export function staleWaitingBugs(root: string, now = Date.now()): StaleWaitingBu
  * row cannot drift on the selection or the named paths. */
 export function skippedMergeFiles(root: string): string[] {
   return skippedMergeQueueFiles(root);
+}
+
+/** The doctor's three `_wait` contention rows (src/doctor/doctor-contention-checks.ts
+ * `slotWaitContention`/`providerWaitContention`/`checkWaitContention`) folded into one
+ * always-on feed for the `contention` team alert (src/ui/team-alerts.ts): the standing twin of
+ * the doctor's `workspaces`, `provider contention` and `check contention` rows, read off the
+ * same `*_wait` events and the same ten-minute thresholds the doctor sums, so the alert and
+ * the doctor cannot drift on the trigger or the knob-raising advice. Reads each window with
+ * `eventsSince` (a read error skips that row, exactly like the doctor's own read-error arms),
+ * sizing the slot row with readSlotsState's slot count and the provider/check rows with the
+ * same last-known-good config the snapshot uses (configForStatus). One entry per row whose
+ * window crosses its threshold, `[]` when none does. */
+export interface CapacityBottleneck {
+  name: string;
+  detail: string;
+}
+/** @see CapacityBottleneck */
+export function capacityContention(root: string, now = Date.now()): CapacityBottleneck[] {
+  const out: CapacityBottleneck[] = [];
+  try {
+    const verdict: WaitContention = slotWaitContention(
+      eventsSince(root, SLOT_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "slot_wait"),
+      readSlotsState(root).slots.length,
+    );
+    if (verdict.warn) out.push({ name: "workspace slots", detail: verdict.detail });
+  } catch {
+    // A read error skips this row, so the alert never cries wolf on an unreadable log.
+  }
+  try {
+    const verdict: WaitContention = providerWaitContention(
+      eventsSince(root, PROVIDER_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "provider_wait"),
+      configForStatus(root),
+    );
+    if (verdict.warn) out.push({ name: "provider slots", detail: verdict.detail });
+  } catch {
+    // skip
+  }
+  try {
+    const verdict: WaitContention = checkWaitContention(
+      eventsSince(root, CHECK_WAIT_CHECK_WINDOW_MS, now, (e) => e.type === "check_wait"),
+      configForStatus(root),
+    );
+    if (verdict.warn) out.push({ name: "check slots", detail: verdict.detail });
+  } catch {
+    // skip
+  }
+  return out;
 }
 
 /** How far back the primary-overwrite alert looks — one day, so a fleet stuck retrying one
@@ -479,6 +529,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now)),
   };
 }
