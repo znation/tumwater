@@ -7,7 +7,7 @@
  * should act stays in cli.ts beside the other command bodies. */
 
 import { fail, say, sayJson, warnIfUncommitted } from "../cli/cli-output.js";
-import { parsePositionFlag, rejectRepeatFlag } from "../cli/cli-args.js";
+import { parsePositionFlag, rejectRepeatFlag, scanPositionArgs } from "../cli/cli-args.js";
 import { promptFileValue, readPromptFileArg } from "../cli/cli-command-args.js";
 import { plannedPlanEntries } from "./backlog.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
@@ -174,25 +174,7 @@ export async function cancelAndAnnounce(
   command: string,
   cancel: (n: number) => { file: string; title: string },
 ): Promise<void> {
-  let position: number | null = null;
-  let json = false;
-  const rest: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--json") {
-      rejectRepeatFlag(json, "--json");
-      json = true;
-      continue;
-    }
-    if (arg === "--cancel") {
-      rejectRepeatFlag(position !== null, "--cancel");
-      position = parsePositionFlag("--cancel", args[i + 1], "--cancel 2");
-      i++;
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") continue;
-    rest.push(arg as string);
-  }
+  const { json, position, rest } = scanPositionArgs(args, "--cancel", "--cancel 2");
   // rejectUnknownArgs names both a stray positional and an unknown flag, with this command's
   // (empty) valid-flag list — the vocabulary a cancel invocation accepts is exactly --cancel
   // and --json, both consumed above.
@@ -227,25 +209,7 @@ export async function releaseAndAnnounce(
   release: (n: number) => { file: string; title: string },
   role: string,
 ): Promise<void> {
-  let position: number | null = null;
-  let json = false;
-  const rest: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--json") {
-      rejectRepeatFlag(json, "--json");
-      json = true;
-      continue;
-    }
-    if (arg === "--release") {
-      rejectRepeatFlag(position !== null, "--release");
-      position = parsePositionFlag("--release", args[i + 1], "--release 2");
-      i++;
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") continue;
-    rest.push(arg as string);
-  }
+  const { json, position, rest } = scanPositionArgs(args, "--release", "--release 2");
   rejectUnknownArgs(command, rest, []);
   if (position === null) fail(`--release needs a position (usage: tumwater ${command} --release <n>)`);
   await requireReadyRepo(root);
@@ -273,25 +237,7 @@ export async function topAndAnnounce(
   command: "bug" | "plan",
   top: (n: number) => { file: string; title: string },
 ): Promise<void> {
-  let position: number | null = null;
-  let json = false;
-  const rest: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--json") {
-      rejectRepeatFlag(json, "--json");
-      json = true;
-      continue;
-    }
-    if (arg === "--top") {
-      rejectRepeatFlag(position !== null, "--top");
-      position = parsePositionFlag("--top", args[i + 1], "--top 2");
-      i++;
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") continue;
-    rest.push(arg as string);
-  }
+  const { json, position, rest } = scanPositionArgs(args, "--top", "--top 2");
   rejectUnknownArgs(command, rest, []);
   if (position === null) fail(`--top needs a position (usage: tumwater ${command} --top <n>)`);
   await requireReadyRepo(root);

@@ -8,7 +8,7 @@ import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { cancelQueuedMerge, type CancelQueuedOutcome } from "../merge/merge-cancel.js";
 import { moveQueuedMergeToTop, type TopQueuedOutcome } from "../merge/merge-top.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
-import { flagValue, parseGrepFlag, parsePositionFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
+import { flagValue, parseGrepFlag, parseRoleListScope, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
@@ -195,25 +195,7 @@ export async function cmdQueue(root: string, args: string[], seams: FollowViewSe
  * `tumwater queue`'s. An entry a live merge marker names for this sha is refused (wait for it
  * to land, then revert); an out-of-range position fails naming the current depth. */
 async function cmdQueueCancel(root: string, args: string[]): Promise<void> {
-  let position: number | null = null;
-  let json = false;
-  const rest: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--json") {
-      rejectRepeatFlag(json, "--json");
-      json = true;
-      continue;
-    }
-    if (arg === "--cancel") {
-      rejectRepeatFlag(position !== null, "--cancel");
-      position = parsePositionFlag("--cancel", args[i + 1], "--cancel 2");
-      i++;
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") continue;
-    rest.push(arg as string);
-  }
+  const { json, position, rest } = scanPositionArgs(args, "--cancel", "--cancel 2");
   // The vocabulary a cancel invocation accepts is exactly --cancel and --json, both consumed
   // above; --role and -f/--follow are refused with the queue-specific wording the tests pin.
   if (rest.includes("--role")) fail("queue --cancel cancels by whole-queue position from `tumwater queue`; --role scopes a read only — drop it");
@@ -252,25 +234,7 @@ async function cmdQueueCancel(root: string, args: string[]): Promise<void> {
  * out-of-range position fails naming the current depth; position 1 prints the already-first
  * line and exits 0; a concurrently-drained entry prints the gone line and exits 0. */
 async function cmdQueueTop(root: string, args: string[]): Promise<void> {
-  let position: number | null = null;
-  let json = false;
-  const rest: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--json") {
-      rejectRepeatFlag(json, "--json");
-      json = true;
-      continue;
-    }
-    if (arg === "--top") {
-      rejectRepeatFlag(position !== null, "--top");
-      position = parsePositionFlag("--top", args[i + 1], "--top 2");
-      i++;
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") continue;
-    rest.push(arg as string);
-  }
+  const { json, position, rest } = scanPositionArgs(args, "--top", "--top 2");
   // The vocabulary a top invocation accepts is exactly --top and --json, both consumed
   // above; --role and -f/--follow are refused with the queue-specific wording the tests pin.
   if (rest.includes("--role")) fail("queue --top moves by whole-queue position from `tumwater queue`; --role scopes a read only — drop it");

@@ -174,6 +174,49 @@ export function parsePositionFlag(flag: string, raw: string | undefined, example
   return n;
 }
 
+/** Scan a queue-style command's edge-triggered flags in one pass: the one valued position
+ * flag `--<flag> <n>` (at most once, parsed through parsePositionFlag with the caller's
+ * `example` spelling), the `--json` boolean (at most once), any extra boolean edge flags in
+ * `extraBooleans` (each at most once), `--help`/`-h` tolerated (dropped), and every other
+ * token collected into `rest` for the caller's rejectUnknownArgs. Returns the parsed position,
+ * the --json flag, the extra booleans' presence (for the --done/--ready variants), and rest.
+ * One home for the scan loop the position-flag command shells used to repeat by hand
+ * (`--cancel`, `--top`, `--release`, `--accept`, `--show`), so the at-most-once wording, the
+ * plain-decimal rule, and the help-tolerance rule cannot drift among them. */
+export function scanPositionArgs(
+  args: string[],
+  flag: string,
+  example: string,
+  extraBooleans: readonly string[] = [],
+): { json: boolean; flags: Readonly<Record<string, boolean>>; position: number | null; rest: string[] } {
+  let json = false;
+  let position: number | null = null;
+  const flags: Record<string, boolean> = {};
+  const rest: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? "";
+    if (arg === "--json") {
+      rejectRepeatFlag(json, "--json");
+      json = true;
+      continue;
+    }
+    if (extraBooleans.includes(arg)) {
+      rejectRepeatFlag(flags[arg] === true, arg);
+      flags[arg] = true;
+      continue;
+    }
+    if (arg === flag) {
+      rejectRepeatFlag(position !== null, flag);
+      position = parsePositionFlag(flag, args[i + 1], example);
+      i++;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") continue;
+    rest.push(arg);
+  }
+  return { json, flags, position, rest };
+}
+
 /** Resolve a read-only command's `--role <id>` scope: the role id, or null when the flag is
  * absent. The id is validated against built-ins PLUS user-defined roles, read through
  * loadConfigCached (which never throws) so a transiently broken tumwater.json cannot take a

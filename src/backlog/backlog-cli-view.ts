@@ -4,7 +4,7 @@
  * wakes a role. cli.ts reaches them through listAndAnnounce and showAndAnnounce. */
 
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { parseCountFlag, parsePositionFlag, rejectRepeatFlag } from "../cli/cli-args.js";
+import { parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "../cli/cli-args.js";
 import {
   DONE_DATE_RE,
   FIXED_DATE_RE,
@@ -235,35 +235,11 @@ export function listAndAnnounce(
  * `--list`: no repo gate, commit, or wake. Prose is the title, a blank line, then the body, so
  * stdout is the file `--edit <n> --file` takes back. */
 export function showAndAnnounce(root: string, args: string[], command: "bug" | "plan"): void {
-  let position: number | null = null;
-  let json = false;
-  let done = false;
-  const rest: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--done") {
-      rejectRepeatFlag(done, "--done");
-      done = true;
-      continue;
-    }
-    if (arg === "--json") {
-      rejectRepeatFlag(json, "--json");
-      json = true;
-      continue;
-    }
-    if (arg === "--show") {
-      rejectRepeatFlag(position !== null, "--show");
-      position = parsePositionFlag("--show", args[i + 1], "--show 2");
-      i++;
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") continue;
-    rest.push(arg as string);
-  }
+  const { json, flags, position, rest } = scanPositionArgs(args, "--show", "--show 2", ["--done"]);
   rejectUnknownArgs(command, rest, []);
   refuseTeamWorkspace(root);
   if (position === null) fail(`--show needs a position (usage: tumwater ${command} --show <n>)`);
-  if (done) {
+  if (flags["--done"]) {
     const bug = command === "bug";
     const all = bug ? fixedBugEntries(root) : donePlanEntries(root);
     const entry = all[position - 1];

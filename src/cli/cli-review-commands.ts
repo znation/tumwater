@@ -11,7 +11,7 @@
 import { JSON_FLAG, ROLE_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { sayJsonOrRender, say, sayJson, fail } from "./cli-output.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
-import { parsePositionFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
+import { parseRoleListScope, scanPositionArgs } from "./cli-args.js";
 import { readPostReviews } from "../review/post-merge-review.js";
 import { acceptPostReview, type AcceptPostReviewOutcome } from "../review/post-merge-review-accept.js";
 import { renderPostReviews, scopePostReviews } from "../review/post-merge-review-render.js";
@@ -46,25 +46,7 @@ export async function cmdReviews(root: string, args: string[]): Promise<void> {
  * out-of-range position fails naming the current depth; an entry already rejected and waiting
  * on its revert is refused (the revert must run first, then the revision can be reviewed). */
 async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
-  let position: number | null = null;
-  let json = false;
-  const rest: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--json") {
-      rejectRepeatFlag(json, "--json");
-      json = true;
-      continue;
-    }
-    if (arg === "--accept") {
-      rejectRepeatFlag(position !== null, "--accept");
-      position = parsePositionFlag("--accept", args[i + 1], "--accept 2");
-      i++;
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") continue;
-    rest.push(arg as string);
-  }
+  const { json, position, rest } = scanPositionArgs(args, "--accept", "--accept 2");
   // The vocabulary an accept invocation accepts is exactly --accept and --json, both consumed
   // above; --role is refused by name (as cmdQueueCancel refuses it): accept addresses a
   // whole-queue position `tumwater reviews` printed, and a scoped read must never renumber it.
