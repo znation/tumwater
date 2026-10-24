@@ -108,14 +108,14 @@ test("guiChildPlan threads --port onto the dashboard child and strips it from th
   });
 });
 
-// `run --gui` also threads --all-interfaces onto the dashboard child, and strips both it and
-// the --token secret from the orchestrator generation (whose cmdStart, seeing any dashboard
+// `run --gui` also threads --all-interfaces onto the dashboard child and returns the --token
+// secret as `guiToken` (the remaining `tumwater gui` dashboard flags, in the fixed order
+// and strips all three from the orchestrator generation (whose cmdStart, seeing any dashboard
 // flag without --gui, would refuse it, and whose self-redeploy must never forward a dashboard
-// flag it is not serving itself). The allowed value-less flags never survive; and the token
-// never rides the child's argv (guiArgs) — a `--token <secret>` in the process table is
-// world-readable via ps — so it is handed to the dashboard child separately via guiToken
-// (carried by env, GUI_TOKEN_ENV, in superviseDashboard).
-test("guiChildPlan threads --all-interfaces onto the dashboard child but carries --token by env, stripping both from the orchestrator", () => {
+// flag it is not serving itself). The secret is returned separately and reaches the child via
+// its env — never via guiArgs/argv, which the OS process table exposes to every local user and
+// which a child's self-reload re-runs verbatim onto each new generation.
+test("guiChildPlan threads --all-interfaces onto the dashboard child, returns --token as guiToken, and strips them from the orchestrator", () => {
   assert.deepEqual(guiChildPlan(["--gui", "--all-interfaces", "--token", "s3cret"]), {
     spawnGui: true,
     spawnTui: false,

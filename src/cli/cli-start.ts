@@ -114,6 +114,17 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
   // tokenValueProblem `tumwater gui` runs, named for the one-command form the operator typed.
   const tokenProblem = tokenValueProblem(args, "tumwater start --gui");
   if (tokenProblem) fail(tokenProblem);
+  // The supervisor (this process, when run without SUPERVISED_ENV) is long-lived and the OS
+  // process table (ps, /proc/<pid>/cmdline) is world-readable, so an operator-typed secret must
+  // not sit in this process's argv for the whole run. guiChildPlan has already extracted the
+  // token into `plan.guiToken` for the dashboard child's env (see superviseDashboard), so take
+  // `--token <value>` off the command line here — the env rides every spawn and reexecSelf
+  // re-run, so no dashboard child or reloaded generation loses the gate — and say it is gone.
+  const argvToken = process.argv.indexOf("--token");
+  if (argvToken >= 0) {
+    process.argv.splice(argvToken, 2);
+    say(`removed --token from this process's command line; prefer the ${GUI_TOKEN_ENV} env var`);
+  }
   const forMs = parseRunWindow(args, once);
   const branchArg = parseBranchFlag(args);
   const startup = await runStartupCheck(root, branchArg);
@@ -344,15 +355,14 @@ export function guiChildPlan(runArgs: string[]): {
    * given), threaded into spawnGuiChild so a one-command `run --gui` serves the dashboard
    * exactly as a direct `tumwater gui` invocation would. The port is parsed here (parsePortFlag
    * has already run its shape gate on the dispatcher, so this is the same value re-typed for
-   * the child). The gate token is deliberately NOT in guiArgs: the secret must never ride the
-   * child's argv (world-readable via ps) — it travels in `guiToken` to the child's env instead
-   * (see superviseDashboard), which a reexec also inherits without re-writing the secret to a
-   * fresh command line. */
+   * the child).
+   *
+   * The gate token is deliberately NOT here — it would land on the child's argv, which the
+   * OS process table exposes to every local user and which the child's reload re-runs. It
+   * travels in `guiToken` to the child's env instead (see superviseDashboard). */
   guiArgs: string[];
-  /** The gate token, when the operator gave one, for the dashboard child's env — never argv:
-   * it is threaded into the child's env (GUI_TOKEN_ENV) so `cmdGui` reads it from the
-   * environment rather than argv, which would be visible to any local user in ps. */
-  guiToken: string | undefined;
+  /** The gate token, when the operator gave one, for the dashboard child's env — never argv. */
+  guiToken?: string;
   orchestratorArgs: string[];
   /** The stdio the supervised children (the run child and, when `--gui`, the dashboard child)
    * get: `"inherit"` on a plain `run`/`run --gui`, but silent when a TUI is hosted — the
@@ -417,10 +427,10 @@ async function superviseDashboard(
 ): Promise<void> {
   const { DASHBOARD_CHILD_ENV } = await import("../redeploy/self-reload.js");
   const { spawnGuiChild } = await import("../process/supervisor.js");
+  const env: NodeJS.ProcessEnv = { [DASHBOARD_CHILD_ENV]: String(process.pid) };
   // The gate token rides in the child's env, not its argv: /proc/<pid>/cmdline is world-readable,
   // and the child's self-reload (reexecSelf, which propagates env via childEnv) would otherwise
   // re-run the secret onto each fresh generation.
-  const env: NodeJS.ProcessEnv = { [DASHBOARD_CHILD_ENV]: String(process.pid) };
   if (guiToken !== undefined) env[GUI_TOKEN_ENV] = guiToken;
   for (;;) {
     const exit = await spawnGuiChild(signal, env, stdio, guiArgs);
@@ -439,14 +449,6 @@ async function superviseStartCommand(root: string, runArgs: string[], branchArg:
   // that never boots the team never compiles it.
   const { RUN_WINDOW_START_ENV, teamDownEvent, spawnStartChild, superviseStart } = await import("../process/supervisor.js");
   const plan = guiChildPlan(runArgs);
-  // The long-lived supervisor carries the `--token <secret>` it was started with in ITS OWN argv
-  // for its whole lifetime: argv is fixed at exec and world-readable via ps, and nothing a
-  // process can do to its own argv array scrubs the kernel's copy — so a `start --gui --token`
-  // supervisor stays ps-readable, honestly. What this change guarantees is that the exposed
-  // dashboard CHILD does not: superviseDashboard hands the token to it by env (GUI_TOKEN_ENV),
-  // so the network-facing server's own command line never shows the secret. An operator who
-  // wants the supervisor's table clean too must export TUMWATER_GUI_TOKEN instead of --token.
-
   // A TUI owns the terminal, so it can only be hosted when this supervisor's own stdin and
   // stdout are a TTY — the same guard runTui enforces. Check before booting a team a TUI
   // could never drive, surfacing the actionable tuiTerminalError instead of letting runTui's
