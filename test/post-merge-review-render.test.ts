@@ -55,7 +55,7 @@ test("scopePostReviews's status filter keeps whole-queue positions", () => {
     renderPostReviews(entries, scope),
     [
       "post-merge review queue (1 of 2, --status rejected):",
-      `  2. clean ${'b'.repeat(40).slice(0, 8)} · rejected · [rejected — no tests]`,
+      `  2. clean ${'b'.repeat(40).slice(0, 8)} · rejected · [rejected — waiting to revert: no tests]`,
     ].join("\n"),
   );
   // A filter that keeps nothing of a non-empty queue names the filter and the depth.
@@ -67,7 +67,7 @@ test("scopePostReviews's status filter keeps whole-queue positions", () => {
     renderPostReviews(role.entries, role.scope),
     [
       "post-merge review queue (1 of 2, --role clean):",
-      `  2. clean ${'b'.repeat(40).slice(0, 8)} · rejected · [rejected — no tests]`,
+      `  2. clean ${'b'.repeat(40).slice(0, 8)} · rejected · [rejected — waiting to revert: no tests]`,
     ].join("\n"),
   );
 });
@@ -83,7 +83,7 @@ test("renderPostReviews prints whole-queue positions under a scope", () => {
     renderPostReviews(entries, scope),
     [
       "post-merge review queue (1 of 2, --role clean):",
-      `  2. clean ${'b'.repeat(40).slice(0, 8)} · rejected · [rejected — no tests]`,
+      `  2. clean ${'b'.repeat(40).slice(0, 8)} · rejected · [rejected — waiting to revert: no tests]`,
     ].join("\n"),
   );
   // A scope that keeps nothing of a non-empty queue names the whole-queue depth.
@@ -98,7 +98,7 @@ test("renderPostReviews prints whole-queue positions under a scope", () => {
     [
       "post-merge review queue (2 entries):",
       `  1. improve ${'a'.repeat(40).slice(0, 8)} · tidy the parser`,
-      `  2. clean ${'b'.repeat(40).slice(0, 8)} · rejected · [rejected — no tests]`,
+      `  2. clean ${'b'.repeat(40).slice(0, 8)} · rejected · [rejected — waiting to revert: no tests]`,
     ].join("\n"),
   );
 });
@@ -118,14 +118,14 @@ test("entries render in input order with role, short sha and summary", () => {
   );
 });
 
-test("a rejected entry carries its rejected reasons", () => {
+test("a rejected entry carries its waiting-to-revert reasons", () => {
   const out = renderPostReviews([e({ rejected: ["no tests", "missing docs"] })]);
-  assert.match(out, /\[rejected — no tests; missing docs\]/);
+  assert.match(out, /\[rejected — waiting to revert: no tests; missing docs\]/);
 });
 
 test("a rejected entry with empty reasons still renders as rejected", () => {
   const out = renderPostReviews([e({ rejected: [] })]);
-  assert.match(out, /\[rejected — \]/);
+  assert.match(out, /\[rejected — waiting to revert: \]/);
 });
 
 test("an entry with positive failures carries the failed-review-run count", () => {
@@ -173,6 +173,6 @@ test("renderPostReviews prints the wait since an entry was queued", () => {
 test("a postReviewStatusLabel names the rejection or the failed-run count", () => {
   assert.equal(postReviewStatusLabel(e({})), "");
   assert.equal(postReviewStatusLabel(e({ failures: 2 })), "[2 failed review runs]");
-  assert.equal(postReviewStatusLabel(e({ rejected: ["a", "b"] })), "[rejected — a; b]");
-  assert.equal(postReviewStatusLabel(e({ rejected: [] })), "[rejected — ]");
+  assert.equal(postReviewStatusLabel(e({ rejected: ["a", "b"] })), "[rejected — waiting to revert: a; b]");
+  assert.equal(postReviewStatusLabel(e({ rejected: [] })), "[rejected — waiting to revert: ]");
 });

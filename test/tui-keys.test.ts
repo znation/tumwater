@@ -3195,7 +3195,7 @@ test("a rejected Pending review row cannot be accepted with Ctrl+A", async () =>
   keys.handleKey(undefined, { name: "down" }); // review #1
   keys.handleKey(undefined, { ctrl: true, name: "a" }); // arm
   keys.handleKey(undefined, { ctrl: true, name: "a" }); // confirm → refused
-  await untilFlash(() => keys.state().flash ?? "", /is already rejected/);
+  await untilFlash(() => keys.state().flash ?? "", /rejected and waiting on its revert/);
   assert.equal(readPostReviews(root).length, 1, "the rejected entry is not removed");
   assert.equal(eventsOfType(root, "warning").filter((e) => String(e.message).includes(shortSha(commit))).length, 0, "no accept warning for a rejected entry");
 });

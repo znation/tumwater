@@ -13,8 +13,8 @@ import { shortSha } from "../text/format.js";
 /** What accepting an un-reviewed post-merge review entry did: `accepted` names the retired
  * entry's role, commit and summary (what one `warning` event logged); `out-of-range` carries
  * the current readable depth so the caller's failure can name it as the valid range;
- * `rejected` names the commit the operator must not accept — the entry already reached a
- * rejecting verdict, so accepting it unreviewed is meaningless. */
+ * `rejected` names the commit the operator must not accept — that entry is waiting on its
+ * revert, and removing it would skip the revert. */
 export type AcceptPostReviewOutcome =
   | { status: "accepted"; role: string; commit: string; summary: string }
   | { status: "out-of-range"; depth: number }
@@ -22,9 +22,9 @@ export type AcceptPostReviewOutcome =
   | { status: "settled"; commit: string };
 
 /** Remove one readable entry the operator accepts unreviewed: refuse it (writing nothing) when
- * it carries `rejected` — the review already reached a rejecting verdict, so accepting the
- * commit unreviewed is meaningless — or when it carries `fixed` — the repair already merged, so
- * accepting it unreviewed is meaningless and the false
+ * it carries `rejected` — that entry is waiting on its revert, and removing it would skip the
+ * revert (the revert must run first, then the revision can be reviewed) — or when it carries
+ * `fixed` — the repair already merged, so accepting it unreviewed is meaningless and the false
  * "accepted unreviewed" warning would mislead — otherwise settle it with no verdict
  * (`settlePostReview`; its failed write already warns and never throws, INV-BT2),
  * log one `warning` under the entry's role, and return the `accepted` outcome naming what was
@@ -46,7 +46,7 @@ function removeAcceptedEntry(root: string, entry: PostReview): AcceptPostReviewO
  * the line `tumwater reviews` printed. An out-of-range position writes nothing and returns the
  * current readable depth; otherwise it runs the same `removeAcceptedEntry` the sha variant
  * shares, so the two never drift on what accepting means (see `removeAcceptedEntry` for the
- * removal, the rejected-guard, the warning, and the never-throws guarantee). */
+ * removal, the revert-guard, the warning, and the never-throws guarantee). */
 export function acceptPostReview(root: string, position: number): AcceptPostReviewOutcome {
   const entries = readPostReviews(root);
   if (position < 1 || position > entries.length) return { status: "out-of-range", depth: entries.length };

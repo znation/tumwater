@@ -204,7 +204,7 @@ export function createPendingPane(session: TuiPaneSession) {
     const lines = [
       `review #${row.position} (Ctrl+A to accept): ${roleLabel(e.role)} ${shortSha(e.commit)} · ${squash(e.summary, 80)}` + (status === "" ? "" : ` · ${status}`),
     ];
-    if (e.rejected !== undefined) lines.push("already rejected — its review turned the commit back, so accepting it unreviewed is meaningless");
+    if (e.rejected !== undefined) lines.push("cannot be accepted until its revert runs — let the revert go, then review the revision");
     return lines.join("\n");
   };
   // Resolve the selected row for a pending-pane action (Ctrl+X cancel, Ctrl+V top, Ctrl+A
@@ -513,7 +513,7 @@ export function createPendingPane(session: TuiPaneSession) {
             refresh();
             session.requestRender();
           } else if (outcome.status === "rejected") {
-            session.flashMessage(`review #${review.position} is already rejected — its review turned the commit back, so accepting it unreviewed is meaningless`);
+            session.flashMessage(`review #${review.position} is rejected and waiting on its revert — let the revert run, then review the revision`);
             refresh();
             session.requestRender();
           } else if (outcome.status === "settled") {
