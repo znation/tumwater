@@ -416,29 +416,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/merge-verify.test.ts / test/merge-queue.test.ts: `a torn queue head warns and re-queues its change` — plant an unreadable head file and assert one warning names it, the change is re-queued rather than dropped, and the queue advances past it.
 - test/config.test.ts: `review.afterMerge is gone` — the key is absent from the schema, from a rendered default config and from `tumwater config`'s listing, while an old config carrying it still loads (the path every removed key takes).
 
-### Move `pollTeamGates`'s budget wiring into `src/budget`, part 2/2: the per-tier budget pause subject sets move into the same `budget-wiring` module (planned 2026-10-24 by the plan role, split from the held single wiring entry; requires part 1/2 landed, since the module and its input shape it extends are part 1/2's; touches src/gates/gate-polls.ts src/budget/budget-wiring.ts docs/invariants.md test/budget-wiring.test.ts)
-
-**Previously held 1**
-
-**Goal.** After part 1/2, `pollTeamGates` still builds its two per-role budget subject sets inline — `budgetPausedRoles` and `windowMovedRoles`, with `movedTiers` and the `tierMovedBackend` closure (the per-tier budget pause, part 5c/8). Those sets are the budget concern's last wiring half; moving them into `src/budget/budget-wiring.ts` completes the series, so the whole budget concern lives under `src/budget` and `pollTeamGates` keeps only the pause/streak folds that read the returned sets.
-
-**Approach.** One coherent restructure, no behavior change.
-- `src/budget/budget-wiring.ts` gains `budgetPausedSubjects(input)`, taking `{ runners, liveConfig, accounts, budgetActive, servingResolved, windowTiers }` and returning `{ budgetPausedRoles, windowMovedRoles }`, computed exactly as the inline loop does today: the director exempt; `roleSeamTier(liveConfig, r.role)`; a role added to `windowMovedRoles` when its tier is moved and `subscriptionBackendOf(configForRole(liveConfig, r.role), accounts) === tierMovedBackend(tier)`; below the cap a non-moved role skipped; `servingResolved[tier].pair === null` adds to `budgetPausedRoles`. Keep `subscriptionBackendOf`, `configForRole` and `roleSeamTier` where they are and import them.
-- `pollTeamGates` deletes the inline block (the two sets, `movedTiers`, `tierMovedBackend` and the loop) and calls `budgetPausedSubjects` at the same point (after `pollPauseGates`/`pollStreakGate`, where `pausedRolesNow` is set), destructuring its return into the same two names, so `TeamGatePoll`'s shape and its `budgetPausedRoles`/`windowMovedRoles` fields are unchanged.
-- Docs: `docs/invariants.md`'s INV-M3 `Binds` line currently names `src/gates/gate-polls.ts` (`pollTeamGates`, its `windowMovedRoles`); re-point its `windowMovedRoles` half at `src/budget/budget-wiring.ts`.
-
-**Files touched.** src/gates/gate-polls.ts src/budget/budget-wiring.ts docs/invariants.md test/budget-wiring.test.ts
-
-**Acceptance criteria.**
-- `npm run test:gate` passes with no assertion change; the existing `test/gate-polls.test.ts` assertions on `budgetPausedRoles`/`windowMovedRoles` (the used-up-window and demoted-fallback tests) stay green unchanged.
-- `budgetPausedSubjects` returns the same two sets as the inline loop for every existing `test/gate-polls.test.ts` scenario, director exemption included.
-- `pollTeamGates` retains no budget-window local: `grep -n "tierMovedBackend\|movedTiers" src/gates/gate-polls.ts` prints nothing.
-- `docs/invariants.md` names `src/budget/budget-wiring.ts` for the `windowMovedRoles` computation.
-- `npm run test:gate` passes.
-
-**Tests.**
-- `test/budget-wiring.test.ts`: add one test that `budgetPausedSubjects` returns the expected `budgetPausedRoles`/`windowMovedRoles` for a fixed runners/view state — a moved tier whose own backend is out, a healthy backend on the same tier, a tier whose `servingResolved[tier].pair` is null, and the director — pinning the moved body in its new home.
-
 ### Split `teamAlerts` into ordered slice builders, part 1/5: the status/capacity and role-phase alerts move into `buildStatusAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; opens the series — parts 2/5–5/5 each require the part before them landed; touches src/ui/team-alerts.ts)
 
 **Previously held 1**

@@ -1,10 +1,9 @@
-import type { TumwaterConfig, ModelTier } from "../config/config-schema.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import type { BudgetGate } from "../budget/budget.js";
-import { applyBudgetGateWiring } from "../budget/budget-wiring.js";
+import { applyBudgetGateWiring, budgetPausedSubjects } from "../budget/budget-wiring.js";
 import {
   newBudgetGateState,
   pollBudgetGate,
-  subscriptionBackendOf,
   type BudgetGateState,
 } from "./budget-gates.js";
 import { backendsInUse } from "./startup-gate.js";
@@ -50,7 +49,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, instancePauseKey, runnerEnabled } from "../roles/runner-ids.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-info.js";
-import { configForRole, roleSeamTier, windowReserveFor, withModelOverrides } from "../config/config-views.js";
+import { windowReserveFor } from "../config/config-views.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
 /** The orchestrator poll loop's team-wide gates and alarms, as one family: the daily cost budget
@@ -286,35 +285,21 @@ export function pollTeamGates(
   const pausedRolesNow =
     streakPaused.length > 0 ? new Set([...pausedRoles, ...streakPaused]) : pausedRoles;
 
-  // The per-tier budget pause (part 5c/8): a role whose model tier resolved to no usable free
-  // pair while the cap is reached starts no new runs — the stateless verdict recomputed every
-  // poll from the SAME resolution the gate's value came from, beside `capPaused` (the
-  // scheduling pass folds the sets; the director is exempt, as under every autonomous gate).
-  // The demoted pair's probe pierces the set for its own tier's roles only — probeRoles in the
-  // orchestrator's scheduling pass.
-  const budgetPausedRoles = new Set<string>();
-  const windowMovedRoles = new Set<string>();
-  const movedTiers = Object.keys(windowTiers);
-  // The backend whose used-up window moved a given tier: the tier's own seam's backend — the same
-  // read budget-gates made to put it in `windowTiers`. A role on a moved tier whose own backend is
-  // DIFFERENT (a healthy backend riding the same tier) keeps its pair: only the role whose own
-  // backend owns the out window is moved.
-  const tierMovedBackend = (tier: ModelTier) =>
-    subscriptionBackendOf(withModelOverrides(liveConfig, tier, {}), accounts);
-  for (const r of runners) {
-    if (r.role === DIRECTOR_ROLE) continue;
-    const tier = roleSeamTier(liveConfig, r.role);
-    // A role pinned to the moved tier's own subscription backend keeps it through the window move
-    // (it is not on a pair); a role on the same tier pinning a healthy backend does not.
-    if (
-      movedTiers.includes(tier) &&
-      subscriptionBackendOf(configForRole(liveConfig, r.role), accounts) === tierMovedBackend(tier)
-    )
-      windowMovedRoles.add(r.role);
-    // Below the cap only a window-moved role can sit on a demoted fallback.
-    if (!budgetActive && !windowMovedRoles.has(r.role)) continue;
-    if (servingResolved[tier].pair === null) budgetPausedRoles.add(r.role);
-  }
+  // The per-tier budget pause (src/budget/budget-wiring.ts, part 5c/8): a role whose model
+  // tier resolved to no usable free pair while the cap is reached starts no new runs, and a
+  // role on a window-moved tier whose own backend owns the out window is moved off it — the
+  // stateless verdict recomputed every poll from the SAME resolution the gate's value came
+  // from, beside `capPaused` (the scheduling pass folds the sets; the director is exempt, as
+  // under every autonomous gate, and the demoted pair's probe pierces the set for its own
+  // tier's roles only — probeRoles in the orchestrator's scheduling pass).
+  const { budgetPausedRoles, windowMovedRoles } = budgetPausedSubjects({
+    runners,
+    liveConfig,
+    accounts,
+    budgetActive,
+    servingResolved,
+    windowTiers,
+  });
 
   // The per-role daily cost cap (src/gates/role-cap-gates.ts): a role whose local-day spend has
   // reached its own maxDailyCostUsdPerRole entry starts no new runs — the stateless verdict

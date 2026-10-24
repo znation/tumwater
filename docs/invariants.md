@@ -651,7 +651,7 @@ breaker; evidence about another subject is dropped".
 outcomes fold into that pair's breaker even though the daily cap is not reached. A demoted pair
 holds the moved tier's roles, with the same one-probe admission as INV-M1.
 
-**Binds.** `src/gates/gate-polls.ts` (`pollTeamGates`, its `windowMovedRoles`),
+**Binds.** `src/budget/budget-wiring.ts` (`budgetPausedSubjects`, its `windowMovedRoles`),
 `src/orchestrator/orchestrator-launch.ts`, `src/orchestrator/orchestrator-poll.ts`.
 
 **Pinned by.** `test/gate-polls.test.ts` — "pollTeamGates: a used-up window's demoted fallback

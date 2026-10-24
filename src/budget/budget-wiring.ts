@@ -1,8 +1,9 @@
 /** The budget gate's wiring half (src/gates/budget-gates.ts owns the reads and the view
  * derivation, src/budget/fallback-breaker.ts the breakers; this module is
  * src/budget/budget-wiring.ts): the demotions publish, the
- * `fallback_switched` event, the per-runner config/cap flag assignment, and the cap-reopen /
- * subscription-window hand-back (part 5c/8, part 2e/9). Moved out of src/gates/gate-polls.ts
+ * `fallback_switched` event, the per-runner config/cap flag assignment, the cap-reopen /
+ * subscription-window hand-back (part 5c/8, part 2e/9), and the per-tier budget pause subject
+ * sets. Moved out of src/gates/gate-polls.ts
  * so the whole budget concern lives under src/budget and the orchestrator's poll keeps only
  * the call. Mutates the `RoleRunner`s in place (`config`, `budgetFallbackActive`,
  * `handBackRun`) and the budget state's `prevChain`; returns nothing, because the block
@@ -27,7 +28,7 @@ import {
   subscriptionBackendOf,
   type BudgetGateState,
 } from "../gates/budget-gates.js";
-import { withModelOverrides } from "../config/config-views.js";
+import { configForRole, roleSeamTier, withModelOverrides } from "../config/config-views.js";
 
 /** The `pollBudgetGate` return fields this wiring reads (`spentUsd`/`capUsd` build the info
  * publish's `budget` pair). */
@@ -180,4 +181,58 @@ export function applyBudgetGateWiring(input: BudgetGateWiringInput): void {
       }
     }
   }
+}
+
+/** The inputs `budgetPausedSubjects` reads: the poll's runners and the view fields the
+ * per-tier budget pause (part 5c/8) loop folded in `pollTeamGates`. */
+interface BudgetPausedSubjectsInput {
+  /** Mutated in place per runner, matching `pollTeamGates`'s loop. */
+  runners: readonly RoleRunner[];
+  liveConfig: TumwaterConfig;
+  accounts: (backend: string) => SubscriptionAccount | null;
+  /** Whether the daily cap is reached — the pause's gate half (`budgetActive`). */
+  budgetActive: boolean;
+  /** The tiers' free-pair resolution the gate's value came from (`servingResolved`): a tier
+   * resolved to `null` for its pair starts no new runs. */
+  servingResolved: TierFallbackMap;
+  /** The moved tiers, keyed by tier (a used-up window): a role on one whose own backend owns
+   * the out window is moved off its pair. */
+  windowTiers: Partial<Record<ModelTier, string>>;
+}
+
+/** The per-tier budget pause subject sets (part 5c/8), computed exactly as `pollTeamGates` did
+ * inline: `budgetPausedRoles` holds every role whose model tier resolved to no usable free pair
+ * while the cap is reached, and `windowMovedRoles` the role whose own subscription backend owns
+ * a used-up window's moved tier. The director is exempt (as under every autonomous gate), a role
+ * below the cap is held only when it was window-moved, and the demoted pair's probe pierces the
+ * set for its own tier's roles only — probeRoles in the orchestrator's scheduling pass. */
+export function budgetPausedSubjects(input: BudgetPausedSubjectsInput): {
+  budgetPausedRoles: ReadonlySet<string>;
+  windowMovedRoles: ReadonlySet<string>;
+} {
+  const { runners, liveConfig, accounts, budgetActive, servingResolved, windowTiers } = input;
+  const budgetPausedRoles = new Set<string>();
+  const windowMovedRoles = new Set<string>();
+  const movedTiers = Object.keys(windowTiers);
+  // The backend whose used-up window moved a given tier: the tier's own seam's backend — the same
+  // read budget-gates made to put it in `windowTiers`. A role on a moved tier whose own backend is
+  // DIFFERENT (a healthy backend riding the same tier) keeps its pair: only the role whose own
+  // backend owns the out window is moved.
+  const tierMovedBackend = (tier: ModelTier) =>
+    subscriptionBackendOf(withModelOverrides(liveConfig, tier, {}), accounts);
+  for (const r of runners) {
+    if (r.role === DIRECTOR_ROLE) continue;
+    const tier = roleSeamTier(liveConfig, r.role);
+    // A role pinned to the moved tier's own subscription backend keeps it through the window move
+    // (it is not on a pair); a role on the same tier pinning a healthy backend does not.
+    if (
+      movedTiers.includes(tier) &&
+      subscriptionBackendOf(configForRole(liveConfig, r.role), accounts) === tierMovedBackend(tier)
+    )
+      windowMovedRoles.add(r.role);
+    // Below the cap only a window-moved role can sit on a demoted fallback.
+    if (!budgetActive && !windowMovedRoles.has(r.role)) continue;
+    if (servingResolved[tier].pair === null) budgetPausedRoles.add(r.role);
+  }
+  return { budgetPausedRoles, windowMovedRoles };
 }

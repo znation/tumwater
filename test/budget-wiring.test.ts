@@ -9,7 +9,9 @@ import type { RoleRunner } from "../src/runner/runner.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { newTeamGateStates } from "../src/gates/gate-polls.js";
 import { pollBudgetGate } from "../src/gates/budget-gates.js";
-import { applyBudgetGateWiring } from "../src/budget/budget-wiring.js";
+import { applyBudgetGateWiring, budgetPausedSubjects } from "../src/budget/budget-wiring.js";
+import type { TierFallbackMap } from "../src/config/config-fallbacks.js";
+import type { SubscriptionAccount } from "../src/agent/subscription-account.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -145,4 +147,78 @@ test("applyBudgetGateWiring: a cap reopen hands in-flight fallback runs back to 
   assert.deepEqual(handoff[0]!.roles, ["feature"]);
   assert.equal(handoff[0]!.provider, "free");
   assert.equal(handoff[0]!.model, "qwen-free");
+});
+
+// budgetPausedSubjects (src/budget/budget-wiring.ts): the per-tier budget pause subject sets,
+// moved out of pollTeamGates. A window move holds only the role whose own backend owns the out
+// window (a healthy backend on the same tier stays); at the cap a null servingResolved pair
+// holds every non-director role on that tier. The inline loop's behavior is still exercised
+// through pollTeamGates in test/gate-polls.test.ts.
+test("budgetPausedSubjects: a window move and a null-pair cap-pause fold the right roles", () => {
+  const config = paidFallbackConfig(10);
+  // Both feature and bugfix ride tier `strong`: feature on the test-only `sub` backend, bugfix
+  // pinned to claude on the SAME tier, so the tier's own seam (sub) moving must not drag claude's
+  // healthy role; docs rides the default tier.
+  config.model = {
+    strong: { backend: "sub", model: "sub-astra" },
+    default: { backend: "claude", model: "claude-sonnet-5-5" },
+  };
+  config.roles = {
+    ...config.roles,
+    feature: { enabled: true, model: "strong" },
+    bugfix: { enabled: true, model: "strong", backend: "claude" },
+  };
+  const runners = [
+    fakeRunner("feature", freshRunnerState("feature"), null, []),
+    fakeRunner("bugfix", freshRunnerState("bugfix"), null, []),
+    fakeRunner("docs", freshRunnerState("docs"), null, []),
+    fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, []),
+  ];
+  const accounts = (backend: string) =>
+    backend === "sub" || backend === "claude"
+      ? ({ billing: "subscription" } as SubscriptionAccount)
+      : null;
+  const free = { provider: "free", model: "qwen-free" };
+  const pausedTiers: TierFallbackMap = {
+    small: { pair: free, from: "small" },
+    default: { pair: null, from: null },
+    strong: { pair: null, from: null },
+  };
+
+  // Below the cap with sub's window out: only the sub role moves; a healthy claude role on the
+  // same tier and the director stay, and nothing pauses (the moved tier still has a usable pair).
+  const below = budgetPausedSubjects({
+    runners,
+    liveConfig: config,
+    accounts,
+    budgetActive: false,
+    servingResolved: {
+      small: { pair: free, from: "small" },
+      default: { pair: free, from: "default" },
+      strong: { pair: free, from: "strong" },
+    },
+    windowTiers: { strong: "sub" },
+  });
+  assert.deepEqual([...below.windowMovedRoles], ["feature"], "the sub role moves");
+  assert.equal(below.budgetPausedRoles.size, 0, "below the cap a usable pair pauses nothing");
+  assert.ok(!below.windowMovedRoles.has("bugfix"), "the healthy claude role on the same tier stays");
+  assert.ok(!below.windowMovedRoles.has(DIRECTOR_ROLE), "the director stays");
+
+  // At the cap with both tiers resolved to pause: every role on a null-pair tier is held, the
+  // director exempt.
+  const atCap = budgetPausedSubjects({
+    runners,
+    liveConfig: config,
+    accounts,
+    budgetActive: true,
+    servingResolved: pausedTiers,
+    windowTiers: {},
+  });
+  assert.deepEqual(
+    [...atCap.budgetPausedRoles].sort(),
+    ["bugfix", "docs", "feature"],
+    "every role on a null-pair tier is held at the cap",
+  );
+  assert.equal(atCap.windowMovedRoles.size, 0, "no used-up window, no moved roles");
+  assert.ok(!atCap.budgetPausedRoles.has(DIRECTOR_ROLE), "the director is exempt");
 });
