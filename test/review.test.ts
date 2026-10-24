@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review/review.js";
+import { reviewAheadOfMain, reviewRetryDelayMs, REVIEW_FAILURE_LIMIT } from "../src/review/review.js";
 import { aheadOfMain, headOf, patchId } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -35,6 +35,30 @@ import { gateCtx, gateFixture, reviewGate, ROLE } from "./fixtures/gate-fixtures
 // reviewer is a fake pi on PATH that prints a canned JSON verdict line. A marker file OUTSIDE
 // the worktree records whether the reviewer ran at all (so "no run" branches are asserted,
 // not merely assumed).
+
+test("the review retry delay falls back to the default on a malformed TUMWATER_REVIEW_RETRY_DELAY_MS", () => {
+  // The knob is read through the plain-decimal rule, so a spelling Number() would silently
+  // coerce ("0x1f0" → 496, "1e3" → 1000) or yield NaN ("abc") falls back to the 30 s default
+  // instead of firing the retries back-to-back at ~0 ms; only the context override is 0 in the
+  // gate tests (gateCtx sets retryDelayMs), so this env path is dead without direct coverage.
+  const prior = process.env.TUMWATER_REVIEW_RETRY_DELAY_MS;
+  try {
+    delete process.env.TUMWATER_REVIEW_RETRY_DELAY_MS;
+    assert.equal(reviewRetryDelayMs(undefined), 30_000, "absent knob uses the default");
+    for (const malformed of ["abc", "0x1f0", "1e3", " 30000 "]) {
+      process.env.TUMWATER_REVIEW_RETRY_DELAY_MS = malformed;
+      assert.equal(reviewRetryDelayMs(undefined), 30_000, `${malformed} is not plain decimal, so it falls back`);
+    }
+    process.env.TUMWATER_REVIEW_RETRY_DELAY_MS = "0";
+    assert.equal(reviewRetryDelayMs(undefined), 0, "0 is a valid retry delay");
+    process.env.TUMWATER_REVIEW_RETRY_DELAY_MS = "30000";
+    assert.equal(reviewRetryDelayMs(undefined), 30_000, "a plain decimal is honored");
+    assert.equal(reviewRetryDelayMs(500), 500, "the context override wins over the env");
+  } finally {
+    if (prior === undefined) delete process.env.TUMWATER_REVIEW_RETRY_DELAY_MS;
+    else process.env.TUMWATER_REVIEW_RETRY_DELAY_MS = prior;
+  }
+});
 
 test("gate approves a good diff, records the HEAD, and discards the reviewer's stray edits", async () => {
   const { root, wt, head } = await gateFixture();

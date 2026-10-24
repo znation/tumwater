@@ -9,7 +9,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../runner/runner-pi.js";
 import { recordReview } from "../run/run-apply.js";
 import { reviewedAfterMerge } from "../config/config-views.js";
-import { errorMessage } from "../text/text.js";
+import { errorMessage, parseNonNegativeInt } from "../text/text.js";
 import { firstReason } from "../text/phrases.js";
 import type { SleepSampler } from "../build/host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";
@@ -134,6 +134,16 @@ const REVIEW_RETRY_DELAY_MS = 30_000;
 /** Overrides the pause for tests that drive a whole runner or orchestrator, where no context
  * reaches the review. */
 const REVIEW_RETRY_DELAY_ENV = "TUMWATER_REVIEW_RETRY_DELAY_MS";
+
+/** The pause before each retry: the context override wins; else the tunable env knob read through
+ * the shared plain-decimal rule (parseNonNegativeInt — a 0 ms delay, the test-suite's setting, is
+ * valid). A malformed spelling falls back to REVIEW_RETRY_DELAY_MS rather than silently becoming
+ * NaN: `sleepUnlessAborted(NaN)` resolves at ~0 ms and the retries would fire back-to-back instead
+ * of 30 s apart. */
+export function reviewRetryDelayMs(ctxRetryDelayMs: number | undefined): number {
+  const raw = process.env[REVIEW_RETRY_DELAY_ENV];
+  return ctxRetryDelayMs ?? (raw === undefined ? REVIEW_RETRY_DELAY_MS : (parseNonNegativeInt(raw) ?? REVIEW_RETRY_DELAY_MS));
+}
 
 /** Per-verify state shared by a review's attempts: the attempt number the `review_failed` event
  * carries, the retries still allowed, and the first attempt's green pre-check. */
@@ -399,7 +409,7 @@ export async function reviewAheadOfMain(
   highFriction?: boolean,
 ): Promise<GateResult> {
   const retry: ReviewRetry = { attempt: 1, retriesLeft: ctx.retries ?? REVIEW_RETRIES };
-  const delayMs = ctx.retryDelayMs ?? Number(process.env[REVIEW_RETRY_DELAY_ENV] ?? REVIEW_RETRY_DELAY_MS);
+  const delayMs = reviewRetryDelayMs(ctx.retryDelayMs);
   for (;;) {
     const result = await reviewAttempt(ctx, state, summary, commitBody, highFriction, retry);
     if (!result.retryable) return result;
