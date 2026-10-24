@@ -366,27 +366,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/merge-verify.test.ts / test/merge-queue.test.ts: `a torn queue head warns and re-queues its change` — plant an unreadable head file and assert one warning names it, the change is re-queued rather than dropped, and the queue advances past it.
 - test/config.test.ts: `review.afterMerge is gone` — the key is absent from the schema, from a rendered default config and from `tumwater config`'s listing, while an old config carrying it still loads (the path every removed key takes).
 
-### Split `teamAlerts` into ordered slice builders, part 5/5: the tail alerts (quiet, maintenance, provider hold, paused, contention, regressed fixes, stopped, images) move into `buildTailAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 4/5 landed, since it edits the `teamAlerts` body part 4/5 restructures; touches src/ui/team-alerts.ts)
-
-**Previously held 1**
-
-**Goal.** Part 5 moves the remaining contiguous alerts: `quiet`, `maintenance`, `provider-hold`, `paused`, `contention`, `regressed-fixes`, `stopped`, `images` (both branches), `images-probe`, leaving `teamAlerts` itself as the ordered assembly of five builder calls. Same rule as part 1/5.
-
-**Approach.**
-- Add `interface TailAlertsInput` holding `snap` (the Pick of `inQuietHours`, `quietHours`, `maintenanceQuota`, `providerHolds`, `paused`, `pausedUntil`, `running`, `imageProbeFailures`), `now: number`, `contention: readonly CapacityBottleneck[]`, `regressedFixes: RegressedFixAlert | null`, and `roles: readonly AlertRole[]`.
-- Move the blocks, comments, the `textOnly`/`noTarget`/`targets`/`mq` computations and the `listRoles`/`listRoleIds`/`openRoleActions`/`seeFailures` uses into `function buildTailAlerts(input: TailAlertsInput): TeamAlert[]`.
-- In `teamAlerts`, replace the run with `out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles }))`; `teamAlerts` then holds only the `const out`, the five `out.push(...build…Alerts(...))` calls, and `return out`.
-
-**Files touched.** src/ui/team-alerts.ts
-
-**Acceptance criteria.**
-- The nine `key` literals appear only inside `buildTailAlerts`; the slice's guards and comments moved with them and no wording changed.
-- `teamAlerts`'s body is the five `out.push(...build…Alerts(...))` calls in the fixed order `buildStatusAlerts`, `buildBacklogAlerts`, `buildBacklogFeedAlerts`, `buildMergeAlerts`, `buildTailAlerts`, with no remaining alert `out.push({...})` block; `grep -c "build.*Alerts(" src/ui/team-alerts.ts` counts the five declarations and five calls.
-- `test/team-alerts.test.ts` passes with no assertion change; `npm run test:gate` passes.
-
-**Tests.**
-- `test/team-alerts.test.ts`: unchanged, still green.
-
 ### `tumwater doctor --drop-broken-pins` drops the `refs/tumwater/` pins whose commit is gone, and the dashboard Health card does too — the reap for the one doctor row whose only remedy is a manual `git update-ref -d` (planned 2026-10-24 by the plan role; independent of every eligible plan in behavior — the `ci` parts edit src/roles and src/run, the "Every commit is verified on main" parts edit src/baseline and src/merge, the `teamAlerts` parts edit src/ui/team-alerts.ts, the Pending Ctrl+O plan edits the TUI Pending pane, and the notable-cull plan edits the CLI `logs` feed and the TUI Activity pane; it shares src/cli/cli-flag-specs.ts and src/cli.ts with the notable-cull plan (that plan adds `NOTABLE_FLAG` for `logs`, this one `DROP_BROKEN_PINS_FLAG` for `doctor` — additive sibling lines, so whichever lands second rebases there) and docs/cli.md's doctor row with the notable-cull and Pending plans (this one edits the `doctor` row only, they edit the `logs` and TUI-keys rows); touches src/doctor/doctor-contention-checks.ts src/cli/cli-flag-specs.ts src/cli.ts src/cli/help.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-settings.ts src/ui/gui/gui-client-boot.ts docs/cli.md test/doctor-checks.test.ts test/doctor.test.ts test/gui-endpoints.test.ts test/gui-client-settings.test.ts)
 
 **Goal.** `checkTumwaterPins` (src/doctor/doctor-contention-checks.ts) fails the `tumwater pins` doctor row when a `refs/tumwater/` pin names a commit that is gone, because such a pin stops `git gc` and aborts a detached checkout, and its row names only a manual `git update-ref -d <ref>` as the fix. Every other mutating doctor action has an operator-facing reap: `--kill-orphans` (the orphans row), `--commit-backlog` (the dirty-checkout merges), `--resync-install` (the `root install` row), each reaching the dashboard Health card and the TUI Health tab (Ctrl+K, Ctrl+A and Ctrl+U). Give the `tumwater pins` row the same reach: one core drops each broken pin, and `tumwater doctor --drop-broken-pins` and the dashboard Health card call it, so a lone broken pin cannot hold the team's git housekeeping hostage with no in-product way to clear it.

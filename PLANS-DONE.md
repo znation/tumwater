@@ -5,6 +5,28 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Split `teamAlerts` into ordered slice builders, part 5/5: the tail alerts (quiet, maintenance, provider hold, paused, contention, regressed fixes, stopped, images) move into `buildTailAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 4/5 landed, since it edits the `teamAlerts` body part 4/5 restructures; touches src/ui/team-alerts.ts) — done 2026-10-24 by the feature role
+
+**Previously held 1**
+
+**Goal.** Part 5 moves the remaining contiguous alerts: `quiet`, `maintenance`, `provider-hold`, `paused`, `contention`, `regressed-fixes`, `stopped`, `images` (both branches), `images-probe`, leaving `teamAlerts` itself as the ordered assembly of five builder calls. Same rule as part 1/5.
+
+**Approach.**
+- Add `interface TailAlertsInput` holding `snap` (the Pick of `inQuietHours`, `quietHours`, `maintenanceQuota`, `providerHolds`, `paused`, `pausedUntil`, `running`, `imageProbeFailures`), `now: number`, `contention: readonly CapacityBottleneck[]`, `regressedFixes: RegressedFixAlert | null`, and `roles: readonly AlertRole[]`.
+- Move the blocks, comments, the `textOnly`/`noTarget`/`targets`/`mq` computations and the `listRoles`/`listRoleIds`/`openRoleActions`/`seeFailures` uses into `function buildTailAlerts(input: TailAlertsInput): TeamAlert[]`.
+- In `teamAlerts`, replace the run with `out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles }))`; `teamAlerts` then holds only the `const out`, the five `out.push(...build…Alerts(...))` calls, and `return out`.
+- DEVIATION from the plan: the planned snap Pick omitted `pauseReason`, but the `paused` block reads `snap.pauseReason` in `pauseReasonSuffix`, so the Pick includes it (status-payload carries it to `teamAlerts` today). Also `stopped`/`images-probe` branches were contiguous, so all nine `key` literals sit in `buildTailAlerts`.
+
+**Files touched.** src/ui/team-alerts.ts
+
+**Acceptance criteria.**
+- The nine `key` literals appear only inside `buildTailAlerts`; the slice's guards and comments moved with them and no wording changed.
+- `teamAlerts`'s body is the five `out.push(...build…Alerts(...))` calls in the fixed order `buildStatusAlerts`, `buildBacklogAlerts`, `buildBacklogFeedAlerts`, `buildMergeAlerts`, `buildTailAlerts`, with no remaining alert `out.push({...})` block; `grep -c "build.*Alerts(" src/ui/team-alerts.ts` counts the five declarations and five calls.
+- `test/team-alerts.test.ts` passes with no assertion change; `npm run test:gate` passes.
+
+**Tests.**
+- `test/team-alerts.test.ts`: unchanged, still green.
+
 ### `tumwater logs` and the TUI Activity pane gain the dashboard Activity feed's notable-only cull — the missing twins of its Notable/All choice (planned 2026-10-24 by the plan role; independent of every eligible plan in behavior — the `ci` parts edit src/roles, src/run and docs/config.md, the "Every commit is verified on main" parts edit src/baseline, src/merge and src/config, the `teamAlerts` parts edit src/ui/team-alerts.ts, the waiting-age plan edits src/review and the Pending panes, and the Pending Ctrl+O state-filter plan edits src/ui/tui/tui-pane-pending.ts and the Ctrl+O route in src/ui/tui/tui-panes.ts; this plan edits the Activity Ctrl+O arm, the Activity read and the CLI `logs` feed, and shares src/ui/tui/tui-panes.ts, src/ui/tui/tui-keys.ts, src/ui/tui/tui-frame.ts, docs/cli.md and test/tui-keys.test.ts with the state-filter plan only as neighbouring Activity-state, hint and doc lines, so whichever lands second rebases there; touches src/cli/log-commands.ts src/cli/help.ts src/cli/cli-flag-specs.ts src/cli.ts src/ui/tone.ts src/ui/tui/tui-pane.ts src/ui/tui/tui-pane-activity.ts src/ui/tui/tui-panes.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-frame.ts src/ui/tui/tui.tsx docs/cli.md test/log-commands-views.test.ts test/tui-activity.test.ts test/tui-keys.test.ts test/tui-frame.test.ts) — done 2026-10-24 by the feature role
 **Goal.** The dashboard's Activity card has opened on a Notable/All choice since it was built: `feedFilter` defaults to `"notable"` and culls `eventKind(it) === "routine"` rows (src/ui/gui/gui-client-feed.ts). The two other surfaces of the same event feed cannot: `tumwater logs` prints every routine bookkeeping event (`run_start`, `wake`, `merge_queued`, a passing `build_check`) and the TUI Activity pane's only narrowing is Ctrl+O's exact-type cycle, so an operator watching the always-on feed in a terminal reads a wall of routine rows the browser hides by default. Give both the dashboard's cull, as one filter rule in one home: only routine events are hidden, the choice defaults to all on both so a `tumwater logs` script's output is unchanged, and it composes with the role scope, the text search, the type filter and the window each surface already has.
 

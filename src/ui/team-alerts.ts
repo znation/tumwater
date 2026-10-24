@@ -949,74 +949,38 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   return out;
 }
 
-/** Everything about the team that needs the operator, most urgent first: a spent budget, a red
- * main, roles failing run after run, roles that look stuck, a stale running build, open
- * questions, refused entries, stale bugs, a failed notify page, a dirty primary
- * checkout refusing merges, a stranded inbox
- * prompt, a stalled merge queue, a
- * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
- * review or Needs replan note, checks that flapped more than once in the last day, a stale or
- * oversized flake quarantine, a revert off main that
- * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
- * already reached main, a post-merge review one failed run from being dropped, a post-merge
- * review dropped after repeated failures, leaving its commit on main unreviewed, the fleet
- * waiting on capacity slots (workspace, provider or
- * check), a plan filed under the wrong backlog section, a duplicated
- * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
- * stopped team.
- * `now` is passed so a timed
- * pause's countdown agrees with the rest of the frame. */
-export function teamAlerts(
+interface TailAlertsInput {
   snap: Pick<
     StatusSnapshot,
-    | "running"
-    | "budget"
-    | "build"
+    | "inQuietHours"
+    | "quietHours"
+    | "maintenanceQuota"
+    | "providerHolds"
     | "paused"
     | "pausedUntil"
     | "pauseReason"
-    | "quietHours"
-    | "inQuietHours"
-    | "disk"
-    | "rootInstallDrift"
+    | "running"
     | "imageProbeFailures"
-    | "chain"
-    | "capPaused"
-    | "budgetPausedRoles"
-    | "maintenanceQuota"
-    | "providerHolds"
-  >,
-  questions: readonly string[],
-  roles: readonly AlertRole[],
-  now: number,
-  refused: readonly RefusedEntry[] = [],
-  operatorHeld: readonly RefusedEntry[] = [],
-  staleBugs: readonly StaleBug[] = [],
-  stalePrompts: readonly StalePrompt[] = [],
-  staleMerges: readonly StaleMerge[] = [],
-  planDependency: PlanDependencyProblem | null = null,
-  staleWaitingBugs: readonly StaleWaitingBug[] = [],
-  skippedMergeFiles: readonly string[] = [],
-  stalledPlans: readonly StalledPlan[] = [],
-  quarantined: QuarantinedTests | null = null,
-  strandedPlans: readonly StrandedPlanEntry[] = [],
-  duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
-  validationGaps: readonly ValidationGapProblem[] = [],
-  reverts: RevertWarning | null = null,
-  notifyFailure: NotifyFailure | null = null,
-  primaryOverwrite: PrimaryOverwriteBlock | null = null,
-  contention: readonly CapacityBottleneck[] = [],
-  flappedChecks: FlappedChecks | null = null,
-  regressedFixes: RegressedFixAlert | null = null,
-  postMergeChurn: PostMergeChurn | null = null,
-  postReviewRisk: PostReviewRisk | null = null,
-  droppedPostReviews: DroppedPostReviews | null = null,
-): TeamAlert[] {
+  >;
+  now: number;
+  contention: readonly CapacityBottleneck[];
+  regressedFixes: RegressedFixAlert | null;
+  roles: readonly AlertRole[];
+}
+
+/** The quiet-hours, maintenance, provider-hold, pause, capacity-contention, regressed-fix,
+ * stopped and image-input alerts, in emission order: a run of quiet hours holding the team, a
+ * maintenance allowance held at its rolling cap, a standing provider failure hold, an operator
+ * pause with its countdown, the last day's capacity contention, a fixed test that regressed, a
+ * stopped tumwater, and roles that cannot or may not read images. Extracted from teamAlerts
+ * (part 5/5 of the teamAlerts split) so the shared module stays small; the input names exactly
+ * the fields this run reads, including `now`, which the pause countdown and provider-hold
+ * re-open time need. The caller pushes the returned alerts at the position this run used to
+ * occupy, so the emitted key order is unchanged. */
+function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
-  out.push(...buildStatusAlerts({ snap, roles }));
-  out.push(...buildBacklogAlerts({ questions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }));
-  out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
-  out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, now }));
+  const { snap, now, contention, regressedFixes, roles } = input;
+
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
   // the team holding to a schedule is not a problem, but an operator watching idle roles
   // inside the window needs the same explanation the pause alert gives a paused team —
@@ -1156,6 +1120,79 @@ export function teamAlerts(
       actions: seeFailures(),
     });
   }
+  return out;
+}
+
+/** Everything about the team that needs the operator, most urgent first: a spent budget, a red
+ * main, roles failing run after run, roles that look stuck, a stale running build, open
+ * questions, refused entries, stale bugs, a failed notify page, a dirty primary
+ * checkout refusing merges, a stranded inbox
+ * prompt, a stalled merge queue, a
+ * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
+ * review or Needs replan note, checks that flapped more than once in the last day, a stale or
+ * oversized flake quarantine, a revert off main that
+ * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
+ * already reached main, a post-merge review one failed run from being dropped, a post-merge
+ * review dropped after repeated failures, leaving its commit on main unreviewed, the fleet
+ * waiting on capacity slots (workspace, provider or
+ * check), a plan filed under the wrong backlog section, a duplicated
+ * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
+ * stopped team.
+ * `now` is passed so a timed
+ * pause's countdown agrees with the rest of the frame. */
+export function teamAlerts(
+  snap: Pick<
+    StatusSnapshot,
+    | "running"
+    | "budget"
+    | "build"
+    | "paused"
+    | "pausedUntil"
+    | "pauseReason"
+    | "quietHours"
+    | "inQuietHours"
+    | "disk"
+    | "rootInstallDrift"
+    | "imageProbeFailures"
+    | "chain"
+    | "capPaused"
+    | "budgetPausedRoles"
+    | "maintenanceQuota"
+    | "providerHolds"
+  >,
+  questions: readonly string[],
+  roles: readonly AlertRole[],
+  now: number,
+  refused: readonly RefusedEntry[] = [],
+  operatorHeld: readonly RefusedEntry[] = [],
+  staleBugs: readonly StaleBug[] = [],
+  stalePrompts: readonly StalePrompt[] = [],
+  staleMerges: readonly StaleMerge[] = [],
+  planDependency: PlanDependencyProblem | null = null,
+  staleWaitingBugs: readonly StaleWaitingBug[] = [],
+  skippedMergeFiles: readonly string[] = [],
+  stalledPlans: readonly StalledPlan[] = [],
+  quarantined: QuarantinedTests | null = null,
+  strandedPlans: readonly StrandedPlanEntry[] = [],
+  duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
+  validationGaps: readonly ValidationGapProblem[] = [],
+  reverts: RevertWarning | null = null,
+  notifyFailure: NotifyFailure | null = null,
+  primaryOverwrite: PrimaryOverwriteBlock | null = null,
+  contention: readonly CapacityBottleneck[] = [],
+  flappedChecks: FlappedChecks | null = null,
+  regressedFixes: RegressedFixAlert | null = null,
+  postMergeChurn: PostMergeChurn | null = null,
+  postReviewRisk: PostReviewRisk | null = null,
+  droppedPostReviews: DroppedPostReviews | null = null,
+): TeamAlert[] {
+  const out: TeamAlert[] = [];
+  out.push(...buildStatusAlerts({ snap, roles }));
+  out.push(...buildBacklogAlerts({ questions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }));
+  out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
+  out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, now }));
+  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles }));
+
   return out;
 }
 
