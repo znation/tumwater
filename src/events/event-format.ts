@@ -304,12 +304,15 @@ export function eventMessage(e: HarnessEvent): string {
       // A resumed review continues a timed-out reviewer's session (PLANS.md, review-retry part
       // 3/3). The verb names that, because a bare "reviewing" line reads as a from-scratch run;
       // the revision and model suffixes are unchanged and independent of the flag.
+      // afterMerge is the tier flag reviewMergedCommit writes for a review.afterMerge role; the
+      // lineage pins review_start/review_verdict/review_rejected to the same discriminator.
+      const tier = e.afterMerge === true ? " after merge" : " before merge";
       const revision = e.revision !== undefined ? ` (revision ${textOr(e.revision)})` : "";
       const model = e.model !== undefined ? ` on ${textOr(e.model)}` : "";
-      return `${e.resumed ? "review resumed" : "reviewing"} ${shortSha(e.head)}${revision} before merge${model}`;
+      return `${e.resumed ? "review resumed" : "reviewing"} ${shortSha(e.head)}${revision}${tier}${model}`;
     }
     case "review_verdict":
-      return `review approved ${shortSha(e.head)}${e.reason ? ` — ${textOr(e.reason)}` : ""}${elapsed(e.durationMs)}`;
+      return `review approved ${shortSha(e.head)}${e.afterMerge === true ? " after merge" : ""}${e.reason ? ` — ${textOr(e.reason)}` : ""}${elapsed(e.durationMs)}`;
     case "review_rejected": {
       const reasons = stringList(e.reasons);
       // Only the first reason renders; when more exist, say so instead of letting the
@@ -319,7 +322,7 @@ export function eventMessage(e: HarnessEvent): string {
         reasons.length > 1
           ? ` (+${reasons.length - 1} more — the author's next run carries every reason)`
           : "";
-      return `review rejected ${shortSha(e.head)} — ${firstReason(reasons)}${more}${elapsed(e.durationMs)}`;
+      return `review rejected ${shortSha(e.head)}${e.afterMerge === true ? " after merge" : ""} — ${firstReason(reasons)}${more}${elapsed(e.durationMs)}`;
     }
     case "review_failed":
       return `review failed for ${shortSha(e.head)}: ${textOr(e.message)} (commit kept for re-review)${elapsed(e.durationMs)}`;

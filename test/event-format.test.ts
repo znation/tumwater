@@ -403,6 +403,50 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
   assert.match(failed, /\(commit kept for re-review\)/);
 });
 
+test("formatEvent names the after-merge tier on the review lines", () => {
+  const head = "0123456789abcdef";
+
+  // A review.afterMerge role's events carry afterMerge: true (written by reviewMergedCommit,
+  // src/review/post-merge-review.ts); the feed must say so — the unchanged pre-merge shapes are
+  // pinned by the review-gate test above. === true is the discriminator, so a hand-edited
+  // non-boolean field never fabricates the tier.
+  const start = formatEvent({ ts: 0, source: "feature", type: "review_start", head, afterMerge: true } as never);
+  assert.match(start, /feature\s+reviewing 01234567 after merge$/);
+  const startResumed = formatEvent(
+    { ts: 0, source: "feature", type: "review_start", head, afterMerge: true, resumed: true } as never,
+  );
+  assert.match(startResumed, /review resumed 01234567 after merge$/);
+
+  const approval = formatEvent(
+    { ts: 0, source: "feature", type: "review_verdict", head, afterMerge: true, reason: "ok" } as never,
+  );
+  assert.match(approval, /review approved 01234567 after merge — ok$/);
+  const bareApproval = formatEvent(
+    { ts: 0, source: "feature", type: "review_verdict", head, afterMerge: true } as never,
+  );
+  assert.match(bareApproval, /review approved 01234567 after merge$/);
+
+  const rejected = formatEvent(
+    { ts: 0, source: "feature", type: "review_rejected", head, afterMerge: true, reasons: ["adds a runtime dep"] } as never,
+  );
+  assert.match(rejected, /review rejected 01234567 after merge — adds a runtime dep$/);
+
+  // Without the flag the lines keep today's pre-merge shapes: no fabricated tier suffix.
+  const startNoFlag = formatEvent({ ts: 0, source: "feature", type: "review_start", head } as never);
+  assert.match(startNoFlag, /reviewing 01234567 before merge$/);
+  assert.ok(!startNoFlag.includes("after merge"));
+  const approvalNoFlag = formatEvent(
+    { ts: 0, source: "feature", type: "review_verdict", head, reason: "ok" } as never,
+  );
+  assert.match(approvalNoFlag, /review approved 01234567 — ok$/);
+  assert.ok(!approvalNoFlag.includes("after merge"));
+  const rejectedNoFlag = formatEvent(
+    { ts: 0, source: "feature", type: "review_rejected", head, reasons: ["adds a runtime dep"] } as never,
+  );
+  assert.match(rejectedNoFlag, /review rejected 01234567 — adds a runtime dep$/);
+  assert.ok(!rejectedNoFlag.includes("after merge"));
+});
+
 // The questions-outbox feature emits question_posted alongside merged (emission is pinned in
 // test/merge-to-main.test.ts and test/runner.test.ts); this pins what operators actually read in
 // logs,
