@@ -547,6 +547,33 @@ test("a resumable role that already owns a run slot keeps the slot and retires t
   held.release();
 });
 
+test("a resumable enabled role's already-migrated legacy dir stays pinned and inert across a restart", async () => {
+  // retireLegacyRoleWorktrees's ownRecord branch (a restart before the resume ran): the
+  // legacy dir is already recorded as a slot from an earlier migration, but the role has not
+  // claimed a run slot yet. It must keep the dir pinned and inert — lease cleared, and any
+  // earlier lastRole/lastReleasedAt left behind — not re-push a duplicate slot or remove the
+  // checkout.
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 2 });
+  const wt = worktreeAt(root, "feature");
+  writeFileSync(join(wt, "resume.txt"), "kept");
+  writeSlotsState(root, {
+    slots: [
+      { dir: wt, lease: null, pinnedFor: null, lastRole: "bugfix", lastReleasedAt: 5 },
+    ],
+  });
+  saveRunnerState(root, { ...freshRunnerState("feature"), resumePending: true });
+
+  await retireLegacyRoleWorktrees(root, ["feature"]);
+  const rec = slotForDir(root, wt);
+  assert.equal(rec?.pinnedFor, "feature", "the legacy dir is pinned for its role");
+  assert.equal(rec?.lease, null, "the inert slot holds no lease");
+  assert.equal(rec?.lastRole, null, "the earlier lastRole was cleared");
+  assert.equal(rec?.lastReleasedAt, null, "the earlier lastReleasedAt was cleared");
+  assert.equal(readSlotsState(root).slots.length, 1, "no duplicate slot was pushed");
+  assert.equal(existsSync(wt), true, "the already-migrated checkout was removed");
+});
+
 test("a resumable but disabled role is removed and its pins never leak", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 2 });
