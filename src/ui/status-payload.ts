@@ -6,6 +6,7 @@ import { validationGapProblems } from "../doctor/doctor-backlog-plans.js";
 import { checkWaitContention, providerWaitContention, slotWaitContention, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
 import { readEvents } from "../events/event-read.js";
 import { eventsSince } from "../events/event-window.js";
+import type { HarnessEvent } from "../events/events.js";
 import { isNotifyFailure } from "../events/notify.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
@@ -145,33 +146,26 @@ export interface CapacityBottleneck {
 /** @see CapacityBottleneck */
 export function capacityContention(root: string, now = Date.now()): CapacityBottleneck[] {
   const out: CapacityBottleneck[] = [];
-  try {
-    const verdict: WaitContention = slotWaitContention(
-      eventsSince(root, SLOT_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "slot_wait"),
-      readSlotsState(root).slots.length,
-    );
-    if (verdict.warn) out.push({ name: "workspace slots", detail: verdict.detail });
-  } catch {
-    // A read error skips this row, so the alert never cries wolf on an unreadable log.
-  }
-  try {
-    const verdict: WaitContention = providerWaitContention(
-      eventsSince(root, PROVIDER_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "provider_wait"),
-      configForStatus(root),
-    );
-    if (verdict.warn) out.push({ name: "provider slots", detail: verdict.detail });
-  } catch {
-    // skip
-  }
-  try {
-    const verdict: WaitContention = checkWaitContention(
-      eventsSince(root, CHECK_WAIT_CHECK_WINDOW_MS, now, (e) => e.type === "check_wait"),
-      configForStatus(root),
-    );
-    if (verdict.warn) out.push({ name: "check slots", detail: verdict.detail });
-  } catch {
-    // skip
-  }
+  /** Resolve one capacity verdict and push a "capacity bottleneck" row when it warns. Shared
+   * by the three capacity checks (workspace, provider, check slots) so the try/catch that keeps
+   * each one from crying wolf on an unreadable event log lives in one place, and the row's
+   * `name`/`detail` shape cannot drift between them. */
+  const maybeWarn = (
+    name: string,
+    windowMs: number,
+    keep: (ev: HarnessEvent) => boolean,
+    resolve: (waits: readonly HarnessEvent[]) => WaitContention,
+  ): void => {
+    try {
+      const verdict = resolve(eventsSince(root, windowMs, now, keep));
+      if (verdict.warn) out.push({ name, detail: verdict.detail });
+    } catch {
+      // A read error skips this row, so the alert never cries wolf on an unreadable log.
+    }
+  };
+  maybeWarn("workspace slots", SLOT_WAIT_CHECK_WINDOW_MS, (ev) => ev.type === "slot_wait", (waits) => slotWaitContention(waits, readSlotsState(root).slots.length));
+  maybeWarn("provider slots", PROVIDER_WAIT_CHECK_WINDOW_MS, (ev) => ev.type === "provider_wait", (waits) => providerWaitContention(waits, configForStatus(root)));
+  maybeWarn("check slots", CHECK_WAIT_CHECK_WINDOW_MS, (e) => e.type === "check_wait", (waits) => checkWaitContention(waits, configForStatus(root)));
   return out;
 }
 
