@@ -237,6 +237,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/roles.test.ts and test/runner-ids.test.ts: drop the `BASELINE_BLOCKED_ROLES`/`baselineBlocked` cases; keep the catalog and `OBSERVER_ROLES` checks.
 - test/gate-notes.test.ts: drop the `buildMainKnownRedNote` cases; keep the `buildMainRedNote` cases.
 
+**Needs review 2026-10-24 by feature: could not converge — The change is not what its record claims. The commit body/`RISK` says "Comment only — no behavior change," but the diff removes the entire red-main authoring block — `mainRedGate`, `baselineBlocked`/`BASELINE_BLOCKED_ROLES`, `buildMainKnownRedNote`, and `runner-run.ts`'s gate/requeue branch — which…; `src/baseline/main-baseline.ts:31-32` still says the module "checks MAIN ITSELF — once per SHA, team-wide — before an authoring run is spent on top of it," then two lines later says "a code role still authors on top of it." With the gate gone, no baseline check precedes a non-`ci` authoring run, so…; `src/runner/runner-run.ts:572` (new comment) cites "parts 3c/3–3f/3" for the parts that remove the pre-merge blocks, but 3c/3 no longer exists (it was split into 3g–3j); the plan's own corrected citation is "parts 3g/3–3j/3 and 3d/3–3f/3" (PLANS-DONE 3a, docs/how-it-works). The stale string that a…**
+
 ### Every commit is verified on main, part 3g/3: every merged commit queues a post-landing review, whatever its role (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; independent of the other parts in files; touches src/merge/merge-drain.ts test/merge-drain.test.ts test/post-merge-review.test.ts)
 
 **Previously held 3**
