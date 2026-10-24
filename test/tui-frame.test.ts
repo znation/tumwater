@@ -122,6 +122,8 @@ test("the hint line says what the keys do in each view and mode", () => {
   // The Activity Ctrl+O hint names the active type label, "all" or the exact event type.
   assert.match(hint({ kind: "activity", role: null, grep: null, type: null }), /Ctrl\+O type: all/);
   assert.match(hint({ kind: "activity", role: null, grep: null, type: "run_end" }), new RegExp(`Ctrl\\+O type: ${eventTypeLabel("run_end")}`));
+  // A notable Activity view labels the same Ctrl+O stop "notable only".
+  assert.match(hint({ kind: "activity", role: null, grep: null, type: null, notable: true }), /Ctrl\+O notable only/);
   // At the fake TTY's 100 columns the daily-cap key (placed before the new ones) stays visible.
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 100)), /Ctrl\+B daily cap/);
   assert.equal(

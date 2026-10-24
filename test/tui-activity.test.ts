@@ -84,6 +84,31 @@ test("an empty filtered feed renders the filter note without a tally", async () 
   assert.equal(p.emptyNote, "(no events match this filter)");
 });
 
+test("a notable Activity feed culls routine rows and tallies only the notable ones", async () => {
+  const root = await makeTuiRepo();
+  logEvent(root, { source: "clean", type: "run_start", run: 1 });
+  const ev = logEvent(root, { source: "clean", type: "merged", run: 1 });
+  const body = paneBody(
+    { kind: "activity", role: null, grep: null, type: null, notable: true },
+    { root, width: 200, eventBudget: 10, entryBudget: 5, state },
+  ).body;
+  // The routine run_start is culled, so the tally counts only the notable merged row.
+  assert.equal(body.length, 2);
+  assert.equal(text(body[0]!), "1 × merged (merged)");
+  assert.equal(text(body[1]!), formatEvent(ev));
+});
+
+test("a notable feed with only routine rows renders the filter note", async () => {
+  const root = await makeTuiRepo();
+  logEvent(root, { source: "clean", type: "run_start", run: 1 });
+  const p = paneBody(
+    { kind: "activity", role: null, grep: null, type: null, notable: true },
+    { root, width: 200, eventBudget: 10, entryBudget: 5, state },
+  );
+  assert.deepEqual(p.body, []);
+  assert.equal(p.emptyNote, "(no events match this filter)");
+});
+
 test("an empty log renders (no events yet) without a tally", async () => {
   const root = await makeTuiRepo();
   const p = paneBody(

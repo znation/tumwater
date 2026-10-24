@@ -528,7 +528,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   the backlog, and the notable activity — a `Loop picker` and a case-insensitive Search box narrow
   the events the card carries, and an active picker or Search filter also searches the log's
   recent slice through `/api/logs` (well past the events a status poll carries), persisted like
-  the Notable/All choice. A Window picker (last hour / 6 hours / day) shows that trailing
+  the Notable/All choice (which culls routine bookkeeping via `eventKind(it) !== "routine"` —
+  the same rule `tumwater logs --notable` and the TUI Activity pane's Ctrl+O notable stop use).
+  A Window picker (last hour / 6 hours / day) shows that trailing
   window's events through `/api/logs?sinceMs=`, the twin of `tumwater logs --since`, refreshing
   when a new event arrives. Its ◀ Earlier / Later ▶ buttons step that window back by its own length through
   `/api/logs?sinceMs=&untilMs=`, the twin of `logs --since --until`, and a stepped window does not

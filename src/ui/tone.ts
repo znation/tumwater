@@ -95,3 +95,11 @@ export function eventKind(type: string, result?: string): EventKind {
   if (ROUTINE_EVENT_SET.has(type)) return "routine";
   return "info";
 }
+
+/** Whether an event is worth an operator's attention — the dashboard Activity feed's Notable
+ * cull is `eventKind(it) !== "routine"`. One home of the rule, shared by `tumwater logs
+ * --notable` and the TUI Activity pane's notable stop so they cannot disagree about which
+ * rows a notable filter hides: only routine bookkeeping is culled. */
+export function isNotableEvent(type: string, result?: string): boolean {
+  return eventKind(type, result) !== "routine";
+}

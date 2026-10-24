@@ -372,6 +372,11 @@ export const SUMMARY_FLAG: FlagSpec = { names: ["--summary"] };
  * instead of printing the rows. Value-less, like SUMMARY_FLAG. */
 export const COUNT_FLAG: FlagSpec = { names: ["--count"] };
 
+/** `logs --notable`: cull routine bookkeeping events the way the dashboard Activity feed's
+ * Notable choice does, keeping only non-routine rows. Value-less like JSON_FLAG and COUNT_FLAG,
+ * and a rival of the --transcript transcript view with the rest of the feed flags. */
+export const NOTABLE_FLAG: FlagSpec = { names: ["--notable"] };
+
 /** The `--force` flag spec, accepted by `retire` (the only override-the-rails command): one
  * definition of the flag's spelling beside ROLE_FLAG and JSON_FLAG, so the gate's accepted
  * vocabulary cannot drift from the command body's `args.includes("--force")`. */

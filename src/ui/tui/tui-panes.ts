@@ -300,6 +300,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       activityRole: act.activityRole,
       activityGrep: act.activityGrep,
       activityType: act.activityType,
+      activityNotable: act.activityNotable,
       noteMode: tra.noteMode,
       noteCache: tra.noteCache,
       changeMode: tra.changeMode,

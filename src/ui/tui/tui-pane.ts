@@ -9,7 +9,7 @@
 import type { StatusLine } from "../status-render.js";
 import { readTranscript } from "../transcript.js";
 import { eventRole, readEvents } from "../../events/event-read.js";
-import { eventMatchesGrep, formatEvent } from "../../events/event-format.js";
+import { eventMatchesGrep, eventResult, formatEvent } from "../../events/event-format.js";
 import { eventTypeLabel } from "../../events/event-labels.js";
 import { eventTypeTally } from "../../events/event-tally.js";
 import type { HarnessEvent } from "../../events/events.js";
@@ -17,6 +17,7 @@ import { backlogLines, entryBodyWindow, browsableBacklogEntries, isOpenBacklogLa
 import { answeredQuestionSummaries } from "../../backlog/question-answer.js";
 import { DASHBOARD_ANSWERED_QUESTIONS, recentFinished } from "../status-payload.js";
 import { donePlanEntries, DONE_DATE_RE, entryMatches, FIXED_DATE_RE, fixedBugEntries } from "../../backlog/backlog.js";
+import { isNotableEvent } from "../tone.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import { rolePayload } from "../../roles/role-view.js";
 import { inspectMarkdownLines } from "../../roles/role-render.js";
@@ -69,13 +70,14 @@ const ACTIVITY_EVENTS = 200;
  * the event-type filter (`null` = every type) — `tumwater logs --grep`, `logs --type`, and
  * `GET /api/logs` call the same ones, so the surfaces cannot disagree about what a filter
  * matches. */
-export function activityEvents(root: string, role: string | null, grep: string | null, type: string | null): HarnessEvent[] {
+export function activityEvents(root: string, role: string | null, grep: string | null, type: string | null, notable = false): HarnessEvent[] {
   const needle = grep === null ? null : grep.toLowerCase();
   return readEvents(root, ACTIVITY_EVENTS).filter(
     (e) =>
       (role === null || eventRole(e) === role) &&
       (needle === null || eventMatchesGrep(e, needle)) &&
-      (type === null || e.type === type),
+      (type === null || e.type === type) &&
+      (!notable || isNotableEvent(e.type, eventResult(e))),
   );
 }
 
@@ -312,8 +314,8 @@ export function paneBody(
   // instead of claiming the log is empty. One dim tally line above the feed, built from the
   // type-unfiltered rows, counts every type the Ctrl+O cycle offers (so none is hidden while
   // a type is selected); it takes one line of the body budget, so the feed then fills the rest.
-  const preType = activityEvents(root, pane.role, pane.grep, null);
-  const events = pane.type === null ? preType : activityEvents(root, pane.role, pane.grep, pane.type);
+  const preType = activityEvents(root, pane.role, pane.grep, null, pane.notable);
+  const events = pane.type === null ? preType : activityEvents(root, pane.role, pane.grep, pane.type, pane.notable);
   const tallyLine =
     events.length === 0
       ? []
@@ -332,7 +334,7 @@ export function paneBody(
   return {
     body: [...tallyLine, ...events.slice(start, start + rows).map((e) => toneLine(formatEvent(e), width, eventTone(e)))],
     emptyNote:
-      pane.role === null && pane.grep === null && pane.type === null
+      pane.role === null && pane.grep === null && pane.type === null && !pane.notable
         ? "(no events yet)"
         : "(no events match this filter)",
   };

@@ -210,3 +210,65 @@ test("logs --count rejects the rival shapes, naming both flags", async () => {
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--count", "--transcript", "clean"])), /--count cannot be combined with --transcript/);
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--count", "--prompt", "--transcript", "clean"])), /--count cannot be combined with --transcript/);
 });
+
+test("logs --notable culls routine events from the -n view", async () => {
+  const repo = makeRepo();
+  logEvent(repo, { source: "clean", type: "run_start", run: 1 });
+  logEvent(repo, { source: "clean", type: "merge_queued", run: 1, commit: "c1", summary: "a" });
+  logEvent(repo, { source: "clean", type: "merge_failed", run: 1, commit: "c1" });
+  logEvent(repo, { source: "clean", type: "merged", run: 1, commit: "c2", summary: "widget" });
+  const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--notable", "-n", "10"]));
+  // Only the notable merge_failed and merged rows print, oldest first.
+  assert.ok(!stdout.includes("started"), "the routine run_start is culled");
+  assert.ok(!stdout.includes("waiting to merge"), "the routine merge_queued is culled");
+  const first = stdout.indexOf("failed");
+  const second = stdout.indexOf("merged c2 to main");
+  assert.ok(first >= 0 && second > first, `the notable rows print oldest-first: ${JSON.stringify(stdout)}`);
+  // Without --notable the same read prints all four rows.
+  const all = await expectOkAsync(() => cmdLogs(repo, ["-n", "10"]));
+  assert.match(all.stdout, /started/);
+  assert.match(all.stdout, /waiting to merge/);
+  assert.match(all.stdout, /failed/);
+  assert.match(all.stdout, /merged c2 to main/);
+});
+
+test("logs --notable composes with --type, --grep, --role and -n", async () => {
+  const repo = makeRepo();
+  logEvent(repo, { source: "clean", type: "run_start", run: 1 });
+  logEvent(repo, { source: "clean", type: "merge_failed", run: 1, commit: "c1" });
+  logEvent(repo, { source: "qa", type: "merged", run: 1, commit: "c2", summary: "widget" });
+  const typed = await expectOkAsync(() => cmdLogs(repo, ["--notable", "--type", "merged", "-n", "10"]));
+  assert.match(typed.stdout, /merged c2 to main/);
+  assert.ok(!typed.stdout.includes("failed"), "the notable merge_failed is filtered by --type");
+  const grepped = await expectOkAsync(() => cmdLogs(repo, ["--notable", "--grep", "widget", "-n", "10"]));
+  assert.match(grepped.stdout, /merged c2 to main/);
+  assert.ok(!grepped.stdout.includes("failed"), "the merge_failed row is filtered by --grep");
+  const roled = await expectOkAsync(() => cmdLogs(repo, ["--notable", "--role", "clean", "-n", "10"]));
+  assert.match(roled.stdout, /failed/);
+  assert.ok(!roled.stdout.includes("merged c2 to main"), "qa's merged row is filtered by --role");
+});
+
+test("logs --notable --count tallies only the notable rows", async () => {
+  const repo = makeRepo();
+  logEvent(repo, { source: "clean", type: "run_start", run: 1 });
+  logEvent(repo, { source: "clean", type: "merge_failed", run: 1, commit: "c1" });
+  logEvent(repo, { source: "clean", type: "merged", run: 1, commit: "c2", summary: "x" });
+  const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--notable", "--count"]));
+  assert.ok(!stdout.includes("run started"), "the routine run_start is not tallied");
+  assert.match(stdout, /merge failed/);
+  assert.match(stdout, /merged/);
+});
+
+test("logs --notable answers an empty notable feed with no notable events", async () => {
+  const repo = makeRepo();
+  logEvent(repo, { source: "clean", type: "run_start", run: 1 }); // only a routine row
+  const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--notable", "-n", "10"]));
+  assert.match(stdout, /no notable events/);
+  const w = await expectOkAsync(() => cmdLogs(repo, ["--notable", "--since", "1h"]));
+  assert.match(w.stdout, /no notable events in 1h/);
+});
+
+test("logs --notable rejects the transcript view, naming both flags", async () => {
+  const repo = makeRepo();
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--notable", "--transcript", "clean"])), /--notable cannot be combined with --transcript/);
+});

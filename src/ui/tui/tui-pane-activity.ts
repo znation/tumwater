@@ -31,6 +31,11 @@ export function createActivityPane(
   // applies), built as a cycle from the types present in the pre-type scope; session-only and
   // reset to the live tail with a change like the scope and search.
   let activityType: string | null = null;
+  // The Activity pane's notable-only cull (Ctrl+O), the terminal twin of the dashboard
+  // Activity feed's Notable choice: when set, routine bookkeeping rows are hidden (tone.ts's
+  // isNotableEvent). Cycled with activityType in the same Ctrl+O press so a press never leaves
+  // an impossible pair, and session-only like the type and scope.
+  let activityNotable = false;
 
   const applySearch = (pattern: string | null): void => {
     // Apply a finished Activity search on the pane: set the grep and reset the scroll to the
@@ -56,13 +61,21 @@ export function createActivityPane(
       return true;
     }
     if (key.ctrl && key.name === "o" && promptLineFree(ctx.es)) {
-      // The Activity type cycle: advance all → first present type → … → last present type → all.
-      // `present` is built from the pre-type read (type `null`), so every type stays reachable
-      // once one is selected — the same reason the dashboard builds its chip set before its
-      // type filter. The scroll resets because its offset indexed the old filtered list.
+      // The Activity type/notable cycle: all → notable → first present type → … → last present
+      // type → all. `present` is built from the pre-type read (type `null`, no notable cull), so
+      // every type stays reachable once one is selected — the same reason the dashboard builds
+      // its chip set before its type filter. The scroll resets because its offset indexed the
+      // old filtered list.
       const present = [...new Set(activityEvents(session.root, activityRole, activityGrep, null).map((e) => e.type))].sort();
-      const slots: Array<string | null> = [null, ...present];
-      activityType = slots[(slots.indexOf(activityType) + 1) % slots.length] ?? null;
+      const slots: Array<{ notable: boolean; type: string | null }> = [
+        { notable: false, type: null },
+        { notable: true, type: null },
+        ...present.map((t) => ({ notable: false, type: t })),
+      ];
+      const idx = slots.findIndex((s) => s.notable === activityNotable && s.type === activityType);
+      const next = slots[(idx + 1) % slots.length] ?? slots[0]!;
+      activityNotable = next.notable;
+      activityType = next.type;
       activityScroll = null;
       session.requestRender();
       return true;
@@ -78,7 +91,7 @@ export function createActivityPane(
       // advances exactly as far as the feed displays and no event is skipped or unreachable
       // while paging. The read is the pane's own fixed tail term (and active role/text
       // filter), so it hits readEvents' stat cache rather than rescanning the log.
-      const total = activityEvents(session.root, activityRole, activityGrep, activityType).length;
+      const total = activityEvents(session.root, activityRole, activityGrep, activityType, activityNotable).length;
       const rows = total === 0 ? session.eventBudget : Math.max(1, session.eventBudget - 1);
       const maxStart = Math.max(0, total - rows);
       const current = activityScroll ?? maxStart;
@@ -106,7 +119,7 @@ export function createActivityPane(
     },
     applySearch,
     state() {
-      return { activityScroll, activityRole, activityGrep, activityType };
+      return { activityScroll, activityRole, activityGrep, activityType, activityNotable };
     },
   } satisfies TuiPaneModule & { applySearch(pattern: string | null): void };
 }

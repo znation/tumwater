@@ -752,53 +752,66 @@ test("Ctrl+G on the Activity view cycles the raw roster ids and filters the pagi
   assert.equal(keys.state().activityScroll, null, "...and the offset over the old filtered list");
 });
 
-test("Ctrl+O on the Activity view cycles the present event types and filters the paging total", () => {
+test("Ctrl+O on the Activity view cycles notable and the present event types and filters the paging total", () => {
   const root = makeRoot();
-  // Two roles, three present types: `feature` carries run_start and run_end, `clean` only
-  // wake, so a team-wide cycle turns over all three while the feature scope holds two.
+  // Two roles, three present types: `feature` carries run_start (routine) and merge_failed
+  // (notable), `clean` only wake (routine), so a team-wide cycle turns over all three and its
+  // notable stop culls to merge_failed alone.
   writeEvents(root, [
     ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_000_000 + i * 60_000, loop: "feature", type: "run_start", run: i + 1 })), // retired-name-ok: legacy event field in a fixture
-    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_700_000 + i * 60_000, loop: "feature", type: "run_end", run: i + 1, result: "changed" })), // retired-name-ok: legacy event field in a fixture
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_700_000 + i * 60_000, loop: "feature", type: "merge_failed", run: i + 1 })), // retired-name-ok: legacy event field in a fixture
     ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_001_400_000 + i * 60_000, loop: "clean", type: "wake", run: i + 1 })), // retired-name-ok: legacy event field in a fixture
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
   keys.setLineBudgets(5, 4);
   assert.equal(keys.state().activityType, null, "Activity opens on every type");
+  assert.equal(keys.state().activityNotable, false, "Activity opens on all, not the notable cull");
 
-  // The unfiltered total is 36 and each type's own is 12, so PgUp's clamped offset proves
-  // which filtered list the handler paged over (36 − 4 = 32 → pages back to 28 vs 12 − 4 = 8
-  // → back to 4): the feed shows rows = eventBudget − 1 = 4 events under its tally line, so
-  // each page steps by 4 too.
+  // The unfiltered total is 36 and the notable/type views hold 12, so PgUp's clamped offset
+  // proves which filtered list the handler paged over (36 − 4 = 32 → pages back to 28 vs
+  // 12 − 4 = 8 → back to 4): the feed shows rows = eventBudget − 1 = 4 events under its tally
+  // line, so each page steps by 4 too.
   keys.handleKey(undefined, { name: "pageup" });
   assert.equal(keys.state().activityScroll, 28, "every-type read pages over all 36 events");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
-  assert.equal(keys.state().activityType, "run_end", "the first Ctrl+O selects the first present type in the sorted cycle");
-  assert.equal(keys.state().activityScroll, null, "a type change resets the pane to the live tail");
+  assert.equal(keys.state().activityNotable, true, "the first Ctrl+O selects the notable stop");
+  assert.equal(keys.state().activityType, null, "...typing nothing, so the notable cull is the only filter");
+  assert.equal(keys.state().activityScroll, null, "a filter change resets the pane to the live tail");
   keys.handleKey(undefined, { name: "pageup" });
-  assert.equal(keys.state().activityScroll, 4, "paging now clamps over run_end's 12 events only");
+  assert.equal(keys.state().activityScroll, 4, "the notable cull shrinks the paging total to merge_failed's 12");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityNotable, false, "the second Ctrl+O leaves the notable stop");
+  assert.equal(keys.state().activityType, "merge_failed", "...and selects the first present type in the sorted cycle");
+  keys.handleKey(undefined, { name: "pageup" });
+  assert.equal(keys.state().activityScroll, 4, "paging now clamps over merge_failed's 12 events only");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
   assert.equal(keys.state().activityType, "run_start", "the cycle walks each present type in turn");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
   assert.equal(keys.state().activityType, "wake", "the cycle keeps walking once a type is selected");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
-  assert.equal(keys.state().activityType, null, "the cycle wraps back to every type");
+  assert.equal(keys.state().activityNotable, false, "the cycle wraps back to every type");
+  assert.equal(keys.state().activityType, null, "...not the notable stop");
 
   // The present-type cycle is built from the pre-type scope: scoping to feature (run_start
-  // and run_end only) drops wake from the slots.
+  // and merge_failed only) drops wake from the slots.
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature
   keys.handleKey(undefined, { ctrl: true, name: "o" });
-  assert.equal(keys.state().activityType, "run_end", "inside the feature scope the first present type is run_end");
+  assert.equal(keys.state().activityNotable, true, "inside the feature scope the first stop is notable");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityType, "merge_failed", "then the first present type, merge_failed");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
   assert.equal(keys.state().activityType, "run_start", "then run_start");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
-  assert.equal(keys.state().activityType, null, "then wrap back to every type, still scoped to feature");
+  assert.equal(keys.state().activityNotable, false, "and the feature scope wraps back to all");
+  assert.equal(keys.state().activityType, null);
 
-  // A type survives a Ctrl+G scope change (the composed filter, like CLI --role+--type).
-  keys.handleKey(undefined, { ctrl: true, name: "o" }); // → run_end within feature
-  assert.equal(keys.state().activityType, "run_end");
+  // The notable stop survives a Ctrl+G scope change (the composed filter, like CLI --role+-n).
+  keys.handleKey(undefined, { ctrl: true, name: "o" }); // → notable
+  assert.equal(keys.state().activityNotable, true);
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // → clean
-  assert.equal(keys.state().activityType, "run_end", "the type survives a role-scope change");
+  assert.equal(keys.state().activityNotable, true, "the notable stop survives a role-scope change");
+  assert.equal(keys.state().activityType, null);
   assert.equal(keys.state().activityScroll, null, "the scope change still resets the tail");
 });
 
@@ -2018,12 +2031,17 @@ test("Ctrl+O cycles the Activity type on view 0, opens the quiet editor on a Tra
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
 
-  // On the Activity view (0), Ctrl+O now cycles the event type, not the History label.
+  // On the Activity view (0), Ctrl+O now cycles the type/notable stops, not the History label.
   keys.handleKey(undefined, { ctrl: true, name: "o" });
-  assert.equal(keys.state().activityType, "run_end", "view 0 routes Ctrl+O to the Activity type cycle");
+  assert.equal(keys.state().activityType, null, "view 0 routes Ctrl+O to the Activity type cycle");
+  assert.equal(keys.state().activityNotable, true, "its first stop is the notable cull");
   assert.equal(keys.state().historyResult, "all", "the History label is untouched on Activity");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().activityType, "run_end", "the second stop is the present run_end type");
+  assert.equal(keys.state().activityNotable, false, "...leaving the notable cull");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
   assert.equal(keys.state().activityType, null, "the Activity type wraps");
+  assert.equal(keys.state().activityNotable, false);
 
   // On a role's Transcript view, Ctrl+O opens the quiet-hours editor (the terminal twin of
   // the dashboard drawer's `Quiet hours` row), not the History class cycle.

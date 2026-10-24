@@ -10,7 +10,7 @@ import { compareCodeUnits, increment } from "../collections.js";
 import { eventTypeTally } from "../events/event-tally.js";
 import { eventRole, parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
-import { eventMatchesGrep, formatEvent } from "../events/event-format.js";
+import { eventMatchesGrep, eventResult, formatEvent } from "../events/event-format.js";
 import { canonicalEventType } from "../events/event-legacy.js";
 import { EVENT_TYPE_LABELS, eventTypeLabel } from "../events/event-labels.js";
 import { followFile } from "../files/tail.js";
@@ -20,6 +20,7 @@ import { typoSuffix } from "../text/suggest.js";
 import { splitCommaList } from "../text/text.js";
 import { createTranscriptFilter, createTranscriptRenderer } from "../ui/transcript.js";
 import { readTranscriptTail } from "../ui/transcript-tail.js";
+import { isNotableEvent } from "../ui/tone.js";
 import { eventsLogPath, piLogPath } from "../paths.js";
 
 /** The read-only observing half of the CLI's non-dispatch commands: `tumwater logs` and its
@@ -167,10 +168,19 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
     ? null
     : (e: HarnessEvent) => roleInScope(eventRole(e), roles);
   if (roles !== null) rejectTranscriptViewRival(rest, "--role", true);
+  // `--notable` culls routine bookkeeping events the way the dashboard Activity feed's Notable
+  // choice does (src/ui/tone.ts eventKind): only non-routine rows pass the feed. One harness-side
+  // rule (isNotableEvent) shared with the TUI Activity pane, so the CLI feed and the pane cannot
+  // disagree about what a notable filter hides. It composes with --since, --grep, --type, --role,
+  // -n, -f, --count and --json, and — like --json/--count/--type/--since — is a rival only of the
+  // --transcript transcript view.
+  const notable = rest.includes("--notable");
+  rejectTranscriptViewRival(rest, "--notable", notable);
   const feedFilter = (e: HarnessEvent) =>
     (grepLower === null || eventMatchesGrep(e, grepLower)) &&
     (typeFilter === null || typeFilter(e)) &&
-    (roleFilter === null || roleFilter(e));
+    (roleFilter === null || roleFilter(e)) &&
+    (!notable || isNotableEvent(e.type, eventResult(e)));
   // Empty-match prose: grep/type keep their wording when given; a role-only filter names the roles.
   const roleEmpty = roles === null ? "" : `no events from ${roles.join(", ")}`;
   const filtersGrepOrType = grepPattern !== null || type !== null;
@@ -221,7 +231,9 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
       // In JSON mode an empty result answers silently — an empty output IS the machine-readable
       // answer, and prose would corrupt a consumer's NDJSON stream.
       if (!json) {
-        if (grepPattern !== null && type !== null)
+        if (notable && grepPattern === null && type === null && roles === null)
+          say(`no notable events ${windowPhrase}`);
+        else if (grepPattern !== null && type !== null)
           say(`no events matching "${grepPattern}" or ${typeEmpty(type, typePieces)}`);
         else if (type !== null) say(typeEmpty(type, typePieces));
         else if (grepPattern !== null) say(`no events matching "${grepPattern}" ${windowPhrase}`);
@@ -262,15 +274,17 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   // the tail-with-end shape (not the per-poll cached readEvents) so the follow below can seed
   // from the byte end this very read covered instead of a later stat of the file.
   const tail = readEventsTailWithEnd(root, limit);
-  const shown = grepLower !== null || type !== null || roleFilter !== null ? tail.events.filter(feedFilter) : tail.events;
+  const shown = grepLower !== null || type !== null || roleFilter !== null || notable ? tail.events.filter(feedFilter) : tail.events;
   // `--count` over the -n view answers with the tally of exactly the filtered rows the plain
   // view would print, and carries over the plain view's empty-match prose below (a `--type`
   // or `--grep` that matches nothing names its value; an empty unfiltered -n view prints
   // nothing, as the plain view does). In JSON mode the empty output is the answer.
   if (count) {
     if (shown.length !== 0) sayTally(shown, json);
-    else if (!json && (filtersGrepOrType || roles !== null)) {
-      if (grepPattern !== null && type !== null)
+    else if (!json && (filtersGrepOrType || roles !== null || notable)) {
+      if (notable && grepPattern === null && type === null && roles === null)
+        say("no notable events");
+      else if (grepPattern !== null && type !== null)
         say(`no events matching "${grepPattern}" or ${typeEmpty(type, typePieces)}`);
       // Type-empty gets the hint (only the type branch); a grep-only empty stays the bare
       // no-match line, because a free-text pattern is not an event type to suggest against.
@@ -284,8 +298,10 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
     // The empty-match line is prose: in JSON mode the empty output is the answer. It fires
     // for either filter, naming the flag's value(s) whose match came up empty so the operator
     // knows what to loosen.
-    if (shown.length === 0 && !json && (filtersGrepOrType || roles !== null)) {
-      if (grepPattern !== null && type !== null)
+    if (shown.length === 0 && !json && (filtersGrepOrType || roles !== null || notable)) {
+      if (notable && grepPattern === null && type === null && roles === null)
+        say("no notable events");
+      else if (grepPattern !== null && type !== null)
         say(`no events matching "${grepPattern}" or ${typeEmpty(type, typePieces)}`);
       // Type-empty gets the hint (only the type branch); a grep-only empty stays the bare
       // no-match line, because a free-text pattern is not an event type to suggest against.
