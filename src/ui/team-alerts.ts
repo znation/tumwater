@@ -11,12 +11,13 @@ import type { StatusSnapshot } from "../status/status-data.js";
 import type { RevertGuardrail } from "../baseline/main-guardrails.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
-import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert } from "./status-payload.js";
+import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert, QaCoverageStale } from "./status-payload.js";
 import type { RefusedEntry, StalledEntry } from "../backlog/backlog-eligibility.js";
 import type { ClaimState } from "../scheduling/claim-entries.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
 import { CI_PARITY_STALE_MS, ciParityStalled } from "../run/ci-parity.js";
+import { QA_COVERAGE_STALE_MS } from "../run/qa-coverage.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
@@ -945,6 +946,7 @@ interface MergeAlertsInput {
   droppedPostReviews: DroppedPostReviews | null;
   mainRuleFailure: MainRuleFailure | null;
   ciParity?: StatusSnapshot["ciParity"];
+  qaCoverage?: QaCoverageStale | null;
   now: number;
 }
 
@@ -960,7 +962,7 @@ interface MergeAlertsInput {
  * at the position this run used to occupy, so the emitted key order is unchanged. */
 function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
-  const { quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity, now } = input;
+  const { quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity, qaCoverage, now } = input;
   // A stale or oversized flake quarantine — the always-on twin of the doctor's `flaky checks`
   // row (main-guardrails.ts checkFlakyChecks, quarantineWarning): a quarantined test counts as
   // a known failure until its filed bug leaves BUGS.md `## Open`, so an old entry means the
@@ -1091,6 +1093,26 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
         ciParity.lastRunAt,
         now,
       )}; main has moved since, so no full-suite run covers the current tip — the ci role is disabled, paused, or unable to record; resume or enable it, or check \`tumwater doctor\``,
+      actions: [],
+    });
+  }
+  // The qa role's flow coverage silently stopped advancing — the always-on twin of the
+  // doctor's `qa coverage` row (doctor-project-checks.ts checkQaCoverage), fed from the same
+  // qaCoverageStalled predicate via status-payload.ts's qaCoverageAlert so the alert and the
+  // row cannot disagree on when a quiet qa is a stall. A missing ledger (no record yet) is not
+  // a stall, so this fires only once a recorded flow's newest exercise is over three days old —
+  // the team's only flow-level observer has silently stopped recording (disabled, paused,
+  // wedged, or failing before it records). The fix is a role toggle the role drawer already has,
+  // so there is no action button here.
+  if (qaCoverage) {
+    out.push({
+      key: "qa-stale",
+      tone: "amber",
+      title: `qa's flow coverage has not advanced in over ${QA_COVERAGE_STALE_MS / DAY_MS} days`,
+      detail: `the qa role's newest flow ${qaCoverage.newestFlow} was exercised ${humanAgo(
+        qaCoverage.newestAt,
+        now,
+      )}; coverage has not advanced since, so the qa role is disabled, paused, or unable to record; resume or enable it, or check \`tumwater doctor\``,
       actions: [],
     });
   }
@@ -1340,12 +1362,13 @@ export function teamAlerts(
   staleClaims: readonly ClaimState[] = [],
   staleQuestions: readonly StaleQuestion[] = [],
   fixClaims: readonly FixClaimProblem[] = [],
+  qaCoverage: QaCoverageStale | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, validationGaps, fixClaims }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
-  out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, now }));
+  out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, qaCoverage, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles }));
 
   return out;

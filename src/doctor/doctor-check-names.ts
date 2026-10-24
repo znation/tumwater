@@ -58,6 +58,7 @@ export const DOCTOR_CHECK_NAMES = [
   "disk space",
   "check",
   "ci parity",
+  "qa coverage",
   "root install",
   "flaky checks",
   "post-merge churn",

@@ -21,6 +21,7 @@ import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { byDaysThenIndex } from "../collections.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { staleClaimEntries } from "../scheduling/claim-entries.js";
+import { readQaCoverage, qaCoverageStalled } from "../run/qa-coverage.js";
 import { teamAlerts, type FlappedChecks, type NotifyFailure, type PlanDependencyProblem, type PrimaryOverwriteBlock, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleQuestion, type StaleWaitingBug } from "./team-alerts.js";
 import { duplicatedBacklogHeadings, planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { quarantineWarning, revertsFor } from "../baseline/main-guardrails.js";
@@ -292,6 +293,32 @@ export function flappedChecksAlert(root: string, now = Date.now()): FlappedCheck
   const flapped = repeatedFlakeCounts(events);
   const detail = flappedChecksPhrase(flapped);
   return detail === null ? null : { count: flapped.length, detail };
+}
+/** A qa flow-coverage ledger whose newest exercise is over `QA_COVERAGE_STALE_MS` old — the
+ * always-on twin of the doctor's `qa coverage` row (doctor-project-checks.ts checkQaCoverage):
+ * read over the same qaCoverageStalled predicate, so the alert and the doctor cannot drift on
+ * when a quiet qa is a problem. null when the ledger is fresh or empty — no record yet (a
+ * missing file, or a project that never ran qa) is not a stall. `newestAt` is the newest
+ * entry's `lastRunAt`, `count` the number of well-formed entries (the `quarantineAlert` shape). */
+export interface QaCoverageStale {
+  newestFlow: string;
+  newestAt: number;
+  count: number;
+}
+
+export function qaCoverageAlert(root: string, now = Date.now()): QaCoverageStale | null {
+  const coverage = readQaCoverage(root);
+  if (!qaCoverageStalled(coverage, now)) return null;
+  const entries = Object.entries(coverage);
+  let newestFlow = entries[0]![0];
+  let newestAt = entries[0]![1].lastRunAt;
+  for (const [name, entry] of entries) {
+    if (entry.lastRunAt > newestAt) {
+      newestAt = entry.lastRunAt;
+      newestFlow = name;
+    }
+  }
+  return { newestFlow, newestAt, count: entries.length };
 }
 /** A post-merge review one failed run from being dropped, the always-on twin of the doctor's
  * `post-merge reviews` row (src/doctor/doctor-backlog.ts checkPostReviews): the same
@@ -695,6 +722,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), qaCoverageAlert(root, now)),
   };
 }

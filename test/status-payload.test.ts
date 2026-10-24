@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
-import { statusPayload, staleOpenQuestions, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS, mainRuleFailures, MAIN_RULE_FAILURE_WINDOW_MS } from "../src/ui/status-payload.js";
+import { statusPayload, staleOpenQuestions, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS, mainRuleFailures, MAIN_RULE_FAILURE_WINDOW_MS, qaCoverageAlert } from "../src/ui/status-payload.js";
 import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkPostReviews } from "../src/doctor/doctor-backlog.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool } from "../src/doctor/doctor-contention-checks.js";
@@ -33,6 +33,7 @@ import { assistantLine } from "./fixtures/pi-events.js";
 import { warnEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { checkFlakyChecks } from "../src/doctor/doctor-project-checks.js";
+import { QA_COVERAGE_STALE_MS, recordFlow } from "../src/run/qa-coverage.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
@@ -1053,4 +1054,27 @@ test("the payload's noDeclaredCheck follows detectBuildCheck", () => {
   const payload2 = statusPayload(root, now) as { noDeclaredCheck?: boolean; alerts: Array<{ key: string }> };
   assert.equal(payload2.noDeclaredCheck, undefined, "no noDeclaredCheck key with a declared check");
   assert.equal(payload2.alerts.find((a) => a.key === "no-check"), undefined);
+});
+
+test("qaCoverageAlert is null for a missing or fresh ledger and names the newest flow for a stalled one", () => {
+  const now = Date.now();
+  const root = tmpdir("status-qa-coverage-");
+  // No ledger is not a stall.
+  assert.equal(qaCoverageAlert(root, now), null);
+  // A fresh exercise is not a stall.
+  recordFlow(root, "status", "passed", undefined, now - 3600_000);
+  assert.equal(qaCoverageAlert(root, now), null);
+  // A stale entry alongside the fresh one keeps it not-stalled.
+  recordFlow(root, "logs", "passed", undefined, now - 5 * 24 * 3600_000);
+  assert.equal(qaCoverageAlert(root, now), null);
+  // Once every entry is past the window, it names the newest flow, its time and the count.
+  const stalledNow = now;
+  const root2 = tmpdir("status-qa-coverage-stalled-");
+  recordFlow(root2, "status", "passed", undefined, stalledNow - QA_COVERAGE_STALE_MS - 60_000);
+  recordFlow(root2, "logs", "passed", undefined, stalledNow - QA_COVERAGE_STALE_MS - 3600_000);
+  assert.deepEqual(qaCoverageAlert(root2, stalledNow), {
+    newestFlow: "status",
+    newestAt: stalledNow - QA_COVERAGE_STALE_MS - 60_000,
+    count: 2,
+  });
 });

@@ -36,6 +36,7 @@ import {
   checkEventLog,
   checkFlakyChecks,
   checkPostMergeChurn,
+  checkQaCoverage,
   checkStateDir,
 } from "./doctor-project-checks.js";
 import { sampleFreeBytes } from "../gates/disk-gate.js";
@@ -198,6 +199,7 @@ export async function runDoctor(
     { name: "disk space", run: () => checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40, diskSample) },
     { name: "check", run: () => checkBuildCheck(root, config) },
     { name: "ci parity", run: () => checkCiParity(root, config, Date.now()) },
+    { name: "qa coverage", run: () => checkQaCoverage(root, Date.now()) },
     { name: "root install", run: () => checkRootInstall(root) },
     // The review gate's flake memory, surfaced read-only: naming which checks the gate kept
     // excusing as flakes (ok/warn only, so a flaky suite never fails a scripted pre-flight).

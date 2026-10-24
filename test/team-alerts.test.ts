@@ -17,6 +17,7 @@ import { mergeQueueDir, quarantinePath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { postReviewPath } from "../src/paths.js";
 import { CI_PARITY_STALE_MS } from "../src/run/ci-parity.js";
+import { QA_COVERAGE_STALE_MS } from "../src/run/qa-coverage.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { warnEvent } from "../src/events/events.js";
 import { notifyExitWarning } from "../src/events/notify.js";
@@ -1619,6 +1620,25 @@ test("a stalled ci parity raises the ci-stale alert", () => {
   // No record, and a current record, raise no ci-stale alert either.
   assert.equal(teamAlerts({ ...base, ciParity: undefined }, [], [], now).find((a) => a.key === "ci-stale"), undefined);
   assert.equal(teamAlerts({ ...base, ciParity: { state: "current", covered: "x", lastRunAt: 0 } }, [], [], now).find((a) => a.key === "ci-stale"), undefined);
+});
+
+test("a stalled qa coverage raises the qa-stale alert", () => {
+  const now = Date.now();
+  // The 26 preceding defaults (refused…fixClaims) are passed explicitly so the trailing
+  // qaCoverage slot lands. A stalled value yields exactly one amber qa-stale alert.
+  const stalled = { newestFlow: "status", newestAt: now - QA_COVERAGE_STALE_MS - 60_000, count: 1 };
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], [], stalled);
+  const only = alerts.filter((a) => a.key === "qa-stale");
+  assert.equal(only.length, 1);
+  assert.equal(only[0]!.tone, "amber");
+  assert.match(only[0]!.title, /not advanced in over 3 days/);
+  assert.match(only[0]!.detail, /status/);
+  assert.match(only[0]!.detail, /qa role/);
+  assert.deepEqual(only[0]!.actions, [], "the fix is a role toggle the role drawer already has, so no action button");
+
+  // A stored value yields no alerts unless it names a stall: fresh and empty ledgers both
+  // arrive at teamAlerts as null (qaCoverageAlert is null for them).
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], [], null).find((a) => a.key === "qa-stale"), undefined);
 });
 
 test("the stale-claims alert names a gone and an idle claim", () => {

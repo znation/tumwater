@@ -32,6 +32,7 @@ import { POST_MERGE_REJECT_WINDOW_MS, postMergeChurn } from "../review/post-merg
 import { roleLabel } from "../roles/role-labels.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../run/ci-parity.js";
+import { readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../run/qa-coverage.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing
@@ -395,4 +396,35 @@ export function checkCiParity(
       lockHash,
     )}, so the ci role has not yet covered this tip`,
   );
+}
+
+/** The doctor's `qa coverage` row: has the `qa` observer — the team's only flow-level
+ * observer — stopped exercising any of the product's own flows? Reads the flow-coverage ledger
+ * (src/run/qa-coverage.ts), the operator surface answering "is qa still recording what it
+ * exercises?". A missing ledger reads "no qa flow coverage recorded yet" (ok — no record yet
+ * is not a stall); a fresh ledger reads ok naming the newest exercised flow and its age. A
+ * ledger whose newest exercise is older than `QA_COVERAGE_STALE_MS` (qaCoverageStalled) is a
+ * `warn` naming that flow and its age — the role is disabled, paused, or unable to record —
+ * alongside the standing `qa-stale` alert, both through the one `qaCoverageStalled` predicate
+ * so the row and the alert cannot disagree. Read-only against .tumwater/. */
+export function checkQaCoverage(root: string, now: number = Date.now()): CheckOutcome {
+  const coverage = readQaCoverage(root);
+  const entries = Object.entries(coverage);
+  if (entries.length === 0)
+    return okOutcome("no qa flow coverage recorded yet — the qa role has not completed a flow");
+  let newestFlow = entries[0]![0];
+  let newestAt = entries[0]![1].lastRunAt;
+  for (const [name, entry] of entries) {
+    if (entry.lastRunAt > newestAt) {
+      newestAt = entry.lastRunAt;
+      newestFlow = name;
+    }
+  }
+  const age = shortSpanPhrase(Math.max(0, now - newestAt));
+  if (qaCoverageStalled(coverage, now)) {
+    return warnOutcome(
+      `the newest exercised flow ${newestFlow} ran ${age} ago — no qa flow has been exercised in over ${QA_COVERAGE_STALE_MS / DAY_MS} days, so the qa role is disabled, paused, or unable to record`,
+    );
+  }
+  return okOutcome(`newest flow coverage: ${newestFlow} exercised ${age} ago`);
 }

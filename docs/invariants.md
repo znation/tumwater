@@ -4326,6 +4326,26 @@ read/record/render and missing-or-malformed-degrades-to-no-data unit coverage. T
 records nothing is structurally guaranteed: `RunStageContext` (src/run/run-stage.ts) has no `ci`
 field and `recordParity` has a single call site in `resolveRunVerdict`.
 
+### INV-BW3: the qaCoverageStalled predicate is the one home of the qa stall decision
+
+**Guarantee.** `qaCoverageStalled` (src/run/qa-coverage.ts) is the single predicate deciding when
+the `qa` observer's flow coverage has gone quiet, shared by the doctor `qa coverage` warn
+(`checkQaCoverage`) and the standing `qa-stale` alert (`qaCoverageAlert`), so the two surfaces
+cannot disagree on when a quiet qa is a problem. It is true only for a non-empty well-formed
+ledger whose newest exercise is older than `QA_COVERAGE_STALE_MS`; an empty ledger — a missing
+file, or a project that never ran qa — is not a stall, mirroring `ciParityStalled`'s rule for a
+missing parity record.
+
+**Binds.** `src/run/qa-coverage.ts` (`qaCoverageStalled`, `QA_COVERAGE_STALE_MS`),
+`src/doctor/doctor-project-checks.ts` (`checkQaCoverage`), `src/ui/status-payload.ts`
+(`qaCoverageAlert`), `src/ui/team-alerts.ts` (the `qa-stale` alert).
+
+**Pinned by.** `test/qa-coverage.test.ts` — the `qaCoverageStalled` cases (empty false, boundary
+false, one past true, mixed fresh+old false, malformed-only reads empty); `test/doctor-checks.test.ts`
+— "checkQaCoverage reads ok for a missing or fresh ledger and warns once stale past the window";
+`test/team-alerts.test.ts` — "a stalled qa coverage raises the qa-stale alert";
+`test/status-payload.test.ts` — the `qaCoverageAlert` cases.
+
 ## OpenCode catalog cache: a foreign entry reads as an unknown model
 
 ### INV-BV1: readOpencodeCache returns only well-formed catalog entries

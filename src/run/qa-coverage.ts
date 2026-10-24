@@ -1,7 +1,7 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { qaCoveragePath } from "../paths.js";
 import { isJsonObject, setOwn } from "../files/json-object.js";
-import { formatAge } from "../text/datetime.js";
+import { DAY_MS, formatAge } from "../text/datetime.js";
 
 /** The `qa` observer's flow-coverage ledger (plans/observer-roles.md 2/2). Every `qa` run
  * starts a fresh pi session, so the only durable memory of which flow it last exercised is a
@@ -41,6 +41,29 @@ interface QaFlowEntry {
 
 /** The ledger: flow name → its last exercise. */
 export type QaCoverage = Record<string, QaFlowEntry>;
+
+/** A coverage ledger whose newest exercise is older than this window is a stall: the `qa`
+ * role — the team's only flow-level observer, the one role that exercises the product's own
+ * flows like a user — has silently stopped recording any exercise (disabled, paused, wedged,
+ * or failing before it records). The doctor `qa coverage` warn and the standing `qa-stale`
+ * alert share this one threshold, mirroring `ciParityStalled`'s `CI_PARITY_STALE_MS`. */
+export const QA_COVERAGE_STALE_MS = 3 * DAY_MS;
+
+/** True only when the ledger has at least one well-formed entry and every entry's `lastRunAt`
+ * is older than the stall window (`now - max(lastRunAt) > QA_COVERAGE_STALE_MS`). An empty
+ * ledger — a missing file, or a project that never ran qa — is not a stall: "no record yet" is
+ * not "stopped recording", the same rule `ciParityStalled` applies to a missing parity record.
+ * This is the one stall predicate the doctor row (`checkQaCoverage`) and the alert
+ * (`qaCoverageAlert`) share, so the surfaces cannot disagree on when a quiet qa is a problem. */
+export function qaCoverageStalled(coverage: QaCoverage, now: number): boolean {
+  let newest = 0;
+  let has = false;
+  for (const entry of Object.values(coverage)) {
+    has = true;
+    if (entry.lastRunAt > newest) newest = entry.lastRunAt;
+  }
+  return has && now - newest > QA_COVERAGE_STALE_MS;
+}
 
 /** One flow's row in the operator-facing coverage view (`coverageRows`) — the flow name plus
  * its last exercise and result, or nulls for a flow never exercised. `summary` is the bug

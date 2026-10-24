@@ -242,7 +242,10 @@ discards a role's in-flight merge.
   `warn` when a `stale` verdict has stayed stale past the stall window — the full suite has silently
   stopped covering new tips, twin of the standing `ci-stale` alert; both read the same `parityIsCurrent`
   rule for `current`/`stale` and the shared `ciParityStalled` predicate for the stall, so a `current`
-  badge and a `current` prompt block cannot disagree.
+  badge and a `current` prompt block cannot disagree. The `qa` observer keeps its own flow-coverage
+  ledger the same way, and a coverage ledger whose newest exercise is over three days old raises the
+  doctor `qa coverage` warn and the standing `qa-stale` alert through the one `qaCoverageStalled`
+  predicate.
 - A main watch runs the full check on main's tip in the background whenever the head moves (one run
   at a time, covering every commit since the last watched head; a red is re-run once before it counts;
   a doc-only tip inherits its green). It logs a `main_check` event with the failing test titles and

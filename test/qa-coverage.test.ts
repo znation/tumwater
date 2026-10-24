@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   QA_FLOWS,
+  QA_COVERAGE_STALE_MS,
   coverageRows,
+  qaCoverageStalled,
   readQaCoverage,
   recordFlow,
   renderCoverageBlock,
@@ -133,6 +135,32 @@ test("readQaCoverage drops malformed entries but keeps the well-formed ones", ()
     status: { lastRunAt: NOW, result: "passed" },
     prompt: { lastRunAt: NOW, result: "bug", summary: "the prompt box ate my text" },
   });
+});
+
+test("qaCoverageStalled is false for an empty ledger and true only once the newest exercise is past the window", () => {
+  // An empty ledger (missing file, or never ran qa) is never a stall — no record yet is not
+  // stopped recording, the same rule ciParityStalled applies to a missing parity record.
+  assert.equal(qaCoverageStalled({}, NOW), false);
+  // A newest exercise exactly at the window boundary is not a stall.
+  const boundary: QaCoverage = { status: { lastRunAt: NOW - QA_COVERAGE_STALE_MS, result: "passed" } };
+  assert.equal(qaCoverageStalled(boundary, NOW), false);
+  // One past the boundary is a stall.
+  const stalled: QaCoverage = { status: { lastRunAt: NOW - QA_COVERAGE_STALE_MS - 1, result: "passed" } };
+  assert.equal(qaCoverageStalled(stalled, NOW), true);
+  // A ledger with one fresh entry among old ones is not a stall — the newest exercise is fresh.
+  const mixed: QaCoverage = {
+    status: { lastRunAt: NOW - 5 * DAY, result: "passed" },
+    logs: { lastRunAt: NOW - HOUR, result: "passed" },
+  };
+  assert.equal(qaCoverageStalled(mixed, NOW), false);
+  // A file whose only entry is malformed reads as empty through readQaCoverage, so not a stall.
+  const root = tmpdir();
+  fs.mkdirSync(`${root}/.tumwater/state`, { recursive: true });
+  fs.writeFileSync(
+    qaCoveragePath(root),
+    JSON.stringify({ flows: { status: { lastRunAt: "soon", result: "passed" } } }),
+  );
+  assert.equal(qaCoverageStalled(readQaCoverage(root), NOW), false);
 });
 
 test("renderCoverageBlock leads with never-exercised flows, then oldest-first", () => {

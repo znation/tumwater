@@ -26,6 +26,7 @@ import {
   checkEventLog,
   checkFlakyChecks,
   checkPostMergeChurn,
+  checkQaCoverage,
   checkStateDir,
 } from "../src/doctor/doctor-project-checks.js";
 import {
@@ -52,6 +53,7 @@ import {
 } from "../src/doctor/doctor-codex-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { CI_PARITY_STALE_MS, recordParity } from "../src/run/ci-parity.js";
+import { QA_COVERAGE_STALE_MS, recordFlow } from "../src/run/qa-coverage.js";
 import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { fakeGh } from "./fakes/fake-gh.js";
 import { fakeCodexAppServer } from "./fakes/fake-codex.js";
@@ -1388,6 +1390,32 @@ test("checkCiParity warns once a passing record is stale past the stall window",
   assert.equal(warn.level, "warn");
   assert.match(warn.detail, /stalled/);
   assert.match(warn.detail, /main is now /);
+  assert.match(warn.detail, /disabled, paused, or unable to record/);
+});
+
+test("checkQaCoverage reads ok for a missing or fresh ledger and warns once stale past the window", () => {
+  const now = Date.now();
+  // A repo with no ledger gives the friendly "no qa flow coverage recorded yet" ok row.
+  assert.deepEqual(checkQaCoverage(readyRepo(), now), {
+    level: "ok",
+    detail: "no qa flow coverage recorded yet — the qa role has not completed a flow",
+  });
+  // A fresh ledger names its newest flow and age, ok.
+  const fresh = readyRepo();
+  recordFlow(fresh, "status", "passed", undefined, now - 3600_000);
+  const freshOut = checkQaCoverage(fresh, now);
+  assert.equal(freshOut.level, "ok");
+  assert.match(freshOut.detail, /status/);
+  // A newest exercise exactly at the window boundary is still ok.
+  const boundary = readyRepo();
+  recordFlow(boundary, "logs", "passed", undefined, now - QA_COVERAGE_STALE_MS);
+  assert.equal(checkQaCoverage(boundary, now).level, "ok");
+  // A ledger past the window warns naming the newest flow, its age and the stall.
+  const stalled = readyRepo();
+  recordFlow(stalled, "status", "passed", undefined, now - QA_COVERAGE_STALE_MS - 60_000);
+  const warn = checkQaCoverage(stalled, now);
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /status/);
   assert.match(warn.detail, /disabled, paused, or unable to record/);
 });
 
