@@ -8,7 +8,7 @@ import { lanAddresses } from "../src/gui/gui-command.js";
 import { guiBindHost, startGui } from "../src/gui/gui-server.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init/init.js";
-import { enqueuePrompt, enqueueRolePrompt, inboxSize, dequeueRolePrompt, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
+import { enqueuePrompt, enqueueRolePrompt, inboxSize, dequeueRolePrompt, queuedFiles, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { roleInboxDir } from "../src/paths.js";
 import { piLogPath } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
@@ -955,6 +955,49 @@ test("gui /api/prompt-role refuses images with no reroute target and names where
     assert.equal(ok.status, 200);
     assert.match(((await ok.json()) as { message: string }).message, /runs on strong \(local\/vision\)/);
     assert.equal(queuedRolePrompts(repo, "feature").length, 1);
+  } finally {
+    restoreAgentDir();
+    server.close();
+  }
+});
+
+// The same gate on the edit path (/api/prompt-edit): editing an image into a queued prompt
+// whose target role reads no images (and that has no reroute) answers 400 naming the fix and
+// leaves the file untouched; a vision strong tier reroutes it and the edit lands. The queue
+// file is addressed by its name, so the refused edit must not rewrite it.
+test("gui /api/prompt-edit refuses an image with no reroute target and edits with a reroute", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui edit image gate");
+  const modelsDir = tmpdir("gui-edit-image-");
+  writeModelsFile(
+    modelsDir,
+    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
+  );
+  const png = Buffer.from("89504e470d0a1a0a", "hex");
+  const image = { name: "shot.png", dataBase64: png.toString("base64") };
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
+  const { server, base } = await startLocalGui(repo);
+  try {
+    enqueueRolePrompt(repo, "feature", "first body");
+    const fileName = path.basename(queuedFiles(repo, "feature")[0] as string);
+
+    // No configured model can read images → 400 naming the fix, the file untouched.
+    writeConfig(repo, { model: { default: "local/text", strong: "local/text" } });
+    const refused = await postJson(base, "/api/prompt-edit", { role: "feature", file: fileName, text: "edited", images: [image] });
+    assert.equal(refused.status, 400);
+    assert.match(((await refused.json()) as { error: string }).error, /no configured model reads images for it/);
+    assert.equal(fs.readFileSync(path.join(roleInboxDir(repo, "feature"), fileName), "utf8"), "first body", "the refused edit leaves the file untouched");
+
+    // A vision strong tier reroutes a blind read → the edit lands.
+    writeConfig(repo, { model: { default: "local/text", strong: "local/vision" } });
+    const ok = await postJson(base, "/api/prompt-edit", { role: "feature", file: fileName, text: "edited", images: [image] });
+    assert.equal(ok.status, 200);
+    const edited = (await ok.json()) as { ok: boolean; status: string; oldText: string; newText: string };
+    assert.deepEqual(
+      { ok: edited.ok, status: edited.status, oldText: edited.oldText },
+      { ok: true, status: "edited", oldText: "first body" },
+    );
+    assert.match(edited.newText, /^edited\n\n\[image attached: .*\.png\]/);
   } finally {
     restoreAgentDir();
     server.close();
