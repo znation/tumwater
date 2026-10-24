@@ -244,6 +244,37 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
   return (warn ? warnOutcome : okOutcome)(parts.join(" — "));
 }
 
+/** The shared wrapper of the `checkProviderContention`/`checkCheckContention` twins: read the
+ * window's `*_wait` events (a read error leaves the level ok, saying so rather than crying
+ * wolf, exactly like the slot-wait branch's own read), sum them, and resolve the row's rule;
+ * a window with no waits reads "no <noun>". One home for the try/catch, count-zero and
+ * ok-fallback arms the two siblings repeated, so they cannot drift on which inputs read ok;
+ * the row-specific rule (`providerWaitContention` / `checkWaitContention`) is `rule`. `noun`
+ * names the waits in the ok message. */
+function waitContentionRow(
+  root: string,
+  windowMs: number,
+  type: string,
+  noun: string,
+  rule: (waits: readonly HarnessEvent[], config: TumwaterConfig | undefined) => WaitContention,
+  config: TumwaterConfig | undefined,
+  now: number,
+): CheckOutcome {
+  let count = 0;
+  let verdict: WaitContention;
+  try {
+    const waits = eventsSince(root, windowMs, now, (ev) => ev.type === type);
+    count = sumWaits(waits).count;
+    verdict = rule(waits, config);
+  } catch (err) {
+    // A read error leaves the level ok, exactly like the slot-wait branch's own read: the
+    // check cannot measure, so it says so rather than crying wolf.
+    return okOutcome(`could not read the event log for ${noun}: ${errorMessage(err)}`);
+  }
+  if (count === 0) return okOutcome(`no ${noun}`);
+  return (verdict.warn ? warnOutcome : okOutcome)(verdict.detail);
+}
+
 /** Provider-slot contention: sums the last 24 h of `provider_wait` events (each a role run
  * whose semaphore admission waited PROVIDER_WAIT_EVENT_MS or more, recorded in
  * orchestrator-launch.ts) and warns when the total reaches PROVIDER_WAIT_WARN_TOTAL_MS — the
@@ -253,19 +284,7 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
  * A counterpoint to checkWorktreePool's slot-wait half; read-only, like every doctor check.
  * `now` is a test seam for the window. */
 export function checkProviderContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
-  let count = 0;
-  let verdict: WaitContention;
-  try {
-    const waits = eventsSince(root, PROVIDER_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "provider_wait");
-    count = sumWaits(waits).count;
-    verdict = providerWaitContention(waits, config);
-  } catch (err) {
-    // A read error leaves the level ok, exactly like the slot-wait branch's own read: the
-    // check cannot measure, so it says so rather than crying wolf.
-    return okOutcome(`could not read the event log for provider waits: ${errorMessage(err)}`);
-  }
-  if (count === 0) return okOutcome("no provider waits");
-  return (verdict.warn ? warnOutcome : okOutcome)(verdict.detail);
+  return waitContentionRow(root, PROVIDER_WAIT_CHECK_WINDOW_MS, "provider_wait", "provider waits", providerWaitContention, config, now);
 }
 
 /** Names the kind of check a `heldBy` label stands for, in checkCheckContention's tally. */
@@ -284,17 +303,7 @@ function checkHolderKind(label: string): string {
  * wait counts once toward each distinct kind that held a slot. `now` is a test seam for the
  * window. */
 export function checkCheckContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
-  let count = 0;
-  let verdict: WaitContention;
-  try {
-    const waits = eventsSince(root, CHECK_WAIT_CHECK_WINDOW_MS, now, (e) => e.type === "check_wait");
-    count = sumWaits(waits).count;
-    verdict = checkWaitContention(waits, config);
-  } catch (err) {
-    return okOutcome(`could not read the event log for check waits: ${errorMessage(err)}`);
-  }
-  if (count === 0) return okOutcome("no check waits");
-  return (verdict.warn ? warnOutcome : okOutcome)(verdict.detail);
+  return waitContentionRow(root, CHECK_WAIT_CHECK_WINDOW_MS, "check_wait", "check waits", checkWaitContention, config, now);
 }
 
 /** The "leftover role branches" row: `tumwater/<id>` branches whose role is no longer enabled
