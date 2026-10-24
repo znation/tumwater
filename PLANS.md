@@ -297,6 +297,8 @@ Because the state is defined once and the label branches on it, an entry can nev
 
 ### Every commit is verified on main, part 1/2: the watch runs the whole deterministic set on each new tip, and the tip is the culprit (decided by the user 2026-10-24; split from the held single plan; part 2/2 then takes the pre-merge blocks off, and this part leaves every one of them in place; supersedes the bisect half of plans/fast-merge.md "What stays"; touches src/baseline/main-watch.ts src/baseline/main-culprit.ts (deleted) src/baseline/main-baseline.ts src/review/review-precheck.ts src/doctor/doctor-project-checks.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-culprit.test.ts (deleted) test/review-precheck.test.ts)
 
+**Needs review 2026-10-24 by feature: too large for one run (held 1)**
+
 **Goal.** A commit is never stopped on its way to main. What verifies main is a deterministic check on the commit that just landed — lint, compile and the project's declared check command, plus the conflict-marker, protected-edit, secret-leak and backlog-structure rules — run against main's new tip on every poll, and then the reviewer's post-landing pass. With the check running on every new tip, the tip *is* the culprit — no bisect has to reconstruct who broke it. This part adds that coverage and removes nothing: the merge slot's in-lock gate run, the pre-merge model verdict and the red-main authoring block all still stand, and part 2/2 removes them.
 
 **Approach.**
