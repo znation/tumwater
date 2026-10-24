@@ -153,6 +153,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 **Tests.**
 - test/roles.test.ts: `ci` appears exactly once in the catalog, after `qa`, with its title and tier, and is a member of `OBSERVER_ROLES` and of neither `CODE_MAINTENANCE_ROLES` nor `BASELINE_BLOCKED_ROLES` (it is the healer); the md-only/exempt set is unchanged.
 
+**Needs review 2026-10-24 by feature: could not converge — `docs/how-it-works.md` line 74 still routes the attributed main-check failure to bugfix, contradicting the new `ci` ownership and the change's VERIFIED grep claim.; PLANS.md's "Forward, never back" part 1/2 (line 154) and part 2/2 (lines 185, 197) still name bugfix as the red-main healer, contradicting the code and the ci plan this change added.; PLANS.md line 4's intro sentence is deleted with no claim in the commit body — an unclaimed change.**
+
 ### A `ci` role runs the CI workflow's own jobs at main's tip and fixes what fails, part 2/3: the red-main healer hand-off moves from `bugfix` to `ci` (planned 2026-10-24 by the plan role, split from part 1/2 of the held `ci` plan; requires part 1/3 landed, since the hand-off names the role that part adds; touches src/baseline/main-red.ts src/runner/runner-run.ts docs/how-it-works.md test/main-red.test.ts)
 
 **Previously held 1**
