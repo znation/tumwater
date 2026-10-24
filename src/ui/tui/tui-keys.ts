@@ -73,6 +73,8 @@ interface TuiKeysState {
   concurrencyMode: boolean;
   /** The Activity view's Ctrl+K check-cap (`maxConcurrentChecks`) editor holds the prompt line. */
   checksMode: boolean;
+  /** The Activity view's Ctrl+U declared-check (`check`) editor holds the prompt line. */
+  checkMode: boolean;
   /** The Activity view's Ctrl+A team-model editor holds the prompt line. */
   modelMode: boolean;
   rolePromptFor: string | null;

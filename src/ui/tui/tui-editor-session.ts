@@ -81,6 +81,8 @@ interface TuiHeld {
   /** The Activity view's Ctrl+K check-cap (`maxConcurrentChecks`) editor holds the prompt
    * line. */
   checks: boolean;
+  /** The Activity view's Ctrl+U declared-check (`check`) editor holds the prompt line. */
+  check: boolean;
 }
 
 /** The prompt-line editor keys: the `entering` argument of the shared hold-guard helpers.
@@ -106,7 +108,8 @@ type EditorEnterKey =
   | "model"
   | "instances"
   | "claudeReserve"
-  | "checks";
+  | "checks"
+  | "check";
 
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
  * `TuiEditorCtx`) instead of the whole `TuiEditorsDeps`: the one prompt line (`input`/`cursor`),
@@ -200,6 +203,7 @@ const HOLDER_SUBJECTS: ReadonlyArray<readonly [Exclude<NonNullable<Parameters<Tu
   ["instances", "role instances"],
   ["claudeReserve", "claude reserve"],
   ["checks", "check cap edit"],
+  ["check", "declared-check edit"],
   ["budget", "budget edit"],
 ];
 
@@ -241,6 +245,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       instances: false,
       claudeReserve: false,
       checks: false,
+      check: false,
     },
     root: deps.root,
     now: deps.now,

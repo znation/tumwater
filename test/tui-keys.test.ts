@@ -4433,6 +4433,120 @@ test("Enter on an empty check-cap line resets maxConcurrentChecks to the default
   );
 });
 
+test("Ctrl+U on the Activity view opens the declared-check editor and Enter writes check", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  // Activity (view 0) with an empty prompt: Ctrl+U opens the declared-check editor,
+  // pre-filled empty (an unset key pre-fills empty, unlike the check cap's default 2),
+  // typed compact JSON, Enter writes it.
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  assert.equal(keys.state().checkMode, true, "Ctrl+U on Activity opens the declared-check editor");
+  assert.equal(keys.state().input, "", "an unset key pre-fills an empty line");
+  assert.match(keys.state().flash!, /edit the project's declared check/);
+  for (const ch of `{"command":"npm test"}`) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().checkMode, false, "Enter saves and leaves edit mode");
+  assert.match(keys.state().flash!, /declared check set to \{"command":"npm test"\}/);
+  assert.equal(
+    (readJson(path.join(root, "tumwater.json")) as { check?: { command: string } }).check?.command,
+    "npm test",
+  );
+});
+
+test("the declared-check editor refuses malformed JSON and stays open", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (const bad of ["{", `{"command":42}`]) {
+    keys.handleKey(undefined, { ctrl: true, name: "u" });
+    assert.equal(keys.state().checkMode, true, "Ctrl+U opens the declared-check editor");
+    for (const ch of bad) keys.handleKey(ch, { name: ch });
+    keys.handleKey(undefined, { name: "return" });
+    assert.equal(keys.state().checkMode, true, `${bad} stays in edit mode`);
+    assert.equal(
+      fs.existsSync(path.join(root, "tumwater.json")),
+      false,
+      `${bad} writes nothing (the greenfield file stays absent)`,
+    );
+    keys.handleKey(undefined, { name: "escape" });
+  }
+});
+
+test("Ctrl+U with a typed prompt still kills the line instead of opening the editor", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (const ch of "abc") keys.handleKey(ch, { name: ch });
+  assert.equal(keys.state().input, "abc");
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  assert.equal(keys.state().checkMode, false, "a typed prompt does not open the declared-check editor");
+  assert.equal(keys.state().input, "", "Ctrl+U still kills from the line start to the cursor");
+  assert.equal(keys.state().flash, null, "no flash on the kill");
+});
+
+test("Ctrl+U closes the declared-check editor", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  assert.equal(keys.state().checkMode, true, "Ctrl+U opens the declared-check editor");
+  for (const ch of `{"command":"npm test"}`) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  assert.equal(keys.state().checkMode, false, "a second Ctrl+U closes the declared-check editor");
+  assert.equal(keys.state().input, "", "the saved draft is restored");
+});
+
+test("Ctrl+T closes the declared-check editor and restores the saved draft", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  assert.equal(keys.state().checkMode, true, "Ctrl+U opens the declared-check editor");
+  for (const ch of `{"command":"npm test"}`) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().checkMode, false, "Ctrl+T closes the declared-check editor");
+  assert.equal(keys.state().input, "", "the saved draft is restored");
+});
+
+test("Enter on an empty declared-check line clears the key", () => {
+  const root = makeRoot();
+  setConfigKey(root, "check", `{"command":"npm test"}`);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  assert.equal(keys.state().checkMode, true, "Ctrl+U opens the declared-check editor");
+  assert.equal(keys.state().input, `{"command":"npm test"}`, "the set value pre-fills the line");
+  keys.handleKey(undefined, { name: "home" }); // caret to the start
+  keys.handleKey(undefined, { ctrl: true, name: "k" }); // kill to the line end to an empty line
+  assert.equal(keys.state().input, "", "the line is empty");
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().checkMode, false, "Enter on an empty line leaves edit mode");
+  assert.match(keys.state().flash!, /declared check cleared/);
+  assert.equal(
+    (readJson(path.join(root, "tumwater.json")) as { check?: unknown }).check,
+    undefined,
+    "the key is cleared from the file",
+  );
+});
+
+test("Ctrl+U on the Health view does not open the declared-check editor (the re-sync install path keeps it)", () => {
+  const root = makeRoot();
+  fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => new Promise<DoctorReport>(() => {}),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  assert.equal(keys.state().view, 7);
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  assert.equal(keys.state().checkMode, false, "Health-view Ctrl+U does not open the declared-check editor");
+});
+
 test("the Health tab caches renderDoctor of the seam's report, ignores a late resolution, and flashes a rejection", async () => {
   const root = makeRoot();
   const report: DoctorReport = { header: "doctor", checks: [{ level: "ok", name: "node", detail: "fine" }], routing: [], verdict: "healthy" } as DoctorReport;
@@ -5031,8 +5145,10 @@ test("Ctrl+U off the Health view re-syncs nothing", () => {
   keys.syncSnapshot(0, false, [], false);
   assert.equal(keys.state().view, 0);
   keys.handleKey(undefined, { ctrl: true, name: "u" });
-  // Activity keeps the prompt-line editor's Ctrl+U (kill-to-start), so no re-sync flash lands.
-  assert.equal(keys.state().flash, null);
+  // Activity keeps the prompt-line editor's Ctrl+U: on an empty prompt line it opens the
+  // declared-check editor (checkMode true) rather than re-syncing the root install.
+  assert.equal(keys.state().checkMode, true, "Ctrl+U on an empty Activity prompt opens the declared-check editor");
+  assert.match(keys.state().flash!, /edit the project's declared check/, "the editor-open flash lands, not a re-sync one");
 });
 
 test("Ctrl+N on the Health view with no notify configured flashes the missing-setting wording and leaves the report", async () => {

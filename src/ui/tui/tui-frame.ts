@@ -103,6 +103,7 @@ interface TuiMode {
   instancesMode?: boolean;
   claudeReserveMode?: boolean;
   checksMode?: boolean;
+  checkMode?: boolean;
 }
 
 /** The footer's key hints for what the keys do right now: keys bright, words dim. */
@@ -120,6 +121,7 @@ export function hintLine(view: TuiView, mode: TuiMode, width: number): StatusLin
   else if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.concurrencyMode) keys = [["Enter", "save the run cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.checksMode) keys = [["Enter", "save the check cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  else if (mode.checkMode) keys = [["Enter", "save the declared check"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.modelMode) keys = [["Enter", "save the model"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.quietMode) keys = [["Enter", mode.quietTeam ? "save team quiet hours" : "save quiet hours"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.intervalMode) keys = [["Enter", "save interval"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -161,6 +163,7 @@ export function promptPrefix(mode: TuiMode): StatusSpan[] {
   if (mode.budget) return [{ text: "daily cap $", tone: "brand" }, { text: " " }];
   if (mode.concurrencyMode) return [{ text: "run cap", tone: "brand" }, { text: " › " }];
   if (mode.checksMode) return [{ text: "check cap", tone: "brand" }, { text: " › " }];
+  if (mode.checkMode) return [{ text: "declared check", tone: "brand" }, { text: " › " }];
   if (mode.modelMode) return [{ text: "model", tone: "brand" }, { text: " › " }];
   if (mode.quietMode) return [{ text: mode.quietTeam ? "team quiet hours" : "quiet hours", tone: "brand" }, { text: " › " }];
   if (mode.slotsMode) return [{ text: "worktree slots", tone: "brand" }, { text: " › " }];
