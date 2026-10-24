@@ -869,6 +869,18 @@ test("postMergeChurnAlert fires on a day's post-merge rejection burst", () => {
     { role: "bugfix", count: 1 },
     { role: "clean", count: 1 },
   ]);
+  // An instanced role's rejections fold into one base-role row: bugfix-2 and bugfix-5 count
+  // under bugfix, matching the `review.afterMerge` key and the "noisy role" the advice names.
+  const instanced = makeRepo();
+  writeEvents(instanced, [
+    { ts: now - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true },
+    { ts: now - 60_000, source: "bugfix-2", type: "review_rejected", afterMerge: true },
+    { ts: now - 60_000, source: "bugfix-5", type: "review_rejected", afterMerge: true },
+  ]);
+  const instancedAlert = postMergeChurnAlert(instanced, now);
+  assert.ok(instancedAlert !== null, "three bugfix rejections cross the warn bar");
+  assert.equal(instancedAlert!.count, 3);
+  assert.deepEqual(instancedAlert!.roles, [{ role: "bugfix", count: 3 }]);
   // One post-merge rejection stays under POST_MERGE_REJECT_WARN.
   const single = makeRepo();
   writeEvents(single, [{ ts: now - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true }]);
@@ -882,14 +894,14 @@ test("postMergeChurnAlert fires on a day's post-merge rejection burst", () => {
   assert.equal(postMergeChurnAlert(old, now), null);
   // Instance runner ids fold into their base role, so one base role's churn is one row matching
   // the alert's base-role remedy rather than `bugfix`/`bugfix #2`/`bugfix #5` sibling rows.
-  const instanced = makeRepo();
-  writeEvents(instanced, [
+  const instancedWithClean = makeRepo();
+  writeEvents(instancedWithClean, [
     { ts: now - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true },
     { ts: now - 60_000, source: "bugfix-2", type: "review_rejected", afterMerge: true },
     { ts: now - 60_000, source: "bugfix-5", type: "review_rejected", afterMerge: true },
     { ts: now - 60_000, source: "clean", type: "review_rejected", afterMerge: true },
   ]);
-  const instancedBurst = postMergeChurnAlert(instanced, now);
+  const instancedBurst = postMergeChurnAlert(instancedWithClean, now);
   assert.ok(instancedBurst !== null);
   assert.deepEqual(instancedBurst!.roles, [
     { role: "bugfix", count: 3 },

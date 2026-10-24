@@ -59,9 +59,10 @@ export const POST_MERGE_REJECT_WINDOW_MS = 24 * 60 * 60_000;
  * (src/report/report-fold.ts `postMergeRejectionsByRole`) applies, so the churn alert and the
  * report cannot disagree on which rejections are post-merge. The key is the event's base role
  * (`baseRoleOf(eventRole(ev))`), not the raw source: an event's `source` is the runner id
- * (`bugfix-2`), and both the alert's remedy ("narrow `review.afterMerge`") and the scoped
- * report are keyed by base role, so one base role's churn must read as one row. Pre-merge
- * rejections and other event types contribute nothing. */
+ * (`bugfix-2` → `bugfix`), the unit `review.afterMerge` and both the alert's remedy ("narrow
+ * `review.afterMerge`") and the scoped report are keyed by base role, so one base role's churn
+ * reads as one row and the card's rows always name the same unit the sentence advises
+ * narrowing. Pre-merge rejections and other event types contribute nothing. */
 export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostMergeRejection[] {
   const byRole = new Map<string, number>();
   for (const ev of events) {

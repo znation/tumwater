@@ -473,9 +473,11 @@ test("postMergeRejectionCounts groups a day's post-merge rejections and ignores 
     { ts: 4, source: "coverage", type: "review_rejected" }, // pre-merge: afterMerge absent
     { ts: 5, source: "coverage", type: "review_rejected", afterMerge: false }, // pre-merge: afterMerge false
     { ts: 6, source: "bugfix", type: "review_verdict", afterMerge: true }, // a verdict, not a rejection
+    { ts: 7, source: "bugfix-2", type: "review_rejected", afterMerge: true }, // bugfix #2, folds to bugfix
+    { ts: 8, source: "bugfix-5", type: "review_rejected", afterMerge: true }, // bugfix #5, folds to bugfix
   ];
   assert.deepEqual(postMergeRejectionCounts(events), [
-    { role: "bugfix", count: 2 },
+    { role: "bugfix", count: 4 }, // bare bugfix + bugfix-2 + bugfix-5, one base-role row
     { role: "clean", count: 1 },
   ]);
 });
