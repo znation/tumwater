@@ -652,72 +652,35 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
   return out;
 }
 
-/** Everything about the team that needs the operator, most urgent first: a spent budget, a red
- * main, roles failing run after run, roles that look stuck, a stale running build, open
- * questions, refused entries, stale bugs, a failed notify page, a dirty primary
- * checkout refusing merges, a stranded inbox
- * prompt, a stalled merge queue, a
- * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
- * review or Needs replan note, checks that flapped more than once in the last day, a stale or
- * oversized flake quarantine, a revert off main that
- * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
- * already reached main, a post-merge review one failed run from being dropped, a post-merge
- * review dropped after repeated failures, leaving its commit on main unreviewed, the fleet
- * waiting on capacity slots (workspace, provider or
- * check), a plan filed under the wrong backlog section, a duplicated
- * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
- * stopped team.
- * `now` is passed so a timed
- * pause's countdown agrees with the rest of the frame. */
-export function teamAlerts(
-  snap: Pick<
-    StatusSnapshot,
-    | "running"
-    | "budget"
-    | "build"
-    | "paused"
-    | "pausedUntil"
-    | "pauseReason"
-    | "quietHours"
-    | "inQuietHours"
-    | "disk"
-    | "rootInstallDrift"
-    | "imageProbeFailures"
-    | "chain"
-    | "capPaused"
-    | "budgetPausedRoles"
-    | "maintenanceQuota"
-    | "providerHolds"
-  >,
-  questions: readonly string[],
-  roles: readonly AlertRole[],
-  now: number,
-  refused: readonly RefusedEntry[] = [],
-  operatorHeld: readonly RefusedEntry[] = [],
-  staleBugs: readonly StaleBug[] = [],
-  stalePrompts: readonly StalePrompt[] = [],
-  staleMerges: readonly StaleMerge[] = [],
-  planDependency: PlanDependencyProblem | null = null,
-  staleWaitingBugs: readonly StaleWaitingBug[] = [],
-  skippedMergeFiles: readonly string[] = [],
-  stalledPlans: readonly StalledPlan[] = [],
-  quarantined: QuarantinedTests | null = null,
-  strandedPlans: readonly StrandedPlanEntry[] = [],
-  duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
-  validationGaps: readonly ValidationGapProblem[] = [],
-  reverts: RevertWarning | null = null,
-  notifyFailure: NotifyFailure | null = null,
-  primaryOverwrite: PrimaryOverwriteBlock | null = null,
-  contention: readonly CapacityBottleneck[] = [],
-  flappedChecks: FlappedChecks | null = null,
-  regressedFixes: RegressedFixAlert | null = null,
-  postMergeChurn: PostMergeChurn | null = null,
-  postReviewRisk: PostReviewRisk | null = null,
-  droppedPostReviews: DroppedPostReviews | null = null,
-): TeamAlert[] {
+interface BacklogFeedAlertsInput {
+  staleBugs: readonly StaleBug[];
+  notifyFailure: NotifyFailure | null;
+  staleWaitingBugs: readonly StaleWaitingBug[];
+  stalePrompts: readonly StalePrompt[];
+  staleMerges: readonly StaleMerge[];
+  skippedMergeFiles: readonly string[];
+  primaryOverwrite: PrimaryOverwriteBlock | null;
+  now: number;
+}
+
+/** The backlog-feed alerts, in emission order: stale open bugs, a failed notify page, waiting
+ * bugs, stranded inbox prompts, a stalled merge queue, skipped merge-queue files, and merges
+ * refused by an uncommitted primary checkout. Extracted from teamAlerts (part 3/5 of the
+ * teamAlerts split) so the shared module stays small; the input names exactly the fields this
+ * run reads. The caller pushes the returned alerts at the position this run used to occupy,
+ * so the emitted key order is unchanged. */
+function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
-  out.push(...buildStatusAlerts({ snap, roles }));
-  out.push(...buildBacklogAlerts({ questions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }));
+  const {
+    staleBugs,
+    notifyFailure,
+    staleWaitingBugs,
+    stalePrompts,
+    staleMerges,
+    skippedMergeFiles,
+    primaryOverwrite,
+    now,
+  } = input;
   // A stale bug (doctor's STALE_BUG_DAYS rule, src/doctor/doctor-backlog-bugs.ts) sits when no
   // role fixes it — the bugfix role is disabled or failing — so it asks (amber) the way the
   // refused alert does, naming the oldest, its age, and the doctor's retract advice. Its
@@ -863,6 +826,76 @@ export function teamAlerts(
       actions: [],
     });
   }
+  return out;
+}
+
+/** Everything about the team that needs the operator, most urgent first: a spent budget, a red
+ * main, roles failing run after run, roles that look stuck, a stale running build, open
+ * questions, refused entries, stale bugs, a failed notify page, a dirty primary
+ * checkout refusing merges, a stranded inbox
+ * prompt, a stalled merge queue, a
+ * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
+ * review or Needs replan note, checks that flapped more than once in the last day, a stale or
+ * oversized flake quarantine, a revert off main that
+ * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
+ * already reached main, a post-merge review one failed run from being dropped, a post-merge
+ * review dropped after repeated failures, leaving its commit on main unreviewed, the fleet
+ * waiting on capacity slots (workspace, provider or
+ * check), a plan filed under the wrong backlog section, a duplicated
+ * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
+ * stopped team.
+ * `now` is passed so a timed
+ * pause's countdown agrees with the rest of the frame. */
+export function teamAlerts(
+  snap: Pick<
+    StatusSnapshot,
+    | "running"
+    | "budget"
+    | "build"
+    | "paused"
+    | "pausedUntil"
+    | "pauseReason"
+    | "quietHours"
+    | "inQuietHours"
+    | "disk"
+    | "rootInstallDrift"
+    | "imageProbeFailures"
+    | "chain"
+    | "capPaused"
+    | "budgetPausedRoles"
+    | "maintenanceQuota"
+    | "providerHolds"
+  >,
+  questions: readonly string[],
+  roles: readonly AlertRole[],
+  now: number,
+  refused: readonly RefusedEntry[] = [],
+  operatorHeld: readonly RefusedEntry[] = [],
+  staleBugs: readonly StaleBug[] = [],
+  stalePrompts: readonly StalePrompt[] = [],
+  staleMerges: readonly StaleMerge[] = [],
+  planDependency: PlanDependencyProblem | null = null,
+  staleWaitingBugs: readonly StaleWaitingBug[] = [],
+  skippedMergeFiles: readonly string[] = [],
+  stalledPlans: readonly StalledPlan[] = [],
+  quarantined: QuarantinedTests | null = null,
+  strandedPlans: readonly StrandedPlanEntry[] = [],
+  duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
+  validationGaps: readonly ValidationGapProblem[] = [],
+  reverts: RevertWarning | null = null,
+  notifyFailure: NotifyFailure | null = null,
+  primaryOverwrite: PrimaryOverwriteBlock | null = null,
+  contention: readonly CapacityBottleneck[] = [],
+  flappedChecks: FlappedChecks | null = null,
+  regressedFixes: RegressedFixAlert | null = null,
+  postMergeChurn: PostMergeChurn | null = null,
+  postReviewRisk: PostReviewRisk | null = null,
+  droppedPostReviews: DroppedPostReviews | null = null,
+): TeamAlert[] {
+  const out: TeamAlert[] = [];
+  out.push(...buildStatusAlerts({ snap, roles }));
+  out.push(...buildBacklogAlerts({ questions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }));
+  out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   // A stale or oversized flake quarantine — the always-on twin of the doctor's `flaky checks`
   // row (main-guardrails.ts checkFlakyChecks, quarantineWarning): a quarantined test counts as
   // a known failure until its filed bug leaves BUGS.md `## Open`, so an old entry means the

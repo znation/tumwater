@@ -366,27 +366,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/merge-verify.test.ts / test/merge-queue.test.ts: `a torn queue head warns and re-queues its change` — plant an unreadable head file and assert one warning names it, the change is re-queued rather than dropped, and the queue advances past it.
 - test/config.test.ts: `review.afterMerge is gone` — the key is absent from the schema, from a rendered default config and from `tumwater config`'s listing, while an old config carrying it still loads (the path every removed key takes).
 
-### Split `teamAlerts` into ordered slice builders, part 3/5: the backlog feed alerts move into `buildBacklogFeedAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 2/5 landed, since it edits the `teamAlerts` body part 2/5 restructures; touches src/ui/team-alerts.ts)
-
-**Previously held 1**
-
-**Goal.** Part 3 moves the next seven contiguous alerts: `stale-bugs`, `notify`, `waiting-bugs`, `stale-prompts`, `stale-merges`, `skipped-merges`, `primary-overwrite`. Same rule as part 1/5.
-
-**Approach.**
-- Add `interface BacklogFeedAlertsInput` holding `staleBugs: readonly StaleBug[]`, `notifyFailure: NotifyFailure | null`, `staleWaitingBugs: readonly StaleWaitingBug[]`, `stalePrompts: readonly StalePrompt[]`, `staleMerges: readonly StaleMerge[]`, `skippedMergeFiles: readonly string[]`, `primaryOverwrite: PrimaryOverwriteBlock | null`.
-- Move the seven blocks, comments and block-local derivations (`first`, `rest`, the `moreDetail` folds) including their `joinWithMore`/`roleLabel` uses, into `function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[]`.
-- In `teamAlerts`, replace the run with `out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite }))` at the same position, between the part 2/5 call and the `quarantine` block.
-
-**Files touched.** src/ui/team-alerts.ts
-
-**Acceptance criteria.**
-- The seven `key` literals appear only inside `buildBacklogFeedAlerts`; the slice's guards and comments moved with them and no wording changed.
-- `grep -n "buildBacklogFeedAlerts" src/ui/team-alerts.ts` finds the declaration and exactly one call.
-- `test/team-alerts.test.ts` passes with no assertion change; `npm run test:gate` passes.
-
-**Tests.**
-- `test/team-alerts.test.ts`: unchanged, still green.
-
 ### Split `teamAlerts` into ordered slice builders, part 4/5: the main-watch and merge alerts move into `buildMergeAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 3/5 landed, since it edits the `teamAlerts` body part 3/5 restructures; touches src/ui/team-alerts.ts)
 
 **Previously held 1**
@@ -509,4 +488,3 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/tui-frame.test.ts: the Activity hint contains `Ctrl+O notable only` for a view with `notable: true` and `Ctrl+O type: all` for one without.
 
 ## Done
-
