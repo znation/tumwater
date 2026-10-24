@@ -12,64 +12,92 @@ import { filterKeepPositions } from "../collections.js";
 import { plural } from "../text/phrases.js";
 import type { PostReview } from "./post-merge-review.js";
 
+/** The one state every observer surface narrows on: `rejected` when the reviewer turned the
+ * commit back (empty `rejected` array still counts), `failing` when the review runs keep ending
+ * without a verdict (`failures` positive), else `waiting`. The precedence matches what
+ * postReviewStatusLabel already printed — an entry can never be both — so the status label and
+ * `tumwater reviews --status` share this one definition and cannot drift. */
+export function postReviewState(entry: PostReview): PostReviewState {
+  if (entry.rejected !== undefined) return "rejected";
+  if (typeof entry.failures === "number" && entry.failures > 0) return "failing";
+  return "waiting";
+}
+
+/** The states `tumwater reviews --status` accepts, in the order the filter's error message
+ * lists them. `postReviewState` is the definition; this only names the vocabulary. */
+export const POST_REVIEW_STATES = ["waiting", "failing", "rejected"] as const;
+export type PostReviewState = (typeof POST_REVIEW_STATES)[number];
+
 /** The bracketed status suffix one post-merge review entry carries on every observer surface
  * (`tumwater reviews`, the dashboard's Post-merge reviews card, and the TUI Pending pane's
  * review block): the reviewer's rejected reasons, still waiting on the revert, when `rejected`
  * is set; else the number of verdict-less review runs when `failures` is positive, naming the
  * last failure's reason beside the count when `lastFailure` is a non-empty string; else `""`.
  * Reasons are squashed to 60 as `tumwater reviews` has always printed them, and the failure
- * detail to 80. Extracted so the
+ * detail to 80. Branches on `postReviewState` so the label and the `--status` filter share one
+ * state definition; extracted so the
  * CLI, the dashboard and the TUI share one status wording and cannot drift. */
 export function postReviewStatusLabel(entry: PostReview): string {
-  if (entry.rejected !== undefined) {
-    return `[rejected — waiting to revert: ${entry.rejected.map((r) => squash(r, 60)).join("; ")}]`;
-  }
-  if (typeof entry.failures === "number" && entry.failures > 0) {
-    if (typeof entry.lastFailure === "string" && entry.lastFailure.length > 0) {
-      return `[${plural(entry.failures, "failed review run")} — last: ${squash(entry.lastFailure, 80)}]`;
+  switch (postReviewState(entry)) {
+    case "rejected":
+      return `[rejected — waiting to revert: ${entry.rejected!.map((r) => squash(r, 60)).join("; ")}]`;
+    case "failing": {
+      const failures = entry.failures as number; // postReviewState only says "failing" when failures > 0
+      if (typeof entry.lastFailure === "string" && entry.lastFailure.length > 0) {
+        return `[${plural(failures, "failed review run")} — last: ${squash(entry.lastFailure, 80)}]`;
+      }
+      return `[${plural(failures, "failed review run")}]`;
     }
-    return `[${plural(entry.failures, "failed review run")}]`;
+    default:
+      return "";
   }
-  return "";
 }
 
-/** Narrows a whole post-merge review list to the entries whose role `keep` accepts, and returns
+/** Narrows a whole post-merge review list to the entries `keep` accepts, and returns
  * the `scope` renderPostReviews takes: the kept roles, each kept entry's 1-based place in the
- * whole list, and the whole list's entry count. The filtering-and-positioning step is the
+ * whole list, and the whole list's entry count — plus, when a status filter is active, the
+ * `filter` text the header and no-match line print. The filtering-and-positioning step is the
  * shared `filterKeepPositions` (src/collections.ts) that `scopeMergeQueue` (src/merge/
  * merge-queue-render.ts) also uses, so `tumwater reviews --role` keeps the same whole-queue
  * positions `--accept <n>` still addresses. */
 export function scopePostReviews(
   entries: readonly PostReview[],
   roles: readonly string[],
-  keep: (role: string) => boolean,
-): { entries: PostReview[]; scope: { roles: readonly string[]; positions: number[]; total: number } } {
-  const { kept, positions } = filterKeepPositions(entries, (e) => keep(e.role));
-  return { entries: kept, scope: { roles, positions, total: entries.length } };
+  keep: (entry: PostReview) => boolean,
+  filter?: string,
+): { entries: PostReview[]; scope: { roles: readonly string[]; positions: number[]; total: number; filter?: string } } {
+  const { kept, positions } = filterKeepPositions(entries, keep);
+  return {
+    entries: kept,
+    scope: { roles, positions, total: entries.length, ...(filter !== undefined ? { filter } : {}) },
+  };
 }
 
 /** The text `tumwater reviews` prints. A totally empty queue renders `post-merge review queue
  * empty`; otherwise a header and one line per entry — position, role, short commit, squashed
  * summary, and the status suffix from `postReviewStatusLabel`, appended as `" · " + label` only
- * when it is non-empty. With the optional `scope` (`reviews --role`: `entries` already holds
- * only the listed roles', `positions` their 1-based places in the whole queue, `total` the whole
- * queue's entry count) each line keeps its whole-queue number, the header reads
- * `post-merge review queue (<kept> of <total>, --role <ids>):`, and a scope that keeps nothing
- * of a non-empty queue prints `no post-merge reviews for <ids> (post-merge review queue holds
- * <total>)`. Without `scope` the output is byte-identical to before. */
+ * when it is non-empty. With the optional `scope` (`reviews --role`/`--status`: `entries`
+ * already holds only the kept entries', `positions` their 1-based places in the whole queue,
+ * `total` the whole queue's entry count, and `filter` the `--role`/`--status` filter text when
+ * one is active) each line keeps its whole-queue number and the header reads
+ * `post-merge review queue (<kept> of <total>, <filter>):`, where `<filter>` is `scope.filter`
+ * when set else `--role <ids>`. A scope that keeps nothing of a non-empty queue prints
+ * `no post-merge reviews matching <filter> (post-merge review queue holds <total>)` when a
+ * filter is set, else `no post-merge reviews for <ids> (…)`. Without `scope` the output is
+ * byte-identical to before. */
 export function renderPostReviews(
   entries: readonly PostReview[],
-  scope?: { roles: readonly string[]; positions: readonly number[]; total: number },
+  scope?: { roles: readonly string[]; positions: readonly number[]; total: number; filter?: string },
 ): string {
   const total = scope ? scope.total : entries.length;
   if (total === 0) return "post-merge review queue empty";
-  const ids = scope ? scope.roles.join(",") : "";
   if (scope && entries.length === 0) {
-    return `no post-merge reviews for ${ids} (post-merge review queue holds ${total})`;
+    const reason = scope.filter !== undefined ? `matching ${scope.filter}` : `for ${scope.roles.join(",")}`;
+    return `no post-merge reviews ${reason} (post-merge review queue holds ${total})`;
   }
   const lines: string[] = [
     scope
-      ? `post-merge review queue (${entries.length} of ${total}, --role ${ids}):`
+      ? `post-merge review queue (${entries.length} of ${total}, ${scope.filter ?? `--role ${scope.roles.join(",")}`}):`
       : `post-merge review queue (${plural(total, "entry", "entries")}):`,
   ];
   entries.forEach((entry, i) => {

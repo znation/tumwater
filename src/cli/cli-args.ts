@@ -135,6 +135,15 @@ export function parseResultFlag(args: string[], missingValueError: string): { re
   return { rest, raw: value };
 }
 
+/** Parse an optional `--status <state>[,...]` flag for the post-merge review view: the raw value
+ * (null when absent) alongside `rest`, the args with the value token removed so a state name
+ * cannot be read as a positional. Validation of the states belongs to the caller
+ * (cmdReviews); a valueless or empty value fails with `missingValueError`. */
+export function parseStatusFlag(args: string[], missingValueError: string): { rest: string[]; raw: string | null } {
+  const { rest, value } = takeValuedFlag(args, "--status", missingValueError, true);
+  return { rest, raw: value };
+}
+
 /** Parse an optional `--model <selector>[,...]` flag for the history trail form: the raw value
  * (null when absent) alongside `rest`, the args with the value token removed so a selector
  * cannot be read as a positional. Validation belongs to the caller (parseHistoryModelList); a

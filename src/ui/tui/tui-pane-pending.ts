@@ -148,7 +148,7 @@ export function createPendingPane(session: TuiPaneSession) {
   // twin).
   const scopedReviews = (): { entries: readonly PostReview[]; scope?: { roles: readonly string[]; positions: readonly number[]; total: number } } => {
     if (roleScope === null) return { entries: lastReviews };
-    return scopePostReviews(lastReviews, [roleScope], (r) => r === roleScope);
+    return scopePostReviews(lastReviews, [roleScope], (r) => r.role === roleScope);
   };
   // The post-merge review block the pane paints under the merge queue and above the change
   // roster: `tumwater reviews`' own renderer over the queue `readPostReviews` reads, so the

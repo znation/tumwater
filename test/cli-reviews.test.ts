@@ -74,6 +74,60 @@ test("reviews --role keeps only the listed roles' entries under their whole-queu
   );
 });
 
+test("reviews --status keeps only the listed states under their whole-queue positions", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews status test");
+  seed(repo); // improve (waiting) then clean (rejected)
+
+  const rejected = await cli(repo, "reviews", "--status", "rejected");
+  assert.equal(rejected.code, 0);
+  assert.match(rejected.stdout, /post-merge review queue \(1 of 2, --status rejected\):/);
+  assert.match(rejected.stdout, /\n\s+2\. clean/);
+  assert.ok(!rejected.stdout.includes("improve"), "only the rejected entry prints");
+
+  const waiting = await cli(repo, "reviews", "--status", "waiting");
+  assert.equal(waiting.code, 0);
+  assert.match(waiting.stdout, /post-merge review queue \(1 of 2, --status waiting\):/);
+  assert.match(waiting.stdout, /\n\s+1\. improve/);
+  assert.ok(!waiting.stdout.includes("clean"), "only the waiting entry prints");
+
+  const failing = await cli(repo, "reviews", "--status", "failing");
+  assert.equal(failing.code, 0);
+  assert.match(failing.stdout, /no post-merge reviews matching --status failing \(post-merge review queue holds 2\)/);
+
+  const composed = await cli(repo, "reviews", "--status", "rejected", "--role", "clean");
+  assert.equal(composed.code, 0);
+  assert.match(composed.stdout, /post-merge review queue \(1 of 2, --role clean --status rejected\):/);
+  assert.match(composed.stdout, /\n\s+2\. clean/);
+  assert.ok(!composed.stdout.includes("improve"));
+
+  const json = await cli(repo, "reviews", "--json", "--status", "rejected");
+  assert.equal(json.code, 0);
+  const doc = JSON.parse(json.stdout) as { pending: { role: string }[] };
+  assert.equal(doc.pending.length, 1);
+  assert.equal(doc.pending[0]!.role, "clean");
+
+  const bogus = await cli(repo, "reviews", "--status", "bogus");
+  assert.notEqual(bogus.code, 0);
+  assert.match(bogus.stderr, /waiting/);
+  assert.match(bogus.stderr, /failing/);
+  assert.match(bogus.stderr, /rejected/);
+  assert.deepEqual(
+    readPostReviews(repo).map((e) => e.role),
+    ["improve", "clean"],
+    "a refused --status value changes nothing",
+  );
+
+  const acceptStatus = await cli(repo, "reviews", "--accept", "1", "--status", "rejected");
+  assert.notEqual(acceptStatus.code, 0);
+  assert.match(acceptStatus.stderr, /--status/);
+  assert.deepEqual(
+    readPostReviews(repo).map((e) => e.role),
+    ["improve", "clean"],
+    "a refused --status accept changes nothing",
+  );
+});
+
 test("reviews --json prints the normalized pending list", async () => {
   const repo = makeRepo();
   await initProject(repo, "reviews json test");

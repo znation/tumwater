@@ -414,6 +414,15 @@ export function resultFlagSpec(missingValue: string): FlagSpec {
   return { names: ["--result"], value: true, valueName: "<class>", missingValue };
 }
 
+/** The `--status <state>` flag spec of `reviews`' state filter, beside resultFlagSpec: one
+ * definition of the flag's spelling and value shape, so the gate's accepted vocabulary cannot
+ * drift. The missing-value wording names the command, so the spec is a factory taking it — the
+ * same string the body fails with; which states are accepted is the command body's rule
+ * (post-merge-review-render.ts's POST_REVIEW_STATES). */
+export function statusFlagSpec(missingValue: string): FlagSpec {
+  return { names: ["--status"], value: true, valueName: "<state>", missingValue };
+}
+
 /** `history --model <selector>[,...]`: keeps the runs that started on the listed models;
  * `missingValue` is the same string the command body fails with. */
 export function modelFlagSpec(missingValue: string): FlagSpec {
