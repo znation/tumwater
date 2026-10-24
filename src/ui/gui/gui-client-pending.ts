@@ -19,6 +19,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   let pendingOverlapDir = "";
   let pendingQueueRole = "";
   let pendingReviewRole = "";
+  let pendingReviewState = "";
   let pendingCancelSha = "";
   // The Merge queue card's per-row cancel, armed by a first click and fired by a second within
   // 5 s — the same confirmSlot two-click factory the drawer's note-clear/entry-cancel use, so a
@@ -232,30 +233,54 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     if (t.length <= max) return t;
     return t.slice(0, max - 1).trimEnd() + "…";
   };
-  function postReviewStatusLabel(e) {
-    if (e && Array.isArray(e.rejected)) {
-      return "[rejected — waiting to revert: " + e.rejected.map((r) => squashText(r, 60)).join("; ") + "]";
-    }
-    if (e && typeof e.failures === "number" && e.failures > 0) {
-      if (e && typeof e.lastFailure === "string" && e.lastFailure.length > 0) {
-        return "[" + plural(e.failures, "failed review run") + " — last: " + squashText(e.lastFailure, 80) + "]";
-      }
-      return "[" + plural(e.failures, "failed review run") + "]";
-    }
-    return "";
+  // The states the Post-merge reviews card's State picker lists, in the order 'tumwater reviews
+  // --status' names them — the browser twin of POST_REVIEW_STATES
+  // (src/review/post-merge-review-render.ts), so the page and the CLI cannot drift on what a
+  // state means. Hand-kept because the inline script cannot import the server renderer.
+  const POST_REVIEW_STATE_ORDER = ["waiting", "failing", "rejected"];
+  // One post-merge review entry's state — the browser twin of the server's 'postReviewState'
+  // (src/review/post-merge-review-render.ts), literal in its 'rejected' branch: 'rejected'
+  // when 'rejected' is set (an empty array still counts; statusPayload's entries come from
+  // readPostReviews, which only ever stores an array or leaves it off), else 'failing' when
+  // the review runs keep ending without a verdict ('failures' positive), else 'waiting'. The
+  // precedence matches postReviewStatusLabel and 'tumwater reviews --status'; pinned against
+  // the server predicate by test so the browser and the server cannot disagree on what
+  // rejected/failing/waiting mean.
+  function postReviewState(e) {
+    if (e && e.rejected !== undefined) return "rejected";
+    if (e && typeof e.failures === "number" && e.failures > 0) return "failing";
+    return "waiting";
   }
-  function postReviewsHtml(entries, armed = "", role = "") {
+  function postReviewStatusLabel(e) {
+    switch (postReviewState(e)) {
+      case "rejected":
+        return "[rejected — waiting to revert: " + e.rejected.map((r) => squashText(r, 60)).join("; ") + "]";
+      case "failing":
+        if (e && typeof e.lastFailure === "string" && e.lastFailure.length > 0) {
+          return "[" + plural(e.failures, "failed review run") + " — last: " + squashText(e.lastFailure, 80) + "]";
+        }
+        return "[" + plural(e.failures, "failed review run") + "]";
+      default:
+        return "";
+    }
+  }
+  function postReviewsHtml(entries, armed = "", role = "", state = "") {
     if (!Array.isArray(entries) || entries.length === 0) {
       return "<div class='card-head'><h2>Post-merge reviews</h2></div><div class='empty'>No merged commit is waiting for a post-merge review</div>";
     }
     const roles = [...new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"))].sort();
     const active = role && roles.includes(role) ? role : "";
+    const present = new Set(entries.map(postReviewState));
+    const states = POST_REVIEW_STATE_ORDER.filter((s) => present.has(s));
+    const activeState = state && states.includes(state) ? state : "";
     let head = "<div class='card-head'><h2>Post-merge reviews</h2></div>";
     if (roles.length) {
       head = "<div class='card-head'><h2>Post-merge reviews</h2><label><span class='sr-only'>Role</span><select class='field' id='pendingreviewrole'><option value=''>All roles</option>" +
-        roles.map((id) => "<option value='" + esc(id) + "'" + (id === active ? " selected" : "") + ">" + esc(roleLabel(id)) + "</option>").join("") + "</select></label></div>";
+        roles.map((id) => "<option value='" + esc(id) + "'" + (id === active ? " selected" : "") + ">" + esc(roleLabel(id)) + "</option>").join("") + "</select></label>" +
+        (states.length ? "<label><span class='sr-only'>State</span><select class='field' id='pendingreviewstate'><option value=''>All states</option>" +
+          states.map((s) => "<option value='" + s + "'" + (s === activeState ? " selected" : "") + ">" + s + "</option>").join("") + "</select></label>" : "") + "</div>";
     }
-    const kept = entries.filter((e) => !active || (e && e.role === active));
+    const kept = entries.filter((e) => (!active || (e && e.role === active)) && (!activeState || postReviewState(e) === activeState));
     const lines = kept.map((e) => {
       const label = postReviewStatusLabel(e);
       let line = "<div class='queue-entry mono clamp1'>" + esc(e.role ? roleLabel(e.role) : "?") + " " + esc(shortSha(e.commit)) +
@@ -270,8 +295,11 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       }
       return line;
     }).join("");
+    if (kept.length === 0) {
+      return head + "<div class='queue-head'>post-merge reviews (0 of " + entries.length + "):</div><div class='empty'>No post-merge review matches the filters</div>";
+    }
     return head +
-      "<div class='queue-head'>post-merge reviews (" + esc(active ? kept.length + " of " + entries.length : entries.length) + "):</div>" + lines;
+      "<div class='queue-head'>post-merge reviews (" + esc(active || activeState ? kept.length + " of " + entries.length : entries.length) + "):</div>" + lines;
   }
   // Paint the Post-merge reviews card from the polled status payload — the dashboard twin of
   // 'tumwater reviews', driven by the raw postReviews list statusPayload already carries.
@@ -281,7 +309,9 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     const entries = status && Array.isArray(status.postReviews) ? status.postReviews : [];
     const roles = new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"));
     if (!roles.has(pendingReviewRole)) pendingReviewRole = "";
-    card.innerHTML = postReviewsHtml(entries, reviewAcceptSlot.armed(pendingAcceptCommit) ? pendingAcceptCommit : "", pendingReviewRole);
+    const states = new Set(entries.map(postReviewState));
+    if (!states.has(pendingReviewState)) pendingReviewState = "";
+    card.innerHTML = postReviewsHtml(entries, reviewAcceptSlot.armed(pendingAcceptCommit) ? pendingAcceptCommit : "", pendingReviewRole, pendingReviewState);
   }
   // pending-table:end
   // Paint the Merge queue card from the polled status payload, at paint-time age; no fetch of
@@ -391,6 +421,9 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     $("pendingreviews").addEventListener("change", (e) => {
       if (e.target.id === "pendingreviewrole") {
         pendingReviewRole = e.target.value;
+        renderPendingReviews(lastStatus);
+      } else if (e.target.id === "pendingreviewstate") {
+        pendingReviewState = e.target.value;
         renderPendingReviews(lastStatus);
       }
     });

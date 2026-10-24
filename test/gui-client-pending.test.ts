@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_PENDING_JS } from "../src/ui/gui/gui-client-pending.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
+import { postReviewState as serverPostReviewState } from "../src/review/post-merge-review-render.js";
+import type { PostReview } from "../src/review/post-merge-review.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 
 // The dashboard's Pending view (src/ui/gui/gui-client-pending.ts): the roster it paints from
@@ -584,4 +586,81 @@ test("postReviewsHtml's Role picker keeps only the chosen role's entries and def
   ], "", "feature");
   assert.match(rejected, /feature aaaaaaaa · bad/);
   assert.doesNotMatch(rejected, /data-accept='aaaaaaaaaaaaaaaa'/);
+});
+
+test("postReviewsHtml's State picker keeps only the chosen states and defaults to All states", () => {
+  const { postReviewsHtml, postReviewState } = clientScope<{
+    postReviewsHtml(entries: unknown, armed?: string, role?: string, state?: string): string;
+    postReviewState(e: unknown): string;
+  }>(["format", "labels", "pending-table"], ["postReviewsHtml", "postReviewState"]);
+  const entries = [
+    { role: "feature", commit: "aaaaaaaaaaaaaaaa", summary: "waiting a" },
+    { role: "bugfix", commit: "bbbbbbbbbbbbbbbb", summary: "failing b", failures: 2 },
+    { role: "clean", commit: "cccccccccccccccc", summary: "rejected c", rejected: ["nope"] },
+  ];
+  // A chosen state keeps only its rows.
+  const rejectedOnly = postReviewsHtml(entries, "", "", "rejected");
+  assert.match(rejectedOnly, /clean cccccccc · rejected c/);
+  assert.doesNotMatch(rejectedOnly, /feature aaaaaaaa/);
+  assert.doesNotMatch(rejectedOnly, /bugfix bbbbbbbb/);
+  assert.match(rejectedOnly, /post-merge reviews \(1 of 3\):/);
+  // The picker lists All states first, then waiting, failing, rejected in order, with
+  // rejected selected.
+  const picker = /id='pendingreviewstate'><option value=''>All states<\/option>(.*?)<\/select>/.exec(rejectedOnly);
+  assert.ok(picker, "picker with id pendingreviewstate present");
+  const inner = picker[1] ?? "";
+  const options = inner.match(/<option value='([^']+)'/g) || [];
+  assert.deepEqual(options.map((o) => o.replace(/^<option value='|'$/g, "")), ["waiting", "failing", "rejected"]);
+  assert.match(inner, /<option value='rejected' selected>/);
+  assert.match(inner, /<option value='waiting'>/);
+  assert.match(inner, /<option value='failing'>/);
+  // Default/all is byte-identical whether the state arg is omitted or empty, and shows all rows.
+  const all1 = postReviewsHtml(entries);
+  const all2 = postReviewsHtml(entries, "", "");
+  assert.equal(all1, all2);
+  assert.match(all1, /feature aaaaaaaa/);
+  assert.match(all1, /bugfix bbbbbbbb/);
+  assert.match(all1, /clean cccccccc/);
+  assert.doesNotMatch(all1, / selected>/);
+  assert.match(all1, /post-merge reviews \(3\):/);
+  // A state naming no entry falls back to every row.
+  const noFailing = entries.filter((e) => !(e && typeof e.failures === "number" && e.failures > 0));
+  const absentOut = postReviewsHtml(noFailing, "", "", "failing");
+  assert.match(absentOut, /feature aaaaaaaa/);
+  assert.match(absentOut, /rejected c/);
+  // The two pickers compose: a role and a state keep only the rows matching both.
+  const composed = postReviewsHtml(entries, "", "clean", "rejected");
+  assert.match(composed, /clean cccccccc · rejected c/);
+  assert.doesNotMatch(composed, /feature aaaaaaaa/);
+  assert.doesNotMatch(composed, /bugfix bbbbbbbb/);
+  assert.match(composed, /post-merge reviews \(1 of 3\):/);
+  // postReviewState names the label's own precedence and matches the server's predicate across
+  // the same inputs, so the page and 'tumwater reviews --status' cannot drift.
+  const pinCases: Array<[PostReview, string]> = [
+    [{ commit: "c", role: "r", summary: "s", rejected: ["x"], failures: 2 }, "rejected"],
+    [{ commit: "c", role: "r", summary: "s", failures: 1 }, "failing"],
+    [{ commit: "c", role: "r", summary: "s" }, "waiting"],
+  ];
+  for (const [e, s] of pinCases) {
+    assert.equal(postReviewState(e), s);
+    assert.equal(serverPostReviewState(e), s);
+  }
+  // A role and a state that are each present but disjoint leave nothing to show — the one
+  // filtered-empty case — which renders its own message rather than a bare 0-of-N head.
+  const disjoint = [
+    { role: "feature", commit: "aaaaaaaaaaaaaaaa", summary: "waiting a" },
+    { role: "clean", commit: "cccccccccccccccc", summary: "rejected c", rejected: ["nope"] },
+  ];
+  const noneOut = postReviewsHtml(disjoint, "", "feature", "rejected");
+  assert.match(noneOut, /No post-merge review matches the filters/);
+  assert.match(noneOut, /post-merge reviews \(0 of 2\):/);
+  assert.doesNotMatch(noneOut, /feature aaaaaaaa/);
+  assert.doesNotMatch(noneOut, /rejected c/);
+  // An empty or malformed list renders no picker and no undefined/NaN.
+  for (const malformed of [[], null, undefined]) {
+    const out = postReviewsHtml(malformed, "", "", "rejected");
+    assert.match(out, /No merged commit is waiting/);
+    assert.doesNotMatch(out, /pendingreviewstate|pendingreviewrole/);
+    assert.doesNotMatch(out, /undefined|NaN/);
+  }
 });
