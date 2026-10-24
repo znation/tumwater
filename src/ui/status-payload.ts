@@ -23,7 +23,7 @@ import { duplicatedBacklogHeadings, planDependencyProblem } from "../doctor/doct
 import { quarantineWarning, revertsFor } from "../baseline/main-guardrails.js";
 import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
 import { flappedChecksPhrase } from "../doctor/doctor-project-checks.js";
-import { readPostReviews, postMergeRejectionCounts, POST_MERGE_REJECT_WARN, type PostMergeRejection } from "../review/post-merge-review.js";
+import { readPostReviews, postMergeChurn, POST_MERGE_REJECT_WINDOW_MS, type PostMergeRejection } from "../review/post-merge-review.js";
 import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles, atRiskPostReviews, atRiskPostReviewsPhrase } from "../doctor/doctor-backlog.js";
 import { NOTIFY_CHECK_WINDOW_MS } from "../doctor/doctor-notify.js";
 import { matchedRegressedFixes, regressedFixCandidates, regressedFixesPhrase, staleWaitingBugRows, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
@@ -217,9 +217,10 @@ export function primaryOverwriteBlocks(root: string, now = Date.now()): PrimaryO
   return latest ? { count: hits.length, latestTs: latest.ts, message: String(latest.message) } : null;
 }
 
-/** How far back the post-merge-churn alert looks — one day, the 24 h event-window convention
- * every event-reading alert uses (PRIMARY_OVERWRITE_WINDOW_MS sorts beside it). */
-export const POST_MERGE_REJECT_WINDOW_MS = 24 * 60 * 60_000;
+/** Re-export so the always-on alert's threshold and window stay in their one home
+ * (src/review/post-merge-review.ts) while existing imports (test/status-payload.test.ts) keep
+ * working. */
+export { POST_MERGE_REJECT_WINDOW_MS };
 /** A trailing day of at least `POST_MERGE_REJECT_WARN` post-merge `review_rejected` events:
  * which already-landed commits were turned back, and by how many per role. count is the total
  * rejections in the window, roles each role's per-role total (count-desc, role-asc). */
@@ -238,9 +239,8 @@ export interface PostMergeChurn {
  * error skips the row (the capacityContention precedent). */
 export function postMergeChurnAlert(root: string, now = Date.now()): PostMergeChurn | null {
   try {
-    const rows = postMergeRejectionCounts(eventsSince(root, POST_MERGE_REJECT_WINDOW_MS, now, (e) => e.type === "review_rejected"));
-    const count = rows.reduce((n, r) => n + r.count, 0);
-    return count >= POST_MERGE_REJECT_WARN ? { count, roles: rows } : null;
+    const events = eventsSince(root, POST_MERGE_REJECT_WINDOW_MS, now, (e) => e.type === "review_rejected");
+    return postMergeChurn(events);
   } catch {
     // A read error skips the row, so the alert never cries wolf on an unreadable log.
     return null;

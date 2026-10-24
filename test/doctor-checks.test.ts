@@ -24,6 +24,7 @@ import {
   diskReclaimPhrase,
   checkEventLog,
   checkFlakyChecks,
+  checkPostMergeChurn,
   checkStateDir,
 } from "../src/doctor/doctor-project-checks.js";
 import {
@@ -1291,6 +1292,29 @@ test("checkFlakyChecks warns on an old quarantined test and keeps its flake resu
   assert.match(out.detail, /A hidden flake/);
   assert.match(out.detail, /4d ago/);
   assert.match(out.detail, /tumwater quarantine/);
+});
+
+test("checkPostMergeChurn warns on a day's post-merge rejection burst and stays quiet below the bar", () => {
+  const root = readyRepo();
+  const now = Date.now();
+  writeEvents(root, [
+    { ts: now - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true },
+    { ts: now - 60_000, source: "clean", type: "review_rejected", afterMerge: true },
+    { ts: now - 60_000, source: "coverage", type: "review_rejected" }, // pre-merge: absent afterMerge
+    { ts: now - 25 * 3_600_000, source: "bugfix", type: "review_rejected", afterMerge: true }, // outside the day window
+  ]);
+  const out = checkPostMergeChurn(root);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /2 post-merge review rejections in the last day/);
+  assert.match(out.detail, /bugfix/);
+  assert.match(out.detail, /clean/);
+  assert.doesNotMatch(out.detail, /coverage/);
+  assert.match(out.detail, /\`review\.afterMerge\`/);
+
+  // One post-merge rejection stays under POST_MERGE_REJECT_WARN.
+  const single = readyRepo();
+  writeEvents(single, [{ ts: Date.now() - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true }]);
+  assert.deepEqual(checkPostMergeChurn(single), { level: "ok", detail: "no post-merge rejection burst in the last day" });
 });
 
 test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones, skipping enabled roles and the director", async () => {

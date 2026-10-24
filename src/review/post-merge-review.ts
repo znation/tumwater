@@ -49,6 +49,10 @@ export interface PostMergeRejection {
  * for an operator to narrow `review.afterMerge` or raise the authoring bar. */
 export const POST_MERGE_REJECT_WARN = 2;
 
+/** How far back the post-merge-churn rule looks — one day, the 24 h event-window convention
+ * every event-reading alert uses (PRIMARY_OVERWRITE_WINDOW_MS sorts beside it). */
+export const POST_MERGE_REJECT_WINDOW_MS = 24 * 60 * 60_000;
+
 /** Group the `afterMerge: true` `review_rejected` events of `events` by role — the same
  * `e.type === "review_rejected" && e.afterMerge === true` test the report fold
  * (src/report/report-fold.ts `postMergeRejectionsByRole`) applies, so the churn alert and the
@@ -65,6 +69,18 @@ export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostM
   return [...byRole.entries()]
     .map(([role, count]) => ({ role, count }))
     .sort((a, b) => b.count - a.count || (a.role < b.role ? -1 : a.role > b.role ? 1 : 0));
+}
+
+/** The one home of the trigger and selection the `post-merge-churn` alert (src/ui/team-alerts.ts)
+ * and the doctor's `post-merge churn` row (src/doctor/doctor-project-checks.ts) share: whether
+ * the trailing `POST_MERGE_REJECT_WINDOW_MS` holds at least `POST_MERGE_REJECT_WARN` post-merge
+ * `review_rejected` events, and, when it does, which roles and how many each. null when the
+ * window holds fewer than the bar, or none — so the two surfaces cannot disagree on when churn
+ * fires. */
+export function postMergeChurn(events: readonly HarnessEvent[]): { count: number; roles: readonly PostMergeRejection[] } | null {
+  const roles = postMergeRejectionCounts(events);
+  const count = roles.reduce((n, r) => n + r.count, 0);
+  return count >= POST_MERGE_REJECT_WARN ? { count, roles } : null;
 }
 
 /** Whether `role`'s changes are reviewed after merging instead of before. One home for the

@@ -59,6 +59,7 @@ export const DOCTOR_CHECK_NAMES = [
   "check",
   "root install",
   "flaky checks",
+  "post-merge churn",
   "claimed bugs",
   "validation gaps",
   "plans stuck in Planned",

@@ -271,7 +271,7 @@ discards a role's in-flight merge.
   warning. Two or more post-merge rejections in a day raise one standing amber alert naming each
   role on the dashboard, the TUI and `tumwater status` — the pre-revert signal to narrow
   `review.afterMerge` for the noisy role or raise the authoring bar before the revert ceiling is
-  hit.
+  hit. The `tumwater doctor` audit names the same roles in its `post-merge churn` row.
   While the reviewer's provider stands under a failure hold, or its strong tier is unresolvable
   under the review gate, the roles a pre-merge review gates are held — but a role on
   `review.afterMerge` is not: it merges without a reviewer, so it keeps authoring and its

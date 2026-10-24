@@ -28,6 +28,8 @@ import { EVENTS_KEEP, type HarnessEvent } from "../events/events.js";
 import { finiteNumber } from "../files/json-object.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
+import { POST_MERGE_REJECT_WINDOW_MS, postMergeChurn } from "../review/post-merge-review.js";
+import { roleLabel } from "../roles/role-labels.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
@@ -260,6 +262,24 @@ export function checkFlakyChecks(root: string, now: number = Date.now()): CheckO
   if (phrases.length === 0)
     return okOutcome("no check flapped more than once in the last 24h");
   return warnOutcome(phrases.join("; "));
+}
+
+/** A trailing day of at least `POST_MERGE_REJECT_WARN` post-merge `review_rejected` events — the
+ * audit twin of the always-on `post-merge-churn` amber alert (src/ui/status-payload.ts
+ * `postMergeChurnAlert`). Each rejection is an already-landed commit the reviewer turned back, so
+ * it cost a revert and a re-author; `main's check` deliberately counts only non-post-review
+ * reverts, so a churn day must not read as a clean main. Shares the alert's window, threshold and
+ * event selection through `postMergeChurn`, so the doctor row and the alert cannot disagree on
+ * when churn fires. ok/warn only — a churn burst does not stop the team. */
+export function checkPostMergeChurn(root: string): CheckOutcome {
+  const { events } = readEventsSince(root, POST_MERGE_REJECT_WINDOW_MS);
+  const churn = postMergeChurn(events);
+  if (churn === null) return okOutcome("no post-merge rejection burst in the last day");
+  return warnOutcome(
+    `${plural(churn.count, "post-merge review rejection")} in the last day (${churn.roles
+      .map((r) => `${roleLabel(r.role)} ×${r.count}`)
+      .join(", ")}) — each commit had already reached main, so each cost a revert and a re-author; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
+  );
 }
 
 /** The one home of the doctor's `flaky checks` sentence: names each check that flapped more than

@@ -34,6 +34,7 @@ import {
   checkDiskSpace,
   checkEventLog,
   checkFlakyChecks,
+  checkPostMergeChurn,
   checkStateDir,
 } from "./doctor-project-checks.js";
 import { sampleFreeBytes } from "../gates/disk-gate.js";
@@ -199,6 +200,7 @@ export async function runDoctor(
     // The review gate's flake memory, surfaced read-only: naming which checks the gate kept
     // excusing as flakes (ok/warn only, so a flaky suite never fails a scripted pre-flight).
     { name: "flaky checks", run: () => checkFlakyChecks(root) },
+    { name: "post-merge churn", run: () => checkPostMergeChurn(root) },
     { name: "claimed bugs", run: () => checkFixClaims(root) },
     { name: "validation gaps", run: () => checkValidationGaps(root) },
     { name: "plans stuck in Planned", run: () => checkStrandedPlans(root) },
