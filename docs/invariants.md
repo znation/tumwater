@@ -687,17 +687,23 @@ parenthetical left open by a wrapped heading) names, through `requiredParts`, a 
 under `## Planned`. Once no named part is planned, the hold lifts. A `requires` mention in the body
 never holds. A note line (Refused, Needs review, Needs replan, Waiting for the next failure) holds
 as well. `planDependencyProblems` reports a still-planned prerequisite named without the clause.
+The parse treats the keyword `parts`/`part` as belonging to neither a named series nor a bare ref,
+and a bare ref (e.g. `3/4` in `reviewer-as-role parts 1/4 and 3/4`) inherits the series the clause
+last named, falling back to the entry's own series only when the clause names none — so a ref never
+carries the keyword in its series name and never resolves to the entry's own series when the clause
+names another.
 
 **Binds.** `src/backlog/backlog-parts.ts` (`requiredParts`, `prerequisitesMerged`,
 `planDependencyProblems`), `src/backlog/backlog-eligibility.ts` (`entryHoldAgainst`), `src/run/stage-backlog-checks.ts` and
 `src/doctor/doctor-backlog-plans.ts` (where the wording problem is reported).
 
 **Pinned by.** `test/backlog-eligibility.test.ts` — "requiredParts reads the trailing
-parenthetical, expands ranges, and resolves bare refs to the own series", "a body mentioning
+parenthetical, expands ranges, and resolves bare refs to the own series", "requiredParts keeps the
+parts keyword out of a named series and bare refs inherit the clause's last named series", "a body mentioning
 'requires' never blocks — only the heading's clause does", "entryHold blocks a wrapped heading while
 its prerequisite is planned", "prerequisitesMerged returns the refs only when none is still
 planned", "entryHold reports blocked, refused, needs-review and needs-replan, and null when
-eligible", "a waiting-for-the-next-failure note holds a bug, only as a line prefix" and
+eligible", "entryHold resolves a <Series> parts a/n and b/n clause to the named series, not the entry's own", "planDependencyProblems does not dangle a <Series> parts a/n and b/n clause", "a waiting-for-the-next-failure note holds a bug, only as a line prefix" and
 "planDependencyProblems flags a still-planned prerequisite named without a requires clause".
 
 ### INV-N3: a claim on an entry that left or turned ineligible is released outright; disabled, paused and stale release only an idle runner

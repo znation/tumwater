@@ -74,10 +74,71 @@ test("requiredParts reads the trailing parenthetical, expands ranges, and resolv
   ]);
 });
 
+test("requiredParts keeps the parts keyword out of a named series and bare refs inherit the clause's last named series", () => {
+  // `<Series> parts a/n and b/n`: the keyword stays out of the series and the bare b/n inherits
+  // the named series, not the entry's own.
+  assert.deepEqual(
+    requiredParts("Check-permit priority, part 2/2: x (planned 2026-10-23 by user; requires reviewer-as-role parts 1/4 and 3/4 landed)"),
+    [
+      { series: "reviewer-as-role", part: "1", of: 4 },
+      { series: "reviewer-as-role", part: "3", of: 4 },
+    ],
+  );
+  // `<Series> parts a/n, <Other> b/n`: a bare ref inherits the last named series.
+  assert.deepEqual(
+    requiredParts("Check-permit priority, part 2/2: x (planned 2026-10-23 by user; requires Disk floor parts 1/2 and 3/4 landed)"),
+    [
+      { series: "Disk floor", part: "1", of: 2 },
+      { series: "Disk floor", part: "3", of: 4 },
+    ],
+  );
+  // The same clause with a second named series directly follows one named range.
+  assert.deepEqual(
+    requiredParts("Check-permit priority, part 2/2: x (planned 2026-10-23 by user; requires reviewer-as-role parts 1/4, Worktree pool 3/4 landed)"),
+    [
+      { series: "reviewer-as-role", part: "1", of: 4 },
+      { series: "Worktree pool", part: "3", of: 4 },
+    ],
+  );
+  // A named range expands inclusively and still drops the keyword.
+  assert.deepEqual(
+    requiredParts("Check-permit priority, part 2/2: x (planned 2026-10-23 by user; requires reviewer-as-role parts 1/4–3/4 landed)"),
+    [
+      { series: "reviewer-as-role", part: "1", of: 4 },
+      { series: "reviewer-as-role", part: "2", of: 4 },
+      { series: "reviewer-as-role", part: "3", of: 4 },
+    ],
+  );
+  // A named range followed by a bare one inherits the series for both.
+  assert.deepEqual(
+    requiredParts("Check-permit priority, part 2/2: x (planned 2026-10-23 by user; requires reviewer-as-role parts 1/4–2/4 and 3/4 landed)"),
+    [
+      { series: "reviewer-as-role", part: "1", of: 4 },
+      { series: "reviewer-as-role", part: "2", of: 4 },
+      { series: "reviewer-as-role", part: "3", of: 4 },
+    ],
+  );
+});
+
 test("requiredParts returns [] for a clause that does not parse and for a heading with no clause", () => {
   assert.deepEqual(requiredParts("Foo, part 1/2: x (planned 2026-10-01; merge that plan first)"), []);
   assert.deepEqual(requiredParts("Foo, part 1/2: x"), []);
   assert.deepEqual(requiredParts("Foo (planned 2026-10-01; requires something else entirely)"), []);
+});
+
+test("entryHold resolves a <Series> parts a/n and b/n clause to the named series, not the entry's own", () => {
+  const own = "Check-permit priority, part 2/2: x (requires Disk floor parts 1/4 and 3/4 landed)";
+  // Dropped hold: the clause's named prerequisite blocks the plan (before the fix the bare 3/4
+  // resolved to the entry's own series, so the real prerequisite never held).
+  const hold = entryHold(entry(own), [{ title: "Disk floor, part 1/4: a (planned 2026-10-23)", body: "" }]);
+  assert.deepEqual(hold, { blockedBy: ["Disk floor 1/4"] });
+  // Self-hold: a chapter of the entry's own series the clause never mentions must not block it.
+  assert.equal(
+    entryHold(entry(own), [{ title: "Check-permit priority, part 3/4: z (planned 2026-10-23)", body: "" }]),
+    null,
+  );
+  // And with the named prerequisite merged or absent, no hold sticks to the own series.
+  assert.equal(entryHold(entry(own), []), null);
 });
 
 test("entryHold reports blocked, refused, needs-review and needs-replan, and null when eligible", () => {
@@ -391,6 +452,20 @@ test("withoutRefusalNotes drops Refused note lines and the blank line after one 
   assert.deepEqual(withoutRefusalNotes(["### t", note, "g"]), ["### t", "g"]);
   const kept = ["### t", "see **Refused 2026** here", "**Needs review 2026-10-12 by feature: big**"];
   assert.deepEqual(withoutRefusalNotes(kept), kept);
+});
+
+test("planDependencyProblems does not dangle a <Series> parts a/n and b/n clause", () => {
+  const e = (title: string): BacklogEntry => ({ title, body: "" }) as BacklogEntry;
+  const plan = "Check-permit priority, part 2/2: x (requires reviewer-as-role parts 1/4 and 3/4 landed)";
+  // Both refs resolve to the reviewer-as-role series, so with them done nothing dangles and no
+  // self ref to Check-permit priority appears.
+  const done = ["reviewer-as-role, part 1/4: a (done 2026-10-23)", "reviewer-as-role, part 3/4: b (done 2026-10-23)"];
+  assert.deepEqual(planDependencyProblems([e(plan)], done).dangling, []);
+  // When the named prerequisite is missing, only it dangles — never the entry's own series.
+  assert.deepEqual(planDependencyProblems([e(plan)], []).dangling, [
+    { title: plan, ref: "reviewer-as-role 1/4" },
+    { title: plan, ref: "reviewer-as-role 3/4" },
+  ]);
 });
 
 test("planDependencyProblems flags a still-planned prerequisite named without a requires clause", () => {

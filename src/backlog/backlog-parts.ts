@@ -15,25 +15,32 @@ export interface PartRef {
   of: number;
 }
 
-/** One prerequisite ref, resolved against the entry's own series when it names none. */
-function parseRef(chunk: string, ownSeries: string | null): PartRef[] {
+/** One prerequisite chunk: its refs resolved against `fallbackSeries` (the last series the clause
+ * named, or the entry's own when it named none), and the series this chunk names — null when it
+ * names none (a bare `parts a/n` inherits the surrounding clause's series). The series keyword
+ * `parts`/`part` belongs to neither a named series nor the bare ref, so a trailing one is dropped
+ * from a captured name. */
+function parseRef(chunk: string, fallbackSeries: string | null): { refs: PartRef[]; named: string | null } {
   const text = chunk.trim().replace(/^parts?\s+/i, "");
-  if (text === "") return [];
+  if (text === "") return { refs: [], named: null };
   const m = /^(?:([\s\S]+?)\s+)?([0-9]+[a-z]?)\/(\d+)(?:\s*[–-]\s*(\d+)\/(\d+))?$/i.exec(text);
-  if (m === null) return [];
-  const series = (m[1]?.trim() ?? "") || ownSeries;
-  if (series === null || series === "") return [];
+  if (m === null) return { refs: [], named: null };
+  let named = (m[1]?.trim() ?? "").replace(/\s+parts?$/i, "");
+  const series = named || fallbackSeries;
+  if (series === null || series === "") return { refs: [], named: named || null };
   const of = Number(m[3]);
   const start = m[2]!.toLowerCase();
-  if (!Number.isInteger(of) || of < 1) return [];
-  if (m[4] === undefined) return [{ series, part: start, of }];
+  if (!Number.isInteger(of) || of < 1) return { refs: [], named: named || null };
+  if (m[4] === undefined)
+    return { refs: [{ series, part: start, of }], named: named || null };
   // A range is numeric on both ends (the lettered parts never range); expand it inclusively.
   const from = Number(start);
   const to = Number(m[4]);
-  if (!Number.isInteger(from) || !Number.isInteger(to) || to < from) return [];
+  if (!Number.isInteger(from) || !Number.isInteger(to) || to < from)
+    return { refs: [], named: named || null };
   const parts: PartRef[] = [];
   for (let p = from; p <= to; p++) parts.push({ series, part: String(p), of });
-  return parts;
+  return { refs: parts, named: named || null };
 }
 
 /** The stable identity of an entry heading: its `(planned …)`/`(done …)` stamp suffix
@@ -143,7 +150,12 @@ export function requiredParts(title: string): PartRef[] {
   if (clause === null) return [];
   const ownSeries = seriesPart(title)?.series ?? null;
   const refs: PartRef[] = [];
-  for (const chunk of clause.split(/\s*,\s*|\s+and\s+/i)) refs.push(...parseRef(chunk, ownSeries));
+  let lastNamed: string | null = null;
+  for (const chunk of clause.split(/\s*,\s*|\s+and\s+/i)) {
+    const { refs: chunkRefs, named } = parseRef(chunk, lastNamed ?? ownSeries);
+    if (named !== null) lastNamed = named;
+    refs.push(...chunkRefs);
+  }
   return refs;
 }
 
@@ -205,7 +217,7 @@ export function planDependencyProblems(
     if (meta === "") meta = openParenthetical(entry.title);
     const held = new Set(refs.map((ref) => partKey(ref.series, ref.part)));
     for (const m of meta.matchAll(MISWORDED_DEPENDENCY_RE)) {
-      for (const ref of parseRef(m[1]!, own.series)) {
+      for (const ref of parseRef(m[1]!, own.series).refs) {
         const key = partKey(ref.series, ref.part);
         if (!plannedKeys.has(key) || held.has(key)) continue;
         const name = `${ref.series} ${ref.part}/${ref.of}`;
