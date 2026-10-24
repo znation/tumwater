@@ -22,6 +22,7 @@ import { createAttachEditor } from "./tui-editor-attach.js";
 import { createNotesEditor } from "./tui-editor-notes.js";
 import { createBriefEditor } from "./tui-editor-brief.js";
 import { createRetireEditor } from "./tui-editor-retire.js";
+import { createRoleEnabledEditor } from "./tui-editor-role-enabled.js";
 import { createPromptEditor } from "./tui-editor-prompt.js";
 import { createPauseEditor } from "./tui-editor-pause.js";
 import { createQueuedEditor } from "./tui-editor-queued.js";
@@ -119,6 +120,8 @@ interface TuiEditorState {
   briefEditMode: boolean;
   /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
   retireMode: boolean;
+  /** The Health view's Ctrl+V enable/disable mode holds the prompt line, editing a role id. */
+  roleEnabledMode: boolean;
   /** Whether the prompt line is editing the team's per-provider run caps
    * `maxConcurrentPerProvider` (Ctrl+P on the Activity view). */
   providerCapsMode: boolean;
@@ -217,6 +220,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     createSearchEditor(session),
     createBriefEditor(session),
     createRetireEditor(session),
+    createRoleEnabledEditor(session),
   ];
 
   const handleKey = (
@@ -269,7 +273,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     // above already returned), and budget, pause and search modes keep them out —
     // recalling a prompt into the cap/field text would be a paste, not a recall. No
     // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.concurrency && !session.held.checks && !session.held.check && !session.held.slots && !session.held.model && !session.held.quiet && !session.held.interval && !session.held.roleModel && !session.held.instances && !session.held.instructions && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.providerCaps && !session.held.notify && !session.held.backends && !session.held.fallback && !session.held.claudeReserve) {
+    if (!session.held.budget && !session.held.concurrency && !session.held.checks && !session.held.check && !session.held.slots && !session.held.model && !session.held.quiet && !session.held.interval && !session.held.roleModel && !session.held.instances && !session.held.instructions && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.roleEnabled && !session.held.providerCaps && !session.held.notify && !session.held.backends && !session.held.fallback && !session.held.claudeReserve) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,
@@ -332,6 +336,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         notesEditFor: session.held.notes,
         briefEditMode: session.held.brief,
         retireMode: session.held.retire,
+        roleEnabledMode: session.held.roleEnabled,
         quietMode: session.held.quiet,
         quietTeam: session.held.quietTeam,
         providerCapsMode: session.held.providerCaps,

@@ -47,6 +47,8 @@ interface TuiHeld {
   brief: boolean;
   /** The Health view's Ctrl+X retire editor holds the prompt line, editing a role id. */
   retire: boolean;
+  /** The Health view's Ctrl+V enable/disable editor holds the prompt line, editing a role id. */
+  roleEnabled: boolean;
   /** The Transcript view's Ctrl+O quiet-hours editor holds the prompt line. */
   quiet: boolean;
   /** Whether the open quiet editor is editing the team-wide `quietHours` window (Ctrl+S on the
@@ -95,6 +97,7 @@ type EditorEnterKey =
   | "notes"
   | "brief"
   | "retire"
+  | "roleEnabled"
   | "quiet"
   | "interval"
   | "instructions"
@@ -189,6 +192,7 @@ const HOLDER_SUBJECTS: ReadonlyArray<readonly [Exclude<NonNullable<Parameters<Tu
   ["notes", "notes edit"],
   ["brief", "brief edit"],
   ["retire", "retire role"],
+  ["roleEnabled", "role state"],
   ["quiet", "quiet hours"],
   ["model", "model edit"],
   ["interval", "min run interval"],
@@ -230,6 +234,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       notes: null,
       brief: false,
       retire: false,
+      roleEnabled: false,
       quiet: false,
       quietTeam: false,
       interval: false,

@@ -88,6 +88,7 @@ interface TuiMode {
   briefEditMode?: boolean;
   images?: number;
   retireMode?: boolean;
+  roleEnabledMode?: boolean;
   quietMode?: boolean;
   quietTeam?: boolean;
   intervalMode?: boolean;
@@ -118,6 +119,7 @@ export function hintLine(view: TuiView, mode: TuiMode, width: number): StatusLin
   else if (mode.attachMode) keys = [["Enter", "attach image path"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.notesEditFor) keys = [["Enter", "replace notes from file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.retireMode) keys = [["Enter", "retire role"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  else if (mode.roleEnabledMode) keys = [["Enter", "enable/disable role"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.concurrencyMode) keys = [["Enter", "save the run cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.checksMode) keys = [["Enter", "save the check cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -144,7 +146,7 @@ export function hintLine(view: TuiView, mode: TuiMode, width: number): StatusLin
   else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: team"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ...(view.window ? [["Ctrl+P", "earlier window"] as [string, string]] : []), ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ...(!view.trail && view.since ? [["Ctrl+P", "earlier window"] as [string, string]] : []), ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+X", view.model ? `model: ${view.model}` : "model: all"], ["Ctrl+Y", view.summary === "model" ? "rows" : view.summary === "role" ? "by model" : "summary"], ["Ctrl+N", view.trail ? "history" : "run trail"], ...(view.trail ? [["Ctrl+P", "older run"] as [string, string], ["Ctrl+R", view.trailTranscript === "plain" ? "prompts" : view.trailTranscript === "prompts" ? "hide transcript" : "transcript"] as [string, string], ["Ctrl+W", view.trailPatch ? "hide patch" : "patch"] as [string, string], ["Ctrl+V", "revert run"] as [string, string]] : []), ["/", view.trail && view.trailTranscript !== undefined && view.trailTranscript !== "off" ? (view.trailGrep ? `transcript search: ${view.trailGrep}` : "search transcript") : (view.grep ? `search: ${view.grep}` : "search")], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "select merge/review"], ["PgUp/PgDn", "scroll"], ["Ctrl+R", "refresh"], ["Ctrl+N", "overlaps"], ["Ctrl+G", "overlap role"], ["Ctrl+O", "review state"], ["Ctrl+X", "cancel merge"], ["Ctrl+A", "accept review"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "health") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+R", "re-run checks"], ["Ctrl+P", "re-probe models"], ["Ctrl+A", "commit backlog"], ["Ctrl+U", "re-sync install"], ["Ctrl+E", "reclaim disk"], ["Ctrl+N", "test notify"], ["Ctrl+K", "kill orphans"], ["Ctrl+X", "retire role"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "health") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+R", "re-run checks"], ["Ctrl+P", "re-probe models"], ["Ctrl+A", "commit backlog"], ["Ctrl+U", "re-sync install"], ["Ctrl+E", "reclaim disk"], ["Ctrl+N", "test notify"], ["Ctrl+K", "kill orphans"], ["Ctrl+X", "retire role"], ["Ctrl+V", "enable/disable role"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "brief") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+E", "edit brief"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+V", "top"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+E", "notify hook"], ["Ctrl+A", "model"], ["Ctrl+O", view.notable ? "notable only" : view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+P", "provider caps"], ["Ctrl+X", "agent backends"], ["Ctrl+T", "next view"], ["Ctrl+L", "fallback"], ["Ctrl+Y", "claude reserve"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+R", "restart"], ["Ctrl+D", "quit"]];
@@ -178,6 +180,7 @@ export function promptPrefix(mode: TuiMode): StatusSpan[] {
   if (mode.instructionsEditFor) return [{ text: `instructions for ${mode.instructionsEditFor}`, tone: "brand" }, { text: " › " }];
   if (mode.briefEditMode) return [{ text: "brief", tone: "brand" }, { text: " › " }];
   if (mode.retireMode) return [{ text: "retire", tone: "brand" }, { text: " › " }];
+  if (mode.roleEnabledMode) return [{ text: "role state", tone: "brand" }, { text: " › " }];
   if (mode.notesEditFor) return [{ text: `notes for ${mode.notesEditFor}`, tone: "brand" }, { text: " › " }];
   if (mode.entryEditFor) return [{ text: mode.entryEditFor.position === null ? `new ${mode.entryEditFor.kind}` : `edit ${mode.entryEditFor.kind} #${mode.entryEditFor.position}`, tone: "brand" }, { text: " › " }];
   if (mode.answerFor) return [{ text: `answer #${mode.answerFor.position}`, tone: "brand" }, { text: " › " }];

@@ -98,6 +98,8 @@ interface TuiKeysState {
   briefEditMode: boolean;
   /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
   retireMode: boolean;
+  /** The Health view's Ctrl+V enable/disable mode holds the prompt line, editing a role id. */
+  roleEnabledMode: boolean;
   /** The Transcript view's Ctrl+O quiet-hours mode holds the prompt line. */
   quietMode: boolean;
   /** Whether the open quiet editor edits the team-wide `quietHours` window (Ctrl+S on the

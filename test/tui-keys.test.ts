@@ -5325,12 +5325,15 @@ test("Ctrl+X retire on the Health view: an empty id stays and Esc restores the d
 });
 
 test("promptLineFree is false while retire-edit mode holds the line, so the Health pane's own arms stay off it", () => {
-  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, quietMode: false, intervalMode: false, roleModelMode: false, instructionsEditFor: null, claudeReserveMode: false };
+  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, roleEnabledMode: false, quietMode: false, intervalMode: false, roleModelMode: false, instructionsEditFor: null, claudeReserveMode: false };
   // Ctrl+E (reclaim), Ctrl+R (doctor re-run) and Ctrl+O (problems toggle) are the Health
   // pane's own arms; while the retire editor holds the line they must see it busy, the same
   // exclusion every other mode enforces, or they would run over the retire modal.
   assert.equal(promptLineFree(es), false, "the retire editor blocks the Health pane's own arms");
   es.retireMode = false;
+  es.roleEnabledMode = true;
+  assert.equal(promptLineFree(es), false, "the role-enabled editor blocks the Health pane's own arms");
+  es.roleEnabledMode = false;
   assert.equal(promptLineFree(es), true, "the line frees once retire-edit mode leaves");
   es.quietMode = true;
   assert.equal(promptLineFree(es), false, "the quiet editor blocks the Transcript pane's own arms");
