@@ -196,6 +196,30 @@ test("questions answer --file - reads stdin", async () => {
   assert.match(fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8"), /by the user:\*\*\n\n- keep A\n/);
 });
 
+test("questions unknown flags list every valid flag and hint a near miss", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions flag typo");
+  fs.writeFileSync(path.join(repo, "QUESTIONS.md"), OPEN_ONE);
+  // A near-miss flag gets the same did-you-mean hint the sibling commands' unknown-argument
+  // gates (cli-flag-specs's failUnknownArgument) attach, and the valid list names every flag
+  // (including the short -n) — it used to list only the long flags and give no hint.
+  const near = await cli(repo, "questions", "--ansered");
+  assert.equal(near.code, 1);
+  assert.match(near.stderr, /unknown argument: --ansered .*did you mean `--answered`\?/);
+  assert.match(
+    near.stderr,
+    /valid flags for tumwater questions: --json, --file, --answered, --show, --grep, -n/,
+  );
+  // A far-off word is a typo of nothing, so it stays hint-free but still names the full list.
+  const far = await cli(repo, "questions", "--totally");
+  assert.equal(far.code, 1);
+  assert.match(
+    far.stderr,
+    /unknown argument: --totally \(valid flags for tumwater questions: --json, --file, --answered, --show, --grep, -n\)/,
+  );
+  assert.doesNotMatch(far.stderr, /did you mean/);
+});
+
 test("questions typos the only subcommand with a did-you-mean hint", async () => {
   // The questions command's one subcommand is `answer`; a near-miss spelling gets the same
   // hint `logs --type`/`history --result`/`completion <shell>` attach, while a far-off word

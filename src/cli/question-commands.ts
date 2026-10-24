@@ -146,7 +146,13 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     }
     if (arg.startsWith("--") && arg !== "--json") {
       rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC, { names: ["--show"], value: true, valueName: "<n>" }, { names: ["--grep"], value: true, valueName: "<text>" }]);
-      fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json, --file, --answered, --show, --grep)`);
+      // The complete flag set (this gate only sees `--`-flags, but `-n` is a real flag the
+      // list should not omit) plus the same did-you-mean hint the sibling commands'
+      // unknown-argument gate (cli-flag-specs's failUnknownArgument) attaches, so a mistyped
+      // `--ansered` names `--answered` instead of only printing the valid list — the missing
+      // treatment the questions gate was the one unknown-argument caller without.
+      const spellings = ["--json", "--file", "--answered", "--show", "--grep", "-n"];
+      fail(`unknown argument: ${arg} (valid flags for tumwater questions: ${spellings.join(", ")})${typoSuffix(arg, spellings)}`);
     }
     if (!numbered) {
       // The position is a plain-decimal positive integer (parsePositiveInt's rule, the same
