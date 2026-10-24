@@ -18,6 +18,7 @@ import {
   flagValue,
   parseDurationFlag,
 } from "./cli-args.js";
+import { parsePositiveInt } from "../text/text.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { stateSkipReason, type RunnerState } from "../runner/runner-state.js";
@@ -25,10 +26,15 @@ import { isTeamPaused, pausedRoles } from "../team/team-state.js";
 import { runnerPaused } from "../roles/runner-ids.js";
 
 /** The window start a generation adopts: the supervisor's RUN_WINDOW_START_ENV mark when it is a
- * positive integer no later than `now`, else `now` (absent, malformed, or in the future). */
+ * positive integer no later than `now`, else `now` (absent, malformed, or in the future). The
+ * mark is read through the shared plain-decimal rule (parsePositiveInt) rather than bare
+ * Number(), which would silently coerce a hex/exponent/signed spelling ("0x10" → 16, "1e3" →
+ * 1000) into a window start the supervisor never wrote — the same plain-decimal discipline the
+ * CLI count/position flags apply to every other string boundary. */
 export function inheritedWindowStart(raw: string | undefined, now: number): number {
-  const n = Number(raw);
-  return raw !== undefined && Number.isInteger(n) && n > 0 && n <= now ? n : now;
+  if (raw === undefined) return now;
+  const n = parsePositiveInt(raw);
+  return n !== null && n <= now ? n : now;
 }
 
 /** The `run --for` exit summary: a window line, then the `history --summary` table for the runs

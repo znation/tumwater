@@ -448,6 +448,10 @@ test("windowReport mirrors windowSummary's rows as one JSON object", () => {
 test("inheritedWindowStart adopts only a positive past integer, else now", () => {
   assert.equal(inheritedWindowStart(undefined, 1000), 1000);
   assert.equal(inheritedWindowStart("abc", 1000), 1000);
+  // A spelling Number() would silently coerce (hex, exponent) is not a window start the
+  // supervisor ever writes — the plain-decimal rule rejects it as not-an-integer.
+  assert.equal(inheritedWindowStart("0x1f0", 1000), 1000);
+  assert.equal(inheritedWindowStart("1e3", 1000), 1000);
   assert.equal(inheritedWindowStart("0", 1000), 1000);
   assert.equal(inheritedWindowStart("2000", 1000), 1000);
   assert.equal(inheritedWindowStart("500", 1000), 500);
