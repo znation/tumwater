@@ -792,15 +792,36 @@ test("the Configuration section names after-merge review only when the payload c
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "pi/local", modelTier: "default", ...extra } },
   });
 
-  const known = mk({ reviewedAfterMerge: true });
+  const known = mk({ reviewEnabled: true, reviewedAfterMerge: true });
   known.scope.toggleRole("clean");
   await flush();
-  assert.match(known.paintedFor("drawerrole"), /<dt>Review<\/dt><dd[^>]*>after merge<\/dd>/);
+  assert.match(known.paintedFor("drawerrole"), /<dt>Review<\/dt><dd[^>]*>after merge/);
+  assert.match(known.paintedFor("drawerrole"), /<button type='button' class='btn btn-sm' data-act='review-toggle' data-arg='clean'>Review before merge<\/button>/);
+
+  // A before-merge role with the gate on still gets the row and the opposite button.
+  const before = mk({ reviewEnabled: true });
+  before.scope.toggleRole("clean");
+  await flush();
+  assert.match(before.paintedFor("drawerrole"), /<dt>Review<\/dt><dd[^>]*>before merge/);
+  assert.match(before.paintedFor("drawerrole"), /data-act='review-toggle' data-arg='clean'>Review after merge<\/button>/);
 
   const absent = mk({});
   absent.scope.toggleRole("clean");
   await flush();
   assert.doesNotMatch(absent.paintedFor("drawerrole"), /<dt>Review<\/dt>/);
+
+  // The director shows no Review toggle — its membership can never be written
+  // (validateConfig's review.afterMerge rule refuses it), so a rendered button could only ever
+  // answer 400; the cap and quiet-hours rows carry the same director exemption.
+  const directorStatus = workingStatus();
+  directorStatus.roles[0]!.role = "director";
+  const director = openDrawer(["toggleRole"], {
+    status: directorStatus,
+    responses: { "/api/role?role=director": { notes: null, nextPrompt: null, reviewEnabled: true, reviewedAfterMerge: true } },
+  });
+  director.scope.toggleRole("director");
+  await flush();
+  assert.doesNotMatch(director.paintedFor("drawerrole"), /<dt>Review<\/dt>/);
 });
 
 test("the Configuration section paints a Quiet hours own-window row and a read-only fleet row", async () => {

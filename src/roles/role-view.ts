@@ -140,6 +140,11 @@ export interface RoleViewPayload {
    * for a pre-merge-reviewed role or when the gate is off, matching the absent-when-default
    * pattern of `imageReroute`/`instances`. */
   reviewedAfterMerge?: true;
+  /** Whether the review gate is on at all (`review.enabled !== false`) — the browser twin of
+   * `tumwater role <id> --review-after-merge`'s gate check, told apart from `reviewedAfterMerge`
+   * so a before-merge-reviewed role (or a gate-off config) still renders its toggle. Present
+   * only while the gate is on, independent of membership. */
+  reviewEnabled?: true;
   /** The roles.<id>.instructions override verbatim, or null when unset. */
   instructions: string | null;
   /** The role's own find-something-to-do text verbatim (a custom role's `task`), or null
@@ -446,6 +451,10 @@ export function rolePayload(
     // lists the role's base id, so a pre-merge-reviewed role or a gate-off config leaves the
     // payload (and its render) unchanged.
     ...(cfg.review.enabled && reviewedAfterMerge(cfg, role) ? { reviewedAfterMerge: true } : {}),
+    // Whether the review gate is on at all (review.enabled !== false) — the gate toggle's
+    // presence, distinct from reviewedAfterMerge's membership, so a before-merge-reviewed role
+    // still gets the drawer's Review control while the gate runs.
+    ...(cfg.review.enabled ? { reviewEnabled: true } : {}),
     // The roles.<base>.instructions override verbatim — resolved through the base role like
     // the cap and quiet hours, so an instance id shows (and can edit) the override its runs
     // carry (run-prompt reads config.roles[base]); null when unset.

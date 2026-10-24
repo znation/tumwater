@@ -69,7 +69,20 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
         : "unknown";
       rows.push(kvRow("Images", images));
     }
-    if (view.reviewedAfterMerge === true) rows.push(kvRow("Review", "after merge"));
+    if (view.reviewEnabled === true && role !== "director") {
+      // The review tier, shown whenever the gate is on (rolePayload's reviewEnabled) so a
+      // before-merge-reviewed role still gets the control — the browser twin of the CLI's
+      // tumwater role <id> --review-after-merge. The director shows no row, like the cap and
+      // quiet-hours rows and the CLI render: its membership is refused by validateConfig's
+      // review.afterMerge rule, so a toggle it could never act on would only answer 400. The
+      // body names whether the role is reviewed after merge or before it, and the button posts
+      // the opposite membership through /api/role-review-after-merge; one click posts (no
+      // editor state), like the Settings view's Enable button.
+      const revAfter = view.reviewedAfterMerge === true;
+      const revBody = revAfter ? "after merge" : "before merge";
+      const revControl = "<button type='button' class='btn btn-sm' data-act='review-toggle' data-arg='" + esc(role) + "'>" + (revAfter ? "Review before merge" : "Review after merge") + "</button>";
+      rows.push("<div><dt>Review</dt><dd title='" + esc(revBody) + "'>" + esc(revBody) + revControl + "</dd></div>");
+    }
     if (view.modelFallback && typeof view.modelFallback === "object" && view.modelFallback.model !== undefined) {
       const fb = view.modelFallback;
       const when = typeof fb.since === "number" ? " since " + fmtAgo(fb.since) : "";

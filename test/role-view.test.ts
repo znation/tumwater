@@ -134,6 +134,7 @@ test("the role view names after-merge review only while review.afterMerge covers
   // The default review.afterMerge lists bugfix (not feature): the role view names it.
   assert.equal(rolePayload(dir, "bugfix", NO_MODELS).reviewedAfterMerge, true);
   assert.equal(rolePayload(dir, "feature", NO_MODELS).reviewedAfterMerge, undefined);
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).reviewEnabled, true);
   assert.match(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS)), /- Review: after merge/);
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /- Review:/);
   // A config that moves the membership flips both answers.
@@ -143,6 +144,7 @@ test("the role view names after-merge review only while review.afterMerge covers
   // A review gate disabled leaves the field absent even when afterMerge lists the role.
   writeConfig(dir, { review: { enabled: false, afterMerge: ["bugfix"] } });
   assert.equal(rolePayload(dir, "bugfix", NO_MODELS).reviewedAfterMerge, undefined);
+  assert.equal(rolePayload(dir, "bugfix", NO_MODELS).reviewEnabled, undefined);
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS)), /- Review:/);
 });
 
