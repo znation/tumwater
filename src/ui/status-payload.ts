@@ -194,7 +194,7 @@ export function capacityContention(root: string, now = Date.now()): CapacityBott
   return out;
 }
 
-/** How far back the primary-overwrite alert looks — one day, so a fleet stuck retrying one
+/** How far back the primary-overwrite alert looks — one day, so a team stuck retrying one
  * dirty primary file is a standing amber banner until the file is committed and the refusals
  * age out. */
 export const PRIMARY_OVERWRITE_WINDOW_MS = 24 * 60 * 60_000;

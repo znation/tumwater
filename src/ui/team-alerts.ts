@@ -813,7 +813,7 @@ function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
     });
   }
   // A failed notify page (doctor's NOTIFY_CHECK_WINDOW_MS rule, src/doctor/doctor-notify.ts
-  // checkNotify) leaves the fleet unsupervised — a dead webhook must not page the operator when
+  // checkNotify) leaves the team unsupervised — a dead webhook must not page the operator when
   // something else goes wrong — so a page that failed within the last day asks (amber) the way
   // the stale-bug alert does, naming the count, the age of the latest, its squashed message,
   // and the `tumwater notify --test` fix. Its callers feed it the latest failure's message via
@@ -920,7 +920,7 @@ function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
   // A merge the primary checkout blocked (merge-git.ts primaryCheckoutBlockers, the
   // overwriteBlockedReason `warning` the merge path writes) — the always-on twin of the doctor's
   // `uncommitted backlog` row, but read off events so it reaches the status poll (the doctor's
-  // git read is async and never gets there). A fleet stuck retrying one dirty file is a single
+  // git read is async and never gets there). A team stuck retrying one dirty file is a single
   // amber banner until the file is committed and the refusals age out; status-payload.ts's
   // primaryOverwriteBlocks feeds it the last day's refusals, counting them and naming the
   // latest's age, squashed message, and the commit fix.
@@ -966,7 +966,7 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   // A stale or oversized flake quarantine — the always-on twin of the doctor's `flaky checks`
   // row (main-guardrails.ts checkFlakyChecks, quarantineWarning): a quarantined test counts as
   // a known failure until its filed bug leaves BUGS.md `## Open`, so an old entry means the
-  // fleet is merging on a suite whose red is being excused. status-payload.ts's quarantineAlert
+  // team is merging on a suite whose red is being excused. status-payload.ts's quarantineAlert
   // feeds it from the same quarantineWarning the doctor calls, so the alert and the doctor
   // cannot drift on when the list is a problem; the warning phrase and the oldest test's age
   // are shown, folded through squash like other long names.
@@ -1304,7 +1304,7 @@ function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
  * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
  * already reached main, a post-merge review one failed run from being dropped, a post-merge
  * review dropped after repeated failures, leaving its commit on main unreviewed, a main tip the
- * watch's five diff rules rejected, the fleet
+ * watch's five diff rules rejected, the team
  * waiting on capacity slots (workspace, provider or
  * check), a plan filed under the wrong backlog section, a duplicated
  * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a

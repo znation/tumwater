@@ -148,7 +148,7 @@ export async function handleRoleReviewAfterMerge(req: http.IncomingMessage, res:
 
 /** Handle POST /api/role-interval: the role drawer's min run interval editor sets or clears
  * one role's override of the team-wide minRunIntervalSeconds — the knob that makes one role
- * act rarely, distinct from the fleet-wide value. Same body discipline as /api/role-cap
+ * act rarely, distinct from the team-wide value. Same body discipline as /api/role-cap
  * (readPostBody → 400 malformed/non-object, 413 oversized); a null, "" or whitespace-only
  * value clears the key through unsetConfigKey (so the role falls back to the team-wide
  * interval), otherwise the write rides the CLI's own setConfigKey dotted path so
