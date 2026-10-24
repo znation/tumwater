@@ -19,6 +19,7 @@ import {
 import {
   checkBuild,
   checkBuildCheck,
+  checkCiParity,
   checkDurationPhrase,
   checkDiskSpace,
   diskReclaimPhrase,
@@ -50,6 +51,7 @@ import {
   checkCodexWriteGuard,
 } from "../src/doctor/doctor-codex-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
+import { recordParity } from "../src/run/ci-parity.js";
 import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { fakeGh } from "./fakes/fake-gh.js";
 import { fakeCodexAppServer } from "./fakes/fake-codex.js";
@@ -1317,6 +1319,50 @@ test("checkPostMergeChurn warns on a day's post-merge rejection burst and stays 
   const single = readyRepo();
   writeEvents(single, [{ ts: Date.now() - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true }]);
   assert.deepEqual(checkPostMergeChurn(single), { level: "ok", detail: "no post-merge rejection burst in the last day" });
+});
+
+test("checkCiParity reads current, stale and failed parities", () => {
+  // A passing record matching the current tip and lock reads `current`.
+  const current = readyRepo();
+  const lock = JSON.stringify({ lockfileVersion: 3, packages: {} });
+  fs.writeFileSync(path.join(current, "package-lock.json"), lock);
+  recordParity(current, headSha(current), "passed");
+  const ok = checkCiParity(current);
+  assert.equal(ok.level, "ok");
+  assert.match(ok.detail, /^current — CI covered main at /);
+
+  // Moving main's head makes the same record read stale and name both tips.
+  fs.writeFileSync(path.join(current, "new.txt"), "x\n");
+  sh(current, "git", "add", "-A");
+  sh(current, "git", "commit", "-m", "move main");
+  const stale = checkCiParity(current);
+  assert.equal(stale.level, "ok");
+  assert.match(stale.detail, /^stale — the last run covered /);
+  assert.match(stale.detail, /main is now /);
+
+  // Changing the lock alone also makes the same record read stale.
+  const lockRepo = readyRepo();
+  fs.writeFileSync(path.join(lockRepo, "package-lock.json"), lock);
+  recordParity(lockRepo, headSha(lockRepo), "passed");
+  fs.writeFileSync(path.join(lockRepo, "package-lock.json"), lock + "\n// changed");
+  const staleLock = checkCiParity(lockRepo);
+  assert.equal(staleLock.level, "ok");
+  assert.match(staleLock.detail, /^stale — the last run covered /);
+
+  // A failed record is a warn naming the covered tip and lock and the verdict.
+  const failed = readyRepo();
+  fs.writeFileSync(path.join(failed, "package-lock.json"), lock);
+  recordParity(failed, headSha(failed), "failed");
+  const warn = checkCiParity(failed);
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /failed/);
+  assert.match(warn.detail, /@ lock /);
+
+  // A repo with no ledger gives the "no CI parity recorded yet" ok row.
+  assert.deepEqual(checkCiParity(readyRepo()), {
+    level: "ok",
+    detail: "no CI parity recorded yet — the ci role has not completed a workflow run",
+  });
 });
 
 test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones, skipping enabled roles and the director", async () => {

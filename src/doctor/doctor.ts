@@ -31,6 +31,7 @@ import {
 import {
   checkBuild,
   checkBuildCheck,
+  checkCiParity,
   checkDiskSpace,
   checkEventLog,
   checkFlakyChecks,
@@ -196,6 +197,7 @@ export async function runDoctor(
     // reports it), so the check falls back to the 10 GB default rather than skipping itself.
     { name: "disk space", run: () => checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40, diskSample) },
     { name: "check", run: () => checkBuildCheck(root, config) },
+    { name: "ci parity", run: () => checkCiParity(root, config, Date.now()) },
     { name: "root install", run: () => checkRootInstall(root) },
     // The review gate's flake memory, surfaced read-only: naming which checks the gate kept
     // excusing as flakes (ok/warn only, so a flaky suite never fails a scripted pre-flight).

@@ -31,6 +31,7 @@ import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../r
 import { POST_MERGE_REJECT_WINDOW_MS, postMergeChurn } from "../review/post-merge-review.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
+import { readCiParity, currentCiParityState, parityIsCurrent } from "../run/ci-parity.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing
@@ -335,4 +336,44 @@ export async function checkBuild(
  * git/git.ts's refSha, the one home of the rev-parse probe. */
 function currentHead(root: string): Promise<string | null> {
   return refSha(root, "HEAD");
+}
+
+/** The doctor's `ci parity` row: does the full suite cover main's current tip? Reads the
+ * CI-parity ledger (src/run/ci-parity.ts) — the operator surface answering "is main verified by
+ * CI?" — and reports whether the last run covered the current main tip @ lock. Missing ledger
+ * reads "no CI parity recorded yet" (ok); a failed record is a `warn` naming the covered
+ * tip/lock (the ci role's contract is to fix or file what it finds, so a lingering failed record
+ * is actionable until the next green run); the `current`/`stale` split is `parityIsCurrent`'s
+ * one home, so the row and the ci prompt block cannot drift. Stale is `ok`, never `warn`/`fail`:
+ * main moves on every merge and the ci role runs on its own clock, so a post-merge gap is normal
+ * and must not turn the Health card or the exit code red. Read-only against .tumwater/. */
+export function checkCiParity(
+  root: string,
+  config?: { baseBranch?: string } | null,
+  now: number = Date.now(),
+): CheckOutcome {
+  const entry = readCiParity(root);
+  if (!entry)
+    return okOutcome("no CI parity recorded yet — the ci role has not completed a workflow run");
+  const { tip, lockHash } = currentCiParityState(root, config ?? undefined);
+  const age = shortSpanPhrase(Math.max(0, now - entry.lastRunAt));
+  if (entry.result === "failed") {
+    return warnOutcome(
+      `the last CI run failed covering ${shortSha(entry.tip)} @ lock ${shortSha(
+        entry.lockHash,
+      )} ${age} ago — the ci role must fix or file what it found before the next green run`,
+    );
+  }
+  if (parityIsCurrent(entry, tip, lockHash)) {
+    return okOutcome(
+      `current — CI covered main at ${shortSha(tip)} @ lock ${shortSha(lockHash)}, passed ${age} ago`,
+    );
+  }
+  return okOutcome(
+    `stale — the last run covered ${shortSha(entry.tip)} @ lock ${shortSha(
+      entry.lockHash,
+    )} (${entry.result}, ${age} ago); main is now ${shortSha(tip)} @ lock ${shortSha(
+      lockHash,
+    )}, so the ci role has not yet covered this tip`,
+  );
 }

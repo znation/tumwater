@@ -227,7 +227,12 @@ discards a role's in-flight merge.
   failing") until it passes again; bugfix, the director, and markdown-only roles keep going. A
   newly-verified red main also queues a ci healer, so the healer starts on the next poll instead
   of waiting out its interval or deferral — once per failing set, not once per red commit — and that
-  queued prompt no-ops (a "verify green" clause) if main turned green before it ran.
+  queued prompt no-ops (a "verify green" clause) if main turned green before it ran. Separately, the
+  `ci` role runs the workflow's own full suite and e2e at main's tip on its own clock and records what
+  it covered in the CI-parity ledger; `tumwater doctor`'s `ci parity` row (and the dashboard Health card
+  and TUI Health tab that render the same rows) is the operator surface answering "is main verified by
+  CI?" — `current` when the last green run covered the current tip and lock, `stale` while main has since
+  moved (still ok, since the ci role runs on its own clock), and a `warn` when the last run failed.
 - A main watch runs the full check on main's tip in the background whenever the head moves (one run
   at a time, covering every commit since the last watched head; a red is re-run once before it counts;
   a doc-only tip inherits its green). It logs a `main_check` event with the failing test titles and

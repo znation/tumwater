@@ -57,6 +57,7 @@ export const DOCTOR_CHECK_NAMES = [
   "tumwater pins",
   "disk space",
   "check",
+  "ci parity",
   "root install",
   "flaky checks",
   "post-merge churn",

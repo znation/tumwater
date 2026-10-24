@@ -78,12 +78,23 @@ export function lockHashOf(root: string): string {
  * working tree (mirroring status-polls.ts's per-poll read: readBranchHead + targetBranch, no
  * spawn). Either degrades to "" when it cannot be resolved, which the render treats as
  * "has definitely not matched", so a resolution failure can never declare a false current. */
-function currentParityState(
+export function currentCiParityState(
   root: string,
   config: { baseBranch?: string } | undefined,
 ): { tip: string; lockHash: string } {
   const branch = targetBranch(config?.baseBranch, currentBranchFromHeadFile(root));
   return { tip: readBranchHead(root, branch) ?? "", lockHash: lockHashOf(root) };
+}
+
+/** True when `entry` counts as "current": the last run passed AND it covered exactly this
+ * tip with exactly this lock hash. This is the single home of the "current" decision, so the
+ * ci prompt block (`renderParityBlock`) and the doctor `ci parity` row (`checkCiParity`) cannot
+ * disagree on what "current" means. `entry.tip` is whatever the run named on its `CI:` line — a
+ * 7-64-char abbreviated sha (the model's own shorthand) or the full 40-char head; match it as a
+ * prefix of the current tip so an abbreviated recorded tip still reads current once the full
+ * head shares that prefix. */
+export function parityIsCurrent(entry: CiParityEntry, tip: string, lockHash: string): boolean {
+  return entry.result === "passed" && tip !== "" && tip.startsWith(entry.tip) && entry.lockHash === lockHash;
 }
 
 /** Shorten an id for display without losing its discriminating prefix (a 40-char sha and a
@@ -99,10 +110,7 @@ function shortId(id: string): string {
  * current tip/hash, so the role runs the suite. */
 export function renderParityBlock(entry: CiParityEntry, tip: string, lockHash: string): string {
   const lines = ["CI parity (from this team's own record):"];
-  // `entry.tip` is whatever the run named on its `CI:` line — a 7-64-char abbreviated sha (the
-  // model's own shorthand) or the full 40-char head. Match it as a prefix of the current tip so
-  // an abbreviated recorded tip still reads current once the full head shares that prefix.
-  if (entry.result === "passed" && tip !== "" && tip.startsWith(entry.tip) && entry.lockHash === lockHash) {
+  if (parityIsCurrent(entry, tip, lockHash)) {
     lines.push(
       `  current — main is unmoved since the last green run covered tip ${shortId(entry.tip)} with lock ${shortId(
         entry.lockHash,
@@ -129,6 +137,6 @@ export function parityBlockFor(
 ): string | undefined {
   const record = readCiParity(root);
   if (!record) return undefined;
-  const { tip, lockHash } = currentParityState(root, config);
+  const { tip, lockHash } = currentCiParityState(root, config);
   return renderParityBlock(record, tip, lockHash);
 }
