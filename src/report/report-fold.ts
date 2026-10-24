@@ -234,7 +234,8 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // that never rejected stays absent, like costByRole.
     addTo(target.rejectionsByRole, eventRole(ev), 1);
     // A rejection that carried afterMerge: true is a post-merge one — the commit had already
-    // landed, so the reviewer's turn-back reaches the revert path off main. Kept as its own
+    // landed, so the reviewer's turn-back stands on main with its reasons (Forward, never back
+    // 1/6 — never a revert). Kept as its own
     // subset of rejectionsByRole because it is a different, costlier kind of rejection.
     if (ev.afterMerge === true) addTo(target.postMergeRejectionsByRole, eventRole(ev), 1);
     // A rejection that carried a positive durationMs means a reviewer actually ran the gate

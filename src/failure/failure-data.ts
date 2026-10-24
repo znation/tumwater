@@ -483,9 +483,9 @@ function assembleFailureReport(
   // Rejections cluster on (role, reasons[0]) — the field the event feed renders — so two
   // different rejection reasons from the same role stay separate rows, and an already-landed
   // one (ev.afterMerge === true) splits apart from a same-reason pre-merge one so the row names
-  // the post-merge class that starts a revert. The section's total counts every `review_rejected`
-  // in the window, reasons or not, so it equals the Deltas column and the render's remainder
-  // line cross-checks against it.
+  // the post-merge class that stands with its reasons on main. The section's total counts
+  // every `review_rejected` in the window, reasons or not, so it equals the Deltas column and
+  // the render's remainder line cross-checks against it.
   const rejectedEvents = current.filter((ev) => ev.type === "review_rejected");
   const postMergeRejections = rejectedEvents.filter((ev) => ev.afterMerge === true).length;
   const rejections = section(

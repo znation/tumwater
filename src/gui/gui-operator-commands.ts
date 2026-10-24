@@ -285,7 +285,7 @@ export async function handleQueueCancel(req: http.IncomingMessage, res: http.Ser
  * `acceptPostReviewBySha` the CLI's position variant shares). A `sha` that is not 4-64 hex
  * digits is a 400 and runs nothing. A sha no longer in the queue (a concurrent drain already
  * settled it) is a 200 `{ status: "gone" }` data, not an error. A `rejected` entry is a 409
- * carrying the CLI's wait-for-the-revert wording and changes nothing; a `fixed` (already landed
+ * carrying the CLI's rejected-entry wording and changes nothing; a `fixed` (already landed
  * its repair) entry is a 409 too and changes nothing. Otherwise it answers the
  * accepted entry's role/commit/summary and removes the entry. */
 export async function handlePostReviewAccept(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
@@ -296,7 +296,7 @@ export async function handlePostReviewAccept(req: http.IncomingMessage, res: htt
   const outcome: AcceptPostReviewByShaOutcome = acceptPostReviewBySha(root, body.sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
   if (outcome.status === "rejected")
-    return sendJson(res, 409, { error: `post-merge review ${shortSha(outcome.commit)} is rejected and waiting on its revert — let the revert run, then review the revision` });
+    return sendJson(res, 409, { error: `post-merge review ${shortSha(outcome.commit)} is rejected — it stays on main with the reviewer's reasons, so there is nothing to accept` });
   if (outcome.status === "settled")
     return sendJson(res, 409, { error: `post-merge review ${shortSha(outcome.commit)} already merged its fix on main — nothing to accept` });
   if (outcome.status !== "accepted") return;

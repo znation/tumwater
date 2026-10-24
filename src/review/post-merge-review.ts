@@ -22,8 +22,9 @@ import type { GateRunsPi } from "../runner/runner-pi.js";
 import { parseVerdict } from "./review-verdict.js";
 
 /** A merged commit of a role listed in `review.afterMerge`, waiting for its review
- * (.tumwater/state/post-review.json). `rejected` holds the reviewer's reasons once it rejected the
- * commit and its revert has not been started yet (the revert slot was busy). */
+ * (.tumwater/state/post-review.json). `rejected` holds the reviewer's reasons once the review
+ * turned the commit back; the commit stays on main, never re-reviewed or reverted (Forward,
+ * never back 1/6), so the reasons stand until the operator narrows `review.afterMerge`. */
 export interface PostReview {
   commit: string;
   role: string;
@@ -58,8 +59,8 @@ export interface PostMergeRejection {
 
 /** The bar a day's post-merge rejections must reach before the `post-merge-churn` amber alert
  * (src/ui/team-alerts.ts) fires: one post-merge rejection is the tiering's ordinary cost, two in
- * a day is a role whose already-landed changes keep being turned back — the pre-revert signal
- * for an operator to narrow `review.afterMerge` or raise the authoring bar. */
+ * a day is a role whose already-landed changes keep being turned back — the signal for an
+ * operator to narrow `review.afterMerge` or raise the authoring bar. */
 export const POST_MERGE_REJECT_WARN = 2;
 
 /** How far back the post-merge-churn rule looks — one day, the 24 h event-window convention
