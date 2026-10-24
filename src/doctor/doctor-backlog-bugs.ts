@@ -8,6 +8,7 @@ import { plannedPartKeys, plansWaitingOn, prerequisitesMerged } from "../backlog
 import { lastDate } from "../backlog/backlog-md.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { stringList } from "../files/json-object.js";
+import { byDaysThenIndex } from "../collections.js";
 import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
@@ -228,7 +229,7 @@ export function staleWaitingBugRows(root: string, now = Date.now()): Array<{ ind
       const days = ageInDays(anchor, now);
       return days >= STALE_WAIT_DAYS ? [{ index: b.index, position: b.position, title: stripEntryStamp(b.title), days }] : [];
     })
-    .sort((a, b) => b.days - a.days || a.index - b.index);
+    .sort(byDaysThenIndex);
 }
 
 /** The regression candidates for the `regressed fixes` feed: a newest-FIX_CLAIMS_CHECKED BUGS.md

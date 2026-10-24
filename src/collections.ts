@@ -132,6 +132,16 @@ export function lowerMedian(values: number[]): number {
   return sorted[Math.floor((sorted.length - 1) / 2)] as number;
 }
 
+/** Most-days-waited-first comparator, ties in ascending index (file order) — `b.days - a.days ||
+ * a.index - b.index`, the single home of that one-line ordering. Shared by the stale-bug
+ * alert (src/ui/status-payload.ts's staleOpenBugs) and the stale-waiting-bug doctor row
+ * (src/doctor/doctor-backlog-bugs.ts's staleWaitingBugRows), which both build `{index, days}`
+ * rows off the same backlog scan, so the two cannot drift on how ties order. The generic holds
+ * any row type carrying both fields; a row without a natural index passes its first-seen order. */
+export function byDaysThenIndex<T extends { days: number; index: number }>(a: T, b: T): number {
+  return b.days - a.days || a.index - b.index;
+}
+
 /** Ascending string comparator by UTF-16 code unit — the locale-independent order a bare `.sort()`
  * uses, unlike `localeCompare` (which `rankByCount` uses for its tiebreak). Used directly by
  * src/cli/cli-start-summary.ts, src/cli/log-commands.ts and src/history/history-data.ts, and by

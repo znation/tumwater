@@ -17,6 +17,7 @@ import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainChe
 import { readSlotsState } from "../git/slots-state.js";
 import { configForStatus } from "../status/status-polls.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
+import { byDaysThenIndex } from "../collections.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts, type FlappedChecks, type NotifyFailure, type PlanDependencyProblem, type PrimaryOverwriteBlock, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
 import { duplicatedBacklogHeadings, planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
@@ -62,7 +63,7 @@ export function staleOpenBugs(root: string, now = Date.now()): StaleBug[] {
       const days = ageInDays(stamp, now);
       return days >= STALE_BUG_DAYS ? [{ index, position: index + 1, title: stripEntryStamp(entry.title), days }] : [];
     })
-    .sort((a, b) => b.days - a.days || a.index - b.index);
+    .sort(byDaysThenIndex);
 }
 
 /** The notify pages the doctor's 1-day rule (src/doctor/doctor-notify.ts checkNotify,
