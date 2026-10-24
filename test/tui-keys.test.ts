@@ -14,13 +14,13 @@ import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import type { previewRevert } from "../src/operator/revert.js";
-import { overlapDrillHeading, overlapHolders, mergeQueueRoles } from "../src/ui/tui/tui-pane-pending.js";
+import { overlapDrillHeading, overlapHolders, mergeQueueRoles, postReviewRoles } from "../src/ui/tui/tui-pane-pending.js";
 import { historyWindowBounds } from "../src/ui/tui/tui-pane-history.js";
 import { promptLineFree, type TuiPaneEditorState } from "../src/ui/tui/tui-pane-ctx.js";
 import { renderRoleChange, renderRoleChanges } from "../src/change/change-render.js";
 import { enqueueMerge, queuedMergeFiles, queuedMerges, readMergeQueue, type MergeQueueView } from "../src/merge/merge-queue.js";
 import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
-import { readPostReviews } from "../src/review/post-merge-review.js";
+import { readPostReviews, type PostReview } from "../src/review/post-merge-review.js";
 import { renderPostReviews } from "../src/review/post-merge-review-render.js";
 import { shortSha } from "../src/text/format.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
@@ -2622,7 +2622,7 @@ test("Ctrl+G on the Pending pane with empty queue and no overlaps flashes", asyn
   const before = keys.state().paneCache;
   ctrlG(keys);
   assert.equal(keys.state().paneCache, before);
-  assert.equal(keys.state().flash, "no queued merges or overlapping files to scope");
+  assert.equal(keys.state().flash, "no queued merges, post-merge reviews or overlapping files to scope");
 });
 
 test("mergeQueueRoles lists each queued role once in queue order", () => {
@@ -2636,6 +2636,52 @@ test("mergeQueueRoles lists each queued role once in queue order", () => {
   };
   assert.deepEqual(mergeQueueRoles(view), ["feature", "clean"]);
   assert.deepEqual(mergeQueueRoles({ entries: [], unreadable: 0 }), []);
+});
+
+test("postReviewRoles lists each review role once in first-seen order", () => {
+  const r = (role: string, commit: string): PostReview => ({ role, commit, summary: "" });
+  assert.deepEqual(postReviewRoles([r("feature", "a".repeat(40)), r("clean", "b".repeat(40)), r("feature", "c".repeat(40))]), ["feature", "clean"]);
+  assert.deepEqual(postReviewRoles([]), []);
+});
+
+test("Ctrl+G on the Pending pane scopes the post-merge review block to each review role under its whole-queue position", async () => {
+  const root = makeRoot();
+  writeJsonFile(postReviewPath(root), {
+    pending: [
+      { role: "feature", commit: "a".repeat(40), summary: "feature first" },
+      { role: "clean", commit: "b".repeat(40), summary: "clean second" },
+      { role: "feature", commit: "c".repeat(40), summary: "feature third" },
+    ],
+  });
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => Promise.resolve({ mainBranch: "main", roles: [] }),
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  assert.equal(keys.state().view, 5);
+  await settle();
+  const cache = () => keys.state().paneCache ?? "";
+  const whole = renderPostReviews(readPostReviews(root));
+  assert.ok(cache().includes(whole), "the unscoped pane paints the whole review block");
+  ctrlG(keys);
+  assert.ok(cache().includes("post-merge review queue (2 of 3, --role feature):"), "the first scope is the first review role");
+  assert.ok(cache().includes(" 1. feature "), "the scoped block keeps the first entry under its whole-queue position");
+  assert.ok(cache().includes(" 3. feature "), "and the second feature entry under whole-queue position 3");
+  assert.ok(!cache().includes("clean second"), "the other roles' entries are dropped");
+  assert.ok(cache().includes("merge queue empty"), "the scoped empty queue still paints the empty line");
+  ctrlG(keys);
+  assert.ok(cache().includes("post-merge review queue (1 of 3, --role clean):"), "the second scope is the next review role");
+  assert.ok(cache().includes(" 2. clean "), "clean keeps its whole-queue position 2");
+  assert.ok(cache().includes("merge queue empty"), "the review-only role's queue still paints");
+  assert.ok(keys.state().flash === null || keys.state().flash === "", "a reachable role never flashes the empty scope");
+  ctrlG(keys);
+  assert.ok(cache().includes(whole), "the third press returns to the whole review block byte-for-byte");
+  assert.ok(cache().includes("merge queue empty"), "and to the whole merge queue");
 });
 
 test("Ctrl+G on the Pending pane narrows the merge queue to each queued role under its whole-queue position", async () => {

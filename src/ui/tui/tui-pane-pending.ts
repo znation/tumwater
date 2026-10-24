@@ -11,7 +11,7 @@ import { roleLabel } from "../../roles/role-labels.js";
 import { shortSha } from "../../text/format.js";
 import { humanAgo } from "../../text/datetime.js";
 import { readPostReviews, type PostReview } from "../../review/post-merge-review.js";
-import { renderPostReviews, postReviewStatusLabel } from "../../review/post-merge-review-render.js";
+import { renderPostReviews, postReviewStatusLabel, scopePostReviews } from "../../review/post-merge-review-render.js";
 import { acceptPostReview } from "../../review/post-merge-review-accept.js";
 import { squash } from "../../text/text.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
@@ -50,6 +50,15 @@ export function mergeQueueRoles(view: MergeQueueView): string[] {
   return seen;
 }
 
+/** The distinct roles named across the post-merge review queue, in first-seen (FIFO) order;
+ * empty for an empty queue. The review block's contribution to the pane's Ctrl+G scope cycle,
+ * after the queue's roles — the review scope is the `tumwater reviews --role <id>` twin. */
+export function postReviewRoles(entries: readonly PostReview[]): string[] {
+  const seen: string[] = [];
+  for (const e of entries) if (!seen.includes(e.role)) seen.push(e.role);
+  return seen;
+}
+
 /** The heading over one overlap's drill-down: its place in the list and the path. */
 export function overlapDrillHeading(index: number, total: number, path: string): string {
   return `overlap ${index + 1}/${total}: ${path} (Ctrl+N next)`;
@@ -61,7 +70,8 @@ export function overlapDrillHeading(index: number, total: number, path: string):
  * from the same `readPostReviews`/`renderPostReviews` pair the CLI prints. Split out of the
  * pane-navigation monolith; its key arms are the Ctrl+R
  * in-place refresh, the Ctrl+N overlap drill-down, and the Ctrl+G role scope (narrowing the
- * merge queue as well as the overlapping files), and it has no render state of its own —
+ * merge queue, the post-merge reviews and the overlapping files), and it has no render
+ * state of its own —
  * aside from the enter half of the Ctrl+T cycle. Its queue arms: Ctrl+X twice cancels a
  * selected merge, Ctrl+V moves it to the front, and the post-merge review rows it appends
  * after the merges are selectable too, so Ctrl+A twice accepts the selected review — the
@@ -89,11 +99,13 @@ export function createPendingPane(session: TuiPaneSession) {
   // injected seam (or an unexpected throw).
   // Ctrl+N steps through the overlapping files, painting each holder's change limited to that
   // file (the `tumwater diff --role a,b --path <path>` view); `base` is the pane text to
-  // return to after the last one. Ctrl+G cycles roleScope through each role the queue and the
-  // overlaps name and back to all (the `queue --role <id>` and `diff --overlaps --role <id>`
-  // twins, one scope covering both surfaces); Ctrl+N then steps through only the scoped files,
-  // and the scope survives a refresh. The queue's roles lead the cycle, the overlap holders
-  // that are not also queued follow, and each kept merge holds its whole-queue position.
+  // return to after the last one. Ctrl+G cycles roleScope through each role the queue, the
+  // post-merge reviews and the overlaps name and back to all (the `queue --role <id>`,
+  // `reviews --role <id>` and `diff --overlaps --role <id>` twins, one scope covering all three
+  // surfaces); Ctrl+N then steps through only the scoped files,
+  // and the scope survives a refresh. The queue's roles lead the cycle, the review-only roles
+  // follow, then the overlap holders that are in neither, and each kept merge and each kept
+  // review holds its whole-queue position.
   let refreshGen = 0;
   let base = "";
   let lastOverlaps: ChangeOverlapsView | null = null;
@@ -129,11 +141,26 @@ export function createPendingPane(session: TuiPaneSession) {
     const { view, scope } = scopeMergeQueue(lastQueue, [roleScope], (r) => r === roleScope);
     return renderMergeQueue(view, session.now(), inFlight, scope);
   };
+  // The one scoped traversal the review block's painting and the row selection both use, so
+  // the painted block and the selected row's accept position cannot drift: the whole list with
+  // no scope when no Ctrl+G scope is active, else `scopePostReviews`'s kept entries and scope
+  // (each kept review keeping its whole-queue position, the `tumwater reviews --role <id>`
+  // twin).
+  const scopedReviews = (): { entries: readonly PostReview[]; scope?: { roles: readonly string[]; positions: readonly number[]; total: number } } => {
+    if (roleScope === null) return { entries: lastReviews };
+    return scopePostReviews(lastReviews, [roleScope], (r) => r === roleScope);
+  };
   // The post-merge review block the pane paints under the merge queue and above the change
   // roster: `tumwater reviews`' own renderer over the queue `readPostReviews` reads, so the
-  // TUI, the CLI, and the dashboard cannot drift on order or wording. Empty when the queue is
-  // empty (no block, no header).
-  const reviewsHead = (): string => (lastReviews.length === 0 ? "" : renderPostReviews(lastReviews));
+  // TUI, the CLI, and the dashboard cannot drift on order or wording. Under a Ctrl+G scope it
+  // narrows to the scoped role's entries, each kept under its whole-queue position. Empty only
+  // when the whole queue is empty (no block, no header); a scope that keeps nothing still
+  // prints `renderPostReviews`'s `no post-merge reviews for <id> …` line.
+  const reviewsHead = (): string => {
+    if (lastReviews.length === 0) return "";
+    const scoped = scopedReviews();
+    return renderPostReviews(scoped.entries, scoped.scope);
+  };
   const queueAndReviews = (): string => {
     const q = queueHead();
     const r = reviewsHead();
@@ -221,10 +248,16 @@ export function createPendingPane(session: TuiPaneSession) {
       const { view, scope } = scopeMergeQueue(lastQueue, [roleScope], (r) => r === roleScope);
       queueRows = view.entries.map((entry, i) => ({ kind: "merge" as const, entry, position: scope.positions[i]! }));
     }
-    // The review block is never role-scoped (reviewsHead is independent of roleScope), so a
-    // review row's position is its 1-based whole-list position — the one `tumwater reviews`
-    // and `tumwater reviews --accept <n>` number. Reviews follow the merge rows in the pane.
-    queueRows.push(...lastReviews.map((entry, i) => ({ kind: "review" as const, entry, position: i + 1 })));
+    // The review block follows the same scope the painted head used, so a review row's
+    // position is its 1-based whole-queue position — the one `tumwater reviews` and
+    // `tumwater reviews --accept <n>` number — whether unscoped (i + 1) or kept by the scope's
+    // positions. Reviews follow the merge rows in the pane, exactly as the traversal painted.
+    const reviews = scopedReviews();
+    if (reviews.scope) {
+      reviews.entries.forEach((entry, i) => queueRows.push({ kind: "review" as const, entry, position: reviews.scope!.positions[i]! }));
+    } else {
+      reviews.entries.forEach((entry, i) => queueRows.push({ kind: "review" as const, entry, position: i + 1 }));
+    }
     if (selectedQueue !== null) {
       if (queueRows.length === 0) {
         selectedQueue = null;
@@ -287,15 +320,20 @@ export function createPendingPane(session: TuiPaneSession) {
     }
     if (key.ctrl && key.name === "g" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
       const queueRoles = lastQueue ? mergeQueueRoles(lastQueue) : [];
+      const reviewRoles = postReviewRoles(lastReviews);
       const holders = lastOverlaps?.state === "ready" ? overlapHolders(lastOverlaps) : [];
-      const roles = [...queueRoles, ...holders.filter((h) => !queueRoles.includes(h))];
+      const roles = [
+        ...queueRoles,
+        ...reviewRoles.filter((r) => !queueRoles.includes(r)),
+        ...holders.filter((h) => !queueRoles.includes(h) && !reviewRoles.includes(h)),
+      ];
       if (roles.length === 0) {
         roleScope = null;
         rebuildQueueRows();
         head = queueAndReviews() + rosterText;
         compose();
         session.paneCache = base;
-        session.flashMessage("no queued merges or overlapping files to scope");
+        session.flashMessage("no queued merges, post-merge reviews or overlapping files to scope");
         return true;
       }
       const slots = [null, ...roles];
