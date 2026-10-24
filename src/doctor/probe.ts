@@ -1,6 +1,19 @@
 import { spawn } from "node:child_process";
 import { captureCappedOutput, releaseChildHandles, signalTree } from "../process/process.js";
 
+/** How long a backend credential/version probe may take before it counts as unknown — a doctor
+ * run is a pre-flight, not a place to wait out a hung backend. Shared by the pi, claude, opencode
+ * and codex credential probes (doctor-pi-checks.ts, doctor-claude-checks.ts,
+ * doctor-opencode-checks.ts, doctor-codex-checks.ts). */
+export const AUTH_CHECK_TIMEOUT_MS = 15_000;
+
+/** Cap on a credential probe's captured stdout. The auth reply is a tiny JSON object; a binary
+ * whose output is a runaway log (or a pipe held open with no EOF) must not grow `out` without
+ * bound. Sibling probes share EXEC_MAX_BUFFER, but 1 MiB is already orders of magnitude past any
+ * real reply, so it is the tighter bound here. Over it the probe kills the child and reads as
+ * unknown. */
+export const AUTH_CHECK_MAX_OUTPUT_BYTES = 1024 * 1024;
+
 /** One bounded probe of a resolved binary: `null` when the spawn threw, the child errored,
  * the deadline passed, or stdout overran `maxOutputBytes` — every case the caller must read as
  * "could not check", never as a verdict. The child runs detached and at the deadline (or on
@@ -11,7 +24,9 @@ import { captureCappedOutput, releaseChildHandles, signalTree } from "../process
  * full stderr pipe would block the child. `timeoutMs` and `maxOutputBytes` are test seams;
  * production callers pass their own named constants. One home of the shape, shared by the
  * model checks' credential/version probes, the tier-model probes, and the image-input probe —
- * before the split each doctor module carried its own byte-for-byte copy. */
+ * before the split each doctor module carried its own byte-for-byte copy. The credential probes'
+ * named budgets (AUTH_CHECK_TIMEOUT_MS, AUTH_CHECK_MAX_OUTPUT_BYTES) live beside it here, so the
+ * backend check modules share them without importing them from one another. */
 export function boundedProbe(
   bin: string,
   args: string[],

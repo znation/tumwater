@@ -1,5 +1,5 @@
 import { childEnv } from "../process/process.js";
-import { boundedProbe } from "./probe.js";
+import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
 import { configForRole } from "../config/config-views.js";
 import { fallbackPair, resolveTierFallbacks, seamsInUse, tierChainSteps } from "../config/config-fallbacks.js";
@@ -17,13 +17,12 @@ import {
   type ImageProbeResult,
 } from "./image-probe.js";
 import { readClaudeAccount, type ClaudeAccount } from "../agent/claude/claude-account.js";
-import { parseJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
+import { piListedModels, piProviderAuth, type ProviderAuth } from "./doctor-pi-checks.js";
 import { modelPairName, pairDailyCost } from "../budget/budget.js";
 import { usd, usdCap } from "../text/format.js";
 import { loadRunnerStates } from "./doctor-holds.js";
-import { resolveBackendBin } from "../pi/pi-bin.js";
-import { parsePiModelImages, parsePiModelTable, readPiListedModels, writePiListedModels } from "../pi/pi-listed-models.js";
+import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { agree } from "../text/phrases.js";
 import { formatClock, formatDate } from "../text/datetime.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
@@ -48,16 +47,16 @@ const PHRASE_CANNOT_READ_MODELS = "cannot check — could not read pi's model de
 /** The doctor's model-readiness checks, split out of doctor-checks.ts (whose environment and
  * repo-setup checks stay there, and whose state/disk/build checks live in
  * doctor-project-checks.ts): the cap fallback price and fallback-chain checks (checkFallbackModel,
- * checkFallbackChain), the pi auth/probe checks (piProviderAuth, piListedModels), the seam
- * framework (seamPairs and the per-backend seam predicates), and the declared-tier and
- * image-input checks (checkTierModels, checkImageInput). The claude and opencode provider
- * checks live in their own modules (doctor-claude-checks.ts, doctor-opencode-checks.ts), each
- * importing this file's shared seam framework and the AUTH_CHECK_* probe budgets rather than
- * duplicating them. The shared report contract (CheckOutcome) is imported from outcome.ts,
- * exactly as the other doctor-* modules do. Together these are the doctor's only checks that
- * read pi's model definitions and, for the probes, spawn an agent binary — a distinct concern
- * from the filesystem/git checks, kept together so a change to how doctor reads models does not
- * touch the environment checks. */
+ * checkFallbackChain), the seam framework (seamPairs and the per-backend seam predicates), and
+ * the declared-tier and image-input checks (checkTierModels, checkImageInput). The claude,
+ * opencode, codex and pi provider checks live in their own per-backend modules
+ * (doctor-claude-checks.ts, doctor-opencode-checks.ts, doctor-codex-checks.ts,
+ * doctor-pi-checks.ts), each importing this file's shared seam framework and the AUTH_CHECK_*
+ * probe budgets from probe.ts rather than duplicating them. The shared report contract
+ * (CheckOutcome) is imported from outcome.ts, exactly as the other doctor-* modules do. Together
+ * these are the doctor's only checks that read pi's model definitions and, for the probes, spawn
+ * an agent binary — a distinct concern from the filesystem/git checks, kept together so a change
+ * to how doctor reads models does not touch the environment checks. */
 
 /** The config a readiness check reads, or the warn outcome a broken tumwater.json earns:
  * checkInit already fails on a broken config, so a model check only reports that it could not
@@ -184,23 +183,6 @@ export async function checkFallbackChain(
   return down ? warnOutcome(detail) : okOutcome(detail);
 }
 
-/** The credential verdict one provider's `pi auth check --provider <p> --json` gives:
- * ready (the provider has credentials), not-ready (pi ran and said otherwise), or unknown
- * (the check could not run or its output could not be parsed — never conflated with
- * not-ready, which would tell the operator to re-login when the real problem is elsewhere). */
-type ProviderAuth = "ready" | "not-ready" | "unknown";
-
-/** How long the credential probe may take before it counts as unknown — a doctor run is a
- * pre-flight, not a place to wait out a hung backend. */
-export const AUTH_CHECK_TIMEOUT_MS = 15_000;
-
-/** Cap on the probe's captured stdout. The auth reply is a tiny JSON object; a binary whose
- * output is a runaway log (or a pipe held open with no EOF) must not grow `out` without bound.
- * Sibling probes share EXEC_MAX_BUFFER, but 1 MiB is already orders of magnitude past any real
- * reply, so it is the tighter bound here. Over it the probe kills the child and reads as
- * unknown. */
-export const AUTH_CHECK_MAX_OUTPUT_BYTES = 1024 * 1024;
-
 /** One resolved seam pair: the backend it routes to and the provider/model it names, with the
  * thinking level its selector carried. Collected the same way teamModelsFree sweeps — each
  * tier, every enabled role, and the reviewer — so doctor and the budget see the same seams. */
@@ -282,78 +264,6 @@ export function codexSeamsInUse(config: TumwaterConfig): boolean {
  * selector — still gets the row: that is the feature's main scenario. */
 export function piSeamsInUse(config: TumwaterConfig): boolean {
   return seamsInUse(config).some((s) => s.agent === "pi");
-}
-
-/** The default credential probe: run the resolved agent binary's own auth check for one provider
- * and read `status` out of its JSON. The binary resolves exactly as the spawn does
- * (resolveBackendBin — the same source a real run would launch), so doctor tests the auth of
- * the pi it would actually run. pi's contract is `{"status": "ready"|"not_ready"|"invalid",
- * provider, reason?, authType?}` with exit codes 0/1/2 — a non-zero exit there is a verdict, not
- * a crash, so readiness is read from the body alone and a reply that did not run or does not
- * parse is the only "unknown" (never not-ready, which would blame credentials). Never throws;
- * every failure mode ends on "unknown". The bounded subprocess is the shared boundedProbe
- * (probe.ts), also used by the claude probes. */
-export async function piProviderAuth(
-  config: TumwaterConfig,
-  provider: string,
-  pathEnv: string = envPath(),
-  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
-): Promise<ProviderAuth> {
-  const resolved = resolveBackendBin(config);
-  const result = await boundedProbe(
-    resolved.bin,
-    ["auth", "check", "--provider", provider, "--json"],
-    childEnv({ PATH: pathEnv }),
-    timeoutMs,
-    AUTH_CHECK_MAX_OUTPUT_BYTES,
-  );
-  if (result === null) return "unknown";
-  // An unreadable reply is unknown, never not-ready (which would blame the credentials).
-  const doc = parseJsonObject(result.stdout);
-  if (doc === null) return "unknown";
-  if (doc.status === "ready") return "ready";
-  // `invalid` (a bad provider name, exit 2) is likewise not a healthy credential: it reads
-  // not-ready so the warning blames the setup, not the probe.
-  if (doc.status === "not_ready" || doc.status === "invalid") return "not-ready";
-  return "unknown";
-}
-
-/** Read the table `pi --list-models` prints into a set of `provider/model` keys. Null unless the
- * first non-blank line is the `provider model …` header, so a "No models matching" reply or any
- * other text is never taken for an empty catalog. */
-export function parsePiModelList(stdout: string): Set<string> | null {
-  const table = parsePiModelTable(stdout);
-  if (table === null) return null;
-  const listed = new Set<string>();
-  for (const [provider, model] of table.rows) if (model !== undefined) listed.add(`${provider}/${model}`);
-  return listed;
-}
-
-/** The models pi itself lists (`pi --list-models`), which include its built-in catalog that
- * models.json does not repeat. pi lists only the providers it has credentials for. Null when the
- * probe could not run or failed; never throws. Given a `root`, it also records the images column
- * for `seamImageInput` (src/pi/pi-listed-models.ts). */
-export async function piListedModels(
-  config: TumwaterConfig,
-  pathEnv: string = envPath(),
-  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
-  root?: string,
-): Promise<Set<string> | null> {
-  const result = await boundedProbe(
-    resolveBackendBin(config).bin,
-    ["--list-models"],
-    childEnv({ PATH: pathEnv }),
-    timeoutMs,
-    AUTH_CHECK_MAX_OUTPUT_BYTES,
-  );
-  if (result?.code !== 0) return null;
-  const images = root === undefined ? null : parsePiModelImages(result.stdout);
-  if (root !== undefined && images !== null) {
-    try {
-      writePiListedModels(root, images);
-    } catch {} // A failed write never changes the check.
-  }
-  return parsePiModelList(result.stdout);
 }
 
 /** Declared model readiness — plans/model-tiers.md "Doctor" (part 7c/8): every model the config can

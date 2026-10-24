@@ -7,10 +7,12 @@ import {
   checkFallbackModel,
   checkImageInput,
   checkTierModels,
+} from "../src/doctor/doctor-model-checks.js";
+import {
   parsePiModelList,
   piListedModels,
   piProviderAuth,
-} from "../src/doctor/doctor-model-checks.js";
+} from "../src/doctor/doctor-pi-checks.js";
 import { checkAnthroApiKey, checkClaudeAuth, checkClaudeVersion } from "../src/doctor/doctor-claude-checks.js";
 import { checkOpencode } from "../src/doctor/doctor-opencode-checks.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
@@ -36,7 +38,8 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { readJson } from "./helpers/json-read.js";
 
 // Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts,
-// src/doctor/doctor-claude-checks.ts, src/doctor/doctor-opencode-checks.ts):
+// src/doctor/doctor-pi-checks.ts, src/doctor/doctor-claude-checks.ts,
+// src/doctor/doctor-opencode-checks.ts):
 // the cap fallback's price check, the declared-tier resolution check, and the agent binary's
 // credential probe. Every branch is exercised with an injected `modelsPath`/`auth` stub, and
 // the probe with a fake pi on PATH — never a real model or network call. The environment and

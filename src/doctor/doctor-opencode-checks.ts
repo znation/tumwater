@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { childEnv } from "../process/process.js";
-import { boundedProbe } from "./probe.js";
+import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
 import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
 import { opencodeModelKey, readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { opencodeDbPath } from "../paths.js";
@@ -10,8 +10,6 @@ import { formatBytes, tokenWindowLabel } from "../text/format.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import {
-  AUTH_CHECK_MAX_OUTPUT_BYTES,
-  AUTH_CHECK_TIMEOUT_MS,
   loadConfigForCheck,
   opencodeSeamsInUse,
   seamedModels,
@@ -24,8 +22,9 @@ import {
  * its catalog and the operator's global opencode config — a distinct concern from the
  * filesystem/git checks beside it, kept together so a change to how doctor reads opencode does
  * not touch the other model checks. The shared report contract (CheckOutcome) and the
- * seam/model framework (loadConfigForCheck, opencodeSeamsInUse, seamPairs, the AUTH_CHECK_*
- * budgets) come from doctor-model-checks.ts and outcome.ts, as the other doctor-* modules do. */
+ * seam/model framework (loadConfigForCheck, opencodeSeamsInUse, seamPairs) come from
+ * doctor-model-checks.ts, the AUTH_CHECK_* probe budgets from probe.ts, and the shared report
+ * contract (CheckOutcome) from outcome.ts, as the other doctor-* modules do. */
 
 
 /** The provider of a non-gateway opencode model id (`opencode/<provider>/<model>`), or

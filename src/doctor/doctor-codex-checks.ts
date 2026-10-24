@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { childEnv } from "../process/process.js";
-import { boundedProbe } from "./probe.js";
+import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
 import { codexBackend, CODEX_MIN_VERSION } from "../agent/codex/codex-backend.js";
 import { codexEffort, EFFORT_BY_THINKING } from "../agent/codex/codex-args.js";
 import { codexEnv } from "../agent/codex/codex-env.js";
@@ -16,8 +16,6 @@ import { formatBytes, tokenWindowLabel } from "../text/format.js";
 import { errorMessage } from "../text/text.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import {
-  AUTH_CHECK_MAX_OUTPUT_BYTES,
-  AUTH_CHECK_TIMEOUT_MS,
   codexSeamsInUse,
   loadConfigForCheck,
   minVersionOutcome,
@@ -33,8 +31,9 @@ import {
  * other model checks. Each returns null (omitting its row) when no seam routes to codex, so a
  * pi-only team shows no codex row and spawns nothing and reads nothing. The shared
  * report contract (CheckOutcome) and the seam/model framework (loadConfigForCheck,
- * codexSeamsInUse, seamPairs, the AUTH_CHECK_* budgets) come from doctor-model-checks.ts and
- * outcome.ts, as the other doctor-* modules share them. */
+ * codexSeamsInUse, seamPairs) come from doctor-model-checks.ts, the AUTH_CHECK_* probe budgets
+ * from probe.ts, and the shared report contract (CheckOutcome) from outcome.ts, as the other
+ * doctor-* modules share them. */
 
 /** The config and codex home a codex readiness row reads, or the warn outcome a broken
  * `tumwater.json` earns, or null when no seam routes to codex (the row's stand-down). All
