@@ -156,6 +156,15 @@ test("no TUMWATER_NOTES_PATH exits 1 with 'this run keeps no notes'", () => {
   assert.equal(res.stderr.trim(), "this run keeps no notes");
 });
 
+test("an empty TUMWATER_NOTES_PATH exits 1 with 'this run keeps no notes'", () => {
+  // The path is read only from the environment; an empty value means "no notes" just like a
+  // missing one, so a shell exporting an empty TUMWATER_NOTES_PATH cannot make `write`/`show`
+  // target the current directory (where an empty path names '' and fs would open the cwd).
+  const res = run(["write"], "", "body");
+  assert.equal(res.status, 1);
+  assert.equal(res.stderr.trim(), "this run keeps no notes");
+});
+
 test("show with a stray argument exits 1 with usage and prints nothing", () => {
   const notesPath = path.join(tmpdir(), "feature.md");
   run(["write"], notesPath, "something");
