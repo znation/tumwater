@@ -370,4 +370,28 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 **Tests.**
 - No new test module: a behavior-preserving move guarded by test/redeployer.test.ts (the cooldown, forced restart, boot-gate refusal, green-check reject/red, compile reject/fail, drain and swap cases), test/redeploy-escalation.test.ts, test/redeploy-prewarm.test.ts, test/redeploy-rejected.test.ts, test/redeploy-startup-gate.test.ts, test/redeploy-wiring.test.ts and test/orchestrator-redeploy.test.ts. Run them whole and confirm green.
 
+### `RunnerPi.runWithTransientRetry`'s ~100-line transient-retry machine is split into one named private method per decision, so a retry rule is found by name (planned 2026-10-25 by the plan role; independent in files of every eligible plan and blocked part — no entry under `## Planned` and no blocked `Every commit is verified on main` part names `src/runner/runner-pi.ts` or `test/runner-pi-retry.test.ts` (the blocked series edits `src/runner/runner-run.ts`, `src/runner/leftover.ts` and `src/runner/runner-state.ts`, and the in-flight plans edit src/agent, src/ui, src/config, src/pi and src/redeploy), and PLANS-DONE.md holds no split of this method (its `runner-pi.ts` entries name the never-throws fix and the seam-naming warning, both landed behavior changes); touches src/runner/runner-pi.ts)
+
+**Goal.** `RunnerPi.runWithTransientRetry` (src/runner/runner-pi.ts) is the one bounded transient retry every pi agent run goes through, and its decision rules sit inline in one ~100-line method: the multi-term admission predicate (the `!aborted && !timedOut && !quietKilled && (transient*) && !ok && !subscriptionWindowRejected` guard), the warning-text ladder (pi crash / 429-with-hint / stream-severed / timeout / idle-predict), the wait ladder (the Retry-After hint, its cap, and the hint-less refill pause), and the continuation attempt (the `continueSession` re-run and its folds/warnings). A rule is found only by reading the whole method. Extract each rule into a named private method on the same class (all state stays on `this`, the local `fold` closure is passed as a parameter — no behavior change) and leave `runWithTransientRetry` as the seam/fold setup, the first attempt, and the ordered calls.
+
+**Approach.**
+- src/runner/runner-pi.ts: add these private methods, each the current inline block moved verbatim with its comments:
+  - `private transientRetryAdmits(run: PiRunResult): boolean` — the whole `if` condition, comments included (including the `subscriptionWindowRejected` clause and its comment); `runWithTransientRetry` calls `if (this.transientRetryAdmits(pi))`.
+  - `private transientRetryWarning(run: PiRunResult, on: string): string` — the `this.host.warn(...)` argument ternary ladder, returned as a string; `runWithTransientRetry` calls `this.host.warn(this.transientRetryWarning(pi, on))`.
+  - `private transientRetryWaitSeconds(run: PiRunResult): number` — the `hintS`/`waitS` computation (a non-positive hint falls back to `RATE_LIMIT_NO_HINT_RETRY_S`, the cap applies only to the 429 kind, timeout takes `RATE_LIMIT_NO_HINT_RETRY_S`), returned; `runWithTransientRetry` keeps the `if (waitS > 0) await (this.host.sleep?.(waitS * 1000) ?? sleepFor(waitS * 1000))` line.
+  - `private async retryContinuingSession(opts: PiRunOptions, on: string, foldFinal: boolean, fold: (run: PiRunResult) => void): Promise<PiRunResult>` — the `const retry = await runPi({ ...opts, continueSession: true })`, its `warnFallbackClone`/`observeFreeModelCost`, the `if (foldFinal) fold(retry)`, the `warnBackendKindFloor(retry, on)` and the `return retry`, in that order; `runWithTransientRetry` returns its result.
+- `runWithTransientRetry` keeps exactly: the `provider`/`pair`/`on`/`fold` setup, `await ensureProviderLease(opts.config)`, the first `runPi` plus its `warnFallbackClone`/`observeFreeModelCost`, `if (this.transientRetryAdmits(pi)) { this.host.warn(this.transientRetryWarning(pi, on)); fold(pi); const waitS = this.transientRetryWaitSeconds(pi); if (waitS > 0) await ...; return this.retryContinuingSession(opts, on, foldFinal, fold); }`, then `this.warnBackendKindFloor(pi, on); if (foldFinal) fold(pi); return pi;`.
+- No change to the class's fields, constructor, `runRolePi`, `runMergePi`, `runGatePi`, `warnBackendKindFloor`, `retryCoversBackendKind`, any exported symbol, the two `RATE_LIMIT_*` constants, or any other file.
+
+**Files touched.** src/runner/runner-pi.ts
+
+**Acceptance criteria.**
+- `runWithTransientRetry`'s body is only the seam/fold setup, the first attempt, and the ordered decision calls; it no longer contains the admission predicate, the warning-text ladder, the wait ladder or the continuation attempt, each of which lives in exactly one named method above.
+- Every moved statement, expression and comment is preserved verbatim, and the warning strings and wait values are identical to the current ones.
+- No public API change: `RunnerPi`, its fields, its constructor, `runRolePi`, `runMergePi`, `runGatePi` and every exported symbol are unchanged, and no other file is edited.
+- `npm run test:gate` passes.
+
+**Tests.**
+- No new test module: a behavior-preserving move guarded by test/runner-pi-retry.test.ts (the 429 retry, hint / hint-less / zero-hint / capped waits, the gate folding difference, the uncovered-kind floor warning, the seam-naming warnings and the sever/timeout kinds), plus test/runner-pi.test.ts, test/runner-pi-claude.test.ts, test/runner-pi-opencode.test.ts and test/provider-lease.test.ts. Run them whole and confirm green.
+
 ## Done
