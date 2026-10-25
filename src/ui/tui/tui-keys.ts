@@ -106,6 +106,9 @@ interface TuiKeysState {
   briefEditMode: boolean;
   /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
   retireMode: boolean;
+  /** The Failures view's Ctrl+X release mode holds the prompt line, editing a quarantined
+   * test path. */
+  releaseMode: boolean;
   /** The Health view's Ctrl+V enable/disable mode holds the prompt line, editing a role id. */
   roleEnabledMode: boolean;
   /** The Transcript view's Ctrl+O quiet-hours mode holds the prompt line. */
@@ -398,6 +401,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     refreshQueued: panes.refreshQueued,
     refreshNotes: panes.refreshNotes,
     refreshBrief: panes.refreshBrief,
+    refreshReport: panes.refreshReport,
     clearBacklogSelection: panes.clearBacklogSelection,
     applyHistorySearch: panes.applyHistorySearch,
     applyActivitySearch: panes.applyActivitySearch,

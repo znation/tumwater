@@ -369,6 +369,9 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     refreshQueued: queued.refreshQueued,
     refreshNotes: (role: string) => transcript.refreshNotes?.(role),
     refreshBrief: () => brief.refreshBrief?.(),
+    refreshReport: () => {
+      report.enter?.();
+    },
     clearBacklogSelection: backlog.clearBacklogSelection,
     applyHistorySearch: history.applySearch,
     applyActivitySearch: activity.applySearch,

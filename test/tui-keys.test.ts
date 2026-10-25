@@ -46,6 +46,7 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { steppedWindowBounds } from "../src/ui/tui/tui-pane-session.js";
 import { pendingOverlapsText } from "../src/ui/tui/tui-pane-pending.js";
 import { writeJsonFile } from "../src/files/json-files.js";
+import { loadQuarantine, quarantineTests } from "../src/review/known-flakes.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
 const makeRoot = (): string => tmpdir("tui-keys-");
@@ -5507,12 +5508,15 @@ test("Ctrl+X retire on the Health view: an empty id stays and Esc restores the d
 });
 
 test("promptLineFree is false while retire-edit mode holds the line, so the Health pane's own arms stay off it", () => {
-  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, roleEnabledMode: false, quietMode: false, intervalMode: false, roleModelMode: false, instructionsEditFor: null, claudeReserveMode: false };
+  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true, releaseMode: false, roleEnabledMode: false, quietMode: false, intervalMode: false, roleModelMode: false, instructionsEditFor: null, claudeReserveMode: false };
   // Ctrl+E (reclaim), Ctrl+R (doctor re-run) and Ctrl+O (problems toggle) are the Health
   // pane's own arms; while the retire editor holds the line they must see it busy, the same
   // exclusion every other mode enforces, or they would run over the retire modal.
   assert.equal(promptLineFree(es), false, "the retire editor blocks the Health pane's own arms");
   es.retireMode = false;
+  es.releaseMode = true;
+  assert.equal(promptLineFree(es), false, "the release editor blocks the Failures pane's own arms");
+  es.releaseMode = false;
   es.roleEnabledMode = true;
   assert.equal(promptLineFree(es), false, "the role-enabled editor blocks the Health pane's own arms");
   es.roleEnabledMode = false;
@@ -5531,6 +5535,88 @@ test("promptLineFree is false while retire-edit mode holds the line, so the Heal
   es.claudeReserveMode = false;
   es.instructionsEditFor = "clean";
   assert.equal(promptLineFree(es), false, "the instructions editor blocks the pane arms while it holds the line");
+});
+
+// Ctrl+X on the Failures view releases a quarantined test — the terminal twin of
+// `tumwater quarantine --release <n>` and the dashboard Failures card's Release button, all
+// through the same releaseQuarantinedTest core (src/review/known-flakes.ts). A typed test
+// path exactly as the Failures list shows it removes the entry from the quarantine file,
+// leaves the editor, flashes the outcome, and repaints the pane body so the released line is
+// gone. Every other view keeps Ctrl+X for its own arm.
+test("Ctrl+X on the Failures view releases a quarantined test", () => {
+  const root = makeRoot();
+  quarantineTests(root, ["test/T.ts", "test/U.ts"], "bug");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Failures
+  assert.equal(keys.state().view, 4, "Failures is roleIds.length + 3");
+  assert.equal(keys.state().paneCache?.includes("test/T.ts"), true, "the Failures body shows the quarantined line");
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.match(keys.state().flash!, /type its test path/);
+  assert.equal(keys.state().input, "", "the release editor blanks the prompt line");
+  for (const ch of "test/T.ts") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash!, /released quarantined test test\/T\.ts/);
+  assert.deepEqual(loadQuarantine(root).map((e) => e.test), ["test/U.ts"], "only the named test is released");
+  assert.equal(keys.state().releaseMode, false, "success leaves the release editor");
+  // The released line (the quarantine bullet) is gone from the Failures body; the digest's own
+  // warning-cluster section still names test/T.ts because the release itself logged a warning
+  // recording the released test at the user's request, so the check targets the bullet only.
+  assert.equal(keys.state().paneCache!.includes("- test/T.ts —"), false, "the released line is gone from the Failures body's quarantine section");
+  assert.equal(keys.state().paneCache!.includes("- test/U.ts —"), true, "the remaining quarantine line stays");
+});
+
+test("Ctrl+X release releases a quarantined test whose name is over 80 chars, shown in full", () => {
+  // The Failures list renders the full test name (no squash), so an operator can type the
+  // exact path the release editor matches (e.test === test) even past 80 chars; previously
+  // the pane truncated names at 80 and release silently failed for longer titles.
+  const root = makeRoot();
+  const long = `test/${'l'.repeat(120)}.test.ts`;
+  quarantineTests(root, [long], "bug");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Failures
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  for (const ch of long) keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash!, /released quarantined test/);
+  assert.deepEqual(loadQuarantine(root).map((e) => e.test), [], "the long-named test is released");
+  assert.equal(keys.state().releaseMode, false, "success leaves the release editor");
+});
+
+test("Ctrl+X release on the Failures view: an unknown name stays and Esc restores the draft", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Failures
+  for (const ch of "draft") keys.handleKey(ch, { name: ch }); // a prompt draft
+  assert.equal(keys.state().input, "draft", "a prompt draft sits on the line");
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().input, "", "opening release blanks the prompt line");
+  keys.handleKey(undefined, { name: "return" }); // empty name
+  assert.match(keys.state().flash!, /a test name is required/);
+  assert.equal(keys.state().releaseMode, true, "an empty name stays open");
+  for (const ch of "test/unknown.ts") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" }); // name not in the quarantine
+  assert.match(keys.state().flash!, /not in the flake quarantine: test\/unknown\.ts/);
+  assert.equal(keys.state().releaseMode, true, "a name not in the list stays open");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().releaseMode, false, "Esc leaves the release editor");
+  assert.equal(keys.state().input, "draft", "Esc restores the saved prompt draft");
+});
+
+test("Ctrl+X off the Failures view opens no release editor", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → clean's Transcript (view 1)
+  assert.equal(keys.state().view, 1, "clean's Transcript is view 1");
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().releaseMode, false, "Ctrl+X on a Transcript opens no release editor");
+  for (let i = 0; i < 2; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Usage (roleIds.length + 2)
+  assert.equal(keys.state().view, 3, "Usage is roleIds.length + 2");
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().releaseMode, false, "Ctrl+X on Usage opens no release editor");
 });
 
 test("Ctrl+O on a role's Transcript edits that role's quiet-hours window, not another's or the team's", () => {

@@ -160,6 +160,11 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "usage", scope: null, window: null }), /Ctrl\+E window: default/);
   assert.match(hint({ kind: "failures", scope: null, window: "7d" }), /Ctrl\+E window: 7d/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /Ctrl\+E window: default/);
+  // The Failures pane alone carries the Ctrl+X release-test hint (the terminal twin of
+  // `tumwater quarantine --release <n>` and the dashboard Failures card's Release button);
+  // the Usage pane keeps the release key off its hints.
+  assert.match(hint({ kind: "failures", scope: null, window: null }), /Ctrl\+X release test/);
+  assert.doesNotMatch(hint({ kind: "usage", scope: null, window: null }), /Ctrl\+X/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+L newest failure/);
   assert.match(hint({ kind: "history", since: "1h", result: null, role: null, grep: null, trail: false }), /Ctrl\+P earlier window/);
@@ -252,6 +257,16 @@ test("retire-edit mode shows its own hint keys and prompt prefix", () => {
   assert.deepEqual(hintLine({ kind: "health" }, base, 300).filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "Esc", "Ctrl+D"]);
   assert.equal(plain(promptPrefix(base)), "retire › ");
   assert.match(plain(hintLine({ kind: "health" }, base, 300)), /Enter retire role/);
+});
+
+test("release-edit mode shows its own hint keys and prompt prefix", () => {
+  const base = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null, releaseMode: true };
+  // While the Failures Ctrl+X release editor holds the line, the footer names the release
+  // keys and the prompt prefix reads `release › ` rather than the ordinary `director › ` — the
+  // same mode indication every other modal editor shows.
+  assert.deepEqual(hintLine({ kind: "failures", scope: null, window: null }, base, 300).filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "Esc", "Ctrl+D"]);
+  assert.equal(plain(promptPrefix(base)), "release › ");
+  assert.match(plain(hintLine({ kind: "failures", scope: null, window: null }, base, 300)), /Enter release test/);
 });
 
 test("pause-edit mode shows its own hint keys and prompt prefix", () => {

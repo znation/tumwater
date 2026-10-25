@@ -71,8 +71,12 @@ export function renderQuarantineSection(rows: readonly QuarantineRow[], now: num
   if (warning !== null) lines.push(warning, "");
   for (const r of rows) {
     const filed = r.bug ? `filed: ${squash(r.bug, 80)}` : "not filed";
+    // The test name is NOT squashed: the Failures Ctrl+X release editor matches the exact
+    // path the list shows (releaseQuarantinedTest(session.root, test)), so truncating here
+    // would make a title over the bound impossible to release. `tumwater quarantine` keeps
+    // its own numbered squash because --release <n> never needs the full name.
     lines.push(
-      `- ${squash(r.test, 80)} — first seen ${humanAgo(r.firstSeen, now)}, ` +
+      `- ${r.test} — first seen ${humanAgo(r.firstSeen, now)}, ` +
         `last seen ${humanAgo(r.lastSeen, now)}, ${plural(r.count, "flake")} — ${filed}`,
     );
   }

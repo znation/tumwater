@@ -103,3 +103,12 @@ test("renderQuarantineSection is empty for an empty list and a Markdown section 
   assert.match(bullets[0]!, /^- test\/not-filed\.test\.ts — first seen 3d ago, last seen 1h ago, 2 flakes — not filed$/);
   assert.match(bullets[1]!, /^- test\/filed\.test\.ts — first seen 1h ago, last seen 0s ago, 1 flake — filed: A filed flake$/);
 });
+
+test("renderQuarantineSection shows a test name over 80 chars in full, not squashed", () => {
+  // The Failures Ctrl+X release editor matches the exact path the list shows, so a long
+  // title must render untruncated or it could never be released. `renderQuarantine` keeps
+  // its own numbered squash because --release <n> never needs the full name.
+  const long = `test/${"a".repeat(120)}.test.ts`;
+  const rows = quarantineRows([entry({ test: long, firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "" })]);
+  assert.match(renderQuarantineSection(rows, now), new RegExp(`- ${long} —`));
+});

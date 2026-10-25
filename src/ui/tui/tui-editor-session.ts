@@ -47,6 +47,9 @@ interface TuiHeld {
   brief: boolean;
   /** The Health view's Ctrl+X retire editor holds the prompt line, editing a role id. */
   retire: boolean;
+  /** The Failures view's Ctrl+X release editor holds the prompt line, editing a quarantined
+   * test path. */
+  release: boolean;
   /** The Health view's Ctrl+V enable/disable editor holds the prompt line, editing a role id. */
   roleEnabled: boolean;
   /** The Transcript view's Ctrl+O quiet-hours editor holds the prompt line. */
@@ -97,6 +100,7 @@ type EditorEnterKey =
   | "notes"
   | "brief"
   | "retire"
+  | "release"
   | "roleEnabled"
   | "quiet"
   | "interval"
@@ -144,6 +148,10 @@ export interface TuiEditorSession {
   refreshNotes(role: string): void;
   /** Repaint the Brief view's cached body after a replace write. */
   refreshBrief(): void;
+  /** Repaint the Failures view's cached body after a release write while it is the current
+   * view (the report pane's `enter`, which re-reads loadQuarantine and re-enters at its head),
+   * a no-op off the Failures view. */
+  refreshReport(): void;
   /** Clear the project-status pane's entry selection and its body scroll after a recorded
    * answer/edited entry leaves the list. */
   clearBacklogSelection(): void;
@@ -192,6 +200,7 @@ const HOLDER_SUBJECTS: ReadonlyArray<readonly [Exclude<NonNullable<Parameters<Tu
   ["notes", "notes edit"],
   ["brief", "brief edit"],
   ["retire", "retire role"],
+  ["release", "release test"],
   ["roleEnabled", "role state"],
   ["quiet", "quiet hours"],
   ["model", "model edit"],
@@ -234,6 +243,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       notes: null,
       brief: false,
       retire: false,
+      release: false,
       roleEnabled: false,
       quiet: false,
       quietTeam: false,
@@ -258,6 +268,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
     refreshQueued: deps.refreshQueued,
     refreshNotes: deps.refreshNotes,
     refreshBrief: deps.refreshBrief,
+    refreshReport: deps.refreshReport,
     clearBacklogSelection: deps.clearBacklogSelection,
     applyHistorySearch: deps.applyHistorySearch,
     applyActivitySearch: deps.applyActivitySearch,
