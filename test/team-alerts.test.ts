@@ -1070,6 +1070,26 @@ test("no declared check raises one amber no-check alert", () => {
   assert.deepEqual(alerts(false), []);
 });
 
+test("a marker-less brief raises one amber no-brief alert right after no-check", () => {
+  const alerts = (noBrief?: boolean) =>
+    teamAlerts({ ...base, noBrief }, [], [], Date.now()).filter((a) => a.key === "no-brief");
+  const one = alerts(true);
+  assert.equal(one.length, 1);
+  assert.equal(one[0]?.tone, "amber");
+  assert.match(one[0]?.title ?? "", /prompt block/);
+  assert.match(one[0]?.detail ?? "", /tumwater:prompt/);
+  assert.match(one[0]?.detail ?? "", /tumwater init/);
+  assert.deepEqual(one[0]?.actions, []);
+  assert.deepEqual(alerts(undefined), []);
+  assert.deepEqual(alerts(false), []);
+
+  // With both flag states set, the always-on no-check emits before no-brief.
+  const both = teamAlerts({ ...base, noDeclaredCheck: true, noBrief: true }, [], [], Date.now());
+  assert.deepEqual(both.map((a) => a.key).filter((k) => k === "no-check" || k === "no-brief"), ["no-check", "no-brief"]);
+  const healthy = teamAlerts({ ...base }, [], [], Date.now()).filter((a) => a.key === "no-brief");
+  assert.deepEqual(healthy, [], "a healthy team still returns no no-brief alert");
+});
+
 test("a broken plan-dependency clause raises a standing amber alert right after the refused alert", () => {
   const now = Date.now();
   const msg = 'PLANS.md plan "S, part 2/2: b" names S 1/2 as a prerequisite without a `requires … landed` clause — the claim allocator ignores that wording and hands the part out now; write it as `requires part i/n landed`';

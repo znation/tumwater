@@ -586,6 +586,11 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // state before the dashboard/TUI render it as an alert). Omitted (absent) when a check is
     // declared, the same omit-undefined idiom as ciParity.
     ...(snap.noDeclaredCheck ? { noDeclaredCheck: true } : {}),
+    // The raw machine-readable twin of the amber `no-brief` alert (present only when a brief
+    // candidate exists without a resolvable prompt block, so `tumwater status --json` scripts
+    // can read the same state the alert renders). Omitted (absent) when the brief resolves or
+    // the repo is the bare pre-init state, the same omit-undefined idiom as noDeclaredCheck.
+    ...(snap.noBrief ? { noBrief: true } : {}),
     ciParityTone: ciParityTone(snap.ciParity),
     // The check's counts fragment, preformatted through badges.ts's mainCountsFragment so
     // the page renders the pass/skip/fail breakdown verbatim and cannot re-derive (and

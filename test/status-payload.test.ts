@@ -10,6 +10,7 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
 import { statusPayload, staleOpenQuestions, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS, mainRuleFailures, MAIN_RULE_FAILURE_WINDOW_MS, qaCoverageAlert } from "../src/ui/status-payload.js";
+import { PROMPT_END, PROMPT_START } from "../src/brief/brief.js";
 import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkPostReviews } from "../src/doctor/doctor-backlog.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool, staleWorkspacePins } from "../src/doctor/doctor-contention-checks.js";
@@ -1106,6 +1107,33 @@ test("the payload's noDeclaredCheck follows detectBuildCheck", () => {
   const payload2 = statusPayload(root, now) as { noDeclaredCheck?: boolean; alerts: Array<{ key: string }> };
   assert.equal(payload2.noDeclaredCheck, undefined, "no noDeclaredCheck key with a declared check");
   assert.equal(payload2.alerts.find((a) => a.key === "no-check"), undefined);
+});
+
+test("the payload's noBrief follows briefBlockMissing and clears when the brief resolves", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  assert.equal(snapshot(root, undefined, now).noBrief, undefined, "no candidate stays absent (pre-init state)");
+  let payload = statusPayload(root, now) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal(payload.noBrief, undefined, "no noBrief key with no brief candidate");
+  assert.equal(payload.alerts.find((a) => a.key === "no-brief"), undefined, "no no-brief alert with no brief candidate");
+
+  // A marker-less README.md (a hand edit that strips the block) is the silent state doctor
+  // warns on; the snapshot, payload and alert should all surface it.
+  fs.writeFileSync(path.join(root, "README.md"), "# p\n\nNo prompt block here.\n");
+  assert.equal(snapshot(root, undefined, now).noBrief, true, "marker-less brief is surfaced on the snapshot");
+  payload = statusPayload(root, now) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal(payload.noBrief, true, "the machine-readable payload field is present");
+  const alert = payload.alerts.find((a) => a.key === "no-brief");
+  assert.ok(alert, "marker-less brief raises the no-brief alert");
+  assert.equal(alert!.tone, "amber");
+  assert.match(alert!.title, /prompt block/);
+
+  // Restoring the block turns the field and the alert back off.
+  fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}\nBuild a thing.\n${PROMPT_END}\n`);
+  assert.equal(snapshot(root, undefined, now).noBrief, undefined, "resolved brief clears the snapshot field");
+  payload = statusPayload(root, now) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal(payload.noBrief, undefined, "no noBrief key with a resolved brief");
+  assert.equal(payload.alerts.find((a) => a.key === "no-brief"), undefined, "no no-brief alert with a resolved brief");
 });
 
 test("qaCoverageAlert is null for a missing or fresh ledger and names the newest flow for a stalled one", () => {

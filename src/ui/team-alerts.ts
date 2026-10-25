@@ -305,6 +305,7 @@ interface StatusAlertsInput {
     StatusSnapshot,
     "budget" | "chain" | "disk" | "rootInstallDrift" | "capPaused" | "budgetPausedRoles" | "build"
     | "noDeclaredCheck"
+    | "noBrief"
   >;
   roles: readonly AlertRole[];
   staleClaims: readonly ClaimState[];
@@ -418,6 +419,20 @@ function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       tone: "amber",
       title: "No project check is declared — the safety gates are off",
       detail: "The review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run. Set \`check.command\` in tumwater.json (or add a test/typecheck/build npm script) so merges are verified.",
+      actions: [],
+    });
+  }
+  // A brief candidate exists but none carries a well-formed prompt block (briefBlockMissing):
+  // every run reaches its model with no project prompt, so the team burns tokens producing
+  // work unrelated to the project. The same marker-less/unreadable state the doctor `brief`
+  // row warns on, raised as a standing alert on the always-on surfaces (the bare pre-init repo
+  // stays silent). Independent of team state, like the no-check alert beside it.
+  if (snap.noBrief) {
+    out.push({
+      key: "no-brief",
+      tone: "amber",
+      title: "The project brief has no prompt block — every role runs without its project prompt",
+      detail: "A brief file exists but carries no well-formed tumwater:prompt block, so each run's prompt reaches the model with no project brief. Restore the block in the file the doctor `brief` row names, or re-run `tumwater init`.",
       actions: [],
     });
   }
@@ -1348,6 +1363,7 @@ export function teamAlerts(
     | "disk"
     | "rootInstallDrift"
     | "noDeclaredCheck"
+    | "noBrief"
     | "imageProbeFailures"
     | "chain"
     | "capPaused"

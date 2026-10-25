@@ -26,6 +26,7 @@ import { collectInboxes } from "./status-inbox.js";
 import { collectBudget } from "./status-budget.js";
 import { collectRootInstallDrift } from "./status-install.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
+import { briefBlockMissing } from "../brief/brief.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
@@ -379,6 +380,12 @@ export interface StatusSnapshot {
    * surfaces the silent state on `tumwater status`, the dashboard and the TUI; absent
    * otherwise, so the surfaces render exactly as before. */
   noDeclaredCheck?: boolean;
+  /** True when a brief candidate file exists but none carries a well-formed prompt block
+   * (src/brief/brief.ts's briefBlockMissing) — the doctor `brief` row's marker-less and
+   * unreadable warning state. Present only in that state, so the always-on amber `no-brief`
+   * alert surfaces the silent state on `tumwater status`, the dashboard and the TUI; absent
+   * otherwise (including the bare pre-init repo), so the surfaces render exactly as before. */
+  noBrief?: boolean;
   /** The check-permit pool's live state as the orchestrator published it; only while it runs. */
   checkPermits?: CheckPermitSnapshot;
   /** The workspace pool's live state as the running orchestrator published it; absent
@@ -577,6 +584,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     mainCheck: mainCheckForPoll(root, cfg),
     ciParity: ciParityForPoll(root, cfg),
     noDeclaredCheck: detectBuildCheck(root, cfg) === null ? true : undefined,
+    noBrief: briefBlockMissing(root) ? true : undefined,
     // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
     // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
     // must not speak for a stopped team — and only when the last poll could measure the

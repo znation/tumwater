@@ -6,7 +6,10 @@
 and a status section between managed markers), PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md,
 and tumwater.json, and commits them. A bare `tumwater init` reads the prompt from an existing
 README.md's `tumwater:prompt` markers instead. A `TUMWATER.md` with the same markers takes
-precedence over README.md, so an existing project's README can stay untouched. Pointed at an
+precedence over README.md, so an existing project's README can stay untouched. The always-on
+surfaces (status, dashboard, TUI) raise the amber `no-brief` alert when a brief file exists
+without its marker block, so a hand edit that strips the prompt cannot run the team silently
+without its project brief. Pointed at an
 existing repo whose README.md has no markers, init adopts it: the brief goes in `TUMWATER.md`,
 README.md and any existing backlog files are left byte-identical, and only the missing files are
 created (`--adopt` asks for this path explicitly). `--dry-run` prints what init would create and

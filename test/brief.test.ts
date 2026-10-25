@@ -8,6 +8,7 @@ import {
   PROMPT_START,
   STATUS_END,
   STATUS_START,
+  briefBlockMissing,
   briefFile,
   briefTemplate,
   readmeTemplate,
@@ -198,4 +199,19 @@ test("replaceBriefText keeps every byte outside the markers and matches readBrie
   );
   assert.equal(replaceBriefText("no markers", "x"), null);
   assert.equal(replaceBriefText(`${PROMPT_END}\n${PROMPT_START}`, "x"), null);
+});
+
+test("briefBlockMissing is true only when a candidate exists without a resolvable block", () => {
+  const root = tmpdir();
+  assert.equal(briefBlockMissing(root), false, "no candidates at all");
+  writeReadme(root, "# p\n\nNo markers here.\n");
+  assert.equal(briefBlockMissing(root), true, "a marker-less candidate");
+  writeReadme(root, `# p\n\n${PROMPT_START}\nFrom README.\n${PROMPT_END}\n`);
+  assert.equal(briefBlockMissing(root), false, "candidate carries the block");
+  try {
+    fs.chmodSync(path.join(root, "README.md"), 0o000);
+    assert.equal(briefBlockMissing(root), true, "an unreadable candidate");
+  } finally {
+    fs.chmodSync(path.join(root, "README.md"), 0o644);
+  }
 });
