@@ -1282,10 +1282,13 @@ test("role writes report a broken tumwater.json instead of crashing on it", asyn
     ["feature", "--enable"], // the enable/disable write
     ["feature", "--instructions-file", instFile], // the instructions set path
     ["feature", "--clear-instructions"], // the instructions unset path (its own `!result.ok` fail)
-    ["feature", "--provider", "openai"], // the model-triple set path (?? defaultConfig)
-    ["feature", "--model", "gpt-5"], // the model-triple set path (?? defaultConfig)
-    ["feature", "--thinking", "high"], // the model-triple set path (?? defaultConfig)
-    ["feature", "--review-after-merge"], // the review-after-merge path (?? [])
+    // The model triple and review-after-merge branches fall back to defaultConfig on a
+    // failed load (their own `?? defaultConfig()`/`?? []` arms, not the shared six-hold
+    // path), so they must hit that fallback before the config core reports the parse error.
+    ["feature", "--provider", "openai"], // provider branch's defaultConfig fallback
+    ["feature", "--model", "gpt-5"], // model branch's defaultConfig fallback
+    ["feature", "--thinking", "high"], // thinking branch's defaultConfig fallback
+    ["feature", "--review-after-merge"], // review-after-merge branch's `?? []` fallback
   ] as const) {
     const r = await cli(repo, "role", ...args);
     assert.equal(r.code, 1, args.join(" "));
