@@ -402,3 +402,45 @@ test("readRunDetail carries a run's prompt tokens and cache-read share", () => {
   assert.ok(!("promptTokens" in inflight));
   assert.ok(!("cacheReadTokens" in inflight));
 });
+
+test("readRunDetail carries a run's pre-edit prompt tokens", () => {
+  // A run_end reporting a pre-edit share yields the number, clamped to the prompt total
+  // (the share a header prices can never exceed the budget it spent).
+  const root = tmpdir();
+  writeEvents(root, [
+    startEvent({ ts: 1000 }),
+    endEvent({ ts: 2000, result: "changed", promptTokens: 100, preEditPromptTokens: 40 }),
+  ]);
+  const detail = readRunDetail(root, "feature", 1)!;
+  assert.equal(detail.preEditPromptTokens, 40);
+
+  // A pre-edit share larger than the prompt total clamps to the total.
+  const clampRoot = tmpdir();
+  writeEvents(clampRoot, [
+    startEvent({ ts: 1000 }),
+    endEvent({ ts: 2000, result: "changed", promptTokens: 10, preEditPromptTokens: 99 }),
+  ]);
+  const clamped = readRunDetail(clampRoot, "feature", 1)!;
+  assert.equal(clamped.preEditPromptTokens, 10);
+
+  // A run_end carrying only preEditPromptTokens (no prompt total) and one carrying neither
+  // field carry no preEditPromptTokens key — a prompt-free run keeps today's exact payload.
+  const preOnlyRoot = tmpdir();
+  writeEvents(preOnlyRoot, [
+    startEvent({ ts: 1000 }),
+    endEvent({ ts: 2000, result: "changed", preEditPromptTokens: 40 }),
+  ]);
+  const preOnly = readRunDetail(preOnlyRoot, "feature", 1)!;
+  assert.ok(!("preEditPromptTokens" in preOnly));
+
+  const noneRoot = tmpdir();
+  writeEvents(noneRoot, [startEvent({ ts: 1000 }), endEvent({ ts: 2000, result: "changed" })]);
+  const none = readRunDetail(noneRoot, "feature", 1)!;
+  assert.ok(!("preEditPromptTokens" in none));
+
+  // An in-flight run (no end) carries no preEditPromptTokens either.
+  const inflightRoot = tmpdir();
+  writeEvents(inflightRoot, [startEvent({ ts: 1000 })]);
+  const inflight = readRunDetail(inflightRoot, "feature", 1)!;
+  assert.ok(!("preEditPromptTokens" in inflight));
+});

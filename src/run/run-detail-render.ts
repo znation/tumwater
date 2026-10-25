@@ -69,6 +69,13 @@ export function renderRunDetail(d: RunDetail): string {
   const prompt = d.promptTokens ?? 0;
   const cached = Math.min(d.cacheReadTokens ?? 0, prompt);
   if (prompt > 0) summary.push(cached > 0 ? `prompt ${compactTokens(prompt)} tok (${Math.round((100 * cached) / prompt)}% cached)` : `prompt ${compactTokens(prompt)} tok`);
+  // The run's pre-edit prompt-token share, the `… before first edit` signal a cost-only
+  // header hides: how much of the prompt budget went out before the run made its first
+  // edit. Clamped to the total (run-detail-data.ts), written after the prompt cell and
+  // before the peak-context cell; a run that reported no pre-edit reading — and an
+  // in-flight run — keeps today's header byte-identical.
+  const preEdit = Math.min(d.preEditPromptTokens ?? 0, prompt);
+  if (preEdit > 0) summary.push(`pre-edit ${compactTokens(preEdit)} tok`);
   // The run's peak context against the seam's declared window, the one header every surface
   // renders. Omitted when the run reported no peak (byte-identical to today's header).
   if ((d.peakContextTokens ?? 0) > 0) summary.push(`peak ctx ${contextShareLabel(d.peakContextTokens ?? 0, d.contextWindow)}`);

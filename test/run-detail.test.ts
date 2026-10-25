@@ -225,6 +225,36 @@ test("renderRunDetail names the run's prompt tokens and cache-read share", () =>
   assert.doesNotMatch(plain, /prompt .* tok/);
 });
 
+test("renderRunDetail names the run's pre-edit prompt tokens", () => {
+  const base: RunDetail = {
+    role: "feature",
+    run: 1,
+    startTs: 1000,
+    endTs: 2000,
+    durationMs: 1000,
+    result: "changed",
+    model: null,
+    tokens: 1200,
+    costUsd: 0.03,
+    usage: "1200 tok · $0.03",
+    events: [],
+    merge: null,
+    mergedSha: null,
+    reverted: null,
+  };
+  // The pre-edit cell rides after the prompt clause (with its cache share) and before any
+  // peak ctx clause, calling out how much of the budget went out before the run's first edit.
+  const withShare = renderRunDetail({ ...base, promptTokens: 100_000, cacheReadTokens: 80_000, preEditPromptTokens: 40_000, peakContextTokens: 110_000, contextWindow: 131_072 }).split("\n")[0]!;
+  assert.match(withShare, /prompt 100\.0k tok \(80% cached\) · pre-edit 40\.0k tok/);
+  assert.match(withShare, /pre-edit 40\.0k tok · peak ctx 110\.0k/);
+  // Without a cache share the pre-edit cell still follows the plain prompt clause.
+  const noShare = renderRunDetail({ ...base, promptTokens: 100_000, preEditPromptTokens: 40_000 }).split("\n")[0]!;
+  assert.match(noShare, /prompt 100\.0k tok · pre-edit 40\.0k tok/);
+  // A run that reported no pre-edit reading renders no pre-edit cell — byte-identical header.
+  const plain = renderRunDetail(base).split("\n")[0]!;
+  assert.doesNotMatch(plain, /pre-edit .* tok/);
+});
+
 test("renderRunDetail names a context cut-off in its header", () => {
   const base: RunDetail = {
     role: "feature",

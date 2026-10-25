@@ -66,6 +66,14 @@ export interface RunDetail {
    * none or is in flight. The header renders it as `${n}% cached` beside the prompt count
    * (run-detail-render.ts). Absent on a run that reported none. */
   cacheReadTokens?: number;
+  /** The `run_end`'s prompt tokens sent before the run's first edit (clamped to
+   * `promptTokens`), from the same field the failure digest prices as the run's
+   * `… before first edit` share of its prompt budget; 0 when the run reported none or
+   * is in flight. The header renders it as `pre-edit … tok` beside the prompt count
+   * (run-detail-render.ts) — the signal that a run spent its context exploring rather
+   * than working. Absent on a run that reported none, so an old-log or prompt-free run
+   * keeps today's exact payload. */
+  preEditPromptTokens?: number;
   /** The `run_end`'s ceiling-truncation flag: true when the run was truncated at its model's
    * context ceiling and the harness resumes its pinned session. Absent when the run did not
    * cut off (and for an in-flight run with no end), so a non-cut-off payload is unchanged. */
@@ -191,6 +199,7 @@ function detailFrom(
   // clamped to the total so the rendered share never exceeds 100%; 0 on an in-flight run.
   const promptTokens = end === null ? 0 : nonNegativeNumber(end.promptTokens, 0);
   const cacheReadTokens = end === null ? 0 : Math.min(nonNegativeNumber(end.cacheReadTokens, 0), promptTokens);
+  const preEditPromptTokens = end === null ? 0 : Math.min(nonNegativeNumber(end.preEditPromptTokens, 0), promptTokens);
   let result = end === null ? null : outcomeText(end);
   let merge: HarnessEvent | null = null;
   if (end !== null && result === "queued") {
@@ -224,6 +233,7 @@ function detailFrom(
     // in-flight run keeps today's exact payload (no prompt/cache keys) and a cache subset > 0.
     ...(promptTokens > 0 ? { promptTokens } : {}),
     ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
+    ...(preEditPromptTokens > 0 ? { preEditPromptTokens } : {}),
     // The run_end's ceiling-truncation flag, spread so an in-flight, older, or normal run
     // keeps today's exact payload (no cutOff key).
     ...(end !== null && end.cutOff === true ? { cutOff: true } : {}),
