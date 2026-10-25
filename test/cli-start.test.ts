@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, inheritedWindowStart, onceFailures, onceReport, onceSummary, parseRunWindow, renderOnceSummary, windowReport, windowSummary, type WindowReport } from "../src/cli/cli-start.js";
+import { ONCE_FAILURE_RESULTS, armDeadlineTimer, dashboardChildEnv, guiChildPlan, inheritedWindowStart, onceFailures, onceReport, onceSummary, parseRunWindow, renderOnceSummary, windowReport, windowSummary, type WindowReport } from "../src/cli/cli-start.js";
 import { summarizeRunRows, type RunRow } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
@@ -135,6 +135,26 @@ test("guiChildPlan threads --all-interfaces onto the dashboard child, returns --
       childStdio: "inherit",
     },
   );
+});
+
+// The dashboard-half env wiring that guiChildPlan's `guiToken` feeds (the BUGS-FIXED.md
+// dashboard gate-token fix): superviseDashboard builds the child env from the plan's token, so
+// a `--gui` gate token must reach the dashboard child under GUI_TOKEN_ENV (`TUMWATER_GUI_TOKEN`)
+// — never the child's argv, which `ps` exposes to every local user and which the child's
+// self-reload (reexecSelf, env-propagating) re-runs verbatim onto each fresh generation.
+// The BUGS-FIXED.md entry flagged this child-env wiring as the one link the suite did not pin;
+// this closes it: a rename of GUI_TOKEN_ENV or a token silently slipping off the env fails here.
+test("dashboardChildEnv carries a guiToken under GUI_TOKEN_ENV and marks the sponsoring supervisor", () => {
+  // With a token: the child is marked with the sponsor's pid and the secret rides only in env.
+  assert.deepEqual(dashboardChildEnv("TUMWATER_DASHBOARD_CHILD", "s3cret", 1234), {
+    TUMWATER_DASHBOARD_CHILD: "1234",
+    TUMWATER_GUI_TOKEN: "s3cret",
+  });
+  // Without a token the marker is still set (the child's reload watch needs it), but no
+  // GUI_TOKEN_ENV — a token-less dashboard reads nothing secret.
+  assert.deepEqual(dashboardChildEnv("TUMWATER_DASHBOARD_CHILD", undefined, 5678), {
+    TUMWATER_DASHBOARD_CHILD: "5678",
+  });
 });
 
 // `run --tui` gets the same treatment as `--gui`: `--tui` is stripped so a self-redeploy

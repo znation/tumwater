@@ -413,6 +413,24 @@ export function guiChildPlan(runArgs: string[]): {
   };
 }
 
+/** The env a supervised dashboard child is spawned with: it marks the child as owned by this
+ * supervisor (`childMarkerEnv`, DASHBOARD_CHILD_ENV, names the host pid so the child's reload
+ * watch at src/redeploy/self-reload.ts exits RESTART_EXIT_CODE / dies with the supervisor) and,
+ * when the operator gave a gate token, carries it under GUI_TOKEN_ENV. The token deliberately
+ * never reaches the child's argv: /proc/<pid>/cmdline is world-readable, and the child's own
+ * self-reload (reexecSelf, which propagates env via childEnv) would re-run a command-line secret
+ * onto each fresh generation. Kept out of superviseDashboard so this env wiring is unit-testable
+ * without spawning a live dashboard child (BUGS-FIXED.md's dashboard gate-token fix). */
+export function dashboardChildEnv(
+  childMarkerEnv: string,
+  guiToken: string | undefined,
+  hostPid: number,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { [childMarkerEnv]: String(hostPid) };
+  if (guiToken !== undefined) env[GUI_TOKEN_ENV] = guiToken;
+  return env;
+}
+
 /** The dashboard half of `run --gui`: keep a `tumwater gui` child alive across its own
  * self-reloads. The child is marked with DASHBOARD_CHILD_ENV naming this supervisor, so its
  * reload watch (src/redeploy/self-reload.ts) exits RESTART_EXIT_CODE for a fresh sibling on a
@@ -427,11 +445,7 @@ async function superviseDashboard(
 ): Promise<void> {
   const { DASHBOARD_CHILD_ENV } = await import("../redeploy/self-reload.js");
   const { spawnGuiChild } = await import("../process/supervisor.js");
-  const env: NodeJS.ProcessEnv = { [DASHBOARD_CHILD_ENV]: String(process.pid) };
-  // The gate token rides in the child's env, not its argv: /proc/<pid>/cmdline is world-readable,
-  // and the child's self-reload (reexecSelf, which propagates env via childEnv) would otherwise
-  // re-run the secret onto each fresh generation.
-  if (guiToken !== undefined) env[GUI_TOKEN_ENV] = guiToken;
+  const env = dashboardChildEnv(DASHBOARD_CHILD_ENV, guiToken, process.pid);
   for (;;) {
     const exit = await spawnGuiChild(signal, env, stdio, guiArgs);
     if (signal.aborted || exit.code !== RESTART_EXIT_CODE) return;
