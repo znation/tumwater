@@ -327,6 +327,11 @@ function mergeEventMessage(e: HarnessEvent): string {
     default: return textOr(e.type);
   }
 }
+/** " after merge" when the review is a post-merge review (review.afterMerge), else "". */
+function afterMergeSuffix(e: HarnessEvent): string {
+  return e.afterMerge === true ? " after merge" : "";
+}
+
 function reviewEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "review_start": {
@@ -341,7 +346,7 @@ function reviewEventMessage(e: HarnessEvent): string {
       return `${e.resumed ? "review resumed" : "reviewing"} ${shortSha(e.head)}${revision}${tier}${model}`;
     }
     case "review_verdict":
-      return `review approved ${shortSha(e.head)}${e.afterMerge === true ? " after merge" : ""}${e.reason ? ` — ${textOr(e.reason)}` : ""}${elapsed(e.durationMs)}`;
+      return `review approved ${shortSha(e.head)}${afterMergeSuffix(e)}${e.reason ? ` — ${textOr(e.reason)}` : ""}${elapsed(e.durationMs)}`;
     case "review_rejected": {
       const reasons = stringList(e.reasons);
       // Only the first reason renders; when more exist, say so instead of letting the
@@ -351,7 +356,7 @@ function reviewEventMessage(e: HarnessEvent): string {
         reasons.length > 1
           ? ` (+${reasons.length - 1} more — the author's next run carries every reason)`
           : "";
-      return `review rejected ${shortSha(e.head)}${e.afterMerge === true ? " after merge" : ""} — ${firstReason(reasons)}${more}${elapsed(e.durationMs)}`;
+      return `review rejected ${shortSha(e.head)}${afterMergeSuffix(e)} — ${firstReason(reasons)}${more}${elapsed(e.durationMs)}`;
     }
     case "review_failed":
       return `review failed for ${shortSha(e.head)}: ${textOr(e.message)} (commit kept for re-review)${elapsed(e.durationMs)}`;
