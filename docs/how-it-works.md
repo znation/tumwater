@@ -268,17 +268,9 @@ discards a role's in-flight merge.
   is ever taken off main for a red tip, and no revision is handed back or parked for one; the
   only way a commit leaves main is the operator's own deliberate `tumwater revert <sha>`.
   A main left red over 30 minutes is surfaced: `tumwater doctor`'s `main's check` row and the
-  selfcheck and feedback observers' shared digest's `## Fast merge guardrails` section report how long main has had no passing full
-  check, the sha it has been red since, and its newest failing test. The same row and section warn
-  on a `main_revert` in the last 24 h that looks false — a test it names has been quarantined
-  since (or a later `main_check`'s `quarantined` list names it), or its change later merged again
-  unchanged with main staying green (a later `merged` event carries the culprit's `patchId` and the
-  first `main_check` after it that ran the check passed) — and on more than 5 reverts in 24 h,
-  naming each false-looking revert's culprit sha and the count when over the limit.
-  A post-merge-review rejection never emits a `main_revert` (a rejection never reverts, below), so
-  only red-main reverts are counted toward the ceiling or called false — `tumwater report`'s
-  post-merge-rejection table carries the rejections instead. `main_revert` and `merged` events carry the culprit's and the merged commit's `patchId` (src/git/git.ts, `-U0`)
-  so the second test reads the event log.
+  selfcheck and feedback observers' shared digest's `## Fast merge guardrails` section report
+  how long main has had no passing full check, the sha it has been red since, and its newest
+  failing test.
 - A role listed in `review.afterMerge` is reviewed after merging: its change still passes the
   deterministic rejects and the gate check, then merges with no reviewer run. The `merged` commit
   is recorded in `.tumwater/state/post-review.json`, and the merge poll runs one review at a time
@@ -518,7 +510,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   refusing merges, a stranded inbox prompt,
   a stalled merge queue, a merge-queue file the reader skips, a waiting bug held a week, a plan or bug stalled by a
   Needs review or Needs replan note, checks that flapped more than once in the last day, a
-  stale or oversized flake quarantine, a revert off main that looks false or a revert burst,
+  stale or oversized flake quarantine,
   a burst of post-merge review rejections, each an already-merged commit,
   a post-merge review one failed run from being dropped,
   a post-merge review dropped after repeated failures, leaving its commit on main unreviewed,

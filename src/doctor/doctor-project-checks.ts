@@ -270,8 +270,8 @@ export function checkFlakyChecks(root: string, now: number = Date.now()): CheckO
 /** A trailing day of at least `POST_MERGE_REJECT_WARN` post-merge `review_rejected` events — the
  * audit twin of the always-on `post-merge-churn` amber alert (src/ui/status-payload.ts
  * `postMergeChurnAlert`). Each rejection is an already-landed commit the reviewer turned back, so
- * it stays on main with the reviewer's reasons; `main's check` deliberately counts only
- * non-post-review reverts, so a churn day must not read as a clean main. Shares the alert's
+ * it stays on main with the reviewer's reasons, so a churn day must not read as a clean
+ * main. Shares the alert's
  * window, threshold and
  * event selection through `postMergeChurn`, so the doctor row and the alert cannot disagree on
  * when churn fires. ok/warn only — a churn burst does not stop the team. */

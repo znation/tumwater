@@ -7,7 +7,7 @@
  * merge-batch.ts) drives this file's mergeStack one prefix at a time. */
 
 import { committerIdentArgs, gitTry } from "../git/git-run.js";
-import { branchHead, deleteRef, headOf, patchId } from "../git/git.js";
+import { branchHead, deleteRef, headOf } from "../git/git.js";
 import { treeDiffFiles } from "../git/git-diff.js";
 import { mergeRefName, mergeLockDir } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
@@ -262,17 +262,11 @@ export async function ffStackToMain(
     // Best-effort like tryMerge's merged events: the stack is already fast-forwarded, so an
     // unwritable feed must not flip a merged batch to a failure and skip syncRootInstall below.
     for (const entry of mergeDone) {
-      // The entry's patch-id (`sha^...sha`, src/git/git.ts patchId, -U0): the fast-merge
-      // guardrail G2 matches a merged event against a main_revert's to spot a change that
-      // came back unchanged (plans/fast-merge.md). Computed after the ff from the stacked
-      // commit that actually merged.
-      const patch = await patchId(root, `${entry.sha}^`, entry.sha).catch(() => null);
       logEventBestEffort(root, {
         source: entry.role,
         type: "merged",
         commit: entry.sha,
         summary: entry.summary,
-        ...(patch ? { patchId: patch } : {}),
       });
     }
     logNewQuestions(root, before, mergeDone[0]!.role);

@@ -5,7 +5,7 @@ import path from "node:path";
 import { alertNeedsYou, teamAlerts, type AlertRole, type BacklogHeadingDuplicate } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import { planDependencyAlert, notifyFailures, primaryOverwriteBlocks, quarantineAlert, revertAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
+import { planDependencyAlert, notifyFailures, primaryOverwriteBlocks, quarantineAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
 import { strandedPlanEntriesFor } from "../src/backlog/backlog-structure.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
@@ -584,7 +584,7 @@ test("stale open bugs raise a standing amber alert right after the refused alert
 
 test("the stale-questions alert names the oldest and folds the rest", () => {
   const now = Date.now();
-  const two = teamAlerts(base, ["Q?"], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [
+  const two = teamAlerts(base, ["Q?"], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [
     { index: 2, position: 3, title: "Which database?", days: 8 },
     { index: 4, position: 5, title: "Tabs or spaces?", days: 7 },
   ]);
@@ -657,8 +657,8 @@ test("staleOpenBugs and the surfaces carry a stale-bug alert from BUGS.md, and n
 
 test("a failed notify page raises a standing amber alert", () => {
   const now = Date.now();
-  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, { count: 1, latestTs: now - 3600_000, message: "notify command exited with code 127 paging budget_paused" });
-  // notifyFailure is the 19th positional argument, after reverts (null); one position earlier
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], { count: 1, latestTs: now - 3600_000, message: "notify command exited with code 127 paging budget_paused" });
+  // notifyFailure is the 18th positional argument; one position earlier
   // it would land in the skippedMergeFiles slot and raise no notify alert.
   assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["notify", "amber", "1 failed notify page in the last day"]]);
   assert.match(one[0]!.detail ?? "", /1h ago/);
@@ -666,13 +666,13 @@ test("a failed notify page raises a standing amber alert", () => {
   assert.match(one[0]!.detail ?? "", /tumwater notify --test/);
   assert.deepEqual(one[0]!.actions, []);
   // Two failures read plural; the detail names the latest only.
-  const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, { count: 2, latestTs: now - 2 * 3600_000, message: "notify command exited with code 1 paging paused" });
+  const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], { count: 2, latestTs: now - 2 * 3600_000, message: "notify command exited with code 1 paging paused" });
   assert.match(two[0]!.title, /2 failed notify pages in the last day/);
   assert.match(two[0]!.detail ?? "", /2h ago/);
   // A null last argument adds no alert.
-  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null), []);
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], ), []);
   // With both a stale bug and a notify failure, the keys are [stale-bugs, notify].
-  const both = teamAlerts(base, [], [], now, [], [], [{ index: 2, position: 3, title: "Bug hangs", days: 3 }], [], [], null, [], [], [], null, [], [], [], null, { count: 1, latestTs: now - 60_000, message: "notify command exited with code 127 paging paused" });
+  const both = teamAlerts(base, [], [], now, [], [], [{ index: 2, position: 3, title: "Bug hangs", days: 3 }], [], [], null, [], [], [], null, [], [], [], { count: 1, latestTs: now - 60_000, message: "notify command exited with code 127 paging paused" });
   assert.deepEqual(both.map((a) => a.key), ["stale-bugs", "notify"]);
 });
 
@@ -704,8 +704,8 @@ test("notifyFailures and the surfaces carry a notify alert from failed pages, an
 test("a merge refused by an uncommitted primary file raises one standing amber alert", () => {
   const now = Date.now();
   const blockObj = { count: 2, latestTs: now - 3600_000, message: "merge blocked: the merge would overwrite files in the primary checkout (uncommitted: PLANS.md) — commit, stash or remove them there" };
-  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, blockObj);
-  // primaryOverwrite is the 20th positional argument, after notifyFailure (null); one position
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, blockObj);
+  // primaryOverwrite is the 19th positional argument, after notifyFailure (null); one position
   // earlier it would land in the validationGaps slot and raise no primary-overwrite alert.
   assert.deepEqual(alerts.map((a) => [a.key, a.tone, a.title]), [["primary-overwrite", "amber", "2 merges were refused by files uncommitted in your primary checkout"]]);
   assert.match(alerts[0]!.detail ?? "", /1h ago/);
@@ -713,10 +713,10 @@ test("a merge refused by an uncommitted primary file raises one standing amber a
   assert.match(alerts[0]!.detail ?? "", /tumwater doctor --commit-backlog/);
   assert.deepEqual(alerts[0]!.actions, []);
   // One refusal reads singular.
-  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, { count: 1, latestTs: now - 60_000, message: "merge blocked: the merge would overwrite files in the primary checkout (uncommitted: PLANS.md) — commit, stash or remove them there" });
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, { count: 1, latestTs: now - 60_000, message: "merge blocked: the merge would overwrite files in the primary checkout (uncommitted: PLANS.md) — commit, stash or remove them there" });
   assert.match(one[0]!.title, /1 merge was refused/);
   // A null last argument adds no alert.
-  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null), []);
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null), []);
 });
 
 test("primaryOverwriteBlocks and the surfaces carry a primary-overwrite alert from overwrite-block warnings, and none without one", () => {
@@ -1012,59 +1012,6 @@ test("a stale flake quarantine raises a standing amber alert after the skipped-m
   assert.deepEqual(withSkip.map((a) => a.key), ["skipped-merges", "quarantine"]);
 });
 
-test("a revert that looks false raises one amber alert after the quarantine one", () => {
-  const now = Date.now();
-  const quarantined = { count: 12, oldestTest: "test/old.test.ts", oldestFirstSeen: now - 4 * 24 * 3_600_000, warning: "quarantine holds 12 tests — over the 10-test ceiling" };
-  const reverts = { count: 1, phrases: ["revert abcdef1 blamed test/T.ts, which has been quarantined since — the failure did not reproduce"] };
-  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], quarantined, [], [], [], reverts);
-  const rev = one.filter((a) => a.key === "reverts");
-  assert.equal(rev.length, 1);
-  assert.equal(rev[0]!.tone, "amber");
-  assert.equal(rev[0]!.title, "1 revert off main in the last day");
-  assert.match(rev[0]!.detail ?? "", /did not reproduce/);
-  assert.match(rev[0]!.detail ?? "", /fix the failing test/);
-  assert.deepEqual(rev[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
-  assert.equal(one[0]!.key, "quarantine", "quarantine precedes reverts");
-  // A burst over the ceiling titles plural.
-  const burst = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], { count: 6, phrases: ["6 reverts in the last 24 h — over the 5-revert ceiling"] });
-  const br = burst.find((a) => a.key === "reverts");
-  assert.match(br?.title ?? "", /6 reverts off main in the last day/);
-  // A null reverts argument, and the defaulted call, add no reverts alert.
-  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null).filter((a) => a.key === "reverts").length, 0);
-  assert.equal(teamAlerts(base, [], [], now).filter((a) => a.key === "reverts").length, 0);
-});
-
-test("revertAlert and the surfaces carry a revert alert from a false revert, and none without one", () => {
-  const now = Date.now();
-  const root = makeRepo();
-  writeEvents(root, [{ ts: now - 10 * 60_000, source: "tumwater", type: "main_revert", commit: "abcdef1234567890", failingTests: ["test/T.ts"] }]);
-  fs.mkdirSync(path.dirname(quarantinePath(root)), { recursive: true });
-  fs.writeFileSync(quarantinePath(root), JSON.stringify({ tests: [{ test: "test/T.ts", firstSeen: now - 20 * 60_000, lastSeen: now - 5 * 60_000, count: 1, bug: "A flaky test" }] }));
-  assert.equal(revertAlert(root, now)?.count, 1);
-  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string }> };
-  const found = payload.alerts.find((a) => a.key === "reverts");
-  assert.ok(found, "the status payload carries a reverts alert");
-  assert.equal(found!.title, "1 revert off main in the last day");
-  assert.match(found!.detail ?? "", /did not reproduce/);
-  assert.match(renderStatus(root, snapshot(root, undefined, now)), /revert off main/);
-  // A clean repo (no reverts, no quarantine) produces none on either surface.
-  const clean = makeRepo();
-  assert.equal(revertAlert(clean, now), null);
-  assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "reverts"), undefined);
-  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /revert off main/);
-});
-
-test("post-merge-rejection reverts alone raise no reverts alert on any surface", () => {
-  const now = Date.now();
-  const root = makeRepo();
-  // Eight `reason: "post-review"` reverts (the live 2026-10-23 condition) are intended
-  // revision cycles, so the revert guardrail counts none of them and no reverts alert appears
-  // — the detail's "fix the failing test" advice would have no referent here.
-  writeEvents(root, Array.from({ length: 8 }, (_, i) => ({ ts: now - i * 60_000, source: "tumwater", type: "main_revert", commit: `rrrrrrrr${i}`, reason: "post-review", failingTests: [] })));
-  assert.equal(revertAlert(root, now), null);
-  assert.equal((statusPayload(root, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "reverts"), undefined);
-  assert.doesNotMatch(renderStatus(root, snapshot(root, undefined, now)), /revert off main/);
-});
 
 test("quarantineAlert and the surfaces carry a quarantine alert from an old or oversized list, and none from a fresh one", () => {
   const now = Date.now();
@@ -1379,10 +1326,10 @@ test("the false-fixes alert names the first record and folds the rest", () => {
     { heading: "Phantom fix: details", missing: ["runScriptGroup", "signalTree"] },
     { heading: "Second phantom: details", missing: ["ghost"] },
   ];
-  // fixClaims is the final positional argument, after validationGaps, reverts, notifyFailures,
+  // fixClaims is the final positional argument, after validationGaps, notifyFailures,
   // primaryOverwrite, contention, flappedChecks, regressedFixes, postMergeChurn,
   // postReviewRisk, droppedPostReviews, mainRuleFailure, staleClaims and staleQuestions.
-  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], fixClaims);
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], fixClaims);
   const ff = alerts.filter((a) => a.key === "false-fixes");
   assert.deepEqual(ff.map((a) => [a.key, a.tone, a.title]), [["false-fixes", "amber", "2 Fixed records name code that is not on this tree"]]);
   assert.match(ff[0]!.detail ?? "", /BUGS\.md records "Phantom fix: details" as Fixed/);
@@ -1392,7 +1339,7 @@ test("the false-fixes alert names the first record and folds the rest", () => {
   assert.deepEqual(ff[0]!.actions, []);
   // An empty list and the bare call add no false-fixes alert.
   assert.equal(teamAlerts(base, [], [], now).filter((a) => a.key === "false-fixes").length, 0);
-  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, []), []);
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, []), []);
 });
 
 test("statusPayload and renderStatus carry a validation-gaps alert from BUGS.md, and none without one", () => {
@@ -1415,16 +1362,16 @@ test("statusPayload and renderStatus carry a validation-gaps alert from BUGS.md,
 test("a capacity bottleneck raises one standing amber alert carrying the doctor's detail", () => {
   const now = Date.now();
   const contention = [{ name: "provider slots", detail: "2 waits for a provider slot in the last 24h, 20m total, longest 10m (the omlx slot) — raise maxConcurrentPerProvider.omlx above 1" }];
-  // contention is the 21st positional argument, after primaryOverwrite; one position earlier it
+  // contention is the 20th positional argument, after primaryOverwrite; one position earlier it
   // would land in the primaryOverwrite slot and raise no contention alert.
-  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, contention);
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, contention);
   assert.deepEqual(alerts.map((a) => [a.key, a.tone]), [["contention", "amber"]]);
   assert.match(alerts[0]!.title ?? "", /1 capacity bottleneck/);
   assert.match(alerts[0]!.detail ?? "", /provider slots:/);
   assert.match(alerts[0]!.detail ?? "", /raise maxConcurrentPerProvider\.omlx/);
   assert.deepEqual(alerts[0]!.actions, []);
   // An empty last argument adds no alert.
-  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null), []);
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null), []);
   // The full pipeline carries the same warning through statusPayload's alerts over seeded waits,
   // pinning the argument position end to end.
   const root = makeRepo();
@@ -1440,10 +1387,10 @@ test("a capacity bottleneck raises one standing amber alert carrying the doctor'
 test("a flapping check raises one standing amber alert carrying the doctor's phrase", () => {
   const now = Date.now();
   const flapped = { count: 2, detail: 'checks flapped more than once in the last 24h: "database test failed" ×3 (and 1 more: "network test failed" ×2)' };
-  // flappedChecks is the 18th argument after `now` (the 22nd positional overall), after
+  // flappedChecks is the 17th argument after `now` (the 21st positional overall), after
   // contention ([]); one position earlier it would land in the contention slot and raise no
   // flapped-checks alert.
-  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], flapped);
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], flapped);
   const only = one.filter((a) => a.key === "flapped-checks");
   assert.equal(only.length, 1);
   assert.equal(only[0]!.tone, "amber");
@@ -1452,7 +1399,7 @@ test("a flapping check raises one standing amber alert carrying the doctor's phr
   assert.match(only[0]!.detail ?? "", /tumwater bug/);
   assert.deepEqual(only[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
   // A null last argument adds none.
-  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null), []);
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null), []);
   // End to end through statusPayload over the seeded warnings, pinning the argument position.
   const root = makeRepo();
   warnEvent(root, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 3s");
@@ -1471,16 +1418,16 @@ test("a regressed Fixed record raises one standing amber alert carrying the doct
   const y = stampDaysAgo(1, now);
   const detail = `BUGS.md Fixed record "quoted test regressed" quotes a test that failed again after its ${y} fix (${now}: ✖ aQuotedTestNameThatIsLongEnough failed again) — file it as a new bug with \`tumwater bug\`, quoting the test name and citing the Fixed record`;
   const regressed = { count: 1, detail };
-  // regressedFixes is the 19th argument after `now` (the 23rd positional overall), after
+  // regressedFixes is the 18th argument after `now` (the 22nd positional overall), after
   // contention and flappedChecks; one position earlier it would land in the flapped-checks slot
   // and raise no regressed-fixes alert.
-  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, regressed);
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, regressed);
   assert.deepEqual(alerts.map((a) => [a.key, a.tone]), [["regressed-fixes", "amber"]]);
   assert.match(alerts[0]!.title ?? "", /Fixed test has regressed/);
   assert.equal(alerts[0]!.detail, detail);
   assert.deepEqual(alerts[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
   // A null last argument adds no alert.
-  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null).filter((a) => a.key === "regressed-fixes").length, 0);
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null).filter((a) => a.key === "regressed-fixes").length, 0);
   // The full pipeline carries the same alert through statusPayload over a seeded Fixed record
   // and failure event, pinning the argument position end to end.
   const root = makeRepo();
@@ -1501,10 +1448,10 @@ function stampDaysAgo(n: number, now: number = Date.now()): string {
 test("a post-merge rejection burst raises one standing amber alert", () => {
   const now = Date.now();
   const churn = { count: 2, roles: [{ role: "bugfix", count: 1 }, { role: "clean", count: 1 }] };
-  // postMergeChurn is the 20th argument after `now` (the 24th positional overall), after
+  // postMergeChurn is the 19th argument after `now` (the 23rd positional overall), after
   // contention, flappedChecks and regressedFixes; one position earlier it would land in the
   // regressed-fixes slot and raise no post-merge-churn alert.
-  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, churn);
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, churn);
   assert.deepEqual(alerts.map((a) => [a.key, a.tone]), [["post-merge-churn", "amber"]]);
   assert.match(alerts[0]!.title ?? "", /post-merge review rejections/);
   assert.match(alerts[0]!.detail ?? "", /bugfix/);
@@ -1513,7 +1460,7 @@ test("a post-merge rejection burst raises one standing amber alert", () => {
   assert.doesNotMatch(alerts[0]!.detail ?? "", /revert|re-author/, "the churn detail reads the recorded-finding wording, not a pending revert");
   assert.deepEqual(alerts[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
   // A null last argument adds none.
-  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null), []);
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null), []);
   // The full pipeline carries the same warning through statusPayload's alerts over seeded events,
   // pinning the argument position end to end.
   const root = makeRepo();
@@ -1530,9 +1477,9 @@ test("a post-merge rejection burst raises one standing amber alert", () => {
 test("an at-risk post-merge review raises one standing amber alert", () => {
   const now = Date.now();
   const postReviewRisk = { count: 1, detail: 'the post-merge review of improve ab12cd3e — "add x" — has ended without a verdict 2 times; one more failed run drops it and the commit stays on main unreviewed — fix the reviewer backend or accept the commit unreviewed deliberately' };
-  // postReviewRisk is the 25th positional argument, after postMergeChurn and regressedFixes;
+  // postReviewRisk is the 24th positional argument, after postMergeChurn and regressedFixes;
   // one position earlier it would land in the post-merge-churn slot and raise no alert.
-  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, postReviewRisk);
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, postReviewRisk);
   const only = one.filter((a) => a.key === "post-merge-risk");
   assert.equal(only.length, 1);
   assert.equal(only[0]!.tone, "amber");
@@ -1540,7 +1487,7 @@ test("an at-risk post-merge review raises one standing amber alert", () => {
   assert.equal(only[0]!.detail, postReviewRisk.detail);
   assert.deepEqual(only[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
   // A null last argument adds none.
-  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null).find((a) => a.key === "post-merge-risk"), undefined);
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null).find((a) => a.key === "post-merge-risk"), undefined);
   // End to end through statusPayload over a seeded at-risk review, pinning the argument position.
   const root = makeRepo();
   writeJsonFile(postReviewPath(root), { pending: [{ commit: "ab12cd3e".padEnd(40, "f"), role: "improve", summary: "add x", failures: 2 }] });
@@ -1556,9 +1503,9 @@ test("an at-risk post-merge review raises one standing amber alert", () => {
 test("a dropped post-merge review raises one standing amber alert", () => {
   const now = Date.now();
   const droppedPostReviews = { count: 2, latestTs: now - 60_000, latestMessage: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" };
-  // droppedPostReviews is the 26th positional argument, after postReviewRisk; one position
+  // droppedPostReviews is the 25th positional argument, after postReviewRisk; one position
   // earlier it would land in the post-merge-risk slot and raise no alert.
-  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, droppedPostReviews);
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, droppedPostReviews);
   const only = one.filter((a) => a.key === "dropped-post-reviews");
   assert.equal(only.length, 1);
   assert.equal(only[0]!.tone, "amber");
@@ -1567,7 +1514,7 @@ test("a dropped post-merge review raises one standing amber alert", () => {
   assert.match(only[0]!.detail, /POST_REVIEW_FAILURE_LIMIT/);
   assert.deepEqual(only[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
   // A trailing null adds none.
-  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null).find((a) => a.key === "dropped-post-reviews"), undefined);
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null).find((a) => a.key === "dropped-post-reviews"), undefined);
   // End to end through statusPayload over a seeded drop warning, pinning the reader and the
   // argument position.
   const root = makeRepo();
@@ -1584,9 +1531,9 @@ test("a dropped post-merge review raises one standing amber alert", () => {
 test("a main diff-rule failure raises one standing amber alert", () => {
   const now = Date.now();
   const mainRuleFailure = { count: 2, latestTs: now - 60_000, latestMessage: "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts" };
-  // mainRuleFailure is the 27th positional argument, after droppedPostReviews; one position
+  // mainRuleFailure is the 26th positional argument, after droppedPostReviews; one position
   // earlier it would land in the dropped-post-reviews slot and raise no alert.
-  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, mainRuleFailure);
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, mainRuleFailure);
   const only = one.filter((a) => a.key === "main-diff-rules");
   assert.equal(only.length, 1);
   assert.equal(only[0]!.tone, "amber");
@@ -1595,7 +1542,7 @@ test("a main diff-rule failure raises one standing amber alert", () => {
   assert.match(only[0]!.detail, /tumwater revert/);
   assert.deepEqual(only[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
   // A trailing null adds none.
-  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null).find((a) => a.key === "main-diff-rules"), undefined);
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null).find((a) => a.key === "main-diff-rules"), undefined);
 });
 
 test("a stalled ci parity raises the ci-stale alert", () => {
@@ -1626,10 +1573,10 @@ test("a stalled ci parity raises the ci-stale alert", () => {
 
 test("a stalled qa coverage raises the qa-stale alert", () => {
   const now = Date.now();
-  // The 26 preceding defaults (refused…fixClaims) are passed explicitly so the trailing
+  // The 25 preceding defaults (refused…fixClaims) are passed explicitly so the trailing
   // qaCoverage slot lands. A stalled value yields exactly one amber qa-stale alert.
   const stalled = { newestFlow: "status", newestAt: now - QA_COVERAGE_STALE_MS - 60_000, count: 1 };
-  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], [], stalled);
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], [], stalled);
   const only = alerts.filter((a) => a.key === "qa-stale");
   assert.equal(only.length, 1);
   assert.equal(only[0]!.tone, "amber");
@@ -1640,14 +1587,14 @@ test("a stalled qa coverage raises the qa-stale alert", () => {
 
   // A stored value yields no alerts unless it names a stall: fresh and empty ledgers both
   // arrive at teamAlerts as null (qaCoverageAlert is null for them).
-  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], [], null).find((a) => a.key === "qa-stale"), undefined);
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], [], null).find((a) => a.key === "qa-stale"), undefined);
 });
 
 test("a stale workspace pin raises the workspace-pins alert", () => {
   const now = Date.now();
-  // workspacePins is the trailing parameter; the 27 preceding values (refused…fixClaims then
+  // workspacePins is the trailing parameter; the 26 preceding values (refused…fixClaims then
   // qaCoverage, passed explicitly) are passed so the trailing slot lands, pinning the position.
-  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], [], null, [{ role: "feature", dir: "_slot-1", ageMs: 25 * 3_600_000 }]);
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], [], null, [{ role: "feature", dir: "_slot-1", ageMs: 25 * 3_600_000 }]);
   const only = alerts.filter((a) => a.key === "workspace-pins");
   assert.equal(only.length, 1);
   assert.equal(only[0]!.tone, "amber");
@@ -1659,10 +1606,10 @@ test("a stale workspace pin raises the workspace-pins alert", () => {
   assert.deepEqual(only[0]!.actions, [{ label: "Open feature", act: "role", arg: "feature" }]);
 
   // An empty list adds no alert.
-  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], [], null, []).filter((a) => a.key === "workspace-pins").length, 0);
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], [], null, []).filter((a) => a.key === "workspace-pins").length, 0);
 
   // Two pins pluralize the title and name both.
-  const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], [], null, [
+  const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], [], null, [
     { role: "feature", dir: "_slot-1", ageMs: 25 * 3_600_000 },
     { role: "bugfix", dir: "_slot-2", ageMs: 50 * 3_600_000 },
   ]).filter((a) => a.key === "workspace-pins");
@@ -1674,9 +1621,9 @@ test("a stale workspace pin raises the workspace-pins alert", () => {
 
 test("the stale-claims alert names a gone and an idle claim", () => {
   const now = Date.now();
-  // staleClaims is the trailing parameter; the 23 preceding defaults (refused…mainRuleFailure)
+  // staleClaims is the trailing parameter; the 22 preceding defaults (refused…mainRuleFailure)
   // are passed explicitly so it lands in its slot.
-  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [
     { id: "feature-2", file: "PLANS.md", title: "Gone", kind: "gone", hours: 0 },
     { id: "bugfix-2", file: "BUGS.md", title: "An open bug", kind: "idle", hours: 25 },
   ]);
@@ -1692,7 +1639,7 @@ test("the stale-claims alert names a gone and an idle claim", () => {
   const none = teamAlerts(base, [], [], now);
   assert.equal(none.filter((a) => a.key === "stale-claims").length, 0);
   // A single claim names its state with the singular verb.
-  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [
     { id: "feature-2", file: "PLANS.md", title: "Gone", kind: "gone", hours: 0 },
   ]);
   assert.deepEqual(one.filter((a) => a.key === "stale-claims").map((a) => a.title), ["1 work-instance claim is stale"]);

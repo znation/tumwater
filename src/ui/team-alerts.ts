@@ -8,7 +8,6 @@
  * the cap editor…). */
 
 import type { StatusSnapshot } from "../status/status-data.js";
-import type { RevertGuardrail } from "../baseline/main-guardrails.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert, QaCoverageStale } from "./status-payload.js";
@@ -177,14 +176,6 @@ export interface BacklogHeadingDuplicate {
   heading: string;
 }
 
-/** A revert off main in the trailing day that G2 (src/baseline/main-guardrails.ts `revertsFor`)
- * warns about: the `main_revert` count and the doctor's own `revertWarnings` phrases — a revert
- * that looks false (its blamed test quarantined since, or its change merged again unchanged and
- * main stayed green), or a burst over REVERT_RATE_LIMIT reverts. Computed in
- * src/ui/status-payload.ts's revertAlert from the same rule the doctor's `main's check` row
- * calls, so the alert and the doctor cannot drift on the trigger or the thresholds. null when
- * the day holds no reverts, or only ordinary reverts under the limit. */
-export interface RevertWarning extends RevertGuardrail {}
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
  * alert kinds cannot drift on the separator or the count. The caller appends its own
@@ -255,7 +246,7 @@ function openRoleActions(roles: ReadonlyArray<{ role: string }>): Array<{ label:
 
 /** The dashboard's "See failures" button: opens the failures view. Shared by every alert
  * whose remedy is inspecting the failing runs/checks (main-red, quarantine, flapped checks,
- * reverts, post-merge churn and risk, regressed fixes, image-probe), so the button's label
+ * post-merge churn and risk, regressed fixes, image-probe), so the button's label
  * and action cannot drift between them. */
 function seeFailures(): Array<{ label: string; act: string; arg: string }> {
   return [{ label: "See failures", act: "view", arg: "failures" }];
@@ -934,7 +925,6 @@ function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
 interface MergeAlertsInput {
   quarantined: QuarantinedTests | null;
   flappedChecks: FlappedChecks | null;
-  reverts: RevertWarning | null;
   postMergeChurn: PostMergeChurn | null;
   postReviewRisk: PostReviewRisk | null;
   droppedPostReviews: DroppedPostReviews | null;
@@ -944,8 +934,8 @@ interface MergeAlertsInput {
   now: number;
 }
 
-/** The quarantine, flapped-check, revert and post-merge review alerts, in emission order: a
- * stale or oversized flake quarantine, checks flapping more than once, reverts off main, a
+/** The quarantine, flapped-check, and post-merge review alerts, in emission order: a
+ * stale or oversized flake quarantine, checks flapping more than once, a
  * burst of post-merge review rejections, a post-merge review one failed run from being
  * dropped, a post-merge review the drain dropped leaves its commit on main unreviewed, a
  * main tip the watch's diff rules rejected, and the ci role's full suite stalled over three
@@ -956,7 +946,7 @@ interface MergeAlertsInput {
  * at the position this run used to occupy, so the emitted key order is unchanged. */
 function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
-  const { quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity, qaCoverage, now } = input;
+  const { quarantined, flappedChecks, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity, qaCoverage, now } = input;
   // A stale or oversized flake quarantine — the always-on twin of the doctor's `flaky checks`
   // row (main-guardrails.ts checkFlakyChecks, quarantineWarning): a quarantined test counts as
   // a known failure until its filed bug leaves BUGS.md `## Open`, so an old entry means the
@@ -990,29 +980,11 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
       actions: seeFailures(),
     });
   }
-  // A revert off main — the always-on twin of the doctor's `main's check` revert rule
-  // (main-guardrails.ts revertGuardrail, REVERT_RATE_LIMIT): a false revert is working code
-  // lost and a burst is a flaky-revert habit, both worth the operator's eye while they happen.
-  // The count and ceiling cover only red-main reverts (`reason: "main-red"` on the
-  // main_revert event); a post-merge-review rejection (`reason: "post-review"`) is an intended
-  // revision cycle carried by `tumwater report`'s post-merge-rejection table, never here, so
-  // the detail's "fix the failing test" advice always has a referent.
-  // status-payload.ts's revertAlert feeds it from the same revertGuardrail the doctor calls,
-  // so the alert and the doctor cannot drift on the trigger or the phrases.
-  if (reverts) {
-    out.push({
-      key: "reverts",
-      tone: "amber",
-      title: `${plural(reverts.count, "revert off main", "reverts off main")} in the last day`,
-      detail: `${reverts.phrases.join("; ")} — the main watch takes a change off main when main's full check flags it; fix the failing test or the revert repeats`,
-      actions: seeFailures(),
-    });
-  }
   // Last day's post-merge review rejections — the reviewer-fix signal for the `review.afterMerge`
   // tiering (src/review/post-merge-review.ts `reviewMergedCommit`). A post-merge rejection is the
   // costly kind: the commit already reached main, so the rejection is answered only by the
   // reviewer's own fix, and the always-on signal for a day crossing POST_MERGE_REJECT_WARN is
-  // this alert ahead of the `reverts` ceiling. status-payload.ts's postMergeChurnAlert feeds it
+  // this alert. status-payload.ts's postMergeChurnAlert feeds it
   // from the same `afterMerge: true` `review_rejected` events the report's
   // postMergeRejectionsByRole folds, so the alert and the report cannot disagree on which
   // rejections are post-merge.
@@ -1315,8 +1287,7 @@ function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
  * prompt, a stalled merge queue, a
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
  * review or Needs replan note, checks that flapped more than once in the last day, a stale or
- * oversized flake quarantine, a revert off main that
- * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
+ * oversized flake quarantine, a burst of post-merge review rejections, each a commit that
  * already reached main, a post-merge review one failed run from being dropped, a post-merge
  * review dropped after repeated failures, leaving its commit on main unreviewed, a main tip the
  * watch's five diff rules rejected, the team
@@ -1364,7 +1335,6 @@ export function teamAlerts(
   strandedPlans: readonly StrandedPlanEntry[] = [],
   duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
   validationGaps: readonly ValidationGapProblem[] = [],
-  reverts: RevertWarning | null = null,
   notifyFailure: NotifyFailure | null = null,
   primaryOverwrite: PrimaryOverwriteBlock | null = null,
   contention: readonly CapacityBottleneck[] = [],
@@ -1384,7 +1354,7 @@ export function teamAlerts(
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, validationGaps, fixClaims }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
-  out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, qaCoverage, now }));
+  out.push(...buildMergeAlerts({ quarantined, flappedChecks, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, qaCoverage, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins }));
 
   return out;

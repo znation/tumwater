@@ -5,6 +5,32 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Forward, never back, part 5/6: the revert guardrails, doctor row, alerts and digest lose a revert that can no longer happen (planned 2026-10-24 by the operator, split from the held part 2/2; requires part 4/6 landed, since no emission remains for the readers this part removes; part 6/6 below then deletes the report and GUI surfaces and the event type itself; touches src/baseline/main-guardrails.ts src/doctor/doctor-holds.ts src/doctor/doctor-project-checks.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/events/event-read.ts src/events/events.ts src/merge/merge-stack.ts src/merge/merge-to-main.ts src/ui/tui/tui.tsx docs/how-it-works.md test/main-guardrails.test.ts test/team-alerts.test.ts test/doctor-holds.test.ts test/merge-stack.test.ts test/merge-to-main.test.ts) — done 2026-10-24 by the feature role
+
+**Previously held 1**
+
+**Goal.** With no revert emitted, the doctor's revert rule, the `reverts` status alert and the digest's revert line count events that can never come. This part deletes them and the ceiling constant, so the 5-revert ceiling disappears and BUGS.md's churn entry loses its counting half (a reason-less event can no longer be misread as a red-main revert). The report and GUI "Reverts by role" charts and the `main_revert` event type are part 6/6's.
+
+**Approach.**
+- Delete the guardrail: src/baseline/main-guardrails.ts's `revertGuardrail`/`revertWarnings`/`revertLooksFalse`/`REVERT_RATE_LIMIT`/`revertsFor` and their `main_revert`-vs-`merged` patch-id matching.
+- Delete every reader of it: src/doctor/doctor-holds.ts's `revertWarnings` phrases, src/ui/team-alerts.ts's `reverts` banner (and its `RevertWarning`/`reverts` param), src/ui/status-payload.ts's `revertAlert` (and its call sites in the `teamAlerts` list), src/ui/status-render.ts's import and argument, and the digest's `guardrailWarnings` revert section (src/baseline/main-guardrails.ts, read by src/run/selfcheck-digest.ts).
+- Docs: no summary surface reads a revert that can no longer happen.
+- The `main_revert` event type, formatter and label stay so the log still parses and the report/GUI can be removed in part 6/6.
+
+**Corrected against the code (2026-10-24, feature).** docs/invariants.md holds no revert-ceiling or revert-guardrail binding (the guardrail invariants left with part 4/6), so the docs file needs no change here; `src/ui/tui/tui.tsx` calls `teamAlerts` positionally and sheds its `revertAlert` argument too; and the `operator_revert` event comment (src/events/events.ts) drops its now-stale mention of the deleted `revertWarnings`. Tests pinning the removed alert, phrase and row are dropped in test/team-alerts.test.ts (the three `reverts`/`revertAlert` cases) and test/doctor-holds.test.ts (the false-revert `main's check` row case).
+
+**Files touched.** src/baseline/main-guardrails.ts src/doctor/doctor-holds.ts src/doctor/doctor-project-checks.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/events/event-read.ts src/events/events.ts src/merge/merge-stack.ts src/merge/merge-to-main.ts src/ui/tui/tui.tsx docs/how-it-works.md test/main-guardrails.test.ts test/team-alerts.test.ts test/doctor-holds.test.ts test/merge-stack.test.ts test/merge-to-main.test.ts
+
+**Acceptance criteria.**
+- `grep -rn "revertGuardrail\|revertWarnings\|revertLooksFalse\|REVERT_RATE_LIMIT\|revertsFor\|revertAlert" src/ --include=*.ts` is empty, and no doctor row, status alert or digest line mentions a revert.
+- The 5-revert ceiling is gone: no constant counts revert events and no warning fires on one.
+- `operator_revert` and `tumwater revert` still work and their surfaces are untouched.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/main-guardrails.test.ts: dropped the revert-ceiling and revert-phrase cases, and keeps one case pinning that a red-main `main_revert` burst (the removed 5-revert ceiling's exact trigger) surfaces no revert warning from the surviving guardrails.
+- test/selfcheck-digest.test.ts: unchanged — the digest's revert section lived inside `guardrailWarnings`, so dropping it there needs no digest-test edit.
+
 ### The dashboard Usage view gains an "Estimated spend by backend" chart, the browser twin of `tumwater report`'s per-backend API-equivalent line (planned 2026-10-24 by the plan role; independent in behavior of every eligible plan — it touches only src/ui/gui/gui-client-report.ts, src/ui/gui/gui-client-report-chart.ts and test/gui-client-report.test.ts, none of which the in-flight `Forward, never back` and `Every commit is verified on main` series, the TUI Transcript provider/thinking editor plan, the status-row backend-default plan or the drawer fallback-rows plan edits) — done 2026-10-24 by the feature role
 
 **Goal.** `tumwater report` renders one API-equivalent line per subscription backend — `notionalLines` (src/report/report-render.ts) maps over `ReportTotals.notionalByBackend`, folded from each `run_end`'s `agent` (src/report/report-fold.ts) and carried onto each day by src/report/report-data.ts. The dashboard Usage view cannot show that axis: it has "Estimated spend by role" and "Estimated spend by provider", but `notionalByProvider` folds only from `run_end.providerCost` (`foldProviderCost`), which a subscription run — no resolved pi provider — never fills, so a claude/codex/opencode subscription's API-equivalent spend appears on no per-seam dashboard chart. Give the dashboard the CLI line's per-backend twin.

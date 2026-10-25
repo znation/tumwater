@@ -165,8 +165,8 @@ export function mergingRoleOf(root: string, commit: string): string | undefined 
 /** Normalize a raw `main_revert` reason to the events.ts contract: `post-review` for a
  * post-merge review rejection, `main-red` otherwise, including absent or unknown reasons.
  * The absent-reason default is a display fallback for events that predate the reason split;
- * it is not a red-main fact — the revert guardrails (src/baseline/main-guardrails.ts
- * isRedMainRevert) classify a reason-less event from the log instead of through this. */
+ * it is not a red-main fact — the removed revert guardrail (part 5/6) classified a reason-less
+ * event from the log instead of through this. */
 export function revertReasonOf(ev: HarnessEvent): "post-review" | "main-red" {
   return ev.reason === "post-review" ? "post-review" : "main-red";
 }

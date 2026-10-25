@@ -11,7 +11,6 @@ import { ffStackToMain } from "../src/merge/merge-stack.js";
 import { eventsLogPath } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { headSha, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
-import { patchId } from "../src/git/git.js";
 
 // ── ffStackToMain (merge queue 5/5) ──────────────────────────────────────────────────────
 
@@ -50,14 +49,6 @@ test("ffStackToMain fast-forwards main through the whole stack in one ff with pe
   assert.equal(merged[0]!.commit, shaA, "the head's own sha");
   assert.equal(merged[1]!.source, "beta");
   assert.equal(merged[1]!.commit, shaB, "the stacked tip");
-  // Each `merged` event carries its own change's patch-id (G2: matches a main_revert's).
-  const [expectedA, expectedB] = await Promise.all([
-    patchId(root, `${shaA}^`, shaA),
-    patchId(root, `${shaB}^`, shaB),
-  ]);
-  assert.equal(merged[0]!.patchId, expectedA, "the first entry's merged event carries its patch-id");
-  assert.equal(merged[1]!.patchId, expectedB, "the second entry's merged event carries its patch-id");
-  assert.notEqual(expectedA, expectedB, "the two changes have distinct patch-ids");
 
   // An empty stack is a no-op: nothing to fast-forward, nothing logged.
   assert.equal(await ffStackToMain(root, "main", []), "changed");

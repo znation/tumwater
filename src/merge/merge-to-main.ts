@@ -1,6 +1,6 @@
 import { openQuestions } from "../backlog/backlog.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
-import { changeBaseRev, commitMessage, headOf, patchId } from "../git/git.js";
+import { changeBaseRev, commitMessage, headOf } from "../git/git.js";
 import { aheadOfMainFiles, treeDiffFiles } from "../git/git-diff.js";
 import { resolvedDiffDiverges } from "./merge-diff.js";
 import {
@@ -193,19 +193,11 @@ async function tryMerge(
     // a completed merge into a rejected one and skip syncRootInstall below — the same
     // no-torn-feed policy as the orchestrator's other post-effect logging.
     if (commit !== mainBefore) {
-      // The merged commit's patch-id (`mainBefore...commit`, src/git/git.ts patchId, -U0 so a
-      // re-landing onto a moved main keeps the id): the fast-merge guardrail G2 matches it
-      // against a main_revert's to spot a change that came back unchanged (plans/fast-merge.md).
-      // Computed here from the commit that actually merged (not the pre-merge pin) so a
-      // conflict-resolved merge carries the resolved change's id too. Computed after the ff
-      // because mainBefore/commit both live in the shared object store either way.
-      const mergedPatch = await patchId(wt, mainBefore, commit).catch(() => null);
       logEventBestEffort(ctx.root, {
         source: ctx.role,
         type: "merged",
         commit,
         summary,
-        ...(mergedPatch ? { patchId: mergedPatch } : {}),
       });
     }
     logNewQuestions(ctx.root, before, ctx.role);

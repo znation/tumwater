@@ -12,7 +12,7 @@ import { ffMainTo } from "../src/merge/merge-git.js";
 import { mergeToMain } from "../src/merge/merge-to-main.js";
 import { withLock } from "../src/concurrency/lock.js";
 import { branchName, eventsLogPath, mergeLockDir, mergeWorktreePath } from "../src/paths.js";
-import { aheadOfMain, patchId } from "../src/git/git.js";
+import { aheadOfMain } from "../src/git/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
@@ -39,7 +39,7 @@ test("a clean rebase merges as changed with a merged event and linear history", 
   assert.equal(merged[0]!.summary, "branch work");
 });
 
-test("a clean merge's merged event carries the merged commit's patch-id", async () => {
+test("a clean merge's merged event reports the merged commit", async () => {
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
   commitIn(wt, "branch work");
@@ -48,9 +48,7 @@ test("a clean merge's merged event carries the merged commit's patch-id", async 
   assert.equal(await mergeToMain(ctx, wt, "branch work"), "changed");
   const merged = eventsOfType(root, "merged");
   assert.equal(merged.length, 1);
-  const expected = await patchId(root, `${mainSha(root)}^`, mainSha(root));
-  assert.ok(expected, "the merged commit's patch id is computable");
-  assert.equal(merged[0]!.patchId, expected, "merged carries the merged commit's patch-id");
+  assert.equal(merged[0]!.commit, mainSha(root));
 });
 
 test("a re-merge of a change main already holds logs no second merged event", async () => {

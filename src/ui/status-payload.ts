@@ -22,9 +22,9 @@ import { byDaysThenIndex } from "../collections.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { staleClaimEntries } from "../scheduling/claim-entries.js";
 import { readQaCoverage, qaCoverageStalled } from "../run/qa-coverage.js";
-import { teamAlerts, type FlappedChecks, type NotifyFailure, type PlanDependencyProblem, type PrimaryOverwriteBlock, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleQuestion, type StaleWaitingBug } from "./team-alerts.js";
+import { teamAlerts, type FlappedChecks, type NotifyFailure, type PlanDependencyProblem, type PrimaryOverwriteBlock, type QuarantinedTests, type StaleBug, type StaleMerge, type StalePrompt, type StaleQuestion, type StaleWaitingBug } from "./team-alerts.js";
 import { duplicatedBacklogHeadings, planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
-import { quarantineWarning, revertsFor } from "../baseline/main-guardrails.js";
+import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
 import { flappedChecksPhrase } from "../doctor/doctor-project-checks.js";
 import { readPostReviews, postMergeChurn, POST_MERGE_REJECT_WINDOW_MS, type PostMergeRejection } from "../review/post-merge-review.js";
@@ -262,7 +262,7 @@ export interface PostMergeChurn {
  * review, each rejection written by reviewMergedCommit as a `review_rejected` event with
  * `afterMerge: true`. Post-merge is the costly kind — the commit already reached main, so a
  * rejection is answered only by the reviewer's own fix — and it is the reviewer-fix signal for
- * the `review.afterMerge` tiering, ahead of the `reverts` alert's revert ceiling. Reads the same
+ * the `review.afterMerge` tiering. Reads the same
  * events the report's `postMergeRejectionsByRole` fills, so the two cannot disagree; null when
  * the window holds fewer than `POST_MERGE_REJECT_WARN` post-merge rejections, or none. A read
  * error skips the row (the capacityContention precedent). */
@@ -391,14 +391,6 @@ export function mainRuleFailures(root: string, now = Date.now()): MainRuleFailur
   const hits = eventsSince(root, MAIN_RULE_FAILURE_WINDOW_MS, now, (e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(MAIN_RULE_FAILURE_MARKER));
   const latest = hits[hits.length - 1];
   return latest ? { count: hits.length, latestTs: latest.ts, latestMessage: String(latest.message) } : null;
-}
-/** A revert off main that looks false or a revert burst, the always-on twin of the doctor's
- * `main's check` revert rule (src/baseline/main-guardrails.ts revertGuardrail): the same
- * revertGuardrail the doctor calls over the same readEventsSince event window and
- * loadQuarantine list, so the alert and the doctor cannot drift on the trigger or the phrases.
- * null when the day holds no reverts, or only ordinary reverts under the limit. */
-export function revertAlert(root: string, now = Date.now()): RevertWarning | null {
-  return revertsFor(root, now);
 }
 /** The one team-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
@@ -727,6 +719,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), qaCoverageAlert(root, now), staleWorkspacePins(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), qaCoverageAlert(root, now), staleWorkspacePins(root, now)),
   };
 }
