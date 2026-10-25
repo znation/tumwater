@@ -219,6 +219,56 @@ test("prompt cancel --role succeeds in scope and fails out of range with the que
   assert.match(o, /no prompt at position 5 \(1 in the inbox\) — valid: 1-1\n$/);
 });
 
+// ── prompt --top <n>: move one queued prompt to its role's head ────────────────
+// inbox-top.test.ts pins the store (movePromptToTop/topQueuedFile), but the cmdPrompt
+// `--top` subcommand's own dispatch — the list-wide resolve on no `--role`, the
+// `--role`-scoped move, and the already-first refusal — had no command-level test, so
+// the wrapper's branches ran only through the child CLI. cmdPrompt spawns no child, so
+// the same exit-capture helpers pin them in-process here.
+
+test("prompt --top without --role resolves across the listed sections and names the role", async () => {
+  const root = makeRoot();
+  enqueueRolePrompt(root, DIRECTOR_ROLE, "one");
+  enqueueRolePrompt(root, DIRECTOR_ROLE, "two");
+  enqueueRolePrompt(root, "clean", "clean note");
+  // Position 2 exists only in the director's queue, so the list-wide top resolves there and
+  // the no-`--role` reply names the role (the caller scoped nothing).
+  const { stdout } = await expectOk(() => cmdPrompt(root, ["--top", "2"]));
+  assert.equal(stdout, "topped (director): two\n");
+  // The moved prompt is now the head of its role's queue; the other queue is untouched.
+  assert.deepEqual([dequeuePrompt(root), dequeuePrompt(root)], ["two", "one"]);
+  assert.equal(inboxSize(root, "clean"), 1);
+});
+
+test("prompt --top --role moves within the role's own queue and omits the role from the reply", async () => {
+  const root = makeRoot();
+  enqueueRolePrompt(root, "clean", "a");
+  enqueueRolePrompt(root, "clean", "b");
+  enqueueRolePrompt(root, "clean", "c");
+  const { stdout } = await expectOk(() => cmdPrompt(root, ["--role", "clean", "--top", "3"]));
+  // A --role-scoped top already names the role in the command, so the reply does not repeat it.
+  assert.equal(stdout, "topped: c\n");
+  assert.deepEqual([dequeueRolePrompt(root, "clean"), dequeueRolePrompt(root, "clean")], ["c", "a"]);
+});
+
+test("prompt --top without --role misses cleanly on an out-of-range position", async () => {
+  const root = makeRoot();
+  enqueueRolePrompt(root, "clean", "only one");
+  const o = await expectFailAsync(() => cmdPrompt(root, ["--top", "5"]));
+  assert.match(o, /no prompt at position 5 \(longest inbox holds 1\)/);
+  assert.equal(inboxSize(root, "clean"), 1);
+});
+
+test("prompt --top on position 1 refuses already-first for the role with no write", async () => {
+  const root = makeRoot();
+  enqueueRolePrompt(root, "clean", "a");
+  enqueueRolePrompt(root, "clean", "b");
+  const o = await expectFailAsync(() => cmdPrompt(root, ["--role", "clean", "--top", "1"]));
+  assert.match(o, /prompt 1 is already first/);
+  // The refusal writes nothing: both prompts keep their order.
+  assert.deepEqual([dequeueRolePrompt(root, "clean"), dequeueRolePrompt(root, "clean")], ["a", "b"]);
+});
+
 test("prompt --file queues the file's contents verbatim for the director", async () => {
   const root = makeRoot();
   const file = path.join(root, "note.md");
