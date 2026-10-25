@@ -282,10 +282,18 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
     if (mergeFailureReasons.length > 0)
       lines.push(rankedRoleLine("Merge failures by reason", mergeFailureReasons, String));
   }
+  // Spend per merged commit, the --since twin of the day render's `Cost per commit:` line:
+  // costByRole is keyed by role id (instances not folded, so `feature-2` joins `feature`),
+  // commitsByRole is already base-role keyed. Prints for a spend-free window as `-` and for a
+  // role-scoped window from its scoped maps, matching the day render.
+  lines.push(costPerCommitLine("Cost per commit", costPerCommitPairsFrom(foldBaseRoles(data.costByRole), data.commitsByRole)));
   // Subscription spend is notional: its own line, only when the window has any — the same
   // conditional/filtered `usd` form the day render's "Estimated by role" uses.
   if (data.notionalByRole !== undefined) {
     pushRankedRoleLine(lines, "Estimated by role", rankedRoleMap(data.notionalByRole), usd);
+    // The day render's `Estimated per commit:` twin, after `Estimated by role`, from the same
+    // notionalByRole source folded to base roles and the base-keyed commitsByRole.
+    lines.push(costPerCommitLine("Estimated per commit", costPerCommitPairsFrom(foldBaseRoles(data.notionalByRole), data.commitsByRole)));
   }
   lines.push("");
   // Exactly one final line, chosen by the collector's coverage proof: either a hedged note
@@ -301,23 +309,24 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   return lines.join("\n");
 }
 
-/** Cost per merged commit by base role. Spend comes from costByRole (keyed by role id, folded to
- * its base role so `feature-2` joins `feature`), commits from commitsByRole (already base-role
- * keyed). `merged` is [role, cost per commit, commits] for roles with both, ranked by cost per
+/** Fold every key of a per-role-id map through its base role, so `feature-2` joins `feature`.
+ * The same fold the day caller does per day, applied to an already-aggregated window map. */
+function foldBaseRoles(map: Record<string, number>): Record<string, number> {
+  const folded: Record<string, number> = {};
+  for (const [id, c] of Object.entries(map)) addTo(folded, baseRoleOf(id), c);
+  return folded;
+}
+
+/** Rank one cost map against a base-keyed commits map into cost-per-commit output: the shared
+ * core of the day and --since cost-per-commit lines. `cost` is expected base-role keyed (the
+ * day caller folds per day, the --since caller via `foldBaseRoles`); commits are base-role
+ * keyed. `merged` is [role, cost per commit, commits] for roles with both, ranked by cost per
  * commit desc then name asc; `idle` is roles that spent and merged nothing, ranked by spend.
- * Merge spend (the reviewer's) and notional subscription spend stay out by default, matching
- * `**Cost by role:**` (`pick` selects another per-role-id spend map, e.g. notionalByRole); a
- * role with commits but no spend in the picked map appears in neither list. */
-function costPerCommitPairs(
-  series: ReportDay[],
-  pick: (d: ReportDay) => Record<string, number> = (d) => d.costByRole,
+ * A role with commits but no spend appears in neither list. */
+function costPerCommitPairsFrom(
+  cost: Record<string, number>,
+  commits: Record<string, number>,
 ): { mergeDone: [string, number, number][]; idle: [string, number][] } {
-  const cost: Record<string, number> = {};
-  const commits: Record<string, number> = {};
-  for (const d of series) {
-    for (const [id, c] of Object.entries(pick(d))) addTo(cost, baseRoleOf(id), c);
-    for (const [role, n] of Object.entries(d.commitsByRole ?? {})) addTo(commits, role, n);
-  }
   const mergeDone: [string, number, number][] = [];
   const idleCost: [string, number][] = [];
   for (const [role, c] of Object.entries(cost)) {
@@ -328,6 +337,24 @@ function costPerCommitPairs(
   }
   sortByValueDesc(mergeDone);
   return { mergeDone, idle: rankCountEntries(idleCost) };
+}
+
+/** The day caller of the cost-per-commit core: fold each day's role-id-keyed spend map through
+ * its base role (so `feature-2` joins `feature`) and aggregate the base-keyed commitsByRole,
+ * then hand both to `costPerCommitPairsFrom`. `pick` selects the per-role-id spend map; merge
+ * spend (the reviewer's) and notional subscription spend stay out by default, matching
+ * `**Cost by role:**`. */
+function costPerCommitPairs(
+  series: ReportDay[],
+  pick: (d: ReportDay) => Record<string, number> = (d) => d.costByRole,
+): { mergeDone: [string, number, number][]; idle: [string, number][] } {
+  const cost: Record<string, number> = {};
+  const commits: Record<string, number> = {};
+  for (const d of series) {
+    for (const [id, c] of Object.entries(pick(d))) addTo(cost, baseRoleOf(id), c);
+    for (const [role, n] of Object.entries(d.commitsByRole ?? {})) addTo(commits, role, n);
+  }
+  return costPerCommitPairsFrom(cost, commits);
 }
 
 /** One `**<label>:** …` line from costPerCommitPairs output; `-` when there is nothing. */

@@ -726,6 +726,42 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
   assert.match(data, /\*\*Estimated by role:\*\* plan — \$0\.50 · feature — \$0\.40/);
 });
 
+test("renderSinceReportMarkdown prints Cost per commit and Estimated per commit matching the day render", () => {
+  const data = renderSinceReportMarkdown({
+    sinceMs: HOUR,
+    fromIso: new Date(ago(HOUR)).toISOString(),
+    mainRedMs: 0,
+    totals: { tokensOut: 1500, runs: 5, commits: 5, costUsd: 1.8, notionalCostUsd: 0.9, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    runsByRole: { feature: 5 },
+    costByRole: { feature: 0.2, "feature-2": 0.1, clean: 0.9, plan: 0.9 },
+    rejectionsByRole: {},
+    postMergeRejectionsByRole: {},
+    revisionsByRole: {},
+    refusalsByRole: {},
+    failedRunsByRole: {},
+    fallbacksByRole: {},
+    imageReroutesByRole: {},
+    tokensByRole: {},
+    // costByRole is keyed by role id, so feature-2 joins feature; commitsByRole already base-keyed.
+    commitsByRole: { feature: 2, clean: 3 },
+    mergedByRole: {},
+    mergeFailedByRole: {},
+    mergeFailedByReason: {},
+    costByProvider: {},
+    notionalByProvider: {},
+    notionalByRole: { feature: 0.4, plan: 0.5 },
+    runsByModel: {},
+    coversFullWindow: true,
+  });
+  // The day render's exact wording and ranking: merged roles by cost per commit desc then name
+  // asc, the spend-only `plan` idle last; the notional twin comes directly after Estimated by role.
+  assert.match(data, /\*\*Cost per commit:\*\* clean — \$0\.30 \(3\) · feature — \$0\.15 \(2\) · plan — \$0\.90, no commits/);
+  assert.match(data, /\*\*Estimated per commit:\*\* feature — \$0\.20 \(2\) · plan — \$0\.50, no commits/);
+  // Order: Cost per commit precedes Estimated by role, and Estimated per commit follows it.
+  assert.ok(data.indexOf("**Cost per commit:") < data.indexOf("**Estimated by role:"));
+  assert.ok(data.indexOf("**Estimated by role:") < data.indexOf("**Estimated per commit:"));
+});
+
 test("renderSinceReportMarkdown renders an empty window's Commits by role and omits Estimated by role", () => {
   const zero = renderSinceReportMarkdown({
     sinceMs: HOUR,
@@ -754,7 +790,9 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
   // The now-required commitsByRole renders "-" when empty; a window with no notional spend
   // carries no Estimated by role line at all — the same conditional omission the day render uses.
   assert.match(zero, /\*\*Commits by role:\*\* -/);
+  assert.match(zero, /\*\*Cost per commit:\*\* -/);
   assert.ok(!zero.includes("**Estimated by role:"), "no notional spend omits the line entirely");
+  assert.ok(!zero.includes("**Estimated per commit:"), "no notional spend omits Estimated per commit too");
 });
 
 test("renderSinceReportMarkdown prints Main red wall-clock for a positive window total and omits it at zero", () => {
@@ -800,6 +838,7 @@ test("tumwater report --since prints the window totals and validates its flags",
   assert.match(ok.out, /window: last 6h \(since /);
   assert.match(ok.out, /777 output tokens/);
   assert.match(ok.out, /\*\*Runs by role:\*\* feature — 1/);
+  assert.match(ok.out, /\*\*Cost per commit:\*\*/);
   assert.ok(!ok.out.includes("999"), "the 8h-old event is outside the 6h window");
   assert.match(ok.out, /backlog tallies \(features done \/ bugs fixed \/ plans added \/ bugs filed\) need the day report/);
 
