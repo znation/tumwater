@@ -23,7 +23,7 @@ import { quietHoursStatus } from "../scheduling/quiet-hours.js";
 import { assembleRunPrompt } from "../run/run-prompt.js";
 import { configForRole, resolvedModelFields, reviewedAfterMerge, reviewRunConfig, roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
-import { fallbackModelPair, piModelsPath, seamContextWindow } from "../pi/pi-models.js";
+import { fallbackModelPair, piModelsPath, seamContextWindowForRole } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { formatModelSelector } from "../config/model-selector.js";
 import { roleImageInfo } from "../agent/image-input.js";
@@ -455,7 +455,7 @@ export function rolePayload(
   }
   // The resolved primary seam's declared context window. A run currently on the model
   // fallback may use a different window, which is the fallback's own documented state.
-  const contextWindow = seamContextWindow(configForRole(cfg, role), root, modelsPath);
+  const contextWindow = seamContextWindowForRole(cfg, role, root, modelsPath);
   return {
     id: role,
     title: resolved.title,

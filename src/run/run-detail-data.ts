@@ -15,8 +15,7 @@ import { eventUsage, readEvents, runSpanMs, runStartMap } from "../events/event-
 import { outcomeText, usageText } from "../events/event-format.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { loadConfigSafe, defaultConfig } from "../config/config.js";
-import { configForRole } from "../config/config-views.js";
-import { seamContextWindow } from "../pi/pi-models.js";
+import { seamContextWindowForRole } from "../pi/pi-models.js";
 import { nonNegativeNumber } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 
@@ -195,11 +194,12 @@ function detailFrom(
     costUsd: usageNums.costUsd,
     usage: end === null ? "" : usageText(end),
     // The peak is a corrupt-field-guarded read of the run_end (nonNegativeNumber, the same
-    // guard promptStatsFor applies); the window resolves the same seam the role view prints
-    // — configForRole through baseRoleOf, loadConfigSafe falling back to defaults, so a
-    // broken tumwater.json yields a null window rather than failing this read-only view.
+    // guard promptStatsFor applies); the window comes from the shared seamContextWindowForRole —
+    // same seam the role view and status table print — with loadConfigSafe falling back to
+    // defaults, so a broken tumwater.json yields a null window rather than failing this read-only
+    // view.
     peakContextTokens: end === null ? 0 : nonNegativeNumber(end.peakContextTokens, 0),
-    contextWindow: seamContextWindow(configForRole(loadConfigSafe(root).config ?? defaultConfig(), role), root),
+    contextWindow: seamContextWindowForRole(loadConfigSafe(root).config ?? defaultConfig(), role, root),
     events: block,
     merge,
     mergedSha: mergedShaOf(result, merge, scoped, block),

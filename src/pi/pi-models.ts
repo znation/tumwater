@@ -171,6 +171,21 @@ export function seamContextWindow(
   }
 }
 
+/** The resolved primary seam's declared context window for a role — `configForRole` resolves
+ * the role's seam (the view the role page, status table/drawer and run history all print), then
+ * `seamContextWindow` names the window that seam declares, or null when it cannot be known. The
+ * one home of that resolution so the role page, the status table/drawer and a run's history
+ * header cannot disagree about the peak-ctx denominator. `modelsPath` defaults to pi's own
+ * catalog path, as `seamContextWindow` does, for read-only callers that have no seam handle. */
+export function seamContextWindowForRole(
+  cfg: TumwaterConfig,
+  role: string,
+  projectRoot: string,
+  modelsPath: string = piModelsPath(),
+): number | null {
+  return seamContextWindow(configForRole(cfg, role), projectRoot, modelsPath);
+}
+
 /** A provider's `baseUrl` from pi's models.json, or null when the file, the provider or the
  * field is missing — what doctor probes to tell a local server that is down from one that is up. */
 export function piProviderBaseUrl(modelsPath: string, provider: string): string | null {
