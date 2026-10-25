@@ -36,6 +36,7 @@ import {
   checkLeftoverRoleBranches,
   checkMergeLock,
   checkProviderConcurrency,
+  providerConcurrencyProblems,
   checkProviderContention,
   checkTumwaterPins,
   checkWorkInstances,
@@ -1130,6 +1131,42 @@ test("checkProviderConcurrency is fine without a per-provider map", () => {
   const out = checkProviderConcurrency(defaultConfig(), readyRepo());
   assert.equal(out.level, "ok");
   assert.match(out.detail, /no per-provider caps configured/);
+});
+
+test("providerConcurrencyProblems returns the row's own warnings", () => {
+  // The pure predicate the doctor's `provider concurrency` row and the always-on `provider-caps`
+  // alert share: the well-formed and map-less configs yield nothing, and each broken config
+  // yields the exact warning string the row joins. piDefault backs the orchestrator's
+  // admission seam (a ModelSelector); none of these configs has a key-less seam, so null
+  // suffices.
+  const piDefault = null;
+  const wellFormed = {
+    ...defaultConfig(),
+    maxConcurrent: 4,
+    model: { default: "omlx/m" },
+    maxConcurrentPerProvider: { omlx: 3 },
+  };
+  assert.deepEqual(providerConcurrencyProblems(wellFormed, piDefault), []);
+  assert.deepEqual(providerConcurrencyProblems(defaultConfig(), piDefault), []);
+  assert.deepEqual(providerConcurrencyProblems(undefined, piDefault), []);
+  const claude = {
+    ...defaultConfig(),
+    maxConcurrent: 4,
+    backend: "claude", model: { default: "m" },
+    maxConcurrentPerProvider: { omlx: 3 },
+  };
+  assert.deepEqual(providerConcurrencyProblems(claude, piDefault), [
+    'cap key "omlx" resolves to no model job (a typo, or a provider not in use)',
+  ]);
+  const tooSmall = {
+    ...defaultConfig(),
+    maxConcurrent: 3,
+    model: { default: "omlx/m" },
+    maxConcurrentPerProvider: { omlx: 3 },
+  };
+  assert.deepEqual(providerConcurrencyProblems(tooSmall, piDefault), [
+    "cap \"omlx\" 3 is at or above maxConcurrent 3 — it never binds",
+  ]);
 });
 
 // claude transcript disk (plans/agent-backends.md "Sessions" retention, part 4e/7): doctor

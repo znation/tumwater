@@ -14,9 +14,10 @@ import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
-import { mergeQueueDir, quarantinePath } from "../src/paths.js";
+import { mergeQueueDir, quarantinePath, configPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { postReviewPath } from "../src/paths.js";
+import { defaultConfig } from "../src/config/config.js";
 import { CI_PARITY_STALE_MS } from "../src/run/ci-parity.js";
 import { QA_COVERAGE_STALE_MS } from "../src/run/qa-coverage.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
@@ -1692,6 +1693,38 @@ test("a stale workspace pin raises the workspace-pins alert", () => {
   assert.match(two[0]!.title, /workspaces pinned past a day/);
   assert.ok(two[0]!.detail.includes("feature"));
   assert.ok(two[0]!.detail.includes("bugfix"));
+});
+
+test("a maxConcurrentPerProvider misconfiguration raises one standing amber provider-caps alert", () => {
+  const now = Date.now();
+  const problem = 'cap key "omlx" resolves to no model job (a typo, or a provider not in use)';
+  // providerCaps is the trailing parameter, after liveFinished ([]); the 27 preceding values
+  // (refused…workspacePins then liveFinished, passed explicitly) are filled so the trailing
+  // slot lands, pinning the position.
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], [], null, [], [], [problem]);
+  const only = alerts.filter((a) => a.key === "provider-caps");
+  assert.equal(only.length, 1);
+  assert.equal(only[0]!.tone, "amber");
+  assert.match(only[0]!.title ?? "", /maxConcurrentPerProvider is misconfigured/);
+  assert.ok(only[0]!.detail.includes(problem));
+  assert.match(only[0]!.detail ?? "", /fix the map in tumwater.json/);
+  assert.deepEqual(only[0]!.actions, []);
+  // An empty (default) final argument adds no alert.
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], [], null, []).filter((a) => a.key === "provider-caps").length, 0);
+  // The full pipeline carries the same alert through statusPayload over a seeded map, pinning
+  // the feed-to-builder wiring end to end.
+  const root = makeRepo();
+  writeJsonFile(configPath(root), { ...defaultConfig(), backend: "claude", model: { default: "m" }, maxConcurrent: 4, maxConcurrentPerProvider: { omlx: 3 } });
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; tone?: string; title?: string; detail?: string }> };
+  const capsAlert = payload.alerts.find((a) => a.key === "provider-caps");
+  assert.equal(capsAlert?.tone, "amber");
+  assert.match(capsAlert?.title ?? "", /maxConcurrentPerProvider is misconfigured/);
+  assert.ok((capsAlert?.detail ?? "").includes(problem));
+  // A well-formed map (or no map) yields no alert.
+  writeJsonFile(configPath(root), { ...defaultConfig(), backend: "pi", model: { default: "omlx/m" }, maxConcurrent: 4, maxConcurrentPerProvider: { omlx: 3 } });
+  assert.equal((statusPayload(root, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "provider-caps"), undefined);
+  writeJsonFile(configPath(root), { ...defaultConfig(), backend: "claude", model: { default: "m" }, maxConcurrent: 4 });
+  assert.equal((statusPayload(root, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "provider-caps"), undefined);
 });
 
 test("the stale-claims alert names a gone and an idle claim", () => {

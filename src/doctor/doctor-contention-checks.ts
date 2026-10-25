@@ -29,6 +29,7 @@ import { staleClaimDetail, staleClaimEntries } from "../scheduling/claim-entries
 import { piModelsPath } from "../pi/pi-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
+import type { ModelSelector } from "../config/model-selector.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { enforcedKeyCaps } from "../concurrency/semaphore.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
@@ -554,15 +555,20 @@ export function checkWorkInstances(
  * well-formed map; a broken config is reported by the init check. Takes `root` to read pi's
  * own default model (piSettingsPath), the same seam the orchestrator's admission uses, so a
  * bare no-model pi seam keys exactly as the team would key it. */
-export function checkProviderConcurrency(config: TumwaterConfig | undefined, root: string): CheckOutcome {
-  if (!config) return okOutcome("no config to audit");
+/** The warnings behind checkProviderConcurrency, as a pure function of the config and pi's
+ * default model name: a cap key no seam resolves to (a typo, or a provider not in use), a cap
+ * at or above `maxConcurrent` (which never binds), and a capped team whose seams include one
+ * with no key (pi's default provider is unreadable, so that seam cannot be capped). The doctor's
+ * `provider concurrency` row and the always-on `provider-caps` team alert both read this one
+ * computation, so the row and the alert cannot drift on the trigger or the wording. `[]` for no
+ * config, a map with no enforcedKeyCaps entries, or a map with no problem. `piDefault` is the
+ * bare default model the orchestrator's admission seam carries, read once by the callers
+ * through readPiDefaultModel(piSettingsPath(piModelsPath()), root). */
+export function providerConcurrencyProblems(config: TumwaterConfig | undefined, piDefault: ModelSelector | null): string[] {
+  if (!config) return [];
   const caps = config.maxConcurrentPerProvider;
   const capEntries = enforcedKeyCaps(caps);
-  if (capEntries.length === 0) return okOutcome("no per-provider caps configured");
-  // The pi default model the orchestrator's admission seam carries: a bare no-model pi seam
-  // resolves its key only through it, so a team whose default is readable has keyed seams and
-  // only an unreadable default leaves a key-less seam to warn about.
-  const piDefault = readPiDefaultModel(piSettingsPath(piModelsPath()), root);
+  if (capEntries.length === 0) return [];
   const seams = seamsInUse(config);
   const keyed: string[] = [];
   for (const s of seams) {
@@ -583,6 +589,19 @@ export function checkProviderConcurrency(config: TumwaterConfig | undefined, roo
   if (capSet.size > 0 && keyless.length > 0) {
     warnings.push(`${keyless.length} model job(s) resolve to no provider key (pi's default provider is unreadable, so they cannot be capped): ${keyless.map((s) => s.label).join(", ")}`);
   }
-  if (warnings.length === 0) return okOutcome(`${plural(capEntries.length, "provider cap")} — all model jobs resolve`);
-  return warnOutcome(warnings.join("; "));
+  return warnings;
+}
+
+export function checkProviderConcurrency(config: TumwaterConfig | undefined, root: string): CheckOutcome {
+  if (!config) return okOutcome("no config to audit");
+  const caps = config.maxConcurrentPerProvider;
+  const capEntries = enforcedKeyCaps(caps);
+  if (capEntries.length === 0) return okOutcome("no per-provider caps configured");
+  // The pi default model the orchestrator's admission seam carries: a bare no-model pi seam
+  // resolves its key only through it, so a team whose default is readable has keyed seams and
+  // only an unreadable default leaves a key-less seam to warn about.
+  const piDefault = readPiDefaultModel(piSettingsPath(piModelsPath()), root);
+  const problems = providerConcurrencyProblems(config, piDefault);
+  if (problems.length === 0) return okOutcome(`${plural(capEntries.length, "provider cap")} — all model jobs resolve`);
+  return warnOutcome(problems.join("; "));
 }

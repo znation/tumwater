@@ -113,13 +113,14 @@ export function teamAlerts(
   qaCoverage: QaCoverageStale | null = null,
   workspacePins: readonly StaleWorkspacePin[] = [],
   liveFinished: readonly LiveFinishedEntry[] = [],
+  providerCaps: readonly string[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   out.push(...buildMergeAlerts({ quarantined, flappedChecks, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, qaCoverage, now }));
-  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins }));
+  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, providerCaps }));
 
   return out;
 }
