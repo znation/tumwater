@@ -27,7 +27,7 @@ test("the History table renders run rows, escapes them, and filters by outcome",
   const now = Date.now();
   const rows = [
     { ts: now - 5 * 60_000, time: "2026-09-29 15:33:31", role: "coverage", run: 5, result: "queued", model: "acme/m1", durationMs: 45_000, usage: "12.0k tok · $0.04", detail: "bumped coverage" },
-    { ts: now - 9 * 60_000, time: "2026-09-29 15:29:00", role: "gone-loop", run: 7, result: "no_change", model: null, durationMs: null, usage: "", detail: "" },
+    { ts: now - 9 * 60_000, time: "2026-09-29 15:29:00", role: "gone-loop", run: 7, result: "no_change", model: null, durationMs: null, usage: "", detail: "", cutOff: true },
     { ts: now - 20 * 60_000, time: "2026-09-29 15:18:00", role: "qa", run: 2, result: "error", model: "claude/x", durationMs: 240_000, usage: "900 tok", detail: "<script>x</script>" },
   ];
   const html = historyTableHtml(rows, "all", new Set(["coverage", "qa"]));
@@ -40,6 +40,11 @@ test("the History table renders run rows, escapes them, and filters by outcome",
   assert.match(html, /5m ago/);
   assert.match(html, /#5/);
   assert.match(html, /<span class='res t-indigo'>Waiting to merge<\/span>/);
+  // A run cut off at its model's context ceiling marks its Result cell distinctly, and a
+  // row without the flag renders no marker (the coverage row above has none).
+  assert.match(html, /cut off/);
+  assert.match(html, /title='cut off at the context ceiling'/);
+  assert.equal((html.match(/<span class='muted' title='cut off at the context ceiling'>cut off<\/span>/g) ?? []).length, 1, "only the cut-off row carries the marker");
   assert.match(html, /<td class='num c-dur'>45s<\/td>/);
   assert.match(html, /<td class='num c-dur'>4m<\/td>/);
   assert.match(html, /<td class='num c-dur'>—<\/td>/, "a missing duration is a dash, never NaN");

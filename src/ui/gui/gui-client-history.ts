@@ -586,7 +586,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
           "<td title='" + esc(r.time) + "'><span class='clamp1'>" + esc(fmtAgo(r.ts)) + "</span></td>" +
           "<td class='mono'>" + esc(roleLabel(r.role)) + "</td>" +
           "<td class='c-run num muted'>#" + esc(r.run) + "</td>" +
-          "<td><span class='res t-" + res.tone + "'>" + esc(res.label) + "</span></td>" +
+          "<td><span class='res t-" + res.tone + "'>" + esc(res.label) + "</span>" + (r.cutOff === true ? " <span class='muted' title='cut off at the context ceiling'>cut off</span>" : "") + "</td>" +
           "<td class='c-model'><span class='clamp1' title='" + esc(r.model || "") + "'>" + (r.model ? esc(r.model) : "<span class='muted'>—</span>") + "</span></td>" +
           "<td class='c-detail'><span class='clamp2' title='" + esc(r.detail) + "'>" + (r.detail ? esc(r.detail) : "<span class='muted'>—</span>") + "</span></td>" +
           "<td class='num c-dur'>" + durCell(r.durationMs) + "</td>" +

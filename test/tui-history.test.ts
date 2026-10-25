@@ -26,33 +26,40 @@ function row(over: Partial<RunRow> = {}): RunRow {
 }
 
 test("a seeded row renders its time, role, run, result, duration, usage, and detail", () => {
-  assert.equal(historyPaneText([row()]), "14:03  feature #7  changed  90s  $0.42  Add the history pane");
+  assert.equal(historyPaneText([row()]), "14:03  feature #7  merged  90s  $0.42  Add the history pane");
 });
 
 test("a row's model sits between the result and the duration when present, and is omitted when empty", () => {
   assert.equal(
     historyPaneText([row({ model: "acme/m1" })]),
-    "14:03  feature #7  changed  acme/m1  90s  $0.42  Add the history pane",
+    "14:03  feature #7  merged  acme/m1  90s  $0.42  Add the history pane",
   );
   // A model carries no padding when empty — omitted like usage and detail.
   assert.equal(
     historyPaneText([row({ model: null, usage: "", detail: "" })]),
-    "14:03  feature #7  changed  90s",
+    "14:03  feature #7  merged  90s",
   );
 });
 
 test("a null duration renders the em dash the CLI table uses", () => {
-  assert.equal(historyPaneText([row({ durationMs: null, usage: "", detail: "" })]), "14:03  feature #7  changed  —");
+  assert.equal(historyPaneText([row({ durationMs: null, usage: "", detail: "" })]), "14:03  feature #7  merged  —");
+});
+
+test("a cut-off run's result cell reads `no change (cut off)` like the CLI table", () => {
+  // The result comes from runRowCells, the one home the CLI table builds on, so the marker
+  // reaches the pane the same way — and a plain no_change row stays label-only.
+  assert.equal(historyPaneText([row({ result: "no_change", cutOff: true })]), "14:03  feature #7  no change (cut off)  90s  $0.42  Add the history pane");
+  assert.equal(historyPaneText([row({ result: "no_change" })]), "14:03  feature #7  no change  90s  $0.42  Add the history pane");
 });
 
 test("an empty usage and an empty detail are omitted, not left as gaps", () => {
-  assert.equal(historyPaneText([row({ usage: "", detail: "kept" })]), "14:03  feature #7  changed  90s  kept");
-  assert.equal(historyPaneText([row({ usage: "$0.42", detail: "" })]), "14:03  feature #7  changed  90s  $0.42");
+  assert.equal(historyPaneText([row({ usage: "", detail: "kept" })]), "14:03  feature #7  merged  90s  kept");
+  assert.equal(historyPaneText([row({ usage: "$0.42", detail: "" })]), "14:03  feature #7  merged  90s  $0.42");
 });
 
 test("rows render newest-first, one line each, and no rows is the empty string", () => {
   const rows = [row({ run: 8, time: "14:05" }), row({ run: 7, time: "14:03" })];
-  assert.equal(historyPaneText(rows), "14:05  feature #8  changed  90s  $0.42  Add the history pane\n14:03  feature #7  changed  90s  $0.42  Add the history pane");
+  assert.equal(historyPaneText(rows), "14:05  feature #8  merged  90s  $0.42  Add the history pane\n14:03  feature #7  merged  90s  $0.42  Add the history pane");
   assert.equal(historyPaneText([]), "");
 });
 

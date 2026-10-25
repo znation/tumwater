@@ -205,6 +205,11 @@ export interface RunRow {
    * carried none (or zero), so an older run_end or one that reported no peak keeps today's
    * exact row and `history --json` shape. */
   peakContextTokens?: number;
+  /** The `run_end`'s ceiling-truncation flag (`cutOff: true` when the run was cut off at
+   * its model's context ceiling), true-only like the sibling peak field: the key is absent
+   * when the end carried no such flag, so an older run_end or a deliberate no-op keeps
+   * today's exact row and `history --json` shape. */
+  cutOff?: boolean;
   usage: string;
   detail: string;
 }
@@ -228,7 +233,7 @@ export function runRowCells(row: RunRow): RunRowCells {
   return {
     role: roleLabel(row.role),
     run: String(row.run),
-    result: eventTypeLabel(row.result),
+    result: row.cutOff === true ? `${eventTypeLabel(row.result)} (cut off)` : eventTypeLabel(row.result),
     model: row.model ?? "",
     duration: row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs),
     usage: row.usage,
@@ -342,6 +347,7 @@ export function runRows(
       tokens: usage.tokens,
       costUsd: usage.costUsd,
       ...(peak > 0 ? { peakContextTokens: peak } : {}),
+      ...(e.cutOff === true ? { cutOff: true } : {}),
       role: eventRole(e),
       run: eventRun(e),
       result,

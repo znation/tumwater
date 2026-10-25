@@ -68,6 +68,26 @@ test("history renders the last runs newest-first with duration, usage, and detai
   assert.match(out, /docs\s+#2\s+merged\s+—\s+touch up the readme/);
 });
 
+test("history marks a run cut off at its context ceiling in the result column", async () => {
+  const repo = makeRepo();
+  logEvent(repo, { ts: NOW - 60_000, source: "feature", type: "run_start", run: 1 });
+  logEvent(repo, {
+    ts: NOW - 50_000,
+    source: "feature",
+    type: "run_end",
+    run: 1,
+    result: "no_change",
+    cutOff: true,
+    peakContextTokens: 96_000,
+  });
+  logEvent(repo, { ts: NOW - 40_000, source: "feature", type: "run_start", run: 2 });
+  logEvent(repo, { ts: NOW - 30_000, source: "feature", type: "run_end", run: 2, result: "no_change" });
+  const { stdout: out } = await expectOkAsync(() => cmdHistory(repo, []));
+  assert.equal((out.match(/no change \(cut off\)/g) || []).length, 1, `the cut-off run marks its result exactly once: ${JSON.stringify(out)}`);
+  // The plain row keeps its bare label with no parenthetical.
+  assert.equal((out.match(/no change/g) || []).length, 2, `the plain row prints no parenthetical: ${JSON.stringify(out)}`);
+});
+
 test("history -n bounds the printed rows", async () => {
   const repo = repoWithRuns();
   const { stdout: out } = await expectOkAsync(() => cmdHistory(repo, ["-n", "1"]));

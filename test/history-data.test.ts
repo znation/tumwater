@@ -230,6 +230,25 @@ test("runRows carries a positive peakContextTokens and omits an absent or zero o
   assert.equal("peakContextTokens" in rows[1]!, false);
 });
 
+test("runRows carries a run's context cut-off and marks its result cell", () => {
+  const rows = runRows(
+    [
+      endEvent({ ts: 1000, run: 1, result: "no_change", cutOff: true }),
+      endEvent({ ts: 3000, run: 3, result: "no_change" }),
+    ],
+    20,
+    null,
+  );
+  // Oldest-first input (runRows's contract, as readEvents yields); the output is newest
+  // first, so rows[0] is the plain newest run and rows[1] the older cut-off one.
+  assert.equal("cutOff" in rows[0]!, false);
+  assert.equal(rows[1]!.cutOff, true);
+  assert.equal(runRowCells(rows[0]!).result, "no change");
+  assert.equal(runRowCells(rows[1]!).result, "no change (cut off)");
+  assert.doesNotMatch(runRowGrepHaystack(rows[0]!), /cut off/);
+  assert.match(runRowGrepHaystack(rows[1]!), /cut off/);
+});
+
 test("runRows collapses and truncates the detail to keep the row one line", () => {
   const rows = runRows(
     [endEvent({ ts: 1000, run: 1, summary: "wrapped  across\nmany   lines" })],

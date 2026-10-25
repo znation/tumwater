@@ -9,20 +9,22 @@ import { runRowCells, type RunRow } from "../../history/history-data.js";
 
 /** The pane body for a set of run rows: `time  role #run  result  duration`, then `model`
  * (between the result and the duration), and `usage` and `detail` when they carry anything,
- * joined newest-first by newlines. The cells come from history-data.ts's runRowCells, the one
- * home the CLI's table builds on too, so a null `durationMs` (the run's start sits outside
- * the scanned window) shows the em dash here the same way; an empty `model` (the start named
- * none or sat outside the window), an empty `usage` (neither tokens nor cost), and an empty
- * `detail` are omitted rather than leaving a gap. No rows renders `""`, which the pane's
- * `emptyNote` replaces. `row.result` is the string history-data.ts resolved (including a
- * joined merge verdict), never reclassified here. */
+ * joined newest-first by newlines. Both the result and the duration cells come from
+ * history-data.ts's runRowCells, the one home the CLI's table builds on too, so a run cut
+ * off at its model's context ceiling reads `no change (cut off)` here the way it does in
+ * `history`, and a null `durationMs` (the run's start sits outside the scanned window)
+ * shows the em dash the same way; an empty `model` (the start named none or sat outside
+ * the window), an empty `usage` (neither tokens nor cost), and an empty `detail` are
+ * omitted rather than leaving a gap. No rows renders `""`, which the pane's `emptyNote`
+ * replaces. The result cell goes through eventTypeLabel exactly as the CLI table's does,
+ * so a merged run's resolved verdict and a `no_change` read the same label in both. */
 export function historyPaneText(rows: readonly RunRow[]): string {
   return rows
     .map((row) => {
-      const { duration } = runRowCells(row);
-      const parts = [row.time, `${row.role} #${row.run}`, row.result];
+      const cells = runRowCells(row);
+      const parts = [row.time, `${row.role} #${row.run}`, cells.result];
       if (row.model) parts.push(row.model);
-      parts.push(duration);
+      parts.push(cells.duration);
       if (row.usage) parts.push(row.usage);
       if (row.detail) parts.push(row.detail);
       return parts.join("  ");
