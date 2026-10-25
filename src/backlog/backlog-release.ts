@@ -4,11 +4,10 @@
  * section. Each comes as an exiting writer (the CLI) and a non-exiting `try…` core that refuses as
  * data (the TUI and dashboard); entry lookup and the section's file target are
  * backlog-write.ts's. */
-import path from "node:path";
-import { backlogTarget, findEntry, readEntryLines } from "./backlog-write.js";
+import { backlogTarget, findEntry, locateDashboardEntry, readEntryLines } from "./backlog-write.js";
 import type { ActionableEntryRange } from "./backlog-structure.js";
 import { withoutHeldForOperatorNotes, withoutRefusalNotes, withoutWaitingNotes } from "./backlog-eligibility.js";
-import { readTextIfExists, writeTextAtomic } from "../files/files.js";
+import { writeTextAtomic } from "../files/files.js";
 import { fail } from "../cli/cli-output.js";
 import { trimTrailingBlankLines } from "../text/text.js";
 import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
@@ -68,11 +67,9 @@ export function tryReleaseEntry(
 ): ReleaseEntryOutcome {
   const { fileName, sectionTitle } = backlogTarget(kind);
   return withPrimaryWorktreeLock(root, () => {
-    const file = path.join(root, fileName);
-    const md = readTextIfExists(file) ?? "";
-    const entry = findEntry(md, sectionTitle, n);
-    if (entry === undefined) return { status: "gone" };
-    if (entry.title !== expectedTitle) return { status: "moved", title: entry.title };
+    const located = locateDashboardEntry(root, fileName, sectionTitle, n, expectedTitle);
+    if (located.status !== "ok") return located;
+    const { file, md, entry } = located;
     const lines = md.split("\n");
     const lifted = liftRefusal(lines, entry);
     if (lifted === null) return { status: "not_refused", title: entry.title };
@@ -152,11 +149,9 @@ export function tryMoveEntryToTop(
 ): MoveEntryOutcome {
   const { fileName, sectionTitle } = backlogTarget(kind);
   return withPrimaryWorktreeLock(root, () => {
-    const file = path.join(root, fileName);
-    const md = readTextIfExists(file) ?? "";
-    const entry = findEntry(md, sectionTitle, n);
-    if (entry === undefined) return { status: "gone" };
-    if (entry.title !== expectedTitle) return { status: "moved", title: entry.title };
+    const located = locateDashboardEntry(root, fileName, sectionTitle, n, expectedTitle);
+    if (located.status !== "ok") return located;
+    const { file, md, entry } = located;
     if (n === 1) return { status: "already_first", title: entry.title };
     const lines = md.split("\n");
     spliceEntryToTop(lines, sectionTitle, entry);

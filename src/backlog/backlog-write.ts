@@ -171,6 +171,32 @@ export function readEntryLines(
   return { file, lines: md.split("\n"), entry };
 }
 
+/** The title-checked entry lookup the four non-exiting dashboard writers share
+ * (tryCancelEntry, tryEditEntry here; tryReleaseEntry, tryMoveEntryToTop in backlog-release.ts):
+ * resolve `<fileName>`, read it — an absent file is an empty section, never a seed — locate the
+ * `n`th actionable entry, and compare its heading to `expectedTitle`. Returns `gone` when there
+ * is no entry at the position and `moved` when a different heading sits there, so the caller can
+ * refuse as data without writing; on success returns the `ok` file path, raw markdown and entry
+ * for the caller to splice and write its own outcome. A pure lookup, decided inside the caller's
+ * lock. */
+export function locateDashboardEntry(
+  root: string,
+  fileName: string,
+  sectionTitle: string,
+  n: number,
+  expectedTitle: string,
+):
+  | { status: "ok"; file: string; md: string; entry: ActionableEntryRange }
+  | { status: "gone" }
+  | { status: "moved"; title: string } {
+  const file = path.join(root, fileName);
+  const md = readTextIfExists(file) ?? "";
+  const entry = findEntry(md, sectionTitle, n);
+  if (entry === undefined) return { status: "gone" };
+  if (entry.title !== expectedTitle) return { status: "moved", title: entry.title };
+  return { status: "ok", file, md, entry };
+}
+
 /** The section-remove entry point, the appendEntry analogue: the same cross-process lock, so a
  * cancel and a merge's working-tree fast-forward cannot each clobber the other's
  * read-modify-write. */
@@ -231,11 +257,9 @@ export function tryCancelEntry(
 ): CancelEntryOutcome {
   const { fileName, sectionTitle } = backlogTarget(kind);
   return withPrimaryWorktreeLock(root, () => {
-    const file = path.join(root, fileName);
-    const md = readTextIfExists(file) ?? "";
-    const entry = findEntry(md, sectionTitle, n);
-    if (entry === undefined) return { status: "gone" };
-    if (entry.title !== expectedTitle) return { status: "moved", title: entry.title };
+    const located = locateDashboardEntry(root, fileName, sectionTitle, n, expectedTitle);
+    if (located.status !== "ok") return located;
+    const { file, md, entry } = located;
     spliceOutEntry(file, md.split("\n"), entry);
     return { status: "cancelled", file: fileName, title: entry.title };
   });
@@ -348,11 +372,9 @@ export function tryEditEntry(
   const title = stripEntryStamp(collapseWhitespace(rawTitle));
   const body = rawBody.replace(/\r\n?/g, "\n").trim();
   return withPrimaryWorktreeLock(root, () => {
-    const file = path.join(root, fileName);
-    const md = readTextIfExists(file) ?? "";
-    const entry = findEntry(md, sectionTitle, n);
-    if (entry === undefined) return { status: "gone" };
-    if (entry.title !== expectedTitle) return { status: "moved", title: entry.title };
+    const located = locateDashboardEntry(root, fileName, sectionTitle, n, expectedTitle);
+    if (located.status !== "ok") return located;
+    const { file, md, entry } = located;
     const wrote = spliceInEditedEntry(file, md.split("\n"), entry, title, body);
     return { status: wrote ? "edited" : "unchanged", file: fileName, title };
   });

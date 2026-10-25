@@ -2855,7 +2855,7 @@ that position differs from the expected one), `not_refused` and `already_first` 
 nothing. In the code, each decision is made inside `withPrimaryWorktreeLock`; no test checks the
 lock itself.
 
-**Binds.** `src/backlog/backlog-release.ts` (`tryReleaseEntry`, `tryMoveEntryToTop`).
+**Binds.** `src/backlog/backlog-release.ts` (`tryReleaseEntry`, `tryMoveEntryToTop`); `src/backlog/backlog-write.ts` (`locateDashboardEntry` reads the file, locates the `n`th entry and answers the `gone`/`moved` refusal, which the twins return as data).
 
 **Pinned by.** `test/backlog-write-cancel.test.ts` — "tryReleaseEntry leaves the bytes
 releaseEntry leaves and refuses without writing"; `test/backlog-write-top.test.ts` —
