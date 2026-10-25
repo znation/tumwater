@@ -16,6 +16,22 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
   // String.raw template).
   function drawerConfigHtml(view, role) {
     const pair = (p, m) => [p, m].filter(Boolean).join("/");
+    // A fallback pair's label, mirroring role-render.ts's fallbackPairLabel so the drawer's
+    // Model fallback and Budget fallback rows name a non-pi backend's namespace the same way
+    // the CLI's fallback lines do: a non-pi backend with a model reads <backend>/<model>, else
+    // <provider>/<model>, else the model, else the provider, else the pair-less default. The
+    // pi provider/model cases and a budget pair (whose provider already holds the backend) stay
+    // byte-identical; only a model-fallback non-pi pair (modelFallbackView drops pi's provider
+    // for a non-pi backend) gains the namespace the CLI already shows.
+    const fallbackLabel = (fb, fbDefault) => {
+      const agentBackend = fb.backend !== undefined && fb.backend !== "pi" ? fb.backend : undefined;
+      if (fb.model !== undefined) {
+        if (agentBackend !== undefined) return agentBackend + "/" + fb.model;
+        return fb.provider !== undefined ? fb.provider + "/" + fb.model : fb.model;
+      }
+      if (fb.provider !== undefined) return fb.provider;
+      return fbDefault;
+    };
     const singleLine = (s) => String(s).replace(/\s+/g, " ").trim();
     // A verbatim value's single-line clamped rendering (80 chars + ellipsis) with the full
     // text riding the title tooltip — the same clamp+tooltip idiom the run summaries use.
@@ -98,10 +114,10 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     if (view.modelFallback && typeof view.modelFallback === "object" && view.modelFallback.model !== undefined) {
       const fb = view.modelFallback;
       const when = typeof fb.since === "number" ? " since " + fmtAgo(fb.since) : "";
-      rows.push(kvRow("Model fallback", pair(fb.provider, fb.model) + " — on fallback" + when + " (primary failing: " + (fb.reason ?? "") + ")"));
+      rows.push(kvRow("Model fallback", fallbackLabel(fb, "") + " — on fallback" + when + " (primary failing: " + (fb.reason ?? "") + ")"));
     }
     if (view.fallback && typeof view.fallback === "object" && view.fallback.model !== undefined) {
-      rows.push(kvRow("Budget fallback", pair(view.fallback.provider, view.fallback.model) + " (" + (view.fallbackFree ? "free" : "priced") + ")"));
+      rows.push(kvRow("Budget fallback", fallbackLabel(view.fallback, "") + " (" + (view.fallbackFree ? "free" : "priced") + ")"));
     }
     if (view.billing !== undefined) {
       const window = view.billing === "subscription" && view.billingWindow ? " (" + view.billingWindow + " window)" : "";
