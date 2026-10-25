@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { FINISHED_ARCHIVES } from "../src/backlog/backlog-md.js";
 import { stageCheckFindings } from "../src/run/stage-check.js";
-import { declaredNames } from "../src/run/stage-path-checks.js";
+import { declaredNames } from "../src/run/stage-name-checks.js";
 import {
   finishedDuplicateFindings,
   heldMovedFinding,

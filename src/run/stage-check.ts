@@ -11,8 +11,8 @@
  * `falseFixReason` runs only for an exempt (doc-only) diff — the condition under which the gate
  * consults it.
  *
- * The git-level checks described next live in stage-path-checks.ts (`gitLevelFindings`), which
- * this module appends.
+ * The git-level checks described next live across stage-path-checks.ts (`gitLevelFindings`),
+ * stage-name-checks.ts and stage-prose-checks.ts, which this module appends.
  *
  * Part 2/2 appends git-level, language-neutral findings (PLANS.md "Pre-queue self-check, part
  * 2/2") for path drift, the organize role's main rejection cause: references left behind by a

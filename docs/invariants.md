@@ -3849,8 +3849,9 @@ non-full batch check and seeds nothing".
 counts the rest as ` (+N more)`. A stale-reference finding lists at most 10 `file:line` hits. A
 change emits at most 10 stale-reference findings, however many referenced paths it deletes.
 
-**Binds.** `src/run/stage-path-checks.ts` (`gitLevelFindings`, `cappedList`, `MAX_MISSING_PATHS`,
-`MAX_NEWLINE_FILES`, `MAX_STALE_PATHS`, `MAX_STALE_HITS`).
+**Binds.** `src/run/stage-path-checks.ts` (`gitLevelFindings`, `MAX_MISSING_PATHS`),
+`src/run/stage-checks-shared.ts` (`cappedList`, `MAX_STALE_PATHS`, `MAX_STALE_HITS`) and
+`src/run/stage-prose-checks.ts` (`MAX_NEWLINE_FILES`).
 
 **Pinned by.** `test/stage-path-caps.test.ts` — "a missing-path finding names the first ten paths
 and counts the rest", "a lost-final-newline finding names the first ten files and counts the
