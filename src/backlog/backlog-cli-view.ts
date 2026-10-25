@@ -19,7 +19,7 @@ import {
   filingDate,
 } from "./backlog.js";
 import { backlogHolds, backlogInProgress, holdMark, inProgressMark } from "./backlog-eligibility.js";
-import { groupBlockedSeries, partsLabel } from "./backlog-structure.js";
+import { groupBlockedSeries, partsLabel } from "./backlog-index-data.js";
 import { rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { refuseTeamWorkspace } from "../cli/cli-repo-gate.js";
 import { sectionNoun, showEntry } from "./backlog-write.js";

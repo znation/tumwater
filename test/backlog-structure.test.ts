@@ -10,11 +10,13 @@ import {
   duplicateHeadings,
   strandedPlanEntries,
   renderBacklogStructureBlock,
-  actionableEntryRanges,
-  groupBlockedSeries,
   readdedHeadings,
   type StrandedPlanEntry,
 } from "../src/backlog/backlog-structure.js";
+import {
+  actionableEntryRanges,
+  groupBlockedSeries,
+} from "../src/backlog/backlog-index-data.js";
 import { renderBacklogIndexBlock } from "../src/backlog/backlog-index.js";
 import { DONE_DATE_RE, FIXED_DATE_RE } from "../src/backlog/backlog.js";
 import { ensureWorktree } from "../src/git/worktree.js";

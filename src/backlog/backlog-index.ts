@@ -2,10 +2,11 @@
  * entry (PLANS.md ## Planned, BUGS.md ## Open, QUESTIONS.md ## Open) plus the newest closed
  * ones, each with the 1-based line range it occupies in its file — the bounded replacement for
  * the per-run `grep -n '^##'` heading map. The entry-range parsing (actionableEntryRanges) and
- * series collapsing (groupBlockedSeries, partsLabel) it builds on live in backlog-structure.ts
- * alongside the stranded-plan checks; this module holds only the block's rendering and its
- * per-file stat caches. Extracted from backlog-structure.ts (organized 2026-10-19) so that
- * module no longer carries a second responsibility. */
+ * series collapsing (groupBlockedSeries, partsLabel) it builds on live in
+ * backlog-index-data.ts; this module holds only the block's rendering and its per-file stat
+ * caches. Extracted from backlog-structure.ts (organized 2026-10-19, the data half split to
+ * backlog-index-data.ts 2026-10-25) so that module keeps only the backlog's structural
+ * checks. */
 import path from "node:path";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { FINISHED_ARCHIVES } from "./backlog-md.js";
@@ -15,10 +16,10 @@ import {
   actionableEntryRanges,
   groupBlockedSeries,
   partsLabel,
-  stripEntryStamp,
   type ActionableEntryRange,
   type SeriesRow,
-} from "./backlog-structure.js";
+} from "./backlog-index-data.js";
+import { stripEntryStamp } from "./backlog-structure.js";
 import { entryHoldAgainst, holdMark } from "./backlog-eligibility.js";
 import { plannedPartKeys } from "./backlog-parts.js";
 import { plannedPlanEntries } from "./backlog.js";

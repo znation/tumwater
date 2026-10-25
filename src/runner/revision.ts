@@ -9,7 +9,7 @@ import { formatDate } from "../text/datetime.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { entryKey } from "../backlog/backlog-parts.js";
-import { actionableEntryRanges } from "../backlog/backlog-structure.js";
+import { actionableEntryRanges } from "../backlog/backlog-index-data.js";
 import { CONVERGENCE_HOLD_MARKER } from "../roles/role-guidance.js";
 import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 import { logEventBestEffort } from "../events/events.js";

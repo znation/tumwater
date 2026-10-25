@@ -5,7 +5,7 @@
  * data (the TUI and dashboard); entry lookup and the section's file target are
  * backlog-write.ts's. */
 import { backlogTarget, findEntry, locateDashboardEntry, readEntryLines } from "./backlog-write.js";
-import type { ActionableEntryRange } from "./backlog-structure.js";
+import type { ActionableEntryRange } from "./backlog-index-data.js";
 import { withoutHeldForOperatorNotes, withoutRefusalNotes, withoutWaitingNotes } from "./backlog-eligibility.js";
 import { writeTextAtomic } from "../files/files.js";
 import { fail } from "../cli/cli-output.js";

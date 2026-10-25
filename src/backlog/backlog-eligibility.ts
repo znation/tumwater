@@ -16,7 +16,7 @@ import { HELD_TAG_PREFIX, NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX, PRIOR_HELD_P
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
 import type { BacklogEntry } from "./backlog-md.js";
-import { actionableEntryRangesFor } from "./backlog-structure.js";
+import { actionableEntryRangesFor } from "./backlog-index-data.js";
 import { entryKey, partKey, plannedPartKeys, plansWaitingOn, requiredParts, seriesPart } from "./backlog-parts.js";
 import { finishedFiles, openBugEntries, plannedPlanEntries } from "./backlog.js";
 

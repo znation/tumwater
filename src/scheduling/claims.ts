@@ -12,7 +12,7 @@ import { DAY_MS } from "../text/datetime.js";
 import { hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
 import { type EligibleEntry, backlogHolds, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import { entryKey } from "../backlog/backlog-parts.js";
-import { actionableEntryRanges, actionableEntryRangesFor } from "../backlog/backlog-structure.js";
+import { actionableEntryRanges, actionableEntryRangesFor } from "../backlog/backlog-index-data.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";

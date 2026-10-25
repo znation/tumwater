@@ -11,7 +11,8 @@
  * cli.ts beside the other command bodies. */
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker, headingMetadata, nextSectionHeading } from "./backlog-md.js";
-import { actionableEntryRanges, stripEntryStamp, type ActionableEntryRange } from "./backlog-structure.js";
+import { actionableEntryRanges, type ActionableEntryRange } from "./backlog-index-data.js";
+import { stripEntryStamp } from "./backlog-structure.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail } from "../cli/cli-output.js";
@@ -212,7 +213,7 @@ function removeEntry(
 }
 
 /** Remove the `n`th entry (1-based, as `tumwater backlog` lists it) from `<root>/<fileName>`'s
- * `## <sectionTitle>` section. The ranges come from actionableEntryRanges (backlog-structure.ts),
+ * `## <sectionTitle>` section. The ranges come from actionableEntryRanges (backlog-index-data.ts),
  * whose walk is fence-aware, so a `## `/`### ` line quoted inside an entry's code fence is body
  * text: slicing the range removes the heading and its body whole without mistaking a quoted line
  * for the boundary. An out-of-range position (an empty section, or one holding only the
@@ -284,7 +285,7 @@ function editEntry(
 /** Replace the `n`th entry (1-based, as `tumwater backlog` lists it) of `<root>/<fileName>`'s
  * `## <sectionTitle>` section with `### <title><stamp>` plus `body`, in place: the entry keeps
  * its position and its original trailing stamp parenthetical. The ranges come from
- * actionableEntryRanges (backlog-structure.ts), whose fence-aware walk means a `## `/`### `
+ * actionableEntryRanges (backlog-index-data.ts), whose fence-aware walk means a `## `/`### `
  * line quoted inside an entry's code fence is body text, so the spliced range covers exactly
  * the heading and body without mistaking a quoted line for the boundary. The stamp is the
  * trailing suffix of the JOINED heading metadata (headingMetadata folds a wrapped heading onto

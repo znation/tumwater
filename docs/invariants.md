@@ -3495,7 +3495,7 @@ instance".
 **Guarantee.** Only PLANS.md collapses a series' contiguous blocked parts into one line. Refused or
 claimed parts keep their own lines, and BUGS.md entries never collapse.
 
-**Binds.** `src/backlog/backlog-structure.ts` (`groupBlockedSeries`); `src/backlog/backlog-index.ts`
+**Binds.** `src/backlog/backlog-index-data.ts` (`groupBlockedSeries`); `src/backlog/backlog-index.ts`
 (`collapseBlockedSeries`).
 
 **Pinned by.** `test/backlog-structure.test.ts` — "renderBacklogIndexBlock collapses a multi-part

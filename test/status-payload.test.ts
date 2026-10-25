@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
-import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
+import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-index-data.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { staleOpenQuestions, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS, mainRuleFailures, MAIN_RULE_FAILURE_WINDOW_MS, qaCoverageAlert } from "../src/ui/alert-feeds.js";
 import { PROMPT_END, PROMPT_START } from "../src/brief/brief.js";

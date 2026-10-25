@@ -32,7 +32,8 @@ import { mergeLockDir } from "../paths.js";
 import { plural } from "../text/phrases.js";
 import { collapseWhitespace, errorFirstLine, errorMessage } from "../text/text.js";
 import { FINISHED_ARCHIVES, fenceTracker, fencedHeadingTitle, parseEntryDetails, type FinishedArchive } from "./backlog-md.js";
-import { actionableEntryRanges, strandedPlanEntries, type ActionableEntryRange } from "./backlog-structure.js";
+import { actionableEntryRanges, type ActionableEntryRange } from "./backlog-index-data.js";
+import { strandedPlanEntries } from "./backlog-structure.js";
 import { appendBugEntryLocked } from "./backlog-write.js";
 import { formatDate } from "../text/datetime.js";
 

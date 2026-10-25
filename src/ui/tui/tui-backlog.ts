@@ -14,7 +14,7 @@ import {
   backlogMarks,
   type EntryHold,
 } from "../../backlog/backlog-eligibility.js";
-import { groupBlockedSeries, partsLabel } from "../../backlog/backlog-structure.js";
+import { groupBlockedSeries, partsLabel } from "../../backlog/backlog-index-data.js";
 import { clipToWidth } from "../../text/text-width.js";
 import { DASHBOARD_ANSWERED_QUESTIONS, DASHBOARD_RECENT_FINISHED } from "../status-payload.js";
 

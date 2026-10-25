@@ -1,6 +1,6 @@
 import type { BacklogEntry } from "./backlog-md.js";
 import { type BacklogPayload, entryMatches } from "./backlog.js";
-import { groupBlockedSeries, partsLabel } from "./backlog-structure.js";
+import { groupBlockedSeries, partsLabel } from "./backlog-index-data.js";
 import { holdMark, inProgressMark, type EntryHold } from "./backlog-eligibility.js";
 
 /** The terminal's view of the project backlog — the same three open sections the GUI's
