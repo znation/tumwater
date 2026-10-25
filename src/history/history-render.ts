@@ -88,22 +88,27 @@ export function renderModelSummary(summary: { models: HistoryModelSummaryRow[]; 
 
 function renderSummaryTable(header: string, all: { label: string; row: HistorySummaryRow | HistoryModelSummaryRow }[]): string {
   const roleWidth = Math.max(...[header, ...all.map((r) => r.label)].map(displayWidth));
-  const cols = ["runs", "changes", "none", "refused", "problems", "tokens", "cost", "time"] as const;
+  const cols = ["runs", "changes", "none", "refused", "problems", "tokens", "peak", "cost", "time"] as const;
+  const colLabel: Record<(typeof cols)[number], string> = { runs: "runs", changes: "changes", none: "none", refused: "refused", problems: "problems", tokens: "tokens", peak: "peak ctx", cost: "cost", time: "time" };
   const cell = (r: HistorySummaryRow | HistoryModelSummaryRow, c: (typeof cols)[number]): string =>
     c === "tokens"
       ? compactTokens(r.tokens)
-      : c === "cost"
-        ? usd(r.costUsd)
-        : c === "time"
-          ? r.durationMs === undefined
-            ? "—"
-            : humanSeconds(r.durationMs / 1000)
-          : String(c === "runs" ? r.runs : r[c]);
-  const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => cell(r.row, c).length)));
+      : c === "peak"
+        ? r.peakContextTokens === undefined
+          ? "—"
+          : compactTokens(r.peakContextTokens)
+        : c === "cost"
+          ? usd(r.costUsd)
+          : c === "time"
+            ? r.durationMs === undefined
+              ? "—"
+              : humanSeconds(r.durationMs / 1000)
+            : String(c === "runs" ? r.runs : r[c]);
+  const widths = cols.map((c) => Math.max(colLabel[c].length, ...all.map((r) => cell(r.row, c).length)));
   const line = (role: string, cells: string[], lastChange: string): string =>
     [padToWidth(role, roleWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0)), lastChange].join("  ").trimEnd();
   return [
-    line(header, [...cols], "last change"),
+    line(header, cols.map((c) => colLabel[c]), "last change"),
     ...all.map(({ label, row }) => line(label, cols.map((c) => cell(row, c)), row.lastChangeTs === null ? "—" : formatTimestamp(row.lastChangeTs))),
   ].join("\n");
 }

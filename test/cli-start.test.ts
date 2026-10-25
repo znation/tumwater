@@ -454,7 +454,7 @@ test("windowSummary counts every run once by outcome class, with the history tab
   const out = windowSummary("2h", summarizeRunRows([runRow("clean", "changed", 1), runRow("clean", "no_change", 2), runRow("clean", "refused", 3), runRow("qa", "error", 1)]), true);
   const lines = out.split("\n");
   assert.equal(lines[0], "for 2h: 4 runs — 1 changes, 1 none, 1 refused, 1 problems");
-  assert.match(lines[1] ?? "", /^role\s+runs\s+changes\s+none\s+refused\s+problems\s+tokens\s+cost\s+time\s+last change$/);
+  assert.match(lines[1] ?? "", /^role\s+runs\s+changes\s+none\s+refused\s+problems\s+tokens\s+peak ctx\s+cost\s+time\s+last change$/);
   assert.deepEqual(lines.slice(2).map((l) => l.split(/\s+/)[0]), ["clean", "qa", "total"]);
 });
 

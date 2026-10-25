@@ -18,6 +18,7 @@ import { shortSpanPhrase } from "../text/phrases.js";
 import { outcomeText, usageText } from "../events/event-format.js";
 import { compareCodeUnits } from "../collections.js";
 import { bucketMergeEvents, resolveQueuedResult } from "./history-queued.js";
+import { nonNegativeNumber } from "../files/json-object.js";
 
 /** `history`'s default row count and ceiling. The default shows a working hour of a quiet
  * team; the ceiling bounds how much log one ask re-reads — more rows only re-read more log
@@ -67,6 +68,12 @@ export interface HistorySummaryRow {
   problems: number;
   tokens: number;
   costUsd: number;
+  /** The largest `peakContextTokens` among the summarized rows — a max, not a sum (a role
+   * group has no one declared window to divide by, the same reason the status table's totals
+   * row shows an absolute max). Optional and zero-absent like the event's own
+   * omit-when-zero convention: the key appears only when at least one contributing row
+   * carried a peak, so a group whose rows reported none keeps today's exact JSON shape. */
+  peakContextTokens?: number;
   /** The sum of the summarized rows' `durationMs` (ms of agent wall-clock those runs consumed).
    * Optional and zero-absent, like the report's summable fields: the key appears only when at
    * least one contributing row carried a timed span, so an untimed window keeps today's exact
@@ -94,6 +101,7 @@ function tallyRows(rows: RunRow[], keyOf: (row: RunRow) => string): { groups: Hi
       t.tokens += row.tokens;
       t.costUsd += row.costUsd;
       if (row.durationMs !== null) t.durationMs = (t.durationMs ?? 0) + row.durationMs;
+      if (row.peakContextTokens !== undefined) t.peakContextTokens = Math.max(t.peakContextTokens ?? 0, row.peakContextTokens);
       if (cls === "changes") t.lastChangeTs = Math.max(t.lastChangeTs ?? row.ts, row.ts);
     }
   }
@@ -191,6 +199,12 @@ export interface RunRow {
   durationMs: number | null;
   tokens: number;
   costUsd: number;
+  /** The run's largest single-request context, from the `run_end`'s `peakContextTokens`
+   * (runner-state.ts's peakContextTokens, written when the run reported one), positive-only
+   * like the event's own omit-when-zero convention: the key is absent when the run_end
+   * carried none (or zero), so an older run_end or one that reported no peak keeps today's
+   * exact row and `history --json` shape. */
+  peakContextTokens?: number;
   usage: string;
   detail: string;
 }
@@ -321,11 +335,13 @@ export function runRows(
             ?.result ?? rawResult)
         : rawResult;
     const usage = eventUsage(e);
+    const peak = nonNegativeNumber(e.peakContextTokens, 0);
     rows.push({
       ts: e.ts,
       time: formatTimestamp(e.ts),
       tokens: usage.tokens,
       costUsd: usage.costUsd,
+      ...(peak > 0 ? { peakContextTokens: peak } : {}),
       role: eventRole(e),
       run: eventRun(e),
       result,

@@ -598,8 +598,8 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   // history-table:end
   // history-summary:start
   // The Summary table: one row per role plus the total, in the same column set the CLI's
-  // history --summary prints (runs, changes, none, refused, problems, tokens, cost, time,
-  // last change), so the dashboard and the CLI cannot drift column for column. Every number
+  // history --summary prints (runs, changes, none, refused, problems, tokens, peak ctx, cost,
+  // time, last change), so the dashboard and the CLI cannot drift column for column. Every number
   // comes from the
   // server's summary (built on the shared summarizeRunRows) — nothing here re-derives a
   // tally — and the cost/token cells reuse the page's report formatters. The time cell is the
@@ -612,10 +612,10 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       "<tr" + (e.total ? " class='hist-total'" : "") + ">" +
       "<td class='mono'>" + (e.labelHtml || esc(e.label)) + "</td>" +
       cell(r, "runs") + cell(r, "changes") + cell(r, "none") + cell(r, "refused") + cell(r, "problems") +
-      cell(r, "tokens", (n) => fmtTokens(Number(n))) + cell(r, "costUsd", (n) => fmtUsd(Number(n))) +
+      cell(r, "tokens", (n) => fmtTokens(Number(n))) + cell(r, "peakContextTokens", (n) => (n === undefined || n === null ? "—" : fmtTokens(Number(n)))) + cell(r, "costUsd", (n) => fmtUsd(Number(n))) +
       "<td class='num'>" + durCell(r.durationMs) + "</td>" +
       "<td>" + esc(r.lastChangeTs === null || r.lastChangeTs === undefined ? "—" : fmtAgo(Number(r.lastChangeTs))) + "</td></tr>"); }).join("");
-    return "<div class='table-wrap'><table class='table history'><thead><tr><th>" + esc(header) + "</th><th class='num'>Runs</th><th class='num'>Merged</th><th class='num'>None</th><th class='num'>Refused</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th class='num'>Time</th><th>Last change</th></tr></thead><tbody>" +
+    return "<div class='table-wrap'><table class='table history'><thead><tr><th>" + esc(header) + "</th><th class='num'>Runs</th><th class='num'>Merged</th><th class='num'>None</th><th class='num'>Refused</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Peak ctx</th><th class='num'>Cost</th><th class='num'>Time</th><th>Last change</th></tr></thead><tbody>" +
       rowsHtml + "</tbody></table></div>";
   }
   function histSummaryHtml(summary) {

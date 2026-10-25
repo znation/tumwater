@@ -419,11 +419,11 @@ test("history --summary tallies each role's outcomes over the rows the table wou
   const text = await cli(repo, "history", "--summary");
   assert.equal(text.code, 0);
   assert.deepEqual(text.stdout.split("\n").map((l) => l.trimEnd()), [
-    "role     runs  changes  none  refused  problems  tokens   cost  time  last change",
-    "bugfix      1        0     0        0         1       0  $0.00     —  —",
-    "clean       1        0     1        0         0       0  $0.00     —  —",
-    `feature     1        1     0        0         0    2400  $0.02    4s  ${when}`,
-    `total       3        1     1        0         1    2400  $0.02    4s  ${when}`,
+    "role     runs  changes  none  refused  problems  tokens  peak ctx   cost  time  last change",
+    "bugfix      1        0     0        0         1       0         —  $0.00     —  —",
+    "clean       1        0     1        0         0       0         —  $0.00     —  —",
+    `feature     1        1     0        0         0    2400         —  $0.02    4s  ${when}`,
+    `total       3        1     1        0         1    2400         —  $0.02    4s  ${when}`,
     "",
   ]);
 
@@ -440,7 +440,7 @@ test("history --summary tallies each role's outcomes over the rows the table wou
 
   const problems = await cli(repo, "history", "--summary", "--result", "problems");
   // The problems class is the bugfix error run: no start was logged, so its time cell is a dash.
-  assert.match(problems.stdout, /^total +1 +0 +0 +0 +1 +0 +\$0\.00 +— +—$/m);
+  assert.match(problems.stdout, /^total +1 +0 +0 +0 +1 +0 +— +\$0\.00 +— +—$/m);
   assert.doesNotMatch(problems.stdout, /^clean/m);
 });
 

@@ -212,6 +212,24 @@ test("runRows shows tokens and cost only when the event carries them", () => {
   assert.equal(zero.usage, "");
 });
 
+test("runRows carries a positive peakContextTokens and omits an absent or zero one", () => {
+  const rows = runRows(
+    [
+      endEvent({ ts: 1000, run: 1, peakContextTokens: 96_000 }),
+      endEvent({ ts: 2000, run: 2 }),
+      endEvent({ ts: 3000, run: 3, peakContextTokens: 0 }),
+    ],
+    20,
+    null,
+  );
+  // Newest first: the zero-peak run, then the no-peak run, then the peak-carrying run.
+  assert.equal(rows[2]!.peakContextTokens, 96_000);
+  // A peak-less (or zero) run_end keeps today's exact row, so `history --json` shape is
+  // unchanged for a run that reported none.
+  assert.equal("peakContextTokens" in rows[0]!, false);
+  assert.equal("peakContextTokens" in rows[1]!, false);
+});
+
 test("runRows collapses and truncates the detail to keep the row one line", () => {
   const rows = runRows(
     [endEvent({ ts: 1000, run: 1, summary: "wrapped  across\nmany   lines" })],
@@ -731,19 +749,45 @@ test("summarizeRunRows leaves durationMs absent when every row's span is null", 
   assert.equal("durationMs" in summarizeRunRows([]).total, false);
 });
 
-test("renderSummary shows tokens, cost and time columns in order, with a dash for an untimed role", () => {
-  const row = (role: string, durationMs?: number): HistorySummaryRow => ({
-    role, runs: 1, changes: 1, none: 0, refused: 0, problems: 0, tokens: 14000, costUsd: 0.5, durationMs, lastChangeTs: null,
+test("summarizeRunRows carries each group's largest single-request context", () => {
+  const row = (role: string, peakContextTokens?: number): RunRow => ({
+    ts: 0, time: "", role, run: 1, result: "changed", model: null, durationMs: null, tokens: 0, costUsd: 0, ...(peakContextTokens !== undefined ? { peakContextTokens } : {}), usage: "", detail: "",
+  });
+  const summary = summarizeRunRows([
+    row("feature", 96_000),
+    row("feature", 110_000),
+    row("clean", 32_000),
+    row("bugfix"),
+  ]);
+  assert.equal(summary.roles.find((r) => r.role === "feature")!.peakContextTokens, 110_000);
+  assert.equal(summary.roles.find((r) => r.role === "clean")!.peakContextTokens, 32_000);
+  assert.equal("peakContextTokens" in summary.roles.find((r) => r.role === "bugfix")!, false);
+  // The total is the max across every row, not a sum, and order-independent.
+  assert.equal(summary.total.peakContextTokens, 110_000);
+  const byModel = summarizeRunRowsByModel([
+    row("feature", 96_000),
+    row("feature", 110_000),
+    row("clean", 32_000),
+    row("bugfix"),
+  ]);
+  assert.equal(byModel.total.peakContextTokens, 110_000);
+});
+
+test("renderSummary shows tokens, peak ctx, cost and time columns in order, with a dash for an untimed role", () => {
+  const row = (role: string, durationMs?: number, peakContextTokens?: number): HistorySummaryRow => ({
+    role, runs: 1, changes: 1, none: 0, refused: 0, problems: 0, tokens: 14000, costUsd: 0.5, durationMs, ...(peakContextTokens !== undefined ? { peakContextTokens } : {}), lastChangeTs: null,
   });
   const out = renderSummary({
-    roles: [row("feature", 3_600_000), row("bugfix")],
-    total: row("total", 3_600_000),
+    roles: [row("feature", 3_600_000, 110_000), row("bugfix")],
+    total: row("total", 3_600_000, 110_000),
   });
   const lines = out.split("\n");
-  assert.match(lines[0]!, /tokens\s+cost\s+time/);
+  assert.match(lines[0]!, /tokens\s+peak ctx\s+cost\s+time/);
   assert.match(lines[1]!, /\b1h\b/); // the timed role's run time via humanSeconds
-  assert.match(lines[2]!, /—/); // the untimed role shows a dash
+  assert.match(lines[1]!, /110\.0k/); // the peak-carrying role's compactTokens of its peak
+  assert.match(lines[2]!, /—/); // the untimed, peak-less role shows a dash
   assert.match(lines[3]!, /\b1h\b/); // the total, the one timed span summed
+  assert.match(lines[3]!, /110\.0k/); // the total's peak (the max) renders too
 });
 
 test("runRows takes a list of role ids, joining each queued row's merge verdict", () => {
