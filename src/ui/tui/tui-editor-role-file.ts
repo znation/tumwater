@@ -18,9 +18,10 @@ interface RoleFileEditorSpec {
   held: "notes" | "instructions";
   /** The Ctrl+<key> arm that opens (and, while open, toggles out of) the editor. */
   openCtrl: string;
-  /** True when the key may open on this view — the in-range role guard every transcript arm
-   * carries, plus any view restriction (the notes editor additionally requires the notes
-   * mode). Only consulted before the editor is open, so it may assume the roster guard. */
+  /** True when the key may take the line on this view — the in-range role guard every
+   * transcript arm carries, plus any view restriction (the notes editor additionally requires
+   * the notes mode). Consulted on every press of the open key, so while the editor is open it
+   * also gates the key-again toggle-out. */
   mayOpen: (ctx: TuiEditorCtx) => boolean;
   /** Message flashed when the editor opens on `role`. */
   openFlash: (role: string) => string;
