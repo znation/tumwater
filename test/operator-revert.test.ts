@@ -134,6 +134,21 @@ test("checked out on a non-base branch, revert refuses even when the ref resolve
   assert.equal(statusPorcelain(repo), "?? tumwater.json");
 });
 
+test("revertMergedCommit refuses a dirty tracked worktree and leaves the edit byte for byte", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "a.txt", "a\n", "add a");
+  seedCommit(repo, "b.txt", "b\n", "add b");
+  const before = headSha(repo);
+  fs.writeFileSync(path.join(repo, "b.txt"), "edited\n");
+
+  const r = await revertMergedCommit(repo, "HEAD");
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.match(r.error, /staged or unstaged changes/, `error names the dirty worktree: ${r.error}`);
+  assert.equal(headSha(repo), before, "HEAD did not move on a dirty worktree");
+  assert.equal(fs.readFileSync(path.join(repo, "b.txt"), "utf8"), "edited\n", "the dirty edit survives unchanged");
+});
+
 test("previewRevert reports a clean revert and writes nothing", async () => {
   const repo = makeRepo();
   seedCommit(repo, "a.txt", "a\n", "add a");
