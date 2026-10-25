@@ -676,15 +676,54 @@ test("an agent run whose session dir or log cannot be created resolves as a fail
 test("an agent run whose scratch dir cannot be created resolves as a failed run", async () => {
   const dir = tmpdir();
   await withPi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`, async () => {
-    const restore = patchFsMethod("mkdtempSync", () => () => {
+    const restoreMkdtemp = patchFsMethod("mkdtempSync", () => () => {
       throw errnoError("ENOSPC");
+    });
+    // Both logs open before mkdtempSync throws — capture the streams runAgent opened so we
+    // can pin that it closes them (INV-CQ1) on the "a later setup step failed" timing.
+    const streams: fs.WriteStream[] = [];
+    const restoreStream = patchFsMethod("createWriteStream", (orig) => (file, flags) => {
+      const stream = orig(file, flags) as fs.WriteStream;
+      streams.push(stream);
+      return stream;
     });
     try {
       const result = await runPi(runPiFixture(dir));
       assert.equal(result.ok, false);
       assert.match(String(result.errorMessage), /could not prepare the agent run: ENOSPC/);
+      assert.equal(streams.length, 2, "the raw and native logs both opened before the scratch dir failed");
+      for (const stream of streams) {
+        assert.equal(stream.writableEnded, true, "a log opened before the setup failure is ended");
+      }
     } finally {
-      restore();
+      restoreStream();
+      restoreMkdtemp();
+    }
+  });
+});
+
+test("an agent run that cannot open its second log ends the first", async () => {
+  const dir = tmpdir();
+  await withPi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`, async () => {
+    const streams: fs.WriteStream[] = [];
+    const restoreStream = patchFsMethod("createWriteStream", (orig) => (file, flags) => {
+      if (streams.length === 1) {
+        // The native log's open fails after the raw log already opened (INV-CQ1's
+        // "first log opened, opening the second failed" timing).
+        throw errnoError("EACCES");
+      }
+      const stream = orig(file, flags) as fs.WriteStream;
+      streams.push(stream);
+      return stream;
+    });
+    try {
+      const result = await runPi(runPiFixture(dir));
+      assert.equal(result.ok, false);
+      assert.match(String(result.errorMessage), /^could not prepare the agent run: EACCES/);
+      assert.equal(streams.length, 1, "only the raw log opened before the native log's open failed");
+      assert.equal(streams[0]!.writableEnded, true, "the raw log opened before the second open failed is ended");
+    } finally {
+      restoreStream();
     }
   });
 });

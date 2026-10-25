@@ -4565,12 +4565,12 @@ index, rather than skipping the preserve".
 
 ### INV-CQ1: a session dir, log file or scratch dir that cannot be created resolves runAgent as a failed run naming the error, and closes any log it opened
 
-**Guarantee.** `runAgent` keeps its never-throws contract when its synchronous setup fails (session dir, raw or native log, scratch dir): it resolves `ok: false` with "could not prepare the agent run: <error>" and spawns nothing. A log opened before the failure is ended so no fd stays open; no test pins that closing.
+**Guarantee.** `runAgent` keeps its never-throws contract when its synchronous setup fails (session dir, raw or native log, scratch dir): it resolves `ok: false` with "could not prepare the agent run: <error>" and spawns nothing. A log opened before the failure is ended so no fd stays open.
 
 **Binds.** `src/agent/run-agent.ts` (`runAgent`) and `src/agent/run-settle.ts`
 (`setupFailureResult`).
 
-**Pinned by.** `test/pi.test.ts` — "an agent run whose session dir or log cannot be created resolves as a failed run instead of rejecting" and "an agent run whose scratch dir cannot be created resolves as a failed run".
+**Pinned by.** `test/pi.test.ts` — "an agent run whose session dir or log cannot be created resolves as a failed run instead of rejecting", "an agent run whose scratch dir cannot be created resolves as a failed run" and "an agent run that cannot open its second log ends the first". The scratch-dir test asserts the two opened log streams both report `writableEnded`; the second-log test asserts the raw log opened before the failed open is ended.
 
 ## Notes command: a note file that fails refuses in one line, never a stack trace
 

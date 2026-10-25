@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The agent-run setup failure closes the logs it opened — INV-CQ1's fd-leak closing gets its test (planned 2026-10-25 by the plan role; independent of every eligible plan — no `## Planned` entry edits test/pi.test.ts, and the only `## Planned` edits to docs/invariants.md are the blocked `Every commit is verified on main` part 3m/3's merge-gate section, far from the end-of-file INV-CQ1 — touching the same two files only at distant regions, so whichever lands second rebases there; touches test/pi.test.ts docs/invariants.md) — done 2026-10-25 by the feature role
+
+**Goal.** `runAgent` (src/agent/run-agent.ts) opens the raw and native append logs inside its setup `try` and, when a later setup step throws — `fs.mkdtempSync` for the run scratch dir, or the second `openAppendLog` — its `catch` calls `rawLog?.stream.end()` and `nativeLog?.stream.end()` before resolving the failed run, so no fd is leaked. docs/invariants.md's INV-CQ1 states this, and its **Guarantee** ends "A log opened before the failure is ended so no fd stays open; no test pins that closing." The two pinned setup-failure tests assert only `ok === false` and the error message, so a regression that dropped the two `end()` calls would leave the suite green while leaking one or two fds per failed run in the long-lived supervisor. Pin the closing at both failure timings and drop the caveat.
+
+**Approach.**
+- test/pi.test.ts, the existing `an agent run whose scratch dir cannot be created resolves as a failed run`: capture the streams `runAgent` opens by wrapping `fs.createWriteStream` through `patchFsMethod` (already imported) around the `runPi` call — record each returned `fs.WriteStream` and fall through — and restore it in the same `finally` that restores the `mkdtempSync` patch. After the run resolves, assert two streams were captured (the raw and native logs) and each `writableEnded === true`. This is the "both logs opened, a later setup step failed" timing.
+- test/pi.test.ts, add `an agent run that cannot open its second log ends the first`: under `withPi` with the same one-line-assistant script, patch `createWriteStream` to throw `errnoError("EACCES")` on its second call and capture the first stream; call `runPi(runPiFixture(dir))`; assert `ok === false` and `errorMessage` matches `/^could not prepare the agent run: EACCES/`; after restoring, assert exactly one stream was captured and its `writableEnded === true`. This is the "first log opened, opening the second failed" timing. `runPiFixture` already supplies both `rawLogFile` and `nativeLogFile`, and `openAppendLog` calls `fs.createWriteStream` synchronously before the spawn, so the two calls are the only ones under the patch.
+- docs/invariants.md, INV-CQ1: delete the "no test pins that closing" clause so the **Guarantee** ends "A log opened before the failure is ended so no fd stays open."; in **Pinned by**, name the new test beside the two existing names and say the scratch-dir case also asserts both opened logs are ended.
+
+**Files touched.** test/pi.test.ts docs/invariants.md
+
+**Acceptance criteria.**
+- After a scratch-dir setup failure, both the raw and native log streams `runAgent` opened have `writableEnded === true`, and the run still resolves `ok: false` with `/could not prepare the agent run: ENOSPC/`.
+- When opening the native log throws, the raw log stream `runAgent` already opened has `writableEnded === true`, and the run resolves `ok: false` with `/could not prepare the agent run: EACCES/`.
+- The `createWriteStream` patch is scoped to its test and restored in `finally`, so no other test sees it and a green run is unaffected.
+- docs/invariants.md's INV-CQ1 no longer says the closing is unpinned, and its **Pinned by** names the tests that pin both timings.
+- No file outside the Files-touched list is edited; `npm run test:gate` passes.
+
+**Tests.** The two test changes above are this plan's tests; no other test file changes.
+
 ### The role-prompt backlog block names the named items it drops instead of truncating silently (planned 2026-10-25 by the plan role; independent of every eligible plan and blocked part — no entry in `## Planned` and no `Every commit is verified on main` part edits `src/prompt/notes-backlog.ts` or `test/notes-backlog.test.ts`, and no other module writes that block; touches src/prompt/notes-backlog.ts test/notes-backlog.test.ts) — done 2026-10-25 by the feature role
 
 **Goal.** `notesBacklogBlock` (src/prompt/notes-backlog.ts) renders "what the backlog says now about entries your notes name" so a note cannot keep a hold the backlog has lifted. It builds one line per named series, named part and named entry, then caps the block — `const shown = lines.slice(0, MAX_BLOCK_LINES - 1);` — and drops every line past the cap with no marker (the block is documented "at most 12 lines"). A role whose notes name more than eleven live items therefore reads a block that looks complete while the tail — often the very item whose hold changed — is gone, the same silent truncation the failure digest's capped sections no longer allow. The cap stays; the block names its remainder so a dropped item cannot read as a complete answer.
