@@ -153,6 +153,12 @@ const FORMAT_JS = String.raw`  // format:start
   // section had the byte-identical map; a missing or non-array list paints nothing.
   const commitRowsHtml = (commits) =>
     (Array.isArray(commits) ? commits : []).map((c) => "<div class='mono clamp1'>" + esc(c.sha) + " " + esc(c.subject || "—") + "</div>").join("");
+  // Title-case a phrase's first character and keep the rest — backend-traits.ts's
+  // backendDisplayName rule, the one home of the upcasing gui-client-model.ts's result labels
+  // and gui-client-history.ts's window options each inlined, so a label cannot drift between
+  // them. A leading em dash or other non-letter upcases to itself, and an empty string stays
+  // empty.
+  const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   // human-seconds-fmt:start
   // Whole-second s/m/h/d label: <60 → Ns, <3600 → rounded Nm, <86400 → rounded Nh, else
   // rounded Nd — datetime.ts's humanSeconds, shared by every relative time on the page. A

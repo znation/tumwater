@@ -5,7 +5,7 @@ import { GUI_CLIENT_HISTORY_JS } from "../src/ui/gui/gui-client-history.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { historyClass as sharedHistoryClass } from "../src/history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
-import { clientRegion, clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
+import { clientRegion, clientScope, ESC_LINE, iconStub, CAPITALIZE_LINE } from "./helpers/gui-client-scope.js";
 
 // The dashboard's History view (src/ui/gui/gui-client-history.ts): the table it paints from
 // /api/history's rows, its run drill-down (the per-row details toggle and the card /api/run
@@ -90,7 +90,7 @@ test("the History toolbar carries the search field, recalled and persisted", () 
  * everything it reaches, then hand back fetchHistory. The DOM- and status-touching paths return
  * early (buildOnce false, $ undefined), so only the /api/history request is observable. */
 function historyFetchScope(recallGrep: string | null, paths: string[]) {
-  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory, getHistNewest: () => histNewest, setHistNewest: (v) => { histNewest = v; } };"].join("\n");
+  const code = [ESC_LINE, CAPITALIZE_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory, getHistNewest: () => histNewest, setHistNewest: (v) => { histNewest = v; } };"].join("\n");
   const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
   const run = new Function(...keys, code) as (...args: unknown[]) => {
     fetchHistory(throttled?: boolean): Promise<void>;
@@ -174,7 +174,7 @@ test("fetchHistory normalizes a persisted run count the toolbar does not offer",
   // (or a hand edit) can be anything. The picker can then not represent it, so the viewed count
   // and the requested count would disagree; normalize at read to the default the picker shows.
   const paths: string[] = [];
-  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory };"].join("\n");
+  const code = [ESC_LINE, CAPITALIZE_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory };"].join("\n");
   const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
   const run = new Function(...keys, code) as (...args: unknown[]) => { fetchHistory(throttled?: boolean): Promise<void> };
   await run(
@@ -347,7 +347,7 @@ test("fetchHistory drops and re-persists a role scope the team no longer lists",
   const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
   // The report-role region supplies rolePickerOptions, which syncHistoryRoles repaints the
   // picker through — the same shared helper the report views use.
-  const code = [ESC_LINE, clientRegion("report-role"), GUI_CLIENT_HISTORY_JS, "return { fetchHistory };"].join("\n");
+  const code = [ESC_LINE, CAPITALIZE_LINE, clientRegion("report-role"), GUI_CLIENT_HISTORY_JS, "return { fetchHistory };"].join("\n");
   const run = new Function(...keys, code) as (...args: unknown[]) => { fetchHistory(throttled?: boolean): Promise<void> };
   await run(
     (key: string) => (key === "hist-role" ? "gone-loop" : null),
@@ -426,7 +426,7 @@ test("histModelSummaryHtml paints one row per model, (unknown) for null, an esca
 
 test("fetchHistory keeps the server's modelSummary and a persisted By model mode survives a reload", async () => {
   const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
-  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory, getModels: () => histModelSummary, histMode };"].join("\n");
+  const code = [ESC_LINE, CAPITALIZE_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory, getModels: () => histModelSummary, histMode };"].join("\n");
   const run = new Function(...keys, code) as (...args: unknown[]) => {
     fetchHistory(throttled?: boolean): Promise<void>;
     getModels(): { models: unknown[] } | null;
@@ -462,7 +462,7 @@ test("the toolbar carries the Table/Summary toggle, recalled and persisted like 
 
 test("fetchHistory rides the server summary and a persisted Summary mode survives a reload", async () => {
   const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
-  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory, getHistSummary: () => histSummary, histMode };"].join("\n");
+  const code = [ESC_LINE, CAPITALIZE_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory, getHistSummary: () => histSummary, histMode };"].join("\n");
   const run = new Function(...keys, code) as (...args: unknown[]) => {
     fetchHistory(throttled?: boolean): Promise<void>;
     getHistSummary(): { roles: unknown[] } | null;
@@ -562,7 +562,7 @@ test("clicking a By model button fetches that model's table; the chip clears it"
     closest(sel: string) { return sel.startsWith("button[data-histmodel") ? this.b : null; }
   }
   const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson", "Element"];
-  const code = [ESC_LINE, clientRegion("report-role"), GUI_CLIENT_HISTORY_JS, "return { fetchHistory, mode: () => histMode };"].join("\n");
+  const code = [ESC_LINE, CAPITALIZE_LINE, clientRegion("report-role"), GUI_CLIENT_HISTORY_JS, "return { fetchHistory, mode: () => histMode };"].join("\n");
   const scope = (new Function(...keys, code) as (...a: unknown[]) => { fetchHistory(): Promise<void>; mode(): string })(
     (k: string) => (k === "hist-mode" ? "models" : null),
     (k: string, v: string) => { stored.push([k, v]); },

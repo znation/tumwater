@@ -83,7 +83,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   };
   function resultInfo(result) {
     const words = result ? eventTypeLabel(result) : "—";
-    return { label: words.charAt(0).toUpperCase() + words.slice(1), tone: hasOwn(RESULT_TONES, result) ? RESULT_TONES[result] : "gray" };
+    return { label: capitalize(words), tone: hasOwn(RESULT_TONES, result) ? RESULT_TONES[result] : "gray" };
   }
   // The problem results and the named event sets are tone.ts's lists, interpolated at module
   // build (like STALL above) so the page cannot drift from the server's eventKind.

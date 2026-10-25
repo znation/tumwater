@@ -16,6 +16,7 @@ function sidebarScope(): { renderSidebar: (d: unknown) => void; panels: Record<s
       offline: false,
       $: () => ({ textContent: "" }),
       plural: (n: number, word: string) => `${n} ${n === 1 ? word : word + "s"}`,
+      capitalize: (s: string) => s.charAt(0).toUpperCase() + s.slice(1),
       icon: iconStub,
       shortSha: (s: string) => String(s).slice(0, 8),
       localizeInstants: (s: string) => s,

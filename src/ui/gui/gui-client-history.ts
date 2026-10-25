@@ -534,7 +534,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   function histWindowOptions() {
     return Object.keys(HIST_WINDOWS).map((k) => {
       const label = HIST_WINDOWS[k][1];
-      return "<option value='" + k + "'>" + label.charAt(0).toUpperCase() + label.slice(1) + "</option>";
+      return "<option value='" + k + "'>" + capitalize(label) + "</option>";
     }).join("");
   }
   // The server's sparse-window note above the table; empty for no note.

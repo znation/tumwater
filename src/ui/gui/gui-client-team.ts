@@ -29,7 +29,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   // label style. One home for the rule, so the preformatted badges the payload ships to the
   // sidebar (disk, bootstrap, main check) cannot drift in how the row presents them.
   const stripBadge = (badge) => String(badge || "").replace(/^ · /, "");
-  const badgeLabel = (badge) => stripBadge(badge).replace(/^./, (c) => c.toUpperCase());
+  const badgeLabel = (badge) => capitalize(stripBadge(badge));
   function renderSidebar(d) {
     const project = $("project");
     const name = d && d.project ? d.project : "";
