@@ -306,6 +306,7 @@ interface StatusAlertsInput {
     "budget" | "chain" | "disk" | "rootInstallDrift" | "capPaused" | "budgetPausedRoles" | "build"
     | "noDeclaredCheck"
     | "noBrief"
+    | "mainCheck"
   >;
   roles: readonly AlertRole[];
   staleClaims: readonly ClaimState[];
@@ -438,11 +439,15 @@ function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
   }
   const red = roles.filter((l) => l.phase === "main's check is failing");
   if (red.length) {
+    const redDetail = snap.mainCheck?.red;
+    const detail = redDetail
+      ? `A full check failed on main: ${squash(redDetail.failingTests[0] ?? "", 80)}${redDetail.failingTests.length > 1 ? ` (+${redDetail.failingTests.length - 1} more)` : ""}${redDetail.culprit?.runner ? `; the main watch blames ${roleLabel(redDetail.culprit.runner)}'s merge ${shortSha(redDetail.culprit.commit)}` : ""}`
+      : "Code roles stop authoring until main's check passes, and pick up on their own once it does.";
     out.push({
       key: "mainred",
       tone: "red",
       title: `main's check is failing — ${plural(red.length, "role is", "roles are")} blocked`,
-      detail: "Code roles stop authoring until main's check passes, and pick up on their own once it does.",
+      detail,
       actions: seeFailures(),
     });
   }
@@ -1371,6 +1376,7 @@ export function teamAlerts(
     | "maintenanceQuota"
     | "providerHolds"
     | "ciParity"
+    | "mainCheck"
   >,
   questions: readonly string[],
   roles: readonly AlertRole[],

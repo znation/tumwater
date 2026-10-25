@@ -207,6 +207,24 @@ test("role trouble, a stale build, questions, and a pause, most urgent first", (
   assert.equal(timedWhy[0]?.title, "The team is paused and resumes in 12m — \"deploying to prod\"");
 });
 
+// The always-on red `mainred` alert names the failing test and the merge the main watch
+// blamed from the snapshot's mainCheck.red detail, when the data exists; with none, today's
+// generic wording stands (covered by the healthy/no-mainCheck cases above).
+test("the mainred alert names the failing test and the culprit", () => {
+  const now = Date.now();
+  const alerts = teamAlerts(
+    { ...base, mainCheck: { status: "failed", at: now, red: { failingTests: ["test/merge.test.ts"], culprit: { commit: "abc123", runner: "feature" } } } },
+    [],
+    [{ role: "coverage", phase: "main's check is failing", errorStreak: false, inFlight: false }],
+    now,
+  );
+  const red = alerts.find((a) => a.key === "mainred");
+  assert.equal(red?.title, "main's check is failing — 1 role is blocked");
+  assert.match(red?.detail ?? "", /test\/merge\.test\.ts/);
+  assert.match(red?.detail ?? "", /feature/);
+  assert.deepEqual(red?.actions.map((a) => [a.act, a.arg]), [["view", "failures"]]);
+});
+
 // The alert copy's count forms beyond the two-role case above: a lone role reads singular,
 // three or more list as "a, b, and c", and a failing set where no role recorded an error
 // points at the transcripts instead of repeating an empty error list.

@@ -3,9 +3,10 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ciParityForPoll, configForStatus, liveMergeMarker } from "../src/status/status-polls.js";
+import { ciParityForPoll, configForStatus, liveMergeMarker, mainCheckForPoll } from "../src/status/status-polls.js";
 import { recordParity } from "../src/run/ci-parity.js";
 import { commitIn, makeRepo, mainSha } from "./fixtures/repo-fixtures.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 import type { MergeChange, MergeInFlight } from "../src/merge/merge-slot.js";
 
 const sha = (c: string): string => c.repeat(40);
@@ -67,4 +68,41 @@ test("ciParityForPoll reads current, stale, failed and none", () => {
   // A failed last run is failed regardless of the tip.
   recordParity(root, mainSha(root), "failed", 2_000);
   assert.deepEqual(ciParityForPoll(root, cfg), { state: "failed", covered: mainSha(root), lastRunAt: 2_000 });
+});
+
+test("mainCheckForPoll carries red detail from the main_culprit verdict matching the checked tip", () => {
+  const root = makeRepo();
+  const tip = mainSha(root);
+  // A real-shaped build_check (no failingTests) plus a main_culprit verdict naming the tip it
+  // checked — the writer's two real shapes — drive the red detail.
+  writeEvents(root, [
+    { source: "merge", type: "build_check", scope: "merge", status: "failed", script: "npm test", durationMs: 1, ts: 1_000 },
+    { source: "tumwater", type: "main_culprit", commit: tip, runner: "feature", failingTests: ["a", "b"], ts: 2_000 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.status, "failed");
+  assert.deepEqual(result?.red, { failingTests: ["a", "b"], culprit: { commit: tip, runner: "feature" } });
+});
+
+test("a main_culprit for a different head carries no red detail", () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    { source: "merge", type: "build_check", scope: "merge", status: "failed", script: "npm test", durationMs: 1, ts: 1_000 },
+    // A newer merge-scope failure with a blame the watch wrote for a different head: no red.
+    { source: "tumwater", type: "main_culprit", commit: sha("c"), runner: "feature", failingTests: ["a"], ts: 2_000 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.status, "failed");
+  assert.equal(result?.red, undefined);
+});
+
+test("a passing check carries no red detail", () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    { source: "merge", type: "build_check", scope: "merge", status: "passed", script: "npm test", durationMs: 1, ts: 1_000 },
+    { source: "tumwater", type: "main_culprit", commit: mainSha(root), runner: "feature", failingTests: ["a"], ts: 2_000 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.status, "passed");
+  assert.equal(result?.red, undefined);
 });

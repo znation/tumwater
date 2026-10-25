@@ -38,6 +38,17 @@ export interface MainCheckStatus {
   status: "passed" | "failed" | "skipped";
   counts?: TestCounts;
   at: number;
+  /** The red-main evidence the always-on `mainred` alert surfaces (read by team-alerts.ts's
+   * buildStatusAlerts; it also rides the machine-readable `status --json` output through
+   * status-payload.ts's wholesale spread of mainCheck): present only when `status` is
+   * "failed" and a main_culprit verdict names the very red tip this poll derived a sha for,
+   * with a well-formed failingTests list. `failingTests` is the main watch's list for that
+   * tip; `culprit` is the same verdict's commit (always a string) and, when the watch named
+   * one, the runner. */
+  red?: {
+    failingTests: string[];
+    culprit?: { commit: string; runner?: string };
+  };
 }
 
 /** Is a value one of MainCheckStatus's three statuses? The one home of the membership test:
@@ -91,6 +102,9 @@ interface MainCheckScan {
   mergeDoneBeforeCommit?: string;
   /** The newest merged commit after the check's ts — the sha the check verified. */
   mergeDoneAfterCommit?: string;
+  /** The newest main_culprit event in the tail — the main watch's blame for the newest red
+   * tip (src/baseline/main-watch.ts). Collected in the same single pass as the check. */
+  culprit?: HarnessEvent;
 }
 
 /** Per-root scan cache (stat-cache.cachedByStat): both dashboards poll snapshot every second,
@@ -110,6 +124,7 @@ function scanMainCheck(root: string): MainCheckScan {
   // The final window's merged events, in scan order — collected in the same pass that
   // finds the check instead of a second full scan of the window below.
   let mergeDone: HarnessEvent[] = [];
+  let culprit: HarnessEvent | undefined;
   const grewFull = mainCheckGrewFull.has(root);
   // A set note means the previous scan reached the cap without finding a check, so start
   // there: starting at DEFAULT_EVENT_TAIL would only re-read (and re-parse on a cache miss)
@@ -123,14 +138,18 @@ function scanMainCheck(root: string): MainCheckScan {
     const events = readEvents(root, window);
     check = undefined;
     mergeDone = [];
-    // One pass collects both facts the derivation needs: the newest merge-scope check and
-    // every merged event. The merges are re-read against the check's ts below — a pass
-    // over the merges alone, not a second pass over every event in the window.
+    culprit = undefined;
+    // One pass collects all three facts the derivation needs: the newest merge-scope check,
+    // every merged event, and the newest main_culprit blame. The merges are re-read against
+    // the check's ts below — a pass over the merges alone, not a second pass over every
+    // event in the window.
     for (const e of events) {
       if (e.type === "build_check" && isFullCheckScope(e.scope, e.full)) {
         check = e;
       } else if (e.type === "merge_done" && typeof e.ts === "number") {
         mergeDone.push(e);
+      } else if (e.type === "main_culprit") {
+        culprit = e;
       }
     }
     // Found, the log is shorter than the window (nothing older exists to find), or the cap
@@ -143,7 +162,7 @@ function scanMainCheck(root: string): MainCheckScan {
   if (check) mainCheckGrewFull.delete(root);
   else mainCheckGrewFull.add(root);
   if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) {
-    return { check: undefined };
+    return { ...(culprit ? { culprit } : {}) };
   }
   let mergeDoneAfter: HarnessEvent | undefined;
   let mergeDoneBefore: HarnessEvent | undefined;
@@ -153,6 +172,7 @@ function scanMainCheck(root: string): MainCheckScan {
   }
   return {
     check,
+    ...(culprit ? { culprit } : {}),
     ...(typeof mergeDoneAfter?.commit === "string" ? { mergeDoneAfterCommit: mergeDoneAfter.commit } : {}),
     ...(typeof mergeDoneBefore?.commit === "string" ? { mergeDoneBeforeCommit: mergeDoneBefore.commit } : {}),
   };
@@ -168,7 +188,11 @@ function mainCheckScanFor(root: string): MainCheckScan {
       root,
       eventsLogPath(root),
       () => scanMainCheck(root),
-      (v) => ({ ...v, ...(v.check ? { check: { ...v.check } } : {}) }),
+      (v) => ({
+        ...v,
+        ...(v.check ? { check: { ...v.check } } : {}),
+        ...(v.culprit ? { culprit: { ...v.culprit } } : {}),
+      }),
     ) ?? { check: undefined }
   );
 }
@@ -202,11 +226,37 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
   const branch = targetBranch(cfg.baseBranch, currentBranchFromHeadFile(root));
   const sha = scan.mergeDoneAfterCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneBeforeCommit;
   const counts = asTestCounts(check.counts);
+  // The red evidence names the failing test and the merge the main watch blamed — and that
+  // data lives only on the main_culprit event (the main watch's verdict on the red tip; the
+  // build_check event itself carries no failing tests), attributed only when the verdict's
+  // commit is exactly the sha this poll derived, so a newer build_check failure can't borrow
+  // a blame the watch wrote for a different head. A passing/skipped check, or a failing one
+  // whose tip the watch hasn't blamed, keeps today's exact MainCheckStatus shape (no `red`).
+  let red: MainCheckStatus["red"] | undefined;
+  if (check.status === "failed" && sha !== undefined && scan.culprit && typeof scan.culprit.commit === "string") {
+    const c = scan.culprit;
+    if (c.commit === sha) {
+      const failing =
+        Array.isArray(c.failingTests) && typeof c.failingTests[0] === "string"
+          ? c.failingTests.filter((f): f is string => typeof f === "string")
+          : undefined;
+      if (failing) {
+        red = {
+          failingTests: failing,
+          culprit: {
+            commit: c.commit,
+            ...(typeof c.runner === "string" ? { runner: c.runner } : {}),
+          },
+        };
+      }
+    }
+  }
   return {
     ...(sha ? { sha } : {}),
     status: check.status,
     ...(counts ? { counts } : {}),
     at: check.ts,
+    ...(red ? { red } : {}),
   };
 }
 
