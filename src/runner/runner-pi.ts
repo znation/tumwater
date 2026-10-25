@@ -299,68 +299,98 @@ export class RunnerPi {
     const pi = await runPi(opts);
     this.warnFallbackClone(pi);
     this.observeFreeModelCost(pi, opts.config);
-    if (
-      !pi.aborted &&
-      !pi.timedOut &&
-      !pi.quietKilled &&
-      (pi.transientServerTimeout ||
-        pi.transientPiCrash ||
-        pi.transientRateLimit ||
-        this.retryCoversBackendKind(pi)) &&
-      !pi.ok &&
-      // A subscription claude usage-window rejection is not the 429 the retry's minute-scale
-      // wait beats: the window resets hours out, so a within-run retry is guaranteed to fail
-      // after burning up to RATE_LIMIT_RETRY_AFTER_CAP_S. The run ends and the kept session
-      // resumes once the team hold lifts (plans/agent-backends.md §8, part 6e).
-      !subscriptionWindowRejected(pi)
-    ) {
-      this.host.warn(
-        pi.transientPiCrash
-          ? `pi crashed on malformed JSON (${pi.errorMessage ?? "no detail"})${on} — resuming the session once`
-          : pi.transientRateLimit
-            ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : `, no hint — waiting ${RATE_LIMIT_NO_HINT_RETRY_S}s`})${on} — retrying the agent run once`
-            : pi.backendKind === "stream-severed"
-              ? `provider severed the in-flight stream (terminated)${on} — retrying the agent run once`
-              : pi.backendKind === "timeout"
-                ? `provider request timed out after accepting the connection${on} — retrying the agent run once`
-                : `model server timed out an idle predict stream (e.g. machine sleep)${on} — retrying the agent run once`,
-      );
+    if (this.transientRetryAdmits(pi)) {
+      this.host.warn(this.transientRetryWarning(pi, on));
       // The failed attempt folds NOW, before the wait and the retry: a 429 it ended on is the
       // team-wide rate-limit hold's input (RoleRunner.lastRateLimit, stamped at fold time), and
       // folding after a retry that ran on for an hour would report the storm an hour late.
       fold(pi);
-      // The pause is the rate-limit branch's, plus the timeout kind's: a server timeout or
-      // pi crash is a failure of the local path, retried at once, while a 429 must wait its
-      // per-minute bucket out. A hint-less 429 defaults to that minute-scale refill pause
-      // instead of 0 — an immediate retry lands in the same exhausted bucket and burns the
-      // run's only retry (BUGS.md 2026-09-25). A present hint wins; the cap bounds either.
-      // A hint of 0 (or any non-positive value) is no usable hint — "retry now" is exactly
-      // the burned-retry bug a hint-less 429 causes — so it falls back to the refill pause
-      // just like a missing hint, keeping the warning text and the actual wait in agreement.
-      // The timeout kind (BUGS.md 2026-09-30) takes that same minute-scale pause: the
-      // provider accepted the request and failed to answer it, an overload shape — an
-      // immediate re-request lands at the back of the same queue and burns the run's only
-      // retry, so the retry waits the refill pause out first.
-      const hintS =
-        pi.retryAfterSeconds && pi.retryAfterSeconds > 0 ? pi.retryAfterSeconds : RATE_LIMIT_NO_HINT_RETRY_S;
-      const waitS = pi.transientRateLimit
-        ? Math.min(hintS, RATE_LIMIT_RETRY_AFTER_CAP_S)
-        : pi.backendKind === "timeout"
-          ? RATE_LIMIT_NO_HINT_RETRY_S
-          : 0;
+      const waitS = this.transientRetryWaitSeconds(pi);
       if (waitS > 0) await (this.host.sleep?.(waitS * 1000) ?? sleepFor(waitS * 1000));
-      // Within-run continuity only: resume the session the first attempt created, so its
-      // partial progress is not re-done. The next run still starts fresh.
-      const retry = await runPi({ ...opts, continueSession: true });
-      this.warnFallbackClone(retry);
-      this.observeFreeModelCost(retry, opts.config);
-      if (foldFinal) fold(retry);
-      this.warnBackendKindFloor(retry, on);
-      return retry;
+      return this.retryContinuingSession(opts, on, foldFinal, fold);
     }
     this.warnBackendKindFloor(pi, on);
     if (foldFinal) fold(pi);
     return pi;
+  }
+
+  /** The retry's admission predicate: whether this run qualifies for the one bounded transient
+   * retry — not cleanly ended or killed, but ended on a transient server condition (a server
+   * timeout, a pi crash, a 429, or a backend kind the retry covers) and not a subscription
+   * usage-window rejection. */
+  private transientRetryAdmits(run: PiRunResult): boolean {
+    return (
+      !run.aborted &&
+      !run.timedOut &&
+      !run.quietKilled &&
+      (run.transientServerTimeout ||
+        run.transientPiCrash ||
+        run.transientRateLimit ||
+        this.retryCoversBackendKind(run)) &&
+      !run.ok &&
+      // A subscription claude usage-window rejection is not the 429 the retry's minute-scale
+      // wait beats: the window resets hours out, so a within-run retry is guaranteed to fail
+      // after burning up to RATE_LIMIT_RETRY_AFTER_CAP_S. The run ends and the kept session
+      // resumes once the team hold lifts (plans/agent-backends.md §8, part 6e).
+      !subscriptionWindowRejected(run)
+    );
+  }
+
+  /** The per-run retry warning text, keyed off which transient condition the first attempt
+   * ended on. */
+  private transientRetryWarning(run: PiRunResult, on: string): string {
+    return run.transientPiCrash
+      ? `pi crashed on malformed JSON (${run.errorMessage ?? "no detail"})${on} — resuming the session once`
+      : run.transientRateLimit
+        ? `provider rate-limited the request (429${run.retryAfterSeconds ? `, retry after ${run.retryAfterSeconds}s` : `, no hint — waiting ${RATE_LIMIT_NO_HINT_RETRY_S}s`})${on} — retrying the agent run once`
+        : run.backendKind === "stream-severed"
+          ? `provider severed the in-flight stream (terminated)${on} — retrying the agent run once`
+          : run.backendKind === "timeout"
+            ? `provider request timed out after accepting the connection${on} — retrying the agent run once`
+            : `model server timed out an idle predict stream (e.g. machine sleep)${on} — retrying the agent run once`;
+  }
+
+  /** The seconds to wait before the bounded retry, the pause taken from the moved wait ladder;
+   * the sleep itself stays in the caller. */
+  private transientRetryWaitSeconds(run: PiRunResult): number {
+    // The pause is the rate-limit branch's, plus the timeout kind's: a server timeout or
+    // pi crash is a failure of the local path, retried at once, while a 429 must wait its
+    // per-minute bucket out. A hint-less 429 defaults to that minute-scale refill pause
+    // instead of 0 — an immediate retry lands in the same exhausted bucket and burns the
+    // run's only retry (BUGS.md 2026-09-25). A present hint wins; the cap bounds either.
+    // A hint of 0 (or any non-positive value) is no usable hint — "retry now" is exactly
+    // the burned-retry bug a hint-less 429 causes — so it falls back to the refill pause
+    // just like a missing hint, keeping the warning text and the actual wait in agreement.
+    // The timeout kind (BUGS.md 2026-09-30) takes that same minute-scale pause: the
+    // provider accepted the request and failed to answer it, an overload shape — an
+    // immediate re-request lands at the back of the same queue and burns the run's only
+    // retry, so the retry waits the refill pause out first.
+    const hintS =
+      run.retryAfterSeconds && run.retryAfterSeconds > 0 ? run.retryAfterSeconds : RATE_LIMIT_NO_HINT_RETRY_S;
+    return run.transientRateLimit
+      ? Math.min(hintS, RATE_LIMIT_RETRY_AFTER_CAP_S)
+      : run.backendKind === "timeout"
+        ? RATE_LIMIT_NO_HINT_RETRY_S
+        : 0;
+  }
+
+  /** The one bounded retry: resume the session the first attempt created on the same opts, so
+   * its partial progress is not re-done (the next run still starts fresh), folding the retried
+   * run when foldFinal is set and warning the backend-kind floor for its returned agent run. */
+  private async retryContinuingSession(
+    opts: PiRunOptions,
+    on: string,
+    foldFinal: boolean,
+    fold: (run: PiRunResult) => void,
+  ): Promise<PiRunResult> {
+    // Within-run continuity only: resume the session the first attempt created, so its
+    // partial progress is not re-done. The next run still starts fresh.
+    const retry = await runPi({ ...opts, continueSession: true });
+    this.warnFallbackClone(retry);
+    this.observeFreeModelCost(retry, opts.config);
+    if (foldFinal) fold(retry);
+    this.warnBackendKindFloor(retry, on);
+    return retry;
   }
 
   /** The backend-kind floor (BUGS.md 2026-09-29): a failed agent run that ended on a
