@@ -21,7 +21,7 @@ import { randomUUID } from "node:crypto";
 import { resolvedBackendConfig } from "../../config/config-views.js";
 import { MODEL_TIERS } from "../../config/config-schema.js";
 import { routeModel } from "../../config/model-selector.js";
-import { backendBaseEnv, withNotesPath } from "../../process/run-marker.js";
+import { backendRunEnv } from "../../process/run-marker.js";
 import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
 import { expandHomeTilde } from "../../files/files.js";
 import { claudeArgs } from "./claude-args.js";
@@ -197,7 +197,7 @@ export const claudeBackend: AgentBackend = {
     // the marker the same way pi's adapter carries it (withNotesPath); from part 2/4 the run
     // saves its note through the `tumwater-notes` command on PATH, so no MCP server reaches the
     // run and `--strict-mcp-config` (always in claude-args.ts) keeps it that way.
-    const base = withNotesPath(backendBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
+    const base = backendRunEnv(run);
     const env = claudeEnv(base, {
       quietTimeoutSeconds: run.config.quietTimeoutSeconds,
       ...(expandedConfigDir !== undefined ? { configDir: expandedConfigDir } : {}),

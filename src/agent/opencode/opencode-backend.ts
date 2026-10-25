@@ -24,7 +24,7 @@ import path from "node:path";
 import { ensureParentDir } from "../../files/files.js";
 import { loadConfigSafe } from "../../config/config.js";
 import { resolvedBackendConfig } from "../../config/config-views.js";
-import { backendBaseEnv, withNotesPath } from "../../process/run-marker.js";
+import { backendRunEnv } from "../../process/run-marker.js";
 import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
 import { opencodeDbPath, teamRootOf } from "../../paths.js";
 import type {
@@ -207,7 +207,7 @@ export const opencodeBackend: AgentBackend = {
     // The notes path rides beside the run marker, as the pi and claude adapters' envs do
     // (withNotesPath); from part 2/4 the run saves its note through the `tumwater-notes` command
     // on PATH, so OpenCode configures no tumwater MCP server for notes.
-    const base = withNotesPath(backendBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
+    const base = backendRunEnv(run);
     const env = opencodeEnv(base, { dbPath, configContent });
     const { sessionId } = resolveOpencodeSession(run, env);
     // The thinking variant (part 6d/7): ride the catalog's effort levels for the resolved

@@ -82,6 +82,19 @@ export function withNotesPath(base: NodeJS.ProcessEnv, notesPath?: string): Node
   return { ...base, [NOTES_PATH_VAR]: notesPath };
 }
 
+/** The full environment every agent backend's run starts from: the composition every adapter
+ * (pi, claude, codex, opencode) once spelled `withNotesPath(backendBaseEnv(run.runMarker,
+ * undefined, run.binDir), run.notesPath)`; the adapter layers its own settings on top, so
+ * the shared base lives here rather than being re-composed in each. Structurally typed on
+ * the three `AgentRunSpec` fields it reads so run-marker (process/) need not import agent/. */
+export function backendRunEnv(run: {
+  runMarker: string;
+  binDir?: string;
+  notesPath?: string;
+}): NodeJS.ProcessEnv {
+  return withNotesPath(backendBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
+}
+
 /** True when a `TUMWATER_RUN=` value names `marker` as one of its comma-separated runs. */
 function markerValueCarries(value: string, marker: string): boolean {
   return value.split(",").includes(marker);

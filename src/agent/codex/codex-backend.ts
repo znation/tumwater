@@ -20,7 +20,7 @@
 import fs from "node:fs";
 import { loadConfigSafe } from "../../config/config.js";
 import { resolvedBackendConfig } from "../../config/config-views.js";
-import { backendBaseEnv, withNotesPath } from "../../process/run-marker.js";
+import { backendRunEnv } from "../../process/run-marker.js";
 import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
 import { teamRootOf, nearestTumwaterRoot } from "../../paths.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../../events/events.js";
@@ -145,7 +145,7 @@ export const codexBackend: AgentBackend = {
     // The notes path rides beside the run marker, as the pi and claude adapters' envs do
     // (withNotesPath); from part 2/4 the run saves its note through the `tumwater-notes`
     // command on PATH, so codex configures no MCP server for notes.
-    const base = withNotesPath(backendBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
+    const base = backendRunEnv(run);
     // A team home of its own (`CODEX_HOME`) keeps team sessions and trust entries out of the
     // operator's `~/.codex` (design §4, finding 10); unset leaves the operator's home.
     const home = codexHome(resolvedBackendConfig(run.config, "codex"));
@@ -191,7 +191,7 @@ export const codexBackend: AgentBackend = {
     // invocation later reads was looked up under the run's own config. It never throws a run
     // away: a failed lookup records `off` (and warns once) and the run continues without the
     // guard's trust.
-    const base = withNotesPath(backendBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
+    const base = backendRunEnv(run);
     const home = codexHome(resolvedBackendConfig(run.config, "codex"));
     const env = codexEnv(base, { home });
     const root = nearestTumwaterRoot(run.sessionDir);
