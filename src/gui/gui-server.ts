@@ -340,8 +340,15 @@ export function startGui(
       const route = guiRoutes[`${req.method ?? ""} ${pathname ?? ""}`];
       if (route) await route(req, res, target!);
       else {
+        // Unknown path: a bare "not found" hides which path failed, so name the offending
+        // target, JSON.stringify-quoted like every sibling error-answer (the quote-the-
+        // offending-value convention). Plain text, not sendJson's {error}, on purpose: this
+        // also answers non-/api requests (a stale /api route, a proxy's /favicon.ico), and the
+        // client's apiError treats a plain-text 404 body as a bare message. `pathname` is null
+        // only for a target the URL parser rejected, so fall back to the raw url. No "no such
+        // route" claim: a known path with a wrong method lands here too (GET /api/stop-schedule).
         res.writeHead(404, { "content-type": "text/plain" });
-        res.end("not found");
+        res.end(`not found: ${JSON.stringify(pathname ?? req.url ?? "/")}`);
       }
     } catch (err) {
       sendJson(res, 500, { error: errorMessage(err) });

@@ -189,7 +189,9 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
     assert.match(((await nonStringText.json()) as { error: string }).error, /must be a string \(got 42\)/);
     assert.equal(inboxSize(repo), 1, "rejected bodies queue nothing");
 
-    assert.equal((await fetch(base + "/nope")).status, 404);
+    const nope = await fetch(base + "/nope");
+    assert.equal(nope.status, 404);
+    assert.match(await nope.text(), /\/nope/, "the 404 names the offending path");
   } finally {
     server.close();
   }
