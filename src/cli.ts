@@ -98,6 +98,421 @@ async function runTrailCommand(root: string, args: string[]): Promise<void> {
   });
 }
 
+async function cmdStartCase(root: string, args: string[]): Promise<void> {
+  rejectUnknownArgs("start", args, START_FLAG_SPECS);
+  await (await import("./cli/cli-start.js")).cmdStart(root, args);
+}
+
+async function cmdTuiCase(root: string, args: string[]): Promise<void> {
+  rejectUnknownArgs("tui", args, []);
+  await requireReadyRepo(root);
+  // Imported lazily: the TUI module pulls in ink (the one runtime dependency the
+  // tree carries), and an install whose node_modules is absent must still reach
+  // every other command's own broken-install reporting instead of dying on import.
+  const { runTui } = await import("./ui/tui/tui.js");
+  await runTui(root);
+}
+
+async function cmdGuiCase(root: string, args: string[]): Promise<void> {
+  rejectUnknownArgs("gui", args, GUI_FLAG_SPECS);
+  await requireReadyRepo(root);
+  await (await import("./gui/gui-command.js")).cmdGui(root, args);
+}
+
+async function cmdConfigCase(root: string, args: string[]): Promise<void> {
+  const { cmdConfig, CONFIG_USAGE } = await import("./cli/config-commands.js");
+  // Subcommand arity before the ready-repo gate, so a malformed get/set fails with its
+  // usage no matter the directory: bare config takes nothing, `get`/`unset` exactly one
+  // key, `set` exactly a key and a value. cmdConfig dispatches on the (now well-shaped)
+  // args.
+  if (args.length > 0) {
+    if (args[0] !== "get" && args[0] !== "set" && args[0] !== "unset")
+      // A near-miss subcommand word gets the same typoSuffix `completion <shell>` and
+      // `logs --type` give, so `config gte` reads "did you mean `get`?" while a far-off
+      // word (`show`) and a flag (`--anything`) stay hint-free.
+      fail(`${CONFIG_USAGE}${typoSuffix(args[0] ?? "", ["get", "set", "unset"])}`);
+    if (args[0] === "get" && args.length !== 2) fail("usage: tumwater config get <key>");
+    if (args[0] === "set" && args.length !== 3) fail("usage: tumwater config set <key> <value>");
+    if (args[0] === "unset" && args.length !== 2) fail("usage: tumwater config unset <key>");
+  }
+  // An initialized repo always has tumwater.json, so this gate doubles as "a config
+  // exists to print" — the command never runs outside a project.
+  await requireReadyRepo(root);
+  await cmdConfig(root, args);
+}
+
+async function cmdReportCase(root: string, args: string[]): Promise<void> {
+  // No requireReadyRepo gate: the report aggregates files that degrade to zeros when
+  // missing, so it runs (and prints an all-zero window) in any directory; the team-workspace
+  // refusal still applies.
+  rejectUnknownArgs("report", args, [
+    {
+      names: ["--days"],
+      value: true,
+      valueName: "<n>",
+      // The gate's early report re-runs cmdReport's own shape parser (report.ts), so
+      // `report --days abc` names the typo even though report has no ready-repo gate.
+      validate: (value) => {
+        parseCountFlag("--days", value);
+      },
+    },
+    { names: ["--failures"] },
+    sinceFlagSpec("report --since"),
+    untilFlagSpec("report --until"),
+    JSON_FLAG,
+    ROLE_FLAG,
+    FOLLOW_FLAG,
+  ]);
+  refuseTeamWorkspace(root);
+  // --since is handled before the day-shape reads: it is a rival shape (totals over a
+  // trailing window vs a series over whole days), not a modifier of either.
+  await (await import("./report/report.js")).cmdReport(root, args);
+}
+
+async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
+  // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
+  // so it must run outside a git repo and print fail lines rather than throwing.
+  const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
+  rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG, RETIRE_LEFTOVERS_FLAG]);
+  const only = parseDoctorChecks(checkNames);
+  const { runDoctor } = await import("./doctor/doctor.js");
+  let orphanKill: OrphanKillReport | undefined;
+  if (args.includes("--kill-orphans")) {
+    const { killOrphans, orphanKillLines } = await import("./doctor/doctor-orphans.js");
+    orphanKill = await killOrphans(root);
+    // The text form prints the kill before the report; --json keeps stdout one document.
+    if (!args.includes("--json")) {
+      for (const line of orphanKillLines(orphanKill)) say(line);
+      say("");
+    }
+  }
+  let backlogCommit: BacklogCommitReport | undefined;
+  if (args.includes("--commit-backlog")) {
+    const { commitUncommittedBacklog, backlogCommitLines } = await import("./doctor/doctor-backlog.js");
+    const { config } = loadConfigSafe(root); // the report's own config, so base resolution and the off-base skip match the `uncommitted backlog` row's
+    backlogCommit = await commitUncommittedBacklog(root, config);
+    // The text form prints the commits before the report; --json keeps stdout one document.
+    if (!args.includes("--json")) {
+      for (const line of backlogCommitLines(backlogCommit)) say(line);
+      say("");
+    }
+  }
+  let resyncInstall: RootInstallResync | undefined;
+  if (args.includes("--resync-install")) {
+    const { resyncRootInstall, rootInstallResyncLines } = await import("./build/dep-install.js");
+    resyncInstall = await resyncRootInstall(root);
+    // The text form prints the re-sync outcome before the report; --json keeps stdout one
+    // document, carrying the result as `resyncInstall` on the payload.
+    if (!args.includes("--json")) {
+      for (const line of rootInstallResyncLines(resyncInstall)) say(line);
+      say("");
+    }
+  }
+  let brokenPinDrop: BrokenPinDrop | undefined;
+  if (args.includes("--drop-broken-pins")) {
+    const { dropBrokenPins, brokenPinDropLines } = await import("./doctor/doctor-contention-checks.js");
+    brokenPinDrop = await dropBrokenPins(root);
+    // The text form prints the drop before the report; --json keeps stdout one document,
+    // carrying the result as `brokenPinDrop` on the payload.
+    if (!args.includes("--json")) {
+      const lines = brokenPinDropLines(brokenPinDrop);
+      for (const line of lines) say(line);
+      if (lines.length > 0) say("");
+    }
+  }
+  let leftoverRetire: LeftoverRetireReport | undefined;
+  if (args.includes("--retire-leftovers")) {
+    const { retireLeftovers, leftoverRetireLines } = await import("./doctor/doctor-contention-checks.js");
+    const { config } = loadConfigSafe(root); // the row's own config, so the reap and the report agree on what is retirable
+    leftoverRetire = await retireLeftovers(root, config);
+    // The text form prints the retire lines before the report; --json keeps stdout one
+    // document, carrying the result as `leftoverRetire` on the payload.
+    if (!args.includes("--json")) {
+      const lines = leftoverRetireLines(leftoverRetire);
+      for (const line of lines) say(line);
+      if (lines.length > 0) say("");
+    }
+  }
+  const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(
+    "./doctor/doctor-render.js"
+  );
+  // The terminal probes unclaimed-verified models by default (7-day cache); --reprobe
+  // forces every claimed model. The TUI/GUI call runDoctor with the default "never", so a
+  // refresh never spends a model call.
+  const probeImages = args.includes("--reprobe") ? "all" : "missing";
+  const report = await runDoctor(root, undefined, undefined, probeImages, only);
+  // --json prints the collector's own payload (the DoctorReport object), not a re-parse of
+  // the render — the `report --json` precedent. The exit-code contract below holds in both
+  // forms: 1 when any check fails, 0 otherwise; warnings never fail the exit.
+  // --problems keeps the full report for the render (it counts the hidden ok rows) and
+  // hands --json the filtered one; the exit code below reads the full report either way.
+  // --kill-orphans adds the kill result to the JSON object as `orphanKill`.
+  const withKill = <T extends object>(payload: T) => (orphanKill === undefined ? payload : { ...payload, orphanKill });
+  const withBacklogCommit = <T extends object>(payload: T) =>
+    backlogCommit === undefined ? withKill(payload) : withKill({ ...payload, backlogCommit });
+  const withResyncInstall = <T extends object>(payload: T) =>
+    resyncInstall === undefined ? withBacklogCommit(payload) : withBacklogCommit({ ...payload, resyncInstall });
+  const withBrokenPinDrop = <T extends object>(payload: T) =>
+    brokenPinDrop === undefined ? withResyncInstall(payload) : withResyncInstall({ ...payload, brokenPinDrop });
+  const withLeftoverRetire = <T extends object>(payload: T) =>
+    leftoverRetire === undefined ? withBrokenPinDrop(payload) : withBrokenPinDrop({ ...payload, leftoverRetire });
+  if (args.includes("--problems"))
+    sayJsonOrRender(args, args.includes("--json") ? withLeftoverRetire(problemsOnly(report)) : report, renderDoctorProblems);
+  else sayJsonOrRender(args, args.includes("--json") ? withLeftoverRetire(report) : report, renderDoctor);
+  if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
+}
+
+async function cmdLogsCase(root: string, args: string[]): Promise<void> {
+  const { cmdLogs, GREP_VALUE_ERROR, TYPE_VALUE_ERROR } = await import("./cli/log-commands.js");
+  rejectUnknownArgs("logs", args, [
+    FOLLOW_FLAG,
+    N_FLAG,
+    sinceFlagSpec("logs --since"),
+    untilFlagSpec("logs --until"),
+    grepFlagSpec(GREP_VALUE_ERROR),
+    typeFlagSpec(TYPE_VALUE_ERROR),
+    JSON_FLAG,
+    COUNT_FLAG,
+    NOTABLE_FLAG,
+    ROLE_FLAG,
+    LOGS_TRANSCRIPT_FLAG,
+    PROMPT_FLAG,
+  ]);
+  await requireReadyRepo(root);
+  await cmdLogs(root, args);
+}
+
+async function cmdNotifyCase(root: string, args: string[]): Promise<void> {
+  rejectUnknownArgs("notify", args, [{ names: ["--test"] }]);
+  await requireReadyRepo(root);
+  await (await import("./cli/notify-command.js")).cmdNotify(root, args);
+}
+
+async function cmdHistoryCase(root: string, args: string[]): Promise<void> {
+  const { cmdHistory, HISTORY_GREP_VALUE_ERROR, HISTORY_RESULT_VALUE_ERROR, HISTORY_MODEL_VALUE_ERROR, HISTORY_BY_VALUE_ERROR } = await import("./history/history.js");
+  if (historyTrailForm(args)) {
+    await runTrailCommand(root, args);
+    return;
+  }
+  rejectUnknownArgs("history", args, [
+    N_FLAG,
+    FOLLOW_FLAG,
+    sinceFlagSpec("history --since"),
+    untilFlagSpec("history --until"),
+    grepFlagSpec(HISTORY_GREP_VALUE_ERROR),
+    resultFlagSpec(HISTORY_RESULT_VALUE_ERROR),
+    modelFlagSpec(HISTORY_MODEL_VALUE_ERROR),
+    byFlagSpec(HISTORY_BY_VALUE_ERROR),
+    JSON_FLAG,
+    ROLE_FLAG,
+    SUMMARY_FLAG,
+  ]);
+  await requireReadyRepo(root);
+  await cmdHistory(root, args);
+}
+
+async function cmdArchiveCase(root: string, args: string[]): Promise<void> {
+  rejectUnknownArgs("archive", args, [JSON_FLAG]);
+  await requireReadyRepo(root);
+  await (await import("./backlog/backlog-cli.js")).cmdArchive(root, args);
+}
+
+async function cmdBugCase(root: string, args: string[]): Promise<void> {
+  const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, editBug, editBugFromText, fileBug, fileBugFromText } =
+    await import("./backlog/backlog-write.js");
+  const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
+  const { bugTitleOf, cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce } =
+    await import("./backlog/backlog-cli.js");
+  const { listAndAnnounce, showAndAnnounce } = await import("./backlog/backlog-cli-view.js");
+  const usage = 'tumwater bug "<symptom>"';
+  if (args.includes("--show")) {
+    showAndAnnounce(root, args, "bug");
+    return;
+  }
+  if (args.includes("--list")) {
+    listAndAnnounce(root, args, "bug", "BUGS.md", "Open");
+    return;
+  }
+  if (args.includes("--edit")) {
+    await editAndAnnounce(root, args, "bug", (n, positionals) => editBug(root, n, positionals.join(" "), usage), (n, text) =>
+      editBugFromText(root, n, text, usage),
+    );
+    return;
+  }
+  if (args.includes("--cancel")) {
+    await cancelAndAnnounce(root, args, "bug", (n) => cancelBug(root, n));
+    return;
+  }
+  if (args.includes("--top")) {
+    await topAndAnnounce(root, args, "bug", (n) => moveEntryToTop(root, "bug", n));
+    return;
+  }
+  if (args.includes("--release")) {
+    await releaseAndAnnounce(root, args, "bug", (n) => releaseEntry(root, "bug", n), OPERATOR_FILE_KINDS.bug.role);
+    return;
+  }
+  await fileAndAnnounce(
+    root,
+    args,
+    "bug",
+    (positionals) => fileBug(root, positionals.join(" "), usage),
+    OPERATOR_FILE_KINDS.bug.role,
+    bugWakeText,
+    bugTitleOf,
+    (text) => fileBugFromText(root, text, usage),
+  );
+}
+
+async function cmdPlanCase(root: string, args: string[]): Promise<void> {
+  const { OPERATOR_FILE_KINDS, cancelPlan, editPlan, editPlanFromText, filePlan, filePlanFromText, planWakeText } =
+    await import("./backlog/backlog-write.js");
+  const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
+  const { cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce, planTitleOf } =
+    await import("./backlog/backlog-cli.js");
+  const { listAndAnnounce, showAndAnnounce } = await import("./backlog/backlog-cli-view.js");
+  const usage = 'tumwater plan "<title>" [body...]';
+  if (args.includes("--show")) {
+    showAndAnnounce(root, args, "plan");
+    return;
+  }
+  if (args.includes("--list")) {
+    listAndAnnounce(root, args, "plan", "PLANS.md", "Planned");
+    return;
+  }
+  if (args.includes("--edit")) {
+    await editAndAnnounce(root, args, "plan", (n, positionals) =>
+      editPlan(root, n, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
+    (n, text) => editPlanFromText(root, n, text, usage),
+    );
+    return;
+  }
+  if (args.includes("--cancel")) {
+    await cancelAndAnnounce(root, args, "plan", (n) => cancelPlan(root, n));
+    return;
+  }
+  if (args.includes("--top")) {
+    await topAndAnnounce(root, args, "plan", (n) => moveEntryToTop(root, "plan", n));
+    return;
+  }
+  if (args.includes("--release")) {
+    await releaseAndAnnounce(root, args, "plan", (n) => releaseEntry(root, "plan", n), OPERATOR_FILE_KINDS.plan.role);
+    return;
+  }
+  await fileAndAnnounce(
+    root,
+    args,
+    "plan",
+    (positionals) => filePlan(root, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
+    OPERATOR_FILE_KINDS.plan.role,
+    planWakeText,
+    planTitleOf,
+    (text) => filePlanFromText(root, text, usage),
+  );
+}
+
+async function cmdPromptCase(root: string, args: string[]): Promise<void> {
+  // Parse before the gate: prompt's positionals are free-form, so rejectUnknownArgs
+  // cannot run here, and without this pre-parse `tumwater prompt --role` outside an
+  // initialized repo would report "not a git repository" instead of the flag error —
+  // the same masking every other command's spec-based missing-value check avoids.
+  // cmdPrompt re-running the parse below cannot drift from what this pre-parse accepted,
+  // and --file's reads are idempotent across the two parses (a file is re-read; the
+  // stdin read is memoized in cli/cli-command-args.ts, so a drained pipe is not re-read
+  // as an empty prompt).
+  parsePromptArgs(args);
+  await requireReadyRepo(root);
+  await (await import("./inbox/prompt-commands.js")).cmdPrompt(root, args);
+}
+
+async function cmdRetireCase(root: string, args: string[]): Promise<void> {
+  // Not a marker command (it acts immediately, not via a request file), but it shares the
+  // marker commands' gate shape: unknown-args rejection, then the ready-repo gate.
+  rejectUnknownArgs("retire", args, [ROLE_FLAG, FORCE_FLAG, DRY_RUN_FLAG, JSON_FLAG]);
+  await requireReadyRepo(root);
+  await (await import("./operator/operator-commands.js")).cmdRetire(root, args);
+}
+
+async function cmdRevertCase(root: string, args: string[]): Promise<void> {
+  // Acts immediately on the primary checkout under the primary-worktree lock; the
+  // positionals (a sha, or a run) are validated inside cmdRevert.
+  await requireReadyRepo(root);
+  await (await import("./operator/operator-commands.js")).cmdRevert(root, args);
+}
+
+async function cmdStopCase(root: string, args: string[]): Promise<void> {
+  // Bare stop signals the recorded orchestrator pid; `--in`/`--cancel` schedule or drop a
+  // deferred stop. Anything else is a mistake and fails before a signal is ever sent.
+  rejectUnknownArgs("stop", args, [STOP_IN_FLAG, STOP_CANCEL_FLAG]);
+  await requireReadyRepo(root);
+  await (await import("./operator/operator-commands.js")).cmdStop(root, args);
+}
+
+async function cmdCompletionCase(root: string, args: string[]): Promise<void> {
+  // Works outside a repo: no requireReadyRepo.
+  if (args.length === 1 && args[0] === "--roles") {
+    for (const id of completionRoleIds(root)) say(id);
+    return;
+  }
+  if (args.length === 1 && args[0] === "--config-keys") {
+    for (const key of completionConfigKeys(root)) say(key);
+    return;
+  }
+  if (args.length === 2 && args[0] === "--config-value") {
+    // The vocabulary `config set <key> <value>` completes for a discrete-valued key
+    // (boolean/backend/model/thinking); free-form keys print nothing, so a `set` on one
+    // completes nothing instead of offering a wrong vocabulary.
+    for (const word of configValueWords(args[1]!)) say(word);
+    return;
+  }
+  if (args.length === 1 && args[0] === "--models") {
+    for (const m of completionModels(root)) say(m);
+    return;
+  }
+  const shell = args[0];
+  // A wrong word count names the count, not a bad shell. A single near-miss shell word gets
+  // the same typoSuffix `logs --type`/`history --result` give, so `completion zs` reads
+  // "did you mean `zsh`?" while a far-off value (`tcsh`) stays hint-free.
+  if (args.length === 0) fail("completion needs a shell: bash, zsh, or fish");
+  if (args.length > 1)
+    fail(`completion takes one shell: bash, zsh, or fish (got ${args.length} words: ${args.join(" ")})`);
+  if (!SUPPORTED_SHELLS.includes(shell as CompletionShell))
+    fail(`completion takes one shell: bash, zsh, or fish${gotSuffix(shell)}${typoSuffix(shell ?? "", SUPPORTED_SHELLS)}`);
+  say(completionScript(shell as CompletionShell));
+}
+
+async function cmdVersionCase(args: string[]): Promise<void> {
+  // A stray flag fails like every other command's: `tumwater version --json` (a plausible
+  // slip from `status --json`) must not print a version as if it had answered the query.
+  rejectUnknownArgs("version", args, []);
+  // The read lives in version.ts (testable; cli.ts runs main() on import). A broken
+  // install — a missing or malformed package.json — fails with the reason instead of a
+  // raw stack trace, and a non-string version fails instead of printing "undefined".
+  const { version, problem } = packageVersion(PACKAGE_JSON);
+  if (problem !== undefined || version === undefined)
+    fail(problem ?? "package.json carries no version field (the running tumwater install looks broken)");
+  say(version);
+}
+
+async function cmdHelpCase(args: string[]): Promise<void> {
+  // `help <command>` prints that command's usage stanza(s), parsed from the same text the
+  // full listing prints, so a topic cannot drift from it; a bare `help` (or an unknown
+  // topic) points back at the full list rather than pretending the token was answered.
+  if (args.length > 1) fail(`help takes at most one command name${gotSuffix(args[1])}`);
+  if (args.length === 1) {
+    const name = args[0] ?? "";
+    const topic = helpTopic(name);
+    if (topic === null) {
+      const suggestion = suggestCommand(name);
+      fail(
+        `no help topic: ${JSON.stringify(name)}${didYouMean(suggestion)} (try \`tumwater help\` for the full command list)`,
+      );
+    }
+    say(topic);
+  } else {
+    process.stdout.write(HELP);
+  }
+}
+
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
   // The Node-floor gate, before any command does work: package.json's engines spec is the
@@ -136,215 +551,38 @@ async function main(): Promise<void> {
       break;
     case "start":
     case "run":
-      rejectUnknownArgs("start", args, START_FLAG_SPECS);
-      await (await import("./cli/cli-start.js")).cmdStart(root, args);
+      await cmdStartCase(root, args);
       break;
     case "tui":
-      rejectUnknownArgs("tui", args, []);
-      await requireReadyRepo(root);
-      // Imported lazily: the TUI module pulls in ink (the one runtime dependency the
-      // tree carries), and an install whose node_modules is absent must still reach
-      // every other command's own broken-install reporting instead of dying on import.
-      const { runTui } = await import("./ui/tui/tui.js");
-      await runTui(root);
+      await cmdTuiCase(root, args);
       break;
     case "gui":
-      rejectUnknownArgs("gui", args, GUI_FLAG_SPECS);
-      await requireReadyRepo(root);
-      await (await import("./gui/gui-command.js")).cmdGui(root, args);
+      await cmdGuiCase(root, args);
       break;
     case "status":
       await (await import("./cli/cli-query-commands.js")).cmdStatus(root, args);
       break;
     case "config": {
-      const { cmdConfig, CONFIG_USAGE } = await import("./cli/config-commands.js");
-      // Subcommand arity before the ready-repo gate, so a malformed get/set fails with its
-      // usage no matter the directory: bare config takes nothing, `get`/`unset` exactly one
-      // key, `set` exactly a key and a value. cmdConfig dispatches on the (now well-shaped)
-      // args.
-      if (args.length > 0) {
-        if (args[0] !== "get" && args[0] !== "set" && args[0] !== "unset")
-          // A near-miss subcommand word gets the same typoSuffix `completion <shell>` and
-          // `logs --type` give, so `config gte` reads "did you mean `get`?" while a far-off
-          // word (`show`) and a flag (`--anything`) stay hint-free.
-          fail(`${CONFIG_USAGE}${typoSuffix(args[0] ?? "", ["get", "set", "unset"])}`);
-        if (args[0] === "get" && args.length !== 2) fail("usage: tumwater config get <key>");
-        if (args[0] === "set" && args.length !== 3) fail("usage: tumwater config set <key> <value>");
-        if (args[0] === "unset" && args.length !== 2) fail("usage: tumwater config unset <key>");
-      }
-      // An initialized repo always has tumwater.json, so this gate doubles as "a config
-      // exists to print" — the command never runs outside a project.
-      await requireReadyRepo(root);
-      await cmdConfig(root, args);
+      await cmdConfigCase(root, args);
       break;
     }
     case "report": {
-      // No requireReadyRepo gate: the report aggregates files that degrade to zeros when
-      // missing, so it runs (and prints an all-zero window) in any directory; the team-workspace
-      // refusal still applies.
-      rejectUnknownArgs("report", args, [
-        {
-          names: ["--days"],
-          value: true,
-          valueName: "<n>",
-          // The gate's early report re-runs cmdReport's own shape parser (report.ts), so
-          // `report --days abc` names the typo even though report has no ready-repo gate.
-          validate: (value) => {
-            parseCountFlag("--days", value);
-          },
-        },
-        { names: ["--failures"] },
-        sinceFlagSpec("report --since"),
-        untilFlagSpec("report --until"),
-        JSON_FLAG,
-        ROLE_FLAG,
-        FOLLOW_FLAG,
-      ]);
-      refuseTeamWorkspace(root);
-      // --since is handled before the day-shape reads: it is a rival shape (totals over a
-      // trailing window vs a series over whole days), not a modifier of either.
-      await (await import("./report/report.js")).cmdReport(root, args);
+      await cmdReportCase(root, args);
       break;
     }
     case "doctor": {
-      // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
-      // so it must run outside a git repo and print fail lines rather than throwing.
-      const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
-      rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG, RETIRE_LEFTOVERS_FLAG]);
-      const only = parseDoctorChecks(checkNames);
-      const { runDoctor } = await import("./doctor/doctor.js");
-      let orphanKill: OrphanKillReport | undefined;
-      if (args.includes("--kill-orphans")) {
-        const { killOrphans, orphanKillLines } = await import("./doctor/doctor-orphans.js");
-        orphanKill = await killOrphans(root);
-        // The text form prints the kill before the report; --json keeps stdout one document.
-        if (!args.includes("--json")) {
-          for (const line of orphanKillLines(orphanKill)) say(line);
-          say("");
-        }
-      }
-      let backlogCommit: BacklogCommitReport | undefined;
-      if (args.includes("--commit-backlog")) {
-        const { commitUncommittedBacklog, backlogCommitLines } = await import("./doctor/doctor-backlog.js");
-        const { config } = loadConfigSafe(root); // the report's own config, so base resolution and the off-base skip match the `uncommitted backlog` row's
-        backlogCommit = await commitUncommittedBacklog(root, config);
-        // The text form prints the commits before the report; --json keeps stdout one document.
-        if (!args.includes("--json")) {
-          for (const line of backlogCommitLines(backlogCommit)) say(line);
-          say("");
-        }
-      }
-      let resyncInstall: RootInstallResync | undefined;
-      if (args.includes("--resync-install")) {
-        const { resyncRootInstall, rootInstallResyncLines } = await import("./build/dep-install.js");
-        resyncInstall = await resyncRootInstall(root);
-        // The text form prints the re-sync outcome before the report; --json keeps stdout one
-        // document, carrying the result as `resyncInstall` on the payload.
-        if (!args.includes("--json")) {
-          for (const line of rootInstallResyncLines(resyncInstall)) say(line);
-          say("");
-        }
-      }
-      let brokenPinDrop: BrokenPinDrop | undefined;
-      if (args.includes("--drop-broken-pins")) {
-        const { dropBrokenPins, brokenPinDropLines } = await import("./doctor/doctor-contention-checks.js");
-        brokenPinDrop = await dropBrokenPins(root);
-        // The text form prints the drop before the report; --json keeps stdout one document,
-        // carrying the result as `brokenPinDrop` on the payload.
-        if (!args.includes("--json")) {
-          const lines = brokenPinDropLines(brokenPinDrop);
-          for (const line of lines) say(line);
-          if (lines.length > 0) say("");
-        }
-      }
-      let leftoverRetire: LeftoverRetireReport | undefined;
-      if (args.includes("--retire-leftovers")) {
-        const { retireLeftovers, leftoverRetireLines } = await import("./doctor/doctor-contention-checks.js");
-        const { config } = loadConfigSafe(root); // the row's own config, so the reap and the report agree on what is retirable
-        leftoverRetire = await retireLeftovers(root, config);
-        // The text form prints the retire lines before the report; --json keeps stdout one
-        // document, carrying the result as `leftoverRetire` on the payload.
-        if (!args.includes("--json")) {
-          const lines = leftoverRetireLines(leftoverRetire);
-          for (const line of lines) say(line);
-          if (lines.length > 0) say("");
-        }
-      }
-      const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(
-        "./doctor/doctor-render.js"
-      );
-      // The terminal probes unclaimed-verified models by default (7-day cache); --reprobe
-      // forces every claimed model. The TUI/GUI call runDoctor with the default "never", so a
-      // refresh never spends a model call.
-      const probeImages = args.includes("--reprobe") ? "all" : "missing";
-      const report = await runDoctor(root, undefined, undefined, probeImages, only);
-      // --json prints the collector's own payload (the DoctorReport object), not a re-parse of
-      // the render — the `report --json` precedent. The exit-code contract below holds in both
-      // forms: 1 when any check fails, 0 otherwise; warnings never fail the exit.
-      // --problems keeps the full report for the render (it counts the hidden ok rows) and
-      // hands --json the filtered one; the exit code below reads the full report either way.
-      // --kill-orphans adds the kill result to the JSON object as `orphanKill`.
-      const withKill = <T extends object>(payload: T) => (orphanKill === undefined ? payload : { ...payload, orphanKill });
-      const withBacklogCommit = <T extends object>(payload: T) =>
-        backlogCommit === undefined ? withKill(payload) : withKill({ ...payload, backlogCommit });
-      const withResyncInstall = <T extends object>(payload: T) =>
-        resyncInstall === undefined ? withBacklogCommit(payload) : withBacklogCommit({ ...payload, resyncInstall });
-      const withBrokenPinDrop = <T extends object>(payload: T) =>
-        brokenPinDrop === undefined ? withResyncInstall(payload) : withResyncInstall({ ...payload, brokenPinDrop });
-      const withLeftoverRetire = <T extends object>(payload: T) =>
-        leftoverRetire === undefined ? withBrokenPinDrop(payload) : withBrokenPinDrop({ ...payload, leftoverRetire });
-      if (args.includes("--problems"))
-        sayJsonOrRender(args, args.includes("--json") ? withLeftoverRetire(problemsOnly(report)) : report, renderDoctorProblems);
-      else sayJsonOrRender(args, args.includes("--json") ? withLeftoverRetire(report) : report, renderDoctor);
-      if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
+      await cmdDoctorCase(root, args);
       break;
     }
     case "logs": {
-      const { cmdLogs, GREP_VALUE_ERROR, TYPE_VALUE_ERROR } = await import("./cli/log-commands.js");
-      rejectUnknownArgs("logs", args, [
-        FOLLOW_FLAG,
-        N_FLAG,
-        sinceFlagSpec("logs --since"),
-        untilFlagSpec("logs --until"),
-        grepFlagSpec(GREP_VALUE_ERROR),
-        typeFlagSpec(TYPE_VALUE_ERROR),
-        JSON_FLAG,
-        COUNT_FLAG,
-        NOTABLE_FLAG,
-        ROLE_FLAG,
-        LOGS_TRANSCRIPT_FLAG,
-        PROMPT_FLAG,
-      ]);
-      await requireReadyRepo(root);
-      await cmdLogs(root, args);
+      await cmdLogsCase(root, args);
       break;
     }
     case "notify":
-      rejectUnknownArgs("notify", args, [{ names: ["--test"] }]);
-      await requireReadyRepo(root);
-      await (await import("./cli/notify-command.js")).cmdNotify(root, args);
+      await cmdNotifyCase(root, args);
       break;
     case "history": {
-      const { cmdHistory, HISTORY_GREP_VALUE_ERROR, HISTORY_RESULT_VALUE_ERROR, HISTORY_MODEL_VALUE_ERROR, HISTORY_BY_VALUE_ERROR } = await import("./history/history.js");
-      if (historyTrailForm(args)) {
-        await runTrailCommand(root, args);
-        break;
-      }
-      rejectUnknownArgs("history", args, [
-        N_FLAG,
-        FOLLOW_FLAG,
-        sinceFlagSpec("history --since"),
-        untilFlagSpec("history --until"),
-        grepFlagSpec(HISTORY_GREP_VALUE_ERROR),
-        resultFlagSpec(HISTORY_RESULT_VALUE_ERROR),
-        modelFlagSpec(HISTORY_MODEL_VALUE_ERROR),
-        byFlagSpec(HISTORY_BY_VALUE_ERROR),
-        JSON_FLAG,
-        ROLE_FLAG,
-        SUMMARY_FLAG,
-      ]);
-      await requireReadyRepo(root);
-      await cmdHistory(root, args);
+      await cmdHistoryCase(root, args);
       break;
     }
     case "tick": // vocabulary-ok: command name stays
@@ -366,101 +604,14 @@ async function main(): Promise<void> {
       await (await import("./cli/cli-query-commands.js")).cmdQuarantine(root, args);
       break;
     case "archive":
-      rejectUnknownArgs("archive", args, [JSON_FLAG]);
-      await requireReadyRepo(root);
-      await (await import("./backlog/backlog-cli.js")).cmdArchive(root, args);
+      await cmdArchiveCase(root, args);
       break;
     case "bug": {
-      const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, editBug, editBugFromText, fileBug, fileBugFromText } =
-        await import("./backlog/backlog-write.js");
-      const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-      const { bugTitleOf, cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce } =
-        await import("./backlog/backlog-cli.js");
-      const { listAndAnnounce, showAndAnnounce } = await import("./backlog/backlog-cli-view.js");
-      const usage = 'tumwater bug "<symptom>"';
-      if (args.includes("--show")) {
-        showAndAnnounce(root, args, "bug");
-        break;
-      }
-      if (args.includes("--list")) {
-        listAndAnnounce(root, args, "bug", "BUGS.md", "Open");
-        break;
-      }
-      if (args.includes("--edit")) {
-        await editAndAnnounce(root, args, "bug", (n, positionals) => editBug(root, n, positionals.join(" "), usage), (n, text) =>
-          editBugFromText(root, n, text, usage),
-        );
-        break;
-      }
-      if (args.includes("--cancel")) {
-        await cancelAndAnnounce(root, args, "bug", (n) => cancelBug(root, n));
-        break;
-      }
-      if (args.includes("--top")) {
-        await topAndAnnounce(root, args, "bug", (n) => moveEntryToTop(root, "bug", n));
-        break;
-      }
-      if (args.includes("--release")) {
-        await releaseAndAnnounce(root, args, "bug", (n) => releaseEntry(root, "bug", n), OPERATOR_FILE_KINDS.bug.role);
-        break;
-      }
-      await fileAndAnnounce(
-        root,
-        args,
-        "bug",
-        (positionals) => fileBug(root, positionals.join(" "), usage),
-        OPERATOR_FILE_KINDS.bug.role,
-        bugWakeText,
-        bugTitleOf,
-        (text) => fileBugFromText(root, text, usage),
-      );
+      await cmdBugCase(root, args);
       break;
     }
     case "plan": {
-      const { OPERATOR_FILE_KINDS, cancelPlan, editPlan, editPlanFromText, filePlan, filePlanFromText, planWakeText } =
-        await import("./backlog/backlog-write.js");
-      const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-      const { cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce, planTitleOf } =
-        await import("./backlog/backlog-cli.js");
-      const { listAndAnnounce, showAndAnnounce } = await import("./backlog/backlog-cli-view.js");
-      const usage = 'tumwater plan "<title>" [body...]';
-      if (args.includes("--show")) {
-        showAndAnnounce(root, args, "plan");
-        break;
-      }
-      if (args.includes("--list")) {
-        listAndAnnounce(root, args, "plan", "PLANS.md", "Planned");
-        break;
-      }
-      if (args.includes("--edit")) {
-        await editAndAnnounce(root, args, "plan", (n, positionals) =>
-          editPlan(root, n, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
-        (n, text) => editPlanFromText(root, n, text, usage),
-        );
-        break;
-      }
-      if (args.includes("--cancel")) {
-        await cancelAndAnnounce(root, args, "plan", (n) => cancelPlan(root, n));
-        break;
-      }
-      if (args.includes("--top")) {
-        await topAndAnnounce(root, args, "plan", (n) => moveEntryToTop(root, "plan", n));
-        break;
-      }
-      if (args.includes("--release")) {
-        await releaseAndAnnounce(root, args, "plan", (n) => releaseEntry(root, "plan", n), OPERATOR_FILE_KINDS.plan.role);
-        break;
-      }
-      await fileAndAnnounce(
-        root,
-        args,
-        "plan",
-        (positionals) => filePlan(root, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
-        OPERATOR_FILE_KINDS.plan.role,
-        planWakeText,
-        planTitleOf,
-        (text) => filePlanFromText(root, text, usage),
-      );
+      await cmdPlanCase(root, args);
       break;
     }
     case "questions":
@@ -473,17 +624,7 @@ async function main(): Promise<void> {
       await (await import("./cli/cli-role-command.js")).cmdRole(root, args);
       break;
     case "prompt":
-      // Parse before the gate: prompt's positionals are free-form, so rejectUnknownArgs
-      // cannot run here, and without this pre-parse `tumwater prompt --role` outside an
-      // initialized repo would report "not a git repository" instead of the flag error —
-      // the same masking every other command's spec-based missing-value check avoids.
-      // cmdPrompt re-running the parse below cannot drift from what this pre-parse accepted,
-      // and --file's reads are idempotent across the two parses (a file is re-read; the
-      // stdin read is memoized in cli/cli-command-args.ts, so a drained pipe is not re-read
-      // as an empty prompt).
-      parsePromptArgs(args);
-      await requireReadyRepo(root);
-      await (await import("./inbox/prompt-commands.js")).cmdPrompt(root, args);
+      await cmdPromptCase(root, args);
       break;
     case "reset-counters":
     // Fall through: the seven marker commands share one guard+dispatch shape — unknown-args
@@ -501,97 +642,32 @@ async function main(): Promise<void> {
       break;
     }
     case "retire": {
-      // Not a marker command (it acts immediately, not via a request file), but it shares the
-      // marker commands' gate shape: unknown-args rejection, then the ready-repo gate.
-      rejectUnknownArgs("retire", args, [ROLE_FLAG, FORCE_FLAG, DRY_RUN_FLAG, JSON_FLAG]);
-      await requireReadyRepo(root);
-      await (await import("./operator/operator-commands.js")).cmdRetire(root, args);
+      await cmdRetireCase(root, args);
       break;
     }
     case "revert": {
-      // Acts immediately on the primary checkout under the primary-worktree lock; the
-      // positionals (a sha, or a run) are validated inside cmdRevert.
-      await requireReadyRepo(root);
-      await (await import("./operator/operator-commands.js")).cmdRevert(root, args);
+      await cmdRevertCase(root, args);
       break;
     }
     case "stop": {
-      // Bare stop signals the recorded orchestrator pid; `--in`/`--cancel` schedule or drop a
-      // deferred stop. Anything else is a mistake and fails before a signal is ever sent.
-      rejectUnknownArgs("stop", args, [STOP_IN_FLAG, STOP_CANCEL_FLAG]);
-      await requireReadyRepo(root);
-      await (await import("./operator/operator-commands.js")).cmdStop(root, args);
+      await cmdStopCase(root, args);
       break;
     }
     case "completion": {
-      // Works outside a repo: no requireReadyRepo.
-      if (args.length === 1 && args[0] === "--roles") {
-        for (const id of completionRoleIds(root)) say(id);
-        break;
-      }
-      if (args.length === 1 && args[0] === "--config-keys") {
-        for (const key of completionConfigKeys(root)) say(key);
-        break;
-      }
-      if (args.length === 2 && args[0] === "--config-value") {
-        // The vocabulary `config set <key> <value>` completes for a discrete-valued key
-        // (boolean/backend/model/thinking); free-form keys print nothing, so a `set` on one
-        // completes nothing instead of offering a wrong vocabulary.
-        for (const word of configValueWords(args[1]!)) say(word);
-        break;
-      }
-      if (args.length === 1 && args[0] === "--models") {
-        for (const m of completionModels(root)) say(m);
-        break;
-      }
-      const shell = args[0];
-      // A wrong word count names the count, not a bad shell. A single near-miss shell word gets
-      // the same typoSuffix `logs --type`/`history --result` give, so `completion zs` reads
-      // "did you mean `zsh`?" while a far-off value (`tcsh`) stays hint-free.
-      if (args.length === 0) fail("completion needs a shell: bash, zsh, or fish");
-      if (args.length > 1)
-        fail(`completion takes one shell: bash, zsh, or fish (got ${args.length} words: ${args.join(" ")})`);
-      if (!SUPPORTED_SHELLS.includes(shell as CompletionShell))
-        fail(`completion takes one shell: bash, zsh, or fish${gotSuffix(shell)}${typoSuffix(shell ?? "", SUPPORTED_SHELLS)}`);
-      say(completionScript(shell as CompletionShell));
+      await cmdCompletionCase(root, args);
       break;
     }
     case "version":
     case "--version":
     case "-v": {
-      // A stray flag fails like every other command's: `tumwater version --json` (a plausible
-      // slip from `status --json`) must not print a version as if it had answered the query.
-      rejectUnknownArgs("version", args, []);
-      // The read lives in version.ts (testable; cli.ts runs main() on import). A broken
-      // install — a missing or malformed package.json — fails with the reason instead of a
-      // raw stack trace, and a non-string version fails instead of printing "undefined".
-      const { version, problem } = packageVersion(PACKAGE_JSON);
-      if (problem !== undefined || version === undefined)
-        fail(problem ?? "package.json carries no version field (the running tumwater install looks broken)");
-      say(version);
+      await cmdVersionCase(args);
       break;
     }
     case "help":
     case "--help":
     case "-h":
     case undefined: {
-      // `help <command>` prints that command's usage stanza(s), parsed from the same text the
-      // full listing prints, so a topic cannot drift from it; a bare `help` (or an unknown
-      // topic) points back at the full list rather than pretending the token was answered.
-      if (args.length > 1) fail(`help takes at most one command name${gotSuffix(args[1])}`);
-      if (args.length === 1) {
-        const name = args[0] ?? "";
-        const topic = helpTopic(name);
-        if (topic === null) {
-          const suggestion = suggestCommand(name);
-          fail(
-            `no help topic: ${JSON.stringify(name)}${didYouMean(suggestion)} (try \`tumwater help\` for the full command list)`,
-          );
-        }
-        say(topic);
-      } else {
-        process.stdout.write(HELP);
-      }
+      await cmdHelpCase(args);
       break;
     }
     default: {
