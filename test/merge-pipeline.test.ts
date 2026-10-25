@@ -829,7 +829,9 @@ for (const headVerdict of ["reject", "approve"] as const) {
         // post-merge review advertises itself with `-post-` in its session label (reviewing the
         // merged commit after the pipeline), which this stage-sequence test is not about — skip
         // it so it neither records stages nor answers, keeping the rec the pre-merge gate's only.
-        `for a in "$@"; do case "$a" in tumwater-review-*-post-*) exit 0;; esac; done`,
+        // A bare exit leaves it verdict-less, so it would fail and (at the limit) file a BUGS.md
+        // commit; answer with an approve so it settles cleanly.
+        `for a in "$@"; do case "$a" in tumwater-review-*-post-*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
         `r=none; for a in "$@"; do case "$a" in tumwater-review-alpha-*) r=alpha ;; tumwater-review-beta-*) r=beta ;; esac; done`,
         `echo "$r:$(${stagesOf})" >> '${rec}'`,
         `if [ "$r" = alpha ]; then printf '%s\\n' '${assistantLine(headReply)}'; else printf '%s\\n' '${assistantLine("VERDICT: approve")}'; fi`,

@@ -28,7 +28,7 @@ import {
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
-import { leasedRoleShell } from "./fixtures/pi-events.js";
+import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 import { waitFor, waitForFile, within } from "./helpers/wait.js";
 import { readJson } from "./helpers/json-read.js";
 
@@ -41,6 +41,15 @@ process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
  * processes: top-level tests within one file run sequentially, while each test FILE gets its
  * own process. The slices are balanced by measured per-test duration (~6.9s vs ~10.6s at
  * 2026-10-04); keep them roughly equal when moving tests between the files. */
+
+// A merged change queues a post-merge review for every role (feature commit a6d46e908), and it
+// reuses this fake reviewer with a `-post-` session label. Skip it cleanly: answer it with an
+// approve verdict (assistantLine-wrapped, the form reviewMergedCommit parses out of the run) so
+// the review settles without filing an unreviewed-commit BUGS.md entry onto main, while still
+// creating no run file / sample / flag. A bare exit is verdict-less, which the pipeline reads as
+// a failed review and, at the failure limit, files as a BUGS.md commit — racing main's commit
+// count (`rev-list` sees a 4th commit).
+const skipPostReview = `for a in "$@"; do case "$a" in tumwater-review-*-post-*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`;
 
 test("mergeBatchMax caps each merge's stack, read from the live config at each drain", async () => {
   const root = makeRepo();
@@ -102,7 +111,7 @@ test("every verification holds a shared permit: with one free, one reviews while
         // Part 3g/3: a merged change queues a post-merge review whatever its role, and it reuses
         // this reviewer — skip those (advertised by `-post-` in the session label) so they neither
         // count toward the in-flight samples nor touch the release flags this verify test stages.
-        `for a in "$@"; do case "$a" in tumwater-review-*-post-*) exit 0;; esac; done`,
+        skipPostReview,
         leasedRoleShell(),
         `d='${flags}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
         `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${flags}/samples.log'`,
@@ -228,7 +237,7 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
       // Part 3g/3: skip the merged changes' post-merge reviews (a `-post-` session) so they
       // neither count toward the in-flight samples nor hold for three peers — the overlap being
       // pinned is the three verifications', before any merge.
-      `for a in "$@"; do case "$a" in tumwater-review-*-post-*) exit 0;; esac; done`,
+      skipPostReview,
       `d='${runDir}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
       `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${runDir}/samples.log'`,
       `i=0; while [ $(ls "$d" | wc -l) -lt 3 ] && [ $i -lt 300 ]; do sleep 0.05; i=$((i+1)); done`,
@@ -269,7 +278,7 @@ test("a verification runs in a pooled slot (purpose vet while it works, no lease
     [
       // Part 3g/3: skip the merged change's post-merge review (a `-post-` session) so its run
       // does not overwrite the during.json slot snapshot taken by the verification under test.
-      `for a in "$@"; do case "$a" in tumwater-review-*-post-*) exit 0;; esac; done`,
+      skipPostReview,
       `printf '%s\\n' "$PWD" >> '${flags}/cwd'`,
       `cp '${slotsStatePath(root)}' '${flags}/during.json' 2>/dev/null`,
       APPROVE(),
