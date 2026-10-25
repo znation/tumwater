@@ -61,6 +61,8 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
     "provider_concurrency_changed",
     "model_changed",
     "bootstrap_complete",
+    "fallback_switched",
+    "budget_handback",
   ]) {
     assert.ok(STATE_CHANGE_TYPES.has(t), `missing ${t}`);
   }
@@ -432,4 +434,51 @@ test("the digest names every gate hold and lift", () => {
   ]) {
     assert.ok(line.length <= 72, `under the cap: ${line}`);
   }
+});
+
+test("the digest names a tier fallback switch and the budget hand-back", () => {
+  // A tier slid onto its fallback pair: the digest names the move beside the pause/hold ones.
+  assert.equal(
+    describeStateChange(
+      ev({ type: "fallback_switched", tiers: { default: { from: "acme/m1", to: "free/llama", reason: "cap" } } }),
+    ),
+    "fallback switched — default: acme/m1 → free/llama (cap)",
+  );
+  // A return to the primary arrives with `to: null`; it reads `primary`, never a bare field.
+  assert.equal(
+    describeStateChange(
+      ev({ type: "fallback_switched", tiers: { default: { from: "acme/m1", to: null, reason: "available" } } }),
+    ),
+    "fallback switched — default: acme/m1 → primary (available)",
+  );
+  // The budget reopening handed the still-on-fallback roles back to the primary.
+  assert.equal(
+    describeStateChange(ev({ type: "budget_handback", roles: ["feature", "bugfix"] })),
+    "budget reopened — handed feature, bugfix back to the primary",
+  );
+  // A window reset hands them back the same way, against the subscription_window_reset line.
+  assert.equal(
+    describeStateChange(ev({ type: "budget_handback", roles: ["feature", "bugfix"], reason: "window" })),
+    "window reset — handed feature, bugfix back to the primary",
+  );
+  // A torn or empty tiers/budget_handback renders compactly, never undefined/NaN.
+  const tornTiers = describeStateChange(ev({ type: "fallback_switched", tiers: {} }));
+  assert.equal(tornTiers, "fallback switched");
+  assert.doesNotMatch(tornTiers, /NaN|undefined/);
+  const tornHandback = describeStateChange(ev({ type: "budget_handback" }));
+  assert.equal(tornHandback, "budget reopened — handed ? back to the primary");
+  assert.doesNotMatch(tornHandback, /NaN|undefined/);
+});
+
+test("fallback_switched with more tiers than fit the line cap names every dropped tier", () => {
+  // Mirrors config_changed's bounded-drop rule: whole parts drop from the tail with a marker,
+  // so a hand-edited tiers object never cuts the marker or a part mid-word.
+  const tiers: Record<string, unknown> = {};
+  for (let i = 0; i < 8; i++) {
+    tiers[`tier${i}`] = { from: "acme/m1", to: "free/llama", reason: "cap" };
+  }
+  const line = describeStateChange(ev({ type: "fallback_switched", tiers }));
+  assert.ok(line.includes("fallback switched —"), line);
+  assert.ok(/\+N more tiers|\+\d+ more tiers/.test(line), line);
+  assert.ok(line.length <= 72, `under the cap: ${line}`);
 });

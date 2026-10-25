@@ -7,7 +7,7 @@
  * and a roleCell-sliced role, so no unbounded field reaches the page. */
 import { truncateExample } from "./failure-cluster.js";
 import { cutSplitsSurrogatePair, isNonBlankString } from "../text/text.js";
-import { finiteNumber, stringList } from "../files/json-object.js";
+import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 
@@ -23,7 +23,10 @@ import { claudeUtilizationPct } from "../agent/claude/claude-account.js";
  * left out, and said so here: `subscription_window_warning` (observational, gates nothing),
  * `disk_reclaim` (an action, not a state transition), `image_blind` (a run outcome), and
  * `permit_reserve`/`slot_wait`/`check_wait`/`provider_wait`/`claim` (per-run advisories or
- * assignments). The rest are the evidence the selfcheck role's load-bearing rule asks it to
+ * assignments). The model-wiring twins `fallback_switched` and `budget_handback` are the
+ * run-side consequence of `budget_resumed` — the budget/window reopening that aborts in-flight
+ * fallback runs so their next run continues on the primary. The rest are the evidence the
+ * selfcheck role's load-bearing rule asks it to
  * judge — whether the harness's RESPONSE to a failure was wrong (plans/telemetry-role.md) —
  * so they sit beside the outcomes rather than being dropped. */
 export const STATE_CHANGE_TYPES = new Set<string>([
@@ -65,6 +68,8 @@ export const STATE_CHANGE_TYPES = new Set<string>([
   "provider_concurrency_changed",
   "model_changed",
   "bootstrap_complete",
+  "fallback_switched",
+  "budget_handback",
 ]);
 
 /** The Team state changes section's caps: newest N transitions, each line's payload capped at
@@ -277,6 +282,39 @@ export function describeStateChange(ev: HarnessEvent): string {
       // name pi's default the way the feed does so the digest never renders a bare
       // `model changed — now `.
       text = `model changed — now ${field(ev.to ?? "pi's default")}`;
+      break;
+    case "fallback_switched": {
+      // A tier's fallback pair or step changed (or returned to the primary) this poll. Null
+      // `to`/`from` read `primary`, matching the feed's fallback_switched line. Whole parts
+      // only, dropped from the tail with a marker when the tier list overshoots the cap — the
+      // same bounded-drop rule config_changed uses, because a hand-edited `tiers` object can
+      // carry more entries than MODEL_TIERS; an empty or torn object reads `fallback switched`.
+      const tiers = isJsonObject(ev.tiers) ? ev.tiers : {};
+      const parts = Object.entries(tiers).map(([tier, v]) => {
+        const t = isJsonObject(v) ? v : {};
+        return `${field(tier)}: ${field(t.from ?? "primary")} → ${field(t.to ?? "primary")} (${field(t.reason ?? "available")})`;
+      });
+      text = parts.length > 0 ? `fallback switched — ${parts.join("; ")}` : "fallback switched";
+      let hidden = 0;
+      while (text.length > STATE_CHANGE_MAX) {
+        parts.pop();
+        hidden += 1;
+        text =
+          parts.length > 0
+            ? `fallback switched — ${parts.join("; ")} … +${hidden} more tiers`
+            : `fallback switched … +${hidden} more tiers`;
+      }
+      break;
+    }
+    case "budget_handback":
+      // The budget/window reopened and aborted in-flight fallback runs; their next run
+      // continues on the primary. Mirrors the feed's budget_handback wording in the digest's
+      // compact form; the window's backend is not named since subscription_window_reset
+      // already carries it.
+      text =
+        ev.reason === "window"
+          ? `window reset — handed ${rolesPhrase(ev.roles, "?", 4, field)} back to the primary`
+          : `budget reopened — handed ${rolesPhrase(ev.roles, "?", 4, field)} back to the primary`;
       break;
     case "bootstrap_complete":
       text = `bootstrap complete — ${field(ev.plansDone)}/${field(ev.untilPlansDone)} plans done`;
