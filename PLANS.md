@@ -442,4 +442,25 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 **Tests.**
 - test/gui-client-drawer.test.ts: add "the Configuration fallback rows name a non-pi fallback's backend namespace" — a non-pi `modelFallback` asserts the `claude/claude-haiku-5-5` row, and a non-pi `fallback` with `backend` asserts the namespace in the Budget fallback row; the existing pi fallback assertions in "the role drawer renders the Configuration section from the role payload" stay green.
 
+### The dashboard Usage view gains an "Estimated spend by backend" chart, the browser twin of `tumwater report`'s per-backend API-equivalent line (planned 2026-10-24 by the plan role; independent in behavior of every eligible plan — it touches only src/ui/gui/gui-client-report.ts, src/ui/gui/gui-client-report-chart.ts and test/gui-client-report.test.ts, none of which the in-flight `Forward, never back` and `Every commit is verified on main` series, the TUI Transcript provider/thinking editor plan, the status-row backend-default plan or the drawer fallback-rows plan edits)
+
+**Goal.** `tumwater report` renders one API-equivalent line per subscription backend — `notionalLines` (src/report/report-render.ts) maps over `ReportTotals.notionalByBackend`, folded from each `run_end`'s `agent` (src/report/report-fold.ts) and carried onto each day by src/report/report-data.ts. The dashboard Usage view cannot show that axis: it has "Estimated spend by role" and "Estimated spend by provider", but `notionalByProvider` folds only from `run_end.providerCost` (`foldProviderCost`), which a subscription run — no resolved pi provider — never fills, so a claude/codex/opencode subscription's API-equivalent spend appears on no per-seam dashboard chart. Give the dashboard the CLI line's per-backend twin.
+
+**Approach.**
+- src/ui/gui/gui-client-report-chart.ts: beside `chartNotionalByProvider`, add `reportBackendOrder(data)` = `tallyAcross(data.series, [], ["notionalByBackend"])` (a backend has no real-cost map; a backend that only spent notionally still counts) and `chartNotionalByBackend(data)` = `stackChart(data, reportBackendOrder(data), "notionalByBackend", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false)`, with comments naming it the dashboard twin of the report's per-backend notional line.
+- src/ui/gui/gui-client-report.ts: in the Usage block chain, add `(!d.role && seriesHasAny(d, "notionalByBackend") ? block("Estimated spend by backend", chartNotionalByBackend(d), "per day · API-equivalent, not in the cap") : "") +` directly after the `Estimated spend by provider` term. Team-only (`!d.role`), like the provider chart, since report-data's scoped fold drops `notionalByBackend`.
+- src/ui/gui/gui-client-report-chart.ts: add both functions to the object literal the report script returns, so test/gui-client-report.test.ts's `clientScope` can destructure them.
+
+**Files touched.** src/ui/gui/gui-client-report.ts src/ui/gui/gui-client-report-chart.ts test/gui-client-report.test.ts
+
+**Acceptance criteria.**
+- The dashboard Usage day report renders an `Estimated spend by backend` block gated on `seriesHasAny(d, "notionalByBackend")` and team-only (`!d.role`), directly after the `Estimated spend by provider` block; a backend-free series renders no such block.
+- `chartNotionalByBackend` reads `notionalByBackend` through `reportBackendOrder`, so a codex-only day draws one codex segment and a two-backend day draws both in backend-name order; the existing provider charts are unchanged.
+- A role-scoped report renders neither the backend chart nor the provider chart.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/gui-client-report.test.ts: add a sibling of "the Spend by provider charts stack per provider and reportProviderOrder lists each provider once", destructuring `reportBackendOrder`, `chartNotionalByBackend` and `seriesHasAny` through `clientScope`; assert `reportBackendOrder` lists each backend once and the chart's `<title>` values for a `notionalByBackend` of `{ claude: 0.5 }`/`{ codex: 0.25 }`, and that `seriesHasAny` is false for a backend-free series and true for the backend-carrying one.
+- test/gui-client-report.test.ts: add a chain test like "the Usage render chain gates the Post-merge rejections by role chart right after Rejections by role" — `indexOf('block("Estimated spend by backend"')` is greater than `indexOf('block("Estimated spend by provider"')`, the term appears exactly once, and it matches `!d.role && seriesHasAny(d, "notionalByBackend") ? block("Estimated spend by backend", chartNotionalByBackend(d)) : ""`.
+
 ## Done
