@@ -27,28 +27,7 @@ interface BacklogAlertsInput {
   fixClaims: readonly FixClaimProblem[];
 }
 
-/** The backlog alerts, in emission order: open questions, refused entries, operator-held
- * entries, stalled entries, a broken plan-dependency clause, stranded plans, duplicated
- * backlog headings, finished history still in the live backlog files, and Fixed records with a
- * bad Validation gap trace. Extracted from
- * teamAlerts (part 2/5 of the teamAlerts split) so the shared module stays small; the input
- * names exactly the fields this run reads. The caller pushes the returned alerts at the
- * position this run used to occupy, so the emitted key order is unchanged. */
-export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
-  const out: TeamAlert[] = [];
-  const {
-    questions,
-    staleQuestions,
-    refused,
-    operatorHeld,
-    stalledEntries,
-    planDependency,
-    strandedPlans,
-    duplicatedHeadings,
-    liveFinished,
-    validationGaps,
-    fixClaims,
-  } = input;
+function pushQuestionsAlert(out: TeamAlert[], questions: readonly string[]): void {
   if (questions.length) {
     out.push({
       key: "questions",
@@ -58,15 +37,18 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: [{ label: "Answer", act: "questions" }],
     });
   }
-  // A stale question (doctor's STALE_QUESTION_DAYS rule, src/doctor/doctor-backlog-bugs.ts
-  // checkStaleQuestions) has waited a week without an answer — a role is stuck behind a decision,
-  // the exact class every other backlog row raises as an amber alert — so it asks (amber) the way
-  // the stale-bug alert does, naming the oldest question, its age, and the `tumwater questions
-  // answer` fix. Its callers pass it oldest-first (alert-feeds.ts staleOpenQuestions sorts
-  // most-days-waited first), so the first element is the most-stale question and is named with its
-  // position and days; the rest are folded through entryListDetail like the questions and refused
-  // alerts, so the wording and counts cannot drift. The `questions` action opens the Questions tab,
-  // so the alert carries no row address.
+}
+
+// A stale question (doctor's STALE_QUESTION_DAYS rule, src/doctor/doctor-backlog-bugs.ts
+// checkStaleQuestions) has waited a week without an answer — a role is stuck behind a decision,
+// the exact class every other backlog row raises as an amber alert — so it asks (amber) the way
+// the stale-bug alert does, naming the oldest question, its age, and the `tumwater questions
+// answer` fix. Its callers pass it oldest-first (alert-feeds.ts staleOpenQuestions sorts
+// most-days-waited first), so the first element is the most-stale question and is named with its
+// position and days; the rest are folded through entryListDetail like the questions and refused
+// alerts, so the wording and counts cannot drift. The `questions` action opens the Questions tab,
+// so the alert carries no row address.
+function pushStaleQuestionsAlert(out: TeamAlert[], staleQuestions: readonly StaleQuestion[]): void {
   if (staleQuestions.length) {
     const first = staleQuestions[0]!;
     const rest = staleQuestions.slice(1);
@@ -81,7 +63,10 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: [{ label: "Answer", act: "questions" }],
     });
   }
-  // Refused entries hold until a human decides; amber because the operator has to act.
+}
+
+// Refused entries hold until a human decides; amber because the operator has to act.
+function pushRefusedAlert(out: TeamAlert[], refused: readonly RefusedEntry[]): void {
   if (refused.length) {
     const first = refused[0]!;
     out.push({
@@ -92,11 +77,14 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: openBacklogAction(first),
     });
   }
-  // A Needs-review/Needs-replan entry whose held count reached the operator threshold parks
-  // until a human releases it (tumwater plan|bug --release, part 2/3); amber because only the
-  // operator can clear it, right after the refused alert, naming the entry like the refused
-  // alert does. Unlike refused, a held-for-operator entry is still in the normal review
-  // cycle below the threshold — only the at-past-threshold list reaches here (operatorHeldEntries).
+}
+
+// A Needs-review/Needs-replan entry whose held count reached the operator threshold parks
+// until a human releases it (tumwater plan|bug --release, part 2/3); amber because only the
+// operator can clear it, right after the refused alert, naming the entry like the refused
+// alert does. Unlike refused, a held-for-operator entry is still in the normal review
+// cycle below the threshold — only the at-past-threshold list reaches here (operatorHeldEntries).
+function pushOperatorHeldAlert(out: TeamAlert[], operatorHeld: readonly RefusedEntry[]): void {
   if (operatorHeld.length) {
     const first = operatorHeld[0]!;
     out.push({
@@ -109,13 +97,16 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: openBacklogAction(first),
     });
   }
-  // An entry parked by a Needs-review/Needs-replan note (the doctor's `stalled entries` row,
-  // behind the held threshold) sits until the plan role splits or replans it — amber because
-  // the plan role is the only one that can clear it, right after the operator-held alert,
-  // naming the first such entry in file order, its file, its note kind, and the fix. Same
-  // `entryHold` classification as `operatorHeldEntries` and `checkStalledEntries`, so the
-  // always-on alert and the doctor cannot disagree on which holds are role-resolvable. A
-  // held-for-operator entry is excluded here.
+}
+
+// An entry parked by a Needs-review/Needs-replan note (the doctor's `stalled entries` row,
+// behind the held threshold) sits until the plan role splits or replans it — amber because
+// the plan role is the only one that can clear it, right after the operator-held alert,
+// naming the first such entry in file order, its file, its note kind, and the fix. Same
+// `entryHold` classification as `operatorHeldEntries` and `checkStalledEntries`, so the
+// always-on alert and the doctor cannot disagree on which holds are role-resolvable. A
+// held-for-operator entry is excluded here.
+function pushStalledEntriesAlert(out: TeamAlert[], stalledEntries: readonly StalledEntry[]): void {
   if (stalledEntries.length) {
     const first = stalledEntries[0]!;
     out.push({
@@ -126,12 +117,15 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: openBacklogAction(first),
     });
   }
-  // A broken plan-dependency clause (the doctor's `plan dependencies` rule,
-  // src/doctor/doctor-backlog-plans.ts planDependencyProblem, via alert-feeds.ts's
-  // planDependencyAlert) is invisible in the backlog listings — the claim allocator keeps
-  // acting on the misread clause — so it asks (amber) like the stale-bug alert, named by type
-  // and carrying the doctor's exact message. One alert at most (the problem set is the single
-  // most serious rule), and the fix is editing PLANS.md's heading, so there are no actions.
+}
+
+// A broken plan-dependency clause (the doctor's `plan dependencies` rule,
+// src/doctor/doctor-backlog-plans.ts planDependencyProblem, via alert-feeds.ts's
+// planDependencyAlert) is invisible in the backlog listings — the claim allocator keeps
+// acting on the misread clause — so it asks (amber) like the stale-bug alert, named by type
+// and carrying the doctor's exact message. One alert at most (the problem set is the single
+// most serious rule), and the fix is editing PLANS.md's heading, so there are no actions.
+function pushPlanDependencyAlert(out: TeamAlert[], planDependency: PlanDependencyProblem | null): void {
   if (planDependency !== null) {
     const titles: Record<PlanDependencyProblem["kind"], string> = {
       cycle: "Plan dependency cycle blocks a whole series",
@@ -148,14 +142,17 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // A plan heading filed under the wrong ## section (the doctor's `plans stuck in Planned`
-  // rule, checkStrandedPlans, src/doctor/doctor-backlog-plans.ts, via the shared
-  // strandedPlanEntriesFor) sits invisible to every reader that scans the right section: a
-  // `(planned …)` heading under ## Done never enters a Planned reader, and a done-dated heading
-  // still under ## Planned invites a second implementation. The clean role repairs it only when
-  // it happens to run and the doctor warns only on request, so it asks (amber) the way the
-  // plan-dependency alert does, naming the first stranded heading, its file, its section, and
-  // the section it belongs under; the rest are folded through joinWithMore.
+}
+
+// A plan heading filed under the wrong ## section (the doctor's `plans stuck in Planned`
+// rule, checkStrandedPlans, src/doctor/doctor-backlog-plans.ts, via the shared
+// strandedPlanEntriesFor) sits invisible to every reader that scans the right section: a
+// `(planned …)` heading under ## Done never enters a Planned reader, and a done-dated heading
+// still under ## Planned invites a second implementation. The clean role repairs it only when
+// it happens to run and the doctor warns only on request, so it asks (amber) the way the
+// plan-dependency alert does, naming the first stranded heading, its file, its section, and
+// the section it belongs under; the rest are folded through joinWithMore.
+function pushStrandedPlansAlert(out: TeamAlert[], strandedPlans: readonly StrandedPlanEntry[]): void {
   if (strandedPlans.length) {
     const first = strandedPlans[0]!;
     const rest = strandedPlans.slice(1);
@@ -173,13 +170,16 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // A duplicated `## ` section heading already on main (the doctor's `backlog headings` row,
-  // checkBacklogHeadings, src/doctor/doctor-backlog-plans.ts, via the shared
-  // duplicatedBacklogHeadings) sits until a deliberate removal edit — the merge gate blocks
-  // only a merge that ADDS another copy, so a duplicate already on main persists and hides
-  // every later entry under its name from the `## ` section readers. It asks (amber) the way
-  // the stranded-plan alert does, naming the first file-heading pair and folding the rest
-  // through joinWithMore; the fix is editing a backlog file, so there are no actions.
+}
+
+// A duplicated `## ` section heading already on main (the doctor's `backlog headings` row,
+// checkBacklogHeadings, src/doctor/doctor-backlog-plans.ts, via the shared
+// duplicatedBacklogHeadings) sits until a deliberate removal edit — the merge gate blocks
+// only a merge that ADDS another copy, so a duplicate already on main persists and hides
+// every later entry under its name from the `## ` section readers. It asks (amber) the way
+// the stranded-plan alert does, naming the first file-heading pair and folding the rest
+// through joinWithMore; the fix is editing a backlog file, so there are no actions.
+function pushBacklogHeadingsAlert(out: TeamAlert[], duplicatedHeadings: readonly BacklogHeadingDuplicate[]): void {
   if (duplicatedHeadings.length) {
     const first = duplicatedHeadings[0]!;
     const rest = duplicatedHeadings.slice(1);
@@ -196,14 +196,17 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // Finished history still in the live backlog files (the doctor's `backlog archive` rule,
-  // checkLiveFinished, src/doctor/doctor-backlog-plans.ts, via the shared liveFinishedEntriesFor)
-  // is the one backlog-hygiene rule the doctor warned but no always-on alert surfaced — every
-  // other rule (stranded plans, duplicated headings, validation gaps, plan dependencies, stale
-  // bugs and questions) has one, so an operator watching `tumwater status` or the dashboard never
-  // sees the growing finished sections until they run `tumwater doctor`. It asks (amber) the way
-  // the duplicated-heading alert does, naming each live file, its finished section, its entry
-  // count, and its size in KB; the fix is the `tumwater archive` command, so there are no actions.
+}
+
+// Finished history still in the live backlog files (the doctor's `backlog archive` rule,
+// checkLiveFinished, src/doctor/doctor-backlog-plans.ts, via the shared liveFinishedEntriesFor)
+// is the one backlog-hygiene rule the doctor warned but no always-on alert surfaced — every
+// other rule (stranded plans, duplicated headings, validation gaps, plan dependencies, stale
+// bugs and questions) has one, so an operator watching `tumwater status` or the dashboard never
+// sees the growing finished sections until they run `tumwater doctor`. It asks (amber) the way
+// the duplicated-heading alert does, naming each live file, its finished section, its entry
+// count, and its size in KB; the fix is the `tumwater archive` command, so there are no actions.
+function pushBacklogArchiveAlert(out: TeamAlert[], liveFinished: readonly LiveFinishedEntry[]): void {
   if (liveFinished.length) {
     out.push({
       key: "backlog-archive",
@@ -216,17 +219,20 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // A Fixed record with a bad Validation gap trace (the doctor's `validation gaps` check,
-  // src/doctor/doctor-backlog-plans.ts checkValidationGaps) is the always-on twin of that
-  // doctor row: a newest Fixed record that omits its **Validation gap:** line, names a tag
-  // outside the closed vocabulary, or declares `unclear-invariant` without pinning a
-  // docs/invariants.md section is invisible or misleading to every closed-vocabulary consumer,
-  // so it asks (amber) the way the stranded-plan alert does, naming the first offending record
-  // and the fix. It is fed from the same scan (validationGapProblems over validationGapRecords)
-  // the doctor's check uses, so the alert and the doctor cannot drift on the problem set, and
-  // that scan runs no sourceHaystack walk, so it adds only the same two backlog-file reads the
-  // doctor's check already makes to the poll path. The fix is editing BUGS.md, so it has no
-  // buttons.
+}
+
+// A Fixed record with a bad Validation gap trace (the doctor's `validation gaps` check,
+// src/doctor/doctor-backlog-plans.ts checkValidationGaps) is the always-on twin of that
+// doctor row: a newest Fixed record that omits its **Validation gap:** line, names a tag
+// outside the closed vocabulary, or declares `unclear-invariant` without pinning a
+// docs/invariants.md section is invisible or misleading to every closed-vocabulary consumer,
+// so it asks (amber) the way the stranded-plan alert does, naming the first offending record
+// and the fix. It is fed from the same scan (validationGapProblems over validationGapRecords)
+// the doctor's check uses, so the alert and the doctor cannot drift on the problem set, and
+// that scan runs no sourceHaystack walk, so it adds only the same two backlog-file reads the
+// doctor's check already makes to the poll path. The fix is editing BUGS.md, so it has no
+// buttons.
+function pushValidationGapsAlert(out: TeamAlert[], validationGaps: readonly ValidationGapProblem[]): void {
   if (validationGaps.length) {
     const first = validationGaps[0]!;
     const rest = validationGaps.slice(1);
@@ -247,15 +253,18 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // A newest Fixed record whose Fix paragraph names only code absent from the tree (the
-  // doctor's `claimed bugs` check, src/doctor/doctor-backlog-plans.ts checkFixClaims) is the
-  // always-on twin of that doctor row: a fix claim that names no live symbol is invisible to
-  // every consumer that reads BUGS.md (BUGS-FIXED.md's long fight over an already-fixed entry),
-  // so it asks (amber) the way the validation-gaps alert does, naming the first record and the
-  // missing symbols. It is fed from the same scan (fixClaimProblems over fixClaimRecords) the
-  // doctor's check uses, so the alert and the doctor cannot drift on the problem set, and that
-  // scan reads the tree only when a file changed (cachedSourceHaystack), so it adds no re-read
-  // to the 1 Hz poll path. The fix is editing BUGS.md, so it has no buttons.
+}
+
+// A newest Fixed record whose Fix paragraph names only code absent from the tree (the
+// doctor's `claimed bugs` check, src/doctor/doctor-backlog-plans.ts checkFixClaims) is the
+// always-on twin of that doctor row: a fix claim that names no live symbol is invisible to
+// every consumer that reads BUGS.md (BUGS-FIXED.md's long fight over an already-fixed entry),
+// so it asks (amber) the way the validation-gaps alert does, naming the first record and the
+// missing symbols. It is fed from the same scan (fixClaimProblems over fixClaimRecords) the
+// doctor's check uses, so the alert and the doctor cannot drift on the problem set, and that
+// scan reads the tree only when a file changed (cachedSourceHaystack), so it adds no re-read
+// to the 1 Hz poll path. The fix is editing BUGS.md, so it has no buttons.
+function pushFalseFixesAlert(out: TeamAlert[], fixClaims: readonly FixClaimProblem[]): void {
   if (fixClaims.length) {
     const first = fixClaims[0]!;
     const rest = fixClaims.slice(1);
@@ -270,6 +279,42 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  return out;
 }
 
+/** The backlog alerts, in emission order: open questions, refused entries, operator-held
+ * entries, stalled entries, a broken plan-dependency clause, stranded plans, duplicated
+ * backlog headings, finished history still in the live backlog files, and Fixed records with a
+ * bad Validation gap trace. Extracted from
+ * teamAlerts (part 2/5 of the teamAlerts split) so the shared module stays small; the input
+ * names exactly the fields this run reads. The caller pushes the returned alerts at the
+ * position this run used to occupy, so the emitted key order is unchanged. Each alert arm is a
+ * module-private builder named for its alert, in this same emission order, so a backlog alert
+ * is found by name. */
+export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
+  const out: TeamAlert[] = [];
+  const {
+    questions,
+    staleQuestions,
+    refused,
+    operatorHeld,
+    stalledEntries,
+    planDependency,
+    strandedPlans,
+    duplicatedHeadings,
+    liveFinished,
+    validationGaps,
+    fixClaims,
+  } = input;
+  pushQuestionsAlert(out, questions);
+  pushStaleQuestionsAlert(out, staleQuestions);
+  pushRefusedAlert(out, refused);
+  pushOperatorHeldAlert(out, operatorHeld);
+  pushStalledEntriesAlert(out, stalledEntries);
+  pushPlanDependencyAlert(out, planDependency);
+  pushStrandedPlansAlert(out, strandedPlans);
+  pushBacklogHeadingsAlert(out, duplicatedHeadings);
+  pushBacklogArchiveAlert(out, liveFinished);
+  pushValidationGapsAlert(out, validationGaps);
+  pushFalseFixesAlert(out, fixClaims);
+  return out;
+}
