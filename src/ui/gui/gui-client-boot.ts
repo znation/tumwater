@@ -117,6 +117,20 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   function kindOf(file) { return file === "bugs" ? "bug" : "plan"; }
   function entryFile(file) { return file === "bugs" ? "BUGS.md" : "PLANS.md"; }
   function pickupRole(file) { return file === "bugs" ? "bugfix" : "feature"; }
+  // The typed-number guard the interval/instances save arms share: a type=number input
+  // reports "" both for a field cleared on purpose (its default) and for text the browser
+  // rejected (badInput), and still accepts exponent/hex spellings Number() reads that no one
+  // means here — so each arm maps badInput to one message and a disallowed shape to another,
+  // then reads the trimmed raw value. Returns undefined after flashing, so the save must
+  // stop; the caller turns the empty raw value into its own null (clear-the-override) and
+  // Number() otherwise. The team cap save does not use this — parseBudgetField owns that
+  // field's own 0-or-more bound and empty→0 policy (see parseBudgetField).
+  function typedNumberValue(input, badInputMsg, shapeMsg) {
+    if (input.validity && input.validity.badInput) { showFlash("error: " + badInputMsg); return undefined; }
+    const raw = input.value.trim();
+    if (raw !== "" && !/^\d*\.?\d+$/.test(raw)) { showFlash("error: " + shapeMsg); return undefined; }
+    return raw;
+  }
   function runAct(act, arg) {
     // Six drawer edits end identically: clear the edit's in-progress flag, reload the role
     // row, and toast the server's message (or a fallback when it sends none). Only the flag to
@@ -280,23 +294,16 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     } else if (act === "interval-save") {
       const input = $("intervaleditinput");
       if (!input) return;
-      // A type=number input reports "" both for a field cleared on purpose (the team
-      // default) and for text the browser rejected ("$2"); validity.badInput tells them
-      // apart, so a typo is an error instead of silently clearing the override — the cap
-      // arm's guard, in scope from the operator blob concatenated earlier.
-      if (input.validity && input.validity.badInput) {
-        showFlash("error: the interval must be a number of 0 or more — leave it empty for the team default");
-        return;
-      }
-      const raw = input.value.trim();
-      // A type=number input also accepts exponent/hex spellings the browser parses ("1e2" →
-      // 100, "0x10" → 16), so badInput alone cannot reject them — the plain-decimal shape rule
-      // the CLI's --min-run-interval and the TUI Ctrl+S editor apply catches them here too.
-      if (raw !== "" && !/^\d*\.?\d+$/.test(raw)) {
-        showFlash("error: the interval must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation");
-        return;
-      }
-      const value = raw === "" ? null : Number(raw);
+      // typedNumberValue holds the badInput and plain-decimal shape guards; undefined means
+      // one flashed and the save stops. The empty raw value posts null (the server clears the
+      // override); "1e2" and "0x10" are rejected as shape, not silently read as a count.
+      const typed = typedNumberValue(
+        input,
+        "the interval must be a number of 0 or more — leave it empty for the team default",
+        "the interval must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation",
+      );
+      if (typed === undefined) return;
+      const value = typed === "" ? null : Number(typed);
       postAction("/api/role-interval", { role: arg, minRunIntervalSeconds: value }, settingDone(() => { intervalEditing = null; }, "Min run interval updated"));
     } else if (act === "instances-edit") {
       startInstancesEdit(arg, drawerRole?.view?.instances ?? "");
@@ -305,27 +312,18 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     } else if (act === "instances-save") {
       const input = $("instanceseditinput");
       if (!input) return;
-      // A type=number input reports "" both for a field cleared on purpose (the default 1)
-      // and for text the browser rejected ("$2"); validity.badInput tells them apart, so a
-      // typo is an error instead of silently clearing the count — the interval arm's guard,
-      // in scope from the operator blob concatenated earlier. (A rejected "2.5" is a real
-      // number the browser accepts, so it posts and validateConfig's 1–8 integer rule 400s
-      // it, flashed through postAction's error path.)
-      if (input.validity && input.validity.badInput) {
-        showFlash("error: the instances must be an integer from 1 to 8 — leave it empty for the default 1");
-        return;
-      }
-      const raw = input.value.trim();
-      // A type=number input also accepts exponent spellings the browser parses ("2e0" → 2), so
-      // badInput alone cannot reject them — the plain-decimal shape rule the CLI's --instances
-      // and the TUI Ctrl+G editor apply catches them here too, so a silent misread is an error
-      // instead of silently writing 2. (A rejected "2.5" is a real number the browser accepts,
-      // so it posts and validateConfig's 1–8 integer rule 400s it.)
-      if (raw !== "" && !/^\d*\.?\d+$/.test(raw)) {
-        showFlash("error: the instances must be a plain integer like 2 — no +/-, exponent, or hex notation — leave it empty for the default 1");
-        return;
-      }
-      const value = raw === "" ? null : Number(raw);
+      // typedNumberValue holds the badInput and plain-decimal shape guards; undefined means
+      // one flashed and the save stops. The empty raw value posts null (the server restores
+      // the default 1); "2e0" is rejected as shape, not silently read as 2. (A rejected "2.5"
+      // is a real number the browser accepts, so it posts and validateConfig's 1–8 integer
+      // rule 400s it, flashed through postAction's error path.)
+      const typed = typedNumberValue(
+        input,
+        "the instances must be an integer from 1 to 8 — leave it empty for the default 1",
+        "the instances must be a plain integer like 2 — no +/-, exponent, or hex notation — leave it empty for the default 1",
+      );
+      if (typed === undefined) return;
+      const value = typed === "" ? null : Number(typed);
       postAction("/api/role-instances", { role: arg, instances: value }, settingDone(() => { instancesEditing = null; }, "Instances updated"));
     } else if (act === "instructions-edit") {
       startInstructionsEdit(arg, drawerRole?.view?.instructions ?? "");
