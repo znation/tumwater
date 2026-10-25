@@ -492,7 +492,7 @@ export function renderReportMarkdown(data: ReportData): string {
     // suite went red before passing shows here. Zero-absent: no line when no day fails.
     pushDayCameoLine(lines, data.series, "Red merge checks", (d) => d.checkFailures, (n) => `×${n}`);
     // Per-day main red wall-clock, beside the red-check counts above: how long each day main
-    // had no passing full check (the span every code role was held). Team-only (main's own
+    // had its own check red (the span main had no passing full check). Team-only (main's own
     // red time, not any role's) and zero-absent: no line when no day was red.
     pushDayCameoLine(lines, data.series, "Main red", (d) => d.mainRedMs, durationLabel);
     // The day twin of the --since window's totals line: the same tests ranked across the

@@ -33,7 +33,7 @@ export const NOTIFY_EVENT_TYPES = [
   "role_streak_paused", // the error-streak circuit breaker auto-paused a role
   "role_cap_paused", // the role's own daily cost cap is reached — it stops starting runs
   "disk_low", // free space on the worktrees volume dropped below diskHoldGB — new work is held
-  "main_red_hold", // main's own check is red — every code role is held until a fix lands
+  "main_red_hold", // main's own check is red — roles keep authoring; the merge-side main_red pin queues a kept change until main moves past it, and the ci healer is handed the failing tests
   "merge_failed", // the merge slot finished without merging a change
   "restart_blocked", // the self-redeploy for main is blocked and latched — the team is stuck behind it
   "question_posted", // a merge posted a new QUESTIONS.md ## Open entry — only a human can answer it

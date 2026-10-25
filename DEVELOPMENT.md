@@ -231,8 +231,9 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/review/`: the adversarial review gate (`review.ts`) and its helpers — pre-review
   verification, verdict parsing, the missing-verdict follow-up, suite reruns, doc-only
   exemptions, and known flakes.
-- `src/baseline/`: the pristine-main baseline check and the red-main detection that rejects
-  every code diff while main itself is red.
+- `src/baseline/`: the pristine-main baseline check and the red-main detection that verifies
+  main itself and feeds the merge-side `main_red` pin and the `ci` healer hand-off, with no
+  authoring block.
 - `src/redeploy/`: the update path — the staleness policy, the probes that decide a
   safe restart, and the production redeployer.
 - `src/doctor/`: the `tumwater doctor` pre-flight checks and their shared report contract.
