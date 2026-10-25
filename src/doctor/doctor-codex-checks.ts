@@ -19,6 +19,7 @@ import {
   codexSeamsInUse,
   loadConfigForCheck,
   minVersionOutcome,
+  parseCliVersion,
   seamedModels,
 } from "./doctor-model-checks.js";
 
@@ -68,10 +69,6 @@ function codexProbe(
   return boundedProbe(resolved.bin, args, env, timeoutMs, AUTH_CHECK_MAX_OUTPUT_BYTES);
 }
 
-/** The dotted version in `codex --version`'s output, or undefined when it names none. */
-function parseCodexCliVersion(output: string): string | undefined {
-  return /(\d+\.\d+\.\d+)/.exec(output)?.[1];
-}
 
 /** codex CLI-version readiness (plans/codex-backend.md "Hand steps", H1): the team targets
  * `CODEX_MIN_VERSION` or later, the version H1 verified live. An installed CLI below that fails
@@ -85,7 +82,7 @@ export async function checkCodexVersion(
   const base = codexCheckBase(root);
   if (base === null || "level" in base) return base;
   const result = await codexProbe(base.config, ["--version"], pathEnv, timeoutMs);
-  const found = result?.code === 0 ? parseCodexCliVersion(result.stdout) : undefined;
+  const found = result?.code === 0 ? parseCliVersion(result.stdout) : undefined;
   return minVersionOutcome("codex", found, CODEX_MIN_VERSION, "upgrade the codex CLI");
 }
 

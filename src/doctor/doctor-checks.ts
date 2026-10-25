@@ -37,7 +37,7 @@ import { formatBytes } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
 import { plural } from "../text/phrases.js";
 import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gate.js";
-import { claudeSeamsInUse, minVersionOutcome, opencodeSeamsInUse, piSeamsInUse } from "./doctor-model-checks.js";
+import { claudeSeamsInUse, minVersionOutcome, opencodeSeamsInUse, parseCliVersion, piSeamsInUse } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
 import { childEnv } from "../process/process.js";
@@ -284,19 +284,6 @@ export function checkBackendBinary(
   return okOutcome(checks.map(({ agent, outcome }) => `${agent}: ${outcome.detail}`).join("; "));
 }
 
-/** claude transcript disk — the total size of the claude config dir's `projects/`
- * (plans/agent-backends.md "Sessions" retention): the perf adapter ages transcripts out under
- * its own cleanupPeriodDays, so an operator asking where claude's disk went gets the number
- * without `du`. Informational (ok) in every case — a large transcript tree is a fact, not a
- * misconfiguration. Stands down when no seam routes to claude: a pi-only team reads no claude
- * state, and the report must not walk a host directory that has nothing to do with the team.
- * `homeDir` and `env` are test seams. */
-/** The dotted version in `opencode --version` (prints `opencode v2.0.32`), or undefined when it
- * names none. */
-function parseOpencodeCliVersion(output: string): string | undefined {
-  return /v(\d+\.\d+\.\d+)/.exec(output)?.[1];
-}
-
 /** OpenCode CLI-version readiness (plans/opencode-backend.md "Which OpenCode", part 7/7): the
  * team targets V2 at 2.0.32 or later, the version H1 verified live. An installed CLI below that
  * (a 1.x binary included) fails naming `brew install opencode`; at or above it reads the
@@ -317,10 +304,17 @@ export async function checkOpencodeVersion(
     timeoutMs,
     AUTH_CHECK_MAX_OUTPUT_BYTES,
   );
-  const found = result !== null && result.code === 0 ? parseOpencodeCliVersion(result.stdout) : undefined;
+  const found = result !== null && result.code === 0 ? parseCliVersion(result.stdout, true) : undefined;
   return minVersionOutcome("opencode", found, OPENCODE_MIN_VERSION, "run `brew install opencode`");
 }
 
+/** claude transcript disk — the total size of the claude config dir's `projects/`
+ * (plans/agent-backends.md "Sessions" retention): the perf adapter ages transcripts out under
+ * its own cleanupPeriodDays, so an operator asking where claude's disk went gets the number
+ * without `du`. Informational (ok) in every case — a large transcript tree is a fact, not a
+ * misconfiguration. Stands down when no seam routes to claude: a pi-only team reads no claude
+ * state, and the report must not walk a host directory that has nothing to do with the team.
+ * `homeDir` and `env` are test seams. */
 export function checkClaudeTranscripts(
   config: TumwaterConfig | undefined,
   homeDir: string = os.homedir(),

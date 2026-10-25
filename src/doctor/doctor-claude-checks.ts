@@ -12,6 +12,7 @@ import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcom
 import {
   claudeSeamsInUse,
   loadConfigForCheck,
+  parseCliVersion,
   seamedModels,
 } from "./doctor-model-checks.js";
 
@@ -121,11 +122,6 @@ export async function checkAnthroApiKey(
   );
 }
 
-/** The dotted version in `claude --version`'s output, or undefined when it names none. */
-function parseClaudeCliVersion(output: string): string | undefined {
-  return /(\d+\.\d+\.\d+)/.exec(output)?.[1];
-}
-
 /** claude CLI-version readiness (plans/agent-backends.md finding 9): an installed CLI below a
  * configured model's minimum fails or misprices that model, and team runs disable the
  * auto-updater, so the version an operator has is the version agent runs use. Fails below the
@@ -149,7 +145,7 @@ export async function checkClaudeVersion(
     if (min !== undefined) floors.set(seam.model!, min);
   }
   const result = await claudeProbe(config, ["--version"], pathEnv, timeoutMs);
-  const found = result !== null && result.code === 0 ? parseClaudeCliVersion(result.stdout) : undefined;
+  const found = result !== null && result.code === 0 ? parseCliVersion(result.stdout) : undefined;
   if (found === undefined)
     return warnOutcome("could not check — `claude --version` did not run or its output was unreadable");
   const clamped = seams.some((seam) => seam.thinking === "off" || seam.thinking === "minimal");

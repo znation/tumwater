@@ -107,6 +107,16 @@ export function seamedModels(config: TumwaterConfig, agent: string): SeamPair[] 
   return seamPairs(config).filter((p) => p.agent === agent && p.model !== undefined);
 }
 
+/** The dotted version one of the backend CLIs prints in its `--version` output (`2.0.32`),
+ * or undefined when it names none. claude and codex print a bare version; opencode prints it
+ * prefixed with `v` (`opencode v2.0.32`), which the caller opts into with `requireVPrefix` so
+ * its check cannot mistake a version-like string missing the `v`. One home for the parser so
+ * the claude, codex and opencode version checks cannot drift on the version shape they accept.
+ */
+export function parseCliVersion(output: string, requireVPrefix = false): string | undefined {
+  return (requireVPrefix ? /v(\d+\.\d+\.\d+)/ : /(\d+\.\d+\.\d+)/).exec(output)?.[1];
+}
+
 /** The warn/fail/ok verdict for a backend CLI's `--version` check against one flat minimum
  * version (codex's checkCodexVersion and opencode's checkOpencodeVersion both require a
  * single floor for the whole backend, unlike claude's per-model floors). `found` is the
