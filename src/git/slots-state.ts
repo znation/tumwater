@@ -114,13 +114,23 @@ function readSlotRecord(slot: unknown): SlotRecord | null {
     ...slot,
     dir: slot.dir,
     lease: isSlotLease(slot.lease) ? readSlotLease(slot.lease) : null,
-    pinnedFor: typeof slot.pinnedFor === "string" ? canonicalRoleId(slot.pinnedFor) : null,
+    pinnedFor: roleIdOrNull(slot.pinnedFor),
     // Absent stays absent (an older writer's shape is preserved); present-but-foreign is null.
     pinnedAt: slot.pinnedAt === undefined ? undefined : finiteNumber(slot.pinnedAt, null),
-    lastRole: typeof slot.lastRole === "string" ? canonicalRoleId(slot.lastRole) : null,
+    lastRole: roleIdOrNull(slot.lastRole),
     lastReleasedAt: finiteNumber(slot.lastReleasedAt, null),
-    unsettledRun: typeof slot.unsettledRun === "string" ? canonicalRoleId(slot.unsettledRun) : null,
+    unsettledRun: roleIdOrNull(slot.unsettledRun),
   };
+}
+
+/** A string role id read from a persisted slot record, canonicalized, or null when absent
+ * or foreign. The three canonical-id fields of SlotRecord (pinnedFor, lastRole,
+ * unsettledRun) share this one read, so they cannot drift on how a non-string or legacy id
+ * reads: a non-string rides along as null (a hand edit or older writer that dropped the
+ * field must not name a role), and a legacy id resolves through canonicalRoleId like every
+ * reader here. */
+function roleIdOrNull(value: unknown): string | null {
+  return typeof value === "string" ? canonicalRoleId(value) : null;
 }
 
 function writeSlotsStateUnlocked(root: string, state: SlotsState): void {
