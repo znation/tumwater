@@ -16,6 +16,8 @@ import { waitFor } from "./helpers/wait.js";
 import { coverageRowsFromDumps, formatCoverageTable } from "./coverage-table.js";
 import {
   buildNodeTestArgs,
+  isE2eTier,
+  nodeSupportsTestConcurrency,
   nodeSupportsTestCoverageExclude,
   noNameMatchReason,
   orderByDuration,
@@ -207,6 +209,19 @@ test("nodeSupportsTestCoverageExclude follows node 22.5, where the flag arrived"
   assert.equal(nodeSupportsTestCoverageExclude(""), false);
 });
 
+test("nodeSupportsTestConcurrency follows node 20.10, where --test-concurrency arrived", () => {
+  // The engines floor is >=20.3, so the predicate must hold for every node the package supports,
+  // not just current ones: 20.10 and later support it, earlier ones do not.
+  assert.equal(nodeSupportsTestConcurrency("20.3.0"), false);
+  assert.equal(nodeSupportsTestConcurrency("20.9.0"), false);
+  assert.equal(nodeSupportsTestConcurrency("20.10.0"), true);
+  assert.equal(nodeSupportsTestConcurrency("20.19.0"), true);
+  assert.equal(nodeSupportsTestConcurrency("21.0.0"), true);
+  assert.equal(nodeSupportsTestConcurrency("24.7.0"), true);
+  // An unparsable version is not evidence of the flag.
+  assert.equal(nodeSupportsTestConcurrency(""), false);
+});
+
 test("buildNodeTestArgs adds the coverage flags only under coverage, and keeps the #name reporters", () => {
   const sel = { files: ["/d/a.test.js"], namePattern: "resume" };
   const base = { reporter: "rep.js", fresh: "/s/fresh.json", tap: "/s/tap.out" };
@@ -233,6 +248,27 @@ test("buildNodeTestArgs adds the coverage flags only under coverage, and keeps t
   const noPattern = buildNodeTestArgs({ files: ["/d/a.test.js"] }, { ...base, coverage: true });
   assert.ok(noPattern.every((a) => !a.startsWith("--test-reporter=tap")));
   assert.ok(noPattern.includes("--experimental-test-coverage"));
+});
+
+test("an all-e2e selection runs its files one at a time", () => {
+  // Only a non-empty selection whose every basename is e2e counts as the tier.
+  assert.equal(isE2eTier(["/d/a.e2e.test.js", "/d/b.e2e.test.js"]), true);
+  assert.equal(isE2eTier([]), false);
+  assert.equal(isE2eTier(["/d/a.test.js"]), false);
+  assert.equal(isE2eTier(["/d/a.test.js", "/d/b.e2e.test.js"]), false);
+
+  const base = { reporter: "rep.js", fresh: "/s/fresh.json" };
+  // With concurrency set, --test-concurrency sits right after --test (before the reporters) and
+  // the files stay last.
+  const serial = buildNodeTestArgs({ files: ["/d/a.e2e.test.js", "/d/b.e2e.test.js"] }, { ...base, concurrency: 1 });
+  assert.equal(serial[0], "--test");
+  assert.equal(serial[1], "--test-concurrency=1");
+  assert.ok(serial.some((a) => a.startsWith("--test-reporter")));
+  assert.deepEqual(serial.slice(-2), ["/d/a.e2e.test.js", "/d/b.e2e.test.js"]);
+
+  // Without concurrency there is no --test-concurrency at all.
+  const parallel = buildNodeTestArgs({ files: ["/d/a.e2e.test.js"] }, base);
+  assert.ok(parallel.every((a) => !a.startsWith("--test-concurrency")));
 });
 
 test("timedOutFailure reads a real spawnSync timeout kill as the ceiling message and every other outcome as null", () => {

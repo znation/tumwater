@@ -4,7 +4,8 @@
  * tier-ordering cases): these tests start a live orchestrator and wait on real timers, so
  * their fixed wall-clock budgets are not reliable on a loaded machine — they run via
  * `npm run test:e2e` (and CI), not in the unfiltered `npm test` run the harness's merge gate
- * executes (BUGS.md 2026-09-21). The files run in parallel processes; this one holds
+ * executes (BUGS.md 2026-09-21). The runner runs the tier's files one at a time
+ * (`--test-concurrency=1`, node 20.10+); this one holds
  * scheduling basics, deferral, session pruning, live config edits, reset requests and the
  * branch watch. */
 import test from "node:test";

@@ -37,7 +37,11 @@ import { typoSuffix } from "../src/text/suggest.js";
  * behind an import guard, because this module is imported by that very test file and a
  * top-level run would recurse into node --test. A --coverage mode (npm run test:coverage) runs
  * the same selection with node's coverage table and skips the durations ledger: instrumentation
- * slows every file, and recording those skewed times would skew later runs' ordering. Node's table
+ * slows every file, and recording those skewed times would skew later runs' ordering. A pure
+ * e2e selection (`npm run test:e2e`, `npm test <file>.e2e.test.js`) runs its files one at a time
+ * on a node that knows `--test-concurrency` (v20.10+, the engines floor is >=20.3), so the tier's
+ * wall-clock waits each run
+ * against a quiet host rather than competing with sibling files. Node's table
  * flips between runs on the same tree (BUGS.md 2026-09-30), so unless the caller brought its own
  * NODE_V8_COVERAGE — docs/code-metrics/run.sh sets one around `npm run test:coverage` and maps
  * the dumps itself with coverage.cjs — the runner captures the raw V8 dumps in its scratch dir
@@ -114,6 +118,15 @@ function escapeNamePattern(name: string): string {
  * run — they are the live-orchestrator cases whose fixed wall-clock budgets are not reliable
  * under machine load (BUGS.md 2026-09-21) — and are selected only by an explicit filter. */
 const E2E_SUFFIX = ".e2e.test.js";
+
+/** True when a selection is the pure e2e tier: at least one file, and every basename carries
+ * the e2e suffix. Only such a selection serializes its files (one node --test worker at a
+ * time), so each e2e file's wall-clock waits contend with no sibling; the unit suite and any
+ * mixed selection keep node --test's own parallel workers. Exported for
+ * test/test-runner.test.ts to pin the boundary. */
+export function isE2eTier(files: readonly string[]): boolean {
+  return files.length > 0 && files.every((file) => path.basename(file).endsWith(E2E_SUFFIX));
+}
 
 /** Pick which compiled test files under `distDir` to run. No filters → every file except the
  * `.e2e.test.js` tier (run that via `npm run test:e2e`). Otherwise a file is selected when its
@@ -472,18 +485,38 @@ export function nodeSupportsTestCoverageExclude(version: string = process.versio
   return major > 22 || (major === 22 && minor >= 5);
 }
 
+/** Whether this node knows `--test-concurrency`: the flag arrived in v20.10.0. The package's
+ * engines floor is >=20.3, so nodes 20.3 through 20.9 must never be handed it but every node at
+ * or above 20.10 may. Exported for test/test-runner.test.ts to pin the boundary. */
+export function nodeSupportsTestConcurrency(version: string = process.versions.node): boolean {
+  const [majorStr, minorStr] = version.split(".");
+  const major = Number.parseInt(majorStr ?? "", 10);
+  const minor = Number.parseInt(minorStr ?? "", 10);
+  if (!Number.isInteger(major) || major < 20) return false;
+  if (major > 20) return true;
+  // major === 20: the flag arrived at 20.10.0.
+  return Number.isInteger(minor) && minor >= 10;
+}
+
 /** The node --test argv main() spawns, built from a selection: node's default spec reporter to
  * stdout (named explicitly because a second reporter would otherwise replace it), the durations
  * reporter into `fresh`, the #name pattern and its TAP side-channel reporter when the selection
- * carries a name pattern, the files themselves in the caller's order, and — under `coverage` —
- * node's coverage flags, so the run ends with the coverage table. Exported pure so
+ * carries a name pattern, the files themselves in the caller's order, under `coverage` node's
+ * coverage flags (so the run ends with the coverage table), and — under `concurrency` — a
+ * `--test-concurrency=N` right after `--test`, which caps node --test's parallel workers so a
+ * pure e2e selection (`npm run test:e2e`) runs its files one at a time. Exported pure so
  * test/test-runner.test.ts pins the flags without spawning a suite. */
 export function buildNodeTestArgs(
   sel: { files: readonly string[]; namePattern?: string },
-  opts: { reporter: string; fresh: string; tap?: string; coverage?: boolean },
+  opts: { reporter: string; fresh: string; tap?: string; coverage?: boolean; concurrency?: number },
 ): string[] {
   return [
     "--test",
+    // A pure e2e tier runs its files one at a time: `--test-concurrency` (v20.10+) caps node
+    // --test's
+    // parallel workers, so one file's wall-clock waits never contend with its siblings. The flag
+    // must precede the positional files, so it sits right after `--test`.
+    ...(opts.concurrency === undefined ? [] : [`--test-concurrency=${opts.concurrency}`]),
     "--test-reporter=spec",
     "--test-reporter-destination=stdout",
     `--test-reporter=${opts.reporter}`,
@@ -572,7 +605,16 @@ function main(): void {
   try {
     const args = buildNodeTestArgs(
       { ...sel, files: orderByDuration(sel.files, readJsonFile<Record<string, number>>(durationsPath(distDir)) ?? {}) },
-      { reporter, fresh, tap, coverage },
+      // A pure e2e tier serializes its files (one worker at a time) on a node that knows
+      // --test-concurrency, so a loaded host cannot stretch one file's waits against its siblings;
+      // the unit suite and a mixed selection keep today's argv.
+      {
+        reporter,
+        fresh,
+        tap,
+        coverage,
+        concurrency: isE2eTier(sel.files) && nodeSupportsTestConcurrency() ? 1 : undefined,
+      },
     );
     const runOnce = (): number => {
       const env = suiteEnv(scratch);
