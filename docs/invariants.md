@@ -1246,8 +1246,8 @@ state.
 (`cachedByStat`).
 
 **Pinned by.** `test/status-data.test.ts` — "snapshot serves unchanged runner state from the
-stat-keyed cache without re-reading" (it pins the cache hit and the per-poll copy; the missing-file
-case is not pinned by a test).
+stat-keyed cache without re-reading" (it pins the cache hit and the per-poll copy) and
+"runnerStateForPoll yields a fresh state for a role with no state file".
 
 ## Runner ids: only feature and bugfix split, and everything about a role resolves through its base
 
@@ -2419,8 +2419,8 @@ running a lookup. On Linux it reads the `/proc/<pid>/cwd` link, strips a trailin
 and leaves out a pid whose read fails. Elsewhere `readLsofCwds` keeps lsof's output on a numeric
 nonzero exit, because lsof exits 1 when any named pid is gone, and rejects when lsof could not
 run at all (missing, timed out, or killed by a signal), since a silent empty map would read as
-"no orphans". `list` likewise rejects when ps cannot run, but no test calls it directly; doctor's
-side of that is pinned by the `checkOrphans` test below.
+"no orphans". `list` likewise rejects when ps cannot run; doctor's side of that is pinned
+by the `checkOrphans` test below.
 
 **Binds.** `src/process/process-table.ts` (`readLsofCwds`, `systemProcessProbe.cwds`).
 
@@ -2429,7 +2429,7 @@ keeps its partial output on a nonzero exit", "readLsofCwds rejects when the runn
 at all — no lsof, a timeout, or a signal", "systemProcessProbe.cwds rejects when no lookup could
 run at all — no lsof on PATH", "systemProcessProbe.cwds on Linux reads /proc, strips ' (deleted)',
 and skips vanished pids" and "systemProcessProbe.cwds answers an empty pid list without running
-lsof"; `test/doctor-orphans.test.ts` — "checkOrphans degrades instead of crashing doctor: no table
+lsof" and "systemProcessProbe.list rejects when ps cannot run"; `test/doctor-orphans.test.ts` — "checkOrphans degrades instead of crashing doctor: no table
 warns, unreadable cwds fall back to argv".
 
 ### INV-AM3: runMarkers and launchServicesPorts never reject: an unreadable source answers an empty map or null

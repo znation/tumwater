@@ -511,6 +511,17 @@ test("parseLsofCwds keeps a name line only under a numeric process line", () => 
   assert.deepEqual([...cwds], [[7, "/kept"], [8, "/eight"]]);
 });
 
+test("systemProcessProbe.list rejects when ps cannot run", async () => {
+  // A missing ps is a real failure: the probe must reject (rather than hand back an empty
+  // table) so a caller cannot mistake a broken environment for "no processes".
+  const restorePath = pathReplace(tmpdir("no-ps-"));
+  try {
+    await assert.rejects(systemProcessProbe.list());
+  } finally {
+    restorePath();
+  }
+});
+
 test("systemProcessProbe.cwds answers an empty pid list without running lsof", async () => {
   // Pin the platform so the lsof branch is the one an empty list could wrongly reach, and empty
   // PATH so any lookup would fail. The control shows the same setup rejects for a real pid, so

@@ -286,25 +286,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** The three `test/attribute-red-check.test.ts` cases and the one `test/merge-requeue.test.ts` case above are this plan's tests; no production source changes.
 
-### Two named-but-unpinned INV cases get their tests: a missing runner-state file reads fresh, and `systemProcessProbe.list` rejects when `ps` cannot run (planned 2026-10-25 by the plan role; independent in files of every eligible plan and blocked part — no `## Planned` entry edits `test/status-data.test.ts` or `test/process.test.ts`, and the only shared file is `docs/invariants.md`, where this plan edits INV-T5 and INV-AM2 while the in-flight `MainTipVerdict` plan edits INV-CP1, the in-flight `A red merge check …` plan edits INV-CM1, and the blocked `Every commit is verified on main` part 3m/3 and part 3f/3 edit the merge-check sections, none of them near INV-T5 or INV-AM2, so whichever lands second rebases there; touches test/status-data.test.ts test/process.test.ts docs/invariants.md)
-
-**Goal.** `docs/invariants.md` names two guarantee cases as unprotected: INV-T5's "the missing-file case is not pinned by a test" and INV-AM2's "`list` likewise rejects when ps cannot run, but no test calls it directly". Pin both, and correct the two entries so neither says a case is unpinned.
-
-**Approach.**
-- test/status-data.test.ts (add `runnerStateForPoll` to a new import from `../src/status/status-polls.js`): add `runnerStateForPoll yields a fresh state for a role with no state file` — `const repo = makeRepo(); await initProject(repo, "test project");` with no state saved for the role, then `assert.deepEqual(runnerStateForPoll(repo, "clean"), freshRunnerState("clean"))`. `cachedByStat` misses a file that is not there and returns null, so this pins the `?? freshRunnerState(role)` arm specifically (and would throw at the `statOrNull` boundary if a missing file were not handled).
-- test/process.test.ts: add `systemProcessProbe.list rejects when ps cannot run` — `const restorePath = pathReplace(tmpdir("no-ps-")); try { await assert.rejects(systemProcessProbe.list()); } finally { restorePath(); }`. Empty PATH makes `execFileAsync("ps", …)` reject with ENOENT; the test pins that `list` propagates the rejection rather than degrading to an empty table, the same control shape the existing `systemProcessProbe.cwds answers an empty pid list without running lsof` test uses for `pathReplace`.
-- docs/invariants.md: in INV-T5, replace the clause "(it pins the cache hit and the per-poll copy; the missing-file case is not pinned by a test)" with "(it pins the cache hit and the per-poll copy)" and add the new test name, `runnerStateForPoll yields a fresh state for a role with no state file`, to **Pinned by.**; in INV-AM2, replace "but no test calls it directly" with nothing so the guarantee stops flagging itself, and add the new test name to **Pinned by.** beside the two `test/process.test.ts` cases.
-
-**Files touched.** test/status-data.test.ts test/process.test.ts docs/invariants.md
-
-**Acceptance criteria.**
-- The new `status-data.test.ts` case calls `runnerStateForPoll` directly for a role whose state file was never saved and compares the whole returned object to `freshRunnerState("clean")`; replacing the `?? freshRunnerState(role)` fallback with a throw would fail it, so it pins the missing-file arm and not the cache-hit path the existing test already covers.
-- The new `process.test.ts` case runs with `PATH` pointed at an empty directory and asserts `systemProcessProbe.list` **rejects**; catching the error and returning `[]` instead would fail it, so it pins the rejection and not the parse path.
-- `docs/invariants.md` INV-T5 and INV-AM2 no longer contain the strings "not pinned by a test" or "no test calls it directly", and each **Pinned by.** names its new test.
-- No file outside the Files-touched list is edited.
-
-**Tests.** The two cases above are this plan's tests; no production source changes.
-
 ### Split src/agent/run-agent.ts's single 461-line runAgent function into the stage modules its mutually-capturing closures fold into one scope (planned 2026-10-25 by the organize role; the tree's chief single-function outlier — 652 lines whose runAgent is one 461-line function (src/agent/run-agent.ts lines 188–648), by far the largest module of its kind — and the settlement half was already extracted to run-settle.ts earlier, so this completes that extraction along the same seams instead of starting a new one; independent in files of every eligible plan and blocked part — no `## Planned` entry edits src/agent/*, and the blocked `Every commit is verified on main` series touches runner-run.ts, not run-agent.ts; touches src/agent/run-agent.ts src/agent/run-spawn.ts (new) src/agent/run-stream.ts (new) test/runner-pi.test.ts test/runner.test.ts)
 
 **Needs review 2026-10-25 by feature: too large for one run (held 1)**

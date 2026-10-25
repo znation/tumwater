@@ -10,6 +10,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { snapshot } from "../src/status/status-data.js";
+import { runnerStateForPoll } from "../src/status/status-polls.js";
 import { quietHoursStatus } from "../src/scheduling/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { quietBadge } from "../src/ui/badges.js";
@@ -154,6 +155,14 @@ test("snapshot serves unchanged runner state from the stat-keyed cache without r
   saveRunnerState(repo, bumped);
   backdate(path.join(repo, ".tumwater", "state", "clean.json"), -5000);
   assert.equal(snapshot(repo).roles.find((l) => l.role === "clean")!.runs, 4);
+});
+
+test("runnerStateForPoll yields a fresh state for a role with no state file", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  // No state file was ever saved for the role: the stat-keyed cache misses and the missing
+  // file yields a fresh state rather than throwing at the stat boundary.
+  assert.deepEqual(runnerStateForPoll(repo, "clean"), freshRunnerState("clean"));
 });
 
 test("snapshot reads the orchestrator info file once per poll", async () => {
