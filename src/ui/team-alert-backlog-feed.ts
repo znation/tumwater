@@ -10,35 +10,11 @@ import { duration } from "./run-progress-model.js";
 import { humanAgo } from "../text/datetime.js";
 import { joinWithMore, squash } from "../text/text.js";
 
-interface BacklogFeedAlertsInput {
-  staleBugs: readonly StaleBug[];
-  notifyFailure: NotifyFailure | null;
-  staleWaitingBugs: readonly StaleWaitingBug[];
-  stalePrompts: readonly StalePrompt[];
-  staleMerges: readonly StaleMerge[];
-  skippedMergeFiles: readonly string[];
-  primaryOverwrite: PrimaryOverwriteBlock | null;
-  now: number;
-}
+// The per-arm builders below follow the push convention shared with the sibling splits: each
+// takes the `out` array plus the one input field its arm reads and pushes exactly the alert the
+// arm pushes, so buildBacklogFeedAlerts's emission order is its call order.
 
-/** The backlog-feed alerts, in emission order: stale open bugs, a failed notify page, waiting
- * bugs, stranded inbox prompts, a stalled merge queue, skipped merge-queue files, and merges
- * refused by an uncommitted primary checkout. Extracted from teamAlerts (part 3/5 of the
- * teamAlerts split) so the shared module stays small; the input names exactly the fields this
- * run reads. The caller pushes the returned alerts at the position this run used to occupy,
- * so the emitted key order is unchanged. */
-export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
-  const out: TeamAlert[] = [];
-  const {
-    staleBugs,
-    notifyFailure,
-    staleWaitingBugs,
-    stalePrompts,
-    staleMerges,
-    skippedMergeFiles,
-    primaryOverwrite,
-    now,
-  } = input;
+function pushStaleBugsAlert(out: TeamAlert[], staleBugs: readonly StaleBug[]): void {
   // A stale bug (doctor's STALE_BUG_DAYS rule, src/doctor/doctor-backlog-bugs.ts) sits when no
   // role fixes it — the bugfix role is disabled or failing — so it asks (amber) the way the
   // refused alert does, naming the oldest, its age, and the doctor's retract advice. Its
@@ -61,6 +37,9 @@ export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert
       actions: openBacklogAction({ file: "bugs", index: first.index }),
     });
   }
+}
+
+function pushNotifyAlert(out: TeamAlert[], notifyFailure: NotifyFailure | null, now: number): void {
   // A failed notify page (doctor's NOTIFY_CHECK_WINDOW_MS rule, src/doctor/doctor-notify.ts
   // checkNotify) leaves the team unsupervised — a dead webhook must not page the operator when
   // something else goes wrong — so a page that failed within the last day asks (amber) the way
@@ -78,6 +57,9 @@ export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert
       actions: [],
     });
   }
+}
+
+function pushWaitingBugsAlert(out: TeamAlert[], staleWaitingBugs: readonly StaleWaitingBug[]): void {
   // A waiting bug (doctor's STALE_WAIT_DAYS rule, src/doctor/doctor-backlog-bugs.ts
   // checkWaitingBugs) whose flake has not come back parks indefinitely, so a hold that has
   // outlived a week asks (amber) the way the stale-bug alert does, naming the oldest hold, its
@@ -101,6 +83,9 @@ export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert
       actions: openBacklogAction({ file: "bugs", index: first.index }),
     });
   }
+}
+
+function pushStalePromptsAlert(out: TeamAlert[], stalePrompts: readonly StalePrompt[]): void {
   // A stranded inbox prompt (doctor's STALE_PROMPT_MS rule, src/doctor/doctor-backlog.ts) sits
   // when a role is paused, disabled, or failing and never reaches the run that would dequeue the
   // prompt, so it asks (amber) the way the stale-bug alert does, naming the oldest prompt, its
@@ -123,6 +108,9 @@ export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert
       actions: [{ label: "Open inbox", act: "queued" }],
     });
   }
+}
+
+function pushStaleMergesAlert(out: TeamAlert[], staleMerges: readonly StaleMerge[]): void {
   // A stalled merge queue (the doctor's MERGE_QUEUE_STALE_MS rule,
   // src/doctor/doctor-backlog.ts, set by the stale-merges alert) sits when a queued change
   // never starts — neither verified nor flagged — so a drain that has stopped reads healthy
@@ -145,6 +133,9 @@ export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert
       actions: [],
     });
   }
+}
+
+function pushSkippedMergesAlert(out: TeamAlert[], skippedMergeFiles: readonly string[]): void {
   // A merge-queue file `readMergeQueue` skips (torn, foreign, or vanished mid-listing) is the
   // always-on twin of the doctor's `merge-queue files` row (doctor-backlog.ts
   // skippedMergeQueueFiles, feeding this from alert-feeds.ts's skippedMergeFiles): it sits
@@ -165,6 +156,9 @@ export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert
       actions: [],
     });
   }
+}
+
+function pushPrimaryOverwriteAlert(out: TeamAlert[], primaryOverwrite: PrimaryOverwriteBlock | null, now: number): void {
   // A merge the primary checkout blocked (merge-git.ts primaryCheckoutBlockers, the
   // overwriteBlockedReason `warning` the merge path writes) — the always-on twin of the doctor's
   // `uncommitted backlog` row, but read off events so it reaches the status poll (the doctor's
@@ -182,6 +176,43 @@ export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert
       actions: [],
     });
   }
-  return out;
 }
 
+interface BacklogFeedAlertsInput {
+  staleBugs: readonly StaleBug[];
+  notifyFailure: NotifyFailure | null;
+  staleWaitingBugs: readonly StaleWaitingBug[];
+  stalePrompts: readonly StalePrompt[];
+  staleMerges: readonly StaleMerge[];
+  skippedMergeFiles: readonly string[];
+  primaryOverwrite: PrimaryOverwriteBlock | null;
+  now: number;
+}
+
+/** The backlog-feed alerts, in emission order: stale open bugs, a failed notify page, waiting
+ * bugs, stranded inbox prompts, a stalled merge queue, skipped merge-queue files, and merges
+ * refused by an uncommitted primary checkout. Extracted from teamAlerts (part 3/5 of the
+ * teamAlerts split) so the shared module stays small; the input names exactly the fields this
+ * run reads. Each arm is one module-private builder named push<Alert>Alert, called here in arm
+ * order, so a backlog-feed alert is found by name and the caller's emission order is preserved. */
+export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
+  const out: TeamAlert[] = [];
+  const {
+    staleBugs,
+    notifyFailure,
+    staleWaitingBugs,
+    stalePrompts,
+    staleMerges,
+    skippedMergeFiles,
+    primaryOverwrite,
+    now,
+  } = input;
+  pushStaleBugsAlert(out, staleBugs);
+  pushNotifyAlert(out, notifyFailure, now);
+  pushWaitingBugsAlert(out, staleWaitingBugs);
+  pushStalePromptsAlert(out, stalePrompts);
+  pushStaleMergesAlert(out, staleMerges);
+  pushSkippedMergesAlert(out, skippedMergeFiles);
+  pushPrimaryOverwriteAlert(out, primaryOverwrite, now);
+  return out;
+}
