@@ -33,9 +33,14 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     // readable default) names the backend default. Gated on a tier so a role with neither
     // model nor tier still omits the row entirely (the guard below stays the sole decider
     // for the wholly-absent case), matching role-render.ts's backendDefault no-pair branch.
+    // The resolved thinking level the role runs at (rolePayload's thinking): the drawer's
+    // Model row names it exactly as role-render.ts's Model line does, so the two surfaces
+    // agree. Guarded on defaultLine being empty (a piDefault selector already embeds the
+    // winning level, so appending would duplicate it), mirroring role-render.ts's guard.
+    const thinking = defaultLine === "" && typeof view.thinking === "string" && view.thinking !== "" ? " (thinking: " + view.thinking + ")" : "";
     const modelLine = defaultLine !== "" ? defaultLine : (pair(view.provider, view.model) || (view.modelTier !== undefined ? agentLabel + " default" : ""));
     if (modelLine !== "" || view.modelTier !== undefined) {
-      rows.push(kvRow("Model", (modelLine !== "" ? modelLine + " " : "") + (view.modelTier !== undefined ? "(" + view.modelTier + " tier)" : "").trim()));
+      rows.push(kvRow("Model", (modelLine !== "" ? modelLine + thinking + " " : "") + (view.modelTier !== undefined ? "(" + view.modelTier + " tier)" : "").trim()));
     }
     // The per-role model set (roles.<base>.provider/.model/.thinking/.backend, the file's own
     // raw overrides rolePayload's providerOverride/modelOverride/thinkingOverride/backendOverride

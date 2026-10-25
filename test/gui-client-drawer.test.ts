@@ -1258,6 +1258,42 @@ test("the Configuration Model row names the backend default when no model resolv
   }
 });
 
+// A resolved pair with a thinking level: role-render.ts's Model line appends
+// ` (thinking: <level>)` whenever the payload carries `thinking` (no piDefault), and the
+// drawer's Model row must carry the same suffix so the page and `tumwater role <id>` agree
+// on what the role runs on. Pinned also for the piDefault branch (suffix must not double a
+// selector that already embeds the level) and the no-thinking case (row unchanged).
+test("the Configuration Model row names the resolved thinking level", async () => {
+  const cases: Array<{ payload: Record<string, unknown>; expect: string }> = [
+    // A resolved pair with a thinking level renders the same suffixed string role-render's
+    // Model line produces, plus the tier suffix.
+    {
+      payload: { notes: null, nextPrompt: null, provider: "deepseek", model: "deepseek-v4", thinking: "high", modelTier: "strong" },
+      expect: "deepseek/deepseek-v4 (thinking: high) (strong tier)",
+    },
+    // A piDefault selector already embeds its effective level, so the suffix is not doubled.
+    {
+      payload: { notes: null, nextPrompt: null, backend: "pi", piDefault: "deepseek/deepseek-v4", thinking: "high", modelTier: "default" },
+      expect: "pi default (deepseek/deepseek-v4) (default tier)",
+    },
+    // No thinking level: the row renders exactly as before, whatever the pair.
+    {
+      payload: { notes: null, nextPrompt: null, provider: "deepseek", model: "deepseek-v4", modelTier: "strong" },
+      expect: "deepseek/deepseek-v4 (strong tier)",
+    },
+  ];
+  for (const c of cases) {
+    const responses: Record<string, unknown> = { "/api/role?role=clean": c.payload };
+    const t = openDrawer(["toggleRole"], { status: workingStatus(), responses });
+    t.scope.toggleRole("clean");
+    await flush();
+    const role = t.paintedFor("drawerrole");
+    assert.match(role, /<h3>Configuration<\/h3>/);
+    const escaped = c.expect.replace(/[()]/g, (ch) => "\\" + ch);
+    assert.match(role, new RegExp(`<dt>Model</dt><dd[^>]*>${escaped}</dd>`));
+  }
+});
+
 // The Model overrides row (roles.<base>.*, rolePayload's providerOverride/modelOverride/
 // thinkingOverride) is the one per-role write the read-only Model row leaves out — the
 // dashboard half of the CLI's --provider/--model/--thinking. Always shown (every role), its

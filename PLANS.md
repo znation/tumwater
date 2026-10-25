@@ -421,23 +421,4 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/backend-traits.test.ts: `backendDefaultLabel names pi and non-pi seams` — `"pi default"` for `"pi"` and `undefined`, `"claude default"`/`"opencode default"`/`"codex default"` for the backends.
 - test/status-data-models.test.ts: `a role that resolves no provider or model names its backend default` — `cfg.roles.clean.backend = "opencode"` (with `model`/`provider` unset) yields `model: "opencode default"` and no `modelFromPi`; a config whose pi settings hold no default yields `"pi default"`; the existing pi-default case still yields the formatted selector with `modelFromPi: true`.
 
-### The dashboard role drawer's Model row names the resolved thinking level — the `tumwater role <id>` Model line's `(thinking: …)` suffix (planned 2026-10-24 by the plan role; independent in behavior of every eligible plan — it edits only the browser-side drawer script and its test, and shares `docs/invariants.md`'s cross-surface section with the in-flight "The status role rows name a seam's backend default when neither provider nor model resolves…" plan and the `Forward, never back`/`Every commit is verified on main` series, so whichever lands second rebases at the neighbouring invariant; the in-flight "The role's `backend` override joins the model-override surfaces, part 2/2" edits `src/ui/gui/gui-client-drawer-config.ts`'s Model overrides row just below this plan's Model row, so whichever lands second rebases there; touches src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/gui-client-drawer.test.ts)
-
-**Goal.** `drawerConfigHtml`'s Model row renders its `modelLine` from `pair(view.provider, view.model)`, the `piDefault` branch, or `agentLabel + " default"`, but never appends the resolved thinking level — while `role-render.ts`'s `modelLine` appends ` (thinking: <level>)` whenever the payload carries `thinking` and there is no `piDefault`. So a role with `provider: deepseek`, `model: deepseek-v4` and a resolved `thinking: high` on the `strong` tier reads `deepseek/deepseek-v4 (thinking: high) (strong tier)` from `tumwater role <id>` but only `deepseek/deepseek-v4 (strong tier)` in the dashboard drawer, even though both render the same `/api/role` payload (`rolePayload`, `src/gui/gui-history-endpoints.ts`). Make the drawer's Model row carry the same resolved thinking suffix, so the two surfaces agree on what a role runs on.
-
-**Approach.**
-- `src/ui/gui/gui-client-drawer-config.ts`: in `drawerConfigHtml`, after computing `defaultLine`, build the suffix exactly as `role-render.ts` does and append it to `modelLine` before the row's `(<tier> tier)` suffix — `const thinking = defaultLine === "" && typeof view.thinking === "string" && view.thinking !== "" ? " (thinking: " + view.thinking + ")" : "";` then render `modelLine + thinking`. The `defaultLine === ""` guard mirrors `modelLine`'s early return: a non-empty `piDefault` selector is already formatted with the effective thinking level winning, so the suffix would duplicate it. The resolved-pair rendering, the `agentLabel + " default"` fallback, the `modelTier` suffix, the absent-row guard, and the separate Model overrides row are unchanged.
-- docs/invariants.md: add one invariant to the "Cross-surface agreement" section beside INV-AX5 — the drawer's Model row and `tumwater role <id>`'s Model line carry the same resolved `(thinking: …)` suffix, read from the same `RoleViewPayload.thinking` field — pinned by the new test.
-
-**Files touched.** src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/gui-client-drawer.test.ts
-
-**Acceptance criteria.**
-- A role payload with `provider: "deepseek"`, `model: "deepseek-v4"`, `thinking: "high"`, `modelTier: "strong"` renders `<dt>Model</dt><dd>deepseek/deepseek-v4 (thinking: high) (strong tier)</dd>` — the same string `role-render.ts`'s `modelLine` produces for that payload plus its tier suffix.
-- A payload with a non-empty `piDefault` and a `thinking` renders only the `pi default (<selector>)` form, with no second `(thinking: …)` suffix (the selector already embeds the level).
-- A payload with no `thinking` renders its Model row exactly as today (the existing tests' expectations stand).
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/gui-client-drawer.test.ts: add "the Configuration Model row names the resolved thinking level" — an `/api/role` response with provider/model/thinking/modelTier asserts the suffixed row; a `piDefault`-plus-thinking response asserts the suffix is not doubled; a response without `thinking` asserts the row is unchanged.
-
 ## Done

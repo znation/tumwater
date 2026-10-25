@@ -3124,6 +3124,23 @@ so the two surfaces agree on what an unresolved role runs on.
 **Pinned by.** `test/gui-client-drawer.test.ts` — "the Configuration Model row names the backend
 default when no model resolves" (an opencode and a pi role each render `<backend> default`).
 
+### INV-AX6: the drawer Model row and the role Model line carry the same resolved `(thinking: …)` suffix
+
+**Guarantee.** When the resolved pair is shown and the payload carries a `thinking` level,
+both the dashboard role drawer's Model row and the CLI's `tumwater role <id>` Model line
+(role-render's `modelLine` thinking branch) append the same ` (thinking: <level>)` suffix, read
+from the same `RoleViewPayload.thinking` field — so the two surfaces agree on what a role runs
+at. A `piDefault` selector already embeds its winning level, so neither surface appends a
+second suffix for it.
+
+**Binds.** `src/ui/gui/gui-client-drawer-config.ts` (`drawerConfigHtml`'s `thinking` suffix),
+`src/roles/role-render.ts` (`modelLine`).
+
+**Pinned by.** `test/gui-client-drawer.test.ts` — "the Configuration Model row names the resolved
+thinking level" (a resolved pair with `thinking` renders the suffixed row, a `piDefault`-plus-
+thinking payload asserts the suffix is not doubled, and a payload without `thinking` renders the
+row unchanged).
+
 ## Backlog conflicts: a backlog rebase conflict settles without a model only when no authored bytes need judgment
 
 `src/merge/backlog-conflicts.ts` settles backlog rebase conflicts without a model run in two
