@@ -21,6 +21,7 @@ import { canonicalUsageBlock, isJsonObject, objectOrEmpty, nonNegativeNumber, pa
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
+import { SERVER_TRANSIENT_STATUS } from "../backend-traits.js";
 
 type Json = Record<string, unknown>;
 
@@ -52,9 +53,6 @@ const TOOL_NAMES: Record<string, string> = {
   Grep: "grep",
 };
 
-/** claude's HTTP status classes that mean a transient backend failure. 529 is Anthropic's
- * "overloaded" spelling. */
-const SERVER_STATUS = new Set([500, 502, 503, 504, 529]);
 /** claude's HTTP status classes that mean a permanent configuration error. */
 const CONFIG_STATUS = new Set([400, 401, 403, 404]);
 
@@ -125,7 +123,7 @@ function classifyResult(result: Json): {
   if (/error_max_budget_usd/i.test(text)) return { kind: "budgetCapped" };
   const status = nonNegativeNumber(result.api_error_status, undefined);
   if (status === 429) return { kind: "transientRateLimit" };
-  if (status !== undefined && SERVER_STATUS.has(status)) return { kind: "transientBackend", backendKind: "server" };
+  if (status !== undefined && SERVER_TRANSIENT_STATUS.has(status)) return { kind: "transientBackend", backendKind: "server" };
   // The context-overflow text wins over a configuration status: claude reports an oversized
   // prompt as HTTP 400 ("prompt is too long"), whose status alone would read as configError.
   if (/prompt is too long/i.test(text)) return { kind: "contextExceeded" };

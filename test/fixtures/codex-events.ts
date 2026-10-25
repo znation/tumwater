@@ -107,7 +107,7 @@ export function codexUsageNotIncluded(): string {
   });
 }
 
-/** A `turn.failed` carrying a server-side status from SERVER_STATUS (500/502/503/504/529):
+/** A `turn.failed` carrying a server-side status from SERVER_TRANSIENT_STATUS:
  * transient, so the runner retries rather than abandoning. */
 export function codexServerError(status: number): string {
   return codexTurnFailed({ status, errorType: "server_error", errorMessage: "Server overloaded" });

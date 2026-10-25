@@ -95,3 +95,11 @@ export function backendDefaultLabel(backend: string | undefined): string {
   if (backend === "claude" || backend === "opencode" || backend === "codex") return `${backend} default`;
   return "pi default";
 }
+
+/** The HTTP status codes the native claude and codex stream translators read as a transient
+ * backend (server) failure — the `transientBackend` classification with `backendKind:
+ * "server"`. 529 is Anthropic's "overloaded" spelling, which codex's `turn.failed` error
+ * carries too. One home for the set the two adapters' classifiers share, so a status added
+ * for one cannot go missing from the other (opencode classifies the same failure from message
+ * text, not a status code, so it is not in the set). */
+export const SERVER_TRANSIENT_STATUS: ReadonlySet<number> = new Set([500, 502, 503, 504, 529]);

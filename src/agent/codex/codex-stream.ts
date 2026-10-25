@@ -20,6 +20,7 @@ import { secondsUntil } from "../../text/datetime.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
+import { SERVER_TRANSIENT_STATUS } from "../backend-traits.js";
 
 type Json = Record<string, unknown>;
 
@@ -54,10 +55,6 @@ const RECONNECT = /^Reconnecting\.\.\. (\d+)\/(\d+) /;
 /** The item types dropped silently, with no canonical event and no `warnings()` entry
  * (design §5's `item.*` row): `todo_list` and `web_search`. */
 const DROPPED_ITEM_TYPES = new Set(["todo_list", "web_search"]);
-
-/** HTTP status classes that mean a transient backend failure (shared with the claude and
- * codex classifiers' reading of `codex exec`'s JSON error). */
-const SERVER_STATUS = new Set([500, 502, 503, 504, 529]);
 
 /** Strip codex's `/bin/zsh -lc '<cmd>'` (or `bash -lc`) wrapper and its quoting, returning
  * the model's own command — the argument suite-rerun detection matches. Passes a command the
@@ -134,7 +131,7 @@ function classifyTurnFailed(
     kind.kind = "configError";
     return kind;
   }
-  if (status !== undefined && SERVER_STATUS.has(status)) {
+  if (status !== undefined && SERVER_TRANSIENT_STATUS.has(status)) {
     kind.kind = "transientBackend";
     kind.backendKind = "server";
     return kind;
