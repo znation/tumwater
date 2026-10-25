@@ -280,6 +280,28 @@ export class Redeployer {
   ): Promise<RedeployAction> {
     this.autoRestartOn = autoRestart;
     if (!this.selfHosted || !mainHead) return this.endDrain();
+    await this.observeHead(mainHead, now);
+    // The sustained-pin escalation runs BEFORE the early returns below: a latched block on a
+    // frozen main never re-enters the episode logic, and that pinned-and-stuck state is exactly
+    // what must escalate (BUGS.md 2026-09-29).
+    if (this.staleness?.stale && autoRestart) this.escalateIfSustained(now);
+    if (!this.staleness?.stale || !autoRestart || this.blockedHead === mainHead) return this.endDrain();
+
+    const cooldown = this.cooldownStage(mainHead, now);
+    if (cooldown !== null) return cooldown;
+    const start = await this.startEpisode(mainHead, inFlight, now);
+    if (start !== null) return start;
+    const green = this.greenStage(mainHead, now);
+    if (green !== null) return green;
+    const compile = this.compileStage(mainHead, now);
+    if (compile !== null) return compile;
+    return this.drainAndSwap(mainHead, inFlight, now);
+  }
+
+  /** Observe a moved main head (a no-op on an unchanged head): update staleness, log build_stale
+   * on the fresh transition, run the sustained-pin clock and its forced-restart waiver, and drop
+   * any restart pending for a superseded head. */
+  private async observeHead(mainHead: string, now: number): Promise<void> {
     if (mainHead !== this.lastHead) {
       const wasStale = this.staleness?.stale ?? false;
       this.lastHead = mainHead;
@@ -310,12 +332,13 @@ export class Redeployer {
       // (if running) finishes into its own staging dir and is simply never swapped in.
       if (this.pendingHead !== null && this.pendingHead !== mainHead) this.clearPending();
     }
-    // The sustained-pin escalation runs BEFORE the early returns below: a latched block on a
-    // frozen main never re-enters the episode logic, and that pinned-and-stuck state is exactly
-    // what must escalate (BUGS.md 2026-09-29).
-    if (this.staleness?.stale && autoRestart) this.escalateIfSustained(now);
-    if (!this.staleness?.stale || !autoRestart || this.blockedHead === mainHead) return this.endDrain();
+  }
 
+  /** The restart cooldown / forced-restart waiver gate: while the deferral holds, warn once, keep
+   * the team running on the stale build, prewarm the deferred head's green check and compile, and
+   * end any drain. Once lapsed, say why a red running build starts the episode early. Returns
+   * null when the cooldown has passed and the episode may begin. */
+  private cooldownStage(mainHead: string, now: number): RedeployAction | null {
     // Completed auto-restarts are rate-limited to one per RESTART_COOLDOWN_MS (BUGS.md 2026-09-11):
     // under sustained churn every stale head would otherwise drive a full hold+drain+swap episode
     // back to back. Inside the cooldown the team keeps running on the stale build exactly as when
@@ -366,7 +389,13 @@ export class Redeployer {
           `the cooldown was cut to ${RESTART_URGENT_COOLDOWN_MIN} min and that deadline has already passed`,
       );
     }
+    return null;
+  }
 
+  /** The boot gate behind which an episode opens: refuse to hold onto a generation that cannot
+   * boot here, else adopt the pre-warmed green/compile verdicts and hold the team until the
+   * staged tree is ready. Returns null when an episode is already pending. */
+  private async startEpisode(mainHead: string, inFlight: InFlightCounts, now: number): Promise<RedeployAction | null> {
     if (this.pendingHead === null) {
       // Before holding anything: could a new generation even boot here? A refusal here costs
       // nothing — no hold, no green check, no compile — so asking again every poll is how a
@@ -393,6 +422,12 @@ export class Redeployer {
       if (this.compiled) this.logRestartPending(mainHead);
       return "hold";
     }
+    return null;
+  }
+
+  /** The green check: hold while it is unresolved, drop the episode when it could not run, block
+   * when it returns a red verdict. Returns null (proceed to compile) only on a green verdict. */
+  private greenStage(mainHead: string, now: number): RedeployAction | null {
     if (!this.green?.done) return "hold";
     // A REJECTED check is not a verdict: it could not run (git broke inside the mirror worktree,
     // or the check itself threw), so it says nothing about the tree. Drop the pending head — no
@@ -413,6 +448,13 @@ export class Redeployer {
       this.block(mainHead, reason, `${reason} — holding the restart until main is green`);
       return this.endDrain();
     }
+    return null;
+  }
+
+  /** The compile stage: kick off (or hold on) the staged build, and on a verdict block or drop the
+   * episode when the tree failed to build. Returns null (proceed to drain) only on a successful
+   * compile. */
+  private compileStage(mainHead: string, now: number): RedeployAction | null {
     if (!this.compiled) {
       this.compiled = this.probes.adoptCompile(mainHead) ?? track(this.deps.compile(mainHead));
       this.logRestartPending(mainHead);
@@ -453,6 +495,12 @@ export class Redeployer {
       );
       return this.endDrain();
     }
+    return null;
+  }
+
+  /** The drain and swap: hold while runs keep the drain open, re-ask the boot gate before the
+   * point of no return, then swap the staged tree in and record the completed restart. */
+  private async drainAndSwap(mainHead: string, inFlight: InFlightCounts, now: number): Promise<RedeployAction> {
     // The drain rule, split by who requested the work (BUGS.md 2026-09-08): a director run is
     // an explicit human prompt and outranks the redeploy — while one is in flight the hold has no
     // time cap: no swap and no abort until it finishes. The per-run watchdogs already bound how
