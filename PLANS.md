@@ -421,4 +421,23 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/backend-traits.test.ts: `backendDefaultLabel names pi and non-pi seams` — `"pi default"` for `"pi"` and `undefined`, `"claude default"`/`"opencode default"`/`"codex default"` for the backends.
 - test/status-data-models.test.ts: `a role that resolves no provider or model names its backend default` — `cfg.roles.clean.backend = "opencode"` (with `model`/`provider` unset) yields `model: "opencode default"` and no `modelFromPi`; a config whose pi settings hold no default yields `"pi default"`; the existing pi-default case still yields the formatted selector with `modelFromPi: true`.
 
+### The dashboard role drawer's fallback rows name a non-pi fallback's backend namespace — the `tumwater role <id>` fallback lines' twin (planned 2026-10-24 by the plan role; independent in behavior of every eligible plan — the in-flight "The dashboard role drawer's Model row names the resolved thinking level…" plan edits the same `drawerConfigHtml` Model row and `docs/invariants.md`'s cross-surface section, so whichever lands second rebases there; the in-flight "The status role rows name a seam's backend default when neither provider nor model resolves…" plan shares that invariant section; touches src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/gui-client-drawer.test.ts)
+
+**Goal.** `drawerConfigHtml`'s Model fallback row renders `pair(view.modelFallback.provider, view.modelFallback.model)`, which drops a non-pi backend when the payload carries `backend` but no `provider` — exactly the `ModelFallbackView` shape `modelFallbackView` produces for a claude episode (its doc: "provider is pi's and undefined for a non-pi backend"). `role-render.ts`'s `fallbackPairLabel` (used by the CLI's Model fallback and Over-cap model lines) qualifies such a pair with its backend id, so a claude model-fallback episode reads `claude/claude-haiku-5-5` from `tumwater role <id>` (test/role-view.test.ts "a claude model-fallback episode renders as claude/model") but `claude-haiku-5-5` in the drawer, even though both render the same `/api/role` payload (`rolePayload`, `src/roles/role-view.ts`). Make the drawer's fallback labels carry the same backend namespace so the two surfaces agree on which model a role's fallback runs.
+
+**Approach.**
+- src/ui/gui/gui-client-drawer-config.ts: in `drawerConfigHtml`, add a `fallbackLabel(fb, fallbackDefault)` helper mirroring `role-render.ts`'s `fallbackPairLabel` — a non-pi `backend` with a `model` renders `<backend>/<model>`; else a `provider` with a `model` renders `<provider>/<model>`; else the `model`; else the `provider`; else the fallback default. Use it for both the Model fallback row (`view.modelFallback`) and the Budget fallback row (`view.fallback`), replacing their `pair(...)` calls. The pi cases (`provider/model`) and the Budget case (whose `fallbackPair` sets `provider` to the backend for a non-pi pair) render byte-identically; only the model-fallback non-pi case gains the namespace.
+- docs/invariants.md: add one invariant beside INV-AX5 — the drawer's Model fallback and Budget fallback rows and `tumwater role <id>`'s fallback lines render one fallback pair the same way, a non-pi backend named as its selector namespace — pinned by the new test.
+
+**Files touched.** src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/gui-client-drawer.test.ts
+
+**Acceptance criteria.**
+- An `/api/role` payload whose `modelFallback` is `{ backend: "claude", model: "claude-haiku-5-5", since, reason }` with no `provider` renders `<dt>Model fallback</dt><dd>claude/claude-haiku-5-5 — on fallback since … (primary failing: …)</dd>` — the same pair string `renderRoleMarkdown` produces for the same payload.
+- The existing pi fallback (`{ provider: "omlx", model: "Qwen3.8" }`) still renders `omlx/Qwen3.8 — on fallback …` and `omlx/Qwen3.8 (free)` unchanged.
+- A non-pi Budget fallback (`view.fallback` carrying `backend`) renders its namespace exactly once, not doubled (`claude/claude-…`).
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/gui-client-drawer.test.ts: add "the Configuration fallback rows name a non-pi fallback's backend namespace" — a non-pi `modelFallback` asserts the `claude/claude-haiku-5-5` row, and a non-pi `fallback` with `backend` asserts the namespace in the Budget fallback row; the existing pi fallback assertions in "the role drawer renders the Configuration section from the role payload" stay green.
+
 ## Done
