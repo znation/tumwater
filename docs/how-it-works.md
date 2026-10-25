@@ -189,7 +189,7 @@ discards a role's in-flight merge.
   merge, so the hold lasts the whole time its change queued. A post-merge-review role — one
   opted in by its own `review.afterMerge`, whose verdict arrives after the merge — is
   admitted again once its change is approved and waiting for the merge slot or the merge is
-  in flight: its branch is reset to main every tick, so a queued approved change never
+  in flight: its branch is reset to main every run, so a queued approved change never
   blocks it.
 - `maxConcurrentPerProvider` (optional) caps how many of those runs each model provider serves
   at once, beside the team total: a run starts only when BOTH its provider and the team
@@ -533,7 +533,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   the `ci` role's full suite stalled over three days without covering a new tip (the `ci-stale`
   alert, the always-on twin of the doctor's `ci parity` warn — the full suite has silently
   stopped covering main's tip, so the ci role is disabled, paused, or unable to record),
-  the fleet waiting on capacity slots (workspace, provider or check) — the doctor's three
+  the team waiting on capacity slots (workspace, provider or check) — the doctor's three
   contention rows read the same waits and name the knob, a plan filed under the wrong
   backlog section, a duplicated backlog section heading, finished history still under a live backlog file's `## Done` or `## Fixed` (the `backlog-archive` alert, the always-on twin of the doctor's `backlog archive` warn), a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose Fix paragraph names code that is not on the tree, a Fixed record whose quoted test failed again in the last day, a project with no declared check (the review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run; the alert says the plan role will plan the project's check and the feature role declare it, a `test`/`typecheck`/`build` npm script or `check.command`), a pause), the prompt
   box, today's progress, the roles grouped by what they are doing,
