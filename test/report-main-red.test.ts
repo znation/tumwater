@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mainRedMinutesByDay } from "../src/report/report-main-red.js";
+import { mainRedFailingTestsByDay, mainRedMinutesByDay } from "../src/report/report-main-red.js";
 import { dayKey } from "./helpers/oracles.js";
 
 const MIN = 60_000;
@@ -82,4 +82,48 @@ test("events at or outside the bounds are ignored", () => {
   assert.equal(map.get(dayKey(open)), 14 * HOUR, "the open-day slice of the spell");
   assert.equal([...map.values()].reduce((a, b) => a + b, 0), to - open, "the open spell runs to toMs");
   assert.ok(!map.has(dayKey(to)), "the excluded pass at toMs days gain nothing");
+});
+
+test("mainRedFailingTestsByDay counts each red main_check's failing tests on its day", () => {
+  const t = at(2026, 10, 22, 10);
+  const from = new Date(2026, 9, 22, 0).getTime();
+  const to = new Date(2026, 9, 24, 0).getTime();
+  const map = mainRedFailingTestsByDay(
+    [
+      { ...check(t, "failed", 2000), failingTests: ["a", "b"] },
+      { ...check(t + 5 * MIN, "failed", 2000), failingTests: ["a"] },
+      { ...hold(t + 10 * MIN), failingTests: ["a", "hold"] },
+      check(t + 20 * MIN, "passed", 2000),
+      // durationMs 0 is a cached/inherited verdict — isRedMain ignores it, so its "c" is absent.
+      { ...check(t + 25 * MIN, "failed", 0), failingTests: ["c"] },
+      { ...check(at(2026, 10, 23, 9), "failed", 2000), failingTests: ["b"] },
+      // An Object.prototype-named test (constructor) must count as its own OWN key — addTo
+      // seeds it, where a bare `record[key] ?? 0` would take the inherited function and
+      // string-concatenate the count.
+      { ...check(at(2026, 10, 23, 9), "failed", 2000), failingTests: ["constructor", "constructor"] },
+    ],
+    from,
+    to,
+  );
+  assert.deepEqual(map.get(dayKey(t)), { a: 3, b: 1, hold: 1 }, "the a-tests, b, and the hold's failing tests name the first day");
+  assert.equal(map.get(dayKey(t))!.c, undefined, "the durationMs-0 check's 'c' contributes nothing");
+  assert.deepEqual(map.get(dayKey(at(2026, 10, 23, 9))), { b: 1, constructor: 2 }, "the second day's [b] and the two constructor counts are its own record");
+});
+
+test("a torn failingTests list counts only its strings and a missing key adds nothing", () => {
+  const t = at(2026, 10, 22, 10);
+  const from = new Date(2026, 9, 22, 0).getTime();
+  const to = new Date(2026, 9, 24, 0).getTime();
+  const map = mainRedFailingTestsByDay(
+    [
+      { ...check(t, "failed", 2000), failingTests: ["ok", 7] },
+      // A non-array failingTests (loose log) and a check with no failingTests key add nothing.
+      { ...check(t + 5 * MIN, "failed", 2000), failingTests: { not: "an array" } },
+      check(t + 10 * MIN, "failed", 2000),
+    ],
+    from,
+    to,
+  );
+  assert.deepEqual(map.get(dayKey(t)), { ok: 1 });
+  assert.equal(map.get(dayKey(t))![7 as unknown as string], undefined, "the non-string entry counts nothing");
 });

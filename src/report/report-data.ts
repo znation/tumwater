@@ -37,7 +37,7 @@ import {
   zeroMergeCounts,
   type UsageFold,
 } from "./report-fold.js";
-import { mainRedMinutesByDay } from "./report-main-red.js";
+import { mainRedFailingTestsByDay, mainRedMinutesByDay } from "./report-main-red.js";
 import type { ReportData, ReportDay, ReportTotals, SinceReport } from "./report-types.js";
 
 /** Aggregate team usage over the trailing `sinceMs` window ending now (or `untilMs` ago, which
@@ -147,6 +147,21 @@ export function collectReportSince(
   // carries no entries — the same team-only rule runsByModel follows. Only set when the
   // window actually deferred (zero means absent), so a deferral-free --since JSON omits it.
   const deferred = scopedByRole(acc.deferredByReason, bases);
+  // Main's red failing tests ride the same window the red time uses (G1's rule over the
+  // red `main_check` events), flattened across its per-day records into one team-only map.
+  // Main's failing tests are main's own, not any role's, so a role-scoped window carries
+  // none — nonemptyObj omits the field when empty, so a red-test-free --since JSON is
+  // byte-identical to today.
+  const mainRedByTest =
+    bases === undefined
+      ? (() => {
+          const flat: Record<string, number> = {};
+          for (const record of mainRedFailingTestsByDay(raw.events, cutoff, end).values()) {
+            for (const [test, n] of Object.entries(record)) addTo(flat, test, n);
+          }
+          return flat;
+        })()
+      : {};
   return {
     ...slice,
     ...(bases === undefined ? {} : { role: bases.join(",") }),
@@ -187,6 +202,7 @@ export function collectReportSince(
       bases === undefined
         ? [...mainRedMinutesByDay(raw.events, cutoff, end).values()].reduce((a, b) => a + b, 0)
         : 0,
+    ...nonemptyObj("mainRedByTest", mainRedByTest),
     coversFullWindow,
   };
 }
@@ -377,9 +393,11 @@ export function collectReport(root: string, days: number, role?: string | readon
   // like checkMedianMs).
   if (bases === undefined) {
     const redByDay = mainRedMinutesByDay(foldEntry.redEvents, dayAt(days - 1, now).getTime(), now.getTime());
+    const redTestsByDay = mainRedFailingTestsByDay(foldEntry.redEvents, dayAt(days - 1, now).getTime(), now.getTime());
     for (const d of series) {
       const ms = redByDay.get(d.date);
       if (ms !== undefined) d.mainRedMs = ms;
+      setMapIfNonempty(d, "mainRedByTest", redTestsByDay.get(d.date));
     }
   }
 

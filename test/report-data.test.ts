@@ -1479,3 +1479,25 @@ test("collectReport and collectReportSince tally run_deferred by reason, zero me
   assert.doesNotMatch(renderReportMarkdown(collectReport(plain, 2)), /\*\*Deferred runs by reason:/);
   assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(plain, 2 * 24 * HOUR)), /\*\*Deferred runs by reason:/);
 });
+
+test("collectReport and collectReportSince rank main's red by failing test, team scope only", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    // Two failed full-scope main_check events (durationMs > 0, so G1 treats them as ran) on
+    // the same day, both naming the same failing test.
+    JSON.stringify({ ts: at(2), source: "tumwater", type: "main_check", status: "failed", durationMs: 2000, sha: "a".repeat(40), failingTests: ["test/a.test.ts"] }),
+    JSON.stringify({ ts: at(2), source: "tumwater", type: "main_check", status: "failed", durationMs: 2000, sha: "b".repeat(40), failingTests: ["test/a.test.ts"] }),
+  ]);
+  const day = collectReport(root, 5).series.find((d) => d.mainRedByTest !== undefined);
+  assert.deepEqual(day?.mainRedByTest, { "test/a.test.ts": 2 }, "the day's main-red tests sum both checks");
+  assert.deepEqual(collectReportSince(root, 7 * 24 * HOUR).mainRedByTest, { "test/a.test.ts": 2 }, "--since sums the same checks");
+
+  // A red-free repo carries no field in either shape.
+  const clean = tmpdir();
+  assert.ok(!("mainRedByTest" in collectReport(clean, 5).series[0]!), "a red-free team day omits the field");
+  assert.ok(!("mainRedByTest" in collectReportSince(clean, 7 * 24 * HOUR)), "a red-free --since omits the field");
+
+  // Main's failing tests are main's own, so a role-scoped window carries none.
+  assert.ok(collectReport(root, 5, "feature").series.every((d) => d.mainRedByTest === undefined), "scoped day omits the field");
+  assert.ok(!("mainRedByTest" in collectReportSince(root, 7 * 24 * HOUR, "feature")), "scoped --since omits the field");
+});

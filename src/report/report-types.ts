@@ -125,6 +125,11 @@ export interface ReportDay {
    * calendar days); team-only like the other day-granular backlog tallies, absent when the
    * day has no entry that carries both stamps. */
   backlogLagMedianDays?: number;
+  /** The failing tests main's own red `main_check` / `main_red_hold` events named that day
+   * (G1's rule, isRedMain), per test; team-only like mainRedMs (main's failing tests are
+   * main's own, not any role's), absent when the day's red events named no test (zero means
+   * absent). */
+  mainRedByTest?: Record<string, number>;
 }
 
 /** The window totals both reports surface — output tokens (the merge share included), the
@@ -232,6 +237,11 @@ export interface SinceReport {
    * Main's own red time, not any role's, so a role-scoped window carries 0; always present
    * (0 when none). */
   mainRedMs: number;
+  /** Main's red failing tests over the window (`main_check` / `main_red_hold` events G1
+   * accepts as red, isRedMain), per test. Main's own failing tests, not any role's, so a
+   * role-scoped window omits it; absent when the window's red events named no test (via
+   * nonemptyObj), so a red-test-free --since JSON is byte-identical to today. */
+  mainRedByTest?: Record<string, number>;
   /** Subscription spend per role id, never in costByRole; absent when the window has none —
    * the same conditional the day collector applies to ReportDay.notionalByRole, so a
    * --since JSON carries it only when nonzero. */

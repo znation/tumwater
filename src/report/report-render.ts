@@ -239,6 +239,13 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // collector carries 0, so this never prints for a scoped window). Zero-absent: no line for
   // a window main was never red.
   if (data.mainRedMs > 0) lines.push(`**Main red:** ${durationLabel(data.mainRedMs)}`);
+  // The same "what kept main red" detail named by failing test — which tests main's own red
+  // checks named over the window. Team-only like main's red time, so a role-scoped window
+  // omits it; zero-absent: no line when the window's red checks named no test.
+  if (data.role === undefined) {
+    const mainRedByTest = rankedRoleMap(data.mainRedByTest ?? {}).filter(([, n]) => n > 0);
+    if (mainRedByTest.length > 0) lines.push(rankedRoleLine("Main red by test", mainRedByTest, String));
+  }
   // The same breakdown for review friction: rejections per role from review_rejected events;
   // a window with none renders "-" like the other lines. The post-merge line is the
   // afterMerge: true subset — rejections that reached an already-merged commit.
@@ -488,6 +495,11 @@ export function renderReportMarkdown(data: ReportData): string {
     // had no passing full check (the span every code role was held). Team-only (main's own
     // red time, not any role's) and zero-absent: no line when no day was red.
     pushDayCameoLine(lines, data.series, "Main red", (d) => d.mainRedMs, durationLabel);
+    // The day twin of the --since window's totals line: the same tests ranked across the
+    // series' per-day main-red maps (Main red by test). Zero-absent: no line when no day
+    // named a failing test.
+    const mainRedByTest = rankedRoleTotals(data.series, (d) => d.mainRedByTest ?? {}).filter(([, n]) => n > 0);
+    if (mainRedByTest.length > 0) lines.push(rankedRoleLine("Main red by test", mainRedByTest, String));
     pushDayCameoLine(lines, data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
     // How long the merge slot itself held each change it landed, beside the merge-wait median:
     // the queue backlog (merge wait minus slot time) apart from the slot's own review/check/

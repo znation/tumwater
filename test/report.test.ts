@@ -818,9 +818,24 @@ test("renderSinceReportMarkdown prints Main red wall-clock for a positive window
     notionalByProvider: {},
     runsByModel: {},
     coversFullWindow: true,
+    mainRedMs: 0,
   };
   assert.ok(!renderSinceReportMarkdown({ ...shape, mainRedMs: 0 }).includes("**Main red:"), "zero omits the line");
   assert.match(renderSinceReportMarkdown({ ...shape, mainRedMs: 63 * 60_000 }), /^\*\*Main red:\*\* 63m$/m);
+  // Main red by test rides the same window, team-only: a positive ranking prints, and an
+  // all-zero map or a role-scoped window omits the line.
+  assert.match(
+    renderSinceReportMarkdown({ ...shape, mainRedByTest: { "test/a.test.ts": 2 } }),
+    /^\*\*Main red by test:\*\* test\/a\.test\.ts — 2$/m,
+  );
+  assert.ok(
+    !renderSinceReportMarkdown({ ...shape, mainRedByTest: { "test/a.test.ts": 0 } }).includes("**Main red by test:"),
+    "an all-zero map omits the line",
+  );
+  assert.ok(
+    !renderSinceReportMarkdown({ ...shape, role: "feature", mainRedByTest: { "test/a.test.ts": 2 } }).includes("**Main red by test:"),
+    "role scope omits the line",
+  );
 });
 
 test("tumwater report --since prints the window totals and validates its flags", async () => {
@@ -1501,6 +1516,24 @@ test("renderReportMarkdown prints Main red wall-clock for the days that carry on
   const none: ReportData = { ...base, series: base.series.map(({ mainRedMs: _m, ...d }) => d) };
   assert.ok(!renderReportMarkdown(none).includes("**Main red:"));
   assert.ok(!renderReportMarkdown({ ...base, role: "feature" }).includes("**Main red:"));
+});
+
+test("renderReportMarkdown ranks each series day's main-red tests", () => {
+  const base: ReportData = {
+    days: 2,
+    from: "2026-09-09",
+    to: "2026-09-10",
+    series: [
+      { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mainRedByTest: { "test/a.test.ts": 2 } },
+    ],
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    coversFullWindow: true,
+  };
+  assert.match(renderReportMarkdown(base), /^\*\*Main red by test:\*\* test\/a\.test\.ts — 2$/m);
+  const bare: ReportData = { ...base, series: base.series.map(({ mainRedByTest: _m, ...d }) => d) };
+  assert.ok(!renderReportMarkdown(bare).includes("**Main red by test:"), "a bare series omits the line");
+  assert.ok(!renderReportMarkdown({ ...base, role: "feature" }).includes("**Main red by test:"), "role scope omits the line");
 });
 
 test("renderReportMarkdown prints Merge wait median for the days that carry one, team scope only", () => {

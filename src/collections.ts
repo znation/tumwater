@@ -75,14 +75,25 @@ export function increment<K>(map: Map<K, number>, key: K): void {
  * The seed reads an OWN property (Object.hasOwn), not a bare `record[key] ?? 0`: the
  * custom-role name charset admits "constructor", an Object.prototype key, whose inherited
  * function would otherwise be the seed — storing `function Object() …5` and turning every
- * later `roleSum`/report total into string concatenation (BUGS.md 2026-10-10). */
+ * later `roleSum`/report total into string concatenation (BUGS.md 2026-10-10). The write is
+ * an `Object.defineProperty`, not a plain `record[key] = …`: the latter assignment to
+ * `__proto__` (another Object.prototype key, reachable through a failing-test name) would
+ * trigger the inherited setter and create no own key, silently dropping the count. A
+ * defineProperty with the default attribute flags (writable, enumerable, configurable)
+ * writes every other key exactly as plain assignment would, so an own `__proto__` key is
+ * the only behavior this changes. */
 export function addTo<K extends string>(
   record: Partial<Record<K, number>>,
   key: K,
   amount: number,
 ): void {
   const current = Object.hasOwn(record, key) ? record[key] : 0;
-  record[key] = (current ?? 0) + amount;
+  Object.defineProperty(record, key, {
+    value: (current ?? 0) + amount,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
 }
 
 /** Set `key` to `value` in a bounded memo `cache`, moving an existing key to the LRU tail

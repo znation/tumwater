@@ -163,6 +163,25 @@ test("addTo counts a key that collides with an Object.prototype name", () => {
   assert.equal(counts["constructor"], 7);
 });
 
+// addTo also WRITES through an OWN property, not a plain `record[key] = …`: assignment to
+// "__proto__" (another Object.prototype key, reachable through a failing-test name) would
+// trigger the inherited setter and create no own key, silently dropping the count. The
+// defineProperty write must keep __proto__ an own enumerable counter while leaving the
+// object a plain prototype (so later reporting of the rest of the map is unaffected).
+test("addTo counts a key named __proto__ as its own key", () => {
+  const counts: Partial<Record<string, number>> = {};
+  addTo(counts, "__proto__", 1);
+  addTo(counts, "__proto__", 3);
+  assert.equal(Object.hasOwn(counts, "__proto__"), true, "__proto__ becomes an own key");
+  assert.equal(counts["__proto__"], 4, "the count accumulates");
+  assert.equal(Object.keys(counts).length, 1, "one own enumerable key");
+  assert.equal(
+    Object.getPrototypeOf(counts),
+    Object.prototype,
+    "the record stays a plain object",
+  );
+});
+
 // memoSetLru is the shared home of the bounded-memo discipline the report fold, the failure
 // digest, and the baseline verdict cache hand-rolled. These pin the two facts its doc
 // comment claims: a hit is refreshed to the LRU tail (so it is not evicted next at the cap),

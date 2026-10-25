@@ -6,6 +6,7 @@
  * only on the team scope. */
 import { dayKey } from "../text/datetime.js";
 import { isPassingMainCheck, isRedMain } from "../baseline/main-guardrails.js";
+import { addTo } from "../collections.js";
 import type { HarnessEvent } from "../events/events.js";
 
 /** Add a spell's ms, split across the local calendar days it spans, to `map` (a Map, so the
@@ -54,5 +55,35 @@ export function mainRedMinutesByDay(
     }
   }
   if (openStart !== undefined) addSpell(map, openStart, toMs);
+  return map;
+}
+
+/** Main's red failing tests per local calendar day (`YYYY-MM-DD` → test → count), over the
+ * window `[fromMs, toMs)`: for each in-window event (`typeof e.ts === "number"` and `fromMs
+ * <= e.ts < toMs`) that G1 accepts as red (`isRedMain`) — a `main_check` that ran the full
+ * check and failed, or a `main_red_hold` — count each `failingTests` element that is a string
+ * once into that event's day (`dayKey`). A passing check is not red, and a red event that
+ * carries no `failingTests` (a hold whose red named none, or a torn non-array `failingTests`;
+ * a non-string element contributes nothing) records nothing, so the loose event log can never
+ * emit `undefined` as a key. Shares `isRedMain` and `dayKey` with
+ * `mainRedMinutesByDay`, so the two cannot disagree about which events are main's red ones.
+ * This is main's own failing tests, not any role's, so the report carries it only on the team
+ * scope. */
+export function mainRedFailingTestsByDay(
+  events: readonly HarnessEvent[],
+  fromMs: number,
+  toMs: number,
+): Map<string, Record<string, number>> {
+  const map = new Map<string, Record<string, number>>();
+  for (const e of events) {
+    if (typeof e.ts !== "number" || e.ts < fromMs || e.ts >= toMs) continue;
+    if (!isRedMain(e)) continue;
+    if (!Array.isArray(e.failingTests)) continue;
+    let record = map.get(dayKey(e.ts));
+    if (record === undefined) map.set(dayKey(e.ts), (record = {}));
+    for (const t of e.failingTests) {
+      if (typeof t === "string") addTo(record, t, 1);
+    }
+  }
   return map;
 }
