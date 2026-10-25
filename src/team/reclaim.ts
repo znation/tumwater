@@ -134,10 +134,10 @@ export async function reclaimWorktree(root: string, dir: string): Promise<boolea
   const base = path.resolve(worktreesDir(root));
   const resolved = path.resolve(dir);
   if (resolved !== base && !resolved.startsWith(base + path.sep)) {
-    throw new Error(`refusing to reclaim ${resolved}: it is outside ${base}`);
+    throw new Error(`refusing to reclaim ${JSON.stringify(resolved)}: it is outside ${JSON.stringify(base)}`);
   }
   if (!(await isLinkedWorktree(resolved))) {
-    throw new Error(`refusing to reclaim ${resolved}: it is not a linked worktree`);
+    throw new Error(`refusing to reclaim ${JSON.stringify(resolved)}: it is not a linked worktree`);
   }
   if (!claimForReclaim(resolved)) return false;
   try {
