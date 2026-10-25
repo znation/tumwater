@@ -3110,6 +3110,20 @@ then BUGS-FIXED.md's, and reads a missing file as empty.
 **Pinned by.** `test/fix-claim-archive.test.ts` — "fixedEntriesAt lists BUGS.md's Fixed entries
 before BUGS-FIXED.md's, reads the bugsMd text when given, and reads a missing file as empty".
 
+### INV-AX5: a role that resolves no model reads `<backend> default` on the role Model line and drawer Model row
+
+**Guarantee.** When a seam resolves neither half of its model — an opencode role with no `model`
+(BACKEND_DEFAULT_MODELS.opencode is `{}`, so routeModel fills no default) or a pi role whose
+settings hold no readable default — both the dashboard role drawer's Model row and the CLI's
+`tumwater role <id>` Model line (modelLine's `<backend> default` branch) name the backend default,
+so the two surfaces agree on what an unresolved role runs on.
+
+**Binds.** `src/ui/gui/gui-client-drawer-config.ts` (`drawerConfigHtml`'s `modelLine` fallback),
+`src/roles/role-render.ts` (`modelLine`/`backendDefault`).
+
+**Pinned by.** `test/gui-client-drawer.test.ts` — "the Configuration Model row names the backend
+default when no model resolves" (an opencode and a pi role each render `<backend> default`).
+
 ## Backlog conflicts: a backlog rebase conflict settles without a model only when no authored bytes need judgment
 
 `src/merge/backlog-conflicts.ts` settles backlog rebase conflicts without a model run in two

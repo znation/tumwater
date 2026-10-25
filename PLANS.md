@@ -444,23 +444,4 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/backend-traits.test.ts: `backendDefaultLabel names pi and non-pi seams` — `"pi default"` for `"pi"` and `undefined`, `"claude default"`/`"opencode default"`/`"codex default"` for the backends.
 - test/status-data-models.test.ts: `a role that resolves no provider or model names its backend default` — `cfg.roles.clean.backend = "opencode"` (with `model`/`provider` unset) yields `model: "opencode default"` and no `modelFromPi`; a config whose pi settings hold no default yields `"pi default"`; the existing pi-default case still yields the formatted selector with `modelFromPi: true`.
 
-### The dashboard role drawer's Model row names a seam's backend default when neither provider nor model resolves — the browser twin of the `tumwater role <id>` Model line and the Roles rows (planned 2026-10-24 by the plan role; independent in behavior of every eligible plan — the queued "The status role rows name a seam's backend default…" is the server twin on other surfaces: it edits src/agent/backend-traits.ts, src/roles/role-render.ts and src/status/status-roles.ts, none of which this part touches, and this part edits only the browser-side drawer script, which cannot import those TS modules, so the two may land in either order; the blocked "The role's `backend` override joins the model-override surfaces, part 2/2" edits src/ui/gui/gui-client-drawer-config.ts at the Model overrides row below this plan's Model row, so whichever lands second rebases there; this part shares docs/invariants.md's cross-surface section with the status-row plan and the `Forward, never back`/`Every commit is verified on main` series, so whichever lands second rebases at that section; touches src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/gui-client-drawer.test.ts)
-
-**Goal.** The dashboard role drawer's read-only Model row (`drawerConfigHtml`, `src/ui/gui/gui-client-drawer-config.ts`) renders `pair(view.provider, view.model)` when there is no `piDefault`, so a seam that resolves neither half — an opencode role with no `model` (`BACKEND_DEFAULT_MODELS.opencode` is `{}`, so `routeModel` fills no default) or a pi role whose settings hold no readable default — shows only `(<tier> tier)` with no model named. `tumwater role <id>`'s Model line already prints `<backend> default` for the same seam (`role-render.ts`'s `modelLine`/`backendDefault`), and the queued status-row plan brings the same label to the Roles rows and TUI role table, so the drawer is the last surface that disagrees. Add the fallback the drawer script already duplicates for the `piDefault` branch.
-
-**Approach.**
-- `src/ui/gui/gui-client-drawer-config.ts`, inside `drawerConfigHtml`: hoist the agent label `const agentLabel = view.backend && view.backend !== "pi" ? view.backend : "pi";`, use it in the existing `piDefault` branch, and render `const modelLine = defaultLine !== "" ? defaultLine : pair(view.provider, view.model) || agentLabel + " default";` — the same shape `role-render.ts`'s `modelLine` uses for its no-pair branch. The resolved-pair rendering, the `modelTier` suffix, the guard that skips the row when neither the model nor the tier is present, and the separate Model overrides row are unchanged; the resolved `thinking` the drawer has never shown stays out of scope.
-- docs/invariants.md: add one invariant to the "Cross-surface agreement" section — a role that resolves no model reads `<backend> default` on both the CLI's `tumwater role <id>` Model line and the dashboard role drawer's Model row — pinned by the new drawer test.
-
-**Files touched.** src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/gui-client-drawer.test.ts
-
-**Acceptance criteria.**
-- With `/api/role?role=clean` answering `{ backend: "opencode", modelTier: "default" }` and no `model`/`provider`/`piDefault`, the drawer renders `<dt>Model</dt><dd[^>]*>opencode default (default tier)</dd>`.
-- With `{ backend: "pi", modelTier: "default" }` and no `piDefault` it renders `pi default (default tier)`.
-- The existing `piDefault` case (`pi default (deepseek/deepseek-v4) (default tier)`) and the resolved-pair case (`deepseek/deepseek-v4 (strong tier)`) are unchanged.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/gui-client-drawer.test.ts: add `the Configuration Model row names the backend default when no model resolves` beside the existing pi-default test — open a drawer for `clean` with each payload above and assert the two Model rows; leave the existing two Model-row tests as they are so the unchanged branches stay pinned.
-
 ## Done

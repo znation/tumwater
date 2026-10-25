@@ -1239,6 +1239,25 @@ test("the Configuration Model row names pi's saved default when no explicit mode
   assert.match(role, /<dt>Model<\/dt><dd[^>]*>pi default \(deepseek\/deepseek-v4\) \(default tier\)<\/dd>/);
 });
 
+// A seam that resolves neither half — an opencode role with no `model` (BACKEND_DEFAULT_MODELS
+// .opencode is `{}`, so routeModel fills no default) or a pi role whose settings hold no
+// readable default — carries no provider/model/piDefault. Like the CLI's `tumwater role <id>`
+// Model line (modelLine's `<backend> default` branch), the drawer must still name the backend
+// default so the page and the role view agree on what an unresolved role runs on.
+test("the Configuration Model row names the backend default when no model resolves", async () => {
+  for (const backend of ["opencode", "pi"]) {
+    const responses: Record<string, unknown> = {
+      "/api/role?role=clean": { notes: null, nextPrompt: null, backend, modelTier: "default" },
+    };
+    const t = openDrawer(["toggleRole"], { status: workingStatus(), responses });
+    t.scope.toggleRole("clean");
+    await flush();
+    const role = t.paintedFor("drawerrole");
+    assert.match(role, /<h3>Configuration<\/h3>/);
+    assert.match(role, new RegExp(`<dt>Model</dt><dd[^>]*>${backend} default \\(default tier\\)</dd>`));
+  }
+});
+
 // The Model overrides row (roles.<base>.*, rolePayload's providerOverride/modelOverride/
 // thinkingOverride) is the one per-role write the read-only Model row leaves out — the
 // dashboard half of the CLI's --provider/--model/--thinking. Always shown (every role), its

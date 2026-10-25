@@ -25,10 +25,15 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     // selector (rolePayload's resolvedModelFields leaves both undefined), and the CLI's
     // Model line names that default (<agent> default (<selector>), backendDefault). Mirror
     // that branch so the drawer names the model a default pi team actually runs on.
+    const agentLabel = view.backend && view.backend !== "pi" ? view.backend : "pi";
     const defaultLine = typeof view.piDefault === "string"
-      ? (view.backend && view.backend !== "pi" ? view.backend : "pi") + " default (" + view.piDefault + ")"
+      ? agentLabel + " default (" + view.piDefault + ")"
       : "";
-    const modelLine = defaultLine !== "" ? defaultLine : pair(view.provider, view.model);
+    // A seam that resolves neither half (an opencode role with no model, a pi role with no
+    // readable default) names the backend default. Gated on a tier so a role with neither
+    // model nor tier still omits the row entirely (the guard below stays the sole decider
+    // for the wholly-absent case), matching role-render.ts's backendDefault no-pair branch.
+    const modelLine = defaultLine !== "" ? defaultLine : (pair(view.provider, view.model) || (view.modelTier !== undefined ? agentLabel + " default" : ""));
     if (modelLine !== "" || view.modelTier !== undefined) {
       rows.push(kvRow("Model", (modelLine !== "" ? modelLine + " " : "") + (view.modelTier !== undefined ? "(" + view.modelTier + " tier)" : "").trim()));
     }
