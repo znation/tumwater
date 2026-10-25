@@ -379,4 +379,44 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 **Tests.**
 - No new test module: a behavior-preserving move guarded by the existing History-key suites. Run `test/tui-keys.test.ts` (the Ctrl+N trail toggle and view-away drop, the Ctrl+P window/trail steps, the Ctrl+R transcript cycle, the Ctrl+W patch toggle, the Ctrl+V revert arm, the Ctrl+G scope cycle, and the filter cycles) and `test/tui.test.ts` whole and confirm green.
 
+### `createTuiPanes`'s ~155-line `handleKey` is split into one named arm per key, so the pane router's rule for a key is found by name (planned 2026-10-25 by the plan role; independent in files of every eligible plan and blocked part — `grep -n 'src/ui/tui/tui-panes.ts' PLANS.md` matches only the refused TUI Transcript plan's "No change … no new pane arm or routing in src/ui/tui/tui-panes.ts" sentence at PLANS.md:189, which names the file to promise it adds nothing there, and no `## Planned` entry's Files-touched list names it: the in-flight plans edit src/agent, src/run/run-stage.ts, src/ui/status-payload.ts and src/ui/tui/tui-pane-history.ts, while the blocked `Every commit is verified on main` parts edit src/review, src/orchestrator, src/runner, src/merge, src/baseline, src/status, src/doctor, src/config, src/cli, src/ui/status-model.ts and src/ui/gui — none src/ui/tui/tui-panes.ts; PLANS-DONE.md's `tui-panes.ts` entries are landed behavior additions (the Health Ctrl+S/Ctrl+V/Ctrl+B/Ctrl+E/Ctrl+N arms, the Failures Ctrl+X release, the Backlog Ctrl+O Ready filter, the Pending Ctrl+O state filter and Ctrl+A accept, the Activity notable cull), not a split of this router, and the only named-arm split the archive records is `resolveRunVerdict`); touches src/ui/tui/tui-panes.ts)
+
+**Goal.** `createTuiPanes` (src/ui/tui/tui-panes.ts) is the pane-navigation half of the TUI key dispatch. Its helpers are already named (`beginKey`, `editorCtx`, `cycleView`, `syncRoster`, `setLineBudgets`, `state`), but its `handleKey` is one ~155-line body of nineteen inline key arms plus the trailing `arrowDir`/`pageDir`/`escape` blocks. Every arm is a chain of `pane.handleKey?.(key, ctx) ?? false` calls whose order *is* the rule — Ctrl+N's Health → History → Pending → Transcript priority, Ctrl+G's per-view split, the Health-guarded Ctrl+S/P/L fallthroughs, the Ctrl+X/R/V chains, the arrow/page/escape fallbacks — with the ordering rationale in block comments between them. So "what does Ctrl+P do, and in what order do the panes see it" is found only by scanning the whole body. Split each key's arm into one named closure beside the other helpers and leave `handleKey` as the ordered dispatch, so a key's routing is found by name. This mirrors the landed `resolveRunVerdict` split (one named arm per decision), `PiStreamParser.feedLine` (one named applier per event family) and the in-flight `createHistoryPane` `handleKey` split.
+
+**Approach.** All edits in src/ui/tui/tui-panes.ts; no exported symbol changes (`createTuiPanes`, `TuiPanesDeps` and the returned `TuiPaneModule` object are untouched).
+- Define these module-private (closure-local) `const` arms immediately before `handleKey`, after `cycleView` (every local each reads — `session`, the ten pane modules and `ctx` — is declared above that point), each `(ctx: TuiPaneCtx) => boolean` and holding today's arm body verbatim (statements, order, comments and return values):
+  - `routeCtrlN` — the whole Ctrl+N chain (the four-pane priority and its ordering comment).
+  - `routeCtrlG` — the per-view Ctrl+G split (Activity 0, History N+4, Pending N+5, report fallback).
+  - `routeCtrlE` — the Health reclaim over the report trailing-window cycle.
+  - `routeCtrlK` — the Health orphan-kill arm.
+  - `routeCtrlW` — the History patch toggle.
+  - `routeCtrlS` — the Health-view guarded arm followed by the History fallthrough, both `if (key.ctrl && key.name === "s")` blocks, as one closure.
+  - `routeCtrlP` — all three `if (key.ctrl && key.name === "p")` blocks (report views N+2/N+3, Health N+7, History fallback), as one closure.
+  - `routeCtrlA` — both `if (key.ctrl && key.name === "a")` blocks (Health N+7, Pending N+5), as one closure.
+  - `routeCtrlU` — the Health re-sync-install arm.
+  - `routeCtrlB` — the Health archive-backlog arm.
+  - `routeCtrlL` — both `if (key.ctrl && key.name === "l")` blocks (Health N+7, History fallback), as one closure.
+  - `routeCtrlY` — the Transcript change-step over the History Summary cycle.
+  - `routeCtrlO` — the five-way Ctrl+O split (Activity 0, Health N+7, Pending N+5, Backlog N+1, History fallback).
+  - `routeCtrlX` — the Ctrl+X chain (transcript → history → queued → pending → backlog).
+  - `routeCtrlR` — the Ctrl+R chain (pending → health → history → backlog).
+  - `routeCtrlV` — the Ctrl+V chain (history → queued → pending → backlog).
+  - `routeArrow` — the `arrowDir` block (backlog → pending → queued, then false).
+  - `routePage` — the `pageDir` block (activity → transcript → history → report → backlog, then false).
+  - `routeEscape` — the `escape` block (pending then queued).
+- `handleKey` becomes the dispatch only: `const ctx: TuiPaneCtx = { es };` then `if (key.ctrl && key.name === "n") return routeCtrlN(ctx);` … one line per Ctrl key in today's order, then `const arrow = arrowDir(key.name); if (arrow !== null) return routeArrow(ctx);`, `const page = pageDir(key.name); if (page !== null) return routePage(ctx);`, `if (key.name === "escape") return routeEscape(ctx);` and the final `return false`. The shared prelude comment ("The editor flags below are all false here …") stays on `handleKey`; each moved block comment travels with its arm. Move only the guard-and-call statements — the `arrowDir`/`pageDir` scans stay in `handleKey`, so no direction value is recomputed.
+- No change to any state declaration, doc comment, or the returned module object; `docs/invariants.md` is not edited (it pins no pane-router key contract).
+
+**Files touched.** src/ui/tui/tui-panes.ts
+
+**Acceptance criteria.**
+- `handleKey`'s body contains only `const ctx: TuiPaneCtx = { es };`, the per-key dispatch calls, the `arrowDir`/`pageDir` scans and the final `return false`; none of the nineteen arm bodies (`routeCtrlN` … `routeEscape`) remains inline, and each arm is declared exactly once above it.
+- Every moved statement, expression, comment and `return true`/`return false` is preserved verbatim, so `handleKey` returns the boolean it returns today for every key, view and editor state — including Ctrl+N's four-pane order, the Health-guarded Ctrl+S/P/L fallthroughs, the always-consumed Ctrl+P on the History view, the Ctrl+X/R/V chains, and the arrow/page/escape fallbacks.
+- The arms are module-private closure-local constants, not added to the returned `TuiPaneModule`; `createTuiPanes`'s return object is unchanged, and no import is added or removed.
+- No edit outside src/ui/tui/tui-panes.ts.
+- `npm run test:gate` passes.
+
+**Tests.**
+- No new test module: a behavior-preserving move guarded by the existing pane-router suites. Run `test/tui-keys.test.ts` (the Ctrl+N/G/E/K/W/S/P/A/U/B/L/Y/O/X/R/V chains across the views, the arrows and pages) and `test/tui.test.ts` whole and confirm green.
+
 ## Done
