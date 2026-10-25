@@ -33,7 +33,7 @@ export const GUI_CLIENT_FEED_JS = String.raw`
   function feedWindowPhrase() {
     const w = Number(feedWindow);
     return feedStep
-      ? "between " + timeSpan((feedStep + 1) * w) + " and " + timeSpan(feedStep * w) + " ago"
+      ? betweenAgo((feedStep + 1) * w, feedStep * w)
       : (FEED_WINDOWS.find((x) => x[0] === feedWindow) || [])[2];
   }
   let feedFilter = recall("feed") === "all" ? "all" : "notable";

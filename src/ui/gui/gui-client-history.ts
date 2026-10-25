@@ -524,7 +524,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   function histWindowPhrase(sinceKey, step) {
     const w = HIST_WINDOWS[sinceKey];
     if (!w) return "";
-    return step ? "between " + timeSpan((step + 1) * w[0]) + " and " + timeSpan(step * w[0]) + " ago" : w[1];
+    return step ? betweenAgo((step + 1) * w[0], step * w[0]) : w[1];
   }
   // The note above a stepped window's table; empty at step 0 or for an unknown key.
   function historyStepHtml(sinceKey, step) {

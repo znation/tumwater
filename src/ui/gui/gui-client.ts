@@ -165,6 +165,11 @@ const FORMAT_JS = String.raw`  // format:start
   // count that isn't a whole number of days prints hours (a stepped window is always whole
   // hours), and the singular drops the trailing s.
   const timeSpan = (ms) => { const d = ms % 86400000 === 0; const n = d ? ms / 86400000 : ms / 3600000; return n + (d ? " day" : " hour") + (n === 1 ? "" : "s"); };
+  // A stepped window's two bounds as "between 6 hours and 1 hour ago" — the phrase the
+  // activity feed's and History view's stepped-window notes both spell out in terms of
+  // timeSpan. newerMs is the nearer (larger) bound, olderMs the farther one, so the
+  // countdown reads largest-first.
+  const betweenAgo = (newerMs, olderMs) => "between " + timeSpan(newerMs) + " and " + timeSpan(olderMs) + " ago";
   // human-seconds-fmt:start
   // Whole-second s/m/h/d label: <60 → Ns, <3600 → rounded Nm, <86400 → rounded Nh, else
   // rounded Nd — datetime.ts's humanSeconds, shared by every relative time on the page. A
