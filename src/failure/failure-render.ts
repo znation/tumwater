@@ -133,6 +133,20 @@ function hoursPhrase(ms: number): string {
  * I/O, no clock reads. */
 export function renderFailureMarkdown(data: FailureReportData): string {
   const lines: string[] = [];
+  pushDigestHeader(lines, data);
+  pushStateChanges(lines, data);
+  pushOutcomeTable(lines, data);
+  pushTimeAndSpend(lines, data);
+  pushPromptStats(lines, data);
+  pushDeltas(lines, data);
+  pushClusterSections(lines, data);
+  pushMergedSection(lines, data);
+  return lines.join("\n");
+}
+
+/** The digest's title, blank line, window line (bounded/since/day) and log-state lines. Owns the
+ * local `bounded` const the empty branch reads, so the since-vs-day split stays in one place. */
+function pushDigestHeader(lines: string[], data: FailureReportData): void {
   lines.push("# tumwater failure digest");
   lines.push("");
   // The since shape prints the same sections as the day shape but labels its window as an
@@ -158,11 +172,13 @@ export function renderFailureMarkdown(data: FailureReportData): string {
         : `no events in the last ${dayLabel(data.days)}`,
     );
   } else if (data.partial) lines.push(`partial: retained log starts ${data.oldestEventDate ?? "?"}`);
+}
 
-  // The causal frame before the counts: what the team DID in the window, so the reader can ask
-  // whether the harness's response was right. Omitted entirely when the window held none. When
-  // the newest-N cap cut the window's transitions, the remainder is named — a quiet window (no
-  // line) and a truncated one must not look the same.
+/** The causal frame before the counts: what the team DID in the window, so the reader can ask
+ * whether the harness's response was right. Omitted entirely when the window held none. When
+ * the newest-N cap cut the window's transitions, the remainder is named — a quiet window (no
+ * line) and a truncated one must not look the same. */
+function pushStateChanges(lines: string[], data: FailureReportData): void {
   if (data.stateChanges.length > 0) {
     lines.push("");
     // A scoped digest retitles the section: its transitions are the named role's, so the
@@ -174,7 +190,11 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     const hidden = data.stateChangesTotal - data.stateChanges.length;
     if (hidden > 0) lines.push(`+${hidden} older transitions hidden`);
   }
+}
 
+/** The outcome table: the column set derived from the window's evidence, then the role × result
+ * table, or its placeholder when no run finished. */
+function pushOutcomeTable(lines: string[], data: FailureReportData): void {
   const cols = columns(data.outcomes);
   lines.push("");
   lines.push("## Outcome by role");
@@ -195,15 +215,17 @@ export function renderFailureMarkdown(data: FailureReportData): string {
       ),
     );
   }
+}
 
-  // The same runs priced by what they cost, so a 30-minute timeout outranks ten 200-ms
-  // errors that the Outcome table above weighs equally. Two parts: the role × class table of
-  // hours and dollars, then the top loss causes by time (an error cluster, a role's
-  // no_change total — the quiet loss no cluster names, a review-rejected authoring span, a
-  // merge-conflict/merge-blocked authoring span, or a context cut-off (a run truncated at
-  // its model's ceiling, a cost of length the harness resumes rather than quiet idleness).
-  // Grows only with the role catalog (fixed by config) and the LOSS_TOP cut, so the byte
-  // bound argued above holds.
+/** The same runs priced by what they cost, so a 30-minute timeout outranks ten 200-ms
+ * errors that the Outcome table above weighs equally. Two parts: the role × class table of
+ * hours and dollars, then the top loss causes by time (an error cluster, a role's
+ * no_change total — the quiet loss no cluster names, a review-rejected authoring span, a
+ * merge-conflict/merge-blocked authoring span, or a context cut-off (a run truncated at
+ * its model's ceiling, a cost of length the harness resumes rather than quiet idleness).
+ * Grows only with the role catalog (fixed by config) and the LOSS_TOP cut, so the byte
+ * bound argued above holds. */
+function pushTimeAndSpend(lines: string[], data: FailureReportData): void {
   lines.push("");
   lines.push("## Time and spend by outcome");
   if (data.timeSpend.length === 0) {
@@ -248,12 +270,14 @@ export function renderFailureMarkdown(data: FailureReportData): string {
       }
     }
   }
+}
 
-  // Prompt-token telemetry: the per-role median prompt
-  // send and how much of the prompt budget goes out before a run's first edit, plus each
-  // role's cache-read share of its prompt bill when some run reported cache reads. Omitted
-  // entirely when no run_end in the window carries the fields, so old logs and their golden
-  // digests render unchanged.
+/** Prompt-token telemetry: the per-role median prompt
+ * send and how much of the prompt budget goes out before a run's first edit, plus each
+ * role's cache-read share of its prompt bill when some run reported cache reads. Omitted
+ * entirely when no run_end in the window carries the fields, so old logs and their golden
+ * digests render unchanged. */
+function pushPromptStats(lines: string[], data: FailureReportData): void {
   if (data.promptStats.length > 0) {
     lines.push("");
     lines.push("## Prompt tokens by role");
@@ -266,7 +290,10 @@ export function renderFailureMarkdown(data: FailureReportData): string {
       lines.push(line);
     }
   }
+}
 
+/** The deltas table: this window's runs/rates vs the preceding one, or its placeholder. */
+function pushDeltas(lines: string[], data: FailureReportData): void {
   lines.push("");
   lines.push(
     `## Deltas vs the preceding ${data.sinceMs !== undefined ? durationLabel(data.sinceMs - (data.untilMs ?? 0)) : dayLabel(data.days)}`,
@@ -287,7 +314,11 @@ export function renderFailureMarkdown(data: FailureReportData): string {
       ),
     );
   }
+}
 
+/** The five cluster sections in their current order, plus the post-merge-rejection line between
+ * the review/rejection clusters and the merge-failure section. */
+function pushClusterSections(lines: string[], data: FailureReportData): void {
   // The title restates the section's contract: its total now covers the Outcome table's error
   // column AND its main_red cells (the baseline gate's own cause rides the run, BUGS.md
   // 2026-09-28), so an operator cross-checking counts against the tables above is not misled
@@ -300,7 +331,10 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     lines.push(`_${plural(data.postMergeRejections, "post-merge rejection", "post-merge rejections")} — the commit already reached main, so it stays there with the reviewer's recorded reasons (never re-reviewed — Forward, never back)_`);
   }
   renderClusters(lines, "Merge failures", data.mergeFailures, "merge failures");
+}
 
+/** The merged list, with its remainder line when the newest-N cut dropped anything. */
+function pushMergedSection(lines: string[], data: FailureReportData): void {
   lines.push("");
   lines.push("## Merged in the window");
   if (data.merged.length === 0) {
@@ -312,8 +346,6 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     const hidden = data.mergedTotal - data.merged.length;
     if (hidden > 0) lines.push(`+${hidden} older merges not listed`);
   }
-
-  return lines.join("\n");
 }
 
 /** Push one "Top … clusters" section: each cluster as a `**N×** roles · first → last —
