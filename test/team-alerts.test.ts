@@ -169,6 +169,7 @@ test("role trouble, a stale build, questions, and a pause, most urgent first", (
   assert.deepEqual(alerts.map((a) => a.key), ["mainred", "failing", "stuck", "build", "questions", "paused"]);
   const by = Object.fromEntries(alerts.map((a) => [a.key, a]));
   assert.equal(by.mainred?.title, "main's check is failing — 1 role is blocked");
+  assert.equal(by.mainred?.detail, "Code roles keep authoring on top of a red main; the ci healer owns the failing check.");
   assert.equal(by.failing?.title, "bugfix and qa are failing run after run");
   assert.equal(by.failing?.detail, "bugfix: 429 Rate limit exceeded · qa: see its transcript");
   assert.deepEqual(by.failing?.actions.map((a) => [a.act, a.arg]), [["role", "bugfix"], ["role", "qa"]], "each failing role opens from the alert");

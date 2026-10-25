@@ -43,7 +43,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
       };
     }
     if (p === "failing") return { key: "failing", label: "Failing", tone: "red", live: false, detail: "failed runs in a row" };
-    if (p === "main's check is failing") return { key: "mainred", label: "Main's check failing", tone: "red", live: false, detail: "blocked until main's check passes" };
+    if (p === "main's check is failing") return { key: "mainred", label: "Main's check failing", tone: "red", live: false, detail: "change pinned until main goes green" };
     if (p.startsWith("paused")) return { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new runs" };
     if (p === "waiting: budget spent") return { key: "budget", label: "Waiting", tone: "amber", live: false, detail: "budget" };
     if (p === "waiting: daily cap spent") return { key: "cap", label: "Waiting", tone: "amber", live: false, detail: "daily cap" };

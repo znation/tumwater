@@ -5,6 +5,28 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3m/3: the `mainred` alert and the dashboard's red-main phase stop telling the operator that code roles stop authoring (planned 2026-10-25 by the plan role; the runtime-wording half of part 3k/3's sweep, split out so that part stays comment-only and this one carries its test; requires part 3k/3 landed, since this part's acceptance reads the whole stale-reference grep empty, which only holds once that part's comment sites are gone; touches src/ui/team-alerts.ts src/ui/gui/gui-client-model.ts test/team-alerts.test.ts test/gui-client.test.ts) — done 2026-10-25 by the feature role
+
+**Previously held 3**
+
+**Goal.** With `mainRedGate` removed (part 3a/3), a code role authors on top of a red main; the merge-side `main_red` pin keeps its change queued and the `ci` healer is handed the failing tests (`mainRedHealNote`, `warnMainRedOnce`). Two user-facing strings still say the role is stopped and are part 3k/3's stale-reference theme, held out of that comment-only sweep: the `mainred` alert's `detail` (`buildStatusAlerts`, src/ui/team-alerts.ts) and the dashboard phase pill's detail for `main's check is failing` (`phaseInfo`, src/ui/gui/gui-client-model.ts). The alert title (`N roles are blocked`) and the phase label stay as the present phase marker; part 3f/3 later retires the phase.
+
+**Approach.**
+- src/ui/team-alerts.ts's `if (red.length)` block: set the `detail` to `"Code roles keep authoring on top of a red main; the ci healer owns the failing check."` Keep `key`, `tone`, the `title` and `actions: seeFailures()` byte-identical. The in-flight `mainred` alert plan adds a failing-test/culprit variant above this detail and leaves the generic sentence to this part, so whichever lands second rebases on this one line.
+- src/ui/gui/gui-client-model.ts's `phaseInfo` `if (p === "main's check is failing")` arm: set `detail` to `"change pinned until main goes green"`; keep `key: "mainred"`, `label` and `tone`.
+- Tests: in test/team-alerts.test.ts's `role trouble, a stale build, questions, and a pause, most urgent first` case (which already asserts `by.mainred?.title`), add `assert.equal(by.mainred?.detail, "Code roles keep authoring on top of a red main; the ci healer owns the failing check.")`. In test/gui-client.test.ts's `phaseInfo` detail case (beside the `due`/`idle` detail assertions), add `assert.equal(model.phaseInfo("main's check is failing").detail, "change pinned until main goes green")`.
+
+**Files touched.** src/ui/team-alerts.ts src/ui/gui/gui-client-model.ts test/team-alerts.test.ts test/gui-client.test.ts
+
+**Acceptance criteria.**
+- `by.mainred?.detail` equals `"Code roles keep authoring on top of a red main; the ci healer owns the failing check."` and `model.phaseInfo("main's check is failing").detail` equals `"change pinned until main goes green"`; both keep their `key`/`label`/`tone`, the alert keeps `actions: seeFailures()`, and neither detail carries `stop authoring` or `blocked`.
+- With part 3k/3 landed, the full stale-reference grep over src, test and docs returns nothing; before it lands, `grep -rniE "stop authoring" src/ui/team-alerts.ts` and the literal old dashboard string are gone from these two files.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/team-alerts.test.ts: the new exact-detail assertion above; every existing assertion in the file (including the `mainred` title) stays unchanged.
+- test/gui-client.test.ts: the new exact-detail assertion above; the server/browser phase pins the file already makes stay unchanged.
+
 ### Every commit is verified on main, part 3k/3: every stale red-main-authoring comment and test description is refreshed — the runtime alert and phase wording is part 3m/3 (planned 2026-10-24 by the plan role, split from the held part 3a/3; rewritten 2026-10-25 by the plan role to name the missed sites, then split 2026-10-25 by the plan role into this comment-only sweep and the runtime wording of part 3m/3, after the feature role rejected it twice at its revision cap; requires part 3a/3 landed, since until the block is gone these lines describe live behavior; touches src/baseline/main-baseline.ts src/baseline/main-red.ts src/runner/model-fallback.ts src/runner/runner-fallback.ts src/config/config.ts src/cli/cli-start.ts src/ui/status-model.ts src/build/build-check-report.ts src/build/build-check-events.ts src/run/run-prompt.ts src/review/review-precheck.ts src/events/events.ts src/build/build-check.ts src/run/run-outcome.ts src/inbox/pending-prompt.ts test/runner-2.test.ts test/main-baseline.test.ts test/status-render-cells.test.ts test/status-model.test.ts test/merge-to-main-recheck.test.ts test/build-check.test.ts test/review-precheck.test.ts test/runner-4.test.ts test/helpers/sleep-clock.ts docs/invariants.md) — done 2026-10-25 by the feature role
 
 **Previously held 3**

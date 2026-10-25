@@ -442,7 +442,7 @@ function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
     const redDetail = snap.mainCheck?.red;
     const detail = redDetail
       ? `A full check failed on main: ${squash(redDetail.failingTests[0] ?? "", 80)}${redDetail.failingTests.length > 1 ? ` (+${redDetail.failingTests.length - 1} more)` : ""}${redDetail.culprit?.runner ? `; the main watch blames ${roleLabel(redDetail.culprit.runner)}'s merge ${shortSha(redDetail.culprit.commit)}` : ""}`
-      : "Code roles stop authoring until main's check passes, and pick up on their own once it does.";
+      : "Code roles keep authoring on top of a red main; the ci healer owns the failing check.";
     out.push({
       key: "mainred",
       tone: "red",

@@ -85,6 +85,7 @@ test("every phase label rolePhase renders maps to a known status on the page", (
   assert.equal(model.phaseInfo("working 3m12s · turn 4 · ctx 18.2k · bash npm test").detail, "3m12s · turn 4 · ctx 18.2k · bash npm test");
   assert.equal(model.phaseInfo("merging 1m · checking").detail, "1m · checking");
   assert.equal(model.phaseInfo("waiting to start 2m").detail, "for 2m");
+  assert.equal(model.phaseInfo("main's check is failing").detail, "change pinned until main goes green");
   // The per-role cap's label reads with the other held states (amber) and its own detail.
   const cap = model.phaseInfo("waiting: daily cap spent");
   assert.deepEqual([cap.label, cap.tone, cap.live], ["Waiting", "amber", false], "waiting: daily cap spent reads like waiting: budget spent");
