@@ -6,13 +6,15 @@ import { runManualReclaim } from "../../operator/operator-intent.js";
 import { testNotifyHook } from "../../cli/notify-command.js";
 import { resyncRootInstall, rootInstallResyncLines } from "../../build/dep-install.js";
 import { brokenPinDropLines, leftoverRetireLines } from "../../doctor/doctor-contention-checks.js";
+import { describeArchivedFile } from "../../backlog/backlog-archive.js";
+import { shortSha } from "../../text/format.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
 /** The Health pane (view roleIds.length + 7) of the TUI (src/ui/tui/tui.tsx): the problems-only
- * Ctrl+O toggle, the Ctrl+P image-model re-probe, the Ctrl+A commit-backlog, and the runDoctor
- * collector it re-reads on every entry. Split out of the pane-navigation monolith; it owns the
- * problems flag and the last resolved report. */
+ * Ctrl+O toggle, the Ctrl+P image-model re-probe, the Ctrl+A commit-backlog, the Ctrl+B
+ * backlog archive, and the runDoctor collector it re-reads on every entry. Split out of the
+ * pane-navigation monolith; it owns the problems flag and the last resolved report. */
 export function createHealthPane(session: TuiPaneSession) {
   // Within the Health pane (Ctrl+O), whether the cached report paints only its warn and fail
   // checks, the same problems-only trim `tumwater doctor --problems` applies. Session-only
@@ -280,6 +282,47 @@ export function createHealthPane(session: TuiPaneSession) {
         (report) => {
           const lines = leftoverRetireLines(report);
           session.flashMessage(lines.length > 0 ? lines.join("; ") : "no leftover roles to retire");
+          void run();
+          session.paneScroll = 0;
+          session.requestRender();
+        },
+        (err: unknown) => {
+          session.flashError(err);
+          session.requestRender();
+        },
+      );
+      return true;
+    }
+    if (key.ctrl && key.name === "b" && promptLineFree(ctx.es) && (ctx.es.input ?? "") === "" && session.view === session.roleIds.length + 7) {
+      // Ctrl+B on the Health pane, pressed twice, archives the finished entries still under
+      // PLANS.md's ## Done and BUGS.md's ## Fixed into PLANS-DONE.md and BUGS-FIXED.md and
+      // commits them on the base branch — the terminal twin of `tumwater archive` and the
+      // dashboard Health card's Archive backlog, all reached through the same archiveFinished-.
+      // OnMain. The first press only arms (beginKey disarms on any other key) and flashes what
+      // a second press does; the second flashes the same lines the CLI prints, joined with
+      // "; " (the nothing line verbatim when there is nothing to archive), then re-runs the
+      // checks so the `backlog archive` row reflects the move. A failure flashes instead of
+      // killing the TUI. Ctrl+B stays the prompt-line editor's line-kill (budget editor) while
+      // text is typed or an editor holds the line, and is unbound on every other view.
+      if (!session.armedArchiveBacklog) {
+        session.archiveBacklogArmed = true;
+        session.flashMessage(
+          "press Ctrl+B again to archive the finished entries under PLANS.md ## Done and BUGS.md ## Fixed — any other key keeps them",
+        );
+        session.requestRender();
+        return true;
+      }
+      session.flashMessage("archiving finished backlog entries …");
+      session.requestRender();
+      void session.archiveBacklog(session.root).then(
+        (outcome) => {
+          if (outcome.status === "nothing") {
+            session.flashMessage("nothing to archive: PLANS.md ## Done and BUGS.md ## Fixed hold no finished entries");
+          } else if (outcome.status === "skipped") {
+            session.flashMessage(`nothing archived: ${outcome.reason}`);
+          } else {
+            session.flashMessage([...outcome.moved.map(describeArchivedFile), `committed ${shortSha(outcome.commit)}`].join("; "));
+          }
           void run();
           session.paneScroll = 0;
           session.requestRender();

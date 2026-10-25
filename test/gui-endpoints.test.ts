@@ -8,7 +8,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { runNotFoundLastMessage } from "../src/run/run-detail.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleRun, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleReviewAfterMerge, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleReviewAfterMerge, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { rootInstallResyncLines, type RootInstallResync } from "../src/build/dep-install.js";
 import { renderRunDetail } from "../src/run/run-detail-render.js";
 import { readRunDetail, type RunDetail } from "../src/run/run-detail-data.js";
@@ -325,6 +325,24 @@ test("handleCommitBacklog answers the commit lines and ok", async () => {
   const badBody = await captureJson((res) => handleCommitBacklog(fakeReq("{nope"), res, root, async () => { notCalled = false; return { base: "main", committed: [], failed: [], skipped: null }; }));
   assert.equal(badBody.captured.status, 400);
   assert.equal(notCalled, true, "a malformed body never calls the commit seam");
+});
+
+test("handleArchiveBacklog answers the archive lines and ok", async () => {
+  const root = makeRepo();
+  let called = 0;
+  const archived = await captureJson((res) => handleArchiveBacklog(fakeReq("{}"), res, root, async () => { called += 1; return { status: "archived", commit: "a".repeat(40), moved: [{ file: "PLANS.md", archive: "PLANS-DONE.md", titles: ["Done plan"], dropped: [] }] }; }));
+  assert.equal(called, 1);
+  assert.equal(archived.captured.status, 200);
+  assert.deepEqual(archived.data, { ok: true, message: "PLANS.md → PLANS-DONE.md: 1 entry; committed aaaaaaaa", archived: true, commit: "a".repeat(40), moved: [{ file: "PLANS.md", archive: "PLANS-DONE.md", titles: ["Done plan"], dropped: [] }] });
+  const nothing = await captureJson((res) => handleArchiveBacklog(fakeReq("{}"), res, root, async () => ({ status: "nothing" })));
+  assert.equal(nothing.captured.status, 200);
+  assert.deepEqual(nothing.data, { ok: true, message: "nothing to archive: PLANS.md ## Done and BUGS.md ## Fixed hold no finished entries" });
+  const skipped = await captureJson((res) => handleArchiveBacklog(fakeReq("{}"), res, root, async () => ({ status: "skipped", reason: "your checkout is on x, not main" })));
+  assert.deepEqual(skipped.data, { ok: false, message: "nothing archived: your checkout is on x, not main" });
+  let notCalled = true;
+  const badBody = await captureJson((res) => handleArchiveBacklog(fakeReq("{nope"), res, root, async () => { notCalled = false; return { status: "nothing" }; }));
+  assert.equal(badBody.captured.status, 400);
+  assert.equal(notCalled, true, "a malformed body never calls the archive seam");
 });
 
 test("handleResyncInstall answers the re-sync lines and ok", async () => {

@@ -349,8 +349,9 @@ export function describeArchivedFile(f: ArchivedFile): string {
   return `${f.file} → ${f.archive}: ${plural(f.titles.length, "entry", "entries")}${dropped}`;
 }
 
-/** What archiveFinishedOnMain did. `skipped` names why nothing was written. */
-type ArchiveOnMainOutcome =
+/** What archiveFinishedOnMain did. `skipped` names why nothing was written. Exported so the
+ * GUI handler and the TUI Health pane can name it. */
+export type ArchiveOnMainOutcome =
   | { status: "nothing" }
   | { status: "archived"; commit: string; moved: ArchivedFile[] }
   | { status: "skipped"; reason: string };

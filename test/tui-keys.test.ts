@@ -5203,6 +5203,73 @@ test("a key between two Ctrl+L presses on the Health view disarms the retire", (
   assert.equal(h.retires(), 0);
 });
 
+function archiveBacklogHarness(onView: number, outcome: { status: "nothing" } | { status: "archived"; commit: string; moved: { file: string; archive: string; titles: string[]; dropped: string[] }[] } | { status: "skipped"; reason: string }) {
+  const root = makeRoot();
+  const doctorReport: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "ok", name: "node", detail: "fine" }],
+    routing: [],
+    verdict: "ok",
+  } as DoctorReport;
+  let archives = 0;
+  let doctors = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => {
+      doctors += 1;
+      return Promise.resolve(doctorReport);
+    },
+    archiveBacklog: () => {
+      archives += 1;
+      return Promise.resolve(outcome);
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < onView; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  return { keys, archives: () => archives, doctors: () => doctors };
+}
+
+test("Ctrl+B on the Health view arms then archives the finished entries and flashes the lines", async () => {
+  const h = archiveBacklogHarness(7, { status: "archived", commit: "a".repeat(40), moved: [{ file: "PLANS.md", archive: "PLANS-DONE.md", titles: ["Done plan"], dropped: [] }] });
+  assert.equal(h.keys.state().view, 7);
+  await Promise.resolve();
+  const before = h.doctors();
+  h.keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(h.archives(), 0);
+  assert.match(h.keys.state().flash!, /press Ctrl\+B again/);
+  h.keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(h.archives(), 1);
+  await waitFor(() => (h.keys.state().flash ?? "").includes("PLANS-DONE.md"), "the archive flash");
+  assert.equal(h.keys.state().flash, "PLANS.md → PLANS-DONE.md: 1 entry; committed aaaaaaaa");
+  assert.equal(h.doctors(), before + 1);
+});
+
+test("Ctrl+B on the Health view flashes the nothing line when there is nothing to archive", async () => {
+  const h = archiveBacklogHarness(7, { status: "nothing" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "b" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "b" });
+  await waitFor(() => (h.keys.state().flash ?? "") === "nothing to archive: PLANS.md ## Done and BUGS.md ## Fixed hold no finished entries", "the nothing flash");
+  assert.equal(h.keys.state().flash, "nothing to archive: PLANS.md ## Done and BUGS.md ## Fixed hold no finished entries");
+});
+
+test("a key between two Ctrl+B presses on the Health view disarms the archive", () => {
+  const h = archiveBacklogHarness(7, { status: "nothing" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "b" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "o" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(h.archives(), 0);
+});
+
+test("Ctrl+B off the Health view never archives", () => {
+  const h = archiveBacklogHarness(0, { status: "nothing" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "b" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(h.archives(), 0);
+});
+
 test("Ctrl+L on the Health view with text typed on the prompt line retires nothing and leaves the prompt", () => {
   const h = retireLeftoversHarness(7, { retired: [{ role: "clean", removed: ["branch"] }], failed: [] });
   h.keys.handleKey("x", { name: "x" });

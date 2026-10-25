@@ -51,6 +51,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     session.dropBrokenPinsArmed = false;
     session.armedRetireLeftovers = session.retireLeftoversArmed;
     session.retireLeftoversArmed = false;
+    session.armedArchiveBacklog = session.archiveBacklogArmed;
+    session.archiveBacklogArmed = false;
     session.armedRevert = session.revertArmed;
     session.revertArmed = null;
     session.armedQueue = session.queueArmed;
@@ -188,6 +190,10 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     // Health owns Ctrl+U (re-sync install) ahead of the pane router's fallthrough; off the
     // Health view it falls through so the prompt-line editor keeps Ctrl+U (kill-to-start).
     if (key.ctrl && key.name === "u" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
+    // Health owns Ctrl+B (archive backlog) ahead of the pane router's fallthrough; the prompt-
+    // line editors are consulted first, so the budget editor keeps Ctrl+B where it applies,
+    // and off the Health view Ctrl+B is otherwise unbound.
+    if (key.ctrl && key.name === "b" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
     // Health owns Ctrl+L (retire leftovers) ahead of the pane router's fallthrough; off the
     // Health view it falls through so the Activity fallback shift (view 0) and the
     // instructions editor on a role's Transcript keep their current meanings.

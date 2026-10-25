@@ -57,7 +57,12 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
       // Ctrl+B toggles budget-edit mode on the prompt line (mnemonic for *b*udget): on the
       // Activity view it edits the team's cap as today, and on a role's Transcript (or notes)
       // view it edits that role's own `maxDailyCostUsdPerRole.<role>` cap — the terminal
-      // control for the amber role-cap alert. Entering pre-fills the current cap (empty when
+      // control for the amber role-cap alert. On the Health view, though, Ctrl+B is the
+      // archive-backlog arm (tui-pane-health.ts): fall through so the pane router's arm can
+      // consume it, exactly as Ctrl+A/Ctrl+U let the pane arms ahead of the editors keep
+      // their Health meanings while the editors keep the key where it applies.
+      if (ctx.view === ctx.roleIds.length + 7) return false;
+      // Entering pre-fills the current cap (empty when
       // disabled — empty means "no cap" on save) and saves the prompt text; leaving restores
       // it. Esc cancels the same way. One budgetMode flag, one held slot and one saved-draft
       // pair serve both scopes: only the pre-fill read and the write differ.

@@ -13,7 +13,8 @@
  * through GET /api/doctor on each open (and on its Re-run button) and paints the report (its
  * Re-probe models button POSTs /api/doctor-reprobe instead, spending the image probes; its
  * Commit backlog button POSTs /api/doctor-commit-backlog instead, the same commitUncommittedBacklog
- * `tumwater doctor --commit-backlog` runs); a
+ * `tumwater doctor --commit-backlog` runs; its Archive backlog button POSTs
+ * /api/doctor-archive-backlog instead, the same archiveFinishedOnMain `tumwater archive` runs); a
  * third, "Disabled roles", lists every disabled role (GET /api/retire), each with an Enable
  * button (POST /api/role-enable) and — for a role that still keeps worktree/branch leftovers — a
  * two-click Retire button (POST /api/retire). */
@@ -78,7 +79,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<button type='button' class='btn btn-sm' data-action='doctor-drop-broken-pins' title=\"Drops each refs/tumwater/ pin whose commit is gone - the manual git update-ref -d the tumwater pins row names, like tumwater doctor --drop-broken-pins\">Drop broken pins</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-commit-backlog' title='Commit each uncommitted tracked backlog or brief file on main, like tumwater doctor --commit-backlog'>Commit backlog</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-resync-install' title=\"Re-sync the root checkout's install after a failed post-merge re-sync, like tumwater doctor --resync-install\">Re-sync install</button>" +
-      "<button type='button' class='btn btn-sm' data-action='doctor-retire-leftovers' title=\"Retire every disabled role's leftover worktree, branch and merge ref in one pass, like tumwater doctor --retire-leftovers (or tumwater retire --role <id> per role)\">Retire leftovers</button></div>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-retire-leftovers' title=\"Retire every disabled role's leftover worktree, branch and merge ref in one pass, like tumwater doctor --retire-leftovers (or tumwater retire --role <id> per role)\">Retire leftovers</button>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-archive-backlog' title=\"Move the finished entries under PLANS.md ## Done and BUGS.md ## Fixed into the archive files and commit them on main, like tumwater archive\">Archive backlog</button></div>" +
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
       "<div class='card' id='retirecard'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='briefcard'><div class='empty'>Loading…</div></div>");
@@ -275,6 +277,32 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       // The shared leftoverRetireLines join is empty when nothing is retirable, so the
       // button falls back to the same none-left sentence the TUI Health key flashes.
       showFlash((d.ok ? "" : "error: ") + (d.message || "no leftover roles to retire"));
+    } catch (err) {
+      showFlash("error: " + clientErrorMessage(err));
+    }
+    await fetchDoctor();
+  }
+  // The Health card's Archive backlog button: a two-click confirm, then POST
+  // /api/doctor-archive-backlog runs the same archive as "tumwater archive" (holding the merge
+  // lock) and the card re-runs its checks so the backlog archive row repaints. ok is false
+  // when the archive was skipped (an off-base checkout or uncommitted backlog/archive files),
+  // and its reason still flashes so the operator sees why nothing moved.
+  function paintArchiveBacklogButton() {
+    const btn = document.querySelector("button[data-action='doctor-archive-backlog']");
+    if (btn) btn.textContent = archiveBacklogSlot.armed("archive-backlog") ? "Confirm archive" : "Archive backlog";
+  }
+  const archiveBacklogSlot = confirmSlot(paintArchiveBacklogButton);
+  async function archiveBacklogClick() {
+    if (!archiveBacklogSlot.armed("archive-backlog")) {
+      archiveBacklogSlot.arm("archive-backlog");
+      return;
+    }
+    archiveBacklogSlot.disarm();
+    paintArchiveBacklogButton();
+    showFlash("Archiving the finished backlog entries…");
+    try {
+      const d = await postJson("/api/doctor-archive-backlog", {});
+      showFlash((d.ok ? "" : "error: ") + d.message);
     } catch (err) {
       showFlash("error: " + clientErrorMessage(err));
     }

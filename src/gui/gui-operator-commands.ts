@@ -2,8 +2,8 @@
  * The dashboard's POST operator-lifecycle command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): reset-counters,
  * restart, reclaim, abort, stop-schedule, role-notes, retire, revert, brief-edit, queue-cancel,
- * queue-top, post-review-accept, and commit-backlog — every POST handler that is not
- * prompt/backlog/config/team. Each handler
+ * queue-top, post-review-accept, commit-backlog, and archive-backlog — every POST handler
+ * that is not prompt/backlog/config/team. Each handler
  * adapts HTTP onto the domain work
  * one layer down (operator-intent, role-notes-write, brief-edit) and touches no socket beyond
  * its own `res`.
@@ -15,9 +15,10 @@ import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { killOrphans, orphanKillLines, type OrphanKillReport } from "../doctor/doctor-orphans.js";
 import { dropBrokenPins, brokenPinDropLines, type BrokenPinDrop, retireLeftovers, leftoverRetireLines, type LeftoverRetireReport } from "../doctor/doctor-contention-checks.js";
 import { commitUncommittedBacklog, backlogCommitMessage, type BacklogCommitReport } from "../doctor/doctor-backlog.js";
+import { archiveFinishedOnMain, describeArchivedFile, type ArchiveOnMainOutcome } from "../backlog/backlog-archive.js";
 import { loadConfigSafe } from "../config/config.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
-import { roleNotesPath } from "../paths.js";
+import { roleNotesPath, MERGE_LOCK_WAIT_MS } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { artifactPhrase, retireRole } from "../operator/retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit } from "../operator/revert.js";
@@ -145,6 +146,40 @@ export async function handleCommitBacklog(
   if (!body) return;
   const report = await commit(root);
   sendJson(res, 200, { ok: report.failed.length === 0, message: backlogCommitMessage(report), committed: report.committed, failed: report.failed, skipped: report.skipped, base: report.base });
+}
+
+/** Handle POST /api/doctor-archive-backlog: the dashboard Health card's Archive backlog
+ * button — the same archiveFinishedOnMain `tumwater archive` runs (holding the merge lock),
+ * answering its message verbatim. `ok` is true when the finished entries were archived or
+ * there was nothing to archive; `skipped` (an off-base checkout, uncommitted backlog/archive
+ * files, or an unreadable file) answers `ok: false` with the skip reason and writes nothing.
+ * The archived body also carries the full commit sha and the moved files so the card can
+ * repaint precisely. Same body discipline as /api/kill-orphans; `archive` is injectable so a
+ * test need not touch git or hold the merge lock. */
+export async function handleArchiveBacklog(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  root: string,
+  archive: (root: string) => Promise<ArchiveOnMainOutcome> = (r) => archiveFinishedOnMain(r, { lockTimeoutMs: MERGE_LOCK_WAIT_MS }),
+): Promise<void> {
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
+  const outcome = await archive(root);
+  if (outcome.status === "nothing") {
+    sendJson(res, 200, { ok: true, message: "nothing to archive: PLANS.md ## Done and BUGS.md ## Fixed hold no finished entries" });
+    return;
+  }
+  if (outcome.status === "skipped") {
+    sendJson(res, 200, { ok: false, message: `nothing archived: ${outcome.reason}` });
+    return;
+  }
+  sendJson(res, 200, {
+    ok: true,
+    message: [...outcome.moved.map(describeArchivedFile), `committed ${shortSha(outcome.commit)}`].join("; "),
+    archived: true,
+    commit: outcome.commit,
+    moved: outcome.moved,
+  });
 }
 
 /** Handle POST /api/doctor-resync-install: the dashboard Health card's Re-sync install button —

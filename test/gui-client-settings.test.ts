@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { GUI_CLIENT_BOOT_JS } from "../src/ui/gui/gui-client-boot.js";
+import { GUI_CLIENT_SETTINGS_JS } from "../src/ui/gui/gui-client-settings.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { clientScope, clientRegion, ESC_LINE } from "./helpers/gui-client-scope.js";
 
@@ -32,17 +33,19 @@ interface SettingsFns {
   dropBrokenPinsClick(): Promise<void>;
   retireLeftoversClick(): Promise<void>;
   commitBacklogClick(): Promise<void>;
+  archiveBacklogClick(): Promise<void>;
   resyncInstallClick(): Promise<void>;
   reprobeDoctorClick(): Promise<void>;
   paintKillButton(): void;
   paintDropButton(): void;
   paintRetireLeftoversButton(): void;
+  paintArchiveBacklogButton(): void;
 }
 
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "err-message", "settings-view", "format"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "resyncInstallClick", "reprobeDoctorClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "reprobeDoctorClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -605,6 +608,47 @@ test("retireLeftoversClick flashes `no leftover roles to retire` when the reap r
   paintRetireLeftoversButton();
   await retireLeftoversClick();
   assert.deepEqual(flashes, ["Retiring every disabled role's leftovers…", "no leftover roles to retire"]);
+});
+
+test("archiveBacklogClick arms on the first click and posts /api/doctor-archive-backlog on the second", async () => {
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let armed = false;
+  let doctorFetches = 0;
+  const button = { textContent: "" };
+  const { archiveBacklogClick, paintArchiveBacklogButton } = settingsScope({
+    confirmSlot: () => ({
+      armed: () => armed,
+      arm: () => { armed = true; },
+      disarm: () => { armed = false; },
+    }),
+    document: { querySelector: () => button },
+    $: () => ({ innerHTML: "", dataset: {} }),
+    getJson: async () => {
+      doctorFetches++;
+      return { checks: [] };
+    },
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      return { ok: true, message: "PLANS.md → PLANS-DONE.md: 1 entry; committed aaaaaaaa" };
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await archiveBacklogClick();
+  assert.deepEqual(posts, []);
+  paintArchiveBacklogButton();
+  assert.equal(button.textContent, "Confirm archive");
+  await archiveBacklogClick();
+  assert.deepEqual(posts, [{ path: "/api/doctor-archive-backlog", body: {} }]);
+  assert.deepEqual(flashes, ["Archiving the finished backlog entries…", "PLANS.md → PLANS-DONE.md: 1 entry; committed aaaaaaaa"]);
+  assert.equal(button.textContent, "Archive backlog");
+  assert.equal(doctorFetches, 1);
+});
+
+test("the Health card renders the Archive backlog button with its doctor-archive-backlog action", () => {
+  assert.match(GUI_CLIENT_SETTINGS_JS, /data-action='doctor-archive-backlog'/);
+  assert.match(GUI_CLIENT_SETTINGS_JS, /Confirm archive/);
+  assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='doctor-archive-backlog'\]/);
 });
 
 test("commitBacklogClick posts /api/doctor-commit-backlog and reruns the doctor", async () => {

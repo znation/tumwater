@@ -4,6 +4,7 @@ import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { OrphanKillReport } from "../../doctor/doctor-orphans.js";
 import type { BrokenPinDrop, LeftoverRetireReport } from "../../doctor/doctor-contention-checks.js";
 import type { BacklogCommitReport } from "../../doctor/doctor-backlog.js";
+import type { ArchiveOnMainOutcome } from "../../backlog/backlog-archive.js";
 import type { previewRevert, revertMergedCommit } from "../../operator/revert.js";
 import type { RunDetail } from "../../run/run-detail-data.js";
 import { HISTORY_RESULT_CLASSES, HISTORY_RESULT_FLAG_NAMES } from "../../history/history-data.js";
@@ -43,6 +44,7 @@ export interface TuiPanesDeps {
   runStat(root: string, detail: RunDetail): Promise<string>;
   retireLeftovers(root: string): Promise<LeftoverRetireReport>;
   runPatch(root: string, detail: RunDetail): Promise<string>;
+  archiveBacklog(root: string): Promise<ArchiveOnMainOutcome>;
 }
 
 /** Every Ctrl+<key> cycle walks its own ReadonlyArray<[key, label]> table one slot at a time,
@@ -179,6 +181,10 @@ export interface TuiPaneSession {
   armedRetireLeftovers: boolean;
   /** The Health pane's pending second Ctrl+L; moved to `armedRetireLeftovers` by beginKey. */
   retireLeftoversArmed: boolean;
+  /** The armed backlog archive (first Ctrl+B on the Health pane), read by the second. */
+  armedArchiveBacklog: boolean;
+  /** The Health pane's pending second Ctrl+B; moved to `armedArchiveBacklog` by beginKey. */
+  archiveBacklogArmed: boolean;
   /** The armed run revert (first Ctrl+V on a History trail): the full sha a second Ctrl+V
    * reverts. */
   armedRevert: string | null;
@@ -213,6 +219,7 @@ export interface TuiPaneSession {
   runStat(root: string, detail: RunDetail): Promise<string>;
   retireLeftovers(root: string): Promise<LeftoverRetireReport>;
   runPatch(root: string, detail: RunDetail): Promise<string>;
+  archiveBacklog(root: string): Promise<ArchiveOnMainOutcome>;
 }
 
 /** Build the shared pane session from the disk-side deps the aggregator received. The pane
@@ -238,6 +245,8 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     dropBrokenPinsArmed: false,
     armedRetireLeftovers: false,
     retireLeftoversArmed: false,
+    armedArchiveBacklog: false,
+    archiveBacklogArmed: false,
     armedRevert: null,
     revertArmed: null,
     armedQueue: null,
@@ -258,6 +267,7 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     dropBrokenPins: deps.dropBrokenPins,
     retireLeftovers: deps.retireLeftovers,
     commitBacklog: deps.commitBacklog,
+    archiveBacklog: deps.archiveBacklog,
     previewRevert: deps.previewRevert,
     revertCommit: deps.revertCommit,
     collectChange: deps.collectChange,
