@@ -20,7 +20,10 @@ The new shape:
   The full check moves after the merge: tumwater runs it on main's tip, finds the commit that turned
   main red, reverts it, and hands it back to its author.
 - A red main stops nobody. Each role's prompt lists the tests already failing on main and who owns
-  them, and a change passes if it adds no new failures.
+  them, and a change passes if it adds no new failures. **Superseded 2026-10-24:** part 3a/3's
+  authoring-block removal deleted the note, so no role but `ci` is told the failures; **revised
+  2026-10-25 by the operator** — the note returns with `ci` named as the owner, and any role may
+  fix the failures and land the fix (PLANS.md's "Every role may fix main's failing check…").
 - A flaky test is quarantined the first time it fails and then passes on the same tree.
 - A diff is reviewed once, not once per requeue or rebase.
 - Self-redeploy only ever runs a commit whose full check is green.
@@ -173,6 +176,10 @@ claimed entry. So instead of a second change per runner, a role gets more runner
   titles, "tumwater or bugfix owns these; leave them alone unless your task is about them". bugfix
   keeps its `<main-red>` note and heal prompt, sent once per failing set instead of once per red
   commit. `main_red_hold` no longer says merges are blocked.
+  **Superseded 2026-10-24:** part 3a/3's red-main authoring-block removal deleted the note with the
+  gate that built it. **Revised 2026-10-25 by the operator:** the note returns with `ci` named as
+  the owner and the "leave them alone" wording replaced by permission to fix — see "One owner for a
+  red main" above and PLANS.md's "Every role may fix main's failing check…".
 
 ### Lever 4: a flaky test is quarantined the first time (part 9)
 
@@ -249,6 +256,13 @@ unrelated-key write leaves an absent key absent). `review.afterMerge` IS a defau
   role ignores main's known failures instead of fixing them: N parallel fixes of one break would
   turn into N conflicting changes. **Superseded 2026-10-24:** the revert half is deleted by
   PLANS.md's "Forward, never back"; the one-owner rule stands, with the `ci` role as that owner.
+  **Revised 2026-10-25 by the operator:** `ci` owns a red main, but ownership is who the harness
+  pages, not a lock. Any role may fix main's failing build or tests in its own worktree and land
+  the fix like any other change; two roles fixing the same break is an ordinary rebase conflict,
+  not a reason to hold a role back, and what matters is that main gets green. The
+  `<main-known-red>` note therefore returns (PLANS.md's "Every role may fix main's failing
+  check…"), worded as permission: the failures are named, `ci` owns the repair, and any role that
+  can land a fix does.
 - **Review before merge for every role not listed in `review.afterMerge`.** It catches what
   tests cannot (in the window it rejected 0.4 times per merged change, including an e2e test the
   gate skips). **Superseded 2026-10-24:** there is one model review and it runs after landing, with
