@@ -2,18 +2,18 @@ import { baseRoleOf } from "../../roles/runner-ids.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
-/** The role-pinned editor arm (Ctrl+X role model, Ctrl+G parallel-runner count) on the shared
- * prompt line — the terminal twins of the dashboard role drawer's fields and their
- * `tumwater role <id>` flags. One factory serves both because they share the whole shape: a mode
- * flag plus a saved-draft pair, the role pinned when the editor opened (so a roster shift cannot
- * redirect the write), the mutually-exclusive held registry, a pre-fill read from the FILE's raw
- * `roles.<base>.<field>`, and an Enter that writes through a shared setter so validation owns
- * the value's truth — the differences are the key, the held name, the pre-fill formatting, the
- * setter, and the flash strings (a no-op commit may flash its own). Esc, the key again, and
- * Ctrl+T cancel by restoring the draft. */
+/** The role-pinned editor arm (Ctrl+X role model, Ctrl+G parallel-runner count, Ctrl+S min
+ * run interval) on the shared prompt line — the terminal twins of the dashboard role drawer's
+ * fields and their `tumwater role <id>` flags. One factory serves all three because they share
+ * the whole shape: a mode flag plus a saved-draft pair, the role pinned when the editor opened
+ * (so a roster shift cannot redirect the write), the mutually-exclusive held registry, a pre-fill
+ * read from the FILE's raw `roles.<base>.<field>`, and an Enter that writes through a shared
+ * setter so validation owns the value's truth — the differences are the key, the held name, the
+ * pre-fill formatting, the setter, and the flash strings (a no-op commit may flash its own). Esc,
+ * the key again, and Ctrl+T cancel by restoring the draft. */
 interface RoleKeySpec {
   /** The session's mutually-exclusive-held registry name this editor owns. */
-  mode: "roleModel" | "instances";
+  mode: "roleModel" | "instances" | "interval";
   /** The Ctrl+<key> arm that opens (and, while open, toggles out of) the editor. */
   openCtrl: string;
   /** True when the key must fall through to the pane arms on a role's Transcript — the
