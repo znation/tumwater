@@ -1,6 +1,7 @@
 import path from "node:path";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { entryDates, entryLags, finishedArchiveOf, lastDate, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
+import { CHECK_DECLARATION_MARKER } from "../roles/role-guidance.js";
 
 export type { BacklogEntry } from "./backlog-md.js";
 
@@ -238,6 +239,15 @@ export function openQuestions(root: string): string[] {
  * browse and the GUI's /api/backlog endpoint read these. Missing or unreadable → []. */
 export function plannedPlanEntries(root: string): BacklogEntry[] {
   return sectionEntries(root, "PLANS.md", "Planned");
+}
+
+/** The PLANS.md `## Planned` entry that declares this project's deterministic check — the one
+ * whose body carries CHECK_DECLARATION_MARKER (the plan role writes it under the no-check note's
+ * direction, src/prompt/gate-notes.ts buildNoCheckNote; the feature role reads it as its task).
+ * Null when no planned entry declares one, so a declaration already waiting is never
+ * double-planned and a feature run implements only a declaration the plan role actually wrote. */
+export function declarationPlanEntry(root: string): BacklogEntry | null {
+  return plannedPlanEntries(root).find((e) => e.body.includes(CHECK_DECLARATION_MARKER)) ?? null;
 }
 
 /** Open bugs as full entries (title + body), in file order. Missing or unreadable → []. */

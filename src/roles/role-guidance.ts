@@ -174,6 +174,15 @@ export const PRIOR_HELD_PREFIX = `**Previously held `;
  * when no live note is present, so the count round-trips a split. */
 export const PRIOR_HELD_NOTE = `${PRIOR_HELD_PREFIX}<N>**`;
 
+/** The literal marker the plan role writes as its own line under the PLANS.md `## Planned` entry
+ * that declares this project's deterministic check, and the feature role reads as that entry's
+ * identity. It is the one decision point between the two no-check notes (gate-notes.ts
+ * buildNoCheckNote): no marker → the plan note (write the declaration entry); marker → the
+ * feature note (implement it). Defined once so the marker the plan note names, the one
+ * declarationPlanEntry recognizes (src/backlog/backlog.ts), and the catalog texts interpolate stay
+ * identical. */
+export const CHECK_DECLARATION_MARKER = `**Declares the project check**`;
+
 /** The literal prefix every Needs-replan note starts with. Exported so a reader that only has to
  * recognize one (the backlog index's ` [blocked: needs replan]` mark) can match on it instead of
  * parsing the date or the round count out of the full template. */

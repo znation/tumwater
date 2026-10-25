@@ -6,11 +6,12 @@ import {
   buildMergedPrerequisitesNote,
   buildMainKnownRedNote,
   buildMainRedNote,
+  buildNoCheckNote,
   buildRevisionNote,
   buildWaitingPartsNote,
   buildRejectedReviewNote,
 } from "../src/prompt/gate-notes.js";
-import { NEEDS_REPLAN_NOTE } from "../src/roles/role-guidance.js";
+import { CHECK_DECLARATION_MARKER, NEEDS_REPLAN_NOTE } from "../src/roles/role-guidance.js";
 
 // The rejected-review note is the ONLY cross-run memory of a failed change: every run
 // starts a fresh pi session, so if this note loses or mangles the reviewer's reasons the
@@ -175,6 +176,23 @@ test("buildWaitingPartsNote lists each part's title and range and caps at five",
   assert.equal(seven.split("\n").filter((l) => l.startsWith('- "')).length, 5);
   assert.ok(seven.includes("- …and 2 more"));
   assert.ok(!seven.includes('"t5"'));
+});
+
+test("the no-check note differs for the plan and feature roles", () => {
+  const plan = buildNoCheckNote("plan");
+  const feature = buildNoCheckNote("feature");
+  // The plan note names the marker to write and the entry that declares the check.
+  assert.ok(plan.includes("### Declare the project's deterministic check"));
+  assert.ok(plan.includes(CHECK_DECLARATION_MARKER), "the plan note names the marker to write");
+  assert.ok(plan.includes("package.json"), "the plan note names the npm-script route");
+  // The feature note names both routes and the verify-before-done rule.
+  assert.ok(feature.includes(CHECK_DECLARATION_MARKER), "the feature note names the marker entry");
+  assert.ok(feature.includes(".tumwater-config-request.json"), "the feature note names the request-file route");
+  assert.ok(feature.includes("package.json"), "the feature note names the npm-script route");
+  assert.ok(feature.includes("noDeclaredCheck"), "the feature note names what a merge makes live");
+  assert.ok(feature.includes("Do not chase an in-run re-read"), "the feature note does not pin an impossible in-run verify");
+  // A work instance of an instance role (only feature/bugfix may split) gets its base's note.
+  assert.equal(buildNoCheckNote("feature-2"), feature);
 });
 
 test("the prerequisite and waiting-part lists cut long titles at 100 characters", () => {

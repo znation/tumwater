@@ -15,6 +15,7 @@ import { qaCoveragePath, roleNotesPath, feedbackFilingsPath } from "../src/paths
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { applyMergeOutcome } from "../src/run/run-apply.js";
+import { CHECK_DECLARATION_MARKER } from "../src/roles/role-guidance.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
@@ -877,4 +878,63 @@ test("a director run reads the brief file instead of carrying the brief", () => 
   assert.doesNotMatch(result.prompt, /<project-prompt>|Build a tiny thing/);
   assert.match(result.prompt, /First read the project brief \(README\.md\) in full/);
   assert.match(result.prompt, /<user-request>\nwhat should we build next/);
+});
+
+// A fixture PLANS.md whose one `## Planned` entry declares the project's check (carries
+// CHECK_DECLARATION_MARKER), so the no-check note's marker decision can be pinned.
+function declarationPlans(): string {
+  return `# Plans\n\n## Planned\n\n### Declare the project's deterministic check (planned 2026-10-25 by the plan role)\n${CHECK_DECLARATION_MARKER}\n\nDeclare and wire the project's check.\n\n## Done\n\n_None yet._\n`;
+}
+
+test("the plan prompt carries the no-check note only while no declaration plan waits", () => {
+  // A fresh root declares no check (no check.command and no qualifying package.json +
+  // node_modules), and no declaration plan waits — so the plan prompt gets the plan note.
+  // Assert on the note's own wording: the plan charter names the <no-check> block itself, so
+  // the bare tag appears even when no note is injected.
+  const PLAN_NOTE = "Before anything else, write the entry that declares one";
+  const dir = root();
+  const plan = promptFor(dir, "plan");
+  assert.ok(plan);
+  assert.ok(plan.prompt.includes(PLAN_NOTE), "the plan prompt carries the plan note when no declaration plan waits");
+  assert.ok(plan.prompt.includes(CHECK_DECLARATION_MARKER), "the plan note names the marker to write");
+  assert.match(plan.prompt, /### Declare the project's deterministic check/);
+  // No marker yet → the feature prompt carries no note (its charter names the tag, so use the
+  // feature note's own request-file wording).
+  const FEATURE_NOTE = ".tumwater-config-request.json";
+  const feature = promptFor(dir, "feature");
+  assert.ok(feature);
+  assert.ok(!feature.prompt.includes(FEATURE_NOTE), "the feature prompt carries no note before a declaration plan waits");
+
+  // With the marked entry waiting, the reverse: the plan prompt drops the note, the feature's
+  // gains it.
+  fs.writeFileSync(path.join(dir, "PLANS.md"), declarationPlans());
+  const plan2 = promptFor(dir, "plan");
+  assert.ok(plan2);
+  assert.ok(!plan2.prompt.includes(PLAN_NOTE), "the plan prompt drops the note once a declaration plan waits");
+  const feature2 = promptFor(dir, "feature");
+  assert.ok(feature2);
+  assert.ok(feature2.prompt.includes(FEATURE_NOTE), "the feature prompt gains the note once one waits");
+  assert.ok(feature2.prompt.includes(CHECK_DECLARATION_MARKER), "the feature note names the marker entry");
+});
+
+test("a declared check gets neither no-check note, even with a declaration plan waiting", () => {
+  const dir = root();
+  const config = defaultConfig();
+  config.check = { command: "make check" };
+  const PLAN_NOTE = "Before anything else, write the entry that declares one";
+  const FEATURE_NOTE = ".tumwater-config-request.json";
+  const plan = promptFor(dir, "plan", { config });
+  const feature = promptFor(dir, "feature", { config });
+  assert.ok(plan && feature);
+  assert.ok(!plan.prompt.includes(PLAN_NOTE), "a declared check suppresses the plan note");
+  assert.ok(!feature.prompt.includes(FEATURE_NOTE), "a declared check suppresses the feature note");
+  // The note is gated on check === undefined, so even the otherwise note-triggering marker entry
+  // cannot add it once a check is declared: with the declaration plan waiting, neither prompt
+  // carries the note.
+  fs.writeFileSync(path.join(dir, "PLANS.md"), declarationPlans());
+  const plan2 = promptFor(dir, "plan", { config });
+  const feature2 = promptFor(dir, "feature", { config });
+  assert.ok(plan2 && feature2);
+  assert.ok(!plan2.prompt.includes(PLAN_NOTE), "a declared check keeps the plan prompt note-free");
+  assert.ok(!feature2.prompt.includes(FEATURE_NOTE), "a declared check keeps the feature prompt note-free");
 });

@@ -345,6 +345,12 @@ interface RunPromptInput {
   /** The bugfix run's flake tally, rendered by run-prompt.ts; omitted for every other role and
    * when no flake was excused in the window. */
   flakyChecks?: string;
+  /** The no-check note (buildNoCheckNote, gate-notes.ts), rendered right after the run charter's
+   * task text: what the plan or feature run must do when this project declares no deterministic
+   * check and the team is closing the gap itself — the plan role writes the declaration entry,
+   * the feature role implements it. Omitted: a check is declared, or this is not the
+   * plan/feature turn the marker picks. */
+  noCheck?: string;
   /** A per-role prompt the user queued for this role's next run (`tumwater prompt --role <id>`),
    * rendered as a labeled block near the top of the task text.
    * The role still owns find-something-to-do: the request steers, the role's rules and the
@@ -407,7 +413,7 @@ from the repo.`,
 
 /** The prompt for one role run. */
 export function buildRunPrompt(input: RunPromptInput): string {
-  const { role, rejectedReview, principles, digest, coverage, ciParity, filings, backlogStructure, backlogIndex, notes, notesSavedDay, notesBacklog, extraInstructions, planTargetNote, flakyChecks, check, gateCommand, briefFile, today, userRequest, agent, assigned } = input;
+  const { role, rejectedReview, principles, digest, coverage, ciParity, filings, backlogStructure, backlogIndex, notes, notesSavedDay, notesBacklog, extraInstructions, planTargetNote, flakyChecks, noCheck, check, gateCommand, briefFile, today, userRequest, agent, assigned } = input;
   const dialect = dialectFor(agent);
   const day = today ?? todayStamp();
   const parts = [
@@ -431,6 +437,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes, Boolean(backlogIndex), notesSavedDay, day));
   if (notesBacklog) parts.push(notesBacklog);
   parts.push(`Your task this run:\n${role.find.trim()}`);
+  if (noCheck) parts.push(noCheck.trim());
   if (planTargetNote) parts.push(planTargetNote.trim());
   if (flakyChecks) parts.push(flakyChecks.trim());
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);

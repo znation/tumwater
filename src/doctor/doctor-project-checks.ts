@@ -217,7 +217,7 @@ export function checkBuildCheck(
 ): CheckOutcome {
   const check = detectBuildCheck(root, config ?? undefined);
   if (!check)
-    return warnOutcome("none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo)");
+    return warnOutcome("none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo); the plan role will plan this project's check and the feature role declare it, a test/typecheck/build npm script or check.command");
   // The in-lock command from mergeCommandOf (absent mergeCommand falls back to the gate
   // command): the row names which command the merge lock runs and where the full check lands,
   // facts a reader cannot get from detectBuildCheck alone. The after-merge roles are not named

@@ -1,5 +1,5 @@
 import { shortSha } from "../text/format.js";
-import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../roles/role-guidance.js";
+import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, CHECK_DECLARATION_MARKER } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { numberedList } from "../text/markdown.js";
@@ -125,6 +125,26 @@ export function buildHeldEntriesNote(titles: readonly string[]): string {
 Sibling instances hold these backlog entries; do not pick, edit, or implement them, and do not edit their headings. If every remaining entry is held, treat the backlog as having nothing to do for you:
 ${titles.map((t) => `- "${t}"`).join("\n")}
 </held-entries>`;
+}
+
+/** The note injected into a `plan` or `feature` run when the project has no declared
+ * deterministic check (detectBuildCheck returned null) and the team should close the gap itself
+ * — the plan role writes the declaration entry, the feature role implements it. Exactly one of
+ * the two notes is in flight, decided by CHECK_DECLARATION_MARKER rather than prose (see
+ * declarationPlanEntry, src/backlog/backlog.ts): no marker → the plan note (write the
+ * declaration); marker → the feature note (implement it). run-prompt.ts picks which note to
+ * render from the base role and whether a marker entry waits, so a work instance (`feature-2`, …)
+ * matches through its base role and the marker test decides the rest. A pure function so its
+ * shape is pinned in tests. */
+export function buildNoCheckNote(role: string): string {
+  if (baseRoleOf(role) === "plan") {
+    return `<no-check>
+This project declares no deterministic check, so the safety gates are off. Before anything else, write the entry that declares one: headed \`### Declare the project's deterministic check\`, marked on its own line with ${CHECK_DECLARATION_MARKER}, naming the exact command and the route it lands by — a \`test\`/\`typecheck\`/\`build\` script added to package.json when the walked-up install root carries one, else \`check.command\` — with acceptance criteria that the doctor's \`check\` row reads ok and the \`no-check\` alert is gone. Writing it is this run's work even when the eligible-plan target is already met, so the in-prompt queue-full stop yields to it; a full plan backlog defers the plan role before this prompt is built, so this note only reaches a run already admitted past that stop. A Needs-review/Needs-replan lift and an assigned claim still come first. A project with nothing to verify yet — no source, no script to wire — gets no plan: end with ${NOTHING_TO_DO} instead.
+</no-check>`.trim();
+  }
+  return `<no-check>
+The PLANS.md \`## Planned\` entry marked ${CHECK_DECLARATION_MARKER} is this run's task unless the run was handed another entry: implement its declaration so a merge makes it live — the doctor's \`check\` row reads ok and \`tumwater status --json\` carries no \`noDeclaredCheck\`. Do not chase an in-run re-read, though: while the change is unmerged, both still reflect the pre-declaration state, so live is confirmed when the change merges, not in this run — mark the plan done when the declaration is complete and correct, and let the merge confirm it. Choose the route the repo takes: (1) add the verifying script to package.json as \`test\`/\`typecheck\`/\`build\` (detection's preference order), a tracked diff the reviewer sees, live the moment it merges; (2) otherwise write \`{ "check": { "command": "…" } }\` to \`.tumwater-config-request.json\` at the worktree root, never tumwater.json — the request is run green before it is applied, then the file is deleted. A marker entry held with a Needs-review note is not available to you, so end the run there rather than forcing it.
+</no-check>`.trim();
 }
 
 /** The longest title an entry list quotes: a PLANS.md heading's tail names the plan's dates and

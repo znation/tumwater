@@ -1085,6 +1085,10 @@ test("no declared check raises one amber no-check alert", () => {
   assert.match(one[0]?.detail ?? "", /build pre-check/);
   assert.match(one[0]?.detail ?? "", /red-main baseline/);
   assert.match(one[0]?.detail ?? "", /redeploy's green check/);
+  // The automatic path: the plan role plans the check, the feature role declares it.
+  assert.match(one[0]?.detail ?? "", /plan role will plan/);
+  assert.match(one[0]?.detail ?? "", /feature role declare it/);
+  assert.match(one[0]?.detail ?? "", /test\/typecheck\/build npm script/);
   assert.deepEqual(one[0]?.actions, []);
   assert.deepEqual(alerts(undefined), []);
   assert.deepEqual(alerts(false), []);

@@ -419,7 +419,7 @@ function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       key: "no-check",
       tone: "amber",
       title: "No project check is declared — the safety gates are off",
-      detail: "The review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run. Set \`check.command\` in tumwater.json (or add a test/typecheck/build npm script) so merges are verified.",
+      detail: "The review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run. The plan role will plan this project's check and the feature role declare it — a test/typecheck/build npm script, or check.command. To skip the wait, declare it yourself; a project with nothing to verify yet stays as it is.",
       actions: [],
     });
   }

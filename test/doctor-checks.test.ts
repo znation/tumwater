@@ -619,7 +619,7 @@ test("checkBuildCheck names the declared script and walks up from a worktree to 
   // gates degrade to "no check" and a silently absent safety layer is what doctor must surface.
   assert.deepEqual(none, {
     level: "warn",
-    detail: "none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo)",
+    detail: "none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo); the plan role will plan this project's check and the feature role declare it, a test/typecheck/build npm script or check.command",
   });
 
   const root = makeRepo();

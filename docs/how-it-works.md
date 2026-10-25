@@ -168,6 +168,11 @@ discards a role's in-flight merge.
   count the deferral uses. `tumwater status`, the TUI and the dashboard name each instance's assigned entry
   while it is idle or merging, `tumwater logs` renders the `claim` assigned/released events, and
   `tumwater doctor`'s `parallel instances` check warns on an assignment whose entry is gone or stale.
+  When a project declares no check, the plan and feature roles close the gap themselves: the plan role
+  writes a `## Planned` entry declaring one (marked `**Declares the project check**`) and the feature
+  role implements it — a `test`/`typecheck`/`build` npm script, or `check.command` through the staged
+  config request — so a merely-planned declaration keeps the `no-check` alert, deliberately, until the
+  declaration is live.
   While a claim names an entry no longer listed, or has sat idle past `CLAIM_IDLE_MAX_MS`,
   `tumwater status`, the dashboard and the TUI carry the same amber alert as `tumwater doctor`'s
   `parallel instances` row; it clears when the scheduler's next poll releases the claim.
@@ -529,7 +534,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   stopped covering main's tip, so the ci role is disabled, paused, or unable to record),
   the fleet waiting on capacity slots (workspace, provider or check) — the doctor's three
   contention rows read the same waits and name the knob, a plan filed under the wrong
-  backlog section, a duplicated backlog section heading, finished history still under a live backlog file's `## Done` or `## Fixed` (the `backlog-archive` alert, the always-on twin of the doctor's `backlog archive` warn), a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose Fix paragraph names code that is not on the tree, a Fixed record whose quoted test failed again in the last day, a project with no declared check (the review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run), a pause), the prompt
+  backlog section, a duplicated backlog section heading, finished history still under a live backlog file's `## Done` or `## Fixed` (the `backlog-archive` alert, the always-on twin of the doctor's `backlog archive` warn), a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose Fix paragraph names code that is not on the tree, a Fixed record whose quoted test failed again in the last day, a project with no declared check (the review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run; the alert says the plan role will plan the project's check and the feature role declare it, a `test`/`typecheck`/`build` npm script or `check.command`), a pause), the prompt
   box, today's progress, the roles grouped by what they are doing,
   the backlog, and the notable activity — a `Loop picker` and a case-insensitive Search box narrow
   the events the card carries, and an active picker or Search filter also searches the log's

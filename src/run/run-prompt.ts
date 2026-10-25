@@ -11,10 +11,10 @@ import { briefFile } from "../brief/brief.js";
 import { buildDirectorPrompt, buildRunPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
-import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildMergedPrerequisitesNote, buildRejectedReviewNote, buildWaitingPartsNote } from "../prompt/gate-notes.js";
+import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildMergedPrerequisitesNote, buildNoCheckNote, buildRejectedReviewNote, buildWaitingPartsNote } from "../prompt/gate-notes.js";
 import { eligibleEntries, mergedPrerequisiteRanges, waitingPartRanges } from "../backlog/backlog-eligibility.js";
 import { notesBacklogBlock } from "../prompt/notes-backlog.js";
-import { donePlans, openBugEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { donePlans, openBugEntries, plannedPlanEntries, declarationPlanEntry } from "../backlog/backlog.js";
 import { detectBuildCheck, gateCommandOf } from "../build/build-check-detect.js";
 import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 import { readEventsSince } from "../events/event-window.js";
@@ -263,6 +263,23 @@ export function assembleRunPrompt(
           `feature could take, the same count that decides whether a plan run is deferred).`
         : undefined;
     const flakyChecks = base === "bugfix" ? flakyChecksNote(root) : undefined;
+    // The no-check note: when the project declares no deterministic check and the team is
+    // closing the gap itself, the plan note tells the plan role to write the declaration entry
+    // (no marker entry waits yet) and the feature note tells the feature role to implement the
+    // marker entry that does wait. Decided by CHECK_DECLARATION_MARKER (declarationPlanEntry)
+    // rather than prose, so a feature run never invents a declaration the plan role never wrote
+    // and a plan run cannot stack a second declaration on one already waiting. Any other role,
+    // or a declared check, gets neither note — byte-unchanged prompts.
+    const declaration = (base === "plan" || base === "feature") && check === undefined ? declarationPlanEntry(root) : undefined;
+    // Whole declaration drives the decision: `declarationPlanEntry` returns null (not
+    // undefined) when no marker entry waits, so a truthy test selects the feature note and a
+    // falsy one the plan note.
+    const noCheck =
+      check === undefined && (base === "plan" || base === "feature")
+        ? (declaration
+            ? (base === "feature" ? buildNoCheckNote(base) : undefined)
+            : (base === "plan" ? buildNoCheckNote(base) : undefined))
+        : undefined;
     // A run holding a claim with no queued request is assigned its one entry (the assignment
     // note below). Such a run reads that entry first, so the backlog index — what an unassigned
     // run chooses its task from — stays out.
@@ -281,6 +298,7 @@ export function assembleRunPrompt(
       notesBacklog,
       planTargetNote,
       flakyChecks,
+      noCheck,
       extraInstructions: config.roles[base]?.instructions,
       check,
       gateCommand: gateCommandOf(config),
