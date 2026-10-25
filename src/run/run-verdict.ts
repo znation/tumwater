@@ -13,6 +13,7 @@ import type { RunOutcome } from "./run-outcome.js";
 import type { CiResult, FlowResult, FiledResult } from "../verdict/reply-contract.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { isDirty, deleteRef } from "../git/git.js";
 import { applyConfigRequest } from "../config/config-request.js";
 import { diagnoseNoChange, extractNoChangeAnswer } from "../verdict/no-change.js";
@@ -108,20 +109,21 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
   // The next run's reset discards them.
   if (pi.aborted) return ctx.finishAbortedRun();
   ctx.pending.clear();
-  // Harness-mediated config writes (plans/portability.md §3/7): the director may have left a
-  // config request in its worktree. Consume it here — after the abort return (a deliberate
-  // abort still discards an unfulfilled request) and before every staging path (quiet-kill,
-  // timeout, refusal, isDirty, commitAll) — so the request file never enters a diff or a
-  // review prompt, and a quiet-killed/timeout re-run starts clean instead of losing the
-  // request to the reset. Applied names are announced by the orchestrator's ~2 s live reload
-  // (one config_changed event naming the keys); this run logs only the rejection paths.
-  if (ctx.role === DIRECTOR_ROLE) {
-    const request = applyConfigRequest(ctx.root, ctx.wt);
+  // Harness-mediated config writes (plans/portability.md §3/7): the director (and the feature
+  // role, for a declared `check.command`) may have left a config request in its worktree.
+  // Consume it here — after the abort return (a deliberate abort still discards an unfulfilled
+  // request) and before every staging path (quiet-kill, timeout, refusal, isDirty, commitAll) —
+  // so the request file never enters a diff or a review prompt, and a quiet-killed/timeout
+  // re-run starts clean instead of losing the request to the reset. Applied names are
+  // announced by the orchestrator's ~2 s live reload (one config_changed event naming the
+  // keys); this run logs only the rejection paths.
+  if (ctx.role === DIRECTOR_ROLE || baseRoleOf(ctx.role) === "feature") {
+    const request = await applyConfigRequest(ctx.root, ctx.wt);
     if (request) {
       if (request.error) ctx.warn(`config request rejected: ${request.error}`);
       if (request.ignored.length)
         ctx.warn(
-          `config request ignored key(s): ${request.ignored.join(", ")} — only customRoles is accepted`,
+          `config request ignored key(s): ${request.ignored.join(", ")} — only customRoles and check.command are accepted`,
         );
     }
   }

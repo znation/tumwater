@@ -515,12 +515,14 @@ work yourself:
   // Before the shared rules, not after them: the closing reply contract stays the last thing
   // in the prompt, where a model attends to it most (the run prompt's invariant too).
   parts.push(
-    `Note on one boundary in the rules below, director only: user-defined-role requests are
-executed by writing .tumwater-config-request.json in your worktree (shape and worked example
-above) — never by editing tumwater.json, which stays off-limits to you as to every role. Tumwater
-validates the request and applies only its customRoles array; a request that also names
-any other setting (timeouts, budgets, role enablement, review settings) has that key discarded
-with a warning, so such a request is guidance to record per the routing rules, not an edit you
+    `Note on one boundary in the rules below, director only: user-defined-role requests and a
+project check declaration are executed by writing .tumwater-config-request.json in your worktree
+(shape and worked example above) — never by editing tumwater.json, which stays off-limits to you
+as to every role. The request may carry only customRoles and check.command: tumwater validates it
+and runs a declared check.command green in the worktree before writing it. A request that also
+names any other setting (timeouts, budgets, role enablement, review settings, gateCommand,
+mergeCommand, check.cwd) has that key discarded with a warning, so such a request is guidance
+that stays staged or is recorded per the routing rules, not an edit you
 can make.`,
   );
   // A director run is never assigned an entry.

@@ -92,6 +92,43 @@ test("a malformed config request is rejected with a warning and still deleted", 
   assert.deepEqual(loadConfig(root).customRoles, before, "a rejected request changes nothing");
 });
 
+test("a feature worktree's config request is applied too", async () => {
+  // An instanced feature runner (`feature-8`), not the bare id: the gate is
+  // ctx.role === DIRECTOR_ROLE || baseRoleOf(ctx.role) === "feature", and only an instanced
+  // id exercises the baseRoleOf arm — reverting that fix to a bare-id comparison fails here.
+  const { root, wt } = await initializedWorktree("feature-8");
+  fs.writeFileSync(
+    configRequestPath(wt),
+    JSON.stringify({ customRoles: [{ name: "docs", task: "Keep the examples current." }] }),
+  );
+
+  const { ctx, warns } = makeCtx(root, wt, "feature-8");
+  const outcome = await resolveRunVerdict(ctx);
+
+  // The feature role is a consumer of the request file too (part 1/2: it declares check.command).
+  assert.deepEqual(loadConfig(root).customRoles.map((c) => c.name), ["docs"]);
+  assert.ok(!fs.existsSync(configRequestPath(wt)));
+  assert.deepEqual(warns, []);
+  assert.equal(outcome?.result, "no_change");
+});
+
+test("a rejected check request warns and declares nothing", async () => {
+  const { root, wt } = await initializedWorktree("feature-8");
+  const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
+  // A command that fails in the worktree must never be written — it would park the queue
+  // behind a red main no role can repair. `false` exits 1 deterministically. An instanced
+  // runner exercises the baseRoleOf arm of the consumer gate.
+  fs.writeFileSync(configRequestPath(wt), JSON.stringify({ check: { command: "false" } }));
+
+  const { ctx, warns } = makeCtx(root, wt, "feature-8");
+  const outcome = await resolveRunVerdict(ctx);
+
+  assert.match(warns[0] ?? "", /config request rejected: check\.command not declared/);
+  assert.equal(fs.readFileSync(path.join(root, "tumwater.json"), "utf8"), before, "nothing declared");
+  assert.ok(!fs.existsSync(configRequestPath(wt)), "the rejected request is still deleted");
+  assert.equal(outcome?.result, "no_change");
+});
+
 test("a stray config request in a non-director worktree is left alone", async () => {
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(
@@ -102,9 +139,9 @@ test("a stray config request in a non-director worktree is left alone", async ()
   const { ctx, warns } = makeCtx(root, wt, "improve");
   const outcome = await resolveRunVerdict(ctx);
 
-  // Only the director consumes config requests: the file survives this verdict untouched,
-  // the config is unchanged, and nothing warns. Remove the role guard and applyConfigRequest
-  // consumes the file here — both assertions below fail.
+  // Only the director and the feature role consume config requests: the file survives this
+  // verdict untouched, the config is unchanged, and nothing warns. Remove the role guard and
+  // applyConfigRequest consumes the file here — both assertions below fail.
   assert.ok(fs.existsSync(configRequestPath(wt)), "the stray request file was not consumed");
   assert.deepEqual(loadConfig(root).customRoles, []);
   assert.deepEqual(warns, []);
