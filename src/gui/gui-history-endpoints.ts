@@ -111,6 +111,34 @@ function resultClassesQuery(q: URLSearchParams, res: http.ServerResponse): Histo
  * (the `history --result` rule, parsed by resultClassesQuery like /api/run's), after `grep` and
  * before `model`; an unknown class is a 400. Reads files directly, so it works whether
  * or not the team is running. */
+
+/** Parse the `sinceMs`-window prologue the two history endpoints share. A present `sinceMs`
+ * (with no rival `n`) yields `{ kind: "window", sinceMs, untilMs }`; an absent `sinceMs`
+ * yields `{ kind: "count" }`. Any 400 — the rival-shapes rejection when both `sinceMs` and
+ * `n` are present, or a `sinceMs`/`untilMs` that fails to parse or caps (sinceMsQuery,
+ * untilMsQuery) — is already sent and yields null, so the caller returns early. Shared by
+ * handleHistory and handleLogs so the rival-shapes message and the parse-and-cap discipline
+ * cannot drift. */
+function windowOrCount(q: URLSearchParams, res: http.ServerResponse):
+  | { kind: "window"; sinceMs: number; untilMs?: number }
+  | { kind: "count" }
+  | null {
+  if (q.get("sinceMs") !== null) {
+    if (q.get("n") !== null) {
+      badRequest(res, "sinceMs cannot be combined with n (a count and a window are rival shapes)");
+      return null;
+    }
+    const sinceMs = sinceMsQuery(q, res, LOGS_SINCE_MAX_MS, (ms) =>
+      `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${ms})`);
+    if (sinceMs === null) return null;
+    const untilMs = untilMsQuery(q, res, sinceMs);
+    if (untilMs === null) return null;
+    return { kind: "window", sinceMs, untilMs };
+  }
+  if (untilMsQuery(q, res, undefined) === null) return null; // a count has no window end to move
+  return { kind: "count" };
+}
+
 export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role") || null; // "" and absent both read all roles
   const grep = q.get("grep") || null; // "" and absent both filter nothing
@@ -122,22 +150,15 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
   const modelPieces = splitCommaListUnique(q.get("model") ?? "");
   const onModels = (rows: RunRow[]): RunRow[] => (modelPieces.length ? runRowsOnModels(rows, modelPieces) : rows);
   const summary = q.get("summary") !== null; // the flag's presence, whatever its value
-  if (q.get("sinceMs") !== null) {
-    if (q.get("n") !== null) {
-      badRequest(res, "sinceMs cannot be combined with n (a count and a window are rival shapes)");
-      return;
-    }
-    const sinceMs = sinceMsQuery(q, res, LOGS_SINCE_MAX_MS, (ms) =>
-      `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${ms})`);
-    if (sinceMs === null) return;
-    const untilMs = untilMsQuery(q, res, sinceMs);
-    if (untilMs === null) return;
+  const windowCtl = windowOrCount(q, res);
+  if (windowCtl === null) return;
+  if (windowCtl.kind === "window") {
+    const { sinceMs, untilMs } = windowCtl;
     const { rows, covered } = readRunRowsSince(root, sinceMs, role, untilMs ?? null);
     const matched = onModels(inClasses(grep === null ? rows : runRowsMatchingGrep(rows, grep)));
     sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE, ...(summary ? { summary: summarizeRunRows(matched), modelSummary: summarizeRunRowsByModel(matched) } : {}) });
     return;
   }
-  if (untilMsQuery(q, res, undefined) === null) return; // a count has no window end to move
   const parsed = intQuery(q, res, "n", "non-negative", HISTORY_DEFAULT_RUNS);
   if (parsed === null) return;
   const n = clampCount(parsed, HISTORY_MAX_RUNS);
@@ -179,16 +200,10 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
   const needle = grep === null ? null : grep.toLowerCase();
   const keep = (e: HarnessEvent): boolean =>
     (role === null || eventRole(e) === role) && (needle === null || eventMatchesGrep(e, needle));
-  if (q.get("sinceMs") !== null) {
-    if (q.get("n") !== null) {
-      badRequest(res, "sinceMs cannot be combined with n (a count and a window are rival shapes)");
-      return;
-    }
-    const sinceMs = sinceMsQuery(q, res, LOGS_SINCE_MAX_MS, (ms) =>
-      `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${ms})`);
-    if (sinceMs === null) return;
-    const untilMs = untilMsQuery(q, res, sinceMs);
-    if (untilMs === null) return;
+  const windowCtl = windowOrCount(q, res);
+  if (windowCtl === null) return;
+  if (windowCtl.kind === "window") {
+    const { sinceMs, untilMs } = windowCtl;
     const { cutoff, events: windowEvents, covered } = readEventsSince(root, sinceMs);
     const events = untilMs === undefined ? windowEvents : windowEvents.filter((e) => e.ts < cutoff + sinceMs - untilMs);
     sendJson(res, 200, {
@@ -198,7 +213,6 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
     });
     return;
   }
-  if (untilMsQuery(q, res, undefined) === null) return; // a count has no window end to move
   const parsed = intQuery(q, res, "n", "non-negative", LOGS_SEARCH_EVENTS);
   if (parsed === null) return;
   const n = clampCount(parsed, LOGS_SEARCH_MAX_EVENTS);
