@@ -404,14 +404,12 @@ function unchangedFlag(result: { unchanged?: boolean }): { unchanged?: true } {
   return result.unchanged ? { unchanged: true } : {};
 }
 
-/** Common options for `writeRoleJsonKey`. `serialize` shapes the stored value (default
- * JSON.stringify — exact for the JSON round-trips every caller makes); `unchangedMessage`
- * overrides the default "unchanged" 200 wording (the numeric keys say "already <n>");
- * `guardClear` runs before a clear (the unknown-role guard the numeric keys and quiet hours
- * carry; instructions has none); `extra` spreads additional fields (e.g. the stored value)
- * into the set-branch 200 body. */
+/** Common options for `writeRoleJsonKey`. `unchangedMessage` overrides the default
+ * "unchanged" 200 wording (the numeric keys say "already <n>"); `guardClear` runs before a
+ * clear (the unknown-role guard the numeric keys and quiet hours carry; instructions has
+ * none); `extra` spreads additional fields (e.g. the stored value) into the set-branch 200
+ * body. */
 interface RoleClearSetOptions {
-  serialize?: (value: string | number) => string;
   unchangedMessage?: (value: string | number) => string;
   guardClear?: () => boolean;
   extra?: Record<string, unknown>;
@@ -421,10 +419,11 @@ interface RoleClearSetOptions {
  * instructions, min run interval, instance count) shares: an empty/whitespace/`null` `raw`
  * unsets `key` (after `guardClear`, a per-call check the clear arm runs first — the numeric
  * keys' and quiet hours' unknown-role guard; instructions has none), else sets it via
- * setConfigKey (which JSON-encodes nothing, so `serialize` shapes the stored value). `noun`
- * names the hold in the "cleared" 200, `setMessage` is the exact set-arm 200 message, and
- * `unchangedMessage` overrides the default unchanged wording — threaded so each handler keeps
- * its own wording. Always writes the response, so the caller never falls through. */
+ * setConfigKey (which JSON-encodes nothing, so the JSON.stringify below shapes the stored
+ * value). `noun` names the hold in the "cleared" 200, `setMessage` is the exact set-arm 200
+ * message, and `unchangedMessage` overrides the default unchanged wording — threaded so each
+ * handler keeps its own wording. Always writes the response, so the caller never falls
+ * through. */
 function writeRoleJsonKey(
   res: http.ServerResponse,
   root: string,
@@ -448,8 +447,7 @@ function writeRoleJsonKey(
     }
     return;
   }
-  const serialize = options.serialize ?? JSON.stringify;
-  const result = setConfigKey(root, key, serialize(raw));
+  const result = setConfigKey(root, key, JSON.stringify(raw));
   if (!result.ok) configKeyError(res, key, result);
   else {
     const message = result.unchanged
