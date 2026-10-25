@@ -34,7 +34,7 @@ import { resolvedBackendConfig } from "../config/config-views.js";
 import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, configPath, owningTeamRoot } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { formatBytes } from "../text/format.js";
-import { BRIEF_TEXT_MAX_CHARS, briefFile, promptBlockOf } from "../brief/brief.js";
+import { BRIEF_TEXT_MAX_CHARS, briefFile, promptBlockOf, readBrief } from "../brief/brief.js";
 import { plural } from "../text/phrases.js";
 import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gate.js";
 import { claudeSeamsInUse, minVersionOutcome, opencodeSeamsInUse, versionFromProbe, piSeamsInUse } from "./doctor-model-checks.js";
@@ -215,6 +215,10 @@ export function checkBrief(root: string): CheckOutcome {
     return failOutcome(errorMessage(err));
   }
   if (owner) {
+    const prompt = readBrief(root)?.prompt ?? "";
+    if (prompt === "") {
+      return warnOutcome(`${owner} carries an empty tumwater:prompt block — every role would run without its project brief; add the brief text or re-run \`tumwater init\``);
+    }
     const raw = readTextOrNull(path.join(root, owner));
     if (raw !== null) {
       const block = promptBlockOf(raw);

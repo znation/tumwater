@@ -416,6 +416,35 @@ test("checkBrief reports which file holds the managed sections, and warns when n
     `# p\n\n<!-- tumwater:prompt:start -->\nbrief\n<!-- tumwater:prompt:end -->\n`,
   );
   assert.deepEqual(checkBrief(marked), { level: "ok", detail: "brief in TUMWATER.md" });
+
+  // A marked block with no text between its markers warns, naming the file and the fix.
+  const empty = makeRepo();
+  fs.writeFileSync(
+    path.join(empty, "README.md"),
+    `# p\n\n<!-- tumwater:prompt:start -->\n<!-- tumwater:prompt:end -->\n`,
+  );
+  const emptyWarn = checkBrief(empty);
+  assert.equal(emptyWarn.level, "warn");
+  assert.match(emptyWarn.detail, /README\.md/);
+  assert.match(emptyWarn.detail, /empty/);
+  assert.match(emptyWarn.detail, /tumwater:prompt/);
+  assert.match(emptyWarn.detail, /tumwater init/);
+
+  // A marked TUMWATER.md with an empty block outranks a marked non-empty README.md, and the
+  // warn names TUMWATER.md — resolution order is unchanged; only the meaning of a resolved
+  // empty block changes.
+  const emptyTumwater = makeRepo();
+  fs.writeFileSync(
+    path.join(emptyTumwater, "README.md"),
+    `# p\n\n<!-- tumwater:prompt:start -->\nbrief\n<!-- tumwater:prompt:end -->\n`,
+  );
+  fs.writeFileSync(
+    path.join(emptyTumwater, "TUMWATER.md"),
+    `# p\n\n<!-- tumwater:prompt:start -->\n<!-- tumwater:prompt:end -->\n`,
+  );
+  const emptyTumwaterWarn = checkBrief(emptyTumwater);
+  assert.equal(emptyTumwaterWarn.level, "warn");
+  assert.match(emptyTumwaterWarn.detail, /TUMWATER\.md/);
 });
 
 test("checkBrief warns when the brief block is over the read cap", () => {

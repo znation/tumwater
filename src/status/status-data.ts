@@ -384,11 +384,13 @@ export interface StatusSnapshot {
    * surfaces the silent state on `tumwater status`, the dashboard and the TUI; absent
    * otherwise, so the surfaces render exactly as before. */
   noDeclaredCheck?: boolean;
-  /** True when a brief candidate file exists but none carries a well-formed prompt block
-   * (src/brief/brief.ts's briefBlockMissing) — the doctor `brief` row's marker-less and
-   * unreadable warning state. Present only in that state, so the always-on amber `no-brief`
-   * alert surfaces the silent state on `tumwater status`, the dashboard and the TUI; absent
-   * otherwise (including the bare pre-init repo), so the surfaces render exactly as before. */
+  /** True when a brief candidate file exists but none resolves to a usable prompt block —
+   * the marker-less file, the unreadable candidate, or a marked block with no text
+   * (src/brief/brief.ts's briefBlockMissing) — the doctor `brief` row's marker-less,
+   * unreadable and empty-block warning state. Present only in that state, so the always-on
+   * amber `no-brief` alert surfaces the silent state on `tumwater status`, the dashboard and
+   * the TUI; absent otherwise (including the bare pre-init repo), so the surfaces render
+   * exactly as before. */
   noBrief?: boolean;
   /** The check-permit pool's live state as the orchestrator published it; only while it runs. */
   checkPermits?: CheckPermitSnapshot;

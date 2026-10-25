@@ -1166,6 +1166,15 @@ test("the payload's noBrief follows briefBlockMissing and clears when the brief 
   assert.equal(alert!.tone, "amber");
   assert.match(alert!.title, /prompt block/);
 
+  // A marked block with no text between its markers is the same silent state: a hand edit
+  // that leaves the two markers with nothing between them also means no project prompt.
+  fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}${PROMPT_END}\n`);
+  assert.equal(snapshot(root, undefined, now).noBrief, true, "an empty marked block is surfaced on the snapshot");
+  payload = statusPayload(root, now) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal(payload.noBrief, true, "the machine-readable payload field is present for an empty block");
+  const emptyAlert = payload.alerts.find((a) => a.key === "no-brief");
+  assert.ok(emptyAlert, "an empty marked block raises the no-brief alert");
+
   // Restoring the block turns the field and the alert back off.
   fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}\nBuild a thing.\n${PROMPT_END}\n`);
   assert.equal(snapshot(root, undefined, now).noBrief, undefined, "resolved brief clears the snapshot field");

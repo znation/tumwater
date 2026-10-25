@@ -142,17 +142,17 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // A brief candidate exists but none carries a well-formed prompt block (briefBlockMissing):
+  // A brief candidate exists but none resolves to a usable prompt block (briefBlockMissing):
   // every run reaches its model with no project prompt, so the team burns tokens producing
-  // work unrelated to the project. The same marker-less/unreadable state the doctor `brief`
-  // row warns on, raised as a standing alert on the always-on surfaces (the bare pre-init repo
-  // stays silent). Independent of team state, like the no-check alert beside it.
+  // work unrelated to the project. The same marker-less/unreadable/empty-block state the doctor
+  // `brief` row warns on, raised as a standing alert on the always-on surfaces (the bare
+  // pre-init repo stays silent). Independent of team state, like the no-check alert beside it.
   if (snap.noBrief) {
     out.push({
       key: "no-brief",
       tone: "amber",
-      title: "The project brief has no prompt block — every role runs without its project prompt",
-      detail: "A brief file exists but carries no well-formed tumwater:prompt block, so each run's prompt reaches the model with no project brief. Restore the block in the file the doctor `brief` row names, or re-run `tumwater init`.",
+      title: "The project brief's prompt block is missing or empty — every role runs without its project prompt",
+      detail: "A brief file exists but carries no usable tumwater:prompt block (no markers, or no text between them), so each run's prompt reaches the model with no project brief. Restore the block in the file the doctor `brief` row names, or re-run `tumwater init`.",
       actions: [],
     });
   }

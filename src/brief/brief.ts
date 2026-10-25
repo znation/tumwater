@@ -110,17 +110,19 @@ export function briefFile(root: string): string | null {
 }
 
 /** True when a brief candidate EXISTS but none resolves to a usable prompt block — the
- * marker-less file and the unreadable candidate (a directory or permission-lost file) — the
- * always-on amber twin of the doctor `brief` row's warn. A repo with no candidate at all
- * (the pre-init state between `git clone` and `tumwater init`) is deliberately false, so the
- * always-on surfaces stay silent on an on-purpose bare repo. An unreadable candidate counts:
- * a brief that cannot be read is one the roles cannot use, and the underlying firstBriefText
- * throw is caught and reported as true here — same subset doctor's `brief` warn covers, minus
- * the bare-repo state that doctor deems fine. Consumer: src/status/status-data.ts's snapshot. */
+ * marker-less file, the unreadable candidate (a directory or permission-lost file), and the
+ * marked block with no text between its markers (a hand edit that leaves the two markers
+ * with nothing between them) — the always-on amber twin of the doctor `brief` row's warn.
+ * A repo with no candidate at all (the pre-init state between `git clone` and
+ * `tumwater init`) is deliberately false, so the always-on surfaces stay silent on an
+ * on-purpose bare repo. An unreadable candidate counts: a brief that cannot be read is one
+ * the roles cannot use, and the underlying firstBriefText throw is caught and reported as
+ * true here — same subset doctor's `brief` warn covers, minus the bare-repo state that
+ * doctor deems fine. Consumer: src/status/status-data.ts's snapshot. */
 export function briefBlockMissing(root: string): boolean {
   if (briefCandidates(root).every((candidate) => !fs.existsSync(candidate))) return false;
   try {
-    return briefFile(root) === null;
+    return (readBrief(root)?.prompt ?? "") === "";
   } catch {
     return true;
   }

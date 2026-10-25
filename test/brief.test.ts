@@ -206,6 +206,10 @@ test("briefBlockMissing is true only when a candidate exists without a resolvabl
   assert.equal(briefBlockMissing(root), false, "no candidates at all");
   writeReadme(root, "# p\n\nNo markers here.\n");
   assert.equal(briefBlockMissing(root), true, "a marker-less candidate");
+  writeReadme(root, `# p\n\n${PROMPT_START}${PROMPT_END}\n`);
+  assert.equal(briefBlockMissing(root), true, "an empty marked block");
+  writeReadme(root, `# p\n\n${PROMPT_START}\n   \n\t\n${PROMPT_END}\n`);
+  assert.equal(briefBlockMissing(root), true, "a whitespace-only marked block");
   writeReadme(root, `# p\n\n${PROMPT_START}\nFrom README.\n${PROMPT_END}\n`);
   assert.equal(briefBlockMissing(root), false, "candidate carries the block");
   try {
