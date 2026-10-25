@@ -4312,7 +4312,7 @@ missing parity record.
 
 **Binds.** `src/run/qa-coverage.ts` (`qaCoverageStalled`, `QA_COVERAGE_STALE_MS`),
 `src/doctor/doctor-project-checks.ts` (`checkQaCoverage`), `src/ui/alert-feeds.ts`
-(`qaCoverageAlert`), `src/ui/team-alerts.ts` (the `qa-stale` alert).
+(`qaCoverageAlert`), `src/ui/team-alert-merge.ts` (the `qa-stale` alert).
 
 **Pinned by.** `test/qa-coverage.test.ts` — the `qaCoverageStalled` cases (empty false, boundary
 false, one past true, mixed fresh+old false, malformed-only reads empty); `test/doctor-checks.test.ts`

@@ -29,7 +29,7 @@
  * ERROR_STREAK_BREAKER failures.
  *
  * Accepted behavior, stated here and not fixed in this change: the dashboards' "failing run after
- * run" alert (src/ui/team-alerts.ts) reads consecutiveErrors regardless of pause, so it keeps
+ * run" alert (src/ui/team-alert-status.ts) reads consecutiveErrors regardless of pause, so it keeps
  * listing a breaker-paused role until the streak clears; the role cell's paused badge explains why
  * it is not running, and the role_streak_paused event tells the operator why. */
 

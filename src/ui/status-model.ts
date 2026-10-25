@@ -100,7 +100,7 @@ export function idleClaimText(s: { claim?: RunnerState["claim"]; role: string },
 export function onErrorStreak(s: Pick<RunnerState, "consecutiveErrors" | "lastResult" | "quietKillStreak">): boolean {
   // An error streak at or past the warning threshold (run-apply.ts's ERROR_STREAK_WARN), or
   // a quiet-kill streak at the give-up threshold (BUGS.md 2026-09-18): the exact condition
-  // that makes rolePhase read "failing", split out so the team alert (team-alerts.ts) can
+  // that makes rolePhase read "failing", split out so the team alert (team-alert-status.ts) can
   // key its red "failing run after run" banner on the streak rather than on the rendered
   // phase — an in-flight run hides the streak behind a `working`/`merge` label (rolePhase
   // ranks running work above failing), but the alert must stay up while the role's next

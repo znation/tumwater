@@ -87,7 +87,7 @@ export function staleWorkspacePins(root: string, now = Date.now()): StaleWorkspa
 }
 
 /** The shared one-pin clause of the doctor's `worktree pool` row (checkWorktreePool) and the
- * standing `workspace-pins` alert (team-alerts.ts): `<role> pinned on <dir> for <Nh>`. One
+ * standing `workspace-pins` alert (team-alert-tail.ts): `<role> pinned on <dir> for <Nh>`. One
  * home so the row and the alert cannot drift on how a pin's age is phrased (whole hours, off
  * the pin's whole-ms age). `role` is a non-optional string on StaleWorkspacePin, but the
  * clause renders it through textOr like the row always did, so a malformed pin can never

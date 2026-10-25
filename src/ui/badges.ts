@@ -354,7 +354,7 @@ export function pauseBadge(pausedUntil: number | undefined, now: number, reason?
 /** The countdown a timed team pause has left, as humanSeconds — `null` when there is none
  * (no deadline, or an already-expired one: the read side treats an expired marker as
  * unpaused). The one home of the guard + ms→seconds rounding behind the team's pause
- * countdowns, shared by pauseBadge's header fragment and team-alerts.ts's paused alert
+ * countdowns, shared by pauseBadge's header fragment and team-alert-tail.ts's paused alert
  * title, so the two surfaces cannot disagree about how much time remains. The guard is this
  * function's own; the ms→seconds rounding rides datetime.ts's secondsUntil. The GUI's pause
  * control recomputes the counting-down number client-side from the payload's raw `pausedUntil`

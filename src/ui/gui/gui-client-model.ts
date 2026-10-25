@@ -61,7 +61,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   }
   // A stalled tool call or a long silence, as the phase label names them (run-progress-model.ts's
   // inFlightDetail) — the cue that a working role may be stuck. The pattern is that module's
-  // STALL_SOURCE (interpolated at module build), shared with team-alerts.ts's server-side
+  // STALL_SOURCE (interpolated at module build), shared with team-alert-status.ts's server-side
   // matcher so the two cannot drift from the wording the cell renders.
   const STALL = new RegExp(${JSON.stringify(STALL_SOURCE)});
   // A run result (run-outcome.ts RunResult) in words, with the tone of its outcome.
@@ -157,7 +157,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   }
   // A backlog title's trailing "(planned 2026-09-29)"-style note, split off as metadata —
   // the pattern is backlog-structure.ts's ENTRY_STAMP_META_SOURCE (interpolated at module
-  // load, compiled once here), the same regex team-alerts.ts strips through via
+  // load, compiled once here), the same regex team-alert-shared.ts strips through via
   // stripEntryStamp, so a new stamp verb reaches both dashboards from one edit.
   const ENTRY_STAMP_RE = new RegExp(${JSON.stringify(ENTRY_STAMP_META_SOURCE)}, "i");
   function splitTitle(t) {

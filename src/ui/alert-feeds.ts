@@ -22,7 +22,7 @@ import type { FlappedChecks, NotifyFailure, PlanDependencyProblem, PrimaryOverwr
 
 /** This module is the alert-feed half of src/ui/status-payload.ts: each always-on team alert's
  * data-sourcing function (staleOpenBugs, notifyFailures, capacityContention, …) lives here, a
- * sibling of the src/ui/team-alerts.ts builder that turns them into banners. status-payload.ts
+ * sibling of the src/ui/team-alert-*.ts builders that turn them into banners. status-payload.ts
  * stays the one status-document builder, importing these feeds and folding each feed's result
  * into the `alerts` field; status-render.ts reads the feeds directly for the TUI. */
 /** The open bugs the doctor's 3-day rule (src/doctor/doctor-backlog-bugs.ts checkStaleBugs,
@@ -125,16 +125,16 @@ export function staleWaitingBugs(root: string, now = Date.now()): StaleWaitingBu
 }
 
 /** The merge-queue files `readMergeQueue` skips as checkout-relative paths — the always-on feed
- * for the `skipped-merges` team alert (src/ui/team-alerts.ts), sharing the doctor's one list
- * (doctor-backlog.ts skippedMergeQueueFiles), so the alert and the doctor's `merge-queue files`
- * row cannot drift on the selection or the named paths. */
+ * for the `skipped-merges` team alert (src/ui/team-alert-backlog-feed.ts), sharing the
+ * doctor's one list (doctor-backlog.ts skippedMergeQueueFiles), so the alert and the doctor's
+ * `merge-queue files` row cannot drift on the selection or the named paths. */
 export function skippedMergeFiles(root: string): string[] {
   return skippedMergeQueueFiles(root);
 }
 
 /** The doctor's three `_wait` contention rows (src/doctor/doctor-contention-checks.ts
  * `slotWaitContention`/`providerWaitContention`/`checkWaitContention`) folded into one
- * always-on feed for the `contention` team alert (src/ui/team-alerts.ts): the standing twin of
+ * always-on feed for the `contention` team alert (src/ui/team-alert-tail.ts): the standing twin of
  * the doctor's `workspaces`, `provider contention` and `check contention` rows, read off the
  * same `*_wait` events and the same ten-minute thresholds the doctor sums, so the alert and
  * the doctor cannot drift on the trigger or the knob-raising advice. Reads each window with
@@ -186,7 +186,7 @@ export const DROPPED_POST_REVIEW_WINDOW_MS = 24 * 60 * 60_000;
  * same trailing day the primary-overwrite and notify alerts read. */
 export const REGRESSED_FIX_WINDOW_MS = 24 * 60 * 60_000;
 /** A Fixed record whose quoted test failed again in the trailing day — the always-on feed for the
- * `regressed-fixes` team alert (src/ui/team-alerts.ts), carrying the doctor's own sentence
+ * `regressed-fixes` team alert (src/ui/team-alert-tail.ts), carrying the doctor's own sentence
  * (regressedFixesPhrase) so the alert and the `regressed fixes` row cannot drift on the wording.
  * null when no Fixed record's quoted test failed in the window. */
 export interface RegressedFixAlert {
@@ -210,9 +210,10 @@ export function regressedFixesAlert(root: string, now = Date.now()): RegressedFi
 const PRIMARY_OVERWRITE_MARKER = "would overwrite files in the primary checkout";
 /** The merges the primary checkout refused in the trailing day (src/merge/merge-git.ts
  * `primaryCheckoutBlockers`, `overwriteBlockedReason`) — the always-on feed for the
- * `primary-overwrite` team alert (src/ui/team-alerts.ts). It reads only the `warning` event the
- * merge path already writes, so it reaches the status poll without a git read (the doctor's
- * `uncommitted backlog` check's git read is async and never gets there) and cannot drift from
+ * `primary-overwrite` team alert (src/ui/team-alert-backlog-feed.ts). It reads only the
+ * `warning` event the merge path already writes, so it reaches the status poll without a git
+ * read (the doctor's `uncommitted backlog` check's git read is async and never gets there) and
+ * cannot drift from
  * the refusals. null when the window holds no such warning. */
 export function primaryOverwriteBlocks(root: string, now = Date.now()): PrimaryOverwriteBlock | null {
   const hits = eventsSince(root, PRIMARY_OVERWRITE_WINDOW_MS, now, (e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(PRIMARY_OVERWRITE_MARKER));
@@ -235,7 +236,7 @@ export interface PostMergeChurn {
   count: number;
   roles: readonly PostMergeRejection[];
 }
-/** The always-on feed for the `post-merge-churn` team alert (src/ui/team-alerts.ts): a day in
+/** The always-on feed for the `post-merge-churn` team alert (src/ui/team-alert-merge.ts): a day in
  * which at least `POST_MERGE_REJECT_WARN` already-merged commits were turned back by post-merge
  * review, each rejection written by reviewMergedCommit as a `review_rejected` event with
  * `afterMerge: true`. Post-merge is the costly kind — the commit already reached main, so a
@@ -335,7 +336,7 @@ export interface DroppedPostReviews {
   latestTs: number;
   latestMessage: string;
 }
-/** The always-on feed for the `dropped-post-reviews` team alert (src/ui/team-alerts.ts): reads
+/** The always-on feed for the `dropped-post-reviews` team alert (src/ui/team-alert-merge.ts): reads
  * only the `warning` event the drain's drop branch already writes, so it reaches the status
  * poll without touching the review state and cannot drift from the drop. null when the day
  * holds no such warning. eventsSince degrades an unreadable log, so one bounded event scan
@@ -360,7 +361,7 @@ export interface MainRuleFailure {
   latestTs: number;
   latestMessage: string;
 }
-/** The always-on feed for the `main-diff-rules` team alert (src/ui/team-alerts.ts): reads only
+/** The always-on feed for the `main-diff-rules` team alert (src/ui/team-alert-merge.ts): reads only
  * the `warning` event the main watch already writes, so it reaches the status poll without a
  * git read or a rule re-run (the watch paid for the check) and cannot drift from the watch's
  * wording. null when the day holds no such warning. eventsSince degrades an unreadable log, so

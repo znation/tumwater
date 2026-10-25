@@ -58,9 +58,10 @@ export interface PostMergeRejection {
 }
 
 /** The bar a day's post-merge rejections must reach before the `post-merge-churn` amber alert
- * (src/ui/team-alerts.ts) fires: one post-merge rejection is the tiering's ordinary cost, two in
- * a day is a role whose already-landed changes keep being turned back — the reviewer-fix signal
- * for an operator to narrow `review.afterMerge` or raise the authoring bar. */
+ * (src/ui/team-alert-merge.ts) fires: one post-merge rejection is the tiering's ordinary cost,
+ * two in a day is a role whose already-landed changes keep being turned back — the
+ * reviewer-fix signal for an operator to narrow `review.afterMerge` or raise the
+ * authoring bar. */
 
 export const POST_MERGE_REJECT_WARN = 2;
 
@@ -89,8 +90,9 @@ export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostM
     .sort((a, b) => b.count - a.count || (a.role < b.role ? -1 : a.role > b.role ? 1 : 0));
 }
 
-/** The one home of the trigger and selection the `post-merge-churn` alert (src/ui/team-alerts.ts)
- * and the doctor's `post-merge churn` row (src/doctor/doctor-project-checks.ts) share: whether
+/** The one home of the trigger and selection the `post-merge-churn` alert
+ * (src/ui/team-alert-merge.ts) and the doctor's `post-merge churn` row
+ * (src/doctor/doctor-project-checks.ts) share: whether
  * the trailing `POST_MERGE_REJECT_WINDOW_MS` holds at least `POST_MERGE_REJECT_WARN` post-merge
  * `review_rejected` events, and, when it does, which roles and how many each. null when the
  * window holds fewer than the bar, or none — so the two surfaces cannot disagree on when churn

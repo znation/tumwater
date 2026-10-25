@@ -229,8 +229,8 @@ export function checkLiveFinished(root: string): CheckOutcome {
 
 /** One `## ` title found more than once in a backlog file by the shared scanBacklogHeadings
  * loop, with the file that carries it — the structural twin the always-on `backlog-headings`
- * team alert reads (src/ui/team-alerts.ts, fed via src/ui/status-payload.ts), so the doctor row
- * and the alert cannot drift on which headings count. */
+ * team alert reads (src/ui/team-alert-backlog.ts, fed via src/ui/status-payload.ts), so the
+ * doctor row and the alert cannot drift on which headings count. */
 export interface DuplicatedBacklogHeading {
   file: string;
   heading: string;
@@ -291,16 +291,16 @@ interface BacklogHeadingFileScan {
 const backlogHeadingFileCache = new Map<string, StatKeyedValue<BacklogHeadingFileScan>>();
 
 /** The duplicated `## ` headings already on main, exported so the always-on `backlog-headings`
- * team alert (src/ui/team-alerts.ts) renders the same set the doctor's `backlog headings` row
- * warns about. */
+ * team alert (src/ui/team-alert-backlog.ts) renders the same set the doctor's `backlog
+ * headings` row warns about. */
 export function duplicatedBacklogHeadings(root: string): DuplicatedBacklogHeading[] {
   return scanBacklogHeadings(root).duplicates;
 }
 
 /** One live backlog file's finished-history row as liveFinishedHistory reports it — the
  * `file`/`section`/`archive`/`entries`/`bytes` shape checkLiveFinished warns about, exported
- * so the always-on `backlog-archive` team alert (src/ui/team-alerts.ts) renders the same rows
- * the doctor's `backlog archive` warn does. */
+ * so the always-on `backlog-archive` team alert (src/ui/team-alert-backlog.ts) renders the
+ * same rows the doctor's `backlog archive` warn does. */
 export interface LiveFinishedEntry {
   file: string;
   section: string;
@@ -325,9 +325,10 @@ interface LiveFinishedCacheRow {
 const liveFinishedCache = new Map<string, LiveFinishedCacheRow>();
 
 /** The finished-history rows already on main, exported so the always-on `backlog-archive` team
- * alert (src/ui/team-alerts.ts) renders the same set the doctor's `backlog archive` row warns
- * about — stat-gated so a steady-state poll pays four stats, not a full re-parse. The cache key
- * is the stat identity (`dev:ino:mtimeMs:size`, `absent` when the stat is null) of every
+ * alert (src/ui/team-alert-backlog.ts) renders the same set the doctor's `backlog archive`
+ * row warns about — stat-gated so a steady-state poll pays four stats, not a full re-parse.
+ * The cache key is the stat identity (`dev:ino:mtimeMs:size`, `absent` when the stat is
+ * null) of every
  * FINISHED_ARCHIVES live file and archive under `root`, so any write that changes finished
  * history or the archive refreshes the rows on the next call without a process restart. Returns
  * a copy on a hit; on a miss it recomputes via liveFinishedHistory, and returns `[]` (uncached)

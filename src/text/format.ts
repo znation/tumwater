@@ -86,7 +86,7 @@ export function usdCap(n: number): string {
 
 /** A disk size in GB for display: one decimal and the unit (`12.3 GB`) — the single home of
  * the disk-size format shared by the event feed's disk lines (event-format.ts), the status
- * header's disk badge (badges.ts's `diskBadge`), the team's low-disk alert (team-alerts.ts),
+ * header's disk badge (badges.ts's `diskBadge`), the team's low-disk alert (team-alert-status.ts),
  * the doctor's disk check detail (doctor-project-checks.ts), and `tumwater reclaim`'s
  * freed-size line (operator-commands.ts), so the decimal width and unit cannot drift per
  * consumer. A caller

@@ -212,7 +212,7 @@ export function budgetGate(
 /** The configured fallback tier map as display entries: one `tier: pair` per set tier, in
  * MODEL_TIERS order (small, default, strong). The single home of the tier-list rendering
  * shared by the budget badge (src/ui/badges.ts), the fallback alert's detail
- * (src/ui/team-alerts.ts), and the budget_fallback event line
+ * (src/ui/team-alert-status.ts), and the budget_fallback event line
  * (src/events/event-format.ts), so the pair shape and the tier order cannot drift between
  * the three surfaces; each caller joins or length-tests the entries itself. A non-string
  * value is not a pair (the event reads a loosely typed field) and is left out; absent or

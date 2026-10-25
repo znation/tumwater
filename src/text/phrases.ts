@@ -89,8 +89,9 @@ export function mainRedNotMine(sha: unknown): string {
 
 /** The ` — "<reason>"` suffix the operator's pause reason (`pause --reason <text>`) rides on —
  * one home so the CLI's confirmation line (operator/operator-commands.ts), the status header's
- * pause badge (ui/badges.ts), and the paused alert's title (ui/team-alerts.ts) cannot drift on the
- * quoting. No reason, no suffix: every caller's reasonless phrasing keeps today's byte-exact form.
+ * pause badge (ui/badges.ts), and the paused alert's title (ui/team-alert-tail.ts) cannot
+ * drift on the quoting. No reason, no suffix: every caller's reasonless phrasing keeps
+ * today's byte-exact form.
  * (The GUI keeps its own JS copies in gui-client.ts: a separate runtime that cannot import
  * TypeScript.) */
 export function pauseReasonSuffix(reason: string | undefined): string {
