@@ -1,6 +1,6 @@
 import { fail, say, sayJsonLine } from "./cli-output.js";
 import { hasFollowFlag, LOGS_TRANSCRIPT_VALUE_ERROR } from "./cli-flag-specs.js";
-import { durationLabel, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
+import { betweenWindow, durationLabel, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
@@ -221,7 +221,7 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
     const { cutoff, events: windowEvents, covered } = readEventsSince(root, ms);
     const events = untilMs === null ? windowEvents : windowEvents.filter((e) => e.ts < cutoff + ms - untilMs);
     const windowPhrase =
-      untilMs === null ? `in ${durationLabel(ms)}` : `between ${durationLabel(ms)} and ${durationLabel(untilMs)} ago`;
+      untilMs === null ? `in ${durationLabel(ms)}` : betweenWindow(ms, untilMs);
     // `--grep`, `--type` and `--role` all filter the window through feedFilter: only the
     // window events that pass are printed, and an all-filtered window answers with the
     // no-match prose (the filter's own line) instead of the generic empty-window one —

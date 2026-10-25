@@ -358,6 +358,16 @@ export function durationLabel(ms: number): string {
   return rest === 0 ? parts.join("") : `${ms}ms`;
 }
 
+/** The human phrase for a two-ended time window — `between 2h and 1h ago` — the shape
+ * `--since/--until` windows share with the history TUI and `history`'s bounded empties.
+ * Unbounded windows keep their own "last …"/"in …" phrasing; only the two-ended form is
+ * folded here so the three sites cannot drift. The two bounds are labeled in caller order
+ * (older before newer at every current site), and each is run through durationLabel, so a
+ * phrase always echoes a form the parser accepts. Lives beside durationLabel for that reason. */
+export function betweenWindow(older: number, newer: number): string {
+  return `between ${durationLabel(older)} and ${durationLabel(newer)} ago`;
+}
+
 /** The shared over-cap check for duration-valued flags: fail with the one message shape —
  * `<flag> is capped at <max label> (got <value label>)` — so every capped duration names
  * both bounds in the same phrasing and the sites cannot drift apart (the same idiom the

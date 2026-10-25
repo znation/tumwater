@@ -1,5 +1,5 @@
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
-import { durationLabel } from "../../cli/cli-args.js";
+import { betweenWindow } from "../../cli/cli-args.js";
 import {
   HISTORY_DEFAULT_RUNS,
   HISTORY_MAX_RUNS,
@@ -186,7 +186,7 @@ export function createHistoryPane(
       ...(sinceMs === null
         ? []
         : step > 0
-          ? ["window: between " + durationLabel((step + 1) * sinceMs) + " and " + durationLabel(step * sinceMs) + " ago"]
+          ? ["window: " + betweenWindow((step + 1) * sinceMs, step * sinceMs)]
           : ["window: last " + (cycleLabel(HISTORY_WINDOWS, sinceMs) ?? "default")]),
       ...(resultLabel === null ? [] : ["result: " + resultLabel]),
       ...(model === null ? [] : ["model: " + model]),

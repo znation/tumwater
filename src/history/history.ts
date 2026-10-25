@@ -1,5 +1,5 @@
 import { fail, say, sayJson, sayJsonLine } from "../cli/cli-output.js";
-import { durationLabel, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
+import { betweenWindow, durationLabel, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
 import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readRunRows, readRunRowsSince, runRows, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type HistoryResultClass, type RunRow } from "./history-data.js";
 import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
@@ -215,7 +215,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
             ? "no runs yet"
             : untilMs === null
               ? `no runs in ${durationLabel(sinceMs)}`
-              : `no runs between ${durationLabel(sinceMs)} and ${durationLabel(untilMs)} ago`,
+              : `no runs ${betweenWindow(sinceMs, untilMs)}`,
     );
     return;
   }
