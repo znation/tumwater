@@ -144,6 +144,10 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 the spawned runner under --coverage ends with node's coverage table and leaves the durations ledger alone
 ~~~~
 
+- **Progress 2026-10-25 (bugfix):** not reproduced. The test (`test/test-runner.test.ts` "the spawned runner under --coverage …") spawns `dist/test/test-runner.js --coverage json-object` and asserts (a) node's coverage-table structural lines (`running 1 test file(s)`, `ℹ file | line %`, `ℹ all files`, no `ℹ test/`) and (b) `dist/test/.durations.json` byte-identity between two reads. Both are deterministic here: 40 isolated runs green; node's table byte-identical over 30 sequential and 24 concurrent `--coverage json-object` runs (all 24 hashes equal, `all files`/table header always present, `test/` never listed — the `**/test/**` exclude holds); and one full-suite run (the check's own invocation) left this test green (its only failure was an unrelated pre-existing `docs/cli.md` doc test). On the durations side the only writer of the real `.durations.json` is this file's own sequential nested runs (grep: no other test or src writes it; `recordDurations` is skipped whenever `coverage` is set, and `writeAtomic` is tmp+rename), and the outer full-suite runner's final `recordDurations` runs only after its single `spawnSync` of all children returns, so no writer overlaps the test's before/after window. No in-repo race or load-sensitive table flip surfaced; the failure reads as an environmental one-off. No code change; the entry stays open.
+
+**Waiting for the next failure 2026-10-25 by bugfix: the failure message names the exact assertion, so the next flake reads which line broke — if it is the `.durations.json` byte-identity assert, check whether an outer run's final `recordDurations` overlapped a nested writer (`before` vs `after` diff in the output); if it is a coverage-table line, the `**/test/**` exclude or the `all files` row under peak process contention; if it is `status`, the nested spawn itself.**
+
 ## Fixed
 
 ## Verified
