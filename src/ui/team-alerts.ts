@@ -11,7 +11,7 @@ import type { StatusSnapshot } from "../status/status-data.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert, QaCoverageStale } from "./status-payload.js";
-import type { StaleWorkspacePin } from "../doctor/doctor-contention-checks.js";
+import { stalePinPhrase, type StaleWorkspacePin } from "../doctor/doctor-contention-checks.js";
 import { entryKindLabel, type RefusedEntry, type StalledEntry } from "../backlog/backlog-eligibility.js";
 import { staleClaimDetail, type ClaimState } from "../scheduling/claim-entries.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
@@ -1213,7 +1213,7 @@ function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       tone: "amber",
       title: plural(workspacePins.length, "workspace pinned past a day", "workspaces pinned past a day"),
       detail: `${workspacePins
-        .map((p) => `${p.role} pinned on ${p.dir} for ${Math.round(p.ageMs / 3_600_000)}h`)
+        .map(stalePinPhrase)
         .join("; ")} — a pinned workspace is held out of the pool; resume the role, or retire its leftovers and run \`tumwater doctor\``,
       actions: openRoleActions(workspacePins),
     });

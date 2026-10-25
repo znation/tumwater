@@ -86,6 +86,16 @@ export function staleWorkspacePins(root: string, now = Date.now()): StaleWorkspa
     }));
 }
 
+/** The shared one-pin clause of the doctor's `worktree pool` row (checkWorktreePool) and the
+ * standing `workspace-pins` alert (team-alerts.ts): `<role> pinned on <dir> for <Nh>`. One
+ * home so the row and the alert cannot drift on how a pin's age is phrased (whole hours, off
+ * the pin's whole-ms age). `role` is a non-optional string on StaleWorkspacePin, but the
+ * clause renders it through textOr like the row always did, so a malformed pin can never
+ * print nothing where the phrase expects a role. */
+export function stalePinPhrase(pin: StaleWorkspacePin): string {
+  return `${textOr(pin.role)} pinned on ${pin.dir} for ${Math.round(pin.ageMs / 3_600_000)}h`;
+}
+
 /** Directory names under the worktrees root that the pool no longer owns: a legacy per-role
  * `<role>` checkout (the pre-pool layout) or a `_land-<role>` checkout from the merge queue. The
  * dedicated `director`, `_slot-<n>`, `_merge`, `_main`, `_gate-main` and `_build` checkouts are
@@ -250,9 +260,7 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
     // standing `workspace-pins` alert carries), so the row's wording and the alert's selection
     // cannot disagree on what a stale pin is or how old it is.
     parts.push(
-      stale
-        .map((pin) => `${textOr(pin.role)} pinned on ${pin.dir} for ${Math.round(pin.ageMs / 3_600_000)}h`)
-        .join("; "),
+      stale.map(stalePinPhrase).join("; "),
     );
   }
   let contended = false;
