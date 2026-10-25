@@ -168,38 +168,32 @@ export async function handleRoleInterval(req: http.IncomingMessage, res: http.Se
     return;
   }
   const base = baseRoleOf(role);
-  // A null, empty or whitespace-only value clears the override, so the role falls back to the
-  // team-wide minRunIntervalSeconds (unsetConfigKey, like the CLI's config unset of the key).
-  if (value === null || (typeof value === "string" && value.trim() === "")) {
-    // unsetConfigKey's no-op map path (a role the file never holds, an unknown id included)
-    // skips validateConfig, so without this the set branch's unknown-role refusal would never
-    // fire on a clear and a bogus id would answer 200 "cleared" — the explicit check mirrors
-    // the CLI's knownRoleIds guard and the role-quiet-hours clear branch.
-    if (rejectBadRole(root, res, role)) return;
-    const clearResult = unsetConfigKey(root, `roles.${base}.minRunIntervalSeconds`);
-    if (!clearResult.ok) return configKeyError(res, `roles.${base}.minRunIntervalSeconds`, clearResult);
-    const message =
-      clearResult.oldValue === undefined
-        ? `${base}: min run interval is not set in tumwater.json, so nothing was cleared`
-        : `${base}: min run interval cleared`;
-    sendJson(res, 200, { ok: true, role: base, message });
-    return;
+  // A non-null, non-blank value must pass the shared per-key screen (the finite
+  // 0..MAX_DURATION_SECONDS rule, naming the per-role dotted key so a rejected write tells the
+  // operator which key the drawer would set) before the write; a null/blank value is the clear
+  // path (writeRoleJsonKey), so the role falls back to the team-wide interval.
+  if (value !== null && !(typeof value === "string" && value.trim() === "")) {
+    const problem = checkMinRunInterval(value, `roles.${base}.minRunIntervalSeconds`);
+    if (problem) {
+      badRequest(res, problem);
+      return;
+    }
   }
-  // The shared rule (finite 0..MAX_DURATION_SECONDS), naming the per-role dotted key so a
-  // rejected write tells the operator which key the drawer would set.
-  const problem = checkMinRunInterval(value, `roles.${base}.minRunIntervalSeconds`);
-  if (problem) {
-    badRequest(res, problem);
-    return;
-  }
-  // setConfigKey takes the raw CLI text; a JSON round-trip of an already-parsed value is
-  // exact, so the shared per-key validator + whole-config validateConfig apply unchanged.
-  const result = setConfigKey(root, `roles.${base}.minRunIntervalSeconds`, JSON.stringify(value));
-  if (!result.ok) return configKeyError(res, `roles.${base}.minRunIntervalSeconds`, result);
-  const message = result.unchanged
-    ? `${base}: min run interval is already ${value as number}s, so tumwater.json was not written`
-    : `${base}: min run interval set to ${value as number}s`;
-  sendJson(res, 200, { ok: true, role: base, minRunIntervalSeconds: value as number, message });
+  // The set-or-clear tail shared with the other role JSON-key handlers: clears through
+  // unsetConfigKey and sets through the CLI's own setConfigKey dotted path, so the shared
+  // per-key validator (above) and whole-config validateConfig (which rejects an unknown role
+  // id) own the final truth. The clear arm carries rejectBadRole because unsetConfigKey's
+  // no-op map path skips validateConfig — the guard the set branch gets free from
+  // setConfigKey's unknown-role refusal (mirrors the CLI's knownRoleIds guard).
+  writeRoleJsonKey(
+    res, root, base, `roles.${base}.minRunIntervalSeconds`, "min run interval", value as number | null,
+    (v) => `${base}: min run interval set to ${v}s`,
+    {
+      unchangedMessage: (v) => `${base}: min run interval is already ${v}s, so tumwater.json was not written`,
+      guardClear: () => rejectBadRole(root, res, role),
+      extra: { minRunIntervalSeconds: value as number },
+    },
+  );
 }
 
 /** Handle POST /api/role-instances: the role drawer's instance-count editor sets or clears one
@@ -225,32 +219,21 @@ export async function handleRoleInstances(req: http.IncomingMessage, res: http.S
     return;
   }
   const base = baseRoleOf(role);
-  // A null, empty or whitespace-only value clears the key, so the role falls back to the
-  // default 1 (unsetConfigKey, like the CLI's config unset of the key).
-  if (value === null || (typeof value === "string" && value.trim() === "")) {
-    // unsetConfigKey's no-op map path (a role the file never holds, an unknown id included)
-    // skips validateConfig, so without this the set branch's unknown-role refusal would never
-    // fire on a clear and a bogus id would answer 200 "cleared" — the explicit check mirrors
-    // the CLI's knownRoleIds guard and the role-interval clear branch.
-    if (rejectBadRole(root, res, role)) return;
-    const clearResult = unsetConfigKey(root, `roles.${base}.instances`);
-    if (!clearResult.ok) return configKeyError(res, `roles.${base}.instances`, clearResult);
-    const message =
-      clearResult.oldValue === undefined
-        ? `${base}: instances is not set in tumwater.json, so nothing was cleared`
-        : `${base}: instances cleared`;
-    sendJson(res, 200, { ok: true, role: base, message });
-    return;
-  }
-  // setConfigKey takes the raw CLI text; a JSON round-trip of an already-parsed value is
-  // exact, so the shared per-key validator + whole-config validateConfig (which owns which
-  // roles may split and the 1–8 integer bound) apply unchanged.
-  const result = setConfigKey(root, `roles.${base}.instances`, JSON.stringify(value));
-  if (!result.ok) return configKeyError(res, `roles.${base}.instances`, result);
-  const message = result.unchanged
-    ? `${base}: instances is already ${value as number}, so tumwater.json was not written`
-    : `${base}: instances set to ${value as number}`;
-  sendJson(res, 200, { ok: true, role: base, instances: value, message });
+  // The set-or-clear tail shared with the other role JSON-key handlers: clears through
+  // unsetConfigKey and sets through the CLI's own setConfigKey dotted path, so whole-candidate
+  // validateConfig owns the final truth (the INSTANCE_COUNT bound and which roles may split;
+  // an unknown id is refused there). The clear arm carries rejectBadRole because
+  // unsetConfigKey's no-op map path skips validateConfig — the guard the set branch gets free
+  // from setConfigKey's unknown-role refusal (mirrors the CLI's knownRoleIds guard).
+  writeRoleJsonKey(
+    res, root, base, `roles.${base}.instances`, "instances", value as number | null,
+    (v) => `${base}: instances set to ${v}`,
+    {
+      unchangedMessage: (v) => `${base}: instances is already ${v}, so tumwater.json was not written`,
+      guardClear: () => rejectBadRole(root, res, role),
+      extra: { instances: value as number },
+    },
+  );
 }
 
 /** Handle POST /api/role-model: the role drawer's Model overrides editor sets or clears one
@@ -323,8 +306,7 @@ export async function handleRoleInstructions(req: http.IncomingMessage, res: htt
   // pre-existing).
   writeRoleJsonKey(
     res, root, base, `roles.${base}.instructions`, "instructions", text,
-    (v) => JSON.stringify(v),
-    (v) => `${base}: instructions saved (${v.length} chars)`,
+    (v) => `${base}: instructions saved (${String(v).length} chars)`,
   );
 }
 
@@ -402,9 +384,8 @@ export async function handleRoleQuietHours(req: http.IncomingMessage, res: http.
   // map branch checking the dotted key as the label and validateConfig owning the unknown role.
   writeRoleJsonKey(
     res, root, base, `quietHoursPerRole.${base}`, "quiet hours", window,
-    (v) => JSON.stringify(v),
     (v) => `${base}: quiet hours set to ${v}`,
-    () => rejectBadRole(root, res, role),
+    { guardClear: () => rejectBadRole(root, res, role) },
   );
 }
 
@@ -423,26 +404,39 @@ function unchangedFlag(result: { unchanged?: boolean }): { unchanged?: true } {
   return result.unchanged ? { unchanged: true } : {};
 }
 
-/** The set-or-clear write the two per-role JSON-config-key handlers (quiet hours, standing
- * instructions) share: an empty/whitespace `raw` unsets `key` (after `guardClear`, a per-call
- * check the clear arm runs first — quiet hours' unknown-role guard; instructions has none),
- * else sets it via setConfigKey (which JSON-encodes nothing, so `serialize` shapes the stored
- * value). `noun` names the hold in the "cleared" 200 and `setMessage` is the exact set-arm 200
- * message, threaded so each handler keeps its own wording. Always writes the response, so the
- * caller never falls through to further output. */
+/** Common options for `writeRoleJsonKey`. `serialize` shapes the stored value (default
+ * JSON.stringify — exact for the JSON round-trips every caller makes); `unchangedMessage`
+ * overrides the default "unchanged" 200 wording (the numeric keys say "already <n>");
+ * `guardClear` runs before a clear (the unknown-role guard the numeric keys and quiet hours
+ * carry; instructions has none); `extra` spreads additional fields (e.g. the stored value)
+ * into the set-branch 200 body. */
+interface RoleClearSetOptions {
+  serialize?: (value: string | number) => string;
+  unchangedMessage?: (value: string | number) => string;
+  guardClear?: () => boolean;
+  extra?: Record<string, unknown>;
+}
+
+/** The set-or-clear write every per-role JSON-config-key handler (quiet hours, standing
+ * instructions, min run interval, instance count) shares: an empty/whitespace/`null` `raw`
+ * unsets `key` (after `guardClear`, a per-call check the clear arm runs first — the numeric
+ * keys' and quiet hours' unknown-role guard; instructions has none), else sets it via
+ * setConfigKey (which JSON-encodes nothing, so `serialize` shapes the stored value). `noun`
+ * names the hold in the "cleared" 200, `setMessage` is the exact set-arm 200 message, and
+ * `unchangedMessage` overrides the default unchanged wording — threaded so each handler keeps
+ * its own wording. Always writes the response, so the caller never falls through. */
 function writeRoleJsonKey(
   res: http.ServerResponse,
   root: string,
   base: string,
   key: string,
   noun: string,
-  raw: string,
-  serialize: (value: string) => string,
-  setMessage: (value: string) => string,
-  guardClear?: () => boolean,
+  raw: string | number | null,
+  setMessage: (value: string | number) => string,
+  options: RoleClearSetOptions = {},
 ): void {
-  if (raw.trim() === "") {
-    if (guardClear?.()) return;
+  if (raw === null || (typeof raw === "string" && raw.trim() === "")) {
+    if (options.guardClear?.()) return;
     const result = unsetConfigKey(root, key);
     if (!result.ok) configKeyError(res, key, result);
     else {
@@ -454,11 +448,14 @@ function writeRoleJsonKey(
     }
     return;
   }
+  const serialize = options.serialize ?? JSON.stringify;
   const result = setConfigKey(root, key, serialize(raw));
   if (!result.ok) configKeyError(res, key, result);
   else {
-    const message = result.unchanged ? `${base}: ${noun} unchanged, so tumwater.json was not written` : setMessage(raw);
-    sendJson(res, 200, { ok: true, role: base, message });
+    const message = result.unchanged
+      ? (options.unchangedMessage ?? (() => `${base}: ${noun} unchanged, so tumwater.json was not written`))(raw)
+      : setMessage(raw);
+    sendJson(res, 200, { ok: true, role: base, message, ...options.extra });
   }
 }
 /** Handle POST /api/config-set: the Settings view's per-key Save — one curated key set to
