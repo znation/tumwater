@@ -1270,6 +1270,54 @@ test("the Usage render chain draws the merge-share line under the stats grid whe
   assert.equal((chain.match(/<p class='muted merge-share'>/g) || []).length, 1);
 });
 
+test("costPerCommitText and estimatedPerCommitText print the cost-per-commit lines in the CLI's wording", () => {
+  // The browser twins of report-render.ts's costPerCommitLine must say exactly what the CLI
+  // says: roles with spend and commits ranked by cost-per-commit desc then name asc, then
+  // spend-only roles ranked by spend — with the instance id folded to its base role and only
+  // the number formatters differing, so the browser and CLI lines cannot drift on what they
+  // say. A series with no positive spend renders "-".
+  const { costPerCommitText, estimatedPerCommitText } = clientScope<{
+    costPerCommitText(label: string, series: ReportDay[], pick?: (d: ReportDay) => Record<string, number>): string;
+    estimatedPerCommitText(series: ReportDay[]): string;
+  }>(
+    ["format", "report-chart"],
+    ["costPerCommitText", "estimatedPerCommitText"],
+  );
+  const series: ReportDay[] = [{
+    date: "2026-09-01",
+    tokensOut: 0, runsByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
+    costByRole: { feature: 0.2, "feature-2": 0.1, clean: 0.9, plan: 0.9 },
+    commitsByRole: { feature: 2, clean: 3 },
+  }];
+  assert.equal(
+    costPerCommitText("Cost per commit", series),
+    "Cost per commit: clean — $0.30 (3) · feature — $0.15 (2) · plan — $0.90, no commits",
+  );
+  assert.equal(
+    costPerCommitText("Cost per commit", [{ date: "2026-09-01", tokensOut: 0, runsByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, costByRole: {} }]),
+    "Cost per commit: -",
+  );
+  assert.equal(
+    estimatedPerCommitText([{ date: "2026-09-01", tokensOut: 0, runsByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, costByRole: {}, notionalByRole: { feature: 0.4, plan: 0.5 }, commitsByRole: { feature: 3 } }]),
+    "Estimated per commit: feature — $0.13 (3) · plan — $0.50, no commits",
+  );
+});
+
+test("the Usage render chain draws the cost-per-commit lines under the merge-share paragraph", () => {
+  // The usage view's render chain must render the two cost-per-commit paragraphs directly under
+  // the merge-share line and above the charts grid: the priced line always, the estimated line
+  // gated on the window really having notional spend.
+  const chain = GUI_CLIENT_REPORT_JS;
+  const merge = chain.indexOf("merge-share");
+  const cost = chain.indexOf("cost-per-commit");
+  const grid = chain.indexOf("grid-2 even");
+  assert.ok(cost > merge, "the cost-per-commit paragraph sits after the merge-share line");
+  assert.ok(cost < grid, "the cost-per-commit paragraph sits before the grid-2 even chart grid");
+  assert.equal((chain.match(/<p class='muted cost-per-commit'>/g) || []).length, 2);
+  assert.match(chain, /costPerCommitText\("Cost per commit", d\.series\)/);
+  assert.match(chain, /d\.totals\.notionalCostUsd > 0 \? "<p class='muted cost-per-commit'>" \+ esc\(estimatedPerCommitText\(d\.series\)\) \+ "<\/p>" : ""/);
+});
+
 test("quarantineCardHtml wraps non-empty Flake quarantine Markdown in a card and returns empty for none", () => {
   // The Failures view paints the server-served quarantine section as a card below the digest;
   // the region is reached through the page's renderMarkdown like the digest card itself.

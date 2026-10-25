@@ -1,10 +1,12 @@
 /** The dashboard Usage view's chart builders, browser-side: the report-chart region. Pure
  * functions from /api/report's day series to SVG strings — the per-day bar and stacked charts,
  * their role/provider/model orderings, the shared role palette, the has-data predicates that
- * decide which charts draw, and the merge-share line's wording — with no DOM access, so the
- * tests exercise them in isolation.
+ * decide which charts draw, the merge-share line's wording, and the cost-per-commit /
+ * estimated-per-commit lines (costPerCommitParts, costPerCommitText, estimatedPerCommitText) —
+ * with no DOM access, so the tests exercise them in isolation.
  * Spliced into gui-client.ts's script ahead of gui-client-report.ts's hover chip, Role picker,
  * and view code, which call them through that concatenation. */
+import { INSTANCE_ID_SOURCE } from "../../roles/runner-ids.js";
 export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
 // report-chart:start
   // One color per role, assigned in the report's role order so a role keeps its color across
@@ -414,6 +416,62 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // faithful twin of mergeShareLine's "N runs" even at one run, so the wording cannot drift.
   function mergeShareText(t) {
     return "of which merge runs: " + t.mergeRuns + " runs" + ((t.mergeFailed || 0) > 0 ? " (" + t.mergeFailed + " failed)" : "") + " · " + fmtTokens(t.mergeTokens || 0) + " tokens · " + fmtUsd(t.mergeCostUsd || 0) + " (reviewer + conflict resolution)";
+  }
+
+  // The instance-id matcher for the cost-per-commit lines below, the same pattern
+  // gui-client-labels.ts uses, named distinctly from that region's INSTANCE_ID so the
+  // concatenated script has no duplicate const. Interpolated from the server's
+  // INSTANCE_ID_SOURCE so the base-role fold cannot drift from baseRoleOf.
+  const COST_INSTANCE_ID = new RegExp(${JSON.stringify(INSTANCE_ID_SOURCE)});
+
+  // Cost per merged commit by base role, the browser twin of report-render.ts's
+  // costPerCommitPairs: spend folded to its base role (feature-2 joins feature), commits read
+  // as-is (already base-keyed). mergeDone is [role, cost per commit, commits] for roles with
+  // both, ranked by cost per commit desc then name asc; idle is [role, cost] for roles that
+  // spent and merged nothing, ranked by spend. pick selects another per-role-id spend map
+  // (e.g. notionalByRole); a role with commits but no spend in the picked map appears in
+  // neither list.
+  function costPerCommitParts(series, pick) {
+    const cost = {};
+    const commits = {};
+    for (const d of series) {
+      const pickSpend = pick || ((day) => day.costByRole);
+      for (const [id, c] of Object.entries(pickSpend(d) || {})) {
+        const m = COST_INSTANCE_ID.exec(id);
+        const base = m ? m[1] : id;
+        cost[base] = (Object.hasOwn(cost, base) ? cost[base] : 0) + c;
+      }
+      for (const [role, n] of Object.entries(d.commitsByRole || {})) {
+        commits[role] = (Object.hasOwn(commits, role) ? commits[role] : 0) + n;
+      }
+    }
+    const mergeDone = [];
+    const idle = [];
+    for (const [role, c] of Object.entries(cost)) {
+      if (!(c > 0)) continue;
+      const n = commits[role] || 0;
+      if (n > 0) mergeDone.push([role, c / n, n]);
+      else idle.push([role, c]);
+    }
+    mergeDone.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    idle.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return { mergeDone, idle };
+  }
+
+  // One "label: role — cost (n) · role — cost, no commits" line from costPerCommitParts, the
+  // browser twin of report-render.ts's costPerCommitLine; "-" when nothing to show.
+  function costPerCommitText(label, series, pick) {
+    const parts = costPerCommitParts(series, pick);
+    const lines = [];
+    for (const [r, per, n] of parts.mergeDone) lines.push(r + " — " + fmtUsd(per) + " (" + n + ")");
+    for (const [r, c] of parts.idle) lines.push(r + " — " + fmtUsd(c) + ", no commits");
+    return label + ": " + (lines.length === 0 ? "-" : lines.join(" · "));
+  }
+
+  // The Estimated per commit line, over notionalByRole, the browser twin of
+  // renderReportMarkdown's notional-gated line; the caller decides when it prints.
+  function estimatedPerCommitText(series) {
+    return costPerCommitText("Estimated per commit", series, (d) => d.notionalByRole);
   }
   // The per-day filing-stamp twin of chartBacklogItems: plans added and bugs filed, the same
   // two colors as the done chart so the opened and done charts read as a pair. A day with
