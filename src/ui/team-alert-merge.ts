@@ -107,10 +107,10 @@ export function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
     });
   }
   // A post-merge review the drain actually dropped — the commit it leaves on main unreviewed
-  // (src/merge/merge-post-review.ts `startPostReview` at POST_REVIEW_FAILURE_LIMIT). Reads only
-  // the `warning` event the drop branch writes, after the at-risk alert is moot: the entry is
-  // gone, so no surface names the commit without this. droppedPostReviewsAlert feeds it from
-  // the same DROPPED_POST_REVIEW_MARKER the drain's message carries, so the alert and the drain
+  // (src/merge/merge-post-review-drain.ts `startPostReview` at POST_REVIEW_FAILURE_LIMIT).
+  // Reads only the `warning` event the drop branch writes, after the at-risk alert is moot:
+  // the entry is gone, so no surface names the commit without this.
+  // droppedPostReviewsAlert feeds it from the same DROPPED_POST_REVIEW_MARKER the drain's
   // cannot drift on what a drop is (the per-run failed-review warning never matches).
   if (droppedPostReviews) {
     out.push({

@@ -36,8 +36,9 @@ export const VERIFY_TIER = -1;
  * verification parked for a permit, because the merge is the one serial step every queued change
  * waits on. (Nothing that holds a permit ever waits on the merge: no verification takes the merge
  * lock, and the resolver runs outside it — merge-to-main.ts's mergeToMain — so this cannot
- * deadlock.) Shared by merge-drain.ts's merge slot and merge-post-review.ts's fix landing, so the
- * reviewer's fix-merge resolver rides the same tier and the two cannot drift. */
+ * deadlock.) Shared by merge-drain.ts's merge slot and merge-post-review-drain.ts's fix
+ * landing, so the reviewer's fix-merge resolver rides the same tier and the two cannot
+ * drift. */
 export const MERGE_TIER = VERIFY_TIER - 1;
 
 /** How many verifications may be in flight (parked or running) at once: every `maxConcurrent`

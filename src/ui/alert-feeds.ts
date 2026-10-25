@@ -353,12 +353,12 @@ export function postReviewRiskAlert(root: string): PostReviewRisk | null {
   return detail === null ? null : { count: rows.length, detail };
 }
 /** The exact substring the drain's drop branch logs in its `warning` event (src/merge/
- * merge-post-review.ts at POST_REVIEW_FAILURE_LIMIT), so this feed matches a real drop and not
- * the per-run `the post-merge review of <sha> failed (…)` warning the at-risk alert already
- * covers — alert-feeds.ts's DROPPED_POST_REVIEW_MARKER is the same string, so the feed and
- * the drain cannot drift on what a drop is. */
+ * merge-post-review-drain.ts at POST_REVIEW_FAILURE_LIMIT), so this feed matches a real drop
+ * and not the per-run `the post-merge review of <sha> failed (…)` warning the at-risk alert
+ * already covers — alert-feeds.ts's DROPPED_POST_REVIEW_MARKER is the same string, so the feed
+ * and the drain cannot drift on what a drop is. */
 const DROPPED_POST_REVIEW_MARKER = "dropping the post-merge review of";
-/** A post-merge review the drain dropped in the trailing day (src/merge/merge-post-review.ts
+/** A post-merge review the drain dropped in the trailing day (src/merge/merge-post-review-drain.ts
  * `startPostReview` at POST_REVIEW_FAILURE_LIMIT, src/review/post-merge-review.ts) — the commit
  * is permanently on main beyond the review gate with only this `warning` event to say so. count
  * is the drops in the window, latestTs the most recent one's event stamp, latestMessage its

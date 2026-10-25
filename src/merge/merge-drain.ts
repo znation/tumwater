@@ -8,7 +8,7 @@ import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { saveRunnerState } from "../runner/runner-state.js";
 
 import { addPostReview } from "../review/post-merge-review.js";
-import { drainPostReviews } from "./merge-post-review.js";
+import { drainPostReviews } from "./merge-post-review-drain.js";
 import { subscribeEvents } from "../events/events.js";
 import { treeDiffFiles } from "../git/git-diff.js";
 import { isExemptDiff } from "../review/exemptions.js";

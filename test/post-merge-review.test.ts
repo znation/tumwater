@@ -5,7 +5,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
-import { drainPostReviews } from "../src/merge/merge-post-review.js";
+import { drainPostReviews } from "../src/merge/merge-post-review-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
 import { addPostReview, readPostReviews, POST_REVIEW_FAILURE_LIMIT, postMergeRejectionCounts } from "../src/review/post-merge-review.js";
 import type { HarnessEvent } from "../src/events/events.js";

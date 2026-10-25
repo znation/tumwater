@@ -251,9 +251,9 @@ export async function reviewMergedCommit(
         logEventBestEffort(root, { source: role, type: "review_verdict", head: commit, reason: verdict.reasons[0], durationMs, afterMerge: true });
       }
       // A rejecting review whose reply carries a FIX: line and whose worktree holds an edit
-      // survives as one fix commit on the review ref, kept for merge-post-review.ts to land on
-      // main through the ordinary change path. A clean worktree or a reply with no FIX line keeps
-      // today's outcomes and deletes the ref.
+      // survives as one fix commit on the review ref, kept for
+      // merge-post-review-drain.ts to land on main through the ordinary change path. A clean
+      // worktree or a reply with no FIX line keeps today's outcomes and deletes the ref.
       const paths = pi.ok && !pi.aborted ? fixLine(pi.verdictText ?? "") : null;
       if (paths && verdict.verdict === "reject" && (await gitTry(wt, "status", "--porcelain"))?.trim().length) {
         // The self-fix chain's round is one past the reviewed commit's `Revision:` trailer; at
@@ -277,7 +277,7 @@ export async function reviewMergedCommit(
         }
         const fix = await commitReviewerFix(wt, commit, verdict.reasons, nextRound);
         // Advance the review-fix ref from C to the new fix commit, so the repair is reachable and
-        // the merge-post-review landing (which checks the fix out by this sha) finds it.
+        // the merge-post-review-drain landing (which checks the fix out by this sha) finds it.
         await setRef(root, fixRef, fix);
         return { kind: "fixed", fix, reasons: verdict.reasons };
       }

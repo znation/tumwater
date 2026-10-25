@@ -4229,7 +4229,7 @@ could not start (`gitCouldNotStart`) rethrows, and the drain's catch leaves the 
 the next poll instead of counting a failed run toward `POST_REVIEW_FAILURE_LIMIT`.
 
 **Binds.** `src/review/post-merge-review.ts` (`reviewMergedCommit`) and
-`src/merge/merge-post-review.ts` (`startPostReview`).
+`src/merge/merge-post-review-drain.ts` (`startPostReview`).
 
 **Pinned by.** `test/post-merge-review.test.ts` — "a merged commit whose diff git cannot produce
 fails its review, never approving an empty diff" and "a post-merge review git could not start keeps
