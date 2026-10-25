@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import type { ReportData, ReportDay } from "../src/report/report-types.js";
+import type { ReportData, ReportDay, ReportTotals } from "../src/report/report-types.js";
 
 // The report tab's hover chip (gui-client-report.ts's report-tip region) runs in the
 // browser, so it is exercised here through the same regex-extract + new Function seam as
@@ -1271,6 +1271,49 @@ test("the Usage render chain gates the Deferred runs by reason chart after Runs 
   assert.match(chain, /!d\.role && seriesHasAny\(d, "deferredByReason"\) \? block\("Deferred runs by reason", chartDeferredByReason\(d\), "per day · backlog, no-work, plans-full"\) : ""/);
   // Exactly one such gated term (the chain term carries its caption as a third argument).
   assert.equal((chain.match(/block\("Deferred runs by reason", chartDeferredByReason\(d\), "per day · backlog, no-work, plans-full"\)/g) || []).length, 1);
+});
+
+test("mergeShareText prints the merge-share line in the CLI's wording" , () => {
+  // The browser twin of report-render.ts's mergeShareLine must say exactly what the CLI says —
+  // the "of which merge runs:" lead, the optional " (N failed)" clause, the tokens and cost
+  // clauses, and the trailing "(reviewer + conflict resolution)" — with only the number
+  // formatters differing, so the browser and CLI lines cannot drift on what they say.
+  const { mergeShareText } = clientScope<{ mergeShareText(t: ReportTotals): string }>(
+    ["format", "report-chart"],
+    ["mergeShareText"],
+  );
+  const withFailed = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 3, mergeTokens: 8000, mergeCostUsd: 1.5, mergeFailed: 1 };
+  assert.equal(
+    mergeShareText(withFailed),
+    "of which merge runs: 3 runs (1 failed) · 8000 tokens · $1.50 (reviewer + conflict resolution)",
+  );
+  const noFailed = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 2, mergeTokens: 4000, mergeCostUsd: 0.5 };
+  assert.equal(
+    mergeShareText(noFailed),
+    "of which merge runs: 2 runs · 4000 tokens · $0.50 (reviewer + conflict resolution)",
+  );
+  // The singular count is the drift case the CLI pins: mergeShareLine (report-render.ts)
+  // prints a bare "1 runs" (frozen by test/report.test.ts), and the twin must match it rather
+  // than pluralise, or the browser and CLI lines diverge for a one-merge-run window.
+  const single = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 1, mergeTokens: 900, mergeCostUsd: 0.4 };
+  assert.equal(
+    mergeShareText(single),
+    "of which merge runs: 1 runs · 900 tokens · $0.40 (reviewer + conflict resolution)",
+  );
+});
+
+test("the Usage render chain draws the merge-share line under the stats grid when the window has merge runs", () => {
+  // The usage view's render chain must render the merge-share paragraph directly under the
+  // stats grid and above the charts, gated on the window really having merge runs.
+  const chain = GUI_CLIENT_REPORT_JS;
+  const summary = chain.indexOf("reportSummary(d)");
+  const merge = chain.indexOf("merge-share");
+  const grid = chain.indexOf("grid-2 even");
+  assert.ok(summary >= 0, "the reportSummary term exists");
+  assert.ok(merge > summary, "the merge-share paragraph sits after reportSummary(d)");
+  assert.ok(merge < grid, "the merge-share paragraph sits before the grid-2 even chart grid");
+  assert.match(chain, /d\.totals\.mergeRuns > 0 \? "<p class='muted merge-share'>" \+ esc\(mergeShareText\(d\.totals\)\) \+ "<\/p>" : ""/);
+  assert.equal((chain.match(/<p class='muted merge-share'>/g) || []).length, 1);
 });
 
 test("quarantineCardHtml wraps non-empty Flake quarantine Markdown in a card and returns empty for none", () => {

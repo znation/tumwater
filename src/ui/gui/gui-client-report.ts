@@ -311,7 +311,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         "</h2><span class='muted'>" + esc(sub || "per day") + "</span></header><div class='chart'>" + svg + "</div></section>";
       // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
       // CLI's --role report. The team-wide render is unchanged.
-      return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
+      return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div>" + (d.totals.mergeRuns > 0 ? "<p class='muted merge-share'>" + esc(mergeShareText(d.totals)) + "</p>" : "") + "<div class='grid-2 even'>" +
         block("Work vs maintenance commits", chartCommitTiers(d), "per day · work + maintenance") + block("Merged commits", chartCommits(d)) + block("Commits by role", chartCommitsByRole(d)) + (seriesHasBacklogAdded(d) ? block("Backlog items opened", chartBacklogItemsOpened(d), "per day · plans added + bugs filed") : "") + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + (seriesHasBacklogLagMedian(d) ? block("Backlog lag median", chartBacklogLagMedian(d), "per day · filing to done") : "") + block("Runs by role", chartRunsByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Tokens by role", chartTokensByRole(d)) + block("Spend by role", chartCostByRole(d)) +
         (!d.role && seriesHasAny(d, "costByProvider") ? block("Spend by provider", chartCostByProvider(d)) : "") +

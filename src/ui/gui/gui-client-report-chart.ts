@@ -1,7 +1,8 @@
 /** The dashboard Usage view's chart builders, browser-side: the report-chart region. Pure
  * functions from /api/report's day series to SVG strings — the per-day bar and stacked charts,
- * their role/provider/model orderings, the shared role palette, and the has-data predicates that
- * decide which charts draw — with no DOM access, so the tests exercise them in isolation.
+ * their role/provider/model orderings, the shared role palette, the has-data predicates that
+ * decide which charts draw, and the merge-share line's wording — with no DOM access, so the
+ * tests exercise them in isolation.
  * Spliced into gui-client.ts's script ahead of gui-client-report.ts's hover chip, Role picker,
  * and view code, which call them through that concatenation. */
 export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
@@ -408,6 +409,16 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // are rare, so their elements render only then.
   function seriesHasAny(data, field) {
     return data.series.some((d) => Object.values(d[field] || {}).some((n) => n > 0));
+  }
+  // The browser twin of report-render.ts's mergeShareLine: the "of which merge runs …" line
+  // under the tiles, worded exactly as the CLI prints it (so the two cannot drift on what they
+  // say) but built from the client's own number formatters, as the tiles already do. The caller
+  // decides when it prints: zero-means-absent, so a role-scoped report (which zeroes the merge
+  // counts) and a merge-free window render no such line. No backticks or template literals —
+  // this region is one String.raw template. The count stays bare "N runs" (never pluralised), a
+  // faithful twin of mergeShareLine's "N runs" even at one run, so the wording cannot drift.
+  function mergeShareText(t) {
+    return "of which merge runs: " + t.mergeRuns + " runs" + ((t.mergeFailed || 0) > 0 ? " (" + t.mergeFailed + " failed)" : "") + " · " + fmtTokens(t.mergeTokens || 0) + " tokens · " + fmtUsd(t.mergeCostUsd || 0) + " (reviewer + conflict resolution)";
   }
   // The per-day filing-stamp twin of chartBacklogItems: plans added and bugs filed, the same
   // two colors as the done chart so the opened and done charts read as a pair. A day with
