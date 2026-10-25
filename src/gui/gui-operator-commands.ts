@@ -9,7 +9,7 @@
  * its own `res`.
  */
 import { resyncRootInstall, rootInstallResyncLines, type RootInstallResync } from "../build/dep-install.js";
-import { cancelScheduledStopMessage, requestAbort, requestResetCounters, requestRestart, requestScheduledStop, runManualReclaim } from "../operator/operator-intent.js";
+import { cancelScheduledStopMessage, requestAbort, requestAbortAll, requestResetCounters, requestRestart, requestScheduledStop, runManualReclaim } from "../operator/operator-intent.js";
 import { runDoctor } from "../doctor/doctor.js";
 import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { killOrphans, orphanKillLines, type OrphanKillReport } from "../doctor/doctor-orphans.js";
@@ -191,6 +191,15 @@ export async function handleAbort(req: http.IncomingMessage, res: http.ServerRes
   const body = await readRoleBody(req, res, '{"role": "feature"}', root);
   if (!body) return;
   sendRequestResult(res, requestAbort(root, body.role as string));
+}
+
+/** Handle POST /api/abort-all: the dashboard Roles card's Abort all button — the same
+ * marker-writing core `tumwater abort --all` calls (requestAbortAll). It reads no body (the
+ * request targets every enabled runner), so a stale `role` field from another request changes
+ * nothing; requestAbortAll's not-live error comes back 409 like /api/abort's, through
+ * sendRequestResult. */
+export async function handleAbortAll(_req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  sendRequestResult(res, requestAbortAll(root));
 }
 
 /** Handle POST /api/role-notes: the role drawer's notes Edit/Clear — the same saveRoleNote

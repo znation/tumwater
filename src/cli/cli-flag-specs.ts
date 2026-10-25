@@ -134,6 +134,12 @@ export const ROLE_FLAG: FlagSpec = {
   missingValue: ROLE_VALUE_ERROR,
 };
 
+/** The `--all` flag spec, taken only by `tumwater abort` (`abort --all` aborts every enabled
+ * role in one request). A valueless targeting flag, so its spec carries only its spelling; the
+ * abort command body keeps the --role-vs--all rivalry rule. Every other marker command keeps
+ * its own flag set, so `pause --all` and the rest still fail as unknown flags. */
+export const ABORT_ALL_FLAG: FlagSpec = { names: ["--all"] };
+
 /** The missing-value error for `logs --transcript` (LOGS_TRANSCRIPT_FLAG's trailing gate). */
 export const LOGS_TRANSCRIPT_VALUE_ERROR = "--transcript needs a role id (e.g. `--transcript feature`)";
 

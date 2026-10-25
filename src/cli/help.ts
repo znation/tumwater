@@ -604,9 +604,13 @@ Usage:
                                    forms revert the commit the run merged as, the sha
                                    'history <role> <n>' names;
                                    --json prints the preview or the new head as data
-  tumwater abort --role <id>[,<id>...]
+  tumwater abort [--role <id>[,<id>...]] [--all]
                                    Stop each named role's run in progress (work discarded; the
-                                   role keeps going)
+                                   role keeps going); --all aborts every enabled role's
+                                   in-flight run and any merge it owns in one request (one
+                                   abort marker per role, applied by the next poll), for
+                                   stopping all work now; bare abort still fails asking for
+                                   --role or --all
   tumwater restart                Apply a pending self-redeploy now, waiving the restart
                                    cooldown (the dashboard's update-alert refresh button; a
                                    passing check on main, a successful compile, and in-flight

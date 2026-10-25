@@ -9,7 +9,7 @@ import { submitRolePrompt } from "../inbox/inbox-submit.js";
 import type { PromptImageInput } from "../inbox/inbox-attachments.js";
 import { questionAsker } from "../backlog/question-answer.js";
 import { knownRoleIdsCached, loadConfigCached } from "../config/config.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
+import { baseRoleOf, runnerIds } from "../roles/runner-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { saveRunnerState, zeroCounters } from "../runner/runner-state.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
@@ -284,6 +284,28 @@ export function requestAbort(root: string, role: string): RequestResult {
       "; its current in-flight prompt will be discarded (re-submit with `tumwater prompt` if you want it retried)";
   }
   return { ok: true, message: confirmation };
+}
+
+/** The marker-writing core of `tumwater abort --all`, shared with the GUI's POST /api/abort-all:
+ * drop one per-role marker per enabled runner (the same ids `runnerIds` names, each enabled role's
+ * bare id plus its `-2`… instances) that a running team consumes within one poll cycle — the
+ * team-wide twin of `requestAbort`'s one marker for one role. Idle roles' markers are swept by
+ * `consumeAbortRequests`' per-marker pass without aborting anything (`removeQuiet` runs even when
+ * no runner matches), so passing every enabled id is the same safe no-op `abort --role` of an idle
+ * role is. Reports the liveness gate structurally ({ok, message|error}) like requestAbort so the
+ * CLI can fail() and the GUI can shape its 409/200. */
+export function requestAbortAll(root: string): RequestResult {
+  if (!orchestratorAlive(root)) {
+    return { ok: false, error: NO_HARNESS_ERROR };
+  }
+  const { config } = loadConfigCached(root);
+  const ids = config ? runnerIds(config) : [];
+  if (ids.length === 0) return { ok: false, error: "no roles are enabled to abort" };
+  for (const id of ids) writeJsonAtomic(abortRequestPath(root, id), { at: Date.now() });
+  return {
+    ok: true,
+    message: `abort requested for ${plural(ids.length, "role", "roles")} — the running team applies each within ~2s`,
+  };
 }
 
 /** The parsed `--for <duration>` of one pause command: the duration as typed (ms, for the

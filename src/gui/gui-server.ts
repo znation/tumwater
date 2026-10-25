@@ -37,6 +37,7 @@ import {
 } from "./gui-endpoints.js";
 import {
   handleAbort,
+  handleAbortAll,
   handleBriefEdit,
   handleBudget,
   handleConfigSet,
@@ -291,6 +292,7 @@ export function startGui(
     "POST /api/doctor-retire-leftovers": (req, res) => handleRetireLeftovers(req, res, root),
     "POST /api/doctor-reprobe": (req, res) => handleDoctorReprobe(req, res, root),
     "POST /api/abort": (req, res) => handleAbort(req, res, root),
+    "POST /api/abort-all": (req, res) => handleAbortAll(req, res, root),
     "POST /api/pause-role": (req, res) => handlePauseRole(req, res, root),
   };
   const server = http.createServer(async (req, res) => {

@@ -1,4 +1,5 @@
 import {
+  ABORT_ALL_FLAG,
   DRY_RUN_FLAG,
   JSON_FLAG,
   durationFlagSpec,
@@ -48,7 +49,7 @@ export async function runMarkerCommand(root: string, command: MarkerCommand, arg
   const perCommandFlags: Record<MarkerCommand, FlagSpec[]> = {
     "reset-counters": [ROLE_FLAG],
     wake: [ROLE_FLAG, WAKE_IN_FLAG, WAKE_CANCEL_FLAG, WAKE_LIST_FLAG, JSON_FLAG],
-    abort: [ROLE_FLAG],
+    abort: [ROLE_FLAG, ABORT_ALL_FLAG],
     pause: [
       ROLE_FLAG,
       durationFlagSpec("pause --for", PAUSE_FOR_OVERFLOW_HINT),

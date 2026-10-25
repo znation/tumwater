@@ -34,6 +34,7 @@ import {
   listWakes,
   renderWakeList,
   requestAbort,
+  requestAbortAll,
   requestResetCounters,
   requestRestart,
   requestScheduledStop,
@@ -206,17 +207,27 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
   say(await runManualReclaim(root));
 }
 
-/** `tumwater abort --role <id>[,<id>...]`: kill the named roles' in-flight runs right now (a
- * comma list writes one marker per role). The CLI cannot
+/** `tumwater abort [--role <id>[,<id>...]] [--all]`: kill the named roles' in-flight runs
+ * right now (a comma list writes one marker per role), or with `--all` every enabled role's in
+ * flight run in one request (one marker per enabled runner). The CLI cannot
  * reach into the orchestrator process, so the request rides on disk like reset-counters':
  * a per-role marker file a running team consumes within one poll cycle (the runner's
  * abortRun kills the pi child and resets the worktree to main). Requires a live harness —
- * with no team there is nothing to consume the marker. The role stays enabled: it backs
+ * with no team there is nothing to consume the marker. The roles stay enabled: they back
  * off normally and later runs proceed as usual. */
 export async function cmdAbort(root: string, args: string[]): Promise<void> {
+  if (args.includes("--all")) {
+    if (flagValue(args, "--role") !== null) {
+      fail("abort takes either --role <id>[,<id>...] or --all, not both");
+    }
+    const result = requestAbortAll(root);
+    if (!result.ok) fail(result.error);
+    say(result.message);
+    return;
+  }
   // As in cmdLogs: the config exists only to validate the id against built-ins plus
   // user-defined roles; a missing --role fails before it is ever needed.
-  const roles = namedRoleList(root, args) ?? fail("abort requires --role <id> (e.g. `--role feature`)");
+  const roles = namedRoleList(root, args) ?? fail("abort requires --role <id>[,<id>...] or --all (e.g. `--role feature`)");
   for (const role of roles) {
     const result = requestAbort(root, role);
     if (!result.ok) fail(result.error);

@@ -10,7 +10,13 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init/init.js";
 import { enqueuePrompt, enqueueRolePrompt, inboxSize, dequeueRolePrompt, queuedFiles, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { roleInboxDir } from "../src/paths.js";
+import { abortRequestPath } from "../src/paths.js";
+import { orchestratorStatePath } from "../src/paths.js";
 import { piLogPath } from "../src/paths.js";
+import { runnerIds } from "../src/roles/runner-ids.js";
+import { readJson } from "./helpers/json-read.js";
+import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { spawnLiveChild, stopChild } from "./helpers/child-process.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { fetchLoopback, postJson, startLocalGui } from "./fixtures/gui-fixtures.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
@@ -195,6 +201,39 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
   } finally {
     server.close();
   }
+});
+
+test("gui /api/abort-all writes one marker per enabled runner and 409s without a live team", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui abort all test");
+  // With a live orchestrator the endpoint writes one marker per enabled runner and reports the
+  // count, the same summary the CLI prints.
+  const live = spawnLiveChild();
+  { const { server, base } = await startLocalGui(repo);
+    try {
+      writeOrchestratorMarker(repo, [], { pid: live.child.pid });
+      const ids = runnerIds(loadConfig(repo));
+      const res = await postJson(base, "/api/abort-all", {});
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; message: string };
+      assert.equal(body.ok, true);
+      assert.match(body.message, new RegExp(`abort requested for ${ids.length} roles`));
+      const marker = readJson<Record<string, unknown>>(abortRequestPath(repo, ids[0]!));
+      assert.equal(typeof marker["at"], "number", "an abort marker is written");
+    } finally {
+      server.close();
+    } }
+  await stopChild(live);
+  // Without a live orchestrator the same endpoint 409s, like per-role abort.
+  { const { server, base } = await startLocalGui(repo);
+    try {
+      fs.rmSync(orchestratorStatePath(repo), { force: true });
+      const res = await postJson(base, "/api/abort-all", {});
+      assert.equal(res.status, 409);
+      assert.match(((await res.json()) as { error: string }).error, /tumwater is not running/);
+    } finally {
+      server.close();
+    } }
 });
 
 test("gui /api/prompt and /api/prompt-role accept a deferral the queues hold until its time", async () => {

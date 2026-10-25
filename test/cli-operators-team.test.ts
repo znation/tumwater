@@ -54,6 +54,47 @@ test("logs, reset-counters, and abort accept user-defined role names from tumwat
   assert.equal(r.code, 1);
   assert.match(r.stderr, /tumwater is not running/);
 });
+// --- abort --all ---
+
+// abort accepts --all and writes one marker per enabled runner through the shared core, printing
+// one summary line naming the count.
+test("abort --all runs the core with a live team and prints one summary line", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "abort all test");
+  const live = spawnLiveChild();
+  try {
+    writeOrchestratorMarker(repo, [], { pid: live.child.pid });
+    const r = await cli(repo, "abort", "--all");
+    assert.equal(r.code, 0);
+    assert.match(r.stdout, /abort requested for \d+ roles/);
+    assert.equal(r.stdout.trim().split(/\n/).length, 1, "one summary line");
+  } finally {
+    await stopChild(live);
+    fs.rmSync(orchestratorStatePath(repo), { force: true });
+  }
+});
+
+// abort --all --role <id> is refused before writing anything; the gate accepts both flags (both
+// are in abort's flag set), so the command body owns the rivalry rule.
+test("abort --all with --role is refused with the both-flags message", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "abort all args");
+  const r = await cli(repo, "abort", "--all", "--role", "clean");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /abort takes either --role <id>\[,<id>\.\.\.] or --all, not both/);
+});
+
+// --all is abort's flag alone: every other marker command still refuses it as unknown.
+test("pause --all and the other marker commands still refuse an unknown --all flag", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "abort all flag scope");
+  for (const cmd of ["pause", "resume", "wake", "reset-counters", "reclaim"]) {
+    const r = await cli(repo, cmd, "--all");
+    assert.equal(r.code, 1, `${cmd} --all fails`);
+    assert.match(r.stderr, /unknown argument: --all/);
+  }
+});
+
 // --- reset-counters ---
 
 test("reset-counters zeroes counters in every role's state file and writes the team marker", async () => {

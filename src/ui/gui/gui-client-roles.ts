@@ -30,6 +30,14 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
   // abort fires, while a first click on another role's abort re-arms instead of posting.
   const confirmAbortSlot = confirmSlot(rerender);
   const abortConfirming = (role) => confirmAbortSlot.armed(role);
+  // The abort-all slot: keyed "all" (no role id), so a first click on any other action's
+  // button disarms a pending abort-all — the same per-key arming as the per-role slot above.
+  const confirmAbortAllSlot = confirmSlot(rerender);
+  const abortAllConfirming = () => confirmAbortAllSlot.armed("all");
+  // The Roles card header's Abort all button (inserted into the card head at script load):
+  // one click arms it, a second within 5 s hits POST /api/abort-all. Danger tone; the title
+  // names the confirm-again contract, like the per-row stop's.
+  const rolesAbortAllButton = () => "<button type='button' class='btn btn-sm btn-danger' id='abortall' data-action='abort-all' title='Click again to stop every running role&#39;s run'>" + icon("stop") + "<span>Abort all</span></button>";
   // The drawer's Disable slot: a second click on the same role's Disable fires, a first click
   // on another role's re-arms — the same per-role keying as the abort slot it sits beside.
   const confirmDisableSlot = confirmSlot(rerender);
@@ -44,6 +52,21 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
   // wake, pause/resume (the target state is always explicit), and abort, which discards the
   // run's work — the first click arms it, a second within 5 s fires it.
   async function rowAction(action, role, forSeconds) {
+    if (action === "abort-all") {
+      if (!abortAllConfirming()) {
+        // First click arms it; any other click (handled below) disarms it.
+        confirmAbortAllSlot.arm("all");
+        confirmAbortSlot.disarm();
+        confirmDisableSlot.disarm();
+        roleChooser = null;
+        return;
+      }
+      confirmAbortAllSlot.disarm();
+      await postAction("/api/abort-all", {}, (d) =>
+        (d && typeof d.message === "string" ? d.message : "abort requested for every running role"));
+      return;
+    }
+    confirmAbortAllSlot.disarm();
     if (action === "prompt") {
       setTarget(role);
       focusComposer();
@@ -235,6 +258,19 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
     postAction("/api/reset-counters", {}, (d) => (d && typeof d.message === "string" ? d.message : "counters reset")));
   $("wakeall").addEventListener("click", () =>
     postAction("/api/wake", {}, (d) => (d && typeof d.message === "string" ? d.message : "every role woken")));
+  // Insert the Abort all button into the Roles card header beside the card title/refresh
+  // control (the same card head that holds Reset counters / Wake later / Wake all), and arm
+  // its two-click confirm through the shared rowAction abort-all branch. One insert on load;
+  // re-renders leave the header alone.
+  (function () {
+    const head = $("roles-title") && $("roles-title").parentElement;
+    if (!head || document.getElementById("abortall")) return;
+    head.insertAdjacentHTML("beforeend", rolesAbortAllButton());
+    document.getElementById("abortall").addEventListener("click", (ev) => {
+      ev.preventDefault();
+      rowAction("abort-all", "all");
+    });
+  })();
   // wake-later:start
   const WAKE_LATER_CHOICES = [[1800, "In 30 minutes"], [3600, "In 1 hour"], [7200, "In 2 hours"], [28800, "In 8 hours"]];
   function openWakeLaterMenu() {

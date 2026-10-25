@@ -186,6 +186,43 @@ test("cmdAbort with a live harness writes the per-role marker", async () => {
   assert.equal(typeof marker["at"], "number");
 });
 
+test("cmdAbort --all writes one abort marker per enabled runner and reports the count", async () => {
+  const root = tmpdir();
+  // Only feature enabled, at two instances: runnerIds yields feature, feature-2, feature-3,
+  // feature-4 (each instance adds RUNNERS_PER_INSTANCE=2 ids), so the count is deterministic.
+  const cfg = defaultConfig();
+  for (const id of Object.keys(cfg.roles)) if (id !== "feature") cfg.roles[id]!.enabled = false;
+  cfg.roles.feature = { enabled: true, instances: 2 };
+  writeJsonFile(configPath(root), cfg);
+  markLive(root);
+  const { stdout } = await expectOk(() => cmdAbort(root, ["--all"]));
+  assert.match(stdout, /abort requested for 4 roles/);
+  for (const id of ["feature", "feature-2", "feature-3", "feature-4"]) {
+    const marker = readJson<Record<string, unknown>>(abortRequestPath(root, id));
+    assert.equal(typeof marker["at"], "number", `an abort marker for ${id} is written`);
+  }
+  // A second run before the poll consumes them is idempotent: the same files, the same line.
+  const again = await expectOk(() => cmdAbort(root, ["--all"]));
+  assert.equal(again.stdout, stdout);
+  assert.equal(fs.existsSync(abortRequestPath(root, "feature-2")), true);
+});
+
+test("cmdAbort --all with --role is refused and writes no marker", async () => {
+  const root = tmpdir();
+  markLive(root);
+  const stderr = await expectFailAsync(() => cmdAbort(root, ["--all", "--role", "clean"]));
+  assert.match(stderr, /abort takes either --role <id>\[,<id>\.\.\.] or --all, not both/);
+  assert.equal(fs.existsSync(abortRequestPath(root, "clean")), false);
+  assert.equal(fs.existsSync(abortRequestPath(root, "feature")), false);
+});
+
+test("cmdAbort --all without a live harness fails with the no-harness error and writes no marker", async () => {
+  const root = tmpdir();
+  const stderr = await expectFailAsync(() => cmdAbort(root, ["--all"]));
+  assert.match(stderr, /tumwater is not running/);
+  assert.equal(fs.existsSync(abortRequestPath(root, "feature")), false);
+});
+
 test("cmdAbort for the director warns that its in-flight prompt is discarded", async () => {
   const root = tmpdir();
   markLive(root);

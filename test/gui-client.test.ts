@@ -413,6 +413,47 @@ test("a role's controls post explicit states, and an abort needs a confirming se
   assert.equal(posts.length, 0);
 });
 
+test("the Roles card's Abort all button renders, arms on the first click, and posts /api/abort-all on the second", async () => {
+  const posts: Array<{ path: string; body: unknown }> = [];
+  const flashes: string[] = [];
+  const calls: string[] = [];
+  const scope = clientScope<{
+    rolesAbortAllButton(): string;
+    rowAction(action: string, role: string): Promise<void>;
+    abortAllConfirming(): boolean;
+  }>(
+    ["format", "post-action", "row-actions"], ["rolesAbortAllButton", "rowAction", "abortAllConfirming"], {
+      icon: iconStub,
+      closeMenus: () => {},
+      postJson: async (path: string, body: unknown) => {
+        posts.push({ path, body });
+        return { ok: true, message: "abort requested for 4 roles — the running team applies each within ~2s" };
+      },
+      showFlash: (m: string) => flashes.push(m),
+      refresh: () => calls.push("refresh"),
+      rerender: () => calls.push("rerender"),
+      setTarget: () => {},
+      focusComposer: () => {},
+      setTimeout: () => 0,
+    });
+  // The rendered Roles card header carries the button, danger tone.
+  assert.match(scope.rolesAbortAllButton(), /data-action='abort-all'/);
+  assert.match(scope.rolesAbortAllButton(), /btn-danger/);
+  // The first click only arms it; the second fires POST /api/abort-all with an empty body.
+  await scope.rowAction("abort-all", "all");
+  assert.equal(posts.length, 0, "an armed abort-all posts nothing yet");
+  assert.equal(scope.abortAllConfirming(), true);
+  await scope.rowAction("abort-all", "all");
+  assert.deepEqual(posts.shift(), { path: "/api/abort-all", body: {} });
+  assert.equal(scope.abortAllConfirming(), false, "firing disarms");
+  assert.match(flashes.pop() ?? "", /abort requested for 4 roles/);
+  // A click on any other action disarms a pending abort-all — the same per-key confirmSlot pattern.
+  await scope.rowAction("abort-all", "all");
+  assert.equal(scope.abortAllConfirming(), true);
+  await scope.rowAction("prompt", "qa");
+  assert.equal(scope.abortAllConfirming(), false, "a click on another action disarms abort-all");
+});
+
 test("the composer queues for the director or one role through the CLI's endpoints", async () => {
   const posts: Array<{ path: string; body: unknown }> = [];
   let fail = false;
