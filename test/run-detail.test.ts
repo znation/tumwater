@@ -194,6 +194,31 @@ test("renderRunDetail names the peak against the declared window", () => {
   assert.doesNotMatch(noPeak.split("\n")[0]!, /peak ctx/);
 });
 
+test("renderRunDetail names a context cut-off in its header", () => {
+  const base: RunDetail = {
+    role: "feature",
+    run: 12,
+    startTs: 1000,
+    endTs: 2000,
+    durationMs: 1000,
+    result: "no_change",
+    model: null,
+    tokens: 0,
+    costUsd: 0,
+    usage: "",
+    events: [],
+    merge: null,
+    mergedSha: null,
+    reverted: null,
+  };
+  const cut = renderRunDetail({ ...base, cutOff: true }).split("\n")[0]!;
+  assert.equal(cut.match(/cut off at the context ceiling/g)?.length, 1);
+  assert.match(cut, /^feature run #12 — no change · cut off at the context ceiling · 1s$/);
+  // Any other run — and a run without the flag — renders the marker not at all.
+  const plain = renderRunDetail(base).split("\n")[0]!;
+  assert.doesNotMatch(plain, /cut off at the context ceiling/);
+});
+
 test("renderRunDetail renders a corrupt outcome as ?, never undefined", () => {
   const root = makeRepo();
   writeEvents(root, [start({ ts: 1000 }), end({ ts: 2000, result: 7 } as never)]);

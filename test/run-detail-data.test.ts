@@ -124,6 +124,20 @@ test("an in-flight run reads open: no end, no fabricated duration, zero usage", 
   assert.deepEqual(detail.events.map((e) => e.ts), [5000, 5500]);
 });
 
+test("readRunDetail carries a run's context cut-off", () => {
+  const root = tmpdir();
+  writeEvents(root, [startEvent({ ts: 1000, run: 1 }), endEvent({ ts: 2000, run: 1, result: "no_change", cutOff: true })]);
+  assert.equal(readRunDetail(root, "feature", 1)!.cutOff, true);
+  // A run_end without the field leaves the key absent.
+  const plain = tmpdir();
+  writeEvents(plain, [startEvent({ ts: 1000, run: 1 }), endEvent({ ts: 2000, run: 1 })]);
+  assert.equal(readRunDetail(plain, "feature", 1)!.cutOff, undefined);
+  // An in-flight run with no end has no cutOff either.
+  const inFlight = tmpdir();
+  writeEvents(inFlight, [startEvent({ ts: 5000, run: 3 })]);
+  assert.equal(readRunDetail(inFlight, "feature", 3)!.cutOff, undefined);
+});
+
 test("a next run's start closes an end-less block exclusive: the following run's events stay out", () => {
   const root = tmpdir();
   writeEvents(root, [

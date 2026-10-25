@@ -54,6 +54,10 @@ export interface RunDetail {
    * run carried none or is in flight. The header renders it as `peak ctx …` (
    * run-detail-render.ts) against `contextWindow` below. */
   peakContextTokens?: number;
+  /** The `run_end`'s ceiling-truncation flag: true when the run was truncated at its model's
+   * context ceiling and the harness resumes its pinned session. Absent when the run did not
+   * cut off (and for an in-flight run with no end), so a non-cut-off payload is unchanged. */
+  cutOff?: boolean;
   /** The role's resolved primary seam's declared context window — the same seam
    * `tumwater role <id>`'s `- Context window:` line prints — or null when it cannot be
    * known (an unresolvable pair, a broken config, or a missing catalog). Optional so
@@ -199,6 +203,9 @@ function detailFrom(
     // defaults, so a broken tumwater.json yields a null window rather than failing this read-only
     // view.
     peakContextTokens: end === null ? 0 : nonNegativeNumber(end.peakContextTokens, 0),
+    // The run_end's ceiling-truncation flag, spread so an in-flight, older, or normal run
+    // keeps today's exact payload (no cutOff key).
+    ...(end !== null && end.cutOff === true ? { cutOff: true } : {}),
     contextWindow: seamContextWindowForRole(loadConfigSafe(root).config ?? defaultConfig(), role, root),
     events: block,
     merge,

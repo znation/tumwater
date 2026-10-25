@@ -74,6 +74,16 @@ test("finalizeRun folds the outcome onto the state, persists it, and logs run_en
   // Zero usage rides on nothing: the fields are omitted, not zero.
   assert.equal(end.tokens, undefined);
   assert.equal(end.costUsd, undefined);
+  // A non-cut-off finish logs no cutOff key.
+  assert.equal(end.cutOff, undefined);
+});
+
+test("finalizeRun rides a context cut-off on run_end", async () => {
+  const root = await initializedRepo();
+  const s = freshRunnerState("organize");
+  await run(root, "organize", s, { result: "no_change", cutOff: true });
+  const end = eventsOfType(root, "run_end")[0]!;
+  assert.equal(end.cutOff, true);
 });
 
 test("finalizeRun logs the run number it was handed, not a re-read of state.runs", async () => {

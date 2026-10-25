@@ -175,6 +175,10 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
     error: s.lastError,
     durationMs: runDurationMs,
     ...(outcome.heldOnBranch ? { heldOnBranch: true } : {}),
+    // The context-ceiling truncation flag: set when the run burned its whole window and
+    // the harness resumes its pinned session (slotPinnedForResume). Omitted when false, so
+    // a normal run — and every run_end written by an older build — renders byte-identically.
+    ...(outcome.cutOff === true ? { cutOff: true } : {}),
     ...usageFragment(s.generatedTokens, usage.costUsd, usage.notionalCostUsd),
     ...(Object.keys(providerCost).length > 0 ? { providerCost } : {}),
     // The billing answer the run's runs reported, so the report can tell notional spend from

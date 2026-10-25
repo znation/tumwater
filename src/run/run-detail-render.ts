@@ -56,6 +56,9 @@ export function renderRunDetail(d: RunDetail): string {
   const summary: string[] = [];
   if (d.endTs === null) summary.push(d.startTs === null ? "unpaired" : "in flight");
   else summary.push(d.result ? eventTypeLabel(d.result) : "?");
+  // The ceiling-truncation marker, straight after the result cell. It only rides a
+  // completed end (cutOff is set from the run_end), so it can never follow in flight/unpaired.
+  if (d.cutOff === true) summary.push("cut off at the context ceiling");
   if (d.durationMs !== null) summary.push(shortSpanPhrase(d.durationMs));
   if (d.usage !== "") summary.push(d.usage);
   // The run's peak context against the seam's declared window, the one header every surface

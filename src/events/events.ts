@@ -41,7 +41,7 @@ export interface HarnessEvent {
   source: string;
   type:
     | "run_start" // carries run; model when one is configured — the selector string (formatModelSelector) of the config the run starts on (the budget fallback included)
-    | "run_end" // carries run, the run's usage, its peakContextTokens (its largest single-request context, when the run reported one), providerCost, billing/agent (when the run reported billing or rate windows), and its wall-clock span
+    | "run_end" // carries run, the run's usage, its peakContextTokens (its largest single-request context, when the run reported one), providerCost, billing/agent (when the run reported billing or rate windows), cutOff (when the agent was truncated at the model's context ceiling and the next run resumes its session), and its wall-clock span
     | "merge_queued" // a changed run pinned its commit and enqueued it for the orchestrator's merge slot (merge queue 3/5); carries sha + summary
     | "merge_cancelled" // an operator cancelled a waiting merge with tumwater queue --cancel; carries commit + summary
     | "merge_topped" // an operator moved a waiting merge to the front (`tumwater queue --top`, the dashboard's per-row Move to top, or the Pending pane's Ctrl+V); carries commit + summary
