@@ -105,6 +105,15 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   function mergeQueueEntries(mergeQueue) {
     return mergeQueue && Array.isArray(mergeQueue.entries) ? mergeQueue.entries : [];
   }
+  // The distinct role names a list of queue/review entries mentions (each entry's role when
+  // present; null/undefined entries yield nothing), as a Set for .has() picker checks. Every
+  // role picker here — the Merge queue card, the Post-merge reviews card, and the drawer's
+  // section — derives it, so one definition of "the roles present in this list" cannot drift.
+  // Sort into a checked array where a stable picker order is wanted:
+  // [...presentRoles(e)].sort().
+  function presentRoles(entries) {
+    return new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"));
+  }
   // The role drawer's Merge queue section: only this role's waiting merges, each under its
   // whole-queue position (labels run parallel to the whole queue). "" when it has none.
   function drawerQueueHtml(mergeQueue, role, now, labels) {
@@ -131,7 +140,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   function pendingQueueHtml(mergeQueue, now, labels, role = "", cancelArmedSha = "") {
     const depth = mergeQueue && Number.isFinite(mergeQueue.depth) ? mergeQueue.depth : 0;
     const entries = mergeQueueEntries(mergeQueue);
-    const roles = [...new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"))].sort();
+    const roles = [...presentRoles(entries)].sort();
     const active = role && roles.includes(role) ? role : "";
     let head = "<div class='card-head'><h2>Merge queue</h2></div>";
     let body;
@@ -272,7 +281,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     if (!Array.isArray(entries) || entries.length === 0) {
       return "<div class='card-head'><h2>Post-merge reviews</h2></div><div class='empty'>No merged commit is waiting for a post-merge review</div>";
     }
-    const roles = [...new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"))].sort();
+    const roles = [...presentRoles(entries)].sort();
     const active = role && roles.includes(role) ? role : "";
     const present = new Set(entries.map(postReviewState));
     const states = POST_REVIEW_STATE_ORDER.filter((s) => present.has(s));
@@ -315,7 +324,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     const card = $("pendingreviews");
     if (!card) return;
     const entries = status && Array.isArray(status.postReviews) ? status.postReviews : [];
-    const roles = new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"));
+    const roles = presentRoles(entries);
     if (!roles.has(pendingReviewRole)) pendingReviewRole = "";
     const states = new Set(entries.map(postReviewState));
     if (!states.has(pendingReviewState)) pendingReviewState = "";
@@ -328,7 +337,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     const card = $("pendingqueue");
     if (!card) return;
     const entries = mergeQueueEntries(status && status.mergeQueue);
-    const roles = new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"));
+    const roles = presentRoles(entries);
     if (!roles.has(pendingQueueRole)) pendingQueueRole = "";
     card.innerHTML = pendingQueueHtml(status && status.mergeQueue, Date.now(), status && status.mergeQueueLabels, pendingQueueRole, queueCancelSlot.armed(pendingCancelSha) ? pendingCancelSha : "");
   }
