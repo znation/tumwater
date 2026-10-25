@@ -1,11 +1,13 @@
 /** The review-gate suite's build pre-check slice — the gate's integration with the
- * deterministic build check (src/build/build-check.ts): a healthy build must reach the model
- * reviewer, a failing one rejects with zero reviewer runs, a red main blocks twice then
- * fails without a strike, a flake re-runs once, a timed-out check proceeds unverified, a
- * green check attests its head to the merge path and names itself in the reviewer's
- * prompt, and an approval reused across a moved main survives only while the patch and the
- * check stay green. The check's own unit tests live in build-check.test.ts. Extracted from
- * review.test.ts (2026-09-29); the shared gate scaffolding lives in fixtures/gate-fixtures.ts. */
+ * deterministic build check (src/build/build-check.ts): a failing check rejects with zero
+ * reviewer runs, naming the failing assertion; a failure that twice spans a sleep keeps the
+ * commit and reports the sleep; a repeat matching no recorded flake re-runs main fresh; a
+ * red main fails twice without a strike; a no-verdict main rejects; a shutdown fails closed;
+ * a configured check.command gates a repo with no npm install. Part 3l/3 retired the
+ * pre-merge reviewer's dedicated cases from this file, so no case here drives a reviewer
+ * run — the rejects above conclude without one. The check's own unit tests live in
+ * build-check.test.ts. Extracted from review.test.ts (2026-09-29); the shared gate
+ * scaffolding lives in fixtures/gate-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -15,111 +17,22 @@ import { diffRuleReasons } from "../src/review/diff-rules.js";
 import { aheadOfMain, headOf } from "../src/git/git.js";
 import { treeDiffFiles } from "../src/git/git-diff.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { tryLeaseSlot } from "../src/git/worktree-pool.js";
-import { readSlotsState } from "../src/git/slots-state.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
-import { loadRunnerState } from "../src/runner/runner-state-load.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
-import { logEvent } from "../src/events/events.js";
-import { loadQuarantine } from "../src/review/known-flakes.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { createMainWatch, knownMainFailures } from "../src/baseline/main-watch.js";
 import { shortSha } from "../src/text/format.js";
 import { eventsOfType, warningMessages, warningMessagesOf } from "./fixtures/log-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { commitIn, mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { logPromptsTo, piRanMarker, readRunBlocks, reviewerStub, TOUCH_SESSION, withPi, withReviewerStub } from "./fakes/fake-pi.js";
-import { assistantLine } from "./fixtures/pi-events.js";
-import { gateCtx, gateFixture, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
+import { piRanMarker, withPi } from "./fakes/fake-pi.js";
+import { gateCtx, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 
 // The gate's integration with the deterministic build pre-check (src/build/build-check.ts): a
-// healthy build must reach the model reviewer. The check's own unit tests live in
-// build-check.test.ts.
-test("gate pre-check compiles the worktree against the root install — a healthy build reaches the reviewer", async () => {
-  const root = makeRepo();
-  // The install signature at the repo root (what detectBuildCheck walks up to from the
-  // worktree), plus the worktree's own tracked package.json with no node_modules.
-  const binDir = path.join(root, "node_modules", ".bin");
-  fs.mkdirSync(binDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    projManifest({ build: "buildcheck-tool --ok" }),
-  );
-  writeScript(path.join(binDir, "buildcheck-tool"), "echo ok");
-
-  const wt = await ensureWorktree(root, ROLE, "main");
-  fs.writeFileSync(
-    path.join(wt, "package.json"),
-    projManifest({ build: "buildcheck-tool --ok" }),
-  );
-  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
-  commitIn(wt, "wip change");
-
-  const marker = piRanMarker();
-  await withReviewerStub(marker, async () => {
-    const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "approved"); // pre-fix: "rejected" by the build check
-    assert.ok(fs.existsSync(marker)); // …with no reviewer run; now it reaches pi
-    // Both halves of the gate price themselves in the feed: the deterministic pre-check as a
-    // build_check event (scope gate), the reviewer run's wall time on its verdict event.
-    const events = readEvents(root);
-    const checks = events.filter((e) => e.type === "build_check");
-    assert.equal(checks.length, 1);
-    assert.equal(checks[0]!.scope, "gate");
-    assert.equal(checks[0]!.status, "passed");
-    assert.equal(checks[0]!.script, "build");
-    assert.ok(Number(checks[0]!.durationMs) >= 0);
-    const verdict = events.find((e) => e.type === "review_verdict");
-    assert.ok(verdict && Number.isFinite(Number(verdict.durationMs)), "the approval carries the reviewer's duration");
-  });
-});
-
-// The harness owns the suite counts (PLANS.md 2026-09-29): the gate's green check reads the
-// runner's summary (parseTestCounts), records it on the build_check event, and attests it in
-// the review prompt — so neither author nor reviewer states a total, which is where most
-// record-claim rejections came from.
-test("the gate's green pre-check attests the runner's counts in the event and the review prompt", async () => {
-  const root = makeRepo();
-  const binDir = path.join(root, "node_modules", ".bin");
-  fs.mkdirSync(binDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    projManifest({ build: "buildcheck-tool --ok" }),
-  );
-  writeScript(
-    path.join(binDir, "buildcheck-tool"),
-    'echo "ℹ tests 3"; echo "ℹ pass 3"; echo "ℹ fail 0"; echo "ℹ skipped 0"',
-  );
-  const wt = await ensureWorktree(root, ROLE, "main");
-  fs.writeFileSync(
-    path.join(wt, "package.json"),
-    projManifest({ build: "buildcheck-tool --ok" }),
-  );
-  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
-  commitIn(wt, "wip change");
-
-  // The fake pi dumps its prompt (its stdin, appended to argv by PROMPT_FROM_STDIN) to a file
-  // so the attested line is asserted, not merely assumed.
-  const promptFile = path.join(tmpdir(), "review-prompt");
-  await withPi(
-    `for a in "$@"; do printf '%s' "$a" >> '${promptFile}'; done\n` +
-      reviewerStub(),
-    async () => {
-    const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "approved");
-    const checks = readEvents(root).filter((e) => e.type === "build_check");
-    assert.equal(checks.length, 1);
-    assert.deepEqual(checks[0]!.counts, { tests: 3, pass: 3, fail: 0, skipped: 0 });
-    const prompt = fs.readFileSync(promptFile, "utf8");
-    assert.match(
-      prompt,
-      /Tumwater is running the project's own check on this tree; do not run the suite\./,
-      "the reviewer is told the check is tumwater's",
-    );
-  });
-});
+// failing build rejects with zero reviewer runs, naming the failing assertion. The check's own
+// unit tests live in build-check.test.ts.
 
 // ── Build pre-check: gate-level e2e (failing build, hanging build) ──────────────────
 
@@ -157,13 +70,6 @@ async function gateBuildFixture(
   return { root, wt };
 }
 
-/** A `gateBuildFixture` whose check passes: the root installs a `buildcheck-tool` that
- * exits 0, and both the root install's and the change worktree's manifests declare it under
- * `scriptName` (default `build`) — so a fresh main re-check and the change's own check both
- * run green. */
-function greenBuildFixture(scriptName = "build"): Promise<{ root: string; wt: string }> {
-  return gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n", scriptName);
-}
 
 // A pre-check failure that survives its one re-run is attributed through main's own baseline
 // verdict at its tip (main-red.ts's mainTipVerdict) — never handed to a model run. Main green:
@@ -206,7 +112,7 @@ test("gate pre-check rejects a failing build with zero reviewer runs", async () 
 
   // Any pi run at all touches the marker: none may start — not a fix run, not the reviewer.
   const marker = piRanMarker();
-  await withReviewerStub(marker, async () => {
+  await withPi(`touch '${marker}'`, async () => {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run: the check and main's verdict decided alone");
@@ -238,7 +144,7 @@ test("a red pre-check on the declared test script rejects with zero pi runs", as
   seedGreenMain(root);
 
   const marker = piRanMarker();
-  await withReviewerStub(marker, async () => {
+  await withPi(`touch '${marker}'`, async () => {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run before the reject");
@@ -282,7 +188,7 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
   seedGreenMain(root);
 
   const marker = piRanMarker();
-  await withReviewerStub(marker, async () => {
+  await withPi(`touch '${marker}'`, async () => {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run before the reject");
@@ -306,7 +212,7 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
   );
   const movedMainSha = uniqueMain(root);
   const marker = piRanMarker();
-  await withReviewerStub(marker, async () => {
+  await withPi(`touch '${marker}'`, async () => {
     const state = freshRunnerState(ROLE);
     state.unreviewFailures = 1; // an earlier reviewer strike against this head stays exactly as it was
     const head = await headOf(wt, "HEAD");
@@ -355,7 +261,7 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
     },
   };
   const marker = piRanMarker();
-  await withReviewerStub(marker, async () => {
+  await withPi(`touch '${marker}'`, async () => {
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(ctx, state);
     assert.equal(result.decision, "rejected", "the author's failure is the safe default");
@@ -370,89 +276,6 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
   });
 });
 
-// BUGS.md 2026-09-23: the gate's failures were mostly load flakes. A failure that does not
-// reproduce on one immediate re-run is a flake: the tree is verified like a first-time pass, the
-// flake is named in a warning, and no pi run is spent before the reviewer.
-test("a pre-check failure that passes its one re-run is a flake: no pi run before the reviewer, verified, warned", async () => {
-  const flag = path.join(tmpdir(), "flaky-once");
-  const { root, wt } = await gateBuildFixture(
-    "buildcheck-tool --flaky",
-    `#!/bin/sh\nif [ -f '${flag}' ]; then exit 0; fi\ntouch '${flag}'\necho 'AssertionError [ERR_ASSERTION]: startup latency is not a hung tool call' >&2\nexit 1\n`,
-  );
-  const prompts = path.join(tmpdir(), "prompts.log");
-  await withPi(
-    `${logPromptsTo(prompts)}\n${reviewerStub()}`,
-    async () => {
-    const head = await headOf(wt, "HEAD");
-    const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "approved");
-    assert.ok(result.run, "the reviewer ran, exactly as after a first-time pass");
-    const runs = readRunBlocks(prompts);
-    assert.equal(runs.length, 1, "the reviewer is the only pi run");
-    assert.equal(await aheadOfMain(wt, "main"), 1, "the author's commit alone");
-    assert.equal(result.verifiedHead, head, "the re-run's green verdict verifies the tree");
-    const events = readEvents(root);
-    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:passed"], "both attempts are priced");
-    const flaky = warningMessagesOf(events);
-    assert.deepEqual(flaky, [
-      "gate check failed then passed on retry — flaky: AssertionError [ERR_ASSERTION]: startup latency is not a hung tool call",
-    ]);
-    // The reviewer is told tumwater runs the check, as after a first-time pass.
-    assert.match(runs[0] ?? "", /Tumwater is running the project's own check on this tree/);
-  });
-});
-
-// BUGS.md 2026-10-06: the gate had already recorded a flake for this exact failure earlier in
-// the day, then rejected an unrelated change on its repeat by asking main's cached per-SHA
-// verdict. A repeat whose headline matches that record is the flake firing again — the commit
-// and pin stay, strike-free — not a deterministic failure of the change.
-test("a repeat failure matching a recorded flake keeps the commit and counts no strike", async () => {
-  const flakyHeadline =
-    "✖ startParentDeathWatch takes a SIGKILLed supervisor grandchild down with it — AssertionError [ERR_ASSERTION]: boom";
-  const { root, wt } = await gateBuildFixture(
-    "buildcheck-tool --fail",
-    [
-      "#!/bin/sh",
-      "echo '✖ startParentDeathWatch takes a SIGKILLed supervisor grandchild down with it (12.3ms)' >&2",
-      "echo 'AssertionError [ERR_ASSERTION]: boom' >&2",
-      "exit 1",
-      "",
-    ].join("\n"),
-  );
-  seedGreenMain(root);
-  // The gate logged this exact failure as a flake earlier in the window (its re-run passed).
-  logEvent(root, {
-    source: "organize",
-    type: "warning",
-    message: `gate check failed then passed on retry — flaky: ${flakyHeadline}`,
-  });
-  const marker = piRanMarker();
-  await withReviewerStub(marker, async () => {
-    const state = freshRunnerState(ROLE);
-    state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
-    const head = await headOf(wt, "HEAD");
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
-    // The excused flake does not end the attempt as a failed gate (review_error upstream): the
-    // change goes on to the model review, unverified by the harness.
-    assert.equal(result.decision, "approved", "the excused flake proceeds to review");
-    assert.equal(result.verifiedHead, undefined, "the tree was not verified");
-    assert.equal(result.mainRed, undefined, "main is not consulted, let alone blamed");
-    assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
-    assert.equal(state.unreviewFailures, 0, "no strike; the approval clears the earlier reviewer strike as any approval does");
-    assert.notEqual(state.lastReview?.verdict, "rejected", "no rejection recorded against the author");
-    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-merge");
-    assert.equal(await aheadOfMain(wt, "main"), 1);
-    assert.ok(fs.existsSync(marker), "the reviewer ran after the flake decision");
-    const events = readEvents(root);
-    assert.ok(!events.some((e) => e.type === "review_rejected"), "no rejection logged");
-    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed"], "main was never consulted");
-    const warnings = warningMessagesOf(events);
-    assert.ok(
-      warnings.includes(`known-flaky failure, merge kept: ${flakyHeadline}`),
-      `the known flake is named; got: ${JSON.stringify(warnings)}`,
-    );
-  });
-});
 
 // BUGS.md 2026-10-06: main's cached green can go stale for a clock- or load-sensitive test,
 // and the attribution then rejected an unrelated change. A repeated failure matching no
@@ -466,7 +289,7 @@ test("a repeat failure with no recorded flake re-runs main fresh instead of trus
   );
   seedGreenMain(root); // an earlier merge verified this SHA green; the test now fails on it
   const marker = piRanMarker();
-  await withReviewerStub(marker, async () => {
+  await withPi(`touch '${marker}'`, async () => {
     const state = freshRunnerState(ROLE);
     state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
     const head = await headOf(wt, "HEAD");
@@ -504,7 +327,7 @@ test("a configured check.command gates a merge in a repo with no npm install at 
 
   // Main is green (seeded), so the repeat failure is the change's: rejected with no pi run.
   const marker = path.join(tmpdir(), "pi-ran-command-check");
-  await withReviewerStub(marker, async () => {
+  await withPi(`touch '${marker}'`, async () => {
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(ctx, state);
     assert.equal(result.decision, "rejected", "the configured check's failure gates the merge");
@@ -517,25 +340,6 @@ test("a configured check.command gates a merge in a repo with no npm install at 
     const rejected = readEvents(root).find((e) => e.type === "review_rejected");
     assert.ok(rejected, "the rejection is logged");
   });
-
-  // And a green configured check passes the gate: the run is priced with the command in the
-  // build_check event's script field, exactly like an npm check's run. A fresh change — the
-  // reject above reset the branch to main, and an empty diff is exempt, not approved.
-  fs.appendFileSync(path.join(wt, "seed.txt"), "second change\n");
-  commitIn(wt, "wip change 2");
-  const greenCtx = {
-    ...gateCtx(root, wt),
-    config: { ...defaultConfig(), check: { command: "true" } },
-  };
-  await withPi(`printf '%s\n' '${assistantLine("VERDICT: approve\n1. checked the diff", { tokens: 17, output: 17, cost: 0.02 })}'`, async () => {
-    const state = freshRunnerState(ROLE);
-    const result = await reviewAheadOfMain(greenCtx, state);
-    assert.equal(result.decision, "approved");
-    const events = readEvents(root);
-    const check = events.filter((e) => e.type === "build_check" && e.scope === "gate").at(-1);
-    assert.equal((check as { script?: string } | undefined)?.script, "true");
-    assert.equal((check as { status?: string } | undefined)?.status, "passed");
-  });
 });
 
 test("a shutdown during a failing pre-check fails closed before main is consulted, keeping the commit", async () => {
@@ -545,7 +349,7 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
   );
   uniqueMain(root);
   const marker = piRanMarker();
-  await withReviewerStub(marker, async () => {
+  await withPi(`touch '${marker}'`, async () => {
     const controller = new AbortController();
     controller.abort(); // harness shutdown already in progress
     const { state, result } = await reviewGate(root, wt, { signal: controller.signal });
@@ -558,286 +362,16 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
   });
 });
 
-test("gate pre-check timeout warns and still proceeds to the model review", async () => {
-  const { root, wt } = await gateBuildFixture("sleep 5"); // hangs past the shortened cap
-  const marker = piRanMarker();
-  await withReviewerStub(marker, async () => {
-    const { result } = await reviewGate(root, wt, { buildCheckTimeoutMs: 400 });
-    assert.equal(result.decision, "approved"); // a timeout is environmental — not fail-closed
-    assert.equal(result.verifiedHead, undefined); // no suite ran green — nothing to hand the merge path
-    assert.ok(fs.existsSync(marker), "the reviewer still ran after the warning");
-    const warning = readEvents(root).find((e) => e.type === "warning");
-    assert.match(String(warning?.message), /check timed out after 0\.4s; proceeding to model review/);
-  });
-});
 
-// The gate hands its green pre-check verdict to the merge path via GateResult.verifiedHead:
-// src/merge/merge-to-main.ts seeds the red-main baseline with the SHA that actually becomes main
-// (the rebased head, which may differ from this one — merge-to-main-recheck.test.ts covers the
-// seeding and the post-rebase re-verify). A skipped pre-check makes no fresh observation:
-// verifiedHead stays
-// absent even when the model approves (asserted in the timeout test above).
-test("a green pre-check hands its verified head to the merge path", async () => {
-  const { root, wt } = await greenBuildFixture();
-  await withReviewerStub(undefined, async () => {
-    const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "approved"); // pre-check passed AND the reviewer approved
-    assert.equal(result.verifiedHead, await headOf(wt, "HEAD")); // exactly the tree the pre-check ran green on
-  });
-});
 
-// Land-queue speed 2a: a review judges a diff, not a sha. The merger rebases the pin onto main
-// before its gate, so an approved change re-drained after main moved arrives at a new sha with
-// the same patch — the approval is reused (no second reviewer run), the build pre-check is not.
 
-/** Move main past the fixture's worktree with a commit to a file the change never touches,
- * then rebase the worktree onto it — the clean rebase a merger's syncPinToMain does. Returns
- * the rebased head. Only other.txt is staged: the root's package.json and node_modules are the
- * fixture's untracked install. */
-async function moveMainAndRebase(root: string, wt: string): Promise<string> {
-  fs.writeFileSync(path.join(root, "other.txt"), "someone else's change\n");
-  sh(root, "git", "add", "other.txt");
-  sh(root, "git", "commit", "-m", "main moves");
-  sh(wt, "git", "rebase", "-q", "main");
-  return headOf(wt, "HEAD");
-}
 
-test("an approved change cleanly rebased onto a moved main reuses its approval: no reviewer run, one check", async () => {
-  const { root, wt } = await greenBuildFixture();
-  const runs = path.join(tmpdir(), "pi-runs");
-  await withPi(`echo run >> '${runs}'\nprintf '%s\n' '${assistantLine("VERDICT: approve\n1. solid")}'`, async () => {
-    const state = freshRunnerState(ROLE);
-    const approvedHead = await headOf(wt, "HEAD");
-    assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
-    assert.equal(state.approvedPatchIds?.length, 1, "the approval is keyed by its patch-id too");
-    const checksBefore = eventsOfType(root, "build_check").length;
 
-    const rebased = await moveMainAndRebase(root, wt);
-    assert.notEqual(rebased, approvedHead, "the rebase rewrote the sha: the exact-sha short-circuit misses");
-    const result = await reviewAheadOfMain(gateCtx(root, wt, 2), state);
-    assert.equal(result.decision, "approved");
-    assert.equal(result.run, undefined, "no reviewer run was spent");
-    assert.equal(fs.readFileSync(runs, "utf8").trim().split("\n").length, 1, "one reviewer run across both gates");
-    // The model review is reused; the check that the new tree still builds is not.
-    const checks = eventsOfType(root, "build_check").slice(checksBefore);
-    assert.deepEqual(checks.map((e) => `${e.scope}:${e.status}`), ["gate:passed"]);
-    // The merge path trusts exactly this tree (its in-lock rebase is then a no-op), so the
-    // pre-check is the only check the re-merge pays.
-    assert.equal(result.verifiedHead, rebased);
-    assert.equal(state.lastApprovedHead, rebased, "a retry of the rebased head is an exact-sha hit");
-    assert.equal(
-      eventsOfType(root, "review_start").length,
-      1,
-      "the reused approval never shows as reviewing",
-    );
-  });
-});
 
-test("main editing next to the change's hunk, or a restart, keeps the approval", async () => {
-  const { root, wt } = await greenBuildFixture();
-  const runs = path.join(tmpdir(), "pi-runs");
-  await withPi(`echo run >> '${runs}'\n${reviewerStub()}`, async () => {
-    const state = freshRunnerState(ROLE);
-    assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
-    // A restart: the runner state round-trips through its file.
-    saveRunnerState(root, state);
-    const reloaded = loadRunnerState(root, ROLE);
-    await moveMainAndRebase(root, wt);
-    const result = await reviewAheadOfMain(gateCtx(root, wt, 2), reloaded);
-    assert.equal(result.decision, "approved");
-    assert.equal(result.run, undefined, "no reviewer run was spent");
-    assert.equal(fs.readFileSync(runs, "utf8").trim().split("\n").length, 1);
-  });
-});
 
-test("a rebase that changes the patch is re-reviewed", async () => {
-  const { root, wt } = await greenBuildFixture();
-  const runs = path.join(tmpdir(), "pi-runs");
-  await withPi(`echo run >> '${runs}'\n${reviewerStub()}`, async () => {
-    const state = freshRunnerState(ROLE);
-    assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
-    const approvedPatch = state.approvedPatchIds?.[0];
-    await moveMainAndRebase(root, wt);
-    // What a conflict resolution does: the rebased commit carries a hunk the reviewer never saw.
-    fs.appendFileSync(path.join(wt, "seed.txt"), "resolved differently\n");
-    sh(wt, "git", "commit", "-a", "--amend", "--no-edit");
-    const result = await reviewAheadOfMain(gateCtx(root, wt, 2), state);
-    assert.equal(result.decision, "approved");
-    assert.ok(result.run, "the changed patch got its own reviewer run");
-    assert.equal(fs.readFileSync(runs, "utf8").trim().split("\n").length, 2);
-    assert.equal(state.approvedPatchIds?.length, 2, "the new patch is remembered beside the old");
-    assert.notEqual(state.approvedPatchIds?.[1], approvedPatch, "the new approval names the new patch");
-  });
-});
 
-test("a reused approval still rejects a tree whose pre-check now fails", async () => {
-  // The same patch, but main moved under it and the rebased tree no longer builds: the
-  // approval covers the diff's review, never the check.
-  const red = path.join(tmpdir(), "red");
-  const { root, wt } = await gateBuildFixture(`test ! -f '${red}'`, undefined, "build", "echo ok");
-  await withReviewerStub(undefined, async () => {
-    const state = freshRunnerState(ROLE);
-    assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
-    await moveMainAndRebase(root, wt);
-    fs.writeFileSync(red, "");
-    // Main's own verdict at its new tip is green (what its merge left behind), so the
-    // repeat failure is the change's own and the gate rejects it.
-    seedGreenMain(root);
-    const result = await reviewAheadOfMain(gateCtx(root, wt, 2), state);
-    assert.equal(result.decision, "rejected");
-    assert.match(result.detail ?? "", /^check failed/);
-    assert.equal(await aheadOfMain(wt, "main"), 0, "branch reset to main");
-  });
-});
 
-// The reviewer's prompt names the harness's own green pre-check so the model reviewer does not
-// spend its run re-running `npm test` — and stays silent about it when no check ran (no declared
-// script, or a skipped run), so the reviewer is never told a suite passed that never executed.
-test("the reviewer's prompt always says tumwater is running the check", async () => {
-  const { root, wt } = await greenBuildFixture("test");
-  const prompts = path.join(tmpdir(), "prompts.log");
-  // The fake pi records its argv (the stdin prompt appended last) before answering.
-  await withPi(
-    `${logPromptsTo(prompts)}\n${reviewerStub()}`,
-    async () => {
-    const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "approved");
-    const run = fs.readFileSync(prompts, "utf8");
-    assert.match(run, /Tumwater is running the project's own check on this tree; do not run the suite\./);
-  });
 
-  // A worktree with no declared check script: the sentence is fixed, whatever the check does.
-  const bare = await gateFixture();
-  const barePrompts = path.join(tmpdir(), "prompts.log");
-  await withPi(
-    `${logPromptsTo(barePrompts)}\n${reviewerStub()}`,
-    async () => {
-    const { result } = await reviewGate(bare.root, bare.wt);
-    assert.equal(result.decision, "approved");
-    const run = fs.readFileSync(barePrompts, "utf8");
-    assert.match(run, /Tumwater is running the project's own check on this tree/);
-  });
-});
-
-// The suite-rerun tripwire (BUGS.md 2026-09-23): a reviewer told tumwater's pre-check passed
-// that runs the full suite anyway — in a scratch copy under /tmp, like organize's and improve's
-// reviews that day — is named in the event feed, while a filtered run (one test file) is not.
-// The rule and the tripwire always apply, a timed-out pre-check included.
-test("a reviewer that re-runs the suite is warned about, behind a green or a timed-out pre-check alike", async () => {
-  const toolCalls = [
-    { toolCallId: "c1", command: "cd /tmp/revrun && npm test 2>&1 | tail -15" },
-    { toolCallId: "c2", command: "npm test gui 2>&1 | tail -5" },
-  ]
-    .flatMap(({ toolCallId, command }) => [
-      { type: "tool_execution_start", toolCallId, toolName: "bash", args: { command } },
-      { type: "tool_execution_end", toolCallId, result: {}, isError: false },
-    ])
-    .map((event) => `printf '%s\n' '${JSON.stringify(event)}'`)
-    .join("\n");
-  const reviewerScript = (prompts: string) =>
-    `printf '%s\n' "$@" >> "${prompts}"\n${toolCalls}\n${reviewerStub()}`;
-  const rerunWarnings = (root: string) =>
-    warningMessages(root).filter((m) => m.startsWith("reviewer re-ran the suite"));
-
-  const green = await greenBuildFixture("test");
-  const greenPrompts = path.join(tmpdir(), "prompts.log");
-  await withPi(reviewerScript(greenPrompts), async () => {
-    const { result } = await reviewGate(green.root, green.wt);
-    assert.equal(result.decision, "approved", "the tripwire warns; it never changes the verdict");
-    assert.match(fs.readFileSync(greenPrompts, "utf8"), /^- Do not run the project's check or its full test suite/m);
-    assert.deepEqual(rerunWarnings(green.root), [
-      "reviewer re-ran the suite tumwater's pre-check already verified: cd /tmp/revrun && npm test 2>&1 | tail -15",
-    ]);
-  });
-
-  const timed = await gateBuildFixture("sleep 5"); // hangs past the shortened cap
-  const timedPrompts = path.join(tmpdir(), "prompts.log");
-  await withPi(reviewerScript(timedPrompts), async () => {
-    const { result } = await reviewGate(timed.root, timed.wt, { buildCheckTimeoutMs: 400 });
-    assert.equal(result.decision, "approved");
-    assert.equal(result.verifiedHead, undefined, "the pre-check timed out — no verified result");
-    assert.match(fs.readFileSync(timedPrompts, "utf8"), /^- Do not run the project's check or its full test suite/m);
-    assert.deepEqual(rerunWarnings(timed.root), [
-      "reviewer re-ran the suite tumwater's pre-check already verified: cd /tmp/revrun && npm test 2>&1 | tail -15",
-    ]);
-  });
-});
-
-// BUGS.md 2026-10-02: the nudge turn's own tool calls are checked the same way as the review
-// run's. A reviewer that re-runs the suite even after the no-re-run nudge fails its review —
-// strike-free: the commit stays for the next merge's re-review and the discard counter never
-// advances — instead of paying a third suite run for nothing but another warning.
-const rerunCallEvents = (id: string, command: string): string[] =>
-  [
-    { type: "tool_execution_start", toolCallId: id, toolName: "bash", args: { command } },
-    { type: "tool_execution_end", toolCallId: id, result: {}, isError: false },
-  ].map((event) => `printf '%s\n' '${JSON.stringify(event)}'`);
-const RERUN_COMMAND = "cd /tmp/revrun && npm test 2>&1 | tail -15";
-
-test("a reviewer that re-runs the suite even after the no-re-run nudge fails the review, strike-free", async () => {
-  const green = await greenBuildFixture("test");
-  const prompts = path.join(tmpdir(), "prompts.log");
-  await withPi(
-    [
-      TOUCH_SESSION,
-      logPromptsTo(prompts),
-      `for a in "$@"; do if [ "$a" = "--continue" ]; then`,
-      ...rerunCallEvents("c2", RERUN_COMMAND),
-      `  printf '%s\n' '${assistantLine("ran the suite again; still no verdict")}'`,
-      `  exit 0`,
-      `fi; done`,
-      ...rerunCallEvents("c1", RERUN_COMMAND),
-      `printf '%s\n' '${assistantLine("I ran the suite to be sure; no verdict yet")}'`,
-    ].join("\n"),
-    async () => {
-      const { state, result } = await reviewGate(green.root, green.wt);
-      assert.equal(result.decision, "failed", "the repeat fails the review");
-      assert.match(result.detail ?? "", /repeat/, "the failure names the bound and what happens next");
-      assert.equal(state.unreviewFailures ?? 0, 0, "strike-free: a repeat is evidence about the reviewer, not the diff");
-      assert.equal(state.lastReview?.verdict, "failed");
-      assert.equal(await aheadOfMain(green.wt, "main"), 1, "the commit stays for the next re-review");
-      assert.ok(result.nudgeRun, "the nudge turn's spend rides back for folding");
-      const runs = readRunBlocks(prompts);
-      assert.equal(runs.length, 2);
-      assert.match(runs[1]!, /Do not re-run it/, "the nudge names the exact tool call");
-      const warnings = warningMessages(green.root);
-      assert.equal(
-        warnings.filter((m) => m.startsWith("reviewer re-ran the suite")).length,
-        2,
-        "the per-occurrence warning is retained for both occurrences",
-      );
-    },
-  );
-});
-
-// The nudge turn's own backend death is backend evidence, exactly like the verdict-recovery
-// follow-up's: strike-free, commit kept, and the failure named. Before the fix the dead nudge
-// bypassed the strike-free branch (followUp was null) and fed the discard ladder, so a flaky
-// backend could destroy a finished, tested commit the reviewer never judged.
-test("a no-re-run nudge that dies on the backend is strike-free and its error names the failure", async () => {
-  const green = await greenBuildFixture("test");
-  await withPi(
-    [
-      TOUCH_SESSION,
-      `for a in "$@"; do if [ "$a" = "--continue" ]; then echo 'oMLX connection error: backend flake' >&2; exit 1; fi; done`,
-      ...rerunCallEvents("c1", RERUN_COMMAND),
-      `printf '%s\n' '${assistantLine("I ran the suite to be sure; no verdict yet")}'`,
-    ].join("\n"),
-    async () => {
-      const state = freshRunnerState(ROLE);
-      state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it is
-      const result = await reviewAheadOfMain({ ...gateCtx(green.root, green.wt) }, state);
-      assert.equal(result.decision, "failed");
-      assert.match(result.detail ?? "", /backend flake/, "the nudge's own failure is named");
-      assert.equal(state.unreviewFailures, 1, "backend evidence, never a strike against the HEAD");
-      assert.equal(await aheadOfMain(green.wt, "main"), 1, "the commit survives for the next re-review");
-      assert.equal(state.lastReview?.verdict, "failed");
-      assert.ok(result.nudgeRun, "the failed nudge's spend still folds into the totals");
-      const events = readEvents(green.root);
-      assert.ok(!events.some((e) => e.type === "warning" && String(e.message).includes('discarding unreviewed')));
-    },
-  );
-});
 
 // BUGS.md 2026-09-30: a pre-check whose every attempt spanned a host sleep made no verdict
 // about the tree. The gate attributes nothing — no main consultation, no strike, no
@@ -879,36 +413,6 @@ test("a pre-check that sleeps and fails on every attempt keeps the commit and re
   assert.ok(!warnings.some((m) => m.startsWith("check failed")), "no test-failure headline");
 });
 
-// The pass-after-sleep wording: when the run that failed spanned a sleep and the re-run
-// passed, the tree is fine and the sleep is the story — not a flaky test (BUGS.md 2026-09-30).
-test("a slept pre-check failure that passes its re-run verifies the tree and names the sleep, not a flaky test", async () => {
-  const flag = path.join(tmpdir(), "slept-twice");
-  // Fails (with a sleep each time) until the second marker exists; the third attempt — the
-  // gate's flake re-run — passes clean.
-  const build = `if [ -f '${flag}-2' ]; then exit 0; fi; if [ -f '${flag}-1' ]; then touch '${flag}-2'; exit 1; fi; touch '${flag}-1'; exit 1`;
-  const { root, wt } = await gateBuildFixture(build);
-  const prompts = path.join(tmpdir(), "prompts.log");
-  await withPi(
-    `${logPromptsTo(prompts)}\n${reviewerStub()}`,
-    async () => {
-      const head = await headOf(wt, "HEAD");
-      const { result } = await reviewGate(root, wt, {
-        sampleSleep: scriptedSampler([
-          woke(1_000), woke(121_000, 2_000), // attempt 1: slept, failed
-          woke(121_000), woke(241_000, 122_000), // internal retry: slept too, failed
-          woke(241_000), woke(241_500), // the gate's re-run: clean pass
-        ]),
-      });
-      assert.equal(result.decision, "approved", "the clean re-run's pass verifies the tree");
-      assert.equal(result.verifiedHead, head, "verified like a first-time pass");
-      assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "gate:passed"]);
-      const warnings = warningMessages(root);
-      assert.deepEqual(warnings, [
-        "gate check ran while the host slept 119s mid-run; then passed on retry",
-      ]);
-    },
-  );
-});
 
 // A gate failure that names only tests main already fails (the main watch's newest red verdict)
 // goes on to review with no fresh run on main; any other failing test keeps the attribution path.
@@ -931,26 +435,10 @@ async function knownRedFixture(alsoY: boolean): Promise<{ root: string; wt: stri
   return { root, wt };
 }
 
-test("a gate failure of only main's known failures goes on to review with no fresh run on main", async () => {
-  const { root, wt } = await knownRedFixture(false);
-  const marker = piRanMarker();
-  const baselineRuns = () => buildCheckEvents(root).filter((e) => e.startsWith("baseline:")).length;
-  const watched = baselineRuns(); // the main watch's own runs, before the gate
-  await withReviewerStub(marker, async () => {
-    const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "approved");
-    assert.ok(fs.existsSync(marker), "the reviewer ran");
-    assert.equal(result.verifiedHead, undefined, "a red tree is not attested as verified");
-    assert.ok(warningMessages(root).includes("gate check fails only main's known failures: X"));
-    const gateRuns = buildCheckEvents(root).filter((e) => e.startsWith("gate:"));
-    assert.deepEqual(gateRuns, ["gate:failed"], "known failures are not re-run");
-    assert.equal(baselineRuns(), watched, "no fresh run on main");
-  });
-});
 
 test("a gate failure of a known failure plus another test is handled as before", async () => {
   const { root, wt } = await knownRedFixture(true);
-  await withReviewerStub(undefined, async () => {
+  await withPi('true', async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "failed");
     assert.equal(result.mainRed, true);
@@ -990,27 +478,10 @@ async function fixedOnMainFixture(alsoY: boolean): Promise<{ root: string; wt: s
   return { root, wt };
 }
 
-test("a gate failure of only tests the change's base already failed goes on to review once main is green", async () => {
-  const { root, wt } = await fixedOnMainFixture(false);
-  const base = sh(wt, "git", "merge-base", "HEAD", "main").trim();
-  const marker = piRanMarker();
-  await withReviewerStub(marker, async () => {
-    const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "approved");
-    assert.ok(fs.existsSync(marker), "the reviewer ran");
-    assert.equal(result.verifiedHead, undefined);
-    assert.ok(
-      warningMessages(root).includes(
-        `gate check fails only tests its base ${shortSha(base)} already failed, and main ${shortSha(mainSha(root))} is green: X; going on to review`,
-      ),
-    );
-    assert.equal(eventsOfType(root, "review_rejected").length, 0);
-  });
-});
 
 test("a gate failure beyond the base's red failures is still rejected on a green main", async () => {
   const { root, wt } = await fixedOnMainFixture(true);
-  await withReviewerStub(undefined, async () => {
+  await withPi('true', async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.match(String(eventsOfType(root, "review_rejected")[0]?.reasons), /Y/);
@@ -1018,100 +489,7 @@ test("a gate failure beyond the base's red failures is still rejected on a green
   });
 });
 
-test("a test that fails then passes on the gate's re-run is quarantined; a later failure of only that test goes on without a re-run", async () => {
-  const flag = path.join(tmpdir(), "flaky-once");
-  const failing = "echo '✖ wobbly test (1.2ms)' >&2\nexit 1\n";
-  const { root, wt } = await gateBuildFixture(
-    "buildcheck-tool --flaky",
-    `#!/bin/sh\nif [ -f '${flag}' ]; then exit 0; fi\ntouch '${flag}'\n${failing}`,
-  );
-  await withReviewerStub(undefined, async () => {
-    const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "approved");
-    assert.deepEqual(
-      loadQuarantine(root).map((e) => e.test),
-      ["wobbly test"],
-    );
-    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:passed"]);
-    // Now it fails every time: a known failure, so the gate neither re-runs nor attributes.
-    writeScript(path.join(root, "node_modules", ".bin", "buildcheck-tool"), `#!/bin/sh\n${failing}`);
-    const again = await reviewGate(root, wt);
-    assert.equal(again.result.decision, "approved");
-    assert.equal(again.result.verifiedHead, undefined, "the tree did not pass");
-    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:passed", "gate:failed"], "one run, no re-run");
-  });
-});
 
-// Fast merge part 12: with a second pool slot free, the gate check runs in its own checkout while
-// the reviewer runs in the change's slot; a red check stops the reviewer; with no free slot the
-// check runs first, as before.
-const checkSlot = (root: string, slotBudget: number) => ({
-  leaseCheckSlot: (ref: string) => tryLeaseSlot(root, { role: ROLE, purpose: "verify-check", ref, slotBudget }),
-});
-
-test("a green gate and the reviewer run at the same time in a second slot", async () => {
-  const dir = tmpdir();
-  const gateSpan = path.join(dir, "gate-span");
-  const reviewSpan = path.join(dir, "review-span");
-  const now = "node -e 'console.log(Date.now())'";
-  // Rendezvous, not a wall-clock race: each side writes its start marker and then blocks until
-  // the other's marker appears, so a loaded host that delays one side's startup cannot make two
-  // concurrently-running processes read as sequential (the flake this fixed). A genuine regression
-  // to a sequential architecture leaves the earlier side waiting out its bounded loop and fails
-  // deterministically below (a gate that saw no reviewer exits 1, so the gate rejects).
-  const rendezvous = (other: string) =>
-    `i=0\nwhile [ ! -s '${other}' ] && [ $i -lt 200 ]; do sleep 0.05; i=$((i+1)); done\n[ -s '${other}' ] || exit 1`;
-  const gateScript =
-    `#!/bin/sh\n${now} >> '${gateSpan}'\n${rendezvous(reviewSpan)}\nsleep 0.2\n${now} >> '${gateSpan}'\nexit 0\n`;
-  const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", gateScript);
-  const reviewScript = `${now} >> '${reviewSpan}'\n${rendezvous(gateSpan)}\nsleep 0.2\n${now} >> '${reviewSpan}'\n${reviewerStub()}`;
-  await withPi(reviewScript, async () => {
-    const { result } = await reviewGate(root, wt, checkSlot(root, 3));
-    assert.equal(result.decision, "approved");
-    assert.equal(result.verifiedHead, await headOf(wt, "HEAD"), "the green gate verifies the head");
-    const span = (f: string) => fs.readFileSync(f, "utf8").trim().split("\n").map(Number);
-    const [gs, ge] = span(gateSpan);
-    const [rs, re] = span(reviewSpan);
-    assert.ok(rs! < ge! && gs! < re!, `the gate (${gs}-${ge}) and the reviewer (${rs}-${re}) overlap`);
-    assert.equal(readSlotsState(root).slots.filter((s) => s.lease !== null).length, 0, "the check slot is released");
-  });
-});
-
-test("a red gate aborts the running reviewer and settles as the sequential pre-check does", async () => {
-  const { root, wt } = await gateBuildFixture(
-    "buildcheck-tool --fail",
-    "#!/bin/sh\necho 'src/bad.ts(3,5): error TS2345: bad'\nexit 1\n",
-    "build",
-    "echo ok",
-  );
-  seedGreenMain(root);
-  const finished = path.join(tmpdir(), "reviewer-finished");
-  await withPi(`sleep 20\ntouch '${finished}'\n${reviewerStub()}`, async () => {
-    const started = Date.now();
-    const { state, result } = await reviewGate(root, wt, checkSlot(root, 3));
-    assert.equal(result.decision, "rejected");
-    assert.ok(Date.now() - started < 15_000, "the reviewer was stopped, not waited out");
-    assert.ok(!fs.existsSync(finished), "the reviewer never finished");
-    assert.equal(await aheadOfMain(wt, "main"), 0, "branch reset to main");
-    assert.match(state.lastReview?.reasons[0] ?? "", /^check failed/);
-    assert.equal(state.lastReview?.verdict, "reject");
-    assert.equal(readEvents(root).filter((e) => e.type === "review_verdict").length, 0, "no verdict recorded");
-  });
-});
-
-test("with no free pool slot the check runs before the reviewer", async () => {
-  const dir = tmpdir();
-  const order = path.join(dir, "order");
-  const { root, wt } = await gateBuildFixture(
-    "buildcheck-tool --ok",
-    `#!/bin/sh\necho gate-start >> '${order}'\nsleep 0.5\necho gate-end >> '${order}'\nexit 0\n`,
-  );
-  await withPi(`echo review >> '${order}'\n${reviewerStub()}`, async () => {
-    const { result } = await reviewGate(root, wt, { leaseCheckSlot: async () => null });
-    assert.equal(result.decision, "approved");
-    assert.deepEqual(fs.readFileSync(order, "utf8").trim().split("\n"), ["gate-start", "gate-end", "review"]);
-  });
-});
 
 test("diffRuleReasons returns the gate's rules in order", async () => {
   const changedFiles = async (wt: string, base: string): Promise<string[]> =>

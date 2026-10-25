@@ -512,18 +512,17 @@ into the harness commit".
 
 ## The reviewer cannot author the merge
 
-### INV-I1: a gate exit that keeps the change leaves the worktree at the head the gate reviewed
+### ~~INV-I1: a gate exit that keeps the change leaves the worktree at the head the gate reviewed~~ (retired 2026-10-25)
 
-**Guarantee.** A gate exit that keeps the change after the reviewer ran (approved, or failed
+~~**Guarantee.** A gate exit that keeps the change after the reviewer ran (approved, or failed
 without discard) resets the worktree to the head the gate reviewed, so neither the merge pin
 nor the next re-review can include a commit the reviewer made. The reject and strike-cap discard
-paths reset to main instead.
+paths reset to main instead.~~
 
-**Binds.** `src/review/review.ts`.
+~~**Binds.** `src/review/review.ts`.~~
 
-**Pinned by.** `test/review.test.ts` — "a reviewer's own commit is dropped on approve: the
-worktree returns to the reviewed head" and "a reviewer's own commit is dropped when the review
-fails strike-free".
+~~**Pinned by.** the reviewer-commit-drop cases in `test/review.test.ts`, retired with this
+invariant.~~
 
 ## A blind image read cannot become an answered run
 
@@ -880,26 +879,23 @@ on.
 giving up the team permit"; `test/orchestrator-permits.e2e.test.ts` — "two runs on one provider and
 a single worktree slot both finish (pool-slot wait rule, part 4/5)".
 
-### INV-P6: a failed review's retry pause holds no permit, and a paused lease owes nothing
+### INV-P6: a paused verification lease holds no permit, and a paused lease owes nothing
 
-**Guarantee.** While a failed reviewer run waits to be retried in place, the verification's lease is
-paused: its team permit and key slot go to parked waiters, and the next attempt starts only after
+**Guarantee.** A paused verification lease hands its team permit and key slot to parked waiters, and
 `resume` re-admits it at its own tier and key. Releasing a paused lease, or one whose resume is still
 queued, frees nothing twice and leaves no waiter behind. Once the verification is aborted, the
 pause takes nothing back. A forced lease's pause and resume move only its key slot and never wait.
 Without a lease in context, `idleWithoutProviderLease` only runs the wait.
 
 **Binds.** `src/concurrency/semaphore.ts` (`SemaphoreLease.pause`, `SemaphoreLease.resume`,
-`forceLease`), `src/concurrency/provider-lease.ts` (`idleWithoutProviderLease`) and
-`src/review/review.ts` (`reviewAheadOfMain`).
+`forceLease`) and `src/concurrency/provider-lease.ts` (`idleWithoutProviderLease`).
 
 **Pinned by.** `test/semaphore.test.ts` — "a paused lease hands its permit and key slot to a parked
 waiter, and resume queues for the next free one", "releasing a paused lease, or one whose resume is
 still queued, owes nothing" and "a forced lease's pause gives its key slot back and resume takes it
 again without waiting"; `test/provider-lease.test.ts` — "idleWithoutProviderLease runs the wait
 without the lease's permit and key, then takes both back" and "idleWithoutProviderLease just waits
-without a lease in context, and takes nothing back once aborted"; `test/review.test.ts` — "a retry's
-pause hands the verification's permit to a parked role, and the next attempt waits to take it back".
+without a lease in context, and takes nothing back once aborted".
 
 ## Init: a user's repo loses nothing to tumwater init
 
@@ -3648,9 +3644,7 @@ on without a re-run.
 **Binds.** `src/review/known-flakes.ts` (`quarantineTests`, `onlyQuarantined`).
 
 **Pinned by.** `test/known-flakes.test.ts` — "quarantine: a new test is added once, a repeat
-counts, and only-quarantined needs every test listed"; `test/review-precheck.test.ts` — "a test
-that fails then passes on the gate's re-run is quarantined; a later failure of only that test goes
-on without a re-run"; `test/merger.test.ts` — "a red in-lock merge check whose immediate re-run
+counts, and only-quarantined needs every test listed"; `test/merger.test.ts` — "a red in-lock merge check whose immediate re-run
 passes merges and quarantines the failing test"; `test/main-watch.test.ts` — "a red whose
 confirming re-run passes quarantines the failing tests and files one BUGS.md entry on main" and "a
 red naming only quarantined tests is recorded passed and starts no culprit".
@@ -3709,8 +3703,7 @@ on it, never approving. When a reply carries several verdict lines, the last one
 
 **Pinned by.** `test/review-verdict.test.ts` — "parseVerdict returns null when no verdict line
 exists", "parseVerdict ignores a VERDICT mention that is not at line start" and "parseVerdict reads
-the verdict from the LAST verdict line"; `test/review.test.ts` — "gate fails closed on a
-verdict-less reply: commit kept for re-review".
+the verdict from the LAST verdict line".
 
 ### INV-BH2: reasons are capped and clipped, and only a leading resolution is dropped
 

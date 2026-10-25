@@ -22,28 +22,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The decision (either branch) is recorded with its evidence in PLANS-DONE.md when closed; a raised cap is accompanied by one week of load-watch in the dogfood instance.
 - `npm run test:gate` passes (config change only; no code).
 
-### Every commit is verified on main, part 3l/3: the pre-merge model reviewer's dedicated test cases are retired ahead of its removal (planned 2026-10-24 by the plan role, split 2026-10-24 by the plan role from the too-large part 3h/3 — the feature role held part 3h/3 as too large because most of test/review-precheck.test.ts asserts the reviewer run it deletes; this part takes that test retirement first, and the reviewer still runs, so every deleted case is green; part 3h/3 requires this part; touches test/review.test.ts test/review-precheck.test.ts)
-
-**Previously held 4**
-
-**Goal.** Part 3h/3 stops `reviewAheadOfMain` (src/review/review.ts) running the pre-merge model reviewer. The bulk of that change is not the source removal but the cases that assert a reviewer run: `test/review.test.ts` and `test/review-precheck.test.ts` each drive the gate through a fake reviewer and would fail the moment the run goes. This part retires those cases first, while the reviewer still runs, so part 3h/3 lands as the source change plus the surviving cases' re-pointing.
-
-**Approach.**
-- `test/review.test.ts`: delete each case whose subject is the pre-merge reviewer's run, verdict, prompt, retry, resume, nudge or stray-edit handling — the reviewer-run wiring and session-name cases, the stray-edit/dropped-commit cases, the verdict parser and recovery/strike cases, the kill/retry/timeout/resume/stall cases, the suite-rerun tripwire cases, and the revision/interdiff and fresh-merge `review_start` cases. Keep the deterministic-rule cases (`diffRuleReasons`, conflict markers, the unreadable and non-ASCII paths, the false-fix, backlog-structure, brief-block, PRINCIPLES and secret-leak cases), the exempt and `review.enabled=false` cases, the already-approved-HEAD case, the aborted case, the retry-delay case, and the fixtures.
-- `test/review-precheck.test.ts`: delete each case whose assertions require a reviewer run — the `reaches the reviewer` framing, the flake cases' reviewer arm, `gate pre-check timeout warns and still proceeds to the model review`, `a green pre-check hands its verified head to the merge path`, the reviewer-prompt and suite-rerun-tripwire cases, the approval-reuse-across-a-rebase cases, the second-slot reviewer overlap, and `with no free pool slot the check runs before the reviewer`. Keep the deterministic pre-check cases (compile failure, red script, named assertion, red-main no-strike, no-verdict baseline, non-npm check, shutdown, quarantined test, known failures) and the `diffRuleReasons` case.
-- Both files: prune the imports and helpers only the deleted cases used (`reviewerStub`/`withReviewerStub`, `TOUCH_SESSION`, `readRunBlocks`, `piRanMarker`, `logFlagsTo`, the verdict and session helpers), because `noUnusedLocals` fails the build otherwise. No kept case's assertions change.
-
-**Files touched.** test/review.test.ts test/review-precheck.test.ts
-
-**Acceptance criteria.**
-- Both files compile, and no remaining case asserts that the pre-merge gate ran a model reviewer, named a reviewer session, parsed a reviewer verdict, retried/resumed/nudged a reviewer, or overlapped the pre-check with a reviewer run.
-- `grep -n "reviewerStub\|withReviewerStub" test/review.test.ts test/review-precheck.test.ts` is empty.
-- No case whose subject is the deterministic diff rules or the build pre-check was deleted: their kept cases and their shared fixtures are untouched.
-- `npm run test:gate` passes.
-
-**Tests.**
-- The kept deterministic-rule and pre-check cases pass unchanged; this part adds no case (part 3h/3 adds the surviving-behavior cases its source change needs).
-
 ### Every commit is verified on main, part 3h/3: the pre-merge gate runs no model reviewer — only a secret leak, a brief-block edit or a protected edit refuses a diff (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; requires parts 3g/3 and 3l/3 landed, since a role not on `review.afterMerge` must have its post-landing review queued before its pre-merge model review goes and the reviewer's dedicated cases must be retired before the run they assert goes; touches src/review/review.ts src/review/diff-rules.ts docs/how-it-works.md test/review.test.ts test/review-precheck.test.ts)
 
 **Previously held 4**
