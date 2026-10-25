@@ -68,8 +68,9 @@ export class PendingPrompt {
 
   /** Put an unfulfilled user prompt back in the queue it came from so the next run retries it
    * — the one place that policy lives, shared by every outcome that leaves the request undone
-   * (abort, timeout, failure without changes, review abort, context-ceiling cut-off, red-main
-   * gate). The queue is the role's own (the director's historical inbox for the director), so a
+   * (abort, timeout, failure without changes, review abort, context-ceiling cut-off, a
+   * merge-side `main_red` pin). The queue is the role's own (the director's historical
+   * inbox for the director), so a
    * re-queued per-role request never leaks across roles. A fulfilled no_change never reaches
    * here: re-queueing it would loop the prompt forever. Image attachments ride along: the
    * re-queue moves them to the new queue file's stem so a later cancel or fulfilling sweep

@@ -5,7 +5,8 @@
  * review-verdict.ts's parseVerdict), the clipped output tail (clipBuildTail), the one-line headline
  * a warning names the failure by (failureHeadline), the check's human-facing command name
  * (describeCheck), and the reasons a red check hands its author (checkFailureReasons). Every
- * consumer of a check's tail — the review gate, the merge path, the red-main gate, the run prompt
+ * consumer of a check's tail — the review gate, the merge path, the main-red verdict
+ * (`mainTipVerdict`/`mainRedHealNote`), the run prompt
  * — imports from here, so "which line is the headline" and "how much output survives" have one
  * answer each. Type-only back-reference to build-check.ts for BuildCheckOutcome (no runtime cycle);
  * BuildCheck comes from build-check-detect.ts. */

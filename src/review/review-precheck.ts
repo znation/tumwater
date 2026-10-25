@@ -179,7 +179,8 @@ export async function gateBuildPrecheck(
       if (main.status === "red") {
         // Main fails too: not this change's failure. Leave the commit (and with it the pin) and
         // do not advance the discard counter — the transport-failure rule (BUGS.md 2026-09-20):
-        // nothing judged this diff. main-red.ts's gate and the bugfix handoff own the repair,
+        // nothing judged this diff. main-red.ts's healer hand-off (`mainRedHealNote`) and the
+        // bugfix handoff own the repair,
         // and the orchestrator poll (requeueMainRedPin) re-queues the kept pin once main's head
         // moves; leftover recovery holds it until then.
         const detail = mainRedNotMine(main.sha);

@@ -201,8 +201,8 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
 
 // A red MAIN must not reject every queued change for a failure none of their authors caused —
 // the goal the in-slot build-fix run served, now met by attribution: the change keeps its commit
-// (and the merger its pin), no strike is counted, and main-red.ts's gate and the bugfix handoff
-// own the repair.
+// (and the merger its pin), no strike is counted, and main-red.ts's healer hand-off
+// (`mainRedHealNote`) and the bugfix handoff own the repair.
 test("a pre-check that fails twice on a red main fails without a strike and keeps the commit", async () => {
   // The tool fails everywhere — on the change's tree AND on main's, which the attribution check
   // runs in its own worktree because this unique main SHA has no cached verdict.

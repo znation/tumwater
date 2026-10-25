@@ -22,17 +22,18 @@ import { memoSetLru } from "../collections.js";
  * classifying the project's declared check — because a verdict ABOUT a specific SHA is a
  * different concern from the mechanics of running one: this module owns the cache, the
  * in-flight dedup, the re-verification policy that keeps one worktree's environmental red
- * from blocking the team. main-red.ts's gate consumes it; merge-to-main.ts seeds a green
+ * from affecting the team's read of main. Its verdict feeds the `ci` healer hand-off
+ * (`mainRedHealNote`), the merge path's `mainTipVerdict`, redeploy's re-verify, and the
+ * main watch's green clear — not an authoring block; merge-to-main.ts seeds a green
  * here after a post-rebase re-check; redeploy.ts re-verifies a red here before it strands the
  * team on a stale build. */
 
-// ── Main baseline (red-main gate) ────────────────────────────────────────────────────────
+// ── Main baseline (main baseline) ────────────────────────────────────────────────────────
 // The review gate verifies worktree = main + changes before every merge; this checks MAIN
-// ITSELF — once per SHA, team-wide — before an authoring run is spent on top of it. A red
-// main rejects every code diff deterministically at the gate (BUGS.md's "Build broken on
-// main" and "Tests red on main" entries), so while a SHA is known red the harness skips
-// authoring for the code-producing roles instead of burning runs that are guaranteed to
-// fail.
+// ITSELF — once per SHA, team-wide. Its verdict feeds the `ci` healer hand-off
+// (`mainRedHealNote`), the merge path's `mainTipVerdict`, and redeploy's re-verify — not an
+// authoring block: a code role still authors on top of a red main (the red-main authoring
+// block came off with the pre-merge blocks, parts 3g/3–3j/3 and 3d/3–3f/3).
 
 /** The team-shared verdict of main's own build/test suite at one SHA. */
 interface MainBaseline {
@@ -51,7 +52,7 @@ interface MainBaseline {
   failingTests?: string[];
   /** Red only: the worktrees that have independently observed this red. A red seen in ONE
    * worktree is provisional evidence about the environment as much as the tree, so it is
-   * re-verified elsewhere before it blocks the team; two distinct worktrees agreeing makes it
+   * re-verified elsewhere before it is trusted; two distinct worktrees agreeing makes it
    * authoritative. Never set on a green — a green is authoritative wherever it was observed. */
   redFrom?: string[];
   /** Green only: set when no check ran on this tree. It is the commit whose green verdict this one
@@ -64,12 +65,12 @@ interface MainBaseline {
   inheritedFrom?: string;
 }
 
-/** checkMainBaseline's result. `baseline` is null when nothing blocks authoring: either no declared
- * build check at all (nothing to verify → nothing to block on, consistent with the gate skipping
- * its pre-check) or an environmental skip (`skipReason` set — timeout/external signal
- * kill/no-npm/broken toolchain), which the caller warns about and proceeds with, exactly like the
- * gate's pre-check. Skips are never cached red: a hung script — or a broken toolchain (BUGS.md
- * 2026-09-15) — must not wedge authoring, or the team's restart, for the life of the process. */
+/** checkMainBaseline's result. `baseline` is null when there is no verdict: either no declared
+ * build check at all (nothing to verify) or an environmental skip (`skipReason` set —
+ * timeout/external signal kill/no-npm/broken toolchain), which the caller warns about and
+ * proceeds with. Skips are never cached red: a hung script — or a broken toolchain (BUGS.md
+ * 2026-09-15) — must not wedge the team's verification, or its restart, for the life of the
+ * process. */
 interface MainBaselineCheck {
   baseline: MainBaseline | null;
   /** Set when a detected check could not be run (timeout, an external signal kill, no npm on
@@ -186,7 +187,7 @@ export function persistBaselineVerdicts(root: string): void {
 }
 
 /** In-flight dedup: concurrent runs on the same not-yet-cached SHA (a fresh main move wakes
- * every blocked role at once) share one check run instead of racing N npm invocations. Keyed by
+ * every role's verifier at once) share one check run instead of racing N npm invocations. Keyed by
  * SHA for ordinary checks; a re-verification adds its worktree, because joining another
  * worktree's run would observe the wrong environment — the one thing it exists to re-test. */
 const baselineInFlight = new Map<string, Promise<MainBaselineCheck>>();
@@ -375,22 +376,22 @@ export async function redeployTarget(wt: string, tip: string, buildSha: string, 
  * is the fresh-run path right after resetWorktreeToMain; a dirty or ahead worktree would
  * measure the wrong thing). Cache hit returns immediately; on miss runs detectBuildCheck +
  * runBuildCheck once per SHA (in-flight deduped) and caches green/red. Never throws: git,
- * detection, and execution failures all resolve to "nothing blocks authoring". */
+ * detection, and execution failures all resolve to no verdict (nothing to verify). */
 export async function checkMainBaseline(
   wt: string,
   /** The live config — the declared check is detected through it (plans/portability.md
    * §6/7), so a configured command verifies main on a non-npm repo too. Required in this
    * position: detection needs it, and an optional trailing parameter would let future
-   * callers skip the baseline gate entirely. */
+   * callers skip the baseline check entirely. */
   config: CheckConfigSlice,
   /** Called once per actual script run (never for cache hits or deduped waiters) with what ran
    * and how long it took — the caller's hook for a build_check event. */
   onRun?: (run: BaselineCheckRun) => void,
   /** Ignore a cached RED verdict and run the suite here instead (a cached green still short-
    * circuits — see baselineCache). For the caller whose false block is expensive enough to pay
-   * one extra run: the redeploy gate, where trusting another worktree's environmental red
-   * strands the whole team on a stale build until main moves. A green from the re-run promotes
-   * the SHA team-wide, which unblocks the role runners too. */
+   * one extra run: the redeploy path, where trusting another worktree's environmental red
+   * strands the team on a stale build until main moves. A green from the re-run promotes
+   * the SHA team-wide, so every consumer reads main green. */
   reverifyRed = false,
   /** Ignore the cache entirely and run the suite here, even over a GREEN verdict. For the one
    * caller that cannot trust a green (BUGS.md 2026-10-06: the review gate re-attributing a

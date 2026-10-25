@@ -21,9 +21,10 @@ import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
  * (build-check-scoped.ts) is the shared detect → run → build_check event → skip-warning sequence of
  * the gate's pre-check (review.ts, via review-precheck.ts), the merge path's in-lock re-check
  * (merge-to-main.ts), and the stacked path's coalesced scope-"batch" check (merge-stack.ts). The
- * red-main baseline gate (main-red.ts) reuses this same detection and execution from
- * main-baseline.ts to verify main itself once per SHA before an authoring run is spent on top of
- * it. The detached process-group runner runBuildCheck uses (runScriptGroup) is this module's only
+ * red-main hand-off (`mainRedHealNote`, main-red.ts) and the merge path's
+ * mainTipVerdict reuse this same detection and execution from
+ * main-baseline.ts to verify main itself once per SHA. The detached process-group
+ * runner runBuildCheck uses (runScriptGroup) is this module's only
  * runtime concern in process-group.ts — its run record (BuildCheckRun, below) stays here beside the
  * outcome it rides on; process-group.ts imports the type back (no runtime cycle), and the signals
  * it escalates with come from signalTree in process.ts. Formatting and description of a check's

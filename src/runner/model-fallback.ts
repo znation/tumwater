@@ -11,7 +11,8 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
  * probe; a probe that ANSWERS without a provider failure ends the episode.
  *
  * Only the authoring agent run within a run is evidence: a run that never invoked pi (a director's
- * empty inbox, a recovered leftover, a red-main block) leaves the state untouched, and an agent run
+ * empty inbox, a recovered leftover, a merge-side `main_red` pin) leaves the state
+ * untouched, and an agent run
  * that was aborted, quiet-killed, or timed out gives no verdict either. The module is pure:
  * every function takes `now` from the caller, so the scheduling rules are unit-testable
  * without a real clock. The runner owns the persistence (RunnerState.modelFallback). */

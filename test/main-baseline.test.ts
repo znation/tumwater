@@ -16,16 +16,16 @@ import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 
 // Unit coverage for the team-shared main-baseline verdict (src/baseline/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental red
-// from blocking the team, and green seeding from the merge path. main-red.test.ts covers the gate
-// built on top; build-check.test.ts covers the detection, execution, and failure-tail presentation
-// this module consumes.
+// from miscoloring the team's verdict, and green seeding from the merge path. main-red.test.ts
+// covers the red-main verdict and heal hand-off built on top; build-check.test.ts covers the
+// detection, execution, and failure-tail presentation this module consumes.
 
 const ROLE = "improve";
 /** The live config checkMainBaseline now requires (plans/portability.md §6/7): the tests here
  * all exercise npm auto-detection, so the defaults (no `check` configured) are the fixture. */
 const CFG = defaultConfig();
 
-// --- checkMainBaseline: the red-main gate's one-shot, team-shared verification of main's own
+// --- checkMainBaseline: the one-shot, team-shared verification of main's own
 // suite. Unlike build-check.test.ts's plain-directory
 // fixtures — enough for detection and execution in isolation — these need a REAL git repo with
 // a worktree
@@ -48,8 +48,8 @@ test("a red in one worktree is re-verified by the next, and a green there promot
     "the next worktree re-runs a single-worktree red instead of trusting it",
   );
   assert.equal(runsOf(counter), 2);
-  // The promotion is what unblocks the team: even the worktree that produced the false red
-  // now reads green, without main having to move.
+  // The promotion is what clears the team's read of main: even the worktree that produced the
+  // false red now reads green, without main having to move.
   assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "green");
   assert.equal(runsOf(counter), 2, "a green is authoritative — nothing re-ran");
 });
@@ -138,7 +138,7 @@ test("checkMainBaseline never caches red for an environmental skip: with npm mis
   const restorePath = pathReplace(partialBin);
   try {
     const skipped = await checkMainBaseline(wt, CFG);
-    assert.equal(skipped.baseline, null, "a skip never blocks authoring");
+    assert.equal(skipped.baseline, null, "a skip yields no verdict");
     assert.equal(skipped.skipReason, "no-npm");
   } finally {
     restorePath();
@@ -160,7 +160,7 @@ test("checkMainBaseline reads a toolchain-failing suite as an environmental skip
     `echo run >> ${counter}; echo "You have not agreed to the Xcode license agreements."; exit 1`,
   );
   const skipped = await checkMainBaseline(wt, CFG);
-  assert.equal(skipped.baseline, null, "a toolchain skip never blocks authoring or a restart");
+  assert.equal(skipped.baseline, null, "a toolchain skip yields no verdict and never wedges a restart");
   assert.equal(skipped.skipReason, "toolchain");
   // The skip is never cached: once the toolchain is fixed the SAME SHA must be re-checked —
   // this is the latch the incident left, and a cached red would rebuild it.
@@ -177,8 +177,8 @@ test("checkMainBaseline reads a toolchain-failing suite as an environmental skip
 test("checkMainBaseline dedups concurrent checks of one new SHA into a single run", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
-  // A fresh main move wakes every blocked role at once: their concurrent checks must share one
-  // npm invocation, not race N of them.
+  // A fresh main move sends every role's verifier at the new SHA at once: their concurrent
+  // checks must share one npm invocation, not race N of them.
   const [a, b] = await Promise.all([checkMainBaseline(wt, CFG), checkMainBaseline(wt, CFG)]);
   assert.equal(a.baseline?.status, "red");
   assert.equal(b.baseline?.status, "red");
@@ -248,7 +248,7 @@ test("a configured check.command verifies main on a repo with no npm install any
   const cfg = { ...defaultConfig(), check: { command: `${checkScript} -q` } };
   const runs: { outcome: { status?: string; script?: string }; durationMs: number }[] = [];
   const result = await checkMainBaseline(wt, cfg, ({ outcome, durationMs }) => runs.push({ outcome, durationMs }));
-  assert.equal(result.baseline?.status, "red", "the configured command's failure blocks authoring");
+  assert.equal(result.baseline?.status, "red", "the configured command's failure yields a red verdict that names the failing script");
   assert.equal(result.baseline.status === "red" ? result.baseline.script : undefined, `${checkScript} -q`, "the red names the configured command");
   assert.equal(runsOf(counter), 1, "the command ran once");
   assert.equal(runs[0]?.outcome.status, "failed", "the hook saw the classified failure");
@@ -346,7 +346,7 @@ test("mainIsGreen re-verifies another worktree's red in the mirror, and its gree
   assert.equal(
     (await checkMainBaseline(role, CFG)).baseline?.status,
     "green",
-    "and the green promotes the SHA for every other gate, unblocking the role runners too",
+    "and the green promotes the SHA for every other consumer of main's verdict",
   );
   assert.equal(runsOf(counter), 2, "the promotion re-runs nothing");
 });

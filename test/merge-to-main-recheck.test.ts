@@ -224,7 +224,7 @@ test("main moving under the verified head by doc commits alone skips the re-chec
   assert.equal(result, "changed", "the red check never ran: the tree is the verified one plus docs");
   assert.equal(eventsOfType(root, "build_check").length, 0);
   assert.ok(fs.existsSync(path.join(root, "app.js")) && fs.existsSync(path.join(root, "NOTES.md")));
-  // The merged SHA carries a green inherited from the verified head: the red-main gate trusts it
+  // The merged SHA carries a green inherited from the verified head: the main baseline trusts it
   // without a run, and attribution (observedOnly) would still run the suite itself.
   const runs: unknown[] = [];
   const baseline = await checkMainBaseline(root, defaultConfig(), (run) => runs.push(run));

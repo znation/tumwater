@@ -263,10 +263,10 @@ test("the last-result cell shows the merge's outcome beside the summary of the c
 test("a pending change after a main-red run does not keep the state cell reading main red", () => {
   // The last-result cell keeps the main_red pair (it IS the last completed outcome), but the
   // state cell's "main's check is failing" says the role is blocked NOW — and a queued change
-  // got past the red-main gate, so main was green at its run.
+  // saw a green main wake, so main was green at its run.
   const s = freshRunnerState("feature");
   applyRunOutcome(s, defaultConfig(), "feature", { result: "main_red", summary: "code merges blocked until main is green" });
-  assert.equal(rolePhase(s, true), "main's check is failing", "fixture sanity: the blocked run reads main red");
+  assert.equal(rolePhase(s, true), "main's check is failing", "fixture sanity: the main-red run reads main red");
   applyRunOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
   assert.match(rolePhase(s, true), /^sleeping/, "the pending change's run was not blocked");
   const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, mergeQueue: { depth: 1 } }), "feature");

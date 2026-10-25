@@ -19,7 +19,7 @@ interface FallbackContext {
 /** Fold one AUTHORING agent run's verdict into the role's model-fallback state
  * (src/runner/model-fallback.ts) and emit the episode's started/ended events. Only the agent run
  * that actually happened is evidence: a run that never invoked pi (a skipped director
- * inbox, a recovered leftover, a red-main block) returns from runOnce before this is
+ * inbox, a recovered leftover, a merge-side `main_red` pin) returns from runOnce before this is
  * reached, and modelFallbackVerdict reports an aborted/killed/timed-out agent run as
  * inconclusive — so neither can end an episode without the primary having answered.
  * A role whose tier resolves to no fallback pair never trips, and an episode persisted from a

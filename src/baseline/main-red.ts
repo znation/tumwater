@@ -31,7 +31,7 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
  * which stays unaware of runs. */
 
 /** The last main SHA for which this process logged a red-main hold event (the baseline check): one
- * harness-level warning per newly-discovered red SHA, not one per blocked role's run —
+ * harness-level warning per newly-discovered red SHA, not one per role's run —
  * module-level so every runner in the team shares it. A restart re-logs once: the cache is cold
  * then too, and an operator restarting into a still-red main should see why nothing merges. */
 let lastMainRedSha: string | null = null;
@@ -45,7 +45,9 @@ let lastHealKey: string | null = null;
 
 /** The failing tests a red verdict names, when the list is complete — non-empty and short of
  * FAILING_TESTS_MAX, which may have been cut short (the same rule as onlyKnownMainFailures).
- * Empty when it names none: main's red is then not a set of known failures, and the block stays. */
+ * Empty when it names none: main's red is then not a set of known failures, and the heal is
+ * keyed to the red SHA rather than a failing set (the event reads "code merges blocked until
+ * main is green"). */
 export function namedFailures(red: { failingTests?: string[] }): string[] {
   const tests = red.failingTests ?? [];
   return tests.length > 0 && tests.length < FAILING_TESTS_MAX ? tests : [];

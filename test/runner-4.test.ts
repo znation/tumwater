@@ -105,8 +105,9 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
   const repo = await initializedRepo();
   // Install signature at the repo root: detectBuildCheck walks up from the worktree to it,
   // and npm resolves the toolchain from there. The build script fails with a compiler-style
-  // line only while broken.ts exists — pristine main must stay green so the red-main baseline
-  // gate (which runs before authoring) does not block the run this test is about.
+  // line only while broken.ts exists — pristine main must stay green so the main baseline
+  // reports no red that would mask this test's
+  // pre-check rejection.
   fs.mkdirSync(path.join(repo, "node_modules", ".bin"), { recursive: true });
   const tool = path.join(repo, "node_modules", ".bin", "buildcheck-tool");
   writeScript(

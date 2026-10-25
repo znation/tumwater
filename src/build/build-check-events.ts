@@ -233,7 +233,8 @@ export function unverifiedTreeOutcome(outcome: { unverified?: boolean; run?: Bui
 
 /** The one-line warning for an environmental check skip, keyed on why the check could not run.
  * `label` names the check in the feed and `proceeding` says what happens despite the skip; the
- * scoped check (SCOPE_WORDS above) and the red-main baseline gate (main-red.ts) differ only in
+ * scoped check (SCOPE_WORDS above) and the main-red hand-off's baseline check
+ * (main-baseline.ts) differ only in
  * those two words, so the mapping lives here once instead of drifting per surface. A "killed"
  * skip carries the caller's `killed` info when it has it — the signal and the check's real
  * wall-clock, not the timeout bound — and a signal-less form otherwise, so the warning never
@@ -344,7 +345,8 @@ export interface BaselineCheckRun {
 }
 
 /** The onRun hook that logs one baseline check's build_check event through `log` under `source`:
- * main-red.ts's gate logger (logEventBestEffort) and redeploy.ts's green-check and witness hooks
+ * main-red.ts's baseline logger (logEventBestEffort) and redeploy.ts's green-check and witness
+ * hooks
  * all turn the same run shape into the same baseline event, so that mapping lives here once
  * instead of as three hand-rolled closures. `log` receives the event alone; a caller binds its
  * root (logEventBestEffort) or its RedeployEvent sink. */

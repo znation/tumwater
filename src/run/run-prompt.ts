@@ -177,7 +177,7 @@ export function assembleRunPrompt(
     }
     // A queued per-role prompt is dequeued here, before the prompt is built, so its text rides
     // in the run's prompt; PendingPrompt records it as pending and re-queues it on every
-    // unfulfilled outcome — including a red-main gate block, which returns before any run.
+    // unfulfilled outcome — including a merge-side `main_red` pin, which returns before any run.
     // A deferred prompt's `tumwater:not-before` marker line is plumbing
     // (src/inbox/prompt-not-before.ts), not
     // content: it is stripped at delivery, so the role sees the operator's text alone and the

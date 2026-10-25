@@ -2,7 +2,7 @@
  * processes: top-level tests within one file run sequentially, while each test FILE gets its
  * own process (and its own PATH, which fakePi's global PATH swap requires). The slices are
  * balanced by measured per-test duration; keep them roughly equal when moving tests between
- * the files. The red-main baseline block now lives in runner-red-main.test.ts (its own process,
+ * the files. The red-main baseline cases now live in runner-red-main.test.ts (its own process,
  * like every file here; makeMainRed lives in repo-fixtures.ts, which files here import).
  * The prompt-requeue survival cluster lives in runner-prompt-requeue.test.ts. */
 import test from "node:test";

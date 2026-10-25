@@ -1203,7 +1203,7 @@ doctor's `checkMainRed`.
 `src/ui/status-model.ts` (`rolePhase`), `src/doctor/doctor-holds.ts` (`checkMainRed`).
 
 **Pinned by.** `test/status-model.test.ts` — "rolePhase shows main red for idle roles whose last
-run was blocked by a red main", "rolePhase retires a stale main red when main's newest check passed
+run read main red", "rolePhase retires a stale main red when main's newest check passed
 after it" and "roleRowCells retires the stale main red and teamAlerts raises no banner for it";
 `test/doctor-holds.test.ts` — "checkMainRed: a role with a queued summary is ok" and "checkMainRed:
 a passed merge check newer than the red run retires the hold".

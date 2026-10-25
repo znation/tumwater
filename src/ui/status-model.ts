@@ -224,14 +224,14 @@ export function rolePhase(
   // figures so the operator sees how far over the window is; the string is preformatted by the
   // snapshot's holder, like roleQuietPaused's window.
   if (maintenanceQuotaHold) return maintenanceQuotaHold;
-  // Main's own suite is known red at this role's last run: code-producing roles are blocked
-  // from authoring until main is green (the red-main baseline check). Shown before sleep/queue
+  // Main's own suite is known red at this role's last run: main_red is the last completed
+  // outcome. Shown before sleep/queue
   // because it explains why the role keeps waking and merge nothing; self-correcting, since
-  // each blocked run re-records main_red while red and a green wake overwrites lastResult.
+  // each run re-records main_red while red and a green wake overwrites lastResult.
   // Except a green wake that queues a change: `queued` is in flight, not a completed result,
   // so it leaves the main_red pair in place until its merge resolves (run-apply.ts's
-  // applyRunOutcome) — its stashed summary is the tell that the role's latest run got past
-  // the red-main gate, so main was green then and "main red" would be stale.
+  // applyRunOutcome) — its stashed summary is the tell that the role's latest run saw
+  // main green, so "main red" would be stale.
   // Except too when main's newest merge-scope check PASSED after this role's red run ended:
   // the team-level verdict is fresher than the role's own, so the label is stale until the
   // role's next run — which can be hours away (BUGS.md 2026-09-30). A check older than the
@@ -408,7 +408,7 @@ export function isActivePhase(phase: string): boolean {
  * apart and never inflates the permit-holder count (BUGS.md 2026-10-06); 0 live work —
  * working, reviewing, merge (isActivePhase); 1 work waiting in the pipeline — a approved change
  * awaiting the merge slot, or a run parked awaiting a permit; 2 needs attention — failing, or
- * blocked by a red main; 3 paused — by the operator, by the budget, or by the role's own
+ * its last run read main red; 3 paused — by the operator, by the budget, or by the role's own
  * per-role cap; 4 everything else (idle: sleeping, queued, the director waiting for prompts, a
  * stopped team). The dashboard groups its role table by these ranks; the TUI/status table
  * orders by them.

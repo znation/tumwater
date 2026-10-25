@@ -1,5 +1,5 @@
 /** A scripted sleep clock for tests of the sleep-attributing checks (build-check,
- * main-baseline, main-red's gate, review's pre-check): each attempt samples the clock twice
+ * main-baseline, main-red's hand-off, review's pre-check): each attempt samples the clock twice
  * (open, close), so the samples hand the measurement its evidence and a test can put a host
  * sleep inside one attempt and none inside the next — no test can suspend the real host.
  * The single home of the `scriptedSampler`/`woke` pair — it lived as four per-file copies

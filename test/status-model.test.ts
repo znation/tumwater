@@ -367,14 +367,14 @@ test("rolePhase reads waiting: daily cap spent for idle roles held by their own 
   assert.equal(roleRank("waiting: daily cap spent"), 3);
 });
 
-test("rolePhase shows main red for idle roles whose last run was blocked by a red main", () => {
-  // Blocked: the label explains why the role keeps waking and merge nothing — ahead of its
+test("rolePhase shows main red for idle roles whose last run read main red", () => {
+  // The label explains why the role keeps waking and merge nothing — ahead of its
   // sleep/queue state, like waiting: budget spent.
   const s = freshRunnerState("feature");
   s.lastResult = "main_red";
-  assert.equal(rolePhase(s, true), "main's check is failing", "queued role shows the blockage");
+  assert.equal(rolePhase(s, true), "main's check is failing", "queued role reads main red");
   s.nextRunAt = Date.now() + 3_600_000;
-  assert.equal(rolePhase(s, true), "main's check is failing", "sleeping role shows the blockage too");
+  assert.equal(rolePhase(s, true), "main's check is failing", "sleeping role reads main red too");
 
   // Other results keep their ordinary labels; a green wake overwrites lastResult and self-corrects.
   const other = freshRunnerState("feature");

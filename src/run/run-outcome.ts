@@ -38,8 +38,8 @@ export type RunResult =
   /** A user-initiated abort (tumwater abort) killed the run mid-run; work discarded,
    * role backed off. */
   | "user_aborted"
-  /** Main's build/test suite is red: a run's baseline check skipped the authoring run, or
-   * a merge's check failed on a red main (pin kept, no strike). */
+  /** Main's build/test suite is red: a merge's check failed on a red main (pin kept, no
+   * strike). */
   | "main_red"
   /** Nothing to run (e.g. director with an empty inbox). */
   | "skipped";
@@ -68,8 +68,9 @@ export interface RunOutcome {
    * so the failure never rides its `run_end` (the sibling mislabel fix). */
   recoveryFailure?: string;
   /** The outcome's own cause, written deliberately for this result — never a leftover merge
-   * failure (those ride `state.lastError` and the recoveryFailure field above). Set by the
-   * red-main baseline gate (src/baseline/main-red.ts) so the run's `run_end` names what broke:
+   * failure (those ride `state.lastError` and the recoveryFailure field above). Set when a
+   * recovered `main_red_wait` pin records a red main (runner-recovery.ts — pin kept, no strike)
+   * so the run's `run_end` names what broke:
    * the failure digest's error clusters include main_red runs, and without a cause on the event
    * the Outcome table's main_red cells would read as a bare count (BUGS.md 2026-09-28). */
   error?: string;

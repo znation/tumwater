@@ -440,8 +440,9 @@ function brokenGitBin(): string {
 
 test("runBuildCheck skips (not fails closed) when the toolchain probe fails, and the check never runs", async () => {
   // BUGS.md 2026-09-15 in miniature: git exits 69 before any check runs. Pre-fix every such
-  // run was classified `failed` — a deterministic rejection at the gate, a red baseline at the
-  // main-red gate, a latched \"main is red\" at the redeploy — all of them about the toolchain,
+  // run was classified `failed` — a deterministic rejection at the gate, a red main verified
+  // by the hand-off (`mainRedHealNote`), a latched \"main is red\" at the redeploy — all of
+  // them about the toolchain,
   // none of them about the tree.
   const { root, wt } = buildCheckFixture();
   const counter = path.join(tmpdir(), "runs");
