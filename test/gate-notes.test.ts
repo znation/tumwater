@@ -4,6 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMergedPrerequisitesNote,
+  buildMainKnownRedNote,
   buildMainRedNote,
   buildRevisionNote,
   buildWaitingPartsNote,
@@ -136,6 +137,19 @@ test("buildMainRedNote renders the exact plain note for an absent, empty, or all
   for (const tail of [undefined, [], ["  "]]) {
     assert.equal(buildMainRedNote("abcdef1234567890", "test", "1) foo fails", tail), plain);
   }
+});
+
+test("buildMainKnownRedNote lists the failing tests, at most 20, in a <main-known-red> block", () => {
+  const note = buildMainKnownRedNote(["a fails", "b fails"]);
+  assert.ok(note.startsWith("<main-known-red>") && note.endsWith("</main-known-red>"));
+  assert.ok(note.includes("- a fails\n- b fails\n"));
+  assert.ok(note.includes("The ci role owns them"), "names ci as the owner");
+  assert.ok(note.includes("fixes it in its own worktree"), "any role may land a fix");
+  assert.ok(!note.includes("Leave them alone"), "no leave-them-alone wording");
+  assert.ok(!note.includes("bugfix"), "the bugfix role no longer owns them");
+  const many = buildMainKnownRedNote(Array.from({ length: 23 }, (_, i) => `t${i}`));
+  assert.ok(many.includes("- t19\n") && !many.includes("- t20\n"));
+  assert.ok(many.includes("- …and 3 more"));
 });
 
 

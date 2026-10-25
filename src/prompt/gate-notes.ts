@@ -206,6 +206,24 @@ If the failure is environmental — flaky, load-sensitive, or a broken local too
 ${tailBlock}</main-red>`;
 }
 
+/** The note injected into every role's prompt but the `ci` healer's own while main is red with
+ * named failures (the `<main-known-red>` block part 3a/3 dropped with the red-main authoring
+ * gate, re-added by the "Every role may fix main's failing check" decision 2026-10-25): the
+ * tests that already fail on main, and who owns them. The `ci` role owns the repair but does
+ * not monopolize it — any role whose change touches what a named test covers, or that can land
+ * a fix, fixes it in its own worktree and lets the change land normally. It is worded as
+ * permission to proceed (a main that names its failures stops nobody), never as "leave them
+ * alone". A pure function so its shape is pinned in tests; at most 20 tests are listed, then a
+ * `…and N more` line. */
+export function buildMainKnownRedNote(failingTests: readonly string[]): string {
+  const shown = failingTests.slice(0, 20).map((t) => `- ${t}`);
+  if (failingTests.length > 20) shown.push(`- …and ${failingTests.length - 20} more`);
+  return `<main-known-red>
+${shown.join("\n")}
+Main's tip already fails these tests. The ci role owns them and fixes them on its own clock. A role whose change touches what they test, or that can land a fix for one, fixes it in its own worktree and lets the change land normally — never weaken or delete a test to make the suite pass.
+</main-known-red>`;
+}
+
 /** The note appended to an assigned series part's prompt naming the later planned parts that
  * wait on it, so the implementer sees where its part ends and leaves their share alone. At most
  * five are listed, then a literal `- …and N more` line (the `moreSuffix` phrase renders inline,

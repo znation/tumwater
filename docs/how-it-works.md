@@ -230,7 +230,9 @@ discards a role's in-flight merge.
   director's, and wakes it. `--list` shows the inboxes grouped by role; per-role prompts
   wait behind a paused role like the director's wait behind a team pause.
 - While main's check is failing, every role keeps working: a change merges when it adds no new
-  failures. A newly-verified red main queues a ci healer — handed the failing tests when the red
+  failures, every role's prompt names the failing tests in a `<main-known-red>` block, and a fix
+  from any role lands like any other change — `ci` owns the repair without monopolizing it. A
+  newly-verified red main queues a ci healer — handed the failing tests when the red
   names them — so the healer starts on the next poll instead of waiting out its interval or
   deferral, once per failing set (not per red commit); that queued prompt no-ops (a "verify
   green" clause) if main turned green before it ran. Separately, the

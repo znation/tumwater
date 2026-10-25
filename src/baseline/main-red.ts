@@ -46,7 +46,7 @@ let lastHealKey: string | null = null;
 /** The failing tests a red verdict names, when the list is complete — non-empty and short of
  * FAILING_TESTS_MAX, which may have been cut short (the same rule as onlyKnownMainFailures).
  * Empty when it names none: main's red is then not a set of known failures, and the block stays. */
-function namedFailures(red: { failingTests?: string[] }): string[] {
+export function namedFailures(red: { failingTests?: string[] }): string[] {
   const tests = red.failingTests ?? [];
   return tests.length > 0 && tests.length < FAILING_TESTS_MAX ? tests : [];
 }

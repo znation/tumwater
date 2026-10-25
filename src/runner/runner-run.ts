@@ -16,6 +16,7 @@ import { logEventBestEffort } from "../events/events.js";
 import { buildConflictHandbackNote, buildSalvageRestoreNote } from "../prompt/gate-prompts.js";
 import {
   buildConflictDiscardNote,
+  buildMainKnownRedNote,
   buildRevisionNote,
   buildRejectedReviewNote,
 } from "../prompt/gate-notes.js";
@@ -50,7 +51,8 @@ import { applyRevision, applyWithConflicts } from "./revision.js";
 import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
 import { changedFiles } from "../git/git-diff.js";
 import { handlePiResultPhase } from "./runner-outcome.js";
-import { mainRedHealNote } from "../baseline/main-red.js";
+import { mainRedHealNote, namedFailures } from "../baseline/main-red.js";
+import { watchedBaseline } from "../baseline/main-baseline.js";
 import { extractCiResult, extractFlow, extractFiled } from "../verdict/reply-contract.js";
 
 /** The model-fallback episode context a run start resolves (src/runner/model-fallback.ts): the
@@ -577,6 +579,15 @@ async function runWithWorktreePhase(
     if (ctx.baseRole === "ci") {
       const note = await mainRedHealNote(ctx.root, ctx.role, wt);
       if (note) prompt = appendPromptNote(prompt, note);
+    } else {
+      // Every other role proceeds on the red main, told which tests already fail (the
+      // <main-known-red> note, restored 2026-10-25): a pure read of the main watch's persisted
+      // verdict (watchedBaseline runs no check), so the block appears only when a verdict names
+      // failures and a role's start pays nothing for it. `ci` owns the repair without
+      // monopolizing it — a fix from any role lands like any other change.
+      const baseline = await watchedBaseline(wt);
+      const tests = baseline?.status === "red" ? namedFailures(baseline) : [];
+      if (tests.length > 0) prompt = appendPromptNote(prompt, buildMainKnownRedNote(tests));
     }
   }
 
