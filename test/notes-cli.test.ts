@@ -150,6 +150,30 @@ test("write --file with an unreadable path exits 1 naming the path", () => {
   assert.equal(noteText(notesPath), undefined, "no note is written");
 });
 
+test("write --file of an empty or over-cap draft refuses like stdin and writes nothing", () => {
+  const dir = tmpdir();
+  const notesPath = path.join(dir, "feature.md");
+  run(["write"], notesPath, "the old note");
+
+  // An empty draft is refused through the file path exactly as empty stdin is, so pointing
+  // --file at a wiped draft cannot silently clear the note.
+  const emptyDraft = path.join(dir, "empty.txt");
+  fs.writeFileSync(emptyDraft, "");
+  const empty = run(["write", "--file", emptyDraft], notesPath);
+  assert.equal(empty.status, 1);
+  assert.match(empty.stderr, /nothing to write/);
+  assert.equal(noteText(notesPath), "the old note", "an empty draft must not clobber or clear the note");
+
+  // An over-cap draft is refused through the file path with the same byte-count validation
+  // message, not silently truncated or written.
+  const bigDraft = path.join(dir, "big.txt");
+  fs.writeFileSync(bigDraft, "x".repeat(ROLE_NOTES_MAX_BYTES + 1));
+  const big = run(["write", "--file", bigDraft], notesPath);
+  assert.equal(big.status, 1);
+  assert.match(big.stderr, new RegExp(`${ROLE_NOTES_MAX_BYTES + 1} bytes`));
+  assert.equal(noteText(notesPath), "the old note", "an over-cap draft must not be written");
+});
+
 test("no TUMWATER_NOTES_PATH exits 1 with 'this run keeps no notes'", () => {
   const res = run(["show"], null);
   assert.equal(res.status, 1);
