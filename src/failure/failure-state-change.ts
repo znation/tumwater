@@ -19,11 +19,10 @@ import { claudeUtilizationPct } from "../agent/claude/claude-account.js";
  * cap/team gates and the team hold, the error-streak breaker's pause, the role's own daily
  * cap, model fallbacks, live-config edits, self-hosted redeploys, need-based deferrals,
  * orchestrator lifecycle, and the gate holds/lifts that stop and restart work — low disk,
- * quiet hours, the maintenance allowance and the subscription-window reserve). Deliberately
- * left out, and said so here: `subscription_window_warning` (observational, gates nothing),
- * `disk_reclaim` (an action, not a state transition), `image_blind` (a run outcome), and
- * `permit_reserve`/`slot_wait`/`check_wait`/`provider_wait`/`claim` (per-run advisories or
- * assignments). The model-wiring twins `fallback_switched` and `budget_handback` are the
+ * quiet hours, the maintenance allowance and the subscription-window reserve). Everything the
+ * set omits is deliberately excluded and named in STATE_CHANGE_EXCLUDED_TYPES; the two sets
+ * partition EVENT_TYPE_LABELS' keys, so a new event type must land in exactly one of them and
+ * cannot ship unclassified. The wiring twins `fallback_switched` and `budget_handback` are the
  * run-side consequence of `budget_resumed` — the budget/window reopening that aborts in-flight
  * fallback runs so their next run continues on the primary. The rest are the evidence the
  * selfcheck role's load-bearing rule asks it to
@@ -70,6 +69,69 @@ export const STATE_CHANGE_TYPES = new Set<string>([
   "bootstrap_complete",
   "fallback_switched",
   "budget_handback",
+]);
+
+/** The event types the digest deliberately does not replay, one per EVENT_TYPE_LABELS key that
+ * is not a STATE_CHANGE_TYPES member. Together with STATE_CHANGE_TYPES it partitions
+ * EVENT_TYPE_LABELS' keys, so a new event type must be classified in one set or the other — the
+ * disjoint-and-covering commitment the digest's Team state changes section rests on. Grouped by
+ * reason, one line per group (the run-outcome half, the per-run advisories and the observations
+ * were named in the older comment; the state-adjacent group is newly listed). */
+export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>([
+  // Run, merge and main-watch outcomes and per-run bookkeeping.
+  "run_start",
+  "run_end",
+  "merge_queued",
+  "merge_cancelled",
+  "merge_topped",
+  "merge_done",
+  "merge_failed",
+  "merged",
+  "counters_reset",
+  "run_aborted",
+  "resume",
+  "wake",
+  "operator_revert",
+  "build_check",
+  "dep_install",
+  "budget_warning",
+  "role_cap_warning",
+  "main_check",
+  "main_culprit",
+  "main_red_hold",
+  "warning",
+  // Reviews and revisions.
+  "review_start",
+  "review_verdict",
+  "review_rejected",
+  "review_failed",
+  "revision",
+  "conflict_handback",
+  // Inbox and backlog.
+  "question_posted",
+  "issue_filed",
+  "entry_refused",
+  "prompt_enqueued",
+  "prompt_cancelled",
+  "prompt_edited",
+  "prompt_topped",
+  "prompt_taken",
+  // Per-run advisories and assignments.
+  "claim",
+  "permit_reserve",
+  "slot_wait",
+  "provider_wait",
+  "check_wait",
+  // Observations and actions.
+  "disk_reclaim",
+  "subscription_window_warning",
+  "image_blind",
+  // State-adjacent but not self-decisions.
+  "state_migrated",
+  "restart_forced",
+  "backend_binary",
+  "opencode_free_model_billed",
+  "image_reroute",
 ]);
 
 /** The Team state changes section's caps: newest N transitions, each line's payload capped at

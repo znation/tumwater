@@ -4,7 +4,9 @@ import {
   describeStateChange,
   STATE_CHANGE_TOP,
   STATE_CHANGE_TYPES,
+  STATE_CHANGE_EXCLUDED_TYPES,
 } from "../src/failure/failure-state-change.js";
+import { EVENT_TYPE_LABELS } from "../src/events/event-labels.js";
 import { formatTime } from "../src/text/datetime.js";
 import type { HarnessEvent } from "../src/events/events.js";
 
@@ -70,6 +72,23 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
   // section's business, not state changes.
   assert.ok(!STATE_CHANGE_TYPES.has("run_end"));
   assert.equal(STATE_CHANGE_TOP, 6);
+});
+
+test("every event type is replayed or explicitly excluded", () => {
+  // STATE_CHANGE_TYPES and STATE_CHANGE_EXCLUDED_TYPES partition EVENT_TYPE_LABELS' keys, so a
+  // new event type cannot ship unclassified; either it is a digest-replayed state change or it
+  // is named as deliberately excluded.
+  assert.deepEqual(
+    [...STATE_CHANGE_TYPES].filter((t) => STATE_CHANGE_EXCLUDED_TYPES.has(t)),
+    [],
+  );
+  assert.deepEqual(
+    Array.from(new Set([...STATE_CHANGE_TYPES, ...STATE_CHANGE_EXCLUDED_TYPES])).sort(),
+    Object.keys(EVENT_TYPE_LABELS).sort(),
+  );
+  for (const t of STATE_CHANGE_EXCLUDED_TYPES) {
+    assert.ok(Object.hasOwn(EVENT_TYPE_LABELS, t), `excluded type ${t} is not an event type`);
+  }
 });
 
 test("budget_paused leads with the breaker demotion cause when a fallback was demoted", () => {
