@@ -1083,6 +1083,24 @@ test("the role drawer always renders a Daily cap row for a non-director role, an
   assert.match(noneRole, /<dt>Daily cap<\/dt><dd[^>]*>no cap/);
   assert.match(noneRole, /data-act='cap-edit' data-arg='clean'>Set a cap<\/button>/);
 
+  // Under the cap with a forecast: the row appends · ~cap at HH:MM.
+  const underCap = openDrawer(["toggleRole"], {
+    status: workingStatus(),
+    responses: {
+      "/api/role?role=clean": {
+        notes: null,
+        nextPrompt: null,
+        inboxCount: 0,
+        dailyCap: { capUsd: 1, spentUsd: 0.6, over: false, roleIds: ["clean"] },
+        dailyCapHitAt: new Date(2026, 9, 16, 20, 0, 0).getTime(),
+      },
+    },
+  });
+  underCap.scope.toggleRole("clean");
+  await flush();
+  const underRole = underCap.paintedFor("drawerrole");
+  assert.match(underRole, /<dt>Daily cap<\/dt><dd[^>]*>\$0\.60 of \$1\.00 spent today \(not holding\) · ~cap at 20:00/);
+
   // The director shows no cap row.
   const directorStatus = workingStatus();
   directorStatus.roles[0]!.role = "director";

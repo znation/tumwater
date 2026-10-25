@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { dayKey } from "../src/text/datetime.js";
+import { projectCapHit } from "../src/budget/budget.js";
 import { rolePayload } from "../src/roles/role-view.js";
 import { inspectMarkdownLines, renderRoleMarkdown } from "../src/roles/role-render.js";
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
@@ -1085,6 +1086,31 @@ test("role payload carries the daily cap verdict and renders a Daily cap line", 
   assert.match(renderRoleMarkdown(old), /\(not holding\)$/m);
 });
 
+// The per-role cap's forecast (PLANS.md): while a role is under its cap and burning, the
+// payload carries the same projectCapHit instant the team budget badge renders as ~cap at HH:MM.
+test("role payload forecasts the daily cap hit while the role is under it", () => {
+  const dir = root();
+  const now = new Date(2026, 9, 16, 12, 0, 0);
+  const today = dayKey(now.getTime());
+  writeConfig(dir, { maxDailyCostUsdPerRole: { coverage: 1 } });
+  saveRunnerState(dir, { ...freshRunnerState("coverage"), dayStamp: today, dayCostUsd: 0.6 });
+  const p = rolePayload(dir, "coverage", NO_MODELS, now);
+  assert.equal(p.dailyCapHitAt, projectCapHit({ spentUsd: 0.6, capUsd: 1 }, now.getTime()));
+  assert.match(renderRoleMarkdown(p), /· ~cap at 20:00$/m);
+
+  // Over the cap: no forecast (the hold supersedes it).
+  saveRunnerState(dir, { ...freshRunnerState("coverage"), dayStamp: today, dayCostUsd: 1.2 });
+  const over = rolePayload(dir, "coverage", NO_MODELS, now);
+  assert.equal("dailyCapHitAt" in over, false);
+  assert.doesNotMatch(renderRoleMarkdown(over), /~cap at/);
+
+  // No burn today: no forecast.
+  saveRunnerState(dir, { ...freshRunnerState("coverage"), dayStamp: today, dayCostUsd: 0 });
+  const zero = rolePayload(dir, "coverage", NO_MODELS, now);
+  assert.equal("dailyCapHitAt" in zero, false);
+  assert.doesNotMatch(renderRoleMarkdown(zero), /~cap at/);
+});
+
 test("daily cap sums instances, and is absent for cap 0, the director, or no cap", () => {
   const dir = root();
   const now = new Date(2026, 9, 16, 12, 0, 0);
@@ -1103,10 +1129,14 @@ test("daily cap sums instances, and is absent for cap 0, the director, or no cap
   assert.match(renderRoleMarkdown(p), /· shared by feature, feature-2, feature-3, feature-4$/m);
   assert.equal("dailyCap" in rolePayload(dir, "coverage", NO_MODELS, now), false);
   assert.equal("dailyCap" in rolePayload(dir, "director", NO_MODELS, now), false);
+  // The forecast cannot outlive the dailyCap gate.
+  assert.equal("dailyCapHitAt" in rolePayload(dir, "coverage", NO_MODELS, now), false);
+  assert.equal("dailyCapHitAt" in rolePayload(dir, "director", NO_MODELS, now), false);
 
   const bare = root();
   const np = rolePayload(bare, "feature", NO_MODELS, now);
   assert.equal("dailyCap" in np, false);
+  assert.equal("dailyCapHitAt" in np, false);
   assert.doesNotMatch(renderRoleMarkdown(np), /Daily cap/);
 });
 

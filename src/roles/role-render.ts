@@ -337,6 +337,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
     const dc = p.dailyCap;
     let cap = `- Daily cap: ${usd(dc.spentUsd)} of ${usd(dc.capUsd)} spent today (${dc.over ? "holding now — no new runs until local midnight" : "not holding"})`;
     if (dc.roleIds.length > 1) cap += ` · shared by ${dc.roleIds.join(", ")}`;
+    if (p.dailyCapHitAt !== undefined) cap += ` · ~cap at ${clockHm(p.dailyCapHitAt)}`;
     lines.push(cap);
   }
   // The role's schedule (role-view.ts's nextRunAt/backoffSeconds/lastRunEndedAt, read from

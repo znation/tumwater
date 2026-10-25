@@ -328,7 +328,10 @@ discards a role's in-flight merge.
   fallback, and the other roles, the team-wide cap, and its fallback demotion are untouched.
   Before that, the role logs one `role_cap_warning` event when its own spend crosses the same
   fixed 80% while it is still running — re-armed when spend falls back below — so a configured
-  notify command can page you while there is still room to raise the cap.
+  notify command can page you while there is still room to raise the cap. While a role is under
+  its cap and burning, `tumwater role <id>` and the dashboard role drawer state `~cap at
+  HH:MM` — the same `projectCapHit` forecast the budget badge carries for the team cap — so
+  the cap can be raised before the hold starts.
 - `fallback` names a free model that roles switch to at the cap instead of stopping (the
   legacy `fallbackModel` object still parses). Each model job runs its tier's resolved fallback:
   the tier's own entry, else the nearest other tier's own fallback (small → default → strong;

@@ -17,6 +17,7 @@ import { pausedRoles } from "../team/team-state.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { baseRoleOf, runnerIds, runnerPaused } from "./runner-ids.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
+import { projectCapHit } from "../budget/budget.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { quietHoursStatus } from "../scheduling/quiet-hours.js";
 import { assembleRunPrompt } from "../run/run-prompt.js";
@@ -218,6 +219,11 @@ export interface RoleViewPayload {
    * spend today, `roleIds` the instances sharing the cap. Absent when no cap above 0 applies
    * (and for the director), so a team without per-role caps keeps its JSON shape. */
   dailyCap?: { capUsd: number; spentUsd: number; over: boolean; roleIds: string[] };
+  /** The role's own cap's `projectCapHit({ spentUsd, capUsd }, now)` forecast instant — when
+   * today's burn reaches the cap, the per-role twin of the team budget badge's `~cap at HH:MM`.
+   * Present only while a forecast stands (under the cap and burning), so a capped-but-over,
+   * zero-spend, or no-cap payload keeps its current JSON shape. */
+  dailyCapHitAt?: number;
 }
 
 /** The roles.<base>.<field> value the FILE actually holds, or undefined when the file never
@@ -405,12 +411,17 @@ export function rolePayload(
   const backendOverride = typeof backendOverrideRaw === "string" ? backendOverrideRaw : undefined;
   const capUsd = cfg.maxDailyCostUsdPerRole?.[base];
   let dailyCap: RoleViewPayload["dailyCap"];
+  let dailyCapHitAt: number | undefined;
   if (role !== DIRECTOR_ROLE && typeof capUsd === "number" && Number.isFinite(capUsd) && capUsd > 0) {
     const ids = runnerIds(cfg).filter((id) => baseRoleOf(id) === base);
     if (!ids.includes(role)) ids.push(role);
     const runners = ids.map((id) => ({ role: id, state: id === role ? state : loadRunnerState(root, id) }));
     const verdict = roleCapVerdicts(runners, cfg.maxDailyCostUsdPerRole, now.getTime()).get(base);
-    if (verdict) dailyCap = { capUsd, spentUsd: verdict.spentUsd, over: verdict.over, roleIds: verdict.roleIds };
+    if (verdict) {
+      dailyCap = { capUsd, spentUsd: verdict.spentUsd, over: verdict.over, roleIds: verdict.roleIds };
+      const hitAt = projectCapHit({ spentUsd: verdict.spentUsd, capUsd }, now.getTime());
+      if (hitAt !== null) dailyCapHitAt = hitAt;
+    }
   }
   // The role's notes, read for display. The same degradation as every other read here: a
   // missing, empty, or unreadable file is simply "no note yet". The director has none.
@@ -523,5 +534,6 @@ export function rolePayload(
     ...(recentOutcomes.length > 0 ? { recentOutcomes } : {}),
     ...(usage.tokens !== 0 || usage.costUsd !== 0 || usage.notionalCostUsd !== 0 ? { usage } : {}),
     ...(dailyCap ? { dailyCap } : {}),
+    ...(dailyCapHitAt !== undefined ? { dailyCapHitAt } : {}),
   };
 }
