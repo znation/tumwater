@@ -329,4 +329,30 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Files touched.** src/ui/tui/tui-frame.ts test/tui-frame.test.ts test/tui-keys-doc.test.ts
 
+### The failure digest's Team state changes classification is exhaustive: every event type is replayed or explicitly excluded (planned 2026-10-25 by the plan role; independent in files of every in-flight and blocked entry — the in-flight dashboard quarantine-release plan edits src/review/quarantine-render.ts, src/gui and src/ui/gui/gui-client-report.ts, the TUI quarantine-release plan edits src/ui/tui, and the Activity-hint plan edits src/ui/tui/tui-frame.ts, test/tui-frame.test.ts and test/tui-keys-doc.test.ts; no blocked `Every commit is verified on main` part edits src/failure or test/failure-state-change.test.ts, so the only shared edits are none; touches src/failure/failure-state-change.ts test/failure-state-change.test.ts)
+
+**Goal.** `renderFailureMarkdown`'s Team state changes section replays the harness's self-decisions from `STATE_CHANGE_TYPES` (src/failure/failure-state-change.ts), and `failure-data.ts`'s `collectStateChanges` is the only reader of the set. The set's doc comment promises that every excluded type is "said so here", but that prose names only eight of the 48 event types in `EVENT_TYPE_LABELS` (src/events/event-labels.ts) that the set omits: the latest digest expansion had to hand-add `fallback_switched` and `budget_handback` because the earlier comment did not name them, so a self-decision event can drop out of the digest silently — exactly the defect class the last plan fixed by hand. Make the classification a checkable partition: a second exported set names every deliberately-unreplayed event type, and a test over `EVENT_TYPE_LABELS`' keys proves the two sets are disjoint and together cover every type the harness can log, so a new event type cannot ship unclassified.
+
+**Approach.**
+- src/failure/failure-state-change.ts, after the `STATE_CHANGE_TYPES` literal: add `export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>([...])` (same `Set<string>` shape as `STATE_CHANGE_TYPES`) holding every `EVENT_TYPE_LABELS` key that is not in `STATE_CHANGE_TYPES`, grouped by a comment per category so the reason is one line per group, not per entry:
+  - run, merge and main-watch outcomes and per-run bookkeeping: `run_start`, `run_end`, `merge_queued`, `merge_cancelled`, `merge_topped`, `merge_done`, `merge_failed`, `merged`, `counters_reset`, `run_aborted`, `resume`, `wake`, `operator_revert`, `build_check`, `dep_install`, `budget_warning`, `role_cap_warning`, `main_check`, `main_culprit`, `main_red_hold`, `warning`;
+  - reviews and revisions: `review_start`, `review_verdict`, `review_rejected`, `review_failed`, `revision`, `conflict_handback`;
+  - inbox and backlog: `question_posted`, `issue_filed`, `entry_refused`, `prompt_enqueued`, `prompt_cancelled`, `prompt_edited`, `prompt_topped`, `prompt_taken`;
+  - per-run advisories and assignments, already named in the comment: `claim`, `permit_reserve`, `slot_wait`, `provider_wait`, `check_wait`;
+  - observations and actions, already named in the comment: `disk_reclaim`, `subscription_window_warning`, `image_blind`;
+  - state-adjacent but not self-decisions, newly named: `state_migrated` (a startup state-file migration), `restart_forced` (an operator-forced restart), `backend_binary` (a doctor backend-binary probe), `opencode_free_model_billed` (a billing observation), `image_reroute` (a run outcome, the `image_blind` twin).
+- Rewrite `STATE_CHANGE_TYPES`' doc comment so the prose exclusion list is replaced by a pointer to `STATE_CHANGE_EXCLUDED_TYPES` and a statement of the contract: the two sets partition `EVENT_TYPE_LABELS`' keys, so a new event type must be classified in one of them. Keep the existing justification of the set's membership (the self-decisions the selfcheck role judges) unchanged.
+- No change to `collectStateChanges`, `describeStateChange`, or any render output: this plan classifies, it does not add or remove a replayed transition.
+
+**Acceptance criteria.**
+- `STATE_CHANGE_TYPES` and `STATE_CHANGE_EXCLUDED_TYPES` are disjoint, and the union of their members equals `Object.keys(EVENT_TYPE_LABELS)` exactly (no missing and no extra type).
+- Every member of `STATE_CHANGE_EXCLUDED_TYPES` is a real `EVENT_TYPE_LABELS` key.
+- `STATE_CHANGE_TYPES`' membership, the Team state changes section's wording and cap, and every existing `describeStateChange` output are unchanged; source comparisons for `src/failure/failure-state-change.ts`'s `describeStateChange` and the existing test expectations pass unchanged.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/failure-state-change.test.ts: add `every event type is replayed or explicitly excluded` — import `EVENT_TYPE_LABELS` from ../src/events/event-labels.js and `STATE_CHANGE_TYPES`/`STATE_CHANGE_EXCLUDED_TYPES` from ../src/failure/failure-state-change.js; assert `[...STATE_CHANGE_TYPES].filter((t) => STATE_CHANGE_EXCLUDED_TYPES.has(t))` is `[]` (disjoint); assert `Array.from(new Set([...STATE_CHANGE_TYPES, ...STATE_CHANGE_EXCLUDED_TYPES])).sort()` equals `Object.keys(EVENT_TYPE_LABELS).sort()` (covers every type, and no type is in neither set); and assert every `STATE_CHANGE_EXCLUDED_TYPES` member is in `EVENT_TYPE_LABELS`. The existing `STATE_CHANGE_TYPES lists the replayed transitions` case is unchanged.
+
+**Files touched.** src/failure/failure-state-change.ts test/failure-state-change.test.ts
+
 ## Done
