@@ -379,4 +379,34 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 **Tests.**
 - No new test module: the CLI suites are the guard. Run `test/cli.test.ts` and the `test/cli-*.test.ts` files whole (arg strictness, flag-value errors, help, preflight, operators, backlog follow, logs, history, queue, questions, status, team-workspace, doctor, start guards) and confirm green.
 
+### `statusPayload`'s 350-line flat assembly is split into one named builder per payload field group, so a field group is found by name (planned 2026-10-25 by the plan role; independent in files of every eligible plan and blocked part — `grep -n 'src/ui/status-payload.ts' PLANS.md` matches nothing, and no `## Planned` entry's Files-touched list names it: the in-flight plans edit src/cli.ts, src/agent, src/redeploy/redeployer.ts and src/run/run-stage.ts, while the blocked `Every commit is verified on main` parts edit src/review, src/orchestrator, src/runner/runner-run.ts, src/merge, src/baseline, src/status, src/doctor, src/config, src/cli/cli-role-command.ts, src/cli/help.ts, src/ui/status-model.ts, src/ui/gui and src/ui/tui (none src/ui/status-payload.ts), and parts 3n/3 and 3o/3 are test-only; the three landed 2026-10-25 alert plans that last edited this file (the parallel-instances pool, provider-caps and principles-truncated alerts) are merged in PLANS-DONE.md, so no waiting work touches it; touches src/ui/status-payload.ts)
+
+**Goal.** `statusPayload` (src/ui/status-payload.ts) is one 350-line function: it maps `snap.roles` into ~40 per-role fields and then returns one ~200-line flat object literal whose ~80 keys interleave header badges, merge/main-check state, inbox, budget, pause/scheduling, the event feed, the backlog and the alerts. A reader who wants "where does `quietBadge` come from" or "which fields does `--role` scope" has to scan the whole literal. Split it into one module-private builder per field group, so a payload field group is found by name; `statusPayload` becomes the snapshot/scope/read preamble plus a composition of those builders.
+
+**Approach.** All edits in src/ui/status-payload.ts; no export changes (`statusPayload` and `recentFinished` keep their signatures and the `object` return type).
+- Extract the `snap.roles.map(...)` row builder into `roleRows(snap, root, now)`; its body is today's map callback verbatim, so its inferred return type carries the per-role fields.
+- Extract the `planSeries` loop into `planSeriesSlots(plans, holds, working): ({ name: string; label: string } | null)[]` (still using `groupBlockedSeries`/`partsLabel`).
+- Partition the return literal, in its existing key order, into these module-private builders, each returning a partial object of exactly the keys today's literal lists (same order, same conditional omissions, same comments moved with their keys):
+  - `headerFields(snap, now)` — project, running, pid, build, buildBadge, budgetBadge, disk/diskBadge, permits/permitsBadge, checkPermits/checksBadge, slotPool/workspacesBadge, runStopsAt/scheduledStopAt/runWindowBadge.
+  - `mergeAndCheckFields(root, snap, now)` — mergeQueue/mergeBadge, postReviews, mergeQueueLabels, mainCheck/mainCheckBadge, ciParityBadge, noDeclaredCheck, noBrief, briefTruncated, roleNotesOverCap, principlesTruncated, ciParityTone, mainCounts.
+  - `inboxFields(snap)` — inbox, inboxPrompts, inboxFiles, inboxQueuedAt, inboxNotBefore, roleInbox, roleInboxPrompts.
+  - `budgetAndPauseFields(snap)` — budget, claudeWindow, subscriptionWindows, subscriptionOnly, chain, paused, pausedRoles, pausedLoops, capPaused, maintenanceQuota, bootstrap/bootstrapHeld/bootstrapBadge, roleQuietPaused, pausedUntil, pausedRolesUntil, scheduledWake, scheduledWakes, pauseReason, quietHours, inQuietHours, quietBadge.
+  - `feedFields(recent)` — events, eventItems.
+  - `backlogFields(root, plans, marks, holds, planSeries, questions)` — plans, bugs, planHolds, bugHolds, planBlocked, bugBlocked, planSeries, questions, answeredQuestions, donePlans, fixedBugs.
+  - `alertFields(root, snap, questions, roleIds, now)` — alerts; `statusPayload` passes `roles.map((r) => r.role)` so the `teamAlerts(...)` argument list is unchanged.
+- `statusPayload`'s body keeps `snapshot`/`scopeSnapshotToRoles`, `readEvents`, `openQuestions`, `backlogMarks`, `backlogHolds`, `plannedPlans`, `backlogInProgress`, then `const roles = roleRows(...)`, then returns `{ ...headerFields(...), ...mergeAndCheckFields(...), ...inboxFields(...), ...budgetAndPauseFields(...), roles, ...feedFields(recent), ...backlogFields(...), ...alertFields(...) }` in that order.
+- Move each moved field's existing `//` comment into the builder that owns it; do not reword the comments.
+
+**Files touched.** src/ui/status-payload.ts
+
+**Acceptance criteria.**
+- `statusPayload` returns a deep-equal object to today's for the same root, `now`, scope and `modelsPath`; the top-level JSON key order is unchanged (capture `Object.keys(statusPayload(root, now))` before the edit and assert it identical after).
+- Every field of today's literal appears exactly once across the builders, and `statusPayload`'s body contains none of the moved field literals — only the preamble, `roleRows(...)`, `planSeriesSlots(...)` and the spread composition.
+- The builders and `roleRows`/`planSeriesSlots` are module-private (not exported); `statusPayload`/`recentFinished` keep their signatures and the `object` return type, and no import is added or removed.
+- No edit outside src/ui/status-payload.ts.
+- `npm run test:gate` passes.
+
+**Tests.**
+- No new test module: the existing direct-payload suites are the guard. Run `test/status-payload.test.ts`, `test/status-data.test.ts`, `test/status-data-team.test.ts`, `test/status-data-models.test.ts`, `test/team-alerts.test.ts`, `test/gui.test.ts`, `test/gui-endpoints.test.ts` and `test/cli.test.ts` whole and confirm green (`test/cli.test.ts` deep-equals its parsed `status --json` stdout against `statusPayload(root)`, and `test/gui.test.ts` deep-equals `JSON.parse(JSON.stringify(statusPayload(repo)))`).
+
 ## Done
