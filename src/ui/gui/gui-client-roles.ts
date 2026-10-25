@@ -105,7 +105,7 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
     const detail = phaseDetailBase(l, info, d);
     const w = scheduledWakeFor(l, d);
     if (!w) return detail;
-    return (detail ? detail + " · " : "") + "your wake in " + humanSeconds(Math.max(0, Math.round((w.atMs - Date.now()) / 1000)));
+    return (detail ? detail + " · " : "") + "your wake in " + humanSeconds(secsUntil(w.atMs, Date.now()));
   }
   function phaseDetailBase(l, info, d) {
     const raw = fmtNextRun(l, d.running);
@@ -128,7 +128,7 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
     const streak = cutOff || noChange;
     if (info.key === "sleeping") return (backoff || (next === "-" ? "" : next === "now" ? "wakes now" : "wakes in " + next)) + note + streak;
     if (info.key === "queued") return (backoff || info.detail) + note + streak;
-    if (info.key === "paused" && d.pausedRolesUntil && !d.paused && (d.pausedLoops || []).includes(l.role)) return info.detail + " · resumes in " + humanSeconds(Math.max(0, Math.round((d.pausedRolesUntil - Date.now()) / 1000))); // retired-name-ok: serialized /api key
+    if (info.key === "paused" && d.pausedRolesUntil && !d.paused && (d.pausedLoops || []).includes(l.role)) return info.detail + " · resumes in " + humanSeconds(secsUntil(d.pausedRolesUntil, Date.now())); // retired-name-ok: serialized /api key
     return info.detail + streak;
   }
   function roleCells(l, d) {

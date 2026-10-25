@@ -280,7 +280,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   const PAUSE_CHOICES = [[1800, "For 30 minutes"], [3600, "For 1 hour"], [7200, "For 2 hours"], [28800, "For 8 hours"], [0, "Until I resume it"]];
   // How long a timed team pause has left (humanSeconds), or "" for a standing one.
   function pauseLeft(d) {
-    return d.pausedUntil ? humanSeconds(Math.max(0, Math.round((d.pausedUntil - Date.now()) / 1000))) : "";
+    return d.pausedUntil ? humanSeconds(secsUntil(d.pausedUntil, Date.now())) : "";
   }
   // The sidebar's pause control: Resume (with a timed pause's countdown) while the team is
   // paused, otherwise the button that opens the menu of timed pauses.

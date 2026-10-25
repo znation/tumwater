@@ -181,12 +181,15 @@ const FORMAT_JS = String.raw`  // format:start
   const isActivePhase = (phase) => ACTIVE_PHASE_PREFIXES.some((p) => phase.startsWith(p));
   // active-phase-fmt:end
   // last-run-fmt:start
+  // Whole seconds between two epoch-ms instants, clamped at zero and rounded to the nearest
+  // second — datetime.ts's secondsSince/secondsUntil (the browser runtime cannot import
+  // them), shared by every relative time on the page so the clamp cannot drift between
+  // fmtLastRun, fmtAgo, and the spliced views' pause/wake/queue ages.
+  const secsSince = (sinceMs, now) => Math.max(0, Math.round((now - sinceMs) / 1000));
+  const secsUntil = (atMs, now) => Math.max(0, Math.round((atMs - now) / 1000));
   // The absolute local time of a run end with its age ("14:32:05 · 3m ago"), prefixed MM-DD
   // once older than a day; "-" when never ran — status-render.ts's lastRunCell.
-  // Whole elapsed seconds since an instant, clamped at zero and rounded to the nearest
-  // second — datetime.ts's secondsSince (the browser runtime cannot import it), shared by
-  // fmtLastRun and fmtAgo below so the clamp cannot drift between the page's ages.
-  const ageSec = (ts) => Math.max(0, Math.round((Date.now() - ts) / 1000));
+  const ageSec = (ts) => secsSince(ts, Date.now());
   const fmtLastRun = (ts) => {
     if (!ts) return "-";
     const d = new Date(ts);
