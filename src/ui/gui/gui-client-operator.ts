@@ -146,7 +146,11 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   }
   // The sidebar's spend card for a payload's budget block: a plain card for an all-free team
   // (no spend a cap could bind, so no editor), otherwise the button that opens the cap editor,
-  // with a meter while a cap is set.
+  // with a meter while a cap is set. When the snapshot's budget.capHitAt stands (budget.ts's
+  // projectCapHit), the card names the burn-rate cap forecast ~cap at HH:MM — the same clock
+  // text budgetBadge prints — between the meter and any window lines, so the browser and the
+  // terminal header cannot disagree. capHitAt is null (or absent) whenever no cap is set, so the
+  // forecast never renders on a no-cap card.
   function budgetCardHtml(b, blocks, only, chain) {
     // A subscription-only team has no priced spend for a cap to bind, so the window card
     // stands in place of the spend card and carries no editor — but only while a window block
@@ -167,7 +171,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       esc(capped ? "Today's spend against the daily cap — click to change the cap" : "No daily cap — click to set one") + "'>" +
       "<span class='side-card-label'>" + icon("dollar") + "Spent today<span class='edit'>" + (capped ? "Edit cap" : "Set a cap") + "</span></span>" +
       "<span class='side-card-value'>" + esc(fmtUsd(b.spentUsd)) + " <small>" + esc(capped ? "of " + fmtCap(b.capUsd) : "no daily cap") + "</small></span>" +
-      (capped ? meterBar(tone, pct.toFixed(1)) : "") + windowLinesHtml(blocks, only, chain) + "</button>";
+      (capped ? meterBar(tone, pct.toFixed(1)) : "") + (b.capHitAt != null ? "<span class='side-card-value window-line'>~cap at " + esc(windowClock(b.capHitAt)) + "</span>" : "") + windowLinesHtml(blocks, only, chain) + "</button>";
   }
   function renderBudgetBadge(d) {
     if (budgetEditing) return; // the open editor owns the slot until save or cancel

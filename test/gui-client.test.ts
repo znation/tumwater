@@ -488,6 +488,8 @@ test("the spend card is an editor button unless every model is free", () => {
   assert.match(priced, /<button type='button' class='side-card' id='budgetbadge'/);
   assert.match(priced, /\$4\.09 <small>of \$15<\/small>/, "spend against the cap, whole-dollar caps bare");
   assert.match(priced, /<span class='meter'><span style='width:27\.3%'>/);
+  assert.match(scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null, capHitAt: new Date(2026, 9, 24, 22, 5).getTime() }), /<span class='side-card-value window-line'>~cap at 22:05<\/span>/, "the burn-rate cap forecast rides a priced capped card");
+  assert.doesNotMatch(scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null, capHitAt: null }), /~cap/, "no capHitAt, no forecast");
   assert.match(scope.budgetCardHtml({ spentUsd: 13, capUsd: 15, free: false }), /class='meter t-amber'/, "85% of the cap turns amber");
   assert.match(scope.budgetCardHtml({ spentUsd: 16, capUsd: 15, free: false }), /class='meter t-red'><span style='width:100\.0%'/, "a spent cap is red and full");
   const uncapped = scope.budgetCardHtml({ spentUsd: 2, capUsd: 0, free: false, fallback: null });
