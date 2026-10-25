@@ -660,14 +660,14 @@ test("instances-edit opens the editor, instances-save posts the count (empty inp
   assert.deepEqual(events, ["stop"]);
 });
 
-test("model-edit seeds the editor from the raw overrides, model-save posts the trimmed triple, model-discard posts nothing", () => {
+test("model-edit seeds the editor from the raw overrides, model-save posts the trimmed set, model-discard posts nothing", () => {
   const posts: unknown[] = [];
   const events: string[] = [];
   const scope = clientScope<{ runAct(a: string, b: string): void }>(
     ["run-act"], ["runAct"],
     {
-      drawerRole: { role: "clean", state: "ok", view: { providerOverride: "claude", modelOverride: "claude-opus-5", thinkingOverride: "high" } },
-      $: (id: string) => ({ "modeleditprovider": { value: " claude " }, "modeleditmodel": { value: "claude-opus-5" }, "modeleditthinking": { value: "high" } }[id] || null),
+      drawerRole: { role: "clean", state: "ok", view: { providerOverride: "claude", modelOverride: "claude-opus-5", thinkingOverride: "high", backendOverride: "claude" } },
+      $: (id: string) => ({ "modeleditprovider": { value: " claude " }, "modeleditmodel": { value: "claude-opus-5" }, "modeleditthinking": { value: "high" }, "modeleditbackend": { value: " claude " } }[id] || null),
       startModelEdit: (r: string, seed: object) => events.push(`edit ${r} ${JSON.stringify(seed)}`),
       stopModelEdit: () => events.push("stop"),
       modelEditing: { current: null },
@@ -681,15 +681,15 @@ test("model-edit seeds the editor from the raw overrides, model-save posts the t
   );
   // model-edit seeds the editor with the payload's raw overrides.
   scope.runAct("model-edit", "clean");
-  assert.deepEqual(events, ["edit clean " + JSON.stringify({ provider: "claude", model: "claude-opus-5", thinking: "high" })]);
-  // model-save posts the three trimmed input values and flashes the server's message.
+  assert.deepEqual(events, ["edit clean " + JSON.stringify({ provider: "claude", model: "claude-opus-5", thinking: "high", backend: "claude" })]);
+  // model-save posts the four trimmed input values and flashes the server's message.
   scope.runAct("model-save", "clean");
-  assert.deepEqual(posts[0], ["/api/role-model", { role: "clean", provider: "claude", model: "claude-opus-5", thinking: "high" }]);
+  assert.deepEqual(posts[0], ["/api/role-model", { role: "clean", provider: "claude", model: "claude-opus-5", thinking: "high", backend: "claude" }]);
   assert.deepEqual(events.slice(-2), ["load clean", "clean: model updated"]);
   // model-discard closes the editor, posting nothing.
   events.length = 0;
   scope.runAct("model-discard", "clean");
-  assert.deepEqual(posts, [["/api/role-model", { role: "clean", provider: "claude", model: "claude-opus-5", thinking: "high" }]]);
+  assert.deepEqual(posts, [["/api/role-model", { role: "clean", provider: "claude", model: "claude-opus-5", thinking: "high", backend: "claude" }]]);
   assert.deepEqual(events, ["stop"]);
 });
 

@@ -1427,12 +1427,12 @@ function serveRoleInterval(root: string, body: unknown) {
 }
 
 // POST /api/role-model: the role drawer's Model overrides editor sets or clears one role's
-// provider/model/thinking triple (roles.<base>.*) in one atomic write through
+// provider/model/thinking/backend set (roles.<base>.*) in one atomic write through
 // setRoleModelFields — the per-role hold the Model row renders read-only. Same body
 // discipline as /api/role-interval; a missing/blank role, a non-string field, or a body
-// with none of the three is a 400; an instance id maps to its base role's keys; the
-// director is accepted; a bad thinking level is refused naming roles.<base>.thinking; an
-// unknown role is refused on the set and the no-op/clear path alike.
+// with none of the four is a 400; an instance id maps to its base role's keys; the
+// director is accepted; a bad thinking level or an unknown backend id is refused naming
+// roles.<base>.<field>; an unknown role is refused on the set and the no-op/clear path alike.
 function serveRoleModel(root: string, body: unknown) {
   return captureJson((res) => handleRoleModel(fakeReq(JSON.stringify(body)), res, root));
 }
@@ -1508,10 +1508,10 @@ test("handleRoleModel refuses a missing role, a non-string field, none-of-the-th
   const nonString = await serveRoleModel(root, { role: "feature", provider: 5 });
   assert.equal(nonString.captured.status, 400);
   assert.match((nonString.data as { error: string }).error, /"provider" must be a string/);
-  // A body with none of the three fields answers 400.
+  // A body with none of the four fields answers 400.
   const none = await serveRoleModel(root, { role: "feature" });
   assert.equal(none.captured.status, 400);
-  assert.match((none.data as { error: string }).error, /provider, model or thinking required/);
+  assert.match((none.data as { error: string }).error, /provider, model, thinking or backend required/);
   // An unknown role id is refused through validateConfig, writing nothing.
   const unknown = await serveRoleModel(root, { role: "nope", provider: "huggingface" });
   assert.equal(unknown.captured.status, 400);
@@ -1523,6 +1523,50 @@ test("handleRoleModel refuses a missing role, a non-string field, none-of-the-th
   const unknownNoop = await serveRoleModel(root, { role: "nope", provider: "" });
   assert.equal(unknownNoop.captured.status, 400);
   assert.match((unknownNoop.data as { error: string }).error, /unknown role|nope/i);
+});
+
+test("handleRoleModel writes a backend override and clears it, refusing an unknown backend id", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { enabled: true } } });
+  // A body carrying only backend, none of the other three, is accepted and written.
+  const { captured, data } = await serveRoleModel(root, { role: "feature", backend: "claude" });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, role: "feature", message: "feature: model updated" });
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  const feat = (onDisk.roles as { feature: Record<string, unknown> }).feature;
+  assert.equal(feat.enabled, true, "the entry's other fields preserved");
+  assert.equal(feat.backend, "claude");
+  assert.equal("provider" in feat, false, "only the named fields are written");
+  // An empty backend clears it through setRoleModelFields's delete arm.
+  const cleared = await serveRoleModel(root, { role: "feature", backend: "" });
+  assert.equal(cleared.captured.status, 200);
+  const after = readJson(configPath(root)) as Record<string, unknown>;
+  assert.deepEqual((after.roles as { feature: Record<string, unknown> }).feature, { enabled: true }, "clearing backend leaves the other fields kept");
+  // An unknown backend id is refused by validateConfig's checkEntryBackend, file untouched.
+  const beforeBad = fs.readFileSync(configPath(root), "utf8");
+  const bad = await serveRoleModel(root, { role: "feature", backend: "claud" });
+  assert.equal(bad.captured.status, 400);
+  assert.match((bad.data as { error: string }).error, /claude|backend|opencode|codex/i);
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), beforeBad, "a rejected write never touches the file");
+});
+
+test("handleRoleModel refuses a body with none of the four fields and accepts a backend with the model triple", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { roles: { feature: { provider: "huggingface" } } });
+  const before = fs.readFileSync(configPath(root), "utf8");
+  // A body with none of provider/model/thinking/backend answers 400.
+  const none = await serveRoleModel(root, { role: "feature" });
+  assert.equal(none.captured.status, 400);
+  assert.match((none.data as { error: string }).error, /provider, model, thinking or backend required/);
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "a refused write leaves the file byte-identical");
+  // The existing provider/model/thinking-only bodies still write through.
+  const trio = await serveRoleModel(root, { role: "feature", provider: "huggingface", model: "opus", thinking: "low" });
+  assert.equal(trio.captured.status, 200);
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  const feat = (onDisk.roles as { feature: Record<string, unknown> }).feature;
+  assert.equal(feat.model, "opus");
+  assert.equal(feat.thinking, "low");
+  assert.equal("backend" in feat, false, "a backend-less body writes no backend field");
 });
 
 // POST /api/role-interval: the role drawer's min run interval editor. Writes through the

@@ -344,7 +344,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   let quietEditing = null; // { role, window }
   let intervalEditing = null; // { role, value } — value is the seeded override (number) or "" when none
   let instancesEditing = null; // { role, value } — value is the seeded count (number) or "" when none
-  let modelEditing = null; // { role, provider, model, thinking } — the seeded raw overrides ("" when unset)
+  let modelEditing = null; // { role, provider, model, thinking, backend } — the seeded raw overrides ("" when unset)
   function repaintDrawerRole() { if (lastStatus) renderRoleDrawer(lastStatus); }
   // The notes clear and the backlog entry cancel each build a two-click confirm slot from
   // the shared confirmSlot factory (defined in the roles splice, an earlier one), so the arm,
@@ -363,7 +363,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   function stopIntervalEdit() { intervalEditing = null; repaintDrawerRole(); }
   function startInstancesEdit(role, value) { instancesEditing = { role, value: value === "" || value == null ? "" : Number(value) }; repaintDrawerRole(); }
   function stopInstancesEdit() { instancesEditing = null; repaintDrawerRole(); }
-  function startModelEdit(role, seed) { modelEditing = { role, provider: String((seed && seed.provider) ?? ""), model: String((seed && seed.model) ?? ""), thinking: String((seed && seed.thinking) ?? "") }; repaintDrawerRole(); }
+  function startModelEdit(role, seed) { modelEditing = { role, provider: String((seed && seed.provider) ?? ""), model: String((seed && seed.model) ?? ""), thinking: String((seed && seed.thinking) ?? ""), backend: String((seed && seed.backend) ?? "") }; repaintDrawerRole(); }
   function stopModelEdit() { modelEditing = null; repaintDrawerRole(); }
   function startQuietEdit(role, window) { quietEditing = { role, window: String(window ?? "") }; repaintDrawerRole(); }
   function stopQuietEdit() { quietEditing = null; repaintDrawerRole(); }

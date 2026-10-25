@@ -40,7 +40,7 @@ interface DrawerScope {
   stopIntervalEdit(): void;
   startInstancesEdit(role: string, value: number | string): void;
   stopInstancesEdit(): void;
-  startModelEdit(role: string, seed: { provider: string; model: string; thinking: string }): void;
+  startModelEdit(role: string, seed: { provider: string; model: string; thinking: string; backend: string }): void;
   stopModelEdit(): void;
   loadDrawerRole(role: string): Promise<void>;
   toggleRole(role: string): void;
@@ -1274,7 +1274,7 @@ test("the Model overrides row names the raw triple and its editor prefills the r
   // The body names the payload's raw overrides joined by ·, with an Edit control.
   assert.match(role, /<dt>Model overrides<\/dt><dd title='provider: claude · model: claude-opus-5 · thinking: high'>provider: claude · model: claude-opus-5 · thinking: high<button[^>]*data-act='model-edit'[^>]*>Edit<\/button><\/dd>/);
   // Editing swaps in three inputs prefilled with the raw overrides plus Save/Discard.
-  withOv.scope.startModelEdit("clean", { provider: "claude", model: "claude-opus-5", thinking: "high" });
+  withOv.scope.startModelEdit("clean", { provider: "claude", model: "claude-opus-5", thinking: "high", backend: "" });
   role = withOv.paintedFor("drawerrole");
   assert.match(role, /<input id='modeleditprovider'[^>]*value='claude'>/);
   assert.match(role, /<input id='modeleditmodel'[^>]*value='claude-opus-5'>/);
@@ -1297,8 +1297,22 @@ test("the Model overrides row names the raw triple and its editor prefills the r
   await flush();
   const noneRole = none.paintedFor("drawerrole");
   assert.match(noneRole, /<dt>Model overrides<\/dt><dd title='no overrides'>no overrides<button[^>]*data-act='model-edit'[^>]*>Set model<\/button><\/dd>/);
-  none.scope.startModelEdit("clean", { provider: "", model: "", thinking: "" });
+  none.scope.startModelEdit("clean", { provider: "", model: "", thinking: "", backend: "" });
   assert.match(none.paintedFor("drawerrole"), /<input id='modeleditprovider'[^>]*value=''>/);
+});
+
+test("the Model overrides editor shows and saves the backend field", async () => {
+  // A role with a backend override renders it in the body and prefills the backend input.
+  const withBackend = openDrawer(["toggleRole", "startModelEdit"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "pi/default", modelTier: "default", providerOverride: "claude", backendOverride: "claude" } },
+  });
+  withBackend.scope.toggleRole("clean");
+  await flush();
+  const body = withBackend.paintedFor("drawerrole");
+  assert.match(body, /<dt>Model overrides<\/dt><dd title='provider: claude · backend: claude'>provider: claude · backend: claude<button/);
+  withBackend.scope.startModelEdit("clean", { provider: "claude", model: "", thinking: "", backend: "claude" });
+  assert.match(withBackend.paintedFor("drawerrole"), /<input id='modeleditbackend'[^>]*value='claude'>/);
 });
 
 test("the drawer's Show prompts toggle swaps the transcript between plain and prompt lines", async () => {

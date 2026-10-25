@@ -254,13 +254,16 @@ export async function handleRoleInstances(req: http.IncomingMessage, res: http.S
 }
 
 /** Handle POST /api/role-model: the role drawer's Model overrides editor sets or clears one
- * role's provider/model/thinking triple (roles.<base>.provider/.model/.thinking) in one
+ * role's provider/model/thinking/backend set (roles.<base>.provider/.model/.thinking/
+ * .backend) in one
  * atomic write, prefilled from the payload's raw overrides — the per-role model write the
- * `Model` row it still shows read-only is missing (the CLI's --provider/--model/--thinking
+ * `Model` row it still shows read-only is missing (the CLI's
+ * --provider/--model/--thinking/--backend
  * already write it). Same body discipline as /api/role-interval (readPostBody → 400
  * malformed/non-object, 413 oversized); a missing/blank role is a 400 `role required`, each
- * of the three must be a string when present (400 naming the field otherwise), and at least
- * one must be present (400 `provider, model or thinking required`). A bare `feature-2` role
+ * of the four must be a string when present (400 naming the field otherwise), and at least
+ * one must be present (400 `provider, model, thinking or backend required`). A bare
+ * `feature-2` role
  * id maps to its base role's keys (baseRoleOf). The director is accepted — configForRole
  * resolves roles.director.* like any role's, matching the CLI's accepted triple for it.
  * Values are trimmed; `""` clears that field (never stored — checkStringField rejects an
@@ -272,15 +275,15 @@ export async function handleRoleModel(req: http.IncomingMessage, res: http.Serve
   if (!body) return;
   const role = requireRoleField(res, body);
   if (role === null) return;
-  const fields: { provider?: string; model?: string; thinking?: string } = {};
-  for (const key of ["provider", "model", "thinking"] as const) {
+  const fields: { provider?: string; model?: string; thinking?: string; backend?: string } = {};
+  for (const key of ["provider", "model", "thinking", "backend"] as const) {
     if (body[key] === undefined) continue;
     const value = requireStringField(res, body, key, 'a model override, or "" to clear it');
     if (value === null) return;
     fields[key] = value.trim();
   }
-  if (!("provider" in fields) && !("model" in fields) && !("thinking" in fields)) {
-    badRequest(res, "provider, model or thinking required");
+  if (!("provider" in fields) && !("model" in fields) && !("thinking" in fields) && !("backend" in fields)) {
+    badRequest(res, "provider, model, thinking or backend required");
     return;
   }
   const base = baseRoleOf(role);

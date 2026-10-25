@@ -37,25 +37,27 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     if (modelLine !== "" || view.modelTier !== undefined) {
       rows.push(kvRow("Model", (modelLine !== "" ? modelLine + " " : "") + (view.modelTier !== undefined ? "(" + view.modelTier + " tier)" : "").trim()));
     }
-    // The per-role model triple (roles.<base>.provider/.model/.thinking, the file's own raw
-    // overrides rolePayload's providerOverride/modelOverride/thinkingOverride carry) — the
-    // one per-role write the Model row above still renders read-only, the dashboard half of
-    // the CLI's --provider/--model/--thinking. An always-shown row (every role, the director
-    // included, since the CLI writes its triple too) whose body names the payload's raw
-    // overrides, or no overrides, and whose control is a model-edit button (Edit/Set model);
-    // while the editor is open for this role, three text inputs prefilled with the raw
-    // overrides (empty when unset) plus Save/Discard replace the body, mirroring the interval
-    // editor's markup.
+    // The per-role model set (roles.<base>.provider/.model/.thinking/.backend, the file's own
+    // raw overrides rolePayload's providerOverride/modelOverride/thinkingOverride/backendOverride
+    // carry) — the one per-role write the Model row above still renders read-only, the
+    // dashboard half of the CLI's --provider/--model/--thinking/--backend. An always-shown row
+    // (every role, the director included, since the CLI writes its set too) whose body names
+    // the payload's raw overrides, or no overrides, and whose control is a model-edit button
+    // (Edit/Set model); while the editor is open for this role, four text inputs prefilled
+    // with the raw overrides (empty when unset) plus Save/Discard replace the body, mirroring
+    // the interval editor's markup.
     const rawTriple = [];
     if (typeof view.providerOverride === "string" && view.providerOverride !== "") rawTriple.push("provider: " + view.providerOverride);
     if (typeof view.modelOverride === "string" && view.modelOverride !== "") rawTriple.push("model: " + view.modelOverride);
     if (typeof view.thinkingOverride === "string" && view.thinkingOverride !== "") rawTriple.push("thinking: " + view.thinkingOverride);
+    if (typeof view.backendOverride === "string" && view.backendOverride !== "") rawTriple.push("backend: " + view.backendOverride);
     const modelBody = rawTriple.length ? rawTriple.join(" · ") : "no overrides";
     const editModel = modelEditing && modelEditing.role === role;
     const modelControl = editModel
       ? "<input id='modeleditprovider' type='text' placeholder='provider' value='" + esc(modelEditing.provider) + "'>" +
         "<input id='modeleditmodel' type='text' placeholder='model' value='" + esc(modelEditing.model) + "'>" +
         "<input id='modeleditthinking' type='text' placeholder='thinking' value='" + esc(modelEditing.thinking) + "'>" +
+        "<input id='modeleditbackend' type='text' placeholder='backend' value='" + esc(modelEditing.backend) + "'>" +
         "<div><button type='button' class='btn btn-sm btn-primary' data-act='model-save' data-arg='" + esc(role) + "'>Save</button> " +
         "<button type='button' class='btn btn-sm' data-act='model-discard' data-arg='" + esc(role) + "'>Discard</button></div>"
       : "<button type='button' class='btn btn-sm' data-act='model-edit' data-arg='" + esc(role) + "'>" + (rawTriple.length ? "Edit" : "Set model") + "</button>";

@@ -330,7 +330,7 @@ export function setConfigKey(
   return { ok: true, value, oldValue };
 }
 
-/** Set a role's provider/model/thinking override triple in tumwater.json (`roles.<base>`),
+/** Set a role's provider/model/thinking/backend override set in tumwater.json (`roles.<base>`),
  * the write behind the dashboard role drawer's Model overrides editor: one writeConfigMutation
  * rebuilds `roles.<base>` from the FILE's own `roles` section (the `rawConfigObject(root).roles` /
  * `objectOrEmpty` idiom setConfigKey's role branch uses, so the write never re-expands the
@@ -348,7 +348,7 @@ export function setConfigKey(
 export function setRoleModelFields(
   root: string,
   base: string,
-  fields: { provider?: string; model?: string; thinking?: string },
+  fields: { provider?: string; model?: string; thinking?: string; backend?: string },
 ): { ok: true; unchanged?: true } | { ok: false; error: string } {
   // An unknown base id writes nothing. validateConfig owns the refusal when the write changes
   // the candidate, but it is skipped on the no-op path (clearing fields a role the file never

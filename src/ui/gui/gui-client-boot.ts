@@ -346,20 +346,22 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       // error path.
       postAction("/api/role-quiet-hours", { role: arg, window }, settingDone(() => { quietEditing = null; }, "Quiet hours updated"));
     } else if (act === "model-edit") {
-      startModelEdit(arg, { provider: drawerRole?.view?.providerOverride ?? "", model: drawerRole?.view?.modelOverride ?? "", thinking: drawerRole?.view?.thinkingOverride ?? "" });
+      startModelEdit(arg, { provider: drawerRole?.view?.providerOverride ?? "", model: drawerRole?.view?.modelOverride ?? "", thinking: drawerRole?.view?.thinkingOverride ?? "", backend: drawerRole?.view?.backendOverride ?? "" });
     } else if (act === "model-discard") {
       stopModelEdit();
     } else if (act === "model-save") {
       // Every field is a text input, so no badInput guard; an empty value reaches the
-      // server's clear branch for that field. All three are sent (each trimmed) — the server
+      // server's clear branch for that field. All four are sent (each trimmed) — the server
       // ignores whatever it does not recognize and requires at least one present.
       const providerBox = $("modeleditprovider");
       const modelBox = $("modeleditmodel");
       const thinkingBox = $("modeleditthinking");
+      const backendBox = $("modeleditbackend");
       const provider = providerBox ? providerBox.value.trim() : "";
       const model = modelBox ? modelBox.value.trim() : "";
       const thinking = thinkingBox ? thinkingBox.value.trim() : "";
-      postAction("/api/role-model", { role: arg, provider, model, thinking }, settingDone(() => { modelEditing = null; }, "Model overrides updated"));
+      const backend = backendBox ? backendBox.value.trim() : "";
+      postAction("/api/role-model", { role: arg, provider, model, thinking, backend }, settingDone(() => { modelEditing = null; }, "Model overrides updated"));
     } else if (act === "review-toggle") {
       const after = drawerRole?.view?.reviewedAfterMerge === true;
       postAction("/api/role-review-after-merge", { role: arg, afterMerge: !after }, (d) => {
