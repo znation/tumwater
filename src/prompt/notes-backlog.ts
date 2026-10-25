@@ -23,6 +23,7 @@
 import { entryHoldAgainst, entryKindLabel, type EntryHold } from "../backlog/backlog-eligibility.js";
 import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { entryKey, partKey, plannedPartKeys, seriesPart } from "../backlog/backlog-parts.js";
+import { plural } from "../text/phrases.js";
 import { collapseWhitespace, escapeRegExp } from "../text/text.js";
 
 /** The live backlog a note's claims are checked against: the planned entries in file order, the
@@ -137,7 +138,7 @@ function seriesSummary(info: SeriesInfo): string {
   if (info.review > 0) counts.push(`${info.review} ${info.review === 1 ? "needs review" : "need review"}`);
   if (info.waiting > 0) counts.push(`${info.waiting} ${info.waiting === 1 ? "waits" : "wait"} on an earlier part`);
   counts.push(info.refused === 0 ? "none refused" : `${info.refused} refused`);
-  return `${info.plannedCount} ${info.plannedCount === 1 ? "part" : "parts"} planned: ${counts.join(", ")}`;
+  return `${plural(info.plannedCount, "part")} planned: ${counts.join(", ")}`;
 }
 
 /** The live backlog block for the notes, or undefined when they name nothing live. */

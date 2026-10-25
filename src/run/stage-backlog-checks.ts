@@ -16,7 +16,7 @@ import { DONE_DATE_RE, FIXED_DATE_RE } from "../backlog/backlog.js";
 import { refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import { entryKey, partKey, planDependencyProblems, seriesPart, type PartRef } from "../backlog/backlog-parts.js";
 import { WAITING_FOR_FAILURE_NOTE } from "../roles/role-guidance.js";
-import { moreSuffix } from "../text/phrases.js";
+import { moreSuffix, plural } from "../text/phrases.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 
 /** The finding for the heading `requires` clause problems that `head` (the edited PLANS.md)
@@ -165,7 +165,7 @@ export function strayPlaceholderFinding(file: string, head: string, base: string
   if (stray.length === 0) return undefined;
   const [title, n] = stray[0]!;
   return (
-    `${file}'s "## ${title}" section holds ${n} entr${n === 1 ? "y" : "ies"}, but this change left the ` +
+    `${file}'s "## ${title}" section holds ${plural(n, "entry", "entries")}, but this change left the ` +
     `empty-section placeholder ${PLACEHOLDER_LINE} in it — delete that line: it marks a section with no ` +
     `entries${moreSuffix(stray.length - 1)}`
   );

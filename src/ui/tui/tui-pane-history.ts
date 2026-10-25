@@ -20,6 +20,7 @@ import { readRunDetail, type RunDetail } from "../../run/run-detail-data.js";
 import { renderRunDetail, runTranscriptLines } from "../../run/run-detail-render.js";
 import { revertFollowUp, runRevertSha } from "../../operator/revert.js";
 import { shortSha } from "../../text/format.js";
+import { plural } from "../../text/phrases.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
@@ -385,7 +386,7 @@ export function createHistoryPane(
           session.flashMessage("the checkout has staged or unstaged changes, so tumwater revert would refuse until they are committed or stashed; nothing was written");
         else {
           session.revertArmed = p.sha;
-          session.flashMessage(`press Ctrl+V again to revert ${shortSha(p.sha)} ${p.subject} (${p.paths.length} file${p.paths.length === 1 ? "" : "s"}) on ${p.primary} — any other key cancels`);
+          session.flashMessage(`press Ctrl+V again to revert ${shortSha(p.sha)} ${p.subject} (${plural(p.paths.length, "file")}) on ${p.primary} — any other key cancels`);
         }
       },
       (err: unknown) => session.flashError(err),

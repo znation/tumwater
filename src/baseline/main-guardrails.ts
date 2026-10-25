@@ -17,6 +17,7 @@ import { loadQuarantine } from "../review/known-flakes.js";
 import { DAY_MS, clockHm, humanAgo } from "../text/datetime.js";
 import { shortSha } from "../text/format.js";
 import { roleLabel } from "../roles/role-labels.js";
+import { plural } from "../text/phrases.js";
 import { squash } from "../text/text.js";
 import type { HarnessEvent } from "../events/events.js";
 
@@ -137,7 +138,7 @@ export function quarantineWarning(entries: readonly { test: string; firstSeen: n
       return `"${squash(e.test, 40)}" (${filed}, ${humanAgo(e.firstSeen, now)})`;
     });
     const more = old.length > QUARANTINE_DETAIL_MAX ? ` (and ${old.length - QUARANTINE_DETAIL_MAX} more)` : "";
-    phrases.push(`quarantine holds ${old.length} test${old.length === 1 ? "" : "s"} over 3 days: ${named.join(", ")}${more}`);
+    phrases.push(`quarantine holds ${plural(old.length, "test")} over 3 days: ${named.join(", ")}${more}`);
   }
   return phrases.length > 0 ? phrases.join("; ") : null;
 }
