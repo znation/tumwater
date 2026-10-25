@@ -13,6 +13,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { walkFiles } from "../../files/files.js";
 import { isJsonObject, nonNegativeNumber, objectOrEmpty, parseJsonObject } from "../../files/json-object.js";
 import { windowTypeName } from "./codex-stream.js";
 
@@ -175,23 +176,12 @@ export function findRollout(home: string, id: string): string | null {
   const sessionsRoot = path.join(home, "sessions");
   if (!fs.existsSync(sessionsRoot)) return null;
   const suffix = `-${id}.jsonl`;
-  const stack = [sessionsRoot];
-  while (stack.length > 0) {
-    const dir = stack.pop() as string;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue; // an unreadable dir is simply no match, never a failure
-    }
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(full);
-      } else if (entry.isFile() && entry.name.startsWith("rollout-") && entry.name.endsWith(suffix)) {
-        return full;
-      }
-    }
-  }
-  return null;
+  let found: string | null = null;
+  // The walk-and-swallow recursion is files.ts's walkFiles (an unreadable dir is no match);
+  // the id match alone decides, so only the one id's rollout can win. The sessions tree is one
+  // directory per active day, so walking it whole to the first match stays small.
+  walkFiles(sessionsRoot, (file, entry) => {
+    if (found === null && entry.name.startsWith("rollout-") && entry.name.endsWith(suffix)) found = file;
+  });
+  return found;
 }

@@ -11,7 +11,7 @@ import { parseCodexLoginStatus } from "../agent/codex/codex-account.js";
 import { codexWriteGuardDefinition } from "../agent/codex/codex-write-guard.js";
 import { resolvedBackendConfig } from "../config/config-views.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { envPath, isDirectory, readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
+import { envPath, isDirectory, readTextOrNull, statOrNull, treeBytes, walkFiles } from "../files/files.js";
 import { formatBytes, tokenWindowLabel } from "../text/format.js";
 import { errorMessage } from "../text/text.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
@@ -181,23 +181,14 @@ function codexSessionCredits(home: string): boolean | null {
   const sessions = path.join(home, "sessions");
   if (!isDirectory(sessions)) return null;
   const rollouts: { file: string; mtimeMs: number }[] = [];
-  const walk = (dir: string): void => {
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
+  // The walk-and-swallow recursion is files.ts's walkFiles; each rollout file is statted so
+  // the newest (by mtime) can win below.
+  walkFiles(sessions, (file, entry) => {
+    if (/^rollout-.*\.jsonl$/.test(entry.name)) {
+      const st = statOrNull(file);
+      if (st !== null) rollouts.push({ file, mtimeMs: st.mtimeMs });
     }
-    for (const entry of entries) {
-      const p = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(p);
-      else if (entry.isFile() && /^rollout-.*\.jsonl$/.test(entry.name)) {
-        const st = statOrNull(p);
-        if (st !== null) rollouts.push({ file: p, mtimeMs: st.mtimeMs });
-      }
-    }
-  };
-  walk(sessions);
+  });
   rollouts.sort((a, b) => b.mtimeMs - a.mtimeMs);
   for (const r of rollouts) {
     const text = readTextOrNull(r.file);
