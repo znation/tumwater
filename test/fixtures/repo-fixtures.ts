@@ -230,6 +230,22 @@ export function commitIn(dir: string, msg: string): void {
   sh(dir, "git", "commit", "-m", msg);
 }
 
+/** Stage everything and commit on the current branch with the pinned, far-past committer date
+ * (the same PIN_COMMITTER_DATE pinOffMain uses, for the same reason: git equalizes two commits
+ * that share tree, parent, identity, message, timezone and wall-clock second into the SAME sha,
+ * and a green verdict a sibling test cached on that sha leaks into this one through the shared
+ * in-process baseline cache — the redeploy-wiring watch-target flake, BUGS.md 2026-10-25). A
+ * pinned date keeps the commit's sha out of every "now" sibling's second, so the test's verdict
+ * assumption cannot be poisoned by a timing collision. */
+export function pinnedCommit(dir: string, msg: string): void {
+  sh(dir, "git", "add", "-A");
+  execFileSync("git", ["commit", "-m", msg], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, GIT_COMMITTER_DATE: PIN_COMMITTER_DATE },
+  });
+}
+
 // Pin commits get a fixed, far-past committer date so a "now" cherry-pick back onto main can
 // never fall in the same wall-clock second as the pin. When a pin and its cherry-pick share one
 // second and everything else (tree, parent, identity, message, timezone) is identical, git gives

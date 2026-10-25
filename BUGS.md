@@ -136,14 +136,6 @@ every PLANS.md citation in a src/ or test/ comment names an entry PLANS.md still
 
 **Waiting for the next failure 2026-10-24 by bugfix: the failure message lists the stale `file:line — "label"` citations it found; check the unmatched label against the PLANS.md+PLANS-DONE.md union — a label that resolves on a re-run and is absent at the read moment points at the cross-process archive window (entry in neither file mid-move) rather than a persistent stale pointer.**
 
-### `redeployTarget in watch mode targets the build itself when nothing newer is green` failed, then passed on the same tree (quarantined by tumwater 2026-10-25)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-redeployTarget in watch mode targets the build itself when nothing newer is green
-~~~~
-
 ## Fixed
 
 ## Verified

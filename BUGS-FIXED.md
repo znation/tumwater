@@ -5,6 +5,17 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `redeployTarget in watch mode targets the build itself when nothing newer is green` failed, then passed on the same tree (quarantined by tumwater 2026-10-25) — fixed 2026-10-25 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it. Root cause (test isolation, not the production `redeployTarget`):
+this file's shared in-process `baselineCache` plus git's second-resolution committer date collide two tests' identical commit streams — `package.json` exit(1) → `A`, `b.txt` → `B` — into the SAME sha when they land in one wall-clock second; the sibling "newest cached green" test runs first and `noteGreenBaseline`s its `B`, and that green leaks into this test, whose "the build itself is the target" assertion then sees its own `B` green and returns the tip instead. Fixed by committing this test's two commits with the fixtures' pinned committer date (new `pinnedCommit` in test/fixtures/repo-fixtures.ts), so their shas can never share a second with a "now" sibling.
+
+~~~~
+redeployTarget in watch mode targets the build itself when nothing newer is green
+~~~~
+
+**Validation gap:** no-repro — the suite's normal scheduling could not reproduce it (it fires only when two same-file tests' identical commits land in the same wall-clock second); confirmed the mechanism with a scratch reproduction that deliberately forces the collision (now-commits vs pinned), then re-ran it green after the pinned-date fix.
+
 ### `three T-long reviews run at once at cap 4, so all three merge in about T, not 3T` failed, then passed on the same tree (quarantined by tumwater 2026-10-24) — fixed 2026-10-24 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

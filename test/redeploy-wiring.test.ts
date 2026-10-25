@@ -9,7 +9,7 @@ import { noteGreenBaseline, redeployTarget, watchVerifiesMain } from "../src/bas
 import { Redeployer } from "../src/redeploy/redeployer.js";
 import { IDLE } from "./fixtures/redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../src/paths.js";
-import { headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, pinnedCommit, sh } from "./fixtures/repo-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 
 /** The production WIRING half of the self-redeploy tests, mirroring the src split
@@ -386,12 +386,14 @@ test("redeployTarget in watch mode targets the build itself when nothing newer i
   const root = makeRepo();
   fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(1)'" }));
   fs.mkdirSync(path.join(root, "node_modules"));
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-q", "-m", "A");
+  // Pinned commits: the sibling "newest cached green" test above commits an identical A + b.txt B
+  // in the same wall-clock second, so git gives the two B's the SAME sha and its noteGreenBaseline
+  // leaks here — redeployTarget sees B green and returns it instead of the build. Pinning this
+  // test's committer date keeps its shas out of that second (repo-fixtures pinnedCommit).
+  pinnedCommit(root, "A");
   const a = headSha(root);
   fs.writeFileSync(path.join(root, "b.txt"), "b");
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-q", "-m", "B");
+  pinnedCommit(root, "B");
   const b = headSha(root);
 
   // Running A, main A -> B (no verdict): nothing newer than the build is green, so the build
