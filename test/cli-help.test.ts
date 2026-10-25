@@ -105,6 +105,21 @@ test("version prints the package version", async () => {
   assert.equal(r.stdout.trim(), pkg.version);
 });
 
+test("--version and -v answer like `version` — the flag spellings are commands themselves", async () => {
+  // The dispatcher's version case carries three entry points (`version`, `--version`, `-v`);
+  // the two flag spellings are common expectations across CLIs and can drift from the worded
+  // one, so they are driven here through the same child-process harness that spawns the rest
+  // of the dispatcher. No ready repo is needed: version works in an empty directory like the
+  // worded command.
+  const pkg = readJson(new URL("../../package.json", import.meta.url)) as { version: string };
+  const dir = tmpdir();
+  for (const flag of ["--version", "-v"]) {
+    const r = await cli(dir, flag);
+    assert.equal(r.code, 0, `${flag}: ${r.stderr}`);
+    assert.equal(r.stdout.trim(), pkg.version);
+  }
+});
+
 test("unknown command fails with a hint", async () => {
   const r = await cli(tmpdir(), "frobnicate");
   assert.equal(r.code, 1);
