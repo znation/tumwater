@@ -511,6 +511,38 @@ test("the Usage render chain gates the Estimated spend by backend chart right af
   assert.equal((chain.match(/block\("Estimated spend by backend", chartNotionalByBackend\(d\),/g) || []).length, 1);
 });
 
+test("the Usage render chain gates the Prompt tokens by role chart right after Tokens by role", () => {
+  // The usage view's render chain must name the Prompt tokens by role chart exactly once,
+  // gated on the series really carrying promptTokensByRole, sitting after the Tokens by role
+  // term and before the Spend by role term.
+  const chain = GUI_CLIENT_REPORT_JS;
+  const tokensOut = chain.indexOf('block("Tokens by role"');
+  const prompt = chain.indexOf('block("Prompt tokens by role"');
+  const spend = chain.indexOf('block("Spend by role"');
+  assert.ok(tokensOut >= 0, "the Tokens by role term exists");
+  assert.ok(spend >= 0, "the Spend by role term exists");
+  assert.ok(prompt > tokensOut, "Prompt tokens by role sits after Tokens by role in the chain");
+  assert.ok(prompt < spend, "Prompt tokens by role sits before Spend by role in the chain");
+  assert.match(chain, /seriesHasAny\(d, "promptTokensByRole"\) \? block\("Prompt tokens by role", chartPromptTokensByRole\(d\)\) : ""/);
+  // Exactly one such gated term.
+  assert.equal((chain.match(/block\("Prompt tokens by role", chartPromptTokensByRole\(d\)\)/g) || []).length, 1);
+});
+
+test("the Usage render chain gates the Cached prompt tokens by role chart right after Prompt tokens by role", () => {
+  // The usage view's render chain must name the Cached prompt tokens by role chart exactly
+  // once, gated on the series really carrying cacheReadTokensByRole, sitting after the
+  // Prompt tokens by role term and before the Spend by role term.
+  const chain = GUI_CLIENT_REPORT_JS;
+  const cached = chain.indexOf('block("Cached prompt tokens by role"');
+  const spend = chain.indexOf('block("Spend by role"');
+  assert.ok(cached >= 0, "the Cached prompt tokens by role term exists");
+  assert.ok(spend >= 0, "the Spend by role term exists");
+  assert.ok(cached < spend, "Cached prompt tokens by role sits before Spend by role in the chain");
+  assert.match(chain, /seriesHasAny\(d, "cacheReadTokensByRole"\) \? block\("Cached prompt tokens by role", chartCacheReadTokensByRole\(d\)\) : ""/);
+  // Exactly one such gated term.
+  assert.equal((chain.match(/block\("Cached prompt tokens by role", chartCacheReadTokensByRole\(d\)\)/g) || []).length, 1);
+});
+
 test("the Tokens by role chart stacks per role and matches the runs legend", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
@@ -543,6 +575,53 @@ test("the Tokens by role chart stacks per role and matches the runs legend", () 
   // A day whose tokensByRole map is missing renders no token segments.
   const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 })]);
   assert.equal(titles(chartTokensByRole(plain)).length, 0);
+});
+
+test("the Prompt tokens by role and Cached prompt tokens by role charts stack per role and match the runs legend", () => {
+  interface Builders {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartRunsByRole(d: ReportData): string;
+    chartPromptTokensByRole(d: ReportData): string;
+    chartCacheReadTokensByRole(d: ReportData): string;
+    seriesHasAny(d: ReportData, field: string): boolean;
+  }
+  const { reportRoleOrder, chartRunsByRole, chartPromptTokensByRole, chartCacheReadTokensByRole, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartRunsByRole", "chartPromptTokensByRole", "chartCacheReadTokensByRole", "seriesHasAny"],
+  );
+  const mkDay = (date: string, runsByRole: Record<string, number>, prompt?: { promptTokensByRole?: Record<string, number>; cacheReadTokensByRole?: Record<string, number> }): ReportDay => ({
+    date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
+    ...(prompt?.promptTokensByRole ? { promptTokensByRole: prompt.promptTokensByRole } : {}),
+    ...(prompt?.cacheReadTokensByRole ? { cacheReadTokensByRole: prompt.cacheReadTokensByRole } : {}),
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { feature: 3, bugfix: 1 }, { promptTokensByRole: { feature: 1_500, bugfix: 2_000 }, cacheReadTokensByRole: { feature: 1_200 } }),
+    mkDay("2026-09-02", { qa: 2 }, { promptTokensByRole: { qa: 1_500_000 }, cacheReadTokensByRole: { qa: 200 } }),
+  ]);
+  assert.deepEqual(reportRoleOrder(data), [["feature", 3], ["qa", 2], ["bugfix", 1]]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.deepEqual(titles(chartPromptTokensByRole(data)), [
+    "2026-09-01 · feature: 1500 prompt tokens",
+    "2026-09-01 · bugfix: 2000 prompt tokens",
+    "2026-09-02 · qa: 1.5M prompt tokens",
+  ]);
+  assert.deepEqual(titles(chartCacheReadTokensByRole(data)), [
+    "2026-09-01 · feature: 1200 cached prompt tokens",
+    "2026-09-02 · qa: 200 cached prompt tokens",
+  ]);
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartPromptTokensByRole(data)), legendOf(chartRunsByRole(data)), "same per-role order and colors as the runs element");
+  assert.equal(legendOf(chartCacheReadTokensByRole(data)), legendOf(chartRunsByRole(data)), "same per-role order and colors as the runs element");
+  // A series with neither map renders no segments, and seriesHasAny stays false.
+  const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 })]);
+  assert.equal(titles(chartPromptTokensByRole(plain)).length, 0);
+  assert.equal(titles(chartCacheReadTokensByRole(plain)).length, 0);
+  assert.equal(seriesHasAny(plain, "promptTokensByRole"), false);
+  assert.equal(seriesHasAny(plain, "cacheReadTokensByRole"), false);
+  assert.equal(seriesHasAny(data, "promptTokensByRole"), true);
+  assert.equal(seriesHasAny(data, "cacheReadTokensByRole"), true);
 });
 
 test("the Merge check median chart draws one bar per checked day and seriesHasCheckMedian gates it", () => {

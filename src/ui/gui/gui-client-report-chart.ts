@@ -282,6 +282,21 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
     return roleStackChart(data, "tokensByRole", (n) => fmtTokens(Number(n) || 0) + " output tokens", (v) => fmtTokens(Math.round(v)), true);
   }
 
+  // The day's prompt tokens, per role, the browser twin of the report's "Prompt tokens by
+  // role" line — same roleStackChart shape, palette, legend order and integer count axis as
+  // chartTokensByRole, so a role keeps its palette color and legend order from
+  // reportRoleOrder.
+  function chartPromptTokensByRole(data) {
+    return roleStackChart(data, "promptTokensByRole", (n) => fmtTokens(Number(n) || 0) + " prompt tokens", (v) => fmtTokens(Math.round(v)), true);
+  }
+
+  // The day's cache-read prompt tokens, per role, the browser twin of the report's "Prompt
+  // tokens by role" line's cache-read share — the same shape over cacheReadTokensByRole with
+  // the " cached prompt tokens" label, keeping the same palette order and count axis.
+  function chartCacheReadTokensByRole(data) {
+    return roleStackChart(data, "cacheReadTokensByRole", (n) => fmtTokens(Number(n) || 0) + " cached prompt tokens", (v) => fmtTokens(Math.round(v)), true);
+  }
+
   // The API-equivalent (notional) spend of subscription runs, per role, on the same axis as
   // the cap spend.
   function chartNotionalByRole(data) {
