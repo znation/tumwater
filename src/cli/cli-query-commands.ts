@@ -17,7 +17,7 @@ import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
-import { loadQuarantine } from "../review/known-flakes.js";
+import { loadQuarantine, releaseQuarantinedTest } from "../review/known-flakes.js";
 import { quarantineRows, renderQuarantine } from "../review/quarantine-render.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
@@ -325,15 +325,49 @@ export async function cmdBacklog(root: string, args: string[], seams: FollowView
   sayJsonOrRender(rest, result.view, () => renderBacklogText(result));
 }
 
-// `tumwater quarantine [--json]` — the read-only view of the review gate's flake
-// quarantine. No requireReadyRepo gate: loadQuarantine degrades an absent or malformed
-// file to the empty list (the cmdBacklog rationale), so the command prints the empty line
-// in any directory, and it never writes quarantine.json (a test leaves the list only
-// through releaseQuarantine). --json serves the same positioned rows to scripts.
+// `tumwater quarantine [--release <n>] [--json]` — the view of the review gate's flake
+// quarantine, read-only except the one destructive `--release <n>` mode that removes the Nth
+// entry the list prints at the operator's request. The read path keeps its no-gate
+// refuseTeamWorkspace stance: loadQuarantine degrades an absent or malformed file to the empty
+// list, so the command prints the empty line in any directory and the read never writes
+// quarantine.json (a test otherwise leaves the list through releaseQuarantine). --json serves
+// the same positioned rows to scripts.
 export async function cmdQuarantine(root: string, args: string[]): Promise<void> {
+  // `--release <n>` is the read-only command's one destructive mode: route it to its own
+  // branch before the read gate, exactly as cmdReviews routes `--accept`.
+  if (args.includes("--release")) {
+    await cmdQuarantineRelease(root, args);
+    return;
+  }
   rejectUnknownArgs("quarantine", args, [JSON_FLAG]);
   refuseTeamWorkspace(root);
   const rows = quarantineRows(loadQuarantine(root));
   sayJsonOrRender(args, { tests: rows }, () => renderQuarantine(rows, Date.now()));
+}
+
+/** The `tumwater quarantine --release <n>` branch: remove the Nth entry `tumwater quarantine`
+ * lists (the same oldest-first 1..N row `quarantineRows` prints) at the operator's request,
+ * the manual twin of the auto-release that fires when a filed bug leaves `## Open`. Parsed the
+ * way cmdReviewsAccept parses `--accept`: `--release <n>` the one valued flag, `--json` the one
+ * boolean (at most once), `--help`/`-h` tolerated, anything else refused. An out-of-range
+ * position fails naming the current depth; a concurrent removal answers `false`. */
+async function cmdQuarantineRelease(root: string, args: string[]): Promise<void> {
+  const { json, position, rest } = scanPositionArgs(args, "--release", "--release 2");
+  rejectUnknownArgs("quarantine", rest, []);
+  if (position === null) fail("--release needs a position (usage: tumwater quarantine --release <n>)");
+  await requireReadyRepo(root);
+  const rows = quarantineRows(loadQuarantine(root));
+  if (position < 1 || position > rows.length) {
+    fail(`no quarantined test at position ${position} (flake quarantine holds ${rows.length} tests)`);
+  }
+  const test = rows[position - 1]!.test;
+  if (!releaseQuarantinedTest(root, test)) {
+    fail(`quarantined test at position ${position} is already gone`);
+  }
+  if (json) {
+    sayJson({ released: { position, test } });
+  } else {
+    say(`released quarantined test ${position}: ${test} — the gate no longer excuses it`);
+  }
 }
 

@@ -86,3 +86,64 @@ test("quarantine is read-only — the list is unchanged after the command", asyn
   assert.deepEqual(JSON.parse(fs.readFileSync(quarantinePath(repo), "utf8")), { tests });
   assert.deepEqual(loadQuarantine(repo), before);
 });
+
+test("quarantine --release <n> removes the Nth entry and names it", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine release test");
+  const now = Date.now();
+  writeQuarantine(repo, [
+    { test: "test/new.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "" },
+    { test: "test/old.test.ts", firstSeen: now - 2 * 24 * 3_600_000, lastSeen: now - 24 * 3_600_000, count: 3, bug: "A filed flake" },
+  ]);
+  const r = await cli(repo, "quarantine", "--release", "1");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "released quarantined test 1: test/old.test.ts — the gate no longer excuses it");
+  assert.deepEqual(loadQuarantine(repo).map((e) => e.test), ["test/new.test.ts"]);
+  const again = await cli(repo, "quarantine");
+  assert.equal(again.code, 0);
+  assert.ok(!again.stdout.includes("old.test.ts"), "the released line is gone from the list");
+});
+
+test("quarantine --release <n> refuses an out-of-range position naming the depth", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine release range test");
+  const now = Date.now();
+  const tests = [
+    { test: "test/a.test.ts", firstSeen: now - 24 * 3_600_000, lastSeen: now, count: 1, bug: "" },
+  ];
+  writeQuarantine(repo, tests);
+  const before = fs.readFileSync(quarantinePath(repo), "utf8");
+  const r = await cli(repo, "quarantine", "--release", "2");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("no quarantined test at position 2 (flake quarantine holds 1 tests)"));
+  assert.equal(fs.readFileSync(quarantinePath(repo), "utf8"), before, "the file is byte-unchanged");
+});
+
+test("quarantine --release --json prints the released row", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine release json test");
+  const now = Date.now();
+  writeQuarantine(repo, [
+    { test: "test/new.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "" },
+    { test: "test/old.test.ts", firstSeen: now - 2 * 24 * 3_600_000, lastSeen: now - 24 * 3_600_000, count: 3, bug: "A filed flake" },
+  ]);
+  const r = await cli(repo, "quarantine", "--release", "1", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { released: { position: 1, test: "test/old.test.ts" } });
+});
+
+test("quarantine --release with no value fails", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine release novalue test");
+  const r = await cli(repo, "quarantine", "--release");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("--release needs a position"));
+});
+
+test("quarantine --release refuses an unknown flag beside it by name", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine release flag test");
+  const r = await cli(repo, "quarantine", "--release", "1", "--bogus");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("--bogus"));
+});

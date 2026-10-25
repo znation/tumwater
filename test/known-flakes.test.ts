@@ -16,8 +16,10 @@ import {
   quarantinedTests,
   quarantineTests,
   releaseQuarantine,
+  releaseQuarantinedTest,
 } from "../src/review/known-flakes.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
 import type { HarnessEvent } from "../src/events/events.js";
 
 const NOW = 1_700_000_000_000;
@@ -125,4 +127,19 @@ test("quarantine: a filed test leaves the list once its entry is not under ## Op
   fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n_None yet._\n\n## Fixed\n\n### `a` failed (quarantined)\n");
   assert.deepEqual(releaseQuarantine(root), ["a"]);
   assert.deepEqual(quarantinedTests(root), []);
+});
+
+test("releaseQuarantinedTest drops the named test and warns once", () => {
+  const root = tmpdir();
+  quarantineTests(root, ["a", "b"], "out");
+  assert.equal(releaseQuarantinedTest(root, "a"), true);
+  assert.deepEqual(quarantinedTests(root), ["b"]);
+  assert.ok(
+    warningMessages(root).some((m) => m.includes("a released from the flake quarantine at the user's request — the gate no longer excuses its failures")),
+  );
+  assert.equal(releaseQuarantinedTest(root, "a"), false, "a concurrent removal is answered false");
+  assert.equal(warningMessages(root).filter((m) => m.includes("released from the flake quarantine")).length, 1, "no second warning");
+  const neverSeen = loadQuarantine(root);
+  assert.equal(releaseQuarantinedTest(root, "nope"), false, "a name never quarantined is false");
+  assert.deepEqual(loadQuarantine(root), neverSeen, "the file is unchanged");
 });

@@ -11,7 +11,7 @@
  * twice. */
 
 import { DAY_MS } from "../text/datetime.js";
-import { TUMWATER_SOURCE, tryOrWarn, type HarnessEvent } from "../events/events.js";
+import { TUMWATER_SOURCE, tryOrWarn, warnEventBestEffort, type HarnessEvent } from "../events/events.js";
 import { readEventsSince } from "../events/event-window.js";
 import { increment } from "../collections.js";
 import { normalizeClusterKey } from "../failure/failure-cluster.js";
@@ -171,6 +171,24 @@ export function quarantineTests(root: string, tests: readonly string[] | undefin
   }
   if (!tryOrWarn(root, TUMWATER_SOURCE, "write quarantine.json", () => saveQuarantine(root, entries))) return [];
   return added;
+}
+
+/** Remove the one quarantined test named `test` at the operator's request — the manual twin
+ * of releaseQuarantine's automatic release, and `tumwater quarantine --release <n>` its only
+ * caller (which resolves the position the list prints down to the exact test first). Returns
+ * whether the entry was present and the write succeeded, so the caller can answer a concurrent
+ * removal: `false` with no warning and no write for a name not quarantined, or when a write
+ * faulted (the quarantineTests write contract: a failed write warns and changes nothing). Logs
+ * one `warning` under TUMWATER_SOURCE so the alert and the doctor's `flaky checks` row stop
+ * excusing the name. */
+export function releaseQuarantinedTest(root: string, test: string): boolean {
+  const entries = loadQuarantine(root);
+  const have = entries.some((e) => e.test === test);
+  if (!have) return false;
+  const removed = entries.filter((e) => e.test !== test);
+  if (!tryOrWarn(root, TUMWATER_SOURCE, "write quarantine.json", () => saveQuarantine(root, removed))) return false;
+  warnEventBestEffort(root, TUMWATER_SOURCE, `${test} released from the flake quarantine at the user's request — the gate no longer excuses its failures`);
+  return true;
 }
 
 /** Record the BUGS.md heading filed for each of `tests`, dropping their kept output. */
