@@ -5,6 +5,7 @@ import { RESTART_EXIT_CODE } from "./redeploy-policy.js";
 import { childEnv } from "../process/process.js";
 import { startParentDeathWatch } from "../process/supervisor.js";
 import { liveNodeBin } from "../process/node-bin.js";
+import { parsePositiveInt } from "../text/text.js";
 
 /** Auto-reload for the user-launched dashboards (`tumwater tui`, `tumwater gui`).
  *
@@ -78,12 +79,16 @@ export interface SupervisorWatchSeams {
 export function watchReloadSupervisor(onGone: () => void, seams: SupervisorWatchSeams = {}): () => void {
   const mark = (seams.env ?? process.env)[DASHBOARD_CHILD_ENV];
   if (mark === undefined) return () => {};
-  const supervisor = Number(mark);
+  // The mark is a pid spelled in plain decimal (reexecSelf writes String(process.pid)); a
+  // hex/exponent/whitespace spelling is never a pid the writer meant, so read it by the shared
+  // plain-decimal rule rather than Number()'s silent coercion — the supervisor's expecter twin
+  // parses the same way.
+  const supervisor = parsePositiveInt(mark);
   return startParentDeathWatch(onGone, {
     ...(seams.ppid ? { ppid: seams.ppid } : {}),
     intervalMs: seams.intervalMs ?? SUPERVISOR_POLL_MS,
     // An older supervisor's "1" names no pid (1 is launchd/init): the watch's first read stands.
-    ...(Number.isInteger(supervisor) && supervisor > 1 ? { expectedPpid: supervisor } : {}),
+    ...(supervisor !== null && supervisor > 1 ? { expectedPpid: supervisor } : {}),
   });
 }
 

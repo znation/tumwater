@@ -4,6 +4,7 @@ import type { HarnessEventInput } from "../events/events.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import { childEnv, runOnAbort } from "./process.js";
 import { liveNodeBin } from "./node-bin.js";
+import { parsePositiveInt } from "../text/text.js";
 
 /** The respawn loop behind `tumwater start`. The command runs as two processes: this supervisor
  * (the one the operator started, holding the terminal) and a child that runs the orchestrator.
@@ -106,11 +107,13 @@ export function startParentDeathWatch(onGone: () => void, opts: ParentDeathWatch
 }
 
 /** The supervisor pid a supervised child was handed, or undefined when the mark is absent or
- * names no process (a number that is not an integer, or 1 — launchd/init, never a supervisor):
- * the watch's own first read stands instead. */
+ * names no process (a hex/exponent/whitespace spelling, or 1 — launchd/init, never a supervisor):
+ * the watch's own first read stands instead. The mark is written as String(process.pid) (plain
+ * decimal), so it is read by the shared plain-decimal rule, not Number()'s silent coercion. */
 export function expectedSupervisorPid(env: NodeJS.ProcessEnv = process.env): number | undefined {
-  const pid = Number(env[SUPERVISOR_PID_ENV]);
-  return Number.isInteger(pid) && pid > 1 ? pid : undefined;
+  const mark = env[SUPERVISOR_PID_ENV];
+  const pid = mark === undefined ? null : parsePositiveInt(mark);
+  return pid !== null && pid > 1 ? pid : undefined;
 }
 
 /** Respawns within this window count toward the crash-loop guard. */

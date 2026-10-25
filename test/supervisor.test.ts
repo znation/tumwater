@@ -506,6 +506,7 @@ test("expectedSupervisorPid reads a handed-down mark only for a live-for-certain
   assert.equal(expectedSupervisorPid({ [SUPERVISOR_PID_ENV]: "4242" }), 4242);
   assert.equal(expectedSupervisorPid({ [SUPERVISOR_PID_ENV]: "1" }), undefined, "1 is launchd/init, never a supervisor");
   assert.equal(expectedSupervisorPid({ [SUPERVISOR_PID_ENV]: "junk" }), undefined);
+  assert.equal(expectedSupervisorPid({ [SUPERVISOR_PID_ENV]: "0x10" }), undefined, "a hex mark is not a plain-decimal pid and the first read stands");
   assert.equal(expectedSupervisorPid({}), undefined, "an older supervisor's child falls back to its first read");
 });
 

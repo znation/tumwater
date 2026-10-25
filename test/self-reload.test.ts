@@ -129,6 +129,14 @@ test("watchReloadSupervisor fires once the supervisor the mark names is gone, an
     ppid: () => 500,
     intervalMs: 5,
   });
+  // A mark that is not a plain-decimal pid (hex here) names no pid either: the first read stands,
+  // so an unchanged live parent never fires. ParsePositiveInt reads plain digits only, where the
+  // old Number() coercion would have trusted 0x10 as pid 16 and fired on any other parent.
+  const stopMalformed = watchReloadSupervisor(() => fired.push("malformed"), {
+    env: { [DASHBOARD_CHILD_ENV]: "0x10" },
+    ppid: () => 4242,
+    intervalMs: 5,
+  });
   // Not a supervised child at all: a changed parent means nothing to a hand-launched dashboard.
   const stopPlain = watchReloadSupervisor(() => fired.push("plain"), { env: {}, ppid: () => ppid, intervalMs: 5 });
   try {
@@ -141,6 +149,7 @@ test("watchReloadSupervisor fires once the supervisor the mark names is gone, an
     stopChild();
     stopLate();
     stopLegacy();
+    stopMalformed();
     stopPlain();
   }
   const stopped: string[] = [];
