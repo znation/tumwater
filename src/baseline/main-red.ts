@@ -61,14 +61,15 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
 
 /** Log the team-wide `main_red_hold` event (the notify hook pages it) for `red`'s SHA at
  * most once per process, and hand the red suite to the healer. Module-level (with
- * lastMainRedSha) so the gate and the ci handoff share one guard: whichever observes the
- * red first logs it, the other stays silent. `foundBy` is the role whose path verified the
- * red — when that role is not ci itself, one prompt is enqueued to ci's own inbox so
- * the healer runs on the orchestrator's next poll instead of waiting out its own interval or
- * deferral; ci finding its own red skips the enqueue because its running run already
- * carries the note and IS the heal (and enqueuing from inside it would queue a second run). A
- * queued per-role prompt makes the role due by itself (`isEligible`, scheduling.ts, returns
- * `{ run: true, reason: "inbox" }` on a non-empty inbox before any interval, backoff, or
+ * lastMainRedSha) so the ci handoff (`mainRedHealNote`) and mainTipVerdict share one guard:
+ * whichever observes the red first logs it, the other stays silent. `foundBy` is the role
+ * whose path verified the red — when that role is not ci itself, one prompt is enqueued to
+ * ci's own inbox so the healer runs on the orchestrator's next poll instead of waiting out
+ * its own interval or deferral; ci finding its own red skips the enqueue because its running
+ * run already carries the note and IS the heal (and enqueuing from inside it would queue a
+ * second run). A queued per-role prompt makes the role due by itself (`isEligible`,
+ * scheduling.ts, returns `{ run: true, reason: "inbox" }` on a non-empty inbox before any
+ * interval, backoff, or
  * deferral check), and `pollRunnerReasons` skips the need-based deferral block for reason
  * `inbox`, so no scheduler change is needed. A heal prompt that cannot be queued is warned under
  * `foundBy` and clears the heal key, never thrown. */
@@ -192,8 +193,9 @@ export async function mainRedHealNote(root: string, role: string, wt: string): P
 /** What the review gate learns about main's current tip when a change's check failed twice
  * (mainTipVerdict): `green` — main passes (observed by a run on this tree, never inherited), so
  * the change broke the check; `red` — main fails
- * too, so the failure is not the change's and this module's gate and ci handoff own the
- * repair; `unavailable` — no verdict could be had, with `why` for the rejection's reasons. */
+ * too, so the failure is not the change's and the ci healer's hand-off (`mainRedHealNote`) and
+ * the main watch own the repair; `unavailable` — no verdict could be had, with `why` for the
+ * rejection's reasons. */
 type MainTipVerdict =
   | { status: "green"; sha: string }
   | { status: "red"; sha: string }
