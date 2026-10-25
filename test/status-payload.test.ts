@@ -22,7 +22,7 @@ import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { requestWake } from "../src/operator/operator-intent.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
-import { orchestratorStatePath, pausedPath, piLogPath, postReviewPath } from "../src/paths.js";
+import { orchestratorStatePath, pausedPath, piLogPath, postReviewPath, roleNotesPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -36,6 +36,7 @@ import { assistantLine } from "./fixtures/pi-events.js";
 import { warnEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { checkFlakyChecks } from "../src/doctor/doctor-project-checks.js";
+import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
 import { QA_COVERAGE_STALE_MS, recordFlow } from "../src/run/qa-coverage.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
@@ -1208,6 +1209,61 @@ test("the payload's briefTruncated follows briefBlockOverCap and clears under th
   payload = statusPayload(root, now) as { briefTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.briefTruncated, undefined, "no briefTruncated key at the cap");
   assert.equal(payload.alerts.find((a) => a.key === "brief-truncated"), undefined, "no brief-truncated alert at the cap");
+});
+
+test("the payload's roleNotesOverCap follows the notes read bound and clears under it", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  interface Payload { roleNotesOverCap?: Array<{ role: string; chars: number }>; alerts: Array<{ key: string; tone: string; title: string; detail: string }> };
+  const payload = () => statusPayload(root, now) as Payload;
+  // No notes dir (nothing recorded yet) is the doctor's pass: no field, no key, no alert.
+  assert.equal(snapshot(root, undefined, now).roleNotesOverCap, undefined, "no notes dir leaves the field absent");
+  assert.equal(payload().roleNotesOverCap, undefined, "no roleNotesOverCap key with no notes dir");
+  assert.equal(payload().alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no role-notes-truncated alert with no notes dir");
+
+  const notesDir = path.dirname(roleNotesPath(root, "clean"));
+  fs.mkdirSync(notesDir, { recursive: true });
+  // A note at exactly the read bound is not over it: still absent everywhere.
+  fs.writeFileSync(roleNotesPath(root, "clean"), "x".repeat(ROLE_NOTES_MAX_BYTES));
+  assert.equal(snapshot(root, undefined, now).roleNotesOverCap, undefined, "a note at exactly the cap stays absent");
+  assert.equal(payload().roleNotesOverCap, undefined, "no key at the cap");
+  assert.equal(payload().alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert at the cap");
+
+  // A note over the byte bound but not the character bound proves the predicate is characters
+  // (text.length, truncateWithNote's unit) — matching checkRoleNotes: each emoji is 2 UTF-16
+  // code units, so 2048 emojis are 4096 characters but 8192 bytes — over the byte bound, yet
+  // exactly the character bound, so it is NOT flagged.
+  const multibyte = "\u{1F600}".repeat(ROLE_NOTES_MAX_BYTES / 2); // 4096 chars, 8192 bytes
+  fs.writeFileSync(roleNotesPath(root, "feature"), multibyte);
+  assert.equal(snapshot(root, undefined, now).roleNotesOverCap, undefined, "a bytes-over/char-at-bound multibyte note stays absent");
+  assert.equal(payload().roleNotesOverCap, undefined, "no key for the bytes-over/char-at-bound multibyte note");
+  assert.equal(payload().alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert for the bytes-over/char-at-bound multibyte note");
+
+  // Two over-cap notes surface the sorted array, the key, and the alert naming both roles.
+  fs.writeFileSync(roleNotesPath(root, "clean"), "x".repeat(ROLE_NOTES_MAX_BYTES + 1));
+  fs.writeFileSync(roleNotesPath(root, "feature"), "y".repeat(ROLE_NOTES_MAX_BYTES + 500));
+  const expected = [
+    { role: "feature", chars: ROLE_NOTES_MAX_BYTES + 500 },
+    { role: "clean", chars: ROLE_NOTES_MAX_BYTES + 1 },
+  ];
+  assert.deepEqual(snapshot(root, undefined, now).roleNotesOverCap, expected, "two over-cap notes sort newest-char-count first");
+  assert.deepEqual(payload().roleNotesOverCap, expected, "the payload carries the same array");
+  const alert = payload().alerts.find((a) => a.key === "role-notes-truncated");
+  assert.ok(alert, "over-cap notes raise the role-notes-truncated alert");
+  assert.equal(alert!.tone, "amber");
+  assert.match(alert!.detail, /feature/);
+  assert.match(alert!.detail, /clean/);
+
+  // A non-.md file with an over-bound length is ignored (matching checkRoleNotes).
+  fs.writeFileSync(path.join(notesDir, "stray.txt"), "z".repeat(ROLE_NOTES_MAX_BYTES + 100));
+  assert.deepEqual(snapshot(root, undefined, now).roleNotesOverCap, expected, "a non-.md file is ignored");
+
+  // Rewriting both notes to exactly the cap clears the array, the key and the alert.
+  fs.writeFileSync(roleNotesPath(root, "clean"), "x".repeat(ROLE_NOTES_MAX_BYTES));
+  fs.writeFileSync(roleNotesPath(root, "feature"), "y".repeat(ROLE_NOTES_MAX_BYTES));
+  assert.equal(snapshot(root, undefined, now).roleNotesOverCap, undefined, "rewriting both to the cap clears the snapshot field");
+  assert.equal(payload().roleNotesOverCap, undefined, "no key once both notes are at the cap");
+  assert.equal(payload().alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert once both notes are at the cap");
 });
 
 test("qaCoverageAlert is null for a missing or fresh ledger and names the newest flow for a stalled one", () => {

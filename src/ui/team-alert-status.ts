@@ -19,6 +19,7 @@ import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 import { joinWithMore, squash } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { STALL_RE } from "./run-progress-model.js";
+import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
 
 interface StatusAlertsInput {
   snap: Pick<
@@ -27,6 +28,7 @@ interface StatusAlertsInput {
     | "noDeclaredCheck"
     | "noBrief"
     | "briefTruncated"
+    | "roleNotesOverCap"
     | "mainCheck"
   >;
   roles: readonly AlertRole[];
@@ -168,6 +170,22 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       tone: "amber",
       title: "The project brief is over its prompt cap — every role runs on a truncated brief",
       detail: "The brief block exceeds the read cap, so each run's prompt carries only its head plus a truncation marker. Shorten the block to at most " + BRIEF_TEXT_MAX_CHARS + " characters in the file the doctor `brief` row names (a hand edit, or the dashboard's Brief card), then save it.",
+      actions: [],
+    });
+  }
+  // A role note past the read bound (collectRoleNotesOverCap's predicate, the doctor `role
+  // notes` row's own): `readRoleNote` truncates that role's note on read, so the role's next
+  // prompt carries only the note's head plus a truncation marker while the operator sees the
+  // file whole — a silently degraded next run on a green-looking status. The standing twin of
+  // the doctor `role notes` row's warn, raised as an amber alert on the always-on surfaces.
+  // Independent of team state, like the no-brief alert beside it.
+  const notesOver = snap.roleNotesOverCap ?? [];
+  if (notesOver.length > 0) {
+    out.push({
+      key: "role-notes-truncated",
+      tone: "amber",
+      title: `${plural(notesOver.length, "role note is", "role notes are")} over the read bound — those roles run on truncated notes`,
+      detail: `${joinWithMore(notesOver.map((o) => `${o.role} (${o.chars})`), 3)} exceed the ${ROLE_NOTES_MAX_BYTES}-character read bound, so each of those roles' prompt carries only the note's head plus a truncation marker. Rewrite them under the cap (the run's \`tumwater-notes write\` shim, \`tumwater role <id> --notes-file <path>\`, the dashboard drawer, or the TUI notes editor).`,
       actions: [],
     });
   }

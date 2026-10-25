@@ -260,6 +260,11 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // alert renders). Omitted (absent) at or under the cap, the same omit-undefined idiom as
     // noBrief.
     ...(snap.briefTruncated ? { briefTruncated: true } : {}),
+    // The raw machine-readable twin of the amber `role-notes-truncated` alert (present only
+    // when at least one role's notes file runs past the read bound — the array of `{ role,
+    // chars }`, the same array collectRoleNotesOverCap returns and the alert names). Omitted
+    // (absent) when every note is within the bound, the same omit-undefined idiom as noBrief.
+    ...(snap.roleNotesOverCap && snap.roleNotesOverCap.length > 0 ? { roleNotesOverCap: snap.roleNotesOverCap } : {}),
     ciParityTone: ciParityTone(snap.ciParity),
     // The check's counts fragment, preformatted through badges.ts's mainCountsFragment so
     // the page renders the pass/skip/fail breakdown verbatim and cannot re-derive (and

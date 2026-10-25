@@ -490,7 +490,11 @@ next fresh session (where things live, what was ruled out, what to look at next)
 `.tumwater/state/notes/<role>.md`, are capped at 4 KB, and are the only state carried between a
 role's runs besides the repo itself. A run sees the note when one exists, along with the day it was last saved and how many days ago that was, and may replace it
 by running `tumwater-notes write` on every backend; the director, whose work is your prompt rather
-than a recurring search, has no notes. You can clear or replace a note with
+than a recurring search, has no notes. When a note runs past the 4 KB bound (a hand edit or an old
+build), the next run sees only its head plus a truncation marker while every operator surface reads
+the file whole — `tumwater status`, the dashboard and the TUI surface that over-bound state as a
+standing amber `role-notes-truncated` alert (the twin of the doctor `role notes` row's warn), and
+`tumwater status --json` carries the over-bound roles as a `roleNotesOverCap` array. You can clear or replace a note with
 `tumwater role <id> --clear-notes` or `--notes-file <path>`; a run in progress at that moment may
 still overwrite it through its own `tumwater-notes` call. When a note names an entry or series of
 the backlog, the run prompt also shows the current backlog state of each thing the note names

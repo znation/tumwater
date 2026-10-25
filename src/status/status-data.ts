@@ -23,6 +23,7 @@ import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js
 import { readMergeQueue } from "../merge/merge-queue.js";
 import { collectImageProbeFailures, collectRoleRows } from "./status-roles.js";
 import { collectInboxes } from "./status-inbox.js";
+import { collectRoleNotesOverCap, type RoleNoteOverCap } from "./status-role-notes.js";
 import { collectBudget } from "./status-budget.js";
 import { collectRootInstallDrift } from "./status-install.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
@@ -399,6 +400,12 @@ export interface StatusSnapshot {
    * and the TUI); absent otherwise (at-cap, under-cap, empty and marker-less-keep-
    * `no-brief`'s), so the surfaces render exactly as before. */
   briefTruncated?: boolean;
+  /** Every role whose notes file runs past the read bound — the doctor `role notes` row's
+   * over-bound warning state (src/doctor/doctor-role-notes.ts's checkRoleNotes), raised as a
+   * standing amber alert on `tumwater status`, the dashboard and the TUI. Each entry is the
+   * role's id and its note's length in characters, sorted newest-char-count first; present
+   * only when non-empty, so the surfaces render exactly as before. */
+  roleNotesOverCap?: RoleNoteOverCap[];
   /** The check-permit pool's live state as the orchestrator published it; only while it runs. */
   checkPermits?: CheckPermitSnapshot;
   /** The workspace pool's live state as the running orchestrator published it; absent
@@ -454,6 +461,9 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // The doctor's cached image-probe failures (part 5/5): one read per snapshot, labelled, so
   // the amber probe alert and `status --json` both answer from the same collector.
   const imageProbeFailures = collectImageProbeFailures(root, now);
+  // Every role whose notes file runs past the read bound (status-role-notes.ts): the standing
+  // twin of the doctor `role notes` row, raised as the amber role-notes-truncated alert.
+  const roleNotesOverCap = collectRoleNotesOverCap(root);
   // One inbox pass per poll (status-inbox.ts) serves all four director fields and the per-role
   // counts/entries from the same queuedRolePromptEntries reads.
   const { inbox, inboxPrompts, inboxFiles, inboxQueuedAt, inboxNotBefore, roleInbox, roleInboxPrompts } =
@@ -599,6 +609,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     noDeclaredCheck: detectBuildCheck(root, cfg) === null ? true : undefined,
     noBrief: briefBlockMissing(root) ? true : undefined,
     briefTruncated: briefBlockOverCap(root) ? true : undefined,
+    ...(roleNotesOverCap.length > 0 ? { roleNotesOverCap } : {}),
     // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
     // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
     // must not speak for a stopped team — and only when the last poll could measure the

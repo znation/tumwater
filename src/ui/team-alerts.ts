@@ -71,6 +71,7 @@ export function teamAlerts(
     | "noDeclaredCheck"
     | "noBrief"
     | "briefTruncated"
+    | "roleNotesOverCap"
     | "imageProbeFailures"
     | "chain"
     | "capPaused"
