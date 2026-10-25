@@ -533,10 +533,15 @@ test("the Usage render chain gates the Cached prompt tokens by role chart right 
   // once, gated on the series really carrying cacheReadTokensByRole, sitting after the
   // Prompt tokens by role term and before the Spend by role term.
   const chain = GUI_CLIENT_REPORT_JS;
+  const tokensOut = chain.indexOf('block("Tokens by role"');
+  const prompt = chain.indexOf('block("Prompt tokens by role"');
   const cached = chain.indexOf('block("Cached prompt tokens by role"');
   const spend = chain.indexOf('block("Spend by role"');
+  assert.ok(tokensOut >= 0, "the Tokens by role term exists");
+  assert.ok(prompt >= 0, "the Prompt tokens by role term exists");
   assert.ok(cached >= 0, "the Cached prompt tokens by role term exists");
   assert.ok(spend >= 0, "the Spend by role term exists");
+  assert.ok(cached > prompt, "Cached prompt tokens by role sits after Prompt tokens by role in the chain");
   assert.ok(cached < spend, "Cached prompt tokens by role sits before Spend by role in the chain");
   assert.match(chain, /seriesHasAny\(d, "cacheReadTokensByRole"\) \? block\("Cached prompt tokens by role", chartCacheReadTokensByRole\(d\)\) : ""/);
   // Exactly one such gated term.
