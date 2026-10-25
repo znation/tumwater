@@ -195,6 +195,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/roles.test.ts and test/runner-ids.test.ts: drop the `BASELINE_BLOCKED_ROLES`/`baselineBlocked` cases; keep the catalog and `OBSERVER_ROLES` checks.
 - test/gate-notes.test.ts: drop the `buildMainKnownRedNote` cases; keep the `buildMainRedNote` cases.
 
+**Needs review 2026-10-24 by feature: could not converge — (prior 1) `src/doctor/doctor-holds.ts` remains in the diff (`src/doctor/doctor-holds.ts:277` still drops `(mainRedGate)`) while lying outside the entry's Files-touched list and being explicitly reserved for part 3k/3 by the entry's Approach; the summary and commit body claim it was "fully reverted…**
+
 ### Every commit is verified on main, part 3h/3: the pre-merge gate runs no model reviewer — only a secret leak, a brief-block edit or a protected edit refuses a diff (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; requires part 3g/3 landed, since a role not on `review.afterMerge` must have its post-landing review queued before its pre-merge model review goes; touches src/review/review.ts src/review/diff-rules.ts docs/how-it-works.md test/review.test.ts)
 
 **Needs review 2026-10-24 by feature: too large for one run (held 4)** — dropping the reviewer also breaks most of test/review-precheck.test.ts (tests that assert the reviewer runs after a green pre-check, plus the approval-reuse, prompt, nudge and second-slot-overlap cases for a feature this part deletes), which the plan does not list; that file needs a rewrite comparable to test/review.test.ts, so the files-touched list and its test plan must be corrected before it can land.
