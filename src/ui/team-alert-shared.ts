@@ -246,7 +246,6 @@ export function seeFailures(): Array<{ label: string; act: string; arg: string }
 export function openBacklogAction(entry: { file: "plans" | "bugs"; index: number }): Array<{ label: string; act: string; arg: string }> {
   return [{ label: "Open backlog", act: "backlog", arg: `${entry.file}:${entry.index}` }];
 }
-
 /** Natural English list of the given names: “a and b” for one or two, “a, b, and c”
  * beyond that. Shared by the role-row and held-id banners so the wording cannot drift. */
 function andJoin(names: readonly string[]): string {
