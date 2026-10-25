@@ -30,7 +30,7 @@ import { roleLabel } from "../roles/role-labels.js";
 
 /** A stale open bug the doctor's 3-day rule warns about (src/doctor/doctor-backlog-bugs.ts
  * checkStaleBugs, STALE_BUG_DAYS): an unrefused, non-waiting open bug whose filing stamp is at
- * least 3 days old. Computed in src/ui/status-payload.ts's staleOpenBugs from the same
+ * least 3 days old. Computed in src/ui/alert-feeds.ts's staleOpenBugs from the same
  * threshold the doctor's check uses, so the alert and the doctor cannot drift on the rule. Its
  * 0-based position addresses the drawer (`bugs:<index>`); its 1-based position is the
  * `bug --list`/`bug --cancel` number; its title is stamp-stripped for prose; days is its whole-
@@ -44,7 +44,7 @@ export interface StaleBug {
 
 /** A stale open question the doctor's 7-day rule warns about (src/doctor/doctor-backlog-bugs.ts
  * checkStaleQuestions, STALE_QUESTION_DAYS): an open QUESTIONS.md entry whose `(asked by …)` stamp
- * is at least 7 days old. Computed in src/ui/status-payload.ts's staleOpenQuestions from the same
+ * is at least 7 days old. Computed in src/ui/alert-feeds.ts's staleOpenQuestions from the same
  * threshold and the same questionFilingDate parser the doctor's check uses, so the alert and the
  * doctor cannot drift on the rule. Its 1-based position is the `questions --list`/`tumwater
  * questions answer <n>` number; its 0-based index is the `## Open` position kept only as the
@@ -58,7 +58,7 @@ export interface StaleQuestion {
 
 /** A failed notify page the doctor's 1-day rule warns about (src/doctor/doctor-notify.ts,
  * NOTIFY_CHECK_WINDOW_MS): a warning event within the last day from a notify hook that failed
- * to page — a nonzero exit, a kill, or a failed start. Computed in src/ui/status-payload.ts's
+ * to page — a nonzero exit, a kill, or a failed start. Computed in src/ui/alert-feeds.ts's
  * notifyFailures over the same window and the same isNotifyFailure filter the doctor's check
  * uses, so the alert and the doctor cannot drift on the rule. count is the failed pages in the
  * window, latestTs the most recent one's event stamp, message its squashed wording. */
@@ -70,7 +70,7 @@ export interface NotifyFailure {
 
 /** A merge refused because the primary checkout holds uncommitted files the merge would
  * overwrite (src/merge/merge-git.ts `primaryCheckoutBlockers`, `overwriteBlockedReason`), read
- * off the `warning` event the merge path already writes. Computed in src/ui/status-payload.ts's
+ * off the `warning` event the merge path already writes. Computed in src/ui/alert-feeds.ts's
  * primaryOverwriteBlocks over the last PRIMARY_OVERWRITE_WINDOW_MS, matching the message marker
  * the merge path logs, so the alert needs no new git read and cannot drift from the refusal
  * count. count is the refusals in the window, latestTs the most recent one's event stamp,
@@ -83,7 +83,7 @@ export interface PrimaryOverwriteBlock {
 
 /** A queued inbox prompt the doctor's stale-prompt rule warns about (src/doctor/doctor-backlog.ts
  * checkStalePrompts, STALE_PROMPT_MS): a prompt due-but-undelivered for more than a day because
- * its role is paused, disabled, or failing. Computed in src/ui/status-payload.ts's stalePrompts
+ * its role is paused, disabled, or failing. Computed in src/ui/alert-feeds.ts's stalePrompts
  * from the same threshold and the same `queuedListRows`/`listWideScope`/`deliverableAt` traversal
  * the doctor's check uses, so the alert, the doctor, and the Inbox views cannot drift on the rule.
  * `position` is the 1-based `prompt --cancel`/`--edit` number; `waitedMs` is the age the alert
@@ -96,7 +96,7 @@ export interface StalePrompt {
 
 /** A queued merge the doctor's stale-merge rule warns about (src/doctor/doctor-backlog.ts
  * MERGE_QUEUE_STALE_MS): a change that has sat in the merge queue more than 6 h without
- * starting. Computed in src/ui/status-payload.ts's staleMerges from the same threshold and the
+ * starting. Computed in src/ui/alert-feeds.ts's staleMerges from the same threshold and the
  * same `queuedMerges`/`readMergeMarker`/`mergeChanges` traversal the doctor's check uses, so the
  * alert and the doctor cannot drift on the rule. `waitedMs` is the age the alert names. Sorted
  * oldest-first by the caller, so the first element is the longest-waiting merge. */
@@ -110,7 +110,7 @@ export interface StaleMerge {
  * doctor-backlog-plans.ts, planDependencyProblem) warns about: a cycle that blocks a whole
  * series forever, a dangling `requires … landed` ref naming no heading (its hold is void), an
  * unparsed clause that holds nothing, or a misworded dependency the claim allocator ignores.
- * Computed in src/ui/status-payload.ts's planDependencyAlert through the same function the
+ * Computed in src/ui/alert-feeds.ts's planDependencyAlert through the same function the
  * doctor's check uses, so the alert and the doctor cannot drift on the problem set, the
  * severity order, or the wording. Gives the alert's title its kind and the detail.
  */
@@ -121,7 +121,7 @@ export interface PlanDependencyProblem {
 
 /** An open bug a Waiting-for-the-next-failure note has held for STALE_WAIT_DAYS or more — the
  * always-on twin of the doctor's `waiting bugs` rule (src/doctor/doctor-backlog-bugs.ts
- * checkWaitingBugs, STALE_WAIT_DAYS). Computed in src/ui/status-payload.ts's staleWaitingBugs
+ * checkWaitingBugs, STALE_WAIT_DAYS). Computed in src/ui/alert-feeds.ts's staleWaitingBugs
  * from the same threshold, selection and anchor as the doctor's check, so the alert and the
  * doctor cannot drift on the rule; the alert omits the doctor's recurrence scan by design (the
  * reader's doc comment says why). Its 0-based index addresses the drawer (`bugs:<index>`); its
@@ -138,7 +138,7 @@ export interface StaleWaitingBug {
  * (src/baseline/main-guardrails.ts `quarantineWarning`, QUARANTINE_WARN_COUNT, QUARANTINE_AGE_MS):
  * more than 10 quarantined tests, or any test first seen more than 3 days ago — an old entry is
  * a failure the team has stopped seeing, and an unfiled one never leaves quarantine. Computed in
- * src/ui/status-payload.ts's quarantineAlert from the same function the doctor's `flaky checks`
+ * src/ui/alert-feeds.ts's quarantineAlert from the same function the doctor's `flaky checks`
  * row calls, so the alert and the doctor cannot drift on the trigger or the thresholds. `warning`
  * is the doctor's exact phrase; `oldestFirstSeen` is the age the alert names. */
 export interface QuarantinedTests {
@@ -150,7 +150,7 @@ export interface QuarantinedTests {
 /** Checks that flapped more than once in the last day — the always-on twin of the doctor's
  * `flaky checks` row (src/doctor/doctor-project-checks.ts checkFlakyChecks): `count` is the
  * number of distinct flapping checks and `detail` is the doctor's own flapped phrase. Computed
- * in src/ui/status-payload.ts's flappedChecksAlert from the same repeatedFlakeCounts and
+ * in src/ui/alert-feeds.ts's flappedChecksAlert from the same repeatedFlakeCounts and
  * flappedChecksPhrase the doctor calls, so the alert and the doctor cannot drift on the count
  * or the wording. */
 export interface FlappedChecks {
@@ -159,7 +159,7 @@ export interface FlappedChecks {
 }
 /** A post-merge review one failed run from being dropped, the always-on twin of the doctor's
  * `post-merge reviews` row (src/doctor/doctor-backlog.ts checkPostReviews): fed from
- * status-payload.ts's postReviewRiskAlert, which reads the same atRiskPostReviews traversal and
+ * alert-feeds.ts's postReviewRiskAlert, which reads the same atRiskPostReviews traversal and
  * atRiskPostReviewsPhrase the doctor shows, so the alert and the doctor cannot drift on the
  * selection or the wording. count is the at-risk reviews, detail the doctor's sentence. */
 export interface PostReviewRisk {
@@ -579,7 +579,7 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
   // checkStaleQuestions) has waited a week without an answer — a role is stuck behind a decision,
   // the exact class every other backlog row raises as an amber alert — so it asks (amber) the way
   // the stale-bug alert does, naming the oldest question, its age, and the `tumwater questions
-  // answer` fix. Its callers pass it oldest-first (status-payload.ts staleOpenQuestions sorts
+  // answer` fix. Its callers pass it oldest-first (alert-feeds.ts staleOpenQuestions sorts
   // most-days-waited first), so the first element is the most-stale question and is named with its
   // position and days; the rest are folded through entryListDetail like the questions and refused
   // alerts, so the wording and counts cannot drift. The `questions` action opens the Questions tab,
@@ -650,7 +650,7 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
     });
   }
   // A broken plan-dependency clause (the doctor's `plan dependencies` rule,
-  // src/doctor/doctor-backlog-plans.ts planDependencyProblem, via status-payload.ts's
+  // src/doctor/doctor-backlog-plans.ts planDependencyProblem, via alert-feeds.ts's
   // planDependencyAlert) is invisible in the backlog listings — the claim allocator keeps
   // acting on the misread clause — so it asks (amber) like the stale-bug alert, named by type
   // and carrying the doctor's exact message. One alert at most (the problem set is the single
@@ -828,7 +828,7 @@ function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
   // A stale bug (doctor's STALE_BUG_DAYS rule, src/doctor/doctor-backlog-bugs.ts) sits when no
   // role fixes it — the bugfix role is disabled or failing — so it asks (amber) the way the
   // refused alert does, naming the oldest, its age, and the doctor's retract advice. Its
-  // callers pass it oldest-first (status-payload.ts staleOpenBugs sorts most-days-waited first),
+  // callers pass it oldest-first (alert-feeds.ts staleOpenBugs sorts most-days-waited first),
   // so the first element is the most-stale bug and is named with its position and age; the rest
   // are folded through entryListDetail like the questions and refused alerts, so the wording and
   // counts cannot drift.
@@ -853,7 +853,7 @@ function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
   // something else goes wrong — so a page that failed within the last day asks (amber) the way
   // the stale-bug alert does, naming the count, the age of the latest, its squashed message,
   // and the `tumwater notify --test` fix. Its callers feed it the latest failure's message via
-  // status-payload.ts's notifyFailures (the same isNotifyFailure filter and window), so the
+  // alert-feeds.ts's notifyFailures (the same isNotifyFailure filter and window), so the
   // alert and the doctor cannot drift.
   if (notifyFailure) {
     out.push({
@@ -868,7 +868,7 @@ function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
   // A waiting bug (doctor's STALE_WAIT_DAYS rule, src/doctor/doctor-backlog-bugs.ts
   // checkWaitingBugs) whose flake has not come back parks indefinitely, so a hold that has
   // outlived a week asks (amber) the way the stale-bug alert does, naming the oldest hold, its
-  // age, and the release-or-keep advice. Its callers pass it most-days-first (status-payload.ts
+  // age, and the release-or-keep advice. Its callers pass it most-days-first (alert-feeds.ts
   // staleWaitingBugs sorts by days descending, ties in file order), so the first element is the
   // longest-held bug and is named with its position and days; the rest are folded through
   // entryListDetail like the questions and refused alerts, so the wording and counts cannot
@@ -892,7 +892,7 @@ function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
   // A stranded inbox prompt (doctor's STALE_PROMPT_MS rule, src/doctor/doctor-backlog.ts) sits
   // when a role is paused, disabled, or failing and never reaches the run that would dequeue the
   // prompt, so it asks (amber) the way the stale-bug alert does, naming the oldest prompt, its
-  // wait, and the deliver-or-drop advice. Its callers feed it oldest-first (status-payload.ts
+  // wait, and the deliver-or-drop advice. Its callers feed it oldest-first (alert-feeds.ts
   // stalePrompts sorts by queuedAtMs ascending), so the first element is the most-stale prompt
   // and is named with its role, position and wait; the rest are folded through entryListDetail
   // like the questions and refused alerts, so the wording and counts cannot drift.
@@ -914,7 +914,7 @@ function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
   // A stalled merge queue (the doctor's MERGE_QUEUE_STALE_MS rule,
   // src/doctor/doctor-backlog.ts, set by the stale-merges alert) sits when a queued change
   // never starts — neither verified nor flagged — so a drain that has stopped reads healthy
-  // except for this row. Its callers feed it oldest-first (status-payload.ts staleMerges reads
+  // except for this row. Its callers feed it oldest-first (alert-feeds.ts staleMerges reads
   // queuedMerges in queue-file order), so the first element is the longest-waiting merge and is
   // named with its role, summary and wait; the rest are folded through joinWithMore like the
   // actions and no-image alerts, so the wording and counts cannot drift.
@@ -935,7 +935,7 @@ function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
   }
   // A merge-queue file `readMergeQueue` skips (torn, foreign, or vanished mid-listing) is the
   // always-on twin of the doctor's `merge-queue files` row (doctor-backlog.ts
-  // skippedMergeQueueFiles, feeding this from status-payload.ts's skippedMergeFiles): it sits
+  // skippedMergeQueueFiles, feeding this from alert-feeds.ts's skippedMergeFiles): it sits
   // in .tumwater/merge-queue/ forever because the drain drops only an unreadable head, so a
   // skipped file after a healthy entry strands its merge until someone removes it. The stale-
   // merges alert above reads only readable entries, so it can never cover one. The doctor's row
@@ -957,7 +957,7 @@ function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
   // overwriteBlockedReason `warning` the merge path writes) — the always-on twin of the doctor's
   // `uncommitted backlog` row, but read off events so it reaches the status poll (the doctor's
   // git read is async and never gets there). A team stuck retrying one dirty file is a single
-  // amber banner until the file is committed and the refusals age out; status-payload.ts's
+  // amber banner until the file is committed and the refusals age out; alert-feeds.ts's
   // primaryOverwriteBlocks feeds it the last day's refusals, counting them and naming the
   // latest's age, squashed message, and the commit fix.
   if (primaryOverwrite) {
@@ -1001,7 +1001,7 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   // A stale or oversized flake quarantine — the always-on twin of the doctor's `flaky checks`
   // row (main-guardrails.ts checkFlakyChecks, quarantineWarning): a quarantined test counts as
   // a known failure until its filed bug leaves BUGS.md `## Open`, so an old entry means the
-  // team is merging on a suite whose red is being excused. status-payload.ts's quarantineAlert
+  // team is merging on a suite whose red is being excused. alert-feeds.ts's quarantineAlert
   // feeds it from the same quarantineWarning the doctor calls, so the alert and the doctor
   // cannot drift on when the list is a problem; the warning phrase and the oldest test's age
   // are shown, folded through squash like other long names.
@@ -1019,7 +1019,7 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   // `flaky checks` row (doctor-project-checks.ts checkFlakyChecks): the gate's single re-run
   // absorbs a one-off flake, but a check flapping twice silently pays that re-run on every
   // merge it touches, so the tally belongs on every observer surface while it happens.
-  // status-payload.ts's flappedChecksAlert feeds it from the same repeatedFlakeCounts and
+  // alert-feeds.ts's flappedChecksAlert feeds it from the same repeatedFlakeCounts and
   // flappedChecksPhrase the doctor calls, so the alert and the doctor cannot drift on the
   // count or the wording.
   if (flappedChecks) {
@@ -1035,7 +1035,7 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   // tiering (src/review/post-merge-review.ts `reviewMergedCommit`). A post-merge rejection is the
   // costly kind: the commit already reached main, so the rejection is answered only by the
   // reviewer's own fix, and the always-on signal for a day crossing POST_MERGE_REJECT_WARN is
-  // this alert. status-payload.ts's postMergeChurnAlert feeds it
+  // this alert. alert-feeds.ts's postMergeChurnAlert feeds it
   // from the same `afterMerge: true` `review_rejected` events the report's
   // postMergeRejectionsByRole folds, so the alert and the report cannot disagree on which
   // rejections are post-merge.
@@ -1082,7 +1082,7 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   // the diff rules: <reason>`). The gate judges one change; the watch judges each first-parent
   // commit's own diff, so a conflict marker, a protected edit, a leaked secret, a phantom fix
   // claim or a broken backlog structure that reached main through a gate blind spot sits on
-  // main with only that event log to say so. status-payload.ts's mainRuleFailures feeds it
+  // main with only that event log to say so. alert-feeds.ts's mainRuleFailures feeds it
   // from the same marker, so the alert and the watch cannot drift on what a rule failure is (a
   // `main_check` or `review_rejected` carrying the same text never matches).
   if (mainRuleFailure) {
@@ -1116,7 +1116,7 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   }
   // The qa role's flow coverage silently stopped advancing — the always-on twin of the
   // doctor's `qa coverage` row (doctor-project-checks.ts checkQaCoverage), fed from the same
-  // qaCoverageStalled predicate via status-payload.ts's qaCoverageAlert so the alert and the
+  // qaCoverageStalled predicate via alert-feeds.ts's qaCoverageAlert so the alert and the
   // row cannot disagree on when a quiet qa is a stall. A missing ledger (no record yet) is not
   // a stall, so this fires only once a recorded flow's newest exercise is over three days old —
   // the team's only flow-level observer has silently stopped recording (disabled, paused,
@@ -1240,7 +1240,7 @@ function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
   // Last day's capacity contention — the always-on twin of the doctor's `workspaces`,
   // `provider contention` and `check contention` rows (doctor-contention-checks.ts). The
   // instantaneous badges show only current waits, and the 24 h total is the tuning signal that
-  // says a cap is too small; status-payload.ts's capacityContention feeds it from the same
+  // says a cap is too small; alert-feeds.ts's capacityContention feeds it from the same
   // `*_wait` events and ten-minute thresholds the doctor sums, so the alert and the doctor
   // cannot drift on the trigger or the knob-raising advice.
   if (contention.length > 0) {
@@ -1255,7 +1255,7 @@ function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
   // A stale workspace pin — the always-on twin of the doctor's `worktree pool` row's stuck-pin
   // clause (doctor-contention-checks.ts checkWorktreePool): a slot pinned past a day by a run
   // that never resumed silently shrinks the pool, and no other observer surface names it until
-  // an operator runs `tumwater doctor`. status-payload.ts feeds it the same staleWorkspacePins
+  // an operator runs `tumwater doctor`. alert-feeds.ts feeds it the same staleWorkspacePins
   // predicate the doctor's row uses, so the alert and the row cannot drift on what is stale;
   // the "Open <role>" buttons reach the role drawer like the other role alerts.
   if (workspacePins.length > 0) {
@@ -1271,7 +1271,7 @@ function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
   }
   // A Fixed record whose quoted test failed again in the trailing day — the always-on twin of
   // the doctor's `regressed fixes` row (doctor-backlog-bugs.ts checkRegressedFixes).
-  // status-payload.ts's regressedFixesAlert feeds it the same candidate selection, failureMentions
+  // alert-feeds.ts's regressedFixesAlert feeds it the same candidate selection, failureMentions
   // match and verbatim sentence, so the alert and the doctor cannot drift on the trigger or the
   // wording; the Failures view shows the naming events.
   if (regressedFixes) {

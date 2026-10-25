@@ -59,7 +59,7 @@ export function checkMergeLock(root: string): CheckOutcome {
 const PIN_STALE_MS = DAY_MS;
 
 /** One stale pin the worktree-pool row (checkWorktreePool) and the standing `workspace-pins`
- * alert (status-payload.ts) share: a slot held out of the pool by a run that never resumed.
+ * alert (alert-feeds.ts) share: a slot held out of the pool by a run that never resumed.
  * role is the slot's pinnedFor, dir the slot's directory name, ageMs the pin's whole-ms age. */
 export interface StaleWorkspacePin {
   role: string;
@@ -144,7 +144,7 @@ function sumWaits(waits: readonly HarnessEvent[]): { count: number; totalMs: num
 
 /** The verdict one `*_wait` contention row folds: whether the window's waits cross that row's
  * warn threshold, and the exact detail the doctor prints (the same rule the always-on
- * contention alert carries, so the two cannot drift — see status-payload.ts's
+ * contention alert carries, so the two cannot drift — see alert-feeds.ts's
  * capacityContention). `warn` mirrors the total crossing the row's ten-minute threshold and
  * the appended knob-raising advice, so the doctor's level and the alert's presence are decided
  * by one rule. */

@@ -4311,7 +4311,7 @@ file, or a project that never ran qa — is not a stall, mirroring `ciParityStal
 missing parity record.
 
 **Binds.** `src/run/qa-coverage.ts` (`qaCoverageStalled`, `QA_COVERAGE_STALE_MS`),
-`src/doctor/doctor-project-checks.ts` (`checkQaCoverage`), `src/ui/status-payload.ts`
+`src/doctor/doctor-project-checks.ts` (`checkQaCoverage`), `src/ui/alert-feeds.ts`
 (`qaCoverageAlert`), `src/ui/team-alerts.ts` (the `qa-stale` alert).
 
 **Pinned by.** `test/qa-coverage.test.ts` — the `qaCoverageStalled` cases (empty false, boundary

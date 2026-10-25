@@ -151,7 +151,7 @@ export function lowerMedian(values: number[]): number {
 
 /** Most-days-waited-first comparator, ties in ascending index (file order) — `b.days - a.days ||
  * a.index - b.index`, the single home of that one-line ordering. Shared by the stale-bug
- * alert (src/ui/status-payload.ts's staleOpenBugs) and the stale-waiting-bug doctor row
+ * alert (src/ui/alert-feeds.ts's staleOpenBugs) and the stale-waiting-bug doctor row
  * (src/doctor/doctor-backlog-bugs.ts's staleWaitingBugRows), which both build `{index, days}`
  * rows off the same backlog scan, so the two cannot drift on how ties order. The generic holds
  * any row type carrying both fields; a row without a natural index passes its first-seen order. */

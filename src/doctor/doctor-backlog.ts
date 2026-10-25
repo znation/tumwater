@@ -117,7 +117,7 @@ export function readBacklogChecked(root: string, file: string): string | CheckOu
  * full six-hour silence while the team is healthy — not on a hold, which doctor already reports
  * separately — is never a merely busy pipeline: it reads as a drain that has stalled. The one
  * opinionated default, like STALE_QUESTION_DAYS, so no knob. The always-on `stale-merges` team
- * alert (src/ui/status-payload.ts staleMerges) reuses this same window through
+ * alert (src/ui/alert-feeds.ts staleMerges) reuses this same window through
  * staleQueuedMergeRows, so the doctor's row and the alert cannot drift on the threshold (the
  * STALE_PROMPT_MS/STALE_BUG_DAYS precedent). */
 export const MERGE_QUEUE_STALE_MS = 6 * HOUR_MS;
@@ -159,7 +159,7 @@ export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome 
 
 /** The one traversal shared by the doctor's `stale merge-queue entries` row
  * (checkStaleQueuedMerges) and the always-on `stale-merges` team alert
- * (src/ui/status-payload.ts staleMerges): every queued merge whose role is not in the in-flight
+ * (src/ui/alert-feeds.ts staleMerges): every queued merge whose role is not in the in-flight
  * marker and whose wait strictly exceeds MERGE_QUEUE_STALE_MS (6 h), in queue-file order (oldest
  * first). The in-flight set comes from readMergeMarker via mergeChanges (an absent or
  * never-throwing unreadable marker contributes the empty set) — a slow review is not a stalled
@@ -175,7 +175,7 @@ export function staleQueuedMergeRows(root: string, now: number): Array<{ role: s
 
 /** The merge-queue files `readMergeQueue` skips — torn, foreign, or vanished mid-listing — as
  * checkout-relative paths. One traversal shared by the doctor's `checkMergeQueueFiles` row and
- * the always-on `skipped-merges` team alert (src/ui/status-payload.ts skippedMergeFiles), so
+ * the always-on `skipped-merges` team alert (src/ui/alert-feeds.ts skippedMergeFiles), so
  * the two surfaces select the same files and name the same paths and cannot drift. */
 export function skippedMergeQueueFiles(root: string): string[] {
   return unreadableMergeQueueFiles(root).map((f) => path.relative(root, f));
@@ -224,7 +224,7 @@ export const POST_REVIEW_AT_RISK_FAILURES = POST_REVIEW_FAILURE_LIMIT - 1;
  * A review that has already landed its fix (`fixed` set) is left out too — it is a settled
  * record naming both shas, not a verdict-less entry the next run could drop.
  * One traversal shared by the doctor's `post-merge reviews` row (checkPostReviews) and the
- * always-on `post-merge-risk` team alert (src/ui/status-payload.ts postReviewRiskAlert), so the
+ * always-on `post-merge-risk` team alert (src/ui/alert-feeds.ts postReviewRiskAlert), so the
  * two surfaces select the same entries and cannot drift. Reads .tumwater/state/post-review.json
  * through readPostReviews, which degrades a missing or torn file to the well-formed subset or
  * `[]` and never throws. */
@@ -251,7 +251,7 @@ export function atRiskPostReviewsPhrase(rows: readonly AtRiskPostReview[]): stri
  * can fix the reviewer backend or deliberately accept the commit unreviewed before the drain
  * drops it from the queue and it stays on main unreviewed. Reads .tumwater/state/post-review.json
  * through the shared atRiskPostReviews traversal the always-on post-merge-risk team alert
- * (src/ui/status-payload.ts postReviewRiskAlert) uses, so the two surfaces cannot drift. A warn,
+ * (src/ui/alert-feeds.ts postReviewRiskAlert) uses, so the two surfaces cannot drift. A warn,
  * never a fail — the checkStaleQueuedMerges precedent: a failing reviewer is operator signal,
  * not a broken environment; readPostReviews never throws (a missing or torn file degrades to the
  * well-formed subset or `[]`), so the check needs no read-error arm. */
@@ -265,14 +265,14 @@ export function checkPostReviews(root: string): CheckOutcome {
  * warns: a day, fixed. An opinionated default with no knob, like MERGE_QUEUE_STALE_MS: a day is
  * long enough that a healthy role's next run would have dequeued the prompt, and short enough
  * that a paused or disabled role's stranded prompt shows up. The always-on stale-prompt team
- * alert (src/ui/status-payload.ts stalePrompts) reuses this same threshold, so it cannot drift
+ * alert (src/ui/alert-feeds.ts stalePrompts) reuses this same threshold, so it cannot drift
  * from the doctor's check — the STALE_BUG_DAYS precedent. */
 export const STALE_PROMPT_MS = DAY_MS;
 
 /** The queued inbox prompts the doctor's stale-prompt rule calls stale — deliverable now (a
  * `--at` prompt still counting down is never stale) and queued more than STALE_PROMPT_MS,
  * oldest-first, `queuedAtMs` narrowed to a number. One traversal shared by the doctor's
- * `checkStalePrompts` check and the always-on `stalePrompts` team alert (src/ui/status-payload.ts),
+ * `checkStalePrompts` check and the always-on `stalePrompts` team alert (src/ui/alert-feeds.ts),
  * so the two surfaces read the same rule at the same threshold and cannot drift. */
 export function staleQueuedPromptRows(root: string, now: number): Array<QueuedListRow & { queuedAtMs: number }> {
   return queuedListRows(root, null, listWideScope(root))

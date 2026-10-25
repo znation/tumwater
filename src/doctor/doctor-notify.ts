@@ -9,7 +9,7 @@ import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 /** How far back the `notify` check looks for failed pages: a day, fixed. An opinionated
  * default with no knob, like STALE_BUG_DAYS: long enough that a transient hook failure shows
  * up, short enough that a page that did not go through is still the operator's business. The
- * always-on notify team alert (src/ui/status-payload.ts notifyFailures) reuses this same
+ * always-on notify team alert (src/ui/alert-feeds.ts notifyFailures) reuses this same
  * threshold and the same isNotifyFailure window, so it cannot drift from the doctor's check
  * — the STALE_BUG_DAYS precedent. */
 export const NOTIFY_CHECK_WINDOW_MS = DAY_MS;

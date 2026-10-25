@@ -19,7 +19,7 @@ import { teamAlerts } from "./team-alerts.js";
 import type { TeamAlert } from "./team-alerts.js";
 import { openQuestions } from "../backlog/backlog.js";
 import { operatorHeldEntries, refusedEntries, stalledEntries } from "../backlog/backlog-eligibility.js";
-import { capacityContention, droppedPostReviewsAlert, flappedChecksAlert, mainRuleFailures, notifyFailures, planDependencyAlert, postMergeChurnAlert, postReviewRiskAlert, primaryOverwriteBlocks, qaCoverageAlert, quarantineAlert, regressedFixesAlert, skippedMergeFiles, staleMerges, staleOpenBugs, staleOpenQuestions, stalePrompts, staleWaitingBugs, staleWorkspacePins } from "./status-payload.js";
+import { capacityContention, droppedPostReviewsAlert, flappedChecksAlert, mainRuleFailures, notifyFailures, planDependencyAlert, postMergeChurnAlert, postReviewRiskAlert, primaryOverwriteBlocks, qaCoverageAlert, quarantineAlert, regressedFixesAlert, skippedMergeFiles, staleMerges, staleOpenBugs, staleOpenQuestions, stalePrompts, staleWaitingBugs, staleWorkspacePins } from "./alert-feeds.js";
 import { strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
 import { duplicatedBacklogHeadings, fixClaimProblems, liveFinishedEntriesFor, validationGapProblems } from "../doctor/doctor-backlog-plans.js";
 
