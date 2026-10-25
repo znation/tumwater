@@ -131,6 +131,14 @@ export function mergeStartHeld(
   return held || (reviewHeld && (role === undefined || !afterMergeRoles.has(baseRoleOf(role))));
 }
 
+/** The base roles whose review runs after merging — the config's `review.afterMerge` list, mapped
+ * through `baseRoleOf` so a listed base id stands for all its parallel instances. The one build of
+ * the set pollMergeDrain's start gate and pollSchedule's launch gate both exempt from a
+ * reviewer-hold, so the two passes cannot read the standing differently. */
+function afterMergeRoleIds(config: TumwaterConfig): ReadonlySet<string> {
+  return new Set((config.review.afterMerge ?? []).map(baseRoleOf));
+}
+
 /** What the request-and-watch step hands the rest of the poll. */
 interface PollInputs {
   liveConfig: TumwaterConfig;
@@ -337,7 +345,7 @@ export async function pollMergeDrain(
   // The roles whose review runs after merging (plans post-merge-review role): while the
   // reviewer is held, their approved/queued changes keep draining, so the per-entry start gate
   // exempts them from the reviewer-hold leg below.
-  const afterMergeRoles = new Set((liveConfig.review.afterMerge ?? []).map(baseRoleOf));
+  const afterMergeRoles = afterMergeRoleIds(liveConfig);
   // A `main_red` pin the pipeline kept goes back on the queue once main's head has moved.
   for (const r of ctx.runners) await requeueMainRedPin(root, mainBranch, r.state, mainHead);
   await drainMergeQueue(
@@ -370,7 +378,7 @@ export async function pollSchedule(
   // The roles whose review runs after merging: while the reviewer is held their runs stay
   // launchable (the pre-merge gate skips their review), so the permit-time start gate exempts
   // them from the reviewer-hold leg below, exactly as the scheduling pass and merge drain do.
-  const afterMergeRoles = new Set((liveConfig.review.afterMerge ?? []).map(baseRoleOf));
+  const afterMergeRoles = afterMergeRoleIds(liveConfig);
   const reasons = await pollRunnerReasons({
     root,
     runners,
