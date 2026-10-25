@@ -438,6 +438,177 @@ export function scopeSnapshotToRoles(snap: StatusSnapshot, roles: readonly strin
   return { ...snap, roles: snap.roles.filter((s) => roleInScope(s.role, roles)) };
 }
 
+/** The run-state header fields (running/pid/build) of the snapshot. */
+function snapshotRunFields(
+  running: boolean,
+  info: ReturnType<typeof readOrchestratorInfo>,
+): Partial<StatusSnapshot> {
+  return {
+    running,
+    pid: info?.pid,
+    build: running && info?.build ? info.build : null,
+  };
+}
+
+/** The director and per-role inbox fields, the open question count, and the doctor's cached
+ * image-probe failures of the snapshot. The `collectInboxes` read stays in `snapshot`; the
+ * builder recomposes the destructured values and reads the open question count from `root`. */
+function snapshotInboxFields(
+  root: string,
+  inboxes: ReturnType<typeof collectInboxes>,
+  imageProbeFailures: ReturnType<typeof collectImageProbeFailures>,
+): Partial<StatusSnapshot> {
+  return {
+    inbox: inboxes.inbox,
+    inboxPrompts: inboxes.inboxPrompts,
+    inboxFiles: inboxes.inboxFiles,
+    inboxQueuedAt: inboxes.inboxQueuedAt,
+    inboxNotBefore: inboxes.inboxNotBefore,
+    roleInbox: inboxes.roleInbox,
+    roleInboxPrompts: inboxes.roleInboxPrompts,
+    questions: openQuestions(root).length,
+    imageProbeFailures,
+  };
+}
+
+/** The spend/billing fields of the snapshot: the budget, the per-backend subscription windows
+ * (and their claude-window spelling) and the running-only chain/provider holds. */
+function snapshotBudgetFields(
+  budget: ReturnType<typeof collectBudget>["budget"],
+  subscriptionWindows: ReturnType<typeof collectBudget>["subscriptionWindows"],
+  subscriptionOnly: ReturnType<typeof collectBudget>["subscriptionOnly"],
+  claudeBlock: ReturnType<typeof collectBudget>["subscriptionWindows"][number] | undefined,
+  running: boolean,
+  info: ReturnType<typeof readOrchestratorInfo>,
+): Partial<StatusSnapshot> {
+  return {
+    // Unconditional (never null): a disabled team still shows its spend and the badge is
+    // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,
+    // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
+    budget,
+    // One window block per subscription backend in use, raw for `status --json` and the
+    // parts 3b/9–3e/9 displays; omitted when no subscription backend reported a window.
+    ...(subscriptionWindows.length > 0 ? { subscriptionWindows } : {}),
+    subscriptionOnly,
+    ...(claudeBlock
+      ? {
+          claudeWindow: {
+            windows: claudeBlock.windows,
+            primary: claudeBlock.primary,
+            only: subscriptionOnly,
+            heldUntil: claudeBlock.heldUntil,
+          },
+        }
+      : {}),
+    ...(running && info?.chain && Object.keys(info.chain).length > 0 ? { chain: info.chain } : {}),
+    // Only while running: a stale info file beside a dead pid must not speak for a stopped
+    // team, and only while a hold stands (an empty list is the same as none).
+    ...(running && info?.providerHolds && info.providerHolds.length > 0 ? { providerHolds: info.providerHolds } : {}),
+  };
+}
+
+/** The pause/quiet-hours fields of the snapshot: the paused flags and their deadlines, the
+ * maintenance quota and bootstrap holds, and the per-role quiet windows. */
+function snapshotPauseFields(
+  teamPause: ReturnType<typeof standingTeamPause>,
+  markerRoles: ReturnType<typeof pausedRoles>,
+  roles: ReturnType<typeof runnerIds>,
+  markerSet: Set<string>,
+  capPaused: ReturnType<typeof collectBudget>["capPaused"],
+  maintenanceQuota: ReturnType<typeof maintenanceQuotaForPoll>,
+  bootstrapNow: ReturnType<typeof bootstrapStatus>,
+  roleRows: ReturnType<typeof collectRoleRows>,
+  budgetPausedRoles: ReturnType<typeof collectBudget>["budgetPausedRoles"],
+  cfg: ReturnType<typeof configForStatus>,
+  root: string,
+  wakes: ReturnType<typeof scheduledWakes>,
+  quiet: ReturnType<typeof quietHoursStatus>,
+): Partial<StatusSnapshot> {
+  return {
+    paused: teamPause !== null,
+    pausedRoles: markerRoles,
+    pausedRunners: roles.filter((id) => runnerPaused(markerSet, id)),
+    capPaused,
+    maintenanceQuota,
+    // The new-project bootstrap hold (plans/work-ratio.md, part 2/2): the same read-only
+    // verdict the gate computes (bootstrapStatus), so the dashboards and the scheduler agree.
+    // The held set is computed with the gate's own predicate over the same role list.
+    bootstrap:
+      bootstrapNow?.active
+        ? { plansDone: bootstrapNow.plansDone, untilPlansDone: bootstrapNow.untilPlansDone }
+        : undefined,
+    bootstrapHeld:
+      bootstrapNow?.active
+        ? roleRows.filter((l) => bootstrapHoldsRole(l.role, openBugs(root).length > 0)).map((l) => l.role)
+        : [],
+    budgetPausedRoles,
+    // The per-role quiet windows' held roles (PLANS.md quietHoursPerRole): keyed role →
+    // window, so the dashboards can render the same `quiet until <end>` wording the team
+    // badge uses, scoped to the role's own schedule. The window string comes back out of
+    // the same config the hold was decided from, so the label cannot name a window that is
+    // not holding (roleQuietHold true implies a parseable, non-empty string there).
+    roleQuietPaused: Object.fromEntries(
+      roleRows
+        .filter((l) => l.role !== DIRECTOR_ROLE && roleQuietHold(cfg.quietHoursPerRole, baseRoleOf(l.role), new Date()))
+        .map((l) => [l.role, cfg.quietHoursPerRole?.[baseRoleOf(l.role)] ?? ""]),
+    ),
+    pausedUntil: teamPause?.until,
+    pausedRolesUntil: pausedRolesUntil(root),
+    scheduledWake: wakes[0],
+    scheduledWakes: wakes.length > 0 ? wakes : undefined,
+    pauseReason: teamPause?.reason,
+    quietHours: quiet.window ?? undefined,
+    inQuietHours: quiet.inWindow,
+  };
+}
+
+/** The merge-queue and doctor health fields of the snapshot (main-check, ci-parity and the
+ * build-check/brief/principles flags, plus the role notes over cap). */
+function snapshotHealthFields(
+  root: string,
+  cfg: ReturnType<typeof configForStatus>,
+  mergeQueue: StatusSnapshot["mergeQueue"],
+  roleNotesOverCap: RoleNoteOverCap[],
+): Partial<StatusSnapshot> {
+  return {
+    mergeQueue,
+    mainCheck: mainCheckForPoll(root, cfg),
+    ciParity: ciParityForPoll(root, cfg),
+    noDeclaredCheck: detectBuildCheck(root, cfg) === null ? true : undefined,
+    noBrief: briefBlockMissing(root) ? true : undefined,
+    briefTruncated: briefBlockOverCap(root) ? true : undefined,
+    ...(roleNotesOverCap.length > 0 ? { roleNotesOverCap } : {}),
+    principlesTruncated: principlesBlockOverCap(root) ? true : undefined,
+  };
+}
+
+/** The running-only resource fields of the snapshot (disk floor, install drift, permits and
+ * the run stop deadlines). */
+function snapshotResourceFields(
+  root: string,
+  running: boolean,
+  info: ReturnType<typeof readOrchestratorInfo>,
+  rootDrift: ReturnType<typeof collectRootInstallDrift>,
+): Partial<StatusSnapshot> {
+  return {
+    // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
+    // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
+    // must not speak for a stopped team — and only when the last poll could measure the
+    // volume. Absent otherwise, so the surfaces render exactly as before.
+    disk: running && info?.disk ? info.disk : undefined,
+    // Independent of the team running: a stopped team's worktrees still borrow the root install.
+    rootInstallDrift: rootDrift.length ? rootDrift : undefined,
+    // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
+    permits: running && info?.permits ? info.permits : undefined,
+    slotPool: running && info?.slotPool ? info.slotPool : undefined,
+    // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
+    checkPermits: running && info?.checkPermits ? info.checkPermits : undefined,
+    // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
+    runStopsAt: running ? earliestStop(info?.stopsAt, scheduledStopAt(root)) : undefined,
+    scheduledStopAt: running ? scheduledStopAt(root) : undefined,
+  };
+}
+
 /** One fresh team snapshot for observers. `modelsPath` overrides pi's model definitions
  * location (default ~/.pi/agent/models.json) — a test seam, like doctor's pathEnv. `now` pins
  * the poll's clock for the budget figures (the persisted day-stamp check and the burn-rate
@@ -531,108 +702,42 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // The one-release claude spelling (see StatusSnapshot.claudeWindow), derived from the claude
   // block so `subscriptionWindows` stays the single source of the window data.
   const claudeBlock = subscriptionWindows.find((b) => b.backend === "claude");
+  // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
+  // gate folds, over the same event log, so the dashboards show the hold the scheduler
+  // enforces. `merges` is the one merge queue snapshot read above, so in-flight maintenance
+  // merges count once here and in mergeQueue.
+  const maintenanceQuota = maintenanceQuotaForPoll(
+    root,
+    cfg.maintenancePerWorkMerge,
+    roleRows,
+    new Set(merges.map((e) => e.role)),
+    now,
+  );
   return {
-    running,
-    pid: info?.pid,
-    build: running && info?.build ? info.build : null,
-    inbox,
-    inboxPrompts,
-    inboxFiles,
-    inboxQueuedAt,
-    inboxNotBefore,
-    roleInbox,
-    roleInboxPrompts,
-    questions: openQuestions(root).length,
-    imageProbeFailures,
-    roles: roleRows,
-    // Unconditional (never null): a disabled team still shows its spend and the badge is
-    // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,
-    // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
-    budget,
-    // One window block per subscription backend in use, raw for `status --json` and the
-    // parts 3b/9–3e/9 displays; omitted when no subscription backend reported a window.
-    ...(subscriptionWindows.length > 0 ? { subscriptionWindows } : {}),
-    subscriptionOnly,
-    ...(claudeBlock
-      ? {
-          claudeWindow: {
-            windows: claudeBlock.windows,
-            primary: claudeBlock.primary,
-            only: subscriptionOnly,
-            heldUntil: claudeBlock.heldUntil,
-          },
-        }
-      : {}),
-    ...(running && info?.chain && Object.keys(info.chain).length > 0 ? { chain: info.chain } : {}),
-    // Only while running: a stale info file beside a dead pid must not speak for a stopped
-    // team, and only while a hold stands (an empty list is the same as none).
-    ...(running && info?.providerHolds && info.providerHolds.length > 0 ? { providerHolds: info.providerHolds } : {}),
-    paused: teamPause !== null,
-    pausedRoles: markerRoles,
-    pausedRunners: roles.filter((id) => runnerPaused(markerSet, id)),
-    capPaused,
-    // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
-    // gate folds, over the same event log, so the dashboards show the hold the scheduler
-    // enforces. `merges` is the one merge queue snapshot read above, so in-flight maintenance
-    // merges count once here and in mergeQueue.
-    maintenanceQuota: maintenanceQuotaForPoll(
+    ...snapshotRunFields(running, info),
+    ...snapshotInboxFields(
       root,
-      cfg.maintenancePerWorkMerge,
+      { inbox, inboxPrompts, inboxFiles, inboxQueuedAt, inboxNotBefore, roleInbox, roleInboxPrompts },
+      imageProbeFailures,
+    ),
+    roles: roleRows,
+    ...snapshotBudgetFields(budget, subscriptionWindows, subscriptionOnly, claudeBlock, running, info),
+    ...snapshotPauseFields(
+      teamPause,
+      markerRoles,
+      roles,
+      markerSet,
+      capPaused,
+      maintenanceQuota,
+      bootstrapNow,
       roleRows,
-      new Set(merges.map((e) => e.role)),
-      now,
+      budgetPausedRoles,
+      cfg,
+      root,
+      wakes,
+      quiet,
     ),
-    // The new-project bootstrap hold (plans/work-ratio.md, part 2/2): the same read-only
-    // verdict the gate computes (bootstrapStatus), so the dashboards and the scheduler agree.
-    // The held set is computed with the gate's own predicate over the same role list.
-    bootstrap:
-      bootstrapNow?.active
-        ? { plansDone: bootstrapNow.plansDone, untilPlansDone: bootstrapNow.untilPlansDone }
-        : undefined,
-    bootstrapHeld:
-      bootstrapNow?.active
-        ? roleRows.filter((l) => bootstrapHoldsRole(l.role, openBugs(root).length > 0)).map((l) => l.role)
-        : [],
-    budgetPausedRoles,
-    // The per-role quiet windows' held roles (PLANS.md quietHoursPerRole): keyed role →
-    // window, so the dashboards can render the same `quiet until <end>` wording the team
-    // badge uses, scoped to the role's own schedule. The window string comes back out of
-    // the same config the hold was decided from, so the label cannot name a window that is
-    // not holding (roleQuietHold true implies a parseable, non-empty string there).
-    roleQuietPaused: Object.fromEntries(
-      roleRows
-        .filter((l) => l.role !== DIRECTOR_ROLE && roleQuietHold(cfg.quietHoursPerRole, baseRoleOf(l.role), new Date()))
-        .map((l) => [l.role, cfg.quietHoursPerRole?.[baseRoleOf(l.role)] ?? ""]),
-    ),
-    pausedUntil: teamPause?.until,
-    pausedRolesUntil: pausedRolesUntil(root),
-    scheduledWake: wakes[0],
-    scheduledWakes: wakes.length > 0 ? wakes : undefined,
-    pauseReason: teamPause?.reason,
-    quietHours: quiet.window ?? undefined,
-    inQuietHours: quiet.inWindow,
-    mergeQueue,
-    mainCheck: mainCheckForPoll(root, cfg),
-    ciParity: ciParityForPoll(root, cfg),
-    noDeclaredCheck: detectBuildCheck(root, cfg) === null ? true : undefined,
-    noBrief: briefBlockMissing(root) ? true : undefined,
-    briefTruncated: briefBlockOverCap(root) ? true : undefined,
-    ...(roleNotesOverCap.length > 0 ? { roleNotesOverCap } : {}),
-    principlesTruncated: principlesBlockOverCap(root) ? true : undefined,
-    // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
-    // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
-    // must not speak for a stopped team — and only when the last poll could measure the
-    // volume. Absent otherwise, so the surfaces render exactly as before.
-    disk: running && info?.disk ? info.disk : undefined,
-    // Independent of the team running: a stopped team's worktrees still borrow the root install.
-    rootInstallDrift: rootDrift.length ? rootDrift : undefined,
-    // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
-    permits: running && info?.permits ? info.permits : undefined,
-    slotPool: running && info?.slotPool ? info.slotPool : undefined,
-    // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
-    checkPermits: running && info?.checkPermits ? info.checkPermits : undefined,
-    // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
-    runStopsAt: running ? earliestStop(info?.stopsAt, scheduledStopAt(root)) : undefined,
-    scheduledStopAt: running ? scheduledStopAt(root) : undefined,
-  };
+    ...snapshotHealthFields(root, cfg, mergeQueue, roleNotesOverCap),
+    ...snapshotResourceFields(root, running, info, rootDrift),
+  } as StatusSnapshot;
 }
