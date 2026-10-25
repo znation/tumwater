@@ -205,10 +205,7 @@ export function eventMatchesGrep(e: HarnessEvent, patternLower: string): boolean
   return `${e.type} ${formatEvent(e)}`.toLowerCase().includes(patternLower);
 }
 
-/** An event's message alone — formatEvent's line without the time and role columns. The GUI's
- * activity feed renders the time and role itself (relative ages, role chips), so the payload
- * ships this beside the event's type and role instead of making the page re-parse a line. */
-export function eventMessage(e: HarnessEvent): string {
+function runEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "run_start":
       return `run #${eventRun(e)} started${e.model !== undefined ? ` on ${textOr(e.model)}` : ""}`;
@@ -221,6 +218,57 @@ export function eventMessage(e: HarnessEvent): string {
       // Per-run usage: where the day's spend went.
       return `run #${eventRun(e)} ${eventTypeLabel(outcomeText(e))}${extra}${usagePhrase(e)}`;
     }
+    case "run_deferred":
+      // Routine state change (need-based prioritization), like counters_reset — no warning
+      // prefix. One per deferral episode; the run's own events cover the episode's end.
+      return `deferred — ${deferredReasonText(e)}`;
+    case "run_aborted":
+      // Routine state change (the user stopped one role's run), like counters_reset — no
+      // warning prefix. The resulting run_end line carries the user_aborted outcome.
+      return `run stopped by you`;
+    case "resume": {
+      // Two causes share the resume machinery; the line names the real one so an operator
+      // reading the feed can tell a restart from a role fighting the context ceiling, and a
+      // cross-agent handoff from either — the handoff keeps the worktree but starts fresh. A
+      // run that got a salvaged patch back (src/git/slot-salvage.ts) names the patch.
+      const restored = e.restored === undefined ? "" : ` — uncommitted edits restored from ${textOr(e.restored)}`;
+      return (
+        (e.cause === "cut-off"
+          ? "resuming the run cut off at the context ceiling (compacted pi session, same workspace)"
+          : e.cause === "handoff"
+            ? "handing the interrupted run off to a fresh session on another agent (same workspace, uncommitted edits kept)"
+            : e.cause === "image-reroute"
+              ? "handing the blind-read run off to a fresh session on an image-capable model (same workspace, uncommitted edits kept)"
+              : e.cause === "salvaged"
+                ? "handing the work an earlier run left unsaved to a fresh session"
+                : "resuming the run a shutdown interrupted (same agent session and workspace)") + restored
+      );
+    }
+    case "wake":
+      return `woke (${textOr(e.reason)})`;
+    case "counters_reset": {
+      // One role → the event is filed under that role; several → one harness-level event
+      // listing them.
+      const roles = rolesPhrase(e.roles, "");
+      const scope = roles ? ` for ${roles}` : "";
+      return `counters reset${scope} (runs, merges, tokens, cost)`;
+    }
+    case "claim":
+      // Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7):
+      // the assignment/release is the harness working as designed, so no warning prefix.
+      return e.action === "released"
+        ? `released "${textOr(e.title)}" (${textOr(e.reason, "?")})`
+        : `assigned "${textOr(e.title)}"`;
+    case "permit_reserve":
+      // Priority headroom (part 7/7): a reserve appearing or vanishing is the scheduler working
+      // as designed; it names the permits withheld for the work tier so an operator can see why
+      // maintenance concurrency dipped.
+      return `${finiteNumber(e.reserve, 0)} permit(s) reserved for work roles that have work to take`;
+    default: return textOr(e.type);
+  }
+}
+function mergeEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "merged":
       return `merged ${shortSha(e.commit)} to main — ${textOr(e.summary)}`;
     case "merge_queued":
@@ -249,57 +297,38 @@ export function eventMessage(e: HarnessEvent): string {
       // The event names its reason itself (writeMergeOutcome); the review/check events still
       // carry the full text. An old event without `reason` renders the bare outcome.
       return `merge of ${shortSha(e.commit)} failed (${eventTypeLabel(outcomeText(e))}${isNonBlankString(e.reason) ? `: ${truncate(e.reason.trim(), 120)}` : ""})${elapsed(e.durationMs)}${isNonBlankString(e.summary) ? ` — ${truncate(e.summary, 80)}` : ""}`;
-    case "question_posted":
-      // Routine operation (a role asked the user something), not a warning.
-      // The position is the `<n>` `questions answer` takes, so the notify page is actionable.
-      return `question posted: ${textOr(e.question)}${typeof e.position === "number" && Number.isInteger(e.position) && e.position >= 1 ? ` — question ${e.position} in \`tumwater questions\`; answer it with \`tumwater questions answer ${e.position} "<decision>"\`` : ""}`;
-    case "entry_refused":
-      // Routine operation (a refusal note merged), not a warning — like question_posted.
-      const files = Array.isArray(e.files) ? e.files.join(", ") : "";
-      const titles = stringList(e.entries);
-      if (titles.length === 0) return `entry refused: ${textOr(e.reason)} (${files})`;
-      const more = titles.length > 1 ? ` (and ${titles.length - 1} more)` : "";
-      return `entry refused: "${truncate(titles[0]!, 80)}"${more}: ${textOr(e.reason)} (${files})`;
-    case "issue_filed":
-      // The feedback observer's filing (plans/feedback-role.md 2/2) is a visible, auditable
-      // result — routine operation like question_posted, not a warning. The number is the
-      // issue the operator can open; a torn event without it reads "?" never "undefined".
-      return `filed issue #${typeof e.issue === "number" ? e.issue : "?"} ${textOr(e.title)} on znation/tumwater`;
-    case "wake":
-      return `woke (${textOr(e.reason)})`;
-    case "run_deferred":
-      // Routine state change (need-based prioritization), like counters_reset — no warning
-      // prefix. One per deferral episode; the run's own events cover the episode's end.
-      return `deferred — ${deferredReasonText(e)}`;
-    case "orchestrator_start":
-      return `tumwater started (pid ${textOr(e.pid)}${e.build ? `, version ${shortSha(e.build)}` : ""})`;
-    case "orchestrator_stop":
-      return orchestratorStopPhrase(e.cause);
-    case "prompt_enqueued":
-      return `message added to the inbox: ${textOr(e.preview)}`;
-    case "prompt_cancelled":
-      // Routine operation (the user removed a queued prompt), not a warning.
-      return `message removed from the inbox: ${textOr(e.preview)}`;
-    case "prompt_edited":
-      // Routine operation (the user corrected a queued prompt), not a warning.
-      return `inbox message edited: ${textOr(e.preview)}`;
-    case "prompt_topped":
-      // Routine operation (the user reordered a queued prompt), not a warning.
-      return `inbox message moved to the front: ${textOr(e.preview)}`;
-    case "prompt_taken":
-      // Routine: a run dequeued the operator's request to run it.
-      return `inbox message taken by run #${eventRun(e)}: ${textOr(e.preview)}`;
-    case "counters_reset": {
-      // One role → the event is filed under that role; several → one harness-level event
-      // listing them.
-      const roles = rolesPhrase(e.roles, "");
-      const scope = roles ? ` for ${roles}` : "";
-      return `counters reset${scope} (runs, merges, tokens, cost)`;
+    case "conflict_handback": {
+      // A change whose merges kept conflicting was handed back to its author with the markers
+      // in place (PLANS.md "Robust conflict landing, part 2/2"): queued, applied, or failed.
+      const files = stringList(e.conflicted);
+      const where = files.length > 0 ? `: ${files.join(", ")}` : "";
+      const why = e.reason === "revision" ? " (revision)" : "";
+      return `conflict hand-back ${textOr(e.action)} ${shortSha(e.sha)}${why}${where}`;
     }
-    case "run_aborted":
-      // Routine state change (the user stopped one role's run), like counters_reset — no
-      // warning prefix. The resulting run_end line carries the user_aborted outcome.
-      return `run stopped by you`;
+    case "operator_revert": {
+      const undid = typeof e.runner === "string" && e.runner !== "" ? `, undid ${e.runner}` : "";
+      return `reverted ${shortSha(String(e.commit ?? ""))} (by operator) as ${shortSha(String(e.revert ?? ""))}${undid}`; // vocabulary-ok: the deliberate-revert writer is the operator role
+    }
+    case "main_check": {
+      const failing = Array.isArray(e.failingTests) ? e.failingTests.map(String) : [];
+      const covered = Number(e.covered) > 1 ? ` (${textOr(e.covered)} commits)` : "";
+      const verdict = e.status === "failed" ? "failed" : "passed";
+      const names = failing.length > 0 ? `: ${joinWithMore(failing, 3, "; ")}` : "";
+      return `main ${shortSha(String(e.sha ?? ""))}${covered} full check ${verdict}${names}`;
+    }
+    case "main_culprit": {
+      const by = typeof e.runner === "string" && e.runner !== "" ? ` (merged by ${e.runner})` : "";
+      return `main turned red at ${shortSha(String(e.commit ?? ""))}${by}`;
+    }
+    case "main_red_hold":
+      // The message already names the SHA, script, and consequence; the problem tone comes
+      // from PROBLEM_EVENTS.
+      return textOr(e.message);
+    default: return textOr(e.type);
+  }
+}
+function reviewEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "review_start": {
       // A resumed review continues a timed-out reviewer's session (PLANS.md, review-retry part
       // 3/3). The verb names that, because a bare "reviewing" line reads as a from-scratch run;
@@ -330,28 +359,46 @@ export function eventMessage(e: HarnessEvent): string {
       // A rejected change's revision round (plans/revise-rejected.md): applied onto current main,
       // conflicted with it, dropped by its author, or exhausted its rounds.
       return `revision ${textOr(e.round)} ${textOr(e.action)} ${shortSha(e.sha)}`;
-    case "conflict_handback": {
-      // A change whose merges kept conflicting was handed back to its author with the markers
-      // in place (PLANS.md "Robust conflict landing, part 2/2"): queued, applied, or failed.
-      const files = stringList(e.conflicted);
-      const where = files.length > 0 ? `: ${files.join(", ")}` : "";
-      const why = e.reason === "revision" ? " (revision)" : "";
-      return `conflict hand-back ${textOr(e.action)} ${shortSha(e.sha)}${why}${where}`;
-    }
-    case "build_check":
-      // The deterministic check's cost, per run: scope names which gate paid (the pre-merge review
-      // gate, the red-main baseline check of main itself, or the merge lock's post-rebase re-check
-      // of the tree about to merge). script carries the npm script name for an npm check but the
-      // FULL configured command otherwise (checkScriptName in build/build-check.ts), so no "npm"
-      // prefix is asserted here — the bare name reads correctly for both kinds ("npm test" would
-      // misrender a cargo or make-based project's check).
-      return `check (${textOr(e.scope)}): ${textOr(e.script)} ${eventTypeLabel(outcomeText(e))}${elapsed(e.durationMs)}`;
-    case "dep_install": {
-      // The root checkout's install catching up with a merged lockfile change — routine on
-      // success; a failure also rides its own warning, which says what happens meanwhile.
-      const pkgs = stringList(e.packages).join(", ");
-      return `root install (${pkgs}) ${eventTypeLabel(outcomeText(e))}${e.error ? ` — ${textOr(e.error)}` : ""}${elapsed(e.durationMs)}`;
-    }
+    default: return textOr(e.type);
+  }
+}
+function inboxEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
+    case "prompt_enqueued":
+      return `message added to the inbox: ${textOr(e.preview)}`;
+    case "prompt_cancelled":
+      // Routine operation (the user removed a queued prompt), not a warning.
+      return `message removed from the inbox: ${textOr(e.preview)}`;
+    case "prompt_edited":
+      // Routine operation (the user corrected a queued prompt), not a warning.
+      return `inbox message edited: ${textOr(e.preview)}`;
+    case "prompt_topped":
+      // Routine operation (the user reordered a queued prompt), not a warning.
+      return `inbox message moved to the front: ${textOr(e.preview)}`;
+    case "prompt_taken":
+      // Routine: a run dequeued the operator's request to run it.
+      return `inbox message taken by run #${eventRun(e)}: ${textOr(e.preview)}`;
+    case "question_posted":
+      // Routine operation (a role asked the user something), not a warning.
+      // The position is the `<n>` `questions answer` takes, so the notify page is actionable.
+      return `question posted: ${textOr(e.question)}${typeof e.position === "number" && Number.isInteger(e.position) && e.position >= 1 ? ` — question ${e.position} in \`tumwater questions\`; answer it with \`tumwater questions answer ${e.position} "<decision>"\`` : ""}`;
+    case "entry_refused":
+      // Routine operation (a refusal note merged), not a warning — like question_posted.
+      const files = Array.isArray(e.files) ? e.files.join(", ") : "";
+      const titles = stringList(e.entries);
+      if (titles.length === 0) return `entry refused: ${textOr(e.reason)} (${files})`;
+      const more = titles.length > 1 ? ` (and ${titles.length - 1} more)` : "";
+      return `entry refused: "${truncate(titles[0]!, 80)}"${more}: ${textOr(e.reason)} (${files})`;
+    case "issue_filed":
+      // The feedback observer's filing (plans/feedback-role.md 2/2) is a visible, auditable
+      // result — routine operation like question_posted, not a warning. The number is the
+      // issue the operator can open; a torn event without it reads "?" never "undefined".
+      return `filed issue #${typeof e.issue === "number" ? e.issue : "?"} ${textOr(e.title)} on znation/tumwater`;
+    default: return textOr(e.type);
+  }
+}
+function budgetEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "budget_warning":
       // The early page beside budget_paused: the cap is not reached yet, so say so — the
       // operator still has room to raise it or fix the fallback before the team stops.
@@ -401,11 +448,27 @@ export function eventMessage(e: HarnessEvent): string {
       });
       return `fallback: ${parts.join("; ")}`;
     }
+    case "model_fallback_started":
+      // Routine-with-explanation, like rate_limit_hold: the switch IS the harness handling the
+      // failure. Names the pair the role now runs on and why the primary was abandoned.
+      return `model fallback — ${providerModelPair(e, "pi's default", "pi's default")} engaged (primary failing: ${textOr(e.reason, "backend failure")})`;
+    case "model_fallback_ended":
+      // The return counterpart: names the pair runs resume on and how long the episode ran.
+      return `model fallback ended — back on ${providerModelPair(e, "pi's default", "pi's default")} after ${minutes(e.durationMs)}m`;
+    case "opencode_free_model_billed":
+      // The promotion ended (plans/opencode-backend.md §7, part 6c/7): a run billed what the
+      // catalog called free, so the team now prices that model as paid from here on. No warning
+      // prefix — the demotion is the harness handling the spend — but it names the model and the
+      // cost so the operator sees why a badge stopped saying "cost n/a".
+      return `opencode ${textOr(e.model, "model")} billed ${usd(finiteNumber(e.costUsd, 0))} — demoted from free to priced`;
+    default: return textOr(e.type);
+  }
+}
+function holdEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "team_paused":
       // Routine state change, like counters_reset — no warning prefix.
       return `${teamPausePhrase()}${pauseSuffix(e.until, e.reason)} (director keeps running)`;
-    case "state_migrated":
-      return `state migrated — ${textOr(e.detail)}`;
     case "team_resumed":
       return teamResumePhrase() + (e.expired === true ? PAUSE_EXPIRED_SUFFIX : "");
     case "role_paused":
@@ -430,25 +493,6 @@ export function eventMessage(e: HarnessEvent): string {
       return `role ${textOr(e.role)} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new runs until the cap is raised or removed in tumwater.json or the local day rolls over`;
     case "role_cap_resumed":
       return `role ${textOr(e.role)} resumed — it is under its daily cap again and runs again`;
-    case "main_check": {
-      const failing = Array.isArray(e.failingTests) ? e.failingTests.map(String) : [];
-      const covered = Number(e.covered) > 1 ? ` (${textOr(e.covered)} commits)` : "";
-      const verdict = e.status === "failed" ? "failed" : "passed";
-      const names = failing.length > 0 ? `: ${joinWithMore(failing, 3, "; ")}` : "";
-      return `main ${shortSha(String(e.sha ?? ""))}${covered} full check ${verdict}${names}`;
-    }
-    case "main_culprit": {
-      const by = typeof e.runner === "string" && e.runner !== "" ? ` (merged by ${e.runner})` : "";
-      return `main turned red at ${shortSha(String(e.commit ?? ""))}${by}`;
-    }
-    case "operator_revert": {
-      const undid = typeof e.runner === "string" && e.runner !== "" ? `, undid ${e.runner}` : "";
-      return `reverted ${shortSha(String(e.commit ?? ""))} (by operator) as ${shortSha(String(e.revert ?? ""))}${undid}`; // vocabulary-ok: the deliberate-revert writer is the operator role
-    }
-    case "main_red_hold":
-      // The message already names the SHA, script, and consequence; the problem tone comes
-      // from PROBLEM_EVENTS.
-      return textOr(e.message);
     case "maintenance_quota_hold":
       // Routine state change, like role_cap_paused — no warning prefix: the hold IS the harness
       // keeping maintenance merges in proportion to work. Names the window's counts so the
@@ -460,19 +504,16 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine state change, like counters_reset — no warning prefix: the team just finished
       // its bootstrap and the maintenance roles are admitted.
       return `bootstrap complete — ${textOr(e.plansDone)}/${textOr(e.untilPlansDone)} plans done; the maintenance roles now run`;
+    default: return textOr(e.type);
+  }
+}
+function resourceEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "disk_low":
       // Routine state change, like team_paused — no warning prefix: the hold IS the harness
       // handling the low disk, and naming the free space and the floor tells the operator
       // whether to clear space or lower diskHoldGB in tumwater.json.
       return `waiting: low disk — ${gigabytes(e.freeGB)} free on the workspaces volume (floor ${gigabytes(e.holdGB)}); new work waits until space recovers`;
-    case "quiet_hours_started": {
-      // Routine hold, like disk_low — no warning prefix: the window is configured, and the line
-      // says what stops and what keeps running. pollQuietHoursGate may send no window.
-      return `waiting: quiet hours${windowSuffix(e)} — roles start no new runs until the window ends; the director still runs`;
-    }
-    case "quiet_hours_ended": {
-      return `quiet hours ended${windowSuffix(e)} — roles start runs again`;
-    }
     case "disk_ok":
       return `disk recovered — ${gigabytes(e.freeGB)} free on the workspaces volume; new work starts again`;
     case "disk_reclaim": {
@@ -481,6 +522,14 @@ export function eventMessage(e: HarnessEvent): string {
       const names = stringList(e.worktrees);
       const from = names.length > 0 ? names.join(", ") : "?";
       return `disk reclaim (${textOr(e.mode, "pressure")}) — freed ${gigabytes(e.freedGB)} from ${from}; ${gigabytes(e.freeGB)} free now`;
+    }
+    case "quiet_hours_started": {
+      // Routine hold, like disk_low — no warning prefix: the window is configured, and the line
+      // says what stops and what keeps running. pollQuietHoursGate may send no window.
+      return `waiting: quiet hours${windowSuffix(e)} — roles start no new runs until the window ends; the director still runs`;
+    }
+    case "quiet_hours_ended": {
+      return `quiet hours ended${windowSuffix(e)} — roles start runs again`;
     }
     case "rate_limit_hold": {
       // Routine state change, like team_paused — no warning prefix: the hold IS the harness
@@ -528,6 +577,11 @@ export function eventMessage(e: HarnessEvent): string {
       return `waiting: ${backendLabel(e)} subscription window ${textOr(e.windowType)} rejected — ${backendLabel(e)} model jobs wait${windowResetPhrase(e)} (director keeps running)`;
     case "subscription_window_reset":
       return `${backendLabel(e)} subscription window reset — ${backendLabel(e)} model jobs run again`;
+    default: return textOr(e.type);
+  }
+}
+function configEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.
       return `maxConcurrent changed: ${textOr(e.from)} → ${textOr(e.to)}`;
@@ -556,19 +610,17 @@ export function eventMessage(e: HarnessEvent): string {
       return e.found === false
         ? `warning: newly routed ${textOr(e.agent)} backend — its binary was not found`
         : `newly routed ${textOr(e.agent)} backend checked — binary found`;
-    case "model_fallback_started":
-      // Routine-with-explanation, like rate_limit_hold: the switch IS the harness handling the
-      // failure. Names the pair the role now runs on and why the primary was abandoned.
-      return `model fallback — ${providerModelPair(e, "pi's default", "pi's default")} engaged (primary failing: ${textOr(e.reason, "backend failure")})`;
-    case "model_fallback_ended":
-      // The return counterpart: names the pair runs resume on and how long the episode ran.
-      return `model fallback ended — back on ${providerModelPair(e, "pi's default", "pi's default")} after ${minutes(e.durationMs)}m`;
-    case "opencode_free_model_billed":
-      // The promotion ended (plans/opencode-backend.md §7, part 6c/7): a run billed what the
-      // catalog called free, so the team now prices that model as paid from here on. No warning
-      // prefix — the demotion is the harness handling the spend — but it names the model and the
-      // cost so the operator sees why a badge stopped saying "cost n/a".
-      return `opencode ${textOr(e.model, "model")} billed ${usd(finiteNumber(e.costUsd, 0))} — demoted from free to priced`;
+    case "state_migrated":
+      return `state migrated — ${textOr(e.detail)}`;
+    case "orchestrator_start":
+      return `tumwater started (pid ${textOr(e.pid)}${e.build ? `, version ${shortSha(e.build)}` : ""})`;
+    case "orchestrator_stop":
+      return orchestratorStopPhrase(e.cause);
+    default: return textOr(e.type);
+  }
+}
+function imageRestartEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "image_blind": {
       // Routine-with-explanation like the model-fallback events — no warning prefix: the
       // run was stopped (or a gate run noted) because the model cannot see the image. Names
@@ -618,23 +670,24 @@ export function eventMessage(e: HarnessEvent): string {
       const how = e.signal ? `was killed by ${textOr(e.signal)}` : `exited ${textOr(e.code)}`;
       return `tumwater is down — restart ${textOr(e.generation)} ${how}${e.reason ? `: ${textOr(e.reason)}` : ""}; start it again with \`tumwater start\``;
     }
-    case "resume": {
-      // Two causes share the resume machinery; the line names the real one so an operator
-      // reading the feed can tell a restart from a role fighting the context ceiling, and a
-      // cross-agent handoff from either — the handoff keeps the worktree but starts fresh. A
-      // run that got a salvaged patch back (src/git/slot-salvage.ts) names the patch.
-      const restored = e.restored === undefined ? "" : ` — uncommitted edits restored from ${textOr(e.restored)}`;
-      return (
-        (e.cause === "cut-off"
-          ? "resuming the run cut off at the context ceiling (compacted pi session, same workspace)"
-          : e.cause === "handoff"
-            ? "handing the interrupted run off to a fresh session on another agent (same workspace, uncommitted edits kept)"
-            : e.cause === "image-reroute"
-              ? "handing the blind-read run off to a fresh session on an image-capable model (same workspace, uncommitted edits kept)"
-              : e.cause === "salvaged"
-                ? "handing the work an earlier run left unsaved to a fresh session"
-                : "resuming the run a shutdown interrupted (same agent session and workspace)") + restored
-      );
+    default: return textOr(e.type);
+  }
+}
+function checkWaitEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
+    case "build_check":
+      // The deterministic check's cost, per run: scope names which gate paid (the pre-merge review
+      // gate, the red-main baseline check of main itself, or the merge lock's post-rebase re-check
+      // of the tree about to merge). script carries the npm script name for an npm check but the
+      // FULL configured command otherwise (checkScriptName in build/build-check.ts), so no "npm"
+      // prefix is asserted here — the bare name reads correctly for both kinds ("npm test" would
+      // misrender a cargo or make-based project's check).
+      return `check (${textOr(e.scope)}): ${textOr(e.script)} ${eventTypeLabel(outcomeText(e))}${elapsed(e.durationMs)}`;
+    case "dep_install": {
+      // The root checkout's install catching up with a merged lockfile change — routine on
+      // success; a failure also rides its own warning, which says what happens meanwhile.
+      const pkgs = stringList(e.packages).join(", ");
+      return `root install (${pkgs}) ${eventTypeLabel(outcomeText(e))}${e.error ? ` — ${textOr(e.error)}` : ""}${elapsed(e.durationMs)}`;
     }
     case "slot_wait": {
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the pool
@@ -672,19 +725,37 @@ export function eventMessage(e: HarnessEvent): string {
           heldBy.length > 0 ? `; held by ${heldBy.join(", ")}${limit === null ? "" : ` of maxConcurrentChecks ${limit}`}` : "";
         return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} for a check slot (${textOr(e.role)} ${textOr(e.scope)} check${behind})`;
       }
-    case "claim":
-      // Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7):
-      // the assignment/release is the harness working as designed, so no warning prefix.
-      return e.action === "released"
-        ? `released "${textOr(e.title)}" (${textOr(e.reason, "?")})`
-        : `assigned "${textOr(e.title)}"`;
-    case "permit_reserve":
-      // Priority headroom (part 7/7): a reserve appearing or vanishing is the scheduler working
-      // as designed; it names the permits withheld for the work tier so an operator can see why
-      // maintenance concurrency dipped.
-      return `${finiteNumber(e.reserve, 0)} permit(s) reserved for work roles that have work to take`;
+    default: return textOr(e.type);
+  }
+}
+function warningEventMessage(e: HarnessEvent): string {
+  switch (e.type) {
     case "warning":
       return `warning: ${textOr(e.message)}`;
+    default: return textOr(e.type);
+  }
+}
+
+/** An event's message alone — formatEvent's line without the time and role columns. The GUI's
+ * activity feed renders the time and role itself (relative ages, role chips), so the payload
+ * ships this beside the event's type and role instead of making the page re-parse a line.
+ * Dispatch only: each event family's line is built by a module-private <family>EventMessage
+ * switch (runEventMessage, mergeEventMessage, reviewEventMessage, inboxEventMessage,
+ * budgetEventMessage, holdEventMessage, resourceEventMessage, configEventMessage,
+ * imageRestartEventMessage, checkWaitEventMessage, warningEventMessage). */
+export function eventMessage(e: HarnessEvent): string {
+  switch (e.type) {
+    case "run_start": case "run_end": case "run_deferred": case "run_aborted": case "resume": case "wake": case "counters_reset": case "claim": case "permit_reserve": return runEventMessage(e);
+    case "merged": case "merge_queued": case "merge_cancelled": case "merge_topped": case "merge_done": case "merge_failed": case "conflict_handback": case "operator_revert": case "main_check": case "main_culprit": case "main_red_hold": return mergeEventMessage(e);
+    case "review_start": case "review_verdict": case "review_rejected": case "review_failed": case "revision": return reviewEventMessage(e);
+    case "prompt_enqueued": case "prompt_cancelled": case "prompt_edited": case "prompt_topped": case "prompt_taken": case "question_posted": case "entry_refused": case "issue_filed": return inboxEventMessage(e);
+    case "budget_warning": case "budget_paused": case "budget_fallback": case "budget_resumed": case "budget_handback": case "fallback_switched": case "model_fallback_started": case "model_fallback_ended": case "opencode_free_model_billed": return budgetEventMessage(e);
+    case "team_paused": case "team_resumed": case "role_paused": case "role_resumed": case "role_streak_paused": case "role_cap_warning": case "role_cap_paused": case "role_cap_resumed": case "maintenance_quota_hold": case "maintenance_quota_resumed": case "bootstrap_complete": return holdEventMessage(e);
+    case "disk_low": case "disk_ok": case "disk_reclaim": case "quiet_hours_started": case "quiet_hours_ended": case "rate_limit_hold": case "rate_limit_resumed": case "subscription_window_warning": case "subscription_window_reserved": case "subscription_window_limited": case "subscription_window_reset": return resourceEventMessage(e);
+    case "max_concurrent_changed": case "provider_concurrency_changed": case "retention_changed": case "config_changed": case "model_changed": case "backend_binary": case "state_migrated": case "orchestrator_start": case "orchestrator_stop": return configEventMessage(e);
+    case "image_blind": case "image_reroute": case "build_stale": case "restart_pending": case "restart": case "restart_refused": case "restart_blocked": case "restart_forced": case "supervisor_exit": return imageRestartEventMessage(e);
+    case "build_check": case "dep_install": case "slot_wait": case "provider_wait": case "check_wait": return checkWaitEventMessage(e);
+    case "warning": return warningEventMessage(e);
     default:
       // An unrecognized type is normally a newer build's string and renders as-is; a torn or
       // hand-edited event object with no type at all must read the "?" stand-in, never
