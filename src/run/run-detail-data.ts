@@ -14,6 +14,10 @@ import { bucketMergeEvents, resolveQueuedResult } from "../history/history-queue
 import { eventUsage, readEvents, runSpanMs, runStartMap } from "../events/event-read.js";
 import { outcomeText, usageText } from "../events/event-format.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
+import { loadConfigSafe, defaultConfig } from "../config/config.js";
+import { configForRole } from "../config/config-views.js";
+import { seamContextWindow } from "../pi/pi-models.js";
+import { nonNegativeNumber } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 
 /** One run's full event trail, as `tumwater history <role> <n>` and the GUI's run drill-down
@@ -46,6 +50,16 @@ export interface RunDetail {
   tokens: number;
   costUsd: number;
   usage: string;
+  /** The run's largest single-request context, from the `run_end`'s `peakContextTokens`
+   * (runner-state.ts's peakContextTokens, written when the run reported one); 0 when the
+   * run carried none or is in flight. The header renders it as `peak ctx …` (
+   * run-detail-render.ts) against `contextWindow` below. */
+  peakContextTokens?: number;
+  /** The role's resolved primary seam's declared context window — the same seam
+   * `tumwater role <id>`'s `- Context window:` line prints — or null when it cannot be
+   * known (an unresolvable pair, a broken config, or a missing catalog). Optional so
+   * existing payload literals keep compiling; the collector always sets it. */
+  contextWindow?: number | null;
   events: HarnessEvent[];
   merge: HarnessEvent | null;
   /** The sha the run's change holds on main, from the role's `merged` event: the newest one in
@@ -110,7 +124,7 @@ export function readRunDetail(root: string, role: string, runNumber: number): Ru
     // number still answers — unpaired, undated at the front — else there is no such run here.
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i]!;
-      if (e.type === "run_end" && e.run === runNumber) return detailFrom(role, runNumber, all, events, [e], e, null);
+      if (e.type === "run_end" && e.run === runNumber) return detailFrom(root, role, runNumber, all, events, [e], e, null);
     }
     return null;
   }
@@ -140,13 +154,14 @@ export function readRunDetail(root: string, role: string, runNumber: number): Ru
     if (end !== null ? e.ts > end.ts : nextStart !== null && e.ts >= nextStart.ts) break;
     block.push(e);
   }
-  return detailFrom(role, runNumber, all, events, block, end, start);
+  return detailFrom(root, role, runNumber, all, events, block, end, start);
 }
 
 /** Fill the payload around a collected block: usage from the run_end via eventUsage/usageText,
  * duration via runSpanMs against the role's own start map (the shared pairing helper, so this
  * view and the history rows cannot drift on what a span is), events oldest-first. */
 function detailFrom(
+  root: string,
   role: string,
   runNumber: number,
   all: HarnessEvent[],
@@ -179,6 +194,12 @@ function detailFrom(
     tokens: usageNums.tokens,
     costUsd: usageNums.costUsd,
     usage: end === null ? "" : usageText(end),
+    // The peak is a corrupt-field-guarded read of the run_end (nonNegativeNumber, the same
+    // guard promptStatsFor applies); the window resolves the same seam the role view prints
+    // — configForRole through baseRoleOf, loadConfigSafe falling back to defaults, so a
+    // broken tumwater.json yields a null window rather than failing this read-only view.
+    peakContextTokens: end === null ? 0 : nonNegativeNumber(end.peakContextTokens, 0),
+    contextWindow: seamContextWindow(configForRole(loadConfigSafe(root).config ?? defaultConfig(), role), root),
     events: block,
     merge,
     mergedSha: mergedShaOf(result, merge, scoped, block),

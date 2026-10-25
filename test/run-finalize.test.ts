@@ -112,6 +112,25 @@ test("finalizeRun rides per-run prompt-token telemetry on run_end", async () => 
   assert.equal(end.preEditPromptTokens, 250);
 });
 
+test("finalizeRun rides a nonzero peak context on run_end", async () => {
+  const root = await initializedRepo();
+  const s = freshRunnerState("organize");
+  s.peakContextTokens = 96_000;
+  await run(root, "organize", s, { result: "no_change" });
+  const end = eventsOfType(root, "run_end")[0]!;
+  assert.equal(end.peakContextTokens, 96_000);
+});
+
+test("finalizeRun omits the peak context on run_end when the peak is 0", async () => {
+  // A run that reported no context — and every run_end written by an older build — omits
+  // the field, matching the existing generatedTokens/promptTokens omit-when-zero convention.
+  const root = await initializedRepo();
+  const s = freshRunnerState("organize");
+  await run(root, "organize", s, { result: "no_change" });
+  const end = eventsOfType(root, "run_end")[0]!;
+  assert.equal(end.peakContextTokens, undefined);
+});
+
 test("finalizeRun rides the per-provider spend split on run_end", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");

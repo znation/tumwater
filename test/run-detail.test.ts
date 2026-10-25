@@ -166,6 +166,34 @@ test("renderRunDetail prints the summary header, the commit sha, and formatEvent
   assert.match(lines[3]!, /run #3 merged — the fix/);
 });
 
+test("renderRunDetail names the peak against the declared window", () => {
+  const base: RunDetail = {
+    role: "feature",
+    run: 1,
+    startTs: 1000,
+    endTs: 2000,
+    durationMs: 1000,
+    result: "changed",
+    model: null,
+    tokens: 1200,
+    costUsd: 0.03,
+    usage: "1200 tok · $0.03",
+    events: [],
+    merge: null,
+    mergedSha: null,
+    reverted: null,
+  };
+  // A peak against a declared window renders the share parenthetical.
+  const withWindow = renderRunDetail({ ...base, peakContextTokens: 110_000, contextWindow: 131_072 });
+  assert.match(withWindow.split("\n")[0]!, /peak ctx 110\.0k \(84%\)/);
+  // An unresolved window drops the parenthetical but keeps the bare peak.
+  const noWindow = renderRunDetail({ ...base, peakContextTokens: 110_000, contextWindow: null });
+  assert.match(noWindow.split("\n")[0]!, /peak ctx 110\.0k(?! \()/);
+  // A run carrying no peak renders the header byte-identically — no peak clause at all.
+  const noPeak = renderRunDetail(base);
+  assert.doesNotMatch(noPeak.split("\n")[0]!, /peak ctx/);
+});
+
 test("renderRunDetail renders a corrupt outcome as ?, never undefined", () => {
   const root = makeRepo();
   writeEvents(root, [start({ ts: 1000 }), end({ ts: 2000, result: 7 } as never)]);

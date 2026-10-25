@@ -12,8 +12,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
 import { readRunDetail } from "../src/run/run-detail-data.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
+import { setEnv } from "./helpers/env.js";
+import { writeModelsFile } from "./fixtures/models-fixtures.js";
 
 function startEvent(over: Partial<HarnessEvent>): HarnessEvent {
   return { ts: 0, loop: "feature", type: "run_start", run: 1, ...over } as HarnessEvent; // retired-name-ok: legacy event field in a fixture
@@ -300,4 +302,42 @@ test("an instance run matches its operator_revert by base role (it commits under
     revert: "rev1",
     failingTests: [],
   });
+});
+
+test("readRunDetail resolves the run's peak and its role's declared window", () => {
+  // A run_end carrying a peak and a pi models.json declaring the role's window: both ride
+  // the payload, sized against the same seam `tumwater role <id>`'s `- Context window:`
+  // line prints (seamContextWindow over configForRole of loadConfigSafe).
+  const modelsDir = tmpdir("models-");
+  writeModelsFile(
+    modelsDir,
+    JSON.stringify({ providers: { local: { models: [{ id: "tiny", contextWindow: 131072 }] } } }),
+  );
+  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
+  try {
+    const root = tmpdir();
+    writeConfig(root, { provider: "local", model: "tiny" });
+    writeEvents(root, [startEvent({ ts: 1000 }), endEvent({ ts: 2000, result: "changed", peakContextTokens: 110_000 })]);
+    const detail = readRunDetail(root, "feature", 1)!;
+    assert.equal(detail.peakContextTokens, 110_000);
+    assert.equal(detail.contextWindow, 131072);
+  } finally {
+    restoreAgentDir();
+  }
+
+  // With no resolvable seam the window is null while the peak still rides.
+  const noModelsRoot = tmpdir();
+  writeEvents(noModelsRoot, [
+    startEvent({ ts: 1000 }),
+    endEvent({ ts: 2000, result: "changed", peakContextTokens: 110_000 }),
+  ]);
+  const noModels = readRunDetail(noModelsRoot, "feature", 1)!;
+  assert.equal(noModels.peakContextTokens, 110_000);
+  assert.equal(noModels.contextWindow, null);
+
+  // A run whose run_end carries no peak reads 0.
+  const noPeakRoot = tmpdir();
+  writeEvents(noPeakRoot, [startEvent({ ts: 1000 }), endEvent({ ts: 2000, result: "changed" })]);
+  const noPeak = readRunDetail(noPeakRoot, "feature", 1)!;
+  assert.equal(noPeak.peakContextTokens, 0);
 });

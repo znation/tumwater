@@ -42,15 +42,15 @@ export function compactTokens(n: number): string {
 
 /** A peak context reading its share of the role's declared context window (`110.0k (84%)`) —
  * the single home of the share format so the status table's `peak ctx` cell, the GUI/`status
- * --json` role payload and the dashboard role drawer all render a peak against a window
- * identically. When the window is unknown (null/undefined/0) or the peak is 0 there is no
- * meaningful share, so it returns exactly `compactTokens(peakTokens)` — the bare peak today's
- * surfaces print. The percentage is floor-free rounded: `Math.round((100 * peak) / window)`. */
+ * --json` role payload, the dashboard role drawer, and the `history <role> <n>` summary header
+ * all render a peak against a window identically. When the window is unknown
+ * (null/undefined/0) or the peak is 0 there is no meaningful share, so it returns exactly
+ * `compactTokens(peakTokens)` — the bare peak today's surfaces print. The percentage is
+ * floor-free rounded: `Math.round((100 * peak) / window)`. */
 export function contextShareLabel(peakTokens: number, windowTokens?: number | null): string {
   if (!windowTokens || !peakTokens) return compactTokens(peakTokens);
   return `${compactTokens(peakTokens)} (${Math.round((100 * peakTokens) / windowTokens)}%)`;
 }
-
 /** The abbreviated form of a commit hash for human-facing text — its first 8 characters.
  * The single home of this format: the event feed's merged/review lines and the review gate's
  * discard warning all render hashes through it, so the abbreviation length cannot drift per

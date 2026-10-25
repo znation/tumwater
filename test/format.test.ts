@@ -32,17 +32,21 @@ test("compactTokens renders one-decimal M at and above 1,000,000", () => {
   assert.equal(compactTokens(999_999), "1000.0k");
 });
 
+// contextShareLabel is the single home of the peak-share parenthetical the status table's
+// live peak-ctx column and the recorded `history <role> <n>` summary header both render, so
+// the share format cannot drift between the live run and its trail.
 test("contextShareLabel reads a peak against a declared window", () => {
   // 110k on a 128k window — past the compaction point, the share an operator needs.
   assert.match(contextShareLabel(110_000, 131_072), /^110\.0k \(84%\)$/);
   assert.equal(contextShareLabel(131_072, 131_072), "131.1k (100%)"); // compactTokens's one-decimal k
-  // An unknown window or a zero peak falls back to the bare compactTokens — exactly today's text.
-  for (const w of [undefined, null, 0] as const) {
-    assert.equal(contextShareLabel(110_000, w), compactTokens(110_000));
-  }
+  // An unknown window (undefined, null, or 0) or a zero peak renders the bare peak, no share.
+  assert.equal(contextShareLabel(110_000, undefined), compactTokens(110_000));
+  assert.equal(contextShareLabel(110_000, null), compactTokens(110_000));
+  assert.equal(contextShareLabel(110_000, 0), compactTokens(110_000));
   assert.equal(contextShareLabel(0, 131_072), compactTokens(0));
+  // Rounds to a whole percent, not a fraction: the share is a coarse-hotness read.
+  assert.equal(contextShareLabel(65_000, 131_072), "65.0k (50%)"); // 49.59% rounds to 50%
 });
-
 test("shortSha abbreviates a hash to its first 8 characters", () => {
   assert.equal(shortSha("abcdef1234567890"), "abcdef12");
   // Harness events carry fields loosely typed: coercion matches the old inline

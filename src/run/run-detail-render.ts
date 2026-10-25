@@ -12,7 +12,7 @@ import { formatEvent } from "../events/event-format.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSpanPhrase } from "../text/phrases.js";
-import { shortSha } from "../text/format.js";
+import { shortSha, contextShareLabel } from "../text/format.js";
 import { piLogPath } from "../paths.js";
 import { readRunTranscript } from "../ui/transcript-run.js";
 import { gitTry } from "../git/git-run.js";
@@ -58,6 +58,9 @@ export function renderRunDetail(d: RunDetail): string {
   else summary.push(d.result ? eventTypeLabel(d.result) : "?");
   if (d.durationMs !== null) summary.push(shortSpanPhrase(d.durationMs));
   if (d.usage !== "") summary.push(d.usage);
+  // The run's peak context against the seam's declared window, the one header every surface
+  // renders. Omitted when the run reported no peak (byte-identical to today's header).
+  if ((d.peakContextTokens ?? 0) > 0) summary.push(`peak ctx ${contextShareLabel(d.peakContextTokens ?? 0, d.contextWindow)}`);
   if (d.model !== null) summary.push(d.model);
   const sha = runCommitSha(d);
   let header = `${roleLabel(d.role)} run #${d.run} — ${summary.join(" · ")}`;
