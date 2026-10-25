@@ -87,6 +87,26 @@ export async function gitLevelFindings(wt: string, mainBranch: string): Promise<
   }
 }
 
+/** `git grep --cached` for `needle`, returning its matching `file:line` strings that sit outside
+ * record prose and (when given) `excludeFile`, and that name `needle` as a path of its own. The
+ * single home of the two stale-reference sweeps, movedSourceFindings and staleReferenceFindings:
+ * both run the same fixed-string grep and filter its hits the same way before capping at
+ * MAX_STALE_HITS, so one helper keeps them from drifting. */
+async function pathGrepHits(wt: string, needle: string, excludeFile?: string): Promise<string[]> {
+  // `git grep` exits 1 with no output when nothing matches — the common, clean case — and
+  // gitTry maps that to null exactly as it maps a real failure, both of which mean "no hits".
+  const out = await gitTry(wt, "grep", "-n", "-F", "-I", "--cached", "-e", needle);
+  if (!out) return [];
+  const hits: string[] = [];
+  for (const { file, no, text } of gitGrepHits(out)) {
+    if (file === excludeFile || isRecordProse(file)) continue;
+    if (!hasStandalonePathOccurrence(text, needle)) continue;
+    hits.push(`${file}:${no}`);
+    if (hits.length >= MAX_STALE_HITS) break;
+  }
+  return hits;
+}
+
 /** (f) References to a file the change moved code out of. A modified (`M`) file is a source
  * when at least MOVED_LINES_MIN of its removed `-U0` lines (trimmed, at least MOVED_LINE_MIN_CHARS
  * long) were added verbatim to another file. Each hit of the source's path outside record prose
@@ -131,15 +151,7 @@ async function movedSourceFindings(
       .map(([f]) => f);
     const moved = src.removed.filter((l) => others.some(([, v]) => v.added.has(l))).length;
     if (moved < MOVED_LINES_MIN) continue;
-    const out = await gitTry(wt, "grep", "-n", "-F", "-I", "--cached", "-e", e.path);
-    if (!out) continue;
-    const hits: string[] = [];
-    for (const { file, no, text } of gitGrepHits(out)) {
-      if (file === e.path || isRecordProse(file)) continue;
-      if (!hasStandalonePathOccurrence(text, e.path)) continue;
-      hits.push(`${file}:${no}`);
-      if (hits.length >= MAX_STALE_HITS) break;
-    }
+    const hits = await pathGrepHits(wt, e.path, e.path);
     if (hits.length === 0) continue;
     findings.push(
       `${e.path} had ${moved} lines moved to ${cappedList(receivers, MAX_STALE_PATHS)}, but it is ` +
@@ -164,16 +176,7 @@ async function staleReferenceFindings(
     if (e.status !== "D" && e.status !== "R") continue;
     if (reported >= MAX_STALE_PATHS) break;
     const old = e.oldPath ?? e.path;
-    // `git grep` exits 1 with no output when nothing matches — the common, clean case — and
-    // gitTry maps that to null exactly as it maps a real failure, both of which mean "no hits".
-    const out = await gitTry(wt, "grep", "-n", "-F", "-I", "--cached", "-e", old);
-    if (!out) continue;
-    const hits: string[] = [];
-    for (const { file, no, text } of gitGrepHits(out)) {
-      if (isRecordProse(file) || !hasStandalonePathOccurrence(text, old)) continue;
-      hits.push(`${file}:${no}`);
-      if (hits.length >= MAX_STALE_HITS) break;
-    }
+    const hits = await pathGrepHits(wt, old);
     if (hits.length === 0) continue;
     const moved = e.status === "R" ? `was renamed to ${e.path}` : "was deleted";
     findings.push(`${old} ${moved} but is still named at: ${hits.join(", ")}`);
