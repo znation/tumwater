@@ -3,7 +3,7 @@
  * merges refused by an uncommitted primary checkout. One of the per-domain builders split out of
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts. */
 
-import { moreDetail, type TeamAlert, type StaleBug, type NotifyFailure, type StaleWaitingBug, type StalePrompt, type StaleMerge, type PrimaryOverwriteBlock } from "./team-alert-shared.js";
+import { moreDetail, openBacklogAction, type TeamAlert, type StaleBug, type NotifyFailure, type StaleWaitingBug, type StalePrompt, type StaleMerge, type PrimaryOverwriteBlock } from "./team-alert-shared.js";
 import { plural } from "../text/phrases.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { duration } from "./run-progress-model.js";
@@ -57,9 +57,8 @@ export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert
         `#${first.position} "${first.title}" has waited ${first.days}d for a fix` +
         moreDetail(rest.map((r) => r.title)) +
         ` · check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``,
-      // The action lands the operator on the first stale bug: the dashboard's backlog arm reads
-      // `bugs:index` with a 0-based row, matching the drawer address.
-      actions: [{ label: "Open backlog", act: "backlog", arg: `bugs:${first.index}` }],
+      // The action lands the operator on the first stale bug.
+      actions: openBacklogAction({ file: "bugs", index: first.index }),
     });
   }
   // A failed notify page (doctor's NOTIFY_CHECK_WINDOW_MS rule, src/doctor/doctor-notify.ts
@@ -98,9 +97,8 @@ export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert
         `#${first.position} "${first.title}" has waited ${first.days}d for its next failure` +
         moreDetail(rest.map((r) => `#${r.position} "${r.title}"`)) +
         ` · the hold has outlived a week and this surface omits the doctor's recurrence scan — \`tumwater doctor\` reports whether the flake came back; release it with \`tumwater bug --release ${first.position}\`, or keep the hold if the failure is still expected`,
-      // The action lands the operator on the first stale waiting bug: the dashboard's backlog arm
-      // reads `bugs:index` with a 0-based row, matching the drawer address.
-      actions: [{ label: "Open backlog", act: "backlog", arg: `bugs:${first.index}` }],
+      // The action lands the operator on the first stale waiting bug.
+      actions: openBacklogAction({ file: "bugs", index: first.index }),
     });
   }
   // A stranded inbox prompt (doctor's STALE_PROMPT_MS rule, src/doctor/doctor-backlog.ts) sits
