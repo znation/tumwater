@@ -7,7 +7,7 @@
  * `--setting-sources project` leaves the operator's own hooks out of a run, while `--settings`
  * still loads this one. The hook gets the run's worktree as an argument rather than reading
  * claude's `cwd`, which follows the Bash tool's `cd` into subdirectories. The entry point is
- * write-guard-hook.ts beside this file. */
+ * claude-write-guard-hook.ts beside this file. */
 
 import { fileURLToPath } from "node:url";
 import { shellQuote, strayWriteRefusal } from "../write-guard.js";
@@ -20,12 +20,13 @@ const WRITE_TOOLS = ["Edit", "Write"] as const;
 const HOOK_TIMEOUT_SECONDS = 30;
 
 /** The `--settings` value for a run in `cwd`: one PreToolUse hook on the file-writing tools that
- * runs the compiled write-guard-hook.js with this process's node, falling back to `node` on PATH
- * when that binary has moved (as the notes shim does), and the run's worktree as its argument. The
+ * runs the compiled claude-write-guard-hook.js with this process's node, falling back to
+ * `node` on PATH when that binary has moved (as the notes shim does), and the run's worktree
+ * as its argument. The
  * hook path resolves from this module, so a staged build (.tumwater/build/<sha>) runs its own
  * copy. */
 export function writeGuardSettings(cwd: string, nodeBin: string = process.execPath): string {
-  const hook = fileURLToPath(new URL("./write-guard-hook.js", import.meta.url));
+  const hook = fileURLToPath(new URL("./claude-write-guard-hook.js", import.meta.url));
   const command = `n=${shellQuote(nodeBin)}; [ -x "$n" ] || n=node; exec "$n" ${shellQuote(hook)} ${shellQuote(cwd)}`;
   return JSON.stringify({
     hooks: {

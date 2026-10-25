@@ -1,6 +1,6 @@
 /** codex's half of the write guard (src/agent/write-guard.ts holds the rule): a PreToolUse hook on
  * `apply_patch`, installed by part 6/9, refuses an `apply_patch` that writes under the team root
- * but outside the run's worktree. The entry point is write-guard-hook.ts beside this file.
+ * but outside the run's worktree. The entry point is codex-write-guard-hook.ts beside this file.
  *
  * Codex's hook takes no argument naming the worktree, unlike claude's: codex trusts a hook by a
  * hash of its whole definition, so a command constant per build needs one trust lookup, while a
@@ -60,7 +60,7 @@ export function tomlString(s: string): string {
 }
 
 /** The codex write guard's definition: the PreToolUse hook on `apply_patch` that runs the
- * compiled write-guard-hook.js with this process's node, falling back to `node` on PATH when
+ * compiled codex-write-guard-hook.js with this process's node, falling back to `node` on PATH when
  * that binary has moved (as claude's and the notes shim do). The hook path resolves from this
  * module, so a staged build (.tumwater/build/<sha>) runs its own copy and gets its own hash. */
 export function codexWriteGuardDefinition(nodeBin: string = process.execPath): {
@@ -68,7 +68,7 @@ export function codexWriteGuardDefinition(nodeBin: string = process.execPath): {
   command: string;
   timeout: number;
 } {
-  const hook = fileURLToPath(new URL("./write-guard-hook.js", import.meta.url));
+  const hook = fileURLToPath(new URL("./codex-write-guard-hook.js", import.meta.url));
   const command = `n=${shellQuote(nodeBin)}; [ -x "$n" ] || n=node; exec "$n" ${shellQuote(hook)}`;
   return { matcher: HOOK_MATCHER, command, timeout: HOOK_TIMEOUT_SECONDS };
 }

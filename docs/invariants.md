@@ -4669,9 +4669,9 @@ instead of skipping its re-review".
 
 ### INV-CW2: every claude run carries the write guard as a PreToolUse hook that denies a stray write
 
-**Guarantee.** `claudeArgs` passes `--settings` with one PreToolUse hook on `Edit|Write` that runs the compiled `write-guard-hook.js` with the run's worktree as its argument, and `--settings` is a reserved passthrough flag. The hook prints a `deny` decision whose reason is `strayWriteRefusal`'s text, resolving a relative path from the payload's `cwd`, and prints nothing for any other write or for input it cannot read.
+**Guarantee.** `claudeArgs` passes `--settings` with one PreToolUse hook on `Edit|Write` that runs the compiled `claude-write-guard-hook.js` with the run's worktree as its argument, and `--settings` is a reserved passthrough flag. The hook prints a `deny` decision whose reason is `strayWriteRefusal`'s text, resolving a relative path from the payload's `cwd`, and prints nothing for any other write or for input it cannot read.
 
-**Binds.** `src/agent/claude/claude-args.ts` (`claudeArgs`, `HARNESS_CLAUDE_FLAGS`), `src/agent/claude/claude-write-guard.ts` (`writeGuardSettings`, `claudeWriteRefusal`) and `src/agent/claude/write-guard-hook.ts`.
+**Binds.** `src/agent/claude/claude-args.ts` (`claudeArgs`, `HARNESS_CLAUDE_FLAGS`), `src/agent/claude/claude-write-guard.ts` (`writeGuardSettings`, `claudeWriteRefusal`) and `src/agent/claude/claude-write-guard-hook.ts`.
 
 **Pinned by.** `test/write-guard.test.ts` — "claudeWriteRefusal refuses a stray Edit or Write and resolves relative paths from claude's cwd" and "the hook claude runs denies a stray write with the refusal as its reason and stays silent otherwise"; `test/claude-args.test.ts` — "claudeArgs builds the design's argv in order and pairs the prompt with stdin" and "claudeArgs rejects a passthrough arg that repeats a flag tumwater sets".
 
@@ -4685,9 +4685,9 @@ instead of skipping its re-review".
 
 ### INV-CW4: a codex `apply_patch` outside the run's worktree is denied, and the hook stays silent for every other call
 
-**Guarantee.** `codexWriteRefusal` acts only on a payload whose `tool_name` is `"apply_patch"` and whose `tool_input.command` is a string, taking the run's directory from the payload's `cwd` (codex's session cwd, which a shell `cd` cannot move since every shell call is its own `zsh -lc`). For each path `patchWritePaths` lists from the command, in order, it refuses the first that `strayWriteRefusal` refuses, a relative path resolving from `cwd`; a payload naming no `cwd` returns null. The hook entry (write-guard-hook.ts) prints a `deny` decision whose reason is that refusal, prints nothing for any other call or for input it cannot read, and exits 0 either way.
+**Guarantee.** `codexWriteRefusal` acts only on a payload whose `tool_name` is `"apply_patch"` and whose `tool_input.command` is a string, taking the run's directory from the payload's `cwd` (codex's session cwd, which a shell `cd` cannot move since every shell call is its own `zsh -lc`). For each path `patchWritePaths` lists from the command, in order, it refuses the first that `strayWriteRefusal` refuses, a relative path resolving from `cwd`; a payload naming no `cwd` returns null. The hook entry (codex-write-guard-hook.ts) prints a `deny` decision whose reason is that refusal, prints nothing for any other call or for input it cannot read, and exits 0 either way.
 
-**Binds.** `src/agent/codex/codex-write-guard.ts` (`codexWriteRefusal`) and `src/agent/codex/write-guard-hook.ts`.
+**Binds.** `src/agent/codex/codex-write-guard.ts` (`codexWriteRefusal`) and `src/agent/codex/codex-write-guard-hook.ts`.
 
 **Pinned by.** `test/codex-write-guard.test.ts` — "codexWriteRefusal refuses an Update at the primary's absolute path and names the same file in the worktree", "an in-worktree relative Update, a Bash call and a payload with no cwd pass", "a patch whose Move leaves the worktree is refused", "a first in-worktree path does not hide a later stray path in the same patch" and "the hook codex runs denies a stray apply_patch with the refusal as its reason and stays silent otherwise".
 

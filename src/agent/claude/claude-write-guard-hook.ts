@@ -1,5 +1,5 @@
 /** The PreToolUse hook claude runs before each file write in a team run (claude-write-guard.ts
- * installs it through `--settings`): `node write-guard-hook.js <worktree>` with claude's hook
+ * installs it through `--settings`): `node claude-write-guard-hook.js <worktree>` with the hook
  * payload on stdin. To block the write it prints a `deny` decision with the refusal as its reason:
  * the model reads only the reason, where a refusal by exit 2 would also quote the whole hook
  * command. It prints nothing to let the write run. Any failure of its own lets the write run, so a

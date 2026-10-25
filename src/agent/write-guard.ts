@@ -1,5 +1,6 @@
 /** The write guard on a run's file-editing tools: pi's `edit`/`write` (src/pi-extension/
- * write-guard.ts), claude's `Edit`/`Write` (src/agent/claude/write-guard-hook.ts) and OpenCode's
+ * write-guard.ts), claude's `Edit`/`Write` (src/agent/claude/claude-write-guard-hook.ts) and
+ * OpenCode's
  * `edit` permission (src/agent/opencode/write-guard-plugin/index.ts) refuse a write that would
  * land under the team root but outside the run's own checkout.
  *
@@ -127,8 +128,9 @@ export function strayWriteRefusal(target: string, runDir: string, resolveFrom: s
 }
 
 /** The stdin-driven guard-hook driver shared by the claude and codex PreToolUse hooks
- * (src/agent/claude/write-guard-hook.ts, src/agent/codex/write-guard-hook.ts). Each hook runs as
- * `node write-guard-hook.js` with the backend's hook payload JSON on stdin; this reads it in one
+ * (src/agent/claude/claude-write-guard-hook.ts, src/agent/codex/codex-write-guard-hook.ts). Each
+ * hook runs as `node claude-write-guard-hook.js` / `node codex-write-guard-hook.js` with the
+ * backend's hook payload JSON on stdin; this reads it in one
  * place, asks `computeRefusal` for a refusal string (null lets the edit/patch run), and prints the
  * `deny` decision only when there is a refusal. Any failure — unreadable stdin, malformed JSON, a
  * throw — reads as "no refusal" (null), so a broken hook cannot stop every edit of a run; the

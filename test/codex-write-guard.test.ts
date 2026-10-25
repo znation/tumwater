@@ -1,4 +1,5 @@
-// The codex write-guard hook (src/agent/codex/codex-write-guard.ts, write-guard-hook.ts; plans/
+// The codex write-guard hook (src/agent/codex/codex-write-guard.ts, codex-write-guard-hook.ts;
+// plans/
 // codex-write-guard.md "The hook (parts 1–2)"; PLANS.md "Write guard on Codex, part 2/9"): the
 // hook a codex run calls before every `apply_patch` refuses a patch that writes outside the run's
 // worktree with `strayWriteRefusal`'s text, and stays silent for any other call or when it cannot
@@ -61,7 +62,7 @@ test("a first in-worktree path does not hide a later stray path in the same patc
 
 test("the hook codex runs denies a stray apply_patch with the refusal as its reason and stays silent otherwise", () => {
   const { root, wt } = team();
-  const hook = fileURLToPath(new URL("../src/agent/codex/write-guard-hook.js", import.meta.url));
+  const hook = fileURLToPath(new URL("../src/agent/codex/codex-write-guard-hook.js", import.meta.url));
   const stray = payload(`*** Update File: ${path.join(root, "src", "a.ts")}`, wt);
   const denied = spawnSync("node", [hook], { input: JSON.stringify(stray), encoding: "utf8" });
   assert.equal(denied.status, 0);
