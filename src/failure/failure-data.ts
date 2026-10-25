@@ -392,23 +392,7 @@ function assembleFailureReport(
   const oldestRetained = allEventsRaw.length > 0 ? eventDayKey(allEventsRaw[0]!) : null;
   const runEvents = current.filter((ev) => ev.type === "run_end");
 
-  // Outcome table: one row per role, counts per result that occurred.
-  const outcomeMap = new Map<string, Partial<Record<RunResult, number>>>();
-  for (const ev of runEvents) {
-    const role = eventRole(ev);
-    const counts = getOrCreate(outcomeMap, role, () => ({}));
-    const result = ev.result as RunResult;
-    addTo(counts, result, 1);
-  }
-  // rankByCount orders strongest role first with the ascending-key tiebreak. The old
-  // sort-ascending-then-reverse idiom accidentally flipped equal-total ties into
-  // reverse-alphabetical order; equal-total roles now follow the stated deterministic rule
-  // (pinned by the tie test in test/failure-render.test.ts).
-  const outcomes: OutcomeRow[] = rankByCount(
-    [...outcomeMap.entries()].map(([role, counts]) => ({ role, counts })),
-    (row) => total(row.counts),
-    (row) => row.role,
-  );
+  const outcomes = outcomeRows(runEvents);
 
   // Time and spend: the same runs priced by wall-clock span and cost, per role × outcome
   // class, plus the loss ranking that weighs causes by agent-hours rather than run counts.
@@ -419,121 +403,19 @@ function assembleFailureReport(
   // a pre-feature log leaves the section off entirely.
   const promptStats = promptStatsFor(runEvents);
 
-  // Deltas: current vs preceding window, per role.
-  const curStats = roleStats(current);
-  const prevStats = roleStats(prior);
-  const roles = [...new Set([...curStats.keys(), ...prevStats.keys()])];
-  const deltas: DeltaRow[] = roles
-    .map((role) => {
-      const c = curStats.get(role) ?? { runs: 0, errors: 0, quietKills: 0, rejections: 0 };
-      const p = prevStats.get(role) ?? { runs: 0, errors: 0, quietKills: 0, rejections: 0 };
-      return {
-        role,
-        prevRuns: p.runs,
-        runs: c.runs,
-        prevErrors: p.errors,
-        errors: c.errors,
-        prevQuietKills: p.quietKills,
-        quietKills: c.quietKills,
-        prevRejections: p.rejections,
-        rejections: c.rejections,
-      };
-    })
-    .sort(
-      (a, b) =>
-        b.runs - a.runs ||
-        b.prevRuns - a.prevRuns ||
-        a.role.localeCompare(b.role),
-    );
+  const deltas = deltaRows(current, prior);
 
-  // Only runs that ENDED as errors carry a run error: `state.lastError` is shared state the
-  // merge slot also writes, so a successful run's `run_end` can carry a leftover merge failure's
-  // text (BUGS.md 2026-09-21). `main_red` joins them because its cause is written for that result
-  // — the baseline gate's own text (src/baseline/main-red.ts), never a leftover — so the
-  // section itemizes the outcome that blocks every merge instead of leaving it a bare count
-  // (BUGS.md 2026-09-28). The total therefore equals the Outcome table's error column PLUS its
-  // main_red cells; the render's section title says so, and merge failures still surface below.
-  // The selection predicate is the Outcome table's own — raw `error`/`main_red` results, no
-  // error-text test — so a malformed run_end that skipped the text can never be counted above
-  // but itemized nowhere: those events cluster under a placeholder cause, keeping the section's
-  // total equal to the tables it cross-checks against (BUGS.md 2026-09-30).
-  const errorEvents = runEvents.filter(
-    (ev) => ev.result === "error" || ev.result === "main_red",
-  );
-  const errors = section(
-    clusterMessages(
-      errorEvents.map((ev) => ({
-        message: errorTextOrPlaceholder(ev.error),
-        role: eventRole(ev),
-        ts: ev.ts,
-      })),
-      ERROR_TOP,
-    ),
-    errorEvents.length,
-  );
-  const warnings = messageSection(
-    current.map((ev) =>
-      ev.type === "warning" && typeof ev.message === "string"
-        ? { ...ev, message: ev.message.replace(OLD_MERGE_CHECK_WORDING, "merge check failed (kept for one retry)") }
-        : ev,
-    ),
-    "warning",
-    WARNING_TOP,
-    (m) => URGENT_WARNING.test(m),
-  );
-  // Rejections cluster on (role, reasons[0]) — the field the event feed renders — so two
-  // different rejection reasons from the same role stay separate rows, and an already-landed
-  // one (ev.afterMerge === true) splits apart from a same-reason pre-merge one so the row names
-  // the post-merge class whose rejection stands recorded on main. The section's total counts
-  // every `review_rejected` in the window, reasons or not, so it equals the Deltas column and
-  // the render's remainder line cross-checks against it.
-  const rejectedEvents = current.filter((ev) => ev.type === "review_rejected");
-  const postMergeRejections = rejectedEvents.filter((ev) => ev.afterMerge === true).length;
-  const rejections = section(
-    clusterMessages(
-      rejectedEvents
-        .filter((ev) => Array.isArray(ev.reasons))
-        .map((ev) => {
-          const reasons = ev.reasons as unknown[];
-          const message = ev.afterMerge === true ? `post-merge rejection: ${firstReason(reasons)}` : firstReason(reasons);
-          return { message, role: eventRole(ev), ts: ev.ts, keyPrefix: `${eventRole(ev)}\u0000` };
-        }),
-      REJECTION_TOP,
-    ),
-    rejectedEvents.length,
-  );
+  const errors = errorSection(runEvents);
+  const warnings = warningSection(current);
+  const { rejections, postMergeRejections } = rejectionSection(current);
 
   const mergeFailures = mergeFailureSection(current);
 
-  // Merge review failures: a reviewer that could not return a parseable verdict (a dead
-  // backend, a transport error) fails closed and keeps the commit, but its authoring run ends
-  // `queued`/`no_change` — so the failure lives on the `review_failed` event, never on
-  // `run_end.error`. Clustered on their own so the selfcheck role can see a gate that keeps
-  // failing without misreading it as a run error (BUGS.md 2026-09-21).
-  const reviewFailures = messageSection(current, "review_failed", REVIEW_FAILURE_TOP);
+  const reviewFailures = reviewFailureSection(current);
 
-  // The newest MERGED_TOP merges, newest first. The pre-slice count rides along, as it does for
-  // the state changes below, so the render can name what the cut left out — a busy window must
-  // not read as a MERGED_TOP-merge day (BUGS.md 2026-09-23).
-  const allMerged: MergedCommit[] = current
-    .filter((ev) => ev.type === "merged")
-    .map((ev) => ({
-      ts: ev.ts,
-      commit: typeof ev.commit === "string" ? ev.commit : "?",
-      summary:
-        typeof ev.summary === "string" ? truncateExample(ev.summary, SUMMARY_MAX) : "",
-    }))
-    .sort((a, b) => b.ts - a.ts);
-  const merged = allMerged.slice(0, MERGED_TOP);
+  const { merged, mergedTotal } = mergedCommits(current);
 
-  // The harness's own decisions, newest STATE_CHANGE_TOP kept in chronological order. The
-  // description is bounded at collection so render stays a pure function of this data. The
-  // pre-slice count rides along so the render can say when it is showing a cut, not all of them.
-  const allStateChanges: StateChange[] = current
-    .filter((ev) => STATE_CHANGE_TYPES.has(ev.type))
-    .map((ev) => ({ ts: ev.ts, role: eventRole(ev), description: describeStateChange(ev) }))
-    .sort((a, b) => a.ts - b.ts);
-  const stateChanges: StateChange[] = allStateChanges.slice(-STATE_CHANGE_TOP);
+  const { stateChanges, stateChangesTotal } = stateChangeRows(current);
 
   // Judged on the two partitions, not the whole read: the since collector reads from priorFrom's
   // local day key, which can reach events earlier that day but before priorFrom — outside both
@@ -573,10 +455,165 @@ function assembleFailureReport(
     postMergeRejections,
     mergeFailures,
     merged,
-    mergedTotal: allMerged.length,
+    mergedTotal,
     stateChanges,
-    stateChangesTotal: allStateChanges.length,
+    stateChangesTotal,
   };
+}
+
+/** Outcome table: one row per role, counts per result that occurred. */
+function outcomeRows(runEvents: HarnessEvent[]): OutcomeRow[] {
+  const outcomeMap = new Map<string, Partial<Record<RunResult, number>>>();
+  for (const ev of runEvents) {
+    const role = eventRole(ev);
+    const counts = getOrCreate(outcomeMap, role, () => ({}));
+    const result = ev.result as RunResult;
+    addTo(counts, result, 1);
+  }
+  // rankByCount orders strongest role first with the ascending-key tiebreak. The old
+  // sort-ascending-then-reverse idiom accidentally flipped equal-total ties into
+  // reverse-alphabetical order; equal-total roles now follow the stated deterministic rule
+  // (pinned by the tie test in test/failure-render.test.ts).
+  return rankByCount(
+    [...outcomeMap.entries()].map(([role, counts]) => ({ role, counts })),
+    (row) => total(row.counts),
+    (row) => row.role,
+  );
+}
+
+/** Deltas: current vs preceding window, per role, ordered by runs descending. */
+function deltaRows(current: HarnessEvent[], prior: HarnessEvent[]): DeltaRow[] {
+  const curStats = roleStats(current);
+  const prevStats = roleStats(prior);
+  const roles = [...new Set([...curStats.keys(), ...prevStats.keys()])];
+  return roles
+    .map((role) => {
+      const c = curStats.get(role) ?? { runs: 0, errors: 0, quietKills: 0, rejections: 0 };
+      const p = prevStats.get(role) ?? { runs: 0, errors: 0, quietKills: 0, rejections: 0 };
+      return {
+        role,
+        prevRuns: p.runs,
+        runs: c.runs,
+        prevErrors: p.errors,
+        errors: c.errors,
+        prevQuietKills: p.quietKills,
+        quietKills: c.quietKills,
+        prevRejections: p.rejections,
+        rejections: c.rejections,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.runs - a.runs ||
+        b.prevRuns - a.prevRuns ||
+        a.role.localeCompare(b.role),
+    );
+}
+
+/** Only runs that ENDED as errors carry a run error: `state.lastError` is shared state the
+ * merge slot also writes, so a successful run's `run_end` can carry a leftover merge failure's
+ * text (BUGS.md 2026-09-21). `main_red` joins them because its cause is written for that result
+ * — the baseline gate's own text (src/baseline/main-red.ts), never a leftover — so the
+ * section itemizes the outcome that blocks every merge instead of leaving it a bare count
+ * (BUGS.md 2026-09-28). The total therefore equals the Outcome table's error column PLUS its
+ * main_red cells; the render's section title says so, and merge failures still surface below.
+ * The selection predicate is the Outcome table's own — raw `error`/`main_red` results, no
+ * error-text test — so a malformed run_end that skipped the text can never be counted above
+ * but itemized nowhere: those events cluster under a placeholder cause, keeping the section's
+ * total equal to the tables it cross-checks against (BUGS.md 2026-09-30). */
+function errorSection(runEvents: HarnessEvent[]): ClusterSection {
+  const errorEvents = runEvents.filter(
+    (ev) => ev.result === "error" || ev.result === "main_red",
+  );
+  return section(
+    clusterMessages(
+      errorEvents.map((ev) => ({
+        message: errorTextOrPlaceholder(ev.error),
+        role: eventRole(ev),
+        ts: ev.ts,
+      })),
+      ERROR_TOP,
+    ),
+    errorEvents.length,
+  );
+}
+
+/** Warnings cluster on the merged, often-reworded message; the re-input rewording pools the
+ * pre-07b2664a wording with its current form so a window spanning the change counts one cause. */
+function warningSection(current: HarnessEvent[]): ClusterSection {
+  return messageSection(
+    current.map((ev) =>
+      ev.type === "warning" && typeof ev.message === "string"
+        ? { ...ev, message: ev.message.replace(OLD_MERGE_CHECK_WORDING, "merge check failed (kept for one retry)") }
+        : ev,
+    ),
+    "warning",
+    WARNING_TOP,
+    (m) => URGENT_WARNING.test(m),
+  );
+}
+
+/** Rejections cluster on (role, reasons[0]) — the field the event feed renders — so two
+ * different rejection reasons from the same role stay separate rows, and an already-landed
+ * one (ev.afterMerge === true) splits apart from a same-reason pre-merge one so the row names
+ * the post-merge class whose rejection stands recorded on main. The section's total counts
+ * every `review_rejected` in the window, reasons or not, so it equals the Deltas column and
+ * the render's remainder line cross-checks against it. The post-merge count rides along. */
+function rejectionSection(current: HarnessEvent[]): { rejections: ClusterSection; postMergeRejections: number } {
+  const rejectedEvents = current.filter((ev) => ev.type === "review_rejected");
+  const postMergeRejections = rejectedEvents.filter((ev) => ev.afterMerge === true).length;
+  return {
+    rejections: section(
+      clusterMessages(
+        rejectedEvents
+          .filter((ev) => Array.isArray(ev.reasons))
+          .map((ev) => {
+            const reasons = ev.reasons as unknown[];
+            const message = ev.afterMerge === true ? `post-merge rejection: ${firstReason(reasons)}` : firstReason(reasons);
+            return { message, role: eventRole(ev), ts: ev.ts, keyPrefix: `${eventRole(ev)}\u0000` };
+          }),
+        REJECTION_TOP,
+      ),
+      rejectedEvents.length,
+    ),
+    postMergeRejections,
+  };
+}
+
+/** Merge review failures: a reviewer that could not return a parseable verdict (a dead
+ * backend, a transport error) fails closed and keeps the commit, but its authoring run ends
+ * `queued`/`no_change` — so the failure lives on the `review_failed` event, never on
+ * `run_end.error`. Clustered on their own so the selfcheck role can see a gate that keeps
+ * failing without misreading it as a run error (BUGS.md 2026-09-21). */
+function reviewFailureSection(current: HarnessEvent[]): ClusterSection {
+  return messageSection(current, "review_failed", REVIEW_FAILURE_TOP);
+}
+
+/** The newest MERGED_TOP merges, newest first. The pre-slice count rides along, as it does for
+ * the state changes below, so the render can name what the cut left out — a busy window must
+ * not read as a MERGED_TOP-merge day (BUGS.md 2026-09-23). */
+function mergedCommits(current: HarnessEvent[]): { merged: MergedCommit[]; mergedTotal: number } {
+  const allMerged: MergedCommit[] = current
+    .filter((ev) => ev.type === "merged")
+    .map((ev) => ({
+      ts: ev.ts,
+      commit: typeof ev.commit === "string" ? ev.commit : "?",
+      summary:
+        typeof ev.summary === "string" ? truncateExample(ev.summary, SUMMARY_MAX) : "",
+    }))
+    .sort((a, b) => b.ts - a.ts);
+  return { merged: allMerged.slice(0, MERGED_TOP), mergedTotal: allMerged.length };
+}
+
+/** The harness's own decisions, newest STATE_CHANGE_TOP kept in chronological order. The
+ * description is bounded at collection so render stays a pure function of this data. The
+ * pre-slice count rides along so the render can say when it is showing a cut, not all of them. */
+function stateChangeRows(current: HarnessEvent[]): { stateChanges: StateChange[]; stateChangesTotal: number } {
+  const allStateChanges: StateChange[] = current
+    .filter((ev) => STATE_CHANGE_TYPES.has(ev.type))
+    .map((ev) => ({ ts: ev.ts, role: eventRole(ev), description: describeStateChange(ev) }))
+    .sort((a, b) => a.ts - b.ts);
+  return { stateChanges: allStateChanges.slice(-STATE_CHANGE_TOP), stateChangesTotal: allStateChanges.length };
 }
 
 /** Median of a non-empty numeric list (the mean of the two middles for an even count). */
