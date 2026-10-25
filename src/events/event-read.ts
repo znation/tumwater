@@ -162,15 +162,6 @@ export function mergingRoleOf(root: string, commit: string): string | undefined 
     .find((ev) => ev.type === "merged" && ev.commit === commit)?.source;
 }
 
-/** Normalize a raw `main_revert` reason to the events.ts contract: `post-review` for a
- * post-merge review rejection, `main-red` otherwise, including absent or unknown reasons.
- * The absent-reason default is a display fallback for events that predate the reason split;
- * it is not a red-main fact — the removed revert guardrail (part 5/6) classified a reason-less
- * event from the log instead of through this. */
-export function revertReasonOf(ev: HarnessEvent): "post-review" | "main-red" {
-  return ev.reason === "post-review" ? "post-review" : "main-red";
-}
-
 /** The event-tail size readEvents falls back to when a caller omits `limit` — a working
  * handful of a busy team's recent activity, small enough that the per-poll tail read stays
  * cheap. Exported so a caller that starts a scan at the default (status-polls.ts's

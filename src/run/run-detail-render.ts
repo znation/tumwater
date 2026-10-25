@@ -64,14 +64,7 @@ export function renderRunDetail(d: RunDetail): string {
   if (sha !== null) header += ` · commit ${shortSha(sha)}`;
   if (d.mergedSha !== null && d.mergedSha !== sha) header += ` · merged as ${shortSha(d.mergedSha)}`;
   if (d.reverted !== null) {
-    header += ` · reverted ${shortSha(d.reverted.sha)}`;
-    if (d.reverted.kind === "main") {
-      if (d.reverted.reason === "post-review") header += ` (post-merge review rejection)`;
-      else if (d.reverted.failingTests[0] !== undefined) header += ` (failing: ${d.reverted.failingTests[0]})`;
-      else header += ` (main's check failed)`;
-    } else {
-      header += ` (by operator)`; // vocabulary-ok: the deliberate-revert writer this header names
-    }
+    header += ` · reverted ${shortSha(d.reverted.sha)} (by operator)`; // vocabulary-ok: the deliberate-revert writer this header names
   }
   const trail = d.events.map(formatEvent);
   if (d.merge !== null) {

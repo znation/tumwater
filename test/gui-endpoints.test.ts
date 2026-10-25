@@ -838,7 +838,7 @@ test("handleRun serves a reverted run's culprit as reverted.sha", async () => {
     JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }), // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: 1_500, loop: "clean", source: "clean", type: "merged", commit: "landed1" }), // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: 2_000, loop: "clean", type: "run_end", run: 3, result: "changed", summary: "tidy up" }), // retired-name-ok: legacy event field in a fixture
-    JSON.stringify({ ts: 4_000, source: "tumwater", loop: "tumwater", type: "main_revert", commit: "landed1", revert: "rev1", runner: "clean", failingTests: ["a.test.ts"] }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: 4_000, source: "tumwater", loop: "tumwater", type: "operator_revert", commit: "landed1", revert: "rev1", runner: "clean", failingTests: ["a.test.ts"] }), // retired-name-ok: legacy event field in a fixture
   ]);
   const { data } = await serveRun(root, "?role=clean&run=3");
   assert.equal((data as RunDetail).reverted?.sha, "landed1");

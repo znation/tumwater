@@ -190,7 +190,7 @@ test("the watch's onCulprit hands a red culprit straight to ci's heal queue and 
   const prompt = queued[0]!;
   assert.ok(prompt.includes(mainRedCulpritClause(b)), queued.join("\n"));
   assert.ok(prompt.includes("Failing: first; second; third."), prompt);
-  assert.equal(eventsOfType(root, "main_revert").length, 0, "nothing is reverted");
+  assert.equal(eventsOfType(root, "operator_revert").length, 0, "nothing is reverted");
 });
 
 function mainRedCulpritClause(sha: string): string {

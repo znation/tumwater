@@ -68,7 +68,6 @@ export function collectReportSince(
     postMergeRejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
-    revertsByRole: {},
     checkDurationsMs: [],
     checkFailures: 0,
     mergeWaitsMs: [],
@@ -158,7 +157,6 @@ export function collectReportSince(
     postMergeRejectionsByRole: scopedByRole(acc.postMergeRejectionsByRole, bases),
     revisionsByRole: scopedByRole(acc.revisionsByRole, bases),
     refusalsByRole: scopedByRole(acc.refusalsByRole, bases),
-    revertsByRole: scopedByRole(acc.revertsByRole, bases),
     failedRunsByRole: scopedByRole(acc.failedRunsByRole, bases),
     fallbacksByRole: scopedByRole(acc.fallbacksByRole, bases),
     imageReroutesByRole: scopedByRole(acc.imageReroutesByRole, bases),
@@ -269,7 +267,6 @@ export function collectReport(root: string, days: number, role?: string | readon
       setMapIfNonempty(day, "postMergeRejectionsByRole", fold.postMergeRejectionsByRole);
       setMapIfNonempty(day, "revisionsByRole", fold.revisionsByRole);
       setMapIfNonempty(day, "refusalsByRole", fold.refusalsByRole);
-      setMapIfNonempty(day, "revertsByRole", fold.revertsByRole);
       // Checks belong to the merge slot, so only the team series carries the median.
       setLowerMedian(day, "checkMedianMs", fold.checkDurationsMs);
       if (fold.checkFailures > 0) day.checkFailures = fold.checkFailures;
@@ -342,7 +339,6 @@ export function collectReport(root: string, days: number, role?: string | readon
       setMapIfNonempty(day, "postMergeRejectionsByRole", narrowToRole(fold.postMergeRejectionsByRole, bases));
       setMapIfNonempty(day, "revisionsByRole", narrowToRole(fold.revisionsByRole, bases));
       setMapIfNonempty(day, "refusalsByRole", narrowToRole(fold.refusalsByRole, bases));
-      setMapIfNonempty(day, "revertsByRole", narrowToRole(fold.revertsByRole, bases));
       setMapIfNonempty(day, "failedRunsByRole", narrowToRole(fold.failedRunsByRole, bases));
       setMapIfNonempty(day, "fallbacksByRole", narrowToRole(fold.fallbacksByRole, bases));
       setMapIfNonempty(day, "imageReroutesByRole", narrowToRole(fold.imageReroutesByRole, bases));

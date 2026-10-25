@@ -163,24 +163,23 @@ test("the guardrail constants match the documented thresholds", () => {
   assert.equal(QUARANTINE_WARN_COUNT, 10);
 });
 
-test("no automatic revert rule warns on a red-main revert burst (the removed G2 guardrail)", () => {
+test("no automatic revert rule warns on a revert burst (the removed G2 guardrail)", () => {
   const root = makeRepo();
   const now = Date.now();
-  // Six `main_revert`s in the day are exactly what the removed G2 rate rule counted as a
+  // Six reverts in the day are exactly what the removed G2 rate rule counted as a
   // burst (the deleted 5-revert ceiling): with main green since and a clean quarantine,
   // guardrailWarnings surfaces no revert line, so the doctor and the digest carry no revert
-  // warning for them — operator_revert and main_revert alike are deliberate acts now.
+  // warning for them — operator_revert is a deliberate act now.
   writeEvents(root, [
     ...Array.from({ length: 6 }, (_, i) => ({
       ts: now - (10 - i) * 60_000,
       source: "tumwater",
-      type: "main_revert",
+      type: "operator_revert",
       commit: `cccccccccccc${i}`,
-      reason: "main-red",
     })),
     { ts: now - 60_000, source: "tumwater", type: "main_check", sha: "abcdef123456", status: "passed", durationMs: 120_000 },
   ]);
   const warnings = guardrailWarnings(root);
   assert.ok(Array.isArray(warnings), "guardrailWarnings returns its phrase list");
-  assert.doesNotMatch(warnings.join(" "), /revert|burst|ceiling/i, "no automatic revert rule warns on a red-main revert burst");
+  assert.doesNotMatch(warnings.join(" "), /revert|burst|ceiling/i, "no automatic revert rule warns on a revert burst");
 });

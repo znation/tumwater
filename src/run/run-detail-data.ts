@@ -11,7 +11,7 @@
  * and the CLI command in run-detail.ts. */
 import { HISTORY_SCAN_MAX_EVENTS } from "../history/history-data.js";
 import { bucketMergeEvents, resolveQueuedResult } from "../history/history-queued.js";
-import { eventUsage, readEvents, revertReasonOf, runSpanMs, runStartMap } from "../events/event-read.js";
+import { eventUsage, readEvents, runSpanMs, runStartMap } from "../events/event-read.js";
 import { outcomeText, usageText } from "../events/event-format.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -54,14 +54,11 @@ export interface RunDetail {
    * pinned commit when the merge rebased. Null for every other run, and when the event rotated
    * out or the merge was a no-op fast-forward (which logs none). */
   mergedSha: string | null;
-  /** The revert of this run's merged change — an automatic main-watch revert (`kind: "main"`,
-   * from a `main_revert` event, carrying `reason` — `main-red` for the main watch's red check,
-   * `post-review` for a post-merge review rejection — defaulting to `main-red` when the event
-   * predates the reason split) or an operator's deliberate `tumwater revert` (`kind:
-   * "operator"`, from an `operator_revert` event) — matched by the event's `runner` (this role)
-   * and its `commit` (the run's landed or pinned sha); null when there is none. */
+  /** The revert of this run's merged change — an operator's deliberate `tumwater revert`
+   * (`kind: "operator"`, from an `operator_revert` event), matched by the event's `runner`
+   * (this role) and its `commit` (the run's landed or pinned sha); null when there is none.
+   * The automatic main-watch revert no longer exists (Forward, never back). */
   reverted:
-    | { kind: "main"; reason: "main-red" | "post-review"; sha: string; revert: string; failingTests: string[] }
     | { kind: "operator"; sha: string; revert: string; failingTests: string[] }
     | null;
 }
@@ -191,43 +188,25 @@ function detailFrom(
   return detail;
 }
 
-/** The revert of a run's landed change, matched from the unfiltered event list (the revert events
- * are logged under `tumwater`, not the run's role): the newest `main_revert` or `operator_revert`
- * whose `runner` is this role (an instance run's base role — it commits `tumwater(feature): …`)
- * and whose `commit` is the run's landed (`mergedSha`) or pinned
- * (`runCommitSha`) sha — the latter catching a no-op fast-forward that logs no `merged` event.
- * `kind` names which sort of revert it is; a main revert's `reason` names whether the main
- * watch's check or a post-merge review rejected the culprit (`post-review`, else `main-red`
- * when the event carries none — the events.ts default); `revert` names the inverse commit
- * (empty when the source logged none) and `failingTests` the tests an automatic `main_revert`
- * named (empty when absent); null when nothing matches. */
+/** The revert of a run's landed change, matched from the unfiltered event list (the revert
+ * events are logged under `tumwater`, not the run's role): the newest `operator_revert` whose
+ * `runner` is this role (an instance run's base role — it commits `tumwater(feature): …`) and
+ * whose `commit` is the run's landed (`mergedSha`) or pinned (`runCommitSha`) sha — the latter
+ * catching a no-op fast-forward that logs no `merged` event. `revert` names the inverse commit
+ * (empty when the source logged none) and `failingTests` the tests the revert named (empty
+ * when absent); null when nothing matches. The automatic main-watch revert no longer exists. */
 function revertedOf(d: RunDetail, all: readonly HarnessEvent[]): RunDetail["reverted"] {
   const targetSha = d.mergedSha ?? runCommitSha(d);
   for (let i = all.length - 1; i >= 0; i--) {
     const e = all[i]!;
-    if (e.type !== "main_revert" && e.type !== "operator_revert") continue;
-    // An instance run (`feature-2`) commits under its base role (`tumwater(feature): …`), so
-    // an operator_revert's runner is the base role; a main_revert's runner is the instance id
-    // the merged event logged. Match either. The commit-sha check below still disambiguates.
+    if (e.type !== "operator_revert") continue;
     if (typeof e.runner !== "string" || (e.runner !== d.role && e.runner !== baseRoleOf(d.role))) continue;
     if (typeof e.commit !== "string" || e.commit !== targetSha) continue;
-    const failingTests = Array.isArray(e.failingTests) ? (e.failingTests as string[]) : [];
-    if (e.type === "main_revert") {
-      return {
-        kind: "main",
-        // absent, older or unknown reason reads as main-red — the events.ts default
-        // (revertReasonOf, src/events/event-read.ts)
-        reason: revertReasonOf(e),
-        sha: e.commit,
-        revert: typeof e.revert === "string" ? e.revert : "",
-        failingTests,
-      };
-    }
     return {
       kind: "operator", // vocabulary-ok: the deliberate-revert kind value names the operator role
       sha: e.commit,
       revert: typeof e.revert === "string" ? e.revert : "",
-      failingTests,
+      failingTests: Array.isArray(e.failingTests) ? (e.failingTests as string[]) : [],
     };
   }
   return null;

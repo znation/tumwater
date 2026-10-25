@@ -52,12 +52,6 @@ export interface UsageFold {
    * tally never subtracted from runsByRole. `refused` is not error-class, so this is an
    * explicit check, not OUTCOME_CLASS. */
   refusalsByRole: Record<string, number>;
-  /** main_revert events per base role, keyed by each event's `runner` — which role's merged
-   * changes the main watch took back off main. A revert's `runner` is the role that merged
-   * the culprit, so `eventRole(ev)` (which reads `source`) cannot name it: the harness wrote
-   * the event under TUMWATER_SOURCE. A revert with no `runner` (a hand-made or director
-   * commit) adds no key — matching the zero-means-absent rule of the other role maps. */
-  revertsByRole: Record<string, number>;
   /** Wall-clock ms of each passing full-suite build_check (isPassingFullCheck), unsorted. */
   checkDurationsMs: number[];
   /** Count of failed full-suite build_check events (isRedFullCheck), so a day whose checks went
@@ -280,14 +274,6 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     const tier = commitTier(role);
     if (tier === "work") target.workCommits++;
     else if (tier === "maintenance") target.maintenanceCommits++;
-  } else if (ev.type === "main_revert") {
-    // Which role's merged change the main watch took back off main, keyed by the culprit's
-    // `runner` — a revert is a merge outcome, so it counts under the role that merged the
-    // culprit, folded to base role like commitsByRole/mergedByRole (`feature-2` → `feature`).
-    // A revert with no `runner` (a hand-made or director commit) adds nothing — no
-    // `(unknown)` key — matching the zero-means-absent rule of the other role maps.
-    if (typeof ev.runner === "string" && ev.runner !== "")
-      addTo(target.revertsByRole, baseRoleOf(ev.runner), 1);
   } else if (ev.type === "run_start") {
     // One tally per run start on a configured model: the same `model` field the CLI's
     // `run #N started on <model>` line prints, and the only event that carries a model
@@ -371,7 +357,6 @@ interface DayFold {
   postMergeRejectionsByRole: Record<string, number>;
   revisionsByRole: Record<string, number>;
   refusalsByRole: Record<string, number>;
-  revertsByRole: Record<string, number>;
   /** Wall-clock ms of each passing full-suite build_check that day, unsorted. */
   checkDurationsMs: number[];
   /** Count of failed full-suite build_check events that day (isRedFullCheck). */
@@ -547,7 +532,6 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       postMergeRejectionsByRole: {},
       revisionsByRole: {},
       refusalsByRole: {},
-      revertsByRole: {},
       checkDurationsMs: [],
       checkFailures: 0,
       mergeWaitsMs: [],

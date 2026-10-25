@@ -634,18 +634,6 @@ test("renderRunDetail names a reverted change and its first failing test", () =>
   )!;
   const header = (d: Partial<RunDetail>): string => renderRunDetail({ ...base, ...d }).split("\n")[0]!;
   assert.match(
-    header({ reverted: { kind: "main", reason: "main-red", sha: "abcdef1234", revert: "9999999", failingTests: ["a.test.ts", "b.test.ts"] } }),
-    / · reverted abcdef12 \(failing: a\.test\.ts\)$/m,
-  );
-  assert.match(
-    header({ reverted: { kind: "main", reason: "post-review", sha: "abcdef1234", revert: "9999999", failingTests: [] } }),
-    / · reverted abcdef12 \(post-merge review rejection\)$/m,
-  );
-  assert.match(
-    header({ reverted: { kind: "main", reason: "main-red", sha: "abcdef1234", revert: "9999999", failingTests: [] } }),
-    / · reverted abcdef12 \(main's check failed\)$/m,
-  );
-  assert.match(
     header({ reverted: { kind: "operator", sha: "abcdef1234", revert: "9999999", failingTests: [] } }),
     / · reverted abcdef12 \(by operator\)$/m,
   );

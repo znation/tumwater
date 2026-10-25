@@ -246,7 +246,6 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   pushRankedRoleLine(lines, "Post-merge rejections by role", rankedRoleMap(data.postMergeRejectionsByRole));
   pushRankedRoleLine(lines, "Revisions by role", rankedRoleMap(data.revisionsByRole));
   pushRankedRoleLine(lines, "Refusals by role", rankedRoleMap(data.refusalsByRole));
-  pushRankedRoleLine(lines, "Reverts by role", rankedRoleMap(data.revertsByRole));
   // The same breakdown for outright failures: error-class run_ends per role under the
   // digest's OUTCOME_CLASS — the runs that burned agent time and merged nothing without
   // going through review, which rejections/revisions would miss entirely. A window with
@@ -415,7 +414,6 @@ export function renderReportMarkdown(data: ReportData): string {
   pushRankedRoleLine(lines, "Post-merge rejections by role", rankedRoleTotals(data.series, (d) => d.postMergeRejectionsByRole ?? {}));
   pushRankedRoleLine(lines, "Revisions by role", rankedRoleTotals(data.series, (d) => d.revisionsByRole ?? {}));
   pushRankedRoleLine(lines, "Refusals by role", rankedRoleTotals(data.series, (d) => d.refusalsByRole ?? {}));
-  pushRankedRoleLine(lines, "Reverts by role", rankedRoleTotals(data.series, (d) => d.revertsByRole ?? {}));
   // The same breakdown for outright failures: error-class run_ends per role under the
   // digest's OUTCOME_CLASS — runs that burned agent time and merged nothing without going
   // through review, which rejections/revisions would miss entirely. Zero-means-absent, so a
