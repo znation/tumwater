@@ -115,6 +115,42 @@ test("redMainWarning: events older than the 24 h window are ignored", () => {
   assert.equal(out, null);
 });
 
+test("redMainWarning: a red the watch blamed appends the merge", () => {
+  const now = 1_000_000_000_000;
+  const S = "abcdef1234567890";
+  const events = [
+    ev({ type: "main_check", ts: now - 31 * MIN, sha: S, status: "failed", durationMs: 120_000, failingTests: ["test/one.test.ts"] }),
+    ev({ type: "main_culprit", ts: now - 5 * MIN, commit: S, runner: "feature" }),
+  ];
+  const out = redMainWarning(events, now);
+  assert.ok(out, "a 31-min red warns");
+  assert.match(out!, /the main watch blames feature's merge abcdef12/);
+});
+
+test("redMainWarning: a culprit blaming another commit still appends with no runner", () => {
+  const now = 1_000_000_000_000;
+  const S = "abcdef1234567890";
+  const events = [
+    ev({ type: "main_check", ts: now - 31 * MIN, sha: S, status: "failed", durationMs: 120_000, failingTests: ["test/one.test.ts"] }),
+    ev({ type: "main_culprit", ts: now - 5 * MIN, commit: S }),
+  ];
+  const out = redMainWarning(events, now);
+  assert.ok(out, "a 31-min red warns");
+  assert.match(out!, /the main watch blames merge abcdef12/);
+});
+
+test("redMainWarning: a culprit for another commit or none leaves the phrase unchanged", () => {
+  const now = 1_000_000_000_000;
+  const S = "abcdef1234567890";
+  const runFor = (extra: Record<string, unknown>) =>
+    redMainWarning([ev({ type: "main_check", ts: now - 31 * MIN, sha: S, status: "failed", durationMs: 120_000, failingTests: ["test/one.test.ts"] }), ...(extra ? [ev(extra)] : [])], now)!;
+  const other = runFor({ type: "main_culprit", ts: now - 5 * MIN, commit: "9999999999999999", runner: "feature" });
+  assert.doesNotMatch(other, /blames/);
+  const none = runFor({});
+  assert.doesNotMatch(none, /blames/);
+  assert.equal(other, none, "a mismatched culprit leaves the phrase byte-identical");
+});
+
 // quarantineWarning (G3): warn when a quarantined test ages past 3 days or the list grows
 // past the 10-test ceiling (plans/fast-merge.md "Guardrails" G3).
 

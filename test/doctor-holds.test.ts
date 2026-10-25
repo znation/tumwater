@@ -407,10 +407,14 @@ test("checkMainRed: the detail names the ci role as repairer only when one is en
 test("checkMainRed: a 31-min red with no role held warns (the G1 guardrail)", () => {
   const root = tmpdir("tw-mainred-");
   const now = Date.now();
-  writeEvents(root, [{ ts: now - 31 * 60_000, source: "tumwater", type: "main_red_hold", sha: "abcdef123456" }]);
+  writeEvents(root, [
+    { ts: now - 31 * 60_000, source: "tumwater", type: "main_red_hold", sha: "abcdef1234567890" },
+    { ts: now - 5 * 60_000, source: "tumwater", type: "main_culprit", commit: "abcdef1234567890", runner: "feature" },
+  ]);
   const r = checkMainRed(root, bcfg({}), now);
   assert.equal(r.level, "warn");
   assert.match(r.detail, /main has had no passing full check for 31 min/);
+  assert.match(r.detail, /the main watch blames feature's merge abcdef12/);
 });
 
 test("checkMainRed: one row joins the held-role phrase and the red-main phrase", () => {

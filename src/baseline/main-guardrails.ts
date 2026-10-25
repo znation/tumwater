@@ -4,7 +4,9 @@
  * selfcheck digest) words them the same. Read-only: it never writes an event, state or file.
  *
  * G1 lives on the `main_check` / `main_red_hold` event trail (src/baseline/main-watch.ts,
- * src/baseline/main-red.ts): only `main_check` events that actually ran the check
+ * src/baseline/main-red.ts), and names the merge the watch blamed (`main_culprit`, logged by
+ * src/baseline/main-watch.ts) in the same clause the dashboard alert uses. Only `main_check`
+ * events that actually ran the check
  * (`durationMs` > 0; a cached or inherited verdict is ignored) and `main_red_hold` events
  * count, and a `main_check` that passed (a red naming only quarantined tests is recorded
  * passed) ends a red. G3 reads the quarantine list (src/review/known-flakes.ts) directly.
@@ -14,6 +16,7 @@ import { readEventsSince } from "../events/event-window.js";
 import { loadQuarantine } from "../review/known-flakes.js";
 import { DAY_MS, clockHm, humanAgo } from "../text/datetime.js";
 import { shortSha } from "../text/format.js";
+import { roleLabel } from "../roles/role-labels.js";
 import { squash } from "../text/text.js";
 import type { HarnessEvent } from "../events/events.js";
 
@@ -60,13 +63,23 @@ const QUARANTINE_DETAIL_MAX = 3;
  * `main_red_hold` events count; a `main_check` with `durationMs` 0 (cached or inherited) is
  * ignored; a pass (including one naming only quarantined tests, recorded passed) ends the red.
  * The phrase names how long main has had no passing full check, the sha it has been red since,
- * its clock time, and the newest red's first failing test when one is named. Returns null when
- * main is green, or red for RED_MAIN_WARN_MS or less. */
+ * its clock time, the newest red's first failing test when one is named, and — when the newest
+ * `main_culprit` in the window blames the same sha the phrase names — the merge the main watch
+ * blamed (`; the main watch blames <role>'s merge <sha>`, or `; the main watch blames merge
+ * <sha>` when no runner is named), the one rule the dashboard alert and this phrase share.
+ * Returns null when main is green, or red for RED_MAIN_WARN_MS or less. */
 export function redMainWarning(events: readonly HarnessEvent[], now: number): string | null {
   const cutoff = now - DAY_MS;
   const relevant: HarnessEvent[] = [];
+  let culprit: HarnessEvent | undefined;
   for (const e of events) {
     if (typeof e.ts !== "number" || e.ts < cutoff) continue;
+    if (e.type === "main_culprit") {
+      if (typeof e.commit === "string" && e.commit.length > 0 && (culprit === undefined || e.ts > culprit.ts)) {
+        culprit = e;
+      }
+      continue;
+    }
     if (isRedMain(e) || isPassingMainCheck(e)) relevant.push(e);
   }
   if (relevant.length === 0) return null;
@@ -92,7 +105,17 @@ export function redMainWarning(events: readonly HarnessEvent[], now: number): st
   const failing =
     Array.isArray(newest.failingTests) && typeof newest.failingTests[0] === "string" ? newest.failingTests[0] : undefined;
   const head = `main has had no passing full check for ${duration}: red since ${shortSha(startEv.sha)} at ${clockHm(startEv.ts)}`;
-  return failing ? `${head} — ${squash(failing, 120)}` : head;
+  // The blame names the merge the main watch blamed for the red — the same `main_culprit`
+  // commit-equals-tip rule the dashboard alert uses (status-polls only publishes a blame whose
+  // commit is the derived tip sha), so a red the watch did not blame never borrows another
+  // head's culprit. A culprit naming another commit, or none, leaves the phrase as today.
+  const shouldBlame = culprit !== undefined && culprit.commit === newest.sha;
+  const blame = shouldBlame
+    ? typeof culprit!.runner === "string" && culprit!.runner.length > 0
+      ? `; the main watch blames ${roleLabel(culprit!.runner)}'s merge ${shortSha(culprit!.commit)}`
+      : `; the main watch blames merge ${shortSha(culprit!.commit)}`
+    : "";
+  return failing ? `${head} — ${squash(failing, 120)}${blame}` : `${head}${blame}`;
 }
 
 /** G3 over `entries` (the loadQuarantine list): warns when the list holds more than
