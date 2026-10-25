@@ -1315,7 +1315,7 @@ groups instances: their spend sums against the base role's cap".
 **Guarantee.** `validateConfig` rejects a custom role whose name `baseRoleOf` maps to a different
 id, so a custom role can never shadow a feature or bugfix instance's state.
 
-**Binds.** `src/config/config-validation.ts` (`validateConfig`).
+**Binds.** `src/config/config-validation-roles.ts` (`validateRolesAndCrossField`).
 
 **Pinned by.** `test/runner-ids.test.ts` — "a custom role name shaped like an instance id is a
 validation error".

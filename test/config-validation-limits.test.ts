@@ -6,7 +6,8 @@ import { validationError } from "./fixtures/config-fixtures.js";
 
 // validateConfig's numeric and window limits (src/config/config-validation.ts): the budget caps,
 // the disk-floor and idle-reclaim thresholds, the duration-second timer bounds, and the quiet
-// hours windows (team-wide and per-role). Split from test/config-validation.test.ts
+// hours windows (team-wide; the per-role cap and per-role quiet-hour rules live in
+// src/config/config-validation-roles.ts under the gate). Split from test/config-validation.test.ts
 // (2026-10-11) so the value rules that silently accept a bad bound read on their own.
 
 test("validateConfig accepts a well-formed maxDailyCostUsdPerRole map and rejects bad ones", () => {

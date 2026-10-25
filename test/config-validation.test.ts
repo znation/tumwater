@@ -11,7 +11,8 @@ import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixture
 
 // Tests for src/config/config-validation.ts — validateConfig's core rules (top-level keys,
 // scalars, the model/agent selectors, review, roles; the model/agent section rules themselves
-// live in config-validation-model.ts and config-validation-agents.ts under the gate) — plus the
+// live in config-validation-model.ts and config-validation-agents.ts under the gate, and the
+// per-role and cross-field rules in config-validation-roles.ts) — plus the
 // load and save paths that enforce
 // it (loadConfig's actionable rejections, loadConfigSafe's message form, saveConfig's
 // refuse-to-persist). The section-specific suites split from this file live in

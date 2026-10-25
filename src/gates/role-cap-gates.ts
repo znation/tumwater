@@ -16,7 +16,7 @@
  *   set instead, and `resume --role` has no marker to touch (none is needed: the lift is a
  *   config edit or midnight).
  * - An unknown role id in the caps map is a config-validation error
- *   (src/config/config-validation.ts, the `roles.<id>` idiom): explicit misconfiguration
+ *   (src/config/config-validation-roles.ts, the per-role map checks): explicit misconfiguration
  *   never silently no-ops a cap.
  *
  * Shape, like every gate in the family (src/gates/gate-polls.ts): the pure verdict and the
