@@ -908,12 +908,13 @@ test("the digest reports per-role prompt-token medians and the pre-edit share", 
   const feature = data.promptStats.find((r) => r.role === "feature");
   assert.deepEqual(feature, { role: "feature", runs: 2, medianPromptTokens: 200, preEditShare: 0.15 });
   const bugfix = data.promptStats.find((r) => r.role === "bugfix");
-  assert.deepEqual(bugfix, { role: "bugfix", runs: 1, medianPromptTokens: 50, preEditShare: 1 });
+  assert.deepEqual(bugfix, { role: "bugfix", runs: 1, medianPromptTokens: 50, preEditShare: 1, cacheReadShare: 0.8 });
 
   const md = renderFailureMarkdown(data);
   assert.match(md, /^## Prompt tokens by role$/m);
   assert.match(md, /feature: median 200 prompt tokens\/run · 15% before first edit/);
-  assert.match(md, /bugfix: median 50 prompt tokens\/run · 100% before first edit/);
+  assert.match(md, /bugfix: median 50 prompt tokens\/run · 100% before first edit · 80% cache reads/);
+  assert.doesNotMatch(md, /feature: median 200 prompt tokens\/run · 15% before first edit ·/);
 });
 
 test("a non-finite prompt-token reading contributes nothing, not Infinity", () => {
@@ -925,11 +926,14 @@ test("a non-finite prompt-token reading contributes nothing, not Infinity", () =
   const root = tmpdir();
   writeEvents(root, [
     `{"ts":${at(0)},"loop":"feature","type":"run_end","result":"changed","promptTokens":1e999}`,
-    `{"ts":${at(0)},"loop":"feature","type":"run_end","result":"changed","promptTokens":100,"preEditPromptTokens":1e999}`,
+    `{"ts":${at(0)},"loop":"feature","type":"run_end","result":"changed","promptTokens":100,"preEditPromptTokens":1e999,"cacheReadTokens":1e999}`,
   ]);
   const data = collectFailureReport(root, 1);
   const feature = data.promptStats.find((r) => r.role === "feature");
   assert.deepEqual(feature, { role: "feature", runs: 1, medianPromptTokens: 100, preEditShare: 0 });
+  const md = renderFailureMarkdown(data);
+  assert.doesNotMatch(md, /NaN|Infinity/);
+  assert.doesNotMatch(md, /cache reads/);
 });
 
 test("a log without prompt-token fields renders no prompt section", () => {

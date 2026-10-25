@@ -79,6 +79,7 @@ interface PromptStatRow {
   runs: number; // run_end events with a promptTokens reading
   medianPromptTokens: number;
   preEditShare: number; // sum(preEditPromptTokens) / sum(promptTokens), in [0, 1]
+  cacheReadShare?: number; // sum(cacheReadTokens) / sum(promptTokens), in [0, 1]; absent when no run in the role reported a cache read
 }
 
 /** One role's current-vs-preceding-window metrics. A zero side means the role had no runs
@@ -596,6 +597,7 @@ function promptStatsFor(runs: HarnessEvent[]): PromptStatRow[] {
     prompts: number[];
     promptSum: number;
     preEditSum: number;
+    cacheReadSum: number;
   }
   const byRole = new Map<string, Acc>();
   for (const ev of runs) {
@@ -603,12 +605,14 @@ function promptStatsFor(runs: HarnessEvent[]): PromptStatRow[] {
     const preEdit = nonNegativeNumber(ev.preEditPromptTokens, 0);
     if (prompt === 0 && preEdit === 0) continue;
     const role = eventRole(ev);
-    const acc = getOrCreate(byRole, role, () => ({ prompts: [], promptSum: 0, preEditSum: 0 }));
+    const acc = getOrCreate(byRole, role, () => ({ prompts: [], promptSum: 0, preEditSum: 0, cacheReadSum: 0 }));
     if (prompt > 0) {
       acc.prompts.push(prompt);
       acc.promptSum += prompt;
     }
     acc.preEditSum += preEdit;
+    const cacheRead = nonNegativeNumber(ev.cacheReadTokens, 0);
+    acc.cacheReadSum += cacheRead;
   }
   return [...byRole.entries()]
     .filter(([, acc]) => acc.promptSum > 0)
@@ -617,6 +621,7 @@ function promptStatsFor(runs: HarnessEvent[]): PromptStatRow[] {
       runs: acc.prompts.length,
       medianPromptTokens: median(acc.prompts),
       preEditShare: acc.preEditSum / acc.promptSum,
+      ...(acc.cacheReadSum > 0 ? { cacheReadShare: acc.cacheReadSum / acc.promptSum } : {}),
     }))
     .sort((a, b) => a.role.localeCompare(b.role));
 }

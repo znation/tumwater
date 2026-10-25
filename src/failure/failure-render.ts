@@ -246,7 +246,8 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   }
 
   // Prompt-token telemetry: the per-role median prompt
-  // send and how much of the prompt budget goes out before a run's first edit. Omitted
+  // send and how much of the prompt budget goes out before a run's first edit, plus each
+  // role's cache-read share of its prompt bill when some run reported cache reads. Omitted
   // entirely when no run_end in the window carries the fields, so old logs and their golden
   // digests render unchanged.
   if (data.promptStats.length > 0) {
@@ -254,9 +255,11 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     lines.push("## Prompt tokens by role");
     for (const row of data.promptStats) {
       const share = percent(row.preEditShare, 1);
-      lines.push(
-        `- ${roleCell(row.role)}: median ${row.medianPromptTokens} prompt tokens/run · ${share} before first edit`,
-      );
+      let line = `- ${roleCell(row.role)}: median ${row.medianPromptTokens} prompt tokens/run · ${share} before first edit`;
+      if (row.cacheReadShare !== undefined) {
+        line += ` · ${percent(row.cacheReadShare, 1)} cache reads`;
+      }
+      lines.push(line);
     }
   }
 
