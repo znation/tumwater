@@ -118,6 +118,235 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     session.requestRender();
   };
 
+  const routeCtrlN = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // Ctrl+N means four different things. The Health arm is routed first so its notify-test
+    // action is reachable on Health; the History trail arm second, which falls through
+    // (returns false) unless the History view is selected; the Pending overlap drill-down
+    // third, with the same fall-through; the transcript pane's notes/change arm last.
+    // The order among them is NOT immaterial: the transcript arm
+    // consumes Ctrl+N whenever it is reached — it returns true with a render even off a
+    // transcript view — so it must sit last, as the fallback, or it would swallow the key
+    // before the Health or History arm ever saw it.
+    if (health.handleKey?.(key, ctx)) return true;
+    if (history.handleKey?.(key, ctx)) return true;
+    if (pending.handleKey?.(key, ctx)) return true;
+    return transcript.handleKey?.(key, ctx) ?? false;
+  };
+
+  const routeCtrlG = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // Ctrl+G's scope arm is routed by view: Activity on 0, the History exact-role scope on
+    // N+4, the Pending overlap scope on N+5, and the report team/base-role scope
+    // everywhere else — the priority the original else-branch chain kept, so the
+    // report arm never steals the History view's slot.
+    if (session.view === 0) return activity.handleKey?.(key, ctx) ?? false;
+    if (session.view === session.roleIds.length + 4) return history.handleKey?.(key, ctx) ?? false;
+    if (session.view === session.roleIds.length + 5) return pending.handleKey?.(key, ctx) ?? false;
+    return report.handleKey?.(key, ctx) ?? false;
+  };
+
+  const routeCtrlE = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // Ctrl+E's Health reclaim arm is routed ahead of the report panes' trailing-window
+    // cycle; the Health arm's own view guard keeps Usage/Failures on their cycle, and the
+    // Backlog/Inbox edit arms (which live in the editors) are untouched.
+    if (health.handleKey?.(key, ctx)) return true;
+    return report.handleKey?.(key, ctx) ?? false;
+  };
+
+  const routeCtrlK = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => health.handleKey?.(key, ctx) ?? false;
+
+  const routeCtrlW = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => history.handleKey?.(key, ctx) ?? false;
+
+  const routeCtrlS = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // Health owns Ctrl+S (drop broken pins) ahead of the pane router's fallthrough; off the
+    // Health view it falls through so the quiet-hours (Activity), trailing-window (History)
+    // and min-run-interval (Transcript) arms keep their current meanings.
+    if (key.ctrl && key.name === "s" && session.view === session.roleIds.length + 7) {
+      // On the Health view the drop-pins arm consumes Ctrl+S only on an empty prompt line; a
+      // non-empty prompt or a held editor falls through so History's trailing-window cycle still
+      // takes the key, exactly as it did before the drop-pins arm existed.
+      if (health.handleKey?.(key, ctx)) return true;
+    }
+    if (key.ctrl && key.name === "s") return history.handleKey?.(key, ctx) ?? false;
+    return false;
+  };
+
+  const routeCtrlP = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // Ctrl+P on Usage/Failures steps the report window back; every other view is History's.
+    if (key.ctrl && key.name === "p" && (session.view === session.roleIds.length + 2 || session.view === session.roleIds.length + 3)) {
+      return report.handleKey?.(key, ctx) ?? false;
+    }
+    // Health owns Ctrl+P (re-probe image-input models) ahead of History's fallback.
+    if (key.ctrl && key.name === "p" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
+    if (key.ctrl && key.name === "p") return history.handleKey?.(key, ctx) ?? false;
+    return false;
+  };
+
+  const routeCtrlA = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // Health owns Ctrl+A (commit-backlog) ahead of the pane router's fallthrough; the Backlog
+    // view's Ctrl+A (the answer editor) is handled by tui-editor-answer.ts, which the key
+    // dispatcher consults before this router, so this case never shadows it.
+    if (key.ctrl && key.name === "a" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
+    // Pending owns Ctrl+A on its own view (the two-step post-merge-review accept), routed after
+    // Health's so the Health commit-backlog arm keeps its view's slot.
+    if (key.ctrl && key.name === "a" && session.view === session.roleIds.length + 5) return pending.handleKey?.(key, ctx) ?? false;
+    return false;
+  };
+
+  const routeCtrlU = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // Health owns Ctrl+U (re-sync install) ahead of the pane router's fallthrough; off the
+    // Health view it falls through so the prompt-line editor keeps Ctrl+U (kill-to-start).
+    if (key.ctrl && key.name === "u" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
+    return false;
+  };
+
+  const routeCtrlB = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // Health owns Ctrl+B (archive backlog) ahead of the pane router's fallthrough; the prompt-
+    // line editors are consulted first, so the budget editor keeps Ctrl+B where it applies,
+    // and off the Health view Ctrl+B is otherwise unbound.
+    if (key.ctrl && key.name === "b" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
+    return false;
+  };
+
+  const routeCtrlL = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // Health owns Ctrl+L (retire leftovers) ahead of the pane router's fallthrough; off the
+    // Health view it falls through so the Activity fallback shift (view 0) and the
+    // instructions editor on a role's Transcript keep their current meanings.
+    if (key.ctrl && key.name === "l" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
+    // History owns Ctrl+L (newest failure) after Health's; off the History view it falls
+    // through so the Activity fallback editor (view 0) and a Transcript's instructions editor
+    // (handled in the editors ahead of this router) keep their current meanings.
+    if (key.ctrl && key.name === "l") return history.handleKey?.(key, ctx) ?? false;
+    return false;
+  };
+
+  const routeCtrlY = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // Ctrl+Y's transcript change-step arm (the diffstat toggle) is routed first and falls
+    // through off it, so History keeps its Summary cycle on every other view.
+    if (transcript.handleKey?.(key, ctx)) return true;
+    return history.handleKey?.(key, ctx) ?? false;
+  };
+
+  const routeCtrlO = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // The Activity type cycle is routed first on its own view (0); on the Health view the
+    // problems-only toggle precedes the History outcome cycle; on the Pending view the
+    // post-merge review state filter is routed ahead of History's outcome cycle (its own arm
+    // consumes the key on Pending); on the Backlog view the Ready-only filter is routed
+    // ahead of History's outcome cycle, and every other view keeps the History outcome cycle.
+    if (session.view === 0) return activity.handleKey?.(key, ctx) ?? false;
+    if (session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
+    if (session.view === session.roleIds.length + 5) return pending.handleKey?.(key, ctx) ?? false;
+    if (session.view === session.roleIds.length + 1) return backlog.handleKey?.(key, ctx) ?? false;
+    return history.handleKey?.(key, ctx) ?? false;
+  };
+
+  const routeCtrlX = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // The armed-clear Ctrl+X arms: the transcript notes first, then the History model filter,
+    // then the queued cancel, then the Pending merge cancel, then the backlog cancel — each
+    // returns false when its view/selection does not apply.
+    if (transcript.handleKey?.(key, ctx)) return true;
+    if (history.handleKey?.(key, ctx)) return true;
+    if (queued.handleKey?.(key, ctx)) return true;
+    if (pending.handleKey?.(key, ctx)) return true;
+    return backlog.handleKey?.(key, ctx) ?? false;
+  };
+
+  const routeCtrlR = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // The Ctrl+R arms: the Pending pane's queue/roster re-read, the Health pane's doctor
+    // re-run, the History trail's transcript cycle, then the backlog's release — each returns
+    // false when its view does not apply, so the order among them is immaterial.
+    if (pending.handleKey?.(key, ctx)) return true;
+    if (health.handleKey?.(key, ctx)) return true;
+    if (history.handleKey?.(key, ctx)) return true;
+    return backlog.handleKey?.(key, ctx) ?? false;
+  };
+
+  const routeCtrlV = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // The Ctrl+V arms, routed like Ctrl+X's: the History trail's revert, the queued
+    // prompt's move-to-top, then the Pending pane's merge move-to-top, and the backlog
+    // entry's move-to-top last — each returns false when its view/selection does not
+    // apply. The Activity attach editor's own Ctrl+V arm is guarded to view 0, so it
+    // still fires there ahead of this router.
+    if (history.handleKey?.(key, ctx)) return true;
+    if (queued.handleKey?.(key, ctx)) return true;
+    if (pending.handleKey?.(key, ctx)) return true;
+    return backlog.handleKey?.(key, ctx) ?? false;
+  };
+
+  const routeArrow = (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx): boolean => {
+    // Entry-browse arrows: the backlog pane, then the Pending pane (merge-row selection),
+    // then the queued pane; every other view falls through so the editors' prompt-history
+    // recall keeps the arrows.
+    if (backlog.handleKey?.(key, ctx)) return true;
+    if (pending.handleKey?.(key, ctx)) return true;
+    if (queued.handleKey?.(key, ctx)) return true;
+    return false;
+  };
+
+  const routePage = (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx): boolean => {
+    // Within-body page routing in today's order: the Activity tail, the notes/change
+    // (transcript) and run-trail (history) bodies, the Markdown panes from report on, then
+    // the backlog entry body.
+    if (activity.handleKey?.(key, ctx)) return true;
+    if (transcript.handleKey?.(key, ctx)) return true;
+    if (history.handleKey?.(key, ctx)) return true;
+    if (report.handleKey?.(key, ctx)) return true;
+    if (backlog.handleKey?.(key, ctx)) return true;
+    return false;
+  };
+
+  const routeEscape = (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx): boolean => {
+    if (pending.handleKey?.(key, ctx)) return true;
+    return queued.handleKey?.(key, ctx) ?? false;
+  };
+
   /** Run the pane arms of the key dispatch; true when one consumed the key. `es` is the
    * editors' state, so the exclusion guards read the flags the editors hold. Each pane module
    * checks its own view/guard and returns true only when it consumed the key; this router keeps
@@ -130,152 +359,27 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     // writes the line and return true whenever one is open — but each module restates its
     // mutual-exclusion guard so it reads on its own instead of leaning on the routing order.
     const ctx: TuiPaneCtx = { es };
-    if (key.ctrl && key.name === "n") {
-      // Ctrl+N means four different things. The Health arm is routed first so its notify-test
-      // action is reachable on Health; the History trail arm second, which falls through
-      // (returns false) unless the History view is selected; the Pending overlap drill-down
-      // third, with the same fall-through; the transcript pane's notes/change arm last.
-      // The order among them is NOT immaterial: the transcript arm
-      // consumes Ctrl+N whenever it is reached — it returns true with a render even off a
-      // transcript view — so it must sit last, as the fallback, or it would swallow the key
-      // before the Health or History arm ever saw it.
-      if (health.handleKey?.(key, ctx)) return true;
-      if (history.handleKey?.(key, ctx)) return true;
-      if (pending.handleKey?.(key, ctx)) return true;
-      return transcript.handleKey?.(key, ctx) ?? false;
-    }
-    if (key.ctrl && key.name === "g") {
-      // Ctrl+G's scope arm is routed by view: Activity on 0, the History exact-role scope on
-      // N+4, the Pending overlap scope on N+5, and the report team/base-role scope
-      // everywhere else — the priority the original else-branch chain kept, so the
-      // report arm never steals the History view's slot.
-      if (session.view === 0) return activity.handleKey?.(key, ctx) ?? false;
-      if (session.view === session.roleIds.length + 4) return history.handleKey?.(key, ctx) ?? false;
-      if (session.view === session.roleIds.length + 5) return pending.handleKey?.(key, ctx) ?? false;
-      return report.handleKey?.(key, ctx) ?? false;
-    }
-    if (key.ctrl && key.name === "e") {
-      // Ctrl+E's Health reclaim arm is routed ahead of the report panes' trailing-window
-      // cycle; the Health arm's own view guard keeps Usage/Failures on their cycle, and the
-      // Backlog/Inbox edit arms (which live in the editors) are untouched.
-      if (health.handleKey?.(key, ctx)) return true;
-      return report.handleKey?.(key, ctx) ?? false;
-    }
-    if (key.ctrl && key.name === "k") return health.handleKey?.(key, ctx) ?? false;
-    if (key.ctrl && key.name === "w") return history.handleKey?.(key, ctx) ?? false;
-    // Health owns Ctrl+S (drop broken pins) ahead of the pane router's fallthrough; off the
-    // Health view it falls through so the quiet-hours (Activity), trailing-window (History)
-    // and min-run-interval (Transcript) arms keep their current meanings.
-    if (key.ctrl && key.name === "s" && session.view === session.roleIds.length + 7) {
-      // On the Health view the drop-pins arm consumes Ctrl+S only on an empty prompt line; a
-      // non-empty prompt or a held editor falls through so History's trailing-window cycle still
-      // takes the key, exactly as it did before the drop-pins arm existed.
-      if (health.handleKey?.(key, ctx)) return true;
-    }
-    if (key.ctrl && key.name === "s") return history.handleKey?.(key, ctx) ?? false;
-    // Ctrl+P on Usage/Failures steps the report window back; every other view is History's.
-    if (key.ctrl && key.name === "p" && (session.view === session.roleIds.length + 2 || session.view === session.roleIds.length + 3)) {
-      return report.handleKey?.(key, ctx) ?? false;
-    }
-    // Health owns Ctrl+P (re-probe image-input models) ahead of History's fallback.
-    if (key.ctrl && key.name === "p" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
-    if (key.ctrl && key.name === "p") return history.handleKey?.(key, ctx) ?? false;
-    // Health owns Ctrl+A (commit-backlog) ahead of the pane router's fallthrough; the Backlog
-    // view's Ctrl+A (the answer editor) is handled by tui-editor-answer.ts, which the key
-    // dispatcher consults before this router, so this case never shadows it.
-    if (key.ctrl && key.name === "a" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
-    // Pending owns Ctrl+A on its own view (the two-step post-merge-review accept), routed after
-    // Health's so the Health commit-backlog arm keeps its view's slot.
-    if (key.ctrl && key.name === "a" && session.view === session.roleIds.length + 5) return pending.handleKey?.(key, ctx) ?? false;
-    // Health owns Ctrl+U (re-sync install) ahead of the pane router's fallthrough; off the
-    // Health view it falls through so the prompt-line editor keeps Ctrl+U (kill-to-start).
-    if (key.ctrl && key.name === "u" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
-    // Health owns Ctrl+B (archive backlog) ahead of the pane router's fallthrough; the prompt-
-    // line editors are consulted first, so the budget editor keeps Ctrl+B where it applies,
-    // and off the Health view Ctrl+B is otherwise unbound.
-    if (key.ctrl && key.name === "b" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
-    // Health owns Ctrl+L (retire leftovers) ahead of the pane router's fallthrough; off the
-    // Health view it falls through so the Activity fallback shift (view 0) and the
-    // instructions editor on a role's Transcript keep their current meanings.
-    if (key.ctrl && key.name === "l" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
-    // History owns Ctrl+L (newest failure) after Health's; off the History view it falls
-    // through so the Activity fallback editor (view 0) and a Transcript's instructions editor
-    // (handled in the editors ahead of this router) keep their current meanings.
-    if (key.ctrl && key.name === "l") return history.handleKey?.(key, ctx) ?? false;
-    if (key.ctrl && key.name === "y") {
-      // Ctrl+Y's transcript change-step arm (the diffstat toggle) is routed first and falls
-      // through off it, so History keeps its Summary cycle on every other view.
-      if (transcript.handleKey?.(key, ctx)) return true;
-      return history.handleKey?.(key, ctx) ?? false;
-    }
-    if (key.ctrl && key.name === "o") {
-      // The Activity type cycle is routed first on its own view (0); on the Health view the
-      // problems-only toggle precedes the History outcome cycle; on the Pending view the
-      // post-merge review state filter is routed ahead of History's outcome cycle (its own arm
-      // consumes the key on Pending); on the Backlog view the Ready-only filter is routed
-      // ahead of History's outcome cycle, and every other view keeps the History outcome cycle.
-      if (session.view === 0) return activity.handleKey?.(key, ctx) ?? false;
-      if (session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
-      if (session.view === session.roleIds.length + 5) return pending.handleKey?.(key, ctx) ?? false;
-      if (session.view === session.roleIds.length + 1) return backlog.handleKey?.(key, ctx) ?? false;
-      return history.handleKey?.(key, ctx) ?? false;
-    }
-    if (key.ctrl && key.name === "x") {
-      // The armed-clear Ctrl+X arms: the transcript notes first, then the History model filter,
-      // then the queued cancel, then the Pending merge cancel, then the backlog cancel — each
-      // returns false when its view/selection does not apply.
-      if (transcript.handleKey?.(key, ctx)) return true;
-      if (history.handleKey?.(key, ctx)) return true;
-      if (queued.handleKey?.(key, ctx)) return true;
-      if (pending.handleKey?.(key, ctx)) return true;
-      return backlog.handleKey?.(key, ctx) ?? false;
-    }
-    if (key.ctrl && key.name === "r") {
-      // The Ctrl+R arms: the Pending pane's queue/roster re-read, the Health pane's doctor
-      // re-run, the History trail's transcript cycle, then the backlog's release — each returns
-      // false when its view does not apply, so the order among them is immaterial.
-      if (pending.handleKey?.(key, ctx)) return true;
-      if (health.handleKey?.(key, ctx)) return true;
-      if (history.handleKey?.(key, ctx)) return true;
-      return backlog.handleKey?.(key, ctx) ?? false;
-    }
-    if (key.ctrl && key.name === "v") {
-      // The Ctrl+V arms, routed like Ctrl+X's: the History trail's revert, the queued
-      // prompt's move-to-top, then the Pending pane's merge move-to-top, and the backlog
-      // entry's move-to-top last — each returns false when its view/selection does not
-      // apply. The Activity attach editor's own Ctrl+V arm is guarded to view 0, so it
-      // still fires there ahead of this router.
-      if (history.handleKey?.(key, ctx)) return true;
-      if (queued.handleKey?.(key, ctx)) return true;
-      if (pending.handleKey?.(key, ctx)) return true;
-      return backlog.handleKey?.(key, ctx) ?? false;
-    }
+    if (key.ctrl && key.name === "n") return routeCtrlN(key, ctx);
+    if (key.ctrl && key.name === "g") return routeCtrlG(key, ctx);
+    if (key.ctrl && key.name === "e") return routeCtrlE(key, ctx);
+    if (key.ctrl && key.name === "k") return routeCtrlK(key, ctx);
+    if (key.ctrl && key.name === "w") return routeCtrlW(key, ctx);
+    if (key.ctrl && key.name === "s") return routeCtrlS(key, ctx);
+    if (key.ctrl && key.name === "p") return routeCtrlP(key, ctx);
+    if (key.ctrl && key.name === "a") return routeCtrlA(key, ctx);
+    if (key.ctrl && key.name === "u") return routeCtrlU(key, ctx);
+    if (key.ctrl && key.name === "b") return routeCtrlB(key, ctx);
+    if (key.ctrl && key.name === "l") return routeCtrlL(key, ctx);
+    if (key.ctrl && key.name === "y") return routeCtrlY(key, ctx);
+    if (key.ctrl && key.name === "o") return routeCtrlO(key, ctx);
+    if (key.ctrl && key.name === "x") return routeCtrlX(key, ctx);
+    if (key.ctrl && key.name === "r") return routeCtrlR(key, ctx);
+    if (key.ctrl && key.name === "v") return routeCtrlV(key, ctx);
     const arrow = arrowDir(key.name);
-    if (arrow !== null) {
-      // Entry-browse arrows: the backlog pane, then the Pending pane (merge-row selection),
-      // then the queued pane; every other view falls through so the editors' prompt-history
-      // recall keeps the arrows.
-      if (backlog.handleKey?.(key, ctx)) return true;
-      if (pending.handleKey?.(key, ctx)) return true;
-      if (queued.handleKey?.(key, ctx)) return true;
-      return false;
-    }
+    if (arrow !== null) return routeArrow(key, ctx);
     const page = pageDir(key.name);
-    if (page !== null) {
-      // Within-body page routing in today's order: the Activity tail, the notes/change
-      // (transcript) and run-trail (history) bodies, the Markdown panes from report on, then
-      // the backlog entry body.
-      if (activity.handleKey?.(key, ctx)) return true;
-      if (transcript.handleKey?.(key, ctx)) return true;
-      if (history.handleKey?.(key, ctx)) return true;
-      if (report.handleKey?.(key, ctx)) return true;
-      if (backlog.handleKey?.(key, ctx)) return true;
-      return false;
-    }
-    if (key.name === "escape") {
-      if (pending.handleKey?.(key, ctx)) return true;
-      return queued.handleKey?.(key, ctx) ?? false;
-    }
+    if (page !== null) return routePage(key, ctx);
+    if (key.name === "escape") return routeEscape(key, ctx);
     return false;
   };
 
