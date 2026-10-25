@@ -130,6 +130,11 @@ export interface ReportDay {
    * main's own, not any role's), absent when the day's red events named no test (zero means
    * absent). */
   mainRedByTest?: Record<string, number>;
+  /** The landed merges main's own `main_culprit` events blamed that day (the live `mainred`
+   * alert's event, src/status/status-polls.ts's `MainCheckStatus.red.culprit`), per
+   * `<role> <shortSha>` label; team-only like mainRedByTest (main's own blame, not any
+   * role's), absent when the day's red events blamed no merge (zero means absent). */
+  mainRedByCulprit?: Record<string, number>;
 }
 
 /** The window totals both reports surface — output tokens (the merge share included), the
@@ -242,6 +247,12 @@ export interface SinceReport {
    * role-scoped window omits it; absent when the window's red events named no test (via
    * nonemptyObj), so a red-test-free --since JSON is byte-identical to today. */
   mainRedByTest?: Record<string, number>;
+  /** The landed merges main's own `main_culprit` events blamed over the window (the live
+   * `mainred` alert's event), per `<role> <shortSha>` label — the historical twin of the
+   * alert's `red.culprit`. Main's own blame, not any role's, so a role-scoped window omits
+   * it; absent when the window's red events blamed no merge (via nonemptyObj), so a
+   * culprit-free --since JSON is byte-identical to today. */
+  mainRedByCulprit?: Record<string, number>;
   /** Subscription spend per role id, never in costByRole; absent when the window has none —
    * the same conditional the day collector applies to ReportDay.notionalByRole, so a
    * --since JSON carries it only when nonzero. */

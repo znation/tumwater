@@ -245,6 +245,11 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   if (data.role === undefined) {
     const mainRedByTest = rankedRoleMap(data.mainRedByTest ?? {}).filter(([, n]) => n > 0);
     if (mainRedByTest.length > 0) lines.push(rankedRoleLine("Main red by test", mainRedByTest, String));
+    // The same "what kept main red" detail named by merge — the landed merges the watch's
+    // own main_culprit events blamed, mirroring the failing-test line right above. Team-only
+    // like main's red time and zero-absent: no line when the window blamed no merge.
+    const mainRedByCulprit = rankedRoleMap(data.mainRedByCulprit ?? {}).filter(([, n]) => n > 0);
+    if (mainRedByCulprit.length > 0) lines.push(rankedRoleLine("Main red by merge", mainRedByCulprit, String));
   }
   // The same breakdown for review friction: rejections per role from review_rejected events;
   // a window with none renders "-" like the other lines. The post-merge line is the
@@ -500,6 +505,11 @@ export function renderReportMarkdown(data: ReportData): string {
     // named a failing test.
     const mainRedByTest = rankedRoleTotals(data.series, (d) => d.mainRedByTest ?? {}).filter(([, n]) => n > 0);
     if (mainRedByTest.length > 0) lines.push(rankedRoleLine("Main red by test", mainRedByTest, String));
+    // The day twin of the --since window's merges line: the same culprits ranked across the
+    // series' per-day main-red maps (Main red by merge). Zero-absent: no line when no day
+    // blamed a merge.
+    const mainRedByCulprit = rankedRoleTotals(data.series, (d) => d.mainRedByCulprit ?? {}).filter(([, n]) => n > 0);
+    if (mainRedByCulprit.length > 0) lines.push(rankedRoleLine("Main red by merge", mainRedByCulprit, String));
     pushDayCameoLine(lines, data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
     // How long the merge slot itself held each change it landed, beside the merge-wait median:
     // the queue backlog (merge wait minus slot time) apart from the slot's own review/check/

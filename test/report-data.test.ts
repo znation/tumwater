@@ -1487,17 +1487,27 @@ test("collectReport and collectReportSince rank main's red by failing test, team
     // the same day, both naming the same failing test.
     JSON.stringify({ ts: at(2), source: "tumwater", type: "main_check", status: "failed", durationMs: 2000, sha: "a".repeat(40), failingTests: ["test/a.test.ts"] }),
     JSON.stringify({ ts: at(2), source: "tumwater", type: "main_check", status: "failed", durationMs: 2000, sha: "b".repeat(40), failingTests: ["test/a.test.ts"] }),
+    // A main_culprit blame (the live mainred alert's event) names the merge the watch blamed.
+    JSON.stringify({ ts: at(2), source: "tumwater", type: "main_culprit", commit: "abc1234567", runner: "feature" }),
+    // A second blame without a runner labels it `merge <shortSha>`; at a different day too.
+    JSON.stringify({ ts: at(2), source: "tumwater", type: "main_culprit", commit: "deadbeef9999" }),
   ]);
   const day = collectReport(root, 5).series.find((d) => d.mainRedByTest !== undefined);
   assert.deepEqual(day?.mainRedByTest, { "test/a.test.ts": 2 }, "the day's main-red tests sum both checks");
+  assert.deepEqual(day?.mainRedByCulprit, { "feature abc12345": 1, "merge deadbeef": 1 }, "the day's main-red culprits label each blame");
   assert.deepEqual(collectReportSince(root, 7 * 24 * HOUR).mainRedByTest, { "test/a.test.ts": 2 }, "--since sums the same checks");
+  assert.deepEqual(collectReportSince(root, 7 * 24 * HOUR).mainRedByCulprit, { "feature abc12345": 1, "merge deadbeef": 1 }, "--since sums the same culprits");
 
   // A red-free repo carries no field in either shape.
   const clean = tmpdir();
   assert.ok(!("mainRedByTest" in collectReport(clean, 5).series[0]!), "a red-free team day omits the field");
+  assert.ok(!("mainRedByCulprit" in collectReport(clean, 5).series[0]!), "a blame-free team day omits the field");
   assert.ok(!("mainRedByTest" in collectReportSince(clean, 7 * 24 * HOUR)), "a red-free --since omits the field");
+  assert.ok(!("mainRedByCulprit" in collectReportSince(clean, 7 * 24 * HOUR)), "a blame-free --since omits the field");
 
-  // Main's failing tests are main's own, so a role-scoped window carries none.
+  // Main's failing tests and blame are main's own, so a role-scoped window carries none.
   assert.ok(collectReport(root, 5, "feature").series.every((d) => d.mainRedByTest === undefined), "scoped day omits the field");
+  assert.ok(collectReport(root, 5, "feature").series.every((d) => d.mainRedByCulprit === undefined), "scoped day omits the blame field");
   assert.ok(!("mainRedByTest" in collectReportSince(root, 7 * 24 * HOUR, "feature")), "scoped --since omits the field");
+  assert.ok(!("mainRedByCulprit" in collectReportSince(root, 7 * 24 * HOUR, "feature")), "scoped --since omits the blame field");
 });

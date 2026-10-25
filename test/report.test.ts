@@ -836,6 +836,20 @@ test("renderSinceReportMarkdown prints Main red wall-clock for a positive window
     !renderSinceReportMarkdown({ ...shape, role: "feature", mainRedByTest: { "test/a.test.ts": 2 } }).includes("**Main red by test:"),
     "role scope omits the line",
   );
+  // Main red by merge rides the same window, team-only and zero-absent: a positive map
+  // prints, an all-zero map and a role-scoped window omit the line.
+  assert.match(
+    renderSinceReportMarkdown({ ...shape, mainRedByCulprit: { "feature abc12345": 2 } }),
+    /^\*\*Main red by merge:\*\* feature abc12345 — 2$/m,
+  );
+  assert.ok(
+    !renderSinceReportMarkdown({ ...shape, mainRedByCulprit: { "feature abc12345": 0 } }).includes("**Main red by merge:"),
+    "an all-zero map omits the line",
+  );
+  assert.ok(
+    !renderSinceReportMarkdown({ ...shape, role: "feature", mainRedByCulprit: { "feature abc12345": 2 } }).includes("**Main red by merge:"),
+    "role scope omits the line",
+  );
 });
 
 test("tumwater report --since prints the window totals and validates its flags", async () => {
@@ -1534,6 +1548,17 @@ test("renderReportMarkdown ranks each series day's main-red tests", () => {
   const bare: ReportData = { ...base, series: base.series.map(({ mainRedByTest: _m, ...d }) => d) };
   assert.ok(!renderReportMarkdown(bare).includes("**Main red by test:"), "a bare series omits the line");
   assert.ok(!renderReportMarkdown({ ...base, role: "feature" }).includes("**Main red by test:"), "role scope omits the line");
+  // The same day-twin rule for the merges the watch blamed: a positive map prints, and a
+  // bare series or role scope omits the line. Only the second series day carries the map, so
+  // the ranked total is 2, not twice it.
+  const culprit: ReportData = {
+    ...base,
+    series: base.series.map((d) => (d.date === "2026-09-10" ? { ...d, mainRedByCulprit: { "feature abc12345": 2 } } : d)),
+  };
+  assert.match(renderReportMarkdown(culprit), /^\*\*Main red by merge:\*\* feature abc12345 — 2$/m);
+  const bareCulprit: ReportData = { ...culprit, series: culprit.series.map(({ mainRedByCulprit: _c, ...d }) => d) };
+  assert.ok(!renderReportMarkdown(bareCulprit).includes("**Main red by merge:"), "a bare series omits the line");
+  assert.ok(!renderReportMarkdown({ ...culprit, role: "feature" }).includes("**Main red by merge:"), "role scope omits the line");
 });
 
 test("renderReportMarkdown prints Merge wait median for the days that carry one, team scope only", () => {

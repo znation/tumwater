@@ -421,9 +421,10 @@ interface ReportFoldEntry {
   hadEvents: boolean;
   firstEventTs?: number;
   days: Map<string, DayFold>;
-  /** The main is-red / passing-check events folded so far, in fold order — the retained input
-   * the report's per-day main-red walk (src/report/report-main-red.ts) reads. Only the two
-   * shapes it needs are kept, so the list stays tiny across the append-only fold. */
+  /** The main is-red / passing-check / culprit events folded so far, in fold order — the
+   * retained input the report's per-day main-red walk (src/report/report-main-red.ts)
+   * reads. Only the three shapes it needs are kept, so the list stays tiny across the
+   * append-only fold. */
   redEvents: HarnessEvent[];
 }
 
@@ -573,7 +574,7 @@ function foldEventInto(entry: ReportFoldEntry, ev: HarnessEvent): void {
     entry.hadEvents = true;
     entry.firstEventTs = typeof ev.ts === "number" ? ev.ts : undefined;
   }
-  if (isRedMain(ev) || isPassingMainCheck(ev)) entry.redEvents.push(ev);
+  if (isRedMain(ev) || isPassingMainCheck(ev) || ev.type === "main_culprit") entry.redEvents.push(ev);
   foldUsageEvent(dayFoldFor(entry, dayKey), ev);
 }
 

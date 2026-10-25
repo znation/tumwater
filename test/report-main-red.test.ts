@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mainRedFailingTestsByDay, mainRedMinutesByDay } from "../src/report/report-main-red.js";
+import { mainRedCulpritsByDay, mainRedFailingTestsByDay, mainRedMinutesByDay } from "../src/report/report-main-red.js";
 import { dayKey } from "./helpers/oracles.js";
 
 const MIN = 60_000;
@@ -108,6 +108,43 @@ test("mainRedFailingTestsByDay counts each red main_check's failing tests on its
   assert.deepEqual(map.get(dayKey(t)), { a: 3, b: 1, hold: 1 }, "the a-tests, b, and the hold's failing tests name the first day");
   assert.equal(map.get(dayKey(t))!.c, undefined, "the durationMs-0 check's 'c' contributes nothing");
   assert.deepEqual(map.get(dayKey(at(2026, 10, 23, 9))), { b: 1, constructor: 2 }, "the second day's [b] and the two constructor counts are its own record");
+});
+
+test("mainRedCulpritsByDay counts each main_culprit on its day", () => {
+  const t = at(2026, 10, 22, 10);
+  const from = new Date(2026, 9, 22, 0).getTime();
+  const to = new Date(2026, 9, 24, 0).getTime();
+  const culprit = (ts: number, commit: string, runner?: string) =>
+    ({ type: "main_culprit", source: "t", ts, commit, ...(runner === undefined ? {} : { runner }) } as const);
+  const map = mainRedCulpritsByDay(
+    [
+      // a runner names the merge as `<role> <shortSha>`.
+      culprit(t, "abc1234567", "feature"),
+      culprit(t + 5 * MIN, "abc1234567", "feature"), // same label counts twice on the first day
+      // no runner → `merge <shortSha>`.
+      culprit(t + 10 * MIN, "deadbeef9999"),
+      // at exactly toMs is outside the window.
+      culprit(to, "abcdef0123", "plan"),
+      // a missing / empty / non-string commit contributes nothing.
+      { type: "main_culprit", source: "t", ts: t + 20 * MIN },
+      { type: "main_culprit", source: "t", ts: t + 21 * MIN, commit: "" },
+      { type: "main_culprit", source: "t", ts: t + 22 * MIN, commit: 42 },
+      // a main_check / main_red_hold contributes nothing (not main_culprit).
+      { ...check(t + 25 * MIN, "failed", 2000), failingTests: ["a"] },
+      { ...hold(t + 26 * MIN), failingTests: ["a"] },
+      // a second day's culprits land on their own key.
+      culprit(at(2026, 10, 23, 9), "feedcafe1234", "plan"),
+    ],
+    from,
+    to,
+  );
+  assert.deepEqual(
+    map.get(dayKey(t)),
+    { "feature abc12345": 2, "merge deadbeef": 1 },
+    "the runner and runner-less labels, with the runner doubling on the first day",
+  );
+  assert.deepEqual(map.get(dayKey(at(2026, 10, 23, 9))), { "plan feedcafe": 1 }, "the second day's own record");
+  assert.equal(map.get(dayKey(to)), undefined, "the event at exactly toMs is excluded");
 });
 
 test("a torn failingTests list counts only its strings and a missing key adds nothing", () => {

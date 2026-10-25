@@ -7,6 +7,8 @@
 import { dayKey } from "../text/datetime.js";
 import { isPassingMainCheck, isRedMain } from "../baseline/main-guardrails.js";
 import { addTo } from "../collections.js";
+import { shortSha } from "../text/format.js";
+import { roleLabel } from "../roles/role-labels.js";
 import type { HarnessEvent } from "../events/events.js";
 
 /** Add a spell's ms, split across the local calendar days it spans, to `map` (a Map, so the
@@ -84,6 +86,39 @@ export function mainRedFailingTestsByDay(
     for (const t of e.failingTests) {
       if (typeof t === "string") addTo(record, t, 1);
     }
+  }
+  return map;
+}
+
+/** Main's red culprits per local calendar day (`YYYY-MM-DD` → label → count), over the window
+ * `[fromMs, toMs)`: for each in-window event (`typeof e.ts === "number"` and `fromMs <= e.ts
+ * < toMs`) that is a `main_culprit` whose `commit` is a non-empty string, label it
+ * `<roleLabel(runner)> <shortSha(commit)>` when `runner` is a non-empty string, else
+ * `merge <shortSha(commit)>`, and count it once into that event's day (`dayKey`). This is the
+ * live `mainred` alert's own event (`src/status/status-polls.ts`'s `MainCheckStatus.red
+ * .culprit`), so the report names the very merge the watch blamed, not just the tests it
+ * named. A `main_culprit` with no `commit` or an empty/non-string one contributes nothing, so
+ * the loose event log can never emit `undefined` as a key. Shares `dayKey` with the sibling
+ * walks (`mainRedMinutesByDay`, `mainRedFailingTestsByDay`), so the three cannot disagree
+ * about which day an event lands on. This is main's own blame, not any role's, so the report
+ * carries it only on the team scope. */
+export function mainRedCulpritsByDay(
+  events: readonly HarnessEvent[],
+  fromMs: number,
+  toMs: number,
+): Map<string, Record<string, number>> {
+  const map = new Map<string, Record<string, number>>();
+  for (const e of events) {
+    if (typeof e.ts !== "number" || e.ts < fromMs || e.ts >= toMs) continue;
+    if (e.type !== "main_culprit") continue;
+    if (typeof e.commit !== "string" || e.commit.length === 0) continue;
+    const label =
+      typeof e.runner === "string" && e.runner.length > 0
+        ? `${roleLabel(e.runner)} ${shortSha(e.commit)}`
+        : `merge ${shortSha(e.commit)}`;
+    let record = map.get(dayKey(e.ts));
+    if (record === undefined) map.set(dayKey(e.ts), (record = {}));
+    addTo(record, label, 1);
   }
   return map;
 }
