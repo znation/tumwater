@@ -347,4 +347,38 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** No new test module: a behavior-preserving move guarded by the existing digest suites. Run `test/failure-render.test.ts`, `test/failure-time-spend.test.ts`, `test/failure-state-change.test.ts`, `test/selfcheck-digest.test.ts`, `test/gui-report.test.ts`, `test/report.test.ts` and `test/tui.test.ts` whole and confirm green (`test/failure-render.test.ts` asserts the section text, order, placeholders and remainder lines, `test/selfcheck-digest.test.ts` pins the evidence wrapper around the digest, and `test/gui-report.test.ts` and `test/tui.test.ts` compare the pane/endpoint output to `renderFailureMarkdown`'s own text).
 
+### `buildStatusAlerts`'s ~255-line alert assembly is split into one named builder per alert arm, so a status alert is found by name (planned 2026-10-25 by the plan role; independent in files of every eligible plan and blocked part — `grep -n 'src/ui/team-alert-status.ts\|buildStatusAlerts' PLANS.md` matches no `## Planned` entry: the in-flight plans edit src/status/status-data.ts, src/ui/status-render.ts and src/failure/failure-render.ts, and the blocked `Every commit is verified on main` parts edit src/review, src/orchestrator, src/runner, src/merge, src/baseline, src/status/status-polls.ts, src/doctor, src/config, src/cli, src/ui/status-model.ts and src/ui/gui/*, so none names src/ui/team-alert-status.ts; the landed 2026-10-25 alert plans that last added arms here (`noDeclaredCheck`, `noBrief`, `briefTruncated`, `principlesTruncated`, `roleNotesOverCap`, `stale-claims`) are merged, so no waiting work edits it; touches src/ui/team-alert-status.ts)
+
+**Goal.** `buildStatusAlerts` (`src/ui/team-alert-status.ts`) is one ~255-line function that walks fifteen independent alert arms in emission order, each testing a snapshot field or a `roles` predicate and pushing one `TeamAlert` into a local `out`: the fallback chain, the spent budget (fallback vs red), the per-role daily cap, the disk hold, the root-install drift, the no-check / no-brief / brief-truncated / role-notes-truncated / principles-truncated standing warnings, red main, the failing streak, the stuck marker, the stale running build, and the stale work-instance claims. A reader asking "where does the disk alert come from?", "which arm reads `snap.build.restartBlocked`?" or "what is the emission order?" has only the one body to scan, and an arm has no name to grep. Split it into one module-private builder per alert arm, so a status alert is found by name and `buildStatusAlerts` becomes the destructure, the `out` array, the ordered calls and the return. No behavior change: the returned `TeamAlert[]` is deep-equal for the same input.
+
+**Approach.** All edits in src/ui/team-alert-status.ts; move code, do not rewrite it, and keep every comment with the arm it annotates. Follow the file's existing push convention: each builder takes `out: TeamAlert[]` and the inputs its arm reads, and pushes exactly the alert the arm pushes today, so the output order is the call order. The builders are module-private and return `void`.
+- `pushChainAlert(out, snap)` — the `chainFragments(snap.chain)` / `"chain"` block.
+- `pushSpentBudgetAlert(out, snap)` — the `!b.free && b.capUsd > 0 && b.spentUsd >= b.capUsd` block, owning `b = snap.budget`, its `fallbackDetail` (the `b.tiers` ternary) and the fallback-vs-`"budget"` `out.push`.
+- `pushRoleCapAlert(out, snap, roles)` — the `snap.capPaused.length > 0` block, owning `capPausedRoles`.
+- `pushDiskAlert(out, snap)` — the `snap.disk?.held` block.
+- `pushInstallDriftAlert(out, snap)` — the `drift = snap.rootInstallDrift ?? []` / `"install"` block, owning `drift` and `names`.
+- `pushNoCheckAlert(out, snap)` — the `snap.noDeclaredCheck` block.
+- `pushNoBriefAlert(out, snap)` — the `snap.noBrief` block.
+- `pushBriefTruncatedAlert(out, snap)` — the `snap.briefTruncated` block.
+- `pushRoleNotesTruncatedAlert(out, snap)` — the `notesOver = snap.roleNotesOverCap ?? []` block, owning `notesOver`.
+- `pushPrinciplesTruncatedAlert(out, snap)` — the `snap.principlesTruncated` block.
+- `pushMainRedAlert(out, snap, roles)` — the `red = roles.filter(...)` block, owning `red`, `redDetail` and `detail`.
+- `pushFailingStreakAlert(out, roles)` — the `failing = roles.filter((l) => l.errorStreak)` block, owning `failing`.
+- `pushStuckRoleAlert(out, roles)` — the `stuck = roles.filter(...)` block, owning `stuck`.
+- `pushBuildAlert(out, snap)` — the `snap.build?.stale` block, owning `behind` and `deferred`.
+- `pushStaleClaimsAlert(out, staleClaims)` — the `staleClaims.length > 0` block.
+- `buildStatusAlerts` keeps its signature and exact body shape: `const { snap, roles, staleClaims } = input;`, `const out: TeamAlert[] = [];`, the fifteen calls in the arm order listed above, `return out;`. It pushes nothing itself and holds no `if`, `filter` or arm-specific `const`.
+- Leave `StatusAlertsInput`, the imports and the module doc comment as they are; every helper each arm calls is already imported, so no import is added or removed.
+
+**Files touched.** src/ui/team-alert-status.ts
+
+**Acceptance criteria.**
+- `buildStatusAlerts(input)` returns a deep-equal `TeamAlert[]` to today's for the same input: every alert's key, tone, title, detail and actions are unchanged, and the emission order is the arm order above (the existing order-dependent cases in test/team-alerts.test.ts pass unchanged).
+- Every arm named above has exactly one module-private builder; `buildStatusAlerts`'s body contains no `out.push(` and no arm condition — only the destructure, the `out` array, the fifteen calls and the return.
+- The exported surface is unchanged: `grep -nE '^export ' src/ui/team-alert-status.ts` still matches only `export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[]`, and no import is added or removed.
+- `docs/invariants.md` is unchanged: `grep -c 'team-alert-status\|buildStatusAlerts' docs/invariants.md` prints 0, and the one citation of test/team-alerts.test.ts (the qa-stale case) does not bind this function, so a private move changes no guarantee.
+- No edit outside src/ui/team-alert-status.ts.
+
+**Tests.** No new test module: a behavior-preserving move guarded by the existing alert suites. Run `test/team-alerts.test.ts`, `test/status-payload.test.ts`, `test/status-render.test.ts`, `test/gui.test.ts`, `test/tui.test.ts` and `test/cli.test.ts` whole and confirm green (`test/team-alerts.test.ts` drives `teamAlerts` through the arms and pins their wording and order, `test/status-payload.test.ts` deep-equals the payload built from `snapshot`, and `test/cli.test.ts` deep-equals its parsed `status --json` stdout).
+
 ## Done
