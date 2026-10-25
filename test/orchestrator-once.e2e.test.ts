@@ -299,12 +299,13 @@ test("once: a merge_blocked change is re-queued by the pipeline and merges with 
   const repo = await makeFastRepo("once requeue test", ["clean"]);
   const counter = path.join(tmpdir("requeue-count-"), "n");
   const config = loadConfig(repo);
-  // Invocation 1 is the baseline, 2 the gate; the reviewer then moves main, so the merge's rebase
-  // is not a no-op and the in-lock merge check runs. It is red twice: invocation 3, and 4, the
-  // immediate re-run that would otherwise pass the red as a flake and merge. The re-queued
-  // attempt's check (5) is green.
+  // Invocation 1 is the review gate's pre-check, 2 the in-lock merge check, and 3 the merge
+  // check's one immediate flake re-run — the first attempt's three invocations. The reviewer
+  // then moves main, so the merge's rebase is not a no-op and the in-lock merge check runs. It
+  // is red twice (2 and 3), so the immediate re-run does not pass the red as a flake and merge;
+  // the change is re-queued as merge_blocked. The re-queued attempt's pre-check (4) is green.
   config.check = {
-    command: `n=$(cat '${counter}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${counter}'; [ $n -lt 3 ] || [ $n -gt 4 ]`,
+    command: `n=$(cat '${counter}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${counter}'; [ $n -lt 2 ] || [ $n -gt 3 ]`,
   };
   saveConfig(repo, config);
   // The first review also moves main (once).
