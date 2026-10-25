@@ -4,7 +4,7 @@
  * run-timeout shapes and their pooling, and the grouping engine live here rather than
  * inside either consumer. Pure string
  * and grouping logic — no event reads, no clock. */
-import { rankByCount } from "../collections.js";
+import { rankByCount, topAndHidden } from "../collections.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
 
 /** The verbatim example's trim bound, shared by the normalized key and each cluster's example.
@@ -183,8 +183,9 @@ export function clusterMessages(
     (d) => d.count + (urgent?.(d.example) ? Number.MAX_SAFE_INTEGER / 2 : 0),
     (d) => d.key,
   );
+  const { visible, hidden } = topAndHidden(sorted, top);
   return {
-    clusters: sorted.slice(0, top).map((d) => ({
+    clusters: visible.map((d) => ({
       key: d.key,
       count: d.count,
       roles: sortedRoles(d.roles),
@@ -192,6 +193,6 @@ export function clusterMessages(
       lastSeen: d.lastSeen,
       example: d.example,
     })),
-    hiddenClusters: Math.max(0, sorted.length - top),
+    hiddenClusters: hidden,
   };
 }

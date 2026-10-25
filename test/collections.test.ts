@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addTo, getOrCreate, groupBy, memoSetLru, rankCountEntries, sortByValueDesc } from "../src/collections.js";
+import { addTo, getOrCreate, groupBy, memoSetLru, rankCountEntries, sortByValueDesc, topAndHidden } from "../src/collections.js";
 
 // Unit seam for collections.ts's get-or-create step, the shape factored out of the failure
 // digest, the team hold, and the error-storm reducer. Those paths already cover it end to
@@ -206,4 +206,29 @@ test("memoSetLru never exceeds max entries even when all distinct", () => {
   for (let i = 0; i < 10; i++) memoSetLru(cache, `k${i}`, i, 3);
   assert.equal(cache.size, 3);
   assert.deepEqual([...cache.values()], [7, 8, 9]);
+});
+
+// topAndHidden is the shared home of the "slice to a cap and count the remainder" pairing the
+// merge-intent and conflict-hunk caps (merge-git.ts), the failure digest tops (time-spend.ts,
+// failure-cluster.ts), and the answered-questions cap (question-answer.ts) built by hand.
+// These pin the two facts its doc comment claims: the visible slice is the first `top`, and
+// hidden is the number cut off (zero when the list is shorter than the cap).
+
+test("topAndHidden slices the first top and reports the hidden remainder", () => {
+  const items = ["a", "b", "c", "d", "e"];
+  const { visible, hidden } = topAndHidden(items, 3);
+  assert.deepEqual(visible, ["a", "b", "c"]);
+  assert.equal(hidden, 2);
+});
+
+test("topAndHidden reports zero hidden when the list fits within the cap", () => {
+  const { visible, hidden } = topAndHidden(["a", "b"], 5);
+  assert.deepEqual(visible, ["a", "b"]);
+  assert.equal(hidden, 0);
+});
+
+test("topAndHidden respects the cap exactly at the boundary", () => {
+  const { visible, hidden } = topAndHidden(["a", "b", "c"], 3);
+  assert.deepEqual(visible, ["a", "b", "c"]);
+  assert.equal(hidden, 0);
 });

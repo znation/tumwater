@@ -10,7 +10,7 @@ import { eventRole, eventUsage, runSpanMs, runStartMap } from "../events/event-r
 import { errorTextOrPlaceholder, normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
 import { resolveQueuedResult, bucketMergeEvents } from "../history/history-queued.js";
 import { nonNegativeNumber, stringList } from "../files/json-object.js";
-import { getOrCreate, groupBy, rankByCount } from "../collections.js";
+import { getOrCreate, groupBy, rankByCount, topAndHidden } from "../collections.js";
 
 /** How the Outcome table's results collapse for costing:
  * "merged" made progress, "no_change" spent a run and merged nothing, and every remaining
@@ -348,6 +348,6 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
       costUsd: d.costUsd,
     }))
     .sort((a, b) => b.ms - a.ms || b.runs - a.runs || a.example.localeCompare(b.example));
-  const lossCauses = rankedLosses.slice(0, LOSS_TOP);
-  return { timeSpend, lossCauses, lossCausesHidden: Math.max(0, rankedLosses.length - LOSS_TOP) };
+  const { visible: lossCauses, hidden: lossCausesHidden } = topAndHidden(rankedLosses, LOSS_TOP);
+  return { timeSpend, lossCauses, lossCausesHidden };
 }

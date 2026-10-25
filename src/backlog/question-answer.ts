@@ -22,6 +22,7 @@ import { collapseWhitespace, firstTrimmedLineStartingWith, trimLeadingBlankLines
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { numberedList } from "../text/markdown.js";
+import { topAndHidden } from "../collections.js";
 import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 /** Cap on a question's one-line body preview, so one very long first line cannot dominate
  * the `questions` list. */
@@ -147,7 +148,8 @@ function answeredQuestionsNewestFirst(
 ): { entries: (BacklogEntry & { position: number })[]; older: number } {
   const numbered = answeredQuestionEntries(root).reverse().map((e, i) => ({ ...e, position: i + 1 }));
   const all = pattern === undefined ? numbered : numbered.filter((e) => entryMatches(e, pattern));
-  return { entries: all.slice(0, count), older: Math.max(0, all.length - count) };
+  const { visible: entries, hidden: older } = topAndHidden(all, count);
+  return { entries, older };
 }
 
 /** `tumwater questions --answered`: lines numbered by `--show <n> --answered` position, newest

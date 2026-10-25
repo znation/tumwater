@@ -150,6 +150,19 @@ export function rankByCount<T>(
   return [...items].sort((a, b) => count(b) - count(a) || key(a).localeCompare(key(b)));
 }
 
+/** Split a list into its first `top` entries and how many were cut off — the pairing five call
+ * sites built by hand as `items.slice(0, N)` beside `Math.max(0, items.length - N)`. `visible`
+ * aliases `items` when it already fits; `hidden` is `max(0, items.length - top)`, which the
+ * slice-length arithmetic yields without the explicit clamp (a slice never returns more than
+ * `top` even when the list is shorter). Shared by the merge-intent and conflict-hunk caps
+ * (merge-git.ts), the failure digest's loss-cause and message-cluster tops
+ * (time-spend.ts, failure-cluster.ts), and the answered-questions cap (question-answer.ts),
+ * so those cuts cannot drift on how the remainder is counted. */
+export function topAndHidden<T>(items: readonly T[], top: number): { visible: T[]; hidden: number } {
+  const visible = items.slice(0, top);
+  return { visible, hidden: items.length - visible.length };
+}
+
 /** The lower median of a non-empty numeric list: the middle value, or the smaller of the
  * middle two for an even count. Returns a fresh sorted copy; the input is never mutated.
  * Shared by report-data.ts's per-day medians, doctor-project-checks.ts's and doctor-backlog.ts's

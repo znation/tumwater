@@ -9,6 +9,7 @@ import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
 import { errorFirstLine, errorMessage, joinWithMore } from "../text/text.js";
+import { topAndHidden } from "../collections.js";
 
 /** Git plumbing for the merge flow: rebasing a worktree branch onto main, inspecting and
  * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no merge policy
@@ -78,10 +79,8 @@ export async function mainCommitsTouching(
       const [sha = "", subject = "", ...rest] = record.split("\x1f");
       return { sha, subject, body: capIntentBody(rest.join("\x1f").trim()) };
     });
-  return {
-    commits: parsed.slice(0, MAX_INTENT_COMMITS),
-    omitted: Math.max(0, parsed.length - MAX_INTENT_COMMITS),
-  };
+  const { visible: commits, hidden: omitted } = topAndHidden(parsed, MAX_INTENT_COMMITS);
+  return { commits, omitted };
 }
 
 /** Attempt to rebase the worktree branch onto main and classify the outcome WITHOUT
@@ -225,7 +224,8 @@ export function conflictedFileHunks(wt: string, files: readonly string[]): Confl
     }
     const text = readTextOrNull(full) ?? "";
     const all = text.includes("\0") ? [] : conflictHunkRanges(text);
-    return { path: f, hunks: all.slice(0, MAX_LISTED_HUNKS), more: Math.max(0, all.length - MAX_LISTED_HUNKS) };
+    const { visible: hunks, hidden: more } = topAndHidden(all, MAX_LISTED_HUNKS);
+    return { path: f, hunks, more };
   });
 }
 
