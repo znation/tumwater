@@ -173,7 +173,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       : "in " + next;
     const runWord = info.live ? "this run" : "last run";
     const stats = "<dl class='kv'>" + kvRow("Commits", String(l.commits)) + kvRow("Runs", String(l.runs)) +
-      kvRow("Tokens, " + runWord, fmtTokens(l.generated)) + kvRow("Peak context, " + runWord, fmtTokens(l.peakCtx)) +
+      kvRow("Tokens, " + runWord, fmtTokens(l.generated)) + kvRow("Peak context, " + runWord, (l.peakCtxLabel || fmtTokens(l.peakCtx))) +
       kvRow("Spent today", fmtUsd(l.todayUsd)) + kvRow("Spent in total", fmtUsd(l.costUsd)) +
       kvRow("Last run ended", l.lastRunEndedAt ? fmtAgo(l.lastRunEndedAt) : "never", fmtLastRun(l.lastRunEndedAt)) +
       kvRow("Last merged", l.lastMergedAt ? fmtAgo(l.lastMergedAt) : "never") +

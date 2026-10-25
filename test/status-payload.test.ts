@@ -30,7 +30,8 @@ import { writeSlotsState } from "../src/git/slots-state.js";
 import { slotWorktreePath } from "../src/paths.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { writeEvents, writeLogLines, writeOrchestratorMarker, writeMarker } from "./fixtures/log-fixtures.js";
-import { makeRepo, tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
+import { makeRepo, tmpdir, writeBacklogFile, writeConfig } from "./fixtures/repo-fixtures.js";
+import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { warnEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
@@ -149,6 +150,39 @@ test("status payload combines persisted + live token metrics for running roles o
   assert.ok(feature, "feature role present in payload");
   assert.equal(feature.generated, 1_800, "running role gen = persisted + live output (1000+300+500)");
   assert.equal(feature.peakCtx, 12_000, "running role peak ctx = max(persisted, live)");
+});
+
+// Part 3c/… — a role whose resolved seam declares a window carries a preformatted peak-ctx
+// share (`peakCtxLabel`), so the GUI and `status --json` print the same `NN%` the TUI table
+// shows; a role without a declared window carries no label at all, leaving the shape unchanged.
+test("a role with a declared window carries peakCtxLabel", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui peakCtxLabel test");
+  writeConfig(repo, { provider: "local", model: "big" });
+  const modelsFile = writeModelsFile(
+    tmpdir("status-payload-window-"),
+    JSON.stringify({ providers: { local: { models: [{ id: "big", contextWindow: 262144 }] } } }),
+  );
+  const s = freshRunnerState("feature");
+  s.peakContextTokens = 110_000;
+  s.generatedTokens = 1_000;
+  saveRunnerState(repo, s);
+  const payload = statusPayload(repo, Date.now(), null, modelsFile) as {
+    roles: Array<{ role: string; peakCtx: number; peakCtxLabel?: string }>;
+  };
+  const feature = payload.roles.find((l) => l.role === "feature");
+  assert.ok(feature, "feature role present in payload");
+  assert.match(feature.peakCtxLabel ?? "", /\(\d+%\)$/, "declared window ships the label");
+
+  // A role whose seam resolves no window carries no label, leaving the payload shape unchanged.
+  const repo2 = makeRepo();
+  await initProject(repo2, "gui peakCtxLabel bare test");
+  const barePayload = statusPayload(repo2, Date.now(), null, modelsFile) as {
+    roles: Array<{ role: string; peakCtx: number; peakCtxLabel?: string }>;
+  };
+  const bareFeature = barePayload.roles.find((l) => l.role === "feature");
+  assert.ok(bareFeature, "bare feature role present");
+  assert.equal(bareFeature.peakCtxLabel, undefined, "no declared window carries no label");
 });
 
 test("status payload carries the current work item for running roles only", async () => {

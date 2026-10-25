@@ -4,7 +4,7 @@ import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import { dailyCost } from "../budget/budget.js";
 import type { LiveProgress } from "./progress-data.js";
 import { clipToWidth, displayWidth } from "../text/text-width.js";
-import { compactTokens, usd } from "../text/format.js";
+import { compactTokens, contextShareLabel, usd } from "../text/format.js";
 import { formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
 import { bootstrapBadge, buildBadge, budgetBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, ciParityBadge, ciParityTone, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
@@ -370,7 +370,7 @@ export function renderStatusSpans(
       cell(String(s.runs)),
       cell(String(s.commits)),
       cell(compactTokens(m.generated)),
-      cell(compactTokens(m.peakCtx)),
+      cell(contextShareLabel(m.peakCtx, s.contextWindow)),
       cell(usd(s.totalCostUsd)),
       cell(usd(dailyCost(s))),
       cell(lastRunCell(s.lastRunEndedAt)),

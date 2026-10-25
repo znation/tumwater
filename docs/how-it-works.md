@@ -463,6 +463,8 @@ Every run carries PRINCIPLES.md, which only the director and steward edit. Promp
 for a mid-sized model with a finite context window: tool-call budgets, ranged reads of large
 files, and bundled pi extensions that trim oversized tool output to its head and tail and, on
 a model with a window of at most 256k, stop sending the model's earlier thinking back to it.
+The status table's `peak ctx` column reads each run against the role's declared window
+(`110.0k (84%)`), so an operator can see how close a run came to where pi compacts it.
 
 Every run gets a compact prompt, whatever model it runs on. Its rules keep every directive in
 few words, its principles block keeps only the bullets, and it leaves out the brief block, since

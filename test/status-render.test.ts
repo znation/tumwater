@@ -177,6 +177,28 @@ test("gen/peak ctx combine persisted totals with live in-run progress for runnin
   assert.match(totals, /\b3800\b/, "totals row sums the displayed (combined) values");
 });
 
+// Part 3c/… — the `peak ctx` cell reads a run's peak against the role's declared window, so
+// an operator can see how close a run came to where pi compacts it: `110.0k (84%)` instead of
+// a bare `110.0k`. A role without a declared window keeps the bare peak, and the totals row's
+// max has no one window to divide by, so it stays bare too.
+test("the peak ctx cell reads against the declared window", () => {
+  const root = tmpdir();
+  const windowed = snapshotWith([
+    { role: "feature", generatedTokens: 1_000, peakContextTokens: 110_000, contextWindow: 131_072 },
+  ]);
+  const out = renderStatus(root, windowed);
+  const row = out.split("\n").find((l) => l.startsWith("feature")) ?? "";
+  assert.match(row, /110\.0k \(84%\)/, "peak ctx cell reads the peak against the declared window");
+  const totals = out.split("\n").at(-1) ?? "";
+  assert.match(totals, /\b110\.0k\b(?![^(]*\))/, "totals max stays bare — no one window to divide by");
+
+  // Without a declared window the cell is exactly today's bare peak.
+  const bare = snapshotWith([{ role: "feature", generatedTokens: 1_000, peakContextTokens: 110_000 }]);
+  const bareOut = renderStatus(root, bare);
+  const bareRow = bareOut.split("\n").find((l) => l.startsWith("feature")) ?? "";
+  assert.match(bareRow, /\b110\.0k\b(?![^(]*\))/, "no window keeps the bare peak");
+});
+
 // Current work item in the table's state cell (renderStatus row level).
 
 test("renderStatus prepends the current work item to a working role's state cell", () => {

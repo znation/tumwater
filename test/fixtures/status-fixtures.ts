@@ -60,6 +60,9 @@ export function snapshotWith(
        * a literal RunnerState does not carry — a test passes it to exercise the images alert. */
       imageInput?: boolean | null;
       imageRerouteLabel?: string | null;
+      /** The role's declared context window (part 3c/…), which a literal RunnerState does
+       * not carry — a test passes it to exercise the `peak ctx` share cell. */
+      contextWindow?: number;
     }
   >,
   budget: StatusSnapshot["budget"] = DEFAULT_BUDGET,

@@ -7,7 +7,9 @@ import { readEvents } from "../events/event-read.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
+import { contextShareLabel } from "../text/format.js";
 import { queueEntryMergeLabel } from "../merge/merge-queue-render.js";
+import { piModelsPath } from "../pi/pi-models.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
@@ -49,9 +51,11 @@ export function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title
  *
  * `now` pins the poll's clock for the time-derived fields (see snapshot's seam of the same
  * name) — spend stamp-check, burn-rate projection, disk badge, and the pause countdown — so a
- * test's expected value cannot race the payload's own Date.now(). */
-export function statusPayload(root: string, now = Date.now(), scope: readonly string[] | null = null): object {
-  const full = snapshot(root, undefined, now);
+ * test's expected value cannot race the payload's own Date.now(). `modelsPath` mirrors
+ * snapshot's seam of the same name, so a test can resolve a role's declared context window
+ * against a fixture models catalog instead of the live ~/.pi one. */
+export function statusPayload(root: string, now = Date.now(), scope: readonly string[] | null = null, modelsPath = piModelsPath()): object {
+  const full = snapshot(root, modelsPath, now);
   // `--role` scopes the role rows (and the alerts computed from them); budget stays team-wide.
   const snap = scope ? scopeSnapshotToRoles(full, scope) : full;
   // One event read feeds both feed shapes below, so `events[i]` and `eventItems[i]` always
@@ -133,6 +137,11 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
       commits: s.commits,
       generated,
       peakCtx,
+      // The preformatted peak-ctx share of the role's declared window (part 3c): shipped
+      // beside `peakCtx` so `status --json` and the GUI carry the label the TUI prints without
+      // re-resolving the window. Present only where a window is declared, so a window-less
+      // role's payload shape is unchanged.
+      ...(s.contextWindow !== undefined ? { peakCtxLabel: contextShareLabel(peakCtx, s.contextWindow) } : {}),
       costUsd: s.totalCostUsd,
       // The role's spend for the local day (the daily budget window): 0 while its stamp
       // is stale or missing — same helper and semantics as the TUI's `today` column.

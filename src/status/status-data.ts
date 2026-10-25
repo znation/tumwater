@@ -116,6 +116,10 @@ export interface StatusSnapshot {
      * images — the `reruns on …` the images alert and role page name. Named `imageRerouteLabel`
      * to avoid the persisted RunnerState.imageReroute handoff record. Always present. */
     imageRerouteLabel: string | null;
+    /** The resolved primary seam's declared context window (part 3c/…), from the same
+     * `seamContextWindow` the role page prints — present only when the seam declares one, so
+     * the table/drawer peak-ctx share can divide a run's peak against it. */
+    contextWindow?: number;
   }>;
   /** The daily cost budget, unconditionally (cap 0 = disabled — the display decides what to
    * show): today's team spend vs the cap, for the header badge on both dashboards (`· budget:

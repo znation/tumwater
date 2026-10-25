@@ -20,6 +20,7 @@ import { runnerStateForPoll } from "./status-polls.js";
 import { roleImageInfo, seamImageLabel } from "../agent/image-input.js";
 import { backendDefaultLabel } from "../agent/backend-traits.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
+import { seamContextWindow } from "../pi/pi-models.js";
 import { imageProbeEntryFresh, readImageProbeCache } from "../doctor/image-probe.js";
 
 /** One status-table row: the persisted runner state plus the display-only fields the dashboard
@@ -45,6 +46,11 @@ export type StatusRoleRow = RunnerState & {
    * images — the `reruns on …` every surface names. Always present. (Named `imageRerouteLabel`
    * to avoid the persisted RunnerState.imageReroute handoff record of the same name.) */
   imageRerouteLabel: string | null;
+  /** The resolved primary seam's declared context window, from the same `seamContextWindow`
+   * the role page's `- Context window:` line prints — a table/drawer peak-ctx share divides a
+   * run's peak against this. Present only when the seam declares a window (the omit-when-unknown
+   * convention `fallback` and `modelFromPi` use), so a row without a window is byte-identical. */
+  contextWindow?: number;
 };
 
 /** One row per enabled role id (part 5b/7). `configForRole`, `modelFallbackView`, the leased /
@@ -106,6 +112,10 @@ export function collectRoleRows(
     // page, and the submit gate cannot disagree about who reads images or where a blind
     // prompt would run.
     const image = roleImageInfo(cfg, r, modelsPath, probes, listed);
+    // The peak-ctx share denominator (the role's context window, part 3c): resolved once per
+    // poll here, beside `eff` (the same seam the role page resolves and names) — the same seam
+    // `seamContextWindow` run against, so row, page and drawer cannot disagree.
+    const contextWindow = seamContextWindow(eff, root, modelsPath);
     // Model failure fallback, part 2/2: while the role's episode is active its agent runs use
     // the tier-resolved fallback pair, so the row names that pair, the episode's start, and
     // the failure that tripped it. `now` is the poll's own clock (the snapshot seam), so
@@ -147,6 +157,7 @@ export function collectRoleRows(
         : { model: backendDefaultLabel(eff.agent) }),
       ...(isJsonObject(cfg.model) ? { modelTier: roleSeamTier(cfg, r) } : {}),
       ...(episode !== null ? { fallback: episode } : {}),
+      ...(contextWindow !== null ? { contextWindow } : {}),
       ...(slot ? { slot: path.basename(slot.dir), slotPinned: pinned !== undefined } : {}),
       ...(baseRoleOf(r) === r ? {} : { instanceOf: baseRoleOf(r) }),
     };

@@ -67,3 +67,31 @@ test("collectRoleRows keeps a surplus runner's row while paused or on an error s
   rows = collectRoleRows(repo, cfg, Date.now(), slots, modelsFile, empty);
   assert.ok(rows.some((r) => r.role === "feature-3"), "a quiet-kill surplus runner keeps its row");
 });
+
+// Part 3c/… — the peak-ctx share denominator: a role whose resolved seam declares a window
+// carries it on the row (so the status table and the dashboard drawer can divide a peak by it),
+// and a role whose seam cannot name a window carries no key, leaving the row byte-identical.
+test("collectRoleRows carries a declared window and omits an unknown one", async () => {
+  const windowed = writeModelsFile(
+    tmpdir("status-roles-window-"),
+    JSON.stringify({
+      providers: { local: { models: [{ id: "big", contextWindow: 262144 }] } },
+    }),
+  );
+  const repo = makeRepo();
+  await initProject(repo, "roles collector window");
+  writeConfig(repo, { provider: "local", model: "big" });
+  const cfg = loadConfig(repo);
+  const rows = collectRoleRows(repo, cfg, Date.now(), readSlotsState(repo).slots, windowed, new Set());
+  assert.equal(rows.find((r) => r.role === "feature")?.contextWindow, 262144);
+
+  // A claude seam has no catalog of windows here — the row must omit the key entirely.
+  const repo2 = makeRepo();
+  await initProject(repo2, "roles collector windowless");
+  writeConfig(repo2, { backend: "claude", model: "claude-sonnet-5-5" });
+  const cfg2 = loadConfig(repo2);
+  const rows2 = collectRoleRows(repo2, cfg2, Date.now(), readSlotsState(repo2).slots, windowed, new Set());
+  const feature = rows2.find((r) => r.role === "feature");
+  assert.equal("contextWindow" in feature!, false, "a claude seam row carries no contextWindow");
+  assert.equal(feature?.contextWindow, undefined);
+});

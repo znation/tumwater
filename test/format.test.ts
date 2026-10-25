@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendPromptNote, compactTokens, formatBytes, formatGB, shortSha, usd, usdCap } from "../src/text/format.js";
+import { appendPromptNote, compactTokens, contextShareLabel, formatBytes, formatGB, shortSha, usd, usdCap } from "../src/text/format.js";
 
 // format.ts is the single home of the number, money, and hash formats every display surface
 // (status table, event feed, usage report, commit trailers) renders through. These tests pin
@@ -30,6 +30,17 @@ test("compactTokens renders one-decimal M at and above 1,000,000", () => {
   // 999,999 still uses the k branch — and rounds up to "1000.0k", exactly as report.ts's
   // formatTokens does, so the dashboards keep printing what the Markdown table prints.
   assert.equal(compactTokens(999_999), "1000.0k");
+});
+
+test("contextShareLabel reads a peak against a declared window", () => {
+  // 110k on a 128k window — past the compaction point, the share an operator needs.
+  assert.match(contextShareLabel(110_000, 131_072), /^110\.0k \(84%\)$/);
+  assert.equal(contextShareLabel(131_072, 131_072), "131.1k (100%)"); // compactTokens's one-decimal k
+  // An unknown window or a zero peak falls back to the bare compactTokens — exactly today's text.
+  for (const w of [undefined, null, 0] as const) {
+    assert.equal(contextShareLabel(110_000, w), compactTokens(110_000));
+  }
+  assert.equal(contextShareLabel(0, 131_072), compactTokens(0));
 });
 
 test("shortSha abbreviates a hash to its first 8 characters", () => {

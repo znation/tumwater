@@ -346,6 +346,25 @@ test("the role drawer paints a working role's actions, metrics, runs, and transc
   assert.equal(pre.scrollTop, pre.scrollHeight);
 });
 
+// Part 3c/… — the drawer's `Peak context` row prints the payload's preformatted share label
+// when the role resolves a declared window (`90.0k (70%)`), and keeps the bare peak from its
+// own fmtTokens when the payload carries none — so the dashboard shows how close a run came to
+// pi's compaction point without re-resolving the window.
+test("the drawer's Peak context row reads a declared window's share label", async () => {
+  const status = workingStatus() as unknown as { roles: Array<Record<string, unknown>> };
+  const labelled = { ...status, roles: [{ ...status.roles[0], peakCtxLabel: "90.0k (70%)" }] };
+  const t = openDrawer(["toggleRole"], { status: labelled as never });
+  t.scope.toggleRole("clean");
+  const meta = t.paintedFor("drawermeta");
+  assert.match(meta, /Peak context, this run<\/dt><dd title='90\.0k \(70%\)'>90\.0k \(70%\)</);
+
+  // Without a label the drawer keeps the bare fmtTokens peak (the existing behavior).
+  const bare = openDrawer(["toggleRole"], { status: workingStatus() });
+  bare.scope.toggleRole("clean");
+  const bareMeta = bare.paintedFor("drawermeta");
+  assert.match(bareMeta, /Peak context, this run<\/dt><dd title='90\.0k'>90\.0k</);
+});
+
 test("the role drawer shows a two-click Disable on an enabled role and none on the director", async () => {
   // An enabled non-director role carries a Disable button in its action row.
   const enabled = openDrawer(["toggleRole"], { status: workingStatus() });
