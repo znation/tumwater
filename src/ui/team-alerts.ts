@@ -14,7 +14,7 @@ import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-bac
 import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert, QaCoverageStale } from "./status-payload.js";
 import type { StaleWorkspacePin } from "../doctor/doctor-contention-checks.js";
 import { entryKindLabel, type RefusedEntry, type StalledEntry } from "../backlog/backlog-eligibility.js";
-import type { ClaimState } from "../scheduling/claim-entries.js";
+import { staleClaimDetail, type ClaimState } from "../scheduling/claim-entries.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
 import { CI_PARITY_STALE_MS, ciParityStalled } from "../run/ci-parity.js";
@@ -500,18 +500,11 @@ function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
   // release window, is an amber ask. One detail line per claim, worded like the doctor row so
   // the two cannot drift; actions open the first three claimed roles. Nothing when empty.
   if (staleClaims.length > 0) {
-    const noun = (c: ClaimState) => (c.file === "BUGS.md" ? "bug" : "plan");
     out.push({
       key: "stale-claims",
       tone: "amber",
       title: `${plural(staleClaims.length, "work-instance claim is", "work-instance claims are")} stale`,
-      detail: staleClaims
-        .map((c) =>
-          c.kind === "gone"
-            ? `claimed ${noun(c)} "${c.title}" (${c.id}) names an entry no longer listed`
-            : `claimed ${noun(c)} "${c.title}" (${c.id}) has been idle ${c.hours}h`,
-        )
-        .join("; "),
+      detail: staleClaims.map(staleClaimDetail).join("; "),
       actions: openRoleActions(staleClaims.map((c) => ({ role: c.id }))),
     });
   }

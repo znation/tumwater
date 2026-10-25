@@ -49,3 +49,16 @@ export function staleClaimEntries(root: string, ids: readonly string[], now = Da
   }
   return out;
 }
+
+/** One operator-facing line for a claim the operator should act on, named the way the doctor's
+ * `parallel instances` row names it: `claimed <bug|plan> "<title>" (<id>)` plus the reason —
+ * `names an entry no longer listed` for a `gone` claim (its key left the section), `has been
+ * idle <hours>h` for an `idle` one. The doctor row (doctor-contention-checks) and the always-on
+ * amber alert (team-alerts) render this identical string so the two cannot drift on the wording
+ * or on the bug/plan noun derived from the claim's backlog file. */
+export function staleClaimDetail(c: ClaimState): string {
+  const noun = c.file === "BUGS.md" ? "bug" : "plan";
+  return c.kind === "gone"
+    ? `claimed ${noun} "${c.title}" (${c.id}) names an entry no longer listed`
+    : `claimed ${noun} "${c.title}" (${c.id}) has been idle ${c.hours}h`;
+}

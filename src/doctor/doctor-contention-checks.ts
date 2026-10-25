@@ -25,7 +25,7 @@ import { errorMessage, joinParts, textOr } from "../text/text.js";
 import { rankCountEntries } from "../collections.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
-import { staleClaimEntries } from "../scheduling/claim-entries.js";
+import { staleClaimDetail, staleClaimEntries } from "../scheduling/claim-entries.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
@@ -533,11 +533,7 @@ export function checkWorkInstances(
   const smallPool = multi.length > 0 && slots < config.maxConcurrent;
   if (gone.length === 0 && stale.length === 0 && !smallPool)
     return okOutcome(claimCounts(claims));
-  const noun = (c: { file: string }) => (c.file === "BUGS.md" ? "bug" : "plan");
-  const parts: string[] = [
-    ...gone.map((c) => `claimed ${noun(c)} "${c.title}" (${c.id}) names an entry no longer listed`),
-    ...stale.map((c) => `claimed ${noun(c)} "${c.title}" (${c.id}) has been idle ${c.hours}h`),
-  ];
+  const parts: string[] = [...gone.map(staleClaimDetail), ...stale.map(staleClaimDetail)];
   if (smallPool)
     parts.push(
       `${multi.join(", ")} run instances but worktreeSlots ${slots} is below maxConcurrent ${config.maxConcurrent}`,
