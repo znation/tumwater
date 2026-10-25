@@ -239,6 +239,10 @@ const FORMAT_JS = String.raw`  // format:start
     return sec < 60 ? "just now" : humanSeconds(sec) + " ago";
   };
   const fmtClock = (ts) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  // The local wall-clock HH:MM of an instant — datetime.ts's clockHm, shared by the operator
+  // view's window clock (returnsAt/heldUntil/~cap-at stamps) and the role drawer's ~cap-at
+  // stamp, which each spelled the two-digit getHours/getMinutes join inline.
+  const clockHm = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
   // A run's duration: seconds under two minutes, then minutes, then hours. Each bucket is
   // chosen from the rounded count so a span just under a cutoff never prints "120s" or "120m".
   const fmtSpan = (ms) => {

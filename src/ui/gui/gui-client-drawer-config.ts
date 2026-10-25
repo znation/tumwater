@@ -24,8 +24,9 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     // byte-identical; only a model-fallback non-pi pair (modelFallbackView drops pi's provider
     // for a non-pi backend) gains the namespace the CLI already shows.
     // Local wall-clock HH:MM for the role-cap forecast's ~cap at stamp — the drawer is browser
-    // code and cannot import ../text/datetime.js (the quietWindowEnd precedent's own note).
-    const capClock = (ms) => String(new Date(ms).getHours()).padStart(2, "0") + ":" + String(new Date(ms).getMinutes()).padStart(2, "0");
+    // code and cannot import ../text/datetime.js (the quietWindowEnd precedent's own note), so
+    // it routes through the bundle's shared clockHm in FORMAT_JS, the same helper the operator
+    // view's window clock uses.
     const fallbackLabel = (fb, fbDefault) => {
       const agentBackend = fb.backend !== undefined && fb.backend !== "pi" ? fb.backend : undefined;
       if (fb.model !== undefined) {
@@ -226,7 +227,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
       const capBody = dc
         ? fmtUsd(Number(dc.spentUsd) || 0) + " of " + fmtUsd(Number(dc.capUsd) || 0) + " spent today (" + (dc.over ? "holding now — no new runs until local midnight" : "not holding") + ")" +
           (Array.isArray(dc.roleIds) && dc.roleIds.length > 1 ? " · shared by " + dc.roleIds.join(", ") : "") +
-          (typeof view.dailyCapHitAt === "number" ? " · ~cap at " + capClock(view.dailyCapHitAt) : "")
+          (typeof view.dailyCapHitAt === "number" ? " · ~cap at " + clockHm(view.dailyCapHitAt) : "")
         : "no cap";
       const capControl = editing
         ? "<input id='capeditinput' type='number' min='0' step='0.01' value='" + (capEditing.value ? String(capEditing.value) : "") + "' placeholder='no cap'>" +

@@ -80,10 +80,6 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     if (status === "rejected") return "limited";
     return status === "reset" ? "reset" : "ok";
   }
-  function windowClock(ms) {
-    const d = new Date(ms);
-    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-  }
   function windowResets(ms) {
     const minutes = Math.floor((ms - Date.now()) / 60000);
     if (minutes < 1) return "resets now";
@@ -106,7 +102,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     return ["small", "default", "strong"].filter((tier) => chain && chain[tier]).map((tier) => {
       const t = chain[tier];
       const money = t.spentUsd !== undefined && t.capUsd !== undefined ? " " + fmtUsd(t.spentUsd) + "/" + fmtCap(t.capUsd) : "";
-      const until = t.returnsAt !== undefined ? " until " + windowClock(t.returnsAt) : "";
+      const until = t.returnsAt !== undefined ? " until " + clockHm(t.returnsAt) : "";
       return "<span class='side-card-value window-line'>" + esc(tier + " → " + t.pair + money + until) + "</span>";
     }).join("");
   }
@@ -115,7 +111,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     const word = windowWord(w.status);
     parts.push(typeof w.utilization === "number" ? windowPct(w) + "%" : word === "ok" ? "ok · usage not reported" : word);
     if (w.isUsingOverage) parts.push("overage");
-    if (w.status === "rejected" && block.heldUntil != null) parts.push((chainMoved(chain) ? "on fallback until " : block.label + " model jobs wait until ") + windowClock(block.heldUntil));
+    if (w.status === "rejected" && block.heldUntil != null) parts.push((chainMoved(chain) ? "on fallback until " : block.label + " model jobs wait until ") + clockHm(block.heldUntil));
     else if (w.status !== "reset" && typeof w.resetsAt === "number") parts.push(windowResets(w.resetsAt));
     return parts.join(" · ");
   }
@@ -171,7 +167,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       esc(capped ? "Today's spend against the daily cap — click to change the cap" : "No daily cap — click to set one") + "'>" +
       "<span class='side-card-label'>" + icon("dollar") + "Spent today<span class='edit'>" + (capped ? "Edit cap" : "Set a cap") + "</span></span>" +
       "<span class='side-card-value'>" + esc(fmtUsd(b.spentUsd)) + " <small>" + esc(capped ? "of " + fmtCap(b.capUsd) : "no daily cap") + "</small></span>" +
-      (capped ? meterBar(tone, pct.toFixed(1)) : "") + (b.capHitAt != null ? "<span class='side-card-value window-line'>~cap at " + esc(windowClock(b.capHitAt)) + "</span>" : "") + windowLinesHtml(blocks, only, chain) + "</button>";
+      (capped ? meterBar(tone, pct.toFixed(1)) : "") + (b.capHitAt != null ? "<span class='side-card-value window-line'>~cap at " + esc(clockHm(b.capHitAt)) + "</span>" : "") + windowLinesHtml(blocks, only, chain) + "</button>";
   }
   function renderBudgetBadge(d) {
     if (budgetEditing) return; // the open editor owns the slot until save or cancel
