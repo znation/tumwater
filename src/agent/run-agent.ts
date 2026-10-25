@@ -3,10 +3,13 @@
  * The backend (src/agent/agent-backend.ts, with
  * pi in src/pi/pi-backend.ts) provides the argv/stdin/env, the native-to-canonical stdout
  * translator, the stderr warning
- * matcher, and the exit classification. This file keeps the live lifecycle — setup, the stream
- * pipeline, the watchdogs and the feed — and delegates the build-and-spawn stage (the marker,
- * parser, bin resolution, `prepare`, invocation and spawn) to src/agent/run-spawn.ts and the
- * post-run settlement (spawn-error result, exit orphan sweep, close-time reconcile and
+ * matcher, and the exit classification. This file keeps the coordinator — setup, the watchdog
+ * wiring, abort, the child's stream-attachment and the settlement-state assembly — and
+ * delegates the build-and-spawn stage (the marker,
+ * parser, bin resolution, `prepare`, invocation and spawn) to src/agent/run-spawn.ts, the
+ * streaming pipeline (native-to-canonical stdout split, the stderr window, the stream-minted
+ * session record and the settle/flush) to src/agent/run-stream.ts, and the post-run settlement
+ * (spawn-error result, exit orphan sweep, close-time reconcile and
  * classify) to src/agent/run-settle.ts. `runPi` (src/pi/pi.ts) is the thin alias the existing
  * call sites use, so a caller and its fakes are untouched by this split. */
 
@@ -16,7 +19,7 @@ import os from "node:os";
 import path from "node:path";
 import type { StringDecoder } from "node:string_decoder";
 import type { ResolvedModelConfig } from "../config/config-views.js";
-import { ensureDir, removeTree } from "../files/files.js";
+import { ensureDir } from "../files/files.js";
 import type { ResolvedBackendBin } from "../pi/pi-bin.js";
 import { runOnAbort, terminateChild } from "../process/process.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
@@ -25,26 +28,17 @@ import { startPiWatchdogs } from "../pi/pi-watchdogs.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { DEFAULT_BACKEND, backendById, registerAgentBackend, type AgentBackend, type AgentInvocation, type AgentRunSpec, type StreamTranslator } from "./agent-backend.js";
 import { errorMessage } from "../text/text.js";
-import { recordSession } from "./session-ledger.js";
 import { piBackend } from "../pi/pi-backend.js";
 import { claudeBackend } from "./claude/claude-backend.js";
 import { codexBackend } from "./codex/codex-backend.js";
 import { opencodeBackend } from "./opencode/opencode-backend.js";
 import { setupFailureResult, settleClose, settleError, settleExit } from "./run-settle.js";
 import { openAppendLog, spawnPiRun, type AppendLog, type SpawnedRun } from "./run-spawn.js";
+import { createAgentStream } from "./run-stream.js";
 
-/** How many trailing stderr characters are carried into the next chunk's warning match, so a
- * warning split across two `data` events is still seen. The warnings are short lines, so a few
- * hundred characters always cover a straddle. */
-const STDERR_MATCH_TAIL = 512;
-
-/** The largest native stdout line the runner will buffer. A complete native event is one JSON
- * object; a line this long is already at the default whole-log cap (`logMaxBytes`, 16 MiB), so
- * continuing to buffer it can only be a malformed stream. Past it `feedCanonical` drops the
- * buffered line and skips input to the next newline, so a backend that streams bytes with no
- * newline — each byte resetting the quiet watchdog — cannot grow the buffer until the run
- * timeout (4 h by default) exhausts the harness's memory. */
-export const MAX_NATIVE_LINE_CHARS = 16 * 1024 * 1024;
+// The streaming pipeline's over-long-native-line cap stays reachable from here, the historical
+// home the test suite still imports it from, even though the value now lives in run-stream.ts.
+export { MAX_NATIVE_LINE_CHARS } from "./run-stream.js";
 
 // The seam's adapters. Registering here — where the lookup happens — keeps the registration
 // explicit and lets a test register a fake under its own id.
@@ -211,8 +205,8 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // WITH a `prepare` (codex) returns a promise that resolves after its trust is settled.
     const spawnedResult = spawnPiRun(backend, { raw: rawLog }, runTmp, opts);
     const spawned: SpawnedRun = spawnedResult instanceof Promise ? await spawnedResult : spawnedResult;
-    // Bind the stream pipeline's objects from the bundle. The stream itself stays here until
-    // part 2/2 moves it out of this file; until then the stream stays here.
+    // Bind the coordinator's objects from the bundle, then hand the stream-side objects (parser,
+    // translator, decoders) to createAgentStream below, which owns them with the pipeline.
     const child = spawned.child;
     const resolved = spawned.resolved;
     const runSpec = spawned.runSpec;
@@ -220,27 +214,8 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     const parser = spawned.parser;
     const translator = spawned.translator;
     const decoder = spawned.decoder;
-    const stderrDecoder = spawned.stderrDecoder;
     const runMarker = spawned.runMarker;
-    const preSpawnSessionId = spawned.preSpawnSessionId;
     const blindRead = spawned.blindRead;
-    // The stream's mutable state (kept here until part 2/2 moves the pipeline out of this file):
-    // the stderr window and its warning matcher tail, the settled guard, and the translator's
-    // native-line buffer. Declared here (after the bindings) so the same closure capture the
-    // original per-run locals had is preserved.
-    let stderr = "";
-    // The fallback-clone warning arrives at the START of a run, while `stderr` keeps only the
-    // last 64 KiB; match each chunk (with a short carried tail for a straddle) so a chatty run
-    // that pushes the warning out of that window still surfaces the mispriced id.
-    let fallbackClone: string | undefined;
-    let stderrTail = "";
-    let settled = false;
-    // The translator's native line buffer: feed the decoder's text through it and only complete
-    // lines reach the translator, whose canonical output feeds the parser (and the raw log).
-    // `nativeOverflow` marks a buffered line that passed MAX_NATIVE_LINE_CHARS without a newline:
-    // its remainder is skipped to the next newline so it can never be mistaken for an event.
-    let nativeTail = "";
-    let nativeOverflow = false;
 
     // The run's two watchdog clocks (src/pi/pi-watchdogs.ts): the run deadline and the quiet
     // watchdog (quiet-kill plus the stalled-tool-call warning). The flags their timers set
@@ -273,135 +248,24 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     };
     runOnAbort(opts.signal, onAbort);
 
-    // Quiet watchdog and its stall warning: src/pi/pi-watchdogs.ts.
-
-    const onLine = (line: string) => rawLog.stream.write(line + "\n");
-    // The translator's session id, once the stream has named it (codex's `thread.started`).
-    // The pre-spawn record for a fresh codex run carries the session name; the id it actually
-    // ran with is born in the stream, so the first time this returns one the pre-spawn record
-    // lacked, append a second ledger record carrying it (same kind, name, cwd and model) — the
-    // record a later `exec resume` resumes (design §4 "Sessions").
-    let streamMintedSession = false;
-    const emitNativeLine = (line: string) => {
-      if (!nativeLog.broken) nativeLog.stream.write(line + "\n");
-      for (const canonical of translator.translate(line)) parser.feed(canonical + "\n", onLine);
-      const sid = translator.sessionId?.();
-      if (sid !== undefined && sid !== preSpawnSessionId && !streamMintedSession) {
-        streamMintedSession = true;
-        recordSession(opts.sessionDir, {
-          agent: backend.id,
-          id: sid,
-          kind: opts.kind,
-          name: opts.sessionName,
-          cwd: opts.cwd,
-          ...(opts.config.model !== undefined ? { model: opts.config.model } : {}),
-          at: Date.now(),
-        });
-      }
-    };
-    // Split native stdout into complete lines, translate each, and feed the canonical lines to
-    // the parser (which also hands them to onLine for the raw log). A trailing partial native
-    // line stays buffered exactly as the parser's own buffer once held it. On the final flush
-    // (`final`), a remaining tail is emitted as one line: a backend may close after flushing a
-    // complete JSON event but not its newline terminator, and dropping that tail loses the
-    // run's authoritative result (cost, final text). A genuinely truncated fragment parses as
-    // no data (parseJsonObject → []), so this can only recover the last event.
-    const feedCanonical = (text: string, final = false) => {
-      // A buffered overflow: discard this line's remainder up to (and including) its newline, so
-      // the stream resynchronizes on the next real event line instead of emitting a truncated one.
-      if (nativeOverflow) {
-        const nl = text.indexOf("\n");
-        if (nl < 0) return;
-        nativeOverflow = false;
-        text = text.slice(nl + 1);
-      }
-      nativeTail += text;
-      let start = 0;
-      for (;;) {
-        const nl = nativeTail.indexOf("\n", start);
-        if (nl < 0) break;
-        emitNativeLine(nativeTail.slice(start, nl));
-        start = nl + 1;
-      }
-      if (start > 0) nativeTail = nativeTail.slice(start);
-      if (nativeTail.length > MAX_NATIVE_LINE_CHARS) {
-        // No newline within the cap: drop the line and warn. On the final flush there is no
-        // remainder to skip, so only the buffer is cleared.
-        nativeTail = "";
-        if (!final) {
-          nativeOverflow = true;
-          opts.onAgentWarning?.(
-            `native output line exceeded ${MAX_NATIVE_LINE_CHARS / (1024 * 1024)} MiB without a newline and was discarded`,
-          );
-        }
-      } else if (final && nativeTail !== "") {
-        emitNativeLine(nativeTail);
-        nativeTail = "";
-      }
-    };
-
-    child.stdout?.on("data", (chunk: Buffer) => {
-      wd.noteByte();
-      feedCanonical(decoder.write(chunk));
+    // The streaming pipeline — native-to-canonical stdout split with the over-long-line
+    // discard, the stderr window and its fallback-clone warning matcher, the stream-minted
+    // session's second ledger record, and the settle/flush that resolves the run — now lives
+    // in src/agent/run-stream.ts behind the AgentStream interface. run-agent only wires the
+    // child's `data` events to it and binds its getters into the settlement state below.
+    const stream = createAgentStream({
+      opts,
+      backend,
+      spawned,
+      wd,
+      onAbort,
+      rawLog,
+      nativeLog,
+      runTmp,
+      resolve,
     });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      // stderr is rare and meaningful (crash traces, warnings): treat it as progress.
-      wd.noteStderr();
-      const text = stderrDecoder.write(chunk);
-      fallbackClone ??= backend.matchStderrWarning?.(text, stderrTail);
-      stderrTail = (stderrTail + text).slice(-STDERR_MATCH_TAIL);
-      stderr += text;
-      if (stderr.length > 64 * 1024) stderr = stderr.slice(-64 * 1024);
-    });
-
-    const finish = (result: PiRunResult) => {
-      if (settled) return;
-      settled = true;
-      // A blind image read (plans/image-input.md "Detecting a blind read"): surface it to the
-      // caller once, at settle, with the action its kind earned — the authoring run was killed
-      // ("fail"), a gate run only recorded it ("logged"). The caller logs the image_blind event
-      // with its own role/run context.
-      if (parser.imageBlind) {
-        opts.onBlindRead?.(parser.imageBlind.path, opts.kind === "author" ? "fail" : "logged");
-      }
-      // Best-effort: an unremovable scratch dir (read-only subdir, a straggler still writing) must
-      // not throw out of the close handler before the run's result resolves.
-      try {
-        removeTree(runTmp);
-      } catch {
-        /* left for the OS temp sweep */
-      }
-      wd.stop();
-      opts.signal?.removeEventListener("abort", onAbort);
-      // Surface the translator's per-run warnings once, after all native lines were fed.
-      for (const warning of translator.warnings?.() ?? []) opts.onAgentWarning?.(warning);
-      // Resolve only once the logs have flushed: writes complete on libuv's threadpool, so
-      // resolving before 'finish' can leave the tail of <role>.pi.jsonl (or the native log)
-      // unwritten — a run that dies right after runAgent settles (an abort during a restart
-      // drain, a supervisor swap) loses its last lines. end()'s callback fires on 'finish';
-      // if a stream errors instead it never does, so settle from 'error' too — a broken log
-      // degrades to a lost log, never a stuck run.
-      let resolved = false;
-      const settle = () => {
-        if (!resolved) {
-          resolved = true;
-          resolve(result);
-        }
-      };
-      let pending = 0;
-      const flushed = () => {
-        pending -= 1;
-        if (pending === 0) settle();
-      };
-      for (const log of [rawLog, nativeLog]) {
-        log.stream.on("error", settle);
-        if (!log.broken) {
-          pending += 1;
-          log.stream.end(flushed);
-        }
-      }
-      if (pending === 0) settle();
-    };
+    child.stdout?.on("data", (chunk: Buffer) => stream.feedStdout(chunk));
+    child.stderr?.on("data", (chunk: Buffer) => stream.feedStderr(chunk));
 
     // The run state the settlement-half handlers (run-settle.ts) read when their event
     // fires. The getters read through to the run's still-mutating feed state, so a handler
@@ -415,14 +279,14 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       translator,
       decoder,
       wd,
-      finish,
-      feedCanonical,
-      onLine,
+      finish: stream.finish,
+      feedCanonical: stream.feedCanonical,
+      onLine: stream.onLine,
       runSpec,
       invocation,
-      stderr: () => stderr,
-      fallbackClone: () => fallbackClone,
-      settled: () => settled,
+      stderr: stream.stderr,
+      fallbackClone: stream.fallbackClone,
+      settled: stream.settled,
       blindRead: () => blindRead(),
       aborted: () => aborted,
       wasKilled: () => wasKilled(),

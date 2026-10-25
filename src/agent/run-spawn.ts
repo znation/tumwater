@@ -3,9 +3,10 @@
  * parser, the run marker, backend-bin resolution, the notes shim, the run spec, the backend's
  * optional `prepare`, the session-ledger record, the native-to-canonical translator, the two
  * incremental decoders, and the child spawn. It returns the `SpawnedRun` bundle the coordinator
- * (src/agent/run-agent.ts) binds its stream pipeline, watchdogs and settlement wiring to.
- * Part 1/2 of the runAgent split: the streaming pipeline still lives in run-agent.ts until
- * part 2/2 moves it to run-stream.ts. This module imports only run-agent's type surface, so
+ * (src/agent/run-agent.ts) binds its watchdogs and settlement wiring to, and passes to
+ * createAgentStream (src/agent/run-stream.ts).
+ * Part 1/2 of the runAgent split: the streaming pipeline (part 2/2) lives in run-stream.ts.
+ * This module imports only run-agent's type surface, so
  * there is no runtime import cycle. */
 
 import { spawn, type ChildProcess } from "node:child_process";

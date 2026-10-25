@@ -10,7 +10,7 @@
  * state (the open tool calls, the turn's usage fallback, the unmapped native types seen), so
  * call it once per run. Unmapped native types, the distinct text of `error` items, and a
  * command abandoned at the end of its turn are recorded once each on the seam's optional
- * `warnings()` — src/agent/run-agent.ts forwards each as an `agent_unknown_event` warning
+ * `warnings()` — src/agent/run-stream.ts forwards each as an `agent_unknown_event` warning
  * after the run. `sessionId()` reports the thread id once `thread.started` has named it.
  */
 

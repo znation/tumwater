@@ -2,7 +2,9 @@
  * run needs from its backend — how to build the command, how to translate its native stdout
  * into tumwater's canonical event stream, and how to classify its exit. src/agent/run-spawn.ts
  * builds and spawns the run (the marker, parser, bin resolution and spawn); src/agent/run-agent.ts
- * keeps the backend-neutral watchdogs, abort, the stream pipeline and stderr capture; the
+ * keeps the coordinator — the backend-neutral watchdogs, the abort wiring and the settlement-state
+ * assembly — while src/agent/run-stream.ts owns the streaming pipeline (native-to-canonical stdout
+ * split and the stderr window) and the settle/flush; the
  * post-run settlement — the group-kill and marker sweeps on exit, the spawn-error result and
  * the close-time reconcile/classify that builds the `PiRunResult` — lives in
  * src/agent/run-settle.ts. A backend registered here supplies the rest. src/agent/run-agent.ts
