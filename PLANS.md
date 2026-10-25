@@ -173,11 +173,31 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/roles.test.ts and test/runner-ids.test.ts: drop the `BASELINE_BLOCKED_ROLES`/`baselineBlocked` cases; keep the catalog and `OBSERVER_ROLES` checks.
 - test/gate-notes.test.ts: drop the `buildMainKnownRedNote` cases; keep the `buildMainRedNote` cases.
 
-### Every commit is verified on main, part 3h/3: the pre-merge gate runs no model reviewer — only a secret leak, a brief-block edit or a protected edit refuses a diff (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; requires part 3g/3 landed, since a role not on `review.afterMerge` must have its post-landing review queued before its pre-merge model review goes; touches src/review/review.ts src/review/diff-rules.ts docs/how-it-works.md test/review.test.ts)
+### Every commit is verified on main, part 3l/3: the pre-merge model reviewer's dedicated test cases are retired ahead of its removal (planned 2026-10-24 by the plan role, split 2026-10-24 by the plan role from the too-large part 3h/3 — the feature role held part 3h/3 as too large because most of test/review-precheck.test.ts asserts the reviewer run it deletes; this part takes that test retirement first, and the reviewer still runs, so every deleted case is green; part 3h/3 requires this part; touches test/review.test.ts test/review-precheck.test.ts)
 
-**Needs review 2026-10-24 by feature: too large for one run (held 4)** — dropping the reviewer also breaks most of test/review-precheck.test.ts (tests that assert the reviewer runs after a green pre-check, plus the approval-reuse, prompt, nudge and second-slot-overlap cases for a feature this part deletes), which the plan does not list; that file needs a rewrite comparable to test/review.test.ts, so the files-touched list and its test plan must be corrected before it can land.
+**Previously held 4**
 
-**Previously held 3**
+**Goal.** Part 3h/3 stops `reviewAheadOfMain` (src/review/review.ts) running the pre-merge model reviewer. The bulk of that change is not the source removal but the cases that assert a reviewer run: `test/review.test.ts` and `test/review-precheck.test.ts` each drive the gate through a fake reviewer and would fail the moment the run goes. This part retires those cases first, while the reviewer still runs, so part 3h/3 lands as the source change plus the surviving cases' re-pointing.
+
+**Approach.**
+- `test/review.test.ts`: delete each case whose subject is the pre-merge reviewer's run, verdict, prompt, retry, resume, nudge or stray-edit handling — the reviewer-run wiring and session-name cases, the stray-edit/dropped-commit cases, the verdict parser and recovery/strike cases, the kill/retry/timeout/resume/stall cases, the suite-rerun tripwire cases, and the revision/interdiff and fresh-merge `review_start` cases. Keep the deterministic-rule cases (`diffRuleReasons`, conflict markers, the unreadable and non-ASCII paths, the false-fix, backlog-structure, brief-block, PRINCIPLES and secret-leak cases), the exempt and `review.enabled=false` cases, the already-approved-HEAD case, the aborted case, the retry-delay case, and the fixtures.
+- `test/review-precheck.test.ts`: delete each case whose assertions require a reviewer run — the `reaches the reviewer` framing, the flake cases' reviewer arm, `gate pre-check timeout warns and still proceeds to the model review`, `a green pre-check hands its verified head to the merge path`, the reviewer-prompt and suite-rerun-tripwire cases, the approval-reuse-across-a-rebase cases, the second-slot reviewer overlap, and `with no free pool slot the check runs before the reviewer`. Keep the deterministic pre-check cases (compile failure, red script, named assertion, red-main no-strike, no-verdict baseline, non-npm check, shutdown, quarantined test, known failures) and the `diffRuleReasons` case.
+- Both files: prune the imports and helpers only the deleted cases used (`reviewerStub`/`withReviewerStub`, `TOUCH_SESSION`, `readRunBlocks`, `piRanMarker`, `logFlagsTo`, the verdict and session helpers), because `noUnusedLocals` fails the build otherwise. No kept case's assertions change.
+
+**Files touched.** test/review.test.ts test/review-precheck.test.ts
+
+**Acceptance criteria.**
+- Both files compile, and no remaining case asserts that the pre-merge gate ran a model reviewer, named a reviewer session, parsed a reviewer verdict, retried/resumed/nudged a reviewer, or overlapped the pre-check with a reviewer run.
+- `grep -n "reviewerStub\|withReviewerStub" test/review.test.ts test/review-precheck.test.ts` is empty.
+- No case whose subject is the deterministic diff rules or the build pre-check was deleted: their kept cases and their shared fixtures are untouched.
+- `npm run test:gate` passes.
+
+**Tests.**
+- The kept deterministic-rule and pre-check cases pass unchanged; this part adds no case (part 3h/3 adds the surviving-behavior cases its source change needs).
+
+### Every commit is verified on main, part 3h/3: the pre-merge gate runs no model reviewer — only a secret leak, a brief-block edit or a protected edit refuses a diff (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; requires parts 3g/3 and 3l/3 landed, since a role not on `review.afterMerge` must have its post-landing review queued before its pre-merge model review goes and the reviewer's dedicated cases must be retired before the run they assert goes; touches src/review/review.ts src/review/diff-rules.ts docs/how-it-works.md test/review.test.ts test/review-precheck.test.ts)
+
+**Previously held 4**
 
 **Goal.** `reviewAheadOfMain` (src/review/review.ts) stops running the pre-merge model reviewer: after the deterministic diff rules, the exempt check and the build pre-check it approves, so every merged change is judged once, by the post-landing review (part 3g/3). The pre-merge rejection set shrinks to the findings a later commit cannot repair: a leaked credential (`secretLeakReason`), a brief-block edit (`briefEditReason`) and a protected edit (`protectedEditReason`). A conflict marker, a false fix claim and a broken backlog structure no longer refuse here — the main watch still reports them on main's tip.
 
@@ -187,7 +207,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The reviewer resume state `reviewAttempt` no longer reads is left for part 3e/3 to delete; this part removes only what `noUnusedLocals` would reject.
 - docs/how-it-works.md: the review paragraph (the `review.afterMerge` role's separate path at its "A role listed in `review.afterMerge` is reviewed after merging" sentence) says one review runs after every landing and the pre-merge gate is deterministic.
 
-**Files touched.** src/review/review.ts src/review/diff-rules.ts docs/how-it-works.md test/review.test.ts
+**Files touched.** src/review/review.ts src/review/diff-rules.ts docs/how-it-works.md test/review.test.ts test/review-precheck.test.ts
 
 **Acceptance criteria.**
 - `reviewAheadOfMain` starts no pi reviewer run; a diff with a secret leak, a brief-block edit or a protected edit is still rejected with that reason, and a diff with a conflict marker, a false fix claim or a broken backlog structure approves instead.
@@ -195,7 +215,9 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `npm run test:gate` passes.
 
 **Tests.**
-- test/review.test.ts: `only a secret leak and a protected edit refuse a pre-merge diff` — a leaked credential, a brief-block edit and a protected edit end `review_rejected` with their reason; a conflict marker, a false fix claim and a broken backlog structure approve with no reviewer run.
+- Part 3l/3 has retired the reviewer cases in both files; this part re-points only the kept cases its source change touches.
+- test/review.test.ts: `only a secret leak and a protected edit refuse a pre-merge diff` — a leaked credential, a brief-block edit and a protected edit end `review_rejected` with their reason; a conflict marker, a false fix claim and a broken backlog structure approve with no reviewer run. No case here references `runReviewer`.
+- test/review-precheck.test.ts: re-point the kept `diffRuleReasons` case at the gate scope (its new `only`/`gateRejectReasons` argument), and add `a green pre-check approves with no reviewer run` — a healthy build returns `{ decision: "approved" }`, `state.lastApprovedHead` is set, and the pi-run marker is absent.
 - The existing `gateBuildPrecheck` and exempt-path cases still pass.
 
 ### Every commit is verified on main, part 3i/3: the reviewer-provider holds defer only the post-landing review — no role start, verify or landing waits on the reviewer, and the `review.afterMerge` scheduling exemptions go (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; requires part 3h/3 landed, since no pre-merge reviewer remains to be held; touches src/orchestrator/scheduling-skip.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-scope.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-run.ts docs/how-it-works.md test/orchestrator-scheduling.test.ts test/runner-recovery.test.ts test/runner-leftover-recovery.test.ts)
