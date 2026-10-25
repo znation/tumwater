@@ -91,6 +91,22 @@ function inspectBodyLines(p: RoleViewPayload, now: number): string[] {
     }
     lines.push("");
   }
+  // The feedback observer's per-install filing ledger (role-view.ts's filings,
+  // feedback-filings.ts's filingRows): each issue this install filed, newest-first, its number,
+  // title, and age — the operator twin of the ledger that is otherwise the observer's only
+  // memory. Present only for feedback, so every other role's render stays byte-identical; an
+  // enabled-but-quiet observer reads as "none filed yet" rather than a truncated report.
+  if (p.filings) {
+    lines.push("## Filings", "");
+    if (p.filings.length === 0) {
+      lines.push("- none filed yet");
+    } else {
+      for (const f of p.filings) {
+        lines.push(`- #${f.issue} ${f.title} — ${formatAge(now - f.filedAt)} ago`);
+      }
+    }
+    lines.push("");
+  }
   lines.push(...fencedOrNone("Next run's prompt", p.nextPrompt, "nothing to do this run"));
   // run-prompt.ts dequeues exactly one queued prompt per run, so with more than one
   // waiting the block above shows only the oldest — say so, so the count line and the

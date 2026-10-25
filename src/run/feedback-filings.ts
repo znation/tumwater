@@ -24,6 +24,24 @@ interface FeedbackFiling {
   filedAt: number;
 }
 
+/** One row of the operator read of the `feedback` filing ledger: the issue number, title, and
+ * when it was filed, ordered newest-first by `filingRows`. The single ordering the prompt
+ * block, `tumwater role feedback`, the TUI notes view and the dashboard drawer all share, so
+ * none of them can drift on what was filed. */
+export interface FilingRow {
+  issue: number;
+  title: string;
+  filedAt: number;
+}
+
+/** Collect the ledger into `FilingRow`s newest-first by `filedAt` — a stable sort, so two
+ * filings sharing a timestamp keep their ledger (insertion) order. A ledger stored by
+ * `recordFiled` is already newest-first, so this reorders nothing on the normal path; it
+ * guarantees a hand-edited or torn file that is not already ordered still reads consistently. */
+export function filingRows(filings: readonly FeedbackFiling[]): FilingRow[] {
+  return [...filings].sort((a, b) => b.filedAt - a.filedAt);
+}
+
 function isFiling(value: unknown): value is FeedbackFiling {
   if (!isJsonObject(value)) return false;
   return (
@@ -63,7 +81,9 @@ export function recordFiled(
  * each line `#<n> <title> (<age>)` mirroring qa's coverage lines. */
 export function renderFilingsBlock(filings: readonly FeedbackFiling[], now: number = Date.now()): string | undefined {
   if (filings.length === 0) return undefined;
-  const lines = filings.map(
+  // Render through filingRows, the one ordering the prompt block and the operator read share,
+  // so a ledger not already newest-first still reads that way in both places.
+  const lines = filingRows(filings).map(
     (f) => `  #${f.issue} ${f.title} (${formatAge(now - f.filedAt)})`,
   );
   return ["Previously filed from this install:", ...lines].join("\n");

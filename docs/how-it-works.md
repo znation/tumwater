@@ -248,7 +248,8 @@ discards a role's in-flight merge.
   badge and a `current` prompt block cannot disagree. The `qa` observer keeps its own flow-coverage
   ledger the same way, and a coverage ledger whose newest exercise is over three days old raises the
   doctor `qa coverage` warn and the standing `qa-stale` alert through the one `qaCoverageStalled`
-  predicate.
+  predicate. The `feedback` observer's per-install filing ledger gets the same operator read: the
+  issues it filed are visible in `tumwater role feedback` and the dashboards' role detail.
 - A main watch runs the full check on main's tip in the background whenever the head moves (one run
   at a time, covering every commit since the last watched head; a red is re-run once before it counts;
   a doc-only tip inherits its green). It logs a `main_check` event with the failing test titles and

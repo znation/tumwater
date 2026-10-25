@@ -34,6 +34,7 @@ import { readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-ac
 import { readAccount, windowEntries } from "../agent/subscription-account.js";
 import { CONFIG_BASENAME, configPath, roleNotesPath } from "../paths.js";
 import { coverageRows, readQaCoverage, type CoverageRow } from "../run/qa-coverage.js";
+import { filingRows, readFeedbackFilings, type FilingRow } from "../run/feedback-filings.js";
 import { readTextOrNull, statOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
 import { finiteNumber, objectOrEmpty } from "../files/json-object.js";
@@ -206,6 +207,14 @@ export interface RoleViewPayload {
    * stay byte-identical. The ledger read degrades to empty coverage on a missing or torn file
    * exactly as `readQaCoverage` already does. */
   flowCoverage?: CoverageRow[];
+  /** The `feedback` observer's per-install filing ledger (plans/feedback-role.md 2/2), surfaced
+   * to its one reader: each GitHub issue this install already filed, newest-first (via
+   * feedback-filings.ts's `filingRows`), so the operator sees what the role filed, when, and
+   * under what title — the twin of `qa`'s `flowCoverage` above. Present only for the canonical
+   * `feedback` id, so every other role's `--json` payload and Markdown render stay
+   * byte-identical. The ledger read degrades to an empty list on a missing or torn file exactly
+   * as `readFeedbackFilings` already does. */
+  filings?: FilingRow[];
   /** The role's own spend over its retained event window — tokens, real cost, and notional
    * (subscription) cost summed from the same `run_end` events `recentOutcomes` reads, each
    * folded through the shared `eventUsage` finiteness guard so a torn field contributes 0.
@@ -507,6 +516,13 @@ export function rolePayload(
     // payload and Markdown render stay byte-identical. The ledger read degrades to empty
     // coverage on a missing or torn file exactly as readQaCoverage already does.
     ...(role === "qa" ? { flowCoverage: coverageRows(readQaCoverage(root), now.getTime()) } : {}),
+    // The feedback observer's per-install filing ledger (plans/feedback-role.md 2/2), the twin
+    // of qa's flowCoverage block above: each issue this install filed, newest-first via the one
+    // filingRows ordering the prompt block and the operator read share. Present only for the
+    // canonical feedback id, so every other role's --json payload and Markdown render stay
+    // byte-identical. The ledger read degrades to an empty list on a missing or torn file
+    // exactly as readFeedbackFilings already does.
+    ...(role === "feedback" ? { filings: filingRows(readFeedbackFilings(root)) } : {}),
     inboxCount: queuedRolePromptCount(root, role),
     // The resolved primary seam's declared context window in tokens, or null when it cannot
     // be known (a non-pi seam, an unresolvable provider/model pair, or a model with no

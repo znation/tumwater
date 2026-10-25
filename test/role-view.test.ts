@@ -25,6 +25,7 @@ import { writeAccount } from "../src/agent/subscription-account.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { recordFlow } from "../src/run/qa-coverage.js";
+import { recordFiled } from "../src/run/feedback-filings.js";
 
 const NO_MODELS = "/nonexistent/tumwater-test-models.json"; // readPiProviders degrades to []
 const NOW = 1_800_000_000_000;
@@ -451,6 +452,27 @@ test("rolePayload carries qa's flow coverage and no other role's", () => {
   });
   // Every other role's payload carries no flowCoverage field.
   assert.equal(rolePayload(dir, "clean", NO_MODELS).flowCoverage, undefined);
+});
+
+test("rolePayload carries feedback's filings and no other role's", () => {
+  const dir = root();
+  // No ledger: feedback's payload still carries an empty filings list (empty, not absent).
+  assert.deepEqual(rolePayload(dir, "feedback", NO_MODELS).filings, []);
+  recordFiled(dir, 12, "post-review churn miscounted", NOW);
+  const fb = rolePayload(dir, "feedback", NO_MODELS);
+  assert.deepEqual(fb.filings, [
+    { issue: 12, title: "post-review churn miscounted", filedAt: NOW },
+  ]);
+  // Every other role's payload carries no filings field.
+  assert.equal(rolePayload(dir, "qa", NO_MODELS).filings, undefined);
+  assert.equal(rolePayload(dir, "clean", NO_MODELS).filings, undefined);
+  // The feedback render names each filing; an empty ledger reads as none filed yet.
+  const md = renderRoleMarkdown(rolePayload(dir, "feedback", NO_MODELS));
+  assert.match(md, /## Filings/);
+  assert.match(md, /#12 post-review churn miscounted/);
+  const bare = rolePayload(root(), "feedback", NO_MODELS);
+  assert.deepEqual(bare.filings, []);
+  assert.match(renderRoleMarkdown(bare), /none filed yet/);
 });
 
 test("a custom role renders as user-defined, on the maintenance tier", () => {

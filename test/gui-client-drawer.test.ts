@@ -773,6 +773,35 @@ test("the drawer renders the qa flow coverage and shows none without it", async 
   assert.doesNotMatch(t2.paintedFor("drawerrole"), /Flow coverage/);
 });
 
+// The feedback observer's per-install filing ledger (rolePayload's filings) ripples into the
+// role drawer like the qa flow coverage: a Filings section naming each issue this install filed.
+test("the drawer renders the feedback filings and shows none without them", async () => {
+  const t = openDrawer(["toggleRole"], {
+    status: workingStatus(),
+    responses: {
+      "/api/role?role=feedback": {
+        notes: null,
+        nextPrompt: null,
+        filings: [{ issue: 12, title: "post-review churn miscounted", filedAt: Date.now() - 60_000 }],
+      },
+    },
+  });
+  t.scope.toggleRole("feedback");
+  await flush();
+  const role = t.paintedFor("drawerrole");
+  assert.match(role, /Filings/);
+  assert.match(role, /#12 post-review churn miscounted/);
+
+  // A payload without filings (the existing notes/prompt cases) renders no such section.
+  const t2 = openDrawer(["toggleRole"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: "a note", nextPrompt: null } },
+  });
+  t2.scope.toggleRole("clean");
+  await flush();
+  assert.doesNotMatch(t2.paintedFor("drawerrole"), /Filings/);
+});
+
 // The role drawer's Configuration section mirrors `tumwater role <id>`'s field labels and
 // wording family from the same /api/role payload (rolePayload), so the page and the CLI read
 // one role's configuration identically: model/tier, provider cap, image reading (with the

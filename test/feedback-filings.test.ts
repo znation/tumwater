@@ -7,6 +7,7 @@ import {
   readFeedbackFilings,
   recordFiled,
   renderFilingsBlock,
+  filingRows,
 } from "../src/run/feedback-filings.js";
 import { feedbackFilingsPath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -65,4 +66,23 @@ test("an empty ledger renders no block; a non-empty one renders newest-first wit
   assert.ok(block.indexOf("#4 recent") < block.indexOf("#9 old"), block);
   assert.match(block, /#4 recent \(1m\)/);
   assert.match(block, /#9 old \(2d\)/);
+});
+
+test("filingRows orders newest-first and renderFilingsBlock maps it", () => {
+  const now = 1_800_000_000_000;
+  // A ledger not already newest-first — as a hand-edited or torn file could be.
+  const ledger = [
+    { issue: 9, title: "old", filedAt: now - 86400_000 * 2 },
+    { issue: 4, title: "recent", filedAt: now - 60_000 },
+    { issue: 7, title: "same", filedAt: now - 60_000 }, // ties with 4: keeps ledger order
+  ];
+  const rows = filingRows(ledger);
+  assert.deepEqual(rows.map((r) => r.issue), [4, 7, 9]);
+  // Ties keep their ledger (insertion) order.
+  assert.deepEqual(rows.map((r) => r.title), ["recent", "same", "old"]);
+  assert.deepEqual(rows[1], { issue: 7, title: "same", filedAt: now - 60_000 });
+  // renderFilingsBlock reads through the same ordering, newest-first with ages.
+  const block = renderFilingsBlock(ledger, now)!;
+  assert.ok(block.indexOf("#4 recent") < block.indexOf("#9 old"), block);
+  assert.match(block, /#7 same \(1m\)/);
 });

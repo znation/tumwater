@@ -290,6 +290,11 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       // order the prompt block and "tumwater role qa" use): each flow's last exercise and result.
       // Ages ride fmtAgo like the other list rows; a flow never exercised reads "never exercised".
       const flowCoverage = Array.isArray(view.flowCoverage) ? view.flowCoverage : null;
+      // The feedback observer's per-install filing ledger (rolePayload's filings, the same
+      // filingRows order the prompt block and "tumwater role feedback" use): each issue this
+      // install filed, newest-first, its number, title, and age. Ages ride fmtAgo like the other
+      // list rows.
+      const filings = Array.isArray(view.filings) ? view.filings : null;
       const canEdit = r.role !== "director";
       const editing = canEdit && noteEditing && noteEditing.role === r.role;
       const buttons = !canEdit ? "" : "<span style='margin-left:auto'><button type='button' class='btn btn-sm' data-act='note-edit' data-arg='" + esc(r.role) + "'>Edit</button>" +
@@ -316,6 +321,17 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
                   ? "bug filed (BUGS.md: \"" + (typeof f.summary === "string" ? f.summary : "see BUGS.md") + "\")"
                   : "passed");
             return "<li><span class='when'>" + esc(flow) + "</span><span class='clamp1'>" + esc(text) + "</span></li>";
+          }).join("") + "</ul></section>" : "") +
+        // The feedback filing ledger (rolePayload's filings), the drawer twin of the CLI's
+        // "## Filings" section — each issue this install filed, newest-first, its number, title,
+        // and age. No backticks allowed here (this whole script is one big String.raw template).
+        (filings && filings.length ? "<section><div class='sec-head'><h3>Filings" +
+          "<span class='muted' style='font-size:13px'>· " + filings.length + "</span></h3></div>" +
+          "<ul class='run-list'>" + filings.map((f) => {
+            const n = typeof f.issue === "number" ? String(f.issue) : "";
+            const title = typeof f.title === "string" ? f.title : "";
+            return "<li><span class='when'>" + esc(fmtAgo(Number(f.filedAt))) + "</span>" +
+              "<span class='clamp1'>#" + esc(n) + " " + esc(title) + "</span></li>";
           }).join("") + "</ul></section>" : "") +
         // The role's recent run outcomes (rolePayload's recentOutcomes, read from the event
         // log), rendered like the Recent runs list above: each with its relative age, result
