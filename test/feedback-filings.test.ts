@@ -54,6 +54,27 @@ test("a malformed ledger reads as empty", () => {
   assert.deepEqual(readFeedbackFilings(dir), []);
 });
 
+test("a ledger mixing well-formed and malformed entries keeps only the well-formed ones", () => {
+  const dir = root();
+  fs.writeFileSync(
+    feedbackFilingsPath(dir),
+    JSON.stringify({
+      filings: [
+        { issue: 12, title: "a bug", filedAt: 1_800_000_000_000 },
+        { issue: "x" }, // malformed: no title/filedAt
+        { issue: 9, title: "another", filedAt: 1_800_000_000_001 },
+        null, // malformed: not an object
+      ],
+    }),
+  );
+  const filings = readFeedbackFilings(dir);
+  assert.deepEqual(
+    filings.map((f) => f.issue),
+    [12, 9],
+    "a partial corruption drops only the bad entries, so the prompt still dedupes the rest",
+  );
+});
+
 test("an empty ledger renders no block; a non-empty one renders newest-first with ages", () => {
   const dir = root();
   assert.equal(renderFilingsBlock(readFeedbackFilings(dir)), undefined);
