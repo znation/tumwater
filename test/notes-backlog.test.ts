@@ -111,6 +111,26 @@ test("forty named parts render at most 12 lines", () => {
   const count = block.split("\n").length;
   assert.ok(count <= 12, `expected at most 12 lines, got ${count}: ${block}`);
   assert.equal(count, 12, "forty parts and the series line fill the cap");
+  assert.match(block, /… and 31 more named items/, "the dropped lines are named");
+});
+
+test("the remainder line names the named items past the cap", () => {
+  // Eleven named items fill the eleven item lines under the header with no remainder; twelve
+  // named items push the last shown item off in favour of a line naming the dropped ones.
+  const eleven = Array.from({ length: 11 }, (_, i) => series(`${i + 1}`, 11, `x${i}`));
+  const elevenBlock = notesBacklogBlock(Array.from({ length: 11 }, (_, i) => `Codex backend ${i + 1}/11`).join("\n"), empty({ planned: eleven }));
+  assert.ok(elevenBlock);
+  assert.equal(elevenBlock!.split("\n").length, 12, "eleven named items fill exactly the cap");
+  assert.ok(!elevenBlock!.includes("more named item"), "no remainder line under the cap");
+
+  const twelve = Array.from({ length: 12 }, (_, i) => series(`${i + 1}`, 12, `x${i}`));
+  const twelveBlock = notesBacklogBlock(
+    Array.from({ length: 12 }, (_, i) => `Codex backend ${i + 1}/12`).join("\n"),
+    empty({ planned: twelve }),
+  );
+  assert.ok(twelveBlock);
+  assert.equal(twelveBlock!.split("\n").length, 12);
+  assert.match(twelveBlock!, /… and 2 more named items/, "the last line names the dropped items");
 });
 
 test("an entry named by a bug matches through its Open title's first six words", () => {

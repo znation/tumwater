@@ -17,8 +17,10 @@
  *    names that entry.
  * Each named planned part carries its eligibility hold (entryHoldAgainst); a part in
  * PLANS-DONE.md reads `done`, a part found nowhere reads `not in the backlog`. Each named series
- * gets one summary line of its planned-part state. The block is at most 12 lines and returns
- * undefined when the notes name nothing live. */
+ * gets one summary line of its planned-part state. The block is at most 12 lines and, when the
+ * notes name more items than fit, its last line says how many were dropped (`… and N more named
+ * items`) so a dropped item cannot read as a complete answer; it returns undefined when the notes
+ * name nothing live. */
 
 import { entryHoldAgainst, entryKindLabel, type EntryHold } from "../backlog/backlog-eligibility.js";
 import type { BacklogEntry } from "../backlog/backlog-md.js";
@@ -195,6 +197,8 @@ export function notesBacklogBlock(notes: string, backlog: NotesBacklog): string 
   }
   for (const entry of namedEntries.values()) lines.push(`- ${entry.title} — ${holdWording(entry.state, entry.file)}`);
   if (lines.length === 0) return undefined;
-  const shown = lines.slice(0, MAX_BLOCK_LINES - 1);
-  return [HEADER, ...shown].join("\n");
+  const cap = MAX_BLOCK_LINES - 1; // the item lines; the header is the twelfth line
+  if (lines.length <= cap) return [HEADER, ...lines].join("\n");
+  const shown = lines.slice(0, cap - 1);
+  return [HEADER, ...shown, `… and ${plural(lines.length - shown.length, "more named item")}`].join("\n");
 }

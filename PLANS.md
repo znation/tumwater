@@ -265,26 +265,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Files touched.** test/merge-pipeline.test.ts test/merge-drain-verify.test.ts test/runner.test.ts test/runner-leftover-recovery.test.ts test/orchestrator-3.e2e.test.ts test/orchestrator-mixed.e2e.test.ts test/orchestrator-director.test.ts
 
-### The role-prompt backlog block names the named items it drops instead of truncating silently (planned 2026-10-25 by the plan role; independent of every eligible plan and blocked part — no entry in `## Planned` and no `Every commit is verified on main` part edits `src/prompt/notes-backlog.ts` or `test/notes-backlog.test.ts`, and no other module writes that block; touches src/prompt/notes-backlog.ts test/notes-backlog.test.ts)
-
-**Goal.** `notesBacklogBlock` (src/prompt/notes-backlog.ts) renders "what the backlog says now about entries your notes name" so a note cannot keep a hold the backlog has lifted. It builds one line per named series, named part and named entry, then caps the block — `const shown = lines.slice(0, MAX_BLOCK_LINES - 1);` — and drops every line past the cap with no marker (the block is documented "at most 12 lines"). A role whose notes name more than eleven live items therefore reads a block that looks complete while the tail — often the very item whose hold changed — is gone, the same silent truncation the failure digest's capped sections no longer allow. The cap stays; the block names its remainder so a dropped item cannot read as a complete answer.
-
-**Approach.**
-- src/prompt/notes-backlog.ts, `notesBacklogBlock`'s tail: keep the `if (lines.length === 0) return undefined;` guard, then branch on the cap instead of slicing it blindly — `const cap = MAX_BLOCK_LINES - 1;` (the item lines; the header is the twelfth line). When `lines.length <= cap`, return `[HEADER, ...lines].join("\n")` exactly as today, so a block of eleven or fewer items is byte-identical. Otherwise `const shown = lines.slice(0, cap - 1);` and return `[HEADER, ...shown, `… and ${plural(lines.length - shown.length, "more named item")}`].join("\n")` — the remainder line replaces the would-be last shown item, so the block is still exactly `MAX_BLOCK_LINES` lines. `plural` is already imported.
-- Update `notesBacklogBlock`'s doc comment (and `MAX_BLOCK_LINES`'s doc if it names the cap): the block is at most 12 lines and, when the notes name more items than fit, its last line says how many were dropped (`… and N more named items`).
-
-**Files touched.** src/prompt/notes-backlog.ts test/notes-backlog.test.ts
-
-**Acceptance criteria.**
-- Eleven or fewer named items render exactly as today — same lines, same order, no remainder line — so a normal block is byte-identical.
-- More than eleven named items render at most 12 lines, and the last line is `… and N more named items`, where N is the number of built lines past the shown ones (for the existing forty-part fixture, `… and 31 more named items`). The header stays the first line, and the named-series line stays ahead of the part lines the block still shows.
-- A notes file naming nothing live still returns undefined; the block's consumers are unchanged, because only `notesBacklogBlock`'s returned text changes and the call in src/run/run-prompt.ts stays as it is.
-- No file outside the Files-touched list is edited; `npm run test:gate` passes.
-
-**Tests.**
-- test/notes-backlog.test.ts, the existing `forty named parts render at most 12 lines`: keep `count <= 12` and `count === 12`, and add `assert.match(block, /… and 31 more named items/)` so the dropped lines are named; keep the series-line-first assertion.
-- Add `the remainder line names the named items past the cap`: a series with exactly eleven named parts renders 12 lines with no `more named items`; with twelve named parts, the block is 12 lines and its last line is `… and 2 more named items`. Use the existing `series(...)` fixture builder.
-
 ### The agent-run setup failure closes the logs it opened — INV-CQ1's fd-leak closing gets its test (planned 2026-10-25 by the plan role; independent of every eligible plan — no `## Planned` entry edits test/pi.test.ts, and the only `## Planned` edits to docs/invariants.md are the blocked `Every commit is verified on main` part 3m/3's merge-gate section, far from the end-of-file INV-CQ1 — touching the same two files only at distant regions, so whichever lands second rebases there; touches test/pi.test.ts docs/invariants.md)
 
 **Goal.** `runAgent` (src/agent/run-agent.ts) opens the raw and native append logs inside its setup `try` and, when a later setup step throws — `fs.mkdtempSync` for the run scratch dir, or the second `openAppendLog` — its `catch` calls `rawLog?.stream.end()` and `nativeLog?.stream.end()` before resolving the failed run, so no fd is leaked. docs/invariants.md's INV-CQ1 states this, and its **Guarantee** ends "A log opened before the failure is ended so no fd stays open; no test pins that closing." The two pinned setup-failure tests assert only `ok === false` and the error message, so a regression that dropped the two `end()` calls would leave the suite green while leaking one or two fds per failed run in the long-lived supervisor. Pin the closing at both failure timings and drop the caveat.
