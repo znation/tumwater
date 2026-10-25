@@ -311,7 +311,11 @@ function mergeEventMessage(e: HarnessEvent): string {
     }
     case "main_check": {
       const failing = Array.isArray(e.failingTests) ? e.failingTests.map(String) : [];
-      const covered = Number(e.covered) > 1 ? ` (${textOr(e.covered)} commits)` : "";
+      // The commit count renders only when it is a real number over 1 — the corrupt-field rule
+      // this file applies to every event number (a hand-edited line's quoted "3" or "0x10" reads
+      // as no covered count, not as a coerced parenthetical).
+      const coveredN = finiteNumber(e.covered, null);
+      const covered = coveredN !== null && coveredN > 1 ? ` (${coveredN} commits)` : "";
       const verdict = e.status === "failed" ? "failed" : "passed";
       const names = failing.length > 0 ? `: ${joinWithMore(failing, 3, "; ")}` : "";
       return `main ${shortSha(String(e.sha ?? ""))}${covered} full check ${verdict}${names}`;

@@ -670,6 +670,22 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   assert.match(restartTorn, /\(finished current work in 0m\)$/, `corrupt drain/abort counts must read zero: ${restartTorn}`);
   assert.doesNotMatch(restartTorn, /NaN|true run/);
 
+  // A main_check's covered commit count renders only when it is a real number over 1; a
+  // hand-edited string must not coerce Number("0x10") → 16 into a fabricated parenthetical.
+  const batch = formatEvent({
+    ts: 0, source: "tumwater", type: "main_check", sha: "a".repeat(40), status: "passed", covered: 2,
+  } as never);
+  assert.match(batch, /\(2 commits\)/);
+  const single = formatEvent({
+    ts: 0, source: "tumwater", type: "main_check", sha: "a".repeat(40), status: "passed", covered: 1,
+  } as never);
+  assert.doesNotMatch(single, /\(1 commits?\)/);
+  const corrupt = formatEvent({
+    ts: 0, source: "tumwater", type: "main_check", sha: "a".repeat(40), status: "passed", covered: "0x10",
+  } as never);
+  assert.doesNotMatch(corrupt, /\(.*commits?\)/, `corrupt covered must read as none: ${corrupt}`);
+  assert.doesNotMatch(corrupt, /0x10/);
+
   // BUGS.md 2026-09-23: a refused restart names both builds and the reason; a dead team says so.
   const refused = formatEvent({
     ts: 0, source: "tumwater", type: "restart_refused", from: "a".repeat(40), to: "b".repeat(40), reason: "not initialized",
