@@ -168,6 +168,12 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   function histDetailKey(role, run) {
     return role + "#" + run;
   }
+  // The one ok entry a /api/run answer becomes: text plus the three optional detail fields,
+  // each guarded to its own type so a server that omits one still renders a stable card. Both
+  // the newest-failure fetch and the per-row fetch build it, so the two cannot drift.
+  function histDetailOk(d) {
+    return { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "", revertSha: typeof d.revertSha === "string" ? d.revertSha : null, hasCommit: d.hasCommit === true };
+  }
   // The pinned newest-failure card: the Newest failure toolbar button opens the team's newest
   // failing run (GET /api/run?last=1&result=problems, no role — the role-less last endpoint)
   // as a card above the table, regardless of the current role, window or count, and its ×
@@ -188,7 +194,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
           "/api/run answered the newest failing run without a text field — the running tumwater may not match this dashboard",
         );
       const key = histDetailKey(d.role, d.run);
-      histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "", revertSha: typeof d.revertSha === "string" ? d.revertSha : null, hasCommit: d.hasCommit === true });
+      histDetails.set(key, histDetailOk(d));
       histNewest = { state: "ok", key };
     } catch (err) {
       histNewest = { state: "error", message: errMessage(err, "Newest failure unavailable") };
@@ -449,7 +455,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
         throw new Error(
           "/api/run answered " + role + " run " + run + " without a text field — the running tumwater may not match this dashboard",
         );
-      histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "", revertSha: typeof d.revertSha === "string" ? d.revertSha : null, hasCommit: d.hasCommit === true });
+      histDetails.set(key, histDetailOk(d));
     } catch (err) {
       histDetails.set(key, { state: "error", message: errMessage(err, "Run detail unavailable") });
     }
