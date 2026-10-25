@@ -37,17 +37,7 @@ interface StatusAlertsInput {
   staleClaims: readonly ClaimState[];
 }
 
-/** The status/capacity and role-phase alerts, in emission order: a spent budget
- * (chain/fallback/budget), per-role cap, disk, install, and main-red holds, roles
- * failing run after run or stuck, and a stale running build. Extracted from
- * teamAlerts (part 1/5 of the teamAlerts split) so the shared module stays small;
- * the input names exactly the fields this run reads. The caller pushes the returned
- * alerts at the position this run used to occupy, so the emitted key order is
- * unchanged. */
-export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
-  const { snap, roles, staleClaims } = input;
-  const out: TeamAlert[] = [];
-  const b = snap.budget;
+function pushChainAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
   const onFallback = chainFragments(snap.chain);
   if (onFallback) {
     out.push({
@@ -58,6 +48,10 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
+}
+
+function pushSpentBudgetAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
+  const b = snap.budget;
   if (!b.free && b.capUsd > 0 && b.spentUsd >= b.capUsd) {
     // Tiered fallbacks (part 7b/8): the snapshot's tier map stands exactly when the
     // tiers resolve to two or more distinct pairs, so list them and let the borrowed
@@ -91,11 +85,14 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
           },
     );
   }
-  // A role over its maxDailyCostUsdPerRole cap (status-model.ts "waiting: daily cap spent") is
-  // a per-role hold — one role sits idle while the rest of the team keeps working — so the team
-  // banner names it the way the budget, disk, and quiet banners name theirs, instead of leaving
-  // an operator to read every row. An amber ask (it needs a raise to resume); clears on its own
-  // at local midnight when the spend window rolls over.
+}
+
+// A role over its maxDailyCostUsdPerRole cap (status-model.ts "waiting: daily cap spent") is
+// a per-role hold — one role sits idle while the rest of the team keeps working — so the team
+// banner names it the way the budget, disk, and quiet banners name theirs, instead of leaving
+// an operator to read every row. An amber ask (it needs a raise to resume); clears on its own
+// at local midnight when the spend window rolls over.
+function pushRoleCapAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"], roles: readonly AlertRole[]): void {
   const capPausedRoles = roles.filter((l) => snap.capPaused.includes(l.role));
   if (snap.capPaused.length > 0) {
     out.push({
@@ -106,11 +103,14 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: openRoleActions(capPausedRoles),
     });
   }
-  // The disk floor holding new work (plans/disk-floor.md, part 4/4): the header badge and the
-  // role rows say what is happening, but the banner names the threshold and the way out, so an
-  // operator hitting a full volume does not have to read events. An amber ask — the team is
-  // stopped and needs room, not merely informed. Only while the hold is on; below the reclaim
-  // threshold but not yet held is the badge's quieter business.
+}
+
+// The disk floor holding new work (plans/disk-floor.md, part 4/4): the header badge and the
+// role rows say what is happening, but the banner names the threshold and the way out, so an
+// operator hitting a full volume does not have to read events. An amber ask — the team is
+// stopped and needs room, not merely informed. Only while the hold is on; below the reclaim
+// threshold but not yet held is the badge's quieter business.
+function pushDiskAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
   if (snap.disk?.held) {
     out.push({
       key: "disk",
@@ -120,9 +120,12 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // The root checkout's node_modules is behind package-lock.json (a failed post-merge re-sync):
-  // checks install into their own trees until it is fixed. Clears on drift, so a hand fix
-  // clears it too.
+}
+
+// The root checkout's node_modules is behind package-lock.json (a failed post-merge re-sync):
+// checks install into their own trees until it is fixed. Clears on drift, so a hand fix
+// clears it too.
+function pushInstallDriftAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
   const drift = snap.rootInstallDrift ?? [];
   if (drift.length) {
     const names = joinWithMore(drift, 5);
@@ -134,11 +137,14 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // No deterministic build check is declared (detectBuildCheck returned null): the review
-  // gate's build pre-check, the red-main baseline and redeploy's green check have nothing to
-  // run, and the header badge renders nothing (mainCheckBadge needs a build_check event).
-  // The same state the doctor `check` row warns on, raised as a standing alert on the always-on
-  // surfaces. Independent of team state (running or stopped), like the install alert beside it.
+}
+
+// No deterministic build check is declared (detectBuildCheck returned null): the review
+// gate's build pre-check, the red-main baseline and redeploy's green check have nothing to
+// run, and the header badge renders nothing (mainCheckBadge needs a build_check event).
+// The same state the doctor `check` row warns on, raised as a standing alert on the always-on
+// surfaces. Independent of team state (running or stopped), like the install alert beside it.
+function pushNoCheckAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
   if (snap.noDeclaredCheck) {
     out.push({
       key: "no-check",
@@ -148,11 +154,14 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // A brief candidate exists but none resolves to a usable prompt block (briefBlockMissing):
-  // every run reaches its model with no project prompt, so the team burns tokens producing
-  // work unrelated to the project. The same marker-less/unreadable/empty-block state the doctor
-  // `brief` row warns on, raised as a standing alert on the always-on surfaces (the bare
-  // pre-init repo stays silent). Independent of team state, like the no-check alert beside it.
+}
+
+// A brief candidate exists but none resolves to a usable prompt block (briefBlockMissing):
+// every run reaches its model with no project prompt, so the team burns tokens producing
+// work unrelated to the project. The same marker-less/unreadable/empty-block state the doctor
+// `brief` row warns on, raised as a standing alert on the always-on surfaces (the bare
+// pre-init repo stays silent). Independent of team state, like the no-check alert beside it.
+function pushNoBriefAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
   if (snap.noBrief) {
     out.push({
       key: "no-brief",
@@ -162,10 +171,13 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // A brief block past the read cap (briefBlockOverCap): every run's prompt silently carries
-  // only the head plus a truncation marker, so each role plans and codes against a cut brief.
-  // The same over-cap state the doctor `brief` row warns on, raised as a standing alert on the
-  // always-on surfaces; mutually exclusive with `no-brief` (an over-cap block is non-empty).
+}
+
+// A brief block past the read cap (briefBlockOverCap): every run's prompt silently carries
+// only the head plus a truncation marker, so each role plans and codes against a cut brief.
+// The same over-cap state the doctor `brief` row warns on, raised as a standing alert on the
+// always-on surfaces; mutually exclusive with `no-brief` (an over-cap block is non-empty).
+function pushBriefTruncatedAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
   if (snap.briefTruncated) {
     out.push({
       key: "brief-truncated",
@@ -175,12 +187,15 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // A role note past the read bound (collectRoleNotesOverCap's predicate, the doctor `role
-  // notes` row's own): `readRoleNote` truncates that role's note on read, so the role's next
-  // prompt carries only the note's head plus a truncation marker while the operator sees the
-  // file whole — a silently degraded next run on a green-looking status. The standing twin of
-  // the doctor `role notes` row's warn, raised as an amber alert on the always-on surfaces.
-  // Independent of team state, like the no-brief alert beside it.
+}
+
+// A role note past the read bound (collectRoleNotesOverCap's predicate, the doctor `role
+// notes` row's own): `readRoleNote` truncates that role's note on read, so the role's next
+// prompt carries only the note's head plus a truncation marker while the operator sees the
+// file whole — a silently degraded next run on a green-looking status. The standing twin of
+// the doctor `role notes` row's warn, raised as an amber alert on the always-on surfaces.
+// Independent of team state, like the no-brief alert beside it.
+function pushRoleNotesTruncatedAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
   const notesOver = snap.roleNotesOverCap ?? [];
   if (notesOver.length > 0) {
     out.push({
@@ -191,10 +206,13 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
-  // PRINCIPLES.md is over its prompt cap (principlesBlockOverCap): every role's <principles>
-  // block carries only its head plus a truncation marker, so the team runs on truncated design
-  // guidance. The same over-cap state the doctor `principles` row warns on, raised as a standing
-  // alert on the always-on surfaces. Independent of team state, like the no-brief alert beside it.
+}
+
+// PRINCIPLES.md is over its prompt cap (principlesBlockOverCap): every role's <principles>
+// block carries only its head plus a truncation marker, so the team runs on truncated design
+// guidance. The same over-cap state the doctor `principles` row warns on, raised as a standing
+// alert on the always-on surfaces. Independent of team state, like the no-brief alert beside it.
+function pushPrinciplesTruncatedAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
   if (snap.principlesTruncated) {
     out.push({
       key: "principles-truncated",
@@ -204,6 +222,9 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
+}
+
+function pushMainRedAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"], roles: readonly AlertRole[]): void {
   const red = roles.filter((l) => l.phase === "main's check is failing");
   if (red.length) {
     const redDetail = snap.mainCheck?.red;
@@ -218,13 +239,16 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: seeFailures(),
     });
   }
-  // A role whose own failure streak is at or past the alarm threshold (onErrorStreak — an
-  // error streak at ERROR_STREAK_WARN, or a quiet-kill streak): the red "failing run after
-  // run" banner. Keyed on the streak, not on the rendered phase, so it stays up while the
-  // role's next run is in progress — where rolePhase reads "working"/"merge"/"reviewing" rather
-  // than "failing" — and clears only when the streak resets (BUGS.md 2026-10-14). The
-  // wording names what happened (a streak of failed or rejected runs), not a single repeated
-  // error, because a rejection streak is three different rejected changes.
+}
+
+// A role whose own failure streak is at or past the alarm threshold (onErrorStreak — an
+// error streak at ERROR_STREAK_WARN, or a quiet-kill streak): the red "failing run after
+// run" banner. Keyed on the streak, not on the rendered phase, so it stays up while the
+// role's next run is in progress — where rolePhase reads "working"/"merge"/"reviewing" rather
+// than "failing" — and clears only when the streak resets (BUGS.md 2026-10-14). The
+// wording names what happened (a streak of failed or rejected runs), not a single repeated
+// error, because a rejection streak is three different rejected changes.
+function pushFailingStreakAlert(out: TeamAlert[], roles: readonly AlertRole[]): void {
   const failing = roles.filter((l) => l.errorStreak);
   if (failing.length) {
     out.push({
@@ -237,9 +261,12 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: openRoleActions(failing),
     });
   }
-  // A stall marker rides only a running label. The director is excluded from `inFlight` (it
-  // holds no maxConcurrent permit), so its own running phase is accepted too — otherwise a
-  // stalled director would go unalerted (BUGS.md 2026-10-06).
+}
+
+// A stall marker rides only a running label. The director is excluded from `inFlight` (it
+// holds no maxConcurrent permit), so its own running phase is accepted too — otherwise a
+// stalled director would go unalerted (BUGS.md 2026-10-06).
+function pushStuckRoleAlert(out: TeamAlert[], roles: readonly AlertRole[]): void {
   const stuck = roles.filter((l) => (l.inFlight || l.phase.startsWith("director working")) && STALL_RE.test(l.phase));
   if (stuck.length) {
     out.push({
@@ -250,6 +277,9 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: openRoleActions(stuck),
     });
   }
+}
+
+function pushBuildAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
   if (snap.build?.stale) {
     const behind = plural(snap.build.aheadCommits ?? 0, "commit");
     // The cooldown scopes the deferral to the redeploy, not the team (PLANS.md 2026-10-23): a
@@ -285,11 +315,14 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
             },
     );
   }
-  // A work-instance claim the operator should act on without running `tumwater doctor`
-  // (src/scheduling/claim-entries.ts, the doctor's `parallel instances` row): a stopped
-  // instance holding an entry that left its role's section, or idle past the scheduler's
-  // release window, is an amber ask. One detail line per claim, worded like the doctor row so
-  // the two cannot drift; actions open the first three claimed roles. Nothing when empty.
+}
+
+// A work-instance claim the operator should act on without running `tumwater doctor`
+// (src/scheduling/claim-entries.ts, the doctor's `parallel instances` row): a stopped
+// instance holding an entry that left its role's section, or idle past the scheduler's
+// release window, is an amber ask. One detail line per claim, worded like the doctor row so
+// the two cannot drift; actions open the first three claimed roles. Nothing when empty.
+function pushStaleClaimsAlert(out: TeamAlert[], staleClaims: readonly ClaimState[]): void {
   if (staleClaims.length > 0) {
     out.push({
       key: "stale-claims",
@@ -299,6 +332,32 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       actions: openRoleActions(staleClaims.map((c) => ({ role: c.id }))),
     });
   }
-  return out;
 }
 
+/** The status/capacity and role-phase alerts, in emission order: a spent budget
+ * (chain/fallback/budget), per-role cap, disk, install, and main-red holds, roles
+ * failing run after run or stuck, and a stale running build. Extracted from
+ * teamAlerts (part 1/5 of the teamAlerts split) so the shared module stays small;
+ * the input names exactly the fields this run reads. The caller pushes the returned
+ * alerts at the position this run used to occupy, so the emitted key order is
+ * unchanged. */
+export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
+  const { snap, roles, staleClaims } = input;
+  const out: TeamAlert[] = [];
+  pushChainAlert(out, snap);
+  pushSpentBudgetAlert(out, snap);
+  pushRoleCapAlert(out, snap, roles);
+  pushDiskAlert(out, snap);
+  pushInstallDriftAlert(out, snap);
+  pushNoCheckAlert(out, snap);
+  pushNoBriefAlert(out, snap);
+  pushBriefTruncatedAlert(out, snap);
+  pushRoleNotesTruncatedAlert(out, snap);
+  pushPrinciplesTruncatedAlert(out, snap);
+  pushMainRedAlert(out, snap, roles);
+  pushFailingStreakAlert(out, roles);
+  pushStuckRoleAlert(out, roles);
+  pushBuildAlert(out, snap);
+  pushStaleClaimsAlert(out, staleClaims);
+  return out;
+}
