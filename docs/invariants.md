@@ -4555,11 +4555,11 @@ index, rather than skipping the preserve".
 
 ### INV-CP1: a red main whose heal prompt cannot be queued resolves the gate, warns once that the prompt was not queued, and queues it at the next red verification
 
-**Guarantee.** `warnMainRedOnce` catches a failed heal-prompt enqueue (full disk, EACCES), warns under the verifying role and clears the heal key, so the healer's red-main hand-off still resolves and the next red SHA queues the prompt again. The `mainTipVerdict` attribution path goes through the same guard but is not pinned by this test.
+**Guarantee.** `warnMainRedOnce` catches a failed heal-prompt enqueue (full disk, EACCES), warns under the verifying role and clears the heal key, so the healer's red-main hand-off still resolves and the next red SHA queues the prompt again. The `mainTipVerdict` attribution path goes through the same guard: an unwritable ci inbox still resolves a `red` verdict rather than `unavailable`, so a genuinely red main is never blamed on the change under judgment.
 
-**Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedHealNote`).
+**Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedHealNote`, `mainTipVerdict`).
 
-**Pinned by.** `test/main-red-heal.test.ts` — "a heal prompt that cannot be queued warns and is queued at the next red commit".
+**Pinned by.** `test/main-red-heal.test.ts` — "a heal prompt that cannot be queued warns and is queued at the next red commit" and "a heal prompt that mainTipVerdict cannot queue still settles the red verdict and warns"; the latter drives the `mainTipVerdict` path so an unwritable inbox still yields a `red` verdict rather than `unavailable`.
 
 ## Agent run setup: a run that cannot be prepared fails, never rejects
 

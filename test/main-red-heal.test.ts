@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { mainRedHealNote, mainRedHealPrompt, queueCulpritHeal } from "../src/baseline/main-red.js";
+import { mainRedHealNote, mainRedHealPrompt, mainTipVerdict, queueCulpritHeal } from "../src/baseline/main-red.js";
 import { createMainWatch } from "../src/baseline/main-watch.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { shortSha } from "../src/text/format.js";
@@ -10,7 +10,7 @@ import { roleInboxDir } from "../src/paths.js";
 import { mainRedHolds, warningMessages } from "./fixtures/log-fixtures.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { baselineFixture, fakeNpm } from "./fixtures/runner-fixtures.js";
-import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { defaultConfig } from "../src/config/config.js";
 
 // The red-main healer's dedup state (src/baseline/main-red.ts) is module-level, so this file runs
@@ -97,6 +97,44 @@ test("a heal prompt that cannot be queued warns and is queued at the next red co
     newCommit();
     assert.ok(await mainRedHealNote(root, "coverage", wt));
     assert.equal(queuedRolePrompts(root, "ci").length, 1, "the next red commit queues the heal");
+  } finally {
+    restore();
+  }
+});
+
+test("a heal prompt that mainTipVerdict cannot queue still settles the red verdict and warns", async () => {
+  // mainTipVerdict wraps its whole tip check in a try/catch that turns any throw into
+  // "unavailable", so a regressed guard would blame the change under judgment for main's own
+  // failure. The seed commit main is red (its declared check fails), and the same guard
+  // warnMainRedOnce that the ci hand-off uses clears the heal key, so the verdict stays "red".
+  const script = "echo '✖ tip-heal-delta (1ms)'; exit 1";
+  const { root } = baselineFixture("coverage", script);
+  const restore = fakeNpm(script);
+  try {
+    const inbox = roleInboxDir(root, "ci");
+    const undo = patchFsMethod("writeFileSync", (orig) => (...args: unknown[]) => {
+      if (typeof args[0] === "string" && args[0].startsWith(inbox)) throw errnoError("ENOSPC");
+      return orig(...args);
+    });
+    try {
+      const verdict = await mainTipVerdict(root, "coverage", "main", defaultConfig());
+      assert.equal(verdict.status, "red", JSON.stringify(verdict));
+      if (verdict.status === "red") assert.equal(verdict.sha, mainSha(root));
+    } finally {
+      undo();
+    }
+    assert.equal(queuedRolePrompts(root, "ci").length, 0, "nothing was queued");
+    const warnings = warningMessages(root).filter((m) => /could not queue the heal prompt for ci: .*ENOSPC/.test(m));
+    assert.equal(warnings.length, 1, warningMessages(root).join("\n"));
+
+    // A second red SHA on main: the failed enqueue cleared the heal key, so this verification
+    // queues the heal prompt.
+    fs.writeFileSync(path.join(root, "index.js"), "// red again\n");
+    sh(root, "git", "add", "-A");
+    sh(root, "git", "commit", "-q", "-m", "commit-2");
+    const second = await mainTipVerdict(root, "coverage", "main", defaultConfig());
+    assert.equal(second.status, "red", JSON.stringify(second));
+    assert.equal(queuedRolePrompts(root, "ci").length, 1, "the next red verification queues the heal");
   } finally {
     restore();
   }
