@@ -3,7 +3,7 @@ import path from "node:path";
 import { readTextOrNull } from "../files/files.js";
 import { roleNotesPath } from "../paths.js";
 import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
-import { plural } from "../text/phrases.js";
+import { agree, plural } from "../text/phrases.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** How many oversized notes the `role notes` row names before appending "and N more", the
@@ -46,6 +46,6 @@ export function checkRoleNotes(root: string): CheckOutcome {
     .join(", ");
   const more = over.length > ROLE_NOTES_NAMED_CAP ? ` and ${over.length - ROLE_NOTES_NAMED_CAP} more` : "";
   return warnOutcome(
-    `${plural(over.length, "note", "notes")} across ${plural(over.length, "role", "roles")} exceed the ${ROLE_NOTES_MAX_BYTES}-character read bound: ${first}${more} — each role's prompt shows only the truncated head, so rewrite the note under the cap (tumwater role <id> --notes-file <path> or the tumwater-notes shim)`,
+    `${plural(over.length, "note", "notes")} across ${plural(over.length, "role", "roles")} ${agree(over.length, "exceeds", "exceed")} the ${ROLE_NOTES_MAX_BYTES}-character read bound: ${first}${more} — each role's prompt shows only the truncated head, so rewrite the note under the cap (tumwater role <id> --notes-file <path> or the tumwater-notes shim)`,
   );
 }

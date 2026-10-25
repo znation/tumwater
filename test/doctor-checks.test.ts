@@ -542,7 +542,7 @@ test("checkRoleNotes warns only when the prompt would truncate a role's note", (
   fs.writeFileSync(roleNotesPath(okRoot, "planner"), "x".repeat(ROLE_NOTES_MAX_BYTES + 1));
   const warn = checkRoleNotes(okRoot);
   assert.equal(warn.level, "warn");
-  assert.match(warn.detail, /exceed the/);
+  assert.match(warn.detail, /exceeds the/);
   assert.match(warn.detail, /planner \(4097\)/);
   assert.doesNotMatch(warn.detail, /clean/, "an at-cap note is not named");
 
