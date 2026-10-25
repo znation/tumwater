@@ -595,3 +595,63 @@ test("rekeying a paused lease moves its key without touching any accounting", as
   l.release(); // releasing a still-paused lease is a no-op
   assert.equal(sem.snapshot().inUse, 0);
 });
+
+test("releasing a lease the moment its resume is granted undoes exactly the permit the grant took", async () => {
+  // Covers release()'s branch where a paused lease's resume waiter was just handed the permit
+  // by drive (same microtask) but the resume() continuation has not run yet: the release must
+  // give that grant back rather than treat the lease as still paused or still queued. Doing it
+  // synchronously on the same tick as the granting release is the only way to land in that
+  // window, so the previous release and this one are adjacent calls with no await between them.
+  const sem = new Semaphore(1);
+  sem.setKeyCaps({ k: 1 });
+  const holder = await sem.acquireLease(0, "k"); // k 1/1, team 1/1
+  holder.pause(); // both back: the lease is idle, holding nothing
+  const other = await sem.acquireLease(0, "k"); // someone else takes the free permit
+  const resume = holder.resume();
+  await flushImmediate(); // the resume parks: the permit is taken, so it queues like any waiter
+  assert.equal(sem.waiting, 1, "the paused lease's resume is queued");
+
+  // The other holder releases, and drive hands the permit straight to the resume waiter
+  // (scheduling its continuation). Releasing the holder in the SAME synchronous tick means its
+  // release runs before the resume continuation, so it must take the just-granted permit back.
+  other.release();
+  holder.release();
+  await resume;
+  const snap = sem.snapshot();
+  assert.equal(snap.inUse, 0, "the release frees the team permit the grant had re-taken");
+  assert.equal(snap.byKey["k"]?.inUse ?? 0, 0, "the key slot the grant had re-taken is freed");
+  assert.equal(sem.waiting, 0, "no waiter is left queued");
+
+  // The ledger never went negative, so the semaphore still admits and drains a fresh lease.
+  const again = await sem.acquireLease(0, "k");
+  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [1, 1]);
+  again.release();
+  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [0, 0]);
+});
+
+test("releasing a lease the moment its re-key is granted returns the just-granted key slot", async () => {
+  // Covers release()'s branch where a parked re-key's grant was just handed to it by drive
+  // (same microtask) but the rekey() continuation has not run: the release must give the new
+  // key's slot back (the lease holds only a team permit at that point), never steal the target
+  // nor leave an orphaned slot. The granting release and this release are adjacent, same tick.
+  const sem = new Semaphore(2);
+  sem.setKeyCaps({ a: 1, b: 1 });
+  const h1 = await sem.acquireLease(0, "a"); // a 1/1, team 1/2
+  const h2 = await sem.acquireLease(0, "b"); // b 1/1, team 2/2
+  const rekey = h1.rekey("b");
+  await flushImmediate(); // b is full, so the re-key parks: a returned, nothing held on b
+  assert.equal(sem.snapshot().byKey["a"]?.inUse ?? 0, 0, "a was returned before the re-key parked");
+  assert.equal(sem.waiting, 1, "the re-key waiter is parked ahead of any admission waiter");
+
+  // h2 releases and drive grants the re-key its b slot (scheduling its continuation); h1's
+  // release in the SAME synchronous tick returns that just-granted slot before the rekey()
+  // continuation can take ownership of the accounting.
+  h2.release();
+  h1.release();
+  await rekey;
+  const snap = sem.snapshot();
+  assert.equal(snap.inUse, 0, "no team permit outlives the releases");
+  assert.equal(snap.byKey["b"]?.inUse ?? 0, 0, "the granted b slot is returned, not leaked");
+  assert.equal(snap.byKey["a"]?.inUse ?? 0, 0, "a stays where the re-key left it");
+  assert.equal(sem.waiting, 0, "no waiter is left queued");
+});
