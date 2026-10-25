@@ -177,10 +177,7 @@ export function slotWaitContention(waits: readonly HarnessEvent[], slotCount: nu
  * leaves the count-zero and read-error arms to checkProviderContention. */
 export function providerWaitContention(waits: readonly HarnessEvent[], config: TumwaterConfig | undefined): WaitContention {
   const perKey = new Map<string, number>();
-  const sum = sumWaits(waits);
-  const count = sum.count;
-  const totalMs = sum.totalMs;
-  const longestMs = sum.longestMs;
+  const { count, totalMs, longestMs } = sumWaits(waits);
   for (const ev of waits) {
     const waited = finiteNumber(ev.waitedMs, 0);
     const key = ev.cap !== "team" && typeof ev.key === "string" && ev.key.length > 0 ? ev.key : "";
@@ -221,10 +218,7 @@ export function providerWaitContention(waits: readonly HarnessEvent[], config: T
  * and read-error arms to checkCheckContention. */
 export function checkWaitContention(waits: readonly HarnessEvent[], config: TumwaterConfig | undefined): WaitContention {
   const perKind = new Map<string, number>();
-  const sum = sumWaits(waits);
-  const count = sum.count;
-  const totalMs = sum.totalMs;
-  const longestMs = sum.longestMs;
+  const { count, totalMs, longestMs } = sumWaits(waits);
   for (const ev of waits) {
     const waited = finiteNumber(ev.waitedMs, 0);
     for (const kind of new Set(stringList(ev.heldBy).map(checkHolderKind))) {
