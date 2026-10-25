@@ -34,7 +34,7 @@ import { resolvedBackendConfig } from "../config/config-views.js";
 import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, configPath, owningTeamRoot } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { formatBytes } from "../text/format.js";
-import { briefFile } from "../brief/brief.js";
+import { BRIEF_TEXT_MAX_CHARS, briefFile, promptBlockOf } from "../brief/brief.js";
 import { plural } from "../text/phrases.js";
 import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gate.js";
 import { claudeSeamsInUse, minVersionOutcome, opencodeSeamsInUse, versionFromProbe, piSeamsInUse } from "./doctor-model-checks.js";
@@ -214,7 +214,16 @@ export function checkBrief(root: string): CheckOutcome {
   } catch (err) {
     return failOutcome(errorMessage(err));
   }
-  if (owner) return okOutcome(`brief in ${owner}`);
+  if (owner) {
+    const raw = readTextOrNull(path.join(root, owner));
+    if (raw !== null) {
+      const block = promptBlockOf(raw);
+      if (block !== null && block.length > BRIEF_TEXT_MAX_CHARS) {
+        return warnOutcome(`brief in ${owner} is ${block.length} characters, over the ${BRIEF_TEXT_MAX_CHARS}-character read cap every role sees (the prompt is truncated at ${BRIEF_TEXT_MAX_CHARS} chars); hand-edit ${owner} to shrink the block below ${BRIEF_TEXT_MAX_CHARS} characters, or paste a shorter brief in the dashboard's Brief card`);
+      }
+    }
+    return okOutcome(`brief in ${owner}`);
+  }
   if (fs.existsSync(path.join(root, "README.md"))) {
     return warnOutcome(`README.md carries no tumwater:prompt markers — the team would run without its project brief; add the block or re-run \`tumwater init\``);
   }

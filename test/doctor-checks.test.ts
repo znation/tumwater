@@ -62,6 +62,7 @@ import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { checkRoleNotes } from "../src/doctor/doctor-role-notes.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
 import { roleNotesPath } from "../src/paths.js";
+import { BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { fakeGh } from "./fakes/fake-gh.js";
 import { fakeCodexAppServer } from "./fakes/fake-codex.js";
 import { initProject } from "../src/init/init.js";
@@ -413,6 +414,51 @@ test("checkBrief reports which file holds the managed sections, and warns when n
     `# p\n\n<!-- tumwater:prompt:start -->\nbrief\n<!-- tumwater:prompt:end -->\n`,
   );
   assert.deepEqual(checkBrief(marked), { level: "ok", detail: "brief in TUMWATER.md" });
+});
+
+test("checkBrief warns when the brief block is over the read cap", () => {
+  // A hand-edited brief can exceed BRIEF_TEXT_MAX_CHARS: readBrief truncates it for every
+  // run with a visible note, and the brief row must warn instead of silently reporting ok.
+  const over = makeRepo();
+  fs.writeFileSync(
+    path.join(over, "README.md"),
+    `# p\n\n<!-- tumwater:prompt:start -->\n${`x`.repeat(BRIEF_TEXT_MAX_CHARS + 50)}\n<!-- tumwater:prompt:end -->\n`,
+  );
+  const overWarn = checkBrief(over);
+  assert.equal(overWarn.level, "warn");
+  assert.match(overWarn.detail, /README\.md/);
+  assert.match(overWarn.detail, new RegExp(`${BRIEF_TEXT_MAX_CHARS + 50} characters`));
+  assert.match(overWarn.detail, new RegExp(`${BRIEF_TEXT_MAX_CHARS}-character`));
+  assert.match(overWarn.detail, /hand-edit/);
+
+  // Exactly at the cap, and one under it, stay ok.
+  const exact = makeRepo();
+  fs.writeFileSync(
+    path.join(exact, "README.md"),
+    `# p\n\n<!-- tumwater:prompt:start -->\n${`y`.repeat(BRIEF_TEXT_MAX_CHARS)}\n<!-- tumwater:prompt:end -->\n`,
+  );
+  assert.deepEqual(checkBrief(exact), { level: "ok", detail: "brief in README.md" });
+
+  const under = makeRepo();
+  fs.writeFileSync(
+    path.join(under, "README.md"),
+    `# p\n\n<!-- tumwater:prompt:start -->\n${`z`.repeat(BRIEF_TEXT_MAX_CHARS - 1)}\n<!-- tumwater:prompt:end -->\n`,
+  );
+  assert.deepEqual(checkBrief(under), { level: "ok", detail: "brief in README.md" });
+
+  // An over-cap TUMWATER.md outranks a short marked README.md, and the warn names it.
+  const marked = makeRepo();
+  fs.writeFileSync(
+    path.join(marked, "README.md"),
+    `# p\n\n<!-- tumwater:prompt:start -->\nbrief\n<!-- tumwater:prompt:end -->\n`,
+  );
+  fs.writeFileSync(
+    path.join(marked, "TUMWATER.md"),
+    `# p\n\n<!-- tumwater:prompt:start -->\n${`x`.repeat(BRIEF_TEXT_MAX_CHARS + 50)}\n<!-- tumwater:prompt:end -->\n`,
+  );
+  const markedWarn = checkBrief(marked);
+  assert.equal(markedWarn.level, "warn");
+  assert.match(markedWarn.detail, /TUMWATER\.md/);
 });
 
 test("checkBrief reports a brief file that exists but cannot be read as a failure, not a crash", () => {
