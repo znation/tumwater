@@ -397,68 +397,22 @@ export function createHistoryPane(
     });
   };
 
-  const handleKey = (
-    key: { ctrl?: boolean; name?: string },
-    ctx: TuiPaneCtx,
-  ): boolean => {
-    if (key.ctrl && key.name === "n") {
-      // On the History pane Ctrl+N swaps the row list for one run's full event trail instead
-      // (the CLI's `tumwater run --last` text). Routed here only for the History view, ahead
-      // of the transcript pane's notes/change arm; a non-History view falls through to it.
-      if (session.view !== session.roleIds.length + 4) return false;
-      if (!promptLineFree(ctx.es)) {
-        // The transcript guard would consume the key; keep Ctrl+N consumed on the History view.
-        session.requestRender();
-        return true;
-      }
-      if (trailMode) {
-        // Toggle the trail off (Ctrl+N on the trail view): drop the trail snapshot. The
-        // trailGen bump keeps an in-flight stat from the old trail from repainting.
-        trailGen++;
-        trailMode = false;
-        trailCache = null;
-        trailIndex = 0;
-        trailTranscript = "off";
-        trailPatch = false;
-        trailPatchText = null;
-        trailGrep = null;
-      } else {
-        // Toggle the trail on: read the pane-scoped newest completed run. A scope holding
-        // none flashes (loadTrail's onEmpty) and leaves the rows; one holding a run turns
-        // the trail on (a log holding none is the only path that does not).
-        const filtered = historyWindow !== null || historyResult !== null || historyGrep !== null || historyModel !== null;
-        const empty = filtered ? "no completed runs match the pane's filters" : "no completed runs to inspect";
-        if (loadTrail(() => session.flashMessage(empty))) trailMode = true;
-      }
-      session.paneScroll = 0; // either way the pane starts at its head
+  // One named arm per History key, so a key's rule is found by name instead of by scanning one
+  // long dispatch body (the same move as the landed resolveRunVerdict split). Each arm reads the
+  // same closure locals the old inline arm read, in the same order, and returns the same boolean.
+  const historyTrailToggle = (ctx: TuiPaneCtx): boolean => {
+    // On the History pane Ctrl+N swaps the row list for one run's full event trail instead
+    // (the CLI's `tumwater run --last` text). Routed here only for the History view, ahead
+    // of the transcript pane's notes/change arm; a non-History view falls through to it.
+    if (session.view !== session.roleIds.length + 4) return false;
+    if (!promptLineFree(ctx.es)) {
+      // The transcript guard would consume the key; keep Ctrl+N consumed on the History view.
       session.requestRender();
       return true;
     }
-    if (key.ctrl && key.name === "l") {
-      // Ctrl+L on the History pane (mnemonic: the **l**atest failing run) resets the pane to
-      // the team-wide problems scope and opens the trail — the terminal twin of the dashboard
-      // History view's Newest failure button and `tumwater history --last --result problems`
-      // (newestRunRow(root, null, ["problems"], null)). It clears every filter the operator
-      // left set — role scope, trailing window, search, model, summary — and the trail, so a
-      // second press re-jumps to the newest failure. Routed here only for the History view;
-      // every other view keeps its own Ctrl+L meaning (Health's retire-leftovers ahead of this
-      // router, Activity's fallback editor and a Transcript's instructions editor in the
-      // editors).
-      if (session.view !== session.roleIds.length + 4) return false;
-      if (!promptLineFree(ctx.es)) {
-        // The editor would consume the key; keep Ctrl+L consumed on the History view.
-        session.requestRender();
-        return true;
-      }
-      historyRole = null;
-      historyResult = "problems";
-      historyWindow = null;
-      historyStep = 0;
-      historyGrep = null;
-      historyModel = null;
-      historySummary = null;
-      // Drop any on-screen trail the way Ctrl+N's toggle-off arm does (the gen bump keeps an
-      // in-flight stat from the old trail from repainting).
+    if (trailMode) {
+      // Toggle the trail off (Ctrl+N on the trail view): drop the trail snapshot. The
+      // trailGen bump keeps an in-flight stat from the old trail from repainting.
       trailGen++;
       trailMode = false;
       trailCache = null;
@@ -467,199 +421,280 @@ export function createHistoryPane(
       trailPatch = false;
       trailPatchText = null;
       trailGrep = null;
-      recompute();
-      // historyWindow null + historyResult "problems": loadTrail reads
-      // readRunRows(root, HISTORY_MAX_RUNS, null) and takes .filtered[0] — the newest failing
-      // run of any role, exactly what the dashboard's Newest failure button and the CLI open.
-      if (loadTrail(() => session.flashMessage("no failing run in the scanned window"))) trailMode = true;
-      session.paneScroll = 0;
+    } else {
+      // Toggle the trail on: read the pane-scoped newest completed run. A scope holding
+      // none flashes (loadTrail's onEmpty) and leaves the rows; one holding a run turns
+      // the trail on (a log holding none is the only path that does not).
+      const filtered = historyWindow !== null || historyResult !== null || historyGrep !== null || historyModel !== null;
+      const empty = filtered ? "no completed runs match the pane's filters" : "no completed runs to inspect";
+      if (loadTrail(() => session.flashMessage(empty))) trailMode = true;
+    }
+    session.paneScroll = 0; // either way the pane starts at its head
+    session.requestRender();
+    return true;
+  };
+
+  const historyNewestFailure = (ctx: TuiPaneCtx): boolean => {
+    // Ctrl+L on the History pane (mnemonic: the **l**atest failing run) resets the pane to
+    // the team-wide problems scope and opens the trail — the terminal twin of the dashboard
+    // History view's Newest failure button and `tumwater history --last --result problems`
+    // (newestRunRow(root, null, ["problems"], null)). It clears every filter the operator
+    // left set — role scope, trailing window, search, model, summary — and the trail, so a
+    // second press re-jumps to the newest failure. Routed here only for the History view;
+    // every other view keeps its own Ctrl+L meaning (Health's retire-leftovers ahead of this
+    // router, Activity's fallback editor and a Transcript's instructions editor in the
+    // editors).
+    if (session.view !== session.roleIds.length + 4) return false;
+    if (!promptLineFree(ctx.es)) {
+      // The editor would consume the key; keep Ctrl+L consumed on the History view.
       session.requestRender();
       return true;
     }
-    if (key.ctrl && key.name === "p") {
-      // Ctrl+P steps an on-screen trail back to the next older run in the pane's scope,
-      // wrapping to the newest after the oldest. Anywhere else it falls through (false) to the
-      // Activity caps and Transcript pause editors' routing.
-      if (session.view !== session.roleIds.length + 4) return false;
-      if (!trailMode) {
-        // Trail off: step the window back one window length, wrapping to the trailing window once
-        // the next window would start past the 7-day cap `history --since` rides.
-        if (promptLineFree(ctx.es)) {
-          if (historyWindow === null) {
-            session.flashMessage("pick a window with Ctrl+S to step back through earlier windows");
-          } else if ((historyStep + 2) * historyWindow <= LOGS_SINCE_MAX_MS) {
-            historyStep += 1;
-            recompute();
-          } else {
-            historyStep = 0;
-            session.flashMessage(
-              "oldest window reached; back to the last " + cycleLabel(HISTORY_WINDOWS, historyWindow),
-            );
-            recompute();
-          }
-        }
-        session.requestRender();
-        return true;
-      }
+    historyRole = null;
+    historyResult = "problems";
+    historyWindow = null;
+    historyStep = 0;
+    historyGrep = null;
+    historyModel = null;
+    historySummary = null;
+    // Drop any on-screen trail the way Ctrl+N's toggle-off arm does (the gen bump keeps an
+    // in-flight stat from the old trail from repainting).
+    trailGen++;
+    trailMode = false;
+    trailCache = null;
+    trailIndex = 0;
+    trailTranscript = "off";
+    trailPatch = false;
+    trailPatchText = null;
+    trailGrep = null;
+    recompute();
+    // historyWindow null + historyResult "problems": loadTrail reads
+    // readRunRows(root, HISTORY_MAX_RUNS, null) and takes .filtered[0] — the newest failing
+    // run of any role, exactly what the dashboard's Newest failure button and the CLI open.
+    if (loadTrail(() => session.flashMessage("no failing run in the scanned window"))) trailMode = true;
+    session.paneScroll = 0;
+    session.requestRender();
+    return true;
+  };
+
+  const historyStepBack = (ctx: TuiPaneCtx): boolean => {
+    // Ctrl+P steps an on-screen trail back to the next older run in the pane's scope,
+    // wrapping to the newest after the oldest. Anywhere else it falls through (false) to the
+    // Activity caps and Transcript pause editors' routing.
+    if (session.view !== session.roleIds.length + 4) return false;
+    if (!trailMode) {
+      // Trail off: step the window back one window length, wrapping to the trailing window once
+      // the next window would start past the 7-day cap `history --since` rides.
       if (promptLineFree(ctx.es)) {
-        const next =trailIndex + 1;
-        if (!(next < HISTORY_MAX_RUNS && loadTrail(null, next))) {
-          loadTrail(null, 0);
-          session.flashMessage("oldest run reached; back to the newest");
-        }
-        session.paneScroll = 0;
-      }
-      session.requestRender();
-      return true;
-    }
-    if (key.ctrl && key.name === "r") {
-      // Ctrl+R cycles the trail's agent transcript: off -> plain -> prompts -> off. Anywhere
-      // else (no History view, no trail) it falls through to the other panes' Ctrl+R arms. The
-      // run is unchanged, so trailGen stays and an in-flight stat still lands on it.
-      if (session.view !== session.roleIds.length + 4 || !trailMode) return false;
-      if (promptLineFree(ctx.es)) {
-        trailTranscript = trailTranscript === "off" ? "plain" : trailTranscript === "plain" ? "prompts" : "off";
-        if (trailTranscript === "off") trailGrep = null;
-        loadTranscript();
-        composeTrail();
-        session.paneScroll = 0;
-      }
-      session.requestRender();
-      return true;
-    }
-    if (key.ctrl && key.name === "w") {
-      // Ctrl+W on a run trail shows or hides the shown run's full commit patch below its stat:
-      // the terminal twin of `tumwater history <role> <n> --patch`. Off the History view it
-      // falls through to the other panes' Ctrl+W arms.
-      if (session.view !== session.roleIds.length + 4) return false;
-      if (!promptLineFree(ctx.es)) {
-        session.requestRender();
-        return true;
-      }
-      if (!trailMode || trailRun === null) {
-        session.flashMessage("open a run's trail with Ctrl+N to show its patch");
-        session.requestRender();
-        return true;
-      }
-      trailPatch = !trailPatch;
-      if (trailPatch) {
-        loadTrailPatch(trailRun.detail);
-      } else {
-        // The bump keeps an in-flight patch from repainting; it also drops an in-flight stat.
-        trailGen++;
-        trailPatchText = null;
-        if (trailStat === null) loadTrailStat(trailRun.detail);
-        composeTrail();
-      }
-      session.paneScroll = 0;
-      session.requestRender();
-      return true;
-    }
-    if (key.ctrl && key.name === "v") {
-      // Ctrl+V on a run trail reverts the shown run's merged change: the terminal twin of
-      // `tumwater revert <role> <n>` and the dashboard History drill-down's Revert. The first
-      // press previews (previewRevert) and arms only a clean, applying revert; a second press
-      // right after commits it through revertMergedCommit, and any other key disarms it.
-      if (session.view !== session.roleIds.length + 4) return false;
-      if (promptLineFree(ctx.es)) {
-        if (!trailMode || trailRun === null) {
-          session.flashMessage("open a run's trail with Ctrl+N to revert its change");
-        } else if (reverting) {
-          session.flashMessage("a revert is already running");
+        if (historyWindow === null) {
+          session.flashMessage("pick a window with Ctrl+S to step back through earlier windows");
+        } else if ((historyStep + 2) * historyWindow <= LOGS_SINCE_MAX_MS) {
+          historyStep += 1;
+          recompute();
         } else {
-          const found = runRevertSha(trailRun.role, trailRun.run, trailRun.detail);
-          if (!found.ok) session.flashMessage(found.error);
-          else if (session.armedRevert === found.sha) revertRun(found.sha);
-          else previewRun(found.sha);
+          historyStep = 0;
+          session.flashMessage(
+            "oldest window reached; back to the last " + cycleLabel(HISTORY_WINDOWS, historyWindow),
+          );
+          recompute();
         }
       }
       session.requestRender();
       return true;
     }
-    if (key.ctrl && key.name === "g" && promptLineFree(ctx.es)) {
-      // Routed here only for the History view; every other view's scope arm is Activity (0) or
-      // the report panes, which the aggregator routes ahead of this module.
-      if (session.view !== session.roleIds.length + 4) return false;
-      // The History scope walks the raw roster ids (`[null, ...roleIds]`) so an instance id is
-      // its own slot, matching `history --role` and the dashboard picker. A trail already on
-      // screen follows the scope: re-read the new scope's newest completed run (or drop to the
-      // pane's no-trail note when it has none) so the trail and the tab strip cannot name
-      // different roles.
-      const slots: Array<string | null> = [null, ...session.roleIds];
-      const slot = slots.indexOf(historyRole);
-      historyRole = slots[(slot + 1) % slots.length] ?? null;
-      if (trailMode) refreshTrail();
-      recompute();
-      session.requestRender();
-      return true;
-    }
-    if (key.ctrl && key.name === "s" && promptLineFree(ctx.es)) {
-      // Ctrl+S advances the History pane's trailing window (mnemonic: **S**ince). Guarded out
-      // of budget-edit and role-prompt modes like the other mode-sensitive keys. The window is
-      // session state: advancing it off the History view only changes the label, and the next
-      // Ctrl+T into History computes the cache with it; on the History view this handler
-      // re-reads the rows now and resets the scroll so the changed body re-enters at its head.
-      historyStep = 0;
-      historyWindow = nextInCycle(HISTORY_WINDOWS, historyWindow);
-      if (trailMode) refreshTrail();
-      recompute();
-      session.requestRender();
-      return true;
-    }
-    if (key.ctrl && key.name === "o" && promptLineFree(ctx.es)) {
-      // Ctrl+O advances the History pane's outcome filter (mnemonic: **O**utcome). Guarded out
-      // of budget-edit and role-prompt modes like Ctrl+S beside it. (The Health pane's
-      // problems-only Ctrl+O is handled ahead of this module by the aggregator when that view is
-      // current.) The class is session state: advancing it off the History view only changes the
-      // label, and the next Ctrl+T into History computes the cache with it; on the History view
-      // this handler re-reads and re-filters the rows now and resets the scroll so the changed
-      // body re-enters at its head.
-      historyResult = nextInCycle(HISTORY_RESULTS, historyResult);
-      if (trailMode) refreshTrail();
-      recompute();
-      session.requestRender();
-      return true;
-    }
-    if (key.ctrl && key.name === "x" && promptLineFree(ctx.es)) {
-      // Ctrl+X advances the History pane's model filter — all, each model the pane's rows ran on
-      // (in the Ctrl+Y by-model table's order), all — the twin of `tumwater history --model`.
-      // False off the History view so the other Ctrl+X arms keep their keys.
-      if (session.view !== session.roleIds.length + 4) return false;
-      const rows = selectPaneRows(historyWindow, historyResult, historyRole, historyGrep, null, HISTORY_DEFAULT_RUNS, historyStep).filtered;
-      const list = summarizeRunRowsByModel(rows).models.flatMap((m) => (m.model === null ? [] : [m.model]));
-      if (list.length === 0 && historyModel === null) {
-        session.flashMessage("no runs with a model in this view");
-        return true;
+    if (promptLineFree(ctx.es)) {
+      const next =trailIndex + 1;
+      if (!(next < HISTORY_MAX_RUNS && loadTrail(null, next))) {
+        loadTrail(null, 0);
+        session.flashMessage("oldest run reached; back to the newest");
       }
-      const i = list.indexOf(historyModel ?? "");
-      historyModel = i + 1 < list.length ? list[i + 1]! : null;
-      if (trailMode) refreshTrail();
-      recompute();
+      session.paneScroll = 0;
+    }
+    session.requestRender();
+    return true;
+  };
+
+  const historyTranscriptCycle = (ctx: TuiPaneCtx): boolean => {
+    // Ctrl+R cycles the trail's agent transcript: off -> plain -> prompts -> off. Anywhere
+    // else (no History view, no trail) it falls through to the other panes' Ctrl+R arms. The
+    // run is unchanged, so trailGen stays and an in-flight stat still lands on it.
+    if (session.view !== session.roleIds.length + 4 || !trailMode) return false;
+    if (promptLineFree(ctx.es)) {
+      trailTranscript = trailTranscript === "off" ? "plain" : trailTranscript === "plain" ? "prompts" : "off";
+      if (trailTranscript === "off") trailGrep = null;
+      loadTranscript();
+      composeTrail();
+      session.paneScroll = 0;
+    }
+    session.requestRender();
+    return true;
+  };
+
+  const historyPatchToggle = (ctx: TuiPaneCtx): boolean => {
+    // Ctrl+W on a run trail shows or hides the shown run's full commit patch below its stat:
+    // the terminal twin of `tumwater history <role> <n> --patch`. Off the History view it
+    // falls through to the other panes' Ctrl+W arms.
+    if (session.view !== session.roleIds.length + 4) return false;
+    if (!promptLineFree(ctx.es)) {
       session.requestRender();
       return true;
     }
-    if (key.ctrl && key.name === "y" && promptLineFree(ctx.es)) {
-      // Ctrl+Y cycles the History pane's views — rows, per-role Summary, per-model Summary,
-      // rows (mnemonic: summar**Y**) — the same tallies `tumwater history --summary [--by model]`
-      // and the dashboard History view print,
-      // folded over the pane's already-selected rows. Guarded out of budget-edit and
-      // role-prompt modes like Ctrl+S/O beside it. The class is session state: toggling it off
-      // the History view only changes the label, and the next Ctrl+T into History computes the
-      // cache with it; on the History view this handler re-reads and re-renders now and resets
-      // the scroll so the changed body re-enters at its head.
-      historySummary = historySummary === null ? "role" : historySummary === "role" ? "model" : null;
-      recompute();
+    if (!trailMode || trailRun === null) {
+      session.flashMessage("open a run's trail with Ctrl+N to show its patch");
       session.requestRender();
       return true;
     }
-    const page = pageDir(key.name);
-    if (page !== null && trailMode) {
+    trailPatch = !trailPatch;
+    if (trailPatch) {
+      loadTrailPatch(trailRun.detail);
+    } else {
+      // The bump keeps an in-flight patch from repainting; it also drops an in-flight stat.
+      trailGen++;
+      trailPatchText = null;
+      if (trailStat === null) loadTrailStat(trailRun.detail);
+      composeTrail();
+    }
+    session.paneScroll = 0;
+    session.requestRender();
+    return true;
+  };
+
+  const historyRevertArm = (ctx: TuiPaneCtx): boolean => {
+    // Ctrl+V on a run trail reverts the shown run's merged change: the terminal twin of
+    // `tumwater revert <role> <n>` and the dashboard History drill-down's Revert. The first
+    // press previews (previewRevert) and arms only a clean, applying revert; a second press
+    // right after commits it through revertMergedCommit, and any other key disarms it.
+    if (session.view !== session.roleIds.length + 4) return false;
+    if (promptLineFree(ctx.es)) {
+      if (!trailMode || trailRun === null) {
+        session.flashMessage("open a run's trail with Ctrl+N to revert its change");
+      } else if (reverting) {
+        session.flashMessage("a revert is already running");
+      } else {
+        const found = runRevertSha(trailRun.role, trailRun.run, trailRun.detail);
+        if (!found.ok) session.flashMessage(found.error);
+        else if (session.armedRevert === found.sha) revertRun(found.sha);
+        else previewRun(found.sha);
+      }
+    }
+    session.requestRender();
+    return true;
+  };
+
+  const historyScopeCycle = (ctx: TuiPaneCtx): boolean => {
+    if (!promptLineFree(ctx.es)) return false;
+    // Routed here only for the History view; every other view's scope arm is Activity (0) or
+    // the report panes, which the aggregator routes ahead of this module.
+    if (session.view !== session.roleIds.length + 4) return false;
+    // The History scope walks the raw roster ids (`[null, ...roleIds]`) so an instance id is
+    // its own slot, matching `history --role` and the dashboard picker. A trail already on
+    // screen follows the scope: re-read the new scope's newest completed run (or drop to the
+    // pane's no-trail note when it has none) so the trail and the tab strip cannot name
+    // different roles.
+    const slots: Array<string | null> = [null, ...session.roleIds];
+    const slot = slots.indexOf(historyRole);
+    historyRole = slots[(slot + 1) % slots.length] ?? null;
+    if (trailMode) refreshTrail();
+    recompute();
+    session.requestRender();
+    return true;
+  };
+
+  const historyWindowCycle = (ctx: TuiPaneCtx): boolean => {
+    if (!promptLineFree(ctx.es)) return false;
+    // Ctrl+S advances the History pane's trailing window (mnemonic: **S**ince). Guarded out
+    // of budget-edit and role-prompt modes like the other mode-sensitive keys. The window is
+    // session state: advancing it off the History view only changes the label, and the next
+    // Ctrl+T into History computes the cache with it; on the History view this handler
+    // re-reads the rows now and resets the scroll so the changed body re-enters at its head.
+    historyStep = 0;
+    historyWindow = nextInCycle(HISTORY_WINDOWS, historyWindow);
+    if (trailMode) refreshTrail();
+    recompute();
+    session.requestRender();
+    return true;
+  };
+
+  const historyResultCycle = (ctx: TuiPaneCtx): boolean => {
+    if (!promptLineFree(ctx.es)) return false;
+    // Ctrl+O advances the History pane's outcome filter (mnemonic: **O**utcome). Guarded out
+    // of budget-edit and role-prompt modes like Ctrl+S beside it. (The Health pane's
+    // problems-only Ctrl+O is handled ahead of this module by the aggregator when that view is
+    // current.) The class is session state: advancing it off the History view only changes the
+    // label, and the next Ctrl+T into History computes the cache with it; on the History view
+    // this handler re-reads and re-filters the rows now and resets the scroll so the changed
+    // body re-enters at its head.
+    historyResult = nextInCycle(HISTORY_RESULTS, historyResult);
+    if (trailMode) refreshTrail();
+    recompute();
+    session.requestRender();
+    return true;
+  };
+
+  const historyModelCycle = (ctx: TuiPaneCtx): boolean => {
+    if (!promptLineFree(ctx.es)) return false;
+    // Ctrl+X advances the History pane's model filter — all, each model the pane's rows ran on
+    // (in the Ctrl+Y by-model table's order), all — the twin of `tumwater history --model`.
+    // False off the History view so the other Ctrl+X arms keep their keys.
+    if (session.view !== session.roleIds.length + 4) return false;
+    const rows = selectPaneRows(historyWindow, historyResult, historyRole, historyGrep, null, HISTORY_DEFAULT_RUNS, historyStep).filtered;
+    const list = summarizeRunRowsByModel(rows).models.flatMap((m) => (m.model === null ? [] : [m.model]));
+    if (list.length === 0 && historyModel === null) {
+      session.flashMessage("no runs with a model in this view");
+      return true;
+    }
+    const i = list.indexOf(historyModel ?? "");
+    historyModel = i + 1 < list.length ? list[i + 1]! : null;
+    if (trailMode) refreshTrail();
+    recompute();
+    session.requestRender();
+    return true;
+  };
+
+  const historySummaryCycle = (ctx: TuiPaneCtx): boolean => {
+    if (!promptLineFree(ctx.es)) return false;
+    // Ctrl+Y cycles the History pane's views — rows, per-role Summary, per-model Summary,
+    // rows (mnemonic: summar**Y**) — the same tallies `tumwater history --summary [--by model]`
+    // and the dashboard History view print,
+    // folded over the pane's already-selected rows. Guarded out of budget-edit and
+    // role-prompt modes like Ctrl+S/O beside it. The class is session state: toggling it off
+    // the History view only changes the label, and the next Ctrl+T into History computes the
+    // cache with it; on the History view this handler re-reads and re-renders now and resets
+    // the scroll so the changed body re-enters at its head.
+    historySummary = historySummary === null ? "role" : historySummary === "role" ? "model" : null;
+    recompute();
+    session.requestRender();
+    return true;
+  };
+
+  const historyTrailPage = (page: "up" | "down"): boolean => {
+    if (trailMode) {
       // Within-body scroll in the run-trail view: PgDn/PgUp page the cached trail Markdown,
       // clamped at both ends, exactly like the notes/change and usage/failures panes.
       session.paneScroll = pageMarkdownBody(session.paneScroll, trailCache, session.eventBudget, page);
       session.requestRender();
       return true;
     }
+    return false;
+  };
+
+  const handleKey = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    if (key.ctrl && key.name === "n") return historyTrailToggle(ctx);
+    if (key.ctrl && key.name === "l") return historyNewestFailure(ctx);
+    if (key.ctrl && key.name === "p") return historyStepBack(ctx);
+    if (key.ctrl && key.name === "r") return historyTranscriptCycle(ctx);
+    if (key.ctrl && key.name === "w") return historyPatchToggle(ctx);
+    if (key.ctrl && key.name === "v") return historyRevertArm(ctx);
+    if (key.ctrl && key.name === "g") return historyScopeCycle(ctx);
+    if (key.ctrl && key.name === "s") return historyWindowCycle(ctx);
+    if (key.ctrl && key.name === "o") return historyResultCycle(ctx);
+    if (key.ctrl && key.name === "x") return historyModelCycle(ctx);
+    if (key.ctrl && key.name === "y") return historySummaryCycle(ctx);
+    const page = pageDir(key.name);
+    if (page !== null) return historyTrailPage(page);
     return false;
   };
 
