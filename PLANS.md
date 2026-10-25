@@ -444,4 +444,26 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/gui-endpoints.test.ts: `POST /api/role-model writes a backend override` (only `backend` present), `POST /api/role-model refuses an empty field set`, and an unknown backend id returns 400.
 - test/gui-client-drawer.test.ts: `the Model overrides editor shows and saves the backend field` — the editor markup carries `modeleditbackend` prefilled from `backendOverride`, and the save body carries it.
 
+### The status role rows name a seam's backend default when neither provider nor model resolves — the `tumwater role <id>` Model line's twin (planned 2026-10-24 by the plan role; independent in behavior of every eligible plan — the `Forward, never back` and `Every commit is verified on main` series share `docs/invariants.md`'s cross-surface section and `src/ui/status-render.ts` with this part, so whichever lands second rebases there, and neither edits `src/status/status-roles.ts`, `src/roles/role-render.ts` or `src/agent/backend-traits.ts`; touches src/agent/backend-traits.ts src/roles/role-render.ts src/status/status-roles.ts docs/invariants.md test/backend-traits.test.ts test/status-data-models.test.ts)
+
+**Goal.** A seam that resolves neither a provider nor a model — an opencode role with no `model` (`BACKEND_DEFAULT_MODELS.opencode` is `{}`, so `routeModel` fills no default), or a pi role when pi's own settings hold no readable default — renders `<backend> default` on `tumwater role <id>`'s Model line (`role-render.ts`'s `backendDefault`), but `tumwater status`, the dashboard Roles rows and the TUI role table leave the model cell empty for the same role: `collectRoleRows`'s only no-model branch is `modelFromPi`, which names a readable pi default and nothing else. One no-model label computed once keeps the two surfaces from disagreeing.
+
+**Approach.**
+- `src/agent/backend-traits.ts`: add `export function backendDefaultLabel(backend: string | undefined): string` returning `"pi default"` for `pi` or undefined and `` `${backend} default` `` otherwise — the one home of the wording `role-render.ts`'s private `backendDefault` prints today, beside `modelLabel`/`backendDisplayName`.
+- `src/roles/role-render.ts`: `backendDefault(p)` returns `backendDefaultLabel(p.backend)` (its call sites unchanged), so the role view and the status rows share the computation.
+- `src/status/status-roles.ts`: in `collectRoleRows`'s per-row return, after the `modelFromPi` spread, add a sibling spread — `...(modelFromPi || eff.provider !== undefined || eff.model !== undefined ? {} : { model: backendDefaultLabel(eff.agent) })` — so a role that resolves neither half names its backend default. `eff.agent` is always set (`withModelOverrides` defaults it to `"pi"`); a claude or codex seam already carries `routeModel`'s tier default in `eff.model`, and the existing `modelFromPi` branch still wins when pi's default is readable, so only the opencode and unreadable-pi-default rows change.
+- docs/invariants.md: add one invariant to the "Cross-surface agreement" section — a role's no-model label is computed once by `backendDefaultLabel` and read by `tumwater role <id>` and the status rows — pinned by the new test.
+
+**Files touched.** src/agent/backend-traits.ts src/roles/role-render.ts src/status/status-roles.ts docs/invariants.md test/backend-traits.test.ts test/status-data-models.test.ts
+
+**Acceptance criteria.**
+- With `roles.clean.backend = "opencode"` and no `model`/`provider`, the `clean` status row carries `model: "opencode default"` and no `modelFromPi`, and `tumwater role clean`'s Model line reads `opencode default` — both through `backendDefaultLabel`.
+- A pi seam with no readable pi default carries `model: "pi default"`; with a readable default it keeps today's formatted selector and `modelFromPi: true` (unchanged).
+- A claude or codex seam with no `model` keeps `routeModel`'s tier default (`claude/claude-sonnet-5-5`, `codex/gpt-6.1-sol`), unchanged.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/backend-traits.test.ts: `backendDefaultLabel names pi and non-pi seams` — `"pi default"` for `"pi"` and `undefined`, `"claude default"`/`"opencode default"`/`"codex default"` for the backends.
+- test/status-data-models.test.ts: `a role that resolves no provider or model names its backend default` — `cfg.roles.clean.backend = "opencode"` (with `model`/`provider` unset) yields `model: "opencode default"` and no `modelFromPi`; a config whose pi settings hold no default yields `"pi default"`; the existing pi-default case still yields the formatted selector with `modelFromPi: true`.
+
 ## Done
