@@ -254,6 +254,12 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // can read the same state the alert renders). Omitted (absent) when the brief resolves or
     // the repo is the bare pre-init state, the same omit-undefined idiom as noDeclaredCheck.
     ...(snap.noBrief ? { noBrief: true } : {}),
+    // The raw machine-readable twin of the amber `brief-truncated` alert (present only when
+    // the resolved brief block exceeds the read cap, the state the doctor `brief` row's
+    // over-cap warn covers, so `tumwater status --json` scripts can read the same state the
+    // alert renders). Omitted (absent) at or under the cap, the same omit-undefined idiom as
+    // noBrief.
+    ...(snap.briefTruncated ? { briefTruncated: true } : {}),
     ciParityTone: ciParityTone(snap.ciParity),
     // The check's counts fragment, preformatted through badges.ts's mainCountsFragment so
     // the page renders the pass/skip/fail breakdown verbatim and cannot re-derive (and

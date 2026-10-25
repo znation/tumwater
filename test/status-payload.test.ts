@@ -11,7 +11,7 @@ import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-index-data.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { staleOpenQuestions, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS, mainRuleFailures, MAIN_RULE_FAILURE_WINDOW_MS, qaCoverageAlert } from "../src/ui/alert-feeds.js";
-import { PROMPT_END, PROMPT_START } from "../src/brief/brief.js";
+import { PROMPT_END, PROMPT_START, BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkPostReviews } from "../src/doctor/doctor-backlog.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool, staleWorkspacePins } from "../src/doctor/doctor-contention-checks.js";
@@ -1181,6 +1181,33 @@ test("the payload's noBrief follows briefBlockMissing and clears when the brief 
   payload = statusPayload(root, now) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.noBrief, undefined, "no noBrief key with a resolved brief");
   assert.equal(payload.alerts.find((a) => a.key === "no-brief"), undefined, "no no-brief alert with a resolved brief");
+});
+
+test("the payload's briefTruncated follows briefBlockOverCap and clears under the cap", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  assert.equal(snapshot(root, undefined, now).briefTruncated, undefined, "no candidate stays absent");
+  let payload = statusPayload(root, now) as { briefTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal(payload.briefTruncated, undefined, "no briefTruncated key with no brief candidate");
+  assert.equal(payload.alerts.find((a) => a.key === "brief-truncated"), undefined, "no brief-truncated alert with no brief candidate");
+
+  // A block past the read cap is the silent degraded state doctor warns on; the snapshot,
+  // payload and alert should all surface it as the over-cap twin of `no-brief`.
+  fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}\n${("x").repeat(BRIEF_TEXT_MAX_CHARS + 1)}\n${PROMPT_END}\n`);
+  assert.equal(snapshot(root, undefined, now).briefTruncated, true, "over-cap brief is surfaced on the snapshot");
+  payload = statusPayload(root, now) as { briefTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal(payload.briefTruncated, true, "the machine-readable payload field is present");
+  const alert = payload.alerts.find((a) => a.key === "brief-truncated");
+  assert.ok(alert, "over-cap brief raises the brief-truncated alert");
+  assert.equal(alert!.tone, "amber");
+  assert.match(alert!.title, /over its prompt cap/);
+
+  // Trimming the block to exactly the cap turns the field and the alert back off.
+  fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}\n${("x").repeat(BRIEF_TEXT_MAX_CHARS)}\n${PROMPT_END}\n`);
+  assert.equal(snapshot(root, undefined, now).briefTruncated, undefined, "at-cap brief clears the snapshot field");
+  payload = statusPayload(root, now) as { briefTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal(payload.briefTruncated, undefined, "no briefTruncated key at the cap");
+  assert.equal(payload.alerts.find((a) => a.key === "brief-truncated"), undefined, "no brief-truncated alert at the cap");
 });
 
 test("qaCoverageAlert is null for a missing or fresh ledger and names the newest flow for a stalled one", () => {

@@ -70,6 +70,7 @@ export function teamAlerts(
     | "rootInstallDrift"
     | "noDeclaredCheck"
     | "noBrief"
+    | "briefTruncated"
     | "imageProbeFailures"
     | "chain"
     | "capPaused"

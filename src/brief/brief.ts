@@ -128,6 +128,26 @@ export function briefBlockMissing(root: string): boolean {
   }
 }
 
+/** True when the resolved brief block exceeds the read cap (BRIEF_TEXT_MAX_CHARS) — the
+ * always-on amber twin of the doctor `brief` row's over-cap warn. extractPrompt truncates
+ * such a block for every run (truncateWithNote), so each role's prompt carries only the
+ * head plus a truncation marker, silently burning tokens on a degraded project prompt —
+ * the third degraded state past `no-brief`, surfaced on the always-on surfaces. `readBrief`
+ * resolves the same block extractPrompt truncates, and the appended truncateWithNote marker
+ * makes an over-cap block's resolved length exceed the cap whether or not the cut backed off
+ * a surrogate pair, while an at-cap block stays equal to it. A repo with no candidate
+ * resolves null (0, false), and an unreadable candidate's readBrief throw is caught to false,
+ * because briefBlockMissing already raises `no-brief` for that state; an empty block stays
+ * briefBlockMissing's (its resolved length is 0). Consumer: src/status/status-data.ts's
+ * snapshot. */
+export function briefBlockOverCap(root: string): boolean {
+  try {
+    return (readBrief(root)?.prompt.length ?? 0) > BRIEF_TEXT_MAX_CHARS;
+  } catch {
+    return false;
+  }
+}
+
 /** The project's brief text, extracted from the resolved brief file's managed section —
  * TUMWATER.md when it exists with markers, else README.md (plans/portability.md §7a/7). The
  * closing marker is searched for only AFTER the opening one: an end marker mentioned in prose

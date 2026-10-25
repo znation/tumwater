@@ -26,7 +26,7 @@ import { collectInboxes } from "./status-inbox.js";
 import { collectBudget } from "./status-budget.js";
 import { collectRootInstallDrift } from "./status-install.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
-import { briefBlockMissing } from "../brief/brief.js";
+import { briefBlockMissing, briefBlockOverCap } from "../brief/brief.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
@@ -392,6 +392,13 @@ export interface StatusSnapshot {
    * the TUI; absent otherwise (including the bare pre-init repo), so the surfaces render
    * exactly as before. */
   noBrief?: boolean;
+  /** True when the resolved brief block exceeds the read cap (src/brief/brief.ts's
+   * briefBlockOverCap) — the doctor `brief` row's over-cap warning state, the warning tune
+   * extractPrompt truncates every run's prompt with. Present only in that state (the
+   * always-on amber `brief-truncated` alert surfaces it on `tumwater status`, the dashboard
+   * and the TUI); absent otherwise (at-cap, under-cap, empty and marker-less-keep-
+   * `no-brief`'s), so the surfaces render exactly as before. */
+  briefTruncated?: boolean;
   /** The check-permit pool's live state as the orchestrator published it; only while it runs. */
   checkPermits?: CheckPermitSnapshot;
   /** The workspace pool's live state as the running orchestrator published it; absent
@@ -591,6 +598,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     ciParity: ciParityForPoll(root, cfg),
     noDeclaredCheck: detectBuildCheck(root, cfg) === null ? true : undefined,
     noBrief: briefBlockMissing(root) ? true : undefined,
+    briefTruncated: briefBlockOverCap(root) ? true : undefined,
     // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
     // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
     // must not speak for a stopped team — and only when the last poll could measure the

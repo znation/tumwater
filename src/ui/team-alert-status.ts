@@ -14,6 +14,7 @@ import { chainFragments } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, plural } from "../text/phrases.js";
+import { BRIEF_TEXT_MAX_CHARS } from "../brief/brief.js";
 import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 import { joinWithMore, squash } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
@@ -25,6 +26,7 @@ interface StatusAlertsInput {
     "budget" | "chain" | "disk" | "rootInstallDrift" | "capPaused" | "budgetPausedRoles" | "build"
     | "noDeclaredCheck"
     | "noBrief"
+    | "briefTruncated"
     | "mainCheck"
   >;
   roles: readonly AlertRole[];
@@ -153,6 +155,19 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       tone: "amber",
       title: "The project brief's prompt block is missing or empty — every role runs without its project prompt",
       detail: "A brief file exists but carries no usable tumwater:prompt block (no markers, or no text between them), so each run's prompt reaches the model with no project brief. Restore the block in the file the doctor `brief` row names, or re-run `tumwater init`.",
+      actions: [],
+    });
+  }
+  // A brief block past the read cap (briefBlockOverCap): every run's prompt silently carries
+  // only the head plus a truncation marker, so each role plans and codes against a cut brief.
+  // The same over-cap state the doctor `brief` row warns on, raised as a standing alert on the
+  // always-on surfaces; mutually exclusive with `no-brief` (an over-cap block is non-empty).
+  if (snap.briefTruncated) {
+    out.push({
+      key: "brief-truncated",
+      tone: "amber",
+      title: "The project brief is over its prompt cap — every role runs on a truncated brief",
+      detail: "The brief block exceeds the read cap, so each run's prompt carries only its head plus a truncation marker. Shorten the block to at most " + BRIEF_TEXT_MAX_CHARS + " characters in the file the doctor `brief` row names (a hand edit, or the dashboard's Brief card), then save it.",
       actions: [],
     });
   }

@@ -9,6 +9,7 @@ import {
   STATUS_END,
   STATUS_START,
   briefBlockMissing,
+  briefBlockOverCap,
   briefFile,
   briefTemplate,
   readmeTemplate,
@@ -218,4 +219,17 @@ test("briefBlockMissing is true only when a candidate exists without a resolvabl
   } finally {
     fs.chmodSync(path.join(root, "README.md"), 0o644);
   }
+});
+
+test("briefBlockOverCap is true only for a block past the read cap", () => {
+  const root = tmpdir();
+  assert.equal(briefBlockOverCap(root), false, "no candidates at all");
+  writeReadme(root, `# p\n\n${PROMPT_START}\n${PROMPT_END}\n`);
+  assert.equal(briefBlockOverCap(root), false, "an empty marked block stays briefBlockMissing's");
+  writeReadme(root, `# p\n\n${PROMPT_START}\n${("x").repeat(BRIEF_TEXT_MAX_CHARS)}\n${PROMPT_END}\n`);
+  assert.equal(briefBlockOverCap(root), false, "a block of exactly the cap is not past it");
+  writeReadme(root, `# p\n\n${PROMPT_START}\n${("x").repeat(BRIEF_TEXT_MAX_CHARS + 1)}\n${PROMPT_END}\n`);
+  assert.equal(briefBlockOverCap(root), true, "a block past the cap is over it");
+  writeReadme(root, "# p\n\nNo markers here.\n");
+  assert.equal(briefBlockOverCap(root), false, "a marker-less candidate");
 });

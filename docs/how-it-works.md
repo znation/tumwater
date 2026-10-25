@@ -10,7 +10,9 @@ precedence over README.md, so an existing project's README can stay untouched. T
 surfaces (status, dashboard, TUI) raise the amber `no-brief` alert when a brief file exists
 without a usable marker block (markers missing, or no text between them), so a hand edit
 that strips the prompt cannot run the team silently
-without its project brief. Pointed at an
+without its project brief; a block past the read cap raises a second standing amber
+`brief-truncated` alert (every run's prompt then carries only its head plus a truncation
+marker, the always-on twin of the doctor `brief` row's over-cap warn). Pointed at an
 existing repo whose README.md has no markers, init adopts it: the brief goes in `TUMWATER.md`,
 README.md and any existing backlog files are left byte-identical, and only the missing files are
 created (`--adopt` asks for this path explicitly). `--dry-run` prints what init would create and
