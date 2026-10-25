@@ -237,39 +237,40 @@ export function createHistoryPane(
     }
   };
 
-  const loadTrailStat = (detail: RunDetail): void => {
+  // Resolve one async trail part (the run commit's stat or patch) through the session, and, if
+  // the trail is still current (`trailMode`, not superseded by a newer `trailGen`, and `keep`
+  // still true), fold its text in. Shared by the stat and patch loaders so the staleness guard
+  // and the flash/render on both error and success cannot drift between them.
+  const loadTrailPart = (
+    call: () => Promise<string>,
+    keep: boolean,
+    set: (value: string) => void,
+  ): void => {
     const gen = trailGen;
-    void session.runStat(session.root, detail).then(
-      (stat) => {
-        if (!trailMode || gen !== trailGen) return;
-        trailStat = stat;
+    void call().then(
+      (value) => {
+        if (!trailMode || !keep || gen !== trailGen) return;
+        set(value);
         composeTrail();
         session.requestRender();
       },
       (err: unknown) => {
-        if (!trailMode || gen !== trailGen) return;
+        if (!trailMode || !keep || gen !== trailGen) return;
         session.flashError(err);
         session.requestRender();
       },
     );
   };
 
-  const loadTrailPatch = (detail: RunDetail): void => {
-    const gen = trailGen;
-    void session.runPatch(session.root, detail).then(
-      (patch) => {
-        if (!trailMode || !trailPatch || gen !== trailGen) return;
-        trailPatchText = patch;
-        composeTrail();
-        session.requestRender();
-      },
-      (err: unknown) => {
-        if (!trailMode || !trailPatch || gen !== trailGen) return;
-        session.flashError(err);
-        session.requestRender();
-      },
-    );
-  };
+  const loadTrailStat = (detail: RunDetail): void =>
+    loadTrailPart(() => session.runStat(session.root, detail), true, (stat) => {
+      trailStat = stat;
+    });
+
+  const loadTrailPatch = (detail: RunDetail): void =>
+    loadTrailPart(() => session.runPatch(session.root, detail), trailPatch, (patch) => {
+      trailPatchText = patch;
+    });
 
   /** Re-read the pane's `index`-th newest completed run (its scope, window, search and outcome
    * class, as the rows show them) into trailCache, appending the run commit's per-file stat
