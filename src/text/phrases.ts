@@ -248,6 +248,16 @@ export function backendKindPhrase(kind: unknown): string {
   }
 }
 
+/** True when a rate-hold event's `kind` describes a backend/connection failure rather than a
+ * provider rate-limit (429). The one home of the "not a 429" discriminator, shared by the event
+ * feed (event-format.ts's rate_limit_hold/recovered lines) and the failure digest's Team state
+ * changes lines (failure-state-change.ts's rate_limit_hold/resumed), so the two cannot disagree
+ * on which kind is a rate-limit: an absent, blank, or `"rate-limit"` kind keeps the 429 wording
+ * every historical event already has, and only a real non-empty backend kind names itself. */
+export function rendersAsBackendFailure(kind: unknown): boolean {
+  return !!kind && kind !== "rate-limit";
+}
+
 const LEADING_CD = /^\s*cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/;
 
 function withoutLeadingCd(command: string): string {

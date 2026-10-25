@@ -9,7 +9,7 @@ import { truncateExample } from "./failure-cluster.js";
 import { cutSplitsSurrogatePair, isNonBlankString } from "../text/text.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
-import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
+import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 
 import { shortSha } from "../text/format.js";
 import { deferredReasonText, untilClockSuffix, gigabytes, windowSuffix, windowResetPhrase, backendLabel } from "../events/event-format.js";
@@ -238,7 +238,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       // each role is byte-sliced through field() so the section's bound holds.
       const roles = rolesPhrase(ev.roles, "?", 4, field);
       text =
-        ev.kind && ev.kind !== "rate-limit"
+        rendersAsBackendFailure(ev.kind)
           ? `backend hold (${backendKindPhrase(ev.kind)}) ${holdPhrase(ev.holdMs, ev.escalation)} — ${roles}`
           : `429 hold ${holdPhrase(ev.holdMs, ev.escalation)} — ${roles}`;
       break;
@@ -247,7 +247,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       // Same split as the hold line above (and the event feed's rendering): the resumed event
       // carries the ended hold's kind, so a backend hold's lift names itself.
       text =
-        ev.kind && ev.kind !== "rate-limit"
+        rendersAsBackendFailure(ev.kind)
           ? `backend hold lifted (${backendKindPhrase(ev.kind)}) — roles run again`
           : "429 hold lifted — roles run again";
       break;

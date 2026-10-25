@@ -3,7 +3,7 @@ import { eventRole, eventRun, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
-import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
+import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { isNonBlankString, joinWithMore, squash, textOr, truncate } from "../text/text.js";
@@ -488,7 +488,7 @@ export function eventMessage(e: HarnessEvent): string {
       // The rate-limit kind keeps the wording every historical event has; a backend-failure
       // kind names itself instead, since "429" would be a lie about a connection error.
       const roles = rolesPhrase(e.roles, "several roles");
-      if (e.kind && e.kind !== "rate-limit")
+      if (rendersAsBackendFailure(e.kind))
         return `waiting: backend failing (${backendKindPhrase(e.kind)})${providerAt(e)} — ${roles} hit backend failures; roles on ${providerScope(e)} start no new runs ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
       return `waiting: provider limit${providerAt(e)} — ${roles} rate-limited by the provider; roles on ${providerScope(e)} start no new runs ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
     }
@@ -496,7 +496,7 @@ export function eventMessage(e: HarnessEvent): string {
       // The ended hold's kind rides the resumed event (pollTeamHold logs it), so the lift
       // names what actually ended — the same split as the hold line above: "429 hold lifted"
       // after a connection-error hold would be a lie about a connection error.
-      if (e.kind && e.kind !== "rate-limit")
+      if (rendersAsBackendFailure(e.kind))
         return `backend recovered (${backendKindPhrase(e.kind)})${providerAt(e)} — roles on ${providerScope(e)} run again`;
       return `provider limit lifted${providerAt(e)} — roles on ${providerScope(e)} run again`;
     }
