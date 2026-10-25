@@ -432,6 +432,48 @@ export function createHistoryPane(
       session.requestRender();
       return true;
     }
+    if (key.ctrl && key.name === "l") {
+      // Ctrl+L on the History pane (mnemonic: the **l**atest failing run) resets the pane to
+      // the team-wide problems scope and opens the trail — the terminal twin of the dashboard
+      // History view's Newest failure button and `tumwater history --last --result problems`
+      // (newestRunRow(root, null, ["problems"], null)). It clears every filter the operator
+      // left set — role scope, trailing window, search, model, summary — and the trail, so a
+      // second press re-jumps to the newest failure. Routed here only for the History view;
+      // every other view keeps its own Ctrl+L meaning (Health's retire-leftovers ahead of this
+      // router, Activity's fallback editor and a Transcript's instructions editor in the
+      // editors).
+      if (session.view !== session.roleIds.length + 4) return false;
+      if (!promptLineFree(ctx.es)) {
+        // The editor would consume the key; keep Ctrl+L consumed on the History view.
+        session.requestRender();
+        return true;
+      }
+      historyRole = null;
+      historyResult = "problems";
+      historyWindow = null;
+      historyStep = 0;
+      historyGrep = null;
+      historyModel = null;
+      historySummary = null;
+      // Drop any on-screen trail the way Ctrl+N's toggle-off arm does (the gen bump keeps an
+      // in-flight stat from the old trail from repainting).
+      trailGen++;
+      trailMode = false;
+      trailCache = null;
+      trailIndex = 0;
+      trailTranscript = "off";
+      trailPatch = false;
+      trailPatchText = null;
+      trailGrep = null;
+      recompute();
+      // historyWindow null + historyResult "problems": loadTrail reads
+      // readRunRows(root, HISTORY_MAX_RUNS, null) and takes .filtered[0] — the newest failing
+      // run of any role, exactly what the dashboard's Newest failure button and the CLI open.
+      if (loadTrail(() => session.flashMessage("no failing run in the scanned window"))) trailMode = true;
+      session.paneScroll = 0;
+      session.requestRender();
+      return true;
+    }
     if (key.ctrl && key.name === "p") {
       // Ctrl+P steps an on-screen trail back to the next older run in the pane's scope,
       // wrapping to the newest after the oldest. Anywhere else it falls through (false) to the

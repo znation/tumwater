@@ -192,6 +192,10 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     // Health view it falls through so the Activity fallback shift (view 0) and the
     // instructions editor on a role's Transcript keep their current meanings.
     if (key.ctrl && key.name === "l" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
+    // History owns Ctrl+L (newest failure) after Health's; off the History view it falls
+    // through so the Activity fallback editor (view 0) and a Transcript's instructions editor
+    // (handled in the editors ahead of this router) keep their current meanings.
+    if (key.ctrl && key.name === "l") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "y") {
       // Ctrl+Y's transcript change-step arm (the diffstat toggle) is routed first and falls
       // through off it, so History keeps its Summary cycle on every other view.

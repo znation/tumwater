@@ -1078,6 +1078,44 @@ test("Ctrl+N on the History pane swaps the rows for the newest completed run's t
   assert.equal(keys.state().trailCache, null);
 });
 
+test("Ctrl+L on the History pane opens the team's newest failing run regardless of scope and filters", () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "failed", summary: "broke" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_120_000, loop: "clean", type: "run_start", run: 2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_180_000, loop: "clean", type: "run_end", run: 2, result: "changed", summary: "work" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  openHistory(keys);
+  // Set a scope and an outcome filter the press must reset to the team-wide problems scope.
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // scope → clean
+  keys.handleKey(undefined, { ctrl: true, name: "o" }); // result → merged
+  assert.equal(keys.state().historyRole, "clean");
+  assert.equal(keys.state().historyResult, "merged");
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.equal(keys.state().trailMode, true);
+  assert.equal(keys.state().trailCache, renderRunDetail(readRunDetail(root, "clean", 1)!));
+  assert.equal(keys.state().historyResult, "problems");
+  assert.equal(keys.state().historyRole, null);
+  assert.equal(keys.state().historySince, null);
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // Ctrl+N closes the trail onto the failing runs
+  assert.equal(keys.state().trailMode, false);
+});
+
+test("Ctrl+L on the History pane with no failing run leaves the rows", () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "work" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  openHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.equal(keys.state().trailMode, false);
+  assert.ok((keys.state().paneCache ?? "") !== "", "the rows stay cached");
+});
+
 function historyTrailRoot(): string {
   const root = makeRoot();
   writeEvents(root, [
