@@ -264,15 +264,15 @@ function nonemptyObj<K extends string>(key: K, map: Record<string, number>): Par
   return Object.keys(map).length > 0 ? ({ [key]: map } as Record<K, Record<string, number>>) : {};
 }
 
-/** Aggregate team usage over exactly `days` local calendar days ending today, from the event
- * log (run_end/merged) and the backlog history (`## Done` in PLANS.md and PLANS-DONE.md,
- * `## Fixed` in BUGS.md and BUGS-FIXED.md). */
-export function collectReport(root: string, days: number, role?: string | readonly string[]): ReportData {
-  const bases = scopeBases(role);
-  const now = new Date();
-  // One captured instant for the whole window, so every day key derives from the same day.
-  const { from, to } = dayWindow(days, now);
+/** The fold entry `foldWindowEvents` returns, and one day slot of its per-day map — both
+ * module-private in src/report/report-fold.ts, so the phase builders below alias them here
+ * rather than editing report-fold.ts's surface. */
+type ReportFoldEntry = ReturnType<typeof foldWindowEvents>;
+type DayFold = NonNullable<ReturnType<ReportFoldEntry["days"]["get"]>>;
 
+/** Zero-fill the per-day series across `days` calendar days ending `now` and index it by
+ * date, so the fold's day keys can address their slots and the out-of-window keys drop out. */
+function buildEmptySeries(days: number, now: Date): { series: ReportDay[]; byDate: Map<string, ReportDay> } {
   const series: ReportDay[] = [];
   for (let i = days - 1; i >= 0; i--) {
     series.push({
@@ -288,146 +288,166 @@ export function collectReport(root: string, days: number, role?: string | readon
   }
   const byDate = new Map<string, ReportDay>();
   for (const d of series) byDate.set(d.date, d);
+  return { series, byDate };
+}
 
-  const foldEntry = foldWindowEvents(root, from);
-  for (const [dayKey, fold] of foldEntry.days) {
-    const day = byDate.get(dayKey);
-    if (!day) continue; // Out-of-window day key (e.g. future-dated) — no series slot to fill.
-    if (bases === undefined) {
-      day.tokensOut = fold.tokensOut;
-      day.runsByRole = fold.runsByRole;
-      day.tokensByRole = fold.tokensByRole;
-      // Only set when nonempty, so a prompt-free day keeps its exact pre-feature shape.
-      setMapIfNonempty(day, "promptTokensByRole", fold.promptTokensByRole);
-      setMapIfNonempty(day, "cacheReadTokensByRole", fold.cacheReadTokensByRole);
-      day.costByRole = fold.costByRole;
-      // Only set when nonzero, so a rejection-free day keeps its exact pre-feature shape.
-      setMapIfNonempty(day, "rejectionsByRole", fold.rejectionsByRole);
-      setMapIfNonempty(day, "postMergeRejectionsByRole", fold.postMergeRejectionsByRole);
-      setMapIfNonempty(day, "revisionsByRole", fold.revisionsByRole);
-      setMapIfNonempty(day, "refusalsByRole", fold.refusalsByRole);
-      // Checks belong to the merge slot, so only the team series carries the median.
-      setLowerMedian(day, "checkMedianMs", fold.checkDurationsMs);
-      if (fold.checkFailures > 0) day.checkFailures = fold.checkFailures;
-      setLowerMedian(day, "mergeWaitMedianMs", fold.mergeWaitsMs);
-      setLowerMedian(day, "mergeSlotMedianMs", fold.mergeDurationsMs);
-      setLowerMedian(day, "runMedianMs", fold.runDurationsMs);
-      setLowerMedian(day, "providerWaitMedianMs", fold.providerWaitsMs);
-      // A workspace wait is the pool's, not a role's, so only the team series carries it.
-      setLowerMedian(day, "slotWaitMedianMs", fold.slotWaitsMs);
-      // A check permit is the team's, not a role's, so only the team series carries it.
-      setLowerMedian(day, "checkWaitMedianMs", fold.checkWaitsMs);
-      // A review belongs to the merge slot/reviewer, not the author role, so only the team
-      // series carries the median, mirroring checkMedianMs.
-      setLowerMedian(day, "reviewMedianMs", fold.reviewDurationsMs);
-      // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
-      setMapIfNonempty(day, "failedRunsByRole", fold.failedRunsByRole);
-      setMapIfNonempty(day, "fallbacksByRole", fold.fallbacksByRole);
-      setMapIfNonempty(day, "imageReroutesByRole", fold.imageReroutesByRole);
-      day.commits = fold.commits;
-      day.commitsByRole = fold.commitsByRole;
-      day.workCommits = fold.workCommits;
-      day.maintenanceCommits = fold.maintenanceCommits;
-      day.costUsd = fold.costUsd;
-      // Only set when nonzero, so zero-notional days keep their exact pre-feature shape.
-      if (fold.notionalCostUsd > 0) day.notionalCostUsd = fold.notionalCostUsd;
-      setMapIfNonempty(day, "notionalByRole", fold.notionalByRole);
-      // Only set when a provider actually spent (zero means absent), so a provider-free day
-      // keeps its exact pre-feature shape and `report --json` omits the maps when empty.
-      setMapIfNonempty(day, "costByProvider", fold.costByProvider);
-      setMapIfNonempty(day, "notionalByProvider", fold.notionalByProvider);
-      // Backends are a team attribution (a backend is not a role), so only the team series
-      // carries the map; only set when a backend actually spent (zero means absent), so a
-      // backend-free day keeps its exact pre-feature shape.
-      setMapIfNonempty(day, "notionalByBackend", fold.notionalByBackend);
-      // Models are a team attribution (a model is not a role), so only the team series
-      // carries the map; only set when a modelled start happened (zero means absent), so a
-      // model-less day keeps its exact pre-feature shape.
-      setMapIfNonempty(day, "runsByModel", fold.runsByModel);
-      // Deferred runs are a team attribution (a reason is not a role), so only the team
-      // series carries the map; only set when a day actually deferred (zero means absent),
-      // so a deferral-free day keeps its exact pre-feature shape.
-      setMapIfNonempty(day, "deferredByReason", fold.deferredByReason);
-      day.mergeRuns = fold.mergeRuns;
-      day.mergeTokens = fold.mergeTokens;
-      day.mergeCostUsd = fold.mergeCostUsd;
-      // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
-      if ((fold.mergeFailed ?? 0) > 0) day.mergeFailed = fold.mergeFailed;
-      // Only set when a role actually merged/failed that day (zero means absent), so a
-      // merge-free day keeps its exact pre-feature shape.
-      setMapIfNonempty(day, "mergedByRole", fold.mergedByRole);
-      setMapIfNonempty(day, "mergeFailedByRole", fold.mergeFailedByRole);
-      // Reason codes are a team attribution (a result is not a role), so only the team
-      // series carries the map; only set when nonzero, so a failure-free day keeps its
-      // exact pre-feature shape. The role branch below leaves it unset — merge runs are
-      // the merge slot's.
-      setMapIfNonempty(day, "mergeFailedByReason", fold.mergeFailedByReason);
-    } else {
-      // Role scope: derive this day from the fold's per-role maps, so the series carries only
-      // the named role's runs/tokens/cost and (base-role-keyed) commits. The scope is the
-      // base role, so an instance id's usage and its siblings' commits fold into one group and
-      // the numbers match the per-role cap, which is base-role keyed too. The merge fields
-      // stay unset — merge runs are the merge slot's, not this role's — and the work /
-      // maintenance split follows the base role's own tier rather than the day's whole split.
-      const commits = roleSum(fold.commitsByRole, bases);
-      day.tokensOut = roleSum(fold.tokensByRole, bases);
-      day.runsByRole = narrowToRole(fold.runsByRole, bases);
-      day.tokensByRole = narrowToRole(fold.tokensByRole, bases);
-      setMapIfNonempty(day, "promptTokensByRole", narrowToRole(fold.promptTokensByRole, bases));
-      setMapIfNonempty(day, "cacheReadTokensByRole", narrowToRole(fold.cacheReadTokensByRole, bases));
-      day.costByRole = narrowToRole(fold.costByRole, bases);
-      setMapIfNonempty(day, "rejectionsByRole", narrowToRole(fold.rejectionsByRole, bases));
-      setMapIfNonempty(day, "postMergeRejectionsByRole", narrowToRole(fold.postMergeRejectionsByRole, bases));
-      setMapIfNonempty(day, "revisionsByRole", narrowToRole(fold.revisionsByRole, bases));
-      setMapIfNonempty(day, "refusalsByRole", narrowToRole(fold.refusalsByRole, bases));
-      setMapIfNonempty(day, "failedRunsByRole", narrowToRole(fold.failedRunsByRole, bases));
-      setMapIfNonempty(day, "fallbacksByRole", narrowToRole(fold.fallbacksByRole, bases));
-      setMapIfNonempty(day, "imageReroutesByRole", narrowToRole(fold.imageReroutesByRole, bases));
-      day.commits = commits;
-      day.commitsByRole = narrowToRole(fold.commitsByRole, bases);
-      const tierCommits = (tier: string): number =>
-        bases.filter((b) => commitTier(b) === tier).reduce((n, b) => n + roleSum(fold.commitsByRole, b), 0);
-      day.workCommits = tierCommits("work");
-      day.maintenanceCommits = tierCommits("maintenance");
-      day.costUsd = roleSum(fold.costByRole, bases);
-      const notional = roleSum(fold.notionalByRole, bases);
-      if (notional > 0) {
-        day.notionalCostUsd = notional;
-        day.notionalByRole = narrowToRole(fold.notionalByRole, bases);
-      }
-      // Merge runs belong to the merge slot, not this role, so the role-scoped series
-      // keeps them unset (matching the merge-share fields) — the render omits the merge
-      // line for a scoped report, so these are carried only for shape consistency.
-      setMapIfNonempty(day, "mergedByRole", narrowToRole(fold.mergedByRole, bases));
-      setMapIfNonempty(day, "mergeFailedByRole", narrowToRole(fold.mergeFailedByRole, bases));
-    }
+/** Fill one team day from its folded events: every field the fold carries, with the
+ * nonzero-or-absent and median-guard rules the day's exact pre-feature shape relies on. */
+function applyTeamDay(day: ReportDay, fold: DayFold): void {
+  day.tokensOut = fold.tokensOut;
+  day.runsByRole = fold.runsByRole;
+  day.tokensByRole = fold.tokensByRole;
+  // Only set when nonempty, so a prompt-free day keeps its exact pre-feature shape.
+  setMapIfNonempty(day, "promptTokensByRole", fold.promptTokensByRole);
+  setMapIfNonempty(day, "cacheReadTokensByRole", fold.cacheReadTokensByRole);
+  day.costByRole = fold.costByRole;
+  // Only set when nonzero, so a rejection-free day keeps its exact pre-feature shape.
+  setMapIfNonempty(day, "rejectionsByRole", fold.rejectionsByRole);
+  setMapIfNonempty(day, "postMergeRejectionsByRole", fold.postMergeRejectionsByRole);
+  setMapIfNonempty(day, "revisionsByRole", fold.revisionsByRole);
+  setMapIfNonempty(day, "refusalsByRole", fold.refusalsByRole);
+  // Checks belong to the merge slot, so only the team series carries the median.
+  setLowerMedian(day, "checkMedianMs", fold.checkDurationsMs);
+  if (fold.checkFailures > 0) day.checkFailures = fold.checkFailures;
+  setLowerMedian(day, "mergeWaitMedianMs", fold.mergeWaitsMs);
+  setLowerMedian(day, "mergeSlotMedianMs", fold.mergeDurationsMs);
+  setLowerMedian(day, "runMedianMs", fold.runDurationsMs);
+  setLowerMedian(day, "providerWaitMedianMs", fold.providerWaitsMs);
+  // A workspace wait is the pool's, not a role's, so only the team series carries it.
+  setLowerMedian(day, "slotWaitMedianMs", fold.slotWaitsMs);
+  // A check permit is the team's, not a role's, so only the team series carries it.
+  setLowerMedian(day, "checkWaitMedianMs", fold.checkWaitsMs);
+  // A review belongs to the merge slot/reviewer, not the author role, so only the team
+  // series carries the median, mirroring checkMedianMs.
+  setLowerMedian(day, "reviewMedianMs", fold.reviewDurationsMs);
+  // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
+  setMapIfNonempty(day, "failedRunsByRole", fold.failedRunsByRole);
+  setMapIfNonempty(day, "fallbacksByRole", fold.fallbacksByRole);
+  setMapIfNonempty(day, "imageReroutesByRole", fold.imageReroutesByRole);
+  day.commits = fold.commits;
+  day.commitsByRole = fold.commitsByRole;
+  day.workCommits = fold.workCommits;
+  day.maintenanceCommits = fold.maintenanceCommits;
+  day.costUsd = fold.costUsd;
+  // Only set when nonzero, so zero-notional days keep their exact pre-feature shape.
+  if (fold.notionalCostUsd > 0) day.notionalCostUsd = fold.notionalCostUsd;
+  setMapIfNonempty(day, "notionalByRole", fold.notionalByRole);
+  // Only set when a provider actually spent (zero means absent), so a provider-free day
+  // keeps its exact pre-feature shape and `report --json` omits the maps when empty.
+  setMapIfNonempty(day, "costByProvider", fold.costByProvider);
+  setMapIfNonempty(day, "notionalByProvider", fold.notionalByProvider);
+  // Backends are a team attribution (a backend is not a role), so only the team series
+  // carries the map; only set when a backend actually spent (zero means absent), so a
+  // backend-free day keeps its exact pre-feature shape.
+  setMapIfNonempty(day, "notionalByBackend", fold.notionalByBackend);
+  // Models are a team attribution (a model is not a role), so only the team series
+  // carries the map; only set when a modelled start happened (zero means absent), so a
+  // model-less day keeps its exact pre-feature shape.
+  setMapIfNonempty(day, "runsByModel", fold.runsByModel);
+  // Deferred runs are a team attribution (a reason is not a role), so only the team
+  // series carries the map; only set when a day actually deferred (zero means absent),
+  // so a deferral-free day keeps its exact pre-feature shape.
+  setMapIfNonempty(day, "deferredByReason", fold.deferredByReason);
+  day.mergeRuns = fold.mergeRuns;
+  day.mergeTokens = fold.mergeTokens;
+  day.mergeCostUsd = fold.mergeCostUsd;
+  // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
+  if ((fold.mergeFailed ?? 0) > 0) day.mergeFailed = fold.mergeFailed;
+  // Only set when a role actually merged/failed that day (zero means absent), so a
+  // merge-free day keeps its exact pre-feature shape.
+  setMapIfNonempty(day, "mergedByRole", fold.mergedByRole);
+  setMapIfNonempty(day, "mergeFailedByRole", fold.mergeFailedByRole);
+  // Reason codes are a team attribution (a result is not a role), so only the team
+  // series carries the map; only set when nonzero, so a failure-free day keeps its
+  // exact pre-feature shape. The role branch below leaves it unset — merge runs are
+  // the merge slot's.
+  setMapIfNonempty(day, "mergeFailedByReason", fold.mergeFailedByReason);
+}
+
+/** Fill one role-scoped day from the fold's per-role maps, so the series carries only the
+ * named base role's usage, folded across an instance id's siblings, and keeps the merge
+ * fields and team-only maps unset. */
+function applyRoleDay(day: ReportDay, fold: DayFold, bases: string[]): void {
+  // Role scope: derive this day from the fold's per-role maps, so the series carries only
+  // the named role's runs/tokens/cost and (base-role-keyed) commits. The scope is the
+  // base role, so an instance id's usage and its siblings' commits fold into one group and
+  // the numbers match the per-role cap, which is base-role keyed too. The merge fields
+  // stay unset — merge runs are the merge slot's, not this role's — and the work /
+  // maintenance split follows the base role's own tier rather than the day's whole split.
+  const commits = roleSum(fold.commitsByRole, bases);
+  day.tokensOut = roleSum(fold.tokensByRole, bases);
+  day.runsByRole = narrowToRole(fold.runsByRole, bases);
+  day.tokensByRole = narrowToRole(fold.tokensByRole, bases);
+  setMapIfNonempty(day, "promptTokensByRole", narrowToRole(fold.promptTokensByRole, bases));
+  setMapIfNonempty(day, "cacheReadTokensByRole", narrowToRole(fold.cacheReadTokensByRole, bases));
+  day.costByRole = narrowToRole(fold.costByRole, bases);
+  setMapIfNonempty(day, "rejectionsByRole", narrowToRole(fold.rejectionsByRole, bases));
+  setMapIfNonempty(day, "postMergeRejectionsByRole", narrowToRole(fold.postMergeRejectionsByRole, bases));
+  setMapIfNonempty(day, "revisionsByRole", narrowToRole(fold.revisionsByRole, bases));
+  setMapIfNonempty(day, "refusalsByRole", narrowToRole(fold.refusalsByRole, bases));
+  setMapIfNonempty(day, "failedRunsByRole", narrowToRole(fold.failedRunsByRole, bases));
+  setMapIfNonempty(day, "fallbacksByRole", narrowToRole(fold.fallbacksByRole, bases));
+  setMapIfNonempty(day, "imageReroutesByRole", narrowToRole(fold.imageReroutesByRole, bases));
+  day.commits = commits;
+  day.commitsByRole = narrowToRole(fold.commitsByRole, bases);
+  const tierCommits = (tier: string): number =>
+    bases.filter((b) => commitTier(b) === tier).reduce((n, b) => n + roleSum(fold.commitsByRole, b), 0);
+  day.workCommits = tierCommits("work");
+  day.maintenanceCommits = tierCommits("maintenance");
+  day.costUsd = roleSum(fold.costByRole, bases);
+  const notional = roleSum(fold.notionalByRole, bases);
+  if (notional > 0) {
+    day.notionalCostUsd = notional;
+    day.notionalByRole = narrowToRole(fold.notionalByRole, bases);
   }
+  // Merge runs belong to the merge slot, not this role, so the role-scoped series
+  // keeps them unset (matching the merge-share fields) — the render omits the merge
+  // line for a scoped report, so these are carried only for shape consistency.
+  setMapIfNonempty(day, "mergedByRole", narrowToRole(fold.mergedByRole, bases));
+  setMapIfNonempty(day, "mergeFailedByRole", narrowToRole(fold.mergeFailedByRole, bases));
+}
 
-  // The merge share joins its day's tokensOut/costUsd (the budget charges these same
-  // events, so the day series must sum to the totals the budget agrees with) while the
-  // merge fields keep the reviewer's part of it visible on its own.
+/** Dispatch a day's fill on the role scope: team days read the fold whole, scoped days
+ * narrow to the named base roles. */
+function fillDayFromFold(day: ReportDay, fold: DayFold, bases: string[] | undefined): void {
+  if (bases === undefined) applyTeamDay(day, fold);
+  else applyRoleDay(day, fold, bases);
+}
+
+/** The merge share joins its day's tokensOut/costUsd (the budget charges these same
+ * events, so the day series must sum to the totals the budget agrees with) while the
+ * merge fields keep the reviewer's part of it visible on its own. */
+function addMergeShareToSeries(series: ReportDay[]): void {
   for (const d of series) {
     d.tokensOut += d.mergeTokens ?? 0;
     d.costUsd += d.mergeCostUsd ?? 0;
   }
+}
 
-  // Main's red wall-clock per day, from G1's rule (main_red_hold / failed ran main_check open a
-  // spell, a passing ran main_check closes it, an open spell runs to now). Team-only: main's
-  // red time is main's own, not any role's, so a role-scoped series leaves every day unset —
-  // exactly as checkFailures is team-only. Only set when a day actually was red (zero-absent,
-  // like checkMedianMs).
-  if (bases === undefined) {
-    const redByDay = mainRedMinutesByDay(foldEntry.redEvents, dayAt(days - 1, now).getTime(), now.getTime());
-    const redTestsByDay = mainRedFailingTestsByDay(foldEntry.redEvents, dayAt(days - 1, now).getTime(), now.getTime());
-    const redCulpritsByDay = mainRedCulpritsByDay(foldEntry.redEvents, dayAt(days - 1, now).getTime(), now.getTime());
-    for (const d of series) {
-      const ms = redByDay.get(d.date);
-      if (ms !== undefined) d.mainRedMs = ms;
-      setMapIfNonempty(d, "mainRedByTest", redTestsByDay.get(d.date));
-      setMapIfNonempty(d, "mainRedByCulprit", redCulpritsByDay.get(d.date));
-    }
+/** Main's red wall-clock per day, from G1's rule (main_red_hold / failed ran main_check open a
+ * spell, a passing ran main_check closes it, an open spell runs to now). Team-only: main's
+ * red time is main's own, not any role's, so a role-scoped series leaves every day unset —
+ * exactly as checkFailures is team-only. Only set when a day actually was red (zero-absent,
+ * like checkMedianMs). */
+function applyMainRedToSeries(series: ReportDay[], foldEntry: ReportFoldEntry, days: number, now: Date): void {
+  const redByDay = mainRedMinutesByDay(foldEntry.redEvents, dayAt(days - 1, now).getTime(), now.getTime());
+  const redTestsByDay = mainRedFailingTestsByDay(foldEntry.redEvents, dayAt(days - 1, now).getTime(), now.getTime());
+  const redCulpritsByDay = mainRedCulpritsByDay(foldEntry.redEvents, dayAt(days - 1, now).getTime(), now.getTime());
+  for (const d of series) {
+    const ms = redByDay.get(d.date);
+    if (ms !== undefined) d.mainRedMs = ms;
+    setMapIfNonempty(d, "mainRedByTest", redTestsByDay.get(d.date));
+    setMapIfNonempty(d, "mainRedByCulprit", redCulpritsByDay.get(d.date));
   }
+}
 
+/** Count the window's backlog completions and filings onto their days. Day-granular, so a
+ * role-scoped report keeps these at zero (a date is file metadata with no role). */
+function applyCompletionAndFilingCounts(
+  root: string,
+  byDate: Map<string, ReportDay>,
+  role: string | readonly string[] | undefined,
+): void {
   const countOn = (
     date: string,
     field: "featuresDone" | "bugsFixed" | "plansAdded" | "bugsFiled",
@@ -459,13 +479,19 @@ export function collectReport(root: string, days: number, role?: string | readon
       for (const d of sectionFilingDates(root, file, "Fixed")) countOn(d, "bugsFiled");
     }
   }
+}
 
-  // Tally the fixed bugs' `Validation gap` tags over the window, so the team can see where
-  // its own tests were weakest. An entry counts only when it is in the window (the same
-  // out-of-window drop countOn applies: its completion date must be a key of byDate), and
-  // only the team report carries the tally — a tag has no role (the render gates on the
-  // same `role === undefined`). Zero-means-absent: a window with no tagged fixed bug spreads
-  // no key, so the byte-for-byte assertions on pre-feature windows hold.
+/** Tally the fixed bugs' `Validation gap` tags over the window, so the team can see where
+ * its own tests were weakest. An entry counts only when it is in the window (the same
+ * out-of-window drop countOn applies: its completion date must be a key of byDate), and
+ * only the team report carries the tally — a tag has no role (the render gates on the
+ * same `role === undefined`). Zero-means-absent: a window with no tagged fixed bug spreads
+ * no key, so the byte-for-byte assertions on pre-feature windows hold. */
+function applyValidationGaps(
+  root: string,
+  byDate: Map<string, ReportDay>,
+  role: string | readonly string[] | undefined,
+): Record<string, number> {
   const validationGaps: Record<string, number> = {};
   if (role === undefined) {
     for (const e of fixedBugEntries(root)) {
@@ -478,15 +504,22 @@ export function collectReport(root: string, days: number, role?: string | readon
       }
     }
   }
+  return validationGaps;
+}
 
-  // The per-day backlog lag median: how long each finished plan or bug waited from its filing
-  // stamp to its done/fixed stamp, folded per completion day — the median backlog age at
-  // which the day's items closed. Team-only (a lag has no role, like the validation tally
-  // and the filing stamps above) and zero-means-absent: a day with no lag-carrying completion
-  // keeps its exact pre-feature shape, and an out-of-window completion date drops out (it
-  // must be a byDate key, the same drop countOn applies). The same entry detection and date
-  // rules (sectionCompletionLags / entryLags) the completion and filing reads use, so the
-  // spans pair the days `featuresDone`/`bugsFixed` count.
+/** The per-day backlog lag median: how long each finished plan or bug waited from its filing
+ * stamp to its done/fixed stamp, folded per completion day — the median backlog age at
+ * which the day's items closed. Team-only (a lag has no role, like the validation tally
+ * and the filing stamps above) and zero-means-absent: a day with no lag-carrying completion
+ * keeps its exact pre-feature shape, and an out-of-window completion date drops out (it
+ * must be a byDate key, the same drop countOn applies). The same entry detection and date
+ * rules (sectionCompletionLags / entryLags) the completion and filing reads use, so the
+ * spans pair the days `featuresDone`/`bugsFixed` count. */
+function applyBacklogLags(
+  root: string,
+  byDate: Map<string, ReportDay>,
+  role: string | readonly string[] | undefined,
+): void {
   if (role === undefined) {
     const lagsByDay = new Map<string, number[]>();
     const foldLag = (date: string, lagDays: number): void => {
@@ -504,7 +537,19 @@ export function collectReport(root: string, days: number, role?: string | readon
     }
     for (const [date, lags] of lagsByDay) byDate.get(date)!.backlogLagMedianDays = lowerMedian(lags);
   }
+}
 
+/** Reduce the filled day series to the report's totals, plus the nonzero-only fields the
+ * return literal folds into `ReportData.totals` (notional spend, merge failures, plans/bugs
+ * filings, backend attribution). */
+function foldSeriesTotals(series: ReportDay[]): {
+  totals: ReportData["totals"];
+  notionalCostUsd: number;
+  mergeFailed: number;
+  plansAdded: number;
+  bugsFiled: number;
+  notionalByBackend: Record<string, number>;
+} {
   const totals = {
     tokensOut: 0,
     runs: 0,
@@ -543,20 +588,57 @@ export function collectReport(root: string, days: number, role?: string | readon
     totals.mergeCostUsd += d.mergeCostUsd ?? 0;
     mergeFailed += d.mergeFailed ?? 0;
   }
+  return { totals, notionalCostUsd, mergeFailed, plansAdded, bugsFiled, notionalByBackend };
+}
 
-  // The shared coverage proof (event-window.ts), rebuilt from the memoized read's pinned
-  // parts: the day-keyed proof (fileCovers — a property of the retained bytes and fromKey,
-  // both in the cache key), the vacuous empty-log arm, and the oldest retained event's ts.
-  // The window's first local midnight is the cutoff: an event at that instant is the
-  // earliest the window could contain, so the same-day arm degenerates harmlessly. Without
-  // this field the day report was the one windowed consumer that could undercount in
-  // silence — the --since report and the failure digest both carry the note, and a silent
-  // number invites an operator to trust a truncated window as an idle team.
+/** The shared coverage proof (event-window.ts), rebuilt from the memoized read's pinned
+ * parts: the day-keyed proof (fileCovers — a property of the retained bytes and fromKey,
+ * both in the cache key), the vacuous empty-log arm, and the oldest retained event's ts.
+ * The window's first local midnight is the cutoff: an event at that instant is the
+ * earliest the window could contain, so the same-day arm degenerates harmlessly. Without
+ * this field the day report was the one windowed consumer that could undercount in
+ * silence — the --since report and the failure digest both carry the note, and a silent
+ * number invites an operator to trust a truncated window as an idle team. */
+function windowCoverage(foldEntry: ReportFoldEntry, days: number, now: Date): boolean {
   const cutoffMs = dayAt(days - 1, now).getTime();
-  const coversFullWindow =
+  return (
     foldEntry.fileCovers ||
     !foldEntry.hadEvents ||
-    (foldEntry.firstEventTs !== undefined && foldEntry.firstEventTs <= cutoffMs);
+    (foldEntry.firstEventTs !== undefined && foldEntry.firstEventTs <= cutoffMs)
+  );
+}
+
+/** Aggregate team usage over exactly `days` local calendar days ending today, from the event
+ * log (run_end/merged) and the backlog history (`## Done` in PLANS.md and PLANS-DONE.md,
+ * `## Fixed` in BUGS.md and BUGS-FIXED.md). */
+export function collectReport(root: string, days: number, role?: string | readonly string[]): ReportData {
+  const bases = scopeBases(role);
+  const now = new Date();
+  // One captured instant for the whole window, so every day key derives from the same day.
+  const { from, to } = dayWindow(days, now);
+
+  const { series, byDate } = buildEmptySeries(days, now);
+
+  const foldEntry = foldWindowEvents(root, from);
+  for (const [dayKey, fold] of foldEntry.days) {
+    const day = byDate.get(dayKey);
+    if (!day) continue; // Out-of-window day key (e.g. future-dated) — no series slot to fill.
+    fillDayFromFold(day, fold, bases);
+  }
+
+  addMergeShareToSeries(series);
+
+  // Team-only: main's red time is main's own, not any role's (see applyMainRedToSeries).
+  if (bases === undefined) applyMainRedToSeries(series, foldEntry, days, now);
+
+  applyCompletionAndFilingCounts(root, byDate, role);
+  const validationGaps = applyValidationGaps(root, byDate, role);
+  applyBacklogLags(root, byDate, role);
+
+  const { totals, notionalCostUsd, mergeFailed, plansAdded, bugsFiled, notionalByBackend } =
+    foldSeriesTotals(series);
+
+  const coversFullWindow = windowCoverage(foldEntry, days, now);
   return {
     days,
     from,
