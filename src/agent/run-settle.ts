@@ -2,8 +2,9 @@
  * same seam the runner-run → runner-outcome split used): everything that happens after the
  * run's live feed — the spawn-`error` result, the `exit` orphan sweep, and the `close`-time
  * flush/reconcile/classify that builds the `PiRunResult`. run-agent.ts keeps the lifecycle
- * (pre-spawn setup, `prepare`, spawn, decoders, stream pipeline, watchdogs, the feed) and
- * delegates its `error`/`exit`/`close` listeners here, so the streaming half stays readable.
+ * (setup, the stream pipeline, watchdogs, the feed), delegates its build-and-spawn stage to
+ * src/agent/run-spawn.ts and its `error`/`exit`/`close` listeners here, so the streaming half
+ * stays readable.
  *
  * Each handler takes the run's live state (`RunSettleState`, defined in run-agent.ts and
  * imported here only as a type) and reads what it closes over at the moment its event fires —

@@ -341,7 +341,7 @@ export class PiStreamParser {
        * the only blind signal. */
       imageInput?: boolean | null;
       /** Called once, at the FIRST blind read, with its path — the runner's hook to kill an
-       * authoring run at once (src/agent/run-agent.ts) before the agent goes on working from
+       * authoring run at once (src/agent/run-spawn.ts) before the agent goes on working from
        * a picture it never saw. */
       onBlindRead?: (path: string) => void;
     } = {},

@@ -1,8 +1,8 @@
 /** The opencode adapter for the agent seam (plans/opencode-backend.md "The invocation",
  * "Sessions", §6). It shapes one run's argv/stdin/env, translates opencode's `run --format
  * json` into the canonical stream, runs the authoritative session export after the process
- * exits, and classifies the exit's stderr — everything backend-specific. src/agent/run-agent.ts
- * owns the spawn and records this run in the session ledger; opencode mints its own session id
+ * exits, and classifies the exit's stderr — everything backend-specific. src/agent/run-spawn.ts
+ * spawns the run and records this run in the session ledger; opencode mints its own session id
  * (a `ses_…` id, or the resumed record's id), which `invocation` returns so the ledger can
  * carry it.
  *

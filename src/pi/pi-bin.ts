@@ -6,7 +6,7 @@ import { envPath, findOnPath, isExecutableFile } from "../files/files.js";
  * resolution `TUMWATER_<ID>_BIN` → `backends.<id>.bin` (pi's legacy `agentBin` alias) → the
  * backends' defaults (plans/agent-backends.md "Config"; plans/portability.md §5/7), the
  * executability rule the preflight askers share, and the missing-binary wording they quote.
- * The spawn (src/agent/run-agent.ts) resolves through each backend's resolveBin; the startup
+ * The spawn (src/agent/run-spawn.ts) resolves through each backend's resolveBin; the startup
  * gate (gates/startup-gate.ts) walks every enabled seam's backend through the same resolution and
  * executability rule, and doctor (doctor/doctor-checks.ts) asks them for every backend in use
  * (backendsInUse, the startup gate's rule). Each surface quotes this module's wording, so the
@@ -32,7 +32,7 @@ export interface ResolvedBackendBin {
 }
 
 /** The operator-facing name of each source, as it appears in failure text and doctor's
- * report. Exported so src/agent/run-agent.ts's spawn errors and doctor's checks quote the same
+ * report. Exported so src/agent/run-settle.ts's spawn errors and doctor's checks quote the same
  * string. `binEnv` is the environment variable a backend reads (pi's TUMWATER_PI_BIN by
  * default; claude's adapter passes TUMWATER_CLAUDE_BIN), and `configKey` is the tumwater.json
  * key the "config" source names (pi's legacy `agentBin`, or `backends.<id>.bin`), so a claude

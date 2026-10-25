@@ -1,7 +1,7 @@
 /** The claude adapter for the agent seam (plans/agent-backends.md "The seam", "Sessions",
  * "The claude invocation"). It shapes one run's argv/stdin/env, translates claude's
  * `stream-json` into the canonical stream, and classifies the exit's stderr — everything
- * backend-specific. src/agent/run-agent.ts owns the spawn and records this run in the session
+ * backend-specific. src/agent/run-spawn.ts spawns the run and records this run in the session
  * ledger; claude mints its own session id (a fresh UUID, or the resumed record's id), which
  * `invocation` returns so the ledger can carry it.
  *

@@ -4,7 +4,7 @@
  * probe's runMarkers check and doctor's orphan judgment), and the sweep that SIGTERMs
  * this run's leftovers whatever process group they ended up in. Split out of
  * process-table.ts — which keeps the doctor-facing probe interface and the ps/lsof/top
- * parsing it is made of — because this half serves src/agent/run-agent.ts's run stamping and
+ * parsing it is made of — because this half serves src/agent/run-spawn.ts's run stamping and
  * the exit sweep, and shares none of the probe's table-parsing concerns; the probe reads marks
  * through the same parsers exported here. */
 
@@ -51,7 +51,7 @@ export function runMarkerEnv(base: NodeJS.ProcessEnv, marker: string): NodeJS.Pr
  * check-in preload removed (`withoutLaunchServicesCheckIn`) and this run's marker appended
  * (`runMarkerEnv`). All three adapters (pi, claude, opencode) layer their own settings on
  * top, so the composition lives here rather than being re-derived in each. `binDir`, when
- * given, is prepended to PATH — run-agent passes the notes shim dir (notesShimDir) so every
+ * given, is prepended to PATH — run-spawn passes the notes shim dir (notesShimDir) so every
  * run finds the `tumwater-notes` command first (plans/notes-command.md "Reaching it from a
  * run"). */
 export function backendBaseEnv(

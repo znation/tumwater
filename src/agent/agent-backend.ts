@@ -1,7 +1,8 @@
 /** The backend seam (plans/agent-backends.md "The seam"): what one non-interactive agent
  * run needs from its backend — how to build the command, how to translate its native stdout
- * into tumwater's canonical event stream, and how to classify its exit. src/agent/run-agent.ts
- * owns everything backend-neutral (spawn, marker, watchdogs, abort, stderr capture); the
+ * into tumwater's canonical event stream, and how to classify its exit. src/agent/run-spawn.ts
+ * builds and spawns the run (the marker, parser, bin resolution and spawn); src/agent/run-agent.ts
+ * keeps the backend-neutral watchdogs, abort, the stream pipeline and stderr capture; the
  * post-run settlement — the group-kill and marker sweeps on exit, the spawn-error result and
  * the close-time reconcile/classify that builds the `PiRunResult` — lives in
  * src/agent/run-settle.ts. A backend registered here supplies the rest. src/agent/run-agent.ts
@@ -41,7 +42,7 @@ export interface AgentRunSpec {
   /** The role notes to export as TUMWATER_NOTES_PATH, when this run carries one. */
   notesPath?: string;
   /** The notes shim directory (notesShimDir under the team root) to prepend to this run's
-   * PATH, when run-agent could install it — how a run on any backend finds the
+   * PATH, when run-spawn could install it — how a run on any backend finds the
    * `tumwater-notes` command (plans/notes-command.md "Reaching it from a run"). Undefined
    * when the install failed or this run is not a harness run. */
   binDir?: string;
@@ -121,8 +122,9 @@ export interface AgentExitClassification {
 }
 
 /** One registered backend's contract — the seam's per-backend half: its identity and binary,
- * and the command builder, stdout translator, resume check, and exit classifier run-agent.ts
- * reads at run time. */
+ * the command builder and stdout translator run-spawn.ts reads at run time, the resume check
+ * the runner consults on the resume-decision paths before a run, and the exit classifier the
+ * runner reads at exit. */
 export interface AgentBackend {
   /** The registry key; also the `agent` config value and selector namespace. */
   id: string;

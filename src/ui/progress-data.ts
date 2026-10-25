@@ -19,7 +19,7 @@ import { statRoleLog, readCompleteLines, type TailState, withTail } from "../fil
  * agent run into the one `piLogPath` file — the authoring agent run in its own worktree, and
  * the review gate's runs (reviewer, conflict resolver) in a lease's pooled slot (legacy logs: its
  * `_land-<role>` merge slot worktree). Every run starts with the harness's `tumwater_run` marker
- * (src/agent/run-agent.ts), written before pi spawns so it precedes pi's first `session`
+ * (src/agent/run-spawn.ts), written before pi spawns so it precedes pi's first `session`
  * event; a kind-bearing marker names the run's kind, and a
  * session no kind-bearing marker preceded falls back to the legacy `cwd` test (the worktree
  * the session's `cwd` names). The reader keeps one accumulator per run kind
@@ -165,7 +165,7 @@ function freshProgress(quietMs: number, agent?: string): LiveProgress {
 /** The event types feedLine acts on — everything else (streaming deltas, turn/agent
  * bookkeeping) is ignored. Also passed as parsePiEventLine's pre-filter to skip JSON.parse for
  * pi lines whose type is verifiably not one of these; a new case in the switch must be added
- * here too. `tumwater_run` is the harness's own marker (src/agent/run-agent.ts), read for its
+ * here too. `tumwater_run` is the harness's own marker (src/agent/run-spawn.ts), read for its
  * run kind: a kind-bearing marker flips the demux and starts that accumulator fresh before
  * its `session` event lands, and a legacy label-only marker ("review") still flips the demux
  * to gate. */
@@ -366,7 +366,7 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
  * run in the role's own worktree, the default; `gate` — the review gate's runs in a leased pool
  * slot, what the reviewing cell shows), or null when there is no log yet. The raw log is
  * append-only while pi runs and every run starts with a `tumwater_run` marker
- * (src/agent/run-agent.ts), so after seeding from the tail window once we only read and parse
+ * (src/agent/run-spawn.ts), so after seeding from the tail window once we only read and parse
  * bytes appended since the last poll — observers that call this every second (TUI, GUI) stop
  * rescanning up to TAIL_BYTES
  * of JSON per role per poll. */

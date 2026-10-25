@@ -1,41 +1,37 @@
 /** The backend-neutral agent runner (plans/agent-backends.md \"The seam\"): everything a run
- * needs regardless of which agent it drives — the spawn, the `tumwater_run` raw-log marker,
- * the watchdog wiring, abort, and stderr capture. The backend (src/agent/agent-backend.ts, with
+ * needs regardless of which agent it drives — the watchdog wiring, abort, and stderr capture.
+ * The backend (src/agent/agent-backend.ts, with
  * pi in src/pi/pi-backend.ts) provides the argv/stdin/env, the native-to-canonical stdout
  * translator, the stderr warning
- * matcher, and the exit classification. This file keeps the live lifecycle — pre-spawn setup,
- * `prepare`, spawn, decoders, the stream pipeline, the watchdogs and the feed — and delegates
- * the post-run settlement (spawn-error result, exit orphan sweep, close-time reconcile and
+ * matcher, and the exit classification. This file keeps the live lifecycle — setup, the stream
+ * pipeline, the watchdogs and the feed — and delegates the build-and-spawn stage (the marker,
+ * parser, bin resolution, `prepare`, invocation and spawn) to src/agent/run-spawn.ts and the
+ * post-run settlement (spawn-error result, exit orphan sweep, close-time reconcile and
  * classify) to src/agent/run-settle.ts. `runPi` (src/pi/pi.ts) is the thin alias the existing
  * call sites use, so a caller and its fakes are untouched by this split. */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { StringDecoder } from "node:string_decoder";
+import type { StringDecoder } from "node:string_decoder";
 import type { ResolvedModelConfig } from "../config/config-views.js";
-import { ensureDir, ensureParentDir, removeTree, rotateIfLarge } from "../files/files.js";
+import { ensureDir, removeTree } from "../files/files.js";
 import type { ResolvedBackendBin } from "../pi/pi-bin.js";
 import { runOnAbort, terminateChild } from "../process/process.js";
-import { makeRunMarker } from "../process/run-marker.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
-import { PiStreamParser } from "../pi/pi-stream.js";
+import type { PiStreamParser } from "../pi/pi-stream.js";
 import { startPiWatchdogs } from "../pi/pi-watchdogs.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { DEFAULT_BACKEND, backendById, registerAgentBackend, type AgentBackend, type AgentInvocation, type AgentRunSpec, type StreamTranslator } from "./agent-backend.js";
-import { recordSession } from "./session-ledger.js";
 import { errorMessage } from "../text/text.js";
-import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
+import { recordSession } from "./session-ledger.js";
 import { piBackend } from "../pi/pi-backend.js";
 import { claudeBackend } from "./claude/claude-backend.js";
 import { codexBackend } from "./codex/codex-backend.js";
 import { opencodeBackend } from "./opencode/opencode-backend.js";
 import { setupFailureResult, settleClose, settleError, settleExit } from "./run-settle.js";
-import { seamImageInput } from "./image-input.js";
-import { ensureNotesShim } from "./notes-shim.js";
-import { nearestTumwaterRoot } from "../paths.js";
-import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
+import { openAppendLog, spawnPiRun, type AppendLog, type SpawnedRun } from "./run-spawn.js";
 
 /** How many trailing stderr characters are carried into the next chunk's warning match, so a
  * warning split across two `data` events is still seen. The warnings are short lines, so a few
@@ -87,26 +83,6 @@ export interface RunSettleState {
   kind: PiRunKind;
   config: ResolvedModelConfig;
   onLeftoversSwept?: (message: string) => void;
-}
-
-/** A best-effort append log: its parent is created and it is rotated when oversized before the
- * stream opens, and an 'error' event (EACCES, ENOSPC) flips `broken` so the caller can skip
- * waiting on a 'finish' that will never come. A broken log degrades to a lost log, never an
- * unhandled 'error' or a stuck run. Both the raw transcript and the backend-native debug log
- * use one. */
-interface AppendLog {
-  stream: fs.WriteStream;
-  broken: boolean;
-}
-
-function openAppendLog(file: string, maxBytes: number): AppendLog {
-  ensureParentDir(file);
-  rotateIfLarge(file, maxBytes);
-  const log: AppendLog = { stream: fs.createWriteStream(file, { flags: "a" }), broken: false };
-  log.stream.on("error", () => {
-    log.broken = true;
-  });
-  return log;
 }
 
 /** Options for one non-interactive agent run (runAgent / its runPi alias). Exported so a caller
@@ -219,157 +195,39 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       resolve(setupFailureResult(backend.id, `could not prepare the agent run: ${errorMessage(err)}`));
       return;
     }
-    // The pre-spawn setup below may throw synchronously (a broken marker write, parser
-    // construction, backend.resolveBin). An async executor's own rejection is swallowed by the
-    // Promise constructor, so a throw here would otherwise leave the run's promise pending
-    // forever and emit an unhandled rejection — a synchronous executor used to reject directly.
-    // The try/catch below restores that rejection. A known-recoverable failure (the notes
-    // shim) warns and goes on inside its own guard, so it is deliberately not covered here.
-    let blindRead: string | undefined;
-    let terminateRun: (() => void) | undefined;
-    let parser: PiStreamParser;
-    let runMarker: string;
-    let resolved: ResolvedBackendBin;
-    let binDir: string | undefined;
-    let runSpec: AgentRunSpec;
     try {
-      // The marker precedes this run's first event in file order — written to the same stream
-      // stdout lines flow through, before spawn, so ordering is exact by construction; on a
-      // failed spawn finish() still ends the stream and flushes it. Exactly one per run: the
-      // kind, agent and start time are always there, the label only when the caller set one
-      // (`history <role> <n> --transcript` selects a run's segments by this ts).
-      {
-        const marker: { type: "tumwater_run"; kind: PiRunKind; agent: string; ts: number; label?: string } = {
-          type: "tumwater_run",
-          kind: opts.kind,
-          agent: backend.id,
-          ts: Date.now(),
-        };
-        if (opts.label) marker.label = opts.label;
-        rawLog.stream.write(JSON.stringify(marker) + "\n");
-      }
-      // The first blind image read an authoring run made (plans/image-input.md "Detecting a
-      // blind read"): the path, plus an indirection to the child so the parser's parse-time
-      // callback (which fires during feed, after spawn) can kill it. Unset for a gate run,
-      // which only records the read. Declared before the parser so its onBlindRead closure
-      // (which assigns them at parse time, after spawn) can reference them.
-      parser = new PiStreamParser(opts.onToolCallStart, {
-        // The seam's effective image input (src/agent/image-input.ts): a text-only seam makes
-        // every image read blind even when pi adds no note — a claim its doctor probe proved
-        // false — which the parser checks against its own note rule.
-        imageInput: seamImageInput(opts.config, readPiProviders(piModelsPath())),
-        onBlindRead: (path) => {
-          // Kill an authoring run at once, before the agent goes on working from a picture it
-          // never saw (terminateChild is what the watchdogs use). Gate runs (reviewer,
-          // resolver) only record the read and keep going.
-          if (opts.kind === "author") {
-            blindRead = path;
-            terminateRun?.();
-          }
-        },
-      });
-      // The run's cross-group attribution mark, minted before the spawn so the environment can
-      // carry it and the exit sweep can name it.
-      runMarker = makeRunMarker();
-      resolved = backend.resolveBin(opts.config);
-      // Install the notes shim under the team root's `.tumwater/bin` so every backend's run
-      // finds `tumwater-notes` first on PATH (notes-shim.ts). A failure to write it logs one
-      // warning and the run goes on without it — notes would then be unwritable by the command,
-      // but the run itself is not blocked.
-      try {
-        // Install the shim only under a real team root — the nearest ancestor holding a
-        // `.tumwater`. A session dir with no such ancestor (a lab script, a smoke run, a
-        // prompt-lab replay) must never mint one: nearestTumwaterRoot is undefined then, and
-        // the run goes on without the shim, exactly as if the install had failed — writing
-        // `<fallback>/.tumwater` from a run created a phantom harness root in a shared
-        // directory and broke every other suite on the host (BUGS.md 2026-10-18).
-        const root = nearestTumwaterRoot(opts.sessionDir);
-        if (root !== undefined) binDir = ensureNotesShim(root);
-      } catch {
-        opts.onAgentWarning?.("could not install the tumwater-notes shim; this run will not find tumwater-notes on PATH");
-      }
-      runSpec = {
-        cwd: opts.cwd,
-        prompt: opts.prompt,
-        config: opts.config,
-        sessionDir: opts.sessionDir,
-        sessionName: opts.sessionName,
-        continueSession: opts.continueSession,
-        kind: opts.kind,
-        agentBin: resolved.bin,
-        runMarker,
-        notesPath: opts.notesPath,
-        ...(binDir !== undefined ? { binDir } : {}),
-        ...(opts.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.maxBudgetUsd } : {}),
-      };
-    } catch (err) {
-      // A synchronous throw in the run's pre-spawn setup (marker, parser construction,
-      // resolveBin) rejects the run, restoring the rejection a synchronous executor's throw
-      // used to get from the Promise constructor.
-      reject(err instanceof Error ? err : new Error(`runAgent: ${String(err)}`));
-      return;
-    }
-    // A backend's asynchronous pre-run work (the codex write guard resolving its trust by
-    // spawning `app-server`, plans/codex-write-guard.md "Trust (parts 4–5)"): awaited just
-    // before the synchronous invocation, so trust is settled before invocation reads it. It
-    // never throws a run away — a throw is a warm-up failure, warned about on the run's own
-    // root (skipped with no root) and the run goes on; a codex trust lookup failure already
-    // records `off` and warns from prepare itself, so this catch is the guard for a backend
-    // whose prepare throws unexpectedly. The call itself is also guarded: a synchronous
-    // `prepare` throw would otherwise escape the async executor (leaving the run's promise
-    // pending and emitting an unhandled rejection), so it is warned-and-continued like an
-    // async rejection.
-    const warnRoot = nearestTumwaterRoot(opts.sessionDir);
-    let prepared: Promise<void> | undefined;
-    try {
-      prepared = backend.prepare?.(runSpec);
-    } catch (error) {
-      if (warnRoot !== undefined) {
-        warnEventBestEffort(warnRoot, TUMWATER_SOURCE, `agent prepare failed, run continues: ${errorMessage(error)}`);
-      }
-    }
-    // Only a backend with a `prepare` step (codex) awaits it; for every other backend the run
-    // spawns synchronously, preserving the pre-`prepare` timing a logical-clock watchdog test
-    // relies on (pi-watchdogs advances a fake clock immediately after runPi returns).
-    if (prepared !== undefined) {
-      try {
-        await prepared;
-      } catch (error) {
-        if (warnRoot !== undefined) {
-          warnEventBestEffort(warnRoot, TUMWATER_SOURCE, `agent prepare failed, run continues: ${errorMessage(error)}`);
-        }
-      }
-    }
-    try {
-    const invocation = backend.invocation(runSpec);
-    // The id the pre-spawn ledger record carries: a backend that mints one ahead of the run
-    // (claude, a codex resume), else the session name (pi, a fresh codex run — its id is born
-    // in the stream). The stream-mint pass below compares against it so a codex run appends
-    // its streamed thread id exactly once, and only when it differs from this.
-    const preSpawnSessionId = invocation.sessionId ?? opts.sessionName;
-    // Record the run in the session ledger before its spawn, so a later resume can pick the
-    // newest session of its own kind instead of whatever file is newest in the dir. The id is
-    // the backend's own when it mints one ahead of the run (claude's UUID, or the resumed
-    // record's id); pi mints none and keeps the session name.
-    recordSession(opts.sessionDir, {
-      agent: backend.id,
-      id: preSpawnSessionId,
-      kind: opts.kind,
-      name: opts.sessionName,
-      cwd: opts.cwd,
-      ...(opts.config.model !== undefined ? { model: opts.config.model } : {}),
-      at: Date.now(),
-    });
-    const translator = backend.translator();
-    // Decode stdout incrementally instead of per chunk: a raw Buffer.toString("utf8")
-    // replaces any multi-byte character whose bytes straddle two 'data' events with U+FFFD,
-    // corrupting that line's text (commit subjects, summaries, transcripts). StringDecoder
-    // holds back the incomplete trailing bytes until the next chunk completes them.
-    const decoder = new StringDecoder("utf8");
-    // stderr gets its own incremental decoder for the same reason: the failure message and
-    // the stderr-keyed matchers (crash, stream-severed, config) read this buffer, so a
-    // character whose bytes straddle two 'data' events must not become U+FFFD.
-    const stderrDecoder = new StringDecoder("utf8");
+    // The whole build-and-spawn stage — the marker write, parser construction, run marker,
+    // backend-bin resolution, notes shim, run spec, the backend's optional `prepare`, the
+    // session-ledger record, translator/decoders, and the child spawn — now lives in
+    // spawnPiRun (src/agent/run-spawn.ts) and returns the SpawnedRun bundle. A synchronous
+    // throw anywhere in it (a broken marker write, parser construction, backend.resolveBin,
+    // claude's invocation rejecting a run with no model) propagates out of the await and is
+    // rejected by the catch below, matching what a synchronous executor's throw used to get
+    // from the Promise constructor.
+    // A backend without a `prepare` step (pi, claude, opencode) builds and spawns synchronously
+    // and hands the bundle straight back, so the `instanceof` below takes the sync leg and the
+    // watchdogs (a setInterval registration) start in the same synchronous step the logical-clock
+    // watchdog tests pin (they advance the fake clock immediately after runPi returns). A backend
+    // WITH a `prepare` (codex) returns a promise that resolves after its trust is settled.
+    const spawnedResult = spawnPiRun(backend, { raw: rawLog }, runTmp, opts);
+    const spawned: SpawnedRun = spawnedResult instanceof Promise ? await spawnedResult : spawnedResult;
+    // Bind the stream pipeline's objects from the bundle. The stream itself stays here until
+    // part 2/2 moves it out of this file; until then the stream stays here.
+    const child = spawned.child;
+    const resolved = spawned.resolved;
+    const runSpec = spawned.runSpec;
+    const invocation = spawned.invocation;
+    const parser = spawned.parser;
+    const translator = spawned.translator;
+    const decoder = spawned.decoder;
+    const stderrDecoder = spawned.stderrDecoder;
+    const runMarker = spawned.runMarker;
+    const preSpawnSessionId = spawned.preSpawnSessionId;
+    const blindRead = spawned.blindRead;
+    // The stream's mutable state (kept here until part 2/2 moves the pipeline out of this file):
+    // the stderr window and its warning matcher tail, the settled guard, and the translator's
+    // native-line buffer. Declared here (after the bindings) so the same closure capture the
+    // original per-run locals had is preserved.
     let stderr = "";
     // The fallback-clone warning arrives at the START of a run, while `stderr` keeps only the
     // last 64 KiB; match each chunk (with a short carried tail for a straddle) so a chatty run
@@ -383,40 +241,6 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // its remainder is skipped to the next newline so it can never be mistaken for an event.
     let nativeTail = "";
     let nativeOverflow = false;
-
-    const child = spawn(resolved.bin, invocation.args, {
-      cwd: opts.cwd,
-      // A backend that feeds the prompt on stdin (every registered one) gets a pipe the runner
-      // writes and ends below; one that returns no stdin keeps stdio[0] "ignore".
-      stdio: [invocation.stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
-      // pi sets its process title at startup, and so does every npm its tool calls run: on
-      // macOS each would register with LaunchServices and leak a launchservicesd port.
-      // Detached so pi leads its own process group: terminateChild signals the group, so a
-      // run's tool-call grandchildren — killed or finished — die with it instead of leaking
-      // to launchd.
-      detached: true,
-      // The run's mark, inherited by every tool call and its descendants: pi 0.87.1's bash
-      // tool spawns each command detached in its OWN group, so the group sweep below cannot
-      // reach what a tool call backgrounds (BUGS.md 2026-09-30) — the mark is the only
-      // attribution that follows a reparented orphan. Appended to any inherited mark so a
-      // nested harness under test keeps the outer run's.
-      env: { ...invocation.env, TMPDIR: runTmp },
-    });
-    if (invocation.stdin !== undefined) {
-      // A backend that dies before draining its stdin — an immediately-failing startup such as
-      // an unknown flag, an unresumable session, or a not-logged-in exit — leaves this write
-      // nothing to feed. Once the prompt exceeds the OS pipe buffer the write then fails EPIPE,
-      // and an unhandled 'error' event on the stdin stream is thrown from the event loop and
-      // takes the whole process (the whole team) down. The child's own exit status and stderr
-      // already report why the run died, so swallowing the failed write adds no silence the
-      // caller needs to break; git.ts's patchId carries the same guard for a patch-id that
-      // dies before reading its input.
-      child.stdin?.on("error", () => {});
-      child.stdin?.end(invocation.stdin);
-    }
-    // Armed now that the child exists, so the parser's parse-time onBlindRead (fires during
-    // feed, always after spawn) can reach it.
-    terminateRun = () => terminateChild(child);
 
     // The run's two watchdog clocks (src/pi/pi-watchdogs.ts): the run deadline and the quiet
     // watchdog (quiet-kill plus the stalled-tool-call warning). The flags their timers set
@@ -442,7 +266,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
 
     let aborted = false;
     // A blind image read on an authoring run deliberately kills it, like the watchdogs do.
-    const wasKilled = (): boolean => aborted || wd.timedOut || wd.quietKilled || blindRead !== undefined;
+    const wasKilled = (): boolean => aborted || wd.timedOut || wd.quietKilled || blindRead() !== undefined;
     const onAbort = () => {
       aborted = true;
       terminateChild(child);
@@ -599,7 +423,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       stderr: () => stderr,
       fallbackClone: () => fallbackClone,
       settled: () => settled,
-      blindRead: () => blindRead,
+      blindRead: () => blindRead(),
       aborted: () => aborted,
       wasKilled: () => wasKilled(),
       kind: opts.kind,

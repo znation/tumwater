@@ -536,8 +536,9 @@ recorded on the run and logged as `image_blind` with `action: "logged"`. An auth
 blind read logs `image_blind` with `action: "fail"`, and `modelFallbackVerdict` scores it
 inconclusive (never a provider failure or an "answered").
 
-**Binds.** `src/pi/pi-stream.ts` (`PiStreamParser.detectBlindRead`), `src/agent/run-agent.ts`
-(the kill + the onBlindRead action), `src/agent/run-settle.ts` (the result),
+**Binds.** `src/pi/pi-stream.ts` (`PiStreamParser.detectBlindRead`), `src/agent/run-spawn.ts`
+(the onBlindRead action, the kill armed on spawn), `src/agent/run-agent.ts`
+(the blindRead settle getter), `src/agent/run-settle.ts` (the result),
 `src/run/run-verdict.ts` (the fail branch),
 `src/runner/model-fallback.ts` (`modelFallbackVerdict`).
 
