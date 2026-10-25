@@ -97,7 +97,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<div class='settings-row'><span class='pill t-" + (tones[c.level] || "amber") + "'>" + esc(c.level) + "</span>" +
       "<strong>" + esc(c.name) + "</strong><span>" + esc(c.detail) + "</span></div>").join("");
     return "<p>" + esc(d.header) + "</p>" + rows +
-      (problems && hidden > 0 ? "<p class='empty'>" + hidden + " " + (hidden === 1 ? "ok check" : "ok checks") + " hidden</p>" : "") +
+      (problems && hidden > 0 ? "<p class='empty'>" + plural(hidden, "ok check") + " hidden</p>" : "") +
       "<p>" + esc(d.verdict) + "</p>";
   }
   // The last resolved doctor report and whether the card paints only its problems; the
