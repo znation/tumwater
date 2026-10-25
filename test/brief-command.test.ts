@@ -134,6 +134,15 @@ test("brief --edit saves the edited buffer as --file would; unchanged writes not
   assert.match((await cli(repo, "brief")).stdout, /Edited in editor\./);
 });
 
+test("brief --edit --json reports a changed edit with changed and committed", async () => {
+  const repo = await initializedRepo();
+  const s = editorStub("jsonedit", `fs.writeFileSync(file, "Json-edited brief.\\n");`);
+  const r = await cliWithEnv(repo, s.env, ["brief", "--edit", "--json"]);
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { file: "README.md", changed: true, committed: true });
+  assertClean(repo);
+});
+
 test("brief on a ready repo with no prompt block fails with the init hint", async () => {
   const repo = await initializedRepo();
   const readme = fs.readFileSync(path.join(repo, "README.md"), "utf8");
