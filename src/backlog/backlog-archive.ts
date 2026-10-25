@@ -342,6 +342,16 @@ function archiveCommitWhat(plan: readonly { spec: FinishedArchive; move: Archive
   return dropped > 0 ? `${archived}; drop ${drop}` : archived;
 }
 
+/** One live backlog file's finished-history rows as liveFinishedHistory reports them, phrased
+ * and joined: `file ## <section> holds N finished entries (X KB)` rows separated by "; " — the
+ * shared detail head the doctor's `backlog archive` check (checkLiveFinished) and the always-on
+ * `backlog-archive` alert (src/ui/team-alert-backlog.ts) both render, so the row shape, the
+ * plural, and the KB rounding cannot drift between the two. Each caller appends its own trailing
+ * explanation, so the two texts stay byte-identical up to that suffix. */
+export function liveFinishedRowList(rows: readonly { file: string; section: string; entries: number; bytes: number }[]): string {
+  return rows.map((l) => `${l.file} ## ${l.section} holds ${plural(l.entries, "finished entry", "finished entries")} (${Math.round(l.bytes / 1024)} KB)`).join("; ");
+}
+
 /** One archived file as a line of `tumwater archive`'s output and the team-start event: what
  * moved where, and what was dropped because the archive already held it. */
 export function describeArchivedFile(f: ArchivedFile): string {

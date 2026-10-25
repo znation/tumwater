@@ -11,6 +11,7 @@ import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-bac
 import { missingSymbolNames } from "../verdict/fix-claim.js";
 import { joinWithMore } from "../text/text.js";
 import { plural } from "../text/phrases.js";
+import { liveFinishedRowList } from "../backlog/backlog-archive.js";
 
 interface BacklogAlertsInput {
   questions: readonly string[];
@@ -215,7 +216,7 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       tone: "amber",
       title: `${plural(liveFinished.length, "live backlog file still holds", "live backlog files still hold")} finished history`,
       detail:
-        liveFinished.map((l) => `${l.file} ## ${l.section} holds ${plural(l.entries, "finished entry", "finished entries")} (${Math.round(l.bytes / 1024)} KB)`).join("; ") +
+        liveFinishedRowList(liveFinished) +
         " — every run that reads the file pays for them; `tumwater archive` moves them to the archive files",
       // The fix is a command, not a drawer row.
       actions: [],

@@ -9,9 +9,9 @@ import { planDependencyProblems } from "../backlog/backlog-parts.js";
 import { BACKLOG_FILES, FINISHED_ARCHIVES, validationGapTag } from "../backlog/backlog-md.js";
 import { statOrNull } from "../files/files.js";
 import { duplicateHeadings, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
-import { liveFinishedHistory } from "../backlog/backlog-archive.js";
+import { liveFinishedHistory, liveFinishedRowList } from "../backlog/backlog-archive.js";
+
 import { fixSymbols, missingSymbolNames, cachedSourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
-import { plural } from "../text/phrases.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
 /** The doctor's PLANS.md-structure and fix-claim checks, split out of doctor-backlog.ts: the
@@ -222,8 +222,7 @@ export function checkStrandedPlans(root: string): CheckOutcome {
 export function checkLiveFinished(root: string): CheckOutcome {
   const live = liveFinishedHistory(root);
   if (live.length === 0) return okOutcome("PLANS.md and BUGS.md hold no finished entries — they are archived");
-  const parts = live.map((l) => `${l.file} ## ${l.section} holds ${plural(l.entries, "finished entry", "finished entries")} (${Math.round(l.bytes / 1024)} KB)`);
-  return warnOutcome(`${parts.join("; ")} — every run that reads the file pays for them; ` +
+  return warnOutcome(`${liveFinishedRowList(live)} — every run that reads the file pays for them; ` +
     "`tumwater archive` moves them to the archive files and commits them (a starting team does too)");
 }
 
