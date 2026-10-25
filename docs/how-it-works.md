@@ -179,6 +179,9 @@ discards a role's in-flight merge.
   While a claim names an entry no longer listed, or has sat idle past `CLAIM_IDLE_MAX_MS`,
   `tumwater status`, the dashboard and the TUI carry the same amber alert as `tumwater doctor`'s
   `parallel instances` row; it clears when the scheduler's next poll releases the claim.
+  The row's third warn — an enabled instance role running more than one instance while
+  `worktreeSlots` sits below `maxConcurrent` — surfaces the standing amber `instance-pool`
+  alert on `tumwater status`, the dashboard and the TUI, the twin of the row's pool clause.
   An idle instance that is paused on its own (by you, or by the repeated-failure pause) gives its
   entry back and a sibling takes it; pausing the whole role keeps every claim.
 - `maxConcurrent` caps parallel runs and approvals together. Merges go first, then

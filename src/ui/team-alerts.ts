@@ -49,7 +49,8 @@ export type {
  * review dropped after repeated failures, leaving its commit on main unreviewed, a main tip the
  * watch's five diff rules rejected, the team
  * waiting on capacity slots (workspace, provider or
- * check), a plan filed under the wrong backlog section, a duplicated
+ * check), parallel instances sharing a workspace pool smaller than the run cap, a plan
+ * filed under the wrong backlog section, a duplicated
  * backlog section heading, finished history still under a live backlog file's `## Done` or
  * `## Fixed`, a Fixed record with a bad Validation gap trace, a pause, a
  * stopped team.
@@ -113,6 +114,7 @@ export function teamAlerts(
   qaCoverage: QaCoverageStale | null = null,
   workspacePins: readonly StaleWorkspacePin[] = [],
   liveFinished: readonly LiveFinishedEntry[] = [],
+  instancePool: readonly string[] = [],
   providerCaps: readonly string[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
@@ -120,7 +122,7 @@ export function teamAlerts(
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   out.push(...buildMergeAlerts({ quarantined, flappedChecks, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, qaCoverage, now }));
-  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, providerCaps }));
+  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, instancePool, providerCaps }));
 
   return out;
 }

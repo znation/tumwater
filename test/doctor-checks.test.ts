@@ -41,6 +41,7 @@ import {
   checkTumwaterPins,
   checkWorkInstances,
   checkWorktreePool,
+  smallPoolProblems,
   staleWorkspacePins,
   brokenPinDropLines,
   dropBrokenPins,
@@ -1079,6 +1080,29 @@ test("checkWorkInstances does not warn about a disabled instance role's pool", (
   const root = readyRepo();
   writeConfig(root, { roles: { feature: { enabled: false, instances: 2 } }, worktreeSlots: 1 });
   assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claimed plans or bugs" });
+});
+
+// The pool-mismatch clause is shared with the always-on instance-pool alert, so the doctor
+// row and the alert cannot drift on the trigger, the role list, or the wording.
+// smallPoolProblems returns the row's one clause for an enabled multi-instance role when the
+// pool is below maxConcurrent, and [] when the pool is at least maxConcurrent, when
+// worktreeSlots is unset (default maxConcurrent + 1), or for a disabled instance role.
+test("smallPoolProblems returns the row's pool-mismatch clause", () => {
+  const root = readyRepo();
+  writeConfig(root, { roles: { feature: { instances: 2 } }, worktreeSlots: 1 });
+  const small = smallPoolProblems(loadConfig(root)!);
+  assert.equal(small.length, 1);
+  assert.match(small[0]!, /feature run instances but worktreeSlots 1 is below maxConcurrent 6/);
+
+  // worktreeSlots unset (default maxConcurrent + 1) and at/above maxConcurrent: no problem.
+  writeConfig(root, { roles: { feature: { instances: 2 } } });
+  assert.deepEqual(smallPoolProblems(loadConfig(root)!), []);
+  writeConfig(root, { roles: { feature: { instances: 2 } }, worktreeSlots: 8 });
+  assert.deepEqual(smallPoolProblems(loadConfig(root)!), []);
+
+  // A disabled instance role runs none of its instances, so it never contends.
+  writeConfig(root, { roles: { feature: { enabled: false, instances: 2 } }, worktreeSlots: 1 });
+  assert.deepEqual(smallPoolProblems(loadConfig(root)!), []);
 });
 
 // Provider concurrency caps, part 5/5 (plans/provider-concurrency.md §8): the doctor check

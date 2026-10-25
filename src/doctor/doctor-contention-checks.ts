@@ -514,7 +514,9 @@ function claimCounts(claims: Array<{ file: string }>): string {
  * multi-instance role configured with fewer pooled slots than maxConcurrent also warns:
  * instances then contend for the same checkouts. A disabled role runs none of its
  * configured instances, so it never contends and
- * stays out of that warning.
+ * stays out of that warning. The pool-mismatch clause comes from the shared
+ * `smallPoolProblems` selector, so the row and the always-on `instance-pool` alert cannot
+ * drift on the trigger, the role list, or the wording.
  * Read-only, like every check; `now` is the claim-age test seam, and an unreadable
  * tumwater.json (config undefined) skips the walk — checkInit reports the config itself. */
 export function checkWorkInstances(
@@ -527,21 +529,31 @@ export function checkWorkInstances(
   const entries = staleClaimEntries(root, runnerIds(config), now);
   const gone = entries.filter((e) => e.kind === "gone");
   const stale = entries.filter((e) => e.kind === "idle");
+  const smallPool = smallPoolProblems(config);
+  if (gone.length === 0 && stale.length === 0 && smallPool.length === 0)
+    return okOutcome(claimCounts(claims));
+  const parts: string[] = [...gone.map(staleClaimDetail), ...stale.map(staleClaimDetail)];
+  parts.push(...smallPool);
+  return warnOutcome(parts.join("; "));
+}
+
+/** An enabled multi-instance role contending for a worktree pool smaller than the run cap —
+ * the pool-mismatch clause of the doctor's `parallel instances` row (checkWorkInstances) and
+ * the always-on `instance-pool` alert (alert-feeds.ts instancePoolProblems). Returns the
+ * `INSTANCE_ROLES` ids with more than one configured instance while `slotCount(config)`
+ * (worktreeSlots, else maxConcurrent + 1) is below `config.maxConcurrent`, phrased as the
+ * row's one clause; `[]` when no such role or the pool is at least `maxConcurrent`. Shared by
+ * the doctor row and the alert so they cannot drift on the trigger, the role list, or the
+ * wording. */
+export function smallPoolProblems(config: TumwaterConfig): string[] {
   const multi = Object.entries(config.roles)
     .filter(
       ([id, role]) => INSTANCE_ROLES.has(id) && role.enabled && (role.instances ?? 1) > 1,
     )
     .map(([id]) => id);
   const slots = slotCount(config);
-  const smallPool = multi.length > 0 && slots < config.maxConcurrent;
-  if (gone.length === 0 && stale.length === 0 && !smallPool)
-    return okOutcome(claimCounts(claims));
-  const parts: string[] = [...gone.map(staleClaimDetail), ...stale.map(staleClaimDetail)];
-  if (smallPool)
-    parts.push(
-      `${multi.join(", ")} run instances but worktreeSlots ${slots} is below maxConcurrent ${config.maxConcurrent}`,
-    );
-  return warnOutcome(parts.join("; "));
+  if (multi.length === 0 || slots >= config.maxConcurrent) return [];
+  return [`${multi.join(", ")} run instances but worktreeSlots ${slots} is below maxConcurrent ${config.maxConcurrent}`];
 }
 
 /** Provider concurrency caps (plans/provider-concurrency.md §8): audit the

@@ -33,11 +33,13 @@ interface TailAlertsInput {
   regressedFixes: RegressedFixAlert | null;
   roles: readonly AlertRole[];
   workspacePins: readonly StaleWorkspacePin[];
+  instancePool: readonly string[];
   providerCaps: readonly string[];
 }
 
-/** The quiet-hours, maintenance, provider-hold, pause, capacity-contention, stale-workspace-pin,
- * regressed-fix, stopped and image-input alerts, in emission order: a run of quiet hours
+/** The quiet-hours, maintenance, provider-hold, pause, capacity-contention, provider-cap,
+ * instance-pool, stale-workspace-pin, regressed-fix, stopped and image-input alerts, in
+ * emission order: a run of quiet hours
  * holding the team, a
  * maintenance allowance held at its rolling cap, a standing provider failure hold, an operator
  * pause with its countdown, the last day's capacity contention, a stale workspace pin, a
@@ -49,7 +51,7 @@ interface TailAlertsInput {
  * occupy, so the emitted key order is unchanged. */
 export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
-  const { snap, now, contention, regressedFixes, roles, workspacePins, providerCaps } = input;
+  const { snap, now, contention, regressedFixes, roles, workspacePins, instancePool, providerCaps } = input;
 
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
   // the team holding to a schedule is not a problem, but an operator watching idle roles
@@ -164,6 +166,21 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: openRoleActions(workspacePins),
     });
   }
+  // An enabled multi-instance role sharing a workspace pool smaller than the run cap — the
+  // always-on twin of the doctor `parallel instances` row's pool-mismatch clause
+  // (doctor-contention-checks.ts smallPoolProblems): instances then contend for the same
+  // pooled checkouts, unseen until an operator runs `tumwater doctor`. alert-feeds.ts feeds
+  // it the same smallPoolProblems selector the row uses, so the alert and the row cannot
+  // drift on the trigger, the role list, or the wording.
+  if (instancePool.length > 0) {
+    out.push({
+      key: "instance-pool",
+      tone: "amber",
+      title: "Parallel instances share a workspace pool smaller than the run cap",
+      detail: `${instancePool.join("; ")} — runs wait for a pooled checkout; raise worktreeSlots to at least maxConcurrent, or lower maxConcurrent.`,
+      actions: [],
+    });
+  }
   // A Fixed record whose quoted test failed again in the trailing day — the always-on twin of
   // the doctor's `regressed fixes` row (doctor-backlog-bugs.ts checkRegressedFixes).
   // alert-feeds.ts's regressedFixesAlert feeds it the same candidate selection, failureMentions
@@ -238,7 +255,8 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
  * review dropped after repeated failures, leaving its commit on main unreviewed, a main tip the
  * watch's five diff rules rejected, the team
  * waiting on capacity slots (workspace, provider or
- * check), a plan filed under the wrong backlog section, a duplicated
+ * check), parallel instances sharing a workspace pool smaller than the run cap, a plan
+ * filed under the wrong backlog section, a duplicated
  * backlog section heading, finished history still under a live backlog file's `## Done` or
  * `## Fixed`, a Fixed record with a bad Validation gap trace, a pause, a
  * stopped team.

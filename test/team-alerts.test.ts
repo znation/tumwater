@@ -10,7 +10,7 @@ import { planDependencyAlert, notifyFailures, primaryOverwriteBlocks, quarantine
 import { strandedPlanEntriesFor } from "../src/backlog/backlog-structure.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
-import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
+import { makeRepo, writeBacklogFile, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
@@ -1698,10 +1698,10 @@ test("a stale workspace pin raises the workspace-pins alert", () => {
 test("a maxConcurrentPerProvider misconfiguration raises one standing amber provider-caps alert", () => {
   const now = Date.now();
   const problem = 'cap key "omlx" resolves to no model job (a typo, or a provider not in use)';
-  // providerCaps is the trailing parameter, after liveFinished ([]); the 27 preceding values
-  // (refused…workspacePins then liveFinished, passed explicitly) are filled so the trailing
-  // slot lands, pinning the position.
-  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], [], null, [], [], [problem]);
+  // providerCaps is the trailing parameter, after liveFinished and instancePool ([]); the 28
+  // preceding values (refused…workspacePins, then liveFinished and instancePool, passed
+  // explicitly) are filled so the trailing slot lands, pinning the position.
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], [], null, [], [], [], [problem]);
   const only = alerts.filter((a) => a.key === "provider-caps");
   assert.equal(only.length, 1);
   assert.equal(only[0]!.tone, "amber");
@@ -1725,6 +1725,36 @@ test("a maxConcurrentPerProvider misconfiguration raises one standing amber prov
   assert.equal((statusPayload(root, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "provider-caps"), undefined);
   writeJsonFile(configPath(root), { ...defaultConfig(), backend: "claude", model: { default: "m" }, maxConcurrent: 4 });
   assert.equal((statusPayload(root, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "provider-caps"), undefined);
+});
+
+test("a workspace pool below the run cap raises one standing amber instance-pool alert", () => {
+  const now = Date.now();
+  // instancePool is the trailing parameter; the 30 preceding values (refused…workspacePins
+  // then liveFinished, passed explicitly) are passed so the trailing slot lands, pinning the
+  // position after the workspace-pins slot.
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], [], null, [], [], ["feature run instances but worktreeSlots 1 is below maxConcurrent 6"]);
+  const only = alerts.filter((a) => a.key === "instance-pool");
+  assert.equal(only.length, 1);
+  assert.equal(only[0]!.tone, "amber");
+  assert.match(only[0]!.title, /workspace pool smaller than the run cap/);
+  assert.ok(only[0]!.detail.includes("feature run instances but worktreeSlots 1 is below maxConcurrent 6"));
+  assert.deepEqual(only[0]!.actions, []);
+
+  // Omitting the final argument (its [] default) adds no alert.
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, [], null, null, null, null, null, null, [], [], [], null, [], []).filter((a) => a.key === "instance-pool").length, 0);
+
+  // End to end: a repo whose feature role runs two instances against a worktreeSlots below
+  // maxConcurrent carries the instance-pool alert on the shared status payload, wired from
+  // the feed through the builder.
+  const root = makeRepo();
+  writeConfig(root, { roles: { feature: { instances: 2 } }, worktreeSlots: 1 });
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; tone?: string; title?: string; detail?: string; actions?: Array<unknown> }> };
+  const ip = payload.alerts.filter((a) => a.key === "instance-pool");
+  assert.equal(ip.length, 1);
+  assert.equal(ip[0]!.tone, "amber");
+  assert.match(ip[0]!.title!, /workspace pool smaller than the run cap/);
+  assert.match(ip[0]!.detail!, /feature run instances but worktreeSlots 1 is below maxConcurrent 6/);
+  assert.deepEqual(ip[0]!.actions, []);
 });
 
 test("the stale-claims alert names a gone and an idle claim", () => {

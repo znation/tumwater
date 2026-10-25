@@ -9,7 +9,7 @@ import { isNotifyFailure } from "../events/notify.js";
 import { staleQueuedPromptRows, staleQueuedMergeRows, skippedMergeQueueFiles, atRiskPostReviews, atRiskPostReviewsPhrase, STALE_BUG_DAYS, STALE_QUESTION_DAYS } from "../doctor/doctor-backlog.js";
 import { staleWaitingBugRows, regressedFixCandidates, matchedRegressedFixes, regressedFixesPhrase, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
 import { planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
-import { checkWaitContention, providerConcurrencyProblems, providerWaitContention, slotWaitContention, staleWorkspacePins, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
+import { checkWaitContention, providerConcurrencyProblems, providerWaitContention, slotWaitContention, smallPoolProblems, staleWorkspacePins, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
 import { NOTIFY_CHECK_WINDOW_MS } from "../doctor/doctor-notify.js";
 import { flappedChecksPhrase } from "../doctor/doctor-project-checks.js";
 import { readSlotsState } from "../git/slots-state.js";
@@ -189,6 +189,19 @@ export function providerCapProblems(root: string): string[] {
     configForStatus(root),
     readPiDefaultModel(piSettingsPath(piModelsPath()), root),
   );
+}
+
+/** The always-on twin of the doctor `parallel instances` row's pool-mismatch clause
+ * (doctor-contention-checks.ts smallPoolProblems): an enabled `feature`/`bugfix` running
+ * more than one instance while slotCount(config) sits below maxConcurrent — the shared pool
+ * is smaller than the run cap, so those instances contend for the same checkouts. Built from
+ * the same smallPoolProblems selector the doctor row uses, so the alert and the row cannot
+ * drift on the trigger, the role list, or the wording. configForStatus never returns
+ * undefined (an unreadable tumwater.json falls back to defaultConfig(), whose pool is the
+ * default maxConcurrent + 1 — never below maxConcurrent), so the [] is the only silent
+ * outcome. */
+export function instancePoolProblems(root: string): string[] {
+  return smallPoolProblems(configForStatus(root));
 }
 
 /** How far back the primary-overwrite alert looks — one day, so a team stuck retrying one

@@ -27,7 +27,7 @@ drop their gitignored build outputs before the hold engages; 0 disables), and a
 `worktreeIdleReclaimHours` window (default 24; an hourly pass drops a worktree's gitignored build
 outputs once it has sat unused that long, whatever the free space; 0 disables), a
 `worktreeSlots` count of workspaces shared by role runs and merge checks (default
-`maxConcurrent` + 1; the director's workspace sits outside the shared set) — your own
+`maxConcurrent` + 1; the director's workspace sits outside the shared set; a value below `maxConcurrent` with an instance role's `instances` above 1 raises the standing amber `instance-pool` alert) — your own
 `customRoles`, and an
 optional `notify` shell command run when the team needs a human (a budget pause, a budget warning
 at 80% of the cap while the gate is still open, a role's own cap warning or cap pause, low disk
@@ -68,7 +68,7 @@ disable a role by omission — disable one with `tumwater config set roles.<id>.
 | `claudeWindowReserve` | none | The older top-level spelling of `backends.claude.windowReserve`: a per-window-type fraction (0–1] of the claude.ai subscription window left for you — at or past it the team counts the window as used up until it resets. Either may be set, but not both. The director is exempt. See [backends](backends.md). |
 | `mergeBatchMax` | `3` | The most approved changes stacked into one merge and one shared check; 1 merges every change on its own. |
 | `maxConcurrentChecks` | `2` | The most runs of the project's check in flight at once across the whole team (editable from the dashboard Settings card as `Max concurrent checks`). |
-| `worktreeSlots` | none | How many shared workspaces role runs and merge checks lease; unset means `maxConcurrent` + 1. |
+| `worktreeSlots` | none | How many shared workspaces role runs and merge checks lease; unset means `maxConcurrent` + 1. A value below `maxConcurrent` with an instance role's `instances` above 1 raises the standing amber `instance-pool` alert. |
 | `minRunIntervalSeconds` | `20` | The minimum seconds between two runs of the same role, even when woken early. |
 | `runTimeoutSeconds` | `14400` | The hard cap on one run, in seconds (four hours). |
 | `quietTimeoutSeconds` | `1800` | Kill a run that emits no output for this many seconds; 0 disables. |
@@ -106,7 +106,7 @@ The fields of a `roles.<id>` entry:
 | `backend` | none | The backend (`pi`, `claude`, `opencode`, `codex`) that runs this role's `model`; the id passes to it as written. Alone, it inherits the tier's model only when that tier already routes to the same backend, otherwise the backend's tier default applies. `tumwater role <id> --backend` writes this field (`--clear-backend` clears it). See [backends.md](backends.md). |
 | `thinking` | none | A thinking-level override for this role; unset uses the top-level value. |
 | `minRunIntervalSeconds` | `3600` for plan and organize, `1800` for readme, `7200` for qa, ci, selfcheck and feedback, `21600` for steward, otherwise the top-level value | The minimum seconds between two runs of this role, overriding the top-level value. While PLANS.md's `## Planned` still has planning room (`planBacklogFull` false — below the plan role's eligible-plan target, or holding a plan that needs review/needs replan), the plan role schedules with a zero gap instead, so a productive plan run reruns on the next poll and an unproductive one drops to the idle backoff; once the target is met the plan role defers (`plans-full`) and this interval applies. |
-| `instances` | `1` | How many runs of the role may write code at once, 1–8; accepted only for feature and bugfix. Above 1, tumwater keeps up to twice as many runners (`feature` … `feature-10` at 5), so a runner waiting on its change does not hold a place. |
+| `instances` | `1` | How many runs of the role may write code at once, 1–8; accepted only for feature and bugfix. Above 1, tumwater keeps up to twice as many runners (`feature` … `feature-10` at 5), so a runner waiting on its change does not hold a place. When `worktreeSlots` sits below `maxConcurrent`, an instance count above 1 raises the standing amber `instance-pool` alert. |
 
 Model backends (OpenAI-compatible endpoints, the `claude` backend, and fallbacks) are covered in
 [backends.md](backends.md).
