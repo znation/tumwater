@@ -42,43 +42,11 @@ export function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title
   return entries.slice(0, DASHBOARD_RECENT_FINISHED).map((e) => ({ title: finishedTitle(e.title, dateRe), completedOn: completionDate(e.title, dateRe) }));
 }
 
-/** The one team-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
- * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
- * newer build and reload), while `tumwater status --json` (cli.ts) prints it verbatim — every
- * other field is shared, so the dashboard and the CLI can never drift apart. Assembled here —
- * not in gui/gui-server.ts — because it is shared data collection for observers, not part of
- * serving HTTP: snapshot() supplies the core state, and the per-role phase/metrics fields come
- * from the same status-model helpers the TUI table uses.
- *
- * `now` pins the poll's clock for the time-derived fields (see snapshot's seam of the same
- * name) — spend stamp-check, burn-rate projection, disk badge, and the pause countdown — so a
- * test's expected value cannot race the payload's own Date.now(). `modelsPath` mirrors
- * snapshot's seam of the same name, so a test can resolve a role's declared context window
- * against a fixture models catalog instead of the live ~/.pi one. */
-export function statusPayload(root: string, now = Date.now(), scope: readonly string[] | null = null, modelsPath = piModelsPath()): object {
-  const full = snapshot(root, modelsPath, now);
-  // `--role` scopes the role rows (and the alerts computed from them); budget stays team-wide.
-  const snap = scope ? scopeSnapshotToRoles(full, scope) : full;
-  // One event read feeds both feed shapes below, so `events[i]` and `eventItems[i]` always
-  // describe the same event.
-  const recent = readEvents(root, RECENT_EVENTS);
-  const questions = openQuestions(root);
-  // Why each plan/bug is held (src/backlog/backlog-eligibility.ts): the same hold decision
-  // the prompt's backlog index and `tumwater backlog` render, projected to the mark each
-  // surface appends. Read once here, consumed as the parallel planHolds/bugHolds arrays below.
-  const marks = backlogMarks(root);
-  const holds = backlogHolds(root);
-  const plans = plannedPlans(root);
-  // Which blocked plans fold into a series row: the grouping `plan --list` and the prompt's
-  // backlog index use, as a slot per plan (null for a plan that stays an ordinary row).
-  const working = backlogInProgress(root);
-  const planSeries: ({ name: string; label: string } | null)[] = plans.map(() => null);
-  for (const g of groupBlockedSeries(holds.plans.map((hold, i) => ({ i, title: plans[i]!, hold, claimer: working.plans[i] ?? undefined })))) {
-    if (g.kind !== "series") continue;
-    const slot = { name: g.series, label: `${g.series}, ${g.rows.length} blocked parts (${partsLabel(g.rows)})` };
-    for (const r of g.rows) planSeries[r.i] = slot;
-  }
-  const roles = snap.roles.map((s) => {
+/** The per-role rows (status-payload.ts's field-group split): roleRows assembles each role's
+ * fields from `snap.roles` — the same single-home roleRowCells/onErrorStreak/metrics reads the
+ * TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot drift apart. */
+function roleRows(snap: ReturnType<typeof snapshot>, root: string) {
+  return snap.roles.map((s) => {
     // roleRowCells single-homes the per-role tail read + metrics + phase derivation the
     // TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot
     // drift apart.
@@ -180,6 +148,29 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
       cutOffStreak: s.cutOffStreak ?? 0,
     };
   });
+}
+
+/** Which blocked plans fold into a series row (status-payload.ts's field-group split): the
+ * grouping `plan --list` and the prompt's backlog index use, as a slot per plan (null for a
+ * plan that stays an ordinary row). */
+function planSeriesSlots(
+  plans: ReturnType<typeof plannedPlans>,
+  holds: ReturnType<typeof backlogHolds>,
+  working: ReturnType<typeof backlogInProgress>,
+): ({ name: string; label: string } | null)[] {
+  const planSeries: ({ name: string; label: string } | null)[] = plans.map(() => null);
+  for (const g of groupBlockedSeries(holds.plans.map((hold, i) => ({ i, title: plans[i]!, hold, claimer: working.plans[i] ?? undefined })))) {
+    if (g.kind !== "series") continue;
+    const slot = { name: g.series, label: `${g.series}, ${g.rows.length} blocked parts (${partsLabel(g.rows)})` };
+    for (const r of g.rows) planSeries[r.i] = slot;
+  }
+  return planSeries;
+}
+
+/** The header row (status-payload.ts's field-group split): the project identity, the running
+ * harness and its build/budget/disk/permit-pool/workspace badges, plus the `run --for`
+ * deadline and its badge. */
+function headerFields(root: string, snap: ReturnType<typeof snapshot>, now: number) {
   return {
     // The project's display name (project-name.ts) — the dashboards' title.
     project: projectName(root),
@@ -216,6 +207,15 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     ...(snap.runStopsAt !== undefined ? { runStopsAt: snap.runStopsAt } : {}),
     ...(snap.scheduledStopAt !== undefined ? { scheduledStopAt: snap.scheduledStopAt } : {}),
     runWindowBadge: runWindowBadge(snap.runStopsAt, now),
+  };
+}
+
+/** Merge-queue and main-check state (status-payload.ts's field-group split): the merge queue
+ * and its labels, the post-merge review queue, main's newest merge-scope check and its badge,
+ * the ci-parity badge/tone, and the raw twins of the no-check/no-brief/brief-truncated/
+ * role-notes/principles alerts for `status --json` scripts. */
+function mergeAndCheckFields(root: string, snap: ReturnType<typeof snapshot>, now: number) {
+  return {
     // The merge queue (plans/merge-queue.md 4/5): depth always (machine-readable for
     // `status --json`; 0 when idle) plus the in-flight merge's identity only while one is
     // actually running. Raw data here, like budget — and the display-ready header badge
@@ -276,6 +276,13 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // drift from) it — the sidebar's "Main green · …" row reads this field, not the raw
     // counts. Empty when no check has run or the check carries no counts.
     mainCounts: mainCountsFragment(snap.mainCheck?.counts),
+  };
+}
+
+/** The inbox (status-payload.ts's field-group split): the queued director prompts and the
+ * per-role queues, raw for the queued-prompts UI. */
+function inboxFields(snap: ReturnType<typeof snapshot>) {
+  return {
     inbox: snap.inbox,
     // Previews of the queued director prompts in execution order (truncated server-side —
     // see StatusSnapshot.inboxPrompts); the page lists them in its project status panel.
@@ -300,6 +307,14 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // row with a cancel link, replacing the bare "r: N queued" count line. Raw data, like
     // inboxFiles.
     roleInboxPrompts: snap.roleInboxPrompts,
+  };
+}
+
+/** Budget and pause/scheduling state (status-payload.ts's field-group split): the daily
+ * budget, its subscription windows, the fallback chain, operator/per-role pauses, the
+ * cap/maintenance holds, scheduled wakes, quiet hours, and the quiet badge. */
+function budgetAndPauseFields(snap: ReturnType<typeof snapshot>) {
+  return {
     // The raw daily-cost-budget data, unconditionally (capUsd 0 = disabled; spend still
     // reported) — machine-readable for `status --json`; the display-ready header badge is
     // the preformatted `budgetBadge`.
@@ -368,13 +383,34 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     ...(snap.quietHours ? { quietHours: snap.quietHours } : {}),
     inQuietHours: snap.inQuietHours,
     quietBadge: quietBadge(snap.quietHours, snap.inQuietHours),
-    roles,
+  };
+}
+
+/** The event feed (status-payload.ts's field-group split): recent events as the one-line text
+ * `tumwater logs` prints and as data for the dashboard's activity feed. */
+function feedFields(recent: ReturnType<typeof readEvents>) {
+  return {
     // The recent event feed as the one-line text `tumwater logs` prints…
     events: recent.map((e) => formatEvent(e)),
     // …and the same events as data for the dashboard's activity feed: when, which role, what
     // kind (the event type plus its result or check status, which decide the row's tone), and
     // the message without formatEvent's time/role columns — the page renders those itself.
     eventItems: recent.map(eventFeedItem),
+  };
+}
+
+/** Project-status backlog (status-payload.ts's field-group split): planned features, open
+ * bugs and questions, their holds and marks, the blocked-plan series, the newest answered
+ * questions, and the newest done plans / fixed bugs. */
+function backlogFields(
+  root: string,
+  plans: ReturnType<typeof plannedPlans>,
+  marks: ReturnType<typeof backlogMarks>,
+  holds: ReturnType<typeof backlogHolds>,
+  planSeries: ({ name: string; label: string } | null)[],
+  questions: ReturnType<typeof openQuestions>,
+) {
+  return {
     // Project status (planned features + open bugs + open questions), fresh per poll like
     // events — roles edit these files constantly, so there is no cache to go stale. The page
     // derives the header badge count from this list's length.
@@ -401,8 +437,59 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // fresh each poll. Badges and alerts keep counting open entries only.
     donePlans: recentFinished(donePlanEntries(root), DONE_DATE_RE),
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
+  };
+}
+
+/** What needs the operator (status-payload.ts's field-group split): team-alerts.ts's
+ * teamAlerts, phrased once for the dashboard's alert banners and the TUI's attention lines. */
+function alertFields(root: string, snap: ReturnType<typeof snapshot>, questions: ReturnType<typeof openQuestions>, roles: ReturnType<typeof roleRows>, now: number) {
+  return {
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
     alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), qaCoverageAlert(root, now), staleWorkspacePins(root, now), liveFinishedEntriesFor(root), instancePoolProblems(root), providerCapProblems(root)),
+  };
+}
+
+/** The one team-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
+ * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
+ * newer build and reload), while `tumwater status --json` (cli.ts) prints it verbatim — every
+ * other field is shared, so the dashboard and the CLI can never drift apart. Assembled here —
+ * not in gui/gui-server.ts — because it is shared data collection for observers, not part of
+ * serving HTTP: snapshot() supplies the core state, and the per-role phase/metrics fields come
+ * from the same status-model helpers the TUI table uses.
+ *
+ * `now` pins the poll's clock for the time-derived fields (see snapshot's seam of the same
+ * name) — spend stamp-check, burn-rate projection, disk badge, and the pause countdown — so a
+ * test's expected value cannot race the payload's own Date.now(). `modelsPath` mirrors
+ * snapshot's seam of the same name, so a test can resolve a role's declared context window
+ * against a fixture models catalog instead of the live ~/.pi one. */
+export function statusPayload(root: string, now = Date.now(), scope: readonly string[] | null = null, modelsPath = piModelsPath()): object {
+  const full = snapshot(root, modelsPath, now);
+  // `--role` scopes the role rows (and the alerts computed from them); budget stays team-wide.
+  const snap = scope ? scopeSnapshotToRoles(full, scope) : full;
+  // One event read feeds both feed shapes below, so `events[i]` and `eventItems[i]` always
+  // describe the same event.
+  const recent = readEvents(root, RECENT_EVENTS);
+  const questions = openQuestions(root);
+  // Why each plan/bug is held (src/backlog/backlog-eligibility.ts): the same hold decision
+  // the prompt's backlog index and `tumwater backlog` render, projected to the mark each
+  // surface appends. Read once here, consumed as the parallel planHolds/bugHolds arrays below.
+  const marks = backlogMarks(root);
+  const holds = backlogHolds(root);
+  const plans = plannedPlans(root);
+  // Which blocked plans fold into a series row: the grouping `plan --list` and the prompt's
+  // backlog index use, as a slot per plan (null for a plan that stays an ordinary row).
+  const working = backlogInProgress(root);
+  const planSeries = planSeriesSlots(plans, holds, working);
+  const roles = roleRows(snap, root);
+  return {
+    ...headerFields(root, snap, now),
+    ...mergeAndCheckFields(root, snap, now),
+    ...inboxFields(snap),
+    ...budgetAndPauseFields(snap),
+    roles,
+    ...feedFields(recent),
+    ...backlogFields(root, plans, marks, holds, planSeries, questions),
+    ...alertFields(root, snap, questions, roles, now),
   };
 }
