@@ -4545,11 +4545,11 @@ index, rather than skipping the preserve".
 
 ### INV-CM1: a red merge check attributed while role-state saves fail still deletes a rejected pin and logs review_rejected, or returns main_red with the pin kept, warning once per failed save
 
-**Guarantee.** The sinks of a red in-lock merge check persist the role's state best-effort: a failed save (full disk, EACCES) warns instead of throwing, so a rejected change loses its pin and logs review_rejected, and a main-red change returns main_red with its pin kept. Only the reject and main-red saves are pinned; the unverified, known-flake and known-failures saves and the re-queue save share the swap without a test of their own.
+**Guarantee.** The sinks of a red in-lock merge check persist the role's state best-effort: a failed save (full disk, EACCES) warns instead of throwing, so a rejected change loses its pin and logs review_rejected, and a main-red change returns main_red with its pin kept. Every sink now has a failing-save test of its own: the reject and main-red saves, `attributeRedCheck`'s unverified, known-failures and known-flake saves, and the `requeueKeptChange` re-queue save.
 
-**Binds.** `src/merge/merge-check-failures.ts` (`rejectChange`, `attributeRedCheck`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
+**Binds.** `src/merge/merge-check-failures.ts` (`rejectChange`, `attributeRedCheck`), `src/merge/merge-requeue.ts` (`requeueKeptChange`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
 
-**Pinned by.** `test/merger.test.ts` — "an unwritable state file during a red merge check's attribution still settles its verdict (green main)" and "an unwritable state file during a red merge check's attribution still settles its verdict (red main)".
+**Pinned by.** `test/merger.test.ts` — "an unwritable state file during a red merge check's attribution still settles its verdict (green main)" and "an unwritable state file during a red merge check's attribution still settles its verdict (red main)"; `test/merge-requeue.test.ts` — "a main_red re-queue whose state save fails still queues the change" and "a main_red pin whose state save fails still records the re-queue and warns"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref for a red that fails only main's known failures when the state save fails", "attributeRedCheck keeps the ref for an unverified red when the state save fails" and "attributeRedCheck keeps the ref for a known-flake red when the state save fails".
 
 ## Red-main healer: a heal prompt that cannot be queued never fails the gate
 

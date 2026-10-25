@@ -9,7 +9,7 @@ import { newMergePipeline, settleMergeOutcome } from "../src/merge/merge-pipelin
 import { drainVerify } from "../src/merge/merge-verify.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { defaultConfig } from "../src/config/config.js";
-import { MAIN_RED_VERDICT_WAIT_MS, requeueMainRedPin } from "../src/merge/merge-requeue.js";
+import { MAIN_RED_VERDICT_WAIT_MS, requeueKeptChange, requeueMainRedPin } from "../src/merge/merge-requeue.js";
 import { enqueueMerge, headMerge, queuedMerges, type MergeEntry } from "../src/merge/merge-queue.js";
 import { MERGE_CONFLICT_LIMIT } from "../src/runner/leftover.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
@@ -17,7 +17,7 @@ import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { noteGreenBaseline, persistBaselineVerdicts } from "../src/baseline/main-baseline.js";
 import { baselineVerdictsPath, mergeQueueDir, mergeRefName, statePath } from "../src/paths.js";
 import { deleteRef, refSha, setRef } from "../src/git/git.js";
-import { makeRepo, pinOffMain } from "./fixtures/repo-fixtures.js";
+import { makeRepo, mainSha, pinOffMain } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
@@ -233,4 +233,18 @@ test("a main_red re-queue whose queue write fails warns instead of throwing", as
   }
   assert.equal(queuedMerges(root).length, 0);
   assert.match(JSON.stringify(eventsOfType(root, "warning")), /queue write refused/);
+});
+
+test("a main_red pin whose state save fails still records the re-queue and warns", async () => {
+  const { root, entry } = await pinnedEntry();
+  const state = freshRunnerState("improve");
+  const undo = failRenameSyncOn(statePath(root, "improve"), "state write refused");
+  try {
+    await requeueKeptChange(root, "main", entry, state, "main_red");
+  } finally {
+    undo();
+  }
+  assert.ok(state.mainRedRetry, "the record is set in memory before the save");
+  assert.equal(state.mainRedRetry?.head, mainSha(root), "it records main's head");
+  assert.match(JSON.stringify(eventsOfType(root, "warning")), /could not save the role's state/);
 });

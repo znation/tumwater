@@ -10,7 +10,7 @@ import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { warnEvent } from "../src/events/events.js";
-import { eventsLogPath, mergeRefName } from "../src/paths.js";
+import { eventsLogPath, mergeRefName, statePath } from "../src/paths.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
@@ -18,6 +18,8 @@ import type { BuildCheck } from "../src/build/build-check-detect.js";
 import type { BuildCheckOutcome, BuildCheckRun } from "../src/build/build-check.js";
 import { mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { baselineFixture, fakeNpm } from "./fixtures/runner-fixtures.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
 
 // Unit coverage for attributeRedCheck (src/merge/merge-check-failures.ts): the gate's final
 // attribution step, shared by a batch bisect's last move and a single merge's in-lock check at the
@@ -282,4 +284,100 @@ test("attributeRedCheck keeps the ref, with no strike, for a red that fails only
   assert.match(state.lastError ?? "", /only main's known failures/);
   const other = { ...known, outcome: { ...known.outcome, failingTests: ["known one", "new one"] } } as typeof known;
   assert.equal((await attribute(root, "merge check", other, state)).result, "main_red");
+});
+
+test("attributeRedCheck keeps the ref for a red that fails only main's known failures when the state save fails", async () => {
+  // The branch's own save is the first statePath tmp rename the fault catches: seed the state
+  // first so the fault's first hit is keepForKnownFailures' save, not the seed.
+  const { root } = baselineFixture(ROLE, "printf '✖ known one\\n'; exit 1");
+  const watch = createMainWatch(root, "main");
+  watch.poll(mainSha(root), false, defaultConfig());
+  await watch.idle();
+  const known = {
+    check: red().check,
+    outcome: { status: "failed", script: "test", outputTail: [CHANGE_REASON], failingTests: ["known one"] },
+  } as { check: BuildCheck; outcome: BuildCheckOutcome };
+  const state = seededState(root);
+  const undo = failRenameSyncOn(statePath(root, ROLE), "state write refused");
+  let result: string;
+  try {
+    ({ result } = await attribute(root, "merge check", known, state));
+  } finally {
+    undo();
+  }
+  assert.equal(result, "merge_blocked", "a failed save must not turn the block into a thrown merge error");
+  assert.equal(await refSha(root, mergeRefName(ROLE)) !== null, true, "the pin was kept");
+  assert.match(state.lastError ?? "", /only main's known failures/);
+  assert.equal(reviewRejectedEvents(root).length, 0, "no rejection was logged");
+  assert.equal(
+    warningMessages(root).filter((m) => m.startsWith("could not save the role's state")).length,
+    1,
+    "the failed save warns once",
+  );
+});
+
+test("attributeRedCheck keeps the ref for an unverified red when the state save fails", async () => {
+  const { root } = baselineFixture(ROLE, "attr-unverified-save-marker");
+  const restore = fakeNpm("echo ok; exit 0");
+  try {
+    const flag: { check: BuildCheck; outcome: BuildCheckOutcome } = {
+      check: { kind: "npm", rootDir: process.cwd(), script: "test" },
+      outcome: {
+        status: "failed",
+        script: "test",
+        outputTail: ["merge check ran while the host slept 119s mid-run; the tree is unverified"],
+        unverified: true,
+      },
+    };
+    const state = seededState(root);
+    const undo = failRenameSyncOn(statePath(root, ROLE), "state write refused");
+    let result: string;
+    try {
+      ({ result } = await attribute(root, "merge check", flag, state));
+    } finally {
+      undo();
+    }
+    assert.equal(result, "merge_blocked", "a failed save must not turn the block into a thrown merge error");
+    assert.equal(state.unreviewFailures, 3, "no strike: nothing judged this diff");
+    assert.equal(await refSha(root, mergeRefName(ROLE)) !== null, true, "the ref was not deleted");
+    assert.match(state.lastError ?? "", /host slept 119s mid-run/, "the sleep is what the state records");
+    assert.equal(
+      warningMessages(root).filter((m) => m.startsWith("could not save the role's state")).length,
+      1,
+      "the failed save warns once",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("attributeRedCheck keeps the ref for a known-flake red when the state save fails", async () => {
+  const { root } = baselineFixture(ROLE, "attr-flake-save-marker");
+  const restore = fakeNpm("echo ok; exit 0");
+  try {
+    warnEvent(root, ROLE, FLAKY_WARNING_PREFIX + "✖ the flaky test — expected 2 to be 3");
+    const flaky = {
+      check: red().check,
+      outcome: { status: "failed", script: "test", outputTail: ["✖ the flaky test (1.2ms)", "expected 2 to be 3"] },
+    } as { check: BuildCheck; outcome: BuildCheckOutcome };
+    const state = seededState(root);
+    const undo = failRenameSyncOn(statePath(root, ROLE), "state write refused");
+    let result: string;
+    try {
+      ({ result } = await attribute(root, "merge check", flaky, state));
+    } finally {
+      undo();
+    }
+    assert.equal(result, "merge_blocked", "a failed save must not turn the block into a thrown merge error");
+    assert.ok(state.mergeFlakeExcused, "the excuse is set in memory before the save");
+    assert.equal(await refSha(root, mergeRefName(ROLE)) !== null, true, "the pin was kept");
+    assert.equal(reviewRejectedEvents(root).length, 0, "no rejection was logged");
+    assert.equal(
+      warningMessages(root).filter((m) => m.startsWith("could not save the role's state")).length,
+      1,
+      "the failed save warns once",
+    );
+  } finally {
+    restore();
+  }
 });
