@@ -263,6 +263,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Previously held 6**
 
+**Needs review 2026-10-25 by feature: too large for one run (held 7)**
+
 **Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes every merge-verify case that pins a reviewer verdict, a reviewer failure or the reviewer's usage fold fail. As part 3l/3 did for `test/review.test.ts` and `test/review-precheck.test.ts` while the reviewer still runs, this part moves those cases first so the source switch lands against a suite that no longer depends on the reviewer.
 
 **Approach.** In each file named above, find the cases whose subject is the pre-merge reviewer run — the verdicts (`reviewerPi("VERDICT: reject…")`), the failures (`review_error`, `review_failed`, `reviewRetries`, `REVIEW_FAILURE_LIMIT`, `unreviewFailures`), the usage fold (`folded.length`), `state.lastReview?.verdict`, the pre-merge `review_start` count, and the `reviewing` merge stage a reviewer run sets — and either (a) delete the case when it exists only to pin the reviewer, or (b) re-point its rejection trigger to a deterministic gate rejection (a `diffRuleReasons` finding such as a conflict-marker diff or a leaked credential, or a failing declared check) when its real subject is the merge/verify/stack/revision bookkeeping that survives. Leave the reviewer-run helpers (`reviewerPi`, `APPROVE_PI`) in `test/fixtures/pi-events.ts`/`merger-fixtures.ts` in place: the reviewer still runs until part 3h/3, and part 3e/3 deletes the helpers with the plumbing. Do not change the fixture's `ROLE`/`makeCtx`/`pinnedFixture` shape beyond what a re-point needs.
