@@ -176,9 +176,9 @@ export function buildConflictDiscardNote(summary: string, attempts: number): str
 
 /** The note injected into the `ci` healer's prompt when main's own suite is red (PLANS.md
  * "Red-main handoff"): the gate's warning event is harness-level and no role prompt reads it, so
- * the one role allowed to author on a red main is told what failed and that fixing it is this
- * run's job. The healer's normal charter is a starting point, not a fit — a red main blocks
- * every other code role, and the gate's deterministic pre-check rejects any change that leaves
+ * the healer — whose job is to make main green — is told what failed and that fixing it is this
+ * run's task. The healer's normal charter is a starting point, not a fit — a red main keeps the
+ * whole team working on it, and the gate's deterministic pre-check rejects any change that leaves
  * the suite red, so authoring anything else first is waste. A pure function so its shape is
  * pinned in tests; script/headline are optional because a red carries a failing script, but the
  * note must still read sensibly if it is ever absent. */
@@ -199,23 +199,11 @@ export function buildMainRedNote(sha: string, script?: string, headline?: string
       ? `\nFailing check output (${output.length} lines):\n\`\`\`\n${output.join("\n")}\n\`\`\`\n`
       : "";
   return `<main-red>
-main's own suite is red at ${shortSha(sha)} (${what}). Every code-producing role is skipping authoring and no change merges until main is green.
+main's own suite is red at ${shortSha(sha)} (${what}). Every role keeps working on the red main, but no change that leaves the suite red merges until main is green.
 This run your job is to make main green: reproduce that failure, fix it (add a regression test where one is feasible), and merge the fix.
 The review gate's deterministic pre-check runs main + your change, so a change that leaves the suite red is rejected — do not author anything else first.
 If the failure is environmental — flaky, load-sensitive, or a broken local toolchain — say so plainly in your reply rather than editing unrelated code.
 ${tailBlock}</main-red>`;
-}
-
-/** The note every role but bugfix gets while main is red with named failures: the tests that
- * already fail on main (at most 20 listed, then a `…and N more` line) and who owns them. A pure
- * function so its shape is pinned in tests. */
-export function buildMainKnownRedNote(failingTests: readonly string[]): string {
-  const shown = failingTests.slice(0, 20).map((t) => `- ${t}`);
-  if (failingTests.length > 20) shown.push(`- …and ${failingTests.length - 20} more`);
-  return `<main-known-red>
-${shown.join("\n")}
-These tests already fail on main. Tumwater or the bugfix role owns them. Leave them alone unless your task is about them; a change merges when it adds no new failures.
-</main-known-red>`;
 }
 
 /** The note appended to an assigned series part's prompt naming the later planned parts that

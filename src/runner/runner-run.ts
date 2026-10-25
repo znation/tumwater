@@ -16,7 +16,6 @@ import { logEventBestEffort } from "../events/events.js";
 import { buildConflictHandbackNote, buildSalvageRestoreNote } from "../prompt/gate-prompts.js";
 import {
   buildConflictDiscardNote,
-  buildMainKnownRedNote,
   buildRevisionNote,
   buildRejectedReviewNote,
 } from "../prompt/gate-notes.js";
@@ -51,7 +50,7 @@ import { applyRevision, applyWithConflicts } from "./revision.js";
 import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
 import { changedFiles } from "../git/git-diff.js";
 import { handlePiResultPhase } from "./runner-outcome.js";
-import { mainRedGate, mainRedHealNote } from "../baseline/main-red.js";
+import { mainRedHealNote } from "../baseline/main-red.js";
 import { extractCiResult, extractFlow, extractFiled } from "../verdict/reply-contract.js";
 
 /** The model-fallback episode context a run start resolves (src/runner/model-fallback.ts): the
@@ -72,7 +71,8 @@ export interface RunnerRunContext {
   root: string;
   role: string;
   mainBranch: string;
-  /** This runner's base role (`feature-2` → `feature`) — the red-main gate reads it. */
+  /** This runner's base role (`feature-2` → `feature`) — the ci healer's red-main hand-off and
+   * the run's outcome/flow handling read it. */
   baseRole: string;
   config: TumwaterConfig;
   state: RunnerState;
@@ -508,7 +508,7 @@ async function runWithWorktreePhase(
     // recovery merge raced the slot's batches into `merge_blocked`). A salvaged leftover
     // ENDS the run: the role holds one merge ref, and the leftover owns it until its
     // merge resolves. With nothing to salvage the branch holds nothing either, so the reset
-    // below leaves pristine main for the red-main gate.
+    // below leaves pristine main.
     // A permanent reviewer config error — held from re-queueing — clears once the resolved
     // reviewer selector changes, so fixing the model config recovers the pin automatically
     // (BUGS.md 2026-10-06).
@@ -569,30 +569,14 @@ async function runWithWorktreePhase(
     // A promptless recovery run found nothing to salvage (or deleted a stale pin): it authors
     // nothing, so it ends here rather than reach the authoring run with a null prompt.
     if (plan.prompt === null) return { result: "skipped" };
-    // Red-main baseline gate (src/baseline/main-red.ts): the worktree is pristine main right
-    // now — verify main's own suite before spending an authoring run on top of it. Only roles
-    // whose diff can carry code changes are blocked; resume runs skip this by construction
-    // (their worktree is not pristine main). The `ci` healer is exempt because its fix is
-    // the team's only way back to green, so instead of blocking it we hand it the failure
-    //the same check runs, but a red main appends a <main-red>
-    // note to this run's prompt so it reproduces and fixes that failure rather than hunting
-    // blind.
+    // The `ci` healer's red-main hand-off (src/baseline/main-red.ts): the worktree is pristine
+    // main right now, so a red main appends a <main-red> note to this run's prompt and the
+    // healer reproduces and fixes that failure rather than hunting blind. Every other role
+    // authors on the red main unblocked — the red-main authoring block came off with the
+    // pre-merge blocks, parts 3g/3–3j/3 and 3d/3–3f/3.
     if (ctx.baseRole === "ci") {
       const note = await mainRedHealNote(ctx.root, ctx.role, wt);
       if (note) prompt = appendPromptNote(prompt, note);
-    } else {
-      const knownRed: string[][] = [];
-      const blocked = await mainRedGate(ctx.root, ctx.role, wt, undefined, (tests) => knownRed.push(tests));
-      if (blocked) {
-        // The dequeued prompt never ran: put it back in its queue before returning, so it is
-        // not lost to a restart (the pending field is memory-only) or dropped by the next
-        // run's outcome handling — the queue is the durable store, and once main is green
-        // the next run dequeues it again (criterion b).
-        ctx.pending.requeueUnfulfilled(userPrompt);
-        ctx.pending.clear();
-        return blocked;
-      }
-      if (knownRed[0]) prompt = appendPromptNote(prompt, buildMainKnownRedNote(knownRed[0]));
     }
   }
 

@@ -273,13 +273,13 @@ export function checkErrorStreaks(root: string, config: TumwaterConfig | undefin
   return warnOutcome(`failing run after run: ${phrases.join("; ")}`);
 }
 
-/** The `main red` check: names the code roles the red-main gate (mainRedGate) holds, ending
- * each blocked run `main_red` while main's suite is red, and warns when main has been red over
- * RED_MAIN_WARN_MS even with no role held (the red-main gate's guardrail, G1). Read-only: it
- * asks heldByMainRed, the predicate the status phase's `main red` label reads, so the two
- * cannot disagree on the held roles, and redMainWarning over the event trail, so both phrases
- * can appear in one row. A warn, not a fail: a red main does not stop the team from running.
- * `now` is injected so a test can pin a red's age. */
+/** The `main red` check: the row lists the runs the merge-side `main_red` pin ended — a red
+ * main is still recorded as the `main_red` outcome that ended those runs until parts 3d/3–3f/3
+ * land — and warns when main has been red over RED_MAIN_WARN_MS even with no role held (the
+ * guardrail, G1). Read-only: it asks heldByMainRed, the predicate the status phase's `main red`
+ * label reads, so the two cannot disagree on the held runs, and redMainWarning over the event
+ * trail, so both phrases can appear in one row. A warn, not a fail: a red main does not stop
+ * the team from running. `now` is injected so a test can pin a red's age. */
 export function checkMainRed(
   root: string,
   config: TumwaterConfig | undefined,

@@ -79,7 +79,7 @@ and one serial merge step merges them, so other roles keep running while a chang
 `check.mergeCommand` names a cheaper check for that in-lock step (lint, compile and the change's
 affected tests). A merge whose rebased head the gate verified then runs nothing in the lock, and
 a green of the cheaper command never seeds main's verdict. The main watch runs the full check on
-main's tip after the merge: a break it finds queues the red-main heal prompt, and the red-main gate, the ci note
+main's tip after the merge: a break it finds queues the red-main heal prompt, and the ci note
 read the watch's verdict instead of starting a full check (no verdict yet reads as green); the
 gate's re-attribution of a repeated failure still runs main's check fresh, as it does unset. Its in-lock `build_check` events carry `full: false`, so reports and
 doctor's merge-check median leave them out. Unset, `check.mergeCommand` falls back to
@@ -226,14 +226,11 @@ discards a role's in-flight merge.
 - `tumwater prompt --role <id>` puts a prompt in one role's inbox for its next run instead of the
   director's, and wakes it. `--list` shows the inboxes grouped by role; per-role prompts
   wait behind a paused role like the director's wait behind a team pause.
-- While main's check is failing and names its failing tests, every role keeps working: the code
-  roles' prompts carry a `<main-known-red>` note listing those tests (at most 20), and a change
-  merges when it adds no new failures. Only when the failure names no test (another runner, a crash,
-  a compile error) do code-producing roles pause authoring (the status shows "main's check is
-  failing") until it passes again; bugfix, the director, and markdown-only roles keep going. A
-  newly-verified red main also queues a ci healer, so the healer starts on the next poll instead
-  of waiting out its interval or deferral — once per failing set, not once per red commit — and that
-  queued prompt no-ops (a "verify green" clause) if main turned green before it ran. Separately, the
+- While main's check is failing, every role keeps working: a change merges when it adds no new
+  failures. A newly-verified red main queues a ci healer — handed the failing tests when the red
+  names them — so the healer starts on the next poll instead of waiting out its interval or
+  deferral, once per failing set (not per red commit); that queued prompt no-ops (a "verify
+  green" clause) if main turned green before it ran. Separately, the
   `ci` role runs the workflow's own full suite and e2e at main's tip on its own clock and records what
   it covered in the CI-parity ledger. The main-check line on `tumwater status`, the TUI header and the
   dashboard's team panel carries a `ci: covered <sha> <age> ago` badge as the glance surface (its tone
@@ -262,8 +259,8 @@ discards a role's in-flight merge.
   logged as a warning naming the rule and the head (the same reason text the
   gate would reject with), deterministically within one poll, with no confirming re-run. That warning in the trailing day raises a standing amber alert naming the tip and the rule on `tumwater status`, the dashboard and the TUI, so a diff the gate let through cannot sit on main unremarked. No run or
   merge waits for the watch. On a red tip it names that head as the culprit and queues ci's
-  heal prompt (Forward, never back, part 4/6): the same `mainRedHealPrompt` wording the red-main
-  gate uses — `Main was reported red at commit <sha>; verify main is green now; if it is still
+  heal prompt (Forward, never back, part 4/6): the same `mainRedHealPrompt` wording a red-main
+  hold uses — `Main was reported red at commit <sha>; verify main is green now; if it is still
   red, reproduce the failure and land the fix` — naming the commit and the failing tests. Nothing
   is ever taken off main for a red tip, and no revision is handed back or parked for one; the
   only way a commit leaves main is the operator's own deliberate `tumwater revert <sha>`.

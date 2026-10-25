@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  BASELINE_BLOCKED_ROLES,
   DEFERRABLE_ROLES,
   DIRECTOR_ROLE,
   OBSERVER_ROLES,
@@ -16,9 +15,9 @@ import { roleLabel } from "../src/roles/role-labels.js";
 // Its structural invariants are
 // load-bearing but easy to break silently: a duplicated or empty id makes two roles share one
 // worktree/branch/state file; a reordered catalog changes startup-burst scheduling priority;
-// and BASELINE_BLOCKED_ROLES drifting from the catalog (a typo'd id, or a new code-producing
-// role added without updating the set) disables red-main protection for that role with no
-// error anywhere. prompt.test.ts pins each role's find-text content; these tests pin the
+// and an observer/deferrable set drifting from the catalog (a typo'd id, or a new role added
+// without updating the set) disables scheduling carve-out with no error anywhere.
+// prompt.test.ts pins each role's find-text content; these tests pin the
 // catalog's shape and its consistency with the derived exports.
 
 test("every catalog role has a unique, non-empty id, title, and find text", () => {
@@ -42,28 +41,6 @@ test("catalog order is scheduling priority: shipping work outranks hygiene", () 
   assert.ok(ROLES.length >= 2, "catalog has at least the two shipping roles");
   assert.equal(ROLES[0]!.id, "feature");
   assert.equal(ROLES[1]!.id, "bugfix");
-});
-
-test("BASELINE_BLOCKED_ROLES is exactly the code-producing catalog roles", () => {
-  // Red-main policy (src/baseline/main-red.ts): while main's own suite is red, only roles whose
-  // diff can carry non-exempt (code) changes are blocked from starting an authoring run. Exempt:
-  // bugfix — the designated healer; blocking it would leave only humans able to unblock a
-  // red main — the markdown-only charter roles plan/readme/steward/qa/selfcheck, whose
-  // diffs are review-exempt by construction, and the observers feedback and ci (a ci role must
-  // be able to author the fix that turns a red main green, part 2/3 of the ci plan). The
-  // director is not a catalog role at all.
-  const exempt = new Set([DIRECTOR_ROLE, "bugfix", "plan", "readme", "steward", "qa", "selfcheck", "feedback", "ci"]);
-  const expected = ROLES.map((r) => r.id).filter((id) => !exempt.has(id));
-  assert.deepEqual(
-    [...BASELINE_BLOCKED_ROLES].sort(),
-    [...expected].sort(),
-    "blocked set matches the catalog minus the exempt roles",
-  );
-  // A typo'd id in the set would never match a role id and silently skip the baseline check;
-  // the deepEqual above catches it, but say so explicitly for the failure message.
-  for (const id of BASELINE_BLOCKED_ROLES) {
-    assert.ok(roleById(id), `blocked role ${JSON.stringify(id)} exists in the catalog`);
-  }
 });
 
 test("OBSERVER_ROLES are catalog roles excluded from DEFERRABLE_ROLES", () => {
@@ -94,7 +71,6 @@ test("the ci role exists after qa, is an observer, and is blocked by nothing", (
   assert.ok(ids.indexOf("ci") > ids.indexOf("qa"), "ci sits after qa in catalog order");
   assert.ok(OBSERVER_ROLES.has("ci"), "ci is an observer");
   assert.ok(!DEFERRABLE_ROLES.has("ci"), "ci is an observer, so it never defers");
-  assert.ok(!BASELINE_BLOCKED_ROLES.has("ci"), "ci is not baseline-blocked");
   assert.ok(allRoleIds().includes("ci"), "allRoleIds lists ci");
   assert.equal(roleLabel("ci"), "CI", "ci renders as CI in role labels");
 });

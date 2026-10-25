@@ -4,7 +4,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMergedPrerequisitesNote,
-  buildMainKnownRedNote,
   buildMainRedNote,
   buildRevisionNote,
   buildWaitingPartsNote,
@@ -175,14 +174,4 @@ test("the prerequisite and waiting-part lists cut long titles at 100 characters"
     assert.equal(Array.from(quoted!).length, 101, "100 characters, then the ellipsis");
     assert.ok(build([{ title: "Short title", start: 1, end: 2 }]).includes('"Short title"'));
   }
-});
-
-test("buildMainKnownRedNote lists the failing tests, at most 20, in a <main-known-red> block", () => {
-  const note = buildMainKnownRedNote(["a fails", "b fails"]);
-  assert.ok(note.startsWith("<main-known-red>") && note.endsWith("</main-known-red>"));
-  assert.ok(note.includes("- a fails\n- b fails\n"));
-  assert.ok(note.includes("a change merges when it adds no new failures"));
-  const many = buildMainKnownRedNote(Array.from({ length: 23 }, (_, i) => `t${i}`));
-  assert.ok(many.includes("- t19\n") && !many.includes("- t20\n"));
-  assert.ok(many.includes("- …and 3 more"));
 });

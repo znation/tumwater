@@ -3,215 +3,25 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { watchedBaseline, noteGreenBaseline } from "../src/baseline/main-baseline.js";
-import { mainRedGate, mainRedHealNote, mainRedHealPrompt, mainTipVerdict } from "../src/baseline/main-red.js";
+import { mainRedHealNote, mainRedHealPrompt, mainTipVerdict } from "../src/baseline/main-red.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { isEligible } from "../src/scheduling/scheduling.js";
-import { defaultConfig, liveConfig } from "../src/config/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
-import { eventsOfType, mainRedHolds, warningEvents } from "./fixtures/log-fixtures.js";
+import { eventsOfType, mainRedHolds } from "./fixtures/log-fixtures.js";
 import { baselineFixture, fakeNpm, makeRoleRunner, runsOf } from "./fixtures/runner-fixtures.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
-import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 
-// Unit coverage for the red-main baseline gate (src/baseline/main-red.ts): the policy layer on top
-// of
-// checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,
-// under the role that paid for it; one harness-level warning per newly-discovered red SHA),
-// and its warn-and-proceed semantics for environmental skips. The underlying detection,
-// execution, and per-SHA cache machinery is covered in build-check.test.ts.
+// Unit coverage for the red-main hand-off (src/baseline/main-red.ts): the policy layer on top
+// of checkMainBaseline — what the ci healer's hand-off logs (one build_check per actual run,
+// under the role that paid for it; one harness-level warning per newly-discovered red SHA) and
+// mainTipVerdict's verdict arms. The red-main authoring block was removed with the pre-merge
+// blocks (parts 3g/3–3j/3 and 3d/3–3f/3), so no code role is blocked on a red main. The
+// underlying detection, execution, and per-SHA cache machinery is covered in build-check.test.ts.
 
-const ROLE = "coverage"; // a BASELINE_BLOCKED_ROLES member (code-producing)
-
-test("mainRedGate lets a non-blocked role through without running the check", async () => {
-  const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
-  const restore = fakeNpm(`echo run >> ${counter}; exit 0`);
-  try {
-    // A bookkeeping role is never gated: no check runs and nothing is logged — even though
-    // main would be red for the code roles.
-    const blocked = await mainRedGate(root, "steward", wt);
-    assert.equal(blocked, null);
-    assert.equal(runsOf(counter), 0, "the baseline check never ran");
-    assert.deepEqual(readEvents(root), [], "no events for an ungated role");
-  } finally {
-    restore();
-  }
-});
-
-test("mainRedGate proceeds on a green main and prices the run under the role", async () => {
-  const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(ROLE, `echo ok >> ${counter}; exit 0`);
-  const restore = fakeNpm(`echo ok >> ${counter}; exit 0`);
-  try {
-    assert.equal(await mainRedGate(root, ROLE, wt), null, "green main never blocks authoring");
-    assert.equal(runsOf(counter), 1, "the check ran once for the SHA");
-    const events = readEvents(root);
-    assert.equal(events.length, 1, "one build_check event, no warnings");
-    const check = events[0];
-    assert.ok(check);
-    assert.equal(check.type, "build_check");
-    assert.equal(check.source, ROLE, "priced under the role that paid for it");
-    assert.equal(check.scope, "baseline", "distinguished from the review gate's pre-check");
-    assert.equal(check.status, "passed");
-    assert.equal(check.script, "test");
-    assert.ok((check as { durationMs?: number }).durationMs! >= 0);
-  } finally {
-    restore();
-  }
-});
-
-test("mainRedGate blocks a red main with the terminal outcome and a harness-level warning", async () => {
-  const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(ROLE, `echo baseline-failure; echo run >> ${counter}; exit 1`);
-  const restore = fakeNpm(`echo baseline-failure; echo run >> ${counter}; exit 1`);
-  try {
-    const blocked = await mainRedGate(root, ROLE, wt);
-    // The cause rides the outcome (BUGS.md 2026-09-28): the run's run_end must be able to
-    // name what broke, not leave the digest's main_red cells a bare count.
-    const sha = mainSha(root);
-    assert.deepEqual(blocked, {
-      result: "main_red",
-      summary: "code merges blocked until main is green",
-      error: `main ${shortSha(sha)} is red (test: baseline-failure) — authoring skipped until main is green`,
-    });
-
-    const events = readEvents(root);
-    const checks = events.filter((e) => e.type === "build_check");
-    assert.equal(checks.length, 1);
-    const check = checks[0];
-    assert.ok(check);
-    assert.equal(check.source, ROLE);
-    assert.equal(check.status, "failed");
-    assert.equal(check.script, "test");
-
-    const holds = mainRedHolds(root);
-    assert.equal(holds.length, 1, "one main_red_hold for the newly-discovered red SHA");
-    const warning = holds[0];
-    assert.ok(warning);
-    assert.equal(warning.source, "tumwater", "team-wide, not per role");
-    assert.equal(warning.sha, sha);
-    assert.equal(warning.script, "test");
-    assert.equal(warningEvents(events).length, 0, "no generic warning for the red SHA");
-    const message = warning as { message?: string };
-    assert.ok(message.message?.includes(shortSha(sha)), `warning names the red SHA: ${message.message}`);
-    assert.ok(message.message?.includes("test"), "warning names the failing script");
-    assert.ok(message.message?.includes("baseline-failure"), "warning carries the failure's first line");
-    assert.ok(message.message?.endsWith("code merges blocked until main is green"), String(message.message));
-    assert.equal("failingTests" in warning, false, "no named failures, no failingTests key");
-  } finally {
-    restore();
-  }
-});
-
-test("mainRedGate warns once per red SHA: a repeat run on the same HEAD re-blocks silently", async () => {
-  const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
-  const restore = fakeNpm(`echo run >> ${counter}; exit 1`);
-  try {
-    assert.equal((await mainRedGate(root, ROLE, wt))?.result, "main_red");
-    // A second blocked role waking on the same SHA (or the same role's next run) must not
-    // re-run the suite or re-log the team-wide warning.
-    const again = await mainRedGate(root, "feature", wt);
-    assert.equal(again?.result, "main_red");
-    assert.equal(runsOf(counter), 1, "the verdict is cached per SHA — no second run");
-    const holds = mainRedHolds(root);
-    assert.equal(holds.length, 1, "one main_red_hold for the red SHA, not one per blocked run");
-    // The red discovery by a non-ci path queues exactly one healer prompt naming the
-    // short SHA; the second blocked role on the same SHA adds no second prompt.
-    const prompts = queuedRolePrompts(root, "ci");
-    assert.equal(prompts.length, 1, "one healer prompt per newly-verified red SHA");
-    assert.ok(prompts[0]?.includes(shortSha(mainSha(root))), `prompt names the red SHA: ${prompts[0]}`);
-  } finally {
-    restore();
-  }
-});
-
-test("mainRedGate blocks a user-defined role on red main like the code roles", async () => {
-  // A custom's charter may produce code, so it is blocked exactly like feature/improve
-  // (plans/user-defined-loops.md). Customs come from tumwater.json, not the catalog — declare
-  // one in the fixture repo before the gate reads the live config.
-  const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
-  fs.writeFileSync(
-    path.join(root, "tumwater.json"),
-    JSON.stringify({ customRoles: [{ name: "docs-auditor", task: "Keep the docs current." }] }),
-  );
-  const restore = fakeNpm(`echo run >> ${counter}; exit 1`);
-  try {
-    assert.equal(
-      (await mainRedGate(root, "docs-auditor", wt))?.result,
-      "main_red",
-      "a custom role's fresh run on red main is blocked like feature's",
-    );
-    // The check ran once under the role that paid for it — same pricing as a built-in.
-    assert.equal(runsOf(counter), 1);
-    const checks = eventsOfType(root, "build_check");
-    assert.equal(checks.length, 1);
-    assert.equal(checks[0]?.source, "docs-auditor");
-    // A role that is neither in the catalog nor in customRoles still passes through ungated.
-    assert.equal(await mainRedGate(root, "not-a-role", wt), null);
-  } finally {
-    restore();
-  }
-});
-
-test("mainRedGate warns under the role and proceeds when npm is missing", async () => {
-  const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
-
-  // A PATH that keeps git (the helper keys by HEAD) but drops npm — the real-world shape of a
-  // machine without node. The skip must warn and proceed, never block authoring.
-  const partialBin = gitOnlyBinDir("no-npm-");
-  const restorePath = pathReplace(partialBin);
-  try {
-    assert.equal(await mainRedGate(root, ROLE, wt), null, "an environmental skip never blocks");
-    assert.equal(runsOf(counter), 0, "nothing ran — npm could not even start");
-
-    const events = readEvents(root);
-    const checks = events.filter((e) => e.type === "build_check");
-    assert.equal(checks.length, 1);
-    const check = checks[0];
-    assert.ok(check);
-    assert.equal(check.status, "skipped");
-    assert.equal(check.source, ROLE);
-    const warnings = warningEvents(events);
-    assert.equal(warnings.length, 1);
-    const warning = warnings[0];
-    assert.ok(warning);
-    assert.equal(warning.source, ROLE, "the skip is warned under the role that hit it");
-    assert.ok(
-      (warning as { message?: string }).message?.includes("no npm on PATH"),
-      `skip reason in warning: ${(warning as { message?: string }).message}`,
-    );
-  } finally {
-    restorePath();
-  }
-});
-
-// The baseline's timeout warning names the bound the run was armed with — a configured
-// command's own timeoutSeconds — not the npm default: pre-fix it always said "300s" (BUGS.md
-// 2026-09-21, the warning that named a bound the check did not run under). The event carries
-// the armed bound too, beside how late the deadline fired.
-test("mainRedGate's timeout warning names the bound the baseline check actually ran under", async () => {
-  const { root, wt } = baselineFixture(ROLE, "echo baseline-timeout-bound; exit 0");
-  fs.writeFileSync(
-    path.join(root, "tumwater.json"),
-    JSON.stringify({ check: { command: "sleep 30", timeoutSeconds: 0.5 } }),
-  );
-  assert.equal(await mainRedGate(root, ROLE, wt), null, "a timed-out baseline never blocks authoring");
-  const events = readEvents(root);
-  const check = events.find((e) => e.type === "build_check");
-  assert.equal(check?.status, "skipped");
-  assert.equal(check?.timeoutMs, 500, "the event names the armed bound");
-  assert.equal(typeof check?.deadlineLateMs, "number");
-  const warning = events.find((e) => e.type === "warning");
-  assert.equal(
-    warning?.message,
-    "main baseline check timed out after 0.5s; proceeding with authoring unverified",
-  );
-});
+const ROLE = "coverage"; // a code-producing maintenance role
 
 test("mainRedHealNote hands the healer the failing script, headline, and output tail, warning once", async () => {
   const counter = path.join(tmpdir(), "runs");
@@ -240,16 +50,13 @@ test("mainRedHealNote hands the healer the failing script, headline, and output 
     assert.equal(holds.length, 1, "one team-wide main_red_hold for the red SHA");
     assert.equal(holds[0]?.source, "tumwater");
 
-    // A blocked role on the same SHA still reads the cached red and does NOT add a second
-    // warning: the healer's check and the gate share the once-per-SHA guard.
-    const blocked = await mainRedGate(root, "feature", wt);
-    assert.equal(blocked?.result, "main_red");
-    assert.equal(runsOf(counter), 1, "the cached verdict was reused — no second run");
-    assert.equal(
-      mainRedHolds(root).length,
-      1,
-      "the healer's check did not add a second main_red_hold",
-    );
+    // A second reader on the same SHA still sees the red but does NOT add a second team-wide
+    // warning: the healer's check and mainTipVerdict share the once-per-SHA guard. A red is
+    // provisional per worktree, so the attribution re-runs the suite on its own mirror (the
+    // runs counter grows) — but the hold is logged once.
+    const verdict = await mainTipVerdict(root, ROLE, "main", defaultConfig());
+    assert.ok(verdict.status === "red");
+    assert.equal(mainRedHolds(root).length, 1, "a second reader adds no second main_red_hold");
   } finally {
     restore();
   }
@@ -293,20 +100,9 @@ test("mainRedHealNote yields no note on an environmental skip (no npm)", async (
   }
 });
 
-test("mainRedGate proceeds silently when no build check is declared", async () => {
-  const base = tmpdir("mainred-none-");
-  const root = makeRepo(path.join(base, "project"));
-  const wt = worktreeAt(root, ROLE);
-
-  // Nothing to verify → nothing to block on, and no warning: a missing check is not an
-  // environmental skip.
-  assert.equal(await mainRedGate(root, ROLE, wt), null);
-  assert.deepEqual(readEvents(root), [], "no events when there is no declared check");
-});
-
-// The gate's never-throws contract (src/baseline/main-red.ts): an unreadable main must read as
-// `unavailable` with a why, never reject the verify pipeline with an exception — a corrupt or
-// dangling ref is a broken repo, and the failure belongs in the rejection's reasons.
+// mainTipVerdict's never-throws contract (src/baseline/main-red.ts): an unreadable main must
+// read as `unavailable` with a why, and never reject the verify pipeline with an exception — a
+// corrupt or dangling ref is a broken repo, and the failure belongs in the rejection's reasons.
 test("mainTipVerdict reports unavailable, without throwing, when main's ref dangles", async () => {
   const root = makeRepo();
   // Point main at a well-formed sha whose object does not exist: `git rev-parse` still
@@ -317,36 +113,6 @@ test("mainTipVerdict reports unavailable, without throwing, when main's ref dang
   const verdict = await mainTipVerdict(root, ROLE, "main", defaultConfig());
   assert.equal(verdict.status, "unavailable");
   assert.ok(verdict.status === "unavailable" && verdict.why.includes('invalid reference'), verdict.status === "unavailable" ? verdict.why : "");
-});
-
-// BUGS.md 2026-09-30: a FAILED baseline run the host slept through is no verdict about main —
-// the gate warns under the role, naming the sleep, and proceeds with authoring; nothing is
-// cached, so the next consult re-runs and a clean attempt settles the SHA.
-test("mainRedGate proceeds unverified when the baseline run spanned a host sleep", async () => {
-  const { root, wt } = baselineFixture(ROLE, "echo baseline-failure; exit 1");
-  // The first attempt sleeps and owes one clean retry; the retry sleeps too, so it stands.
-  const slept = scriptedSampler([
-    woke(1_000),
-    woke(121_000, 2_000),
-    woke(121_000),
-    woke(241_000, 122_000),
-  ]);
-  assert.equal(await mainRedGate(root, ROLE, wt, slept), null, "a slept baseline run never blocks authoring");
-  const events = readEvents(root);
-  assert.equal(events.filter((e) => e.type === "build_check").length, 2, "both attempts are priced");
-  const check = events.filter((e) => e.type === "build_check").at(-1);
-  assert.equal(check?.status, "failed");
-  assert.equal(check?.sleptMs, 119_000, "the event carries the measured sleep");
-  const warning = events.find((e) => e.type === "warning" && e.source === ROLE);
-  assert.match(
-    String(warning?.message ?? ""),
-    /main baseline check ran while the host slept 119s mid-run; proceeding with authoring unverified/,
-  );
-
-  // Nothing was cached from the slept run: the next gate re-runs, and the clean attempt's
-  // red is a real red — main_red, as always.
-  const clean = scriptedSampler([woke(1_000), woke(1_500)]);
-  assert.equal((await mainRedGate(root, ROLE, wt, clean))?.result, "main_red");
 });
 
 // mainTipVerdict's own verdict arms, pinned at the seam the review gate and the merge pipeline's
@@ -391,7 +157,7 @@ test("mainTipVerdict reports red with the team-wide warning, once per SHA", asyn
     assert.match(message?.message ?? "", /tip-failure/);
 
     // A second ask at the same tip reads the cached red: no second run, no second warning —
-    // the same once-per-SHA guard the authoring gate shares.
+    // the same once-per-SHA guard the healer hand-off shares.
     const again = await mainTipVerdict(root, "feature", "main", defaultConfig());
     assert.ok(again.status === "red");
     assert.equal(runsOf(counter), 1, "the verdict is cached per SHA");
@@ -437,24 +203,23 @@ test("mainTipVerdict reports unavailable when the named branch does not exist", 
 
 test("mainTipVerdict runs the suite over a green inherited across doc commits, and reports its red", async () => {
   // A doc edit that breaks a test reading the docs (the shape test/backlog-structure.test.ts has
-  // with the real PLANS.md): the red-main gate may carry main's green over it, but attribution
+  // with the real PLANS.md): mainRedHealNote may carry main's green over it, but attribution
   // must not, or the change under judgment would be rejected for main's own failure.
   const counter = path.join(tmpdir(), "runs");
   const script = `echo run >> ${counter}; if [ -f BROKEN.md ]; then echo docs-broke-it; exit 1; fi`;
   const { root, wt } = baselineFixture(ROLE, script);
   const restore = fakeNpm(script);
   try {
-    assert.equal(await mainRedGate(root, ROLE, wt), null, "the code commit is green");
+    assert.equal(await mainRedHealNote(root, ROLE, wt), undefined, "the code commit is green");
     fs.writeFileSync(path.join(root, "BROKEN.md"), "x\n");
     sh(root, "git", "add", "BROKEN.md");
     sh(root, "git", "commit", "-m", "doc that breaks a docs test");
     sh(wt, "git", "reset", "--hard", "main");
-    assert.equal(await mainRedGate(root, ROLE, wt), null, "the gate carries the green over the doc commit");
+    assert.equal(await mainRedHealNote(root, ROLE, wt), undefined, "the healer reads the green over the doc commit");
     assert.equal(runsOf(counter), 1, "without a run");
     const verdict = await mainTipVerdict(root, ROLE, "main", defaultConfig());
     assert.deepEqual(verdict, { status: "red", sha: mainSha(root) });
     assert.equal(runsOf(counter), 2, "attribution ran the suite on the tip itself");
-    assert.equal((await mainRedGate(root, ROLE, wt))?.result, "main_red", "the observed red now blocks authoring");
   } finally {
     restore();
   }
@@ -463,8 +228,7 @@ test("mainTipVerdict runs the suite over a green inherited across doc commits, a
 // The healer handoff (PLANS.md 2026-10-19): a verified-red main discovered by any path other
 // than ci's own run queues one ci prompt, so the healer becomes due on the next poll
 // instead of waiting out its own interval or deferral. ci finding its own red (via
-// mainRedHealNote) is the heal and queues nothing; green, non-blocked, and ci-own paths
-// all leave ci's inbox empty.
+// mainRedHealNote) is the heal and queues nothing; green paths leave ci's inbox empty.
 
 test("ci's own red-main note queues nothing and still returns the note and warning", async () => {
   const counter = path.join(tmpdir(), "runs");
@@ -476,20 +240,6 @@ test("ci's own red-main note queues nothing and still returns the note and warni
     assert.ok(note, "the healer's own note still hands it the failure");
     assert.equal(queuedRolePrompts(root, "ci").length, 0, "ci finding its own red queues no second run");
     assert.equal(mainRedHolds(root).length, 1, "the team-wide warning still logs once");
-  } finally {
-    restore();
-  }
-});
-
-test("green main and a non-blocked role leave ci's inbox empty", async () => {
-  const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(ROLE, `echo ok >> ${counter}; exit 0`);
-  const restore = fakeNpm(`echo ok >> ${counter}; exit 0`);
-  try {
-    assert.equal(await mainRedGate(root, ROLE, wt), null, "green main never blocks");
-    assert.equal(queuedRolePrompts(root, "ci").length, 0, "no red, no healer prompt");
-    assert.equal(await mainRedGate(root, "steward", wt), null, "non-blocked role passes through");
-    assert.equal(queuedRolePrompts(root, "ci").length, 0, "a non-blocked role never queues the healer");
   } finally {
     restore();
   }
@@ -518,75 +268,6 @@ test("a queued healer prompt makes a ci runner due on the next poll despite a fu
     run: true,
     reason: "inbox",
   });
-});
-
-test("mainRedGate lets a role run on a red main that names its failing tests, once per failing set", async () => {
-  const script = `echo '✖ known-red-alpha (1.2ms)'; echo '✖ known-red-beta (0.4ms)'; exit 1`;
-  const { root, wt } = baselineFixture(ROLE, script);
-  const restore = fakeNpm(script);
-  try {
-    let known: string[] | undefined;
-    const blocked = await mainRedGate(root, ROLE, wt, undefined, (t) => (known = t));
-    assert.equal(blocked, null, "named failures do not end the run main_red");
-    assert.deepEqual(known, ["known-red-alpha", "known-red-beta"]);
-    const holds = mainRedHolds(root);
-    assert.equal(holds.length, 1);
-    const message = (holds[0] as { message?: string }).message ?? "";
-    assert.ok(message.includes("(2 failing tests: known-red-alpha, +1 more); changes that add no new failures still merge"), message);
-    assert.deepEqual((holds[0] as { failingTests?: string[] }).failingTests, ["known-red-alpha", "known-red-beta"]);
-    assert.equal(queuedRolePrompts(root, "ci").length, 1, "the healer is told once");
-
-    // A second red commit with the same failing set sends no second heal prompt.
-    sh(root, "git", "commit", "--allow-empty", "-q", "-m", "second-red");
-    sh(wt, "git", "reset", "--hard", "main");
-    assert.equal(await mainRedGate(root, ROLE, wt, undefined, () => {}), null);
-    assert.equal(mainRedHolds(root).length, 2, "the new red SHA is still logged");
-    assert.equal(queuedRolePrompts(root, "ci").length, 1, "same failing set: one heal prompt");
-  } finally {
-    restore();
-  }
-});
-
-test("mainRedGate's hold with one named failure says '1 failing test' and names it", async () => {
-  const script = `echo '✖ known-red-alpha (1.2ms)'; exit 1`;
-  const { root, wt } = baselineFixture(ROLE, script);
-  const restore = fakeNpm(script);
-  try {
-    assert.equal(await mainRedGate(root, ROLE, wt, undefined, () => {}), null);
-    const message = (mainRedHolds(root)[0] as { message?: string }).message ?? "";
-    assert.ok(message.includes("(1 failing test: known-red-alpha); changes that add no new failures still merge"), message);
-    assert.ok(!message.includes("failing tests"), message);
-  } finally {
-    restore();
-  }
-});
-
-// ── check.mergeCommand: the red-main reads answer from the watch's verdict, no full check ──
-
-test("with check.mergeCommand set, mainRedGate and mainTipVerdict read a cached verdict and start no check", async () => {
-  const counter = path.join(tmpdir(), "runs");
-  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
-  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ check: { mergeCommand: "echo cheap" } }));
-  const restore = fakeNpm(`echo run >> ${counter}; exit 1`);
-  try {
-    // No verdict yet reads as green: authoring proceeds, nothing runs.
-    assert.equal(await mainRedGate(root, ROLE, wt), null);
-    assert.equal(await mainRedHealNote(root, ROLE, wt), undefined);
-    const config = liveConfig(root);
-    const unknown = await mainTipVerdict(root, ROLE, "main", config);
-    assert.equal(runsOf(counter), 1, "only the attribution without a verdict runs the check, as without the setting");
-    // That run cached a red for the tip: the gate now reads it without running anything again.
-    assert.equal(unknown.status, "red");
-    const before = runsOf(counter);
-    assert.equal((await mainRedGate(root, ROLE, wt))?.result, "main_red");
-    assert.deepEqual(await mainTipVerdict(root, ROLE, "main", config), { status: "red", sha: mainSha(root) });
-    assert.equal(runsOf(counter), before, "a cached verdict starts no further full check");
-    // The attribution is the one it is without the setting: forceFresh still bypasses the cache.
-    await mainTipVerdict(root, ROLE, "main", config, true);
-    assert.equal(runsOf(counter), before + 1, "forceFresh runs main's check over a cached verdict");
-  } finally {
-    restore();
-  }
 });
 
 test("watchedBaseline answers from the nearest first-parent ancestor holding a verdict, and null when none does", async () => {

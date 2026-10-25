@@ -1,44 +1,21 @@
 /** The prompt-requeue survival cluster: a queued request must outlive every run that
- * dequeues it but cannot fulfill — a red-main gate, a failed resume, and a crash after the
- * dequeue all hand the prompt back to its queue. This exercises the durable-copy policy
+ * dequeues it but cannot fulfill — a failed resume and a crash after the dequeue both hand
+ * the prompt back to its queue. This exercises the durable-copy policy
  * src/inbox/pending-prompt.ts implements. Split from the numbered runner-2.test.ts grab-bag so the
  * concern has a topic-named file like its siblings. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
+import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { makeRoleRunner, pinWorktreeAsSlot } from "./fixtures/runner-fixtures.js";
 import { sessionDir } from "../src/paths.js";
-import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./fixtures/repo-fixtures.js";
+import { initializedRepo, initializedWorktree, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
-
-// criterion (b), red-gate arm: a per-role prompt is dequeued
-// before the red-main gate runs (the gate needs the assembled prompt), so a blocked run MUST
-// put it back — the pending field is memory-only, and a prompt lost here never runs.
-test("a role prompt queued while main is red survives the blocked run", async () => {
-  const repo = await initializedRepo();
-  const counter = path.join(tmpdir(), "npm-runs-role-prompt");
-  makeMainRed(repo, counter);
-  enqueueRolePrompt(repo, "feature", "check the flow");
-  const marker = path.join(tmpdir(), "pi-invoked-role-prompt");
-  await withPi(`touch '${marker}'`, async () => {
-    const runner = makeRoleRunner(repo, "feature");
-    const outcome = await runner.run();
-    assert.equal(outcome.result, "main_red");
-    assert.ok(!fs.existsSync(marker), "no pi run starts while main is red");
-
-    // The dequeued prompt is back in the feature queue — not the director's — ready for the
-    // next run once main is green.
-    assert.deepEqual(dequeueRolePrompt(repo, "feature"), "check the flow");
-    assert.equal(dequeueRolePrompt(repo, "feature"), null);
-    assert.equal(dequeuePrompt(repo), null);
-  });
-});
 
 // A resume-owning run (cut-off, quiet-kill, shutdown) re-queues its user prompt as the durable
 // copy, but the resumed session still owns that request in its context: the resume must reclaim

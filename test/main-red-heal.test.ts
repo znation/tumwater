@@ -2,17 +2,24 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { mainRedGate, mainRedHealPrompt, queueCulpritHeal } from "../src/baseline/main-red.js";
+import { mainRedHealNote, mainRedHealPrompt, queueCulpritHeal } from "../src/baseline/main-red.js";
+import { createMainWatch } from "../src/baseline/main-watch.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { shortSha } from "../src/text/format.js";
 import { roleInboxDir } from "../src/paths.js";
 import { mainRedHolds, warningMessages } from "./fixtures/log-fixtures.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { baselineFixture, fakeNpm } from "./fixtures/runner-fixtures.js";
-import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { defaultConfig } from "../src/config/config.js";
 
 // The red-main healer's dedup state (src/baseline/main-red.ts) is module-level, so this file runs
 // in its own process: lastHealKey and lastMainRedSha start fresh here.
+
+async function watchAt(watch: ReturnType<typeof createMainWatch>, root: string): Promise<void> {
+  watch.poll(headSha(root), false, defaultConfig());
+  await watch.idle();
+}
 
 test("a failing set queues one heal prompt in any order, and queues another after main turns green", async () => {
   const flags = tmpdir();
@@ -24,6 +31,7 @@ test("a failing set queues one heal prompt in any order, and queues another afte
     `else echo '✖ heal-alpha (1ms)'; echo '✖ heal-beta (1ms)'; fi; exit 1`;
   const { root, wt } = baselineFixture("coverage", script);
   const restore = fakeNpm(script);
+  const watch = createMainWatch(root, "main");
   let n = 0;
   // A code-file change, so a commit after a green main is checked rather than inheriting it.
   const newCommit = (): void => {
@@ -34,31 +42,32 @@ test("a failing set queues one heal prompt in any order, and queues another afte
   };
   try {
     newCommit();
-    assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
+    assert.ok(await mainRedHealNote(root, "coverage", wt), "a red main yields a heal note");
     assert.equal(queuedRolePrompts(root, "ci").length, 1, "first red queues one prompt");
 
     fs.writeFileSync(swap, "");
     newCommit();
-    assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
+    assert.ok(await mainRedHealNote(root, "coverage", wt));
     assert.equal(mainRedHolds(root).length, 2, "the new red SHA still pages");
     assert.equal(queuedRolePrompts(root, "ci").length, 1, "same set in another order: no second prompt");
 
     fs.writeFileSync(green, "");
     fs.rmSync(swap);
     newCommit();
-    assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
+    // Settle a green poll of the main watch: it clears the heal key (INV-AZ2).
+    await watchAt(watch, root);
     assert.equal(queuedRolePrompts(root, "ci").length, 1, "green main queues nothing");
 
     fs.rmSync(green);
     newCommit();
-    assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
+    assert.ok(await mainRedHealNote(root, "coverage", wt));
     assert.equal(queuedRolePrompts(root, "ci").length, 2, "the set returning after green is healed again");
   } finally {
     restore();
   }
 });
 
-test("a heal prompt that cannot be queued warns, lets the gate resolve, and is queued at the next red commit", async () => {
+test("a heal prompt that cannot be queued warns and is queued at the next red commit", async () => {
   const script = "echo '✖ heal-gamma (1ms)'; exit 1";
   const { root, wt } = baselineFixture("coverage", script);
   const restore = fakeNpm(script);
@@ -77,7 +86,7 @@ test("a heal prompt that cannot be queued warns, lets the gate resolve, and is q
       return orig(...args);
     });
     try {
-      assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
+      assert.ok(await mainRedHealNote(root, "coverage", wt), "the hand-off resolves despite the unqueueable prompt");
     } finally {
       undo();
     }
@@ -86,7 +95,7 @@ test("a heal prompt that cannot be queued warns, lets the gate resolve, and is q
     assert.equal(warnings.length, 1, warningMessages(root).join("\n"));
 
     newCommit();
-    assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
+    assert.ok(await mainRedHealNote(root, "coverage", wt));
     assert.equal(queuedRolePrompts(root, "ci").length, 1, "the next red commit queues the heal");
   } finally {
     restore();
@@ -95,8 +104,8 @@ test("a heal prompt that cannot be queued warns, lets the gate resolve, and is q
 
 test("queueCulpritHeal never throws: a prompt that cannot be queued warns and the culprit goes unanswered", async () => {
   // The watch's onCulprit calls queueCulpritHeal from a callback whose caller discards the result,
-  // so the remedy itself must not throw: an unwritable ci inbox is warned (the same guard the
-  // red-main gate's warnMainRedOnce uses), and the call returns.
+  // so the remedy itself must not throw: an unwritable ci inbox is warned (the same guard
+  // warnMainRedOnce uses), and the call returns.
   const { root } = baselineFixture("coverage", "echo ok");
   const inbox = roleInboxDir(root, "ci");
   const undo = patchFsMethod("writeFileSync", (orig) => (...args: unknown[]) => {

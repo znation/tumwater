@@ -1,14 +1,12 @@
-import { baselineBlocked } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { enqueueRolePrompt } from "../inbox/inbox.js";
-import { isCustomRole, liveConfig } from "../config/config.js";
-import { BUILD_CHECK_TIMEOUT_MS, mergeCommandOf } from "../build/build-check-detect.js";
+import { liveConfig } from "../config/config.js";
+import { mergeCommandOf } from "../build/build-check-detect.js";
 import { failureHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
-import { baselineCheckEventLogger, buildCheckSkipWarning, sleptPhrase, type BaselineCheckRun } from "../build/build-check-events.js";
+import { baselineCheckEventLogger, type BaselineCheckRun } from "../build/build-check-events.js";
 import { checkMainBaseline, watchedBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "../prompt/gate-notes.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import type { RunOutcome } from "../run/run-outcome.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
 import { mainRedPhrase, plural } from "../text/phrases.js";
@@ -19,11 +17,11 @@ import { gateMainWorktreePath } from "../paths.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 
-/** Red-main baseline gate for fresh authoring runs: before an
- * authoring run is spent on top of pristine main, verify that MAIN ITSELF is green — a red main
- * rejects every code diff deterministically at the review gate (BUGS.md's "Build broken on main"
- * and "Tests red on main" entries), so while a SHA is known red the blocked roles skip authoring
- * instead of burning runs that are guaranteed to fail. Split out of runner.ts — which keeps the
+/** Red-main baseline hand-off: verify MAIN ITSELF's suite and feed its verdict to the surviving
+ * readers — the `ci` healer's hand-off (`mainRedHealNote`), the main watch's green clear, and
+ * the merge path's `mainTipVerdict` — rather than blocking a code role's authoring run (the
+ * red-main authoring block came off with the pre-merge blocks, parts 3g/3–3j/3 and 3d/3–3f/3,
+ * so a code role authors on a red main). Split out of runner.ts — which keeps the
  * run lifecycle around it — because this is a self-contained policy with its own per-process
  * state (one harness-level `main_red_hold` event AND one queued healer prompt per
  * newly-discovered red SHA) and its own
@@ -40,8 +38,9 @@ let lastMainRedSha: string | null = null;
 
 /** The key of the last failing set the healer was sent a prompt for: the sorted failing test
  * names, or the red SHA when the red names none. Two red commits with the same failing set send
- * one heal prompt, not one per commit; a green main observed by the gate or the ci handoff
- * clears it, so a set that returns after green is healed again. */
+ * one heal prompt, not one per commit; a green main observed by the ci handoff
+ * (`mainRedHealNote`) or the main watch (`clearHealKeyOnGreen`) clears it, so a set that
+ * returns after green is healed again. */
 let lastHealKey: string | null = null;
 
 /** The failing tests a red verdict names, when the list is complete — non-empty and short of
@@ -92,9 +91,8 @@ function warnMainRedOnce(
         ? `${mainRedPhrase(red.sha)} (${plural(named.length, "failing test")}: ${clipToWidth(named[0] ?? "", 80)}${named.length > 1 ? `, +${named.length - 1} more` : ""}); changes that add no new failures still merge`
         : redMainMessage(red, "code merges blocked until main is green"),
   });
-  // The ci role is the healer, and it is exempt from mainRedGate but schedules as an observer,
-  // so a red main discovered by any other path could sit unrepaired until ci's own interval or
-  // a coincidental wake.
+  // The ci role is the healer, and it schedules as an observer, so a red main discovered by any
+  // other path could sit unrepaired until ci's own interval or a coincidental wake.
   // Queue the heal: one prompt per newly-verified red SHA per process (a restart re-queues
   // once, desirable because the cache is cold then too). With named failures the key is the
   // failing set, so a second red commit with the same failures queues nothing.
@@ -153,7 +151,7 @@ export function queueCulpritHeal(
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role
  * that paid for it, with its duration — the gate's build_check sibling, so both halves of the
  * team's deterministic verification are priced in the feed. The one logger for every baseline
- * check this module runs — the ci handoff, the authoring gate, and mainTipVerdict's tip
+ * check this module runs — the ci handoff, the main watch, and mainTipVerdict's tip
  * check (which review.ts's gate and merge-check-failures.ts's attributeRedCheck reach
  * through it) — so the event's shape cannot drift between them. */
 export function baselineCheckLogger(
@@ -163,13 +161,20 @@ export function baselineCheckLogger(
   return baselineCheckEventLogger(role, (event) => logEventBestEffort(root, event));
 }
 
-/** Red-main handoff for the `ci` healer: mainRedGate exempts
- * ci so the only role that can unblock the team may author, but its prompt then starts from
- * its own queue and knows nothing about the red suite. This runs the same per-SHA baseline check
+/** Clear the heal-dedup key: a green main settled by the main watch drops it, so a failing set
+ * that returns after a green poll is healed again (INV-AZ2). The ci hand-off (`mainRedHealNote`)
+ * clears it inline on its own green observation too. */
+export function clearHealKeyOnGreen(): void {
+  lastHealKey = null;
+}
+
+/** Red-main handoff for the `ci` healer: a red main leaves ci's prompt starting from its own
+ * queue knowing nothing about the red suite, so this runs the same per-SHA baseline check
  * (cache and provisional-red re-verification reused unchanged, so it costs at most the one run
- * the gate would have paid for) and, when main is red, returns the note that points the healer
- * at the failure. Returns undefined on green, no declared check, or an environmental skip — the
- * healer's run then proceeds exactly as it did before this existed. Never throws. */
+ * the removed authoring gate would have paid for) and, when main is red, returns the note that
+ * points the healer at the failure. Returns undefined on green, no declared check, or an
+ * environmental skip — the healer's run then proceeds exactly as it did before this existed.
+ * Never throws. */
 export async function mainRedHealNote(root: string, role: string, wt: string): Promise<string | undefined> {
   // The declared check is detected through the live config (plans/portability.md §6/7); a
   // broken file degrades to defaults, which declare none — the run then proceeds as before.
@@ -178,86 +183,10 @@ export async function mainRedHealNote(root: string, role: string, wt: string): P
     ? { baseline: await watchedBaseline(wt) }
     : await checkMainBaseline(wt, config, baselineCheckLogger(root, role));
   const red = baseline.baseline;
-  if (red?.status === "green") lastHealKey = null;
+  if (red?.status === "green") clearHealKeyOnGreen();
   if (red?.status !== "red") return undefined;
   warnMainRedOnce(root, red, role);
   return buildMainRedNote(red.sha, red.script, failureHeadline(red.outputTail), red.outputTail);
-}
-
-/** Gate one fresh run on main's baseline. Returns null when authoring may proceed — role not
- * blocked, no declared check, green, or an environmental skip (warned under the role and
- * proceeded with, exactly like the review gate's pre-check) — otherwise the terminal
- * `main_red` outcome for the caller to return as-is. Never throws: git, detection, and
- * execution failures all resolve to "nothing blocks authoring" inside checkMainBaseline. */
-export async function mainRedGate(
-  root: string,
-  role: string,
-  wt: string,
-  /** The sleep clock the baseline run measures host suspension with; defaults to the real
-   * sampleSleepClock. A test seam — production callers leave it unset. */
-  sampleSleep?: Parameters<typeof checkMainBaseline>[5],
-  /** Called with main's failing tests when the red names them: the role then runs on the red
-   * main instead of ending `main_red`, and the caller puts them in its prompt. */
-  onKnownRed?: (failingTests: string[]) => void,
-): Promise<RunOutcome | null> {
-  // User-defined roles are blocked alongside the built-in code roles (plans/user-defined-loops.md):
-  // an unknown charter may produce code, and on red main such diffs are rejected deterministically
-  // at the gate's pre-check — an authoring run would be pure waste. Customs come from
-  // tumwater.json, not the catalog, so read the live config (stat-cached; a broken file
-  // degrades to defaults, which know no customs).
-  const cfg = liveConfig(root);
-  if (!baselineBlocked(role) && !isCustomRole(cfg, role)) return null;
-  // With check.mergeCommand set the lock no longer runs the full check, and neither does this
-  // gate: it reads the main watch's newest verdict for main's tip (or its nearest checked
-  // ancestor). No verdict yet reads as green.
-  const baseline: Awaited<ReturnType<typeof checkMainBaseline>> = mergeCommandOf(cfg)
-    ? { baseline: await watchedBaseline(wt) }
-    : await checkMainBaseline(wt, cfg, baselineCheckLogger(root, role), false, false, sampleSleep);
-  if (baseline.unverified) {
-    // The baseline run spanned a host sleep: no verdict about main, nothing cached (BUGS.md
-    // 2026-09-30). Warn-and-proceed, like a skip — the sleep is named, not a test failure.
-    warnEventBestEffort(
-      root,
-      role,
-      sleptPhrase("main baseline check", baseline.run?.sleptMs ?? 0, "proceeding with authoring unverified"),
-    );
-    return null;
-  }
-  if (baseline.skipReason) {
-    warnEventBestEffort(
-      root,
-      role,
-      buildCheckSkipWarning(
-        baseline.skipReason,
-        "main baseline check",
-        "proceeding with authoring unverified",
-        BUILD_CHECK_TIMEOUT_MS,
-        undefined,
-        baseline.run,
-      ),
-    );
-    return null;
-  }
-  if (baseline.baseline?.status === "red") {
-    const red = baseline.baseline;
-    warnMainRedOnce(root, red, role);
-    const named = namedFailures(red);
-    if (named.length > 0) {
-      onKnownRed?.(named);
-      return null;
-    }
-    return {
-      result: "main_red",
-      summary: "code merges blocked until main is green",
-      // The cause rides the outcome so the run's `run_end` carries it
-      // (run-finalize.ts folds it into state.lastError before logging): the digest itemizes
-      // the outcome that blocks every merge, instead of leaving it a bare count behind a
-      // once-per-SHA warning (BUGS.md 2026-09-28).
-      error: redMainMessage(red, "authoring skipped until main is green"),
-    };
-  }
-  if (baseline.baseline?.status === "green") lastHealKey = null;
-  return null;
 }
 
 /** What the review gate learns about main's current tip when a change's check failed twice
@@ -279,12 +208,13 @@ let gateMainQueue: Promise<unknown> = Promise.resolve();
 
 /** Main's baseline verdict at its current tip, for attributing a gate check that failed twice
  * (src/review/review.ts): gateMainWorktreePath is re-pointed at `mainBranch`'s tip and asked
- * through checkMainBaseline — the same per-SHA, team-wide cache mainRedGate reads, which every
+ * through checkMainBaseline — the same per-SHA, team-wide cache the healer's red-main hand-off
+ * (`mainRedHealNote`) and the main watch read, which every
  * merge seeds green for the SHA it moved main to, so the common case is a cache hit. A miss (or a
  * provisional red from another worktree, or a green that was only inherited across doc commits)
  * runs the declared check once here, bounded by its timeout. A red is warned team-wide once per
- * SHA, exactly as mainRedGate warns it. Never throws: an unreadable main, a checkout that fails, no
- * declared check on main, or a skipped run all read as `unavailable`.
+ * SHA, exactly as the red-main hand-off does. Never throws: an unreadable main, a checkout that
+ * fails, no declared check on main, or a skipped run all read as `unavailable`.
  *
  * `forceFresh` bypasses that per-SHA cache and runs main's declared check now, even over a cached
  * green (checkMainBaseline's forceFresh): the review gate needs it to re-attribute a repeated gate

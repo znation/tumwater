@@ -1295,7 +1295,7 @@ own pause key only while the role has siblings".
 
 ### INV-U4: an instance shares its base role's catalog entry, tier, model and spend cap
 
-**Guarantee.** `roleById`, `roleTier`, `yieldScaledRole` and `baselineBlocked`
+**Guarantee.** `roleById`, `roleTier`, `yieldScaledRole`
 (`src/roles/roles.ts`) and `configForRole` (`src/config/config-views.ts`) answer for an instance
 exactly as for its base. `pollRoleCapGate` sums the instances' spend against the base role's cap,
 pauses every instance together, and emits one `role_cap_paused` naming the base.
@@ -3229,27 +3229,26 @@ conflict the hunk settler cannot settle to the resolver".
 
 ### INV-AZ1: `main_red_hold` logs at most once per red SHA per process
 
-**Guarantee.** Whichever of `mainRedGate`, `mainRedHealNote` or `mainTipVerdict` sees a red SHA
+**Guarantee.** Whichever of `mainRedHealNote` or `mainTipVerdict` sees a red SHA
 first logs the `main_red_hold` event; the others stay silent for that SHA.
 
 **Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`).
 
-**Pinned by.** `test/main-red.test.ts` — "mainRedGate warns once per red SHA: a repeat run on the
-same HEAD re-blocks silently" and "mainTipVerdict reports red with the team-wide warning, once per
+**Pinned by.** `test/main-red.test.ts` — "mainRedHealNote hands the healer the failing script, headline, and output tail, warning once" and "mainTipVerdict reports red with the team-wide warning, once per
 SHA".
 
 ### INV-AZ2: a heal prompt is queued once per failing set, and again after green
 
 **Guarantee.** ci is queued one heal prompt per failing set, keyed order-blind (by the SHA when
-the red names no complete set). A green main clears the key, so a set that returns is healed again.
-A red that ci found itself queues nothing.
+the red names no complete set). A green main clears the key, so a set that returns is healed again:
+the main watch's settled green calls `clearHealKeyOnGreen`, and the ci hand-off's own green
+observation clears it too. A red that ci found itself queues nothing.
 
-**Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedGate`, `mainRedHealNote`).
+**Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedHealNote`, `clearHealKeyOnGreen`);
+`src/baseline/main-watch.ts` (`watchOnce`).
 
-**Pinned by.** `test/main-red.test.ts` — "mainRedGate lets a role run on a red main that names its
-failing tests, once per failing set", "ci's own red-main note queues nothing and still returns
-the note and warning" and "green main and a non-blocked role leave ci's inbox empty";
-`test/main-red-heal.test.ts` — "a failing set queues one heal prompt in any order, and queues
+**Pinned by.** `test/main-red.test.ts` — "ci's own red-main note queues nothing and still returns
+the note and warning"; `test/main-red-heal.test.ts` — "a failing set queues one heal prompt in any order, and queues
 another after main turns green".
 
 ### INV-AZ3: the heal prompt is one self-limiting line, with clauses only when it has them
@@ -4556,11 +4555,11 @@ index, rather than skipping the preserve".
 
 ### INV-CP1: a red main whose heal prompt cannot be queued resolves the gate, warns once that the prompt was not queued, and queues it at the next red verification
 
-**Guarantee.** `warnMainRedOnce` catches a failed heal-prompt enqueue (full disk, EACCES), warns under the verifying role and clears the heal key, so `mainRedGate` resolves instead of rejecting and the next red SHA queues the prompt again. The `mainTipVerdict` attribution path goes through the same guard but is not pinned by this test.
+**Guarantee.** `warnMainRedOnce` catches a failed heal-prompt enqueue (full disk, EACCES), warns under the verifying role and clears the heal key, so the healer's red-main hand-off still resolves and the next red SHA queues the prompt again. The `mainTipVerdict` attribution path goes through the same guard but is not pinned by this test.
 
-**Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedGate`).
+**Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedHealNote`).
 
-**Pinned by.** `test/main-red-heal.test.ts` — "a heal prompt that cannot be queued warns, lets the gate resolve, and is queued at the next red commit".
+**Pinned by.** `test/main-red-heal.test.ts` — "a heal prompt that cannot be queued warns and is queued at the next red commit".
 
 ## Agent run setup: a run that cannot be prepared fails, never rejects
 

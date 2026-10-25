@@ -38,9 +38,8 @@ const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
 export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "selfcheck", "feedback", "ci"]);
 
 /** The built-in maintenance roles that author code on their own cadence — the eight members
- * DEFERRABLE_ROLES and BASELINE_BLOCKED_ROLES share. Both sets list them because both charter
- * the same roles (defer-until-needed scheduling, red-main blocking), so the list lives once
- * here and a new maintenance role cannot be added to one set and missed in the other. */
+ * DEFERRABLE_ROLES charts. The list lives once here so a new maintenance role cannot be added
+ * to one list and missed in the other. */
 const CODE_MAINTENANCE_ROLES: readonly string[] = [
   "organize",
   "coverage",
@@ -84,27 +83,6 @@ export function yieldScaledRole(role: string): boolean {
  * ahead of both tiers. */
 export function roleTier(role: string): number {
   return WORK_ROLES.has(baseRoleOf(role)) ? 0 : 1;
-}
-
-/** The roles blocked from starting an authoring run while main's own build/test suite is known
- * red with no failing test named (the red-main baseline check; a red that names its failing tests
- * blocks nothing, and these roles get a `<main-known-red>` note instead): every role whose diff
- * can carry non-exempt (code) changes — on a red main such a diff is rejected deterministically
- * by the gate's pre-check, so spending an authoring run on it is pure waste. Exempt: director
- * (human prompts outrank autonomous gates, like the budget gate), ci (the designated healer
- * — its run executes the suite per "leave the project working" and can fix a red main through the
- * existing pre-merge gate; blocking it would leave only the ci role able to unblock the team), and
- * plan/readme/steward/qa/selfcheck/feedback (markdown-only charter — their diffs are exempt
- * from the build pre-check via review.exemptPaths, so a red main does not block them). */
-export const BASELINE_BLOCKED_ROLES: ReadonlySet<string> = new Set([
-  "feature",
-  ...CODE_MAINTENANCE_ROLES,
-]);
-
-/** Is this role id blocked from authoring on a red main? True when its base role is in
- * BASELINE_BLOCKED_ROLES, so `feature-2` is blocked exactly as `feature` is. */
-export function baselineBlocked(role: string): boolean {
-  return BASELINE_BLOCKED_ROLES.has(baseRoleOf(role));
 }
 
 /** Work ratio 4/4: which commit tier a role's base role merges into, for the work vs maintenance

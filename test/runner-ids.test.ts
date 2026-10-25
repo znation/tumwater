@@ -14,7 +14,7 @@ import {
   runnerPaused,
   runnerIds,
 } from "../src/roles/runner-ids.js";
-import { baselineBlocked, roleById, roleTier, yieldScaledRole } from "../src/roles/roles.js";
+import { roleById, roleTier, yieldScaledRole } from "../src/roles/roles.js";
 import { configForRole } from "../src/config/config-views.js";
 import { defaultConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
@@ -113,8 +113,6 @@ test("role helpers resolve an instance id through its base role", () => {
   assert.equal(roleTier("clean-2"), 1, "an untouched id keeps its own tier");
   assert.equal(yieldScaledRole("feature-2"), false, "feature never yield-scales");
   assert.equal(yieldScaledRole("bugfix-2"), true, "bugfix wears the search clock on any instance");
-  assert.equal(baselineBlocked("feature-2"), true, "a feature instance is blocked on red main");
-  assert.equal(baselineBlocked("bugfix-2"), false, "the healer is never blocked");
 });
 
 test("configForRole resolves an instance id's model through its base role", () => {

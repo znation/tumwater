@@ -1,5 +1,5 @@
 import { checkMainBaseline } from "./main-baseline.js";
-import { baselineCheckLogger, withMainTipWorktree } from "./main-red.js";
+import { baselineCheckLogger, clearHealKeyOnGreen, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
 import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
@@ -231,7 +231,14 @@ export function createMainWatch(
       // The diff rules judge the tip whether the build is green or red; the build-red path below
       // names the whole tip as the culprit, so the two red kinds are judged independently.
       await watchRules(wt, previous, baseline.sha);
-      if (!red) return;
+      // A settled non-red verdict (a green, or a red naming only quarantined tests) clears the
+      // heal-dedup key, so a failing set that returns after a green main is healed again. A
+      // settled red verdict below does NOT clear it: the heal-dedup key stays set while main
+      // is red.
+      if (!red) {
+        clearHealKeyOnGreen();
+        return;
+      }
       // The newest head is the culprit ("Every commit is verified on main, part 2/3"): the watch
       // checks each new red tip, so whatever it found belongs to the head it checked. Once per red
       // head — lastWatched already holds it, so a later poll does not attribute it again — name

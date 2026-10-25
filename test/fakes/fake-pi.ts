@@ -55,8 +55,9 @@ export const PROMPT_FROM_STDIN = [
 ].join("\n");
 
 /** Install a fake pi at `file` (writeScript) whose body runs after PROMPT_FROM_STDIN — the
- * one way a test writes a pi script, so every fake sees its prompt the same way. */
-export function writePiScript(file: string, body: string): void {
+ * one way a test writes a pi script, so every fake sees its prompt the same way. Now used only
+ * inside fakePi below. */
+function writePiScript(file: string, body: string): void {
   writeScript(file, `${PROMPT_FROM_STDIN}\n${body}`);
 }
 
