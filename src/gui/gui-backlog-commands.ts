@@ -182,6 +182,31 @@ function heldAt(root: string, kind: "plan" | "bug", position: number): EntryHold
   return (kind === "bug" ? holds.bugs : holds.plans)[position - 1] ?? null;
 }
 
+/** Commit a successful backlog write and send the drawer's success response — the same
+ * post-write tail the release, move-to-top, and edit handlers repeat: commit the file change on
+ * main, re-read the entry's hold (its position may have moved), and send the 200 with the
+ * commit and a `heldNote` naming the hold when one still applies (a held entry is not newly
+ * eligible, so the caller must not wake a role — the release handler reads the returned hold
+ * to decide). `verb` names the action in the commit subject (`Release`/`Prioritize`/`Edit`),
+ * `status` is the response's status, and `extra` carries the success body fields only one
+ * handler has (release's `lifted`), spread before `committed` so that body's key order stays
+ * intact. Returns the hold it read. */
+async function respondBacklogWrite(
+  res: http.ServerResponse,
+  root: string,
+  kind: "plan" | "bug",
+  position: number,
+  outcome: { file: string; title: string },
+  verb: string,
+  status: string,
+  extra: Record<string, unknown> = {},
+): Promise<EntryHold> {
+  const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `${verb} ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
+  const hold = heldAt(root, kind, position);
+  sendJson(res, 200, { ok: true, status, file: outcome.file, title: outcome.title, ...extra, committed, ...(hold === null ? {} : { heldNote: stillHeldNote(hold) }) });
+  return hold;
+}
+
 /** Handle POST /api/backlog-release: the entry drawer's release — the same lock and splice as
  * `tumwater plan|bug --release <n>` through the non-exiting tryReleaseEntry. Body as
  * backlog-cancel's. A released entry that is not still held is newly eligible, so the kind's
@@ -199,10 +224,8 @@ export async function handleBacklogRelease(req: http.IncomingMessage, res: http.
   const outcome = outcomeOrBadRequest<ReleaseEntryOutcome>(res, () => tryReleaseEntry(root, kind, position, title));
   if (outcome === null) return;
   if (outcome.status === "released") {
-    const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Release ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
-    const hold = heldAt(root, kind, position);
+    const hold = await respondBacklogWrite(res, root, kind, position, outcome, "Release", "released", { lifted: outcome.lifted });
     if (hold === null) requestWake(root, [OPERATOR_FILE_KINDS[kind].role]);
-    sendJson(res, 200, { ok: true, status: "released", file: outcome.file, title: outcome.title, lifted: outcome.lifted, committed, ...(hold === null ? {} : { heldNote: stillHeldNote(hold) }) });
   } else if (outcome.status === "not_refused") {
     sendJson(res, 200, { ok: true, status: "not_refused", title: outcome.title });
   } else {
@@ -226,9 +249,7 @@ export async function handleBacklogTop(req: http.IncomingMessage, res: http.Serv
   const outcome = outcomeOrBadRequest<MoveEntryOutcome>(res, () => tryMoveEntryToTop(root, kind, position, title));
   if (outcome === null) return;
   if (outcome.status === "moved_to_top") {
-    const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Prioritize ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
-    const hold = heldAt(root, kind, 1);
-    sendJson(res, 200, { ok: true, status: "moved_to_top", file: outcome.file, title: outcome.title, committed, ...(hold === null ? {} : { heldNote: stillHeldNote(hold) }) });
+    await respondBacklogWrite(res, root, kind, 1, outcome, "Prioritize", "moved_to_top");
   } else if (outcome.status === "already_first") {
     sendJson(res, 200, { ok: true, status: "already_first", title: outcome.title });
   } else {
@@ -268,9 +289,7 @@ export async function handleBacklogEdit(req: http.IncomingMessage, res: http.Ser
   const outcome = outcomeOrBadRequest<EditEntryOutcome>(res, () => tryEditEntry(root, kind, position, title, newTitle, newBody));
   if (outcome === null) return;
   if (outcome.status === "edited") {
-    const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Edit ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
-    const hold = heldAt(root, kind, position);
-    sendJson(res, 200, { ok: true, status: "edited", file: outcome.file, title: outcome.title, committed, ...(hold === null ? {} : { heldNote: stillHeldNote(hold) }) });
+    await respondBacklogWrite(res, root, kind, position, outcome, "Edit", "edited");
   } else if (outcome.status === "unchanged") {
     sendJson(res, 200, { ok: true, status: "unchanged", file: outcome.file, title: outcome.title });
   } else {
