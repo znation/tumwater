@@ -5,7 +5,7 @@ import path from "node:path";
 import type { HarnessEventInput } from "../src/events/events.js";
 import { readBuildInfo } from "../src/build/build-info.js";
 import { createRedeployer, redeployDeps } from "../src/redeploy/redeploy.js";
-import { noteGreenBaseline, redeployTarget } from "../src/baseline/main-baseline.js";
+import { noteGreenBaseline, redeployTarget, watchVerifiesMain } from "../src/baseline/main-baseline.js";
 import { Redeployer } from "../src/redeploy/redeployer.js";
 import { IDLE } from "./fixtures/redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../src/paths.js";
@@ -351,4 +351,77 @@ test("redeployTarget keeps the tip when the build is not a first-parent ancestor
   const deps = redeployDeps(root, { sha: a, builtAt: 1, root }, () => {}, async () => null);
   assert.equal(await deps.mainGreen(c), false);
   assert.equal(await redeployTarget(root, c, "f".repeat(40)), c, "an unknown build is no bound for a fallback");
+});
+
+test("redeployTarget in watch mode targets the newest cached green and never an unchecked tip", async () => {
+  const root = makeRepo();
+  // A manifest whose test script fails, so any check that actually ran on the unchecked tip
+  // would turn up red — a watched target must never run it.
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(1)'" }));
+  fs.mkdirSync(path.join(root, "node_modules"));
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "A");
+  const a = headSha(root);
+  fs.writeFileSync(path.join(root, "b.txt"), "b");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "B");
+  const b = headSha(root);
+  noteGreenBaseline(b);
+  fs.writeFileSync(path.join(root, "c.txt"), "c");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "C");
+  const c = headSha(root);
+  const deps = redeployDeps(root, { sha: a, builtAt: 1, root }, () => {}, async () => null);
+
+  // Running A, main A -> B (cached green) -> C (no verdict): watched targets B, never the
+  // unchecked tip — the failing manifest would have turned any run red.
+  assert.equal(await redeployTarget(root, c, a, true), b, "the newest cached green is the target");
+
+  // With C cached red, watched still targets B — a cached red is walked past, never targeted.
+  assert.equal(await deps.mainGreen(c), false);
+  assert.equal(await redeployTarget(root, c, a, true), b, "a cached red is walked past, never targeted");
+});
+
+test("redeployTarget in watch mode targets the build itself when nothing newer is green", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(1)'" }));
+  fs.mkdirSync(path.join(root, "node_modules"));
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "A");
+  const a = headSha(root);
+  fs.writeFileSync(path.join(root, "b.txt"), "b");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "B");
+  const b = headSha(root);
+
+  // Running A, main A -> B (no verdict): nothing newer than the build is green, so the build
+  // itself is the target — buildStaleness(a, a) then reads it as not stale and nothing starts.
+  assert.equal(await redeployTarget(root, b, a, true), a, "the build itself is the target");
+});
+
+test("watchVerifiesMain is true only with a declared check and a merge command in effect", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(0)'" }));
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "project");
+
+  // No declared check (no check.command and no install to walk up to): the watch cannot verify
+  // main, whatever the gate/merge keys say.
+  assert.equal(
+    watchVerifiesMain(root, {}),
+    false,
+    "no declared check: the watch cannot verify main",
+  );
+  // A declared check with a merge command in effect (here by the gate-command fallback).
+  assert.equal(
+    watchVerifiesMain(root, { check: { command: "npm test", gateCommand: "npm test" } }),
+    true,
+    "a declared check with a merge command in effect: the watch verifies main",
+  );
+  // A blank mergeCommand keeps the full check in the merge lock.
+  assert.equal(
+    watchVerifiesMain(root, { check: { command: "npm test", gateCommand: "npm test", mergeCommand: "" } }),
+    false,
+    "a blank mergeCommand keeps the full check in the merge lock",
+  );
 });

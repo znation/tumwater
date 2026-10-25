@@ -33,7 +33,7 @@ import { checkPermitSnapshot } from "../concurrency/check-permit.js";
 import { slotPoolSnapshot } from "../git/worktree-pool.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import type { createMainWatch } from "../baseline/main-watch.js";
-import { redeployTarget } from "../baseline/main-baseline.js";
+import { redeployTarget, watchVerifiesMain } from "../baseline/main-baseline.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import type { RetentionPruner } from "./retention.js";
@@ -302,7 +302,7 @@ export async function pollRedeploy(
   if (!ctx.onceMode) ctx.mainWatch.poll(mainHead, state.holdForRestart || state.diskHeld, liveConfig);
   if (!redeploy) return false;
   const action = await redeploy.poll(
-    await redeployTarget(ctx.root, mainHead, redeploy.build.sha),
+    await redeployTarget(ctx.root, mainHead, redeploy.build.sha, watchVerifiesMain(ctx.root, liveConfig)),
     {
       roleInFlight: ctx.rolePermitHolders.size,
       directorInFlight: ctx.directorInFlight.size,

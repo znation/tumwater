@@ -36,7 +36,10 @@ export function track<T>(promise: Promise<T>): Tracked<T> {
  * shape prewarms nothing further — there is no point staging a compile for a tree the check
  * condemned — and is simply not adopted (the episode re-runs it under its own rules).
  * Skipped while an episode is pending: its own steps are the warm-up, and the mirror worktree
- * both run in must not serve two checks at once. */
+ * both run in must not serve two checks at once. A new head that arrives while a step is still
+ * running is likewise not adopted: returning without resetting keeps the mirror pointed at the
+ * head the running check (or compile) is testing, never re-pointed under it; the next poll after
+ * both settle takes the newest head as today. */
 export class PrewarmProbes {
   private head: string | null = null;
   private green: Tracked<boolean> | null = null;
@@ -51,6 +54,12 @@ export class PrewarmProbes {
   prewarm(head: string, pending: boolean): void {
     if (pending) return;
     if (this.head !== head) {
+      // A newer head arrived while this head's green check or staged compile is still running
+      // (!done): never re-point the mirror under a running step — it may still be testing the
+      // sha it read before the reset, and a verdict recorded under that sha would not cover the
+      // tree it tested. Keep probing for the older head; the next poll after both settle adopts
+      // the newest head as today.
+      if ((this.green !== null && !this.green.done) || (this.compiled !== null && !this.compiled.done)) return;
       this.head = head;
       this.green = null;
       this.compiled = null;

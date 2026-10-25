@@ -6,7 +6,7 @@ import {
 import { SLEEP_SPAN_TOLERANCE_MS, runWithCleanRetry, type BaselineCheckRun } from "../build/build-check-events.js";
 import { sampleSleepClock, type SleepSampler } from "../build/host-sleep.js";
 import { CHECK_TIER, withCheckPermit } from "../concurrency/check-permit.js";
-import { detectBuildCheck } from "../build/build-check-detect.js";
+import { detectBuildCheck, mergeCommandOf } from "../build/build-check-detect.js";
 import { gitLines, refSha } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { treeDiffFiles } from "../git/git-diff.js";
@@ -316,17 +316,50 @@ export async function watchedBaseline(wt: string, sha?: string): Promise<MainBas
 /** How many first-parent commits below main's tip redeployTarget looks at. */
 const REDEPLOY_WALK_MAX = 64;
 
+/** True when the main watch (src/baseline/main-watch.ts) verifies main — the configs where no
+ * merge seeds a green verdict (`watchedBaseline`'s doc) and the watch has a check to run: a
+ * declared check and a `check.mergeCommand` (or its gate-command fallback) in effect. In this
+ * mode the redeployer reads the watch's verdicts and starts no full check of its own
+ * (redeployTarget's `watched`). False when the project declares no check, or when a blank
+ * `check.mergeCommand` keeps the full check in the merge lock. Never throws: detection resolves
+ * to null, which is also false. */
+export function watchVerifiesMain(root: string, config?: CheckConfigSlice): boolean {
+  return detectBuildCheck(root, config) !== null && mergeCommandOf(config) !== undefined;
+}
+
 /** The commit self-redeploy should run: main's newest first-parent commit with a green full-check
  * verdict in the cache (observed or inherited) that is newer than the running build `buildSha`,
- * looking at most REDEPLOY_WALK_MAX commits down from `tip`. A tip the cache has no verdict for
- * is the target as is — the redeployer checks it. A tip whose cached red was observed in the
- * redeployer's mirror worktree (mirrorWorktreePath of `wt`) falls back to the newest older green
- * above the build. Any other red may be another worktree's environmental one, which the redeployer
- * re-verifies; a build that is not a first-parent ancestor of `tip`, or no green, also leaves the
- * tip the target, and the redeployer blocks that commit alone. The cache holds only full-check
- * verdicts, so a cheaper command's green never makes a commit deployable.
+ * looking at most REDEPLOY_WALK_MAX commits down from `tip`.
+ *
+ * With `watched` false (the default, a project whose main the watch does not verify), a tip the
+ * cache has no verdict for is the target as is — the redeployer checks it. A tip whose cached red
+ * was observed in the redeployer's mirror worktree (mirrorWorktreePath of `wt`) falls back to the
+ * newest older green above the build. Any other red may be another worktree's environmental one,
+ * which the redeployer re-verifies; a build that is not a first-parent ancestor of `tip`, or no
+ * green, also leaves the tip the target, and the redeployer blocks that commit alone.
+ *
+ * With `watched` true (watchVerifiesMain), the watch supplies the verdicts and the redeployer only
+ * reads them: walk `tip`'s first-parent history down to `buildSha` and return the first commit
+ * whose cached verdict is green — a cached red is walked past, never targeted. With no green
+ * above the build, target `buildSha` itself, so buildStaleness reads it as not stale and no
+ * episode, hold or pre-warm starts until the watch calls a newer commit green. A build that is
+ * not a first-parent ancestor of `tip` keeps today's answer (`tip`, which the redeployer
+ * checks), as does `watched` false. Every target `watched` picks has a cached green, so
+ * mainIsGreen on it is a cache hit and the redeployer starts no suite.
+ * The cache holds only full-check verdicts, so a cheaper command's green never makes a commit
+ * deployable.
  * Never throws: a git failure leaves the tip as the target. */
-export async function redeployTarget(wt: string, tip: string, buildSha: string): Promise<string> {
+export async function redeployTarget(wt: string, tip: string, buildSha: string, watched = false): Promise<string> {
+  if (watched) {
+    if (tip === "") return tip;
+    const walk = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${REDEPLOY_WALK_MAX}`, tip));
+    const buildAt = walk.indexOf(buildSha);
+    if (buildAt === -1) return tip;
+    for (const sha of walk.slice(0, buildAt)) {
+      if (baselineCache.get(sha)?.status === "green") return sha;
+    }
+    return buildSha;
+  }
   const red = baselineCache.get(tip);
   if (tip === "" || red?.status !== "red" || !(red.redFrom ?? []).includes(mirrorWorktreePath(wt))) return tip;
   const walk = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${REDEPLOY_WALK_MAX}`, tip));

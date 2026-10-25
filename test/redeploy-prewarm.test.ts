@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { type RedeployDeps, RESTART_COOLDOWN_MS } from "../src/redeploy/redeploy-policy.js";
+import { PrewarmProbes } from "../src/redeploy/redeploy-probes.js";
 import { warningEvents } from "./fixtures/log-fixtures.js";
 import {
   HEAD_B,
@@ -19,6 +20,35 @@ import {
 // second episode until the deadline lapses, and while it defers, the pending head's green check
 // and staged compile prewarm once per SHA so the lapse reaches the swap directly. These tests
 // share the scripted-effect fixtures in fixtures/redeploy-fixtures.ts.
+
+test("a head that moves while the pre-warm's green check runs starts no second check until it settles", async () => {
+  const calls: string[] = [];
+  let resolveGreen: (v: boolean) => void = () => {};
+  const held = new Promise<boolean>((resolve) => {
+    resolveGreen = resolve;
+  });
+  const deps = {
+    mainGreen: async (h: string) => {
+      calls.push(h);
+      return held;
+    },
+    compile: async () => ({ ok: true, detail: "" }),
+  };
+  const probes = new PrewarmProbes(deps);
+
+  // HEAD_B's green check starts (held); a newer head arriving while it runs must not re-point
+  // the mirror under the running step, so no second check starts.
+  probes.prewarm(HEAD_B, false);
+  probes.prewarm(HEAD_C, false);
+  assert.deepEqual(calls, [HEAD_B], "no second check starts while the first is still running");
+
+  // Once HEAD_B's check settles, the next poll on the newest head adopts it — exactly one more
+  // check, for HEAD_C.
+  resolveGreen(true);
+  await settle();
+  probes.prewarm(HEAD_C, false);
+  assert.deepEqual(calls, [HEAD_B, HEAD_C], "the next poll after settling takes the newest head");
+});
 
 test("within the cooldown a second stale episode is deferred: no hold, status carries the deadline", async () => {
   // The 2026-09-11 churn complaint in miniature: main moves again an hour after a completed

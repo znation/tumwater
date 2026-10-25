@@ -581,16 +581,23 @@ delivered once"; `test/prompt-followup.test.ts` — the handoff-note test;
 
 **Guarantee.** The commit self-redeploy targets is main's newest first-parent commit newer than
 the running build whose full-check verdict is green (observed or inherited), looking at most 64
-commits down. A cached-red tip falls back to the newest older green; with none the red tip stays the
-target and is blocked alone. An older commit with no green verdict is never a fallback, and the
-verdict cache holds only full-check verdicts.
+commits down. While the main watch verifies main (a declared check and a `check.mergeCommand` in
+effect), the target always carries a cached green and is never an unchecked tip; a cached red is
+walked past, and with no green newer than the build nothing is targeted (the build stays the
+target and reads fresh, so no full check starts until the watch calls a newer commit green).
+Outside that mode a cached-red tip falls back to the newest older green; with none the unchecked
+red tip stays the target and is blocked alone. An older commit with no green verdict is never a
+fallback, and the verdict cache holds only full-check verdicts.
 
-**Binds.** `src/baseline/main-baseline.ts` (`redeployTarget`), `src/orchestrator/orchestrator.ts`
-(the target passed to `Redeployer.poll`), `src/redeploy/redeployer.ts`.
+**Binds.** `src/baseline/main-baseline.ts` (`redeployTarget`, `watchVerifiesMain`),
+`src/orchestrator/orchestrator-poll.ts` (`pollRedeploy`), `src/redeploy/redeployer.ts`.
 
 **Pinned by.** `test/redeploy-wiring.test.ts` — "redeployTarget picks main's newest green commit
-newer than the running build, never a red or unverified-green one" and "redeployTarget never
-targets an older commit that no check has called green".
+newer than the running build, never a red or unverified-green one", "redeployTarget never
+targets an older commit that no check has called green", "redeployTarget in watch mode targets
+the newest cached green and never an unchecked tip", "redeployTarget in watch mode targets the
+build itself when nothing newer is green", and "watchVerifiesMain is true only with a declared
+check and a merge command in effect".
 
 ## The fallback breaker: a free fallback that cannot serve is demoted, not retried forever
 
