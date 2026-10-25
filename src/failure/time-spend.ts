@@ -59,9 +59,9 @@ export interface TimeSpendRow {
  * `example` is the newest verbatim occurrence for a cluster (the one at lastSeen, BUGS.md
  * 2026-09-30), a review-rejected cause's newest rejection reason, a refused cause's newest
  * refusal summary (the deliberate objection that blocks the entry), the shared no-text
- * placeholder for a merge failure, or "" for a no_change cause. */
+ * placeholder for a merge failure, or "" for a no_change or context cut-off cause. */
 export interface LossCause {
-  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused";
+  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused" | "cutoff";
   roles: string[]; // unique, sorted
   example: string;
   runs: number;
@@ -90,7 +90,7 @@ const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "qui
 
 /** A loss cause while collecting; `roles` is a set until the final sort. */
 interface LossDraft {
-  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused";
+  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused" | "cutoff";
   roles: Set<string>;
   lastSeen: number;
   example: string;
@@ -246,6 +246,15 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
       key = `refused\u0000${role}`;
       kind = "refused";
       example = typeof ev.summary === "string" ? truncateExample(ev.summary) : "";
+    } else if (cls === "no_change" && ev.cutOff === true) {
+      // A run truncated at its model's context ceiling ends no_change with cutOff: true
+      // (diagnoseNoChange in src/run/run-verdict.ts), and finalizeRun rides that flag onto
+      // the run_end. Rank it as its own per-role cause so the digest separates the churn of
+      // a context ceiling — a cost of a long session, which the harness resumes — from
+      // deliberate idleness; the branch sits BEFORE the no_change one because a cut-off run
+      // is also no_change-class in the outcome table. No example, like the no_change cause.
+      key = `cutoff\u0000${role}`;
+      kind = "cutoff";
     } else if (cls === "no_change") {
       key = `no_change\u0000${role}`;
       kind = "no_change";
