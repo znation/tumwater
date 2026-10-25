@@ -113,8 +113,23 @@ export function seamedModels(config: TumwaterConfig, agent: string): SeamPair[] 
  * its check cannot mistake a version-like string missing the `v`. One home for the parser so
  * the claude, codex and opencode version checks cannot drift on the version shape they accept.
  */
-export function parseCliVersion(output: string, requireVPrefix = false): string | undefined {
+function parseCliVersion(output: string, requireVPrefix = false): string | undefined {
   return (requireVPrefix ? /v(\d+\.\d+\.\d+)/ : /(\d+\.\d+\.\d+)/).exec(output)?.[1];
+}
+
+/** The dashed version verdict of one backend `--version` probe: the parsed dotted version
+ * when the probe ran and exited 0, or undefined when it could not run, errored, or named no
+ * version. The one home of the `code === 0 ? parseCliVersion : undefined` step the claude,
+ * codex and opencode version checks each repeated, so they cannot drift on how a null or
+ * non-zero probe reads (codex had already drifted to the `?.` form). `requireVPrefix` is
+ * parseCliVersion's, passed through for opencode's `v`-prefixed output. */
+export function versionFromProbe(
+  result: { code: number | null; stdout: string } | null,
+  requireVPrefix = false,
+): string | undefined {
+  return result !== null && result.code === 0
+    ? parseCliVersion(result.stdout, requireVPrefix)
+    : undefined;
 }
 
 /** The warn/fail/ok verdict for a backend CLI's `--version` check against one flat minimum

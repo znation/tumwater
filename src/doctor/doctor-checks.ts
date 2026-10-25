@@ -37,7 +37,7 @@ import { formatBytes } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
 import { plural } from "../text/phrases.js";
 import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gate.js";
-import { claudeSeamsInUse, minVersionOutcome, opencodeSeamsInUse, parseCliVersion, piSeamsInUse } from "./doctor-model-checks.js";
+import { claudeSeamsInUse, minVersionOutcome, opencodeSeamsInUse, versionFromProbe, piSeamsInUse } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
 import { childEnv } from "../process/process.js";
@@ -304,7 +304,7 @@ export async function checkOpencodeVersion(
     timeoutMs,
     AUTH_CHECK_MAX_OUTPUT_BYTES,
   );
-  const found = result !== null && result.code === 0 ? parseCliVersion(result.stdout, true) : undefined;
+  const found = versionFromProbe(result, true);
   return minVersionOutcome("opencode", found, OPENCODE_MIN_VERSION, "run `brew install opencode`");
 }
 

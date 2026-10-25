@@ -19,7 +19,7 @@ import {
   codexSeamsInUse,
   loadConfigForCheck,
   minVersionOutcome,
-  parseCliVersion,
+  versionFromProbe,
   seamedModels,
 } from "./doctor-model-checks.js";
 
@@ -82,7 +82,7 @@ export async function checkCodexVersion(
   const base = codexCheckBase(root);
   if (base === null || "level" in base) return base;
   const result = await codexProbe(base.config, ["--version"], pathEnv, timeoutMs);
-  const found = result?.code === 0 ? parseCliVersion(result.stdout) : undefined;
+  const found = versionFromProbe(result);
   return minVersionOutcome("codex", found, CODEX_MIN_VERSION, "upgrade the codex CLI");
 }
 

@@ -12,7 +12,7 @@ import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcom
 import {
   claudeSeamsInUse,
   loadConfigForCheck,
-  parseCliVersion,
+  versionFromProbe,
   seamedModels,
 } from "./doctor-model-checks.js";
 
@@ -145,7 +145,7 @@ export async function checkClaudeVersion(
     if (min !== undefined) floors.set(seam.model!, min);
   }
   const result = await claudeProbe(config, ["--version"], pathEnv, timeoutMs);
-  const found = result !== null && result.code === 0 ? parseCliVersion(result.stdout) : undefined;
+  const found = versionFromProbe(result);
   if (found === undefined)
     return warnOutcome("could not check — `claude --version` did not run or its output was unreadable");
   const clamped = seams.some((seam) => seam.thinking === "off" || seam.thinking === "minimal");
