@@ -248,16 +248,19 @@ export function backendKindPhrase(kind: unknown): string {
   }
 }
 
-/** True when a rate-hold event's `kind` describes a backend/connection failure rather than a
- * provider rate-limit (429). The one home of the "not a 429" discriminator, shared by the event
- * feed (event-format.ts's rate_limit_hold/recovered lines) and the failure digest's Team state
- * changes lines (failure-state-change.ts's rate_limit_hold/resumed), so the two cannot disagree
- * on which kind is a rate-limit: an absent, blank, or `"rate-limit"` kind keeps the 429 wording
- * every historical event already has, and only a real non-empty backend kind names itself. */
+/** True when a hold/resume event's kind names an actual backend failure rather than a
+ * rate-limit (or an unreadable, torn-line kind). The one home of the "not a 429"
+ * discriminator: an absent, blank, or `"rate-limit"` kind keeps the 429 wording every
+ * historical event already has, and only a real non-empty backend kind names itself
+ * (through backendKindPhrase). Shared by the event feed (event-format.ts's
+ * rate_limit_hold/recovered lines) and the failure digest's Team state-change lines
+ * (src/failure/failure-state-change.ts's rate_limit_hold/resumed), so the two cannot
+ * disagree. Not to be confused with isBackendFailureKind in pi-failure.ts, which is a
+ * strict enum-membership guard for the 5 BACKEND_FAILURE_KINDS: this predicate instead
+ * accepts any non-empty kind that isn't "rate-limit". */
 export function rendersAsBackendFailure(kind: unknown): boolean {
   return !!kind && kind !== "rate-limit";
 }
-
 const LEADING_CD = /^\s*cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/;
 
 function withoutLeadingCd(command: string): string {
