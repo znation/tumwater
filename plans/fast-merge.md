@@ -364,6 +364,11 @@ before and after is a one-off job done by hand, not part of this.
 
 **G2. Reverts** ("main's check" row).
 
+**Superseded 2026-10-24 by PLANS.md's "Forward, never back" parts 4/6–5/6:** no automatic
+revert is emitted, and the guardrail below — with the doctor phrase, the `reverts` alert, the
+digest line, the 5-revert ceiling and the `main_revert`/`merged` `patchId` matching — is
+deleted; only G1 and G3 remain live in `src/baseline/main-guardrails.ts`.
+
 - A `main_revert` in the last 24 h looks false when either holds:
   - its failure did not reproduce: a test it names has been quarantined since the revert
     (quarantine.json `lastSeen` at or after it, or a later `main_check`'s `quarantined` list);
