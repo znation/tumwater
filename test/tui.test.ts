@@ -719,6 +719,23 @@ test("a stale open bug raises an attention line under the header", async () => {
     assert.match(ls[1] ?? "", /1 open bug waited 3\+ days for a fix/);
   });
 });
+test("finished history raises a backlog-archive attention line under the header", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    assert.doesNotMatch(tui.lastFrame(), /finished history/, "seeded repo shows no alert yet");
+    // A live ## Done holding a finished entry: the always-on backlog-archive alert's trigger.
+    writeBacklogFile(repo, "PLANS.md", [
+      { heading: "## Done", body: "### D1 (planned 2026-10-01, done 2026-10-02)\n\nbody" },
+    ]);
+    // Any keypress re-renders with a fresh snapshot: the attention line under the header names
+    // the live file's finished section and the archive fix — the dashboard's alert wording.
+    tui.key(undefined, "left");
+    const ls = tui.lines();
+    // The attention line names the live file's finished section (the dashboard's alert wording);
+    // "tumwater archive" sits past the width-clipped detail, so the title is the proof.
+    assert.match(ls[1] ?? "", /1 live backlog file still holds finished history/);
+  });
+});
 test("queued prompts render numbered above the activity pane and shrink its budget", async () => {
   const repo = await makeTuiRepo();
   // Seed enough events that the recent-activity pane is full at the default budget, so a

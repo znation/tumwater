@@ -1293,6 +1293,37 @@ test("statusPayload and renderStatus carry a duplicated-heading alert from the b
   assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /duplicated backlog heading/);
 });
 
+test("the finished-history alert follows the duplicated-heading alert and names the archive command", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  writeBacklogFile(root, "PLANS.md", [
+    { heading: "## Done", body: "### D1 (planned 2026-10-01, done 2026-10-02)\n\nbody" },
+  ]);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; tone?: string; title?: string; detail?: string; actions?: Array<unknown> }> };
+  const alert = payload.alerts.find((a) => a.key === "backlog-archive");
+  assert.equal(alert?.tone, "amber");
+  assert.match(alert?.title ?? "", /finished history/);
+  assert.match(alert?.detail ?? "", /PLANS\.md ## Done holds 1 finished entry/);
+  assert.match(alert?.detail ?? "", /tumwater archive/);
+  assert.deepEqual(alert?.actions, []);
+  assert.match(renderStatus(root, snapshot(root, undefined, now)), /finished history/);
+  // A clean pair of live files yields none.
+  const clean = makeRepo();
+  const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
+  assert.equal(cleanPayload.alerts.find((a) => a.key === "backlog-archive"), undefined);
+  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /finished history/);
+  // A duplicated heading plus finished history emits backlog-headings then backlog-archive.
+  const both = makeRepo();
+  writeBacklogFile(both, "PLANS.md", [
+    { heading: "## Done", body: "### D1 (planned 2026-10-01, done 2026-10-02)\n\nbody" },
+    { heading: "## Done" },
+  ]);
+  const bothKeys = (statusPayload(both, now) as { alerts: Array<{ key: string }> }).alerts
+    .filter((a) => a.key === "backlog-headings" || a.key === "backlog-archive")
+    .map((a) => a.key);
+  assert.deepEqual(bothKeys, ["backlog-headings", "backlog-archive"]);
+});
+
 test("a bad Validation gap trace raises one amber alert", () => {
   const now = Date.now();
   const missing = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [{ title: "A fix", kind: "missing" }]);

@@ -6,7 +6,8 @@ import { truncate } from "../text/text.js";
 import { donePlans, fixedBugEntries, openBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
 import { entryHold, entryKindLabel, heldCount } from "../backlog/backlog-eligibility.js";
 import { planDependencyProblems } from "../backlog/backlog-parts.js";
-import { BACKLOG_FILES, validationGapTag } from "../backlog/backlog-md.js";
+import { BACKLOG_FILES, FINISHED_ARCHIVES, validationGapTag } from "../backlog/backlog-md.js";
+import { statOrNull } from "../files/files.js";
 import { duplicateHeadings, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
 import { liveFinishedHistory } from "../backlog/backlog-archive.js";
 import { fixSymbols, missingSymbolNames, cachedSourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
@@ -294,6 +295,65 @@ const backlogHeadingFileCache = new Map<string, StatKeyedValue<BacklogHeadingFil
  * warns about. */
 export function duplicatedBacklogHeadings(root: string): DuplicatedBacklogHeading[] {
   return scanBacklogHeadings(root).duplicates;
+}
+
+/** One live backlog file's finished-history row as liveFinishedHistory reports it — the
+ * `file`/`section`/`archive`/`entries`/`bytes` shape checkLiveFinished warns about, exported
+ * so the always-on `backlog-archive` team alert (src/ui/team-alerts.ts) renders the same rows
+ * the doctor's `backlog archive` warn does. */
+export interface LiveFinishedEntry {
+  file: string;
+  section: string;
+  archive: string;
+  entries: number;
+  bytes: number;
+}
+
+/** One stat-cached value of liveFinishedEntriesFor per root: the combined stat signature of
+ * that root's finished live files and archives when the rows were computed, plus the rows. */
+interface LiveFinishedCacheRow {
+  key: string;
+  rows: LiveFinishedEntry[];
+}
+
+/** The module-level stat cache backing liveFinishedEntriesFor, keyed by root, so a steady-state
+ * status poll pays four stat calls (two live files, two archives) instead of re-parsing the
+ * live files and the unbounded archives (PLANS-DONE.md runs to MBs) on every poll. Keyed by a
+ * combined stat signature rather than the shared cachedByStat because each row spans FOUR files
+ * (a live file, its finished entries, and the archive it empties into), so no single-file
+ * stat-keyed cache entry can serve it. */
+const liveFinishedCache = new Map<string, LiveFinishedCacheRow>();
+
+/** The finished-history rows already on main, exported so the always-on `backlog-archive` team
+ * alert (src/ui/team-alerts.ts) renders the same set the doctor's `backlog archive` row warns
+ * about — stat-gated so a steady-state poll pays four stats, not a full re-parse. The cache key
+ * is the stat identity (`dev:ino:mtimeMs:size`, `absent` when the stat is null) of every
+ * FINISHED_ARCHIVES live file and archive under `root`, so any write that changes finished
+ * history or the archive refreshes the rows on the next call without a process restart. Returns
+ * a copy on a hit; on a miss it recomputes via liveFinishedHistory, and returns `[]` (uncached)
+ * when that throws, so an unreadable file stays checkLiveFinished's loud signal and never
+ * breaks a status poll. checkLiveFinished keeps calling liveFinishedHistory directly and is
+ * unchanged. */
+export function liveFinishedEntriesFor(root: string): LiveFinishedEntry[] {
+  const key = FINISHED_ARCHIVES
+    .flatMap((spec) => [path.join(root, spec.file), path.join(root, spec.archive)])
+    .map((p) => {
+      const st = statOrNull(p);
+      return st ? `${st.dev}:${st.ino}:${st.mtimeMs}:${st.size}` : "absent";
+    })
+    .join("|");
+  const cached = liveFinishedCache.get(root);
+  if (cached?.key === key) return cached.rows.map((r) => ({ ...r }));
+  let rows: LiveFinishedEntry[];
+  try {
+    rows = liveFinishedHistory(root);
+  } catch {
+    liveFinishedCache.delete(root); // Never serve a stale read for an unreadable tree.
+    return []; // Unreadable — checkLiveFinished's signal; a status poll must not throw.
+  }
+  if (liveFinishedCache.size >= 64) liveFinishedCache.clear(); // Safety cap, like backlogHeadingFileCache.
+  liveFinishedCache.set(root, { key, rows });
+  return rows.map((r) => ({ ...r }));
 }
 
 /** Duplicated `## ` headings already on main (the duplicate-heading half of the backlog-structure

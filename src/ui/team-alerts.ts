@@ -176,6 +176,19 @@ export interface BacklogHeadingDuplicate {
   heading: string;
 }
 
+/** One live backlog file's finished-history row as liveFinishedHistory reports it — the always-on
+ * twin of the doctor's `backlog archive` rule (src/doctor/doctor-backlog-plans.ts, computed by the
+ * shared liveFinishedEntriesFor, which itself shares liveFinishedHistory with checkLiveFinished).
+ * Structural twin: no mapping in status-payload, which just passes
+ * liveFinishedEntriesFor(root) through as the teamAlerts `liveFinished` argument. */
+export interface LiveFinishedEntry {
+  file: string;
+  section: string;
+  archive: string;
+  entries: number;
+  bytes: number;
+}
+
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
  * alert kinds cannot drift on the separator or the count. The caller appends its own
@@ -511,13 +524,15 @@ interface BacklogAlertsInput {
   planDependency: PlanDependencyProblem | null;
   strandedPlans: readonly StrandedPlanEntry[];
   duplicatedHeadings: readonly BacklogHeadingDuplicate[];
+  liveFinished: readonly LiveFinishedEntry[];
   validationGaps: readonly ValidationGapProblem[];
   fixClaims: readonly FixClaimProblem[];
 }
 
 /** The backlog alerts, in emission order: open questions, refused entries, operator-held
  * entries, stalled entries, a broken plan-dependency clause, stranded plans, duplicated
- * backlog headings, and Fixed records with a bad Validation gap trace. Extracted from
+ * backlog headings, finished history still in the live backlog files, and Fixed records with a
+ * bad Validation gap trace. Extracted from
  * teamAlerts (part 2/5 of the teamAlerts split) so the shared module stays small; the input
  * names exactly the fields this run reads. The caller pushes the returned alerts at the
  * position this run used to occupy, so the emitted key order is unchanged. */
@@ -532,6 +547,7 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
     planDependency,
     strandedPlans,
     duplicatedHeadings,
+    liveFinished,
     validationGaps,
     fixClaims,
   } = input;
@@ -685,6 +701,26 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       title: plural(duplicatedHeadings.length, "duplicated backlog heading", "duplicated backlog headings"),
       detail:
         `${first.file} "## ${first.heading}" appears more than once${more} — readers take the first section of a name, so later entries are invisible; remove the duplicate in a deliberate edit`,
+      actions: [],
+    });
+  }
+  // Finished history still in the live backlog files (the doctor's `backlog archive` rule,
+  // checkLiveFinished, src/doctor/doctor-backlog-plans.ts, via the shared liveFinishedEntriesFor)
+  // is the one backlog-hygiene rule the doctor warned but no always-on alert surfaced — every
+  // other rule (stranded plans, duplicated headings, validation gaps, plan dependencies, stale
+  // bugs and questions) has one, so an operator watching `tumwater status` or the dashboard never
+  // sees the growing finished sections until they run `tumwater doctor`. It asks (amber) the way
+  // the duplicated-heading alert does, naming each live file, its finished section, its entry
+  // count, and its size in KB; the fix is the `tumwater archive` command, so there are no actions.
+  if (liveFinished.length) {
+    out.push({
+      key: "backlog-archive",
+      tone: "amber",
+      title: `${plural(liveFinished.length, "live backlog file still holds", "live backlog files still hold")} finished history`,
+      detail:
+        liveFinished.map((l) => `${l.file} ## ${l.section} holds ${plural(l.entries, "finished entry", "finished entries")} (${Math.round(l.bytes / 1024)} KB)`).join("; ") +
+        " — every run that reads the file pays for them; `tumwater archive` moves them to the archive files",
+      // The fix is a command, not a drawer row.
       actions: [],
     });
   }
@@ -1293,7 +1329,8 @@ function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
  * watch's five diff rules rejected, the team
  * waiting on capacity slots (workspace, provider or
  * check), a plan filed under the wrong backlog section, a duplicated
- * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
+ * backlog section heading, finished history still under a live backlog file's `## Done` or
+ * `## Fixed`, a Fixed record with a bad Validation gap trace, a pause, a
  * stopped team.
  * `now` is passed so a timed
  * pause's countdown agrees with the rest of the frame. */
@@ -1349,10 +1386,11 @@ export function teamAlerts(
   fixClaims: readonly FixClaimProblem[] = [],
   qaCoverage: QaCoverageStale | null = null,
   workspacePins: readonly StaleWorkspacePin[] = [],
+  liveFinished: readonly LiveFinishedEntry[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
-  out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, validationGaps, fixClaims }));
+  out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   out.push(...buildMergeAlerts({ quarantined, flappedChecks, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, qaCoverage, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins }));

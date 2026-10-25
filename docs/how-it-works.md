@@ -519,7 +519,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   stopped covering main's tip, so the ci role is disabled, paused, or unable to record),
   the fleet waiting on capacity slots (workspace, provider or check) — the doctor's three
   contention rows read the same waits and name the knob, a plan filed under the wrong
-  backlog section, a duplicated backlog section heading, a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose Fix paragraph names code that is not on the tree, a Fixed record whose quoted test failed again in the last day, a project with no declared check (the review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run), a pause), the prompt
+  backlog section, a duplicated backlog section heading, finished history still under a live backlog file's `## Done` or `## Fixed` (the `backlog-archive` alert, the always-on twin of the doctor's `backlog archive` warn), a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose Fix paragraph names code that is not on the tree, a Fixed record whose quoted test failed again in the last day, a project with no declared check (the review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run), a pause), the prompt
   box, today's progress, the roles grouped by what they are doing,
   the backlog, and the notable activity — a `Loop picker` and a case-insensitive Search box narrow
   the events the card carries, and an active picker or Search filter also searches the log's
