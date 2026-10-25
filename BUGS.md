@@ -132,25 +132,6 @@ every PLANS.md citation in a src/ or test/ comment names an entry PLANS.md still
 
 **Waiting for the next failure 2026-10-24 by bugfix: the failure message lists the stale `file:line — "label"` citations it found; check the unmatched label against the PLANS.md+PLANS-DONE.md union — a label that resolves on a re-run and is absent at the read moment points at the cross-process archive window (entry in neither file mid-move) rather than a persistent stale pointer.**
 
-### `three T-long reviews run at once at cap 4, so all three merge in about T, not 3T` failed, then passed on the same tree (quarantined by tumwater 2026-10-24)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-✖ three T-long reviews run at once at cap 4, so all three merge in about T, not 3T (3936.976584ms)
-AssertionError [ERR_ASSERTION]: all three merged
-at file:///Users/zach/tumwater/.tumwater/worktrees/_slot-14/dist/test/merge-drain-verify.test.js:218:16
-at async withPi (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-14/dist/test/fakes/fake-pi.js:95:16)
-at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-14/dist/test/merge-drain-verify.test.js:204:5)
-generatedMessage: false,
-code: 'ERR_ASSERTION',
-actual: '4',
-expected: '3',
-operator: 'strictEqual',
-diff: 'simple'
-}
-~~~~
-
 ## Fixed
 
 ## Verified
