@@ -265,7 +265,8 @@ outright). It is also flaky: official clients have hit the 403 intermittently. t
 free-tier refusal as a provider failure that moves the job to its tier's `fallback` — never a
 config error that stops a role — and a free OpenCode model is free to the budget gate (a valid
 `fallback` step for a priced primary; at the cap it keeps running). The catalog prices the model
-as free until an observed bill marks it priced.
+as free until an observed bill marks it priced. `tumwater doctor` then names the model, its
+billed date and that the budget gate prices it, instead of reading it as free.
 
 **OpenCode Go** (`opencode-go/…`) is a separate, paid thing (\$10/month); pi already reaches it
 as `opencode-go/models` with `OPENCODE_API_KEY`, so Go needs no tumwater change.

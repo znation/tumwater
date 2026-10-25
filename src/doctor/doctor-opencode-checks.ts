@@ -3,7 +3,8 @@ import path from "node:path";
 import { childEnv } from "../process/process.js";
 import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
 import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
-import { opencodeModelKey, readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
+import { opencodeModelFree, opencodeModelKey, readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
+import { formatDate } from "../text/datetime.js";
 import { opencodeDbPath } from "../paths.js";
 import { envPath, isDirectory, readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
 import { formatBytes, tokenWindowLabel } from "../text/format.js";
@@ -132,8 +133,11 @@ function opencodeConfigLeaks(configHome: string): string[] {
  * team runs, else warns naming the file and key. Reports the team's opencode database and spill
  * sizes as information. Stands down (ok) when no seam routes to opencode, so a pi-only team
  * spawns nothing and reads nothing. `pathEnv` and `home` are injectable so tests need no real
- * PATH or HOME. The version half of the opencode pre-flight is the sibling checkOpencodeVersion
- * in doctor-checks.ts. */
+ * PATH or HOME. A model's freeness is read from opencodeModelFree — the same call the budget
+ * gate and status use — so a catalog-free model that an observed bill demoted to billed reads
+ * as billed here, not free, keeping the row from drifting from what the team is billed. The
+ * version half of the opencode pre-flight is the sibling checkOpencodeVersion in
+ * doctor-checks.ts. */
 export async function checkOpencode(
   root: string,
   pathEnv: string = envPath(),
@@ -156,7 +160,18 @@ export async function checkOpencode(
       fails.push(`${pair.model} is not in the opencode catalog cache`);
       continue;
     }
-    const price = entry.free ? "free" : `$${entry.inputPerM ?? 0}/$${entry.outputPerM ?? 0} per M`;
+    const free = opencodeModelFree(cache, key);
+    if (entry.billedAt !== undefined) {
+      warns.push(
+        `${pair.model} was free in the catalog but billed once on ${formatDate(new Date(entry.billedAt))} — the budget gate now prices it`,
+      );
+    }
+    const price =
+      free
+        ? "free"
+        : entry.billedAt !== undefined
+          ? `no longer free (billed ${formatDate(new Date(entry.billedAt))})`
+          : `$${entry.inputPerM ?? 0}/$${entry.outputPerM ?? 0} per M`;
     const window = entry.context !== undefined ? `, ${tokenWindowLabel(entry.context)}` : "";
     notes.push(`${pair.model} — ${price}${window}`);
     // A model with no effort list at all supports no thinking level, so a requested level is

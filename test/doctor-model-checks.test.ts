@@ -969,6 +969,27 @@ test("checkOpencode stands down on a pi-only config and reads the free model as 
   assert.equal(withDb.level, "ok");
 });
 
+test("checkOpencode warns a catalog-free model that billed, naming the date", async () => {
+  const root = readyRepo();
+  writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
+  writeOpencodeCache(root, {
+    fetchedAt: Date.now(),
+    models: {
+      "opencode/deepseek-v4.1-flash-free": { free: true, billedAt: Date.parse("2026-10-20T00:00:00Z"), context: 200_000 },
+    },
+  });
+  // A free catalog entry an observed bill demoted to billed reads as billed to the operator: a
+  // warn names the model, the billed date and that the budget gate now prices it, and the
+  // per-model list text never reads plain `free`.
+  const out = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), tmpdir("doctor-opencode-home-"));
+  assert.equal(out.level, "warn");
+  assert.match(
+    out.detail,
+    /deepseek-v4\.1-flash-free was free in the catalog but billed once on \d{4}-\d{2}-\d{2} — the budget gate now prices it/,
+  );
+  assert.ok(!/ — free\b/.test(out.detail), out.detail);
+});
+
 test("checkOpencode fails a model missing from the catalog cache", async () => {
   const root = readyRepo();
   writeConfig(root, { backend: "opencode", model: "not-in-catalog" });
