@@ -543,6 +543,20 @@ test("the Usage render chain gates the Post-merge rejections by role chart right
   assert.equal((chain.match(/block\("Post-merge rejections by role", chartPostMergeRejectionsByRole\(d\)\)/g) || []).length, 1);
 });
 
+test("the Usage render chain gates the Estimated spend by backend chart right after Estimated spend by provider", () => {
+  // The usage view's render chain must name the Estimated spend by backend chart exactly
+  // once, gated on the series really carrying notionalByBackend, sitting right after the
+  // Estimated spend by provider term, and team-only like that provider chart.
+  const chain = GUI_CLIENT_REPORT_JS;
+  const provider = chain.indexOf('block("Estimated spend by provider"');
+  const backend = chain.indexOf('block("Estimated spend by backend"');
+  assert.ok(provider >= 0, "the Estimated spend by provider term exists");
+  assert.ok(backend > provider, "Estimated spend by backend sits after Estimated spend by provider in the chain");
+  assert.match(chain, /!d\.role && seriesHasAny\(d, "notionalByBackend"\) \? block\("Estimated spend by backend", chartNotionalByBackend\(d\), "per day · API-equivalent, not in the cap"\) : ""/);
+  // Exactly one such gated term.
+  assert.equal((chain.match(/block\("Estimated spend by backend", chartNotionalByBackend\(d\),/g) || []).length, 1);
+});
+
 test("the Tokens by role chart stacks per role and matches the runs legend", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
@@ -1015,6 +1029,40 @@ test("the Spend by provider charts stack per provider and reportProviderOrder li
   assert.equal(seriesHasAny(empty, "notionalByProvider"), false);
   assert.equal(seriesHasAny(data, "costByProvider"), true);
   assert.equal(seriesHasAny(data, "notionalByProvider"), true);
+});
+
+test("the Spend by backend chart stacks per backend and reportBackendOrder lists each backend once", () => {
+  // The backend chart is the dashboard twin of the day report's per-backend notional line:
+  // one segment per (day, backend) in reportBackendOrder's order. A backend has no
+  // real-cost map, so the order reads only notionalByBackend, and a backend that only
+  // spent notionally still counts.
+  interface Builders {
+    reportBackendOrder(d: ReportData): Array<[string, number]>;
+    chartNotionalByBackend(d: ReportData): string;
+    seriesHasAny(d: ReportData, field: string): boolean;
+  }
+  const { reportBackendOrder, chartNotionalByBackend, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportBackendOrder", "chartNotionalByBackend", "seriesHasAny"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { notionalByBackend: { claude: 0.5 } }),
+    mkDay("2026-09-02", { notionalByBackend: { codex: 0.25 } }),
+  ]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  // A codex-only day draws one codex segment and the two-backend day draws both.
+  // reportBackendOrder lists each backend once, read from notionalByBackend alone at 0
+  // total (a backend has no real-cost sum field).
+  assert.deepEqual(reportBackendOrder(data), [["claude", 0], ["codex", 0]]);
+  assert.deepEqual(titles(chartNotionalByBackend(data)), ["2026-09-01 · claude: $0.50", "2026-09-02 · codex: $0.25"]);
+  const empty = mk([mkDay("2026-09-01"), mkDay("2026-09-02")]);
+  assert.equal(seriesHasAny(empty, "notionalByBackend"), false, "a backend-free series gates the chart off");
+  assert.equal(seriesHasAny(data, "notionalByBackend"), true);
 });
 
 test("the Work vs maintenance chart stacks work and maintenance per day and matches chartCommits' labels", () => {

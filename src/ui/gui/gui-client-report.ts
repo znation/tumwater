@@ -341,7 +341,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         (seriesHasCheckWaitMedian(d) ? block("Check wait median", chartCheckWaitMedian(d), "per day · waits of 30s or more for a check slot") : "") +
         (d.totals.notionalCostUsd > 0
           ? block("Estimated spend by role", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") +
-        (!d.role && seriesHasAny(d, "notionalByProvider") ? block("Estimated spend by provider", chartNotionalByProvider(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
+        (!d.role && seriesHasAny(d, "notionalByProvider") ? block("Estimated spend by provider", chartNotionalByProvider(d), "per day · API-equivalent, not in the cap") : "") +
+        (!d.role && seriesHasAny(d, "notionalByBackend") ? block("Estimated spend by backend", chartNotionalByBackend(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
         (d.role ? "<p class='muted scope-note'>Role scope: " + esc(d.role) +
           " · merge runs and backlog tallies (features done / bugs fixed / plans added / bugs filed) are team-wide and omitted.</p>" : "") +
         (d.from ? "<p class='muted window-note'>" + esc(d.from + " → " + d.to) +

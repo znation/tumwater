@@ -311,6 +311,23 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
     return stackChart(data, reportProviderOrder(data), "notionalByProvider", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
   }
 
+  // Window tallies per subscription backend (claude/codex/opencode), name asc then count
+  // desc — reading only notionalByBackend because a backend has no real-cost map (a
+  // subscription run never fills run_end.providerCost) but a backend that only spent
+  // notionally still counts, the dashboard twin of the day report's per-backend notional
+  // line. Backend keys are dynamic seams, so reads and seeds go through tallyAcross's
+  // Object.hasOwn as reportProviderOrder does.
+  function reportBackendOrder(data) {
+    return tallyAcross(data.series, [], ["notionalByBackend"]);
+  }
+
+  // The API-equivalent (notional) spend of subscription runs, per backend, on the same axis
+  // as the estimated role spend; the backend twin of chartNotionalByProvider, which
+  // notionalByProvider alone cannot serve because it folds only from run_end.providerCost.
+  function chartNotionalByBackend(data) {
+    return stackChart(data, reportBackendOrder(data), "notionalByBackend", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
+  }
+
   // The team's review friction, per role, on a run-like count axis: one segment per
   // (day, role) with a rejection, empty when the report has none.
   function chartRejectionsByRole(data) {
