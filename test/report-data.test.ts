@@ -156,6 +156,46 @@ test("collectReportSince carries the post-merge rejection subset", () => {
   assert.deepEqual(empty.postMergeRejectionsByRole, {});
 });
 
+test("collectReport folds run_end prompt and cache-read tokens per role", () => {
+  const root = tmpdir();
+  // todayTs (not at(0), which is noon and can sit outside/future of the 6h --since window)
+  // so the same events feed both the day and the --since assertions on any run time.
+  writeEvents(root, [
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", promptTokens: 100, cacheReadTokens: 80 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "run_end", run: 2, result: "changed", promptTokens: 50 }), // retired-name-ok: legacy event field in a fixture
+    // No promptTokens reading at all — contributes nothing to either map.
+    JSON.stringify({ ts: todayTs(), loop: "clean", type: "run_end", run: 3, result: "changed" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data = collectReport(root, 2);
+  const today = data.series[data.series.length - 1];
+  assert.deepEqual(today?.promptTokensByRole, { feature: 100, bugfix: 50 });
+  assert.deepEqual(today?.cacheReadTokensByRole, { feature: 80 }, "only the role that reported a cache read has one");
+
+  const since = collectReportSince(root, 6 * HOUR);
+  assert.deepEqual(since.promptTokensByRole, { feature: 100, bugfix: 50 });
+  assert.deepEqual(since.cacheReadTokensByRole, { feature: 80 });
+
+  // A role-scoped day folds only the named base role's prompts and cache reads.
+  const scoped = collectReport(root, 2, "feature");
+  const scopedToday = scoped.series[scoped.series.length - 1];
+  assert.deepEqual(scopedToday?.promptTokensByRole, { feature: 100 });
+  assert.deepEqual(scopedToday?.cacheReadTokensByRole, { feature: 80 });
+});
+
+test("collectReport clamps a cache read to the same event's prompt total and folds a non-finite reading as absent", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    // cacheReadTokens above the same event's promptTokens must clamp to the prompt total.
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", promptTokens: 10, cacheReadTokens: 999 }), // retired-name-ok: legacy event field in a fixture
+    // A non-finite reading (1e999 JSON-parses to Infinity) folds as absent, not non-finite.
+    `{"ts":${todayTs()},"loop":"bugfix","type":"run_end","run":2,"result":"changed","promptTokens":1e999,"cacheReadTokens":1}`,
+  ]);
+  const data = collectReport(root, 2);
+  const today = data.series[data.series.length - 1];
+  assert.deepEqual(today?.promptTokensByRole, { feature: 10 }, "the non-finite reading is absent, not a poisoned key");
+  assert.deepEqual(today?.cacheReadTokensByRole, { feature: 10 }, "the over-budget cache read clamps to the prompt total");
+});
+
 test("collectReport splits merged events by base role and by work/maintenance tier", () => {
   const root = tmpdir();
   writeEvents(root, [

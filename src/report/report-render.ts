@@ -49,6 +49,22 @@ function rankedRoleLine(label: string, pairs: [string, number][], fmt: (n: numbe
   return `**${label}:** ${pairs.length === 0 ? "-" : pairs.map(([r, n]) => `${r} — ${fmt(n)}`).join(" · ")}`;
 }
 
+/** The "**Prompt tokens by role:**" line — each role's prompt-token total and, when its
+ * backend reported a cache read, the share of it served from cache (`12000 (80% cached)`)
+ * — with zero-total roles omitted (the same zero-means-absent rule the sibling lines apply)
+ * and "-" when no role sent a prompt. `prompt` arrives already ranked (prompt desc then
+ * name asc). The one home of the share format, so the day and `--since` lines cannot drift. */
+function promptTokensLine(prompt: [string, number][], cache: [string, number][]): string {
+  const cacheByRole = new Map(cache);
+  const cells = prompt
+    .filter(([, n]) => n > 0)
+    .map(([role, n]) => {
+      const c = cacheByRole.get(role) ?? 0;
+      return `${role} — ${compactTokens(n)}${c > 0 ? ` (${Math.round((100 * c) / n)}% cached)` : ""}`;
+    });
+  return `**Prompt tokens by role:** ${cells.length === 0 ? "-" : cells.join(" · ")}`;
+}
+
 /** Push one "**Label:** …" ranked-role line, dropping roles with a non-positive value (zero
  * count/spend) before rendering, so an all-zero window still renders "-" exactly like the
  * unfiltered lines. fmt formats each role's number (default String for count lines; pass
@@ -218,6 +234,16 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // resource the budget charges, so this is the line an operator reads to find which role's
   // prompt loop burned the window's tokens.
   pushRankedRoleLine(lines, "Tokens by role", rankedRoleMap(data.tokensByRole), compactTokens);
+  // The prompt side of the same breakdown, straight after the output-token line: how many
+  // prompt tokens each role sent and the share of them its backend served from cache — the
+  // input side of the bill an operator cannot see from Tokens by role. Zero-prompt roles are
+  // omitted, and an all-zero window renders "-" like the sibling lines.
+  lines.push(
+    promptTokensLine(
+      rankedRoleMap(data.promptTokensByRole ?? {}),
+      rankedRoleMap(data.cacheReadTokensByRole ?? {}),
+    ),
+  );
   // Same breakdown for spend: ranked by spend desc then name asc, zero-spend roles omitted —
   // an all-zero window renders "-" like the runs line.
   pushRankedRoleLine(lines, "Cost by role", rankedRoleMap(data.costByRole), usd);
@@ -420,6 +446,15 @@ export function renderReportMarkdown(data: ReportData): string {
   // role from tokensByRole, ranked like the runs line. Zero-token roles are omitted; an
   // all-zero window renders "-" like the runs line.
   pushRankedRoleLine(lines, "Tokens by role", rankedRoleTotals(data.series, (d) => d.tokensByRole ?? {}), compactTokens);
+  // The input side of that same bill, straight after the output-token line: each role's prompt
+  // totals and, when some run reported a cache read, the share of them served from cache — so
+  // the same report that says who burned output tokens also says whose prompts are cached.
+  lines.push(
+    promptTokensLine(
+      rankedRoleTotals(data.series, (d) => d.promptTokensByRole ?? {}),
+      rankedRoleTotals(data.series, (d) => d.cacheReadTokensByRole ?? {}),
+    ),
+  );
   // The same breakdown for spend: window totals per role from costByRole, ranked by spend
   // desc then name asc — spend is what the operator acts on (an operator tuning per-role
   // intervals wants the burning role first, not the busiest one). Zero-spend roles are

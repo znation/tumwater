@@ -16,7 +16,7 @@ import { isPassingFullCheck, isRedFullCheck } from "../build/build-check-events.
 import { isPassingMainCheck, isRedMain } from "../baseline/main-guardrails.js";
 import { addTo, memoSetLru } from "../collections.js";
 import { asList } from "../text/text.js";
-import { finiteNumber } from "../files/json-object.js";
+import { finiteNumber, nonNegativeNumber } from "../files/json-object.js";
 import { OUTCOME_CLASS } from "../failure/time-spend.js";
 import type { RunResult } from "../run/run-outcome.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
@@ -91,6 +91,16 @@ export interface UsageFold {
    * can't read is visible beside its runs and cost. */
   imageReroutesByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
+  /** Prompt tokens per role id — the input side of the bill `tokensByRole` (output tokens)
+   * hides, so the same report that says who burned output tokens also says whose prompts a
+   * backend served. Zero-means-absent like tokensByRole: a role whose runs never reported a
+   * prompt leaves no key. */
+  promptTokensByRole: Record<string, number>;
+  /** The per-role subset of `promptTokensByRole` its backend served from cache (the
+   * `run_end.cacheReadTokens` share run-finalize.ts rides), so an operator sees whose prompts
+   * are cached and whose are not. Never larger than the prompt total (foldUsageEvent clamps
+   * it), zero-means-absent like its sibling. */
+  cacheReadTokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   tokensOut: number;
   commits: number;
@@ -200,6 +210,16 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
     pushPositiveMs(target.runDurationsMs, finiteNumber(ev.durationMs, 0));
     addTo(target.tokensByRole, role, tokens);
+    // The prompt side of the same run's bill: how many prompt tokens each role sent and how
+    // much of that its backend served from cache (run-finalize.ts rides both on run_end, each
+    // omitted when zero). Zero-means-absent like tokensByRole. The finite guard is the failure
+    // digest's promptStatsFor rule, and the Math.min clamp keeps a torn log's cache share from
+    // ever exceeding the prompt total — together they pin a rendered share to <= 100% and keep
+    // a non-finite reading (1e999 → Infinity) out of the maps as absent, not NaN.
+    const prompt = nonNegativeNumber(ev.promptTokens, 0);
+    const cacheRead = Math.min(nonNegativeNumber(ev.cacheReadTokens, 0), prompt);
+    if (prompt > 0) addTo(target.promptTokensByRole, role, prompt);
+    if (cacheRead > 0) addTo(target.cacheReadTokensByRole, role, cacheRead);
     target.tokensOut += tokens;
     target.costUsd += costUsd;
     target.notionalCostUsd += notionalCostUsd;
@@ -382,6 +402,8 @@ interface DayFold {
   fallbacksByRole: Record<string, number>;
   imageReroutesByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
+  promptTokensByRole: Record<string, number>;
+  cacheReadTokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   notionalByRole: Record<string, number>;
   mergeRuns: number;
@@ -546,6 +568,8 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       fallbacksByRole: {},
       imageReroutesByRole: {},
       tokensByRole: {},
+      promptTokensByRole: {},
+      cacheReadTokensByRole: {},
       costByRole: {},
       notionalByRole: {},
       ...zeroMergeCounts(),

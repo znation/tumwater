@@ -52,9 +52,10 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
   // it renders "-" — no role in this fixture carries spend.
   assert.equal(lines[12], "**Runs by role:** feature — 5 · bugfix — 1");
   assert.equal(lines[13], "**Tokens by role:** -", "no token spend renders '-' like the cost line");
-  assert.equal(lines[14], "**Cost by role:** -");
-  assert.equal(lines[15], "**Rejections by role:** -", "no rejections renders the line as '-', the shared zero-means-absent convention");
-  assert.equal(lines[16], "**Post-merge rejections by role:** -", "no post-merge rejections renders the line as '-', its sibling's convention");
+  assert.equal(lines[14], "**Prompt tokens by role:** -", "no prompt tokens render '-' like the output-token line above it");
+  assert.equal(lines[15], "**Cost by role:** -");
+  assert.equal(lines[16], "**Rejections by role:** -", "no rejections renders the line as '-', the shared zero-means-absent convention");
+  assert.equal(lines[17], "**Post-merge rejections by role:** -", "no post-merge rejections renders the line as '-', its sibling's convention");
 });
 
 test("renderReportMarkdown appends the window's newly filed plans and bugs to the totals line", () => {
@@ -508,6 +509,27 @@ test("renderReportMarkdown prints a Tokens by role line ranked by tokens desc, i
   assert.match(md, /\*\*Cost by role:\*\* beta — \$0\.50/);
 });
 
+test("renderReportMarkdown prints a Prompt tokens by role line with the cache-read share", () => {
+  const base = collectReport(tmpdir(), 2);
+  const data: ReportData = {
+    ...base,
+    series: [
+      { date: base.from, tokensOut: 0, runsByRole: {}, promptTokensByRole: { feature: 7000 }, cacheReadTokensByRole: { feature: 5600 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: base.to, tokensOut: 0, runsByRole: {}, promptTokensByRole: { feature: 5000, bugfix: 5000 }, cacheReadTokensByRole: { feature: 4000 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+    ],
+    totals: { ...base.totals, runs: 0 },
+  };
+  const md = renderReportMarkdown(data);
+  const lines = md.split("\n");
+  // feature 7000+5000 = 12.0k with 5600+4000 = 9600 cached (80%); bugfix 5000 uncached.
+  assert.match(md, /\*\*Prompt tokens by role:\*\* feature — 12\.0k \(80% cached\) · bugfix — 5000/);
+  const tokensIdx = lines.findIndex((l) => l.startsWith("**Tokens by role:"));
+  const promptIdx = lines.findIndex((l) => l.startsWith("**Prompt tokens by role:"));
+  assert.equal(promptIdx, tokensIdx + 1, "the prompt line sits directly after the output-token line");
+  // bugfix sent 5000 prompts with no cache read — its cell carries no parenthetical share.
+  assert.ok(!md.includes("bugfix — 5000 ("), "a role with no cache read carries no parenthetical");
+});
+
 // This file's assertions match combined stdout+stderr via the shared runCli bridge; a few
 // assertions need the streams apart, so those call cli-harness's cli() directly.
 
@@ -571,6 +593,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   assert.match(zero, /\*\*Totals:\*\* 0 output tokens · 0 runs · 0 commits · \$0\.00/);
   assert.match(zero, /\*\*Runs by role:\*\* -/);
   assert.match(zero, /\*\*Tokens by role:\*\* -/);
+  assert.match(zero, /\*\*Prompt tokens by role:\*\* -/, "a prompt-free window renders '-' like the output-token line above it");
   assert.match(zero, /\*\*Cost by role:\*\* -/);
   assert.ok(!zero.includes("rotated"));
 
@@ -610,6 +633,41 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   assert.match(data, /\*\*Post-merge rejections by role:\*\* feature — 1/, "the post-merge line ranks its afterMerge subset");
   assert.match(data, /\*\*Revisions by role:\*\* feature — 1/);
   assert.match(data, /backlog tallies \(features done \/ bugs fixed \/ plans added \/ bugs filed\) need the day report \(--days\)/);
+});
+
+test("renderSinceReportMarkdown prints the Prompt tokens by role line with the cache-read share", () => {
+  const since = renderSinceReportMarkdown({
+    sinceMs: 90 * 60_000,
+    fromIso: new Date(ago(90 * 60_000)).toISOString(),
+    mainRedMs: 0,
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    runsByRole: {},
+    costByRole: {},
+    rejectionsByRole: {},
+    postMergeRejectionsByRole: {},
+    revisionsByRole: {},
+    refusalsByRole: {},
+    failedRunsByRole: {},
+    fallbacksByRole: {},
+    imageReroutesByRole: {},
+    tokensByRole: {},
+    promptTokensByRole: { feature: 12000, bugfix: 5000 },
+    cacheReadTokensByRole: { feature: 9600 },
+    commitsByRole: {},
+    mergedByRole: {},
+    mergeFailedByRole: {},
+    mergeFailedByReason: {},
+    costByProvider: {},
+    notionalByProvider: {},
+    runsByModel: {},
+    coversFullWindow: true,
+  });
+  const lines = since.split("\n");
+  assert.match(since, /\*\*Prompt tokens by role:\*\* feature — 12\.0k \(80% cached\) · bugfix — 5000/);
+  const tokensIdx = lines.findIndex((l) => l.startsWith("**Tokens by role:"));
+  const promptIdx = lines.findIndex((l) => l.startsWith("**Prompt tokens by role:"));
+  assert.equal(promptIdx, tokensIdx + 1, "the prompt line sits directly after the output-token line");
+  assert.ok(!since.includes("bugfix — 5000 ("), "a role with no cache read carries no parenthetical");
 });
 
 test("renderSinceReportMarkdown shows the merge line under Totals only when merge ran", () => {

@@ -23,6 +23,14 @@ export interface ReportDay {
    * role the way Runs/Cost do; absent only on hand-built fixtures (the collector always
    * sets it — zero uses leave it an empty map). */
   tokensByRole?: Record<string, number>;
+  /** Prompt tokens per role id — the input side of the bill the output-only `tokensByRole`
+   * hides, so the same report that says who burned output tokens also says whose prompts a
+   * backend served; absent when no run that day reported one (zero means absent). */
+  promptTokensByRole?: Record<string, number>;
+  /** The per-role share of `promptTokensByRole` served from cache (`run_end.cacheReadTokens`
+   * subset run-finalize rides); absent when no run reported one (zero means absent, so a
+   * prompt-free window keeps today's JSON shape). */
+  cacheReadTokensByRole?: Record<string, number>;
   costByRole: Record<string, number>;
   /** review_rejected events per role id; absent when the day has none (zero means absent). */
   rejectionsByRole?: Record<string, number>;
@@ -224,6 +232,12 @@ export interface SinceReport {
   /** Output tokens per role id, so the --since render can break the window's token spend
    * down by role the way the day report does. */
   tokensByRole: Record<string, number>;
+  /** Prompt tokens per role id, the input side `tokensByRole` hides; absent when the window
+   * has none (a prompt-free/old-log window keeps today's JSON shape). */
+  promptTokensByRole?: Record<string, number>;
+  /** The per-role share of `promptTokensByRole` served from cache; absent when the window
+   * reported none. */
+  cacheReadTokensByRole?: Record<string, number>;
   /** Merged commits per base role, so the --since render can print the day report's
    * `Commits by role` line; always present (the collector's accumulator is pre-filled by
    * zeroCommitCounts, so a commit-free window carries an empty map — the `-` render). */

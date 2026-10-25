@@ -81,6 +81,8 @@ export function collectReportSince(
     fallbacksByRole: {},
     imageReroutesByRole: {},
     tokensByRole: {},
+    promptTokensByRole: {},
+    cacheReadTokensByRole: {},
     costByRole: {},
     tokensOut: 0,
     ...zeroCommitCounts(),
@@ -191,6 +193,8 @@ export function collectReportSince(
     fallbacksByRole: scopedByRole(acc.fallbacksByRole, bases),
     imageReroutesByRole: scopedByRole(acc.imageReroutesByRole, bases),
     tokensByRole: scopedByRole(acc.tokensByRole, bases),
+    ...nonemptyObj("promptTokensByRole", scopedByRole(acc.promptTokensByRole, bases)),
+    ...nonemptyObj("cacheReadTokensByRole", scopedByRole(acc.cacheReadTokensByRole, bases)),
     commitsByRole: scopedByRole(acc.commitsByRole, bases),
     mergedByRole: scopedByRole(acc.mergedByRole, bases),
     mergeFailedByRole: scopedByRole(acc.mergeFailedByRole, bases),
@@ -293,6 +297,9 @@ export function collectReport(root: string, days: number, role?: string | readon
       day.tokensOut = fold.tokensOut;
       day.runsByRole = fold.runsByRole;
       day.tokensByRole = fold.tokensByRole;
+      // Only set when nonempty, so a prompt-free day keeps its exact pre-feature shape.
+      setMapIfNonempty(day, "promptTokensByRole", fold.promptTokensByRole);
+      setMapIfNonempty(day, "cacheReadTokensByRole", fold.cacheReadTokensByRole);
       day.costByRole = fold.costByRole;
       // Only set when nonzero, so a rejection-free day keeps its exact pre-feature shape.
       setMapIfNonempty(day, "rejectionsByRole", fold.rejectionsByRole);
@@ -366,6 +373,8 @@ export function collectReport(root: string, days: number, role?: string | readon
       day.tokensOut = roleSum(fold.tokensByRole, bases);
       day.runsByRole = narrowToRole(fold.runsByRole, bases);
       day.tokensByRole = narrowToRole(fold.tokensByRole, bases);
+      setMapIfNonempty(day, "promptTokensByRole", narrowToRole(fold.promptTokensByRole, bases));
+      setMapIfNonempty(day, "cacheReadTokensByRole", narrowToRole(fold.cacheReadTokensByRole, bases));
       day.costByRole = narrowToRole(fold.costByRole, bases);
       setMapIfNonempty(day, "rejectionsByRole", narrowToRole(fold.rejectionsByRole, bases));
       setMapIfNonempty(day, "postMergeRejectionsByRole", narrowToRole(fold.postMergeRejectionsByRole, bases));
