@@ -166,3 +166,40 @@ test("the Transcript view's hint and docs rows name the same Ctrl keys", () => {
   // entries); any-view keys stay out.
   assert.deepEqual([...documentedTranscript].filter((k) => !hinted.has(k)).sort(), []);
 });
+
+test("the Activity view's hint and docs rows name the same Ctrl keys", () => {
+  const hinted = new Set<string>();
+  for (const line of read("../../src/ui/tui/tui-frame.ts").split("\n")) {
+    if (!line.includes(`else keys = [`)) continue;
+    for (const m of line.matchAll(/Ctrl\+([A-Z])/g)) hinted.add(m[1]!);
+  }
+  assert.ok(hinted.size > 0, "found the Activity hint line");
+
+  const doc = read("../../docs/cli.md");
+  const start = doc.indexOf("## TUI keys");
+  assert.notEqual(start, -1, "docs/cli.md has a `## TUI keys` section");
+  const rest = doc.slice(start + "## TUI keys".length);
+  const next = rest.search(/^## /m);
+  const section = next === -1 ? rest : rest.slice(0, next);
+  const documentedActivity = new Set<string>();
+  const documentedAny = new Set<string>();
+  for (const line of section.split("\n")) {
+    const cells = line.split("|").map((c) => c.trim());
+    const key = cells[1] ?? "";
+    const where = cells[2] ?? "";
+    if (/Ctrl\+([A-Z])/.test(key)) {
+      const letters = [...key.matchAll(/Ctrl\+([A-Z])/g)].map((m) => m[1]!);
+      if (/\bany view\b/.test(where)) for (const k of letters) documentedAny.add(k);
+      if (/\bActivity\b/.test(where)) for (const k of letters) documentedActivity.add(k);
+    }
+  }
+  // Every Activity hint key is documented for Activity or any view (catches
+  // an Activity hint key with no docs row).
+  assert.deepEqual(
+    [...hinted].filter((k) => !documentedActivity.has(k) && !documentedAny.has(k)).sort(),
+    [],
+  );
+  // No docs Activity key is unhinted (catches the missing Ctrl+K/Ctrl+N/Ctrl+S/
+  // Ctrl+U/Ctrl+W hint entries); any-view keys stay out.
+  assert.deepEqual([...documentedActivity].filter((k) => !hinted.has(k)).sort(), []);
+});

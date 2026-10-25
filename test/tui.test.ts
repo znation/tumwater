@@ -659,7 +659,7 @@ test("Ctrl+G scopes the Activity feed and `/` searches it, narrowing what the pa
     assert.match(frame, /\[Activity\]/);
     assert.match(frame, /widget landed/);
     assert.doesNotMatch(frame, /tidy imports/);
-  }, { columns: 200 });
+  }, { columns: 300 });
 });
 
 test("a stale entry selection falls back to the empty list when entries disappear", async () => {
