@@ -18,7 +18,7 @@ import {
 } from "./orchestrator-poll.js";
 import { RoleRunner } from "../runner/runner.js";
 import { dropDanglingTumwaterPins, removeLegacyLandWorktrees } from "../git/worktree.js";
-import { pinCrashedRuns, retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
+import { pinCrashedRuns, retireLegacyRoleWorktrees } from "../git/worktree-pool-startup.js";
 import { mergeTasks, newMergePipeline } from "../merge/merge-pipeline.js";
 import { bestEffortEventLogger, logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";

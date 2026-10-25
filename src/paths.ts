@@ -519,6 +519,13 @@ export function slotWorktreePath(root: string, n: number): string {
   return path.join(worktreesDir(root), `_slot-${n}`);
 }
 
+/** A slot dir is canonical when it is exactly a `_slot-<n>` checkout under the worktrees dir.
+ * A migrated legacy `<role>` dir is not, which marks it for retirement once its resume finishes
+ * (retireLegacyRoleWorktrees in worktree-pool-startup.ts and releaseSlot in worktree-pool.ts). */
+export function isCanonicalSlotDir(dir: string): boolean {
+  return /^_slot-\d+$/.test(path.basename(dir));
+}
+
 /** The worktree pool's dedicated checkout for the merge drain's merge-side work
  * (plans/worktree-pool.md, "Layout"): a single change, a stack and its bisect, the conflict
  * resolver and the post-resolve re-review. Kept out of the pool so a permit-waiting lease can

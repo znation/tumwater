@@ -160,8 +160,8 @@ liveEnd at the last complete line".
 than reading as a live claim.
 
 **Binds.** `src/git/slots-state.ts` (`readSlotsState`, `writeSlotsState`),
-`src/files/json-object.ts` (`finiteNumber`), with `src/git/worktree-pool.ts` as the reader's
-consumer.
+`src/files/json-object.ts` (`finiteNumber`), with `src/git/worktree-pool.ts` and
+`src/git/worktree-pool-startup.ts` as the readers' consumers.
 
 **Pinned by.** `test/worktree-pool.test.ts` — "a slot record's non-finite timestamps read as
 absent, not as a stuck pin" and "a slot record's non-finite lease numbers read as no lease".
@@ -4615,7 +4615,7 @@ index, rather than skipping the preserve".
 
 **Guarantee.** At startup, before any run leases, `pinCrashedRuns` pins each slot that still carries a dead process's run lease for that lease's role. It does so when the role is configured, holds no other pin, and its persisted runner state says `running` or `resumePending`. The role's resume then leases that slot with its edits in place. A removed or idle role, a verification's lease, and a role that already holds a pin are left unpinned.
 
-**Binds.** `src/git/worktree-pool.ts` (`pinCrashedRuns`) and `src/orchestrator/orchestrator.ts` (startup, after `retireLegacyRoleWorktrees`).
+**Binds.** `src/git/worktree-pool-startup.ts` (`pinCrashedRuns`) and `src/orchestrator/orchestrator.ts` (startup, after `retireLegacyRoleWorktrees`).
 
 **Pinned by.** `test/worktree-pool.test.ts` — "startup pins a run the previous process died in, so its resume keeps the slot and its edits" and "the crash pin skips a role that is not configured, not resuming, already pinned, or verifying".
 
