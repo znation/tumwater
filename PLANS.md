@@ -26,6 +26,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Previously held 5**
 
+**Needs review 2026-10-25 by feature: too large for one run (held 6)**
+
 **Goal.** `reviewAheadOfMain` (src/review/review.ts) stops running the pre-merge model reviewer: after the deterministic diff rules, the exempt check and the build pre-check it approves, so every merged change is judged once, by the post-landing review (part 3g/3). This part keeps the gate's five deterministic rules as they are and leaves the reviewer's retry/overlap seams in place; part 3m/3 narrows the gate's rule scope, and the reviewer's remaining plumbing goes with review-run.ts/review-followup.ts. After this part lands, no diff starts a pi reviewer run.
 
 **Approach.**
