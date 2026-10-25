@@ -2,9 +2,9 @@
  * keeps only the read-only query commands (status, diff, queue, backlog). cli.ts's dispatcher
  * routes to cmdRole here exactly as it routes cmdStatus to cli-query-commands or cmdConfig to
  * config-commands. cmdRole is the one query-named command that also writes: it renders a
- * role's standing and next-run prompts and carries ten per-role write flags (notes,
+ * role's standing and next-run prompts and carries eleven per-role write flags (notes,
  * instructions, quiet-hours, daily cap, min-run-interval, instances, enable/disable, and the
- * provider/model/thinking triple), each through the same setConfigKey/unsetConfigKey core
+ * provider/model/thinking/backend), each through the same setConfigKey/unsetConfigKey core
  * `config set`/`config unset` use. It lives in its own file because its mixed
  * positional/flag vocabulary and its write branches are its own, not the query commands'. */
 
@@ -87,19 +87,22 @@ const CLEAR_MODEL_SPEC = { names: ["--clear-model"] };
 const MODEL_SPEC = { names: ["--model"], value: true, valueName: "<id>" };
 const CLEAR_THINKING_SPEC = { names: ["--clear-thinking"] };
 const THINKING_SPEC = { names: ["--thinking"], value: true, valueName: "<level>" };
+const CLEAR_BACKEND_SPEC = { names: ["--clear-backend"] };
+const BACKEND_SPEC = { names: ["--backend"], value: true, valueName: "<id>" };
 
 /** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
  * neither a flag nor the value of a --role, --notes-file, --instructions-file,
- * --quiet-hours, --cap, --min-run-interval, --instances, --provider, --model or
- * --thinking flag. Returns the id (null when absent) and the remaining arguments — flags
- * only, ready for rejectUnknownArgs and sayJsonOrRender. The id may also arrive as
+ * --quiet-hours, --cap, --min-run-interval, --instances, --provider, --model,
+ * --thinking or --backend flag. Returns the id (null when absent) and the remaining
+ * arguments — flags only, ready for rejectUnknownArgs and sayJsonOrRender. The id may
+ * also arrive as
  * --role <id>, the flag spelling every other role-targeting command shares; the
  * collector's caller rejects both spellings at once rather than silently picking one.
  * Lives here because it exists only for this one
  * command's mixed positional/flag vocabulary. */
 function peelRolePositional(args: string[]): { id: string | null; rest: string[] } {
   const valueIdx = new Set<number>();
-  for (const flag of ["--role", "--notes-file", "--instructions-file", "--quiet-hours", "--cap", "--min-run-interval", "--instances", "--provider", "--model", "--thinking"]) {
+  for (const flag of ["--role", "--notes-file", "--instructions-file", "--quiet-hours", "--cap", "--min-run-interval", "--instances", "--provider", "--model", "--thinking", "--backend"]) {
     const at = args.indexOf(flag);
     if (at >= 0) valueIdx.add(at + 1);
   }
@@ -129,9 +132,10 @@ function requireKnownRole(root: string, id: string): void {
   if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
 }
 
-/** The config-key write the six per-role hold branches (quiet hours, daily cap, min run
- * interval, provider, model and thinking) share: with `clear`, or an empty typed value, unset
- * `key` under `base`; else set it. `serialize` shapes the value `setConfigKey` stores (it
+/** The config-key write the seven per-role hold branches (quiet hours, daily cap, min run
+ * interval, provider, model, thinking and backend) share: with `clear`, or an empty typed
+ * value, unset `key` under `base`; else set it. `serialize` shapes the value `setConfigKey`
+ * stores (it
  * JSON-encodes nothing itself) and `display` gives the human phrase for the confirmation
  * line. The caller returns right after. The instructions branch keeps its own block: its
  * value is a file's text, so an empty value is a legitimate write, not a clear. A no-op (a
@@ -182,13 +186,13 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // Only a `--` (double-dash) token reads as a flag: a single-dash token like `-1` is a
   // negative-number value that must reach the setters' own bound checks, and the file flags'
   // `-` stdin value is not in this set at all.
-  for (const flag of ["--provider", "--model", "--thinking", "--cap", "--min-run-interval", "--instances", "--quiet-hours"]) {
+  for (const flag of ["--provider", "--model", "--thinking", "--backend", "--cap", "--min-run-interval", "--instances", "--quiet-hours"]) {
     const at = rest.indexOf(flag);
     const next = at >= 0 ? rest[at + 1] : undefined;
     if (next?.startsWith("--"))
       fail(`${flag} needs a value (the next token ${JSON.stringify(next)} is a flag, not a value)`);
   }
-  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_INSTANCES_SPEC, INSTANCES_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC, REVIEW_AFTER_MERGE_SPEC, CLEAR_REVIEW_AFTER_MERGE_SPEC]);
+  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_INSTANCES_SPEC, INSTANCES_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC, CLEAR_BACKEND_SPEC, BACKEND_SPEC, REVIEW_AFTER_MERGE_SPEC, CLEAR_REVIEW_AFTER_MERGE_SPEC]);
   refuseTeamWorkspace(root);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
@@ -210,6 +214,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const clearProvider = rest.includes("--clear-provider");
   const clearModel = rest.includes("--clear-model");
   const clearThinking = rest.includes("--clear-thinking");
+  const clearBackend = rest.includes("--clear-backend");
   const notesWrite = clear || rest.includes("--notes-file");
   const instructionsWrite = clearInst || rest.includes("--instructions-file");
   const quietWrite = clearQuiet || rest.includes("--quiet-hours");
@@ -219,6 +224,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const providerWrite = clearProvider || rest.includes("--provider");
   const modelWrite = clearModel || rest.includes("--model");
   const thinkingWrite = clearThinking || rest.includes("--thinking");
+  const backendWrite = clearBackend || rest.includes("--backend");
   const enable = rest.includes("--enable");
   const disable = rest.includes("--disable");
   const reviewAfterMerge = rest.includes("--review-after-merge");
@@ -234,6 +240,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (providerWrite) writes.push("provider");
   if (modelWrite) writes.push("model");
   if (thinkingWrite) writes.push("thinking");
+  if (backendWrite) writes.push("backend");
   if (enable) writes.push("enable");
   if (disable) writes.push("disable");
   if (reviewAfterMergeWrite) writes.push("review-after-merge");
@@ -418,6 +425,20 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     const base = baseRoleOf(id);
     const level = flagValue(rest, "--thinking") ?? "";
     writeRoleConfigKey(root, base, clearThinking, level, `roles.${base}.thinking`, "thinking", (v) => JSON.stringify(v), (v) => v);
+    return;
+  }
+  // The backend write: the twin of the provider/model/thinking writes, landing the role's
+  // backend (`pi`, `claude`, `opencode` or `codex`) in roles.<base>.backend through the same
+  // setConfigKey/unsetConfigKey core, so validateConfig's checkEntryBackend owns the id
+  // (rejecting an unknown one, and a `model` that cannot pair with the named backend) and
+  // the write stays atomic. An instance id writes its base role's key, like the others.
+  if (backendWrite) {
+    if (clearBackend && rest.includes("--backend")) fail("give --clear-backend or --backend, not both");
+    if (rest.includes("--json")) fail("--json does not apply to a backend write");
+    requireKnownRole(root, id);
+    const base = baseRoleOf(id);
+    const backend = flagValue(rest, "--backend") ?? "";
+    writeRoleConfigKey(root, base, clearBackend, backend, `roles.${base}.backend`, "backend", (v) => JSON.stringify(v), (v) => v);
     return;
   }
   // The enable/disable write: the scoped write for the enabled state `tumwater role <id>`

@@ -1200,6 +1200,63 @@ test("role --provider/--model/--thinking (and --clear-*) write the role's model 
   assert.equal(config().roles.director.thinking, "medium");
 });
 
+test("role --backend writes and clears the backend override", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role backend override");
+  const config = () => readJson<TeamConfigFile & { roles: Record<string, RoleKeys> }>(path.join(repo, "tumwater.json"));
+
+  // `--backend <id>` writes roles.qa.backend through the config core; a role with no model
+  // override accepts a backend alone (checkEntryBackend's pair rule needs a non-tier model).
+  let r = await cli(repo, "role", "qa", "--backend", "claude");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /qa: backend set to claude/);
+  assert.equal(config().roles.qa!.backend, "claude");
+
+  // An instance id targets its base role: feature-2 writes roles.feature.backend.
+  const configured = readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
+  configured.roles = { ...configured.roles, feature: { ...configured.roles.feature, instances: 2 } };
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(configured, null, 2));
+  r = await cli(repo, "role", "feature-2", "--backend", "codex");
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.feature.backend, "codex");
+
+  // A backend that cannot pair with the role's model is refused by checkEntryBackend, leaving
+  // the file unchanged.
+  r = await cli(repo, "role", "feature", "--model", "anthropic/claude-sonnet-4");
+  assert.equal(r.code, 0);
+  const beforeBadPair = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "feature", "--backend", "claude");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /roles\.feature\.model "anthropic\/claude-sonnet-4" has a "\/" but roles\.feature\.backend is "claude"/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeBadPair, "file unchanged on a clashing backend model pair");
+
+  // A bad backend id is refused with the backend-list message and writes nothing.
+  const beforeBad = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "qa", "--backend", "claud");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /roles\.qa\.backend must name a backend \(pi, claude, opencode, codex; got "claud"\)/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeBad, "file unchanged on a bad backend id");
+
+  // --backend with --clear-backend, or with --json, is refused.
+  r = await cli(repo, "role", "qa", "--clear-backend", "--backend", "codex");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /give --clear-backend or --backend, not both/);
+  r = await cli(repo, "role", "qa", "--backend", "codex", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json does not apply to a backend write/);
+
+  // A clear removes the key; clearing an unset key writes nothing.
+  r = await cli(repo, "role", "qa", "--clear-backend");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /qa: backend cleared/);
+  assert.equal(config().roles.qa!.backend, undefined);
+  const bytes = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "qa", "--clear-backend");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /qa: backend is not set in tumwater.json, so nothing was cleared/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), bytes, "clear of an unset backend writes nothing");
+});
+
 test("role writes report a broken tumwater.json instead of crashing on it", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role broken config");

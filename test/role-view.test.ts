@@ -176,6 +176,22 @@ test("the payload carries the raw model-triple overrides only when the file sets
   assert.equal("thinkingOverride" in partial, false);
 });
 
+test("the payload names the raw backend override only when the file sets it", () => {
+  const dir = root();
+  // A config that sets roles.feature.backend: the resolved `backend` field reflects the
+  // selector/agent wiring, and the raw override rides along for the drawer to prefill from.
+  writeConfig(dir, { roles: { feature: { enabled: true, backend: "claude" } } });
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.backendOverride, "claude");
+  // A role the file leaves unset carries none — the payload stays byte-identical to before,
+  // even for a catalog role whose resolved backend is not pi.
+  const none = rolePayload(dir, "bugfix", NO_MODELS);
+  assert.equal("backendOverride" in none, false);
+  assert.equal("providerOverride" in none, false);
+  assert.equal("modelOverride" in none, false);
+  assert.equal("thinkingOverride" in none, false);
+});
+
 test("an instance id resolves the instructions override through its base role", () => {
   const dir = root();
   writeConfig(dir, { roles: { feature: { instructions: "Stay small.", enabled: true, instances: 2 } } });

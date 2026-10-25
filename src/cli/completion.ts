@@ -255,6 +255,10 @@ function bashScript(help: string): string {
     `    COMPREPLY=( $(compgen -W "${THINKING_LEVEL_WORDS.join(" ")}" -- "$cur") )`,
     `    return 0`,
     `  fi`,
+    `  if [ "$prev" = "--backend" ]; then`,
+    `    COMPREPLY=( $(compgen -W "${BACKEND_IDS.join(" ")}" -- "$cur") )`,
+    `    return 0`,
+    `  fi`,
     `  if [ "$prev" = "--by" ]; then`,
     `    COMPREPLY=( $(compgen -W "${HISTORY_SUMMARY_GROUPS.join(" ")}" -- "$cur") )`,
     `    return 0`,
@@ -309,6 +313,7 @@ function fishFlagValue(command: string, flag: string): string {
   if (flag === "--type") return ` -x -a "(__fish_complete_list , __tumwater_types)"`;
   if (flag === "--status") return ` -x -a "(__fish_complete_list , __tumwater_review_states)"`;
   if (flag === "--thinking") return ` -x -a "${THINKING_LEVEL_WORDS.join(" ")}"`;
+  if (flag === "--backend") return ` -x -a "${BACKEND_IDS.join(" ")}"`;
   if (flag === "--by") return ` -x -a "${HISTORY_SUMMARY_GROUPS.join(" ")}"`;
   // `role --model` completes the closed tier set; `history --model` completes the log's selectors.
   if (flag === "--model" && command === "role") return ` -x -a "${MODEL_TIERS.join(" ")}"`;

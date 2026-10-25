@@ -509,6 +509,15 @@ Usage:
                                    for the base id
   tumwater role <id> --clear-thinking
                                    Clear that role's thinking level
+  tumwater role <id> --backend <id>
+                                   Set that role's backend (pi|claude|opencode|codex — the
+                                   agent that runs the model); a model that cannot pair with
+                                   the backend is refused (e.g. a claude backend with a
+                                   provider/model id, or a pi backend with a bare model id),
+                                   written to roles.<id>.backend for the base id
+  tumwater role <id> --clear-backend
+                                   Clear that role's backend (back to the team/tier
+                                   default backend)
   tumwater role <id> --enable      Enable the role, written to roles.<id>.enabled
                                    (the base id for an instance)
   tumwater role <id> --disable     Disable it (refused for the director); clean up

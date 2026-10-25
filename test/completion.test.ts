@@ -9,7 +9,7 @@ import { DOCTOR_CHECK_NAMES } from "../src/doctor/doctor-check-names.js";
 import { completionConfigKeys, completionScript, completionSpec } from "../src/cli/completion.js";
 import { HELP, helpStanzas } from "../src/cli/help.js";
 import { cli } from "./helpers/cli-harness.js";
-import { MODEL_TIERS } from "../src/config/config-schema.js";
+import { BACKEND_IDS, MODEL_TIERS } from "../src/config/config-schema.js";
 import { parseConfigKey } from "../src/config/config-keys.js";
 import { HISTORY_RESULT_FLAG_NAMES } from "../src/history/history-data.js";
 import { POST_REVIEW_STATES } from "../src/review/post-merge-review-render.js";
@@ -279,6 +279,12 @@ test("the bash script completes pi thinking levels after --thinking", async () =
   assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--thinking", "h"], 4), ["high"]);
   assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--thinking", "x"], 4), ["xhigh"]);
   assert.ok((await complete(script, ["tumwater", "role", "qa", "--thinking", ""], 4)).length > 0);
+});
+
+test("the bash script completes backend ids after role --backend", async () => {
+  const script = completionScript("bash");
+  assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--backend", "cl"], 4), ["claude"]);
+  assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--backend", ""], 4), [...BACKEND_IDS]);
 });
 
 const fishScriptLines = (): string[] => completionScript("fish").split("\n");
