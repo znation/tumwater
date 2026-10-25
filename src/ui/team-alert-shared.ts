@@ -239,6 +239,14 @@ export function seeFailures(): Array<{ label: string; act: string; arg: string }
   return [{ label: "See failures", act: "view", arg: "failures" }];
 }
 
+/** The dashboard's "Open backlog" button for an alert naming one backlog entry: opens the
+ * entry's backlog-card tab and that row (the dashboard's backlog arm reads `file:index`).
+ * Shared by the refused, operator-held, and stalled-entries alerts, so the button shape and
+ * the `file:index` contract cannot drift between them. */
+export function openBacklogAction(entry: { file: "plans" | "bugs"; index: number }): Array<{ label: string; act: string; arg: string }> {
+  return [{ label: "Open backlog", act: "backlog", arg: `${entry.file}:${entry.index}` }];
+}
+
 /** Natural English list of the given names: “a and b” for one or two, “a, b, and c”
  * beyond that. Shared by the role-row and held-id banners so the wording cannot drift. */
 function andJoin(names: readonly string[]): string {

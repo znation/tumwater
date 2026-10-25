@@ -4,7 +4,7 @@
  * Validation gap trace. One of the per-domain builders split out of src/ui/team-alerts.ts; the
  * shared types and wording helpers live in team-alert-shared.ts. */
 
-import { entryListDetail, moreDetail, type TeamAlert, type StaleQuestion, type PlanDependencyProblem, type BacklogHeadingDuplicate, type LiveFinishedEntry } from "./team-alert-shared.js";
+import { entryListDetail, moreDetail, openBacklogAction, type TeamAlert, type StaleQuestion, type PlanDependencyProblem, type BacklogHeadingDuplicate, type LiveFinishedEntry } from "./team-alert-shared.js";
 import { entryKindLabel, type RefusedEntry, type StalledEntry } from "../backlog/backlog-eligibility.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
@@ -89,9 +89,7 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       tone: "amber",
       title: `${plural(refused.length, "refused entry waits", "refused entries wait")} on your decision`,
       detail: `Refused ${entryKindLabel(first.file).toLowerCase()}: ${entryListDetail(refused.map((r) => r.title))} · no role takes it until you release it (tumwater plan|bug --release <n>, or the entry's drawer) or cancel it`,
-      // The action lands the operator on the named entry: open the backlog card on the
-      // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
-      actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
+      actions: openBacklogAction(first),
     });
   }
   // A Needs-review/Needs-replan entry whose held count reached the operator threshold parks
@@ -108,9 +106,7 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       detail: operatorHeld.some((r) => r.file === "bugs") && operatorHeld.some((r) => r.file === "plans")
         ? operatorHeld.map((r) => `${entryKindLabel(r.file)} ${stripEntryStamp(r.title)} (tumwater ${entryKindLabel(r.file).toLowerCase()} --release)`).join("; ")
         : `${entryKindLabel(first.file)} ${entryListDetail(operatorHeld.map((r) => r.title))} — release it with tumwater ${entryKindLabel(first.file).toLowerCase()} --release`,
-      // The action lands the operator on the named entry: open the backlog card on the
-      // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
-      actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
+      actions: openBacklogAction(first),
     });
   }
   // An entry parked by a Needs-review/Needs-replan note (the doctor's `stalled entries` row,
@@ -127,9 +123,7 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       tone: "amber",
       title: `${plural(stalledEntries.length, "backlog entry is stalled", "backlog entries are stalled")} in review`,
       detail: `${entryKindLabel(first.file)} ${entryListDetail(stalledEntries.map((p) => p.title))} — ${first.hold === "needs-replan" ? "a Needs replan note parks it" : "a Needs review note parks it"}; the plan role splits or replans the entry, so one that keeps sitting here means the plan role is not running or keeps deferring`,
-      // The action lands the operator on the named entry: open the backlog card on the
-      // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
-      actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
+      actions: openBacklogAction(first),
     });
   }
   // A broken plan-dependency clause (the doctor's `plan dependencies` rule,
