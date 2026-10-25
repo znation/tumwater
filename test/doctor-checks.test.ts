@@ -16,6 +16,8 @@ import {
   checkOpencodeVersion,
   checkRepo,
 } from "../src/doctor/doctor-checks.js";
+import { checkPrinciples } from "../src/doctor/doctor-principles.js";
+import { PRINCIPLES_MAX_CHARS } from "../src/prompt/principles.js";
 import {
   checkBuild,
   checkBuildCheck,
@@ -480,6 +482,37 @@ test("checkBrief reports a brief file that exists but cannot be read as a failur
   const tumwaterFail = checkBrief(dirTumwater);
   assert.equal(tumwaterFail.level, "fail");
   assert.match(tumwaterFail.detail, /cannot read the project brief "TUMWATER\.md"/);
+});
+
+test("checkPrinciples warns only when the prompt would truncate PRINCIPLES.md", () => {
+  // Over the cap: warn, naming the file, the trimmed count, and the cap.
+  const over = makeRepo();
+  fs.writeFileSync(path.join(over, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS + 1));
+  const overWarn = checkPrinciples(over);
+  assert.equal(overWarn.level, "warn");
+  assert.match(overWarn.detail, /PRINCIPLES\.md/);
+  assert.match(overWarn.detail, /4001/);
+  assert.match(overWarn.detail, /4000/);
+
+  // Exactly the cap: ok, naming the file and the cap.
+  const exact = makeRepo();
+  fs.writeFileSync(path.join(exact, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS));
+  const exactOk = checkPrinciples(exact);
+  assert.equal(exactOk.level, "ok");
+  assert.match(exactOk.detail, /PRINCIPLES\.md/);
+  assert.match(exactOk.detail, /4000/);
+
+  // Excess whitespace only: the check trims like readPrinciples, so still ok.
+  const padded = makeRepo();
+  fs.writeFileSync(
+    path.join(padded, "PRINCIPLES.md"),
+    `\n\n${"x".repeat(PRINCIPLES_MAX_CHARS)}\n\n`,
+  );
+  assert.equal(checkPrinciples(padded).level, "ok");
+
+  // No PRINCIPLES.md at all: ok with the exact degradation readPrinciples already handles.
+  const absent = makeRepo();
+  assert.deepEqual(checkPrinciples(absent), { level: "ok", detail: "no PRINCIPLES.md" });
 });
 
 test("checkStateDir accepts an absent dir and proves writability without leaving a trace", () => {

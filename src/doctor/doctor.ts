@@ -29,6 +29,7 @@ import {
   checkRepo,
   type DoctorReport,
 } from "./doctor-checks.js";
+import { checkPrinciples } from "./doctor-principles.js";
 import {
   checkBuild,
   checkBuildCheck,
@@ -144,6 +145,7 @@ export async function runDoctor(
     { name: "init", run: () => checkInit(root) },
     { name: "config key names", run: () => checkConfigKeyNames(root) },
     { name: "brief", run: () => checkBrief(root) },
+    { name: "principles", run: () => checkPrinciples(root) },
     // New-project bootstrap (plans/work-ratio.md, part 2/2): an active hold reports as ok
     // information, never a warning — a young project is not misconfigured.
     { name: "bootstrap", run: () => checkBootstrap(root, config) },

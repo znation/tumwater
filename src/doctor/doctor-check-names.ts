@@ -12,6 +12,7 @@ export const DOCTOR_CHECK_NAMES = [
   "init",
   "config key names",
   "brief",
+  "principles",
   "bootstrap",
   "pause",
   "quiet hours",

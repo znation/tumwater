@@ -38,6 +38,9 @@ test("runDoctor composes the full report — fixed check order, not-running head
     path.join(root, "README.md"),
     `# p\n\n<!-- tumwater:prompt:start -->\nbrief\n<!-- tumwater:prompt:end -->\n`,
   );
+  // A PRINCIPLES.md under the cap so the principles row reads ok like the rest (its warn
+  // branch has its own test in doctor-checks.test.ts).
+  fs.writeFileSync(path.join(root, "PRINCIPLES.md"), `# Principles\n- keep it simple\n`);
   fs.mkdirSync(path.join(root, "node_modules"));
   fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
   fs.writeFileSync(path.join(root, ".tumwater", "keep.txt"), "x\n");
@@ -47,7 +50,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "node binary", "git binary", "repo", "init", "config key names", "brief", "bootstrap", "pause", "quiet hours", "budget", "provider waits", "maintenance allowance", "provider concurrency", "provider contention", "check contention", "repeated failures", "main's check", "over-cap model", "fallback chain", "models for each tier", "image input", "claude auth", "claude api key", "claude version", "opencode version", "opencode", "backend binary", "claude transcripts", "pi extensions", "state dir", "event log", "notify", "merge lock", "workspaces", "parallel instances", "leftover role branches", "tumwater pins", "disk space", "check", "ci parity", "qa coverage", "role notes", "root install", "flaky checks", "post-merge churn", "claimed bugs", "validation gaps", "plans stuck in Planned", "backlog headings", "backlog archive", "refusals", "stalled entries", "plan dependencies", "stale questions", "stale bugs", "waiting bugs", "regressed fixes", "stale merge-queue entries", "merge-queue files", "post-merge reviews", "stale prompts", "uncommitted backlog", "update", "orphans", "macOS port leak"],
+    ["node", "node binary", "git binary", "repo", "init", "config key names", "brief", "principles", "bootstrap", "pause", "quiet hours", "budget", "provider waits", "maintenance allowance", "provider concurrency", "provider contention", "check contention", "repeated failures", "main's check", "over-cap model", "fallback chain", "models for each tier", "image input", "claude auth", "claude api key", "claude version", "opencode version", "opencode", "backend binary", "claude transcripts", "pi extensions", "state dir", "event log", "notify", "merge lock", "workspaces", "parallel instances", "leftover role branches", "tumwater pins", "disk space", "check", "ci parity", "qa coverage", "role notes", "root install", "flaky checks", "post-merge churn", "claimed bugs", "validation gaps", "plans stuck in Planned", "backlog headings", "backlog archive", "refusals", "stalled entries", "plan dependencies", "stale questions", "stale bugs", "waiting bugs", "regressed fixes", "stale merge-queue entries", "merge-queue files", "post-merge reviews", "stale prompts", "uncommitted backlog", "update", "orphans", "macOS port leak"],
   );
   // funes is absent: the fake PATH has no funes; and the two subscription-window rows are
   // conditional (a ready repo has no claude or codex subscription account, so both are omitted).
