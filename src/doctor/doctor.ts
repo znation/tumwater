@@ -6,6 +6,7 @@ import { checkOrphans } from "./doctor-orphans.js";
 import { checkBudget, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkProviderHolds, checkQuietHours, checkSubscriptionWindow } from "./doctor-holds.js";
 import { checkRootInstall } from "./doctor-install.js";
 import { checkNotify } from "./doctor-notify.js";
+import { checkRoleNotes } from "./doctor-role-notes.js";
 import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
@@ -200,6 +201,10 @@ export async function runDoctor(
     { name: "check", run: () => checkBuildCheck(root, config) },
     { name: "ci parity", run: () => checkCiParity(root, config, Date.now()) },
     { name: "qa coverage", run: () => checkQaCoverage(root, Date.now()) },
+    // The role-notes read gap (plans/role-notes): every operator surface reads a role's notes
+    // file whole while the run prompt truncates it at ROLE_NOTES_MAX_BYTES; this row surfaces the
+    // gap read-only, beside the other per-role observer rows (feedback filing, workspaces).
+    { name: "role notes", run: () => checkRoleNotes(root) },
     { name: "root install", run: () => checkRootInstall(root) },
     // The review gate's flake memory, surfaced read-only: naming which checks the gate kept
     // excusing as flakes (ok/warn only, so a flaky suite never fails a scripted pre-flight).

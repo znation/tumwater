@@ -59,6 +59,7 @@ export const DOCTOR_CHECK_NAMES = [
   "check",
   "ci parity",
   "qa coverage",
+  "role notes",
   "root install",
   "flaky checks",
   "post-merge churn",

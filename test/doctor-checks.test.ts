@@ -59,6 +59,9 @@ import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { CI_PARITY_STALE_MS, recordParity } from "../src/run/ci-parity.js";
 import { QA_COVERAGE_STALE_MS, recordFlow } from "../src/run/qa-coverage.js";
 import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
+import { checkRoleNotes } from "../src/doctor/doctor-role-notes.js";
+import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
+import { roleNotesPath } from "../src/paths.js";
 import { fakeGh } from "./fakes/fake-gh.js";
 import { fakeCodexAppServer } from "./fakes/fake-codex.js";
 import { initProject } from "../src/init/init.js";
@@ -474,6 +477,40 @@ test("checkStateDir fails with the OS error when .tumwater is not writable", () 
     assert.equal(fail.level, "fail");
     assert.match(fail.detail, /not writable/);
   });
+});
+
+test("checkRoleNotes warns only when the prompt would truncate a role's note", () => {
+  const absent = makeRepo();
+  assert.deepEqual(checkRoleNotes(absent), { level: "ok", detail: "no role notes recorded yet" });
+
+  // A notes dir whose only note is exactly at the read bound: ok, naming no role.
+  const okRoot = makeRepo();
+  const notesDir = path.dirname(roleNotesPath(okRoot, "clean"));
+  fs.mkdirSync(notesDir, { recursive: true });
+  fs.writeFileSync(roleNotesPath(okRoot, "clean"), "x".repeat(ROLE_NOTES_MAX_BYTES));
+  const ok = checkRoleNotes(okRoot);
+  assert.equal(ok.level, "ok");
+  assert.doesNotMatch(ok.detail, /clean/);
+
+  // One character over the bound: the row warns, naming the role and the truncated count.
+  fs.writeFileSync(roleNotesPath(okRoot, "planner"), "x".repeat(ROLE_NOTES_MAX_BYTES + 1));
+  const warn = checkRoleNotes(okRoot);
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /exceed the/);
+  assert.match(warn.detail, /planner \(4097\)/);
+  assert.doesNotMatch(warn.detail, /clean/, "an at-cap note is not named");
+
+  // A multibyte note the prompt reads in full stays ok: the read bound is characters, so an
+  // emoji note at exactly the cap (here 2048 emoji = 4096 chars, far more bytes) must not
+  // false-positive the way a byte-counting check would.
+  const emojiRoot = makeRepo();
+  fs.mkdirSync(path.dirname(roleNotesPath(emojiRoot, "feature")), { recursive: true });
+  fs.writeFileSync(roleNotesPath(emojiRoot, "feature"), "\u{1F600}".repeat(ROLE_NOTES_MAX_BYTES / 2));
+  assert.equal(checkRoleNotes(emojiRoot).level, "ok");
+
+  // Non-notes files are ignored rather than counted as roles.
+  fs.writeFileSync(path.join(notesDir, "scratch.txt"), "y".repeat(ROLE_NOTES_MAX_BYTES + 1));
+  assert.equal(checkRoleNotes(okRoot).level, "warn", "still warns on the oversized role note");
 });
 
 test("checkEventLog fails an events.jsonl whose permissions deny reading", { skip: runningAsRoot() }, () => {
