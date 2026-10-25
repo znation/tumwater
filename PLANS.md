@@ -320,4 +320,57 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/gate-notes.test.ts: re-add the `buildMainKnownRedNote` cases part 3a/3 deleted — one line per failing test, the permission sentence, and an empty list rendering nothing — pinned as `buildMainRedNote`'s cases are.
 - test/runner-2.test.ts: a red main's run prompt contains the block naming the failing test; a green main's does not; neither run starts a check (the fake check runner is not called).
 
+### Self-redeploy runs no full check of its own while the main watch verifies main: its target is the watch's newest green commit, and its pre-warm never starts a second check (planned 2026-10-25 by user; evidence: the 2026-10-25 analysis of main's full-check load after Fast merge, AFTER window 2026-10-22 03:24 → 10-24 11:24 PDT plus the 37 h since; independent in behavior of every eligible plan — part 3i/3 edits `src/orchestrator/orchestrator-poll.ts`'s `mergeStartHeld`, not `pollRedeploy`, and part 3k/3 edits `src/baseline/main-baseline.ts`'s module header, not `redeployTarget`; land it before "Check-permit priority, part 2/2" takes its week of `check_wait` data, so that week does not measure this waste; touches src/baseline/main-baseline.ts src/orchestrator/orchestrator-poll.ts src/redeploy/redeploy-probes.ts docs/invariants.md docs/how-it-works.md and their tests)
+
+**Goal.** Since the Fast merge defaults went live, nothing seeds main's verdict cache at merge time, so the full suite on main runs after the merge. Two pollers ran it, each on whatever head it saw. One is the main watch (`src/baseline/main-watch.ts`, single-flight). The other is self-redeploy's cooldown pre-warm (`PrewarmProbes.prewarm`, `src/redeploy/redeploy-probes.ts`). The pre-warm starts `mainIsGreen(head)` on every new head, even while its previous check is still running.
+
+In the 56 h AFTER window there were 437 full `baseline` checks (26.1 h); the watch's own runs were 147 (7.8 h). Self-redeploy ran 285:
+- 188 (10.7 h) were runs the watch shared in flight or read from the cache;
+- 97 (7.3 h, 28% of all full-check time) produced a verdict nobody used;
+- 202 overlapped another pre-warm run.
+
+Since Saturday the unused share is 57 of 127 runs (5.3 of 10.1 h, 52%). Two or more full suites on main ran at once for 12% of AFTER and 22% since Saturday. 105 of AFTER's 251 `check_wait`s (4.3 of 10.9 h) waited while two or more "main baseline" checks held permits.
+
+Each pre-warm check also hard-resets the shared `_main` mirror (`ensureDetachedWorktree`) to its head. An earlier pre-warm suite may still be running there or waiting for a permit, keyed to the sha it read before the reset. So a verdict can be recorded under a commit whose tree it did not test. plans/fast-merge.md part 5 already says the target is "the newest first-parent commit on main with a green full-check verdict", which needs no check of the redeployer's own. Make the code do that whenever the watch verifies main. Never re-point the mirror under a running pre-warm step.
+
+**Approach.**
+- src/baseline/main-baseline.ts, `redeployTarget(wt, tip, buildSha, watched = false)`:
+  - With `watched` true, walk `tip`'s first-parent history (at most REDEPLOY_WALK_MAX) down to `buildSha`. Return the first commit whose cached verdict is green, observed or inherited.
+  - With no green above the build, return `buildSha` itself. `buildStaleness` then reads it as not stale, so no episode, hold or pre-warm starts until the watch calls a newer commit green.
+  - A cached red is walked past, never targeted. The watch's red has already had its confirming re-run.
+  - A build that is not a first-parent ancestor of `tip` keeps today's answer (`tip`, which the redeployer checks), as does `watched` false.
+  - Every target `watched` picks has a cached green, so `mainIsGreen` on it is a cache hit and the redeployer starts no suite.
+  - Update the doc comment: the watch supplies the verdicts and the redeployer only reads them.
+- src/baseline/main-baseline.ts: export `watchVerifiesMain(root, config): boolean`. It returns `detectBuildCheck(root, config) !== null && mergeCommandOf(config) !== undefined`: the configs where no merge seeds a green (`watchedBaseline`'s doc) and the watch has a check to run.
+- src/orchestrator/orchestrator-poll.ts, `pollRedeploy`:
+  - Pass `watchVerifiesMain(ctx.root, liveConfig)` as `redeployTarget`'s `watched`.
+  - A project with no declared check, or with `check.mergeCommand: ""` (full check in the lock), keeps today's target.
+- src/redeploy/redeploy-probes.ts, `PrewarmProbes.prewarm`:
+  - When `head` differs from the probe's head while its green check or its compile is still running (`!done`), return without resetting, so the mirror is not re-pointed under it.
+  - The next poll after both settle takes the newest head as today.
+  - Say so in the class comment, beside "the mirror worktree both run in must not serve two checks at once".
+- docs/invariants.md INV-K1:
+  - Guarantee: while the main watch verifies main (a declared check and a `check.mergeCommand` in effect), the target always carries a cached green and is never an unchecked tip. With no green newer than the build, nothing is targeted. Outside that mode an unchecked tip stays the target and the redeployer checks it.
+  - Binds: `src/orchestrator/orchestrator-poll.ts` (`pollRedeploy`), not `src/orchestrator/orchestrator.ts`, which no longer calls it.
+  - Pinned by: add the new tests' names.
+- docs/how-it-works.md "## Updates": after "The commit it builds is main's newest one whose full check passed…", add one sentence. With the main watch on (the default whenever `check.gateCommand` is set), that verdict is the watch's: the update waits for the watch to call a newer commit green and runs no check of its own.
+
+**Files touched.** src/baseline/main-baseline.ts src/orchestrator/orchestrator-poll.ts src/redeploy/redeploy-probes.ts docs/invariants.md docs/how-it-works.md test/redeploy-wiring.test.ts test/redeploy-prewarm.test.ts
+
+**Acceptance criteria.**
+- With `watched` true and main A (build) → B (cached green) → C (no verdict), `redeployTarget` returns B and `mainIsGreen` on B runs no check. With C cached red, it returns B. With no green above A, it returns A, and `buildStaleness(A, A)` reads not stale.
+- With `watched` false, every existing `redeployTarget` case answers exactly as today, including "an unchecked tip is the target (the redeployer checks it)".
+- `watchVerifiesMain` is true for a config with a declared check and `check.gateCommand` set and no `check.mergeCommand`. It is false for `check.mergeCommand: ""` and for a project with no declared check. `pollRedeploy` passes its answer as `watched`.
+- A pre-warm whose head moves while its green check (or compile) is unsettled starts no second `mainGreen` (or `compile`) until the first settles, then runs the newest head.
+- After deploy, almost every `baseline` `build_check` from source `tumwater` settles within 5 s of a `main_check` from the watch with `durationMs` > 0. The exception is the redeployer's rare witness check on the running build (`buildRed`, during a cooldown). Over 56 h of events, full-check runs no `main_check` used go from 97 to about 0.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/redeploy-wiring.test.ts:
+  - add `redeployTarget in watch mode targets the newest cached green and never an unchecked tip`: the A → B → C cases above, B seeded with `noteGreenBaseline`, C left unchecked and then cached red. Assert no check script ran (a manifest whose `test` script fails, so any run would turn up red).
+  - add `redeployTarget in watch mode targets the build itself when nothing newer is green`.
+  - add `watchVerifiesMain is true only with a declared check and a merge command in effect`: a gate command with no `mergeCommand` key gives true; `mergeCommand: ""` gives false; no declared check gives false.
+  - The three existing `redeployTarget` tests stay as they are, pinning `watched` false.
+- test/redeploy-prewarm.test.ts: add `a head that moves while the pre-warm's green check runs starts no second check until it settles`. Use a fake `mainGreen` returning a held promise and count its calls. Then resolve it, poll on the newest head, and assert exactly one more call for that head.
+
 ## Done
