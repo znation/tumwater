@@ -73,17 +73,23 @@ export interface StatusSnapshot {
     custom: boolean;
     /** The selector this role's pi runs resolve at (`provider/id[:thinking]`, the
      * configForRole view) — present whenever a model resolves, both for a single string
-     * `model` and under a tier map. The model seam tier (roleSeamTier) is a tier-map-only
-     * affordance (model-tiers.md part 7a, "Observability"): it stays absent with a single
-     * string model, where every role rides the same pair. Fresh per poll, like `custom`. */
+     * `model` and under a tier map. When neither a provider nor a model resolves — an
+     * opencode role with no `model`, or a pi role whose own saved default is unreadable —
+     * `model` instead carries that backend's own-default label (`opencode default` /
+     * `pi default`, backendDefaultLabel), the same wording `tumwater role <id>`'s Model line
+     * prints (docs/invariants.md INV-A7). The model seam tier (roleSeamTier) is a
+     * tier-map-only affordance (model-tiers.md part 7a, "Observability"): it stays absent
+     * with a single string model, where every role rides the same pair. Fresh per poll,
+     * like `custom`. */
     modelTier?: ModelTier;
     model?: string;
     /** True when this row's `model` names pi's own saved default (read from pi's settings.json
      * beside the models catalog — see src/pi/pi-settings.ts), not a model `tumwater.json`
      * resolved: `tumwater.json` names no model and the seam routes to pi, so the row shows
      * the model pi actually starts on. `model` is set in exactly this case; every other row
-     * carries a config-resolved selector and no `modelFromPi`. A tier-map row never carries
-     * either the flag or its default, since a tier map always resolves a model. */
+     * carries a config-resolved selector or a backend-default label and no `modelFromPi`.
+     * A tier-map row never carries either the flag or its default, since a tier map always
+     * resolves a model. */
     modelFromPi?: true;
     /** While a model-fallback episode is active (PLANS.md "Model failure fallback"): the
      * tier-resolved fallback pair this role's agent runs use, when the episode began, and the

@@ -4,7 +4,7 @@ import { compactTokens, usd } from "../text/format.js";
 import { clockHm, formatAge, formatTimestamp, humanAgo, nextRunPhrase, secondsUntil } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import { windowLabel } from "../agent/subscription-account.js";
-import { backendDisplayName } from "../agent/backend-traits.js";
+import { backendDefaultLabel, backendDisplayName } from "../agent/backend-traits.js";
 import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
@@ -112,9 +112,10 @@ function modelPair(provider: string | undefined, model: string | undefined): str
 }
 
 /** The backend's own-default label when no model resolves: `<agent> default` — pi's
- * historical `pi default` for the pi backend, `claude default` for claude (part 4f/7). */
+ * historical `pi default` for the pi backend, `claude default` for claude (part 4f/7),
+ * shared with the status rows through `backendDefaultLabel`. */
 function backendDefault(p: RoleViewPayload): string {
-  return `${p.backend !== "pi" ? p.backend : "pi"} default`;
+  return backendDefaultLabel(p.backend);
 }
 
 /** The provider/model wiring as one readable token: `provider/model` when both resolve,

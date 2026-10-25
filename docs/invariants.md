@@ -116,6 +116,23 @@ queue's rows (`src/merge/merge-queue-render.ts`) are indented and carry per-row 
 "numberedList returns the empty fallback verbatim for no items"; `test/operator-intent.test.ts` —
 "renderWakeList numbers wakes and words the empty case".
 
+### INV-A7: a seam with no model names its backend default through one label
+
+**Guarantee.** `backendDefaultLabel` is the one home of the `<backend> default` wording a seam
+without a provider or model prints: `backendDefaultLabel("pi")` (and an unknown or undefined id,
+which reads as pi) returns `pi default`, any other backend `— claude`, `opencode`, `codex` — returns
+`<backend> default`. `tumwater role <id>`'s Model line (`role-render.ts`'s `backendDefault`) and
+`collectRoleRows`'s no-model row both read it, so a role that resolves neither half reads the
+same name on both surfaces instead of one surface showing an empty model cell.
+
+**Binds.** `src/agent/backend-traits.ts` (`backendDefaultLabel`), `src/roles/role-render.ts`
+(`backendDefault`), `src/status/status-roles.ts` (`collectRoleRows`).
+
+**Pinned by.** `test/backend-traits.test.ts` — "backendDefaultLabel names pi and non-pi seams";
+`test/status-data-models.test.ts` — "a role that resolves no provider or model names its backend
+default" (an opencode role without a model carries `opencode default`, a pi seam with no readable
+pi default carries `pi default`, and the readable-pi-default case keeps `modelFromPi`).
+
 ## Reader and writer over a persisted or appended file
 
 A file that one process appends to or persists and another reads has two ends to agree on: the

@@ -82,3 +82,16 @@ export function modelLabel(
 export function backendDisplayName(id: string): string {
   return id.charAt(0).toUpperCase() + id.slice(1);
 }
+
+/** A seam's own-default label when neither a provider nor a model resolves:
+ * `<backend> default` — pi's historical `pi default` for the pi backend (and an unknown id,
+ * which reads as pi), `claude default` for claude, and so on. The one home of the label
+ * `role-render.ts`'s Model line and the status rows share, so the two surfaces cannot
+ * disagree about what a seam without a model is named. */
+export function backendDefaultLabel(backend: string | undefined): string {
+  // Only claude, opencode and codex carry their own `<backend> default`; pi, an absent
+  // backend and any unregistered id (which reads as pi) all carry pi's historical `pi
+  // default`, matching streamsToolOutput's reads-as-pi window.
+  if (backend === "claude" || backend === "opencode" || backend === "codex") return `${backend} default`;
+  return "pi default";
+}

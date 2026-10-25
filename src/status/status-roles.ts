@@ -18,6 +18,7 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { isJsonObject } from "../files/json-object.js";
 import { runnerStateForPoll } from "./status-polls.js";
 import { roleImageInfo, seamImageLabel } from "../agent/image-input.js";
+import { backendDefaultLabel } from "../agent/backend-traits.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { imageProbeEntryFresh, readImageProbeCache } from "../doctor/image-probe.js";
 
@@ -134,6 +135,16 @@ export function collectRoleRows(
             modelFromPi: true as const,
           }
         : {}),
+      // A seam that resolves neither a provider nor a model (an opencode role with no
+      // `model`, or a pi role when pi's own settings hold no readable default) names its
+      // backend's own default — the same label `tumwater role <id>`'s Model line prints, so
+      // the two surfaces cannot disagree (docs/invariants.md "Cross-surface agreement").
+      // `eff.agent` is always set (`withModelOverrides` defaults it to `"pi"`); a claude or
+      // codex seam already carries routeModel's tier default in `eff.model`, and the
+      // `modelFromPi` branch above still wins when pi's default is readable.
+      ...(modelFromPi || eff.provider !== undefined || eff.model !== undefined
+        ? {}
+        : { model: backendDefaultLabel(eff.agent) }),
       ...(isJsonObject(cfg.model) ? { modelTier: roleSeamTier(cfg, r) } : {}),
       ...(episode !== null ? { fallback: episode } : {}),
       ...(slot ? { slot: path.basename(slot.dir), slotPinned: pinned !== undefined } : {}),

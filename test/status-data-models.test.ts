@@ -216,6 +216,30 @@ test("modelFromPi stays absent when a model, agent or provider resolves", async 
   assert.equal(provOnly.model, undefined);
 });
 
+test("a role that resolves no provider or model names its backend default", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "backend default rows");
+  // A models dir with no settings.json, so pi's own default is unreadable.
+  const dir = tmpdir("status-backend-default-");
+  writeModelsFile(dir, MODELS_JSON);
+  const modelsPath = path.join(dir, "models.json");
+
+  // An opencode role with no model/provider fills no tier default, so the row names the
+  // backend's own default label — the same string `tumwater role <id>`'s Model line prints
+  // (docs/invariants.md "Cross-surface agreement").
+  writeConfig(repo, { roles: { clean: { backend: "opencode" } } });
+  const opencode = snapshot(repo, modelsPath).roles.find((l) => l.role === "clean")!;
+  assert.equal(opencode.model, "opencode default");
+  assert.equal(opencode.modelFromPi, undefined);
+
+  // A pi seam with no readable pi default likewise names `pi default`, not a formatted
+  // selector, and no modelFromPi marker.
+  writeConfig(repo, {});
+  const pi = snapshot(repo, modelsPath).roles.find((l) => l.role === "feature")!;
+  assert.equal(pi.model, "pi default");
+  assert.equal(pi.modelFromPi, undefined);
+});
+
 test("statusPayload ships modelFromPi beside the model it names", async () => {
   const repo = makeRepo();
   await initProject(repo, "pi default payload");

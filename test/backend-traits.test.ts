@@ -7,6 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  backendDefaultLabel,
   modelLabel,
   reservedPassthroughFlag,
   streamsToolOutput,
@@ -67,4 +68,15 @@ test("reservedPassthroughFlag keeps each backend's validation reason", () => {
   assert.equal(reservedPassthroughFlag("codex", "--sandbox"), "it is managed by tumwater");
   assert.equal(reservedPassthroughFlag("codex", "--json"), "it is managed by tumwater");
   assert.equal(reservedPassthroughFlag("codex", "--strict-config"), undefined, "an unreserved codex flag is free");
+});
+
+test("backendDefaultLabel names pi and non-pi seams", () => {
+  // pi (and an unknown/undefined id, which reads as pi) carries the historical `pi default`;
+  // claude, opencode and codex carry their own backend's label.
+  assert.equal(backendDefaultLabel("pi"), "pi default");
+  assert.equal(backendDefaultLabel(undefined), "pi default");
+  assert.equal(backendDefaultLabel("unregistered"), "pi default", "an unknown id reads as pi");
+  assert.equal(backendDefaultLabel("claude"), "claude default");
+  assert.equal(backendDefaultLabel("opencode"), "opencode default");
+  assert.equal(backendDefaultLabel("codex"), "codex default");
 });

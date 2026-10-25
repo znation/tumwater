@@ -24,15 +24,20 @@ import { setEnv } from "./helpers/env.js";
 
 test("runTui renders the team table and an empty activity pane on start", async () => {
   const repo = await makeTuiRepo();
+  // A width that fits the role name and its model-default suffix (the same 120 default a
+  // missing window size degrades to); the 100-col startTui default clips `clean (pi default)`
+  // to `clea…` for this no-model role.
   await withTui(repo, async (tui) => {
     const frame = tui.lastFrame();
     assert.match(frame, /\[Activity\]/); // default view: recent events
     assert.match(frame, /\(no events yet\)/);
     assert.equal(tui.lines().at(-1), "director ›"); // empty prompt line at the bottom, addressed to the director
-    // The one enabled role is listed as stopped (the orchestrator is not running).
+    // The one enabled role is listed as stopped (the orchestrator is not running), naming
+    // its backend default in the model cell (docs/invariants.md INV-A7).
     assert.match(frame, /clean/);
+    assert.match(frame, /pi default/);
     assert.match(frame, /stopped/);
-  });
+  }, { columns: 120 });
 });
 
 // A pty whose window size was never set reports 0×0 (macOS `script`, some CI pty
