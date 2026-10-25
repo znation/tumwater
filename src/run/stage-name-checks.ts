@@ -14,6 +14,7 @@ import {
   MAX_STALE_HITS,
   MAX_STALE_PATHS,
   cappedList,
+  gitGrepHits,
   isRecordProse,
   standalonePathIndexes,
 } from "./stage-checks-shared.js";
@@ -89,11 +90,7 @@ export async function staleNameFindings(wt: string, diff: string): Promise<strin
   if (candidates.length === 0) return [];
   const out = await gitTry(wt, "grep", "-n", "-w", "-I", "--cached", ...candidates.flatMap((n) => ["-e", n]));
   if (!out) return [];
-  const lines: { file: string; no: string; text: string }[] = [];
-  for (const line of out.split("\n")) {
-    const m = /^([^:]+):(\d+):(.*)$/.exec(line);
-    if (m) lines.push({ file: m[1]!, no: m[2]!, text: m[3] ?? "" });
-  }
+  const lines = gitGrepHits(out);
   const findings: string[] = [];
   for (const name of candidates) {
     if (findings.length >= MAX_STALE_PATHS) break;
@@ -157,11 +154,7 @@ export async function movedNameFindings(wt: string, diff: string): Promise<strin
   if (picked.length === 0) return [];
   const out = await gitTry(wt, "grep", "-n", "-w", "-I", "--cached", ...picked.flatMap((m) => ["-e", m.name]));
   if (!out) return [];
-  const lines: { file: string; no: string; text: string }[] = [];
-  for (const line of out.split("\n")) {
-    const m = /^([^:]+):(\d+):(.*)$/.exec(line);
-    if (m) lines.push({ file: m[1]!, no: m[2]!, text: m[3] ?? "" });
-  }
+  const lines = gitGrepHits(out);
   const findings: string[] = [];
   for (const { name, from, to } of picked) {
     if (findings.length >= MAX_STALE_PATHS) break;

@@ -18,6 +18,7 @@ import {
   MAX_STALE_PATHS,
   cappedList,
   diffPlusPath,
+  gitGrepHits,
   hasStandalonePathOccurrence,
   isRecordProse,
 } from "./stage-checks-shared.js";
@@ -133,11 +134,10 @@ async function movedSourceFindings(
     const out = await gitTry(wt, "grep", "-n", "-F", "-I", "--cached", "-e", e.path);
     if (!out) continue;
     const hits: string[] = [];
-    for (const line of out.split("\n")) {
-      const m = /^([^:]+):(\d+):(.*)$/.exec(line);
-      if (!m || m[1] === e.path || isRecordProse(m[1]!)) continue;
-      if (!hasStandalonePathOccurrence(m[3] ?? "", e.path)) continue;
-      hits.push(`${m[1]}:${m[2]}`);
+    for (const { file, no, text } of gitGrepHits(out)) {
+      if (file === e.path || isRecordProse(file)) continue;
+      if (!hasStandalonePathOccurrence(text, e.path)) continue;
+      hits.push(`${file}:${no}`);
       if (hits.length >= MAX_STALE_HITS) break;
     }
     if (hits.length === 0) continue;
@@ -169,10 +169,9 @@ async function staleReferenceFindings(
     const out = await gitTry(wt, "grep", "-n", "-F", "-I", "--cached", "-e", old);
     if (!out) continue;
     const hits: string[] = [];
-    for (const line of out.split("\n")) {
-      const m = /^([^:]+):(\d+):(.*)$/.exec(line);
-      if (!m || isRecordProse(m[1]!) || !hasStandalonePathOccurrence(m[3] ?? "", old)) continue;
-      hits.push(`${m[1]}:${m[2]}`);
+    for (const { file, no, text } of gitGrepHits(out)) {
+      if (isRecordProse(file) || !hasStandalonePathOccurrence(text, old)) continue;
+      hits.push(`${file}:${no}`);
       if (hits.length >= MAX_STALE_HITS) break;
     }
     if (hits.length === 0) continue;

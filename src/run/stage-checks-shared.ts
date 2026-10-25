@@ -20,6 +20,21 @@ export function diffPlusPath(line: string): string {
   return line.slice(4).replace(/^b\//, "");
 }
 
+/** Parse `git grep -n` stage output into `file:line:text` hits. `git grep -n` prints one
+ * `path:line:text` per match, and the four name/path checks (stage-name-checks.ts's
+ * staleNameFindings and movedNameFindings, stage-path-checks.ts's movedSourceFindings and
+ * staleReferenceFindings) all read that grammar to turn the raw output into individual hits;
+ * malformed (or trailing empty) lines are dropped. Callers then filter the hits and keep the
+ * `file:no` coordinate they want. */
+export function gitGrepHits(out: string): { file: string; no: string; text: string }[] {
+  const hits: { file: string; no: string; text: string }[] = [];
+  for (const line of out.split("\n")) {
+    const m = /^([^:]+):(\d+):(.*)$/.exec(line);
+    if (m) hits.push({ file: m[1]!, no: m[2]!, text: m[3] ?? "" });
+  }
+  return hits;
+}
+
 /** True for record prose: a backlog file (BACKLOG_FILES: PLANS.md, BUGS.md, QUESTIONS.md and the
  * finished-entry archives) or a markdown design doc under `plans/`. They record history and
  * describe planned work, so a path there is correct as written even when it is absent from the
