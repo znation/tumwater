@@ -132,6 +132,19 @@ function requireKnownRole(root: string, id: string): void {
   if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
 }
 
+/** Refuse the two mistakes a per-role config write must reject up front: handing both a
+ * set flag and its clear twin (e.g. `--model` with `--clear-model`), and passing --json,
+ * which only the read/render path honors. `setFlag`/`clearFlag` are the exact spellings the
+ * refusal names (the clear twin is not always `--clear` + the set flag — `--notes-file`'s
+ * twin is `--clear-notes`), and `writeNoun` is the "<a|an> X write" phrase the --json
+ * refusal needs. Every set/clear write branch opens with the same two-line prelude, so
+ * this keeps it in one place. */
+function rejectSetClearAndJson(rest: string[], setFlag: string, clearFlag: string, writeNoun: string): void {
+  if (rest.includes(setFlag) && rest.includes(clearFlag))
+    fail(`give ${clearFlag} or ${setFlag}, not both`);
+  if (rest.includes("--json")) fail(`--json does not apply to ${writeNoun}`);
+}
+
 /** The config-key write the seven per-role hold branches (quiet hours, daily cap, min run
  * interval, provider, model, thinking and backend) share: with `clear`, or an empty typed
  * value, unset `key` under `base`; else set it. `serialize` shapes the value `setConfigKey`
@@ -247,8 +260,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (writes.length > 1)
     fail(`${writes.join(" and ")} writes cannot share one invocation`);
   if (notesWrite) {
-    if (clear && rest.includes("--notes-file")) fail("give --clear-notes or --notes-file, not both");
-    if (rest.includes("--json")) fail("--json does not apply to a notes write");
+    rejectSetClearAndJson(rest, "--notes-file", "--clear-notes", "a notes write");
     if (id === DIRECTOR_ROLE) fail("the director has no notes");
     requireKnownRole(root, id);
     const text = clear ? "" : readPromptFileArg(notesFile || fail("--notes-file needs a path"));
@@ -265,8 +277,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // enforces the 4096-char cap and the write is atomic. The director is allowed here (its
   // override reaches its own runs), unlike the notes branch's director refusal.
   if (instructionsWrite) {
-    if (clearInst && rest.includes("--instructions-file")) fail("give --clear-instructions or --instructions-file, not both");
-    if (rest.includes("--json")) fail("--json does not apply to an instructions write");
+    rejectSetClearAndJson(rest, "--instructions-file", "--clear-instructions", "an instructions write");
     requireKnownRole(root, id);
     const base = baseRoleOf(id);
     if (clearInst) {
@@ -288,8 +299,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // The director is exempt — its quietHoursPerRole.director entry is inert (the gate and
   // doctor both exempt it), like the notes branch's director refusal.
   if (quietWrite) {
-    if (clearQuiet && rest.includes("--quiet-hours")) fail("give --clear-quiet-hours or --quiet-hours, not both");
-    if (rest.includes("--json")) fail("--json does not apply to a quiet-hours write");
+    rejectSetClearAndJson(rest, "--quiet-hours", "--clear-quiet-hours", "a quiet-hours write");
     requireKnownRole(root, id);
     if (id === DIRECTOR_ROLE) fail("the director has no quiet hours");
     const base = baseRoleOf(id);
@@ -305,8 +315,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // atomic. The director is exempt — it has no cap, like the notes and quiet-hours branches'
   // director refusals.
   if (capWrite) {
-    if (clearCap && rest.includes("--cap")) fail("give --clear-cap or --cap, not both");
-    if (rest.includes("--json")) fail("--json does not apply to a cap write");
+    rejectSetClearAndJson(rest, "--cap", "--clear-cap", "a cap write");
     requireKnownRole(root, id);
     if (id === DIRECTOR_ROLE) fail("the director has no daily cap");
     const base = baseRoleOf(id);
@@ -334,8 +343,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // write is atomic. Unlike the notes/quiet-hours/cap branches there is no director refusal:
   // the director runs on the same clock.
   if (intervalWrite) {
-    if (clearInterval && rest.includes("--min-run-interval")) fail("give --clear-min-run-interval or --min-run-interval, not both");
-    if (rest.includes("--json")) fail("--json does not apply to a min-run-interval write");
+    rejectSetClearAndJson(rest, "--min-run-interval", "--clear-min-run-interval", "a min-run-interval write");
     requireKnownRole(root, id);
     const base = baseRoleOf(id);
     const cfgKey = `roles.${base}.minRunIntervalSeconds`;
@@ -362,8 +370,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // validateConfig's `!INSTANCE_ROLES.has(id)` branch answers for the director and every
   // custom role, and an unset/empty value clears the key.
   if (instancesWrite) {
-    if (clearInstances && rest.includes("--instances")) fail("give --clear-instances or --instances, not both");
-    if (rest.includes("--json")) fail("--json does not apply to an instances write");
+    rejectSetClearAndJson(rest, "--instances", "--clear-instances", "an instances write");
     const loaded = loadConfigSafe(root);
     const cfg = loaded.config ?? defaultConfig();
     if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
@@ -398,8 +405,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // shape) owns validation (model accepts a tier name; thinking must be a THINKING_LEVELS level)
   // and each write is atomic. No director refusal: accepted exactly as --min-run-interval is.
   if (providerWrite) {
-    if (clearProvider && rest.includes("--provider")) fail("give --clear-provider or --provider, not both");
-    if (rest.includes("--json")) fail("--json does not apply to a provider write");
+    rejectSetClearAndJson(rest, "--provider", "--clear-provider", "a provider write");
     requireKnownRole(root, id);
     const base = baseRoleOf(id);
     const provider = flagValue(rest, "--provider") ?? "";
@@ -407,8 +413,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     return;
   }
   if (modelWrite) {
-    if (clearModel && rest.includes("--model")) fail("give --clear-model or --model, not both");
-    if (rest.includes("--json")) fail("--json does not apply to a model write");
+    rejectSetClearAndJson(rest, "--model", "--clear-model", "a model write");
     requireKnownRole(root, id);
     const base = baseRoleOf(id);
     const model = flagValue(rest, "--model") ?? "";
@@ -416,8 +421,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     return;
   }
   if (thinkingWrite) {
-    if (clearThinking && rest.includes("--thinking")) fail("give --clear-thinking or --thinking, not both");
-    if (rest.includes("--json")) fail("--json does not apply to a thinking write");
+    rejectSetClearAndJson(rest, "--thinking", "--clear-thinking", "a thinking write");
     requireKnownRole(root, id);
     const base = baseRoleOf(id);
     const level = flagValue(rest, "--thinking") ?? "";
@@ -430,8 +434,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // (rejecting an unknown one, and a `model` that cannot pair with the named backend) and
   // the write stays atomic. An instance id writes its base role's key, like the others.
   if (backendWrite) {
-    if (clearBackend && rest.includes("--backend")) fail("give --clear-backend or --backend, not both");
-    if (rest.includes("--json")) fail("--json does not apply to a backend write");
+    rejectSetClearAndJson(rest, "--backend", "--clear-backend", "a backend write");
     requireKnownRole(root, id);
     const base = baseRoleOf(id);
     const backend = flagValue(rest, "--backend") ?? "";
