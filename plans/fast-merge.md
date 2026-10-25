@@ -341,7 +341,7 @@ Added 2026-10-21 · requested by user · series "Fast merge guardrails", parts 1
 
 The gates this series replaced failed loudly: a red gate stopped merges. The machinery that runs
 after the merge can fail quietly while merges go on: main stays red, a revert blames the wrong
-commit, or quarantine grows and hides real failures. Four permanent warnings make that visible.
+commit, or quarantine grows and hides real failures. Three permanent warnings make that visible (G2 is superseded below).
 They extend existing doctor rows and add no row and no config key. Measuring the series' effect
 before and after is a one-off job done by hand, not part of this.
 
@@ -413,7 +413,7 @@ deleted; only G1 and G3 remain live in `src/baseline/main-guardrails.ts`.
 - The row's ok detail adds how far back the kept history reaches (the oldest generation's first
   event), and the report header's rotation phrase (eventsRotationLabel) says how many are kept.
 
-**Where the warnings show.** G1–G3 live in one module, src/baseline/main-guardrails.ts, read
+**Where the warnings show.** G1 and G3 live in one module, src/baseline/main-guardrails.ts, read
 synchronously from the event log and quarantine.json, so every surface words them the same:
 
 - `tumwater doctor`, the TUI Health pane and the dashboard's doctor view, through the rows above;
