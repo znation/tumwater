@@ -49,7 +49,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
         // decoration.
         const lead = stale ? restartButton(icon("refresh")) : icon("refresh");
         rows += row(stale ? (d.build.restartBlocked ? "amber" : "blue") : "", lead,
-          "Version <span class='mono'>" + esc(shortSha(d.build.sha)) + "</span>" + (stale ? " · " + esc(d.build.aheadCommits || 0) + " behind" : ""),
+          "Version <span class='mono'>" + esc(shortSha(d.build.sha)) + "</span>" + (stale ? " · " + esc(plural(d.build.aheadCommits || 0, "commit")) + " behind" : ""),
           localizeInstants(("Running version" + (d.buildBadge || "").replace(/^, build/, "")).trim()));
       }
       if (d.mainCheck) {

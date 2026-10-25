@@ -15,7 +15,7 @@ function sidebarScope(): { renderSidebar: (d: unknown) => void; panels: Record<s
     {
       offline: false,
       $: () => ({ textContent: "" }),
-      plural: (n: number, word: string) => `${n} ${word}`,
+      plural: (n: number, word: string) => `${n} ${n === 1 ? word : word + "s"}`,
       icon: iconStub,
       shortSha: (s: string) => String(s).slice(0, 8),
       localizeInstants: (s: string) => s,
@@ -95,8 +95,15 @@ test("the Build row's text and behind-count are unchanged in both cases", () => 
     pid: 123,
     build: { sha: "a".repeat(40), stale: true, aheadCommits: 3 },
   });
-  assert.match(panels.statuschips!, /Version <span class='mono'>aaaaaaaa<\/span> · 3 behind/,
-    "the stale row keeps its text and behind-count");
+  assert.match(panels.statuschips!, /Version <span class='mono'>aaaaaaaa<\/span> · 3 commits behind/,
+    "the stale row keeps its text and plural behind-count");
+  renderSidebar({
+    running: true,
+    pid: 123,
+    build: { sha: "a".repeat(40), stale: true, aheadCommits: 1 },
+  });
+  assert.match(panels.statuschips!, /· 1 commit behind/,
+    "a single commit behind reads singular, matching badges.ts");
   renderSidebar({
     running: true,
     pid: 123,
