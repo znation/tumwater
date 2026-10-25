@@ -157,8 +157,8 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     // actually exists; an all-free subscription-only team (only and free, no windows) falls
     // through to the "Free models" spend card below so it never renders an empty window card.
     if (only && blocks && blocks.length > 0) {
-      return "<div class='side-card' title='Claude.ai subscription usage windows — a rejected window pauses claude model jobs until it resets'>" +
-        "<span class='side-card-label'>" + icon("clock") + "Claude window</span>" + windowLinesHtml(blocks, only, chain) + "</div>";
+      return "<div class='side-card' title='Subscription usage windows — a rejected window pauses model jobs on that backend until it resets'>" +
+        "<span class='side-card-label'>" + icon("clock") + "subscription window</span>" + windowLinesHtml(blocks, only, chain) + "</div>";
     }
     if (b.free) {
       return "<div class='side-card' title='Every model the team can use is cost n/a, so there is nothing to cap'>" +

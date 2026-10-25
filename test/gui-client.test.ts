@@ -514,12 +514,12 @@ test("the spend card renders the subscription window in place of or beside the d
   };
   const only = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false, fallback: null }, [block], true);
   assert.doesNotMatch(only, /id='budgetbadge'/, "a subscription-only team has no cap editor");
-  assert.match(only, /Claude window/);
+  assert.match(only, /subscription window/);
   assert.match(only, /Claude 5h · 64% · resets in 4h 12m/);
 
   const onlyFree = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: true, fallback: null }, [], true);
   assert.match(onlyFree, /Free models/, "an all-free subscription-only team still reads the Free models spend card, not an empty window card");
-  assert.doesNotMatch(onlyFree, /Claude window/, "no window block, no empty window card");
+  assert.doesNotMatch(onlyFree, /subscription window/, "no window block, no empty window card");
 
   const mixed = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, [block], false);
   assert.match(mixed, /id='budgetbadge'/, "a mixed team keeps the spend editor");
