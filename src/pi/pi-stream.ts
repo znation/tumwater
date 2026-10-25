@@ -454,17 +454,7 @@ export class PiStreamParser {
   }
 
   private feedLine(line: string): void {
-    // Streaming deltas are ~72% of log bytes in observed runs. pi's JSON protocol strips the
-    // cumulative message snapshot from them, so the delta event is all they carry — and a
-    // content-free one (a zombie stream's keepalive, or the pre-strip shape) proves nothing:
-    // it must not reset the hang watchdog. A content-bearing delta is real generation, and
-    // counting it is what keeps a long thinking block on a slow model from being quiet-killed
-    // as hung (BUGS.md 2026-10-17) — the same content rule tool_execution_update gets below.
-    // Nothing else in this parser acts on the type, so the line is done either way.
-    if (piEventType(line) === "message_update") {
-      if (messageUpdateHasContent(parseJsonObject(line))) this.progressCount += 1;
-      return;
-    }
+    if (this.applyMessageUpdate(line)) return;
 
     // pi's stream is one JSON object per line: a torn, non-JSON, or valid-JSON-scalar line is
     // noise, not an event — parseJsonObject reads it as no data (the same policy parseEventLine
@@ -474,6 +464,36 @@ export class PiStreamParser {
     const parsed = parseJsonObject(line);
     if (!parsed) return; // Non-JSON noise on stdout; ignore.
     const event = parsed as PiStreamEvent;
+    this.applyErrorTexts(event);
+    this.applyRunCost(event);
+    this.applyRunUsage(event);
+    // A canonical rate_limit event carries an account-window reading: collect the newest per
+    // type, note any overage, and treat a rejected window as the transient rate limit it is.
+    if (event.type === "rate_limit") this.applyRateLimit(event);
+    if (event.type === "billing" && (event.billing === "subscription" || event.billing === "api"))
+      this.billing = event.billing;
+    this.countProgress(event);
+    this.applyToolExecution(event);
+    if (event.type !== "message_end" || event.message?.role !== "assistant") return;
+    this.applyAssistantMessage(event.message);
+  }
+
+  // Streaming deltas are ~72% of log bytes in observed runs. pi's JSON protocol strips the
+  // cumulative message snapshot from them, so the delta event is all they carry — and a
+  // content-free one (a zombie stream's keepalive, or the pre-strip shape) proves nothing:
+  // it must not reset the hang watchdog. A content-bearing delta is real generation, and
+  // counting it is what keeps a long thinking block on a slow model from being quiet-killed
+  // as hung (BUGS.md 2026-10-17) — the same content rule tool_execution_update gets below.
+  // Nothing else in this parser acts on the type, so the line is done either way.
+  private applyMessageUpdate(line: string): boolean {
+    if (piEventType(line) === "message_update") {
+      if (messageUpdateHasContent(parseJsonObject(line))) this.progressCount += 1;
+      return true;
+    }
+    return false;
+  }
+
+  private applyErrorTexts(event: PiStreamEvent): void {
     // A translator-classified error (claude's `tumwaterKind`) is trusted before the text
     // regexes: the backend read schemas, not prose, and its signal wins.
     if (typeof event.tumwaterKind === "string" && event.tumwaterKind) {
@@ -501,18 +521,24 @@ export class PiStreamParser {
         }
       }
     }
-    // A canonical run_cost is the run's authoritative cost and REPLACES the per-message sum
-    // (claude's split-block messages report cost.total 0; the final result carries the real
-    // number). A backend that emits none keeps the summed per-message figure (pi).
+  }
+
+  // A canonical run_cost is the run's authoritative cost and REPLACES the per-message sum
+  // (claude's split-block messages report cost.total 0; the final result carries the real
+  // number). A backend that emits none keeps the summed per-message figure (pi).
+  private applyRunCost(event: PiStreamEvent): void {
     if (event.type === "run_cost") this.costUsd = usageNumber(event.total);
-    // Likewise a run_usage replaces the summed per-message token figures (claude's per-message
-    // usage is the stream-start snapshot, about 8x low). OpenCode's export drives a run_usage
-    // that carries the run's whole token split — input, output, cacheRead, cacheWrite — and
-    // replaces all four summed fields, the way run_cost replaces the cost sum; a stream without
-    // one keeps its summed figures. A run_usage bearing only outputTokens (claude) keeps the
-    // historical behavior of replacing just the output sum. The split's sum is a cumulative RUN
-    // total, not a single request, so it never touches peakContextTokens (a per-request peak
-    // the stream keeps computing); the export carries no total and none is invented here.
+  }
+
+  // Likewise a run_usage replaces the summed per-message token figures (claude's per-message
+  // usage is the stream-start snapshot, about 8x low). OpenCode's export drives a run_usage
+  // that carries the run's whole token split — input, output, cacheRead, cacheWrite — and
+  // replaces all four summed fields, the way run_cost replaces the cost sum; a stream without
+  // one keeps its summed figures. A run_usage bearing only outputTokens (claude) keeps the
+  // historical behavior of replacing just the output sum. The split's sum is a cumulative RUN
+  // total, not a single request, so it never touches peakContextTokens (a per-request peak
+  // the stream keeps computing); the export carries no total and none is invented here.
+  private applyRunUsage(event: PiStreamEvent): void {
     if (event.type === "run_usage") {
       if (event.input !== undefined || event.cacheRead !== undefined || event.cacheWrite !== undefined) {
         const input = usageNumber(event.input);
@@ -526,24 +552,25 @@ export class PiStreamParser {
         this.outputTokens = usageNumber(event.outputTokens);
       }
     }
-    // A canonical rate_limit event carries an account-window reading: collect the newest per
-    // type, note any overage, and treat a rejected window as the transient rate limit it is.
-    if (event.type === "rate_limit") this.applyRateLimit(event);
-    if (event.type === "billing" && (event.billing === "subscription" || event.billing === "api"))
-      this.billing = event.billing;
-    // Every structured event (turn/tool/message boundaries, retries, session) is real
-    // progress, and so is a content-bearing update — but a content-free one never is: bash
-    // emits an empty tool_execution_update right after start, and a zombie stream's keepalive
-    // updates must not reset the hang watchdog any more than a content-free message delta
-    // would (message_update deltas are counted above, before this point, by the same rule).
+  }
+
+  // Every structured event (turn/tool/message boundaries, retries, session) is real
+  // progress, and so is a content-bearing update — but a content-free one never is: bash
+  // emits an empty tool_execution_update right after start, and a zombie stream's keepalive
+  // updates must not reset the hang watchdog any more than a content-free message delta
+  // would (message_update deltas are counted above, before this point, by the same rule).
+  private countProgress(event: PiStreamEvent): void {
     if (!(event.type === "tool_execution_update" && !toolUpdateHasContent(event.partialResult)))
       this.progressCount += 1;
     if (event.type === "compaction_start") this.compacted = true;
-    // Open-tool-call tracking for the stall warning: a call that sits open and silent is
-    // surfaced by name while the quiet watchdog still counts down. The start/update/end state
-    // machine lives in applyToolExecutionEvent, shared with the dashboards' live flag
-    // (src/ui/progress-data.ts); only the label is surface-specific — the warning names the
-    // command even when pi omits a toolName, where progress falls back to "tool".
+  }
+
+  // Open-tool-call tracking for the stall warning: a call that sits open and silent is
+  // surfaced by name while the quiet watchdog still counts down. The start/update/end state
+  // machine lives in applyToolExecutionEvent, shared with the dashboards' live flag
+  // (src/ui/progress-data.ts); only the label is surface-specific — the warning names the
+  // command even when pi omits a toolName, where progress falls back to "tool".
+  private applyToolExecution(event: PiStreamEvent): void {
     if (
       event.type === "tool_execution_start" ||
       event.type === "tool_execution_update" ||
@@ -581,8 +608,9 @@ export class PiStreamParser {
         }
       }
     }
-    if (event.type !== "message_end" || event.message?.role !== "assistant") return;
-    const msg = event.message;
+  }
+
+  private applyAssistantMessage(msg: PiMessage): void {
     const text = messageText(msg);
     this.finalMessageContentless = !messageContent(msg).some(
       (c) =>
