@@ -26,7 +26,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { writeTextAtomic } from "../files/files.js";
+import { ensureDir, writeTextAtomic } from "../files/files.js";
 import { conflictedFiles } from "../merge/merge-git.js";
 import { salvageDir, salvagePendingDir } from "../paths.js";
 import { errorMessage } from "../text/text.js";
@@ -91,7 +91,7 @@ export async function salvageSlotLeftovers(
     const base = await git(dir, "rev-parse", "HEAD");
     const home = recoverFor === null ? salvageDir(root) : salvagePendingDir(root, recoverFor);
     const file = path.join(home, salvageFileName(now, dir, leftBy));
-    fs.mkdirSync(home, { recursive: true });
+    ensureDir(home);
     // Atomic: the patch is the only copy left once the lease resets the workspace, so a kill
     // mid-write must never leave a truncated .patch that a later restore reads and partially
     // applies. Written to a temp name and renamed, a reader (restoreSalvagedWork) sees either

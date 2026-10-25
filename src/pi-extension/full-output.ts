@@ -12,10 +12,9 @@
  * dependency-free beyond node built-ins and the path helper.
  */
 
-import fs from "node:fs";
 import path from "node:path";
 import { toolOutputDir } from "../paths.js";
-import { isDirectory, walkUp, writeTextAtomic } from "../files/files.js";
+import { ensureDir, isDirectory, walkUp, writeTextAtomic } from "../files/files.js";
 
 /** Walk up from `startDir` looking for a `.tumwater/` directory — the harness root. Worktrees
  * under it (`.tumwater/worktrees/<role>`, merger, gate alike) reach it three levels up
@@ -47,7 +46,7 @@ export function writeFullOutput(
   if (!root) return null;
   try {
     const dir = toolOutputDir(root);
-    fs.mkdirSync(dir, { recursive: true });
+    ensureDir(dir);
     const id = typeof toolCallId === "string" && toolCallId
       ? toolCallId.replace(/[^\w-]/g, "_")
       : `result-${Date.now()}`;

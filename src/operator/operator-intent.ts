@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 import { cancelScheduledStop, isTeamPaused, scheduleStop } from "../team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-info.js";
@@ -15,6 +14,7 @@ import { saveRunnerState, zeroCounters } from "../runner/runner-state.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { writeJsonAtomic } from "../files/json-files.js";
+import { ensureDir } from "../files/files.js";
 import { reclaimPass } from "../team/reclaim.js";
 import { formatGB } from "../text/format.js";
 import { plural } from "../text/phrases.js";
@@ -153,7 +153,7 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
   // runner immediately, dropping a scheduled wake's notBeforeMs on the floor. A scheduled wake
   // gets its own file so a later wake request, immediate or scheduled, cannot overwrite it.
   if (deferred) {
-    fs.mkdirSync(scheduledWakeDir(root), { recursive: true });
+    ensureDir(scheduledWakeDir(root));
     writeJsonAtomic(
       path.join(scheduledWakeDir(root), `${now}-${process.pid}-${crypto.randomBytes(4).toString("hex")}.json`),
       { at: now, roles, notBeforeMs: now + inMs },

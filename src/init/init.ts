@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { saveConfig } from "../config/config.js";
 import { seedConfig } from "../config/config-example.js";
-import { findOnPath, writeTextAtomic } from "../files/files.js";
+import { ensureDir, findOnPath, writeTextAtomic } from "../files/files.js";
 import { GIT_MISSING_MESSAGE, commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-run.js";
 import { hasCommits, isGitRepo } from "../git/git.js";
 import {
@@ -321,7 +321,7 @@ export async function initProject(
   // The template's starter directories: empty ones only, before the first run — the team's
   // own runs write any code. Existing directories are left alone, like existing files above.
   for (const dir of tpl.starterDirs) {
-    claim(dir, path.join(root, dir), () => fs.mkdirSync(path.join(root, dir), { recursive: true }));
+    claim(dir, path.join(root, dir), () => ensureDir(path.join(root, dir)));
   }
 
   // The config stays out of the commit pathspec: `git add -- tumwater.json` fails on a path

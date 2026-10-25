@@ -1,6 +1,7 @@
 import { errCode } from "../errno.js";
 import fs from "node:fs";
 import path from "node:path";
+import { ensureDir } from "../files/files.js";
 import { listQueueFiles, queueFileName, removeQueueFile } from "../files/file-queue.js";
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
@@ -125,7 +126,7 @@ export function legacyMigrateLandQueueDir(root: string): MigrationNotes {
   const to = mergeQueueDir(root);
   const notes: MigrationNotes = { moved: [], kept: [], failed: [] };
   const files = listQueueFiles(from, ".json");
-  if (files.length > 0) fs.mkdirSync(to, { recursive: true });
+  if (files.length > 0) ensureDir(to);
   for (const file of files) {
     const name = path.basename(file);
     const dest = path.join(to, name);
