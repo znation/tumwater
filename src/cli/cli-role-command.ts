@@ -400,8 +400,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (providerWrite) {
     if (clearProvider && rest.includes("--provider")) fail("give --clear-provider or --provider, not both");
     if (rest.includes("--json")) fail("--json does not apply to a provider write");
-    const cfg = loadConfigSafe(root).config ?? defaultConfig();
-    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    requireKnownRole(root, id);
     const base = baseRoleOf(id);
     const provider = flagValue(rest, "--provider") ?? "";
     writeRoleConfigKey(root, base, clearProvider, provider, `roles.${base}.provider`, "provider", (v) => JSON.stringify(v), (v) => v);
@@ -410,8 +409,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (modelWrite) {
     if (clearModel && rest.includes("--model")) fail("give --clear-model or --model, not both");
     if (rest.includes("--json")) fail("--json does not apply to a model write");
-    const cfg = loadConfigSafe(root).config ?? defaultConfig();
-    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    requireKnownRole(root, id);
     const base = baseRoleOf(id);
     const model = flagValue(rest, "--model") ?? "";
     writeRoleConfigKey(root, base, clearModel, model, `roles.${base}.model`, "model", (v) => JSON.stringify(v), (v) => v);
@@ -420,8 +418,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (thinkingWrite) {
     if (clearThinking && rest.includes("--thinking")) fail("give --clear-thinking or --thinking, not both");
     if (rest.includes("--json")) fail("--json does not apply to a thinking write");
-    const cfg = loadConfigSafe(root).config ?? defaultConfig();
-    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    requireKnownRole(root, id);
     const base = baseRoleOf(id);
     const level = flagValue(rest, "--thinking") ?? "";
     writeRoleConfigKey(root, base, clearThinking, level, `roles.${base}.thinking`, "thinking", (v) => JSON.stringify(v), (v) => v);
