@@ -127,7 +127,7 @@ test("redMainWarning: a red the watch blamed appends the merge", () => {
   assert.match(out!, /the main watch blames feature's merge abcdef12/);
 });
 
-test("redMainWarning: a culprit blaming another commit still appends with no runner", () => {
+test("redMainWarning: a matching culprit with no runner appends the merge without a role", () => {
   const now = 1_000_000_000_000;
   const S = "abcdef1234567890";
   const events = [
