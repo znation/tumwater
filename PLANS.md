@@ -312,4 +312,24 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/run-detail-data.test.ts: add `readRunDetail carries a run's prompt tokens and cache-read share` — a run_end with `promptTokens: 100, cacheReadTokens: 40` yields those two numbers; one with `promptTokens: 10, cacheReadTokens: 99` yields `cacheReadTokens: 10`; one with no `promptTokens` (and one carrying `cacheReadTokens` only) carries neither key; an in-flight run carries neither. Extend an existing `--json`-shape case only if it seeds prompt tokens.
 - test/run-detail.test.ts, beside `renderRunDetail names the peak against the declared window`: add `renderRunDetail names the run's prompt tokens and cache-read share` — from the shared `base` literal, `renderRunDetail({ ...base, promptTokens: 100_000, cacheReadTokens: 80_000 })` matches `/prompt 100\.0k tok \(80% cached\)/` and the fragment sits after the `usage` cell; `renderRunDetail({ ...base, promptTokens: 50_000 })` matches `/prompt 50\.0k tok/` with no `cached`; `renderRunDetail(base)` matches no `/prompt .* tok/`, so a prompt-free run is byte-identical to today.
 
+### The role-prompt backlog block names the named items it drops instead of truncating silently (planned 2026-10-25 by the plan role; independent of every eligible plan and blocked part — no entry in `## Planned` and no `Every commit is verified on main` part edits `src/prompt/notes-backlog.ts` or `test/notes-backlog.test.ts`, and no other module writes that block; touches src/prompt/notes-backlog.ts test/notes-backlog.test.ts)
+
+**Goal.** `notesBacklogBlock` (src/prompt/notes-backlog.ts) renders "what the backlog says now about entries your notes name" so a note cannot keep a hold the backlog has lifted. It builds one line per named series, named part and named entry, then caps the block — `const shown = lines.slice(0, MAX_BLOCK_LINES - 1);` — and drops every line past the cap with no marker (the block is documented "at most 12 lines"). A role whose notes name more than eleven live items therefore reads a block that looks complete while the tail — often the very item whose hold changed — is gone, the same silent truncation the failure digest's capped sections no longer allow. The cap stays; the block names its remainder so a dropped item cannot read as a complete answer.
+
+**Approach.**
+- src/prompt/notes-backlog.ts, `notesBacklogBlock`'s tail: keep the `if (lines.length === 0) return undefined;` guard, then branch on the cap instead of slicing it blindly — `const cap = MAX_BLOCK_LINES - 1;` (the item lines; the header is the twelfth line). When `lines.length <= cap`, return `[HEADER, ...lines].join("\n")` exactly as today, so a block of eleven or fewer items is byte-identical. Otherwise `const shown = lines.slice(0, cap - 1);` and return `[HEADER, ...shown, `… and ${plural(lines.length - shown.length, "more named item")}`].join("\n")` — the remainder line replaces the would-be last shown item, so the block is still exactly `MAX_BLOCK_LINES` lines. `plural` is already imported.
+- Update `notesBacklogBlock`'s doc comment (and `MAX_BLOCK_LINES`'s doc if it names the cap): the block is at most 12 lines and, when the notes name more items than fit, its last line says how many were dropped (`… and N more named items`).
+
+**Files touched.** src/prompt/notes-backlog.ts test/notes-backlog.test.ts
+
+**Acceptance criteria.**
+- Eleven or fewer named items render exactly as today — same lines, same order, no remainder line — so a normal block is byte-identical.
+- More than eleven named items render at most 12 lines, and the last line is `… and N more named items`, where N is the number of built lines past the shown ones (for the existing forty-part fixture, `… and 31 more named items`). The header stays the first line, and the named-series line stays ahead of the part lines the block still shows.
+- A notes file naming nothing live still returns undefined; the block's consumers are unchanged, because only `notesBacklogBlock`'s returned text changes and the call in src/run/run-prompt.ts stays as it is.
+- No file outside the Files-touched list is edited; `npm run test:gate` passes.
+
+**Tests.**
+- test/notes-backlog.test.ts, the existing `forty named parts render at most 12 lines`: keep `count <= 12` and `count === 12`, and add `assert.match(block, /… and 31 more named items/)` so the dropped lines are named; keep the series-line-first assertion.
+- Add `the remainder line names the named items past the cap`: a series with exactly eleven named parts renders 12 lines with no `more named items`; with twelve named parts, the block is 12 lines and its last line is `… and 2 more named items`. Use the existing `series(...)` fixture builder.
+
 ## Done
