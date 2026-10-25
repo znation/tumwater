@@ -331,6 +331,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         (seriesHasCheckMedian(d) ? block("Merge check median", chartCheckMedian(d), "per day · passing full-suite checks") : "") +
         (seriesHasCheckFailures(d) ? block("Red merge checks", chartCheckFailures(d), "per day · failed full-suite checks") : "") +
         (seriesHasMainRedMs(d) ? block("Main red time", chartMainRedMs(d), "per day · no passing full check") : "") +
+        (!d.role && seriesHasAny(d, "mainRedByTest") ? block("Main red by test", chartMainRedByTest(d), "per day · failing tests main's red checks named") : "") +
+        (!d.role && seriesHasAny(d, "mainRedByCulprit") ? block("Main red by merge", chartMainRedByMerge(d), "per day · merges the main watch blamed") : "") +
         (seriesHasMergeWaitMedian(d) ? block("Merge wait median", chartMergeWaitMedian(d), "per day · enqueue to merged on main") : "") +
         (seriesHasMergeSlotMedian(d) ? block("Merge slot median", chartMergeSlotMedian(d), "per day · verification start to outcome") : "") +
         (seriesHasRunMedian(d) ? block("Run duration median", chartRunMedian(d), "per day · run_start to run_end") : "") +

@@ -402,6 +402,32 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   function chartValidationGaps(data) {
     return stackChart(data, reportValidationGapOrder(data), "validationGapsByTag", (n) => plural(n, "validation gap"), countAxis, true);
   }
+  // Window tallies per main-red failing test, count desc then name asc — the browser twin of
+  // the day report's "Main red by test" line. Test keys are dynamic, so reads and seeds go
+  // through tallyAcross's Object.hasOwn checks as its siblings do; a test no day recorded
+  // still gets a row only if some day carries it.
+  function reportMainRedTestOrder(data) {
+    return tallyAcross(data.series, ["mainRedByTest"], []);
+  }
+  // The team's main-red failing tests, per day, stacked by test: each segment one (day, test),
+  // the dashboard twin of the day report's "Main red by test" line. Sparse like the model
+  // chart; test names are the legend labels.
+  function chartMainRedByTest(data) {
+    return stackChart(data, reportMainRedTestOrder(data), "mainRedByTest", (n) => plural(n, "red check"), countAxis, true);
+  }
+  // Window tallies per main-red blamed merge (the report's "<role> <shortSha>" label), count
+  // desc then name asc — the browser twin of the day report's "Main red by merge" line.
+  // Culprit keys are dynamic, so reads and seeds go through tallyAcross's Object.hasOwn checks
+  // as its siblings do; a culprit no day recorded still gets a row only if some day carries it.
+  function reportMainRedCulpritOrder(data) {
+    return tallyAcross(data.series, ["mainRedByCulprit"], []);
+  }
+  // The team's main-red blamed merges, per day, stacked by culprit: each segment one
+  // (day, culprit), the dashboard twin of the day report's "Main red by merge" line. Sparse
+  // like the model chart; the culprit labels are the legend labels.
+  function chartMainRedByMerge(data) {
+    return stackChart(data, reportMainRedCulpritOrder(data), "mainRedByCulprit", (n) => plural(n, "blame"), countAxis, true);
+  }
   // The day's merged outcomes per role, the success sibling of chartMergeFailuresByRole,
   // drawn exactly like it (same roleStackChart shape, palette, legend order and integer count
   // axis) so the two read as one pair.

@@ -1264,6 +1264,95 @@ test("the Usage render chain gates the Validation gaps chart right after Merge f
   assert.equal((chain.match(/block\("Validation gaps", chartValidationGaps\(d\)/g) || []).length, 1);
 });
 
+test("reportMainRedTestOrder and chartMainRedByTest rank and stack each day's failing tests", () => {
+  // The Main red by test chart is the dashboard twin of the day report's "Main red by test"
+  // line: one segment per (day, failing test) ranked count desc then name asc, from each
+  // day's mainRedByTest map. The map is sparse, so a day with none keeps its empty slot.
+  interface Builders {
+    reportMainRedTestOrder(data: ReportData): [string, number][];
+    chartMainRedByTest(data: ReportData): string;
+    seriesHasAny(data: ReportData, field: string): boolean;
+  }
+  const { reportMainRedTestOrder, chartMainRedByTest, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportMainRedTestOrder", "chartMainRedByTest", "seriesHasAny"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { mainRedByTest: { "test/a.test.ts": 2 } }),
+    mkDay("2026-09-02", { mainRedByTest: { "test/a.test.ts": 1, "test/b.test.ts": 1 } }),
+    mkDay("2026-09-03"),
+  ]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  // Count desc, then name asc: test/a.test.ts (3) ahead of test/b.test.ts (1).
+  assert.deepEqual(reportMainRedTestOrder(data), [["test/a.test.ts", 3], ["test/b.test.ts", 1]]);
+  assert.deepEqual(titles(chartMainRedByTest(data)), [
+    "2026-09-01 · test/a.test.ts: 2 red checks",
+    "2026-09-02 · test/a.test.ts: 1 red check",
+    "2026-09-02 · test/b.test.ts: 1 red check",
+  ]);
+  const empty = mk([mkDay("2026-09-01"), mkDay("2026-09-02"), mkDay("2026-09-03")]);
+  assert.equal(seriesHasAny(empty, "mainRedByTest"), false);
+  assert.equal(seriesHasAny(data, "mainRedByTest"), true);
+});
+
+test("reportMainRedCulpritOrder and chartMainRedByMerge stack each day's blamed merges", () => {
+  // The Main red by merge chart is the dashboard twin of the day report's "Main red by merge"
+  // line: one segment per (day, <role> <shortSha> culprit) ranked count desc then name asc,
+  // from each day's mainRedByCulprit map. The map is sparse, so a day with none keeps its
+  // empty slot. The culprit label is <role> <shortSha>, escaped by the legend/title path.
+  interface Builders {
+    reportMainRedCulpritOrder(data: ReportData): [string, number][];
+    chartMainRedByMerge(data: ReportData): string;
+    seriesHasAny(data: ReportData, field: string): boolean;
+  }
+  const { reportMainRedCulpritOrder, chartMainRedByMerge, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportMainRedCulpritOrder", "chartMainRedByMerge", "seriesHasAny"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { mainRedByCulprit: { "feature abc12345": 1 } }),
+    mkDay("2026-09-02", { mainRedByCulprit: { "bugfix def67890": 2 } }),
+    mkDay("2026-09-03"),
+  ]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  // Count desc, then name asc: bugfix def67890 (2) ahead of feature abc12345 (1).
+  assert.deepEqual(reportMainRedCulpritOrder(data), [["bugfix def67890", 2], ["feature abc12345", 1]]);
+  assert.deepEqual(titles(chartMainRedByMerge(data)), [
+    "2026-09-01 · feature abc12345: 1 blame",
+    "2026-09-02 · bugfix def67890: 2 blames",
+  ]);
+  const empty = mk([mkDay("2026-09-01"), mkDay("2026-09-02"), mkDay("2026-09-03")]);
+  assert.equal(seriesHasAny(empty, "mainRedByCulprit"), false);
+  assert.equal(seriesHasAny(data, "mainRedByCulprit"), true);
+});
+
+test("the Usage render chain gates the Main red by test and Main red by merge charts after Main red time", () => {
+  // The usage view's render chain must name the Main red by test and Main red by merge charts
+  // once each, team-only and gated on the series really carrying the map, sitting right after
+  // the Main red time term each is the twin of.
+  const chain = GUI_CLIENT_REPORT_JS;
+  const redTime = chain.indexOf('block("Main red time"');
+  const byTest = chain.indexOf('block("Main red by test"');
+  const byMerge = chain.indexOf('block("Main red by merge"');
+  assert.ok(redTime >= 0, "the Main red time term exists");
+  assert.ok(byTest > redTime, "Main red by test sits after Main red time in the chain");
+  assert.ok(byMerge > byTest, "Main red by merge sits after Main red by test in the chain");
+  assert.match(chain, /!d\.role && seriesHasAny\(d, "mainRedByTest"\) \? block\("Main red by test", chartMainRedByTest\(d\), "per day · failing tests main's red checks named"\) : ""/);
+  assert.match(chain, /!d\.role && seriesHasAny\(d, "mainRedByCulprit"\) \? block\("Main red by merge", chartMainRedByMerge\(d\), "per day · merges the main watch blamed"\) : ""/);
+  assert.equal((chain.match(/block\("Main red by test", chartMainRedByTest\(d\)/g) || []).length, 1);
+  assert.equal((chain.match(/block\("Main red by merge", chartMainRedByMerge\(d\)/g) || []).length, 1);
+});
+
 test("the Deferred runs by reason chart stacks per reason and reportDeferredOrder lists each code once", () => {
   // The Deferred runs by reason chart is the dashboard twin of the day report's "Deferred
   // runs by reason" line: one segment per (day, reason code) stacked in reportDeferredOrder's
