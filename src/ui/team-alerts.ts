@@ -13,7 +13,7 @@ import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-stru
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert, QaCoverageStale } from "./status-payload.js";
 import type { StaleWorkspacePin } from "../doctor/doctor-contention-checks.js";
-import type { RefusedEntry, StalledEntry } from "../backlog/backlog-eligibility.js";
+import { entryKindLabel, type RefusedEntry, type StalledEntry } from "../backlog/backlog-eligibility.js";
 import type { ClaimState } from "../scheduling/claim-entries.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
@@ -206,14 +206,6 @@ function moreDetail(
   fold: (items: readonly string[]) => string = entryListDetail,
 ): string {
   return restLabels.length > 0 ? ` · ${fold(restLabels)}` : "";
-}
-
-/** The display noun for a backlog-file discriminator — the `"plans" | "bugs"` `file` on
- * RefusedEntry and StalledEntry: BUGS.md is a "Bug" and PLANS.md a "Plan", and the lowercase
- * form is the `Refused plan|bug:` label and the `tumwater plan|bug --release` command noun the
- * operator-held alert body interpolates. */
-function entryKindLabel(file: "plans" | "bugs"): "Bug" | "Plan" {
-  return file === "bugs" ? "Bug" : "Plan";
 }
 
 /** Something that needs the operator — or that they should know — about the team as a whole,

@@ -20,7 +20,7 @@
  * gets one summary line of its planned-part state. The block is at most 12 lines and returns
  * undefined when the notes name nothing live. */
 
-import { entryHoldAgainst, type EntryHold } from "../backlog/backlog-eligibility.js";
+import { entryHoldAgainst, entryKindLabel, type EntryHold } from "../backlog/backlog-eligibility.js";
 import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { entryKey, partKey, plannedPartKeys, seriesPart } from "../backlog/backlog-parts.js";
 import { collapseWhitespace, escapeRegExp } from "../text/text.js";
@@ -125,7 +125,7 @@ function holdWording(state: PartState, file: "plans" | "bugs" = "plans"): string
   if (state === "refused") return "refused (only the operator clears it)"; // vocabulary-ok: the plan-mandated refused hold wording refers to the tumwater operator
   if (state === "needs-review") return "needs review";
   if (state === "needs-replan") return "needs replan (the plan role rewrites it)";
-  if (state === "held-for-operator") return `held for the operator (tumwater ${file === "bugs" ? "bug" : "plan"} --release)`; // vocabulary-ok: names the operator-held wording and the operator's release command
+  if (state === "held-for-operator") return `held for the operator (tumwater ${entryKindLabel(file).toLowerCase()} --release)`; // vocabulary-ok: names the operator-held wording and the operator's release command
   if (state === "waiting-for-failure") return "waiting for the next failure";
   return `waits on ${state.blockedBy.join(", ")}`;
 }

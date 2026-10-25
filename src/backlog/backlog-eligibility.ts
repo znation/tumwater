@@ -402,6 +402,15 @@ export interface StalledEntry {
   hold: "needs-review" | "needs-replan";
 }
 
+/** The display noun for a backlog-file discriminator — the `"plans" | "bugs"` `file` on
+ * RefusedEntry and StalledEntry (and the same discriminator the prompt's named-hold wording
+ * and the doctor's Stalled row take): BUGS.md is a "Bug" and PLANS.md a "Plan", and the
+ * lowercase form is the `Refused plan|bug:` label and the `tumwater plan|bug --release`
+ * command noun the operator-held alert body interpolates. */
+export function entryKindLabel(file: "plans" | "bugs"): "Bug" | "Plan" {
+  return file === "bugs" ? "Bug" : "Plan";
+}
+
 /** The planned plans and open bugs whose hold is exactly `"needs-review"` or
  * `"needs-replan"`, in file order: the entries parked by a Needs-review/Needs-replan note
  * until the plan role splits or replans them (the `stalled-entries` team alert's input), each

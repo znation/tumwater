@@ -4,7 +4,7 @@ import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import path from "node:path";
 import { truncate } from "../text/text.js";
 import { donePlans, fixedBugEntries, openBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
-import { entryHold, heldCount } from "../backlog/backlog-eligibility.js";
+import { entryHold, entryKindLabel, heldCount } from "../backlog/backlog-eligibility.js";
 import { planDependencyProblems } from "../backlog/backlog-parts.js";
 import { BACKLOG_FILES, validationGapTag } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
@@ -344,13 +344,14 @@ export function checkStalledEntries(root: string): CheckOutcome {
   const [first, ...rest] = stalled;
   if (!first) return okOutcome("no planned plan or open bug is held by a Needs-review, Needs-replan, or held-for-operator note"); // vocabulary-ok: names the held-for-operator hold
   const more = andMore(rest, (s) => `"${truncate(s.entry.title, FIX_CLAIM_HEADING_MAX)}"`);
-  const head = first.file === "bugs" ? "BUGS.md bug" : "PLANS.md plan";
+  const kind = entryKindLabel(first.file); // "Bug" | "Plan"
+  const head = `${first.file === "bugs" ? "BUGS.md" : "PLANS.md"} ${kind.toLowerCase()}`;
   const hold = entryHold(first.entry, planned);
   const note = (first.entry.body.split(/\n/).find(
     (line) => line.trimStart().startsWith("**Needs review ") || line.trimStart().startsWith("**Needs replan "),
   ) ?? "").replace(/^\s*\*\*/, "").replace("**", "");
   if (hold === "held-for-operator") { // vocabulary-ok: the held-for-operator hold's key
-    return warnOutcome(`${head} "${truncate(first.entry.title, FIX_CLAIM_HEADING_MAX)}" is held for the operator ${heldCount(first.entry.body)} times${more} — release it with ${first.file === "bugs" ? "tumwater bug --release" : "tumwater plan --release"}`); // vocabulary-ok: a held-for-operator entry is the operator's to release
+    return warnOutcome(`${head} "${truncate(first.entry.title, FIX_CLAIM_HEADING_MAX)}" is held for the operator ${heldCount(first.entry.body)} times${more} — release it with tumwater ${kind.toLowerCase()} --release`); // vocabulary-ok: a held-for-operator entry is the operator's to release
   }
   return warnOutcome(`${head} "${truncate(first.entry.title, FIX_CLAIM_HEADING_MAX)}" is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
       `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);
