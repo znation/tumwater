@@ -1140,3 +1140,17 @@ test("the merge-failure section caps at 10 clusters and counts the rest as hidde
   assert.equal(data.mergeFailures.clusters.length, 10);
   assert.equal(data.mergeFailures.hiddenClusters, 2);
 });
+
+test("a disk hold reaches the digest's state changes", () => {
+  // The disk floor stopped the team from starting runs, then the space recovered — both
+  // harness decisions must replay in the Team state changes section, so a window in which a
+  // floor idled the team reads as the gate it was, not a mere idle.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0, 12), loop: "feature", type: "run_end", result: "error", error: "boom" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 13), loop: "harness", type: "disk_low", freeGB: 3.2, holdGB: 2 }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const md = renderFailureMarkdown(collectFailureReport(root, 1));
+  const section = md.slice(md.indexOf("## Team state changes"), md.indexOf("## Outcome by role"));
+  assert.match(section, /waiting: low disk — 3\.2 GB free \(floor 2\.0 GB\)/);
+});

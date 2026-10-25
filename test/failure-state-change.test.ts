@@ -49,6 +49,18 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
     "orchestrator_start",
     "orchestrator_stop",
     "supervisor_exit",
+    "disk_low",
+    "disk_ok",
+    "quiet_hours_started",
+    "quiet_hours_ended",
+    "maintenance_quota_hold",
+    "maintenance_quota_resumed",
+    "subscription_window_reserved",
+    "subscription_window_limited",
+    "subscription_window_reset",
+    "provider_concurrency_changed",
+    "model_changed",
+    "bootstrap_complete",
   ]) {
     assert.ok(STATE_CHANGE_TYPES.has(t), `missing ${t}`);
   }
@@ -367,4 +379,57 @@ test("rate_limit_hold renders backend kinds as backend holds, rate-limit as a 42
     describeStateChange(ev({ type: "rate_limit_hold", holdMs: 60_000, escalation: 0, roles: ["feature", "fix"] })),
     "429 hold for 60s — feature, fix",
   );
+});
+
+test("the digest names every gate hold and lift", () => {
+  // The gate holds/lifts that stop and restart work — low disk, quiet hours, the maintenance
+  // allowance and the subscription-window reserve — replay in the digest beside the budget,
+  // team and rate-limit gates, so a window in which a floor stopped the team reads as the
+  // harness decision it was, not a mere idle.
+  assert.equal(
+    describeStateChange(ev({ type: "disk_low", freeGB: 3.2, holdGB: 2 })),
+    "waiting: low disk — 3.2 GB free (floor 2.0 GB)",
+  );
+  assert.equal(describeStateChange(ev({ type: "disk_ok", freeGB: 12 })), "disk recovered — 12.0 GB free");
+  assert.equal(
+    describeStateChange(ev({ type: "quiet_hours_started", window: "23:00-07:00" })),
+    "waiting: quiet hours (23:00-07:00)",
+  );
+  assert.equal(
+    describeStateChange(ev({ type: "maintenance_quota_hold", maint: 3, allowance: 4, work: 20 })),
+    "waiting: maintenance allowance used — 3/4 in 24h (20 work)",
+  );
+  assert.equal(
+    describeStateChange(ev({ type: "subscription_window_reserved", backend: "claude", windowType: "five_hour", utilization: 0.85, reserve: 0.8 })),
+    "waiting: claude window five_hour at 85% past its 80% reserve",
+  );
+  const limited = describeStateChange(ev({ type: "subscription_window_limited", windowType: "five_hour" }));
+  assert.ok(limited.startsWith("waiting: claude window five_hour rejected"), limited);
+  assert.equal(
+    describeStateChange(ev({ type: "provider_concurrency_changed", provider: "claude", from: 2, to: 3 })),
+    "claude concurrency 2 → 3",
+  );
+  assert.equal(describeStateChange(ev({ type: "model_changed", to: "acme/m1" })), "model changed — now acme/m1");
+  // A model cleared to pi's default arrives with `to: null`; it must render pi's default,
+  // never the degenerate `model changed — now `.
+  assert.equal(describeStateChange(ev({ type: "model_changed" })), `model changed — now pi's default`);
+  assert.equal(
+    describeStateChange(ev({ type: "bootstrap_complete", plansDone: 5, untilPlansDone: 5 })),
+    "bootstrap complete — 5/5 plans done",
+  );
+  // A torn disk_low with no free fields reads through finiteNumber as 0, never NaN/undefined.
+  const torn = describeStateChange(ev({ type: "disk_low" }));
+  assert.equal(torn, "waiting: low disk — 0.0 GB free (floor 0.0 GB)");
+  assert.doesNotMatch(torn, /NaN|undefined/);
+  // A torn maintenance_quota_hold with no fields renders empty cells, never "undefined".
+  const tornMaint = describeStateChange(ev({ type: "maintenance_quota_hold" }));
+  assert.doesNotMatch(tornMaint, /NaN|undefined/);
+  // Each line honors the section cap, as every other state-change line does.
+  for (const line of [
+    describeStateChange(ev({ type: "disk_low", freeGB: 3.2, holdGB: 2 })),
+    describeStateChange(ev({ type: "subscription_window_reserved", backend: "claude", windowType: "five_hour", utilization: 0.85, reserve: 0.8 })),
+    describeStateChange(ev({ type: "subscription_window_limited", windowType: "five_hour" })),
+  ]) {
+    assert.ok(line.length <= 72, `under the cap: ${line}`);
+  }
 });

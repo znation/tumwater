@@ -12,14 +12,20 @@ import type { HarnessEvent } from "../events/events.js";
 import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 
 import { shortSha } from "../text/format.js";
-import { deferredReasonText, untilClockSuffix } from "../events/event-format.js";
+import { deferredReasonText, untilClockSuffix, gigabytes, windowSuffix, windowResetPhrase, backendLabel } from "../events/event-format.js";
+import { claudeUtilizationPct } from "../agent/claude/claude-account.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
  * cap/team gates and the team hold, the error-streak breaker's pause, the role's own daily
  * cap, model fallbacks, live-config edits, self-hosted redeploys, need-based deferrals,
- * orchestrator lifecycle). They are the evidence the selfcheck role's load-bearing
- * rule asks it to judge — whether the harness's RESPONSE to a failure was wrong
- * (plans/telemetry-role.md) — so they sit beside the outcomes rather than being dropped. */
+ * orchestrator lifecycle, and the gate holds/lifts that stop and restart work — low disk,
+ * quiet hours, the maintenance allowance and the subscription-window reserve). Deliberately
+ * left out, and said so here: `subscription_window_warning` (observational, gates nothing),
+ * `disk_reclaim` (an action, not a state transition), `image_blind` (a run outcome), and
+ * `permit_reserve`/`slot_wait`/`check_wait`/`provider_wait`/`claim` (per-run advisories or
+ * assignments). The rest are the evidence the selfcheck role's load-bearing rule asks it to
+ * judge — whether the harness's RESPONSE to a failure was wrong (plans/telemetry-role.md) —
+ * so they sit beside the outcomes rather than being dropped. */
 export const STATE_CHANGE_TYPES = new Set<string>([
   "budget_paused",
   "budget_fallback",
@@ -47,6 +53,18 @@ export const STATE_CHANGE_TYPES = new Set<string>([
   "orchestrator_start",
   "orchestrator_stop",
   "supervisor_exit",
+  "disk_low",
+  "disk_ok",
+  "quiet_hours_started",
+  "quiet_hours_ended",
+  "maintenance_quota_hold",
+  "maintenance_quota_resumed",
+  "subscription_window_reserved",
+  "subscription_window_limited",
+  "subscription_window_reset",
+  "provider_concurrency_changed",
+  "model_changed",
+  "bootstrap_complete",
 ]);
 
 /** The Team state changes section's caps: newest N transitions, each line's payload capped at
@@ -64,6 +82,7 @@ const STATE_CHANGE_FIELD_MAX = 24;
  * whole character rather than leaving a lone high surrogate the terminal renders as a
  * replacement box (text.ts's truncate rule, shared rather than re-derived). */
 function field(v: unknown): string {
+  if (v === undefined || v === null) return ""; // A torn event must never render "undefined".
   const s = String(v);
   let cut = STATE_CHANGE_FIELD_MAX;
   if (cutSplitsSurrogatePair(s, cut)) cut -= 1; // Never emit a lone high surrogate.
@@ -75,6 +94,13 @@ function field(v: unknown): string {
  * budget_fallback and model_fallback lines so the default and its slice rule stay in one place. */
 function providerModel(ev: HarnessEvent): string {
   return `${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")}`;
+}
+
+/** A utilization fraction as its whole-number percent, read through finiteNumber so a torn or
+ * hand-edited subscription event renders 0% rather than NaN — the same corrupt-field rule the
+ * feed's own subscription lines apply. */
+function pct(v: unknown): number {
+  return claudeUtilizationPct(finiteNumber(v, 0));
 }
 
 /** A compact, bounded one-liner for one harness decision event, for the Team state changes
@@ -213,6 +239,47 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     case "supervisor_exit":
       text = `tumwater down — restart ${field(ev.generation)} ${ev.signal ? `killed by ${field(ev.signal)}` : `exited ${field(ev.code)}`}${ev.reason ? `: ${field(ev.reason)}` : ""}`;
+      break;
+    case "disk_low":
+      // The disk floor stopped the team from starting runs; the free space and floor read
+      // through the feed's own gigabytes so the digest and the event feed cannot drift.
+      text = `waiting: low disk — ${gigabytes(ev.freeGB)} free (floor ${gigabytes(ev.holdGB)})`;
+      break;
+    case "disk_ok":
+      text = `disk recovered — ${gigabytes(ev.freeGB)} free`;
+      break;
+    case "quiet_hours_started":
+      text = `waiting: quiet hours${windowSuffix(ev)}`;
+      break;
+    case "quiet_hours_ended":
+      text = `quiet hours ended${windowSuffix(ev)}`;
+      break;
+    case "maintenance_quota_hold":
+      text = `waiting: maintenance allowance used — ${field(ev.maint)}/${field(ev.allowance)} in 24h (${field(ev.work)} work)`;
+      break;
+    case "maintenance_quota_resumed":
+      text = `maintenance allowance reopened — ${field(ev.maint)}/${field(ev.allowance)} in 24h`;
+      break;
+    case "subscription_window_reserved":
+      text = `waiting: ${backendLabel(ev)} window ${field(ev.windowType)} at ${pct(ev.utilization)}% past its ${pct(ev.reserve)}% reserve`;
+      break;
+    case "subscription_window_limited":
+      text = `waiting: ${backendLabel(ev)} window ${field(ev.windowType)} rejected${windowResetPhrase(ev)}`;
+      break;
+    case "subscription_window_reset":
+      text = `${backendLabel(ev)} window reset — model jobs run again`;
+      break;
+    case "provider_concurrency_changed":
+      text = `${field(ev.provider)} concurrency ${field(ev.from)} → ${field(ev.to)}`;
+      break;
+    case "model_changed":
+      // A model_cleared (or a roles.<id>.model-only) live edit arrives with `to: null`;
+      // name pi's default the way the feed does so the digest never renders a bare
+      // `model changed — now `.
+      text = `model changed — now ${field(ev.to ?? "pi's default")}`;
+      break;
+    case "bootstrap_complete":
+      text = `bootstrap complete — ${field(ev.plansDone)}/${field(ev.untilPlansDone)} plans done`;
       break;
     default:
       text = ev.type;

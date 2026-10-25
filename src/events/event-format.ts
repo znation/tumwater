@@ -62,7 +62,7 @@ function elapsed(ms: unknown): string {
  * missing or non-numeric reads as "0.0 GB", never "NaN" — the same corrupt-field rule
  * budgetPhrase applies to spentUsd/capUsd, since HarnessEvent's index signature hands every
  * field over unvalidated. The rounding and unit are text/format.ts's formatGB. */
-function gigabytes(v: unknown): string {
+export function gigabytes(v: unknown): string {
   return formatGB(finiteNumber(v, 0));
 }
 
@@ -93,7 +93,7 @@ function pauseSuffix(until: unknown, reason: unknown): string {
 /** `, resets HH:MM` for a subscription-window event carrying resetsAt, or "" when the field is
  * absent or non-numeric (a torn line, or a window the account did not stamp) — the same
  * corrupt-field rule the other optional-field renderers apply. */
-function windowResetPhrase(e: HarnessEvent): string {
+export function windowResetPhrase(e: HarnessEvent): string {
   const at = finiteNumber(e.resetsAt, null);
   return at === null ? "" : `, resets ${formatClock(at)}`;
 }
@@ -102,7 +102,7 @@ function windowResetPhrase(e: HarnessEvent): string {
  * the field is absent or blank (pollQuietHoursGate may send no window, so a routine hold must
  * not fabricate a pair). Shared by the started and ended lines so the two cannot drift on the
  * window's presence or format. */
-function windowSuffix(e: HarnessEvent): string {
+export function windowSuffix(e: HarnessEvent): string {
   return isNonBlankString(e.window) ? ` (${textOr(e.window)})` : "";
 }
 
@@ -124,7 +124,7 @@ function providerScope(e: HarnessEvent): string {
  * later backend's own id), falling back to "claude" for an event written before the window
  * events carried a `backend`. A claude-only team's lines read exactly as the older
  * `claude_window_*` lines did. */
-function backendLabel(e: HarnessEvent): string {
+export function backendLabel(e: HarnessEvent): string {
   return typeof e.backend === "string" && e.backend !== "" ? e.backend : "claude";
 }
 
