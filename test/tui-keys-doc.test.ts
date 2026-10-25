@@ -127,3 +127,42 @@ test("the Pending view's hint and docs rows name the same Ctrl keys", () => {
   // No docs Pending key is unhinted (catches the missing Ctrl+V hint); any-view keys stay out.
   assert.deepEqual([...documentedPending].filter((k) => !hinted.has(k)).sort(), []);
 });
+
+test("the Transcript view's hint and docs rows name the same Ctrl keys", () => {
+  // The transcript hint spans three physical lines; its marker line has no `keys =`.
+  const lines = read("../../src/ui/tui/tui-frame.ts").split("\n");
+  const marker = lines.findIndex((l) => l.includes(`view.kind === "transcript")`));
+  assert.notEqual(marker, -1, "found the Transcript hint marker line");
+  let end = marker;
+  while (!lines[end]!.includes("];")) end += 1;
+  const hinted = new Set([...lines.slice(marker, end + 1).join("\n").matchAll(/Ctrl\+([A-Z])/g)].map((m) => m[1]!));
+  assert.ok(hinted.size > 0, "found the Transcript hint keys");
+
+  const doc = read("../../docs/cli.md");
+  const start = doc.indexOf("## TUI keys");
+  assert.notEqual(start, -1, "docs/cli.md has a `## TUI keys` section");
+  const rest = doc.slice(start + "## TUI keys".length);
+  const next = rest.search(/^## /m);
+  const section = next === -1 ? rest : rest.slice(0, next);
+  const documentedTranscript = new Set<string>();
+  const documentedAny = new Set<string>();
+  for (const line of section.split("\n")) {
+    const cells = line.split("|").map((c) => c.trim());
+    const key = cells[1] ?? "";
+    const where = cells[2] ?? "";
+    if (/Ctrl\+([A-Z])/.test(key)) {
+      const letters = [...key.matchAll(/Ctrl\+([A-Z])/g)].map((m) => m[1]!);
+      if (/\bany view\b/.test(where)) for (const k of letters) documentedAny.add(k);
+      if (/\bTranscript\b/.test(where)) for (const k of letters) documentedTranscript.add(k);
+    }
+  }
+  // Every Transcript hint key is documented for Transcript or for any view
+  // (catches a stranded Ctrl+Y).
+  assert.deepEqual(
+    [...hinted].filter((k) => !documentedTranscript.has(k) && !documentedAny.has(k)).sort(),
+    [],
+  );
+  // No docs Transcript key is unhinted (catches the missing Ctrl+L/Ctrl+S hint
+  // entries); any-view keys stay out.
+  assert.deepEqual([...documentedTranscript].filter((k) => !hinted.has(k)).sort(), []);
+});

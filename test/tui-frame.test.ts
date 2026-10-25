@@ -128,15 +128,15 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 100)), /Ctrl\+B daily cap/);
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notes · Ctrl+X role model · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · / search · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notes · Ctrl+X role model · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+S min run interval · Ctrl+L instructions · / search · Ctrl+T next view · Ctrl+D quit",
   );
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: true, change: false }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N change · Ctrl+X clear notes · Ctrl+E edit notes · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N change · Ctrl+X clear notes · Ctrl+E edit notes · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+S min run interval · Ctrl+L instructions · Ctrl+T next view · Ctrl+D quit",
   ); // the notes's next step is the change view, and Ctrl+E replaces the notes
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: true }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+Y stat only · Ctrl+X role model · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+Y stat only · Ctrl+X role model · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+S min run interval · Ctrl+L instructions · Ctrl+T next view · Ctrl+D quit",
   ); // the cycle's last step names the way back, and the change step's Ctrl+Y shows the diffstat
   // The change-view hint names Ctrl+Y's stat toggle: the diffstat on the first heap, and the
   // full patch on a second press.
