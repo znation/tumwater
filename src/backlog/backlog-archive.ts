@@ -363,6 +363,18 @@ function planOrSkip(root: string, keep: number): ReturnType<typeof planArchiveAl
   }
 }
 
+/** If the primary checkout is not on the base branch, the reason a main-side write should be
+ * skipped, else null. Both `archiveFinishedOnMain` and `fileBugsOnMain` guard on this before
+ * committing a backlog file. */
+async function primaryOffBaseBranchReason(root: string): Promise<string | null> {
+  const primary = await currentBranch(root);
+  const base = targetBranch(loadConfigSafe(root).config?.baseBranch, primary);
+  if (primary !== base) {
+    return `your checkout is on ${primary ?? "a detached HEAD"}, not ${base}`;
+  }
+  return null;
+}
+
 /** The bulk archive, committed: move every live finished section of the primary checkout at
  * `root` (past its newest `keep` entries) to its archive file and commit the touched files on the
  * base branch as one `tumwater(operator):` commit. Holds the team's merge lock, so a merge
@@ -383,11 +395,8 @@ export async function archiveFinishedOnMain(
     mergeLockDir(root),
     () =>
       withPrimaryWorktreeLockAsync(root, async (): Promise<ArchiveOnMainOutcome> => {
-        const primary = await currentBranch(root);
-        const base = targetBranch(loadConfigSafe(root).config?.baseBranch, primary);
-        if (primary !== base) {
-          return { status: "skipped", reason: `your checkout is on ${primary ?? "a detached HEAD"}, not ${base}` };
-        }
+        const offBase = await primaryOffBaseBranchReason(root);
+        if (offBase !== null) return { status: "skipped", reason: offBase };
         const files = FINISHED_ARCHIVES.flatMap((a) => [a.file, a.archive]);
         const status = await gitTry(root, "status", "--porcelain", "--", ...files);
         if (status === null) return { status: "skipped", reason: "could not read git status" };
@@ -507,11 +516,8 @@ export async function fileBugsOnMain(
     mergeLockDir(root),
     () =>
       withPrimaryWorktreeLockAsync(root, async (): Promise<BugsFilingOutcome> => {
-        const primary = await currentBranch(root);
-        const base = targetBranch(loadConfigSafe(root).config?.baseBranch, primary);
-        if (primary !== base) {
-          return { status: "skipped", reason: `your checkout is on ${primary ?? "a detached HEAD"}, not ${base}` };
-        }
+        const offBase = await primaryOffBaseBranchReason(root);
+        if (offBase !== null) return { status: "skipped", reason: offBase };
         const status = await gitTry(root, "status", "--porcelain", "--", "BUGS.md");
         if (status === null) return { status: "skipped", reason: "could not read git status" };
         if (status.trim() !== "" && !status.startsWith("??")) {
