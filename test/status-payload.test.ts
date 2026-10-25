@@ -29,6 +29,7 @@ import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { slotWorktreePath } from "../src/paths.js";
 import { todayStamp } from "../src/budget/budget.js";
+import { PRINCIPLES_MAX_CHARS } from "../src/prompt/principles.js";
 import { writeEvents, writeLogLines, writeOrchestratorMarker, writeMarker } from "./fixtures/log-fixtures.js";
 import { makeRepo, tmpdir, writeBacklogFile, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
@@ -1287,4 +1288,31 @@ test("qaCoverageAlert is null for a missing or fresh ledger and names the newest
     newestAt: stalledNow - QA_COVERAGE_STALE_MS - 60_000,
     count: 2,
   });
+});
+
+test("the payload's principlesTruncated follows principlesBlockOverCap and clears under the cap", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  assert.equal(snapshot(root, undefined, now).principlesTruncated, undefined, "no PRINCIPLES.md stays absent");
+  let payload = statusPayload(root, now) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal(payload.principlesTruncated, undefined, "no principlesTruncated key with no PRINCIPLES.md");
+  assert.equal(payload.alerts.find((a) => a.key === "principles-truncated"), undefined, "no principles-truncated alert with no PRINCIPLES.md");
+
+  // An over-cap PRINCIPLES.md is the silent state doctor warns on; the snapshot, payload and
+  // alert should all surface it.
+  fs.writeFileSync(path.join(root, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS + 1));
+  assert.equal(snapshot(root, undefined, now).principlesTruncated, true, "over-cap PRINCIPLES.md is surfaced on the snapshot");
+  payload = statusPayload(root, now) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal(payload.principlesTruncated, true, "the machine-readable payload field is present");
+  const alert = payload.alerts.find((a) => a.key === "principles-truncated");
+  assert.ok(alert, "over-cap PRINCIPLES.md raises the principles-truncated alert");
+  assert.equal(alert!.tone, "amber");
+  assert.match(alert!.title, /prompt cap/);
+
+  // Rewriting the file to exactly the cap clears the field and the alert.
+  fs.writeFileSync(path.join(root, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS));
+  assert.equal(snapshot(root, undefined, now).principlesTruncated, undefined, "at-cap clears the snapshot field");
+  payload = statusPayload(root, now) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
+  assert.equal(payload.principlesTruncated, undefined, "no principlesTruncated key under the cap");
+  assert.equal(payload.alerts.find((a) => a.key === "principles-truncated"), undefined, "no principles-truncated alert under the cap");
 });

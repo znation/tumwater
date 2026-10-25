@@ -14,3 +14,15 @@ export function readPrinciples(root: string): string {
   const file = path.join(root, "PRINCIPLES.md");
   return truncateWithNote(readTextOrNull(file)?.trim() ?? "", PRINCIPLES_MAX_CHARS, "PRINCIPLES.md");
 }
+
+/** True when PRINCIPLES.md's trimmed text exceeds the prompt cap, so every run's <principles>
+ * block carries only its head plus a truncation marker — the always-on amber twin of the doctor
+ * `principles` row's over-cap warn, surfaced on `tumwater status`, the dashboard and the TUI
+ * without a doctor run. Uses the doctor row's own predicate (raw.trim().length >
+ * PRINCIPLES_MAX_CHARS), so the alert and the doctor row cannot disagree. Missing, unreadable
+ * (the directory-in-place case readPrinciples degrades to "") and at-or-under-cap files are all
+ * false. */
+export function principlesBlockOverCap(root: string): boolean {
+  const raw = readTextOrNull(path.join(root, "PRINCIPLES.md"));
+  return raw !== null && raw.trim().length > PRINCIPLES_MAX_CHARS;
+}

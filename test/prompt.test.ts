@@ -18,7 +18,9 @@ import {
 import {
   PRINCIPLES_MAX_CHARS,
   readPrinciples,
+  principlesBlockOverCap,
 } from "../src/prompt/principles.js";
+import { checkPrinciples } from "../src/doctor/doctor-principles.js";
 import { buildResumePrompt } from "../src/prompt/prompt-followup.js";
 import { worktreePath } from "../src/paths.js";
 import { buildConflictPrompt, buildReviewPrompt } from "../src/prompt/gate-prompts.js";
@@ -672,4 +674,37 @@ test("the ask rule has every unassigned role read QUESTIONS.md first and act on 
   const flat = oneLine(buildRunPrompt({ role: roleById("feature")! }));
   assert.match(flat, /First read the project brief \(README\.md\) in full, plus QUESTIONS\.md when present/);
   assert.match(flat, /act on an answer that unblocks your work/);
+});
+
+test("principlesBlockOverCap is true only for a file past the prompt cap", () => {
+  const dir = tmpdir("principles-overcap-");
+  // No PRINCIPLES.md at all is not over-cap.
+  assert.equal(principlesBlockOverCap(dir), false, "no PRINCIPLES.md");
+  // Exactly the cap is not over-cap; one past the cap is.
+  fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS));
+  assert.equal(principlesBlockOverCap(dir), false, "exactly at the cap");
+  fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS + 1));
+  assert.equal(principlesBlockOverCap(dir), true, "one past the cap");
+  // Surrounding whitespace that trims to the cap is not over-cap.
+  fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), "\n\n" + "x".repeat(PRINCIPLES_MAX_CHARS) + "\n\n");
+  assert.equal(principlesBlockOverCap(dir), false, "whitespace trims to the cap");
+  // A directory named PRINCIPLES.md is unreadable and not over-cap.
+  fs.rmSync(path.join(dir, "PRINCIPLES.md"));
+  fs.mkdirSync(path.join(dir, "PRINCIPLES.md"));
+  assert.equal(principlesBlockOverCap(dir), false, "an unreadable directory in place");
+});
+
+test("principlesBlockOverCap and checkPrinciples agree on the over-cap verdict", () => {
+  const dir = tmpdir("principles-agree-");
+  const states: { name: string; write: () => void }[] = [
+    { name: "no file", write: () => {} },
+    { name: "at cap", write: () => fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS)) },
+    { name: "one past", write: () => fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS + 1)) },
+    { name: "whitespace trims", write: () => fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), "\n\n" + "x".repeat(PRINCIPLES_MAX_CHARS) + "\n\n") },
+    { name: "unreadable dir", write: () => { fs.rmSync(path.join(dir, "PRINCIPLES.md"), { force: true }); fs.mkdirSync(path.join(dir, "PRINCIPLES.md")); } },
+  ];
+  for (const s of states) {
+    s.write();
+    assert.equal(principlesBlockOverCap(dir), checkPrinciples(dir).level !== "ok", s.name);
+  }
 });

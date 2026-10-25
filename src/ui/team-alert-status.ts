@@ -20,6 +20,7 @@ import { joinWithMore, squash } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { STALL_RE } from "./run-progress-model.js";
 import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
+import { PRINCIPLES_MAX_CHARS } from "../prompt/principles.js";
 
 interface StatusAlertsInput {
   snap: Pick<
@@ -29,6 +30,7 @@ interface StatusAlertsInput {
     | "noBrief"
     | "briefTruncated"
     | "roleNotesOverCap"
+    | "principlesTruncated"
     | "mainCheck"
   >;
   roles: readonly AlertRole[];
@@ -186,6 +188,19 @@ export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       tone: "amber",
       title: `${plural(notesOver.length, "role note is", "role notes are")} over the read bound — those roles run on truncated notes`,
       detail: `${joinWithMore(notesOver.map((o) => `${o.role} (${o.chars})`), 3)} exceed the ${ROLE_NOTES_MAX_BYTES}-character read bound, so each of those roles' prompt carries only the note's head plus a truncation marker. Rewrite them under the cap (the run's \`tumwater-notes write\` shim, \`tumwater role <id> --notes-file <path>\`, the dashboard drawer, or the TUI notes editor).`,
+      actions: [],
+    });
+  }
+  // PRINCIPLES.md is over its prompt cap (principlesBlockOverCap): every role's <principles>
+  // block carries only its head plus a truncation marker, so the team runs on truncated design
+  // guidance. The same over-cap state the doctor `principles` row warns on, raised as a standing
+  // alert on the always-on surfaces. Independent of team state, like the no-brief alert beside it.
+  if (snap.principlesTruncated) {
+    out.push({
+      key: "principles-truncated",
+      tone: "amber",
+      title: "PRINCIPLES.md is over its prompt cap — every role runs on truncated design guidance",
+      detail: "The file exceeds the " + PRINCIPLES_MAX_CHARS + "-character prompt cap, so every run's <principles> block carries only its head plus a truncation marker and only the leading bullets survive. Keep PRINCIPLES.md to its list bullets and move long-form rationale into docs/, which is not injected.",
       actions: [],
     });
   }

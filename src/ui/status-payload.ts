@@ -265,6 +265,11 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // chars }`, the same array collectRoleNotesOverCap returns and the alert names). Omitted
     // (absent) when every note is within the bound, the same omit-undefined idiom as noBrief.
     ...(snap.roleNotesOverCap && snap.roleNotesOverCap.length > 0 ? { roleNotesOverCap: snap.roleNotesOverCap } : {}),
+    // The raw machine-readable twin of the amber `principles-truncated` alert (present only
+    // when PRINCIPLES.md is over its prompt cap, so `tumwater status --json` scripts can read
+    // the same state the alert renders). Omitted (absent) when the file is at or under the cap
+    // or missing, the same omit-undefined idiom as noDeclaredCheck.
+    ...(snap.principlesTruncated ? { principlesTruncated: true } : {}),
     ciParityTone: ciParityTone(snap.ciParity),
     // The check's counts fragment, preformatted through badges.ts's mainCountsFragment so
     // the page renders the pass/skip/fail breakdown verbatim and cannot re-derive (and

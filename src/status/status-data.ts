@@ -28,6 +28,7 @@ import { collectBudget } from "./status-budget.js";
 import { collectRootInstallDrift } from "./status-install.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import { briefBlockMissing, briefBlockOverCap } from "../brief/brief.js";
+import { principlesBlockOverCap } from "../prompt/principles.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
@@ -406,6 +407,13 @@ export interface StatusSnapshot {
    * role's id and its note's length in characters, sorted newest-char-count first; present
    * only when non-empty, so the surfaces render exactly as before. */
   roleNotesOverCap?: RoleNoteOverCap[];
+  /** True when PRINCIPLES.md's trimmed text exceeds the prompt cap, so every role's
+   * <principles> block carries only its head plus a truncation marker (src/prompt/
+   * principles.ts's principlesBlockOverCap) — the doctor `principles` row's over-cap
+   * warning state. Present only in that state, so the always-on amber `principles-truncated`
+   * alert surfaces the silent truncation on `tumwater status`, the dashboard and the TUI;
+   * absent otherwise (including no PRINCIPLES.md), so the surfaces render exactly as before. */
+  principlesTruncated?: boolean;
   /** The check-permit pool's live state as the orchestrator published it; only while it runs. */
   checkPermits?: CheckPermitSnapshot;
   /** The workspace pool's live state as the running orchestrator published it; absent
@@ -610,6 +618,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     noBrief: briefBlockMissing(root) ? true : undefined,
     briefTruncated: briefBlockOverCap(root) ? true : undefined,
     ...(roleNotesOverCap.length > 0 ? { roleNotesOverCap } : {}),
+    principlesTruncated: principlesBlockOverCap(root) ? true : undefined,
     // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
     // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
     // must not speak for a stopped team — and only when the last poll could measure the

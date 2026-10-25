@@ -475,6 +475,10 @@ Every run carries PRINCIPLES.md, which only the director and steward edit. Promp
 for a mid-sized model with a finite context window: tool-call budgets, ranged reads of large
 files, and bundled pi extensions that trim oversized tool output to its head and tail and, on
 a model with a window of at most 256k, stop sending the model's earlier thinking back to it.
+The file is capped for injection, so an over-cap PRINCIPLES.md silently degrades every run's
+design guidance — that state surfaces as a standing amber `principles-truncated` alert on
+`tumwater status`, the dashboard and the TUI (the twin of the doctor `principles` row's over-cap
+warn).
 The status table's `peak ctx` column reads each run against the role's declared window
 (`110.0k (84%)`), so an operator can see how close a run came to where pi compacts it.
 
