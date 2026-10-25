@@ -293,6 +293,18 @@ test("rolePhase names a consecutive no-change streak on the resting state cell",
   assert.equal(rolePhase(s, true), "sleeping (for 1h) · no change ×2");
   s.noChangeStreak = 5;
   assert.equal(rolePhase(s, true), "sleeping (for 1h) · no change ×5");
+  // A context-ceiling episode wins over the no-change suffix it also feeds: a cut-off run is a
+  // no_change, so noChangeStreak counts it too, but cut off names the costly cause.
+  s.cutOffStreak = 2;
+  s.noChangeStreak = 2;
+  assert.equal(rolePhase(s, true), "sleeping (for 1h) · cut off ×2");
+  // A single cut-off stays bare (N=1 is ordinary) so the no-change suffix carries again.
+  s.cutOffStreak = 1;
+  assert.equal(rolePhase(s, true), "sleeping (for 1h) · no change ×2");
+  // Both absent renders the ordinary label byte-identically.
+  delete s.cutOffStreak;
+  delete s.noChangeStreak;
+  assert.equal(rolePhase(s, true), "sleeping (for 1h)");
   // A dormant role's idle/skip labels carry it too.
   const idle = freshRunnerState("feature");
   idle.nextRunAt = 0;

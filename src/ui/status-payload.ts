@@ -172,6 +172,12 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
       // change ×N` suffix from this number (its row and drawer share noChangeStreak) so its
       // JS twin applies the same display rule without re-parsing the phase text.
       noChangeStreak: s.noChangeStreak ?? 0,
+      // The consecutive cut-off streak (run-apply.ts applyRunOutcome's cutOffStreak, an
+      // observational counter parallel to noChangeStreak): how many completed runs in a row
+      // hit the context ceiling. The GUI's phaseDetailBase re-derives the ` · cut off ×N`
+      // suffix from this number (preferred over noChangeStreak, since a cut-off run is also a
+      // no_change and its prose names the costly cause) without re-parsing the phase text.
+      cutOffStreak: s.cutOffStreak ?? 0,
     };
   });
   return {

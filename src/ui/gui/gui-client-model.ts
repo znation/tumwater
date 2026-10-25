@@ -18,11 +18,11 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // How a role's phase label (status-model.ts rolePhase) reads here: a status word and tone for
   // its pill, whether it is live work, and the detail the label carried after its first word.
   function phaseInfo(phase) {
-    // status-model.ts rolePhase appends a " · no change ×N" streak suffix to a resting idle
-    // cell's label. Strip it so the exact/startsWith matches and the parsed detail see the
-    // plain phase; phaseDetailBase re-appends the streak once itself from the payload's
-    // noChangeStreak, so the GUI renders it exactly once.
-    const p = String(phase || "").replace(/ · no change ×\d+$/, "");
+    // status-model.ts rolePhase appends a " · no change ×N" or " · cut off ×N" streak suffix
+    // to a resting idle cell's label. Strip it so the exact/startsWith matches and the parsed
+    // detail see the plain phase; phaseDetailBase re-appends the streak once itself from the
+    // payload's noChangeStreak/cutOffStreak, so the GUI renders it exactly once.
+    const p = String(phase || "").replace(/ · (?:no change|cut off) ×\d+$/, "");
     const after = (n) => p.slice(n).replace(/^[\s·,]+/, "");
     if (p.startsWith("director working")) return { key: "working", label: "Working (director)", tone: "blue", live: true, detail: after(16) };
     if (p.startsWith("working")) return { key: "working", label: "Working", tone: "blue", live: true, detail: after(7) };

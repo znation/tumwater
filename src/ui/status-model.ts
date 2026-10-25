@@ -294,10 +294,19 @@ export function rolePhase(
         cell = "due";
     }
   }
-  // Two or more consecutive no-change runs earn the suffix (N=1 is a single quiet run —
-  // ordinary, not yet a pattern).
-  const streak = s.noChangeStreak ?? 0;
-  if (streak >= 2) cell += ` · no change ×${streak}`;
+  // Two or more consecutive runs earn the suffix (N=1 is a single run — ordinary, not yet
+  // a pattern). A cut-off run is itself a `no_change`, so noChangeStreak counts a
+  // context-ceiling episode too — but the plain suffix would mislabel a window-burning
+  // episode as a benign idle one, so when the cut-off streak reads 2+ it wins: it names the
+  // costly cause (operator should split the task or raise the model's context window before
+  // the give-up). Observational only, like the no-change suffix — it never warns from here
+  // (the once-per-episode crossing warning comes from run-finalize.ts).
+  const cutOff = s.cutOffStreak ?? 0;
+  if (cutOff >= 2) cell += ` · cut off ×${cutOff}`;
+  else {
+    const streak = s.noChangeStreak ?? 0;
+    if (streak >= 2) cell += ` · no change ×${streak}`;
+  }
   return cell;
 }
 

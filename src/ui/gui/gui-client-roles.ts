@@ -114,18 +114,22 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
     const backoff = next.startsWith("sleeping ") ? "sleeping — next check in " + next.slice(9) : "";
     // A yield-scaled clock: the role's recent runs merged nothing, so it runs less often.
     const note = slowed ? " · slowed ×" + slowed[1] + ", nothing merged lately" : "";
-    // The consecutive no-change streak (status-payload noChangeStreak, mirrored from
-    // status-model rolePhase's · no change ×N suffix): how many completed runs in a row
-    // returned nothing to do. Shown only on a resting idle cell (sleeping/queued/idle/
-    // deferred) — never on live work, a pause, a failure, or main-red, which the status
-    // label likewise leaves bare. Observational only: a legitimately idle maintenance role
-    // can hold a long streak.
-    const noChange = ["sleeping", "queued", "idle", "deferred"].includes(info.key) && (l.noChangeStreak || 0) >= 2
+    // The consecutive cut-off and no-change streaks (status-payload cutOffStreak/noChangeStreak,
+    // mirrored from status-model rolePhase's suffix): how many completed runs in a row hit the
+    // context ceiling or returned nothing to do. Shown only on a resting idle cell
+    // (sleeping/queued/idle/deferred) — never on live work, a pause, a failure, or main-red,
+    // which the status label likewise leaves bare. A cut-off run is also a no_change, so the
+    // cut-off streak wins when both read 2+ — it names the costly cause the plain suffix would
+    // bury. Observational only, like the phase text.
+    const cutOff = ["sleeping", "queued", "idle", "deferred"].includes(info.key) && (l.cutOffStreak || 0) >= 2
+      ? " · cut off ×" + l.cutOffStreak : "";
+    const noChange = !cutOff && ["sleeping", "queued", "idle", "deferred"].includes(info.key) && (l.noChangeStreak || 0) >= 2
       ? " · no change ×" + l.noChangeStreak : "";
-    if (info.key === "sleeping") return (backoff || (next === "-" ? "" : next === "now" ? "wakes now" : "wakes in " + next)) + note + noChange;
-    if (info.key === "queued") return (backoff || info.detail) + note + noChange;
+    const streak = cutOff || noChange;
+    if (info.key === "sleeping") return (backoff || (next === "-" ? "" : next === "now" ? "wakes now" : "wakes in " + next)) + note + streak;
+    if (info.key === "queued") return (backoff || info.detail) + note + streak;
     if (info.key === "paused" && d.pausedRolesUntil && !d.paused && (d.pausedLoops || []).includes(l.role)) return info.detail + " · resumes in " + humanSeconds(Math.max(0, Math.round((d.pausedRolesUntil - Date.now()) / 1000))); // retired-name-ok: serialized /api key
-    return info.detail + noChange;
+    return info.detail + streak;
   }
   function roleCells(l, d) {
     const info = phaseInfo(l.phase);

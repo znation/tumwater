@@ -9,6 +9,7 @@ import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { RunUsage } from "../src/run/run-usage.js";
 import type { RunOutcome } from "../src/run/run-outcome.js";
 import {
+  CUT_OFF_RESUME_LIMIT,
   applyMergeOutcome,
   ERROR_STREAK_WARN,
   QUIET_KILL_RESUME_LIMIT,
@@ -264,6 +265,35 @@ test("finalizeRun warns once at the quiet-kill streak crossing", async () => {
   // Past the crossing: no re-warning while the episode continues.
   await run(root, "organize", s, killed(QUIET_KILL_RESUME_LIMIT + 1));
   assert.equal(eventsOfType(root, "warning").length, 1);
+});
+
+test("finalizeRun warns once at the cut-off streak crossing", async () => {
+  const root = await initializedRepo();
+  const s = freshRunnerState("organize");
+  const cutOff = (n: number): RunOutcome => ({ result: "no_change", cutOff: true, summary: `cut ${n}` });
+  for (let n = 1; n < CUT_OFF_RESUME_LIMIT; n++) {
+    await run(root, "organize", s, cutOff(n));
+    assert.equal(eventsOfType(root, "warning").length, 0, `no warning at streak ${n}`);
+  }
+  await run(root, "organize", s, cutOff(CUT_OFF_RESUME_LIMIT));
+  const warnings = eventsOfType(root, "warning");
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!.message as string, /^3 consecutive runs cut off at the context ceiling/);
+  // Past the crossing: no re-warning while the episode continues.
+  await run(root, "organize", s, cutOff(CUT_OFF_RESUME_LIMIT + 1));
+  assert.equal(eventsOfType(root, "warning").length, 1);
+  // A healthy run resets the streak, and a fresh three-cut-off episode warns again.
+  await run(root, "organize", s, { result: "changed", summary: "x" });
+  assert.equal(eventsOfType(root, "warning").length, 1);
+  for (let n = 1; n <= CUT_OFF_RESUME_LIMIT; n++) {
+    await run(root, "organize", s, cutOff(n));
+  }
+  const again = eventsOfType(root, "warning");
+  assert.equal(again.length, 2);
+  assert.match(again[1]!.message as string, /^3 consecutive runs cut off at the context ceiling/);
+  // A run without cutOff never produces the warning even when the streak would otherwise sit.
+  await run(root, "organize", s, { result: "no_change", summary: "plain" });
+  assert.equal(eventsOfType(root, "warning").length, 2);
 });
 
 test("a leftover recovery failure feeds the error streak but never rides the run's run_end", async () => {

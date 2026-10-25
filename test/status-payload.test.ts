@@ -245,13 +245,16 @@ test("status payload carries the consecutive no-change streak per role", async (
   // A streak on the state file rides the payload for the TUI/GUI to read.
   const streaked = freshRunnerState("clean");
   streaked.noChangeStreak = 4;
+  streaked.cutOffStreak = 3;
   saveRunnerState(repo, streaked);
   // A role that never ran (absent field) reads as an explicit zero.
   saveRunnerState(repo, freshRunnerState("organize"));
 
-  let payload = statusPayload(repo) as { roles: Array<{ role: string; noChangeStreak: number }> };
+  let payload = statusPayload(repo) as { roles: Array<{ role: string; noChangeStreak: number; cutOffStreak: number }> };
   assert.equal(payload.roles.find((l) => l.role === "clean")?.noChangeStreak, 4, "a persisted streak rides the payload");
+  assert.equal(payload.roles.find((l) => l.role === "clean")?.cutOffStreak, 3, "a persisted cut-off streak rides the payload");
   assert.equal(payload.roles.find((l) => l.role === "organize")?.noChangeStreak, 0, "an absent field reads zero");
+  assert.equal(payload.roles.find((l) => l.role === "organize")?.cutOffStreak, 0, "an absent cut-off field reads zero");
 });
 
 // Project status: planned features and open bugs from PLANS.md/BUGS.md.

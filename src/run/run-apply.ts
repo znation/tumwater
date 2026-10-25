@@ -60,8 +60,10 @@ export const ERROR_STREAK_BREAKER = 10;
 /** Resumes granted to one context-ceiling cut-off streak before the role stops resuming the
  * task and falls back to a fresh run: a task that outruns the ceiling on every attempt (even
  * from a freshly compacted context) is too big to converge, and each cycle costs an hour-plus
- * of model time on local hardware. The streak itself keeps counting (RunnerState.cutOffStreak). */
-const CUT_OFF_RESUME_LIMIT = 3;
+ * of model time on local hardware. The streak itself keeps counting (RunnerState.cutOffStreak)
+ * so one warning per episode can be raised (run-finalize.ts) and the resting cell can read
+ * ` · cut off ×N` (status-model.ts rolePhase). */
+export const CUT_OFF_RESUME_LIMIT = 3;
 
 /** Resumes granted to one quiet-kill streak before the role abandons the starved pi session
  * and takes a fresh run on the idle ladder. A session the backend defers past the quiet

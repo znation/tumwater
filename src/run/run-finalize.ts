@@ -3,7 +3,7 @@ import { hasOutstandingWork, saveRunnerStateBestEffort, type RunnerState } from 
 import { branchHead } from "../git/git.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { observeAccount } from "../agent/subscription-account.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyRunOutcome } from "./run-apply.js";
+import { CUT_OFF_RESUME_LIMIT, ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyRunOutcome } from "./run-apply.js";
 import { restoreMidRunWake } from "../scheduling/backoff.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
 import type { RunOutcome, RunResult } from "./run-outcome.js";
@@ -129,6 +129,16 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
   // the give-up (fresh session + backoff) follows on the next kill.
   if ((s.quietKillStreak ?? 0) === QUIET_KILL_RESUME_LIMIT) {
     warnEventBestEffort(root, role, `${s.quietKillStreak} consecutive stalls (no progress): ${s.lastError ?? "unknown hang"}`);
+  }
+  // One warning per cut-off episode, mirroring quiet-kill above: a role cycling cut-off →
+  // resume burns an hour-plus per cycle (run-apply.ts CUT_OFF_RESUME_LIMIT) with no other
+  // operator signal, so the crossing must not look like a benign idle role. The `outcome.cutOff`
+  // guard makes it fire only on the run that increments the streak to the limit — every
+  // non-cut-off run resets the streak to 0 and a later cut-off sits above the limit — so
+  // exactly one warning per episode. No role guard, matching quiet-kill (a cut-off director
+  // prompt is re-queued but its streak still counts).
+  if (outcome.cutOff === true && (s.cutOffStreak ?? 0) === CUT_OFF_RESUME_LIMIT) {
+    warnEventBestEffort(root, role, `${s.cutOffStreak} consecutive runs cut off at the context ceiling; give the role a smaller task or a longer context window`);
   }
   // Per-run usage: the event feed is where operators see
   // spend — this run's tokens and cost ride on run_end so a budget pause or a money-burning

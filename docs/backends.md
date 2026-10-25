@@ -476,7 +476,10 @@ longer describe what runs.
   run resumes the session pi just compacted at end of run (short bridge prompt, same task),
   effectively mid-task compaction at run granularity. After 3 consecutive cut-offs on one
   task it gives up and falls back to a fresh run with the usual wait; a cut-off director
-  prompt is re-queued and reruns fresh.
+  prompt is re-queued and reruns fresh. The 3-cut-off crossing logs one warning ("N consecutive
+  runs cut off at the context ceiling"), and while an episode runs the role's row reads
+  ` · cut off ×N` instead of the benign ` · no change ×N` (a cut-off run is itself a
+  no_change), so the operator sees the episode before the harness abandons the task.
 - **Match clients to slots, or prefix caches thrash**: each server slot keeps the KV prefix of
   the last request it served. Keep the number of concurrent tumwater clients — `maxConcurrent`
   plus one for the director's bypass — at or below the server's slot count. One client over, and

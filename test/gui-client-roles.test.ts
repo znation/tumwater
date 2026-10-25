@@ -80,6 +80,11 @@ test("the second line names a consecutive no-change streak on a resting idle cel
   // N=1 and an absent field are ordinary single quiet runs — no suffix.
   assert.equal(phaseDetail(l({ noChangeStreak: 1 }), info, { running: true }), "wakes in 2m");
   assert.equal(phaseDetail(l({}), info, { running: true }), "wakes in 2m");
+  // A context-ceiling episode wins over the no-change suffix it also feeds, exactly as the
+  // phase text does (rolePhase prefers cut off when both read 2+).
+  assert.equal(phaseDetail(l({ noChangeStreak: 2, cutOffStreak: 2 }), info, { running: true }), "wakes in 2m · cut off ×2");
+  // A single cut-off stays bare (N=1 is ordinary), so the no-change suffix carries again.
+  assert.equal(phaseDetail(l({ noChangeStreak: 2, cutOffStreak: 1 }), info, { running: true }), "wakes in 2m · no change ×2");
   // Live work, a pause, and a failure never carry the streak: a running role's streak is
   // stale until the run ends, and the status label leaves those cells bare too.
   const working = { key: "working", label: "Working", tone: "blue", live: true, detail: "3m · turn 4" };
@@ -92,6 +97,7 @@ test("a suffixed phase still parses to its real key, and the streak renders once
   // The payload's phase already carries the suffix from status-model rolePhase, and the pill
   // parser feeds phaseDetail its info — so the queued/idle/deferred rows must see the clean
   // phase (no "other" fallback, no swallowed or doubled " · no change ×N").
+  assert.equal(phaseInfo("sleeping (for 1h) · cut off ×2").key, "sleeping");
   assert.equal(phaseInfo("due · no change ×2").key, "queued");
   assert.equal(phaseDetail({ phase: "due · no change ×2", noChangeStreak: 2, nextRunAt: now - 5_000, backoffSeconds: 0 },
     phaseInfo("due · no change ×2"), { running: true }), "starts on the next poll · no change ×2");
