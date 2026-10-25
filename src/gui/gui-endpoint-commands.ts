@@ -10,10 +10,12 @@
  * question-answer (gui/gui-backlog-commands), config set/unset + budget + notify-test
  * (gui/gui-config-commands), team pause/role-pause/wake (gui/gui-team-commands),
  * and operator lifecycle restart/reclaim/abort/reset-counters/stop-schedule/role-notes/
- * retire/brief-edit (gui/gui-operator-commands).
+ * retire/brief-edit (gui/gui-operator-commands), and flake-quarantine release
+ * (gui/gui-quarantine-commands).
  */
 export { handlePrompt, handlePromptRole, handlePromptCancel, handlePromptEdit, handlePromptTop } from "./gui-prompt-commands.js";
 export { handleQuestionAnswer, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit } from "./gui-backlog-commands.js";
 export { handleConfigSet, handleConfigUnset, handleBudget, handleRoleCap, handleRoleReviewAfterMerge, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleNotifyTest } from "./gui-config-commands.js";
 export { handlePause, handlePauseRole, handleWake, handleWakeCancel } from "./gui-team-commands.js";
 export { handleResetCounters, handleRestart, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleDoctorReprobe, handleAbort, handleAbortAll, handleStopSchedule, handleRoleNotes, handleRetire, handleRevert, handleQueueCancel, handleQueueTop, handlePostReviewAccept, handleBriefEdit } from "./gui-operator-commands.js";
+export { handleQuarantineRelease } from "./gui-quarantine-commands.js";

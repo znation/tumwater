@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
-import { clientScope } from "./helpers/gui-client-scope.js";
+import { GUI_CLIENT_REPORT_CHART_JS } from "../src/ui/gui/gui-client-report-chart.js";
+import { clientScope, clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 import type { ReportData, ReportDay, ReportTotals } from "../src/report/report-types.js";
 
 // The report tab's hover chip (gui-client-report.ts's report-tip region) runs in the
@@ -1491,18 +1492,162 @@ test("the Usage render chain draws the cost-per-commit lines under the merge-sha
   assert.match(chain, /d\.totals\.notionalCostUsd > 0 \? "<p class='muted cost-per-commit'>" \+ esc\(estimatedPerCommitText\(d\.series\)\) \+ "<\/p>" : ""/);
 });
 
-test("quarantineCardHtml wraps non-empty Flake quarantine Markdown in a card and returns empty for none", () => {
-  // The Failures view paints the server-served quarantine section as a card below the digest;
-  // the region is reached through the page's renderMarkdown like the digest card itself.
-  const { quarantineCardHtml } = clientScope<{ quarantineCardHtml(md?: unknown): string }>(
+test("quarantineCardHtml renders a Release button per entry and returns empty for none", () => {
+  // The Failures view paints the server-served { warning, rows } quarantine as a structured
+  // card below the digest, one Release button per row — the twin of `tumwater quarantine
+  // --release <n>`.
+  const { quarantineCardHtml } = clientScope<{ quarantineCardHtml(q?: unknown): string }>(
     ["report-quarantine"],
     ["quarantineCardHtml"],
-    { renderMarkdown: (md: string) => "<mark>" + md + "</mark>" },
   );
-  assert.equal(
-    quarantineCardHtml("## Flake quarantine\n- test/T.ts"),
-    "<article class='card md'><mark>## Flake quarantine\n- test/T.ts</mark></article>",
-  );
-  assert.equal(quarantineCardHtml(""), "");
+  const html = quarantineCardHtml({
+    warning: "quarantine holds 1 test over 3 days",
+    rows: [{ position: 1, test: "test/T.ts", detail: "first seen 5d ago, last seen 0s ago, 2 flakes — not filed" }],
+  });
+  assert.match(html, /<h2>Flake quarantine<\/h2>/);
+  assert.match(html, /quarantine holds 1 test over 3 days/);
+  assert.match(html, /test\/T\.ts/);
+  assert.match(html, /first seen 5d ago/);
+  assert.match(html, /data-action='quarantine-release' data-test='test\/T\.ts'/);
   assert.equal(quarantineCardHtml(undefined), "");
+  assert.equal(quarantineCardHtml({}), "");
+  assert.equal(quarantineCardHtml({ warning: null, rows: [] }), "");
+});
+
+test("the Failures release click chain arms, posts, and refetches only after the release lands", async () => {
+  // Drive quarantineReleaseClick the same way the card's wireClicks branch does: a first click
+  // on a row arms it (relabelling to confirm, posting nothing); a second click on the same row
+  // posts the release and re-fetches only after the post resolves — the still-present row would
+  // otherwise win the refetch's race; a row with no test id just disarms.
+  const { quarantineReleaseClick } = clientScope<{
+    quarantineReleaseClick(rel: unknown, post: (test: string) => Promise<unknown>, refetch: () => void): Promise<string>;
+  }>(["report-quarantine"], ["quarantineReleaseClick"]);
+  const row = { dataset: { test: "test/T.ts" }, textContent: "" };
+  const postedTests: string[] = [];
+  let fetches = 0;
+  const recordPost = async (t: string) => { postedTests.push(t); };
+  const countFetch = () => { fetches++; };
+  // The first click arms, relabels, and posts nothing.
+  assert.equal(await quarantineReleaseClick(row, recordPost, countFetch), "armed");
+  assert.equal(row.textContent, "Click again to release");
+  assert.equal(postedTests.length, 0, "an armed release posts nothing");
+  assert.equal(fetches, 0);
+  // The second click posts; the refetch waits for the post to resolve.
+  let releasePost: (() => void) | undefined;
+  const fence = new Promise<void>((resolve) => { releasePost = resolve; });
+  let posted = false;
+  const firing = quarantineReleaseClick(row, async (t: string) => { posted = true; postedTests.push(t); await fence; }, countFetch);
+  await Promise.resolve();
+  assert.equal(posted, true, "the second click posts the release");
+  assert.equal(fetches, 0, "the refetch waits for the release post to resolve");
+  releasePost!();
+  assert.equal(await firing, "released");
+  assert.equal(fetches, 1);
+  assert.equal(postedTests.length, 1);
+  assert.equal(postedTests[0], "test/T.ts");
+  // A row with no test id disarms without relabelling or posting.
+  const blank = { dataset: { test: "" }, textContent: "" };
+  assert.equal(await quarantineReleaseClick(blank, async (_: string) => { postedTests.push("?"); }, countFetch), "disarmed");
+  assert.equal(postedTests.length, 1, "a blank row never posts");
+});
+
+test("the Failures release arm is throttle-safe and clears on a new arm or a click elsewhere", async () => {
+  // The two revisions' fixes live in the view wiring, not the bare helper: fetchView clears the
+  // arm only when it actually rebuilds the Failures body (a throttled refetch that returns early
+  // must not disarm a button the user armed), and every path that moves off an armed row —
+  // clicking a different row, or anywhere else — restores the armed button's "Release" label.
+  // Drive the real fetchFailures + wireClicks against the served blob so both fixes are tested
+  // in context rather than exported side-effects.
+  const els: Record<string, { dataset: Record<string, string>; innerHTML: string; addEventListener(type: string, fn: (ev: unknown) => void): void }> = {};
+  let clickHandler: ((ev: unknown) => void) | null = null;
+  for (const id of ["report", "failures", "usagebody", "failbody", "usagewindow", "failwindow", "usagerole", "failrole"]) {
+    els[id] = {
+      dataset: {}, innerHTML: "",
+      addEventListener(type, fn) { if (type === "click" && id === "failures") clickHandler = fn; },
+    };
+  }
+  // The card's Release buttons as the clickClosest stand-in hands them to wireClicks.
+  const buttons: Record<string, { dataset: Record<string, string>; textContent: string }> = {
+    "test/A.test.ts": { dataset: { test: "test/A.test.ts" }, textContent: "" },
+    "test/B.test.ts": { dataset: { test: "test/B.test.ts" }, textContent: "" },
+  };
+  const A = buttons["test/A.test.ts"]!;
+  const B = buttons["test/B.test.ts"]!;
+  let relButton: { dataset: Record<string, string>; textContent: string } | null = null;
+  const postedTests: string[] = [];
+  const inject = {
+    document: { getElementById: (id: string) => els[id] ?? null },
+    $: (id: string) => els[id] ?? null,
+    markActive: () => {},
+    recall: () => null,
+    store: () => {},
+    lastStatus: null,
+    getJson: async (url: string) => {
+      if (url.startsWith("/api/failures")) {
+        return {
+          markdown: "# Failure digest\n\nfug",
+          quarantine: {
+            warning: null,
+            rows: [
+              { position: 1, test: "test/A.test.ts", detail: "first seen 5d ago, last seen 0s ago, 2 flakes — not filed" },
+              { position: 2, test: "test/B.test.ts", detail: "first seen 1h ago, last seen 0s ago, 1 flake — not filed" },
+            ],
+          },
+        };
+      }
+      return { markdown: "# usage" };
+    },
+    errorPanel: (title: string) => "<div class='error'>" + title + "</div>",
+    clickClosest: (_ev: unknown, sel: string) => (sel === "[data-action='quarantine-release']" ? relButton : null),
+    renderMarkdown: (md: string) => md,
+    icon: iconStub,
+    plural: (n: number, one: string) => `${n} ${one}`,
+    workSplit: () => "",
+    fmtTokens: (n: number) => String(n),
+    fmtUsd: (n: number) => "$" + n.toFixed(2),
+    postAction: (_path: string, body: unknown, pick: (d: unknown) => unknown) => { postedTests.push((body as { test: string }).test); return pick({ message: "ok" }); },
+  };
+  const keys = Object.keys(inject);
+  const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_CHART_JS, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport, fetchFailures };`) as (...args: unknown[]) => { fetchReport(throttled?: boolean): Promise<void>; fetchFailures(): Promise<void> };
+  const { fetchReport, fetchFailures } = run(...keys.map((k) => inject[k as keyof typeof inject]));
+  const click = () => { clickHandler!({}); };
+
+  // Usage fetches first so its fetchedAt is set; a later throttled refetch returns early at the
+  // throttle check and thus (the fix) must not touch a Failures arm.
+  await fetchReport();
+  await fetchFailures();
+  relButton = A;
+  click(); // arms A
+  assert.equal(A.textContent, "Click again to release");
+  // The throttled usage refetch returns before any rebuild, so the arm survives it.
+  await fetchReport(true);
+  assert.equal(A.textContent, "Click again to release", "a throttled refetch that rebuilds nothing must not disarm");
+
+  // Clicking elsewhere disarms and restores the armed row's label.
+  relButton = null;
+  click();
+  assert.equal(A.textContent, "Release", "a click elsewhere restores the armed label");
+
+  // A rebuild of the Failures body disarms, so one click on the fresh Release button arms again
+  // instead of passing for the confirming second click; only the second click on that armed
+  // button posts the release.
+  relButton = A;
+  click(); // arm A
+  await fetchFailures(); // rebuild disarms
+  assert.equal(A.textContent, "Release", "a rebuild restores the label");
+  click(); // one click after the rebuild arms again (not the confirming second)
+  assert.equal(A.textContent, "Click again to release");
+  click(); // the second click on that armed button is the confirming click: it posts
+  assert.equal(A.textContent, "Release", "the confirming second click restores the label");
+  assert.equal(postedTests.length, 1, "the confirming second click posts the release");
+
+  // Arming a different row disarms and restores the earlier row's label.
+  relButton = A;
+  click(); // arm A
+  assert.equal(A.textContent, "Click again to release");
+  relButton = B;
+  click(); // arm B
+  assert.equal(A.textContent, "Release", "arming B restores A's label");
+  assert.equal(B.textContent, "Click again to release");
+  assert.equal(postedTests.length, 1, "the arm-switch never posts");
 });

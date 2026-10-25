@@ -9,8 +9,8 @@
  * CLI; the since shape draws the returned Markdown instead of the charts. Failures renders
  * the failure digest (/api/failures, the Markdown `tumwater report --failures` prints) through
  * the page's Markdown renderer, over the same kind of window and Role pickers. The Failures view
- * also paints the current flake quarantine below the digest, the read twin of the amber quarantine
- * alert. Both fetch when
+ * also paints the current flake quarantine below the digest, the interactive release twin of
+ * `tumwater quarantine --release <n>` (each row's Release button). Both fetch when
  * their view opens, on Refresh, and — Usage only, throttled — when new events arrive while it
  * is open. On a trailing window, ◀ Earlier / Later ▶ step it back by its own length through
  * `?sinceMs=&untilMs=`, the twin of `report --since --until`. The chart builders are pure and
@@ -207,6 +207,12 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
     async function fetchView(throttled) {
       if (throttled && Date.now() - fetchedAt < 60000) return;
       fetchedAt = Date.now();
+      // A re-render replaces every Release button with a fresh "Release" label, so the armed
+      // state (whichever button previously carried "Click again to release") no longer refers
+      // to a live button — clear it just before the rebuild, or a single post-render click
+      // would pass for the second. Only a fetch that actually rebuilds does this: a throttled
+      // fetch that returns early above must not clear a button the user has armed.
+      disarmQuarantineRelease();
       buildOnce(o.panelId, viewHead(o.title, o.blurb, o.pickerId, o.choices, days, o.refreshId, o.rolePickerId, o.sinceChoices) +
         "<div id='" + o.bodyId + "'><div class='empty'>Loading…</div></div>");
       // Exactly one of the two controls is active: a live since window clears the day buttons
@@ -236,6 +242,17 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         fetchView();
       });
       container.addEventListener("click", (ev) => {
+        // The flake-quarantine card's Release buttons (Failures view): the first click arms,
+        // the second posts and re-fetches only after the post resolves (quarantineReleaseClick)
+        // so the released row disappears; any other click disarms.
+        const rel = clickClosest(ev, "[data-action='quarantine-release']");
+        if (rel) {
+          quarantineReleaseClick(rel,
+            (test) => postAction("/api/quarantine-release", { test }, (d) => d && d.message),
+            fetchView);
+          return;
+        }
+        disarmQuarantineRelease();
         const st = clickClosest(ev, "[data-step]");
         if (st) {
           if (st.dataset.step === "earlier") {
@@ -353,12 +370,53 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
 
   // report-quarantine:start
   // The Failures view's flake-quarantine list, painted as its own card below the digest: the
-  // read twin of the amber quarantine alert (whose See-failures action lands here). An empty
-  // or absent section (a clean quarantine) renders nothing, so a window with a digest but no
-  // quarantine is unchanged. Built over the same renderQuarantineSection the server serves.
-  function quarantineCardHtml(md) {
-    const q = String(md || "").trim();
-    return q ? "<article class='card md'>" + renderMarkdown(q, true) + "</article>" : "";
+  // interactive twin of the amber quarantine alert (whose See-failures action lands here). An
+  // empty or absent section (a clean quarantine) renders nothing, so a window with a digest
+  // but no quarantine is unchanged. The card is structured ({ warning, rows } from
+  // /api/failures) rather than Markdown, so each entry carries a Release button that runs the
+  // same releaseQuarantinedTest core as tumwater quarantine --release <n>.
+  let quarantineReleaseArmed = null;
+  // Restore the armed button's label and clear the arm. Safe when nothing is armed, and safe
+  // after a re-render rebuilds the Failures body (the armed element is detached then, so its
+  // label is moot); keeps the card from showing a stale "Click again to release" on a button
+  // the user no longer intends to commit.
+  function disarmQuarantineRelease() {
+    if (quarantineReleaseArmed) {
+      quarantineReleaseArmed.textContent = "Release";
+      quarantineReleaseArmed = null;
+    }
+  }
+  function quarantineCardHtml(q) {
+    const rows = (q && q.rows) || [];
+    if (!rows || rows.length === 0) return "";
+    return "<article class='card md'><h2>Flake quarantine</h2>" +
+      (q.warning ? "<p>" + esc(q.warning) + "</p>" : "") +
+      "<ul>" + rows.map((r) =>
+        "<li>" + esc(r.test) + " — " + esc(r.detail) +
+        "<button type='button' class='btn btn-sm' data-action='quarantine-release' data-test='" +
+        esc(r.test) + "'>Release</button></li>",
+      ).join("") + "</ul></article>";
+  }
+  // A Release click on the card: the first click on a row arms it (relabelling to confirm,
+  // like the other committing reaps); a second click on that same row posts the release and
+  // only then re-fetches, so the released row disappears once the server has released it; any
+  // other click, or a re-render, disarms and restores the armed button's label. Module state
+  // plus the injected post/refetch, so the browser's wireClicks and the test drive one
+  // decision. Returns "armed" / "released" / "disarmed".
+  async function quarantineReleaseClick(rel, post, refetch) {
+    const test = rel.dataset.test || "";
+    if (!test) return "disarmed";
+    if (quarantineReleaseArmed !== rel) {
+      disarmQuarantineRelease();
+      quarantineReleaseArmed = rel;
+      rel.textContent = "Click again to release";
+      return "armed";
+    }
+    quarantineReleaseArmed = null;
+    rel.textContent = "Release";
+    await post(test);
+    refetch();
+    return "released";
   }
   // report-quarantine:end
 

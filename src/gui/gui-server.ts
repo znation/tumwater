@@ -82,6 +82,7 @@ import {
   handleQueueCancel,
   handleQueueTop,
   handlePostReviewAccept,
+  handleQuarantineRelease,
   handleWake,
   handleWakeCancel,
 } from "./gui-endpoint-commands.js";
@@ -283,6 +284,7 @@ export function startGui(
     "POST /api/queue-cancel": (req, res) => handleQueueCancel(req, res, root),
     "POST /api/queue-top": (req, res) => handleQueueTop(req, res, root),
     "POST /api/post-review-accept": (req, res) => handlePostReviewAccept(req, res, root),
+    "POST /api/quarantine-release": (req, res) => handleQuarantineRelease(req, res, root),
     "POST /api/restart": (req, res) => handleRestart(req, res, root),
     "POST /api/stop-schedule": (req, res) => handleStopSchedule(req, res, root),
     "POST /api/reclaim": (req, res) => handleReclaim(req, res, root),

@@ -6,6 +6,7 @@ import { collectReport } from "../src/report/report-data.js";
 import type { ReportData, ReportDay } from "../src/report/report-types.js";
 import { collectFailureReport } from "../src/failure/failure-data.js";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
+import { loadQuarantine } from "../src/review/known-flakes.js";
 import { eventsLogPath, quarantinePath } from "../src/paths.js";
 import { REPORT_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { compactTokens } from "../src/text/format.js";
@@ -148,10 +149,12 @@ test("gui /api/failures carries the current flake-quarantine section", async () 
   const repo = makeRepo();
   await initProject(repo, "failures quarantine api test");
   await withGui(repo, async ({ base }) => {
-    // A fresh repo has no quarantine file → the field is "".
-    const clean = (await (await fetch(base + "/api/failures")).json()) as { quarantine: string; markdown: string };
-    assert.equal(clean.quarantine, "");
-    // Seed one quarantined test old enough for the warning to fire: the section names it.
+    // A fresh repo has no quarantine file → warning is null and rows is empty.
+    const clean = (await (await fetch(base + "/api/failures")).json()) as { quarantine: { warning: string | null; rows: { position: number; test: string; detail: string }[] }; markdown: string };
+    assert.equal(clean.quarantine.warning, null);
+    assert.deepEqual(clean.quarantine.rows, []);
+    // Seed one quarantined test old enough for the warning to fire: the rows list it with the
+    // same detail text the digest section prints after the test.
     const now = Date.now();
     writeFileDeep(
       quarantinePath(repo),
@@ -159,11 +162,51 @@ test("gui /api/failures carries the current flake-quarantine section", async () 
     );
     const res = await fetch(base + "/api/failures");
     assert.equal(res.status, 200);
-    const d = (await res.json()) as { quarantine: string; markdown: string };
-    assert.match(d.quarantine, /^## Flake quarantine\n/);
-    assert.match(d.quarantine, /test\/T\.ts/);
+    const d = (await res.json()) as { quarantine: { warning: string | null; rows: { position: number; test: string; detail: string }[] }; markdown: string };
+    assert.deepEqual(d.quarantine.rows, [
+      { position: 1, test: "test/T.ts", detail: "first seen 5d ago, last seen 0s ago, 2 flakes — not filed" },
+    ]);
+    assert.match(d.quarantine.warning ?? "", /quarantine holds 1 test over 3 days:/, "the warning fires for the old entry");
     // The digest's markdown is byte-identical for the same query.
     assert.equal(d.markdown, renderFailureMarkdown(collectFailureReport(repo, 14)));
+  });
+});
+
+test("gui POST /api/quarantine-release drops a quarantined test", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "quarantine release api test");
+  await withGui(repo, async ({ base }) => {
+    const now = Date.now();
+    writeFileDeep(
+      quarantinePath(repo),
+      JSON.stringify({ tests: [{ test: "test/T.ts", firstSeen: now - 86_400_000, lastSeen: now, count: 1, bug: "" }] }),
+    );
+    const hit = await fetch(base + "/api/quarantine-release", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ test: "test/T.ts" }),
+    });
+    assert.equal(hit.status, 200);
+    const hitBody = (await hit.json()) as { ok: boolean; message: string };
+    assert.equal(hitBody.ok, true);
+    assert.match(hitBody.message, /test\/T\.ts/);
+    assert.equal(loadQuarantine(repo).length, 0, "the released test is gone from the quarantine");
+    // A second POST for the same (now absent) test answers ok: false and changes nothing.
+    const miss = await fetch(base + "/api/quarantine-release", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ test: "test/T.ts" }),
+    });
+    assert.equal(miss.status, 200);
+    const missBody = (await miss.json()) as { ok: boolean; message: string };
+    assert.equal(missBody.ok, false);
+    // An empty test answers 400.
+    const empty = await fetch(base + "/api/quarantine-release", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ test: "" }),
+    });
+    assert.equal(empty.status, 400);
   });
 });
 

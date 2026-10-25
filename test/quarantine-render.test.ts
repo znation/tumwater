@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { quarantineRows, renderQuarantine, renderQuarantineSection } from "../src/review/quarantine-render.js";
+import { quarantineRows, quarantineViewRows, renderQuarantine, renderQuarantineSection } from "../src/review/quarantine-render.js";
 import { QUARANTINE_AGE_MS, QUARANTINE_WARN_COUNT } from "../src/baseline/main-guardrails.js";
 import type { QuarantineEntry } from "../src/review/known-flakes.js";
 
@@ -85,6 +85,28 @@ test("renderQuarantine appends the doctor's warning phrase for an old entry and 
     const lines = renderQuarantine(rows, now).split("\n");
     assert.equal(lines.length, 2, "no warning line for a fresh, quiet list");
   }
+});
+
+test("quarantineViewRows positions and details each entry", () => {
+  // The dashboard card's structured rows: position and test ride off the shared sort, and each
+  // detail is exactly the per-row text renderQuarantineSection prints after the test.
+  const rows = quarantineRows([
+    entry({ test: "test/a.test.ts", firstSeen: now - 2 * 24 * 3_600_000, lastSeen: now - 3_600_000, count: 3, bug: "A hidden flake" }),
+    entry({ test: "test/b.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "" }),
+  ]);
+  const view = quarantineViewRows(rows, now);
+  assert.deepEqual(
+    view.map((r) => [r.position, r.test]),
+    [
+      [1, "test/a.test.ts"],
+      [2, "test/b.test.ts"],
+    ],
+  );
+  assert.equal(view[0]!.detail, "first seen 2d ago, last seen 1h ago, 3 flakes — filed: A hidden flake");
+  assert.equal(view[1]!.detail, "first seen 1h ago, last seen 0s ago, 1 flake — not filed");
+  // The detail is exactly what the Markdown section prints after the test, so the digest and
+  // the structured card cannot drift on wording.
+  assert.deepEqual(quarantineViewRows([], now), []);
 });
 
 test("renderQuarantineSection is empty for an empty list and a Markdown section otherwise", () => {

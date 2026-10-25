@@ -1,7 +1,8 @@
 /**
  * The request-body helpers shared by the dashboard's per-domain POST command modules
- * (gui-prompt-commands, gui-backlog-commands, gui-config-commands, gui-team-commands, and
- * gui-operator-commands, all barrelled into gui/gui-endpoint-commands.ts): readPostBody /
+ * (gui-prompt-commands, gui-backlog-commands, gui-config-commands, gui-team-commands,
+ * gui-operator-commands, and gui-quarantine-commands, all barrelled into
+ * gui/gui-endpoint-commands.ts): readPostBody /
  * readRoleBody — the body-discipline-and-role-check pair each mutating handler guards its
  * inputs with — and sendRequestResult, the shared boolean-claiming marker reply. The
  * per-domain `checked*` validators live with their domain's module, not here.
