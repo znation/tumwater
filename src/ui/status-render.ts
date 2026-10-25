@@ -221,21 +221,51 @@ interface StatusRoleRow {
   lastError?: string;
 }
 
-/** Render the status table shared by `tumwater status` and the TUI as lines of toned spans,
- * plus the per-role facts it computed (see StatusRoleRow). When `maxWidth` is given, wide cells
- * are clipped so no line exceeds it (terminal rows never wrap). */
-export function renderStatusSpans(
-  root: string,
-  snap: StatusSnapshot,
-  maxWidth?: number,
-  scoped = false,
-): { lines: StatusLine[]; roles: StatusRoleRow[] } {
-  const name = projectName(root);
-  const lines: StatusLine[] = [];
-  // One clock read per render, shared by the timed-pause badge's countdown and every row's
-  // next-run cell — a per-site Date.now() could tick over // retired-name-ok
-  // between them and disagree with itself.
-  const now = Date.now();
+/** The per-role snapshot row one render reads — RunnerState plus the display extras the
+ * snapshot layer adds (model/tier/fallback/custom/image fields, status-data.ts). */
+type SnapshotRole = StatusSnapshot["roles"][number];
+
+/** One role's metric inputs for its status row, captured once per render so the header
+ * badges, the per-role rows, the totals row and the TUI's attention lines all read the same
+ * numbers (roleRowCells single-homes the per-role live-tail read the GUI payload repeats). */
+interface StatusRowMetric {
+  s: SnapshotRole;
+  m: { generated: number; peakCtx: number };
+  live: LiveProgress | null;
+  phase: string;
+  role: string;
+  lastRunEndedAt: number | undefined;
+}
+
+/** Status stage: one status cell — a toned span (or an untoned one). */
+function statusCell(text: string, tone?: StatusSpan["tone"]): StatusSpan[] {
+  return [{ text, ...(tone ? { tone } : {}) }];
+}
+
+/** The model suffix for one role's name cell (tier + model, the pi-default marker on a plain
+ * model, or the empty string when neither resolved). */
+function roleModelLabel(s: SnapshotRole): string {
+  return s.modelTier
+    ? `${s.modelTier}${s.model ? ` · ${s.model}` : ""}`
+    : s.model
+      ? `${s.model}${s.modelFromPi ? ", pi default" : ""}`
+      : "";
+}
+
+/** Per-role prompts 2/2 — a role with queued prompts carries a small `p:N` marker on its
+ * state cell (appended, so the work-item prefix survives clipping ahead of it), telling the
+ * operator steering one role that something is waiting for it. A pending scheduled wake
+ * naming the role adds a blue ` · wake in …` marker after it (rendered in statusRoleRows, on
+ * the same state cell). Empty when nothing queues. */
+function queuedPromptMarker(snap: StatusSnapshot, role: string): string {
+  const n = snap.roleInbox[role] ?? 0;
+  return n > 0 ? ` p:${n}` : "";
+}
+
+/** Status stage — the header badge line: the `running` reading plus the whole first line
+ * (`tumwater` brand, project name, and every badge) from the snapshot and the one shared
+ * clock read. */
+function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): StatusLine {
   // The questions badge (like the inbox one) appears only when something needs an answer.
   // The budget badge is standing information for a money-spending system in EVERY cap state
   // (disabled reads `· no cap` — and it is the affordance for editing the cap); on narrow
@@ -248,9 +278,9 @@ export function renderStatusSpans(
   const running: StatusSpan[] = snap.running
     ? [{ text: "running", tone: "green" }, { text: ` (pid ${snap.pid}` }, ...badgeSpans(buildBadge(snap.build), snap.build?.stale ? "yellow" : undefined), { text: ")" }]
     : [{ text: "not running — start with `tumwater start`", tone: "dim" }];
-  lines.push([
+  return [
     { text: "tumwater", tone: "brand" },
-    { text: ` · ${name} · ` },
+    { text: ` · ${projectName(root)} · ` },
     ...running,
     ...(snap.running ? badgeSpans(runWindowBadge(snap.runStopsAt, now), "blue") : []),
     ...badgeSpans(mergeBadge(snap.mergeQueue), "blue"),
@@ -289,30 +319,17 @@ export function renderStatusSpans(
     // ask-me-nothing informality the pause badge's countdown uses, without stealing its
     // urgency. Unset keeps the header byte-identical (the badge is empty).
     ...badgeSpans(quietBadge(snap.quietHours, snap.inQuietHours), snap.inQuietHours ? "yellow" : undefined),
-  ]);
-  lines.push([]);
-  // `today` is the role's daily budget window (dailyCost): $0.00 while its stamp is stale
-  // or missing, so roles that never ran — or last ran yesterday — read zero without a
-  // save. It renders whether or not the cap is enabled: spend observability does not depend
-  // on it.
-  // `next run` is a short fixed-width cell like `today`, never flexible: the columns that
-  // give way when the table is wider than the terminal are `last result`, then `state`, then
-  // `last run`, in FLEXIBLE_COLUMNS' order.
-  const cols = ["role", "state", "runs", "commits", "output", "peak ctx", "cost", "today", "last run", "last merged", "last result", "next run"];
-  // One live tail read per running role per frame, threaded through every cell that shows
-  // in-flight detail (metrics, state, current work) — each helper used to re-read the log on
-  // its own, up to three stats + reads per role per second. The phase is computed once per
-  // row (in roleRowCells, shared with the GUI payload) and carried on the row: the same
-  // label drives the state cell and the shared row order (sortRolesByState).
-  // Per-role prompts 2/2 — a role with queued prompts carries a small `p:N` marker on its
-  // state cell (appended, so the work-item prefix survives clipping ahead of it), telling the
-  // operator steering one role that something is waiting for it. A pending scheduled wake
-  // naming the role adds a blue ` · wake in …` marker after it.
-  const roleQueued = (role: string): string => {
-    const n = snap.roleInbox[role] ?? 0;
-    return n > 0 ? ` p:${n}` : "";
-  };
-  const withMetrics = snap.roles.map((s) => {
+  ];
+}
+
+/** Status stage — each role's metric inputs for its status row. One live tail read per
+ * running role per frame, threaded through every cell that shows in-flight detail (metrics,
+ * state, current work) — each helper used to re-read the log on its own, up to three stats +
+ * reads per role per second. The phase is computed once per row (in roleRowCells, shared with
+ * the GUI payload) and carried on the row: the same label drives the state cell and the shared
+ * row order (sortRolesByState). */
+function statusRowMetrics(root: string, snap: StatusSnapshot): StatusRowMetric[] {
+  return snap.roles.map((s) => {
     // roleRowCells single-homes the per-role tail read + metrics + phase derivation the GUI
     // payload (status-payload.ts) repeats, so the two dashboards cannot drift apart.
     const cells = roleRowCells(snap, root, s);
@@ -325,34 +342,40 @@ export function renderStatusSpans(
       lastRunEndedAt: s.lastRunEndedAt,
     };
   });
-  // User-defined roles (snapshot's `custom` flag) get an asterisk beside their name — the
-  // dashboards' at-a-glance marker. The name column (index 0) is not in FLEXIBLE_COLUMNS;
-  // its width derives from row content and it shrinks only after those,
-  // so the extra character widens it.
-  // Rows are ordered by the shared display rule (status-model's roleRank, then last run most
-  // recent first) so the TUI/status table groups roles the way the GUI table does.
-  // Each cell is spans: the state cell takes its phase's tone (the p:N marker stays plain), the
-  // last result tones its outcome word, a backoff countdown reads yellow.
-  const cell = (text: string, tone?: StatusSpan["tone"]): StatusSpan[] => [{ text, ...(tone ? { tone } : {}) }];
-  // A model every role shares prints once in a footnote instead of on each name cell.
-  const modelInner = (s: (typeof snap.roles)[number]): string =>
-    s.modelTier
-      ? `${s.modelTier}${s.model ? ` · ${s.model}` : ""}`
-      : s.model
-        ? `${s.model}${s.modelFromPi ? ", pi default" : ""}`
-        : "";
-  const inners = snap.roles.map(modelInner);
-  const sharedModel = snap.roles.length >= 2 && inners[0] && inners.every((m) => m === inners[0]) ? inners[0] : undefined;
-  const rows = sortRolesByState(withMetrics).map(({ s, m, live, phase }): StatusSpan[][] => {
+}
+
+/** Status stage — the footnote noting a model every role shares: a model every role shares
+ * prints once here in a footnote instead of on each name cell (roleModelLabel). Present only
+ * when at least two roles all name the same model, else undefined (so a mixed team's
+ * header/table stay byte-identical to before). */
+function sharedRoleModel(snap: StatusSnapshot): string | undefined {
+  const inners = snap.roles.map(roleModelLabel);
+  return snap.roles.length >= 2 && inners[0] && inners.every((m) => m === inners[0]) ? inners[0] : undefined;
+}
+
+/** Status stage — the per-role table rows (name/state/result/next cells), ordered by the
+ * shared display rule (sortRolesByState); the totals row is separate (statusTotalsRow). */
+function statusRoleRows(
+  root: string,
+  snap: StatusSnapshot,
+  now: number,
+  withMetrics: readonly StatusRowMetric[],
+  sharedModel: string | undefined,
+): StatusSpan[][][] {
+  return sortRolesByState(withMetrics).map(({ s, m, live, phase }): StatusSpan[][] => {
     // The name cell appends the selector the role resolves to; with a top-level tier map
     // declared it additionally names the seam tier (model-tiers.md part 7a,
     // "Observability"). No model resolved and no tier keeps the name byte-identical to
     // today's.
-    const inner = modelInner(s);
+    const inner = roleModelLabel(s);
     const modelSuffix = inner && !sharedModel ? ` (${inner})` : "";
     // Model failure fallback, part 2/2: while the role runs off-model its name cell says so,
     // so the operator can see which roles the fallback pair is carrying without reading logs.
     const fallbackSuffix = s.fallback ? " (over-cap model)" : "";
+    // User-defined roles (snapshot's `custom` flag) get an asterisk beside their name — the
+    // dashboards' at-a-glance marker. The name column (index 0) is not in FLEXIBLE_COLUMNS;
+    // its width derives from row content and it shrinks only after those,
+    // so the extra character widens it.
     const name = (s.custom ? `${roleLabel(s.role)}*` : roleLabel(s.role)) + modelSuffix + fallbackSuffix;
     const state = stateCell(root, s, phase, live);
     const tone = phaseTone(phase);
@@ -362,26 +385,35 @@ export function renderStatusSpans(
     const next = nextRunCell(s, phase, now, snap.running);
     const wakeMark = roleWakeMarker(snap.scheduledWakes, s.role, s.instanceOf, now);
     const resultT = resultTone(s.lastResult);
+    // Each cell is spans: the state cell takes its phase's tone (the p:N marker stays plain),
+    // the last result tones its outcome word, and the next-run cell's sleep reading takes
+    // yellow (a backoff countdown reads yellow) — the phase's label drives the tone.
     return [
-      cell(name),
+      statusCell(name),
       // Merge queue 4/5 — the merge role's phase label (the marker-driven record, filtered to
       // this role by rolePhase's `merge` argument above) rides this same phase string.
-      [...stateSpans, { text: roleQueued(s.role) }, ...(wakeMark ? [{ text: wakeMark, tone: "blue" as const }] : [])],
-      cell(String(s.runs)),
-      cell(String(s.commits)),
-      cell(compactTokens(m.generated)),
-      cell(contextShareLabel(m.peakCtx, s.contextWindow)),
-      cell(usd(s.totalCostUsd)),
-      cell(usd(dailyCost(s))),
-      cell(lastRunCell(s.lastRunEndedAt)),
-      cell(lastMergedCell(s.lastMergedAt)),
+      [...stateSpans, { text: queuedPromptMarker(snap, s.role) }, ...(wakeMark ? [{ text: wakeMark, tone: "blue" as const }] : [])],
+      statusCell(String(s.runs)),
+      statusCell(String(s.commits)),
+      statusCell(compactTokens(m.generated)),
+      statusCell(contextShareLabel(m.peakCtx, s.contextWindow)),
+      statusCell(usd(s.totalCostUsd)),
+      statusCell(usd(dailyCost(s))),
+      statusCell(lastRunCell(s.lastRunEndedAt)),
+      statusCell(lastMergedCell(s.lastMergedAt)),
       s.lastResult
         ? [{ text: eventTypeLabel(s.lastResult), ...(resultT ? { tone: resultT } : {}) }, { text: s.lastSummary ? ` — ${s.lastSummary}` : "" }]
-        : cell("-"),
-      cell(next, next.startsWith("sleeping") ? "yellow" : undefined),
+        : statusCell("-"),
+      statusCell(next, next.startsWith("sleeping") ? "yellow" : undefined),
     ];
   });
-  const totalsRow: StatusSpan[][] = [
+}
+
+/** Status stage — the totals row under the table. A role-scoped table adds up the rows shown;
+ * otherwise the team's today-spend comes from the snapshot's budget block so table and header
+ * badge agree (BUGS.md 2026-09-30 keeps the in-flight gap meaningful). */
+function statusTotalsRow(snap: StatusSnapshot, scoped: boolean, withMetrics: readonly StatusRowMetric[]): StatusSpan[][] {
+  return [
     "total",
     "",
     "",
@@ -402,13 +434,21 @@ export function renderStatusSpans(
     "",
     "",
     "",
-  ].map((text) => cell(text));
-  const allRows = [...rows, totalsRow];
+  ].map((text) => statusCell(text));
+}
+
+/** Status stage — column widths in terminal display columns, the FLEXIBLE_COLUMNS overflow
+ * loop, and the name-column floor (the column that gives way last). */
+function statusColumnWidths(
+  cols: readonly string[],
+  allRows: readonly StatusSpan[][][],
+  maxWidth: number | undefined,
+  snap: StatusSnapshot,
+): number[] {
   // Widths are measured in terminal display columns (displayWidth), not UTF-16 code units:
   // a cell holding CJK or emoji renders two columns per code point, and a code-unit measure
   // lets that row's later cells drift right of the header's.
   const widths = cols.map((c, i) => Math.max(displayWidth(c), ...allRows.map((r) => displayWidth(plainText(r[i] ?? [])))));
-
   if (maxWidth !== undefined) {
     let overflow = widths.reduce((a, b) => a + b, 0) + COLUMN_GAP * (cols.length - 1) - maxWidth;
     for (const { index, minWidth } of FLEXIBLE_COLUMNS) {
@@ -427,11 +467,14 @@ export function renderStatusSpans(
       widths[0] = Math.max(floor, (widths[0] ?? 0) - overflow);
     }
   }
+  return widths;
+}
 
-  // Each cell clipped and padded to its column (padding stays untoned), the columns joined by
-  // the gap, and the line's trailing padding trimmed — the plain text is exactly the aligned
-  // table it has always been.
-  const fmt = (r: StatusSpan[][], tone?: StatusSpan["tone"]): StatusLine => {
+/** Status stage — the line formatter closure: each cell clipped and padded to its column
+ * (padding stays untoned), the columns joined by the gap, and the line's trailing padding
+ * trimmed span-wise. */
+function statusLineFormatter(widths: readonly number[]): (r: StatusSpan[][], tone?: StatusSpan["tone"]) => StatusLine {
+  return (r, tone) => {
     const out: StatusSpan[] = [];
     r.forEach((c, i) => {
       const w = widths[i] ?? 0;
@@ -457,7 +500,12 @@ export function renderStatusSpans(
     }
     return out;
   };
-  const roles = withMetrics.map(({ s, phase, live }) => ({
+}
+
+/** Status stage — the per-role facts the caller builds more on (the TUI's attention lines):
+ * the StatusRoleRow array (rendered phase, error streak, in-flight, image-input surface). */
+function statusRoleSummaries(withMetrics: readonly StatusRowMetric[]): StatusRoleRow[] {
+  return withMetrics.map(({ s, phase, live }) => ({
     role: s.role,
     phase,
     errorStreak: onErrorStreak(s),
@@ -469,8 +517,46 @@ export function renderStatusSpans(
     imageInput: s.imageInput,
     imageReroute: s.imageRerouteLabel,
   }));
+}
+
+/** Render the status table shared by `tumwater status` and the TUI as lines of toned spans,
+ * plus the per-role facts it computed (see StatusRoleRow). When `maxWidth` is given, wide cells
+ * are clipped so no line exceeds it (terminal rows never wrap). */
+export function renderStatusSpans(
+  root: string,
+  snap: StatusSnapshot,
+  maxWidth?: number,
+  scoped = false,
+): { lines: StatusLine[]; roles: StatusRoleRow[] } {
+  const lines: StatusLine[] = [];
+  // One clock read per render, shared by the timed-pause badge's countdown and every row's
+  // next-run cell — a per-site Date.now() could tick over // retired-name-ok
+  // between them and disagree with itself.
+  const now = Date.now();
+  lines.push(statusHeaderLine(root, snap, now));
+  lines.push([]);
+  // `today` is the role's daily budget window (dailyCost): $0.00 while its stamp is stale
+  // or missing, so roles that never ran — or last ran yesterday — read zero without a
+  // save. It renders whether or not the cap is enabled: spend observability does not depend
+  // on it.
+  // `next run` is a short fixed-width cell like `today`, never flexible: the columns that
+  // give way when the table is wider than the terminal are `last result`, then `state`, then
+  // `last run`, in FLEXIBLE_COLUMNS' order.
+  const cols = ["role", "state", "runs", "commits", "output", "peak ctx", "cost", "today", "last run", "last merged", "last result", "next run"];
+  // Status stages, each one named builder (see above): role metric inputs, the shared-model
+  // footnote, the per-role rows, the totals row, column widths, the line formatter, and the
+  // per-role summaries. renderStatusSpans stays the shared locals plus the calls and the
+  // line-order pushes.
+  const withMetrics = statusRowMetrics(root, snap);
+  const sharedModel = sharedRoleModel(snap);
+  const rows = statusRoleRows(root, snap, now, withMetrics, sharedModel);
+  const totalsRow = statusTotalsRow(snap, scoped, withMetrics);
+  const allRows = [...rows, totalsRow];
+  const widths = statusColumnWidths(cols, allRows, maxWidth, snap);
+  const fmt = statusLineFormatter(widths);
+  const roles = statusRoleSummaries(withMetrics);
   const separator: StatusLine = [{ text: widths.map((w) => "-".repeat(w)).join("  "), tone: "dim" }];
-  lines.push(fmt(cols.map((c) => cell(c)), "dim"));
+  lines.push(fmt(cols.map((c) => statusCell(c)), "dim"));
   lines.push(separator);
   for (const r of rows) lines.push(fmt(r));
   lines.push(separator);
@@ -483,6 +569,7 @@ export function renderStatusSpans(
   // so no status line ever wraps in a terminal of `maxWidth` columns.
   return { lines: maxWidth === undefined ? lines : lines.map((l) => clipSpans(l, maxWidth)), roles };
 }
+
 
 /** Render the status table shared by `tumwater status` and the TUI as plain text (see
  * renderStatusSpans). When `maxWidth` is given, wide cells are clipped so no line exceeds it
