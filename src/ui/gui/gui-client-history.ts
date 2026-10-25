@@ -508,23 +508,17 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   // The server's LOGS_SINCE_MAX_MS (src/events/event-window.ts), the cap /api/history's sinceMs
   // rides; the two must agree (a test pins it).
   const HIST_MAX_MS = 604_800_000;
-  // A whole-hour length as "1 day"/"N days" when it is a whole number of days, else hours.
-  function histSpan(ms) {
-    const d = ms % 86_400_000 === 0;
-    const n = d ? ms / 86_400_000 : ms / 3_600_000;
-    return n + (d ? " day" : " hour") + (n === 1 ? "" : "s");
-  }
+  // The window bounds' lengths render through the format region's shared timeSpan.
   // Whether the window can step one more length back: the next earlier window's sinceMs must
   // stay under the server's cap.
   function histCanStepEarlier(sinceKey, step) {
     const w = HIST_WINDOWS[sinceKey];
     return Boolean(w) && (step + 2) * w[0] <= HIST_MAX_MS;
   }
-  // The window in words: the trailing phrase at step 0, else the bounds in cmdLogs' wording.
   function histWindowPhrase(sinceKey, step) {
     const w = HIST_WINDOWS[sinceKey];
     if (!w) return "";
-    return step ? "between " + histSpan((step + 1) * w[0]) + " and " + histSpan(step * w[0]) + " ago" : w[1];
+    return step ? "between " + timeSpan((step + 1) * w[0]) + " and " + timeSpan(step * w[0]) + " ago" : w[1];
   }
   // The note above a stepped window's table; empty at step 0 or for an unknown key.
   function historyStepHtml(sinceKey, step) {

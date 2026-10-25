@@ -159,6 +159,12 @@ const FORMAT_JS = String.raw`  // format:start
   // them. A leading em dash or other non-letter upcases to itself, and an empty string stays
   // empty.
   const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  // A whole-hour window length as "1 hour"/"N hours", or "1 day"/"N days" for a whole
+  // number of days — the shared span the activity feed's and History view's stepped-window
+  // bounds both print (each previously spelled out the modulo/pluralization inline). A minute
+  // count that isn't a whole number of days prints hours (a stepped window is always whole
+  // hours), and the singular drops the trailing s.
+  const timeSpan = (ms) => { const d = ms % 86400000 === 0; const n = d ? ms / 86400000 : ms / 3600000; return n + (d ? " day" : " hour") + (n === 1 ? "" : "s"); };
   // human-seconds-fmt:start
   // Whole-second s/m/h/d label: <60 → Ns, <3600 → rounded Nm, <86400 → rounded Nh, else
   // rounded Nd — datetime.ts's humanSeconds, shared by every relative time on the page. A

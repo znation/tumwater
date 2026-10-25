@@ -28,17 +28,12 @@ export const GUI_CLIENT_FEED_JS = String.raw`
   // Whether the window can step one more length back: the next earlier window's sinceMs must
   // stay within the server's cap.
   const feedCanStepEarlier = (windowMs, step) => windowMs !== 0 && (step + 2) * windowMs <= FEED_MAX_MS;
-  // "1 hour"/"N hours", or "1 day"/"N days" for a whole number of days (histSpan's rule; that
-  // helper lives in another region this scope does not load).
-  function feedSpan(ms) {
-    const d = ms % 86_400_000 === 0;
-    const n = d ? ms / 86_400_000 : ms / 3_600_000;
-    return n + (d ? " day" : " hour") + (n === 1 ? "" : "s");
-  }
+  // The window bounds' lengths render through the format region's shared timeSpan ("1 hour"/
+  // "N hours", or "1 day"/"N days" for a whole number of days).
   function feedWindowPhrase() {
     const w = Number(feedWindow);
     return feedStep
-      ? "between " + feedSpan((feedStep + 1) * w) + " and " + feedSpan(feedStep * w) + " ago"
+      ? "between " + timeSpan((feedStep + 1) * w) + " and " + timeSpan(feedStep * w) + " ago"
       : (FEED_WINDOWS.find((x) => x[0] === feedWindow) || [])[2];
   }
   let feedFilter = recall("feed") === "all" ? "all" : "notable";

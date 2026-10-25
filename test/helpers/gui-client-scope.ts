@@ -22,6 +22,11 @@ export const ESC_LINE = (/^\s*const esc = .*$/m.exec(GUI_CLIENT_JS))?.[0] ?? "";
  * region in scope) and so must provide the primitive the asset's regions reach for. */
 export const CAPITALIZE_LINE = (/^\s*const capitalize = .*$/m.exec(GUI_CLIENT_JS))?.[0] ?? "";
 
+/** The script's shared whole-hour/day window-span helper, as served — format region's
+ * timeSpan, exported for the same full-asset tests that run GUI_CLIENT_HISTORY_JS alone and so
+ * must provide the primitive the history window phrase reaches for. */
+export const TIMESPAN_LINE = (/^\s*const timeSpan = .*$/m.exec(GUI_CLIENT_JS))?.[0] ?? "";
+
 /** Run `regions` (in order, after esc) in one scope with `inject` bound as free variables, and
  * return the declarations named in `names`. */
 export function clientScope<T>(regions: string[], names: string[], inject: Record<string, unknown> = {}): T {
