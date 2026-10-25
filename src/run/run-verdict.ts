@@ -127,6 +127,37 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
         );
     }
   }
+  // Each decision lives in one named arm below; run them in order and short-circuit on the
+  // first that applies so the verdict tree reads as a list. Every arm returns undefined to
+  // fall through; a run reaches null only when none applies.
+  let arm = quietKillArm(ctx);
+  if (arm) return arm;
+  arm = progressingTimeoutArm(ctx);
+  if (arm) return arm;
+  arm = timeoutArm(ctx);
+  if (arm) return arm;
+  arm = subscriptionRejectedArm(ctx);
+  if (arm) return arm;
+  arm = budgetCappedArm(ctx);
+  if (arm) return arm;
+  arm = imageBlindArm(ctx);
+  if (arm) return arm;
+  arm = await refusalArm(ctx);
+  if (arm) return arm;
+  const changed = await isDirty(ctx.wt);
+  arm = failedRunArm(ctx, changed);
+  if (arm) return arm;
+  arm = await revisionDropArm(ctx);
+  if (arm) return arm;
+  arm = noChangeArm(ctx, changed);
+  if (arm) return arm;
+  return null;
+}
+
+/** The `pi.quietKilled` decision: a hung tool call keeps the session and the worktree's edits
+ * so applyRunOutcome resumes them promptly (Director runs re-queue their prompt fresh). */
+function quietKillArm(ctx: RunVerdictContext): RunOutcome | undefined {
+  const { pi, state: s } = ctx;
   if (pi.quietKilled) {
     // A hung tool call, not a slow run: the session and the worktree's edits are intact.
     // Preserve both — applyRunOutcome resumes them promptly like an interruption instead of
@@ -136,6 +167,13 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
     ctx.pending.requeueForResume(s, ctx.userPrompt);
     return { result: "quiet_killed" };
   }
+  return undefined;
+}
+
+/** The `pi.timedOut && pi.timedOutProgressing` decision: a slow run still making progress is
+ * kept (session and worktree edits) and resumed, bounded by the quiet-kill streak. */
+function progressingTimeoutArm(ctx: RunVerdictContext): RunOutcome | undefined {
+  const { pi, state: s } = ctx;
   if (pi.timedOut && pi.timedOutProgressing) {
     // The deadline fired on a run still making progress: a slow run, not a failed one, and
     // the slow run is exactly the case where discarding costs the most (BUGS.md 2026-09-29:
@@ -149,6 +187,13 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
     ctx.pending.requeueForResume(s, ctx.userPrompt);
     return { result: "quiet_killed", resumeCause: "timeout" };
   }
+  return undefined;
+}
+
+/** The plain `pi.timedOut` decision: an unfulfilled run with no recent progress re-queues to
+ * run fresh (its half-done edits are discarded by the reset). */
+function timeoutArm(ctx: RunVerdictContext): RunOutcome | undefined {
+  const { pi, state: s } = ctx;
   if (pi.timedOut) {
     s.lastError = pi.errorMessage ?? "timed out";
     // The request never ran to completion and no work merged: put it back so the next
@@ -156,7 +201,13 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
     ctx.pending.requeueUnfulfilled(ctx.userPrompt);
     return { result: "error" };
   }
+  return undefined;
+}
 
+/** The subscription-window-rejected decision: a hold, arming the resume so the kept worktree
+ * and session survive the wait until `resetsAt` (plans/agent-backends.md §8, part 6c/6e). */
+function subscriptionRejectedArm(ctx: RunVerdictContext): RunOutcome | undefined {
+  const { pi, state: s } = ctx;
   // A subscription claude run the usage window rejected is a hold, not a run failure: the
   // team hold keeps every subscription claude seam from starting until `resetsAt`
   // (plans/agent-backends.md §8, part 6c), and this run's session and worktree edits must
@@ -170,7 +221,13 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
     // and session survive the wait. This is the same arming the budget-capped arm below does.
     return abortWithResume(s, ctx, pi, "claude subscription usage window rejected", "error", "rate-limit");
   }
+  return undefined;
+}
 
+/** The budget-capped decision: a budget handback that keeps the session and worktree edits and
+ * arms the resume so the next run hands off over the kept worktree (part 7a/7). */
+function budgetCappedArm(ctx: RunVerdictContext): RunOutcome | undefined {
+  const { pi, state: s } = ctx;
   // An API-billed claude run cut off at its per-run `--max-budget-usd` cap is a budget
   // handback, not a failed run: the remaining daily budget is spent, so the run stopped with
   // its session and worktree edits intact. Keep both and let the next run hand off over the
@@ -182,7 +239,14 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
     // subscription-rejected arm above) so the next run hands off over the kept worktree.
     return abortWithResume(s, ctx, pi, "claude per-run budget cap reached", "aborted", "budget-capped");
   }
+  return undefined;
+}
 
+/** The image-blind decision: a run stopped the moment its agent read an image its model cannot
+ * see. One hop to an image-capable reroute target is taken when one exists; otherwise the
+ * run fails and the prompt re-queues (plans/image-input.md "Failing the run"). */
+function imageBlindArm(ctx: RunVerdictContext): RunOutcome | undefined {
+  const { pi, state: s } = ctx;
   // A run the runner killed the moment its agent read an image its model cannot see
   // (plans/image-input.md "Failing the run"): pi strips such an image from the request, so
   // the agent was about to answer about a picture it never saw. The run was deliberately
@@ -242,7 +306,15 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
     ctx.pending.requeueUnfulfilled(ctx.userPrompt);
     return { result: "error" };
   }
+  return undefined;
+}
 
+/** The `pi.refused` decision: a refusal is a decision, not a failure — the sentinel and any
+ * note it left are the run's verdict (src/verdict/refusal.ts). A refusal contradicted by its
+ * own reply is only warned about and falls through to the normal flow.
+ * @returns the refusal outcome, or undefined when the refusal is contradicted (keep the work). */
+async function refusalArm(ctx: RunVerdictContext): Promise<RunOutcome | undefined> {
+  const { pi, state: s } = ctx;
   // A refusal is a decision, not a failure: even when pi's exit was abnormal, the sentinel
   // and any note it left are the run's verdict — classify what it left behind
   // (src/verdict/refusal.ts).
@@ -272,8 +344,14 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
       );
     }
   }
+  return undefined;
+}
 
-  const changed = await isDirty(ctx.wt);
+/** The failed-dirty decision: a failed run that produced no assistant content of its own did
+ * nothing to the worktree. A dirty worktree on such a run is a prior run's work, kept for the
+ * next resume; a clean one re-queues the prompt (BUGS.md 2026-10-06). */
+function failedRunArm(ctx: RunVerdictContext, changed: boolean): RunOutcome | undefined {
+  const { pi, state: s } = ctx;
   // A failed run that produced no assistant content of its own did nothing to the worktree: a
   // 4xx config error, an auth failure, or a dead backend ends on an assistant message_end with
   // empty `content` and stopReason "error" — one completed turn, zero content — so
@@ -301,6 +379,14 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
     }
     return { result: "error" };
   }
+  return undefined;
+}
+
+/** The revision-drop decision: a revision run that declares nothing-to-do drops the rejected
+ * change — reset the re-applied diff away, delete the rejected ref, and end no_change
+ * (the revise-rejected plan in PLANS.md). */
+async function revisionDropArm(ctx: RunVerdictContext): Promise<RunOutcome | undefined> {
+  const { pi, state: s } = ctx;
   // A revision run that declares nothing-to-do drops the rejected change (the revise-rejected plan
   // in PLANS.md): the author judged the objections show the change should not exist, so reset the
   // re-applied diff away, delete the rejected ref, and end no_change without staging anything.
@@ -321,6 +407,14 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
     logEventBestEffort(ctx.root, { source: ctx.role, type: "revision", action: "dropped", round: ctx.revisionRound, sha });
     return { result: "no_change" };
   }
+  return undefined;
+}
+
+/** The no-change decision: no sentinel anywhere in the reply is either non-compliance or
+ * truncation — diagnoseNoChange tells which — with the flow/filed/ci recordings and a
+ * summary kept for a prompt-driven (director) question in prose (BUGS.md 2026-10-14). */
+function noChangeArm(ctx: RunVerdictContext, changed: boolean): RunOutcome | undefined {
+  const { pi, state: s } = ctx;
   if (!changed) {
     // No sentinel anywhere in the reply is either non-compliance or truncation —
     // diagnoseNoChange (src/verdict/no-change.ts) tells which, so the warning event below is
@@ -392,5 +486,5 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
         : undefined;
     return { result: "no_change", cutOff: diagnosis.cutOff || undefined, summary };
   }
-  return null;
+  return undefined;
 }
