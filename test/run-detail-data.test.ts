@@ -355,3 +355,50 @@ test("readRunDetail resolves the run's peak and its role's declared window", () 
   const noPeak = readRunDetail(noPeakRoot, "feature", 1)!;
   assert.equal(noPeak.peakContextTokens, 0);
 });
+
+test("readRunDetail carries a run's prompt tokens and cache-read share", () => {
+  // A run_end reporting both yields the two numbers, clamped so the cache subset never
+  // exceeds the total: the share a header renders is at most 100%.
+  const root = tmpdir();
+  writeEvents(root, [
+    startEvent({ ts: 1000 }),
+    endEvent({ ts: 2000, result: "changed", promptTokens: 100, cacheReadTokens: 40 }),
+  ]);
+  const detail = readRunDetail(root, "feature", 1)!;
+  assert.equal(detail.promptTokens, 100);
+  assert.equal(detail.cacheReadTokens, 40);
+
+  // A cache read larger than the prompt total clamps to the total (100% share).
+  const clampRoot = tmpdir();
+  writeEvents(clampRoot, [
+    startEvent({ ts: 1000 }),
+    endEvent({ ts: 2000, result: "changed", promptTokens: 10, cacheReadTokens: 99 }),
+  ]);
+  const clamped = readRunDetail(clampRoot, "feature", 1)!;
+  assert.equal(clamped.promptTokens, 10);
+  assert.equal(clamped.cacheReadTokens, 10);
+
+  // A run_end carrying only cacheReadTokens (no prompt total) and one carrying neither
+  // field carry neither key — a prompt-free run keeps today's exact payload (omit-when-zero).
+  const cacheOnlyRoot = tmpdir();
+  writeEvents(cacheOnlyRoot, [
+    startEvent({ ts: 1000 }),
+    endEvent({ ts: 2000, result: "changed", cacheReadTokens: 40 }),
+  ]);
+  const cacheOnly = readRunDetail(cacheOnlyRoot, "feature", 1)!;
+  assert.ok(!("promptTokens" in cacheOnly));
+  assert.ok(!("cacheReadTokens" in cacheOnly));
+
+  const noneRoot = tmpdir();
+  writeEvents(noneRoot, [startEvent({ ts: 1000 }), endEvent({ ts: 2000, result: "changed" })]);
+  const none = readRunDetail(noneRoot, "feature", 1)!;
+  assert.ok(!("promptTokens" in none));
+  assert.ok(!("cacheReadTokens" in none));
+
+  // An in-flight run (no end) carries neither key either.
+  const inflightRoot = tmpdir();
+  writeEvents(inflightRoot, [startEvent({ ts: 1000 })]);
+  const inflight = readRunDetail(inflightRoot, "feature", 1)!;
+  assert.ok(!("promptTokens" in inflight));
+  assert.ok(!("cacheReadTokens" in inflight));
+});

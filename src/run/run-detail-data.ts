@@ -54,6 +54,18 @@ export interface RunDetail {
    * run carried none or is in flight. The header renders it as `peak ctx …` (
    * run-detail-render.ts) against `contextWindow` below. */
   peakContextTokens?: number;
+  /** The `run_end`'s prompt-token total (the uncached + cached input it consumed), from
+   * the same field the usage report's `Prompt tokens by role` line reads; 0 when the run
+   * reported none or is in flight. The header renders it as `prompt … tok` with the
+   * cache-read share (run-detail-render.ts) — the input side a cost-only header hides.
+   * Absent on a run that reported none, so a prompt-free or old-log run keeps today's
+   * exact payload. */
+  promptTokens?: number;
+  /** The `run_end`'s cache-read subset of the prompt tokens (clamped to the total), from
+   * the same field the failure digest's cache-read share reads; 0 when the run reported
+   * none or is in flight. The header renders it as `${n}% cached` beside the prompt count
+   * (run-detail-render.ts). Absent on a run that reported none. */
+  cacheReadTokens?: number;
   /** The `run_end`'s ceiling-truncation flag: true when the run was truncated at its model's
    * context ceiling and the harness resumes its pinned session. Absent when the run did not
    * cut off (and for an in-flight run with no end), so a non-cut-off payload is unchanged. */
@@ -174,6 +186,11 @@ function detailFrom(
   start: HarnessEvent | null,
 ): RunDetail {
   const usageNums = end === null ? { tokens: 0, costUsd: 0 } : eventUsage(end);
+  // The run_end's prompt-token total and its cache-read subset, corrupt-field-guarded reads
+  // (nonNegativeNumber, the same guard peakContextTokens applies) with the cache subset
+  // clamped to the total so the rendered share never exceeds 100%; 0 on an in-flight run.
+  const promptTokens = end === null ? 0 : nonNegativeNumber(end.promptTokens, 0);
+  const cacheReadTokens = end === null ? 0 : Math.min(nonNegativeNumber(end.cacheReadTokens, 0), promptTokens);
   let result = end === null ? null : outcomeText(end);
   let merge: HarnessEvent | null = null;
   if (end !== null && result === "queued") {
@@ -203,6 +220,10 @@ function detailFrom(
     // defaults, so a broken tumwater.json yields a null window rather than failing this read-only
     // view.
     peakContextTokens: end === null ? 0 : nonNegativeNumber(end.peakContextTokens, 0),
+    // The run's prompt-token total and its cache-read subset, spread so a prompt-free or
+    // in-flight run keeps today's exact payload (no prompt/cache keys) and a cache subset > 0.
+    ...(promptTokens > 0 ? { promptTokens } : {}),
+    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
     // The run_end's ceiling-truncation flag, spread so an in-flight, older, or normal run
     // keeps today's exact payload (no cutOff key).
     ...(end !== null && end.cutOff === true ? { cutOff: true } : {}),

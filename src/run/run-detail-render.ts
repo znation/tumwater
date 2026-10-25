@@ -12,7 +12,7 @@ import { formatEvent } from "../events/event-format.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSpanPhrase } from "../text/phrases.js";
-import { shortSha, contextShareLabel } from "../text/format.js";
+import { shortSha, contextShareLabel, compactTokens } from "../text/format.js";
 import { piLogPath } from "../paths.js";
 import { readRunTranscript } from "../ui/transcript-run.js";
 import { gitTry } from "../git/git-run.js";
@@ -61,6 +61,14 @@ export function renderRunDetail(d: RunDetail): string {
   if (d.cutOff === true) summary.push("cut off at the context ceiling");
   if (d.durationMs !== null) summary.push(shortSpanPhrase(d.durationMs));
   if (d.usage !== "") summary.push(d.usage);
+  // The run's prompt-token total and the share the backend served from cache, the input
+  // side a cost-only header hides. The `${n}% cached` wording and rounding are the usage
+  // report's `Prompt tokens by role` share; a run with prompt tokens but no cache reads
+  // shows no parenthetical, and a run that reported neither keeps today's header
+  // byte-identical (the omit-when-zero convention).
+  const prompt = d.promptTokens ?? 0;
+  const cached = Math.min(d.cacheReadTokens ?? 0, prompt);
+  if (prompt > 0) summary.push(cached > 0 ? `prompt ${compactTokens(prompt)} tok (${Math.round((100 * cached) / prompt)}% cached)` : `prompt ${compactTokens(prompt)} tok`);
   // The run's peak context against the seam's declared window, the one header every surface
   // renders. Omitted when the run reported no peak (byte-identical to today's header).
   if ((d.peakContextTokens ?? 0) > 0) summary.push(`peak ctx ${contextShareLabel(d.peakContextTokens ?? 0, d.contextWindow)}`);

@@ -194,6 +194,37 @@ test("renderRunDetail names the peak against the declared window", () => {
   assert.doesNotMatch(noPeak.split("\n")[0]!, /peak ctx/);
 });
 
+test("renderRunDetail names the run's prompt tokens and cache-read share", () => {
+  const base: RunDetail = {
+    role: "feature",
+    run: 1,
+    startTs: 1000,
+    endTs: 2000,
+    durationMs: 1000,
+    result: "changed",
+    model: null,
+    tokens: 1200,
+    costUsd: 0.03,
+    usage: "1200 tok · $0.03",
+    events: [],
+    merge: null,
+    mergedSha: null,
+    reverted: null,
+  };
+  // A completed run reporting both highlights the input side: the prompt total (the report's
+  // `Prompt tokens by role` share) sits right after the usage cell, before the peak clause.
+  const withShare = renderRunDetail({ ...base, promptTokens: 100_000, cacheReadTokens: 80_000 }).split("\n")[0]!;
+  assert.match(withShare, /prompt 100\.0k tok \(80% cached\)/);
+  assert.match(withShare, /\$0\.03 · prompt 100\.0k tok \(80% cached\)/);
+  // A run with prompt tokens but no cache reads shows the count without a parenthetical.
+  const noShare = renderRunDetail({ ...base, promptTokens: 50_000 }).split("\n")[0]!;
+  assert.match(noShare, /prompt 50\.0k tok(?! \()/);
+  assert.doesNotMatch(noShare, /cached/);
+  // A run that reported neither keeps today's header byte-identical — no prompt clause.
+  const plain = renderRunDetail(base).split("\n")[0]!;
+  assert.doesNotMatch(plain, /prompt .* tok/);
+});
+
 test("renderRunDetail names a context cut-off in its header", () => {
   const base: RunDetail = {
     role: "feature",
