@@ -80,6 +80,14 @@ const PLAIN_INTEGER_TOP_LEVEL_KEYS = new Set([
   "worktreeSlots",
 ]);
 
+// The result union the config-write verbs return: either the parsed value and the previous
+// one (so a caller can confirm the change; a value equal to the resolved one is a no-op and
+// the result carries `unchanged`), or a failure that left the file untouched. Shared by
+// setConfigKey and its per-key dispatches (writeDottedKey / writeTopLevelKey) below.
+type SetConfigKeyResult =
+  | { ok: true; value: unknown; oldValue: unknown; note?: string; unchanged?: true }
+  | { ok: false; error: string };
+
 /** Set ONE top-level key of tumwater.json from its raw CLI text (`tumwater config set`'s
  * engine): the key must be a member of TOP_LEVEL_KEYS — the same protection checkKnownKeys
  * gives the file itself, so `config set modle x` cannot write a dead key the runtime would
@@ -101,40 +109,38 @@ export function setConfigKey(
   root: string,
   key: string,
   rawValue: string,
-): { ok: true; value: unknown; oldValue: unknown; note?: string; unchanged?: true } | { ok: false; error: string } {
-  key = canonicalConfigKey(key);
-  const parsed = parseConfigKey(key);
-  if (parsed.kind === "error") return fail(parsed.error);
-  // Shape, before the JSON.parse, for every plain-positive-integer key this verb can write —
-  // the top-level run-concurrency knobs and legacy merge batch cap, plus the integer-bound
-  // team-scope keys that arrive as a dotted key (`maxConcurrentPerProvider.<provider>`,
-  // `roles.<id>.instances`, the `bootstrap.untilPlansDone` section field): refuse an exponent
-  // spelling ("4e1" → 40) that JSON.parse would read past validateConfig's integer check and
-  // silently write, naming the key and writing nothing — the twin of the per-role guards, the
-  // TUI team-key editors, and the GUI Settings rows. A non-exponent invalid falls through for
-  // validateConfig (whose message names the key). Empty clears the key below.
-  const trimmed = rawValue.trim();
-  const isPlainIntegerKey =
-    (parsed.kind === "top" && PLAIN_INTEGER_TOP_LEVEL_KEYS.has(key)) ||
-    (parsed.kind === "map" && parsed.map === "maxConcurrentPerProvider") ||
-    (parsed.kind === "role" && parsed.field === "instances") ||
-    (parsed.kind === "section" && parsed.section === "bootstrap" && parsed.field === "untilPlansDone");
-  if (
-    isPlainIntegerKey &&
-    trimmed !== "" &&
-    !/^\d*\.?\d+$/.test(trimmed) &&
-    /^\d+(\.\d+)?[eE][+-]?\d+$/.test(trimmed)
-  )
-    return fail(`${key} must be a plain integer — no exponent notation`);
-  let unchanged: true | undefined; // set by a mutation callback when value equals the resolved one
-  let value: unknown;
-  try {
-    value = JSON.parse(rawValue);
-  } catch {
-    value = rawValue; // not JSON: the literal string, so `set model gpt-5` needs no quotes
-  }
-  if (parsed.kind !== "top") {
-    const fieldError = parsed.kind === "role" ? unknownRoleFieldError(parsed.id, parsed.field) : null;
+): SetConfigKeyResult {
+  // The helpers are declared here — above the body — so they close over `root`; the two
+  // write dispatches (writeDottedKey / writeTopLevelKey) each own one writeConfigMutation
+  // and the per-kind merge groups close over that call's `value`/`unchanged`/`oldValue`.
+  const exponentRefusal = (
+    parsed: ReturnType<typeof parseConfigKey>,
+    key: string,
+    trimmed: string,
+  ): string | null => {
+    const isPlainIntegerKey =
+      (parsed.kind === "top" && PLAIN_INTEGER_TOP_LEVEL_KEYS.has(key)) ||
+      (parsed.kind === "map" && parsed.map === "maxConcurrentPerProvider") ||
+      (parsed.kind === "role" && parsed.field === "instances") ||
+      (parsed.kind === "section" && parsed.section === "bootstrap" && parsed.field === "untilPlansDone");
+    if (
+      isPlainIntegerKey &&
+      trimmed !== "" &&
+      !/^\d*\.?\d+$/.test(trimmed) &&
+      /^\d+(\.\d+)?[eE][+-]?\d+$/.test(trimmed)
+    )
+      return `${key} must be a plain integer — no exponent notation`;
+    return null;
+  };
+
+  // One named handler per parsed dotted-key kind: the shape/validator screen, then one
+  // writeConfigMutation whose callback is the `switch (parsed.kind)` over the merge helpers.
+  const writeDottedKey = (
+    parsed: Exclude<ReturnType<typeof parseConfigKey>, { kind: "top" } | { kind: "error" }>,
+    value: unknown,
+  ): SetConfigKeyResult => {
+    const fieldError =
+      parsed.kind === "role" ? unknownRoleFieldError(parsed.id, parsed.field) : null;
     if (fieldError) return fail(fieldError);
     if (parsed.kind === "map") {
       // Name the key the operator actually typed (`maxDailyCostUsdPerRole.qa`), not the
@@ -152,75 +158,91 @@ export function setConfigKey(
     if (parsed.kind === "tier" && (typeof value !== "string" || value === "")) {
       return fail(`model.${parsed.tier} must be a model id (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`) — got ${show(value)}`);
     }
+    // The two merge groups close over these locals of the one writeConfigMutation below.
     let oldValue: unknown;
-    const result = writeConfigMutation(root, (cfg) => {
-      const record = cfg as unknown as ConfigRecord;
-      if (parsed.kind === "map") {
-        const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
-        oldValue = existing[parsed.role];
-        if (isDeepStrictEqual(oldValue, value)) {
-          unchanged = true;
-          return cfg;
-        }
-        const next = { ...cfg, [parsed.map]: { ...existing, [parsed.role]: value } };
-        return preservingFileRoles(root, next);
+    let unchanged: true | undefined;
+    const mergeMapEntry = (
+      record: ConfigRecord,
+      parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "map" }>,
+    ): TumwaterConfig => {
+      const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
+      oldValue = existing[parsed.role];
+      if (isDeepStrictEqual(oldValue, value)) {
+        unchanged = true;
+        return record as unknown as TumwaterConfig;
       }
-      if (parsed.kind === "tier") {
-        // Setting a tier on a string `model` promotes it to the map form rather than
-        // overwriting the bare string — the other tiers' models survive (modelTierMap owns
-        // that reading). validateConfig in writeConfigMutation owns the
-        // type truth of the merged map, so the cast is safe: a type-invalid merge fails
-        // there and nothing is written.
-        const existing = modelTierMap(record.model);
-        oldValue = existing[parsed.tier];
-        if (isDeepStrictEqual(oldValue, value)) {
-          unchanged = true;
-          return cfg;
-        }
-        const next = { ...cfg, model: { ...existing, [parsed.tier]: value } } as unknown as TumwaterConfig;
-        return preservingFileRoles(root, next);
+      const next = { ...record, [parsed.map]: { ...existing, [parsed.role]: value } } as unknown as TumwaterConfig;
+      return preservingFileRoles(root, next);
+    };
+    const mergeTier = (
+      record: ConfigRecord,
+      parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "tier" }>,
+    ): TumwaterConfig => {
+      // Setting a tier on a string `model` promotes it to the map form rather than
+      // overwriting the bare string — the other tiers' models survive (modelTierMap owns
+      // that reading). validateConfig in writeConfigMutation owns the
+      // type truth of the merged map, so the cast is safe: a type-invalid merge fails
+      // there and nothing is written.
+      const existing = modelTierMap(record.model);
+      oldValue = existing[parsed.tier];
+      if (isDeepStrictEqual(oldValue, value)) {
+        unchanged = true;
+        return record as unknown as TumwaterConfig;
       }
-      if (parsed.kind === "section") {
-        // Merge one field into the loaded section, keeping its other fields; validateConfig in
-        // writeConfigMutation owns the value type, so a bad value fails there and writes nothing.
-        const existing = (record[parsed.section] as Record<string, unknown> | undefined) ?? {};
-        oldValue = existing[parsed.field];
-        if (isDeepStrictEqual(oldValue, value)) {
-          unchanged = true;
-          return cfg;
-        }
-        const next = { ...cfg, [parsed.section]: { ...existing, [parsed.field]: value } };
-        return preservingFileRoles(root, next);
+      const next = { ...record, model: { ...existing, [parsed.tier]: value } } as unknown as TumwaterConfig;
+      return preservingFileRoles(root, next);
+    };
+    const mergeSection = (
+      record: ConfigRecord,
+      parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "section" }>,
+    ): TumwaterConfig => {
+      // Merge one field into the loaded section, keeping its other fields; validateConfig in
+      // writeConfigMutation owns the value type, so a bad value fails there and writes nothing.
+      const existing = (record[parsed.section] as Record<string, unknown> | undefined) ?? {};
+      oldValue = existing[parsed.field];
+      if (isDeepStrictEqual(oldValue, value)) {
+        unchanged = true;
+        return record as unknown as TumwaterConfig;
       }
-      if (parsed.kind === "agent") {
-        // Merge one field of one backend's entry, preserving the other field and the other
-        // backends. validateConfig in writeConfigMutation owns the value type, so a bad
-        // value fails there and nothing is written.
-        const backends = { ...(record.backends as Record<string, Record<string, unknown>> | undefined) };
-        const entry = { ...(backends[parsed.id] ?? {}) };
-        oldValue = entry[parsed.field];
-        if (isDeepStrictEqual(oldValue, value)) {
-          unchanged = true;
-          return cfg;
-        }
-        entry[parsed.field] = value;
-        backends[parsed.id] = entry;
-        const next = { ...cfg, backends: backends } as unknown as TumwaterConfig;
-        // Writers keep one spelling: the new pi form drops its legacy alias so the file can
-        // never hold both (validateConfig's raw pass rejects a file that does).
-        if (parsed.id === "pi") {
-          const nextRecord = next as unknown as Record<string, unknown>;
-          if (parsed.field === "bin") delete nextRecord.agentBin;
-          else delete nextRecord.piArgs;
-        }
-        // Setting the nested claude reserve drops the top-level spelling, so the file can never
-        // hold both (validateConfig rejects a file that does, mirroring the agentBin/piArgs pair).
-        if (parsed.id === "claude" && parsed.field === "windowReserve") {
-          const nextRecord = next as unknown as Record<string, unknown>;
-          delete nextRecord.claudeWindowReserve;
-        }
-        return preservingFileRoles(root, next);
+      const next = { ...record, [parsed.section]: { ...existing, [parsed.field]: value } } as unknown as TumwaterConfig;
+      return preservingFileRoles(root, next);
+    };
+    const mergeAgent = (
+      record: ConfigRecord,
+      parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "agent" }>,
+    ): TumwaterConfig => {
+      // Merge one field of one backend's entry, preserving the other field and the other
+      // backends. validateConfig in writeConfigMutation owns the value type, so a bad
+      // value fails there and nothing is written.
+      const backends = { ...(record.backends as Record<string, Record<string, unknown>> | undefined) };
+      const entry = { ...(backends[parsed.id] ?? {}) };
+      oldValue = entry[parsed.field];
+      if (isDeepStrictEqual(oldValue, value)) {
+        unchanged = true;
+        return record as unknown as TumwaterConfig;
       }
+      entry[parsed.field] = value;
+      backends[parsed.id] = entry;
+      const next = { ...record, backends: backends } as unknown as TumwaterConfig;
+      // Writers keep one spelling: the new pi form drops its legacy alias so the file can
+      // never hold both (validateConfig's raw pass rejects a file that does).
+      if (parsed.id === "pi") {
+        const nextRecord = next as unknown as Record<string, unknown>;
+        if (parsed.field === "bin") delete nextRecord.agentBin;
+        else delete nextRecord.piArgs;
+      }
+      // Setting the nested claude reserve drops the top-level spelling, so the file can never
+      // hold both (validateConfig rejects a file that does, mirroring the agentBin/piArgs pair).
+      if (parsed.id === "claude" && parsed.field === "windowReserve") {
+        const nextRecord = next as unknown as Record<string, unknown>;
+        delete nextRecord.claudeWindowReserve;
+      }
+      return preservingFileRoles(root, next);
+    };
+    const mergeRoleEntry = (
+      record: ConfigRecord,
+      parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "role" }>,
+    ): TumwaterConfig => {
       // Base the merge on the FILE's own roles, not the loaded (catalog-merged) map: an
       // unrelated dotted write must not re-expand the operator's partial section to every
       // built-in (see preserveFileRoles). A role absent from the file gets a fresh entry with
@@ -232,7 +254,7 @@ export function setConfigKey(
       oldValue = record.roles?.[parsed.id]?.[parsed.field];
       if (isDeepStrictEqual(oldValue, value)) {
         unchanged = true;
-        return cfg;
+        return record as unknown as TumwaterConfig;
       }
       const roles = {
         ...rawRoles,
@@ -241,7 +263,22 @@ export function setConfigKey(
       // The merged entry is only partially typed here (the value is unknown until
       // validation); validateConfig below owns the type truth, so the cast is safe —
       // a type-invalid merge fails there and nothing is written.
-      return { ...cfg, roles } as unknown as TumwaterConfig;
+      return { ...record, roles } as unknown as TumwaterConfig;
+    };
+    const result = writeConfigMutation(root, (cfg) => {
+      const record = cfg as unknown as ConfigRecord;
+      switch (parsed.kind) {
+        case "map":
+          return mergeMapEntry(record, parsed);
+        case "tier":
+          return mergeTier(record, parsed);
+        case "section":
+          return mergeSection(record, parsed);
+        case "agent":
+          return mergeAgent(record, parsed);
+        case "role":
+          return mergeRoleEntry(record, parsed);
+      }
     });
     if (!result.ok) return result;
     if (unchanged) return { ok: true, value, oldValue, unchanged: true };
@@ -257,52 +294,39 @@ export function setConfigKey(
       };
     }
     return { ok: true, value, oldValue };
-  }
-  const unknown = unknownConfigKeyError(key);
-  if (unknown) return fail(unknown);
-  // Legacy `provider` / `fallbackModel` are accepted to FIX an existing value (a config
-  // that already has one keeps the old meaning), but `config set` never adds them to a
-  // config that lacks them — the new-form writers emit `model` and `fallback` only.
-  if (key === "provider" || key === "fallbackModel") {
-    const absent = (() => {
-      try {
-        const c = loadConfig(root); // fresh — bypasses the stat cache on purpose
-        return (c as unknown as Record<string, unknown>)[key] === undefined;
-      } catch {
-        return false; // a broken file fails in writeConfigMutation with its own message
-      }
-    })();
-    if (absent)
-      return fail(`config set ${key}: this config has no ${key}, and a writer never adds legacy ${key} — set \`${key === "provider" ? "model" : "fallback"}\` instead`);
-  }
-  const perKeyValidator = PER_KEY_VALIDATORS[key];
-  if (perKeyValidator) {
-    const problem = perKeyValidator(value);
-    if (problem) return fail(problem);
-  }
-  let oldValue: unknown;
-  const result = writeConfigMutation(root, (cfg) => {
-    oldValue = (cfg as unknown as Record<string, unknown>)[key];
-    if (isDeepStrictEqual(oldValue, value)) {
-      unchanged = true;
-      return cfg;
+  };
+
+  // One named handler for a top-level key: the unknown-key refusal, the legacy
+  // provider/fallbackModel absence refusal, the per-key validator, then one writeConfigMutation
+  // whose callback applies the legacy/whole-section spelling collapses.
+  const writeTopLevelKey = (key: string, value: unknown): SetConfigKeyResult => {
+    const unknown = unknownConfigKeyError(key);
+    if (unknown) return fail(unknown);
+    // Legacy `provider` / `fallbackModel` are accepted to FIX an existing value (a config
+    // that already has one keeps the old meaning), but `config set` never adds them to a
+    // config that lacks them — the new-form writers emit `model` and `fallback` only.
+    if (key === "provider" || key === "fallbackModel") {
+      const absent = (() => {
+        try {
+          const c = loadConfig(root); // fresh — bypasses the stat cache on purpose
+          return (c as unknown as Record<string, unknown>)[key] === undefined;
+        } catch {
+          return false; // a broken file fails in writeConfigMutation with its own message
+        }
+      })();
+      if (absent)
+        return fail(`config set ${key}: this config has no ${key}, and a writer never adds legacy ${key} — set \`${key === "provider" ? "model" : "fallback"}\` instead`);
     }
-    const next = { ...cfg, [key]: value };
-    // `roles` merges per-entry at load (overlayDefaults seeds the catalog and lets the file
-    // override one entry), so an unrelated whole-config write must not re-expand the file's
-    // own roles section to the catalog — that would silently rewrite what the operator wrote.
-    // When the key IS `roles` the value is the replacement, so it is left alone.
-    if (key !== "roles") preserveFileRoles(root, next);
-    // Writers keep one spelling: a whole-section `backends` set (the GUI Save path) drops the
-    // legacy aliases the new pi form now carries, so the file can never hold both.
-    // Writers keep one spelling: a whole-section `backends` set (the GUI Save path) drops the
-    // legacy agentBin/piArgs aliases the new pi form now carries, so the file can never hold
-    // both — the same collapseBackendAliases rule the whole-config writers (above and in
-    // config.ts) use, so the alias policy cannot drift between the per-key arm and the others.
-    if (key === "backends") return collapseBackendAliases(next);
+    const perKeyValidator = PER_KEY_VALIDATORS[key];
+    if (perKeyValidator) {
+      const problem = perKeyValidator(value);
+      if (problem) return fail(problem);
+    }
+    let oldValue: unknown;
+    let unchanged: true | undefined;
     // Writers keep one spelling: a legacy top-level set drops the matching backends.pi field, so
     // the file can never hold both (validateConfig's raw pass rejects a file that does).
-    if (key === "agentBin" || key === "piArgs") {
+    const dropLegacyPiAlias = (next: TumwaterConfig, key: string): TumwaterConfig => {
       const record = next as unknown as { backends?: Record<string, Record<string, unknown>> };
       const backends = { ...(record.backends ?? {}) };
       const entry = { ...(backends.pi ?? {}) };
@@ -310,11 +334,11 @@ export function setConfigKey(
       if (Object.keys(entry).length === 0) delete backends.pi;
       else backends.pi = entry;
       return { ...next, backends: backends };
-    }
+    };
     // Writers keep one spelling: setting the top-level `claudeWindowReserve` drops the nested
     // `backends.claude.windowReserve`, so a supported `config set` never writes the rejected pair
     // (validateConfig still refuses a hand-edited file holding both).
-    if (key === "claudeWindowReserve") {
+    const dropNestedReserve = (next: TumwaterConfig): TumwaterConfig => {
       const record = next as unknown as { backends?: Record<string, Record<string, unknown>> };
       const backends = { ...(record.backends ?? {}) };
       const entry = { ...(backends.claude ?? {}) };
@@ -322,13 +346,57 @@ export function setConfigKey(
       if (Object.keys(entry).length === 0) delete backends.claude;
       else backends.claude = entry;
       return { ...next, backends: backends };
-    }
-    return next;
-  });
-  if (!result.ok) return result;
-  if (unchanged) return { ok: true, value, oldValue, unchanged: true };
-  return { ok: true, value, oldValue };
+    };
+    const result = writeConfigMutation(root, (cfg) => {
+      oldValue = (cfg as unknown as Record<string, unknown>)[key];
+      if (isDeepStrictEqual(oldValue, value)) {
+        unchanged = true;
+        return cfg;
+      }
+      const next = { ...cfg, [key]: value };
+      // `roles` merges per-entry at load (overlayDefaults seeds the catalog and lets the file
+      // override one entry), so an unrelated whole-config write must not re-expand the file's
+      // own roles section to the catalog — that would silently rewrite what the operator wrote.
+      // When the key IS `roles` the value is the replacement, so it is left alone.
+      if (key !== "roles") preserveFileRoles(root, next);
+      // Writers keep one spelling: a whole-section `backends` set (the GUI Save path) drops the
+      // legacy agentBin/piArgs aliases the new pi form now carries, so the file can never hold
+      // both — the same collapseBackendAliases rule the whole-config writers (above and in
+      // config.ts) use, so the alias policy cannot drift between the per-key arm and the others.
+      if (key === "backends") return collapseBackendAliases(next);
+      if (key === "agentBin" || key === "piArgs") return dropLegacyPiAlias(next, key);
+      if (key === "claudeWindowReserve") return dropNestedReserve(next);
+      return next;
+    });
+    if (!result.ok) return result;
+    if (unchanged) return { ok: true, value, oldValue, unchanged: true };
+    return { ok: true, value, oldValue };
+  };
+
+  key = canonicalConfigKey(key);
+  const parsed = parseConfigKey(key);
+  if (parsed.kind === "error") return fail(parsed.error);
+  // Shape, before the JSON.parse, for every plain-positive-integer key this verb can write —
+  // the top-level run-concurrency knobs and legacy merge batch cap, plus the integer-bound
+  // team-scope keys that arrive as a dotted key (`maxConcurrentPerProvider.<provider>`,
+  // `roles.<id>.instances`, the `bootstrap.untilPlansDone` section field): refuse an exponent
+  // spelling ("4e1" → 40) that JSON.parse would read past validateConfig's integer check and
+  // silently write, naming the key and writing nothing — the twin of the per-role guards, the
+  // TUI team-key editors, and the GUI Settings rows. A non-exponent invalid falls through for
+  // validateConfig (whose message names the key). Empty clears the key below.
+  const trimmed = rawValue.trim();
+  const refusal = exponentRefusal(parsed, key, trimmed);
+  if (refusal) return fail(refusal);
+  let value: unknown;
+  try {
+    value = JSON.parse(rawValue);
+  } catch {
+    value = rawValue; // not JSON: the literal string, so `set model gpt-5` needs no quotes
+  }
+  if (parsed.kind !== "top") return writeDottedKey(parsed, value);
+  return writeTopLevelKey(key, value);
 }
+
 
 /** Set a role's provider/model/thinking/backend override set in tumwater.json (`roles.<base>`),
  * the write behind the dashboard role drawer's Model overrides editor: one writeConfigMutation
