@@ -151,6 +151,18 @@ export async function hasUnmergedPin(root: string, role: string): Promise<boolea
   return (await refSha(root, mergeRefName(role)).catch(() => null)) !== null;
 }
 
+/** The main_red wait outcome a kept change returns while `ctx.mainRedRetry` is the only
+ * outstanding hold — same kept sha and same "waits for main to move past red" message for both
+ * recovery paths (the pinned ref and the no-pin adopted tip), so the wording cannot drift per
+ * path and the two branches stay byte-stable. */
+function mainRedWait(sha: string, head: string): LeftoverRecovery {
+  return {
+    kind: "main_red_wait",
+    sha,
+    message: `kept change ${shortSha(sha)} waits for main to move past red ${shortSha(head)} before its next merge`,
+  };
+}
+
 /** Queue a commit a previous run left unmerged. Entry condition: the merge ref exists and
  * its sha is not yet contained in main — or, with no pin at all, the role's branch is ahead of
  * main (crash between the commit and the pin). A present-but-contained ref is stale — a crash
@@ -196,8 +208,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     const heldTip = reviewHold(ctx.mergeReviewError, sha);
     if (heldTip) return { kind: "held", sha, message: heldTip.message };
     if (ctx.mainRedRetry) {
-      const message = `kept change ${shortSha(sha)} waits for main to move past red ${shortSha(ctx.mainRedRetry.head)} before its next merge`;
-      return { kind: "main_red_wait", sha, message };
+      return mainRedWait(sha, ctx.mainRedRetry.head);
     }
     // Adopt the unpinned commit into the pin scheme so every downstream outcome — kept on an
     // under-cap review failure (the strike cap's retry), deleted on reject/merge/discard,
@@ -222,8 +233,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   // `requeueMainRedPin` owns the re-queue of a main_red pin, once main's head moves. Queuing it
   // here would pay a full gate check against the same red head, whose result is already known.
   if (ctx.mainRedRetry) {
-    const message = `kept change ${shortSha(sha)} waits for main to move past red ${shortSha(ctx.mainRedRetry.head)} before its next merge`;
-    return { kind: "main_red_wait", sha, message };
+    return mainRedWait(sha, ctx.mainRedRetry.head);
   }
   const attempts = conflictAttempts(ctx.mergeConflicts, sha);
   if (attempts >= MERGE_CONFLICT_LIMIT) {
