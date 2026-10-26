@@ -37,22 +37,7 @@ interface TailAlertsInput {
   providerCaps: readonly string[];
 }
 
-/** The quiet-hours, maintenance, provider-hold, pause, capacity-contention, provider-cap,
- * instance-pool, stale-workspace-pin, regressed-fix, stopped and image-input alerts, in
- * emission order: a run of quiet hours
- * holding the team, a
- * maintenance allowance held at its rolling cap, a standing provider failure hold, an operator
- * pause with its countdown, the last day's capacity contention, a stale workspace pin, a
- * fixed test that regressed, a
- * stopped tumwater, and roles that cannot or may not read images. Extracted from teamAlerts
- * (part 5/5 of the teamAlerts split) so the shared module stays small; the input names exactly
- * the fields this run reads, including `now`, which the pause countdown and provider-hold
- * re-open time need. The caller pushes the returned alerts at the position this run used to
- * occupy, so the emitted key order is unchanged. */
-export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
-  const out: TeamAlert[] = [];
-  const { snap, now, contention, regressedFixes, roles, workspacePins, instancePool, providerCaps } = input;
-
+function pushQuietAlert(out: TeamAlert[], snap: TailAlertsInput["snap"]): void {
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
   // the team holding to a schedule is not a problem, but an operator watching idle roles
   // inside the window needs the same explanation the pause alert gives a paused team —
@@ -68,6 +53,9 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
+}
+
+function pushMaintenanceAlert(out: TeamAlert[], snap: TailAlertsInput["snap"]): void {
   // The maintenance allowance (plans/work-ratio.md, part 1b/4): by design and self-clearing —
   // the scheduler holds maintenance roles at the rolling 24 h allowance until merges free room,
   // then they run again on their own — so it informs (gray, no actions), the quiet alert's
@@ -83,6 +71,9 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
+}
+
+function pushProviderHoldAlert(out: TeamAlert[], snap: TailAlertsInput["snap"], now: number): void {
   // A standing provider failure hold (src/team/team-hold.ts `standingHolds`, published through
   // the orchestrator info file): a provider storm holds roles on that provider, so an operator
   // watching idle roles with no log open sees why nothing new starts there. Self-clearing by
@@ -104,6 +95,9 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
+}
+
+function pushProviderCapsAlert(out: TeamAlert[], providerCaps: readonly string[]): void {
   // A `maxConcurrentPerProvider` map that cannot do its job — the always-on twin of the doctor's
   // `provider concurrency` row (doctor-contention-checks.ts checkProviderConcurrency): a cap key
   // no seam resolves to, a cap at or above maxConcurrent, or a keyless seam in a capped team.
@@ -120,6 +114,9 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
+}
+
+function pushPausedAlert(out: TeamAlert[], snap: TailAlertsInput["snap"], now: number): void {
   if (snap.paused) {
     const left = pauseCountdown(snap.pausedUntil, now);
     out.push({
@@ -134,6 +131,9 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: [{ label: "Resume now", act: "resume" }],
     });
   }
+}
+
+function pushContentionAlert(out: TeamAlert[], contention: readonly CapacityBottleneck[]): void {
   // Last day's capacity contention — the always-on twin of the doctor's `workspaces`,
   // `provider contention` and `check contention` rows (doctor-contention-checks.ts). The
   // instantaneous badges show only current waits, and the 24 h total is the tuning signal that
@@ -149,6 +149,9 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
+}
+
+function pushWorkspacePinsAlert(out: TeamAlert[], workspacePins: readonly StaleWorkspacePin[]): void {
   // A stale workspace pin — the always-on twin of the doctor's `worktree pool` row's stuck-pin
   // clause (doctor-contention-checks.ts checkWorktreePool): a slot pinned past a day by a run
   // that never resumed silently shrinks the pool, and no other observer surface names it until
@@ -166,6 +169,9 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: openRoleActions(workspacePins),
     });
   }
+}
+
+function pushInstancePoolAlert(out: TeamAlert[], instancePool: readonly string[]): void {
   // An enabled multi-instance role sharing a workspace pool smaller than the run cap — the
   // always-on twin of the doctor `parallel instances` row's pool-mismatch clause
   // (doctor-contention-checks.ts smallPoolProblems): instances then contend for the same
@@ -181,6 +187,9 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
+}
+
+function pushRegressedFixesAlert(out: TeamAlert[], regressedFixes: RegressedFixAlert | null): void {
   // A Fixed record whose quoted test failed again in the trailing day — the always-on twin of
   // the doctor's `regressed fixes` row (doctor-backlog-bugs.ts checkRegressedFixes).
   // alert-feeds.ts's regressedFixesAlert feeds it the same candidate selection, failureMentions
@@ -195,6 +204,9 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: seeFailures(),
     });
   }
+}
+
+function pushStoppedAlert(out: TeamAlert[], snap: TailAlertsInput["snap"]): void {
   if (!snap.running) {
     out.push({
       key: "stopped",
@@ -204,6 +216,9 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: [{ label: "Copy the command", act: "copy", arg: "tumwater start" }],
     });
   }
+}
+
+function pushImagesAlert(out: TeamAlert[], roles: readonly AlertRole[]): void {
   // Image input (plans/image-input.md "Surfaces", part 5/5): a role whose model cannot read
   // images. Blue when every text-only role has a reroute target (a run that reads an image
   // stops and reruns — nothing fails); amber when some text-only role has none (a blind read
@@ -231,6 +246,9 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: [],
     });
   }
+}
+
+function pushImageProbeAlert(out: TeamAlert[], snap: TailAlertsInput["snap"]): void {
   if (snap.imageProbeFailures.length > 0) {
     out.push({
       key: "images-probe",
@@ -240,25 +258,35 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
       actions: seeFailures(),
     });
   }
-  return out;
 }
 
-/** Everything about the team that needs the operator, most urgent first: a spent budget, a red
- * main, roles failing run after run, roles that look stuck, a stale running build, open
- * questions, refused entries, stale bugs, a failed notify page, a dirty primary
- * checkout refusing merges, a stranded inbox
- * prompt, a stalled merge queue, a
- * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
- * review or Needs replan note, checks that flapped more than once in the last day, a stale or
- * oversized flake quarantine, a burst of post-merge review rejections, each a commit that
- * already reached main, a post-merge review one failed run from being dropped, a post-merge
- * review dropped after repeated failures, leaving its commit on main unreviewed, a main tip the
- * watch's five diff rules rejected, the team
- * waiting on capacity slots (workspace, provider or
- * check), parallel instances sharing a workspace pool smaller than the run cap, a plan
- * filed under the wrong backlog section, a duplicated
- * backlog section heading, finished history still under a live backlog file's `## Done` or
- * `## Fixed`, a Fixed record with a bad Validation gap trace, a pause, a
- * stopped team.
- * `now` is passed so a timed
- * pause's countdown agrees with the rest of the frame. */
+/** The quiet-hours, maintenance, provider-hold, pause, capacity-contention, provider-cap,
+ * instance-pool, stale-workspace-pin, regressed-fix, stopped and image-input alerts, in
+ * emission order: a run of quiet hours
+ * holding the team, a
+ * maintenance allowance held at its rolling cap, a standing provider failure hold, an operator
+ * pause with its countdown, the last day's capacity contention, a stale workspace pin, a
+ * fixed test that regressed, a
+ * stopped tumwater, and roles that cannot or may not read images. Extracted from teamAlerts
+ * (part 5/5 of the teamAlerts split) so the shared module stays small; the input names exactly
+ * the fields this run reads, including `now`, which the pause countdown and provider-hold
+ * re-open time need. The caller pushes the returned alerts at the position this run used to
+ * occupy, so the emitted key order is unchanged. */
+export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
+  const out: TeamAlert[] = [];
+  const { snap, now, contention, regressedFixes, roles, workspacePins, instancePool, providerCaps } = input;
+
+  pushQuietAlert(out, snap);
+  pushMaintenanceAlert(out, snap);
+  pushProviderHoldAlert(out, snap, now);
+  pushProviderCapsAlert(out, providerCaps);
+  pushPausedAlert(out, snap, now);
+  pushContentionAlert(out, contention);
+  pushWorkspacePinsAlert(out, workspacePins);
+  pushInstancePoolAlert(out, instancePool);
+  pushRegressedFixesAlert(out, regressedFixes);
+  pushStoppedAlert(out, snap);
+  pushImagesAlert(out, roles);
+  pushImageProbeAlert(out, snap);
+  return out;
+}
