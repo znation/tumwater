@@ -4,7 +4,7 @@ import type { RunnerState } from "../runner/runner-state.js";
 import type { PermitSnapshot } from "../team/orchestrator-info.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { heldByMainRed } from "../status/status-polls.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
+import { errorStreakAtWarn, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
 import { readLiveProgress, type LiveProgress } from "./progress-data.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
@@ -106,7 +106,7 @@ export function onErrorStreak(s: Pick<RunnerState, "consecutiveErrors" | "lastRe
   // ranks running work above failing), but the alert must stay up while the role's next
   // run is in flight and clear only when the streak resets (BUGS.md 2026-10-14).
   return (
-    (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN ||
+    errorStreakAtWarn(s) ||
     (s.lastResult === "quiet_killed" && (s.quietKillStreak ?? 0) >= QUIET_KILL_RESUME_LIMIT)
   );
 }

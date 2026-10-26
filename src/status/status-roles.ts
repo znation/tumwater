@@ -10,7 +10,7 @@ import {
 import { modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { isCustomRole } from "../config/config.js";
 import { baseRoleOf, configuredInstances, instanceIndex, runnerIds, runnerPaused } from "../roles/runner-ids.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
+import { errorStreakAtWarn, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { hasOutstandingWork } from "../runner/runner-state.js";
 import { formatModelSelector } from "../config/model-selector.js";
@@ -87,7 +87,7 @@ export function collectRoleRows(
       queued.has(r) ||
       s.claim !== undefined ||
       hasOutstandingWork(s) ||
-      (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN ||
+      errorStreakAtWarn(s) ||
       (s.lastResult === "quiet_killed" && (s.quietKillStreak ?? 0) >= QUIET_KILL_RESUME_LIMIT)
     );
   });

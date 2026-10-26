@@ -48,6 +48,17 @@ export function clearSupersededRejection(s: RunnerState): void {
  * the failure is clearly not transient. */
 export const ERROR_STREAK_WARN = 3;
 
+/** Whether a role's consecutive-error count is at or past the warn bar (ERROR_STREAK_WARN) —
+ * the "failing" predicate the status phase cell (status-model.ts's onErrorStreak), the status
+ * poll's slot-demand read (status-roles.ts), and the doctor's error-streaks check
+ * (doctor-holds.ts) each test, so the threshold comparison cannot drift between them. The
+ * `=== ERROR_STREAK_WARN` crossing edges (run-finalize.ts, merge-slot.ts) are a different
+ * comparison (the single run that reached the bar, not the at-or-past state) and stay
+ * inline. */
+export function errorStreakAtWarn(s: Pick<RunnerState, "consecutiveErrors">): boolean {
+  return (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN;
+}
+
 /** Consecutive failed runs after which the error-streak circuit breaker (src/gates/streak-gate.ts)
  * auto-pauses the role through the per-role pause marker — the same act-on-it escalation the
  * budget gate and the pause gates perform, applied to a role failing on its own cause. Ten,

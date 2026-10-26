@@ -12,7 +12,7 @@ import { heldByMainRed, mainCheckForPoll, maintenanceQuotaForPoll } from "../sta
 import type { RunnerState } from "../runner/runner-state.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { baseRoleOf, runnerIds, runnerPaused } from "../roles/runner-ids.js";
-import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../run/run-apply.js";
+import { ERROR_STREAK_BREAKER, errorStreakAtWarn } from "../run/run-apply.js";
 import { squash } from "../text/text.js";
 import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";
@@ -254,7 +254,7 @@ export function checkProviderHolds(root: string, now: number = Date.now()): Chec
 export function checkErrorStreaks(root: string, config: TumwaterConfig | undefined): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
   const failing = loadRunnerStates(root, config)
-    .filter((s) => (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN);
+    .filter((s) => errorStreakAtWarn(s));
   if (failing.length === 0) return okOutcome("no role failing repeatedly");
   const paused = new Set(pausedRoles(root));
   const phrases = failing.map((s) => {
