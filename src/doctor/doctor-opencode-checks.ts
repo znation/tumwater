@@ -3,7 +3,7 @@ import path from "node:path";
 import { childEnv } from "../process/process.js";
 import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
 import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
-import { opencodeModelFree, opencodeModelKey, readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
+import { opencodeModelFree, opencodeModelKey, readOpencodeCache, type OpencodeCatalogCache } from "../agent/opencode/opencode-catalog.js";
 import { formatDate } from "../text/datetime.js";
 import { opencodeDbPath } from "../paths.js";
 import { envPath, isDirectory, readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
@@ -124,6 +124,104 @@ function opencodeConfigLeaks(configHome: string): string[] {
   return warns;
 }
 
+/** A catalog model's price text — "free" when free, the billed-demotion phrase when `billedAt`
+ * is set, else the per-M prices — so opencodeModelRow can name the price without the nested
+ * ternary and its two `?? 0` fallbacks. */
+function opencodePriceText(
+  free: boolean,
+  billedAt: number | undefined,
+  inputPerM: number | undefined,
+  outputPerM: number | undefined,
+): string {
+  if (free) return "free";
+  if (billedAt !== undefined) return `no longer free (billed ${formatDate(new Date(billedAt))})`;
+  return `$${inputPerM ?? 0}/$${outputPerM ?? 0} per M`;
+}
+
+/** One opencode catalog model's row: today's per-model body from the cache key through the
+ * dropped-effort warning, returning the catalog note and any warnings, or undefined when the
+ * model is missing from the cache (the caller owns that failure message). `warnings` holds the
+ * billed-at demotion line and the dropped-effort line in today's order. */
+function opencodeModelRow(
+  cache: OpencodeCatalogCache,
+  model: string,
+  thinking: string | undefined,
+): { note: string; warnings: string[] } | undefined {
+  const key = opencodeModelKey(model);
+  const entry = cache.models[key];
+  if (entry === undefined) return undefined;
+  const warnings: string[] = [];
+  const free = opencodeModelFree(cache, key);
+  if (entry.billedAt !== undefined) {
+    warnings.push(
+      `${model} was free in the catalog but billed once on ${formatDate(new Date(entry.billedAt))} — the budget gate now prices it`,
+    );
+  }
+  const window = entry.context !== undefined ? `, ${tokenWindowLabel(entry.context)}` : "";
+  const note = `${model} — ${opencodePriceText(free, entry.billedAt, entry.inputPerM, entry.outputPerM)}${window}`;
+  // A model with no effort list at all supports no thinking level, so a requested level is
+  // dropped just the same as one the list omits.
+  if (thinking !== undefined && thinking !== "" && !entry.efforts?.includes(thinking)) {
+    warnings.push(`${model} has no ${thinking} effort — that thinking level is dropped`);
+  }
+  return { note, warnings };
+}
+
+/** The team's opencode database and spill directory sizes as one information line (`db …,
+ * spill …`), reading the db, the spill dir and their byte formatting — today's storage tail. */
+function opencodeStorageNote(root: string): string {
+  const db = statOrNull(opencodeDbPath(root));
+  const spillDir = opencodeSpillDir(root);
+  const spill = spillDir !== "" && isDirectory(spillDir) ? treeBytes(spillDir) : null;
+  return `db ${formatBytes(db?.size ?? 0)}${spill !== null ? `, spill ${formatBytes(spill)}` : ", no spill dir"}`;
+}
+
+/** Walk the opencode-routed model pairs into today's per-model fails, warns and notes: the
+ * catalog-miss failure, the catalog note and its warnings from opencodeModelRow, and the
+ * non-gateway credential probe each provider. Returns the three arrays checkOpencode assembles. */
+async function collectOpencodeModelRows(
+  cache: OpencodeCatalogCache,
+  models: readonly { model?: string; thinking?: string }[],
+  config: TumwaterConfig,
+  pathEnv: string,
+  timeoutMs: number,
+): Promise<{ fails: string[]; warns: string[]; notes: string[] }> {
+  const fails: string[] = [];
+  const warns: string[] = [];
+  const notes: string[] = [];
+  for (const pair of models) {
+    const model = pair.model!;
+    const row = opencodeModelRow(cache, model, pair.thinking);
+    if (row === undefined) {
+      fails.push(`${model} is not in the opencode catalog cache`);
+      continue;
+    }
+    notes.push(row.note);
+    warns.push(...row.warnings);
+    const provider = opencodeProviderOf(model);
+    if (provider !== undefined && !(await opencodeAuthLists(config, provider, pathEnv, timeoutMs))) {
+      warns.push(`${model} is a non-gateway provider opencode does not list a credential for`);
+    }
+  }
+  return { fails, warns, notes };
+}
+
+/** The check's outcome from the accumulated fails/warns/notes and the storage tail: the joined
+ * base line ("opencode ready — …" when nothing is wrong, else the found lines) and the
+ * fail/warn/ok verdict by severity. */
+function opencodeOutcome(
+  fails: string[],
+  warns: string[],
+  notes: string[],
+  sizeNotes: string,
+): CheckOutcome {
+  const found = [...fails, ...warns];
+  const base =
+    found.length === 0 ? `opencode ready — ${notes.join("; ")}; ${sizeNotes}` : found.join("; ");
+  if (fails.length > 0) return failOutcome(base);
+  return (warns.length > 0 ? warnOutcome : okOutcome)(base);
+}
+
 /** OpenCode model, credential and leak readiness (plans/opencode-backend.md §7, part 7/7):
  * every model routed to opencode must be in the catalog cache — an unknown model fails, a
  * cached one reads "free" or its per-M prices and context window, and a thinking level with no
@@ -136,8 +234,9 @@ function opencodeConfigLeaks(configHome: string): string[] {
  * PATH or HOME. A model's freeness is read from opencodeModelFree — the same call the budget
  * gate and status use — so a catalog-free model that an observed bill demoted to billed reads
  * as billed here, not free, keeping the row from drifting from what the team is billed. The
- * version half of the opencode pre-flight is the sibling checkOpencodeVersion in
- * doctor-checks.ts. */
+ * per-model catalog row lives in opencodeModelRow, the database-and-spill size line in
+ * opencodeStorageNote; both are the two extracted jobs the reader names by. The version half of
+ * the opencode pre-flight is the sibling checkOpencodeVersion in doctor-checks.ts. */
 export async function checkOpencode(
   root: string,
   pathEnv: string = envPath(),
@@ -148,54 +247,17 @@ export async function checkOpencode(
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;
   if (!opencodeSeamsInUse(config)) return okOutcome("no model jobs run on opencode");
-  const models = seamedModels(config, "opencode");
-  const cache = readOpencodeCache(root);
-  const fails: string[] = [];
-  const warns: string[] = [];
-  const notes: string[] = [];
-  for (const pair of models) {
-    const key = opencodeModelKey(pair.model!);
-    const entry = cache.models[key];
-    if (entry === undefined) {
-      fails.push(`${pair.model} is not in the opencode catalog cache`);
-      continue;
-    }
-    const free = opencodeModelFree(cache, key);
-    if (entry.billedAt !== undefined) {
-      warns.push(
-        `${pair.model} was free in the catalog but billed once on ${formatDate(new Date(entry.billedAt))} — the budget gate now prices it`,
-      );
-    }
-    const price =
-      free
-        ? "free"
-        : entry.billedAt !== undefined
-          ? `no longer free (billed ${formatDate(new Date(entry.billedAt))})`
-          : `$${entry.inputPerM ?? 0}/$${entry.outputPerM ?? 0} per M`;
-    const window = entry.context !== undefined ? `, ${tokenWindowLabel(entry.context)}` : "";
-    notes.push(`${pair.model} — ${price}${window}`);
-    // A model with no effort list at all supports no thinking level, so a requested level is
-    // dropped just the same as one the list omits.
-    if (
-      pair.thinking !== undefined &&
-      pair.thinking !== "" &&
-      !entry.efforts?.includes(pair.thinking)
-    ) {
-      warns.push(`${pair.model} has no ${pair.thinking} effort — that thinking level is dropped`);
-    }
-    const provider = opencodeProviderOf(pair.model!);
-    if (provider !== undefined && !(await opencodeAuthLists(config, provider, pathEnv, timeoutMs))) {
-      warns.push(`${pair.model} is a non-gateway provider opencode does not list a credential for`);
-    }
-  }
-  warns.push(...opencodeConfigLeaks(xdgConfigHome !== "" ? xdgConfigHome : path.join(home, ".config")));
-  const db = statOrNull(opencodeDbPath(root));
-  const spillDir = opencodeSpillDir(root);
-  const spill = spillDir !== "" && isDirectory(spillDir) ? treeBytes(spillDir) : null;
-  const sizeNotes = `db ${formatBytes(db?.size ?? 0)}${spill !== null ? `, spill ${formatBytes(spill)}` : ", no spill dir"}`;
-  const found = [...fails, ...warns];
-  const base =
-    found.length === 0 ? `opencode ready — ${notes.join("; ")}; ${sizeNotes}` : found.join("; ");
-  if (fails.length > 0) return failOutcome(base);
-  return (warns.length > 0 ? warnOutcome : okOutcome)(base);
+  const rows = await collectOpencodeModelRows(
+    readOpencodeCache(root),
+    seamedModels(config, "opencode"),
+    config,
+    pathEnv,
+    timeoutMs,
+  );
+  const warns = [
+    ...rows.warns,
+    ...opencodeConfigLeaks(xdgConfigHome !== "" ? xdgConfigHome : path.join(home, ".config")),
+  ];
+  const sizeNotes = opencodeStorageNote(root);
+  return opencodeOutcome(rows.fails, warns, rows.notes, sizeNotes);
 }
