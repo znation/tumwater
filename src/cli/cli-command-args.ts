@@ -280,19 +280,32 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
   { names: ["--grep"], value: true, valueName: "<text>" },
 ];
 
-/** `tumwater prompt` argument handling, following parseInitArgs' pattern. Like init's,
- * positionals are free-form prompt content — but a double-dash token must be a real flag
- * (`--role <id>`, `--list`, `--json`, `--grep <text>`, `--cancel <n>`, `--edit <n>`,
- * `--top <n>`, `--file <path>`, `--at <duration>`), or
- * it would be baked into the queued prompt (the same class of bug parseInitArgs fixed: today
- * `tumwater prompt --foo text` enqueues "--foo text"). Single-dash positionals remain prompt
- * content. `--list`, `--cancel`, `--edit` and `--top` are mutually exclusive and may
- * not combine with positional text; `--role` is accepted in every mode and is never
- * prompt content. `--at <duration>` (PLANS.md "tumwater prompt --at <duration>") only queues
- * a prompt: it defers delivery — parsed here with parseDurationFlag, riding the enqueue as
- * the queue file's not-before marker — so the read-only and destructive modes refuse it
- * rather than silently ignore it. */
-export function parsePromptArgs(args: string[]): PromptArgs {
+/** The shared result of parsePromptFlags' scan: every index, claim and value the per-mode
+ * branches below read, on one struct, so the scanner owns all cross-mode checks and the
+ * branches only assemble each return shape. */
+interface PromptFlags {
+  role: string | null;
+  jsonFlags: number[];
+  listFlag: number;
+  cancelFlag: number;
+  editFlag: number;
+  topFlag: number;
+  fileFlag: number;
+  grepRaw: string | undefined;
+  grepClaim: number[];
+  roleClaim: number[];
+  attachPaths: string[];
+  attachClaims: number[];
+  atDelayMs: number | null;
+  atClaim: number[];
+}
+
+/** `tumwater prompt`'s flag scan and the checks it owns — everything shared by two or more
+ * modes, so a new mode or queue-only flag is added here: the unknown-double-dash gate, the
+ * index collection, the once-check, the six mutual exclusions, the --role pair, the
+ * --json/--grep list-only refusals, the queue-only-flag refusals, the --attach pairs and the
+ * --at parse and cap. Returns a struct the mode branches read. */
+function parsePromptFlags(args: string[]): PromptFlags {
   // The unknown-double-dash gate reads PROMPT_FLAG_SPECS, so the list its error names admits
   // exactly what the duplicate-flag check below accepts — one vocabulary, one message renderer.
   rejectUnknownDoubleDash("prompt", args, PROMPT_FLAG_SPECS);
@@ -370,78 +383,127 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     failOverDurationCap("--at", atDelayMs, PAUSE_FOR_MAX_MS);
   }
 
-  if (listFlag >= 0) {
-    failStrayArg(args, "with --list there is no prompt text", listFlag, ...jsonFlags, ...roleClaim, ...grepClaim);
-    return { mode: "list", role, json: jsonFlags.length > 0, grep: grepRaw ?? null };
-  }
+  return {
+    role,
+    jsonFlags,
+    listFlag,
+    cancelFlag,
+    editFlag,
+    topFlag,
+    fileFlag,
+    grepRaw,
+    grepClaim,
+    roleClaim,
+    attachPaths,
+    attachClaims,
+    atDelayMs,
+    atClaim,
+  };
+}
 
-  if (cancelFlag >= 0) {
-    const n = parsePositionFlag("--cancel", args[cancelFlag + 1], "--cancel 2");
-    // The position is the only token --cancel may carry; anything else alongside it would be
-    // prompt text, and this mode has none.
-    failStrayArg(args, "with --cancel there is no prompt text", cancelFlag, cancelFlag + 1, ...roleClaim);
-    return { mode: "cancel", role, position: n };
-  }
+/** `--list`: the queue listing, optionally machine-readable and filtered by --grep. */
+function listPromptArgs(args: string[], f: PromptFlags): PromptArgs {
+  failStrayArg(args, "with --list there is no prompt text", f.listFlag, ...f.jsonFlags, ...f.roleClaim, ...f.grepClaim);
+  return { mode: "list", role: f.role, json: f.jsonFlags.length > 0, grep: f.grepRaw ?? null };
+}
 
-  if (editFlag >= 0) {
-    const n = parsePositionFlag("--edit", args[editFlag + 1], '--edit 2 "new text"');
-    // The --edit pair, the --role pair, and any --attach pairs are the only flags this mode
-    // claims. Tokens preceding --edit (other than a claimed flag) would be silently dropped —
-    // a mistyped command would edit prompt N with only the trailing fragment — so they are
-    // refused here by the same stray-argument wording the sibling modes use; tokens after the
-    // position are the replacement text, minus any claimed attach pair (none: edit in $EDITOR).
-    const fileClaim = fileFlag >= 0 ? [fileFlag, fileFlag + 1] : [];
-    for (let i = 0; i < editFlag; i++) {
-      if (roleClaim.includes(i) || attachClaims.includes(i) || fileClaim.includes(i)) continue;
-      fail(`unexpected argument ${JSON.stringify(args[i])} — with --edit the replacement text comes after the position`);
-    }
-    if (fileFlag >= 0) {
-      // The replacement comes from the file (`-` reads stdin), kept line for line; editPromptAtFile
-      // trims it. Typed text beside it would be ambiguous, so it is refused.
-      const file = promptFileValue(args[fileFlag + 1]);
-      failStrayArg(args, "with --file the replacement text comes from the file", editFlag, editFlag + 1, ...fileClaim, ...roleClaim, ...attachClaims);
-      return { mode: "edit", role, position: n, text: readPromptFileArg(file), attachPaths };
-    }
-    const textTokens: string[] = [];
-    for (let i = editFlag + 2; i < args.length; i++) {
-      if (roleClaim.includes(i) || attachClaims.includes(i)) continue;
-      textTokens.push(args[i] as string);
-    }
-    const text = textTokens.join(" ").trim();
-    // No text and no --file: the caller opens the prompt's current body in the editor.
-    return { mode: "edit", role, position: n, text: text === "" ? null : text, attachPaths };
-  }
+/** `--cancel <n>`: remove one entry by its 1-based queue position. */
+function cancelPromptArgs(args: string[], f: PromptFlags): PromptArgs {
+  const n = parsePositionFlag("--cancel", args[f.cancelFlag + 1], "--cancel 2");
+  // The position is the only token --cancel may carry; anything else alongside it would be
+  // prompt text, and this mode has none.
+  failStrayArg(args, "with --cancel there is no prompt text", f.cancelFlag, f.cancelFlag + 1, ...f.roleClaim);
+  return { mode: "cancel", role: f.role, position: n };
+}
 
-  if (topFlag >= 0) {
-    const n = parsePositionFlag("--top", args[topFlag + 1], "--top 2");
-    // The position is the only token --top may carry; anything else alongside it would be
-    // prompt text, and this mode has none.
-    failStrayArg(args, "with --top there is no prompt text", topFlag, topFlag + 1, ...roleClaim);
-    return { mode: "top", role, position: n };
+/** `--edit <n>`: rewrite one entry's text in place — the replacement is the --file contents,
+ * the tokens after the position, or (with neither) an editor open in the caller. */
+function editPromptArgs(args: string[], f: PromptFlags): PromptArgs {
+  const n = parsePositionFlag("--edit", args[f.editFlag + 1], '--edit 2 "new text"');
+  // The --edit pair, the --role pair, and any --attach pairs are the only flags this mode
+  // claims. Tokens preceding --edit (other than a claimed flag) would be silently dropped —
+  // a mistyped command would edit prompt N with only the trailing fragment — so they are
+  // refused here by the same stray-argument wording the sibling modes use; tokens after the
+  // position are the replacement text, minus any claimed attach pair (none: edit in $EDITOR).
+  const fileClaim = f.fileFlag >= 0 ? [f.fileFlag, f.fileFlag + 1] : [];
+  for (let i = 0; i < f.editFlag; i++) {
+    if (f.roleClaim.includes(i) || f.attachClaims.includes(i) || fileClaim.includes(i)) continue;
+    fail(`unexpected argument ${JSON.stringify(args[i])} — with --edit the replacement text comes after the position`);
   }
-
-  if (fileFlag >= 0) {
-    // The file is the prompt: read it whole (a path of `-` reads stdin, so a pipe or heredoc
-    // works), following parseInitArgs' --file branch — the same claim/stray/read/empty shape,
-    // so the two commands speak one idiom. The stdin read is memoized at module level: cli.ts
-    // pre-parses prompt's args and cmdPrompt re-parses them, and a second readFileSync(0) on a
-    // drained pipe would see an empty prompt (readFileSync(0) fails with EAGAIN on a TTY's
-    // stdin; errorMessage names it, and the operator passes a real pipe instead).
-    const file = promptFileValue(args[fileFlag + 1]);
-    failStrayArg(args, "with --file the prompt comes from the file", fileFlag, fileFlag + 1, ...roleClaim, ...atClaim, ...attachClaims);
-    const contents = readPromptFileArg(file);
-    return { mode: "enqueue", role, text: contents, atDelayMs, attachPaths: attachPaths };
+  if (f.fileFlag >= 0) {
+    // The replacement comes from the file (`-` reads stdin), kept line for line; editPromptAtFile
+    // trims it. Typed text beside it would be ambiguous, so it is refused.
+    const file = promptFileValue(args[f.fileFlag + 1]);
+    failStrayArg(args, "with --file the replacement text comes from the file", f.editFlag, f.editFlag + 1, ...fileClaim, ...f.roleClaim, ...f.attachClaims);
+    return { mode: "edit", role: f.role, position: n, text: readPromptFileArg(file), attachPaths: f.attachPaths };
   }
+  const textTokens: string[] = [];
+  for (let i = f.editFlag + 2; i < args.length; i++) {
+    if (f.roleClaim.includes(i) || f.attachClaims.includes(i)) continue;
+    textTokens.push(args[i] as string);
+  }
+  const text = textTokens.join(" ").trim();
+  // No text and no --file: the caller opens the prompt's current body in the editor.
+  return { mode: "edit", role: f.role, position: n, text: text === "" ? null : text, attachPaths: f.attachPaths };
+}
 
+/** `--top <n>`: move one entry to the head of its role's queue. */
+function topPromptArgs(args: string[], f: PromptFlags): PromptArgs {
+  const n = parsePositionFlag("--top", args[f.topFlag + 1], "--top 2");
+  // The position is the only token --top may carry; anything else alongside it would be
+  // prompt text, and this mode has none.
+  failStrayArg(args, "with --top there is no prompt text", f.topFlag, f.topFlag + 1, ...f.roleClaim);
+  return { mode: "top", role: f.role, position: n };
+}
+
+/** `--file <path>`: enqueue the file's (or stdin's) whole contents as the prompt. */
+function filePromptArgs(args: string[], f: PromptFlags): PromptArgs {
+  // The file is the prompt: read it whole (a path of `-` reads stdin, so a pipe or heredoc
+  // works), following parseInitArgs' --file branch — the same claim/stray/read/empty shape,
+  // so the two commands speak one idiom. The stdin read is memoized at module level: cli.ts
+  // pre-parses prompt's args and cmdPrompt re-parses them, and a second readFileSync(0) on a
+  // drained pipe would see an empty prompt (readFileSync(0) fails with EAGAIN on a TTY's
+  // stdin; errorMessage names it, and the operator passes a real pipe instead).
+  const file = promptFileValue(args[f.fileFlag + 1]);
+  failStrayArg(args, "with --file the prompt comes from the file", f.fileFlag, f.fileFlag + 1, ...f.roleClaim, ...f.atClaim, ...f.attachClaims);
+  const contents = readPromptFileArg(file);
+  return { mode: "enqueue", role: f.role, text: contents, atDelayMs: f.atDelayMs, attachPaths: f.attachPaths };
+}
+
+/** The default mode: free-form text (minus the claimed --role/--at/--attach tokens) is joined
+ * and enqueued. */
+function enqueuePromptArgs(args: string[], f: PromptFlags): PromptArgs {
   // Everything except the --role pair and the --at pair is prompt text; the join keeps
   // multi-word requests as one string exactly like the pre-1/2 behavior.
   const text = args
-    .filter((_, i) => !roleClaim.includes(i) && !atClaim.includes(i) && !attachClaims.includes(i))
+    .filter((_, i) => !f.roleClaim.includes(i) && !f.atClaim.includes(i) && !f.attachClaims.includes(i))
     .join(" ")
     .trim();
   // Name the fix, like the sibling operator commands' usage errors (bug/plan carry their
   // BUG_USAGE/PLAN_USAGE lines): "prompt text required" alone never said what to type.
   if (!text)
     fail('prompt text required — usage: tumwater prompt "<text>" (add --role <id> to aim it at one role)');
-  return { mode: "enqueue", role, text, atDelayMs, attachPaths: attachPaths };
+  return { mode: "enqueue", role: f.role, text, atDelayMs: f.atDelayMs, attachPaths: f.attachPaths };
+}
+
+/** `tumwater prompt` argument handling, following parseInitArgs' pattern. Like init's,
+ * positionals are free-form prompt content — but a double-dash token must be a real flag
+ * (`--role <id>`, `--list`, `--json`, `--grep <text>`, `--cancel <n>`, `--edit <n>`,
+ * `--top <n>`, `--file <path>`, `--at <duration>`), or
+ * it would be baked into the queued prompt (the same class of bug parseInitArgs fixed: today
+ * `tumwater prompt --foo text` enqueues "--foo text"). Single-dash positionals remain prompt
+ * content. `--list`, `--cancel`, `--edit` and `--top` are mutually exclusive and may
+ * not combine with positional text; `--role` is accepted in every mode and is never
+ * prompt content. `--at <duration>` (PLANS.md "tumwater prompt --at <duration>") only queues
+ * a prompt: it defers delivery — parsed here with parseDurationFlag, riding the enqueue as
+ * the queue file's not-before marker — so the read-only and destructive modes refuse it
+ * rather than silently ignore it. */
+export function parsePromptArgs(args: string[]): PromptArgs {
+  const f = parsePromptFlags(args);
+  if (f.listFlag >= 0) return listPromptArgs(args, f);
+  if (f.cancelFlag >= 0) return cancelPromptArgs(args, f);
+  if (f.editFlag >= 0) return editPromptArgs(args, f);
+  if (f.topFlag >= 0) return topPromptArgs(args, f);
+  if (f.fileFlag >= 0) return filePromptArgs(args, f);
+  return enqueuePromptArgs(args, f);
 }
