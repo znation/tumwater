@@ -139,6 +139,190 @@ function readPromptImages(paths: readonly string[]): PromptImageInput[] {
   }
 }
 
+/** `--list` mode — the inspection verb: filter the list-wide rows by `--role a,b` and `--grep`,
+ * then print the prose list, the `--json` document, or one of the empty/no-match lines. One
+ * helper so `--list`'s rules are found by name. */
+function runPromptList(root: string, args: string[], json: boolean, grep: string | null, validIds: string[] | null): void {
+  // One payload, two shapes: the prose render and the --json output both come from the
+  // same array, so the per-role positions --cancel consumes can never disagree with the
+  // data a script reads. Full text, verbatim: this is the inspection command that tells
+  // you what a queued prompt actually says before you cancel it.
+  // `--role a,b` filters the list-wide rows, so section order and each section's own
+  // numbering stay what `--cancel <n> --role <id>` takes.
+  const listRoles = parseRoleListFlag(args, validIds as string[]);
+  const allRows = queuedListRows(root, null, validIds as string[]);
+  const scoped = listRoles === null ? allRows : allRows.filter((row) => listRoles.includes(row.role));
+  const prompts = queuedRowsMatching(scoped, grep ?? null);
+  if (json) {
+    // An empty queue still prints the document, the history --json empty-rows precedent.
+    sayJson({ prompts });
+    return;
+  }
+  if (prompts.length === 0 && scoped.length > 0) {
+    say(`no queued prompt matches "${grep}"`);
+    return;
+  }
+  if (prompts.length === 0) {
+    say(listRoles === null
+      ? "every inbox is empty"
+      : listRoles.length === 1
+        ? `${roleLabel(listRoles[0]!)}'s inbox is empty`
+        : `every listed inbox is empty (${listRoles.join(", ")})`);
+    return;
+  }
+  say(renderQueuedList(prompts, Date.now()));
+}
+
+/** `--cancel <n>` mode — remove a queued prompt by position, list-wide or `--role`-scoped. One
+ * helper so `--cancel`'s rules are found by name. */
+function runPromptCancel(root: string, position: number, role: string | null): void {
+  if (role === null) {
+    // No --role: the position addresses what --list shows — its per-role sections, each
+    // numbered from 1 (the director first, then the roles in catalog order). Resolve across
+    // that scope: one role holding the position cancels there, several are ambiguous (the
+    // list itself shows two "N." lines), none is a miss. The output names the role, since
+    // the caller scoped nothing.
+    sayListedOutcome(cancelListedPrompt(root, listWideScope(root), position), position);
+    return;
+  }
+  const target = role ?? DIRECTOR_ROLE;
+  sayPromptOutcome(position, target, runRolePromptCommand(root, target, position, cancelRolePrompt), false);
+}
+
+/** `--edit <n>` mode — replace a queued prompt's body by position: the attachment gate, then
+ * the editor for a bare position or the typed/`--file` text, list-wide or `--role`-scoped. One
+ * helper so `--edit`'s rules are found by name. */
+function runPromptEdit(root: string, position: number, text: string | null, attachPaths: string[], role: string | null): void {
+  // The same broken-config policy and list-wide resolution as cancel, one verb over: the
+  // file's new content rides the same queue file (position, enqueue stamp, and a pending
+  // --at deferral untouched), and a concurrent dequeue reports gone and exits clean. An
+  // `--attach` list is read through the same helper the enqueue form uses and appended to
+  // the prompt's images in place.
+  const images = attachPaths.length > 0 ? readPromptImages(attachPaths) : undefined;
+  // Image-input gate, `--edit`'s twin of the submit branch below (plans/image-input.md
+  // "Attachments", part 5/5): editing an attachment into a queued prompt is the same
+  // run-time discovery the submit gate prevents, so the refusal promise holds across every
+  // CLI attach surface — an image no configured model can read is refused before a byte is
+  // written, and a role that reroutes a blind read is told where the prompt will run. The
+  // target role is resolved first (the same resolution the verb below makes) so the gate can
+  // name it.
+  if (images !== undefined && images.length > 0) {
+    const targetRole = role ?? failQueueMiss(resolveListedQueue(root, listWideScope(root), position), position).role;
+    const guidance = imagePromptGuidance(root, targetRole);
+    if (guidance.refusal) return fail(guidance.refusal);
+    if (guidance.notice) say(guidance.notice);
+  }
+  const typed = text;
+  if (typed === null) {
+    // Bare `--edit <n>`: open the prompt's body in the editor. The role is resolved first
+    // and the write goes by file name, so a dequeue while the editor is open reports gone
+    // instead of editing the neighbour that shifted into the position.
+    let target = role;
+    if (target === null) {
+      const resolved = resolveListedQueue(root, listWideScope(root), position);
+      target = failQueueMiss(resolved, position).role;
+    }
+    const targetRole = target;
+    let name: string;
+    let body: string | null;
+    try {
+      name = path.basename(queuedFileAtPosition(root, targetRole, position));
+      body = readQueuedPromptBody(root, targetRole, name);
+    } catch (err) {
+      return fail(errorMessage(err));
+    }
+    if (body === null) {
+      sayPromptOutcome(position, targetRole, { status: "gone" }, role === null);
+      return;
+    }
+    const after = editInEditor(body, "prompt.md");
+    // An emptied buffer is an abort, not a blank prompt: the queue would otherwise hold a
+    // prompt with no text, which the enqueue forms refuse.
+    if (after.trim() === "" && body.trim() !== "") fail("the edited prompt is empty; nothing changed (use --cancel <n> to drop it)");
+    if (after.trim() === body.trim() && images === undefined) {
+      say(`prompt ${position} unchanged`);
+      return;
+    }
+    try {
+      sayPromptOutcome(position, targetRole, editQueuedFile(root, targetRole, name, after, images), role === null);
+    } catch (err) {
+      fail(errorMessage(err));
+    }
+    return;
+  }
+  if (role === null) {
+    sayListedOutcome(editListedPrompt(root, listWideScope(root), position, typed, images), position);
+    return;
+  }
+  const target = role ?? DIRECTOR_ROLE;
+  sayPromptOutcome(
+    position,
+    target,
+    runRolePromptCommand(root, target, position, (r, role, position) => editRolePrompt(r, role, position, typed, images)),
+    false,
+  );
+}
+
+/** `--top <n>` mode — move a queued prompt to the head of its queue by position, list-wide or
+ * `--role`-scoped. One helper so `--top`'s rules are found by name. */
+function runPromptTop(root: string, position: number, role: string | null): void {
+  // The same list-wide resolution the cancel branch uses, one verb on: no --role resolves the
+  // position across `--list`'s per-role sections and moves it in the resolved role's queue;
+  // with --role it is the role-scoped call. A concurrent dequeue reports gone and exits
+  // clean; position 1 of the resolved role is "already first".
+  if (role === null) {
+    const targetRole = failQueueMiss(resolveListedQueue(root, listWideScope(root), position), position).role;
+    let outcome: TopOutcome;
+    try {
+      outcome = movePromptToTop(root, targetRole, position);
+    } catch (err) {
+      return fail(errorMessage(err));
+    }
+    sayTopOutcome(position, targetRole, outcome, true);
+    return;
+  }
+  const target = role ?? DIRECTOR_ROLE;
+  let outcome: TopOutcome;
+  try {
+    outcome = movePromptToTop(root, target, position);
+  } catch (err) {
+    return fail(errorMessage(err));
+  }
+  sayTopOutcome(position, target, outcome, false);
+}
+
+/** The default (enqueue) mode — the steering-prompt submit form: the `--at` due time, the
+ * `--attach` read and image-input gate, then submitRolePromptAndWake and the confirmation.
+ * One helper so the submit form's rules are found by name. */
+function runPromptSubmit(root: string, text: string, atDelayMs: number | null, attachPaths: string[], role: string | null): void {
+  const target = role ?? DIRECTOR_ROLE;
+  // `--at <duration>` is a delay, not an epoch: the marker's not-before time is now + the
+  // parsed duration, computed at submit so the deferral starts when the operator queued it.
+  const dueMs = atDelayMs !== null ? Date.now() + atDelayMs : undefined;
+  // `--attach <path>`: read and validate through the shared helper (a bad path fails by name
+  // before anything is queued). An attachment the target role cannot read is refused here by
+  // name — the same gate submitRolePrompt enforces, surfaced early so the CLI exits non-zero
+  // with the fix before anything is written or queued; a role that reroutes a blind read is
+  // not refused, but the operator is told where the prompt will actually run.
+  const images = attachPaths.length > 0 ? readPromptImages(attachPaths) : undefined;
+  if (images && images.length > 0) {
+    const guidance = imagePromptGuidance(root, target);
+    if (guidance.refusal) return fail(guidance.refusal);
+    if (guidance.notice) say(guidance.notice);
+  }
+  const wake = submitRolePromptAndWake(root, target, text, images, dueMs);
+  const attached = images !== undefined ? ` with ${images.length} image(s)` : "";
+  const owner = target === DIRECTOR_ROLE ? "the director's" : `${roleLabel(target)}'s`;
+  if (atDelayMs !== null) {
+    // A deferred prompt's confirmation names the delivery delay, in the same duration
+    // vocabulary --at parsed (durationLabel), so the user can re-type it.
+    say(`added to ${owner} inbox — delivers in ${durationLabel(atDelayMs)}${attached}`);
+  } else {
+    say(`added to ${owner} inbox${attached}`);
+  }
+  say(wake);
+}
+
 /** `tumwater prompt [--role <id>] <text|list|cancel <n>|top <n>>`: submit a steering prompt to the
  * director (default) or one role's queue (`--list` takes `--role <id>[,<id>...]`), list what
  * is queued with per-role position numbering, cancel a queued prompt by position, or move
@@ -175,171 +359,20 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   }
   const role = parsed.role;
   if (parsed.mode === "list") {
-    // One payload, two shapes: the prose render and the --json output both come from the
-    // same array, so the per-role positions --cancel consumes can never disagree with the
-    // data a script reads. Full text, verbatim: this is the inspection command that tells
-    // you what a queued prompt actually says before you cancel it.
-    // `--role a,b` filters the list-wide rows, so section order and each section's own
-    // numbering stay what `--cancel <n> --role <id>` takes.
-    const listRoles = parseRoleListFlag(args, validIds as string[]);
-    const allRows = queuedListRows(root, null, validIds as string[]);
-    const scoped = listRoles === null ? allRows : allRows.filter((row) => listRoles.includes(row.role));
-    const prompts = queuedRowsMatching(scoped, parsed.grep ?? null);
-    if (parsed.json) {
-      // An empty queue still prints the document, the history --json empty-rows precedent.
-      sayJson({ prompts });
-      return;
-    }
-    if (prompts.length === 0 && scoped.length > 0) {
-      say(`no queued prompt matches "${parsed.grep}"`);
-      return;
-    }
-    if (prompts.length === 0) {
-      say(listRoles === null
-        ? "every inbox is empty"
-        : listRoles.length === 1
-          ? `${roleLabel(listRoles[0]!)}'s inbox is empty`
-          : `every listed inbox is empty (${listRoles.join(", ")})`);
-      return;
-    }
-    say(renderQueuedList(prompts, Date.now()));
+    runPromptList(root, args, parsed.json, parsed.grep, validIds);
     return;
   }
   if (parsed.mode === "cancel") {
-    if (role === null) {
-      // No --role: the position addresses what --list shows — its per-role sections, each
-      // numbered from 1 (the director first, then the roles in catalog order). Resolve across
-      // that scope: one role holding the position cancels there, several are ambiguous (the
-      // list itself shows two "N." lines), none is a miss. The output names the role, since
-      // the caller scoped nothing.
-      sayListedOutcome(cancelListedPrompt(root, listWideScope(root), parsed.position), parsed.position);
-      return;
-    }
-    const target = role ?? DIRECTOR_ROLE;
-    sayPromptOutcome(parsed.position, target, runRolePromptCommand(root, target, parsed.position, cancelRolePrompt), false);
+    runPromptCancel(root, parsed.position, role);
     return;
   }
   if (parsed.mode === "edit") {
-    // The same broken-config policy and list-wide resolution as cancel, one verb over: the
-    // file's new content rides the same queue file (position, enqueue stamp, and a pending
-    // --at deferral untouched), and a concurrent dequeue reports gone and exits clean. An
-    // `--attach` list is read through the same helper the enqueue form uses and appended to
-    // the prompt's images in place.
-    const images = parsed.attachPaths.length > 0 ? readPromptImages(parsed.attachPaths) : undefined;
-    // Image-input gate, `--edit`'s twin of the submit branch below (plans/image-input.md
-    // "Attachments", part 5/5): editing an attachment into a queued prompt is the same
-    // run-time discovery the submit gate prevents, so the refusal promise holds across every
-    // CLI attach surface — an image no configured model can read is refused before a byte is
-    // written, and a role that reroutes a blind read is told where the prompt will run. The
-    // target role is resolved first (the same resolution the verb below makes) so the gate can
-    // name it.
-    if (images !== undefined && images.length > 0) {
-      const targetRole = role ?? failQueueMiss(resolveListedQueue(root, listWideScope(root), parsed.position), parsed.position).role;
-      const guidance = imagePromptGuidance(root, targetRole);
-      if (guidance.refusal) return fail(guidance.refusal);
-      if (guidance.notice) say(guidance.notice);
-    }
-    const typed = parsed.text;
-    if (typed === null) {
-      // Bare `--edit <n>`: open the prompt's body in the editor. The role is resolved first
-      // and the write goes by file name, so a dequeue while the editor is open reports gone
-      // instead of editing the neighbour that shifted into the position.
-      let target = role;
-      if (target === null) {
-        const resolved = resolveListedQueue(root, listWideScope(root), parsed.position);
-        target = failQueueMiss(resolved, parsed.position).role;
-      }
-      const targetRole = target;
-      let name: string;
-      let body: string | null;
-      try {
-        name = path.basename(queuedFileAtPosition(root, targetRole, parsed.position));
-        body = readQueuedPromptBody(root, targetRole, name);
-      } catch (err) {
-        return fail(errorMessage(err));
-      }
-      if (body === null) {
-        sayPromptOutcome(parsed.position, targetRole, { status: "gone" }, role === null);
-        return;
-      }
-      const after = editInEditor(body, "prompt.md");
-      // An emptied buffer is an abort, not a blank prompt: the queue would otherwise hold a
-      // prompt with no text, which the enqueue forms refuse.
-      if (after.trim() === "" && body.trim() !== "") fail("the edited prompt is empty; nothing changed (use --cancel <n> to drop it)");
-      if (after.trim() === body.trim() && images === undefined) {
-        say(`prompt ${parsed.position} unchanged`);
-        return;
-      }
-      try {
-        sayPromptOutcome(parsed.position, targetRole, editQueuedFile(root, targetRole, name, after, images), role === null);
-      } catch (err) {
-        fail(errorMessage(err));
-      }
-      return;
-    }
-    if (role === null) {
-      sayListedOutcome(editListedPrompt(root, listWideScope(root), parsed.position, typed, images), parsed.position);
-      return;
-    }
-    const target = role ?? DIRECTOR_ROLE;
-    sayPromptOutcome(
-      parsed.position,
-      target,
-      runRolePromptCommand(root, target, parsed.position, (r, role, position) => editRolePrompt(r, role, position, typed, images)),
-      false,
-    );
+    runPromptEdit(root, parsed.position, parsed.text, parsed.attachPaths, role);
     return;
   }
   if (parsed.mode === "top") {
-    // The same list-wide resolution the cancel branch uses, one verb on: no --role resolves the
-    // position across `--list`'s per-role sections and moves it in the resolved role's queue;
-    // with --role it is the role-scoped call. A concurrent dequeue reports gone and exits
-    // clean; position 1 of the resolved role is "already first".
-    if (role === null) {
-      const targetRole = failQueueMiss(resolveListedQueue(root, listWideScope(root), parsed.position), parsed.position).role;
-      let outcome: TopOutcome;
-      try {
-        outcome = movePromptToTop(root, targetRole, parsed.position);
-      } catch (err) {
-        return fail(errorMessage(err));
-      }
-      sayTopOutcome(parsed.position, targetRole, outcome, true);
-      return;
-    }
-    const target = role ?? DIRECTOR_ROLE;
-    let outcome: TopOutcome;
-    try {
-      outcome = movePromptToTop(root, target, parsed.position);
-    } catch (err) {
-      return fail(errorMessage(err));
-    }
-    sayTopOutcome(parsed.position, target, outcome, false);
+    runPromptTop(root, parsed.position, role);
     return;
   }
-  const target = role ?? DIRECTOR_ROLE;
-  // `--at <duration>` is a delay, not an epoch: the marker's not-before time is now + the
-  // parsed duration, computed at submit so the deferral starts when the operator queued it.
-  const dueMs = parsed.atDelayMs !== null ? Date.now() + parsed.atDelayMs : undefined;
-  // `--attach <path>`: read and validate through the shared helper (a bad path fails by name
-  // before anything is queued). An attachment the target role cannot read is refused here by
-  // name — the same gate submitRolePrompt enforces, surfaced early so the CLI exits non-zero
-  // with the fix before anything is written or queued; a role that reroutes a blind read is
-  // not refused, but the operator is told where the prompt will actually run.
-  const images = parsed.attachPaths.length > 0 ? readPromptImages(parsed.attachPaths) : undefined;
-  if (images && images.length > 0) {
-    const guidance = imagePromptGuidance(root, target);
-    if (guidance.refusal) return fail(guidance.refusal);
-    if (guidance.notice) say(guidance.notice);
-  }
-  const wake = submitRolePromptAndWake(root, target, parsed.text, images, dueMs);
-  const attached = images !== undefined ? ` with ${images.length} image(s)` : "";
-  const owner = target === DIRECTOR_ROLE ? "the director's" : `${roleLabel(target)}'s`;
-  if (parsed.atDelayMs !== null) {
-    // A deferred prompt's confirmation names the delivery delay, in the same duration
-    // vocabulary --at parsed (durationLabel), so the user can re-type it.
-    say(`added to ${owner} inbox — delivers in ${durationLabel(parsed.atDelayMs)}${attached}`);
-  } else {
-    say(`added to ${owner} inbox${attached}`);
-  }
-  say(wake);
+  runPromptSubmit(root, parsed.text, parsed.atDelayMs, parsed.attachPaths, role);
 }
