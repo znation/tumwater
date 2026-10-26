@@ -246,12 +246,12 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
 });
 
 test("a pre-check that fails twice with no verdict for main rejects, saying the baseline was unavailable", async () => {
-  // A configured command that fails fast on the change's tree (it carries change.txt) and, on
-  // main's clean tree, exits nonzero naming a broken toolchain: an environmental skip, no
-  // verdict. This used to hang main's run past a 0.5 s deadline with a real `sleep 5`, a
-  // load- and clock-sensitive race (the deadline firing late past the 5 s retry tolerance would
-  // price a second baseline attempt and flip the event count below) — BUGS.md 2026-10-26. The
-  // toolchain skip is deterministic: no wall-clock subprocess timing.
+  // The configured command fails fast when change.txt is present and otherwise exits nonzero
+  // matching a toolchain signature: on the change's tree the run is `boom`, and on main's clean
+  // attribution worktree it dies on `/xcrun: error/`, so main's run is an environmental skip with
+  // no verdict. Deterministic — no `sleep` raced against a timeout — so the two wall-clock races
+  // this test once had (a deadline firing >DEADLINE_LATE_TOLERANCE_MS late on a loaded box, or a
+  // stalled event loop letting `sleep 5` finish first) cannot flip it. BUGS.md 2026-10-26.
   const root = makeRepo();
   uniqueMain(root);
   const wt = await ensureWorktree(root, ROLE, "main");
@@ -261,7 +261,10 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
     ...gateCtx(root, wt),
     config: {
       ...defaultConfig(),
-      check: { command: "if [ -f change.txt ]; then echo 'boom'; exit 1; fi; echo 'xcrun: error: unable to find utility'; exit 1" },
+      check: {
+        command:
+          "if [ -f change.txt ]; then echo 'boom'; exit 1; fi; echo 'xcrun: error: unable to find utility'; exit 1",
+      },
     },
   };
   const marker = piRanMarker();
