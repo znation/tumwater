@@ -21,7 +21,7 @@ import type { ClaimState } from "../scheduling/claim-entries.js";
 import type { StaleWorkspacePin } from "../doctor/doctor-contention-checks.js";
 import type {
   AlertRole, TeamAlert, StaleBug, StaleQuestion, StalePrompt,
-  StaleMerge, StaleWaitingBug, PlanDependencyProblem, QuarantinedTests,
+  StaleMerge, PlanDependencyProblem, QuarantinedTests,
   FlappedChecks, PostReviewRisk, BacklogHeadingDuplicate, LiveFinishedEntry,
   NotifyFailure, PrimaryOverwriteBlock,
 } from "./team-alert-shared.js";
@@ -33,7 +33,7 @@ import { buildTailAlerts } from "./team-alert-tail.js";
 
 export type {
   StaleBug, StaleQuestion, NotifyFailure, PrimaryOverwriteBlock, StalePrompt, StaleMerge,
-  PlanDependencyProblem, StaleWaitingBug, QuarantinedTests, FlappedChecks, PostReviewRisk,
+  PlanDependencyProblem, QuarantinedTests, FlappedChecks, PostReviewRisk,
   BacklogHeadingDuplicate, LiveFinishedEntry, TeamAlert, AlertRole,
 } from "./team-alert-shared.js";
 
@@ -42,7 +42,7 @@ export type {
  * questions, refused entries, stale bugs, a failed notify page, a dirty primary
  * checkout refusing merges, a stranded inbox
  * prompt, a stalled merge queue, a
- * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
+ * merge-queue file the reader skips, a plan stalled by a Needs
  * review note, checks that flapped more than once in the last day, a stale or
  * oversized flake quarantine, a burst of post-merge review rejections, each a commit that
  * already reached main, a post-merge review one failed run from being dropped, a post-merge
@@ -92,7 +92,6 @@ export function teamAlerts(
   stalePrompts: readonly StalePrompt[] = [],
   staleMerges: readonly StaleMerge[] = [],
   planDependency: PlanDependencyProblem | null = null,
-  staleWaitingBugs: readonly StaleWaitingBug[] = [],
   skippedMergeFiles: readonly string[] = [],
   stalledEntries: readonly StalledEntry[] = [],
   quarantined: QuarantinedTests | null = null,
@@ -120,7 +119,7 @@ export function teamAlerts(
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
-  out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
+  out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   out.push(...buildMergeAlerts({ quarantined, flappedChecks, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, qaCoverage, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, instancePool, providerCaps }));
 

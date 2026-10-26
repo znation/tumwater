@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledEntries, checkStrandedPlans, checkValidationGaps, duplicatedBacklogHeadings, fixClaimProblems, planDependencyProblem, validationGapProblems, type DuplicatedBacklogHeading } from "../src/doctor/doctor-backlog-plans.js";
-import { ageInDays } from "../src/backlog/backlog.js";
-import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, staleWaitingBugRows, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
+import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, failureMentions, quotedTestName } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkMergeQueueFiles, checkPostReviews, atRiskPostReviews, atRiskPostReviewsPhrase, POST_REVIEW_AT_RISK_FAILURES, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, skippedMergeQueueFiles, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
 import type { DirtyBacklogFiles } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
@@ -942,77 +941,20 @@ test("checkPlanDependencies names a cycle first and counts the other kinds", () 
   assert.match(out.detail, /\(also 1 dangling ref\(s\), 0 unparsed clause\(s\), 0 misworded dependency\(ies\)\)/);
 });
 
-const WAIT = `**Waiting for the next failure ${daysAgoStamp(0)} by bugfix: the message names the pid**`;
+const NEEDS_REVIEW = `**Needs review ${daysAgoStamp(0)} by bugfix: the message names the pid**`;
 
-test("checkStaleBugs skips a bug held by a Waiting for the next failure note", () => {
-  const dir = tmpdir("doctor-stale-bugs-waiting-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"), `## Open\n\n### Held (found by bugfix ${daysAgoStamp(9)})\n\n${WAIT}\n`);
+test("checkStaleBugs skips a bug held by a Needs review note", () => {
+  const dir = tmpdir("doctor-stale-bugs-needs-review-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"), `## Open\n\n### Held (found by bugfix ${daysAgoStamp(9)})\n\n${NEEDS_REVIEW}\n`);
   assert.deepEqual(checkStaleBugs(dir), { level: "ok", detail: "no open bug has waited more than 3 days for a fix" });
 });
 
-test("checkWaitingBugs names a waiting bug with its note and release command, as ok", () => {
-  const dir = tmpdir("doctor-waiting-bugs-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"), `## Open\n\n### Plain (found by bugfix ${daysAgoStamp(0)})\n\n### Held (found by bugfix ${daysAgoStamp(1)})\n\n${WAIT}\n`);
-  const out = checkWaitingBugs(dir);
-  assert.equal(out.level, "ok");
-  assert.ok(out.detail.startsWith('BUGS.md bug #2 "'), out.detail);
-  assert.ok(out.detail.includes("the message names the pid"), out.detail);
-  assert.ok(out.detail.includes("tumwater bug --release 2"), out.detail);
-});
-
-test("checkWaitingBugs names the first of several and counts the rest", () => {
-  const dir = tmpdir("doctor-waiting-bugs-multi-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"), `## Open\n\n### One\n\n${WAIT}\n\n### Two\n\n${WAIT}\n`);
-  const out = checkWaitingBugs(dir);
-  assert.ok(out.detail.startsWith('BUGS.md bug #1 "'), out.detail);
-  assert.ok(out.detail.includes('(and 1 more: #2 "'), out.detail);
-});
-
-test("checkWaitingBugs is quiet without an Open waiting bug, and without BUGS.md", () => {
-  const none = { level: "ok", detail: "no open bug is waiting for its next failure" };
-  assert.deepEqual(checkWaitingBugs(tmpdir("doctor-waiting-bugs-none-")), { level: "ok", detail: "no BUGS.md — nothing to verify" });
-  const dir = tmpdir("doctor-waiting-bugs-quiet-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"),
-    `## Open\n\n### Both\n\n**Refused 2026-10-10 by bugfix: no**\n${WAIT}\n\n## Fixed\n\n### Old\n\n${WAIT}\n`);
-  assert.deepEqual(checkWaitingBugs(dir), none);
-});
-
-test("staleWaitingBugRows shares the doctor's held selection and STALE_WAIT_DAYS anchor", () => {
-  const now = Date.now();
-  const dir = tmpdir("doctor-stale-waiting-rows-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"),
-    `## Open\n\n` +
-    `### Held (found by bugfix ${daysAgoStamp(9)})\n\n**Waiting for the next failure ${daysAgoStamp(8)} by bugfix: flaked once**\n\n` +
-    `### Fresh (found by bugfix ${daysAgoStamp(1)})\n\n**Waiting for the next failure ${daysAgoStamp(2)} by bugfix: flaked once**\n\n` +
-    `### Refused (found by bugfix ${daysAgoStamp(9)})\n\n**Waiting for the next failure ${daysAgoStamp(8)} by bugfix: flaked once**\n\n**Refused 2026-10-10 by bugfix: no**\n\n` +
-    `### No note (found by bugfix ${daysAgoStamp(9)})\n`);
-  // See the checkStaleQuestions/checkStaleBugs age suffix: ageInDays parses the stamp as UTC
-  // midnight, so the exact age drifts with the time of day/timezone and is computed, never
-  // hard-coded.
-  assert.deepEqual(staleWaitingBugRows(dir, now).map((b) => ({ position: b.position, title: b.title, days: b.days })),
-    [{ position: 1, title: "Held", days: ageInDays(daysAgoStamp(8)) }]);
-});
-
 const FLAKY_TEST = "startParentDeathWatch takes a grandchild down";
-
-function recurrenceRoot(noteDaysAgo: number, failure: string): string {
-  const dir = tmpdir("doctor-waiting-recur-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"),
-    `## Open\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(5)})\n\n` +
-    `**Waiting for the next failure ${daysAgoStamp(noteDaysAgo)} by bugfix: the message names the pid**\n`);
-  logEvent(dir, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}${failure}` });
-  return dir;
-}
 
 test("quotedTestName returns the first long quoted span, else null", () => {
   assert.equal(quotedTestName('`test/x.test.ts` "startParentDeathWatch takes a grandchild down" flaked'), "startParentDeathWatch takes a grandchild down");
   assert.equal(quotedTestName("no quotes here"), null);
   assert.equal(quotedTestName('only a "short" one'), null);
-});
-
-test("waitingNoteDate returns the first date in a note, else null", () => {
-  assert.equal(waitingNoteDate("Waiting for the next failure 2026-10-16 by bugfix: x"), "2026-10-16");
-  assert.equal(waitingNoteDate("Waiting for the next failure"), null);
 });
 
 test("failureMentions collects flake warnings and rejection reasons naming the test since the cutoff", () => {
@@ -1050,81 +992,9 @@ test("failureMentions counts the no-glyph gate warnings that list the test among
   assert.deepEqual(failureMentions(events, FLAKY_TEST, 0).map((m) => m.ts), [100, 110]);
 });
 
-test("checkWaitingBugs stays ok when only a quarantine-release warning names the held test", () => {
-  const dir = tmpdir("doctor-waiting-quarantine-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"),
-    `## Open\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(5)})\n\n` +
-    `**Waiting for the next failure ${daysAgoStamp(2)} by bugfix: the message names the pid**\n`);
-  logEvent(dir, { source: "review", type: "warning", message: `quarantine released ${FLAKY_TEST}: its BUGS.md entry is no longer open` });
-  assert.equal(checkWaitingBugs(dir).level, "ok");
-});
-
 test("checkRegressedFixes stays ok when only a quarantine-release warning names the fixed test", () => {
   const out = checkRegressedFixes(fixedRoot([fixedHeading(FLAKY_TEST, 2)], [`quarantine released ${FLAKY_TEST}: its BUGS.md entry is no longer open`]));
   assert.equal(out.level, "ok");
-});
-
-test("checkWaitingBugs stays ok when only a review-rejected prose reason names the held test", () => {
-  const dir = tmpdir("doctor-waiting-reviewprose-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"),
-    `## Open\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(5)})\n\n` +
-    `**Waiting for the next failure ${daysAgoStamp(2)} by bugfix: the message names the pid**\n`);
-  logEvent(dir, { source: "review", type: "review_rejected", reasons: [`revertSubjectsOn blames ${FLAKY_TEST}`] });
-  assert.equal(checkWaitingBugs(dir).level, "ok");
-});
-
-test("checkWaitingBugs warns when the held bug's test failed again after the note's day", () => {
-  const out = checkWaitingBugs(recurrenceRoot(2, `✖ ${FLAKY_TEST}`));
-  assert.equal(out.level, "warn");
-  assert.match(out.detail, /failed again/);
-  assert.match(out.detail, new RegExp(`${FLAKY_WARNING_PREFIX}✖ ${FLAKY_TEST}`));
-  assert.match(out.detail, /tumwater bug --release 1/);
-});
-
-test("checkWaitingBugs stays ok for a same-day failure and for an unrelated flake", () => {
-  assert.equal(checkWaitingBugs(recurrenceRoot(0, `✖ ${FLAKY_TEST}`)).level, "ok");
-  const unrelated = checkWaitingBugs(recurrenceRoot(2, "✖ some other test entirely"));
-  assert.equal(unrelated.level, "ok");
-  assert.match(unrelated.detail, /is held until it fails again/);
-});
-
-test("checkWaitingBugs warns when a hold outlives the expiry without a recurrence", () => {
-  // A held bug whose quoted test never fails again must not park indefinitely; after
-  // STALE_WAIT_DAYS (7) with no recurrence the check escalates from ok to a release nudge.
-  const dir = tmpdir("doctor-waiting-expiry-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"),
-    `## Open\n\n### Fresh (found by bugfix ${daysAgoStamp(0)})\n\n${WAIT}\n\n` +
-    `### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(5)})\n\n` +
-    `**Waiting for the next failure ${daysAgoStamp(8)} by bugfix: the message names the pid**\n`);
-  logEvent(dir, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}✖ some other test entirely` });
-  const out = checkWaitingBugs(dir);
-  assert.equal(out.level, "warn");
-  // ageInDays parses the stamp as UTC midnight, so the computed age shifts with the time of
-  // day — assert the same formula the check uses, never a hard-coded day count.
-  assert.match(out.detail, new RegExp(`has waited ${ageInDays(daysAgoStamp(8))} d for its next failure without one`));
-  assert.match(out.detail, /tumwater bug --release 2/);
-  // the fresh hold stays ok even in the same tree
-  const freshOnly = tmpdir("doctor-waiting-expiry-fresh-");
-  fs.writeFileSync(path.join(freshOnly, "BUGS.md"), `## Open\n\n### Held (found by bugfix ${daysAgoStamp(0)})\n\n${WAIT}\n`);
-  assert.equal(checkWaitingBugs(freshOnly).level, "ok");
-});
-
-test("checkWaitingBugs warns an undated hold whose filing stamp has lapsed", () => {
-  // A Waiting note without a date has no hold-start marker, and checkStaleBugs skips any bug
-  // carrying a waiting note, so without a fallback such a hold would park indefinitely too;
-  // the filing stamp anchors its age.
-  const dir = tmpdir("doctor-waiting-undated-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"),
-    `## Open\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(8)})\n\n` +
-    `**Waiting for the next failure by bugfix: the message names the pid**\n`);
-  logEvent(dir, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}✖ some other test entirely` });
-  assert.equal(checkWaitingBugs(dir).level, "warn");
-  // a fresh undated hold (recently filed) stays ok, since its filing stamp is not lapsed
-  const freshOnly = tmpdir("doctor-waiting-undated-fresh-");
-  fs.writeFileSync(path.join(freshOnly, "BUGS.md"),
-    `## Open\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(0)})\n\n` +
-    `**Waiting for the next failure by bugfix: the message names the pid**\n`);
-  assert.equal(checkWaitingBugs(freshOnly).level, "ok");
 });
 
 function fixedRoot(fixedHeadings: string[], failures: string[], open = ""): string {

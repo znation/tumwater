@@ -93,21 +93,6 @@ export interface PlanDependencyProblem {
   message: string;
 }
 
-/** An open bug a Waiting-for-the-next-failure note has held for STALE_WAIT_DAYS or more — the
- * always-on twin of the doctor's `waiting bugs` rule (src/doctor/doctor-backlog-bugs.ts
- * checkWaitingBugs, STALE_WAIT_DAYS). Computed in src/ui/alert-feeds.ts's staleWaitingBugs
- * from the same threshold, selection and anchor as the doctor's check, so the alert and the
- * doctor cannot drift on the rule; the alert omits the doctor's recurrence scan by design (the
- * reader's doc comment says why). Its 0-based index addresses the drawer (`bugs:<index>`); its
- * 1-based position is the `bug --release`/`bug --list` number; its title is stamp-stripped for
- * prose; days is its whole-day hold age. */
-export interface StaleWaitingBug {
-  index: number;
-  position: number;
-  title: string;
-  days: number;
-}
-
 /** A stale or oversized flake quarantine the doctor's G3 rule warns about
  * (src/baseline/main-guardrails.ts `quarantineWarning`, QUARANTINE_WARN_COUNT, QUARANTINE_AGE_MS):
  * more than 10 quarantined tests, or any test first seen more than 3 days ago — an old entry is
@@ -174,7 +159,7 @@ export function entryListDetail(titles: readonly string[]): string {
 
 /** Append the folded names of the entries past an alert's first one, after a ` · ` separator,
  * when there are any, and the empty string otherwise — the shared idiom every amber
- * "name the oldest, fold the rest" alert (stale-bugs, stale-questions, waiting-bugs,
+ * "name the oldest, fold the rest" alert (stale-bugs, stale-questions,
  * stale-prompts, stale-merges, stranded-plans, skipped-merges, backlog-headings,
  * validation-gaps, false-fixes) uses to compose its
  * `detail`, so the separator, the empty case, and the default fold (entryListDetail;
@@ -189,7 +174,7 @@ export function moreDetail(
 
 /** Split a bounded entry list into its first (oldest, named) item and the " · rest" suffix
  * moreDetail builds for the entries past it — the shared shape every amber "name the oldest,
- * fold the rest" alert (stale-bugs, stale-questions, waiting-bugs, stale-prompts,
+ * fold the rest" alert (stale-bugs, stale-questions, stale-prompts,
  * stale-merges, stranded-plans, backlog-headings, validation-gaps, false-fixes) composes, so
  * the split and the separator/empty case have one home beside moreDetail. `label` maps each
  * rest element to the string its clause already named; `fold` defaults to entryListDetail
@@ -260,7 +245,7 @@ export function seeFailures(): Array<{ label: string; act: string; arg: string }
 
 /** The dashboard's "Open backlog" button for an alert naming one backlog entry: opens the
  * entry's backlog-card tab and that row (the dashboard's backlog arm reads `file:index`).
- * Shared by the refused, operator-held, stalled-entries, stale-bugs, and waiting-bugs alerts,
+ * Shared by the refused, operator-held, stalled-entries, and stale-bugs alerts,
  * so the button shape and the `file:index` contract cannot drift between them. */
 export function openBacklogAction(entry: { file: "plans" | "bugs"; index: number }): Array<{ label: string; act: string; arg: string }> {
   return [{ label: "Open backlog", act: "backlog", arg: `${entry.file}:${entry.index}` }];

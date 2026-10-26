@@ -9,16 +9,16 @@ import { releaseEntry, tryReleaseEntry } from "../src/backlog/backlog-release.js
 // addressed entry. The byte-level release tests are in backlog-write-cancel.test.ts.
 
 const REFUSED = "**Refused 2026-10-16 by bugfix: x**";
-const WAITING = "**Waiting for the next failure 2026-10-16 by bugfix: y**";
+const HELD = "**Needs review 2026-10-16 by feature: too large for one run (held 3)**";
 const NEEDS_REVIEW = "**Needs review 2026-10-16 by feature: too large for one run**";
 
-test("a release lifts the Refused note first and leaves the Waiting note for a second release", () => {
+test("a release lifts the Refused note first and leaves a held-for-operator note for a second release", () => {
   const repo = makeRepo();
   const file = path.join(repo, "BUGS.md");
-  fs.writeFileSync(file, `# Bugs\n\n## Open\n\n### one\n\n${REFUSED}\n\n${WAITING}\n\nbody\n\n## Fixed\n`);
+  fs.writeFileSync(file, `# Bugs\n\n## Open\n\n### one\n\n${REFUSED}\n\n${HELD}\n\nbody\n\n## Fixed\n`);
   assert.deepEqual(releaseEntry(repo, "bug", 1), { file: "BUGS.md", title: "one", lifted: "refused" });
-  assert.equal(fs.readFileSync(file, "utf8"), `# Bugs\n\n## Open\n\n### one\n\n${WAITING}\n\nbody\n\n## Fixed\n`);
-  assert.deepEqual(releaseEntry(repo, "bug", 1), { file: "BUGS.md", title: "one", lifted: "waiting-for-failure" });
+  assert.equal(fs.readFileSync(file, "utf8"), `# Bugs\n\n## Open\n\n### one\n\n${HELD}\n\nbody\n\n## Fixed\n`);
+  assert.deepEqual(releaseEntry(repo, "bug", 1), { file: "BUGS.md", title: "one", lifted: "held-for-operator" });
   const released = "# Bugs\n\n## Open\n\n### one\n\nbody\n\n## Fixed\n";
   assert.equal(fs.readFileSync(file, "utf8"), released);
   assert.deepEqual(tryReleaseEntry(repo, "bug", 1, "one"), { status: "not_refused", title: "one" });

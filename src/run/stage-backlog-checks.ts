@@ -13,9 +13,8 @@ import {
   type FinishedArchive,
 } from "../backlog/backlog-md.js";
 import { DONE_DATE_RE, FIXED_DATE_RE } from "../backlog/backlog.js";
-import { refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
+import { refusalNote } from "../backlog/backlog-eligibility.js";
 import { entryKey, partKey, planDependencyProblems, seriesPart, type PartRef } from "../backlog/backlog-parts.js";
-import { WAITING_FOR_FAILURE_NOTE } from "../roles/role-guidance.js";
 import { moreSuffix, plural } from "../text/phrases.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 
@@ -106,36 +105,6 @@ export function finishedDuplicateFindings(
     }
   }
   return findings;
-}
-
-/** The number of `- **Progress …` lines in an entry body. */
-function progressCount(body: string): number {
-  return body.split("\n").filter((l) => /^-\s+\*\*Progress\b/.test(l.trim())).length;
-}
-
-/** The finding for a BUGS.md bug that `head` (the edited file) shows with more Progress notes
- * than `base` (its text at the merge-base) while it stays under `## Open` with neither a Waiting
- * note nor a Refused note — bugfix's step 2 asks a run that cannot reproduce a bug to write the
- * Waiting note, and runs that skip it leave the bug open to re-investigation. A newly filed bug
- * is not a re-investigation. Names the first such bug in file order, with a count of the rest. */
-export function waitingNoteFinding(head: string, base: string): string | undefined {
-  const was = new Map(parseEntryDetails(base, "Open").map((e) => [entryKey(e.title), e.body]));
-  const counting = parseEntryDetails(head, "Open").filter((e) => {
-    const before = was.get(entryKey(e.title));
-    return (
-      before !== undefined &&
-      progressCount(e.body) > progressCount(before) &&
-      waitingNote(e.body) === null &&
-      refusalNote(e.body) === null
-    );
-  });
-  if (counting.length === 0) return undefined;
-  return (
-    `BUGS.md bug "${counting[0]!.title}" gained a Progress note but stays open with no Waiting for the next ` +
-    `failure note — if this run could not reproduce it, add ${WAITING_FOR_FAILURE_NOTE} as its own line under ` +
-    `the heading so later runs wait for new evidence (bugfix's step 2); if it did reproduce, leave the entry ` +
-    `as it is${moreSuffix(counting.length - 1)}`
-  );
 }
 
 /** The skeleton placeholder that marks an empty backlog section. */
@@ -251,8 +220,7 @@ function groundedRefusalReason(reason: string, own: PartRef | null): boolean {
  * role's own notes, or a different series part (the `b9664a461` case). `head` is the edited
  * text, `base` its text at the merge-base. A refusal already on main is not this change's and
  * is skipped; only a newly added (or edited) one is judged. Names the first offending entry in
- * file order, with a count of the rest. Stages after `waitingNoteFinding`, sharing its guard.
- * Undefined when the change adds no such refusal. */
+ * file order, with a count of the rest. Undefined when the change adds no such refusal. */
 export function ungroundedRefusalFinding(
   file: "PLANS.md" | "BUGS.md",
   head: string,

@@ -442,14 +442,14 @@ test("a stale backlog response for a since-replaced entry is ignored", async () 
   assert.match(t.paintedFor("entrybody"), /data-act='entry-cancel' data-arg='plans:1'/);
 });
 
-test("the entry drawer offers Release this entry only on a refused, waiting, or held-for-operator entry", async () => {
+test("the entry drawer offers Release this entry only on a refused or held-for-operator entry", async () => {
   const t = openDrawer(["toggleEntry"], {
     status: { roles: [] },
     responses: {
       "/api/backlog?file=plans&index=0": { title: "Held", body: "**Refused 2026-10-16 by feature: x**", refused: true },
-      "/api/backlog?file=plans&index=1": { title: "Open", body: "body", refused: false, waiting: false },
-      "/api/backlog?file=plans&index=2": { title: "Wait", body: "**Waiting for the next failure 2026-10-16 by bugfix: x**", refused: false, waiting: true },
-      "/api/backlog?file=plans&index=3": { title: "HeldForOperator", body: "**Needs review 2026-10-16 by feature: x (held 3)**", refused: false, waiting: false, heldForOperator: true },
+      "/api/backlog?file=plans&index=1": { title: "Open", body: "body", refused: false },
+      "/api/backlog?file=plans&index=2": { title: "NeedsReview", body: "**Needs review 2026-10-16 by feature: x**", refused: false },
+      "/api/backlog?file=plans&index=3": { title: "HeldForOperator", body: "**Needs review 2026-10-16 by feature: x (held 3)**", refused: false, heldForOperator: true },
     },
   });
   t.scope.toggleEntry("plans", 0);
@@ -457,7 +457,7 @@ test("the entry drawer offers Release this entry only on a refused, waiting, or 
   assert.match(t.paintedFor("entrybody"), /data-act='entry-release' data-arg='plans:0'/);
   t.scope.toggleEntry("plans", 2);
   await flush();
-  assert.match(t.paintedFor("entrybody"), /data-act='entry-release' data-arg='plans:2'/);
+  assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
   t.scope.toggleEntry("plans", 3);
   await flush();
   assert.match(t.paintedFor("entrybody"), /data-act='entry-release' data-arg='plans:3'/);
@@ -470,8 +470,8 @@ test("a done plan or fixed bug entry opens read-only with its kind and body", as
   const t = openDrawer(["toggleEntry"], {
     status: { roles: [] },
     responses: {
-      "/api/backlog?file=done&index=0": { title: "Shipped (done 2026-10-05)", body: "Did **it**.", refused: false, waiting: false },
-      "/api/backlog?file=fixed&index=0": { title: "Squashed (fixed 2026-10-06)", body: "Cause.", refused: false, waiting: false },
+      "/api/backlog?file=done&index=0": { title: "Shipped (done 2026-10-05)", body: "Did **it**.", refused: false },
+      "/api/backlog?file=fixed&index=0": { title: "Squashed (fixed 2026-10-06)", body: "Cause.", refused: false },
     },
   });
   t.scope.toggleEntry("done", 0);
@@ -488,7 +488,7 @@ test("an answered question entry opens read-only with its kind and body", async 
   const t = openDrawer(["toggleEntry"], {
     status: { roles: [] },
     responses: {
-      "/api/backlog?file=answered&index=0": { title: "Which?", body: "Context.\n\n**Answered 2026-10-05: A**", refused: false, waiting: false },
+      "/api/backlog?file=answered&index=0": { title: "Which?", body: "Context.\n\n**Answered 2026-10-05: A**", refused: false },
     },
   });
   t.scope.toggleEntry("answered", 0);

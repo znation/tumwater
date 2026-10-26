@@ -211,7 +211,7 @@ async function respondBacklogWrite(
  * `tumwater plan|bug --release <n>` through the non-exiting tryReleaseEntry. Body as
  * backlog-cancel's. A released entry that is not still held is newly eligible, so the kind's
  * role is woken (a held one wakes no role and carries `heldNote`); `gone` and `moved` answer
- * okGone, and an entry with none of the Refused, Waiting-for-the-next-failure, or
+ * okGone, and an entry with none of the Refused or
  * held-for-operator notes answers status "not_refused" with no write and no wake. */
 export async function handleBacklogRelease(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>"}');

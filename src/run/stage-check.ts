@@ -43,14 +43,13 @@
  * not after `-`, `.` or `/`, "that that" and "had had" excepted). Like the path checks, the gate
  * does not run it.
  *
- * The backlog-record findings named below (`planDependencyFinding`, `waitingNoteFinding`,
+ * The backlog-record findings named below (`planDependencyFinding`,
  * `finishedDuplicateFindings`, `strayPlaceholderFinding`) live in stage-backlog-checks.ts, which
  * also holds the claim-move findings run-stage.ts uses.
  *
  * `planDependencyFinding` is staging-only: it is not part of the review gate or the in-lock
  * merge re-check, because `tumwater doctor`'s plan-dependency warning is the backstop for
- * anything that gets past the fix-up turn. `waitingNoteFinding` is staging-only and bugfix-only
- * for the same reason: it nudges a bugfix run that left a Progress note without the hold.
+ * anything that gets past the fix-up turn.
  * Like `planDependencyFinding`, `finishedDuplicateFindings` runs only at staging. The gate does
  * not run it, because the sweep that creates the second copy runs after it.
  * `strayPlaceholderFinding` is staging-only too. It flags a `_None yet._` line the change left in a
@@ -74,7 +73,6 @@ import {
   parseEntryDetails,
 } from "../backlog/backlog-md.js";
 import { DONE_DATE_RE } from "../backlog/backlog.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
 import { acceptanceGrepFindings } from "./acceptance-greps.js";
 import {
   PLACEHOLDER_FILES,
@@ -83,7 +81,6 @@ import {
   planDependencyFinding,
   strayPlaceholderFinding,
   ungroundedRefusalFinding,
-  waitingNoteFinding,
 } from "./stage-backlog-checks.js";
 import { gitLevelFindings } from "./stage-path-checks.js";
 
@@ -119,7 +116,7 @@ const pushReason = async (findings: string[], check: Promise<string | undefined>
 
 /** The findings likely to get this uncommitted change rejected at merge, or an empty list when
  * it is clean: the merge gate's own deterministic checks plus the staging-only heuristics (plan
- * dependencies, the bugfix Waiting note, path drift). Checks the worktree at `wt` against
+ * dependencies, path drift). Checks the worktree at `wt` against
  * `mainBranch`'s merge-base; `exemptPaths` are the config's review-exemption globs that scope
  * the false-fix check.
  *
@@ -172,11 +169,6 @@ export async function stageCheckFindings(
       return acceptanceGrepFindings(wt, entries);
     })().catch(() => []);
     findings.push(...greps);
-  }
-  if (baseRoleOf(role) === "bugfix" && files.includes("BUGS.md")) {
-    const { head, base } = await headAndBase(wt, mainBranch, "BUGS.md");
-    const waiting = base === undefined ? undefined : waitingNoteFinding(head, base);
-    if (waiting !== undefined) findings.push(waiting);
   }
   if (files.includes("BUGS.md")) {
     const { head, base } = await headAndBase(wt, mainBranch, "BUGS.md");

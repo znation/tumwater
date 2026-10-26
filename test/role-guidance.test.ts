@@ -17,8 +17,6 @@ import {
   VALIDATION_GAP_QUERY,
   VALIDATION_GAP_TAGS,
   VALIDATION_GAP_TALLY,
-  WAITING_FOR_FAILURE_NOTE,
-  WAITING_FOR_FAILURE_PREFIX,
   backlogMoveGuidance,
 } from "../src/roles/role-guidance.js";
 import { heldCount } from "../src/backlog/backlog-eligibility.js";
@@ -247,10 +245,10 @@ test("the search guidance says a small, clearly useful change clears the bar", (
   assert.match(oneLine(searchGuidance("improve")), /The bar is real value, not size: a small change that is clearly correct and useful clears it/);
 });
 
-test("bugfix find writes the waiting note and selfcheck find deletes it on a recurrence", () => {
-  assert.ok(oneLine(roleById("bugfix")!.find).includes(oneLine(WAITING_FOR_FAILURE_NOTE)));
+test("bugfix find asks for a Needs review note and selfcheck find deletes it on a recurrence", () => {
+  assert.ok(oneLine(roleById("bugfix")!.find).includes("**Needs review <YYYY-MM-DD> by bugfix: <what the next failure's message"));
   const selfcheck = oneLine(roleById("selfcheck")!.find);
-  assert.ok(selfcheck.includes(WAITING_FOR_FAILURE_PREFIX));
+  assert.ok(selfcheck.includes("**Needs review …**"));
   assert.ok(selfcheck.includes("delete the note line"));
 });
 

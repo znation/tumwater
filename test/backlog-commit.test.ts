@@ -100,7 +100,7 @@ test("plan and bug --release lift the Refused note and commit it on main", async
   const head = sh(repo, "git", "rev-parse", "HEAD");
   const none = await cli(repo, "plan", "--release", "1");
   assert.notEqual(none.code, 0);
-  assert.match(none.stderr, /plan #1 "first" carries no Refused, Waiting for the next failure, or held-for-operator note/);
+  assert.match(none.stderr, /plan #1 "first" carries no Refused or held-for-operator note/);
   assert.notEqual((await cli(repo, "plan", "--release", "9")).code, 0);
   assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
   assertClean(repo);

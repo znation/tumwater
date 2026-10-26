@@ -635,7 +635,7 @@ test("backlog Ctrl+R on a below-threshold Needs-review plan still says so and wr
   down(1); // the below-threshold plan
   ctrlR();
   assert.equal(keys.state().releaseArmed, null);
-  assert.match(keys.state().flash ?? "", /carries no Refused, Waiting for the next failure, or held-for-operator note/);
+  assert.match(keys.state().flash ?? "", /carries no Refused or held-for-operator note/);
   assert.ok(read("PLANS.md").includes("Needs review") && read("PLANS.md").includes("Previously held 1"));
   assert.ok(!fs.existsSync(wakeRequestPath(root)));
 });
@@ -652,7 +652,7 @@ test("backlog Ctrl+R on a note-less entry, question, or done row refuses, and bu
   down(3); // plan 1, plan 2, bug 1 — bug #1 carries no note
   ctrlR();
   assert.equal(keys.state().releaseArmed, null);
-  assert.match(keys.state().flash ?? "", /carries no Refused, Waiting for the next failure, or held-for-operator note/);
+  assert.match(keys.state().flash ?? "", /carries no Refused or held-for-operator note/);
   assert.equal(read("BUGS.md"), bugs);
   down(2); // → the open question
   ctrlR();

@@ -160,8 +160,8 @@ export interface TuiPaneSession {
   armed: CancelTarget | null;
   /** The backlog pane's armed target for a second Ctrl+X; moved to `armed` by beginKey. */
   cancelArmed: CancelTarget | null;
-  /** The armed backlog release (first Ctrl+R on a selected Refused, Waiting-for-the-next-
-   * failure, or held-for-operator plan or bug), read by the second. */
+  /** The armed backlog release (first Ctrl+R on a selected Refused or
+   * held-for-operator plan or bug), read by the second. */
   armedRelease: CancelTarget | null;
   /** The backlog pane's armed target for a second Ctrl+R; moved to `armedRelease` by beginKey. */
   releaseArmed: CancelTarget | null;

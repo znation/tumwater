@@ -154,7 +154,7 @@ export function createBacklogPane(
         outcome.status === "released"
           ? `released ${kind} #${position}: ${outcome.title} (lifted ${liftedNotePhrase(outcome.lifted)})${heldTail}`
           : outcome.status === "not_refused"
-            ? `that ${kind} carries no Refused, Waiting for the next failure, or held-for-operator note` // vocabulary-ok: the held-for-operator note's release wording
+            ? `that ${kind} carries no Refused or held-for-operator note` // vocabulary-ok: the held-for-operator note's release wording
             : `that ${kind} was already removed or moved — nothing released`,
       );
     } catch (err) {
@@ -230,7 +230,7 @@ export function createBacklogPane(
       promptLineFree(ctx.es) &&
       session.view === session.roleIds.length + 1
     ) {
-      // Ctrl+R twice releases the Refused, Waiting-for-the-next-failure, or held-for-operator
+      // Ctrl+R twice releases the Refused or held-for-operator
       // note on the selected plan or bug through the non-exiting core the dashboard drawer
       // uses; the title check inside tryReleaseEntry refuses a stale selection. Releasing is the
       // terminal twin of `tumwater plan|bug --release <n>`: it lifts the note, commits the file
@@ -240,8 +240,8 @@ export function createBacklogPane(
         const kind = selected.kind;
         const position = selected.position;
         const target = { kind, position, title: selected.picked.title };
-        if (selected.picked.hold !== "refused" && selected.picked.hold !== "waiting-for-failure" && selected.picked.hold !== "held-for-operator") { // vocabulary-ok: the held-for-operator hold's key
-          session.flashMessage(`that ${kind} carries no Refused, Waiting for the next failure, or held-for-operator note`); // vocabulary-ok: the held-for-operator note's release wording
+        if (selected.picked.hold !== "refused" && selected.picked.hold !== "held-for-operator") { // vocabulary-ok: the held-for-operator hold's key
+          session.flashMessage(`that ${kind} carries no Refused or held-for-operator note`); // vocabulary-ok: the held-for-operator note's release wording
         } else if (session.armedRelease !== null && session.armedRelease.kind === kind && session.armedRelease.position === position) {
           // The armed title (not the re-read one) goes to tryReleaseEntry, so an entry that
           // changed since the arm reports `moved` instead of being released.

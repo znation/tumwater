@@ -1,6 +1,6 @@
 /** Backlog eligibility: which PLANS.md / BUGS.md entries a work role may take now (plans,
- * parallel-work-instances, part 2/7). An entry is held when its body carries a **Refused …**,
- * **Needs review …** or **Waiting for the next failure …** note, or when
+ * parallel-work-instances, part 2/7). An entry is held when its body carries a **Refused …**
+ * or **Needs review …** note, or when
  * its heading's trailing parenthetical
  * (or a parenthetical left open by a wrapped heading) names a prerequisite (`requires parts
  * 1/5–3/5 landed`) that is itself still listed under `## Planned`. The parsers are pure over
@@ -12,7 +12,7 @@ import path from "node:path";
 import { statOrNull } from "../files/files.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
 import { escapeRegExp, firstTrimmedLineStartingWith } from "../text/text.js";
-import { HELD_TAG_PREFIX, NEEDS_REVIEW_PREFIX, PRIOR_HELD_PREFIX, WAITING_FOR_FAILURE_PREFIX } from "../roles/role-guidance.js";
+import { HELD_TAG_PREFIX, NEEDS_REVIEW_PREFIX, PRIOR_HELD_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
 import type { BacklogEntry } from "./backlog-md.js";
@@ -22,7 +22,7 @@ import { finishedFiles, openBugEntries, plannedPlanEntries } from "./backlog.js"
 
 /** Why an entry is held, or null when it is eligible. `blockedBy` names the unmerged
  * prerequisites in the form `Series i/n` so a renderer can show `requires …`. */
-export type EntryHold = "refused" | "needs-review" | "held-for-operator" | "waiting-for-failure" | { blockedBy: string[] } | null;
+export type EntryHold = "refused" | "needs-review" | "held-for-operator" | { blockedBy: string[] } | null;
 
 /** The number of holds an entry's count must reach before a Needs-review note
  * becomes a `held-for-operator` hold (the operator's decision, surfaced by parts 2/3 and 3/3). */
@@ -101,9 +101,11 @@ export function refusalNote(body: string): string | null {
   return noteText(body, REFUSED_PREFIX);
 }
 
-/** The text of `body`'s Waiting-for-the-next-failure note, or null when it has none. */
-export function waitingNote(body: string): string | null {
-  return noteText(body, WAITING_FOR_FAILURE_PREFIX);
+/** The text of `body`'s Needs-review note, or null when it has none (entryHold's
+ * "needs-review" hold). A needs-review note parks the entry (an unreproducible bug, a plan
+ * judged too large, a rejected plan), so the stale-bug checks skip it like a refused one. */
+export function needsReviewNote(body: string): string | null {
+  return noteText(body, NEEDS_REVIEW_PREFIX);
 }
 
 /** `lines` without any line starting with `prefix` (the same line-prefix rule hasNoteLine
@@ -122,16 +124,10 @@ function withoutNoteLines(lines: string[], prefix: string): string[] {
   return out;
 }
 
-/** `lines` without any Refused note line. Every other line, Needs-review and waiting notes
- * included, is kept, so refusal lifting never lifts another hold. */
+/** `lines` without any Refused note line. Every other line, Needs-review notes included, is
+ * kept, so refusal lifting never lifts another hold. */
 export function withoutRefusalNotes(lines: string[]): string[] {
   return withoutNoteLines(lines, REFUSED_PREFIX);
-}
-
-/** `lines` without any Waiting-for-the-next-failure note line, collapsing blank lines as
- * withoutRefusalNotes does. */
-export function withoutWaitingNotes(lines: string[]): string[] {
-  return withoutNoteLines(lines, WAITING_FOR_FAILURE_PREFIX);
 }
 
 /** `lines` with every Needs-review note whose `(held N)` count reached
@@ -248,7 +244,6 @@ export function entryHoldAgainst(
       ? "held-for-operator" // vocabulary-ok: the operator-held string names the operator hold decision
       : "needs-review";
   }
-  if (hasNoteLine(entry.body, WAITING_FOR_FAILURE_PREFIX)) return "waiting-for-failure";
   const refs = requiredParts(entry.title);
   if (refs.length === 0) return null;
   const blocked = refs.filter((ref) => plannedParts.has(partKey(ref.series, ref.part)));
@@ -266,7 +261,6 @@ export function holdMark(hold: EntryHold): string {
   if (hold === "refused") return " [blocked: refused]";
   if (hold === "needs-review") return " [blocked: needs review]";
   if (hold === "held-for-operator") return " [blocked: held for operator]"; // vocabulary-ok: this hold names the operator-held wording for the operator decision
-  if (hold === "waiting-for-failure") return " [blocked: waiting for the next failure]";
   return ` [blocked: requires ${hold.blockedBy.join(", ")}]`;
 }
 

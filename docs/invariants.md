@@ -682,7 +682,7 @@ but keeps the owner's own claim".
 **Guarantee.** `entryHoldAgainst` holds an entry whose heading's trailing parenthetical (or a
 parenthetical left open by a wrapped heading) names, through `requiredParts`, a part still listed
 under `## Planned`. Once no named part is planned, the hold lifts. A `requires` mention in the body
-never holds. A note line (Refused, Needs review, Waiting for the next failure) holds
+never holds. A note line (Refused or Needs review) holds
 as well. `planDependencyProblems` reports a still-planned prerequisite named without the clause.
 The parse treats the keyword `parts`/`part` as belonging to neither a named series nor a bare ref,
 and a bare ref (e.g. `3/4` in `reviewer-as-role parts 1/4 and 3/4`) inherits the series the clause
@@ -700,7 +700,7 @@ parts keyword out of a named series and bare refs inherit the clause's last name
 'requires' never blocks — only the heading's clause does", "entryHold blocks a wrapped heading while
 its prerequisite is planned", "prerequisitesMerged returns the refs only when none is still
 planned", "entryHold reports blocked, refused and needs-review, and null when
-eligible", "entryHold resolves a <Series> parts a/n and b/n clause to the named series, not the entry's own", "planDependencyProblems does not dangle a <Series> parts a/n and b/n clause", "a waiting-for-the-next-failure note holds a bug, only as a line prefix" and
+eligible", "entryHold resolves a <Series> parts a/n and b/n clause to the named series, not the entry's own", "planDependencyProblems does not dangle a <Series> parts a/n and b/n clause" and
 "planDependencyProblems flags a still-planned prerequisite named without a requires clause".
 
 ### INV-N3: a claim on an entry that left or turned ineligible is released outright; disabled, paused and stale release only an idle runner
@@ -2835,17 +2835,18 @@ image-carrying prompt submitted with notBeforeMs is queued deferred" (image path
 ### INV-AT1: a release lifts one note, Refused first, from the addressed entry only
 
 **Guarantee.** A release lifts the entry's Refused note or, when it has none, its
-Waiting-for-the-next-failure note: one note per release, so an entry carrying both needs two
+held-for-operator Needs-review note: one note per release, so an entry carrying both needs two
 releases and loses the Refused note first. Only the addressed entry's lines are filtered, and its
-Needs review note stays. An entry with neither note is refused and the file is left as it was.
+other Needs-review note stays. An entry with no released hold is refused and the file is left as it was.
 
 **Binds.** `src/backlog/backlog-release.ts` (`liftRefusal`, `releaseEntry`, `tryReleaseEntry`),
-`src/backlog/backlog-eligibility.ts` (`withoutRefusalNotes`, `withoutWaitingNotes`).
+`src/backlog/backlog-eligibility.ts` (`withoutRefusalNotes`, `withoutHeldForOperatorNotes`).
 
 **Pinned by.** `test/backlog-release-holds.test.ts` — "a release lifts the Refused note first and
-leaves the Waiting note for a second release" and "a release touches only the addressed entry and
-keeps its Needs review note"; `test/backlog-write-cancel.test.ts` — "releaseEntry lifts a
-waiting-for-the-next-failure note"; `test/backlog-eligibility.test.ts` — "withoutRefusalNotes drops
+leaves a held-for-operator note for a second release", "a release touches only the addressed entry
+and keeps its Needs review note" and "a release lifts a held-for-operator Needs review note and its
+previously-held line"; `test/backlog-write-cancel.test.ts` — "releaseEntry lifts a held-for-operator
+Needs review note"; `test/backlog-eligibility.test.ts` — "withoutRefusalNotes drops
 Refused note lines and the blank line after one between blanks".
 
 ### INV-AT2: the try… twins write the CLI writers' bytes and refuse as data without writing

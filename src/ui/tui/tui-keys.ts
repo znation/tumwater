@@ -163,8 +163,8 @@ interface TuiKeysState {
   /** The armed backlog cancel (first Ctrl+X on a selected plan or bug): the entry a second
    * Ctrl+X would cancel, null once any other key lands. */
   cancelArmed: { kind: "plan" | "bug"; position: number; title: string } | null;
-  /** The armed backlog release (first Ctrl+R on a selected Refused, Waiting-for-the-next-
-   * failure, or held-for-operator plan or bug): the entry a second Ctrl+R would release, null
+  /** The armed backlog release (first Ctrl+R on a selected Refused or
+   * held-for-operator plan or bug): the entry a second Ctrl+R would release, null
    * once any other key lands. */
   releaseArmed: { kind: "plan" | "bug"; position: number; title: string } | null;
   entryScroll: number;

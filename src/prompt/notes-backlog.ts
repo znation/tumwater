@@ -126,7 +126,6 @@ function holdWording(state: PartState, file: "plans" | "bugs" = "plans"): string
   if (state === "refused") return "refused (only the operator clears it)"; // vocabulary-ok: the plan-mandated refused hold wording refers to the tumwater operator
   if (state === "needs-review") return "needs review";
   if (state === "held-for-operator") return `held for the operator (tumwater ${entryKindLabel(file).toLowerCase()} --release)`; // vocabulary-ok: names the operator-held wording and the operator's release command
-  if (state === "waiting-for-failure") return "waiting for the next failure";
   return `waits on ${state.blockedBy.join(", ")}`;
 }
 

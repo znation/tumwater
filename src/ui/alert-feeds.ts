@@ -1,5 +1,5 @@
 import { openBugEntries, openQuestionEntries, filingDate, ageInDays } from "../backlog/backlog.js";
-import { refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
+import { needsReviewNote, refusalNote } from "../backlog/backlog-eligibility.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
 import { byDaysThenIndex } from "../collections.js";
@@ -7,7 +7,7 @@ import { eventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { isNotifyFailure } from "../events/notify.js";
 import { staleQueuedPromptRows, staleQueuedMergeRows, skippedMergeQueueFiles, atRiskPostReviews, atRiskPostReviewsPhrase, STALE_BUG_DAYS, STALE_QUESTION_DAYS } from "../doctor/doctor-backlog.js";
-import { staleWaitingBugRows, regressedFixCandidates, matchedRegressedFixes, regressedFixesPhrase, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
+import { regressedFixCandidates, matchedRegressedFixes, regressedFixesPhrase, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
 import { planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { checkWaitContention, providerConcurrencyProblems, providerWaitContention, slotWaitContention, smallPoolProblems, staleWorkspacePins, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
 import { NOTIFY_CHECK_WINDOW_MS } from "../doctor/doctor-notify.js";
@@ -20,7 +20,7 @@ import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { configForStatus } from "../status/status-polls.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
-import type { FlappedChecks, NotifyFailure, PlanDependencyProblem, PrimaryOverwriteBlock, QuarantinedTests, StaleBug, StaleMerge, StalePrompt, StaleQuestion, StaleWaitingBug } from "./team-alerts.js";
+import type { FlappedChecks, NotifyFailure, PlanDependencyProblem, PrimaryOverwriteBlock, QuarantinedTests, StaleBug, StaleMerge, StalePrompt, StaleQuestion } from "./team-alerts.js";
 
 /** This module is the alert-feed half of src/ui/status-payload.ts: each always-on team alert's
  * data-sourcing function (staleOpenBugs, notifyFailures, capacityContention, …) lives here, a
@@ -28,19 +28,20 @@ import type { FlappedChecks, NotifyFailure, PlanDependencyProblem, PrimaryOverwr
  * stays the one status-document builder, importing these feeds and folding each feed's result
  * into the `alerts` field; status-render.ts reads the feeds directly for the TUI. */
 /** The open bugs the doctor's 3-day rule (src/doctor/doctor-backlog-bugs.ts checkStaleBugs,
- * STALE_BUG_DAYS) calls stale: an unrefused, non-waiting open bug whose filing stamp is at
+ * STALE_BUG_DAYS) calls stale: an unrefused, unheld open bug whose filing stamp is at
  * least STALE_BUG_DAYS old. This is the always-on feed for the stale-bugs team alert — the
  * doctor's check is the same rule at the same threshold, so the two cannot drift. An entry
- * carrying a Refused note or a Waiting-for-the-next-failure note is skipped (the refused and
- * waiting alerts name those), and so is an undated heading (like the doctor's check). The
- * returned objects carry the 0-based index (for the drawer address `bugs:<index>`), the
+ * carrying a Refused note or a Needs-review note is skipped (the refused alert names the
+ * former, and a Needs-review note parks the bug, so it is not unfixed), and so is an undated
+ * heading (like the doctor's check). The returned objects carry the 0-based index (for the
+ * drawer address `bugs:<index>`), the
  * 1-based position (for `bug --cancel <position>`), the stamp-stripped title, and the whole-
  * day age. Returned oldest-first — most days waited, ties in file order — so a caller naming
- * the first element names the most-stale bug. */
+ * a feed's first element names the most-stale. */
 export function staleOpenBugs(root: string, now = Date.now()): StaleBug[] {
   return openBugEntries(root)
     .flatMap((entry, index) => {
-      if (refusalNote(entry.body) !== null || waitingNote(entry.body) !== null) return [];
+      if (refusalNote(entry.body) !== null || needsReviewNote(entry.body) !== null) return [];
       const stamp = filingDate(entry.title);
       if (stamp === null) return [];
       const days = ageInDays(stamp, now);
@@ -55,7 +56,7 @@ export function staleOpenBugs(root: string, now = Date.now()): StaleBug[] {
  * team alert — the shared rule's twin on every observer surface, computed from the same threshold
  * and the same questionFilingDate parser the doctor's check uses, so the two cannot drift on which
  * questions are stale. An undated heading is skipped (like the doctor's check); questions carry no
- * refused or waiting note to filter. The returned objects carry the 1-based position (for
+ * refused note to filter. The returned objects carry the 1-based position (for
  * `tumwater questions answer <n>`), the 0-based index (kept only as the file-order tiebreak), the
  * stamp-stripped title, and the whole-day age. Returned oldest-first — most days waited, ties in
  * file order — so a caller naming the first element names the most-stale question. */
@@ -113,17 +114,6 @@ export function staleMerges(root: string, now = Date.now()): StaleMerge[] {
  * planned entries have no cycle, dangling ref, unparsed clause, or misworded dependency. */
 export function planDependencyAlert(root: string): PlanDependencyProblem | null {
   return planDependencyProblem(root);
-}
-
-/** The open bugs a Waiting-for-the-next-failure note has held for STALE_WAIT_DAYS (7) or more —
- * the always-on feed for the waiting-bugs team alert, sharing the doctor's threshold, held-bug
- * selection and anchor through staleWaitingBugRows so the alert and `checkWaitingBugs` cannot
- * drift. The returned objects carry the 0-based index (drawer `bugs:<index>`), the 1-based
- * position (`bug --release <position>`), the stamp-stripped title, and the whole-day age.
- * Returned most-days-waited-first — ties in file order — so a caller naming the first element
- * names the longest-held bug. */
-export function staleWaitingBugs(root: string, now = Date.now()): StaleWaitingBug[] {
-  return staleWaitingBugRows(root, now);
 }
 
 /** The merge-queue files `readMergeQueue` skips as checkout-relative paths — the always-on feed

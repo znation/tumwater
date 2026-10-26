@@ -214,21 +214,17 @@ discards a role's in-flight merge.
   tab show the per-day median of those waits as "Check wait median" (team scope only).
   While a check runs or waits, `tumwater status`, the TUI header and the dashboard's team panel
   show `checks <running>/<cap>`, plus `, <n> waiting` when checks are queued.
-- A bug that bugfix cannot reproduce is held by a `**Waiting for the next failure <date> by
-  bugfix: …**` note, which bugfix writes once it has made the failure's message name the cause.
-  The backlog index marks the entry `[blocked: waiting for the next failure]`, so bugfix skips it
-  (and sleeps when it is the only open bug). The hold lifts when whoever records a new occurrence
-  deletes the note line (selfcheck does this), or with `tumwater bug --release <n>`.
-  A bugfix run that adds a Progress note to an open bug without writing the note is asked to
-  write it in its staging fix-up turn.
-  `tumwater doctor` warns when the held bug's quoted test has failed again in a gate or merge
-  check since the day after the note, and — because the flake may never come back — also warns
-  when a hold has stood a week without a recurrence, so a bug that stops failing stops parking
-  in the backlog as an innocuous ok.
+- A bug that bugfix cannot reproduce once it has made the failure message name the cause is
+  parked with a `**Needs review <date> by bugfix: …**` note naming what the next failure's
+  message will show. The backlog index marks the entry `[blocked: needs review]`, so bugfix skips
+  it while the cause stays unknown, and the note lifts when a new occurrence is recorded (the
+  recorder deletes the note line, which selfcheck does).
+  A bugfix run that adds a Progress note to a bug it could not reproduce writes the
+  `**Needs review …**` note naming what would make it fail as its own line in the same pass.
 - A maintenance role whose last run did nothing is deferred until feature, bugfix, director,
   you, or another human's work merges to main (your own `tumwater brief`, `plan`, `bug` and
   `questions answer` edits count as human work), and stays deferred while PLANS.md or BUGS.md has
-  work a feature or bugfix instance can take (refused, needs-review/replan, waiting-for-the-next-failure and blocked entries do
+  work a feature or bugfix instance can take (refused, needs-review and blocked entries do
   not count). `qa`, `selfcheck`, `feedback` and `ci` are never deferred. `bugfix` is not a maintenance role, but while BUGS.md has no
   open bugs it has nothing assigned and defers like one — with the difference that any
   feature, bugfix, director, you or another human wakes it (your own `tumwater brief`, `plan`, `bug`
@@ -537,7 +533,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   that has waited a week for an answer, refused entries,
   a stale bug, a failed notify page, a broken plan dependency clause, a dirty primary checkout
   refusing merges, a stranded inbox prompt,
-  a stalled merge queue, a merge-queue file the reader skips, a waiting bug held a week, a plan or bug stalled by a
+  a stalled merge queue, a merge-queue file the reader skips, a plan or bug stalled by a
   Needs review note, checks that flapped more than once in the last day, a
   stale or oversized flake quarantine,
   a burst of post-merge review rejections, each an already-merged commit,

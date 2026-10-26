@@ -537,7 +537,7 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
     { heading: "## Done", body: "### Newer plan (done 2026-09-03)\n\n**Goal.** Newer goal.\n\nSecond line.\n\n### Older plan (done 2026-09-02)\n\nOlder body." },
   ]);
   writeBacklogFile(repo, "BUGS.md", [
-    { heading: "## Open", body: "### One bug (reported 2026-09-05)\n\n**Symptom.** It breaks.\n\n### Held bug (reported 2026-09-05)\n\n**Refused 2026-10-16 by bugfix: x**\n\n### Waiting bug (reported 2026-09-05)\n\n**Waiting for the next failure 2026-10-16 by bugfix: x**" },
+    { heading: "## Open", body: "### One bug (reported 2026-09-05)\n\n**Symptom.** It breaks.\n\n### Held bug (reported 2026-09-05)\n\n**Refused 2026-10-16 by bugfix: x**" },
     { heading: "## Fixed", body: "### Fixed bug (fixed 2026-09-03)\n\nRoot cause: x." },
   ]);
   writeBacklogFile(repo, "QUESTIONS.md", [
@@ -555,27 +555,23 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
       title: "First plan (planned 2026-09-05)",
       body: "**Goal.** The first goal.\n\nA second body line, kept verbatim.",
       refused: false,
-      waiting: false,
     });
 
     // index 1: a bare heading has an empty body — and it is the LAST planned entry (the Done
     // placeholder never counts), so index 2 is already out of range.
     res = await fetch(base + "/api/backlog?file=plans&index=1");
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { title: "Second plan (planned 2026-09-04)", body: "", refused: false, waiting: false });
+    assert.deepEqual(await res.json(), { title: "Second plan (planned 2026-09-04)", body: "", refused: false });
 
     // The other files address their own open sections in the same payload order.
     res = await fetch(base + "/api/backlog?file=bugs&index=0");
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { title: "One bug (reported 2026-09-05)", body: "**Symptom.** It breaks.", refused: false, waiting: false });
+    assert.deepEqual(await res.json(), { title: "One bug (reported 2026-09-05)", body: "**Symptom.** It breaks.", refused: false });
     res = await fetch(base + "/api/backlog?file=bugs&index=1");
     assert.equal(((await res.json()) as { refused: boolean }).refused, true);
-    res = await fetch(base + "/api/backlog?file=bugs&index=2");
-    const waitingBug = (await res.json()) as { refused: boolean; waiting: boolean };
-    assert.deepEqual([waitingBug.refused, waitingBug.waiting], [false, true]);
     res = await fetch(base + "/api/backlog?file=questions&index=0");
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { title: "Q1: which database?", body: "**Context:** the storage layer is undecided.", refused: false, waiting: false });
+    assert.deepEqual(await res.json(), { title: "Q1: which database?", body: "**Context:** the storage layer is undecided.", refused: false });
 
     // done/fixed address the finished sections, newest first, titles verbatim.
     let fin = await getJson<{ title: string; body: string }>(base, "/api/backlog?file=done&index=0");
@@ -660,14 +656,13 @@ test("gui /api/backlog marks a held-for-operator plan for the drawer's Release b
   ]);
   const { server, base } = await startLocalGui(repo);
   try {
-    // The held plan's payload gains heldForOperator: true beside refused/waiting.
+    // The held plan's payload gains heldForOperator: true beside refused.
     let res = await fetch(base + "/api/backlog?file=plans&index=1");
     assert.equal(res.status, 200);
     const held = (await res.json()) as {
       title: string;
       body: string;
       refused: boolean;
-      waiting: boolean;
       heldForOperator?: boolean;
     };
     assert.match(held.body, /\*\*Needs review/);

@@ -1,9 +1,9 @@
 /** The backlog-feed team alerts, in emission order: stale open bugs, a failed notify page,
- * waiting bugs, stranded inbox prompts, a stalled merge queue, skipped merge-queue files, and
+ * stranded inbox prompts, a stalled merge queue, skipped merge-queue files, and
  * merges refused by an uncommitted primary checkout. One of the per-domain builders split out of
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts. */
 
-import { firstAndMore, moreDetail, openBacklogAction, type TeamAlert, type StaleBug, type NotifyFailure, type StaleWaitingBug, type StalePrompt, type StaleMerge, type PrimaryOverwriteBlock } from "./team-alert-shared.js";
+import { firstAndMore, moreDetail, openBacklogAction, type TeamAlert, type StaleBug, type NotifyFailure, type StalePrompt, type StaleMerge, type PrimaryOverwriteBlock } from "./team-alert-shared.js";
 import { plural } from "../text/phrases.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { duration } from "./run-progress-model.js";
@@ -54,31 +54,6 @@ function pushNotifyAlert(out: TeamAlert[], notifyFailure: NotifyFailure | null, 
       detail:
         `the notify hook could not reach you ${humanAgo(notifyFailure.latestTs, now)}: ${squash(notifyFailure.message, 160)} — check it with \`tumwater notify --test\``,
       actions: [],
-    });
-  }
-}
-
-function pushWaitingBugsAlert(out: TeamAlert[], staleWaitingBugs: readonly StaleWaitingBug[]): void {
-  // A waiting bug (doctor's STALE_WAIT_DAYS rule, src/doctor/doctor-backlog-bugs.ts
-  // checkWaitingBugs) whose flake has not come back parks indefinitely, so a hold that has
-  // outlived a week asks (amber) the way the stale-bug alert does, naming the oldest hold, its
-  // age, and the release-or-keep advice. Its callers pass it most-days-first (alert-feeds.ts
-  // staleWaitingBugs sorts by days descending, ties in file order), so the first element is the
-  // longest-held bug and is named with its position and days; the rest are folded through
-  // entryListDetail like the questions and refused alerts, so the wording and counts cannot
-  // drift.
-  if (staleWaitingBugs.length) {
-    const { first, more } = firstAndMore(staleWaitingBugs, (r) => `#${r.position} "${r.title}"`);
-    out.push({
-      key: "waiting-bugs", // vocabulary-ok: the waiting-bugs amber alert's key
-      tone: "amber",
-      title: `${plural(staleWaitingBugs.length, "waiting bug held", "waiting bugs held")} 7+ days`,
-      detail:
-        `#${first.position} "${first.title}" has waited ${first.days}d for its next failure` +
-        more +
-        ` · the hold has outlived a week and this surface omits the doctor's recurrence scan — \`tumwater doctor\` reports whether the flake came back; release it with \`tumwater bug --release ${first.position}\`, or keep the hold if the failure is still expected`,
-      // The action lands the operator on the first stale waiting bug.
-      actions: openBacklogAction({ file: "bugs", index: first.index }),
     });
   }
 }
@@ -177,7 +152,6 @@ function pushPrimaryOverwriteAlert(out: TeamAlert[], primaryOverwrite: PrimaryOv
 interface BacklogFeedAlertsInput {
   staleBugs: readonly StaleBug[];
   notifyFailure: NotifyFailure | null;
-  staleWaitingBugs: readonly StaleWaitingBug[];
   stalePrompts: readonly StalePrompt[];
   staleMerges: readonly StaleMerge[];
   skippedMergeFiles: readonly string[];
@@ -185,8 +159,8 @@ interface BacklogFeedAlertsInput {
   now: number;
 }
 
-/** The backlog-feed alerts, in emission order: stale open bugs, a failed notify page, waiting
- * bugs, stranded inbox prompts, a stalled merge queue, skipped merge-queue files, and merges
+/** The backlog-feed alerts, in emission order: stale open bugs, a failed notify page,
+ * stranded inbox prompts, a stalled merge queue, skipped merge-queue files, and merges
  * refused by an uncommitted primary checkout. Extracted from teamAlerts (part 3/5 of the
  * teamAlerts split) so the shared module stays small; the input names exactly the fields this
  * run reads. Each arm is one module-private builder named push<Alert>Alert, called here in arm
@@ -196,7 +170,6 @@ export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert
   const {
     staleBugs,
     notifyFailure,
-    staleWaitingBugs,
     stalePrompts,
     staleMerges,
     skippedMergeFiles,
@@ -205,7 +178,6 @@ export function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert
   } = input;
   pushStaleBugsAlert(out, staleBugs);
   pushNotifyAlert(out, notifyFailure, now);
-  pushWaitingBugsAlert(out, staleWaitingBugs);
   pushStalePromptsAlert(out, stalePrompts);
   pushStaleMergesAlert(out, staleMerges);
   pushSkippedMergesAlert(out, skippedMergeFiles);

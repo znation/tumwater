@@ -11,7 +11,6 @@ import {
   planDependencyFinding,
   strayPlaceholderFinding,
   ungroundedRefusalFinding,
-  waitingNoteFinding,
 } from "../src/run/stage-backlog-checks.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -615,60 +614,11 @@ test("a staged PLANS.md edit adding a dangling requires clause yields the depend
   assert.ok(findings.some((f) => f.includes("which no PLANS.md heading carries")), findings.join("\n"));
 });
 
-const PROG_A = "- **Progress 2026-10-15 (bugfix):** no repro.";
-const PROG_A2 = "- **Progress 2026-10-16 (bugfix, second):** still no repro.";
-
-function bugsDoc(open: string, fixed = "_None yet._"): string {
+const bugsDoc = (open: string, fixed = "_None yet._"): string => {
   return `# Bugs\n\n## Open\n\n${open}\n## Fixed\n\n${fixed}\n`;
-}
-const entryA = (extra = "") => `### Bug A: flake (found by qa 2026-10-01)\n\n**Symptom:** it broke.\n${PROG_A}\n${extra}`;
-const entryB = (extra = "") => `### Bug B: other (found by qa 2026-10-02)\n\n**Symptom:** broke too.\n${PROG_A}\n${extra}`;
-const WAIT_BASE = bugsDoc(`${entryA()}\n${entryB()}\n`);
+};
 
-test("waitingNoteFinding asks for the Waiting note when a Progress note lands on a still-open bug", () => {
-  const head = bugsDoc(`${entryA(PROG_A2 + "\n")}\n${entryB()}\n`);
-  const f = waitingNoteFinding(head, WAIT_BASE);
-  assert.match(f ?? "", /"Bug A: flake \(found by qa 2026-10-01\)"/);
-  assert.match(f ?? "", /Waiting for the next failure/);
-  assert.doesNotMatch(f ?? "", /more/);
-});
-
-test("waitingNoteFinding stays quiet when the hold, a refusal, or no Progress change is present", () => {
-  const w = "**Waiting for the next failure 2026-10-16 by bugfix: x**";
-  const r = "**Refused 2026-10-16 by bugfix: nope**";
-  for (const extra of [`${PROG_A2}\n\n${w}\n`, `${PROG_A2}\n\n${r}\n`]) {
-    assert.equal(waitingNoteFinding(bugsDoc(`${entryA(extra)}\n${entryB()}\n`), WAIT_BASE), undefined);
-  }
-  assert.equal(waitingNoteFinding(WAIT_BASE, WAIT_BASE), undefined);
-  assert.equal(waitingNoteFinding(WAIT_BASE.replace("it broke.", "it broke badly."), WAIT_BASE), undefined);
-});
-
-test("waitingNoteFinding ignores a bug moved to Fixed and a newly filed bug", () => {
-  const fixed = bugsDoc(`${entryB()}\n`, `### Bug A: flake (found by qa 2026-10-01, fixed 2026-10-16)\n\n${PROG_A}\n${PROG_A2}\n`);
-  assert.equal(waitingNoteFinding(fixed, WAIT_BASE), undefined);
-  const added = bugsDoc(`${entryA()}\n${entryB()}\n### Bug C: new (found by qa 2026-10-16)\n\n${PROG_A}\n`);
-  assert.equal(waitingNoteFinding(added, WAIT_BASE), undefined);
-});
-
-test("waitingNoteFinding names the first bug and counts the others", () => {
-  const head = bugsDoc(`${entryA(PROG_A2 + "\n")}\n${entryB(PROG_A2 + "\n")}\n`);
-  const f = waitingNoteFinding(head, WAIT_BASE);
-  assert.match(f ?? "", /"Bug A: flake/);
-  assert.match(f ?? "", /1 more/);
-});
-
-test("stageCheckFindings asks only a bugfix role for the Waiting note", async () => {
-  const { wt } = await repoWith({ "BUGS.md": WAIT_BASE });
-  fs.writeFileSync(path.join(wt, "BUGS.md"), bugsDoc(`${entryA(PROG_A2 + "\n")}\n${entryB()}\n`));
-  for (const role of ["bugfix", "bugfix-2"]) {
-    const findings = await stageCheckFindings(wt, "main", EXEMPT, role);
-    assert.ok(findings.some((f) => f.includes("Waiting for the next failure")), role);
-  }
-  const other = await stageCheckFindings(wt, "main", EXEMPT, "feature");
-  assert.ok(!other.some((f) => f.includes("Waiting for the next failure")));
-});
-
-// Ungrounded-refusal check: a Refused note that cites another entry's hold or a different series
+// Ungrounded-refusal check
 // part instead of an objection to this entry spreads a refusal across a series (b9664a461).
 
 const PLAN_DOC = (planned: string) => `# Plans\n\n## Planned\n\n${planned}\n## Done\n\n_None yet._\n`;

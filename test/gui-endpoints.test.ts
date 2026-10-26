@@ -2592,12 +2592,12 @@ test("handleBacklogRelease and handleBacklogTop report a still-held entry in hel
   assert.match(String(moved.heldNote), /^still held \[blocked: requires Export series 1\/2\]/);
 });
 
-test("handleBacklogRelease lifts a Waiting for the next failure note from a bug", async () => {
+test("handleBacklogRelease lifts a held-for-operator note from a bug", async () => {
   const root = tmpdir();
-  writeBacklogFile(root, "BUGS.md", [{ heading: "## Open", body: "### w1\n\n**Waiting for the next failure 2026-10-16 by bugfix: x**\n\nbody" }, { heading: "## Fixed" }]);
+  writeBacklogFile(root, "BUGS.md", [{ heading: "## Open", body: "### w1\n\n**Needs review 2026-10-16 by feature: too large for one run (held 3)**\n\nbody" }, { heading: "## Fixed" }]);
   const out = await captureJson((res) => handleBacklogRelease(fakeReq(JSON.stringify({ kind: "bug", position: 1, title: "w1" })), res, root));
-  assert.deepEqual(out.data, { ok: true, status: "released", file: "BUGS.md", title: "w1", committed: false, lifted: "waiting-for-failure" });
-  assert.ok(!fs.readFileSync(path.join(root, "BUGS.md"), "utf8").includes("Waiting for the next failure"));
+  assert.deepEqual(out.data, { ok: true, status: "released", file: "BUGS.md", title: "w1", committed: false, lifted: "held-for-operator" });
+  assert.ok(!fs.readFileSync(path.join(root, "BUGS.md"), "utf8").includes("Needs review"));
   assert.match(fs.readFileSync(wakeRequestPath(root), "utf8"), /bugfix/);
 });
 

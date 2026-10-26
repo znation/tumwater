@@ -134,10 +134,10 @@ test("the remainder line names the named items past the cap", () => {
 });
 
 test("an entry named by a bug matches through its Open title's first six words", () => {
-  const bug = { title: "Dashboard newest failure renders wrong counts (reported 2026-10-01)", body: "**Waiting for the next failure …**" };
+  const bug = { title: "Dashboard newest failure renders wrong counts (reported 2026-10-01)", body: "**Needs review 2026-10-23 by bugfix: x**" };
   const block = notesBacklogBlock("Dashboard newest failure renders wrong counts", empty({ openBugs: [bug] }));
   assert.ok(block);
-  assert.match(block, /- Dashboard newest failure renders wrong counts \(reported 2026-10-01\) — waiting for the next failure/);
+  assert.match(block, /- Dashboard newest failure renders wrong counts \(reported 2026-10-01\) — needs review/);
 });
 
 test("a held-for-operator bug names tumwater bug --release, a plan names plan --release", () => {

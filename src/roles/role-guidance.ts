@@ -184,17 +184,6 @@ export const PRIOR_HELD_NOTE = `${PRIOR_HELD_PREFIX}<N>**`;
  * identical. */
 export const CHECK_DECLARATION_MARKER = `**Declares the project check**`;
 
-/** The literal prefix every Waiting-for-the-next-failure note starts with. Exported so a reader
- * that only has to recognize one (the backlog index's ` [blocked: waiting for the next failure]`
- * mark) can match on it instead of parsing the date or the wording out of the full template. */
-export const WAITING_FOR_FAILURE_PREFIX = `**Waiting for the next failure `;
-
-/** The markdown note the bugfix role writes under an open bug it cannot reproduce once it has made
- * the failure explain itself, so bugfix stops spending runs without new evidence. Same convention
- * as NEEDS_REVIEW_NOTE: a note a later fresh run reads. It lifts when whoever records the next
- * occurrence deletes the line, or by `tumwater bug --release <n>`. */
-export const WAITING_FOR_FAILURE_NOTE = `${WAITING_FOR_FAILURE_PREFIX}<YYYY-MM-DD> by bugfix: <what the next failure's message will show>**`;
-
 /** How a role with no backlog (organize, clean, dedupe, perf, security, robustness, improve) finds
  * its one task, as numbered steps. Written against the observed failure: with nothing to point
  * at, a local model reads the codebase file by file — thirty whole-file reads, ~300 KB of tool

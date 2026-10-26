@@ -5,7 +5,7 @@
  * inbox/inbox.ts, change/change-data.ts), so this module only adapts HTTP onto it. Barrelled
  * into gui/gui-endpoints.ts beside the other per-family GET endpoint modules.
  */
-import { operatorHeldEntries, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
+import { operatorHeldEntries, refusalNote } from "../backlog/backlog-eligibility.js";
 import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { answeredQuestionEntries, entryMatches, donePlanEntries, fixedBugEntries, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, normalizeDiffPath } from "../change/change-data.js";
@@ -68,7 +68,6 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
     title: entry.title,
     body: entry.body,
     refused: refusalNote(entry.body) !== null,
-    waiting: waitingNote(entry.body) !== null,
     ...(operatorHeldEntries(root).some((e) => e.file === file && e.index === index) ? { heldForOperator: true } : {}),
   });
 }

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { withoutRefusalNotes, withoutHeldForOperatorNotes, backlogHolds, backlogInProgress, cancelledClaimNote, OPERATOR_HOLD_THRESHOLD, eligibleEntries, entryHold, heldCount, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, operatorHeldEntries, refusalNote, refusedEntries, stalledEntries, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { withoutRefusalNotes, withoutHeldForOperatorNotes, backlogHolds, backlogInProgress, cancelledClaimNote, OPERATOR_HOLD_THRESHOLD, eligibleEntries, entryHold, heldCount, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, operatorHeldEntries, refusalNote, refusedEntries, stalledEntries, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
 import { entryKey, plannedPartKeys, prerequisitesMerged, planDependencyProblems, plansReleasedBy, plansWaitingOn, releasedPartsNote, requiredParts, seriesPart, type PartRef } from "../src/backlog/backlog-parts.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
@@ -181,17 +181,6 @@ test("hold notes match only as their own line, and an indented note still holds"
 
 test("a body mentioning 'requires' never blocks — only the heading's clause does", () => {
   assert.equal(entryHold(entry("Foo (planned 2026-10-01)", "This requires part 1/2 landed eventually."), []), null);
-});
-
-test("a waiting-for-the-next-failure note holds a bug, only as a line prefix", () => {
-  const note = "**Waiting for the next failure 2026-10-16 by bugfix: x**";
-  assert.equal(entryHold(entry("Bug", `body\n  ${note}`), []), "waiting-for-failure");
-  assert.equal(entryHold(entry("Bug", `body ${note} mid-line`), []), null);
-  assert.equal(entryHold(entry("Bug", `**Refused 2026-10-16 by bugfix: y**\n${note}`), []), "refused");
-  assert.equal(holdMark("waiting-for-failure"), " [blocked: waiting for the next failure]");
-  const dir = tmpdir();
-  fs.writeFileSync(path.join(dir, "BUGS.md"), `# Bugs\n\n## Open\n\n### one\n\n${note}\n\nbody\n\n## Fixed\n`);
-  assert.deepEqual(eligibleEntries(dir, "bugfix"), []);
 });
 
 test("heldCount reads the (held N) tag from a note line, else a **Previously held N** line, else 0", () => {
@@ -586,13 +575,6 @@ test("waitingPartRanges names the planned parts that wait on an entry, with thei
   assert.deepEqual(waitingPartRanges(dir, "Unrelated plan"), []);
   assert.deepEqual(waitingPartRanges(dir, "Not there"), []);
   assert.deepEqual(waitingPartRanges(tmpdir(), "S, part 1/3: a"), []);
-});
-
-test("waitingNote returns the note line without its bold markers, and null for a mid-line mention", () => {
-  assert.equal(
-    waitingNote("x\n  **Waiting for the next failure 2026-10-16 by bugfix: the message names the pid**\n"),
-    "Waiting for the next failure 2026-10-16 by bugfix: the message names the pid");
-  assert.equal(waitingNote("see Waiting for the next failure mid-line"), null);
 });
 
 test("refusedEntries lists the refused plans then the refused bugs, and [] with no backlog files", () => {
