@@ -102,7 +102,7 @@ type SeriesGroup<T extends SeriesRow> =
   | { kind: "series"; series: string; rows: T[] };
 
 /** True when `row` is a candidate for series-collapsing: it is a series part held only by an
- * unmerged prerequisite (`{ blockedBy }`, not a Refused/needs-review/needs-replan note) and no live
+ * unmerged prerequisite (`{ blockedBy }`, not a Refused/needs-review note) and no live
  * claim names it. Returns the row's series part when it collapses, else null. */
 function collapsibleSeriesPart(row: SeriesRow): PartRef | null {
   if (row.claimer !== undefined) return null;
@@ -155,7 +155,7 @@ export function partsLabel(rows: readonly SeriesRow[]): string {
  * or more such parts renders as one line at the position of its first collapsed part, spanning from
  * that part's start to the last's end, with the part list (`2/4–4/4`) and a `[blocked: each waits
  * on an earlier part]` mark. A series with a single blocked part, an eligible part, a note-held
- * (Refused/needs-review/needs-replan) part and a claimed part keep their ordinary lines, so the
+ * (Refused/needs-review) part and a claimed part keep their ordinary lines, so the
  * eligibility rules the feature role's charter teaches are unchanged; the collapsed mark keeps the
  * `[blocked: …]` prefix it already skips. */
 /** The grouping half of backlog-index's collapseBlockedSeries, on any rows carrying a title,

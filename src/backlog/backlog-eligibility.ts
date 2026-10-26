@@ -1,6 +1,6 @@
 /** Backlog eligibility: which PLANS.md / BUGS.md entries a work role may take now (plans,
  * parallel-work-instances, part 2/7). An entry is held when its body carries a **Refused …**,
- * **Needs review …**, **Needs replan …** or **Waiting for the next failure …** note, or when
+ * **Needs review …** or **Waiting for the next failure …** note, or when
  * its heading's trailing parenthetical
  * (or a parenthetical left open by a wrapped heading) names a prerequisite (`requires parts
  * 1/5–3/5 landed`) that is itself still listed under `## Planned`. The parsers are pure over
@@ -12,7 +12,7 @@ import path from "node:path";
 import { statOrNull } from "../files/files.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
 import { escapeRegExp, firstTrimmedLineStartingWith } from "../text/text.js";
-import { HELD_TAG_PREFIX, NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX, PRIOR_HELD_PREFIX, WAITING_FOR_FAILURE_PREFIX } from "../roles/role-guidance.js";
+import { HELD_TAG_PREFIX, NEEDS_REVIEW_PREFIX, PRIOR_HELD_PREFIX, WAITING_FOR_FAILURE_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
 import type { BacklogEntry } from "./backlog-md.js";
@@ -22,13 +22,13 @@ import { finishedFiles, openBugEntries, plannedPlanEntries } from "./backlog.js"
 
 /** Why an entry is held, or null when it is eligible. `blockedBy` names the unmerged
  * prerequisites in the form `Series i/n` so a renderer can show `requires …`. */
-export type EntryHold = "refused" | "needs-review" | "needs-replan" | "held-for-operator" | "waiting-for-failure" | { blockedBy: string[] } | null;
+export type EntryHold = "refused" | "needs-review" | "held-for-operator" | "waiting-for-failure" | { blockedBy: string[] } | null;
 
-/** The number of holds an entry's count must reach before a Needs-review/Needs-replan note
+/** The number of holds an entry's count must reach before a Needs-review note
  * becomes a `held-for-operator` hold (the operator's decision, surfaced by parts 2/3 and 3/3). */
 export const OPERATOR_HOLD_THRESHOLD = 3;
 
-/** The held count a body records: the integer in the first Needs-review or Needs-replan note
+/** The held count a body records: the integer in the first Needs-review note
  * line's `(held N)` tag, else the integer in a `**Previously held N**` line, else 0. A present
  * but non-numeric `(held …)` tag is 0 (and stops the scan), so a malformed tag never throws.
  * Pure over the body text — the data-layer read half of the convergence backstop. */
@@ -36,7 +36,7 @@ export function heldCount(body: string): number {
   const tagRe = new RegExp(`${escapeRegExp(HELD_TAG_PREFIX)}(\\d+)\\)`);
   for (const raw of body.split("\n")) {
     const line = raw.trimStart();
-    const note = line.startsWith(NEEDS_REVIEW_PREFIX) || line.startsWith(NEEDS_REPLAN_PREFIX);
+    const note = line.startsWith(NEEDS_REVIEW_PREFIX);
     if (!note) continue;
     const tag = tagRe.exec(line);
     if (tag !== null) return Number(tag[1]);
@@ -51,13 +51,13 @@ export function heldCount(body: string): number {
   return 0;
 }
 
-/** The `(held N)` count on a single Needs-review or Needs-replan note line, or undefined when the
+/** The `(held N)` count on a single Needs-review note line, or undefined when the
  * line is not such a note or carries no numeric tag. The per-line form of heldCount, so a writer
  * that drops notes (withoutHeldForOperatorNotes) can gate on the same threshold without scanning
  * the whole body. */
 function lineHeldCount(line: string): number | undefined {
   const trimmed = line.trimStart();
-  const isNote = trimmed.startsWith(NEEDS_REVIEW_PREFIX) || trimmed.startsWith(NEEDS_REPLAN_PREFIX);
+  const isNote = trimmed.startsWith(NEEDS_REVIEW_PREFIX);
   if (!isNote) return undefined;
   const tag = new RegExp(`${escapeRegExp(HELD_TAG_PREFIX)}(\\d+)\\)`).exec(trimmed);
   return tag === null ? undefined : Number(tag[1]);
@@ -77,7 +77,7 @@ export interface EligibleEntry {
 }
 
 /** The `**Refused …` note prefix a refusing run writes. Every hold note — this one and the
- * imported Needs-review and Needs-replan prefixes — is matched as a line prefix (hasNoteLine)
+ * imported Needs-review prefix — is matched as a line prefix (hasNoteLine)
  * so a mention in prose never holds an entry. */
 const REFUSED_PREFIX = "**Refused ";
 
@@ -122,8 +122,8 @@ function withoutNoteLines(lines: string[], prefix: string): string[] {
   return out;
 }
 
-/** `lines` without any Refused note line. Every other line, Needs-review, needs-replan and
- * waiting notes included, is kept, so refusal lifting never lifts another hold. */
+/** `lines` without any Refused note line. Every other line, Needs-review and waiting notes
+ * included, is kept, so refusal lifting never lifts another hold. */
 export function withoutRefusalNotes(lines: string[]): string[] {
   return withoutNoteLines(lines, REFUSED_PREFIX);
 }
@@ -134,7 +134,7 @@ export function withoutWaitingNotes(lines: string[]): string[] {
   return withoutNoteLines(lines, WAITING_FOR_FAILURE_PREFIX);
 }
 
-/** `lines` with every Needs-review/Needs-replan note whose `(held N)` count reached
+/** `lines` with every Needs-review note whose `(held N)` count reached
  * OPERATOR_HOLD_THRESHOLD removed, together with its `**Previously held N−1**` line (the prior
  * count the increment rule recorded beside the live `(held N)`), so a `--release` lift leaves
  * neither behind and the entry becomes eligible. Drops nothing when no note is at or past the
@@ -224,9 +224,9 @@ export function waitingPartRanges(root: string, title: string): EligibleEntry[] 
 }
 
 /** Why `entry` is held against the still-`planned` entries, or null when it may be taken: a
- * `**Refused …` line (refused), a Needs-review line (needs-review), a Needs-replan line
- * (needs-replan — the plan role owns it), or a prerequisite `(series, part)` still among
- * `planned` ({ blockedBy }). Series compare case-insensitively; part tokens compare verbatim.
+ * `**Refused …` line (refused), a Needs-review line (needs-review), or a prerequisite
+ * `(series, part)` still among `planned` ({ blockedBy }). Series compare case-insensitively;
+ * part tokens compare verbatim.
  * Bodies mentioning "requires" are never consulted — only the heading's trailing or
  * still-open parenthetical. */
 export function entryHold(entry: BacklogEntry, planned: readonly BacklogEntry[]): EntryHold {
@@ -241,14 +241,12 @@ export function entryHoldAgainst(
   plannedParts: ReadonlySet<string>,
 ): EntryHold {
   if (hasNoteLine(entry.body, REFUSED_PREFIX)) return "refused";
-  if (hasNoteLine(entry.body, NEEDS_REVIEW_PREFIX) || hasNoteLine(entry.body, NEEDS_REPLAN_PREFIX)) {
+  if (hasNoteLine(entry.body, NEEDS_REVIEW_PREFIX)) {
     // A note whose held count reached OPERATOR_HOLD_THRESHOLD stops out of the role loop:
-    // neither the plan role (planBacklogFull tests only these two) nor this role takes it.
+    // neither the plan role (planBacklogFull) nor this role takes it.
     return heldCount(entry.body) >= OPERATOR_HOLD_THRESHOLD
       ? "held-for-operator" // vocabulary-ok: the operator-held string names the operator hold decision
-      : hasNoteLine(entry.body, NEEDS_REVIEW_PREFIX)
-        ? "needs-review"
-        : "needs-replan";
+      : "needs-review";
   }
   if (hasNoteLine(entry.body, WAITING_FOR_FAILURE_PREFIX)) return "waiting-for-failure";
   const refs = requiredParts(entry.title);
@@ -267,7 +265,6 @@ export function holdMark(hold: EntryHold): string {
   if (hold === null) return "";
   if (hold === "refused") return " [blocked: refused]";
   if (hold === "needs-review") return " [blocked: needs review]";
-  if (hold === "needs-replan") return " [blocked: needs replan]";
   if (hold === "held-for-operator") return " [blocked: held for operator]"; // vocabulary-ok: this hold names the operator-held wording for the operator decision
   if (hold === "waiting-for-failure") return " [blocked: waiting for the next failure]";
   return ` [blocked: requires ${hold.blockedBy.join(", ")}]`;
@@ -392,14 +389,14 @@ export function operatorHeldEntries(root: string): RefusedEntry[] {
   return out;
 }
 
-/** A planned plan or open bug held by a Needs-review/Needs-replan note, plus the 0-based
+/** A planned plan or open bug held by a Needs-review note, plus the 0-based
  * index within its backlog file and hold that let a surface land on its row
- * (`plans:<index>`/`bugs:<index>`) and tell the note kinds apart. */
+ * (`plans:<index>`/`bugs:<index>`). */
 export interface StalledEntry {
   file: "plans" | "bugs";
   index: number;
   title: string;
-  hold: "needs-review" | "needs-replan";
+  hold: "needs-review";
 }
 
 /** The display noun for a backlog-file discriminator — the `"plans" | "bugs"` `file` on
@@ -411,13 +408,13 @@ export function entryKindLabel(file: "plans" | "bugs"): "Bug" | "Plan" {
   return file === "bugs" ? "Bug" : "Plan";
 }
 
-/** The planned plans and open bugs whose hold is exactly `"needs-review"` or
- * `"needs-replan"`, in file order: the entries parked by a Needs-review/Needs-replan note
- * until the plan role splits or replans them (the `stalled-entries` team alert's input), each
- * carrying its backlog file, 0-based index and the hold. Same `backlogHolds(root)` + the
- * planned/`openBugEntries` readers `operatorHeldEntries` uses, so the alert and the doctor's
- * `stalled entries` row classify through the same `entryHold` and cannot disagree on which
- * holds are role-resolvable. A held-for-operator entry (a note at the held threshold) is
+/** The planned plans and open bugs whose hold is exactly `"needs-review"`, in file order: the
+ * entries parked by a Needs-review note until the plan role splits or replans them (the
+ * `stalled-entries` team alert's input), each carrying its backlog file, 0-based index and the
+ * hold. Same `backlogHolds(root)` + the planned/`openBugEntries` readers `operatorHeldEntries`
+ * uses, so the alert and the doctor's `stalled entries` row classify through the same
+ * `entryHold` and cannot disagree on which holds are role-resolvable. A held-for-operator
+ * entry (a note at the held threshold) is
  * excluded — it feeds `operatorHeldEntries` and the `operator-held` alert instead. A missing
  * file yields `[]`. */
 export function stalledEntries(root: string): StalledEntry[] {
@@ -426,7 +423,7 @@ export function stalledEntries(root: string): StalledEntry[] {
   const entriesOf = (entries: readonly BacklogEntry[], held: readonly (EntryHold | null)[], file: "plans" | "bugs"): void => {
     entries.forEach((e, i) => {
       const hold = held[i];
-      if (hold === "needs-review" || hold === "needs-replan") out.push({ file, index: i, title: e.title, hold });
+      if (hold === "needs-review") out.push({ file, index: i, title: e.title, hold });
     });
   };
   entriesOf(plannedPlanEntries(root), holds.plans, "plans");

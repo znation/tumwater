@@ -141,7 +141,7 @@ test("entryHold resolves a <Series> parts a/n and b/n clause to the named series
   assert.equal(entryHold(entry(own), []), null);
 });
 
-test("entryHold reports blocked, refused, needs-review and needs-replan, and null when eligible", () => {
+test("entryHold reports blocked, refused and needs-review, and null when eligible", () => {
   const planned: BacklogEntry[] = [{ title: "Disk floor, part 2/4: x (planned 2026-10-06)", body: "" }];
   const blocked = entryHold(
     entry("Worktree pool, part 2/5: x (planned 2026-10-06; requires Disk floor 2/4 landed)"),
@@ -157,24 +157,26 @@ test("entryHold reports blocked, refused, needs-review and needs-replan, and nul
     entryHold(entry("Plan (planned 2026-10-01)", "**Needs review 2026-10-07 by feature: too large for one run**"), []),
     "needs-review",
   );
+  // A plan rejected after its final revision round is written as one Needs-review note carrying
+  // the reviewer's objections (gate-notes.ts), so it classifies needs-review, not a separate kind.
   assert.equal(
     entryHold(
-      entry("Plan (planned 2026-10-01)", "**Needs replan 2026-10-07 by feature: rejected after 2 review rounds**"),
+      entry("Plan (planned 2026-10-01)", "**Needs review 2026-10-07 by feature: rejected after 2 review rounds**"),
       [],
     ),
-    "needs-replan",
+    "needs-review",
   );
 });
 
 test("hold notes match only as their own line, and an indented note still holds", () => {
   const review = "**Needs review 2026-10-07 by feature: too large for one run**";
-  const replan = "**Needs replan 2026-10-07 by feature: rejected after 2 review rounds**";
+  const rejected = "**Needs review 2026-10-07 by feature: rejected after 2 review rounds**";
   // A prefix quoted inside prose is a mention, not a note.
   assert.equal(entryHold(entry("Plan", `the loop appends ${review} under the heading`), []), null);
-  assert.equal(entryHold(entry("Plan", `the loop appends ${replan} under the heading`), []), null);
+  assert.equal(entryHold(entry("Plan", `the loop appends ${rejected} under the heading`), []), null);
   // Written on its own line — indented or not — it is the note it looks like.
   assert.equal(entryHold(entry("Plan", `body\n${review}`), []), "needs-review");
-  assert.equal(entryHold(entry("Plan", `body\n  ${replan}`), []), "needs-replan");
+  assert.equal(entryHold(entry("Plan", `body\n  ${rejected}`), []), "needs-review");
 });
 
 test("a body mentioning 'requires' never blocks — only the heading's clause does", () => {
@@ -194,7 +196,7 @@ test("a waiting-for-the-next-failure note holds a bug, only as a line prefix", (
 
 test("heldCount reads the (held N) tag from a note line, else a **Previously held N** line, else 0", () => {
   assert.equal(heldCount(`**Needs review 2026-10-23 by feature: too large for one run (held 3)**`), 3);
-  assert.equal(heldCount(`**Needs replan 2026-10-23 by feature: rejected after 3 review rounds (held 2)**`), 2);
+  assert.equal(heldCount(`**Needs review 2026-10-23 by feature: rejected after 2 review rounds (held 2)**`), 2);
   assert.equal(heldCount(`**Previously held 2**`), 2);
   assert.equal(heldCount(`body with no held tag`), 0);
   assert.equal(heldCount(`**Needs review 2026-10-23 by feature: x (held x)**`), 0);
@@ -205,8 +207,7 @@ test("a note whose held count reaches the threshold becomes a held-for-operator 
   assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: x (held 3)**`), []), "held-for-operator");
   assert.equal(holdMark("held-for-operator"), " [blocked: held for operator]");
   assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: x (held 2)**`), []), "needs-review");
-  assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: x**`), []), "needs-review");
-  assert.equal(entryHold(entry("Plan", `**Needs replan 2026-10-23 by feature: rejected (held 3)**`), []), "held-for-operator");
+  assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: rejected after 3 review rounds (held 3)**`), []), "held-for-operator");
 });
 
 test("eligibleEntries drops held entries, keeps file order, and attaches the index line ranges", () => {
@@ -237,7 +238,6 @@ test("holdMark renders each hold as its bracket tag and the empty string when el
   assert.equal(holdMark(null), "");
   assert.equal(holdMark("refused"), " [blocked: refused]");
   assert.equal(holdMark("needs-review"), " [blocked: needs review]");
-  assert.equal(holdMark("needs-replan"), " [blocked: needs replan]");
   assert.equal(holdMark({ blockedBy: ["Prereq 1/2", "Disk floor 2/4"] }), " [blocked: requires Prereq 1/2, Disk floor 2/4]");
 });
 
@@ -670,7 +670,7 @@ test("operatorHeldEntries lists the plans whose note held count reached the thre
   ]);
 });
 
-test("stalledEntries lists the needs-review and needs-replan plans and bugs, excluding eligible and held-for-operator ones", () => {
+test("stalledEntries lists the needs-review plans and bugs, excluding eligible and held-for-operator ones", () => {
   assert.deepEqual(stalledEntries(tmpdir()), []);
   const dir = tmpdir();
   fs.writeFileSync(
@@ -682,8 +682,6 @@ test("stalledEntries lists the needs-review and needs-replan plans and bugs, exc
       "body",
       "### Needs review (planned 2026-10-03)",
       "**Needs review 2026-10-07 by feature: too large for one run**",
-      "### Needs replan (planned 2026-10-03)",
-      "**Needs replan 2026-10-07 by feature: rejected after 1 review round**",
       "### At threshold (planned 2026-10-03)",
       "**Needs review 2026-10-07 by feature: too large for one run (held 3)**",
       "## Done",
@@ -703,7 +701,6 @@ test("stalledEntries lists the needs-review and needs-replan plans and bugs, exc
   );
   assert.deepEqual(stalledEntries(dir), [
     { file: "plans", index: 1, title: "Needs review (planned 2026-10-03)", hold: "needs-review" },
-    { file: "plans", index: 2, title: "Needs replan (planned 2026-10-03)", hold: "needs-replan" },
     { file: "bugs", index: 0, title: "A held bug", hold: "needs-review" },
   ]);
 });
@@ -728,7 +725,7 @@ test("withoutHeldForOperatorNotes drops an at-threshold note and its previously-
     "**Needs review 2026-10-07 by feature: x (held 2)**",
     "**Previously held 2**",
     "",
-    "**Needs replan 2026-10-07 by feature: rejected (held 2)**",
+    "**Needs review 2026-10-07 by feature: rejected after 2 review rounds (held 2)**",
   ];
   assert.deepEqual(withoutHeldForOperatorNotes(below), below);
   const untagged = ["### Plan (planned 2026-10-03)", "**Needs review 2026-10-07 by feature: x**"];

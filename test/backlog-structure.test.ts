@@ -587,17 +587,17 @@ test("renderBacklogIndexBlock lists actionable entries with ranges and strips st
   assert.doesNotMatch(block, /## Fixed/);
 });
 
-test("renderBacklogIndexBlock marks an entry carrying a Needs-replan note", () => {
+test("renderBacklogIndexBlock marks an entry carrying a final-round-rejection Needs-review note", () => {
   const dir = tmpdir();
   fs.writeFileSync(
     path.join(dir, "PLANS.md"),
     "# Plans\n## Planned\n### One (planned 2026-10-01)\nbody\n### Two (planned 2026-10-02)\n" +
-      "**Needs replan 2026-10-07 by feature: rejected after 2 review rounds**\n## Done\n_None._\n",
+      "**Needs review 2026-10-07 by feature: rejected after 2 review rounds**\n## Done\n_None._\n",
   );
   const block = renderBacklogIndexBlock(dir);
   assert.ok(block);
   assert.match(block, /- 3-4: One\n/);
-  assert.match(block, /- 5-6: Two \[blocked: needs replan\]/);
+  assert.match(block, /- 5-6: Two \[blocked: needs review\]/);
 });
 
 test("renderBacklogIndexBlock marks a held entry as blocked, refused or needing review", () => {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildDirectorPrompt, buildRunPrompt } from "../src/prompt/prompt.js";
 import { NOTHING_TO_DO, SUMMARY_BLOCK } from "../src/verdict/reply-contract.js";
 import { ROLES, roleById } from "../src/roles/roles.js";
-import { CONVERGENCE_HOLD_MARKER, NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, VALIDATION_GAP_QUERY } from "../src/roles/role-guidance.js";
+import { CONVERGENCE_HOLD_MARKER, NEEDS_REVIEW_NOTE, VALIDATION_GAP_QUERY } from "../src/roles/role-guidance.js";
 import { oneLine } from "./helpers/oracles.js";
 
 // What each role's own prompt says: the per-role find text and content contracts (qa,
@@ -443,7 +443,6 @@ test("the feature role reads its plan from the injected index, matches the revie
   assert.match(find, /The reviewer checks your diff against the entry's files-touched list and acceptance criteria/);
   assert.match(find, /A plan too large to finish in this run is not split by you/);
   assert.ok(find.includes(NEEDS_REVIEW_NOTE), "feature embeds the marker");
-  assert.ok(find.includes(NEEDS_REPLAN_NOTE), "feature embeds the replan marker");
   assert.match(find, /append the note .* under its heading, skip it, and implement the next available plan that fits/);
   assert.match(find, /land exactly one plan/);
   assert.match(find, /skip entries already carrying a \*\*Needs review …\*\* note/i);
@@ -475,7 +474,6 @@ test("the bugfix find text moves a fixed bug under the EXISTING ## Fixed heading
 test("the plan role prioritizes a Needs review plan, clears the note after splitting, and stops while plans wait", () => {
   const find = oneLine(roleById("plan")!.find);
   assert.ok(find.includes(NEEDS_REVIEW_NOTE), "plan embeds the marker");
-  assert.ok(find.includes(NEEDS_REPLAN_NOTE), "plan embeds the replan marker");
   assert.ok(find.includes(CONVERGENCE_HOLD_MARKER), "plan names the automatic convergence hold marker");
   assert.match(find, /outranks adding another plan/);
   assert.match(find, /split it into independently mergeable sub-plans that cross-reference each other/);
@@ -504,7 +502,6 @@ test("the director routes a user ruling on a marked plan", () => {
   assert.match(prompt, /A decision about a marked plan/);
   assert.match(prompt, /split it into independently landable sub-plans per PLAN_SIZING/);
   assert.match(prompt, /or clear the \*\*Needs review <YYYY-MM-DD> by feature: too large for one run \(held <N>\)\*\* note/);
-  assert.match(prompt, /or clear a \*\*Needs replan <YYYY-MM-DD> by feature: rejected after <N> review rounds \(held <H>\)\*\* note and rewrite the entry/);
 });
 test("the bugfix role bounds its latent-bug hunt and demands a reproduction", () => {
   const find = oneLine(roleById("bugfix")!.find);

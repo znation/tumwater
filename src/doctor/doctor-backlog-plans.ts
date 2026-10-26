@@ -376,24 +376,24 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
       `that adds another copy — remove the duplicate in a deliberate edit)`);
 }
 
-/** Stalled entries — plans or bugs held by a **Needs review …** or **Needs replan …** note,
+/** Stalled entries — plans or bugs held by a **Needs review …** note,
  * parked until the plan role splits or replans them, plus the held-for-operator entries
  * parked until the operator releases them. No role takes a held entry (the claim gate refuses
  * one) and nothing clears the note on its own, so the state is visible only as the
- * `[needs review]`/`[needs replan]` marks in the backlog listings; this names them so an
+ * `[needs review]` marks in the backlog listings; this names them so an
  * operator gets a single-line health signal from `tumwater doctor`. Reads the tree at `root`
  * — the primary checkout IS main's tree — like checkRefusedEntries, which is also where
  * refusal notes (a different hold) are surfaced. entryHold (src/backlog/backlog-eligibility.ts)
  * already classifies the notes, so this check adds no parsing: only the entries whose hold is
- * exactly needs-review, needs-replan, or held-for-operator are collected, from both PLANS.md
+ * exactly needs-review or held-for-operator are collected, from both PLANS.md
  * and BUGS.md. A warn, never a fail — the checkRefusedEntries precedent: a parked entry is
- * operator signal, not a broken environment; the plan role resolves the first two itself, and
+ * operator signal, not a broken environment; the plan role resolves the first itself, and
  * a held-for-operator entry is the operator's to release (`tumwater plan|bug --release`). */
 export function checkStalledEntries(root: string): CheckOutcome {
   const planned = plannedPlanEntries(root);
   const collect = (entry: BacklogEntry, file: "plans" | "bugs"): { file: "plans" | "bugs"; entry: BacklogEntry } | null => {
     const hold = entryHold(entry, planned);
-    return hold === "needs-review" || hold === "needs-replan" || hold === "held-for-operator" // vocabulary-ok: the held-for-operator hold's key
+    return hold === "needs-review" || hold === "held-for-operator" // vocabulary-ok: the held-for-operator hold's key
       ? { file, entry }
       : null;
   };
@@ -402,18 +402,18 @@ export function checkStalledEntries(root: string): CheckOutcome {
     ...openBugEntries(root).map((e) => collect(e, "bugs")),
   ].filter((x): x is { file: "plans" | "bugs"; entry: BacklogEntry } => x !== null);
   const [first, ...rest] = stalled;
-  if (!first) return okOutcome("no planned plan or open bug is held by a Needs-review, Needs-replan, or held-for-operator note"); // vocabulary-ok: names the held-for-operator hold
+  if (!first) return okOutcome("no planned plan or open bug is held by a Needs-review or held-for-operator note"); // vocabulary-ok: names the held-for-operator hold
   const more = andMore(rest, (s) => quoteHeading(s.entry.title));
   const kind = entryKindLabel(first.file); // "Bug" | "Plan"
   const head = `${first.file === "bugs" ? "BUGS.md" : "PLANS.md"} ${kind.toLowerCase()}`;
   const hold = entryHold(first.entry, planned);
   const note = (first.entry.body.split(/\n/).find(
-    (line) => line.trimStart().startsWith("**Needs review ") || line.trimStart().startsWith("**Needs replan "),
+    (line) => line.trimStart().startsWith("**Needs review "),
   ) ?? "").replace(/^\s*\*\*/, "").replace("**", "");
   if (hold === "held-for-operator") { // vocabulary-ok: the held-for-operator hold's key
     return warnOutcome(`${head} ${quoteHeading(first.entry.title)} is held for the operator ${heldCount(first.entry.body)} times${more} — release it with tumwater ${kind.toLowerCase()} --release`); // vocabulary-ok: a held-for-operator entry is the operator's to release
   }
-  return warnOutcome(`${head} ${quoteHeading(first.entry.title)} is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
+  return warnOutcome(`${head} ${quoteHeading(first.entry.title)} is held by a Needs review note ` +
       `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);
 }
 

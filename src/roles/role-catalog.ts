@@ -11,7 +11,6 @@ import {
   CONVERGENCE_HOLD_MARKER,
   DECOMPOSITION_GUIDANCE,
   HELD_TAG_PREFIX,
-  NEEDS_REPLAN_NOTE,
   NEEDS_REVIEW_NOTE,
   PLAN_QUEUE_GUIDANCE,
   PLAN_SIZING,
@@ -79,17 +78,16 @@ export const ROLES: Role[] = [
       entry's line range; read the one you pick by that range.
    2. Pick one entry under \`## Planned\`, preferring ones marked ready or with a written plan.
       Skip entries the index block marks \`[blocked: …]\` — \`[blocked: requires …]\` (a
-      prerequisite has not merged), \`[blocked: refused]\`, \`[blocked: needs review]\` or
-      \`[blocked: needs replan]\`. Skip plans whose entry carries a Refused note, and skip
-      entries already carrying a **Needs review …** note or a ${NEEDS_REPLAN_NOTE}. If PLANS.md
+      prerequisite has not merged), \`[blocked: refused]\`, \`[blocked: needs review]\`.
+      Skip plans whose entry carries a Refused note, and skip
+      entries already carrying a **Needs review …** note. If PLANS.md
       is empty or everything is done, there is nothing to do.
    3. Read only the chosen entry's line range and the code it names.
    4. A plan too large to finish in this run is not split by you: append the note
       ${NEEDS_REVIEW_NOTE}
       under its heading, skip it, and implement the next available plan that fits. You may mark
       several oversized entries while scanning, but land exactly one plan. The held tag you write
-      — \`${HELD_TAG_PREFIX}<N>)\` on a Needs-review note, \`${HELD_TAG_PREFIX}<H>)\` on a
-      Needs-replan note — is ONE past the count already on the entry: read your own or an earlier
+      — \`${HELD_TAG_PREFIX}<N>)\` on a Needs-review note — is ONE past the count already on the entry: read your own or an earlier
       mark's \`${HELD_TAG_PREFIX}N)\` tag, else the \`${PRIOR_HELD_PREFIX}<N>**\` line a lift left
       behind, else start at 1 — never reset it while the same plan ping-pongs, so three holds
       without a merge reach \`${HELD_TAG_PREFIX}3)\`. A plan that merged and left \`## Planned\`
@@ -148,12 +146,12 @@ within that budget, there is nothing to do.`,
         names, headed \`### Declare the project's deterministic check\` and marked on its own line
         with ${CHECK_DECLARATION_MARKER}, before anything else — the eligible-plan stop below
         yields to it within an admitted run (a full plan backlog can still defer the plan role
-        before this prompt is built). A Needs-review/Needs-replan lift and an assigned claim still
+        before this prompt is built). A Needs-review lift and an assigned claim still
         come first.
       - A plan carrying a ${NEEDS_REVIEW_NOTE} note outranks adding another plan: split it into
         independently mergeable sub-plans that cross-reference each other (per PLAN_SIZING below,
         each with its own acceptance criteria), then remove the note. That split is this run's task.
-      - A BUGS.md \`## Open\` entry carrying a ${NEEDS_REVIEW_NOTE} or ${NEEDS_REPLAN_NOTE} note
+      - A BUGS.md \`## Open\` entry carrying a ${NEEDS_REVIEW_NOTE} note
         (the feature or bugfix role parked it as too large for one run) also outranks adding another
         plan: resolve it in the same run by splitting it into independently fixable sub-bugs (each
         its own BUGS.md heading) then removing the note, or by lifting the note when the work does
@@ -164,12 +162,14 @@ within that budget, there is nothing to do.`,
         the quoted objections and the code they name and rewrite the plan so an implementation
         following it would answer each — correcting the approach or the anchors, tightening the
         acceptance criteria, or splitting it per PLAN_SIZING — then remove the note.
-      - A plan carrying a ${NEEDS_REPLAN_NOTE} note also outranks adding another plan: read the
-        quoted objections and the code they name, then rewrite the plan so an implementation
-        following it would answer them — correcting the approach or the anchors, tightening the
-        acceptance criteria, splitting it per PLAN_SIZING, or refusing it with the objection
-        recorded when it should not be done — and remove both the note and the quoted objections.
-      - When you lift a Needs-review or Needs-replan note (a split or a rewrite) and the change
+      - A plan carrying a **Needs review …** note that quotes the reviewer's surviving objections
+        (a final-round rejection — \`rejected after <N> review rounds\`) also outranks adding another
+        plan: read the quoted objections and the code they name, then rewrite the plan so an
+        implementation following it would answer them — correcting the approach or the anchors,
+        tightening the acceptance criteria, splitting it per PLAN_SIZING, or refusing it with the
+        objection recorded when it should not be done — and remove both the note and the quoted
+        objections.
+      - When you lift a Needs-review note (a split or a rewrite) and the change
         has NOT merged, keep the held count instead of letting it reset: remove any existing
         \`**Previously held N**\` line on the surviving parent and every child part the split
         produces, then write \`${PRIOR_HELD_PREFIX}<N>**\` at the lifted note's count on the

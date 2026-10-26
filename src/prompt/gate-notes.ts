@@ -1,5 +1,5 @@
 import { shortSha } from "../text/format.js";
-import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, CHECK_DECLARATION_MARKER } from "../roles/role-guidance.js";
+import { NEEDS_REVIEW_PREFIX, NEEDS_REVIEW_NOTE, CHECK_DECLARATION_MARKER } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { numberedList } from "../text/markdown.js";
@@ -37,12 +37,12 @@ export function buildRejectedReviewNote(review: {
   }
   // On exhaustion the rejected diff is gone. Feature's rejected change often implemented a
   // PLANS.md entry, and re-authoring the same plan from scratch is what produced the long
-  // rejection runs this note exists to end, so feature is sent to replan the entry instead.
-  // A plan-less role has no downstream role to replan for it, so it is sent to its own
-  // notes instead: it records the abandoned purpose and any instances that remain
-  // unhandled, then takes a different theme on the next run. Re-authoring the same purpose
-  // from the same objections is what restarted the round and produced the long rejection
-  // runs this note exists to end. The markdown-only replan note merges review-exempt, but a
+  // rejection runs this note exists to end, so feature is sent to write a Needs-review note so
+  // the plan role rewrites the entry. A plan-less role has no downstream role to replan for it,
+  // so it is sent to its own notes instead: it records the abandoned purpose and any instances
+  // that remain unhandled, then takes a different theme on the next run. Re-authoring the same
+  // purpose from the same objections is what restarted the round and produced the long rejection
+  // runs this note exists to end. The markdown-only Needs-review note merges review-exempt, but a
   // merged change clears the standing rejection (clearSupersededRejection, run-apply.ts), so
   // the instruction does not re-inject once the note has merged. `role` is the runner id, so
   // feature's instances (`feature-2`, …) are matched through their base role: matched bare,
@@ -52,7 +52,7 @@ export function buildRejectedReviewNote(review: {
   if (review.exhausted) {
     finality =
       role !== undefined && baseRoleOf(role) === "feature"
-        ? ` This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. If it implemented a PLANS.md entry, do not re-author it: append ${NEEDS_REPLAN_NOTE} under that entry's heading, with the numbered objections above quoted beneath it, and merge that markdown-only change and nothing else so the plan role can rewrite the plan. Otherwise, redo the change against current main.`
+        ? ` This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. If it implemented a PLANS.md entry, do not re-author it: append ${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: rejected after <N> review rounds** under that entry's heading, with the numbered objections above quoted beneath it, and merge that markdown-only change and nothing else so the plan role can rewrite the plan. Otherwise, redo the change against current main.`
         : " This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. Do not re-author it. Record the abandoned purpose and any instances of it that remain unhandled in your notes, then take a different theme on this run: re-deriving the same purpose from the same objections is what produced the long rejection runs this note exists to end.";
   }
   const tail = finality === "" ? "" : `\n${finality.trim()}`;
@@ -139,7 +139,7 @@ ${titles.map((t) => `- "${t}"`).join("\n")}
 export function buildNoCheckNote(role: string): string {
   if (baseRoleOf(role) === "plan") {
     return `<no-check>
-This project declares no deterministic check, so the safety gates are off. Before anything else, write the entry that declares one: headed \`### Declare the project's deterministic check\`, marked on its own line with ${CHECK_DECLARATION_MARKER}, naming the exact command and the route it lands by — a \`test\`/\`typecheck\`/\`build\` script added to package.json when the walked-up install root carries one, else \`check.command\` — with acceptance criteria that the doctor's \`check\` row reads ok and the \`no-check\` alert is gone. Writing it is this run's work even when the eligible-plan target is already met, so the in-prompt queue-full stop yields to it; a full plan backlog defers the plan role before this prompt is built, so this note only reaches a run already admitted past that stop. A Needs-review/Needs-replan lift and an assigned claim still come first. A project with nothing to verify yet — no source, no script to wire — gets no plan: end with ${NOTHING_TO_DO} instead.
+This project declares no deterministic check, so the safety gates are off. Before anything else, write the entry that declares one: headed \`### Declare the project's deterministic check\`, marked on its own line with ${CHECK_DECLARATION_MARKER}, naming the exact command and the route it lands by — a \`test\`/\`typecheck\`/\`build\` script added to package.json when the walked-up install root carries one, else \`check.command\` — with acceptance criteria that the doctor's \`check\` row reads ok and the \`no-check\` alert is gone. Writing it is this run's work even when the eligible-plan target is already met, so the in-prompt queue-full stop yields to it; a full plan backlog defers the plan role before this prompt is built, so this note only reaches a run already admitted past that stop. A Needs-review lift and an assigned claim still come first. A project with nothing to verify yet — no source, no script to wire — gets no plan: end with ${NOTHING_TO_DO} instead.
 </no-check>`.trim();
   }
   return `<no-check>

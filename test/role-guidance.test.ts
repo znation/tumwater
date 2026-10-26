@@ -7,8 +7,6 @@ import { roleById } from "../src/roles/roles.js";
 import {
   CONVERGENCE_HOLD_MARKER,
   DECOMPOSITION_GUIDANCE,
-  NEEDS_REPLAN_NOTE,
-  NEEDS_REPLAN_PREFIX,
   NEEDS_REVIEW_NOTE,
   NEEDS_REVIEW_PREFIX,
   PLAN_QUEUE_GUIDANCE,
@@ -186,22 +184,12 @@ test("the Needs review marker is embedded in the feature, plan, and director pro
   assert.ok(oneLine(buildDirectorPrompt("split plan X")).includes(NEEDS_REVIEW_NOTE));
 });
 
-test("the Needs replan marker is embedded in the feature, plan, and director prompts", () => {
-  assert.ok(oneLine(roleById("feature")!.find).includes(NEEDS_REPLAN_NOTE));
-  assert.ok(oneLine(roleById("plan")!.find).includes(NEEDS_REPLAN_NOTE));
-  assert.ok(oneLine(buildDirectorPrompt("replan plan X")).includes(NEEDS_REPLAN_NOTE));
-});
-
-test("the held-count tag is pinned by the note templates and PRIOR_HELD_NOTE round-trips through heldCount", () => {
-  // Both notes carry the live held tag from the backlog-hold convergence series: the feature
-  // role writes the count, heldCount reads it. The tag sits inside the line, so the note
-  // prefixes still recognize a tagged note — entryHold's classification is unchanged except for
-  // the count. The replan note's held placeholder is <H> (held), distinct from the <N>
-  // review-round count earlier in the same line.
+test("the held-count tag is pinned by the note template and PRIOR_HELD_NOTE round-trips through heldCount", () => {
+  // The feature role writes the count, heldCount reads it. The tag sits inside the line, so the
+  // note prefix still recognizes a tagged note — entryHold's classification is unchanged except
+  // for the count.
   assert.ok(NEEDS_REVIEW_NOTE.includes("(held <N>)"));
-  assert.ok(NEEDS_REPLAN_NOTE.includes("(held <H>)"));
   assert.ok(NEEDS_REVIEW_NOTE.startsWith(NEEDS_REVIEW_PREFIX), "review prefix still matches a tagged note");
-  assert.ok(NEEDS_REPLAN_NOTE.startsWith(NEEDS_REPLAN_PREFIX), "replan prefix still matches a tagged note");
   // The surviving marker a lift leaves keeps the count (it does not reset across a split), and
   // heldCount reads that line, so a PRIOR_HELD_NOTE-shaped line round-trips the count.
   assert.ok(PRIOR_HELD_NOTE.includes("Previously held <N>"));
@@ -209,9 +197,8 @@ test("the held-count tag is pinned by the note templates and PRIOR_HELD_NOTE rou
   assert.equal(heldCount("**Needs review 2026-10-23 by feature: too large for one run (held 3)**"), 3);
 });
 
-test("the feature text names the (held N)/(held H) tag and the plan text names the Previously held marker", () => {
+test("the feature text names the (held N) tag and the plan text names the Previously held marker", () => {
   assert.ok(oneLine(roleById("feature")!.find).includes("(held <N>)"));
-  assert.ok(oneLine(roleById("feature")!.find).includes("(held <H>)"));
   assert.ok(oneLine(roleById("feature")!.find).includes("(held 3)"));
   assert.ok(oneLine(roleById("plan")!.find).includes("**Previously held <N>**"));
 });

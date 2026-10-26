@@ -28,7 +28,7 @@ export function liftedNotePhrase(lifted: LiftableHold): string {
 
 /** Drop the Refused note from `entry`'s slice of `lines`, in place, and return its kind; an
  * entry with none loses its Waiting-for-the-next-failure note instead, and one with neither
- * loses its held-for-operator Needs-review/Needs-replan note (the `(held N)` count at/above
+ * loses its held-for-operator Needs-review note (the `(held N)` count at/above
  * threshold, plus its **Previously held N** line). Null (and `lines` untouched) when the entry
  * carries none of the three, shared by releaseEntry and tryReleaseEntry so they cannot drift. */
 function liftRefusal(lines: string[], entry: ActionableEntryRange): LiftableHold | null {

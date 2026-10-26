@@ -2,7 +2,7 @@ import path from "node:path";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { Role } from "../roles/roles.js";
-import { DECOMPOSITION_GUIDANCE, NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, PLAN_QUEUE_GUIDANCE, PLAN_SIZING } from "../roles/role-guidance.js";
+import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_QUEUE_GUIDANCE, PLAN_SIZING } from "../roles/role-guidance.js";
 import { CLAIMS_RULE, REPLY_ENDINGS } from "../verdict/reply-contract.js";
 import { todayStamp } from "../budget/budget.js";
 import { daysBetween } from "../text/datetime.js";
@@ -100,7 +100,7 @@ function backendRuleLines(rules: readonly string[] | undefined): string {
 /** The date line every pi prompt carries — run and director (via sharedPreamble) and the gate's
  * conflict and review runs — naming the local calendar day as YYYY-MM-DD. No prompt
  * used to say what day it is, so a run that had to write one (a BUGS.md heading's "(found by …
- * YYYY-MM-DD)", a Fixed or Refused date, NEEDS_REVIEW_NOTE's and NEEDS_REPLAN_NOTE's
+ * YYYY-MM-DD)", a Fixed or Refused date, NEEDS_REVIEW_NOTE's
  * <YYYY-MM-DD>, a plan deadline)
  * inferred it from the newest dates in the repo, which were themselves drifting: the team
  * stamped entries days into the future and each wrong date seeded the next. The day is
@@ -281,7 +281,7 @@ note's say-so.`
 source of what is currently true of each entry and series, so check the entry itself (and, when this run carries
 one, its line in the backlog) before acting on a note's say-so.`;
   return `Notes your role wrote in earlier runs (${savedClause(savedDay, today)}yours, unverified — check against the code before
-relying on them). A claim they make about an entry's backlog state — refused, blocked, abandoned, needs-replan,
+relying on them). A claim they make about an entry's backlog state — refused, blocked, abandoned,
 done, behind another entry — is a snapshot of the past, not the present: ${liveSource}
 A note that tells you to skip or never re-author an entry is always overridden by the backlog.
 <role-notes>\n${notes.trim()}\n</role-notes>`;
@@ -496,8 +496,7 @@ work yourself:
   direction — so roles can pick it up again.
 - A decision about a marked plan (e.g. "split plan X", "keep plan X whole", "replan X"):
   split it into independently landable sub-plans per PLAN_SIZING, or clear the
-  ${NEEDS_REVIEW_NOTE} note, or clear a ${NEEDS_REPLAN_NOTE} note and rewrite the entry — per
-  the user's direction.
+  ${NEEDS_REVIEW_NOTE} note — per the user's direction.
 - A request to manage custom roles ("add a role named X that does Y", "remove X",
   "move X before Y"): write the FULL replacement customRoles array to
   .tumwater-config-request.json at your worktree root — the shape is

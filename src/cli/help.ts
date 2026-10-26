@@ -318,7 +318,7 @@ Usage:
                                    line for line; wakes the bugfix role
   tumwater bug --release <n> [--json]
                                    Lift the Refused, Waiting for the next failure, or a
-                                   Needs-review/Needs-replan note held past its threshold
+                                   Needs-review note held past its threshold
                                    (one per run) from the Nth entry in BUGS.md ## Open (as
                                    \`tumwater bug --list\` lists it), commit it on main, and wake
                                    the bugfix role; --json prints {file, title, lifted}
@@ -375,7 +375,7 @@ Usage:
                                    kept line for line; wakes the feature role
   tumwater plan --release <n> [--json]
                                    Lift the Refused, Waiting for the next failure, or a
-                                   Needs-review/Needs-replan note held past its threshold
+                                   Needs-review note held past its threshold
                                    (one per run) from the Nth entry in PLANS.md ## Planned
                                    (as \`tumwater plan --list\` lists it), commit it on main,
                                    and wake the feature role; --json prints {file, title, lifted}

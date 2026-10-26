@@ -32,12 +32,12 @@ export function planBacklogTarget(config: TumwaterConfig): number {
 }
 
 /** Does PLANS.md already hold the plan role's target (planBacklogTarget eligible plans), with no
- * plan marked needs-review or needs-replan? The charter makes splitting or replanning a marked
+ * plan marked needs-review? The charter makes splitting or replanning a marked
  * plan outrank the stop, so a marked entry keeps the plan role running; otherwise a plan run can
  * only end in TUMWATER_NOTHING_TO_DO and the scheduler defers it (deferRunReason). */
 export function planBacklogFull(root: string, config: TumwaterConfig): boolean {
   if (eligibleEntries(root, "feature").length < planBacklogTarget(config)) return false;
-  return !backlogHolds(root).plans.some((h) => h === "needs-review" || h === "needs-replan");
+  return !backlogHolds(root).plans.some((h) => h === "needs-review");
 }
 
 /** The runner fields the claim policies read (structural stand-in for RoleRunner, so claims.ts

@@ -166,8 +166,8 @@ discards a role's in-flight merge.
   `no free entry`. A bugfix instance does the same while BUGS.md has open bugs but none is
   eligible (with no open bugs at all it keeps searching for latent bugs). The plan role keeps
   `instances(feature) + 1` eligible plans ahead so every feature instance has something to
-  take (a due plan run defers while that many are waiting and none is marked needs-review or
-  needs-replan). The plan run's prompt gives both the target and the current count, the same
+  take (a due plan run defers while that many are waiting and none is marked needs-review). The
+  plan run's prompt gives both the target and the current count, the same
   count the deferral uses. `tumwater status`, the TUI and the dashboard name each instance's assigned entry
   while it is idle or merging, `tumwater logs` renders the `claim` assigned/released events, and
   `tumwater doctor`'s `parallel instances` check warns on an assignment whose entry is gone or stale.
@@ -538,7 +538,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   a stale bug, a failed notify page, a broken plan dependency clause, a dirty primary checkout
   refusing merges, a stranded inbox prompt,
   a stalled merge queue, a merge-queue file the reader skips, a waiting bug held a week, a plan or bug stalled by a
-  Needs review or Needs replan note, checks that flapped more than once in the last day, a
+  Needs review note, checks that flapped more than once in the last day, a
   stale or oversized flake quarantine,
   a burst of post-merge review rejections, each an already-merged commit,
   a post-merge review one failed run from being dropped,

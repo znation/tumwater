@@ -682,7 +682,7 @@ but keeps the owner's own claim".
 **Guarantee.** `entryHoldAgainst` holds an entry whose heading's trailing parenthetical (or a
 parenthetical left open by a wrapped heading) names, through `requiredParts`, a part still listed
 under `## Planned`. Once no named part is planned, the hold lifts. A `requires` mention in the body
-never holds. A note line (Refused, Needs review, Needs replan, Waiting for the next failure) holds
+never holds. A note line (Refused, Needs review, Waiting for the next failure) holds
 as well. `planDependencyProblems` reports a still-planned prerequisite named without the clause.
 The parse treats the keyword `parts`/`part` as belonging to neither a named series nor a bare ref,
 and a bare ref (e.g. `3/4` in `reviewer-as-role parts 1/4 and 3/4`) inherits the series the clause
@@ -699,7 +699,7 @@ parenthetical, expands ranges, and resolves bare refs to the own series", "requi
 parts keyword out of a named series and bare refs inherit the clause's last named series", "a body mentioning
 'requires' never blocks — only the heading's clause does", "entryHold blocks a wrapped heading while
 its prerequisite is planned", "prerequisitesMerged returns the refs only when none is still
-planned", "entryHold reports blocked, refused, needs-review and needs-replan, and null when
+planned", "entryHold reports blocked, refused and needs-review, and null when
 eligible", "entryHold resolves a <Series> parts a/n and b/n clause to the named series, not the entry's own", "planDependencyProblems does not dangle a <Series> parts a/n and b/n clause", "a waiting-for-the-next-failure note holds a bug, only as a line prefix" and
 "planDependencyProblems flags a still-planned prerequisite named without a requires clause".
 
@@ -3485,7 +3485,7 @@ plan, and `[in flight by <role>]` while any role's live claim names it.
 `src/backlog/backlog-eligibility.ts` (`entryHoldAgainst`, `holdMark`).
 
 **Pinned by.** `test/backlog-structure.test.ts` — "renderBacklogIndexBlock marks an entry carrying a
-Needs-replan note", "renderBacklogIndexBlock marks a held entry as blocked, refused or needing
+final-round-rejection Needs-review note", "renderBacklogIndexBlock marks a held entry as blocked, refused or needing
 review", "renderBacklogIndexBlock blocks a BUGS.md entry whose prerequisite plan is unmerged",
 "renderBacklogIndexBlock marks an entry another role has claimed as in flight" and
 "renderBacklogIndexBlock marks an entry a parallel-work instance has claimed as in flight by that

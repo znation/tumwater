@@ -407,29 +407,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 2a/6: The `Needs replan` kind folds into `Needs review` — a rejected plan becomes one note carrying the reviewer's objections (planned 2026-10-26 by the plan role, split from the too-large part 2/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; the first of three finer parts replacing part 2/6, holding no prerequisite and independent in files of the two finer parts it serialises ahead of (2b/6 and 2c/6); touches src/roles/role-guidance.ts src/prompt/gate-notes.ts src/backlog/backlog-eligibility.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts docs/glossary.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts)
-
-**Previously held 1**
-
-**Goal.** A plan whose change is rejected after its final revision round is parked with one `**Needs review …**` note that quotes the reviewer's surviving objections; `**Needs replan …**` stops existing as a note kind, a hold, an index mark and a doctor wording.
-
-**Approach.**
-- src/roles/role-guidance.ts: delete `NEEDS_REPLAN_PREFIX` and `NEEDS_REPLAN_NOTE`. `NEEDS_REVIEW_PREFIX`/`NEEDS_REVIEW_NOTE` keep the `(held <N>)` tag until part 2c/6.
-- src/prompt/gate-notes.ts: its final-revision-round clause (the `This was the change's final revision round` text) tells the author to append the Needs-review note form carrying the numbered objections, not `NEEDS_REPLAN_NOTE`.
-- src/backlog/backlog-eligibility.ts: drop the `NEEDS_REPLAN_PREFIX` import; `heldCount` and `lineHeldCount` recognise only `NEEDS_REVIEW_PREFIX`; `EntryHold` drops `"needs-replan"`; `entryHoldAgainst` names only the refused, needs-review, held-for-operator (until 2c/6) and blockedBy holds; `holdMark` drops the ` [blocked: needs replan]` mark; `StalledEntry`'s `hold` drops the member.
-- src/roles/role-catalog.ts and src/prompt/prompt.ts: the feature/plan bullets that name a `NEEDS_REPLAN_NOTE` say a Needs-review note instead; drop the import.
-- src/doctor/doctor-backlog-plans.ts: `checkStalledEntries` collects `needs-review` and (until 2c/6) `held-for-operator` only; its wording no longer says "Needs-replan".
-- docs/glossary.md: the hold rows drop `Needs replan`.
-- tests: test/backlog-eligibility.test.ts and test/doctor-checks.test.ts lose their needs-replan cases and gain one asserting a final-round rejection classifies `needs-review`.
-
-**Files touched.** src/roles/role-guidance.ts src/prompt/gate-notes.ts src/backlog/backlog-eligibility.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts docs/glossary.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts
-
-**Acceptance criteria.**
-- `grep -rn 'NEEDS_REPLAN\|Needs replan\|needs-replan' src/ docs/` is empty.
-- A plan rejected after its final revision round is written as one `**Needs review …**` note quoting the reviewer's objections, and `entryHold` classifies it `needs-review`.
-- No edit outside the files listed.
-- `npm run test:gate` passes.
-
 ### Subtract, part 2b/6: The `Waiting for the next failure` kind folds into `Needs review` — an unreproducible bug becomes one note naming what would make it fail (planned 2026-10-26 by the plan role, split from the too-large part 2/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; requires Subtract part 2a/6 landed, since both edit the same guidance constants and eligibility classifier; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-index.ts src/roles/role-catalog.ts src/run/stage-backlog-checks.ts src/run/stage-check.ts src/prompt/notes-backlog.ts src/doctor/doctor-backlog-bugs.ts src/doctor/doctor-backlog.ts src/ui/alert-feeds.ts src/gui/gui-backlog-endpoints.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/cli/help.ts docs/glossary.md docs/how-it-works.md BUGS.md test/backlog-eligibility.test.ts test/backlog-release-holds.test.ts test/doctor-backlog.test.ts test/stage-check.test.ts test/notes-backlog.test.ts test/gui-endpoints.test.ts test/gui-client-drawer.test.ts test/tui-keys.test.ts test/team-alerts.test.ts)
 
 **Previously held 1**

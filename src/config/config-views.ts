@@ -256,7 +256,7 @@ export function configForRole(config: TumwaterConfig, role: string): ResolvedMod
 
 /** The config a role's runs SCHEDULE from: configForRole, except that while PLANS.md still
  * has planning room (planBacklogOpen — below the plan role's eligible-plan target, or holding
- * a plan that needs review/needs replan) the plan role schedules with a ZERO min gap, so a
+ * a plan that needs review) the plan role schedules with a ZERO min gap, so a
  * productive plan run reruns on the next poll and an unproductive one drops to the idle
  * backoff. The plan role's own machine signal is `planBacklogFull` (src/scheduling/claims.ts):
  * a fresh project's empty backlog is not full, so this subsumes the old placeholder-status

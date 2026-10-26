@@ -284,7 +284,7 @@ test("a run whose notes name a planned part gets the live backlog block; the dir
       "# Plans",
       "## Planned",
       "### Codex backend, part 2b/9: b (planned 2026-10-01)",
-      "**Needs replan 2026-10-21 by plan: rewrite**",
+      "**Needs review 2026-10-21 by feature: rejected after 2 review rounds**",
       "### Codex backend, part 2c/9: c (planned 2026-10-01; requires Codex backend 2b/9 landed)",
       "body",
       "## Done",
@@ -298,7 +298,7 @@ test("a run whose notes name a planned part gets the live backlog block; the dir
   const notesEnd = withNote.prompt.indexOf("</role-notes>");
   const backlogIdx = withNote.prompt.indexOf("What the backlog says now");
   assert.ok(notesEnd >= 0 && backlogIdx > notesEnd, "the backlog block follows the live notes");
-  assert.match(withNote.prompt, /- Codex backend, part 2b\/9 — needs replan \(the plan role rewrites it\)/);
+  assert.match(withNote.prompt, /- Codex backend, part 2b\/9 — needs review\b/);
 
   // A run whose notes name nothing from the backlog gets no block.
   fs.writeFileSync(notes, "where things live, what was ruled out\n");
@@ -527,19 +527,19 @@ test("a rejected review rides along on the next run's prompt, reasons intact", (
   assert.match(result.prompt, /the test lies about coverage/);
 });
 
-test("an exhausted feature rejection carries the replan instruction on the next run", () => {
+test("an exhausted feature rejection carries the Needs-review note instruction on the next run", () => {
   const result = promptFor(root(), "feature", {
     state: { lastReview: { verdict: "reject", reasons: ["still wrong"], at: 1, exhausted: true } },
   });
   assert.ok(result);
-  assert.match(result.prompt, /Needs replan/);
+  assert.match(result.prompt, /rejected after <N> review rounds/);
   assert.match(result.prompt, /do not re-author it/);
 });
 
 // A feature instance keeps its claim through an exhausted chain, so its next prompt carries the
 // same <assigned-entry> beside the rejection. With the plan-less wording ("take a different
 // theme") the only way out the assignment offered was a Refused note (2026-10-21).
-test("a feature instance's exhausted rejection carries the replan instruction beside its claim", () => {
+test("a feature instance's exhausted rejection carries the Needs-review note instruction beside its claim", () => {
   const dir = root();
   const title = "Plan X";
   fs.writeFileSync(path.join(dir, "PLANS.md"), `# Plans\n## Planned\n### ${title}\nbody\n## Done\n`);
@@ -551,16 +551,16 @@ test("a feature instance's exhausted rejection carries the replan instruction be
   });
   assert.ok(result);
   assert.match(result.prompt, /<assigned-entry>/);
-  assert.match(result.prompt, /append \*\*Needs replan/);
+  assert.match(result.prompt, /append \*\*Needs review/);
   assert.doesNotMatch(result.prompt, /take a different theme/);
 });
 
-// Feature is told to merge a markdown-only Needs-replan note when a change exhausts its revision
+// Feature is told to merge a markdown-only Needs-review note when a change exhausts its revision
 // rounds. That merge is review-exempt, so it records no verdict; the merge fold clears the
 // standing rejection instead (clearSupersededRejection, run-apply.ts). This pins that the
 // instruction retires after the note merges rather than re-injecting and letting feature re-mark
 // an entry the plan role has already replanned.
-test("the exhausted-feature replan instruction retires once the markdown-only note merges", () => {
+test("the exhausted-feature Needs-review instruction retires once the markdown-only note merges", () => {
   const dir = root();
   const s = state({
     role: "feature",
@@ -568,12 +568,13 @@ test("the exhausted-feature replan instruction retires once the markdown-only no
   });
   const before = promptFor(dir, "feature", { state: s });
   assert.ok(before);
-  // The feature charter itself names "Needs replan", so the note is recognized by its
+  // The feature charter itself names "Needs review", so the note is recognized by its
   // exhausted-rejection sentence, not the bare phrase.
   assert.match(before.prompt, /do not re-author it/);
-  // The markdown-only replan note merges review-exempt: no model verdict is recorded, only the
+  // The markdown-only Needs-review note merges review-exempt: no model verdict is
+  // recorded, only the
   // merge fold fires.
-  applyMergeOutcome(s, "changed", { sha: "a".repeat(40), summary: "marked plan X for replan" });
+  applyMergeOutcome(s, "changed", { sha: "a".repeat(40), summary: "marked plan X with a Needs-review note" });
   const after = promptFor(dir, "feature", { state: s });
   assert.ok(after);
   assert.doesNotMatch(after.prompt, /do not re-author it/);

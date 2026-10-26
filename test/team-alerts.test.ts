@@ -550,11 +550,11 @@ test("stalled entries raise a standing amber alert naming the first entry and th
   assert.ok(one[0]!.detail.includes("plan role"));
   assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog", arg: "plans:2" }]);
   const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [
-    { file: "plans", index: 0, title: "A (planned 2026-10-14)", hold: "needs-replan" },
+    { file: "plans", index: 0, title: "A (planned 2026-10-14)", hold: "needs-review" },
     { file: "plans", index: 1, title: "B (planned 2026-10-14)", hold: "needs-review" },
   ]);
   assert.equal(two[0]!.title, "2 backlog entries are stalled in review");
-  assert.ok(two[0]!.detail.includes("Needs replan"));
+  assert.ok(two[0]!.detail.includes("Needs review"));
   assert.deepEqual(two[0]!.actions[0]?.arg, "plans:0");
   // An empty list raises no stalled-entries alert.
   assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], []), []);
@@ -1190,9 +1190,9 @@ test("stalledEntries and the surfaces carry a stalled-entries alert from PLANS.m
         "",
         "**Needs review 2026-10-20 by feature: too large for one run**",
         "",
-        "### Needs replanning (planned 2026-10-05)",
+        "### Needs rework (planned 2026-10-05)",
         "",
-        "**Needs replan 2026-10-21 by feature: rejected after 1 review round**",
+        "**Needs review 2026-10-21 by feature: rejected after 1 review round**",
       ].join("\n"),
     },
     { heading: "## Done" },

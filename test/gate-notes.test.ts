@@ -11,7 +11,7 @@ import {
   buildWaitingPartsNote,
   buildRejectedReviewNote,
 } from "../src/prompt/gate-notes.js";
-import { CHECK_DECLARATION_MARKER, NEEDS_REPLAN_NOTE } from "../src/roles/role-guidance.js";
+import { CHECK_DECLARATION_MARKER, NEEDS_REVIEW_PREFIX } from "../src/roles/role-guidance.js";
 
 // The rejected-review note is the ONLY cross-run memory of a failed change: every run
 // starts a fresh pi session, so if this note loses or mangles the reviewer's reasons the
@@ -46,29 +46,33 @@ test("buildRejectedReviewNote omits the context when the review recorded neither
 });
 
 // A change that used its last revision round must not be re-authored from scratch: the same
-// purpose would come back and the round would restart at 1 forever. Feature is sent to replan
-// the PLANS.md entry it implemented; a plan-less role is sent to its notes to record the
-// abandoned purpose and take a different theme.
-test("an exhausted feature rejection tells feature to replan, not re-author", () => {
+// purpose would come back and the round would restart at 1 forever. Feature is sent to write a
+// Needs-review note so the plan role rewrites the PLANS.md entry it implemented; a plan-less
+// role is sent to its notes to record the abandoned purpose and take a different theme.
+test("an exhausted feature rejection tells feature to write a Needs-review note, not re-author", () => {
   const note = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "feature");
-  assert.ok(note.includes(NEEDS_REPLAN_NOTE), "names the replan note");
+  assert.ok(note.includes(NEEDS_REVIEW_PREFIX), "names the Needs-review note");
+  assert.match(note, /rejected after <N> review rounds/);
   assert.match(note, /do not re-author it/);
   assert.doesNotMatch(note, /re-author it from current main/);
-  assert.ok(!buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "bugfix").includes(NEEDS_REPLAN_NOTE));
+  const planless = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "bugfix");
+  assert.ok(!planless.includes("rejected after <N> review rounds"), "a plan-less role is not sent to write the feature's Needs-review note");
 });
 
 // The caller passes the runner id. A feature instance holds a claim that keeps the same entry
 // assigned, so the plan-less "take a different theme" wording left it nothing to do but refuse
 // the plan, and the plan role never saw the objections (three Refused notes on 2026-10-21).
-test("an exhausted rejection on a feature instance tells it to replan, like bare feature", () => {
+test("an exhausted rejection on a feature instance tells it to write a Needs-review note, like bare feature", () => {
   for (const id of ["feature-2", "feature-10"]) {
     const note = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, id);
-    assert.ok(note.includes(NEEDS_REPLAN_NOTE), `${id} names the replan note`);
+    assert.ok(note.includes(NEEDS_REVIEW_PREFIX), `${id} names the Needs-review note`);
+    assert.match(note, /rejected after <N> review rounds/, `${id} carries the note template`);
     assert.doesNotMatch(note, /different theme/, `${id} is not sent to its notes`);
   }
   // A bugfix instance is still plan-less, and an id that only resembles an instance is not one.
   for (const id of ["bugfix-2", "feature-1"]) {
-    assert.ok(!buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, id).includes(NEEDS_REPLAN_NOTE), id);
+    const note = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, id);
+    assert.ok(!note.includes("rejected after <N> review rounds"), id);
   }
 });
 

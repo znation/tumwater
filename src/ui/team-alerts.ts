@@ -43,7 +43,7 @@ export type {
  * checkout refusing merges, a stranded inbox
  * prompt, a stalled merge queue, a
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
- * review or Needs replan note, checks that flapped more than once in the last day, a stale or
+ * review note, checks that flapped more than once in the last day, a stale or
  * oversized flake quarantine, a burst of post-merge review rejections, each a commit that
  * already reached main, a post-merge review one failed run from being dropped, a post-merge
  * review dropped after repeated failures, leaving its commit on main unreviewed, a main tip the

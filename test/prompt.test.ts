@@ -81,13 +81,13 @@ test("the role-notes heading says when the notes were last saved", () => {
 
 test("the notes block is followed by the live backlog state block when one is supplied", () => {
   const role = roleById("feature")!;
-  const backlogBlock = `What the backlog says now about entries your notes name (PLANS.md and BUGS.md as of this run; where your notes disagree, this is current):\n- Codex backend, part 2b/9 — needs replan (the plan role rewrites it)`;
+  const backlogBlock = `What the backlog says now about entries your notes name (PLANS.md and BUGS.md as of this run; where your notes disagree, this is current):\n- Codex backend, part 2b/9 — needs review (the reviewer's objections ride on it)`;
   const prompt = buildRunPrompt({ role, notes: "Codex 2b/9 carry Refused", notesBacklog: backlogBlock });
   const notesEnd = prompt.indexOf("</role-notes>");
   const backlogIdx = prompt.indexOf("What the backlog says now");
   assert.ok(notesEnd >= 0, "the notes block is present");
   assert.ok(backlogIdx > notesEnd, "the backlog block follows the notes block");
-  assert.ok(prompt.includes("- Codex backend, part 2b/9 — needs replan"), "the live state block renders");
+  assert.ok(prompt.includes("- Codex backend, part 2b/9 — needs review"), "the live state block renders");
   assert.match(prompt, /overridden by the backlog/, "the point of the live state block still holds");
 });
 
@@ -108,12 +108,12 @@ test("every role run is told to write a note, even the first one with none", () 
 
 test("the role-notes block names the <backlog-index> block above it as the live source of entry state", () => {
   // BUGS.md 2026-10-21: a role note can keep a hold belief ("the theme is dead; never
-  // re-author 2b/9") long after the backlog turns the entry into Needs-replan, because the
+  // re-author 2b/9") long after the backlog turns the entry into Needs-review, because the
   // note's claims about backlog state are never checked against the live backlog. The caption
   // must point the role at the <backlog-index> block that rides above it as the current truth.
   const role = roleById("feature")!;
   const notes = "Codex 2b/9 is dead — never re-add or re-author it.";
-  const prompt = buildRunPrompt({ role, notes, backlogIndex: "<backlog-index>\n2b/9: needs replan\n</backlog-index>" });
+  const prompt = buildRunPrompt({ role, notes, backlogIndex: "<backlog-index>\n2b/9: needs review\n</backlog-index>" });
   assert.match(prompt, /<backlog-index> block above is the live/);
   assert.match(prompt, /overridden by the backlog/);
   const indexPos = prompt.indexOf("<backlog-index>");

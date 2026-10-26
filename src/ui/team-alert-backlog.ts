@@ -78,7 +78,7 @@ function pushRefusedAlert(out: TeamAlert[], refused: readonly RefusedEntry[]): v
   }
 }
 
-// A Needs-review/Needs-replan entry whose held count reached the operator threshold parks
+// A Needs-review entry whose held count reached the operator threshold parks
 // until a human releases it (tumwater plan|bug --release, part 2/3); amber because only the
 // operator can clear it, right after the refused alert, naming the entry like the refused
 // alert does. Unlike refused, a held-for-operator entry is still in the normal review
@@ -98,7 +98,7 @@ function pushOperatorHeldAlert(out: TeamAlert[], operatorHeld: readonly RefusedE
   }
 }
 
-// An entry parked by a Needs-review/Needs-replan note (the doctor's `stalled entries` row,
+// An entry parked by a Needs-review note (the doctor's `stalled entries` row,
 // behind the held threshold) sits until the plan role splits or replans it — amber because
 // the plan role is the only one that can clear it, right after the operator-held alert,
 // naming the first such entry in file order, its file, its note kind, and the fix. Same
@@ -112,7 +112,7 @@ function pushStalledEntriesAlert(out: TeamAlert[], stalledEntries: readonly Stal
       key: "stalled-entries",
       tone: "amber",
       title: `${plural(stalledEntries.length, "backlog entry is stalled", "backlog entries are stalled")} in review`,
-      detail: `${entryKindLabel(first.file)} ${entryListDetail(stalledEntries.map((p) => p.title))} — ${first.hold === "needs-replan" ? "a Needs replan note parks it" : "a Needs review note parks it"}; the plan role splits or replans the entry, so one that keeps sitting here means the plan role is not running or keeps deferring`,
+      detail: `${entryKindLabel(first.file)} ${entryListDetail(stalledEntries.map((p) => p.title))} — a Needs review note parks it; the plan role splits or replans the entry, so one that keeps sitting here means the plan role is not running or keeps deferring`,
       actions: openBacklogAction(first),
     });
   }

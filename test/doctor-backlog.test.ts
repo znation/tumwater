@@ -456,7 +456,7 @@ test("checkRefusedEntries counts the planned parts that wait on a refused part",
   assert.ok(out.detail.includes('(and 1 more: PLANS.md plan #4 "Solo")'));
 });
 
-// checkStalledEntries — plans or bugs parked by a Needs-review or Needs-replan note until the
+// checkStalledEntries — plans or bugs parked by a Needs-review note until the
 // plan role splits or replans them, plus the held-for-operator entries until the operator
 // releases them: the doctor names them so the state is one-line visible, without the plan role
 // or any listing changing. Mirrors the checkRefusedEntries setup — the two are the same shape
@@ -472,19 +472,19 @@ test("checkStalledEntries warns naming the first stalled plan, its note, and the
   assert.match(out.detail, /the plan role resolves it by splitting or replanning/);
 });
 
-test("checkStalledEntries warns on a Needs-replan note too", () => {
+test("checkStalledEntries warns on a final-round-rejection Needs-review note too", () => {
   const dir = tmpdir("doctor-stalled-replan-");
   fs.writeFileSync(path.join(dir, "PLANS.md"),
-    `## Planned\n\n### Parked plan (planned 2026-10-14)\n**Needs replan 2026-10-14 by feature: rejected after 2 review rounds**\n`);
+    `## Planned\n\n### Parked plan (planned 2026-10-14)\n**Needs review 2026-10-14 by feature: rejected after 2 review rounds**\n`);
   const out = checkStalledEntries(dir);
   assert.equal(out.level, "warn");
-  assert.match(out.detail, /is held by a Needs replan note \(Needs replan 2026-10-14 by feature: /);
+  assert.match(out.detail, /is held by a Needs review note \(Needs review 2026-10-14 by feature: /);
 });
 
 test("checkStalledEntries warns once when both kinds are present, naming the rest via andMore", () => {
   const dir = tmpdir("doctor-stalled-both-");
   fs.writeFileSync(path.join(dir, "PLANS.md"),
-    `## Planned\n\n### First (planned 2026-10-14)\n**Needs review 2026-10-14 by feature: too large for one run**\n\n### Second (planned 2026-10-14)\n**Needs replan 2026-10-14 by feature: rejected after 2 review rounds**\n`);
+    `## Planned\n\n### First (planned 2026-10-14)\n**Needs review 2026-10-14 by feature: too large for one run**\n\n### Second (planned 2026-10-14)\n**Needs review 2026-10-14 by feature: rejected after 2 review rounds**\n`);
   const out = checkStalledEntries(dir);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /"Second \(planned 2026-10-14\)"/);
@@ -517,7 +517,7 @@ test("checkStalledEntries warns on a stalled bug and names tumwater bug --releas
 });
 
 test("checkStalledEntries reads ok with no notes, and ignores Done, Refused, and bodyless headings", () => {
-  const ok = { level: "ok", detail: "no planned plan or open bug is held by a Needs-review, Needs-replan, or held-for-operator note" };
+  const ok = { level: "ok", detail: "no planned plan or open bug is held by a Needs-review or held-for-operator note" };
   assert.deepEqual(checkStalledEntries(tmpdir("doctor-stalled-none-")), ok);
   const dir = tmpdir("doctor-stalled-closed-");
   const note = "**Needs review 2026-10-14 by feature: too large for one run**";

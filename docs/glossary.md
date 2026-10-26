@@ -106,7 +106,7 @@ Identifiers follow the glossary: fleet → team, loop → runner, tick → run, 
 | "slots 5/8", "Waiting for a slot", "Concurrent pi slots" | running 5 of 8, waiting to start, running at once | n/a (prose) |
 | worktree slot, worktree pool | workspace, workspaces | n/a (prose) |
 | merge slot, check slot, provider slot | not shown; say what is happening | n/a (prose) |
-| a held backlog entry ([refused], [needs review], [needs replan], [blocked: requires …]) | blocked (`[blocked: refused]`, `[blocked: needs review]`, …) | n/a (prose) |
+| a held backlog entry ([refused], [needs review], [blocked: requires …]) | blocked (`[blocked: refused]`, `[blocked: needs review]`, …) | n/a (prose) |
 | disk, bootstrap, maintenance, 429, backend, claude-window hold | waiting ("waiting: low disk") | n/a (prose) |
 | "paused" (for any hold) | paused only for a pause you set | n/a (prose) |
 | "main is red", "main red" | main's check is failing | n/a (prose) |

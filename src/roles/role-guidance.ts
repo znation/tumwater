@@ -133,13 +133,14 @@ export const VALIDATION_GAP_QUERY = `grep -snE '\\*\\*Validation gap:\\*\\* (${V
 
 /** The literal prefix every Needs-review note starts with. Exported so a reader that only has
  * to recognize one (the backlog index's ` [blocked: needs review]` mark) can match on it instead of
- * parsing the date or the wording out of the full template — the same split as
- * NEEDS_REPLAN_PREFIX. */
+ * parsing the date or the wording out of the full template. The rejected-final-round note the
+ * feature role appends (gate-notes.ts) also begins with this prefix, so it reads as a Needs-review
+ * note and is classified by entryHold accordingly. */
 export const NEEDS_REVIEW_PREFIX = `**Needs review `;
 
 /** The tag text before the held count, shared by the note templates and the parser
  * (backlog-eligibility's heldCount) so the two cannot drift: the live count on a Needs-review
- * or Needs-replan note is written inline as `(held N)`, with `N` one past the surviving prior
+ * note is written inline as `(held N)`, with `N` one past the surviving prior
  * count (the feature role appends it, the plan role's split carries it via PRIOR_HELD_NOTE). */
 export const HELD_TAG_PREFIX = `(held `;
 
@@ -157,9 +158,9 @@ export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature:
  * Exported so the writer and the reader share one literal: it sits between holdEntryAfterExhaustion
  * (which writes the note) and the plan role's charter (role-catalog.ts `find`) which reads it, so
  * reason to recognize the automatic hold as distinct from the feature role's too-large
- * ${NEEDS_REVIEW_NOTE} note and the ${NEEDS_REPLAN_PREFIX} note — both carry no
- * `could not converge` text, so the charter routes each hold to its own action without matching
- * on a second literal. Add no second spelling of this text. */
+ * ${NEEDS_REVIEW_NOTE} note — it carries no `could not converge` text, so the charter routes
+ * each hold to its own action without matching on a second literal. Add no second spelling of
+ * this text. */
 export const CONVERGENCE_HOLD_MARKER = "could not converge";
 
 /** The marker a lifted hold leaves behind, so a split or rewrite carries the count instead of
@@ -183,20 +184,6 @@ export const PRIOR_HELD_NOTE = `${PRIOR_HELD_PREFIX}<N>**`;
  * identical. */
 export const CHECK_DECLARATION_MARKER = `**Declares the project check**`;
 
-/** The literal prefix every Needs-replan note starts with. Exported so a reader that only has to
- * recognize one (the backlog index's ` [blocked: needs replan]` mark) can match on it instead of
- * parsing the date or the round count out of the full template. */
-export const NEEDS_REPLAN_PREFIX = `**Needs replan `;
-
-/** The markdown note the feature role appends under a plan whose change was rejected after its
- * final revision round, carrying the reviewer's objections back to the strong-tier plan role
- * instead of letting feature re-author the same plan. Same convention as NEEDS_REVIEW_NOTE: a
- * note a later fresh run reads, with no code parsing it. The trailing `(held <H>)` tag
- * (HELD_TAG_PREFIX) is the live held count, one past the count surviving on the entry; the
- * placeholder is `<H>` (for held) so it reads apart from the `<N>` review-round count earlier
- * in the same line. It sits inside the line, so NEEDS_REPLAN_PREFIX still recognizes the note. */
-export const NEEDS_REPLAN_NOTE = `${NEEDS_REPLAN_PREFIX}<YYYY-MM-DD> by feature: rejected after <N> review rounds ${HELD_TAG_PREFIX}<H>)**`;
-
 /** The literal prefix every Waiting-for-the-next-failure note starts with. Exported so a reader
  * that only has to recognize one (the backlog index's ` [blocked: waiting for the next failure]`
  * mark) can match on it instead of parsing the date or the wording out of the full template. */
@@ -204,7 +191,7 @@ export const WAITING_FOR_FAILURE_PREFIX = `**Waiting for the next failure `;
 
 /** The markdown note the bugfix role writes under an open bug it cannot reproduce once it has made
  * the failure explain itself, so bugfix stops spending runs without new evidence. Same convention
- * as NEEDS_REPLAN_NOTE: a note a later fresh run reads. It lifts when whoever records the next
+ * as NEEDS_REVIEW_NOTE: a note a later fresh run reads. It lifts when whoever records the next
  * occurrence deletes the line, or by `tumwater bug --release <n>`. */
 export const WAITING_FOR_FAILURE_NOTE = `${WAITING_FOR_FAILURE_PREFIX}<YYYY-MM-DD> by bugfix: <what the next failure's message will show>**`;
 
