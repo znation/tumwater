@@ -1,7 +1,7 @@
 import { submitRolePromptAndWake } from "../../operator/operator-intent.js";
 import { pushPromptHistory } from "./tui-prompt-history.js";
 import { parseRolePromptInput } from "./tui-input.js";
-import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
+import { viewedRole, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
 /** The per-role prompt Ctrl+R editor on the shared prompt line. It owns its mode flag (the
@@ -39,7 +39,7 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
       ctx.view >= 1 && ctx.view <= ctx.roleIds.length &&
       key.ctrl && key.name === "r"
     ) {
-      const role = ctx.roleIds[ctx.view - 1]!; // defined: view is clamped inside the transcript range
+      const role = viewedRole(ctx); // defined: view is clamped inside the transcript range
       try {
         if (rolePromptFor) {
           exitRolePromptMode();

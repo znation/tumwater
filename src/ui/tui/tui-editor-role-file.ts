@@ -1,4 +1,4 @@
-import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
+import { viewedRole, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
 import { readEditorPath, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The role-located file-read editor arm (Ctrl+E replace-notes, Ctrl+L replace-standing-
@@ -79,7 +79,7 @@ export function createRoleFileEditor(
         // Mid-recall, hand the arrows' saved draft back before the editor takes the line — the
         // same settle the role editors do — so leaving restores the draft, not a history entry,
         // with no stale recall state riding along.
-        const role = ctx.roleIds[ctx.view - 1]!; // defined: the open-arm range guard above pins the view into roleIds
+        const role = viewedRole(ctx); // defined: the open-arm range guard above pins the view into roleIds
         restoreDraft = session.takeDraft();
         editFor = role;
         session.held[spec.held] = role;

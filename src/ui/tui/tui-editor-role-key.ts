@@ -1,5 +1,5 @@
 import { baseRoleOf } from "../../roles/runner-ids.js";
-import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
+import { viewedRole, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
 /** The role-pinned editor arm (Ctrl+X role model, Ctrl+G parallel-runner count, Ctrl+S min
@@ -73,7 +73,7 @@ export function createRoleKeyEditor(
         return true;
       }
       if (!(ctx.view >= 1 && ctx.view <= ctx.roleIds.length) || spec.yieldsOn?.(ctx)) return false;
-      const role = ctx.roleIds[ctx.view - 1]!;
+      const role = viewedRole(ctx);
       if (session.editorEntryDenied(spec.mode)) return true;
       // Pin the role first so the write below is safe against a mid-edit roster shift, then
       // pre-fill from the file's own entry — one fresh read per open is the smallest honest

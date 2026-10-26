@@ -4,7 +4,7 @@ import { usdCap } from "../../text/format.js";
 import { DIRECTOR_ROLE } from "../../roles/roles.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import { parseBudgetInput } from "./tui-input.js";
-import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
+import { viewedRoleOrNull, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Ctrl+B budget editor on the shared prompt line. It owns its mode flag, its saved-draft
@@ -69,10 +69,7 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
       // The viewed role when a role's pane is up (the same in-range guard tui-editor-notes
       // carries, which also keeps roleIds[ctx.view - 1] safe when syncRoster shrinks the
       // roster); null on the Activity view, where the arm takes the team branch below.
-      const role =
-        ctx.view >= 1 && ctx.view <= ctx.roleIds.length
-          ? ctx.roleIds[ctx.view - 1]!
-          : null;
+      const role = viewedRoleOrNull(ctx);
       if (session.editorEntryDenied("budget")) return true;
       if (role === DIRECTOR_ROLE) {
         // The cap exempts the director (role-view.ts's rule), so there is nothing to edit.

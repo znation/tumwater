@@ -39,6 +39,20 @@ export interface TuiEditorCtx {
   briefMode: boolean;
 }
 
+/** The role id at the viewed index (`ctx.roleIds[ctx.view - 1]`) — the role each open-arm
+ * editor reads before acting. Its callers carry the in-range guard themselves (an editor
+ * falls through on a view outside the roster), so the deref is safe exactly where the
+ * inline form was. One home keeps the read identical across the editor family. */
+export function viewedRole(ctx: TuiEditorCtx): string {
+  return ctx.roleIds[ctx.view - 1]!;
+}
+
+/** `viewedRole` when the view is inside the roster, else null — the budget editor's open-arm
+ * guard, which keeps the role null on the Activity view instead of falling through. */
+export function viewedRoleOrNull(ctx: TuiEditorCtx): string | null {
+  return ctx.view >= 1 && ctx.view <= ctx.roleIds.length ? ctx.roleIds[ctx.view - 1]! : null;
+}
+
 /** The shared contract every per-editor module returns to the aggregator: its handleKey arms
  * (true when the editor consumed the key, false to fall through to the next editor in the
  * aggregator's priority order), the exit helper the shared exitAll calls, and — for the budget

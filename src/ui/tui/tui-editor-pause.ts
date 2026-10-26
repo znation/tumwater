@@ -26,7 +26,7 @@ import {
   parseRoleWakeInput,
   parseStopInInput,
 } from "./tui-input.js";
-import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
+import { viewedRole, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
 /** The pause/stop/wake editor on the shared prompt line: the whole-team Ctrl+F pause and Ctrl+Q
@@ -172,7 +172,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       ctx.view >= 1 && ctx.view <= ctx.roleIds.length &&
       key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w" || key.name === "v")
     ) {
-      const role = ctx.roleIds[ctx.view - 1]!; // defined: view is clamped inside the transcript range
+      const role = viewedRole(ctx); // defined: view is clamped inside the transcript range
       try {
         if (key.name === "p") {
           // Toggle by the marker's current state, read fresh: pauseRole/resumeRole's false
