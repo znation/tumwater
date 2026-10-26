@@ -175,11 +175,11 @@ the check cheaper or land less often, both of which this plan's strokes push tow
 
 | Part | What it deletes | Requires |
 | --- | --- | --- |
-| 1a–1e/6 Only a stopped team asks for a person | the amber/blue/gray alert builders, split into five sub-plans: 1a the dashboard's doctor link, 1b the staleness/notify/queue banners, 1c the review/check banners, 1d the status/tail banners, 1e the backlog staleness/structure banners | 1b: Subtract parts 1a/6 and 2a/6–2c/6; 1d: Subtract part 1c and 5/6; the rest chain part-by-part |
+| 1a–1e/6 Only a stopped team asks for a person | the amber/blue/gray alert builders, split into five sub-plans: 1a the dashboard's doctor link, 1b the staleness/notify/queue banners, 1c the review/check banners, 1d the status/tail banners, 1e the backlog staleness/structure banners | 1b: Subtract parts 1a/6 and 2a/6–2c/6; 1d: Subtract part 1c and 5e/6; the rest chain part-by-part |
 | 2a–2c/6 One hold vocabulary | 2a: Needs replan; 2b: Waiting for the next failure; 2c: the held counters and the operator-held threshold | 2b requires 2a; 2c requires 2b |
 | 3/6 The queue becomes a lock and a fast-forward | the queue stages, the batch check and bisect, the requeue, the drop limits, the interlock | Every commit is verified on main part 3f/3 |
 | 4/6 One runner per role | instance claims, the worktree pool, `instances` | Subtract part 3/6 |
-| 5/6 One model per role | tiers, fallback chains, provider caps, subscription windows, the image probe | — |
+| 5a–5e/6 One model per role | 5a the image-capability probe, 5b the per-provider caps, 5c the fallback chains, 5d the subscription-window carve-outs, 5e the tier map | 5b requires 5a; 5c requires 5b; 5d requires 5c; 5e requires 5d |
 | 6/6 The sweep | the rows, keys, aliases and docs the five parts left behind | — |
 
 ## Supersedes / retires

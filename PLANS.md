@@ -342,33 +342,13 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Acceptance criteria.**
 - One runner id per configured role; `tumwater status --json` carries no instance-pool or slot fields, and a run leases no slot.
-- `tumwater.json` with `instances` set is refused by validation naming the deleted key (the same treatment the other deleted keys get in part 5/6), not silently ignored.
+- `tumwater.json` with `instances` set is refused by validation naming the deleted key (the same treatment the other deleted keys get in parts 5a/6–5e/6), not silently ignored.
 - The measured p90 end-of-run → on main from the gate above is quoted in the part's PLANS-DONE entry, so the deletion's premise is on the record.
-- `npm run test:gate` passes.
-
-### Subtract, part 5/6: One model per role — tiers, fallback chains and provider caps go (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 5; touches src/config/config-schema.ts src/config/config.ts src/config/config-views.ts src/config/config-validation.ts src/runner/model-fallback.ts src/runner/runner-fallback.ts src/runner/runner-run.ts src/agent/subscription-account.ts src/team/team-polls.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-fallback-checks.ts src/doctor/doctor-contention-checks.ts src/doctor/image-probe.ts src/ui/team-alert-status.ts src/ui/team-alert-tail.ts docs/config.md docs/backends.md docs/how-it-works.md tumwater.example.json test/config.test.ts test/doctor-checks.test.ts)
-
-**Needs review 2026-10-26 by feature: too large for one run (held 1)**
-
-**Goal.** The model a run uses is the role's (or the seam's) model, named once in `tumwater.json`. The tier map, the fallback maps and chain steps, the per-provider caps, the subscription-window carve-outs and the image-capability probe are deleted: they route around a fleet that is expected to change, which is optimization for the wrong thing.
-
-**Approach.**
-- Config: keep the `model` map (role or seam id → selector). Delete the tier keys of `model` (TierMap, src/config/config-schema.ts:18, :46), the `fallback` maps and their chain steps (FallbackStep :24, FALLBACK_STEP_KEYS :33, the ordered-list form :35), `fallbackModel`/the fallback pair (:148-165), and `maxConcurrentPerProvider` (:298) with its audit (`checkProviderConcurrency`) — validation refuses each deleted key by name rather than ignoring it.
-- Delete the routing code and its observations: src/runner/model-fallback.ts, src/runner/runner-fallback.ts, the fallback legs of runner-run.ts, src/agent/subscription-account.ts with the `claude window`/`codex window` rows and team-polls' window observation, and src/doctor/image-probe.ts with the `image input` row and the two image alerts.
-- `maxDailyCostUsd` stays as the one spend limit, now per role; a spent cap pauses the role (today's budget behaviour) instead of switching it to an over-cap model, so `budget_fallback`/`budget_handback` and the fallback-budget rows go.
-- Delete the rows and alerts this removes: `models for each tier`, `fallback chain`, `over-cap model`, `provider concurrency`, `provider contention`, `claude window`, `codex window`, `image input`, `maxConcurrentPerProvider is misconfigured`, `No configured model can read images…`, `…on models that can't read images`, `A claimed image-capable model failed doctor's probe`, and the fallback/over-cap budget alerts.
-
-**Files touched.** src/config/config-schema.ts src/config/config.ts src/config/config-views.ts src/config/config-validation.ts src/runner/model-fallback.ts src/runner/runner-fallback.ts src/runner/runner-run.ts src/agent/subscription-account.ts src/team/team-polls.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-fallback-checks.ts src/doctor/doctor-contention-checks.ts src/doctor/doctor-check-names.ts src/doctor/image-probe.ts src/ui/team-alert-status.ts src/ui/team-alert-tail.ts docs/config.md docs/backends.md docs/how-it-works.md tumwater.example.json test/config.test.ts test/doctor-checks.test.ts
-
-**Acceptance criteria.**
-- One place names a run's model: the role's entry in the `model` map, else its catalog default; a run never substitutes a different model, and a spent daily cap pauses the role with the existing pause wording.
-- A `tumwater.json` carrying `fallback`, `fallbackModel`, a tier key or `maxConcurrentPerProvider` is refused with a message naming the deleted key.
-- The named rows and alerts are gone from doctor-check-names.ts and the alert builders; the subscription-window and image-probe modules are deleted, not orphaned.
 - `npm run test:gate` passes.
 
 ### Subtract, part 6/6: The sweep — the rows, keys and docs the five parts left behind (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes" and "How we will know it worked"; touches docs/config.md docs/cli.md docs/glossary.md docs/how-it-works.md docs/invariants.md README.md DEVELOPMENT.md tumwater.example.json src/doctor/doctor-check-names.ts test/doctor-checks.test.ts test/event-format.test.ts test/retention.test.ts test/config.test.ts)
 
-**Refused 2026-10-26 by feature: parts 1/6–5/6 have not landed, so the sweep would delete rows, keys, and docs for mechanisms that still exist and src/ still references (instances, mergeCommand, maxConcurrentChecks, maxConcurrentPerProvider, check-permit, worktree-pool, claims, model-fallback all remain live), breaking the build and the gate; re-queue after 5/6 lands.**
+**Refused 2026-10-26 by feature: the sweep deletes rows, keys, and docs for mechanisms that are still live in src/ and tumwater.json (instances, mergeCommand, maxConcurrentChecks, maxConcurrentPerProvider, check-permit, worktree-pool, claims, model-fallback), so implementing the entry as written breaks the build and the gate.**
 
 **Goal.** The deletion reads as one system. Every name parts 1/6–5/6 removed is gone from the live docs, the example config, the doctor's row list, the alerts and the tests that assert them; the archive keeps the record.
 
@@ -428,11 +408,11 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Each deleted condition prints a `tumwater doctor` row: `flaky checks`, `post-merge churn`, `post-merge reviews`, `ci parity`, `qa coverage`, and the new `main diff rules`; a main tip failing a diff rule names the tip and the rule in that row.
 - `npm run test:gate` passes.
 
-### Subtract, part 1d/6: The status and tail banners that are not a stopped team go — chain, role cap, no-check, brief, truncation, build, stale claims, quiet, maintenance, provider holds/caps, pause, contention, pins, pool, regressed fixes and image probes move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1c/6 and Subtract part 5/6 landed; touches src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
+### Subtract, part 1d/6: The status and tail banners that are not a stopped team go — chain, role cap, no-check, brief, truncation, build, stale claims, quiet, maintenance, provider holds/caps, pause, contention, pins, pool, regressed fixes and image probes move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1c/6 and Subtract part 5e/6 landed; touches src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
 
 **Previously held 1**
 
-**Goal.** Only the stopped-team and decision-queue banners remain. Kept in src/ui/team-alert-status.ts: `pushMainRedAlert`, `pushFailingStreakAlert`, `pushStuckRoleAlert`, `pushSpentBudgetAlert` (the red `budget` arm) and `pushDiskAlert`, `pushInstallDriftAlert`; kept in src/ui/team-alert-tail.ts: `pushStoppedAlert` (`tumwater is not running`). Everything else becomes a doctor row: `repeated failures`, `budget` (role cap), `check`/`brief` (no-check, no-brief, brief-truncated), `role notes`, `principles`, `update` (stale build), `parallel instances` (stale claims and the instance pool), `quiet hours`, `maintenance allowance`, `provider waits`, `provider concurrency`, `pause`, `provider contention`/`check contention`/`workspaces` (contention and stale workspace pins), `regressed fixes`, and `image input` (images and image probes). The chain/fallback condition leaves with part 5/6's fallback removal, which this part waits on.
+**Goal.** Only the stopped-team and decision-queue banners remain. Kept in src/ui/team-alert-status.ts: `pushMainRedAlert`, `pushFailingStreakAlert`, `pushStuckRoleAlert`, `pushSpentBudgetAlert` (the red `budget` arm) and `pushDiskAlert`, `pushInstallDriftAlert`; kept in src/ui/team-alert-tail.ts: `pushStoppedAlert` (`tumwater is not running`). Everything else becomes a doctor row: `repeated failures`, `budget` (role cap), `check`/`brief` (no-check, no-brief, brief-truncated), `role notes`, `principles`, `update` (stale build), `parallel instances` (stale claims and the instance pool), `quiet hours`, `maintenance allowance`, `provider waits`, `provider concurrency`, `pause`, `provider contention`/`check contention`/`workspaces` (contention and stale workspace pins), `regressed fixes`, and `image input` (images and image probes). The chain/fallback condition leaves with part 5c/6's fallback removal, which this part waits on.
 
 **Approach.**
 - Delete from src/ui/team-alert-status.ts: `pushChainAlert`, `pushRoleCapAlert`, `pushNoCheckAlert`, `pushNoBriefAlert`, `pushBriefTruncatedAlert`, `pushRoleNotesTruncatedAlert`, `pushPrinciplesTruncatedAlert`, `pushBuildAlert`, `pushStaleClaimsAlert` and their calls in `buildStatusAlerts`; keep the six kept builders.
@@ -445,7 +425,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Acceptance criteria.**
 - `buildStatusAlerts` emits only main-red, failing-streak, stuck-role, spent-budget, disk and install-drift; `buildTailAlerts` emits only `stopped`. No other builder remains in either module.
-- Each deleted condition prints its `tumwater doctor` row (listed above); the chain/fallback condition has no row because part 5/6 removes fallback.
+- Each deleted condition prints its `tumwater doctor` row (listed above); the chain/fallback condition has no row because part 5c/6 removes fallback.
 - `npm run test:gate` passes.
 
 ### Subtract, part 1e/6: The backlog staleness and structure banners go — stale questions, stalled entries, plan dependencies, stranded plans, duplicated headings, live archive, validation gaps and false fixes move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1d/6 landed; touches src/ui/team-alert-backlog.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
@@ -538,6 +518,100 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `grep -rnE 'HELD_TAG_PREFIX|PRIOR_HELD|operatorHeld|held-for-operator|heldCount|OPERATOR_HOLD_THRESHOLD' src/ docs/` is empty, and no `(held N)`/`**Previously held N**` writer remains.
 - A `**Needs review … too large for one run**` plan or bug keeps the plan role scheduled (`planBacklogFull` false) and is split by it, with no held count and no operator `--release` in the path.
 - The `stalled entries` doctor row reports Needs-review entries only, and the operator-held alert is gone from `teamAlerts` and its three call sites.
+- `npm run test:gate` passes.
+
+### Subtract, part 5a/6: The image-capability probe and its peer-tier reroute go (planned 2026-10-26 by the plan role, split from the too-large part 5/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the first of five finer parts replacing part 5/6, holding no prerequisite; touches src/doctor/image-probe.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-check-names.ts src/agent/image-input.ts src/inbox/inbox-submit.ts src/roles/role-view.ts src/status/status-roles.ts src/ui/team-alert-tail.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/tui/tui-pane-health.ts docs/how-it-works.md docs/config.md docs/invariants.md plans/image-input.md test/image-probe.test.ts test/image-input.test.ts test/doctor-checks.test.ts)
+
+**Previously held 1**
+
+**Goal.** A model is trusted on the `input` its pi `models.json` declares: no live probe, no probe cache and no peer-tier reroute. An image attachment to a model that declares no image input is refused once, from the declaration.
+
+**Approach.**
+- Delete `src/doctor/image-probe.ts` (`runImageProbe`, `readImageProbeCache`, `writeImageProbeCache`, `imageProbeKey`, `imageProbeEntryFresh`, `ImageProbeResult`, `ImageProbeCache`) and the `.tumwater/state/image-probes.json` cache with the `--reprobe` path.
+- `src/doctor/doctor-model-checks.ts`: delete `checkImageInput`'s probe runner, its cache read/write and the `image input` row with its outcomes (`…declare image input but failed the live probe`, `…on models that can't read images`, `No configured model can read images…`); keep `seamPairs`/`seamedModels` for the checks that still use them. Remove `image input` from `DOCTOR_CHECK_NAMES` (`src/doctor/doctor-check-names.ts`).
+- `src/agent/image-input.ts`: keep `seamImageInput` and the attach/refusal path; delete `imageReroute`/`imageRerouteTarget` and every `probes`/`ImageProbeCache` parameter, so the refusal reads the declaration alone.
+- Drop the probe-cache read at the surviving callers: `src/inbox/inbox-submit.ts`, `src/roles/role-view.ts` and `src/status/status-roles.ts` (`collectImageProbeFailures` deleted).
+- Delete the probe alerts and their inputs: `pushImageProbeAlert` and the `imageProbeFailures` arm in `src/ui/team-alert-tail.ts`, `src/ui/team-alert-shared.ts`, `src/ui/team-alerts.ts`, `src/ui/status-payload.ts`; delete Health view's Ctrl+P reprobe in `src/ui/tui/tui-pane-health.ts` (leave the Activity view's Ctrl+P provider caps to part 5b/6).
+- Docs: `plans/image-input.md` gets a superseded head note; `docs/how-it-works.md`, `docs/config.md` and `docs/invariants.md`'s image guarantees drop the probe. Tests: delete `test/image-probe.test.ts`; drop the probe cases from `test/image-input.test.ts` and `test/doctor-checks.test.ts`.
+
+**Acceptance criteria.**
+- `grep -rnE 'image-probe|imageProbe|ImageProbe|reprobe' src/ docs/` finds no live reference; no `.tumwater/state/image-probes.json` is read or written.
+- An image attached to a model whose declared `input` omits `image` is refused with the declaration-only message; a model declaring `image` runs without a probe.
+- `image input` is gone from `DOCTOR_CHECK_NAMES`; no doctor row or alert names a probe.
+- `npm run test:gate` passes.
+
+### Subtract, part 5b/6: The per-provider concurrency caps go — `maxConcurrent` is the one bound (planned 2026-10-26 by the plan role, split from the too-large part 5/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 5; requires Subtract part 5a/6 landed, since both edit the doctor row list and the alert builders; touches src/config/config-schema.ts src/config/config-validation-roles.ts src/config/config-keys.ts src/config/config-editable-keys.ts src/config/config-example.ts src/concurrency/provider-lease.ts src/concurrency/semaphore.ts src/merge/merge-verify.ts src/merge/merge-slot.ts src/orchestrator/orchestrator.ts src/orchestrator/orchestrator-launch.ts src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/report/report-types.ts src/report/report-fold.ts src/report/report-render.ts src/doctor/doctor-contention-checks.ts src/doctor/doctor-check-names.ts src/ui/alert-feeds.ts src/ui/team-alert-tail.ts src/ui/team-alerts.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-provider-caps.ts src/ui/tui/tui-editor-session.ts src/ui/tui/tui-editors.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-editor-config.ts src/ui/tui/tui-frame.ts src/ui/tui/tui-pane-ctx.ts docs/config.md docs/how-it-works.md docs/invariants.md test/provider-lease.test.ts test/tui-provider-caps.test.ts test/doctor-checks.test.ts test/event-format.test.ts test/config.test.ts)
+
+**Previously held 1**
+
+**Goal.** Runs are bounded by the team-wide `maxConcurrent` alone. `maxConcurrentPerProvider`, the provider lease/semaphore, the provider holds and the `provider concurrency`/`provider contention`/`provider waits` rows and alerts are deleted; providers never wait on each other.
+
+**Approach.**
+- Config: delete `maxConcurrentPerProvider` (`src/config/config-schema.ts`), its validation (`src/config/config-validation-roles.ts`), `checkProviderConcurrencyCap` and its `DOTTED_MAP_KEYS` entry (`src/config/config-keys.ts`), the editable key (`src/config/config-editable-keys.ts`), the example (`src/config/config-example.ts`) and the GUI settings row (`src/ui/gui/gui-client-settings.ts`); a config carrying the key is refused by name, not ignored.
+- Runtime: delete `src/concurrency/provider-lease.ts`, the provider arm of `src/concurrency/semaphore.ts`, and their consumers in `src/merge/merge-verify.ts`, `src/merge/merge-slot.ts`, `src/orchestrator/orchestrator.ts` and `src/orchestrator/orchestrator-launch.ts`; delete the `provider_wait` event (`src/events/events.ts`, `event-labels.ts`, `event-format.ts`, `src/failure/failure-state-change.ts`, `src/report/report-types.ts`/`report-fold.ts`/`report-render.ts`).
+- Doctor: delete `checkProviderConcurrency`, `providerConcurrencyProblems`, `providerWaitContention` and the `provider concurrency`, `provider contention` and `provider waits` rows (`src/doctor/doctor-contention-checks.ts`, `src/doctor/doctor-check-names.ts`); delete the `provider slots` alert feed (`src/ui/alert-feeds.ts`) and `pushProviderCapsAlert` (`src/ui/team-alert-tail.ts`, `src/ui/team-alerts.ts`).
+- TUI: delete `src/ui/tui/tui-editor-provider-caps.ts` and its mode wiring (`tui-editor-session.ts`, `tui-editors.ts`, `tui-keys.ts`, `tui-editor-config.ts`, `tui-frame.ts`, `tui-pane-ctx.ts`); drop the provider-cap fields from `src/ui/badges.ts`, `src/ui/status-payload.ts`, `src/ui/status-render.ts` and the GUI client.
+- Docs: `docs/config.md`, `docs/how-it-works.md`, `docs/invariants.md` (provider-concurrency invariants). Tests: delete `test/provider-lease.test.ts` and `test/tui-provider-caps.test.ts`; update `test/doctor-checks.test.ts`, `test/config*.test.ts`, `test/event-format.test.ts`.
+
+**Acceptance criteria.**
+- `grep -rnE 'maxConcurrentPerProvider|providerConcurrency|provider_wait|provider-lease|providerCaps' src/` finds no live reference.
+- A run starts under `maxConcurrent` alone; no provider lease is acquired and no `provider_wait` is logged.
+- `provider concurrency`, `provider contention` and `provider waits` are gone from `DOCTOR_CHECK_NAMES` and the alert builders; a `tumwater.json` with `maxConcurrentPerProvider` is refused naming the key.
+- `npm run test:gate` passes.
+
+### Subtract, part 5c/6: The fallback chains go — a spent cap pauses the role (planned 2026-10-26 by the plan role, split from the too-large part 5/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 5, and plans/fallback-chain.md; requires Subtract part 5b/6 landed, since both edit the config schema, the row list and the alert builders; touches src/config/config-schema.ts src/config/config-validation-model.ts src/config/config-validation.ts src/config/config-keys.ts src/config/config-editable-keys.ts src/config/config-write.ts src/config/config-example.ts src/config/config-fallbacks.ts src/runner/model-fallback.ts src/runner/runner-fallback.ts src/runner/runner-run.ts src/runner/runner-state.ts src/budget/budget-fallback-view.ts src/budget/fallback-breaker.ts src/gates/budget-gates.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/ui/team-alert-status.ts src/ui/badges.ts src/ui/status-render.ts src/ui/status-payload.ts src/doctor/doctor-fallback-checks.ts src/doctor/doctor-check-names.ts src/ui/tui/tui-editor-fallback.ts docs/config.md docs/backends.md docs/how-it-works.md docs/invariants.md test/model-fallback.test.ts test/runner-fallback.test.ts test/fallback-breaker.test.ts test/orchestrator-fallback.test.ts test/tui-fallback.test.ts test/config.test.ts test/doctor-checks.test.ts test/event-format.test.ts)
+
+**Previously held 1**
+
+**Goal.** A run runs its configured model, full stop: no model-failure episode and no budget fallback. Reaching `maxDailyCostUsd` pauses the role until local midnight, as it already does with no free fallback pair today.
+
+**Approach.**
+- Config: delete the `fallback` key, `fallbackModel`/`FallbackModelConfig`, `FallbackStep`, `FALLBACK_STEP_KEYS`, `FallbackChain` and the derived `fallbackStepCaps` (`src/config/config-schema.ts`); their validation and dotted-key handling (`src/config/config-validation-model.ts`, `src/config/config-validation.ts`, `src/config/config-keys.ts`, `src/config/config-editable-keys.ts`, `src/config/config-write.ts`); the example (`src/config/config-example.ts`) and `docs/config.md`/`docs/backends.md`.
+- Runtime: delete `src/runner/model-fallback.ts`, `src/runner/runner-fallback.ts`, the fallback legs `foldModelFallback`/`FallbackRunContext`/`rerouteRegime` in `src/runner/runner-run.ts` and the `modelFallback` state in `src/runner/runner-state.ts`; delete `src/budget/budget-fallback-view.ts`, `src/budget/fallback-breaker.ts` and the fallback half of `src/config/config-fallbacks.ts` (`fallbackPair`, `tierFallbackLabels`, `resolveTierFallbacks`, `fallbackRoleConfig`, `applyFallbackModel`, `modelFallbackView`, `seamsInUse`), so the budget gate's `fallback` outcome becomes the existing `paused` outcome (`src/gates/budget-gates.ts`).
+- Events and surfaces: delete `budget_fallback`, `budget_handback`, `fallback_switched` and the `model_fallback*` events (`src/events/event-labels.ts`, `event-format.ts`, `src/failure/failure-state-change.ts`); the "Running on fallback" and "switched to the over-cap model" alerts (`src/ui/team-alert-status.ts`); the fallback badges (`src/ui/badges.ts`, `status-render.ts`, `status-payload.ts`); and the `fallback chain`/`over-cap model` rows (`src/doctor/doctor-fallback-checks.ts`, `doctor-check-names.ts`).
+- TUI/CLI: delete `src/ui/tui/tui-editor-fallback.ts` and its mode wiring; drop the `config set fallbackModel` verb.
+- Docs: `docs/config.md`, `docs/backends.md`, `docs/how-it-works.md`, `docs/invariants.md`. Tests: delete `test/model-fallback.test.ts`, `test/runner-fallback.test.ts`, `test/fallback-breaker.test.ts`, `test/orchestrator-fallback.test.ts`, `test/tui-fallback.test.ts`; update `test/config*.test.ts`, `test/doctor-checks.test.ts`, `test/event-format.test.ts`.
+
+**Acceptance criteria.**
+- `grep -rniE 'fallbackModel|fallbackPair|modelFallback|budget_fallback|budget_handback|over-cap' src/` finds no live reference; no run substitutes a different model.
+- At `maxDailyCostUsd` a role logs `budget_paused` and stays paused until local midnight; the director keeps its model as today.
+- `fallback chain` and `over-cap model` are gone from `DOCTOR_CHECK_NAMES`; a `tumwater.json` with `fallback` or `fallbackModel` is refused naming the key.
+- `npm run test:gate` passes.
+
+### Subtract, part 5d/6: The subscription-window carve-outs and the per-backend account file go (planned 2026-10-26 by the plan role, split from the too-large part 5/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 5, and plans/codex-backend.md; requires Subtract part 5c/6 landed, since the budget's fallback reads the account's overage state until it goes; touches src/config/config-schema.ts src/config/config-validation.ts src/config/config-validation-roles.ts src/config/config-views.ts src/config/config-keys.ts src/config/config-editable-keys.ts src/config/config-write.ts src/config/config-example.ts src/agent/subscription-account.ts src/agent/claude/claude-account.ts src/agent/codex/codex-account.ts src/team/team-polls.ts src/gates/gate-polls.ts src/gates/budget-gates.ts src/run/run-finalize.ts src/merge/merge-slot.ts src/doctor/doctor-holds.ts src/doctor/doctor-check-names.ts src/ui/badges.ts src/ui/status-payload.ts src/status/status-budget.ts src/status/status-roles.ts src/roles/role-render.ts src/roles/role-view.ts src/pi/pi-models.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-claude-reserve.ts docs/config.md docs/backends.md docs/how-it-works.md docs/invariants.md test/doctor-holds.test.ts test/config.test.ts test/doctor-checks.test.ts)
+
+**Previously held 1**
+
+**Goal.** The team stops reserving, holding and warning on subscription usage windows. `claudeWindowReserve`/`backends.<id>.windowReserve`, the `windowReserveFor` carve-out, the window hold/reserve/warning loops, the `claude window`/`codex window` rows and the `.tumwater/state/<backend>-account.json` file are deleted. A run's own `PiRunResult` (`transientRateLimit`, `rateWindows`, `billing`) stays the live signal for a window rejection the run resumes from, and `maxDailyCostUsd`'s own spend ledger (src/budget/budget.ts) keeps the cap.
+
+**Approach.**
+- Config: delete the top-level `claudeWindowReserve` and `backends.<id>.windowReserve` keys (`src/config/config-schema.ts` `windowReserve`, `CLAUDE_AGENT_KEYS`/`CODEX_BACKEND_KEYS`), their validation (`src/config/config-validation.ts` `checkWindowReserve`, `src/config/config-validation-roles.ts` `validateClaudeWindowReserve`), `windowReserveFor` (`src/config/config-views.ts`), the editable key, the example and the GUI/TUI rows (`src/ui/gui/gui-client-settings.ts`, `src/ui/tui/tui-editor-claude-reserve.ts` and its mode wiring); `config-write.ts`'s nested-reserve collapse goes.
+- Delete `src/agent/subscription-account.ts` and the window reads in `src/agent/claude/claude-account.ts`/`codex-account.ts`; delete the window hold/reserve/warning loop and `windowObservation`/`pollClaudeWindowReserve`/`pollClaudeWindowWarning` (`src/team/team-polls.ts`, `src/gates/gate-polls.ts`) and the budget gate's `claudeWindowUsedUp`/`windowReserveFor` use (`src/gates/budget-gates.ts`); drop the `observeAccount` writes (`src/run/run-finalize.ts`, `src/merge/merge-slot.ts`).
+- Delete the rows and display: `checkSubscriptionWindow` and the `claude window`/`codex window` rows (`src/doctor/doctor-holds.ts`, `src/doctor/doctor-check-names.ts`); the window badges and status fields (`src/ui/badges.ts`, `src/ui/status-payload.ts`, `src/status/status-budget.ts`, `src/status/status-roles.ts`, `src/roles/role-render.ts`, `src/roles/role-view.ts`, `src/pi/pi-models.ts`'s account reads).
+- Docs: `docs/config.md`, `docs/backends.md`, `docs/how-it-works.md`, `docs/invariants.md`. Tests: drop the window cases from `test/doctor-holds.test.ts`; update `test/config*.test.ts`, `test/doctor-checks.test.ts`.
+
+**Acceptance criteria.**
+- `grep -rnE 'SubscriptionAccount|subscription-account|windowReserveFor|claudeWindowReserve|windowReserve|claude window|codex window|observeAccount' src/` finds no live reference; no `.tumwater/state/<backend>-account.json` is read or written.
+- A run rejected on a subscription usage window still keeps its session and resumes on the live `PiRunResult` flags, and a spent `maxDailyCostUsd` still pauses the role.
+- `claude window` and `codex window` are gone from `DOCTOR_CHECK_NAMES`; a config setting either reserve key is refused by name.
+- `npm run test:gate` passes.
+
+### Subtract, part 5e/6: The model tier map goes — `model` names one entry per role and seam (planned 2026-10-26 by the plan role, split from the too-large part 5/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 5, and plans/model-tiers.md; requires Subtract part 5d/6 landed, since the fallback resolution keyed by tier and the account reads go with the parts ahead of it; touches src/config/config-schema.ts src/config/config-validation-model.ts src/config/config-validation.ts src/config/config-views.ts src/config/config-write.ts src/config/config-write-core.ts src/config/config-keys.ts src/config/config-editable-keys.ts src/config/config-example.ts src/roles/role-catalog.ts src/roles/role-render.ts src/roles/role-view.ts src/ui/badges.ts src/ui/status-render.ts src/ui/status-payload.ts src/ui/gui/gui-client-settings.ts src/ui/gui/gui-client-drawer-config.ts src/ui/tui/tui-editor-model.ts docs/config.md docs/how-it-works.md docs/invariants.md tumwater.example.json test/config-views.test.ts test/config-validation-model.test.ts test/doctor-checks.test.ts)
+
+**Previously held 1**
+
+**Goal.** The top-level `model` map is keyed by role or seam id → selector; `small`/`default`/`strong`, `MODEL_TIERS`, `modelTierMap`, `isTierName` and the catalog `tier` field are deleted. The resolution rule is one line: a run runs `roles.<id>.model` (the seam's own override, e.g. `review.model`) else `model.<id>` else pi's default — there is no tier fallback.
+
+**Approach.**
+- Schema and validation: delete `MODEL_TIERS`/`ModelTier`, `modelTierMap`, `TIER_MAP_KEYS`, the tier-name arm of the model-shape check and the map-by-tier shape; `model` becomes the role/seam-keyed map (`src/config/config-schema.ts`, `src/config/config-validation-model.ts`, `src/config/config-validation.ts`); a `model` key that is not a role/seam id (including `default`) is refused by name rather than silently never resolving. `config-views.ts` loses `isTierName`, `topTierSelector`, `resolveTopTier`, `topTierBackend`, `tierModel` and the `withModelOverrides` tier argument in favour of the one rule; `config-write`/`config-keys`/`config-editable-keys`/the example follow.
+- Catalog: `src/roles/role-catalog.ts` drops `tier: ModelTier` from every role entry (and its type); the role's model is the config map's, else pi's default. `src/roles/role-render.ts`/`role-view.ts` drop the tier label.
+- Surfaces: delete the `models for each tier` row and its check, and the tier names in badges/status (`src/ui/badges.ts`, `src/ui/status-render.ts`, `src/ui/status-payload.ts`, `src/ui/gui/gui-client-settings.ts`, `src/ui/gui/gui-client-drawer-config.ts`, `src/ui/tui/tui-editor-model.ts`).
+- Docs and example: `docs/config.md`, `docs/how-it-works.md`, `docs/invariants.md`, `tumwater.example.json` describe the role/seam map; `plans/model-tiers.md` gets a superseded head note. Tests: update `test/config-views.test.ts`, `test/config-validation-model.test.ts`, `test/doctor-checks.test.ts`.
+
+**Acceptance criteria.**
+- `grep -rnE 'MODEL_TIERS|ModelTier|modelTierMap|isTierName|topTierSelector|tierModel|models for each tier' src/` finds no live reference.
+- One place names a run's model: `roles.<id>.model`/the seam override, else `model.<id>`, else pi's default; a run never substitutes a different model.
+- A `tumwater.json` whose `model` map has a `small`/`default`/`strong` key (or a role modelled as a tier name) is refused with a message naming the bad key; the example config uses the role/seam spelling.
 - `npm run test:gate` passes.
 
 ## Done
