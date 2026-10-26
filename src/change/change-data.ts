@@ -268,7 +268,8 @@ export interface ChangeOverlapsView {
 }
 
 /** The paths two or more distinct roles hold: a role's duplicate path counts once, roles stay
- * in holdings order, paths sort by plain `<` comparison. */
+ * in holdings order, paths sort in code-unit order (`compareCodeUnits`, the locale-independent
+ * order a plain `<` comparison gives). */
 export function fileOverlaps(holdings: { role: string; files: string[] }[]): ChangeOverlap[] {
   const byPath = new Map<string, string[]>();
   for (const { role, files } of holdings) {
