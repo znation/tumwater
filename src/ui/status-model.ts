@@ -399,7 +399,7 @@ function isBindingLimit(permits: PermitSnapshot, key: string): boolean {
 
 /** Is this phase one of the PERMIT-HOLDER in-flight states — the rows an operator counts
  * against maxConcurrent? The three labels come from rolePhase: `working …`, `reviewing …`,
- * and the marker-driven `merge …` (merge queue 4/5) — a approved change waiting for the merge
+ * and the marker-driven `merge …` (merge queue 4/5) — an approved change waiting for the merge
  * slot (`approved, awaiting merge`) runs nothing, so it is not in flight. The running director's
  * `director working …` label is deliberately outside the set: the director never calls
  * `semaphore.acquire`, so the cap-mirroring rows are exactly the permit holders (BUGS.md
@@ -415,7 +415,7 @@ export function isActivePhase(phase: string): boolean {
 /** A role's rank in the rendered tables, from its phase label (rolePhase): -1 a RUNNING
  * DIRECTOR — live work of its own, outside the maxConcurrent cap it bypasses, so it groups
  * apart and never inflates the permit-holder count (BUGS.md 2026-10-06); 0 live work —
- * working, reviewing, merge (isActivePhase); 1 work waiting in the pipeline — a approved change
+ * working, reviewing, merge (isActivePhase); 1 work waiting in the pipeline — an approved change
  * awaiting the merge slot, or a run parked awaiting a permit; 2 needs attention — failing, or
  * its last run read main red; 3 paused — by the operator, by the budget, or by the role's own
  * per-role cap; 4 everything else (idle: sleeping, queued, the director waiting for prompts, a
