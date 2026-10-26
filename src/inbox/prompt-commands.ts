@@ -197,6 +197,16 @@ function runPromptCancel(root: string, position: number, role: string | null): v
   sayPromptOutcome(position, target, runRolePromptCommand(root, target, position, cancelRolePrompt), false);
 }
 
+/** Run the CLI's image-input gate for one `prompt` surface. Shared by the submit and
+ * --edit forms so the refusal promise holds across every CLI attach surface: an image no
+ * configured model can read is refused (fail) before a byte is written, and a role that
+ * reroutes a blind read is told (say) where the prompt will run. */
+function runPromptImageGate(root: string, target: string): void {
+  const guidance = imagePromptGuidance(root, target);
+  if (guidance.refusal) fail(guidance.refusal);
+  if (guidance.notice) say(guidance.notice);
+}
+
 /** `--edit <n>` mode — replace a queued prompt's body by position: the attachment gate, then
  * the editor for a bare position or the typed/`--file` text, list-wide or `--role`-scoped. One
  * helper so `--edit`'s rules are found by name. */
@@ -216,9 +226,7 @@ function runPromptEdit(root: string, position: number, text: string | null, atta
   // name it.
   if (images !== undefined && images.length > 0) {
     const targetRole = role ?? resolveListedRole(root, position);
-    const guidance = imagePromptGuidance(root, targetRole);
-    if (guidance.refusal) return fail(guidance.refusal);
-    if (guidance.notice) say(guidance.notice);
+    runPromptImageGate(root, targetRole);
   }
   const typed = text;
   if (typed === null) {
@@ -309,9 +317,7 @@ function runPromptSubmit(root: string, text: string, atDelayMs: number | null, a
   // not refused, but the operator is told where the prompt will actually run.
   const images = attachPaths.length > 0 ? readPromptImages(attachPaths) : undefined;
   if (images && images.length > 0) {
-    const guidance = imagePromptGuidance(root, target);
-    if (guidance.refusal) return fail(guidance.refusal);
-    if (guidance.notice) say(guidance.notice);
+    runPromptImageGate(root, target);
   }
   const wake = submitRolePromptAndWake(root, target, text, images, dueMs);
   const attached = images !== undefined ? ` with ${plural(images.length, "image")}` : "";
