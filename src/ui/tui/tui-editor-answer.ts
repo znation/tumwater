@@ -25,20 +25,15 @@ export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
     restoreDraft();
   };
 
-  const handleKey = (
-    _str: string | undefined,
-    key: { ctrl?: boolean; name?: string },
-    ctx: TuiEditorCtx,
-  ): boolean => {
+  // Ctrl+A opens the answer editor on the selected open question (mnemonic: **A**nswer);
+  // Enter records the decision through tryAnswerQuestion, the core `tumwater questions
+  // answer` and the dashboard's form share. The position is the question's 1-based index
+  // among the open questions: the browsable list puts plans, then bugs, then questions first.
+  const answerOpenEdit = (ctx: TuiEditorCtx): boolean => {
     if (
-      key.ctrl && key.name === "a" &&
       !session.anyEditorHeld() &&
       ctx.view === ctx.roleIds.length + 1 && ctx.selectedEntry !== null
     ) {
-      // Ctrl+A opens the answer editor on the selected open question (mnemonic: **A**nswer);
-      // Enter records the decision through tryAnswerQuestion, the core `tumwater questions
-      // answer` and the dashboard's form share. The position is the question's 1-based index
-      // among the open questions: the browsable list puts plans, then bugs, then questions first.
       try {
         const entries = session.flat();
         const sel = Math.min(ctx.selectedEntry, entries.length - 1);
@@ -59,47 +54,61 @@ export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
       }
       return true;
     }
-    if (key.name === "escape" && answerFor) {
-      // Esc cancels the answer editor, restoring the previous prompt text; nothing is written.
-      exitAnswerMode();
-      session.flashMessage("answer cancelled");
+    return false;
+  };
+
+  // Esc cancels the answer editor, restoring the previous prompt text; nothing is written.
+  const cancelAnswerEdit = (): boolean => {
+    exitAnswerMode();
+    session.flashMessage("answer cancelled");
+    return true;
+  };
+
+  // Enter records the answer through tryAnswerQuestion, titled so a question that moved
+  // since Ctrl+A is refused. A whitespace-only line, an unclosed fence, and a throw all
+  // flash and STAY in the editor so the text survives; answered and missing/moved both
+  // leave the editor and return the pane to list mode (the entry left the list).
+  const commitAnswerEdit = (): boolean => {
+    const target = answerFor;
+    if (target === null) return false;
+    if (!session.input.trim()) {
+      session.flashMessage("questions answer needs a decision");
       return true;
     }
-    if (key.name === "return" && answerFor) {
-      // Enter records the answer through tryAnswerQuestion, titled so a question that moved
-      // since Ctrl+A is refused. A whitespace-only line, an unclosed fence, and a throw all
-      // flash and STAY in the editor so the text survives; answered and missing/moved both
-      // leave the editor and return the pane to list mode (the entry left the list).
-      const target = answerFor;
-      if (!session.input.trim()) {
-        session.flashMessage("questions answer needs a decision");
-        return true;
-      }
-      let outcome: AnswerOutcome;
-      try {
-        outcome = tryAnswerQuestion(session.root, target.position, session.input, target.title);
-      } catch (err) {
-        session.flashError(err);
-        return true;
-      }
-      if (outcome.status === "fenced") {
-        session.flashMessage(UNCLOSED_FENCE_MESSAGE);
-        return true;
-      }
-      let woke = "";
-      if (outcome.status === "answered") {
-        session.commitBacklogEdit("QUESTIONS.md", `Answer question: ${outcome.title}`);
-        if (wakeQuestionAsker(session.root, outcome.title) !== null) woke = ` · woke ${questionAsker(outcome.title)}`;
-      }
-      exitAnswerMode();
-      session.clearBacklogSelection();
-      session.flashMessage(
-        outcome.status === "answered"
-          ? `answered question #${target.position}: ${outcome.title}${woke}`
-          : "that question was already answered or moved — nothing recorded",
-      );
+    let outcome: AnswerOutcome;
+    try {
+      outcome = tryAnswerQuestion(session.root, target.position, session.input, target.title);
+    } catch (err) {
+      session.flashError(err);
       return true;
     }
+    if (outcome.status === "fenced") {
+      session.flashMessage(UNCLOSED_FENCE_MESSAGE);
+      return true;
+    }
+    let woke = "";
+    if (outcome.status === "answered") {
+      session.commitBacklogEdit("QUESTIONS.md", `Answer question: ${outcome.title}`);
+      if (wakeQuestionAsker(session.root, outcome.title) !== null) woke = ` · woke ${questionAsker(outcome.title)}`;
+    }
+    exitAnswerMode();
+    session.clearBacklogSelection();
+    session.flashMessage(
+      outcome.status === "answered"
+        ? `answered question #${target.position}: ${outcome.title}${woke}`
+        : "that question was already answered or moved — nothing recorded",
+    );
+    return true;
+  };
+
+  const handleKey = (
+    _str: string | undefined,
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiEditorCtx,
+  ): boolean => {
+    if (key.ctrl && key.name === "a") return answerOpenEdit(ctx);
+    if (key.name === "escape" && answerFor) return cancelAnswerEdit();
+    if (key.name === "return" && answerFor) return commitAnswerEdit();
     return false;
   };
 
