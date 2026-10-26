@@ -84,6 +84,11 @@ export function renderRunDetail(d: RunDetail): string {
   let header = `${roleLabel(d.role)} run #${d.run} — ${summary.join(" · ")}`;
   if (sha !== null) header += ` · commit ${shortSha(sha)}`;
   if (d.mergedSha !== null && d.mergedSha !== sha) header += ` · merged as ${shortSha(d.mergedSha)}`;
+  // The end-of-run → on-main landing latency, the per-change twin of the day report's `Merge
+  // wait median`. shortSpanPhrase is the duration cell's renderer, so both spans read alike; a
+  // run without the field (rejected/failed merge, in flight, landing rotated out, no-op
+  // fast-forward) keeps today's header byte-identical.
+  if (d.mergeAfterRunMs !== undefined) header += ` · merged ${shortSpanPhrase(d.mergeAfterRunMs)} after the run`;
   if (d.reverted !== null) {
     header += ` · reverted ${shortSha(d.reverted.sha)} (by operator)`; // vocabulary-ok: the deliberate-revert writer this header names
   }

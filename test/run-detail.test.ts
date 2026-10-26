@@ -712,6 +712,99 @@ test("a leftover-recovery run's detail shows the failed attempt it re-queued, le
   assert.match(authoring.at(-1)!, /merge of sha1abc\w* failed \(rejected in review\)/);
 });
 
+test("a queued run's resolved merge names the landing latency in the header and --json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "run detail landed");
+  // The merge's own window is [merge_done.ts - durationMs, merge_done.ts] = [1_000_000, 1_010_000];
+  // the `merged` event sits inside it, after the run's end, so the landing latency is
+  // 1_009_500 - 1_000_100 = 9_400ms — rendered as the duration cell's shortSpanPhrase (9s).
+  writeEvents(repo, [
+    start({ ts: 1_000_000, run: 1 }),
+    { ts: 1_000_050, source: "bugfix", type: "merge_queued", commit: "sha1abcdef", summary: "the fix" } as HarnessEvent,
+    { ts: 1_000_100, source: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 100 } as HarnessEvent,
+    { ts: 1_009_500, source: "bugfix", type: "merged", commit: "sha1abcdef", summary: "the fix" } as HarnessEvent,
+    { ts: 1_010_000, source: "bugfix", type: "merge_done", commit: "sha1abcdef", result: "changed", durationMs: 10_000 } as HarnessEvent,
+  ]);
+  const detail = readRunDetail(repo, "bugfix", 1)!;
+  assert.equal(detail.mergeAfterRunMs, 9_400);
+  assert.match(renderRunDetail(detail).split("\n")[0]!, / · merged 9s after the run$/);
+  const payload = JSON.parse((await expectOkAsync(() => cmdRunDetail(repo, ["bugfix", "1"], true))).stdout) as RunDetail;
+  assert.equal(payload.mergeAfterRunMs, 9_400);
+  assert.equal(renderRunDetail(readRunDetail(repo, "bugfix", 1)!), renderRunDetail(payload));
+});
+
+test("a direct merge's landing reveals the latency only when it does not precede the run's end", () => {
+  const at = (mergedTs: number): RunDetail =>
+    readRunDetail(
+      (() => {
+        const root = tmpdir();
+        writeEvents(root, [
+          start({ ts: 1000, run: 1 }),
+          { ts: 1100, source: "bugfix", type: "merge_queued", commit: "aaaaaaa1111", summary: "x" } as HarnessEvent,
+          { ts: mergedTs, source: "bugfix", type: "merged", commit: "bbbbbbb2222", summary: "x" } as HarnessEvent,
+          { ts: 2000, source: "bugfix", type: "run_end", run: 1, result: "changed" } as HarnessEvent,
+        ]);
+        return root;
+      })(),
+      "bugfix",
+      1,
+    )!;
+  // A landing before the run's own end would give a negative span: no landed cell.
+  const beforeEnd = at(1500);
+  assert.equal("mergeAfterRunMs" in beforeEnd, false);
+  assert.doesNotMatch(renderRunDetail(beforeEnd).split("\n")[0]!, /merged \d/);
+  // A landing that shares the run's end yields a zero span and shows the cell.
+  const atEnd = at(2000);
+  assert.equal(atEnd.mergeAfterRunMs, 0);
+  assert.match(renderRunDetail(atEnd).split("\n")[0]!, / · merged 0s after the run$/);
+});
+
+test("runs without a landing event carry no landed cell (in flight, failed, rotated out, no-op)", () => {
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "bugfix", ...o }) as HarnessEvent; // retired-name-ok: legacy event field in a fixture
+  // In flight: no run_end, so no end to measure from.
+  const inflight = (() => {
+    const root = tmpdir();
+    writeEvents(root, [start({ ts: 1000, run: 2 }), ev({ ts: 1100, type: "merged", commit: "sha1abcdef" })]);
+    return readRunDetail(root, "bugfix", 2)!;
+  })();
+  assert.equal("mergeAfterRunMs" in inflight, false);
+  // A failed merge: the queued verdict resolves to the merge_failed outcome, no merge_done landing.
+  const failed = (() => {
+    const root = tmpdir();
+    writeEvents(root, [
+      start({ ts: 1000, run: 1 }),
+      ev({ ts: 1100, type: "merge_queued", commit: "sha1abcdef" }),
+      end({ ts: 1200, run: 1, result: "queued" }),
+      ev({ ts: 1500, type: "merge_failed", commit: "sha1abcdef", result: "rejected" }),
+    ]);
+    return readRunDetail(root, "bugfix", 1)!;
+  })();
+  assert.equal("mergeAfterRunMs" in failed, false);
+  // A landing rotated out of the merge's window: the `merged` event sits outside [from,to].
+  const rotated = (() => {
+    const root = tmpdir();
+    writeEvents(root, [
+      start({ ts: 1000, run: 1 }),
+      ev({ ts: 1100, type: "merge_queued", commit: "sha1abcdef" }),
+      end({ ts: 1200, run: 1, result: "queued" }),
+      ev({ ts: 1400, type: "merged", commit: "sha1abcdef" }),
+      ev({ ts: 1600, type: "merge_done", commit: "sha1abcdef", result: "changed", durationMs: 100 }),
+    ]);
+    return readRunDetail(root, "bugfix", 1)!;
+  })();
+  assert.equal("mergeAfterRunMs" in rotated, false);
+  // A no-op fast-forward: result changed but no `merged` event logged, so nothing to measure.
+  const noop = (() => {
+    const root = tmpdir();
+    writeEvents(root, [start({ ts: 1000, run: 1 }), end({ ts: 2000, run: 1, result: "changed" })]);
+    return readRunDetail(root, "bugfix", 1)!;
+  })();
+  assert.equal("mergeAfterRunMs" in noop, false);
+  for (const d of [inflight, failed, rotated, noop]) {
+    assert.doesNotMatch(renderRunDetail(d).split("\n")[0]!, /merged \d/);
+  }
+});
+
 test("renderRunDetail names the landed sha only when it differs from the pinned commit", () => {
   const base = readRunDetail(
     (() => {

@@ -91,6 +91,13 @@ export interface RunDetail {
    * pinned commit when the merge rebased. Null for every other run, and when the event rotated
    * out or the merge was a no-op fast-forward (which logs none). */
   mergedSha: string | null;
+  /** How long the pipeline between the run's end and its landing on main took: the landing
+   * `merged` event's ts minus the run's `run_end` ts (the per-change twin of the day report's
+   * `Merge wait median`, which shows only a team median). Set only when the run has both an end
+   * and a landing event and the difference is non-negative; absent for every other run (a
+   * rejected/failed merge, an in-flight run, a landing that rotated out, a no-op fast-forward
+   * that logs no `merged` event), so the trail header stays byte-identical without it. */
+  mergeAfterRunMs?: number;
   /** The revert of this run's merged change — an operator's deliberate `tumwater revert`
    * (`kind: "operator"`, from an `operator_revert` event), matched by the event's `runner`
    * (this role) and its `commit` (the run's landed or pinned sha); null when there is none.
@@ -212,6 +219,7 @@ function detailFrom(
       merge = resolved.outcome;
     }
   }
+  const mergedEvent = mergedEventOf(result, merge, scoped, block);
   const detail: RunDetail = {
     role,
     run: runNumber,
@@ -241,6 +249,12 @@ function detailFrom(
     events: block,
     merge,
     mergedSha: mergedShaOf(result, merge, scoped, block),
+    // The end-of-run → on-main landing latency (the landing `merged` event's ts minus the run
+    // end's), spread so a run without both an end and a landing event — or a landing before its
+    // end, or a negative difference — keeps today's exact payload (no key).
+    ...(end !== null && mergedEvent !== null && mergedEvent.ts - end.ts >= 0
+      ? { mergeAfterRunMs: mergedEvent.ts - end.ts }
+      : {}),
     reverted: null,
   };
   detail.reverted = revertedOf(detail, all);
@@ -271,15 +285,35 @@ function revertedOf(d: RunDetail, all: readonly HarnessEvent[]): RunDetail["reve
   return null;
 }
 
-/** The commit of the newest `merged` event in `pool` (oldest-first) inside [from, to]. */
-function newestMergedCommit(pool: HarnessEvent[], from: number, to: number): string | null {
+/** The newest `merged` event in `pool` (oldest-first) inside [from, to], or null when none. */
+function newestMergedEvent(pool: HarnessEvent[], from: number, to: number): HarnessEvent | null {
   for (let i = pool.length - 1; i >= 0; i--) {
     const e = pool[i]!;
     if (e.type === "merged" && e.ts >= from && e.ts <= to && typeof e.commit === "string" && e.commit !== "") {
-      return e.commit;
+      return e;
     }
   }
   return null;
+}
+
+/** The landing `merged` event for a detail, the one behind its `mergedSha` and its
+ * `mergeAfterRunMs` span: the newest in the block for a run that merged directly (result
+ * `changed`, no queued resolve) or the newest inside the merge's own window (`merge_done` ts
+ * minus its `durationMs`, up to its ts) for a queued run; null for every other run and when
+ * the event rotated out or the merge was a no-op fast-forward (which logs none). */
+function mergedEventOf(
+  result: string | null,
+  merge: HarnessEvent | null,
+  scoped: HarnessEvent[],
+  block: HarnessEvent[],
+): HarnessEvent | null {
+  if (merge === null) {
+    return result === "changed" ? newestMergedEvent(block, -Infinity, Infinity) : null;
+  }
+  if (merge.type !== "merge_done" || typeof merge.durationMs !== "number" || !Number.isFinite(merge.durationMs)) {
+    return null;
+  }
+  return newestMergedEvent(scoped, merge.ts - merge.durationMs, merge.ts);
 }
 
 /** The landed sha for a detail: see RunDetail.mergedSha. */
@@ -289,11 +323,6 @@ function mergedShaOf(
   scoped: HarnessEvent[],
   block: HarnessEvent[],
 ): string | null {
-  if (merge === null) {
-    return result === "changed" ? newestMergedCommit(block, -Infinity, Infinity) : null;
-  }
-  if (merge.type !== "merge_done" || typeof merge.durationMs !== "number" || !Number.isFinite(merge.durationMs)) {
-    return null;
-  }
-  return newestMergedCommit(scoped, merge.ts - merge.durationMs, merge.ts);
+  const e = mergedEventOf(result, merge, scoped, block);
+  return e === null ? null : (e.commit as string);
 }
