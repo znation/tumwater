@@ -74,16 +74,25 @@ export function parseHistoryResultList(raw: string | undefined): HistoryResultCl
   return parsed;
 }
 
-/** `tumwater history [--role <id>[,<id>...]] [-n N] [-f] [--since <duration>]
- * [--until <duration>] [--grep <text>] [--result <class>] [--model <selector>[,...]]`: print the
- * last N completed runs, newest first — or,
- * with `--since`, the runs of a bounded past window over the same record, the same shape
- * `logs --since` and `report --since` speak. `--grep` keeps rows whose rendered line matches,
- * `--result` narrows to the listed outcome classes (changes/none/problems, the dashboard History
- * filter's buckets) and `--model` keeps runs that started on the listed models; all compose
- * with --role, -n, and --since. Read-only: stdout only, no state file created — a missing or empty
- * event log prints `no runs yet` and exits 0. */
-export async function cmdHistory(root: string, args: string[], seams: FollowSeams = {}): Promise<void> {
+/** The scanned `history` query: the remaining non-flag args, the `--grep` pattern, the raw
+ * `-n` string (kept unparsed so a bad count still fails inside collectHistoryRows, after the
+ * `--since` rival check and before `--result`), the follow tail (null unless `-f`), and the
+ * `--since`/`--until` window bounds (null when absent). */
+interface HistoryQuery {
+  rest: string[];
+  grepPattern: string | null;
+  nRaw: string | null | undefined;
+  followTail: { events: HarnessEvent[]; coveredEnd: number } | null;
+  sinceMs: number | null;
+  untilMs: number | null;
+}
+
+/** Scan `history`'s flags: the `--grep` pattern, the raw `-n` value, the `-f`/`--since`
+ * rival shape checks, and the `--since`/`--until` window. These failures all fire here in
+ * the same order as before, so a bad value names the same command and flag; only the `-n`
+ * count is left raw (see collectHistoryRows), so its own parse and failure live there, in
+ * the deliberate spot after the `--since` rival check and before `--result`. */
+function parseHistoryQuery(root: string, args: string[]): HistoryQuery {
   // `--grep <text>` filters the row set case-insensitively against the WYSIWYG row line (plus a
   // `run_end` prefix, the same haystack rule logs --grep applies to its rendered lines), so
   // both observing views answer substring questions the same way. The flag scan itself — the
@@ -99,8 +108,6 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   // value) through parseSinceFlag, so the error wordings cannot drift. `--role` composes with
   // --since here: history's --role is a row filter, not the rival transcript view logs guards
   // against.
-  let rows: RunRow[];
-  let covered = true;
   const follow = hasFollowFlag(rest);
   if (follow) {
     if (rest.includes("--since"))
@@ -112,43 +119,47 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   const sinceMs = parseSinceFlag(rest, "history --since", LOGS_SINCE_MAX_MS);
   const untilMs = parseSinceFlag(rest, "history --until", LOGS_SINCE_MAX_MS, "--until");
   failUntilShorterThanSince("history", untilMs, sinceMs);
-  if (followTail !== null) {
-    const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_RUNS) : HISTORY_DEFAULT_RUNS;
+  return { rest, grepPattern, nRaw, followTail, sinceMs, untilMs };
+}
+
+/** Collect the row set the query names: the `-f` seed, the `--since` window, or the plain `-n`
+ * scan. The `-n` and `--since` rival checks live here so a bad count still fails after the
+ * `--since` check and before `--result` filtering. Returns the rows plus whether the scan
+ * covered the whole log (false when a bounded window hit the retained buffer's edge). */
+function collectHistoryRows(root: string, q: HistoryQuery): { rows: RunRow[]; covered: boolean } {
+  let rows: RunRow[];
+  let covered = true;
+  if (q.followTail !== null) {
+    const limit = q.nRaw !== null ? parseCountFlag("-n", q.nRaw, HISTORY_MAX_RUNS) : HISTORY_DEFAULT_RUNS;
     // The seed goes through readRunRows, which widens its window until it finds `limit` rows;
     // the tail buffer only feeds the live follow.
-    rows = readRunRows(root, limit, parseRoleListScope(root, rest));
-  } else if (sinceMs !== null) {
-    if (nRaw !== null) failRivalShapes("history --since", "-n", "a count and a window are rival shapes");
-    const role = parseRoleListScope(root, rest);
-    const windowed = readRunRowsSince(root, sinceMs, role, untilMs);
+    rows = readRunRows(root, limit, parseRoleListScope(root, q.rest));
+  } else if (q.sinceMs !== null) {
+    if (q.nRaw !== null) failRivalShapes("history --since", "-n", "a count and a window are rival shapes");
+    const role = parseRoleListScope(root, q.rest);
+    const windowed = readRunRowsSince(root, q.sinceMs, role, q.untilMs);
     rows = windowed.rows;
     covered = windowed.covered;
   } else {
     // parseCountFlag's max caps the scan window: a typo'd "999999" must not build a
     // HISTORY_MAX_RUNS-sized slice scan from a huge limit.
-    const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_RUNS) : HISTORY_DEFAULT_RUNS;
+    const limit = q.nRaw !== null ? parseCountFlag("-n", q.nRaw, HISTORY_MAX_RUNS) : HISTORY_DEFAULT_RUNS;
     // The config is read (through loadConfigCached, never throwing) only when --role is present:
     // a read-only view must not refuse a transiently broken tumwater.json.
-    const role = parseRoleListScope(root, rest);
+    const role = parseRoleListScope(root, q.rest);
     rows = readRunRows(root, limit, role);
   }
-  // The filter runs on the collected rows, before rendering and before --json serialization:
-  // the same rows the table would print, filtered the same way in both forms (the logs --grep
-  // rule: -n bounds the scanned window, not the printed rows).
-  if (grepPattern !== null) rows = runRowsMatchingGrep(rows, grepPattern);
-  // The set --grep admitted, saved so the empty-state wording blames the filter that actually
-  // emptied it: if the result filter below removes rows grep matched, naming the pattern would
-  // be false (`no runs matching "widget"` when feature #7 does match). The GUI draws the same
-  // line between a search and its outcome filter.
-  const afterGrep = rows.length;
-  // `--result <class>[,<class>...]` narrows to the listed outcome buckets, reading the same
-  // canonical historyClass rule the dashboard's History filter applies (shared from
-  // history-data.ts, not copied). It composes with --role, -n, --since, and --grep, so no
-  // rival-shape rule: a missing or empty value fails with its own wording, and an unknown
-  // class names the accepted ones (the gotSuffix shape the other flag validators use, plus a
-  // did-you-mean hint for a near-miss of a real result — the same typoSuffix treatment
-  // `logs --type` gives its codes). Applied after --grep, over the same rows both the table
-  // and --json serialize.
+  return { rows, covered };
+}
+
+/** `--result <class>[,<class>...]` narrows the rows to the listed outcome buckets, reading the
+ * same canonical historyClass rule the dashboard's History filter applies (shared from
+ * history-data.ts, not copied). It composes with --role, -n, --since, and --grep, so no
+ * rival-shape rule: a missing or empty value fails with its own wording, and an unknown class
+ * names the accepted ones (the gotSuffix shape the other flag validators use, plus a did-you-mean
+ * hint for a near-miss of a real result — the same typoSuffix treatment `logs --type` gives its
+ * codes). Applied after --grep, over the same rows both the table and --json serialize. */
+function applyHistoryResultFilter(rows: RunRow[], rest: string[]): { rows: RunRow[]; classes: HistoryResultClass[] | null } {
   const resultRaw = rejectFlagLookingValue("history --result", flagValue(rest, "--result"));
   let resultClasses: HistoryResultClass[] | null = null;
   if (resultRaw !== null) {
@@ -156,11 +167,14 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
     resultClasses = wanted;
     rows = rows.filter((r) => wanted.includes(historyClass(r.result)));
   }
-  // `--model <selector>[,...]` keeps the rows whose run_start named exactly one of the listed
-  // selectors (case-sensitive, the strings `--summary --by model` prints); a null-model row never
-  // matches. An unknown selector is not an error: models have no closed vocabulary and an old log
-  // holds models the config has since dropped, so it simply keeps no rows.
-  const afterResult = rows.length;
+  return { rows, classes: resultClasses };
+}
+
+/** `--model <selector>[,...]` keeps the rows whose run_start named exactly one of the listed
+ * selectors (case-sensitive, the strings `--summary --by model` prints); a null-model row never
+ * matches. An unknown selector is not an error: models have no closed vocabulary and an old log
+ * holds models the config has since dropped, so it simply keeps no rows. */
+function applyHistoryModelFilter(rows: RunRow[], rest: string[]): { rows: RunRow[]; models: string[] | null } {
   const modelRaw = rejectFlagLookingValue("history --model", flagValue(rest, "--model"));
   let models: string[] | null = null;
   if (modelRaw !== null) {
@@ -168,27 +182,31 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
     models = pieces;
     rows = runRowsOnModels(rows, pieces);
   }
-  if (followTail !== null) {
-    await followHistory(root, rest, rows, followTail, (r) => rowKept(r, grepPattern, resultClasses, models), seams, rest.includes("--json"));
-    return;
-  }
-  // --json swaps the renderer for the collector's own payload, exactly as status --json and
-  // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
-  // JSON document even when the log is empty ({"rows":[]} — never the prose `no runs yet`,
-  // the report --json precedent: the flag's output must be parseable in every exit-0 case).
+  return { rows, models };
+}
+
+/** Render the collected-and-filtered rows: the `--by`/`--summary` summary grouping, the `--json`
+ * document, the empty-state wording (blaming the filter that emptied the set, else the log or
+ * window), the aligned table, and the sparse-window note. A bad `--by` value fails here, after
+ * row collection and filtering and before `--json`. */
+function sayHistory(rows: RunRow[], q: HistoryQuery, covered: boolean, filtered: { afterGrep: number; afterResult: number; classes: HistoryResultClass[] | null; models: string[] | null }): void {
   // `--by role|model` picks how --summary groups its lines (role by default).
-  const byRaw = flagValue(rest, "--by");
+  const byRaw = flagValue(q.rest, "--by");
   let byModel = false;
-  if (rest.includes("--by")) {
+  if (q.rest.includes("--by")) {
     if (!byRaw) return fail(HISTORY_BY_VALUE_ERROR);
     if (!(HISTORY_SUMMARY_GROUPS as readonly string[]).includes(byRaw)) {
       fail(`history --by must be one of ${HISTORY_SUMMARY_GROUPS.join(", ")}${gotSuffix(byRaw)}${typoSuffix(byRaw, [...HISTORY_SUMMARY_GROUPS])}`);
     }
-    if (!rest.includes("--summary")) fail("history --by needs --summary (it picks how the summary groups runs)");
+    if (!q.rest.includes("--summary")) fail("history --by needs --summary (it picks how the summary groups runs)");
     byModel = byRaw === "model";
   }
-  const summary = rest.includes("--summary") && rows.length > 0;
-  if (rest.includes("--json")) {
+  const summary = q.rest.includes("--summary") && rows.length > 0;
+  // --json swaps the renderer for the collector's own payload, exactly as status --json and
+  // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
+  // JSON document even when the log is empty ({"rows":[]} — never the prose `no runs yet`,
+  // the report --json precedent: the flag's output must be parseable in every exit-0 case).
+  if (q.rest.includes("--json")) {
     sayJson(summary ? (byModel ? summarizeRunRowsByModel(rows) : summarizeRunRows(rows)) : { rows });
     return;
   }
@@ -205,17 +223,17 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
     // empty-log/window prose is the true one — the dashboard's History view draws the same
     // line. A grep that admitted nothing keeps its own wording regardless of --result.
     say(
-      models !== null && afterResult > 0
-        ? `no runs on model "${models.join(",")}"`
-        : resultClasses !== null && afterGrep > 0
-        ? `no runs with result "${resultClasses.join(",")}"`
-        : grepPattern !== null
-          ? `no runs matching "${grepPattern}"`
-          : sinceMs === null
+      filtered.models !== null && filtered.afterResult > 0
+        ? `no runs on model "${filtered.models.join(",")}"`
+        : filtered.classes !== null && filtered.afterGrep > 0
+        ? `no runs with result "${filtered.classes.join(",")}"`
+        : q.grepPattern !== null
+          ? `no runs matching "${q.grepPattern}"`
+          : q.sinceMs === null
             ? "no runs yet"
-            : untilMs === null
-              ? `no runs in ${durationLabel(sinceMs)}`
-              : `no runs ${betweenWindow(sinceMs, untilMs)}`,
+            : q.untilMs === null
+              ? `no runs in ${durationLabel(q.sinceMs)}`
+              : `no runs ${betweenWindow(q.sinceMs, q.untilMs)}`,
     );
     return;
   }
@@ -229,6 +247,41 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   // SPARSE_WINDOW_NOTE wording: the oldest retained event being inside the window is exactly
   // the unproven case, whether the cause is rotation or idleness.
   if (!covered) say(SPARSE_WINDOW_NOTE);
+}
+
+/** `tumwater history [--role <id>[,<id>...]] [-n N] [-f] [--since <duration>]
+ * [--until <duration>] [--grep <text>] [--result <class>] [--model <selector>[,...]]`: print the
+ * last N completed runs, newest first — or,
+ * with `--since`, the runs of a bounded past window over the same record, the same shape
+ * `logs --since` and `report --since` speak. `--grep` keeps rows whose rendered line matches,
+ * `--result` narrows to the listed outcome classes (changes/none/problems, the dashboard History
+ * filter's buckets) and `--model` keeps runs that started on the listed models; all compose
+ * with --role, -n, and --since. Read-only: stdout only, no state file created — a missing or empty
+ * event log prints `no runs yet` and exits 0. */
+export async function cmdHistory(root: string, args: string[], seams: FollowSeams = {}): Promise<void> {
+  const q = parseHistoryQuery(root, args);
+  let { rows, covered } = collectHistoryRows(root, q);
+  // The filter runs on the collected rows, before rendering and before --json serialization:
+  // the same rows the table would print, filtered the same way in both forms (the logs --grep
+  // rule: -n bounds the scanned window, not the printed rows).
+  if (q.grepPattern !== null) rows = runRowsMatchingGrep(rows, q.grepPattern);
+  // The set --grep admitted, saved so the empty-state wording blames the filter that actually
+  // emptied it: if the result filter below removes rows grep matched, naming the pattern would
+  // be false (`no runs matching "widget"` when feature #7 does match). The GUI draws the same
+  // line between a search and its outcome filter.
+  const afterGrep = rows.length;
+  // --result and --model each narrow the set further, and the counts saved here let the
+  // empty-state wording blame whichever filter actually emptied it.
+  const result = applyHistoryResultFilter(rows, q.rest);
+  rows = result.rows;
+  const afterResult = rows.length;
+  const model = applyHistoryModelFilter(rows, q.rest);
+  rows = model.rows;
+  if (q.followTail !== null) {
+    await followHistory(root, q.rest, rows, q.followTail, (r) => rowKept(r, q.grepPattern, result.classes, model.models), seams, q.rest.includes("--json"));
+    return;
+  }
+  sayHistory(rows, q, covered, { afterGrep, afterResult, classes: result.classes, models: model.models });
 }
 
 /** The row filters `--grep`, `--result` and `--model` apply, as one predicate for followed rows. */
