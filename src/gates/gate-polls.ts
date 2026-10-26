@@ -202,7 +202,7 @@ export function pollTeamGates(
   states: TeamGateStates,
   ctx: TeamGatePollCtx,
 ): TeamGatePoll {
-  const { root, runners, liveConfig, modelsPath, now, info } = ctx;
+  const { root, now } = ctx;
 
   // The per-backend subscription account lookup (part 2e/9): each backend's account is read on
   // demand — the window hold/reserve/warning loop, the window-move and the handback reads each
@@ -210,11 +210,46 @@ export function pollTeamGates(
   // from claude's.
   const accounts = (backend: string) => readAccount(root, backend, now);
 
-  // Daily cost budget gate (src/gates/budget-gates.ts owns the reads, the edge-triggered
-  // budget_* events, and the breaker re-key; the fallback config view it derives lives in
-  // src/budget/budget-fallback-view.ts): the orchestrator
-  // owns only the wiring — the demotion publish below and the per-runner assignment at
-  // the bottom of this block.
+  const budget = pollBudgetPhase(states, ctx, accounts);
+  const holds = pollHoldGates(states, ctx);
+  const quietDisk = pollQuietAndDiskGates(states, ctx);
+  pollTeamFailureAlarms(states, ctx, accounts, budget.windowTiers);
+
+  return {
+    gate: budget.gate,
+    roleConfig: budget.roleConfig,
+    directorConfig: budget.directorConfig,
+    userPaused: holds.userPaused,
+    pausedRoles: holds.pausedRoles,
+    capPaused: holds.capPaused,
+    maintenanceQuota: holds.maintenanceQuota,
+    bootstrapHeld: holds.bootstrapHeld,
+    budgetPausedRoles: budget.budgetPausedRoles,
+    servingResolved: budget.servingResolved,
+    priceResolved: budget.priceResolved,
+    budgetActive: budget.budgetActive,
+    windowMovedRoles: budget.windowMovedRoles,
+    roleQuietHeld: quietDisk.roleQuietHeld,
+    quietNow: quietDisk.quietNow,
+    diskHeld: quietDisk.diskHeld,
+  };
+}
+
+// Daily cost budget gate (src/gates/budget-gates.ts owns the reads, the edge-triggered
+// budget_* events, and the breaker re-key; the fallback config view it derives lives in
+// src/budget/budget-fallback-view.ts): the orchestrator
+// owns only the wiring — the demotion publish below and the per-runner assignment at
+// the bottom of this block — and the per-tier budget pause (src/budget/budget-wiring.ts,
+// part 5c/8): a role whose model tier resolved to no usable free pair while the cap is
+// reached starts no new runs, and a role on a window-moved tier whose own backend owns
+// the out window is moved off it.
+function pollBudgetPhase(
+  states: TeamGateStates,
+  ctx: TeamGatePollCtx,
+  accounts: (backend: string) => ReturnType<typeof readAccount>,
+) {
+  const { root, runners, liveConfig, modelsPath, info } = ctx;
+
   const {
     gate,
     roleConfig,
@@ -262,9 +297,43 @@ export function pollTeamGates(
     },
   });
 
-  // The pause gates (src/gates/pause-gates.ts owns the reads, the edge-triggered pause/resume
-  // events, and the cross-poll bookkeeping): the operator pause's marker and the per-role pause's
-  // set, both read fresh per cycle so a marker change takes effect on the next poll.
+  // The per-tier budget pause (src/budget/budget-wiring.ts, part 5c/8): a role whose model
+  // tier resolved to no usable free pair while the cap is reached starts no new runs, and a
+  // role on a window-moved tier whose own backend owns the out window is moved off it — the
+  // stateless verdict recomputed every poll from the SAME resolution the gate's value came
+  // from, beside `capPaused` (the scheduling pass folds the sets; the director is exempt, as
+  // under every autonomous gate, and the demoted pair's probe pierces the set for its own
+  // tier's roles only — probeRoles in the orchestrator's scheduling pass).
+  const { budgetPausedRoles, windowMovedRoles } = budgetPausedSubjects({
+    runners,
+    liveConfig,
+    accounts,
+    budgetActive,
+    servingResolved,
+    windowTiers,
+  });
+
+  return {
+    gate,
+    roleConfig,
+    directorConfig,
+    budgetPausedRoles,
+    windowMovedRoles,
+    servingResolved,
+    priceResolved,
+    budgetActive,
+    windowTiers,
+  };
+}
+
+// The pause gates (src/gates/pause-gates.ts owns the reads, the edge-triggered pause/resume
+// events, and the cross-poll bookkeeping): the operator pause's marker and the per-role pause's
+// set, both read fresh per cycle so a marker change takes effect on the next poll — then the
+// error-streak circuit breaker, the per-role daily cost cap, the maintenance allowance and the
+// new-project bootstrap, each a stateless verdict folded into this poll's hold views.
+function pollHoldGates(states: TeamGateStates, ctx: TeamGatePollCtx) {
+  const { root, runners, liveConfig, now } = ctx;
+
   const { userPaused, pausedRoles } = pollPauseGates(root, states.pause);
 
   // The error-streak circuit breaker (src/gates/streak-gate.ts): a role past ERROR_STREAK_BREAKER
@@ -284,22 +353,6 @@ export function pollTeamGates(
   for (const role of streakPaused) states.pause.prevPausedRoles.add(role);
   const pausedRolesNow =
     streakPaused.length > 0 ? new Set([...pausedRoles, ...streakPaused]) : pausedRoles;
-
-  // The per-tier budget pause (src/budget/budget-wiring.ts, part 5c/8): a role whose model
-  // tier resolved to no usable free pair while the cap is reached starts no new runs, and a
-  // role on a window-moved tier whose own backend owns the out window is moved off it — the
-  // stateless verdict recomputed every poll from the SAME resolution the gate's value came
-  // from, beside `capPaused` (the scheduling pass folds the sets; the director is exempt, as
-  // under every autonomous gate, and the demoted pair's probe pierces the set for its own
-  // tier's roles only — probeRoles in the orchestrator's scheduling pass).
-  const { budgetPausedRoles, windowMovedRoles } = budgetPausedSubjects({
-    runners,
-    liveConfig,
-    accounts,
-    budgetActive,
-    servingResolved,
-    windowTiers,
-  });
 
   // The per-role daily cost cap (src/gates/role-cap-gates.ts): a role whose local-day spend has
   // reached its own maxDailyCostUsdPerRole entry starts no new runs — the stateless verdict
@@ -337,12 +390,18 @@ export function pollTeamGates(
   // need-based deferral honors).
   const bootstrapHeld = pollBootstrapGate(root, states.bootstrap, runners, liveConfig, now);
 
-  // Per-role quiet hours (src/scheduling/quiet-hours.ts): a role whose own quietHoursPerRole window
-  // covers `now` starts no new runs — the team window's semantics scoped to one role, the
-  // director exempt like every autonomous gate. Stateless, recomputed per poll exactly like
-  // capPaused: no crossing events, no state — a live config edit applies on the next poll
-  // by construction. A role held by BOTH windows is held once: the scheduling pass folds
-  // both verdicts into one hold condition, nothing counts a role twice.
+  return { userPaused, pausedRoles: pausedRolesNow, capPaused, maintenanceQuota, bootstrapHeld };
+}
+
+// Per-role quiet hours (src/scheduling/quiet-hours.ts): a role whose own quietHoursPerRole window
+// covers `now` starts no new runs — the team window's semantics scoped to one role, the
+// director exempt like every autonomous gate. Stateless, recomputed per poll exactly like
+// capPaused: no crossing events, no state — a live config edit applies on the next poll
+// by construction. A role held by BOTH windows is held once: the scheduling pass folds
+// both verdicts into one hold condition, nothing counts a role twice.
+function pollQuietAndDiskGates(states: TeamGateStates, ctx: TeamGatePollCtx) {
+  const { root, runners, liveConfig, now, info } = ctx;
+
   const roleQuietHeld = new Set<string>();
   for (const r of runners) {
     if (r.role === DIRECTOR_ROLE) continue;
@@ -396,19 +455,27 @@ export function pollTeamGates(
         };
   publishInfoFields(root, info, [["disk", disk]]);
 
-  // Each runner as the two provider-failure polls read it (HoldInputs): the role, its two
-  // episodic fields, and the provider its NEXT run will run on (runProvider — the tier
-  // fallback pair while a model-fallback episode is active, else the role's resolved config;
-  // undefined when pi's default is in charge). Built ONCE per poll so the hold and the spread
-  // read the same list, like holdObservations on the reducer side. Keying on the effective
-  // provider is what lets a storm on the fallback pair form its own hold while the abandoned
-  // primary stays clear (PLANS.md "Model failure fallback, part 1/2").
-  //
-  // Each stamp (lastRateLimit/lastBackendFailure) carries the hold key of the backend that
-  // ACTUALLY failed — a reviewer run folded through the author's role stamps `claude`, not
-  // the pi author's provider — and the polls' observation mapper files each stamp under that
-  // key, falling back to runProvider here for a stamp without one (PLANS.md "Mixed claude +
-  // pi fleets, part 2/4"). The spreads below carry the stamps wholesale, provider included.
+  return { roleQuietHeld, quietNow, diskHeld };
+}
+
+// Each runner as the two provider-failure polls read it (HoldInputs) is built ONCE here so
+// the hold and the spread read the same list, like holdObservations on the reducer side.
+// Keying on the effective provider is what lets a storm on the fallback pair form its own
+// hold while the abandoned primary stays clear (PLANS.md "Model failure fallback, part 1/2").
+//
+// Each stamp (lastRateLimit/lastBackendFailure) carries the hold key of the backend that
+// ACTUALLY failed — a reviewer run folded through the author's role stamps `claude`, not
+// the pi author's provider — and the polls' observation mapper files each stamp under that
+// key, falling back to runProvider here for a stamp without one (PLANS.md "Mixed claude +
+// pi fleets, part 2/4"). The spreads below carry the stamps wholesale, provider included.
+function pollTeamFailureAlarms(
+  states: TeamGateStates,
+  ctx: TeamGatePollCtx,
+  accounts: (backend: string) => ReturnType<typeof readAccount>,
+  windowTiers: ReturnType<typeof pollBudgetGate>["windowTiers"],
+) {
+  const { root, runners, liveConfig, now, info } = ctx;
+
   const holdInputs = (rs: readonly RoleRunner[]): HoldInputs[] =>
     rs.map((r) => ({
       role: r.role,
@@ -504,23 +571,4 @@ export function pollTeamGates(
   // so a degraded backend that fails the team widely and shallowly still names itself.
   // Observational only, like the error storm: it gates nothing.
   states.failureSpread = pollFailureSpread(root, states.failureSpread, holdInputs(runners), now);
-
-  return {
-    gate,
-    roleConfig,
-    directorConfig,
-    userPaused,
-    pausedRoles: pausedRolesNow,
-    capPaused,
-    maintenanceQuota,
-    bootstrapHeld,
-    budgetPausedRoles,
-    servingResolved,
-    priceResolved,
-    budgetActive,
-    windowMovedRoles,
-    roleQuietHeld,
-    quietNow,
-    diskHeld,
-  };
 }
