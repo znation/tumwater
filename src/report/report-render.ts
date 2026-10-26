@@ -79,6 +79,23 @@ function pushRankedRoleLine(
   lines.push(rankedRoleLine(label, pairs.filter(([, n]) => n > 0), fmt));
 }
 
+/** Push a "**Label:** …" ranked-role line only when some role carries a positive value — the
+ * zero-means-absent idiom: a window or day with no evidence prints no line at all, unlike
+ * pushRankedRoleLine's always-printed "-", because "no model ran" is an absence, not a zero
+ * (the same reason pushProviderCostLines and pushDayCameoLine stay silent when empty). fmt
+ * formats each role's number (default String for count lines). Shared by the since and day
+ * renders so the filter-and-if-present guard cannot drift between them — a field that flipped
+ * one render to always-print would show an absent "-" line in one report but not the other. */
+function pushPresentRankedLine(
+  lines: string[],
+  label: string,
+  pairs: [string, number][],
+  fmt: (n: number) => string = String,
+): void {
+  const present = pairs.filter(([, n]) => n > 0);
+  if (present.length > 0) lines.push(rankedRoleLine(label, present, fmt));
+}
+
 /** The per-day cameo line of the team day report — "MMM D <cell>" cells for each day that
  * carries a value, joined under a bold title, or undefined when no day has one (zero means
  * absent). The one home of that cameo rendering, shared by the per-day medians, the red-check
@@ -286,8 +303,7 @@ function pushSinceProviderModelLines(lines: string[], data: SinceReport): void {
     // omits it. SinceReport.runsByModel is always present, so a window with no modelled
     // start prints no line (keeping a model-less day's output unchanged), exactly as the
     // provider lines stay absent when no provider spent.
-    const modelPairs = rankedRoleMap(data.runsByModel).filter(([, n]) => n > 0);
-    if (modelPairs.length > 0) lines.push(rankedRoleLine("Runs by model", modelPairs, String));
+    pushPresentRankedLine(lines, "Runs by model", rankedRoleMap(data.runsByModel));
   }
 }
 
@@ -301,13 +317,11 @@ function pushSinceMainRedLines(lines: string[], data: SinceReport): void {
   // checks named over the window. Team-only like main's red time, so a role-scoped window
   // omits it; zero-absent: no line when the window's red checks named no test.
   if (data.role === undefined) {
-    const mainRedByTest = rankedRoleMap(data.mainRedByTest ?? {}).filter(([, n]) => n > 0);
-    if (mainRedByTest.length > 0) lines.push(rankedRoleLine("Main red by test", mainRedByTest, String));
+    pushPresentRankedLine(lines, "Main red by test", rankedRoleMap(data.mainRedByTest ?? {}));
     // The same "what kept main red" detail named by merge — the landed merges the watch's
     // own main_culprit events blamed, mirroring the failing-test line right above. Team-only
     // like main's red time and zero-absent: no line when the window blamed no merge.
-    const mainRedByCulprit = rankedRoleMap(data.mainRedByCulprit ?? {}).filter(([, n]) => n > 0);
-    if (mainRedByCulprit.length > 0) lines.push(rankedRoleLine("Main red by merge", mainRedByCulprit, String));
+    pushPresentRankedLine(lines, "Main red by merge", rankedRoleMap(data.mainRedByCulprit ?? {}));
   }
 }
 
@@ -336,8 +350,7 @@ function pushSinceDeferralLines(lines: string[], data: SinceReport): void {
   // Gated to the team report — a reason is not a role, so a role-scoped window omits it.
   // Zero-means-absent: a window with no deferral prints no line.
   if (data.role === undefined) {
-    const deferred = rankedRoleMap(data.deferredByReason ?? {}).filter(([, n]) => n > 0);
-    if (deferred.length > 0) lines.push(rankedRoleLine("Deferred runs by reason", deferred, String));
+    pushPresentRankedLine(lines, "Deferred runs by reason", rankedRoleMap(data.deferredByReason ?? {}));
   }
 }
 
@@ -353,16 +366,12 @@ function pushSinceCommitLines(lines: string[], data: SinceReport): void {
   // some role has one; a merge-free window renders `-` like the other lines.
   if (data.role === undefined) {
     lines.push(rankedRoleLine("Merged by role", rankedRoleMap(data.mergedByRole), String));
-    const mergeFailures = rankedRoleMap(data.mergeFailedByRole).filter(([, n]) => n > 0);
-    if (mergeFailures.length > 0)
-      lines.push(rankedRoleLine("Merge failures by role", mergeFailures, String));
+    pushPresentRankedLine(lines, "Merge failures by role", rankedRoleMap(data.mergeFailedByRole));
     // WHY the window's merges failed, from each merge_failed's result code — the day
     // report's reason twin of the role line above, so an operator can tell a review
     // rejection (fix the change) from a conflict/block (rebase) from a shutdown abort
     // (capacity). Ranked the same way (count desc then code asc), reason-free only.
-    const mergeFailureReasons = rankedRoleMap(data.mergeFailedByReason ?? {}).filter(([, n]) => n > 0);
-    if (mergeFailureReasons.length > 0)
-      lines.push(rankedRoleLine("Merge failures by reason", mergeFailureReasons, String));
+    pushPresentRankedLine(lines, "Merge failures by reason", rankedRoleMap(data.mergeFailedByReason ?? {}));
   }
 }
 
@@ -538,8 +547,7 @@ function pushReportProviderLines(lines: string[], data: ReportData): void {
     // omits it (ROLE_SCOPE_NOTE covers the omission), and a window with no modelled start
     // prints no line (keeping a model-less day's output unchanged), exactly as the provider
     // lines stay absent when no provider spent. Ranked and formatted like Cost by role.
-    const modelPairs = rankedRoleTotals(data.series, (d) => d.runsByModel ?? {}).filter(([, n]) => n > 0);
-    if (modelPairs.length > 0) lines.push(rankedRoleLine("Runs by model", modelPairs, String));
+    pushPresentRankedLine(lines, "Runs by model", rankedRoleTotals(data.series, (d) => d.runsByModel ?? {}));
   }
 }
 
@@ -569,8 +577,7 @@ function pushReportDeferralLines(lines: string[], data: ReportData): void {
   // reason is not a role (ROLE_SCOPE_NOTE covers the omission). Zero-means-absent: a window
   // with no deferral prints no line, so a deferral-free day's output is unchanged.
   if (data.role === undefined) {
-    const deferred = rankedRoleTotals(data.series, (d) => d.deferredByReason ?? {}).filter(([, n]) => n > 0);
-    if (deferred.length > 0) lines.push(rankedRoleLine("Deferred runs by reason", deferred, String));
+    pushPresentRankedLine(lines, "Deferred runs by reason", rankedRoleTotals(data.series, (d) => d.deferredByReason ?? {}));
   }
 }
 
@@ -589,14 +596,10 @@ function pushReportMergeLines(lines: string[], data: ReportData): void {
   if (data.role === undefined) {
     const mergeDone = rankedRoleTotals(data.series, (d) => d.mergedByRole ?? {});
     lines.push(rankedRoleLine("Merged by role", mergeDone, String));
-    const mergeFailures = rankedRoleTotals(data.series, (d) => d.mergeFailedByRole ?? {}).filter(([, n]) => n > 0);
-    if (mergeFailures.length > 0)
-      lines.push(rankedRoleLine("Merge failures by role", mergeFailures, String));
+    pushPresentRankedLine(lines, "Merge failures by role", rankedRoleTotals(data.series, (d) => d.mergeFailedByRole ?? {}));
     // The --since reason twin, folded across the series the same way; a reason-free window
     // prints no line, so its output is byte-for-byte unchanged.
-    const mergeFailureReasons = rankedRoleTotals(data.series, (d) => d.mergeFailedByReason ?? {}).filter(([, n]) => n > 0);
-    if (mergeFailureReasons.length > 0)
-      lines.push(rankedRoleLine("Merge failures by reason", mergeFailureReasons, String));
+    pushPresentRankedLine(lines, "Merge failures by reason", rankedRoleTotals(data.series, (d) => d.mergeFailedByReason ?? {}));
     // Per-day median passing check time, so a suite slowing over days shows; days without a
     // check are left out, and no line prints when no day has one (zero means absent).
     pushDayCameoLine(lines, data.series, "Merge check median", (d) => d.checkMedianMs);
@@ -610,13 +613,11 @@ function pushReportMergeLines(lines: string[], data: ReportData): void {
     // The day twin of the --since window's totals line: the same tests ranked across the
     // series' per-day main-red maps (Main red by test). Zero-absent: no line when no day
     // named a failing test.
-    const mainRedByTest = rankedRoleTotals(data.series, (d) => d.mainRedByTest ?? {}).filter(([, n]) => n > 0);
-    if (mainRedByTest.length > 0) lines.push(rankedRoleLine("Main red by test", mainRedByTest, String));
+    pushPresentRankedLine(lines, "Main red by test", rankedRoleTotals(data.series, (d) => d.mainRedByTest ?? {}));
     // The day twin of the --since window's merges line: the same culprits ranked across the
     // series' per-day main-red maps (Main red by merge). Zero-absent: no line when no day
     // blamed a merge.
-    const mainRedByCulprit = rankedRoleTotals(data.series, (d) => d.mainRedByCulprit ?? {}).filter(([, n]) => n > 0);
-    if (mainRedByCulprit.length > 0) lines.push(rankedRoleLine("Main red by merge", mainRedByCulprit, String));
+    pushPresentRankedLine(lines, "Main red by merge", rankedRoleTotals(data.series, (d) => d.mainRedByCulprit ?? {}));
     pushDayCameoLine(lines, data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
     // How long the merge slot itself held each change it landed, beside the merge-wait median:
     // the queue backlog (merge wait minus slot time) apart from the slot's own review/check/
