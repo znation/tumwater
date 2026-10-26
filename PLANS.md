@@ -378,23 +378,60 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A grep over `test/runner.test.ts` for `review_start` returns only post-landing (`afterMerge: true`) reviewer runs, or no reviewer-model pair at all.
 - No edit outside test/runner.test.ts.
 
-### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic or isolated, so a loaded host no longer turns the suite red (promoted 2026-10-26 by the steward from BUGS.md's "e2e/concurrency tests can fail on a loaded host…" class entry, lines 70-103, after three consecutive main tips' whole e2e tier never went green under record host load and even file-isolation runs of the failing tests went red)
+### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 1/3: the pause-role lost-update test drives contention through the lock, not a spin barrier (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 2/3 and part 3/3 and editing only test/team-state.test.ts, so it holds no prerequisite and merges independently; the class plan's "isolation" option is dropped because the existing e2e step already runs the tier apart from the full suite and it still went red at host load ≈ 146, so only a deterministic signal fixes the verdict; touches test/team-state.test.ts)
 
-**Needs review 2026-10-26 by feature: too large for one run (held 1)**
+**Previously held 1**
 
-**Goal.** Retire BUGS.md's open e2e/concurrency class (lines 70-103): tests that fail on a loaded host and pass on a re-run because their verdicts hinge on cross-process wall-clock waits, pid probes and timing bounds that hold only when the host is quiet. As of 2026-10-25 the class has kept the whole e2e tier red across three consecutive main tips (9a99637, f211fee, 2aba648) under host load ≈ 118-146, and — first for the class — even a single e2e file run alone goes red, so no offline isolation run shelters the failing waits any more. The members are already their own open BUGS.md entries (the supervisor SIGKILL-grandchild watch, the pauseRole lost-update, the hanging-fake reused-pid probe) plus the e2e grow-waits `budget_resumed`, reached-cap, free-fallback demote, and the maxConcurrent / maxConcurrentPerProvider cap-resize — each keeps its own hold; this plan supplies the infrastructure those waits convert onto, it does not fold the bugs together.
+**Goal.** Retire the class plan's pause-role member: `test/team-state.test.ts`'s `simultaneous cross-process pauseRole calls all survive in the marker` fails on a loaded host (its child surfaces `withSyncLock`'s "timed out after 10s waiting for lock") even though `pauseRole`/`resumeRole` are fully wrapped in the paused-roles lock. Its eight writers are released by `pauseOnceProcess`'s CPU busy-wait on a start file (`while (!fs.existsSync(startFile)) {}`), so under load a writer can burn the lock's whole acquire bound before it even reaches `pauseRole`; the verdict then hinges on host scheduling, not on the marker's serialization.
 
-**Approach.** Land the class entry's deterministic-contention / isolation sketch as the step it names, one or both:
-1. **Deterministic contention** — drive the cross-process concurrency the tests assert deterministically instead of by wall clock: contend through the pause-role lock and seed (src/concurrency/lock.ts) and give reap checks a handle that cannot read a reused pid (a pid-file/epoch or process-group token, not `process.kill(pid, 0)`), so the load-stretched 60 s/150 s grows and the 2 s `gone` poll settle to bounded, host-independent verdicts.
-2. **Isolation** — run the e2e/concurrency tier apart from the full suite's thousands of concurrent spawns (its own npm script / ci step with the wall-clock threads to itself), so the bounds stretch only with that file's own shims, never the suite's load.
-Convert each member onto the chosen step as it lands, moving its BUGS.md hold to Fixed only once the deterministic/isolation step makes it green under full-suite load, not merely in a quiet isolation run.
+**Approach.**
+- Replace the spin barrier with the readiness handshake the file already uses in `a paused-roles lock held by another process is waited for, not stolen`: spawn each writer through `spawnReadyChild` (test/helpers/child-process.ts) so it writes its `ready` file immediately before calling `pauseRole`, and have the test release no writer until every `ready` file exists. This removes the CPU spin that starves the writers under load.
+- Keep the 2000-role seed and the eight simultaneous writers, and the same `deepEqual` assertion; do not weaken the seed or the assertion to make the case pass.
+- If serialization itself (not the barrier) is what starves past the acquire bound, add a test-only seam in src/concurrency/lock.ts for that bound — do not change the production bound and do not change `pauseRole`/`resumeRole`.
 
-**Files touched.** src/concurrency/lock.ts src/concurrency/cross-process-lock.ts src/process/supervisor.ts src/runner/runner-run.ts src/runner/runner-recovery.ts test/supervisor.test.ts test/team-state.test.ts test/codex-hook-trust.test.ts test/orchestrator-budget.e2e.test.ts test/orchestrator-resize.e2e.test.ts. (The reviewer-repoint parts 3p/3-3w/3 touch some of the same e2e files at the reviewer cases only; this plan's edits are the orchestration wait/pid bounds, so whichever lands second rebases there.)
+**Files touched.** test/team-state.test.ts (src/concurrency/lock.ts only if the acquire bound needs the test seam)
 
 **Acceptance criteria.**
-- Every member the class entry names — supervisor watch, pauseRole lost-update, hanging-fake reject, `budget_resumed`, reached-cap, free-fallback demote, maxConcurrent / maxConcurrentPerProvider grow-waits, and the director-prompt / custom-roles ordering races — passes under full-suite load, or the tier is run isolated so those waits hold.
-- No member's fix adds a new wall-clock/path-timing bound that the suite's load can stretch; each new bound names the deterministic signal it waits on.
-- Each member's BUGS.md hold is moved to Fixed only when green under load, not merely in isolation.
 - `npm run test:gate` passes.
+- `pauseOnceProcess` no longer busy-waits on the start file; the writers are released by a readiness handshake.
+- After all eight writers exit, the marker holds the 2000 seeded roles plus all eight simultaneous pauses.
+
+### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 2/3: the concurrency tests' reap checks use a process-identity handle, not a bare pid (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 1/3 and part 3/3 and editing only src/process/process.ts, test/codex-hook-trust.test.ts and test/supervisor.test.ts, so it holds no prerequisite and merges independently; touches src/process/process.ts test/codex-hook-trust.test.ts test/supervisor.test.ts)
+
+**Previously held 1**
+
+**Goal.** Retire the class plan's two pid/signal members. `test/codex-hook-trust.test.ts`'s `a hanging fake rejects within timeoutMs and its child is gone afterwards` decides "gone" by polling `process.kill(pid, 0)`, which reports a reused pid alive; `test/supervisor.test.ts`'s `startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it` retries SIGUSR2 until a 60 s wall-clock deadline, so a starved grandchild can lose on scheduling alone.
+
+**Approach.**
+- src/process/process.ts: add an identity-aware liveness probe beside `pidAlive`. Capture a per-process start identity when the fake app-server is spawned (a recorded nonce, or the OS start time — `/proc/<pid>/stat` field 22 on Linux, `ps -o lstart=` on macOS) and expose it (e.g. `pidIdentity(pid)` / `identityAlive(handle)`); leave `pidAlive`'s signature and behavior unchanged for production callers.
+- test/codex-hook-trust.test.ts: the hanging-fake case reads the fake's recorded identity and decides "gone" from the identity probe, so a reused pid cannot read as the fake still alive. Keep the bounded poll; the bound now only reports a genuine hang.
+- test/supervisor.test.ts: end the grandchild case's signal loop on the reparent it observes (the `seen` file holds a ppid different from `supervisor.pid`), signalling again only until that observation, instead of a `Date.now() + 60_000` deadline. The real-process SIGKILL shape stays.
+
+**Files touched.** src/process/process.ts test/codex-hook-trust.test.ts test/supervisor.test.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes.
+- The hanging-fake case decides "gone" through the identity probe; it contains no bare `process.kill(pid, 0)` liveness poll.
+- The supervisor case's signal loop ends on the reparent it observes in `seen`, not on a `Date.now() + 60_000` deadline.
+- `pidAlive` keeps its current contract: a non-positive or fractional pid is false, and the probe reports a reaped pid as not alive.
+
+### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 3/3: the e2e grow-waits observe the orchestrator's own events and run markers, not live process samples (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 1/3 and part 2/3 and editing only test/orchestrator-budget.e2e.test.ts, test/orchestrator-resize.e2e.test.ts and test/fixtures/orchestrator-fixtures.ts, so it holds no prerequisite and merges independently; touches test/orchestrator-budget.e2e.test.ts test/orchestrator-resize.e2e.test.ts test/fixtures/orchestrator-fixtures.ts)
+
+**Previously held 1**
+
+**Goal.** Retire the class plan's e2e grow-waits. `test/orchestrator-resize.e2e.test.ts`'s `a live maxConcurrent edit resizes the cap without a restart` and `a live maxConcurrentPerProvider edit admits a parked omlx run and logs its own event` wait on the concurrency fake's `samples.log` (`readSamples(runDir).some((n) => n >= 2)`) with a 150 s/60 s budget; `test/orchestrator-budget.e2e.test.ts`'s `a reached cap switches roles to the free fallback model instead of stopping them`, `a free fallback whose runs keep failing is demoted to a pause, then probed back once it serves`, and `budget_resumed hands the in-flight fallback runs back to the primary` wait on live-run counts and, after a fixed sleep, on runner state. A loaded host can push the sampled state past the budget with no code change.
+
+**Approach.**
+- The orchestrator already emits the deterministic transitions these cases assert: `provider_concurrency_changed` (the resize case reads it today), and `budget_paused` / `budget_resumed` / `budget_fallback` / `budget_handback` (the budget cases already use `readEvents` for some steps). Re-point each grow-wait's "a slot opened / a run started" step onto the emitted event or an admitted-run count taken from the run markers the fake writes.
+- Keep `readSamples` for the assertions whose real subject is overlap (peak stays 1) and read those only after the event confirms the transition; do not delete a peak assertion to make a grow-wait pass.
+- `budget_resumed`'s post-sleep runner-state wait in test/orchestrator-budget.e2e.test.ts waits on the handed-back run's own terminal/next-start marker instead of the fixed sleep plus state poll.
+
+**Files touched.** test/orchestrator-budget.e2e.test.ts test/orchestrator-resize.e2e.test.ts test/fixtures/orchestrator-fixtures.ts (only if `readSamples` needs an event-based sibling)
+
+**Acceptance criteria.**
+- `npm run test:gate` passes.
+- In test/orchestrator-resize.e2e.test.ts, neither grow-wait uses `readSamples(...).some((n) => n >= 2)` with a 150 s/60 s budget; each grow assertion reads an emitted event or an admitted-run count.
+- In test/orchestrator-budget.e2e.test.ts, the three named cases no longer decide the grow/handback step on a fixed `sleep` followed by a `waitFor` over live-run counts; each waits on an emitted event or a run marker.
+- Every peak-overlap assertion keeps its subject and still reads the concurrency fake's samples.
 
 ## Done
