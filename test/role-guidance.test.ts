@@ -11,7 +11,6 @@ import {
   NEEDS_REVIEW_PREFIX,
   PLAN_QUEUE_GUIDANCE,
   PLAN_SIZING,
-  PRIOR_HELD_NOTE,
   searchGuidance,
   VALIDATION_GAP_GUIDANCE,
   VALIDATION_GAP_QUERY,
@@ -182,23 +181,22 @@ test("the Needs review marker is embedded in the feature, plan, and director pro
   assert.ok(oneLine(buildDirectorPrompt("split plan X")).includes(NEEDS_REVIEW_NOTE));
 });
 
-test("the held-count tag is pinned by the note template and PRIOR_HELD_NOTE round-trips through heldCount", () => {
-  // The feature role writes the count, heldCount reads it. The tag sits inside the line, so the
-  // note prefix still recognizes a tagged note — entryHold's classification is unchanged except
-  // for the count.
-  assert.ok(NEEDS_REVIEW_NOTE.includes("(held <N>)"));
-  assert.ok(NEEDS_REVIEW_NOTE.startsWith(NEEDS_REVIEW_PREFIX), "review prefix still matches a tagged note");
-  // The surviving marker a lift leaves keeps the count (it does not reset across a split), and
-  // heldCount reads that line, so a PRIOR_HELD_NOTE-shaped line round-trips the count.
-  assert.ok(PRIOR_HELD_NOTE.includes("Previously held <N>"));
-  assert.equal(heldCount(PRIOR_HELD_NOTE.replace("<N>", "2")), 2);
+test("the Needs-review note template carries no held-count tag, while heldCount still reads notes on disk", () => {
+  assert.ok(!NEEDS_REVIEW_NOTE.includes("(held"), "note template no longer writes a held count");
+  assert.ok(!NEEDS_REVIEW_NOTE.includes("Previously held"), "note template no longer writes a prior-held marker");
+  assert.ok(NEEDS_REVIEW_NOTE.startsWith(NEEDS_REVIEW_PREFIX), "review prefix still recognizes the note");
+  // A (held N) note already on disk still classifies by its tag; a surviving **Previously held
+  // N** marker is never read, so a freshly written flat note reads zero (the never-escalates
+  // property: it cannot inherit a surviving marker's count).
   assert.equal(heldCount("**Needs review 2026-10-23 by feature: too large for one run (held 3)**"), 3);
+  assert.equal(heldCount("**Previously held 2**"), 0);
+  assert.equal(heldCount(NEEDS_REVIEW_NOTE.replace("<YYYY-MM-DD>", "2026-10-26")), 0);
 });
 
-test("the feature text names the (held N) tag and the plan text names the Previously held marker", () => {
-  assert.ok(oneLine(roleById("feature")!.find).includes("(held <N>)"));
-  assert.ok(oneLine(roleById("feature")!.find).includes("(held 3)"));
-  assert.ok(oneLine(roleById("plan")!.find).includes("**Previously held <N>**"));
+test("the feature and plan texts no longer instruct writing a held count", () => {
+  assert.ok(!oneLine(roleById("feature")!.find).includes("(held"), "feature text drops the held-tag increment paragraph");
+  assert.ok(!oneLine(roleById("feature")!.find).includes("Previously held"), "feature text drops the prior-held marker");
+  assert.ok(!oneLine(roleById("plan")!.find).includes("**Previously held <N>**"), "plan text drops the keep-the-held-count bullet");
 });
 
 test("the plan role and the director size plans to one implementation run via the shared constant", () => {

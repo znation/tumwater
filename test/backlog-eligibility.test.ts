@@ -183,10 +183,10 @@ test("a body mentioning 'requires' never blocks — only the heading's clause do
   assert.equal(entryHold(entry("Foo (planned 2026-10-01)", "This requires part 1/2 landed eventually."), []), null);
 });
 
-test("heldCount reads the (held N) tag from a note line, else a **Previously held N** line, else 0", () => {
+test("heldCount reads the (held N) tag from a note line, else 0 — surviving **Previously held N** markers are never read", () => {
   assert.equal(heldCount(`**Needs review 2026-10-23 by feature: too large for one run (held 3)**`), 3);
   assert.equal(heldCount(`**Needs review 2026-10-23 by feature: rejected after 2 review rounds (held 2)**`), 2);
-  assert.equal(heldCount(`**Previously held 2**`), 2);
+  assert.equal(heldCount(`**Previously held 2**`), 0);
   assert.equal(heldCount(`body with no held tag`), 0);
   assert.equal(heldCount(`**Needs review 2026-10-23 by feature: x (held x)**`), 0);
 });

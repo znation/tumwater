@@ -487,8 +487,6 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.ok(find.includes(NOTHING_TO_DO), "plan embeds the nothing-to-do sentinel");
   assert.match(find, /refined by the feature run that picks it up/);
   assert.match(find, /at the END of `## Planned`, after every existing entry/);
-  assert.match(find, /note with no `\(held N\)` tag \(the automatic convergence hold\) is lifted/);
-  assert.match(find, /without writing a `\*\*Previously held 0\*\*` marker/);
 });
 test("the plan role resolves a BUGS.md hold", () => {
   const find = oneLine(roleById("plan")!.find);
@@ -501,7 +499,7 @@ test("the director routes a user ruling on a marked plan", () => {
   const prompt = oneLine(buildDirectorPrompt("split plan X"));
   assert.match(prompt, /A decision about a marked plan/);
   assert.match(prompt, /split it into independently landable sub-plans per PLAN_SIZING/);
-  assert.match(prompt, /or clear the \*\*Needs review <YYYY-MM-DD> by feature: too large for one run \(held <N>\)\*\* note/);
+  assert.match(prompt, /or clear the \*\*Needs review <YYYY-MM-DD> by feature: too large for one run\*\* note/);
 });
 test("the bugfix role bounds its latent-bug hunt and demands a reproduction", () => {
   const find = oneLine(roleById("bugfix")!.find);

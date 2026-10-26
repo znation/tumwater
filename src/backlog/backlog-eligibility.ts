@@ -29,9 +29,11 @@ export type EntryHold = "refused" | "needs-review" | "held-for-operator" | { blo
 export const OPERATOR_HOLD_THRESHOLD = 3;
 
 /** The held count a body records: the integer in the first Needs-review note
- * line's `(held N)` tag, else the integer in a `**Previously held N**` line, else 0. A present
- * but non-numeric `(held …)` tag is 0 (and stops the scan), so a malformed tag never throws.
- * Pure over the body text — the data-layer read half of the convergence backstop. */
+ * line's `(held N)` tag, else 0. A present but non-numeric `(held …)` tag is 0 (and stops the
+ * scan), so a malformed tag never throws. Pure over the body text — the data-layer read half of
+ * the convergence backstop. No writer emits a `(held N)` tag anymore and the `**Previously held
+ * N**` markers left on disk are never read, so a freshly written flat note always reads 0 and a
+ * new hold never escalates to the operator's desk. */
 export function heldCount(body: string): number {
   const tagRe = new RegExp(`${escapeRegExp(HELD_TAG_PREFIX)}(\\d+)\\)`);
   for (const raw of body.split("\n")) {
@@ -41,12 +43,6 @@ export function heldCount(body: string): number {
     const tag = tagRe.exec(line);
     if (tag !== null) return Number(tag[1]);
     if (line.includes(HELD_TAG_PREFIX)) return 0;
-  }
-  for (const raw of body.split("\n")) {
-    const line = raw.trimStart();
-    if (!line.startsWith(PRIOR_HELD_PREFIX)) continue;
-    const count = /\d+/.exec(line.slice(PRIOR_HELD_PREFIX.length));
-    return count === null ? 0 : Number(count[0]);
   }
   return 0;
 }

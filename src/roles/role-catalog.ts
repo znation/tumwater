@@ -10,11 +10,9 @@ import {
   CHECK_DECLARATION_MARKER,
   CONVERGENCE_HOLD_MARKER,
   DECOMPOSITION_GUIDANCE,
-  HELD_TAG_PREFIX,
   NEEDS_REVIEW_NOTE,
   PLAN_QUEUE_GUIDANCE,
   PLAN_SIZING,
-  PRIOR_HELD_PREFIX,
   searchGuidance,
   VALIDATION_GAP_GUIDANCE,
   VALIDATION_GAP_QUERY,
@@ -84,12 +82,7 @@ export const ROLES: Role[] = [
    4. A plan too large to finish in this run is not split by you: append the note
       ${NEEDS_REVIEW_NOTE}
       under its heading, skip it, and implement the next available plan that fits. You may mark
-      several oversized entries while scanning, but land exactly one plan. The held tag you write
-      — \`${HELD_TAG_PREFIX}<N>)\` on a Needs-review note — is ONE past the count already on the entry: read your own or an earlier
-      mark's \`${HELD_TAG_PREFIX}N)\` tag, else the \`${PRIOR_HELD_PREFIX}<N>**\` line a lift left
-      behind, else start at 1 — never reset it while the same plan ping-pongs, so three holds
-      without a merge reach \`${HELD_TAG_PREFIX}3)\`. A plan that merged and left \`## Planned\`
-      carries no marker — the convergence backstop starts fresh there.
+      several oversized entries while scanning, but land exactly one plan.
    5. Implement it completely: code, tests, and any docs. The reviewer checks your diff against
       the entry's files-touched list and acceptance criteria, so land everything the entry
       promises, or update the entry to say what changed and why. When a plan's anchors no longer
@@ -167,14 +160,6 @@ within that budget, there is nothing to do.`,
         tightening the acceptance criteria, splitting it per PLAN_SIZING, or refusing it with the
         objection recorded when it should not be done — and remove both the note and the quoted
         objections.
-      - When you lift a Needs-review note (a split or a rewrite) and the change
-        has NOT merged, keep the held count instead of letting it reset: remove any existing
-        \`**Previously held N**\` line on the surviving parent and every child part the split
-        produces, then write \`${PRIOR_HELD_PREFIX}<N>**\` at the lifted note's count on the
-        parent and copy it to each child, so exactly one marker survives and heldCount reads the
-        lifted count everywhere — a merged parent (one whose plan left \`## Planned\`) leaves no
-        marker, and a note with no \`(held N)\` tag (the automatic convergence hold) is lifted
-        without writing a \`**Previously held 0**\` marker.
       - Otherwise, when PLANS.md \`## Planned\` already holds one more eligible plan than there
         are feature instances (one waiting per instance, plus one for the next planner run),
         end with ${NOTHING_TO_DO} — feature has work, and a waiting plan is refined by the

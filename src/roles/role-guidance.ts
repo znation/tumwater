@@ -138,19 +138,18 @@ export const VALIDATION_GAP_QUERY = `grep -snE '\\*\\*Validation gap:\\*\\* (${V
  * note and is classified by entryHold accordingly. */
 export const NEEDS_REVIEW_PREFIX = `**Needs review `;
 
-/** The tag text before the held count, shared by the note templates and the parser
- * (backlog-eligibility's heldCount) so the two cannot drift: the live count on a Needs-review
- * note is written inline as `(held N)`, with `N` one past the surviving prior
- * count (the feature role appends it, the plan role's split carries it via PRIOR_HELD_NOTE). */
+/** The tag text before a held count, read by the backlog (backlog-eligibility's heldCount) so
+ * the note form and the parser cannot drift. No writer emits `(held N)` anymore — the feature
+ * note is flat — but heldCount still parses the tag from a Needs-review note line already on
+ * disk until part 2f/6 removes the reader. */
 export const HELD_TAG_PREFIX = `(held `;
 
 /** The markdown note the feature role appends to a plan it cannot finish in one run, so the plan
  * role can split it. Mirrors the **Refused …** note convention: a note the next fresh run reads,
  * with no code parsing it. Defined once so the feature and plan texts and the director's routing
- * clause cannot drift. The trailing `(held <N>)` tag (HELD_TAG_PREFIX) is the live held count,
- * written as one past the count surviving on the entry; it sits inside the line, so
- * NEEDS_REVIEW_PREFIX still recognizes the note. */
-export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: too large for one run ${HELD_TAG_PREFIX}<N>)**`;
+ * clause cannot drift. No writer carries a `(held <N>)` count anymore: a too-large note stays
+ * flat, so a new hold never escalates to the operator's desk. */
+export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: too large for one run**`;
 
 /** The literal reason the automatic convergence hold writes into a held plan's note
  * (holdEntryAfterExhaustion, src/runner/revision.ts, builds the note as
@@ -163,17 +162,12 @@ export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature:
  * this text. */
 export const CONVERGENCE_HOLD_MARKER = "could not converge";
 
-/** The marker a lifted hold leaves behind, so a split or rewrite carries the count instead of
- * letting it reset: `**Previously held N**` on the note's line. The live count is `(held N)` on
- * the note; the surviving marker after a lift is `**Previously held N**` — heldCount reads the
- * first as the priority, then the second. */
+/** The marker a lifted hold leaves behind, so a split or rewrite carried the count instead of
+ * letting it reset: `**Previously held N**` on the note's line. No writer emits this anymore (the
+ * plan role's split no longer carries a count) and heldCount no longer reads it, so it is inert;
+ * withoutHeldForOperatorNotes still drops a surviving `**Previously held N−1**` line beside a
+ * released at-threshold note until part 2f/6 retires the count machinery. */
 export const PRIOR_HELD_PREFIX = `**Previously held `;
-
-/** The literal marker a lift leaves on a split or rewrite so the held count survives instead of
- * resetting: a `**Previously held <N>**` line at the same count the lifted note carried (the
- * <N> here is the value the note's `(held N)` tag held). heldCount reads this as the fallback
- * when no live note is present, so the count round-trips a split. */
-export const PRIOR_HELD_NOTE = `${PRIOR_HELD_PREFIX}<N>**`;
 
 /** The literal marker the plan role writes as its own line under the PLANS.md `## Planned` entry
  * that declares this project's deterministic check, and the feature role reads as that entry's

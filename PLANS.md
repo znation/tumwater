@@ -391,25 +391,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 2c/6: The held-count writers and the prompt wording go (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; the first of four finer parts replacing part 2c/6, holding no prerequisite; touches src/roles/role-guidance.ts src/roles/role-catalog.ts src/prompt/prompt.ts test/role-guidance.test.ts test/prompt-roles.test.ts)
-
-**Previously held 2**
-
-**Goal.** No role writes a held count: a too-large note carries no `(held <N>)` tag and the plan role's split writes no `**Previously held N**` line, so a new hold never escalates to the operator's desk. The readers (`heldCount`, the operator-hold threshold, `operatorHeldEntries`) stay until part 2f/6, so notes already on disk still classify.
-
-**Approach.**
-- `src/roles/role-guidance.ts`: `NEEDS_REVIEW_NOTE` becomes `**Needs review <YYYY-MM-DD> by feature: too large for one run**` — its trailing ` (held <N>)` goes. Delete `PRIOR_HELD_NOTE` (only `test/role-guidance.test.ts` imports it). Keep `HELD_TAG_PREFIX` and `PRIOR_HELD_PREFIX` exported: the backlog readers still parse them until part 2f/6.
-- `src/roles/role-catalog.ts`: the feature `find` text drops the held-tag increment paragraph ("The held tag you write … three holds without a merge reach `(held 3)`") and its `HELD_TAG_PREFIX`/`PRIOR_HELD_PREFIX` interpolations; the plan `find` text drops the "keep the held count … copy it to each child" bullet and its `heldCount` mention. Drop the now-unused imports.
-- `src/prompt/prompt.ts`: the director's marked-plan bullet stops naming the `(held <N>)` tag (it interpolates `NEEDS_REVIEW_NOTE`, so the tag goes with the constant); trim the surrounding comment.
-- Tests: `test/role-guidance.test.ts` ("the held-count tag is pinned by the note template…", "the feature text names the (held N) tag…") now assert the tag's absence; `test/prompt-roles.test.ts` drops the `(held N)`/`Previously held` assertions and the director's tag assertion.
-
-**Files touched.** src/roles/role-guidance.ts src/roles/role-catalog.ts src/prompt/prompt.ts test/role-guidance.test.ts test/prompt-roles.test.ts
-
-**Acceptance criteria.**
-- `grep -rn 'PRIOR_HELD_NOTE' src/ test/` is empty, and `NEEDS_REVIEW_NOTE` plus the feature/plan/director texts carry no `(held ` or `Previously held` writing instruction.
-- `grep -n 'HELD_TAG_PREFIX\|PRIOR_HELD_PREFIX' src/roles/role-catalog.ts src/prompt/prompt.ts` is empty while `src/backlog/backlog-eligibility.ts` still imports both.
-- A newly appended too-large note carries no count and classifies as `[blocked: needs review]` (heldCount reads 0 with no tag), and `npm run test:gate` passes.
-
 ### Subtract, part 5f/6: The doctor's live image probe, its cache and the `--reprobe` controls go (planned 2026-10-26 by the plan role, split from the too-large part 5a/6 after feature held it twice (held 2); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the second of four finer parts replacing part 5a/6, requires Subtract part 5a/6 landed, since both edit the status and alert surfaces and the doctor consumes the probe cache those surfaces stop reading first; touches src/doctor/image-probe.ts src/doctor/doctor-model-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/paths.ts src/agent/image-input.ts src/cli.ts src/cli/cli-flag-specs.ts src/cli/help.ts src/ui/tui/tui-pane-health.ts src/ui/tui/tui-pane-session.ts src/ui/tui/tui-keys.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/gui/gui-endpoint-commands.ts src/gui/gui-admin-endpoints.ts src/ui/gui/gui-client-settings.ts src/ui/gui/gui-client-boot.ts docs/how-it-works.md docs/config.md docs/invariants.md docs/cli.md test/image-probe.test.ts test/image-input.test.ts test/doctor-checks.test.ts test/doctor-model-checks.test.ts test/gui-endpoints.test.ts)
 
 **Previously held 2**
@@ -649,5 +630,4 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `npm run test:gate` passes.
 
 **Tests.** No new test module: a behavior-preserving move guarded by the two existing suites — test/cli-command-args.test.ts's `parsePromptArgs` cases listed above and test/cli-prompt-strictness.test.ts's "prompt rejects unknown double-dash flags instead of baking them into content", "prompt keeps single-dash positionals as prompt content", "prompt --at without a value fails with parseDurationFlag's message" and "prompt --top refuses the other modes, the queue-only flags, and stray text". Run both whole, then the project's gate, and confirm green.
-
 ## Done
