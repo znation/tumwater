@@ -102,216 +102,254 @@ interface TuiPaneBody {
  * tui.tsx's inline builder followed: transcripts keep the tail, the backlog list keeps
  * the head with the selected entry's full body in entry mode, usage/failures re-window
  * the cached Markdown set on view entry, and the activity pane keeps the event tail. */
+/** The slice of the keypress handler's state each pane builder consumes: the backlog
+ * selection and its scroll, the usage/failures pane's cached Markdown and its scroll, the
+ * queued/pending/health/brief/history caches, and the activity scroll. Plain data, so tests
+ * can build it without the handler. */
+interface PaneBodyOpts {
+  root: string;
+  width: number;
+  eventBudget: number;
+  entryBudget: number;
+  state: TuiPaneState;
+}
+
+/** Compose the body lines for one pane at this frame's width and budgets. Same rules
+ * tui.tsx's inline builder followed: transcripts keep the tail, the backlog list keeps
+ * the head with the selected entry's full body in entry mode, usage/failures re-window
+ * the cached Markdown set on view entry, and the activity pane keeps the event tail. */
 export function paneBody(
   pane: TuiView,
-  opts: {
-    root: string;
-    width: number;
-    eventBudget: number;
-    entryBudget: number;
-    state: TuiPaneState;
-  },
+  opts: PaneBodyOpts,
 ): TuiPaneBody {
-  const { root, width, eventBudget, entryBudget, state } = opts;
-  if (pane.kind === "transcript") {
-    // The notes view (Ctrl+N) windows the cached inspection Markdown exactly like the
-    // usage/failures panes, headings bold; the live transcript keeps the tail.
-    if (pane.note) {
-      const win = entryBodyWindow(state.noteCache ?? "", state.paneScroll, eventBudget, width);
-      return {
-        body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
-        emptyNote: "(nothing to inspect yet)",
-      };
-    }
-    // The change view (the second Ctrl+N step) windows the collected unmerged-change text the
-    // same way; its async collector leaves the cache null for the first frames, so the pane
-    // paints the loading note rather than entryBodyWindow's "no details" placeholder.
-    if (pane.change) {
-      if (state.changeCache === null) return { body: [], emptyNote: "(loading pending change…)" };
-      const win = entryBodyWindow(state.changeCache, state.paneScroll, eventBudget, width);
-      return {
-        body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
-        emptyNote: "(loading pending change…)",
-      };
-    }
-    if (pane.grep) {
-      // Filtered: scan the drawer's 200 entries with the shared keep rule (a lowercased needle).
-      return {
-        body: readTranscript(root, pane.role, 200, { grep: pane.grep.toLowerCase() }).slice(-eventBudget).map((l) => toneLine(l, width, transcriptTone(l))),
-        emptyNote: `(no transcript entries match "${pane.grep}")`,
-      };
-    }
+  if (pane.kind === "transcript") return transcriptBody(pane, opts);
+  if (pane.kind === "backlog") return backlogBody(pane, opts);
+  if (pane.kind === "history") return historyBody(pane, opts);
+  if (pane.kind === "pending") return pendingBody(pane, opts);
+  if (pane.kind === "health") return healthBody(pane, opts);
+  if (pane.kind === "brief") return briefBody(pane, opts);
+  if (pane.kind === "queued") return queuedBody(pane, opts);
+  if (pane.kind === "usage" || pane.kind === "failures") return reportBody(pane, opts);
+  return activityBody(pane, opts);
+}
+
+function transcriptBody(pane: Extract<TuiView, { kind: "transcript" }>, opts: PaneBodyOpts): TuiPaneBody {
+  const { root, width, eventBudget, state } = opts;
+  // The notes view (Ctrl+N) windows the cached inspection Markdown exactly like the
+  // usage/failures panes, headings bold; the live transcript keeps the tail.
+  if (pane.note) {
+    const win = entryBodyWindow(state.noteCache ?? "", state.paneScroll, eventBudget, width);
     return {
-      body: readTranscript(root, pane.role, eventBudget).slice(-eventBudget).map((l) => toneLine(l, width, transcriptTone(l))),
-      emptyNote: "(no transcript yet)",
+      body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
+      emptyNote: "(nothing to inspect yet)",
     };
   }
-  if (pane.kind === "backlog") {
-    // The flat, labeled entry list is the one backlog read this frame needs: it carries every
-    // planned feature, open bug, and open question (then the newest answered questions, done
-    // plans and fixed bugs)
-    // from PLANS.md/BUGS.md/QUESTIONS.md with its section label and eligibility mark (the same
-    // entryHold verdict `tumwater backlog` renders). List and entry mode share this one pass;
-    // entry mode used to read the three sections and derive the holds directly and
-    // then again inside the flat list, so every render paid twice for the same reads and verdicts.
-    const flat = browsableBacklogEntries(root);
-    // A `/` search narrows the browsable list to the matching open entries (the answered/done/
-    // fixed rows are read-only and hidden while a search is applied); entry mode still opens
-    // `flat[sel]`, the unfiltered index the selection holds.
-    const grep = state.backlogGrep ?? null;
-    const shown = flat.filter((e) => {
-      if (grep !== null && !(isOpenBacklogLabel(e.label) && entryMatches(e, grep))) return false;
-      if (state.backlogReadyOnly && isOpenBacklogLabel(e.label) && e.hold !== null) return false;
-      return true;
-    });
-    // A stale selection (an entry removed since the last render) clamps to the last; no
-    // entries at all falls back to list mode.
-    const sel = state.selectedEntry === null || flat.length === 0 ? null : Math.min(state.selectedEntry, flat.length - 1);
-    if (sel === null) {
-      // List mode: section headings stand out, empty sections read dim. Keeps the HEAD of the
-      // list when it overflows — file order is newest-first, unlike events which keep the tail.
-      const listed = (label: string) => shown.filter((e) => e.label === label).map((e) => e.title + e.mark);
-      // Plans list a series' blocked parts as one line (as `plan --list` does); the selection
-      // below still walks the flat list, one entry per part.
-      const plans = shown.filter((e) => e.label === "plan");
-      // A `/` search active: the answered/done/fixed sections are hidden, the sections build
-      // only from the matching open entries under a `search: "<grep>"` header, and nothing
-      // matching paints a self-explanatory line.
-      if (grep !== null) {
-        const prefix = [`search: "${grep}"`];
-        const rest = shown.length === 0
-          ? [`(no entries match "${grep}")`]
-          : backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length);
-        return {
-          body: [...prefix, ...rest]
-            .slice(0, eventBudget)
-            .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
-          emptyNote: "(no events yet)",
-        };
-      }
-      // The newest answered questions follow the open ones: they are in `flat` (up/down open
-      // their bodies), but no edit key acts on them.
-      const answered = answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS).map((q) =>
-        q.decision ? `${q.title} — ${q.decision}` : q.title,
-      );
-      // Done plans and fixed bugs follow, browsable and read-only the same way.
-      const finishedRows = (rows: ReturnType<typeof recentFinished>, verb: string) =>
-        rows.map((r) => (r.completedOn ? `${r.title} — ${verb} ${r.completedOn}` : r.title));
-      const finished = {
-        done: finishedRows(recentFinished(donePlanEntries(root), DONE_DATE_RE), "done"),
-        fixed: finishedRows(recentFinished(fixedBugEntries(root), FIXED_DATE_RE), "fixed"),
-      };
+  // The change view (the second Ctrl+N step) windows the collected unmerged-change text the
+  // same way; its async collector leaves the cache null for the first frames, so the pane
+  // paints the loading note rather than entryBodyWindow's "no details" placeholder.
+  if (pane.change) {
+    if (state.changeCache === null) return { body: [], emptyNote: "(loading pending change…)" };
+    const win = entryBodyWindow(state.changeCache, state.paneScroll, eventBudget, width);
+    return {
+      body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
+      emptyNote: "(loading pending change…)",
+    };
+  }
+  if (pane.grep) {
+    // Filtered: scan the drawer's 200 entries with the shared keep rule (a lowercased needle).
+    return {
+      body: readTranscript(root, pane.role, 200, { grep: pane.grep.toLowerCase() }).slice(-eventBudget).map((l) => toneLine(l, width, transcriptTone(l))),
+      emptyNote: `(no transcript entries match "${pane.grep}")`,
+    };
+  }
+  return {
+    body: readTranscript(root, pane.role, eventBudget).slice(-eventBudget).map((l) => toneLine(l, width, transcriptTone(l))),
+    emptyNote: "(no transcript yet)",
+  };
+}
+
+function backlogBody(_pane: Extract<TuiView, { kind: "backlog" }>, opts: PaneBodyOpts): TuiPaneBody {
+  const { root, width, eventBudget, entryBudget, state } = opts;
+  // The flat, labeled entry list is the one backlog read this frame needs: it carries every
+  // planned feature, open bug, and open question (then the newest answered questions, done
+  // plans and fixed bugs)
+  // from PLANS.md/BUGS.md/QUESTIONS.md with its section label and eligibility mark (the same
+  // entryHold verdict `tumwater backlog` renders). List and entry mode share this one pass;
+  // entry mode used to read the three sections and derive the holds directly and
+  // then again inside the flat list, so every render paid twice for the same reads and verdicts.
+  const flat = browsableBacklogEntries(root);
+  // A `/` search narrows the browsable list to the matching open entries (the answered/done/
+  // fixed rows are read-only and hidden while a search is applied); entry mode still opens
+  // `flat[sel]`, the unfiltered index the selection holds.
+  const grep = state.backlogGrep ?? null;
+  const shown = flat.filter((e) => {
+    if (grep !== null && !(isOpenBacklogLabel(e.label) && entryMatches(e, grep))) return false;
+    if (state.backlogReadyOnly && isOpenBacklogLabel(e.label) && e.hold !== null) return false;
+    return true;
+  });
+  // A stale selection (an entry removed since the last render) clamps to the last; no
+  // entries at all falls back to list mode.
+  const sel = state.selectedEntry === null || flat.length === 0 ? null : Math.min(state.selectedEntry, flat.length - 1);
+  if (sel === null) {
+    // List mode: section headings stand out, empty sections read dim. Keeps the HEAD of the
+    // list when it overflows — file order is newest-first, unlike events which keep the tail.
+    const listed = (label: string) => shown.filter((e) => e.label === label).map((e) => e.title + e.mark);
+    // Plans list a series' blocked parts as one line (as `plan --list` does); the selection
+    // below still walks the flat list, one entry per part.
+    const plans = shown.filter((e) => e.label === "plan");
+    // A `/` search active: the answered/done/fixed sections are hidden, the sections build
+    // only from the matching open entries under a `search: "<grep>"` header, and nothing
+    // matching paints a self-explanatory line.
+    if (grep !== null) {
+      const prefix = [`search: "${grep}"`];
+      const rest = shown.length === 0
+        ? [`(no entries match "${grep}")`]
+        : backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length);
       return {
-        body: backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length, answered, finished)
+        body: [...prefix, ...rest]
           .slice(0, eventBudget)
-          .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions|answered recently|done recently|fixed recently) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
+          .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
         emptyNote: "(no events yet)",
       };
     }
-    // Entry browsing: the selected entry's full body under a line naming its section and
-    // title.
-    const e = flat[sel]!;
-    const win = entryBodyWindow(e.body, state.entryScroll, entryBudget, width);
+    // The newest answered questions follow the open ones: they are in `flat` (up/down open
+    // their bodies), but no edit key acts on them.
+    const answered = answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS).map((q) =>
+      q.decision ? `${q.title} — ${q.decision}` : q.title,
+    );
+    // Done plans and fixed bugs follow, browsable and read-only the same way.
+    const finishedRows = (rows: ReturnType<typeof recentFinished>, verb: string) =>
+      rows.map((r) => (r.completedOn ? `${r.title} — ${verb} ${r.completedOn}` : r.title));
+    const finished = {
+      done: finishedRows(recentFinished(donePlanEntries(root), DONE_DATE_RE), "done"),
+      fixed: finishedRows(recentFinished(fixedBugEntries(root), FIXED_DATE_RE), "fixed"),
+    };
     return {
-      body: [toneLine(`${e.label}: ${e.title}${e.mark}`, width, "bold"), ...win.lines.map((l) => toneLine(l, width))],
+      body: backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length, answered, finished)
+        .slice(0, eventBudget)
+        .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions|answered recently|done recently|fixed recently) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
       emptyNote: "(no events yet)",
     };
   }
-  if (pane.kind === "history") {
-    // The run trail (Ctrl+N) windows the cached renderRunDetail text; a null cache (the
-    // read found no run) paints the pane's own note rather than entryBodyWindow's placeholder.
-    if (pane.trail) {
-      if (state.trailCache === null) return { body: [], emptyNote: "(no run trail)" };
-      const win = entryBodyWindow(state.trailCache, state.paneScroll, eventBudget, width);
-      return {
-        body: win.lines.map((l) => toneLine(l, width)),
-        emptyNote: "(no run trail)",
-      };
-    }
-    // historyPaneText returns "" when the log holds no completed runs; return no lines
-    // (rather than windowing an empty string, which entryBodyWindow replaces with its
-    // "no details" placeholder) so the frame prints the pane's own empty note instead.
-    const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
+  // Entry browsing: the selected entry's full body under a line naming its section and
+  // title.
+  const e = flat[sel]!;
+  const win = entryBodyWindow(e.body, state.entryScroll, entryBudget, width);
+  return {
+    body: [toneLine(`${e.label}: ${e.title}${e.mark}`, width, "bold"), ...win.lines.map((l) => toneLine(l, width))],
+    emptyNote: "(no events yet)",
+  };
+}
+
+function historyBody(pane: Extract<TuiView, { kind: "history" }>, opts: PaneBodyOpts): TuiPaneBody {
+  const { width, eventBudget, state } = opts;
+  // The run trail (Ctrl+N) windows the cached renderRunDetail text; a null cache (the
+  // read found no run) paints the pane's own note rather than entryBodyWindow's placeholder.
+  if (pane.trail) {
+    if (state.trailCache === null) return { body: [], emptyNote: "(no run trail)" };
+    const win = entryBodyWindow(state.trailCache, state.paneScroll, eventBudget, width);
     return {
       body: win.lines.map((l) => toneLine(l, width)),
-      emptyNote: "(no runs yet)",
+      emptyNote: "(no run trail)",
     };
   }
-  if (pane.kind === "pending") {
-    // A selected queued merge shows its detail in place of the queue list; otherwise paneCache
-    // stays null until the async collector resolves (the Ctrl+T handler kicks it off
-    // fire-and-forget); like history, return no lines while null so the frame prints the
-    // loading note rather than windowing an empty string into the "no details" placeholder.
-    if (state.queueDetail) {
-      const detail = state.queueDetail;
-      const sel = entryBodyWindow(detail, state.paneScroll, eventBudget, width);
-      return {
-        body: sel.lines.map((l) => toneLine(l, width)),
-        emptyNote: "(loading pending changes…)",
-      };
-    }
-    const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
+  // historyPaneText returns "" when the log holds no completed runs; return no lines
+  // (rather than windowing an empty string, which entryBodyWindow replaces with its
+  // "no details" placeholder) so the frame prints the pane's own empty note instead.
+  const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
+  return {
+    body: win.lines.map((l) => toneLine(l, width)),
+    emptyNote: "(no runs yet)",
+  };
+}
+
+function pendingBody(_pane: Extract<TuiView, { kind: "pending" }>, opts: PaneBodyOpts): TuiPaneBody {
+  const { width, eventBudget, state } = opts;
+  // A selected queued merge shows its detail in place of the queue list; otherwise paneCache
+  // stays null until the async collector resolves (the Ctrl+T handler kicks it off
+  // fire-and-forget); like history, return no lines while null so the frame prints the
+  // loading note rather than windowing an empty string into the "no details" placeholder.
+  if (state.queueDetail) {
+    const detail = state.queueDetail;
+    const sel = entryBodyWindow(detail, state.paneScroll, eventBudget, width);
     return {
-      body: win.lines.map((l) => toneLine(l, width)),
+      body: sel.lines.map((l) => toneLine(l, width)),
       emptyNote: "(loading pending changes…)",
     };
   }
-  if (pane.kind === "health") {
-    const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
+  const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
+  return {
+    body: win.lines.map((l) => toneLine(l, width)),
+    emptyNote: "(loading pending changes…)",
+  };
+}
+
+function healthBody(_pane: Extract<TuiView, { kind: "health" }>, opts: PaneBodyOpts): TuiPaneBody {
+  const { width, eventBudget, state } = opts;
+  const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
+  return {
+    body: win.lines.map((l) => toneLine(l, width)),
+    emptyNote: "(running health checks…)",
+  };
+}
+
+function briefBody(_pane: Extract<TuiView, { kind: "brief" }>, opts: PaneBodyOpts): TuiPaneBody {
+  const { width, eventBudget, state } = opts;
+  const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
+  return {
+    body: win.lines.map((l) => toneLine(l, width)),
+    emptyNote: "(no project brief with a prompt block — run `tumwater init` first)",
+  };
+}
+
+function queuedBody(pane: Extract<TuiView, { kind: "queued" }>, opts: PaneBodyOpts): TuiPaneBody {
+  const { width, eventBudget, entryBudget, state } = opts;
+  // A set selection shows the row's full prompt under a cancel header (the numbered list
+  // clips long prompts); list mode windows the cached renderQueuedList string, which is
+  // computed synchronously on Ctrl+T entry over the same queue `tumwater prompt --list`
+  // prints, so paneCache is already set this frame. An empty queue falls to the pane's
+  // own note either way.
+  const sel = state.selectedQueued === null || state.queuedRows.length === 0
+    ? null
+    : Math.min(state.selectedQueued, state.queuedRows.length - 1);
+  if (sel !== null) {
+    const row = state.queuedRows[sel]!;
+    const win = entryBodyWindow(row.text, state.paneScroll, entryBudget, width);
     return {
-      body: win.lines.map((l) => toneLine(l, width)),
-      emptyNote: "(running health checks…)",
-    };
-  }
-  if (pane.kind === "brief") {
-    const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
-    return {
-      body: win.lines.map((l) => toneLine(l, width)),
-      emptyNote: "(no project brief with a prompt block — run `tumwater init` first)",
-    };
-  }
-  if (pane.kind === "queued") {
-    // A set selection shows the row's full prompt under a cancel header (the numbered list
-    // clips long prompts); list mode windows the cached renderQueuedList string, which is
-    // computed synchronously on Ctrl+T entry over the same queue `tumwater prompt --list`
-    // prints, so paneCache is already set this frame. An empty queue falls to the pane's
-    // own note either way.
-    const sel = state.selectedQueued === null || state.queuedRows.length === 0
-      ? null
-      : Math.min(state.selectedQueued, state.queuedRows.length - 1);
-    if (sel !== null) {
-      const row = state.queuedRows[sel]!;
-      const win = entryBodyWindow(row.text, state.paneScroll, entryBudget, width);
-      return {
-        body: [
-          toneLine(`${row.role}'s inbox #${row.position} (Ctrl+X to cancel)`, width, "bold"),
-          ...win.lines.map((l) => toneLine(l, width)),
-        ],
-        emptyNote: "(inbox empty)",
-      };
-    }
-    // An applied search names itself above the list; one that matched nothing says so instead
-    // of claiming the inbox is empty.
-    const searchLine = pane.grep ? [toneLine(`search: "${pane.grep}"`, width, "bold")] : [];
-    if (pane.grep && state.queuedRows.length === 0) {
-      return { body: [...searchLine, toneLine(`(no queued prompt matches "${pane.grep}")`, width)], emptyNote: "(inbox empty)" };
-    }
-    const listBudget = Math.max(1, eventBudget - searchLine.length);
-    const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, listBudget, width) : { lines: [] };
-    return {
-      body: [...searchLine, ...win.lines.map((l) => toneLine(l, width))],
+      body: [
+        toneLine(`${row.role}'s inbox #${row.position} (Ctrl+X to cancel)`, width, "bold"),
+        ...win.lines.map((l) => toneLine(l, width)),
+      ],
       emptyNote: "(inbox empty)",
     };
   }
-  if (pane.kind === "usage" || pane.kind === "failures") {
-    // The Markdown `tumwater report`/`report --failures` prints, windowed like backlog entry
-    // mode. The cache is set on view entry by the Ctrl+T handler, so this only re-windows a string.
-    const win = entryBodyWindow(state.paneCache ?? "", state.paneScroll, eventBudget, width);
-    return {
-      body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
-      emptyNote: "(no events yet)",
-    };
+  // An applied search names itself above the list; one that matched nothing says so instead
+  // of claiming the inbox is empty.
+  const searchLine = pane.grep ? [toneLine(`search: "${pane.grep}"`, width, "bold")] : [];
+  if (pane.grep && state.queuedRows.length === 0) {
+    return { body: [...searchLine, toneLine(`(no queued prompt matches "${pane.grep}")`, width)], emptyNote: "(inbox empty)" };
   }
+  const listBudget = Math.max(1, eventBudget - searchLine.length);
+  const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, listBudget, width) : { lines: [] };
+  return {
+    body: [...searchLine, ...win.lines.map((l) => toneLine(l, width))],
+    emptyNote: "(inbox empty)",
+  };
+}
+
+function reportBody(_pane: Extract<TuiView, { kind: "usage" | "failures" }>, opts: PaneBodyOpts): TuiPaneBody {
+  const { width, eventBudget, state } = opts;
+  // The Markdown `tumwater report`/`report --failures` prints, windowed like backlog entry
+  // mode. The cache is set on view entry by the Ctrl+T handler, so this only re-windows a string.
+  const win = entryBodyWindow(state.paneCache ?? "", state.paneScroll, eventBudget, width);
+  return {
+    body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
+    emptyNote: "(no events yet)",
+  };
+}
+
+function activityBody(pane: Extract<TuiView, { kind: "activity" }>, opts: PaneBodyOpts): TuiPaneBody {
+  const { root, width, eventBudget, state } = opts;
   // The Activity pane loads a fixed tail once per read, narrows it by the active role scope
   // and text search, and windows it: null follows the live tail (the newest eventBudget
   // events), a stored offset pages back through the loaded events. Both clamp to
