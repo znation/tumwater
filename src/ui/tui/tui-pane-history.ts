@@ -140,7 +140,7 @@ export function createHistoryPane(
    * substring rule `tumwater history --grep` and the dashboard's History search use — so the TUI,
    * the CLI, and the dashboard cannot disagree about the rows. The role is the exact role id the
    * raw roster (and `history --role`, and the dashboard picker) names — readRunRows filters
-   * `e.loop === role`, so an instance id is its own scope, never folded into a base role. An empty
+   * `e.source === role`, an instance id is its own scope, never folded into a base role. An empty
    * read with no class and no search returns "" so the pane keeps its own no-runs note instead of
    * a lone header; when a class or a search is active and the read returned rows, an empty
    * filtered body names whichever filter the CLI's precedence blames, so the pane states the
