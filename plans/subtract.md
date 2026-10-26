@@ -79,7 +79,9 @@ Keep two: `**Refused …**` (the system declined and wants a decision) and `**Ne
 (the work is not done, with the reason in the note). Delete `Needs replan` (a rejected plan is a
 Needs review with the reviewer's objections in it), the `(held N)`/`**Previously held N**`
 counters, the convergence hold as a distinct kind, and the derived held-for-operator threshold
-with its `--release` branch and its alert.
+with its `--release` branch and its alert. A plan the feature role reports too large for one run
+then stays a Needs review entry the plan role always refines and splits; deleting the threshold
+is what keeps it off the operator's desk (user request 2026-10-26).
 
 ### 3. The merge queue becomes a lock and a fast-forward
 

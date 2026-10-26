@@ -16,6 +16,8 @@ what to do, not what to avoid.
 - Small, complete, and correct beats big and half-done: one focused change per tick. Focused
   means one theme, not one site: a kind of fix applied everywhere it holds is one change, and
   the same fix landed one site per tick spends a review and a landing on each.
+- Oversized work returns to its planner: a backlog entry a work role reports too large for one run
+  goes back to the plan role to refine and split, not to the operator to release.
 - Latest instruction wins: a newer user request supersedes older recorded bugs, plans, and docs —
   synthesize it with the existing entries and update them in place so the record reflects current
   intent.
