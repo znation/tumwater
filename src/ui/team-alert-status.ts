@@ -228,9 +228,14 @@ function pushMainRedAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"], rol
   const red = roles.filter((l) => l.phase === "main's check is failing");
   if (red.length) {
     const redDetail = snap.mainCheck?.red;
-    const detail = redDetail
-      ? `A full check failed on main: ${squash(redDetail.failingTests[0] ?? "", 80)}${redDetail.failingTests.length > 1 ? ` (+${redDetail.failingTests.length - 1} more)` : ""}${redDetail.culprit?.runner ? `; the main watch blames ${roleLabel(redDetail.culprit.runner)}'s merge ${shortSha(redDetail.culprit.commit)}` : ""}`
-      : "Code roles keep authoring on top of a red main; the ci healer owns the failing check.";
+    let detail = "Code roles keep authoring on top of a red main; the ci healer owns the failing check.";
+    if (redDetail) {
+      const more = redDetail.failingTests.length > 1 ? ` (+${redDetail.failingTests.length - 1} more)` : "";
+      const blamed = redDetail.culprit?.runner
+        ? `; the main watch blames ${roleLabel(redDetail.culprit.runner)}'s merge ${shortSha(redDetail.culprit.commit)}`
+        : "";
+      detail = `A full check failed on main: ${squash(redDetail.failingTests[0] ?? "", 80)}${more}${blamed}`;
+    }
     out.push({
       key: "mainred",
       tone: "red",
