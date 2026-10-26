@@ -7,8 +7,8 @@
  * `actions` are the dashboard's buttons (`act` names a page action — open a role, a view,
  * the cap editor…).
  *
- * This module is the composition root: it imports the five per-domain builder modules
- * (team-alert-status, team-alert-backlog, team-alert-backlog-feed, team-alert-merge,
+ * This module is the composition root: it imports the four per-domain builder modules
+ * (team-alert-status, team-alert-backlog, team-alert-merge,
  * team-alert-tail) and runs them in emission order, and it re-exports the shared alert types
  * (defined in team-alert-shared.ts) so consumers keep importing them from this one path. */
 
@@ -20,29 +20,24 @@ import type { RefusedEntry, StalledEntry } from "../backlog/backlog-eligibility.
 import type { ClaimState } from "../scheduling/claim-entries.js";
 import type { StaleWorkspacePin } from "../doctor/doctor-contention-checks.js";
 import type {
-  AlertRole, TeamAlert, StaleBug, StaleQuestion, StalePrompt,
-  StaleMerge, PlanDependencyProblem, QuarantinedTests,
+  AlertRole, TeamAlert, StaleQuestion,
+  PlanDependencyProblem, QuarantinedTests,
   FlappedChecks, PostReviewRisk, BacklogHeadingDuplicate, LiveFinishedEntry,
-  NotifyFailure, PrimaryOverwriteBlock,
 } from "./team-alert-shared.js";
 import { buildStatusAlerts } from "./team-alert-status.js";
 import { buildBacklogAlerts } from "./team-alert-backlog.js";
-import { buildBacklogFeedAlerts } from "./team-alert-backlog-feed.js";
 import { buildMergeAlerts } from "./team-alert-merge.js";
 import { buildTailAlerts } from "./team-alert-tail.js";
 
 export type {
-  StaleBug, StaleQuestion, NotifyFailure, PrimaryOverwriteBlock, StalePrompt, StaleMerge,
+  StaleQuestion,
   PlanDependencyProblem, QuarantinedTests, FlappedChecks, PostReviewRisk,
   BacklogHeadingDuplicate, LiveFinishedEntry, TeamAlert, AlertRole,
 } from "./team-alert-shared.js";
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, a stale running build, open
- * questions, refused entries, stale bugs, a failed notify page, a dirty primary
- * checkout refusing merges, a stranded inbox
- * prompt, a stalled merge queue, a
- * merge-queue file the reader skips, a plan stalled by a Needs
+ * questions, refused entries, a plan stalled by a Needs
  * review note, checks that flapped more than once in the last day, a stale or
  * oversized flake quarantine, a burst of post-merge review rejections, each a commit that
  * already reached main, a post-merge review one failed run from being dropped, a post-merge
@@ -86,18 +81,12 @@ export function teamAlerts(
   roles: readonly AlertRole[],
   now: number,
   refused: readonly RefusedEntry[] = [],
-  staleBugs: readonly StaleBug[] = [],
-  stalePrompts: readonly StalePrompt[] = [],
-  staleMerges: readonly StaleMerge[] = [],
   planDependency: PlanDependencyProblem | null = null,
-  skippedMergeFiles: readonly string[] = [],
   stalledEntries: readonly StalledEntry[] = [],
   quarantined: QuarantinedTests | null = null,
   strandedPlans: readonly StrandedPlanEntry[] = [],
   duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
   validationGaps: readonly ValidationGapProblem[] = [],
-  notifyFailure: NotifyFailure | null = null,
-  primaryOverwrite: PrimaryOverwriteBlock | null = null,
   contention: readonly CapacityBottleneck[] = [],
   flappedChecks: FlappedChecks | null = null,
   regressedFixes: RegressedFixAlert | null = null,
@@ -117,7 +106,6 @@ export function teamAlerts(
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
-  out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   out.push(...buildMergeAlerts({ quarantined, flappedChecks, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, qaCoverage, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, instancePool, providerCaps }));
 

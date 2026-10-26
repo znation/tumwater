@@ -67,7 +67,7 @@ export interface PostMergeRejection {
 export const POST_MERGE_REJECT_WARN = 2;
 
 /** How far back the post-merge-churn rule looks — one day, the 24 h event-window convention
- * every event-reading alert uses (PRIMARY_OVERWRITE_WINDOW_MS sorts beside it). */
+ * every event-reading alert uses. */
 export const POST_MERGE_REJECT_WINDOW_MS = 24 * 60 * 60_000;
 
 /** Group the `afterMerge: true` `review_rejected` events of `events` by base role — the same

@@ -1,20 +1,13 @@
 /** Shared pieces of the team ALERT model (src/ui/team-alerts.ts): the alert data types,
  * the `TeamAlert`/`AlertRole` shapes every builder returns or reads, and the small
  * composition helpers the per-domain builder modules (team-alert-{status,backlog,
- * backlog-feed,merge,tail}.ts) share, so the wording they reuse cannot drift between
- * modules. Split from team-alerts.ts when its five builders moved to their own files. */
+ * merge,tail}.ts) share, so the wording they reuse cannot drift between
+ * modules. Split from team-alerts.ts when its four builders moved to their own files. */
 
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { STALL_RE, duration } from "./run-progress-model.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
-
-export interface StaleBug {
-  index: number;
-  position: number;
-  title: string;
-  days: number;
-}
 
 /** A stale open question the doctor's 7-day rule warns about (src/doctor/doctor-backlog-bugs.ts
  * checkStaleQuestions, STALE_QUESTION_DAYS): an open QUESTIONS.md entry whose `(asked by …)` stamp
@@ -28,56 +21,6 @@ export interface StaleQuestion {
   position: number;
   title: string;
   days: number;
-}
-
-/** A failed notify page the doctor's 1-day rule warns about (src/doctor/doctor-notify.ts,
- * NOTIFY_CHECK_WINDOW_MS): a warning event within the last day from a notify hook that failed
- * to page — a nonzero exit, a kill, or a failed start. Computed in src/ui/alert-feeds.ts's
- * notifyFailures over the same window and the same isNotifyFailure filter the doctor's check
- * uses, so the alert and the doctor cannot drift on the rule. count is the failed pages in the
- * window, latestTs the most recent one's event stamp, message its squashed wording. */
-export interface NotifyFailure {
-  count: number;
-  latestTs: number;
-  message: string;
-}
-
-/** A merge refused because the primary checkout holds uncommitted files the merge would
- * overwrite (src/merge/merge-git.ts `primaryCheckoutBlockers`, `overwriteBlockedReason`), read
- * off the `warning` event the merge path already writes. Computed in src/ui/alert-feeds.ts's
- * primaryOverwriteBlocks over the last PRIMARY_OVERWRITE_WINDOW_MS, matching the message marker
- * the merge path logs, so the alert needs no new git read and cannot drift from the refusal
- * count. count is the refusals in the window, latestTs the most recent one's event stamp,
- * message the latest refusal's squashed wording. */
-export interface PrimaryOverwriteBlock {
-  count: number;
-  latestTs: number;
-  message: string;
-}
-
-/** A queued inbox prompt the doctor's stale-prompt rule warns about (src/doctor/doctor-backlog.ts
- * checkStalePrompts, STALE_PROMPT_MS): a prompt due-but-undelivered for more than a day because
- * its role is paused, disabled, or failing. Computed in src/ui/alert-feeds.ts's stalePrompts
- * from the same threshold and the same `queuedListRows`/`listWideScope`/`deliverableAt` traversal
- * the doctor's check uses, so the alert, the doctor, and the Inbox views cannot drift on the rule.
- * `position` is the 1-based `prompt --cancel`/`--edit` number; `waitedMs` is the age the alert
- * names. Sorted oldest-first by the caller, so the first element is the most-stale prompt. */
-export interface StalePrompt {
-  role: string;
-  position: number;
-  waitedMs: number;
-}
-
-/** A queued merge the doctor's stale-merge rule warns about (src/doctor/doctor-backlog.ts
- * MERGE_QUEUE_STALE_MS): a change that has sat in the merge queue more than 6 h without
- * starting. Computed in src/ui/alert-feeds.ts's staleMerges from the same threshold and the
- * same `queuedMerges`/`readMergeMarker`/`mergeChanges` traversal the doctor's check uses, so the
- * alert and the doctor cannot drift on the rule. `waitedMs` is the age the alert names. Sorted
- * oldest-first by the caller, so the first element is the longest-waiting merge. */
-export interface StaleMerge {
-  role: string;
-  summary: string;
-  waitedMs: number;
 }
 
 /** A broken plan-dependency clause the doctor's `plan dependencies` rule (src/doctor/
@@ -159,13 +102,13 @@ export function entryListDetail(titles: readonly string[]): string {
 
 /** Append the folded names of the entries past an alert's first one, after a ` · ` separator,
  * when there are any, and the empty string otherwise — the shared idiom every amber
- * "name the oldest, fold the rest" alert (stale-bugs, stale-questions,
- * stale-prompts, stale-merges, stranded-plans, skipped-merges, backlog-headings,
- * validation-gaps, false-fixes) uses to compose its
+ * "name the oldest, fold the rest" alert (stale-questions, stranded-plans,
+ * backlog-headings, validation-gaps, false-fixes) uses to compose its
  * `detail`, so the separator, the empty case, and the default fold (entryListDetail;
- * joinWithMore for the merge-queue and heading alerts) cannot drift. Callers pre-map each
+ * joinWithMore for the alerts that fold their rest labels with a count) cannot
+ * drift. Callers pre-map each
  * rest element to the label the first clause already named. */
-export function moreDetail(
+function moreDetail(
   restLabels: readonly string[],
   fold: (items: readonly string[]) => string = entryListDetail,
 ): string {
@@ -174,12 +117,12 @@ export function moreDetail(
 
 /** Split a bounded entry list into its first (oldest, named) item and the " · rest" suffix
  * moreDetail builds for the entries past it — the shared shape every amber "name the oldest,
- * fold the rest" alert (stale-bugs, stale-questions, stale-prompts,
- * stale-merges, stranded-plans, backlog-headings, validation-gaps, false-fixes) composes, so
+ * fold the rest" alert (stale-questions, stranded-plans,
+ * backlog-headings, validation-gaps, false-fixes) composes, so
  * the split and the separator/empty case have one home beside moreDetail. `label` maps each
  * rest element to the string its clause already named; `fold` defaults to entryListDetail
  * (moreDetail's own default), with joinWithMore(labels, 3) for the alerts that fold their rest
- * labels the merge-queue way. */
+ * labels with a count. */
 export function firstAndMore<T>(
   items: readonly T[],
   label: (item: T) => string,
@@ -245,7 +188,7 @@ export function seeFailures(): Array<{ label: string; act: string; arg: string }
 
 /** The dashboard's "Open backlog" button for an alert naming one backlog entry: opens the
  * entry's backlog-card tab and that row (the dashboard's backlog arm reads `file:index`).
- * Shared by the refused, operator-held, stalled-entries, and stale-bugs alerts,
+ * Shared by the refused and stalled-entries alerts,
  * so the button shape and the `file:index` contract cannot drift between them. */
 export function openBacklogAction(entry: { file: "plans" | "bugs"; index: number }): Array<{ label: string; act: string; arg: string }> {
   return [{ label: "Open backlog", act: "backlog", arg: `${entry.file}:${entry.index}` }];

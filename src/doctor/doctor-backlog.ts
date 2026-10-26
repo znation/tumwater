@@ -115,11 +115,9 @@ export function readBacklogChecked(root: string, file: string): string | CheckOu
  * warns: 6 hours, fixed. A verify plus a merge completes in minutes (plans/merge-queue.md), so a
  * full six-hour silence while the team is healthy — not on a hold, which doctor already reports
  * separately — is never a merely busy pipeline: it reads as a drain that has stalled. The one
- * opinionated default, like STALE_QUESTION_DAYS, so no knob. The always-on `stale-merges` team
- * alert (src/ui/alert-feeds.ts staleMerges) reuses this same window through
- * staleQueuedMergeRows, so the doctor's row and the alert cannot drift on the threshold (the
+ * opinionated default, like STALE_QUESTION_DAYS, so no knob (the dead-alert feed is gone; the
  * STALE_PROMPT_MS/STALE_BUG_DAYS precedent). */
-export const MERGE_QUEUE_STALE_MS = 6 * HOUR_MS;
+const MERGE_QUEUE_STALE_MS = 6 * HOUR_MS;
 /** The window of the merge-wait phrase on the stale merge-queue row. */
 const MERGE_WAIT_WINDOW_MS = DAY_MS;
 
@@ -156,15 +154,14 @@ export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome 
       `${first.age} to start${more}; a queued change the pipeline neither approves nor flags reads as healthy, so the merge queue has stopped moving`));
 }
 
-/** The one traversal shared by the doctor's `stale merge-queue entries` row
- * (checkStaleQueuedMerges) and the always-on `stale-merges` team alert
- * (src/ui/alert-feeds.ts staleMerges): every queued merge whose role is not in the in-flight
+/** The one traversal for the doctor's `stale merge-queue entries` row
+ * (checkStaleQueuedMerges): every queued merge whose role is not in the in-flight
  * marker and whose wait strictly exceeds MERGE_QUEUE_STALE_MS (6 h), in queue-file order (oldest
  * first). The in-flight set comes from readMergeMarker via mergeChanges (an absent or
  * never-throwing unreadable marker contributes the empty set) — a slow review is not a stalled
- * drain. Each row carries { role, summary, waitedMs }; the doctor's row adds its age phrase and
- * the alert names the wait, so the rule and its threshold live in one place and cannot drift. */
-export function staleQueuedMergeRows(root: string, now: number): Array<{ role: string; summary: string; waitedMs: number }> {
+ * drain. Each row carries { role, summary, waitedMs }, which the row renders with its age
+ * phrase, so the rule and its threshold live in one place and cannot drift. */
+function staleQueuedMergeRows(root: string, now: number): Array<{ role: string; summary: string; waitedMs: number }> {
   const marker = readMergeMarker(root);
   const inFlight = new Set(marker ? mergeChanges(marker).map((c) => c.role) : []);
   return queuedMerges(root)
@@ -173,9 +170,8 @@ export function staleQueuedMergeRows(root: string, now: number): Array<{ role: s
 }
 
 /** The merge-queue files `readMergeQueue` skips — torn, foreign, or vanished mid-listing — as
- * checkout-relative paths. One traversal shared by the doctor's `checkMergeQueueFiles` row and
- * the always-on `skipped-merges` team alert (src/ui/alert-feeds.ts skippedMergeFiles), so
- * the two surfaces select the same files and name the same paths and cannot drift. */
+ * checkout-relative paths. The one traversal behind the doctor's `checkMergeQueueFiles` row, so
+ * the row names the same paths the reader actually skips and cannot drift. */
 export function skippedMergeQueueFiles(root: string): string[] {
   return unreadableMergeQueueFiles(root).map((f) => path.relative(root, f));
 }
@@ -263,17 +259,15 @@ export function checkPostReviews(root: string): CheckOutcome {
 /** How long a queued prompt may wait for its role to dequeue it before the stale-prompt check
  * warns: a day, fixed. An opinionated default with no knob, like MERGE_QUEUE_STALE_MS: a day is
  * long enough that a healthy role's next run would have dequeued the prompt, and short enough
- * that a paused or disabled role's stranded prompt shows up. The always-on stale-prompt team
- * alert (src/ui/alert-feeds.ts stalePrompts) reuses this same threshold, so it cannot drift
- * from the doctor's check — the STALE_BUG_DAYS precedent. */
-export const STALE_PROMPT_MS = DAY_MS;
+ * that a paused or disabled role's stranded prompt shows up. The stale-prompt check reads this
+ * same threshold, so it cannot drift — the STALE_BUG_DAYS precedent. */
+const STALE_PROMPT_MS = DAY_MS;
 
 /** The queued inbox prompts the doctor's stale-prompt rule calls stale — deliverable now (a
  * `--at` prompt still counting down is never stale) and queued more than STALE_PROMPT_MS,
  * oldest-first, `queuedAtMs` narrowed to a number. One traversal shared by the doctor's
- * `checkStalePrompts` check and the always-on `stalePrompts` team alert (src/ui/alert-feeds.ts),
- * so the two surfaces read the same rule at the same threshold and cannot drift. */
-export function staleQueuedPromptRows(root: string, now: number): Array<QueuedListRow & { queuedAtMs: number }> {
+ * `checkStalePrompts` check, so the rule lives in one place at one threshold. */
+function staleQueuedPromptRows(root: string, now: number): Array<QueuedListRow & { queuedAtMs: number }> {
   return queuedListRows(root, null, listWideScope(root))
     .filter((p) => p.queuedAtMs !== null && deliverableAt(p.notBeforeMs, now) && now - p.queuedAtMs > STALE_PROMPT_MS)
     .sort((a, b) => (a.queuedAtMs as number) - (b.queuedAtMs as number))
@@ -287,7 +281,7 @@ export function staleQueuedPromptRows(root: string, now: number): Array<QueuedLi
  * views (`tumwater prompt --list`, the dashboard Inbox tab, the TUI Inbox pane) show its age —
  * and only when the operator looks. This names the oldest due-but-undelivered prompt, its role,
  * and the deliver-or-drop commands. Reads the queue through the shared `staleQueuedPromptRows`
- * traversal the always-on stale-prompts alert uses (no new reader in src/inbox/), keeping only
+ * traversal (no new reader in src/inbox/), keeping only
  * rows that are deliverable now — a `--at 7d` prompt still counting down is never stale — and
  * stamped more than STALE_PROMPT_MS ago. A warn, never a fail — the checkStaleQueuedMerges
  * precedent: a stranded prompt is operator signal, not a broken environment. */

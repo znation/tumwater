@@ -174,9 +174,9 @@ export function lowerMedian(values: number[]): number {
 }
 
 /** Most-days-waited-first comparator, ties in ascending index (file order) — `b.days - a.days ||
- * a.index - b.index`, the single home of that one-line ordering. Shared by the stale-bug
- * alert (src/ui/alert-feeds.ts's staleOpenBugs), which builds `{index, days}`
- * rows off the same backlog scan, so the two cannot drift on how ties order. The generic holds
+ * a.index - b.index`, the single home of that one-line ordering. Shared by the stale-questions
+ * feed (src/ui/alert-feeds.ts's staleOpenQuestions), which builds `{index, days}`
+ * rows off the same backlog scan, so its tie order cannot drift. The generic holds
  * any row type carrying both fields; a row without a natural index passes its first-seen order. */
 export function byDaysThenIndex<T extends { days: number; index: number }>(a: T, b: T): number {
   return b.days - a.days || a.index - b.index;

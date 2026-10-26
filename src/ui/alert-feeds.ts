@@ -1,16 +1,13 @@
-import { openBugEntries, openQuestionEntries, filingDate, ageInDays } from "../backlog/backlog.js";
-import { needsReviewNote, refusalNote } from "../backlog/backlog-eligibility.js";
+import { openQuestionEntries, ageInDays } from "../backlog/backlog.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
 import { byDaysThenIndex } from "../collections.js";
 import { eventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
-import { isNotifyFailure } from "../events/notify.js";
-import { staleQueuedPromptRows, staleQueuedMergeRows, skippedMergeQueueFiles, atRiskPostReviews, atRiskPostReviewsPhrase, STALE_BUG_DAYS, STALE_QUESTION_DAYS } from "../doctor/doctor-backlog.js";
+import { atRiskPostReviews, atRiskPostReviewsPhrase, STALE_QUESTION_DAYS } from "../doctor/doctor-backlog.js";
 import { regressedFixCandidates, matchedRegressedFixes, regressedFixesPhrase, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
 import { planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { checkWaitContention, providerConcurrencyProblems, providerWaitContention, slotWaitContention, smallPoolProblems, staleWorkspacePins, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
-import { NOTIFY_CHECK_WINDOW_MS } from "../doctor/doctor-notify.js";
 import { flappedChecksPhrase } from "../doctor/doctor-project-checks.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { readQaCoverage, qaCoverageStalled } from "../run/qa-coverage.js";
@@ -20,36 +17,13 @@ import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { configForStatus } from "../status/status-polls.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
-import type { FlappedChecks, NotifyFailure, PlanDependencyProblem, PrimaryOverwriteBlock, QuarantinedTests, StaleBug, StaleMerge, StalePrompt, StaleQuestion } from "./team-alerts.js";
+import type { FlappedChecks, PlanDependencyProblem, QuarantinedTests, StaleQuestion } from "./team-alerts.js";
 
 /** This module is the alert-feed half of src/ui/status-payload.ts: each always-on team alert's
- * data-sourcing function (staleOpenBugs, notifyFailures, capacityContention, …) lives here, a
+ * data-sourcing function (capacityContention, quarantineAlert, …) lives here, a
  * sibling of the src/ui/team-alert-*.ts builders that turn them into banners. status-payload.ts
  * stays the one status-document builder, importing these feeds and folding each feed's result
  * into the `alerts` field; status-render.ts reads the feeds directly for the TUI. */
-/** The open bugs the doctor's 3-day rule (src/doctor/doctor-backlog-bugs.ts checkStaleBugs,
- * STALE_BUG_DAYS) calls stale: an unrefused, unheld open bug whose filing stamp is at
- * least STALE_BUG_DAYS old. This is the always-on feed for the stale-bugs team alert — the
- * doctor's check is the same rule at the same threshold, so the two cannot drift. An entry
- * carrying a Refused note or a Needs-review note is skipped (the refused alert names the
- * former, and a Needs-review note parks the bug, so it is not unfixed), and so is an undated
- * heading (like the doctor's check). The returned objects carry the 0-based index (for the
- * drawer address `bugs:<index>`), the
- * 1-based position (for `bug --cancel <position>`), the stamp-stripped title, and the whole-
- * day age. Returned oldest-first — most days waited, ties in file order — so a caller naming
- * a feed's first element names the most-stale. */
-export function staleOpenBugs(root: string, now = Date.now()): StaleBug[] {
-  return openBugEntries(root)
-    .flatMap((entry, index) => {
-      if (refusalNote(entry.body) !== null || needsReviewNote(entry.body) !== null) return [];
-      const stamp = filingDate(entry.title);
-      if (stamp === null) return [];
-      const days = ageInDays(stamp, now);
-      return days >= STALE_BUG_DAYS ? [{ index, position: index + 1, title: stripEntryStamp(entry.title), days }] : [];
-    })
-    .sort(byDaysThenIndex);
-}
-
 /** The open questions the doctor's 7-day rule (src/doctor/doctor-backlog-bugs.ts
  * checkStaleQuestions, STALE_QUESTION_DAYS) calls stale: an open QUESTIONS.md entry whose
  * `(asked by …)` stamp is at least 7 days old. This is the always-on feed for the stale-questions
@@ -71,57 +45,14 @@ export function staleOpenQuestions(root: string, now = Date.now()): StaleQuestio
     .sort(byDaysThenIndex);
 }
 
-/** The notify pages the doctor's 1-day rule (src/doctor/doctor-notify.ts checkNotify,
- * NOTIFY_CHECK_WINDOW_MS) calls failed — warning events within the last day that isNotifyFailure
- * recognizes (a nonzero exit, a kill, or a failed start). This is the always-on feed for the
- * notify team alert, sharing the doctor's threshold, window and filter, so the alert and the
- * check cannot drift. null when the window holds no failed page. */
-export function notifyFailures(root: string, now = Date.now()): NotifyFailure | null {
-  const failures = eventsSince(root, NOTIFY_CHECK_WINDOW_MS, now, isNotifyFailure);
-  const latest = failures[failures.length - 1];
-  return latest ? { count: failures.length, latestTs: latest.ts, message: String(latest.message) } : null;
-}
-
-/** The queued inbox prompts the doctor's stale-prompt rule (src/doctor/doctor-backlog.ts
- * `staleQueuedPromptRows`, STALE_PROMPT_MS) calls stale: a prompt due-but-undelivered for more
- * than a day. This is the always-on feed for the stale-prompts team alert — the doctor's check
- * reads the same shared traversal and threshold, so the two cannot drift. A deferred prompt
- * (its not-before time still in the future) is never stale, and neither is a prompt at or under
- * the threshold (strictly past STALE_PROMPT_MS). Each returned object carries the role, the
- * 1-based position (`prompt --cancel <n> --role <id>`), and the wait in ms. Returned
- * oldest-first (queuedAtMs ascending), so a caller naming the first element names the
- * longest-waiting prompt. */
-export function stalePrompts(root: string, now = Date.now()): StalePrompt[] {
-  return staleQueuedPromptRows(root, now).map((p) => ({ role: p.role, position: p.position, waitedMs: now - p.queuedAtMs }));
-}
-
-/** The queued merges the doctor's stale-merge rule (src/doctor/doctor-backlog.ts
- * `staleQueuedMergeRows`, MERGE_QUEUE_STALE_MS) calls stale: a change that has sat in the
- * merge queue more than 6 h without starting. This is the always-on feed for the stale-merges
- * team alert — the doctor's check reads the same shared traversal and threshold, so the two
- * cannot drift. Each returned object carries the role, the summary, and the wait in ms.
- * Returned oldest-first (queue-file order), so a caller naming the first element names the
- * longest-waiting merge. */
-export function staleMerges(root: string, now = Date.now()): StaleMerge[] {
-  return staleQueuedMergeRows(root, now).map((m) => ({ role: m.role, summary: m.summary, waitedMs: m.waitedMs }));
-}
-
 /** A broken plan-dependency clause, the always-on twin of the doctor's `plan dependencies` row
  * (src/doctor/doctor-backlog-plans.ts checkPlanDependencies): the same rule's problem set,
  * severity order, and exact message, so the alert and the doctor cannot drift. The reader owns
  * the rule — planDependencyAlert passes the doctor's planDependencyProblem through unchanged,
- * like staleOpenBugs and the other stale feeds do their doctor's rules. null when PLANS.md's
+ * like staleOpenQuestions and the other stale feeds do their doctor's rules. null when PLANS.md's
  * planned entries have no cycle, dangling ref, unparsed clause, or misworded dependency. */
 export function planDependencyAlert(root: string): PlanDependencyProblem | null {
   return planDependencyProblem(root);
-}
-
-/** The merge-queue files `readMergeQueue` skips as checkout-relative paths — the always-on feed
- * for the `skipped-merges` team alert (src/ui/team-alert-backlog-feed.ts), sharing the
- * doctor's one list (doctor-backlog.ts skippedMergeQueueFiles), so the alert and the doctor's
- * `merge-queue files` row cannot drift on the selection or the named paths. */
-export function skippedMergeFiles(root: string): string[] {
-  return skippedMergeQueueFiles(root);
 }
 
 /** The doctor's three `_wait` contention rows (src/doctor/doctor-contention-checks.ts
@@ -194,18 +125,14 @@ export function instancePoolProblems(root: string): string[] {
   return smallPoolProblems(configForStatus(root));
 }
 
-/** How far back the primary-overwrite alert looks — one day, so a team stuck retrying one
- * dirty primary file is a standing amber banner until the file is committed and the refusals
- * age out. */
-export const PRIMARY_OVERWRITE_WINDOW_MS = 24 * 60 * 60_000;
 /** How far back the dropped-post-review alert looks — one day, the 24 h event-window convention
- * every event-reading alert uses (PRIMARY_OVERWRITE_WINDOW_MS sorts beside it), so a review the
+ * every event-reading alert uses, so a review the
  * drain dropped stays a standing amber notice until a day passes. */
 export const DROPPED_POST_REVIEW_WINDOW_MS = 24 * 60 * 60_000;
 /** How far back the regressed-fixes alert looks — one day, so a recently Fixed test that failed
  * again is a standing amber alert until a day passes (or the failure is filed). The doctor's
  * own `regressed fixes` row keeps its since-the-fix read; this is the alert's daily trigger, the
- * same trailing day the primary-overwrite and notify alerts read. */
+ * same trailing day the regressed-fixes alert reads. */
 export const REGRESSED_FIX_WINDOW_MS = 24 * 60 * 60_000;
 /** A Fixed record whose quoted test failed again in the trailing day — the always-on feed for the
  * `regressed-fixes` team alert (src/ui/team-alert-tail.ts), carrying the doctor's own sentence
@@ -228,10 +155,10 @@ export function regressedFixesAlert(root: string, now = Date.now()): RegressedFi
 }
 /** A window summary of the `warning` events whose `message` contains `marker`: the count and
  * the most recent hit (its stamp and squashed wording). The one home of the
- * filter-warnings-by-substring-then-take-latest shape the three marker feeds
- * (primaryOverwriteBlocks, droppedPostReviewsAlert, mainRuleFailures) share. null when the
- * window holds no such warning. eventsSince degrades an unreadable log, so a single bounded
- * event scan needs no try/catch. */
+ * filter-warnings-by-substring-then-take-latest shape the two marker feeds
+ * (droppedPostReviewsAlert, mainRuleFailures) share. null when the window holds no such
+ * warning. eventsSince degrades an unreadable log, so a single bounded event scan needs no
+ * try/catch. */
 function warningMarkerHit(
   root: string,
   windowMs: number,
@@ -242,22 +169,6 @@ function warningMarkerHit(
   const latest = hits[hits.length - 1];
   return latest ? { count: hits.length, latestTs: latest.ts, latestMessage: String(latest.message) } : null;
 }
-/** The exact substring merge-git.ts's overwrite blocker logs in its `warning` event, so this
- * feed matches the refusal and nothing the merge path does not say (see merge-git.ts
- * `overwriteBlockedReason`). */
-const PRIMARY_OVERWRITE_MARKER = "would overwrite files in the primary checkout";
-/** The merges the primary checkout refused in the trailing day (src/merge/merge-git.ts
- * `primaryCheckoutBlockers`, `overwriteBlockedReason`) — the always-on feed for the
- * `primary-overwrite` team alert (src/ui/team-alert-backlog-feed.ts). It reads only the
- * `warning` event the merge path already writes, so it reaches the status poll without a git
- * read (the doctor's `uncommitted backlog` check's git read is async and never gets there) and
- * cannot drift from
- * the refusals. null when the window holds no such warning. */
-export function primaryOverwriteBlocks(root: string, now = Date.now()): PrimaryOverwriteBlock | null {
-  const hit = warningMarkerHit(root, PRIMARY_OVERWRITE_WINDOW_MS, PRIMARY_OVERWRITE_MARKER, now);
-  return hit ? { count: hit.count, latestTs: hit.latestTs, message: hit.latestMessage } : null;
-}
-
 /** Re-export so the always-on alert's threshold and window stay in their one home
  * (src/review/post-merge-review.ts) while status-payload.ts and test/status-payload.test.ts keep
  * reading it from this module. */
@@ -377,7 +288,7 @@ export interface DroppedPostReviews {
  * only the `warning` event the drain's drop branch already writes, so it reaches the status
  * poll without touching the review state and cannot drift from the drop. null when the day
  * holds no such warning. eventsSince degrades an unreadable log, so one bounded event scan
- * needs no try/catch (the primaryOverwriteBlocks precedent). */
+ * needs no try/catch (the mainRuleFailures precedent). */
 export function droppedPostReviewsAlert(root: string, now = Date.now()): DroppedPostReviews | null {
   return warningMarkerHit(root, DROPPED_POST_REVIEW_WINDOW_MS, DROPPED_POST_REVIEW_MARKER, now);
 }
@@ -400,7 +311,7 @@ export interface MainRuleFailure {
  * the `warning` event the main watch already writes, so it reaches the status poll without a
  * git read or a rule re-run (the watch paid for the check) and cannot drift from the watch's
  * wording. null when the day holds no such warning. eventsSince degrades an unreadable log, so
- * one bounded event scan needs no try/catch (the primaryOverwriteBlocks precedent). */
+ * one bounded event scan needs no try/catch (the droppedPostReviewsAlert precedent). */
 export function mainRuleFailures(root: string, now = Date.now()): MainRuleFailure | null {
   return warningMarkerHit(root, MAIN_RULE_FAILURE_WINDOW_MS, MAIN_RULE_FAILURE_MARKER, now);
 }

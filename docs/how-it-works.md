@@ -531,9 +531,7 @@ validation, and atomic write, so you never have to hand-edit the file.
 - The web dashboard opens on Team: alerts for whatever needs you (a failing or stuck role, a
   failing check on main, a spent budget, an available update, open questions, a question
   that has waited a week for an answer, refused entries,
-  a stale bug, a failed notify page, a broken plan dependency clause, a dirty primary checkout
-  refusing merges, a stranded inbox prompt,
-  a stalled merge queue, a merge-queue file the reader skips, a plan or bug stalled by a
+  a broken plan dependency clause, a plan or bug stalled by a
   Needs review note, checks that flapped more than once in the last day, a
   stale or oversized flake quarantine,
   a burst of post-merge review rejections, each an already-merged commit,

@@ -309,27 +309,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The before/after row and key counts, and the deletions' measurement premise, are in the part's PLANS-DONE entry.
 - `npm run test:gate` passes.
 
-### Subtract, part 1b/6: The staleness, notify and queue banners go — their doctor rows keep the detail (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract parts 1a/6, 2a/6, 2b/6 and 2c/6 landed; touches src/ui/team-alert-backlog-feed.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
-
-**Previously held 1**
-
-**Goal.** The seven always-on banners that only restate a doctor row leave the feed: stale bugs, a failed notify page, bugs held waiting for a failure, stale prompts, stale merges, skipped merge-queue files, and a merge refused because the primary checkout would be overwritten. Each condition stays visible in `tumwater doctor` (`stale bugs`, `notify`, `waiting bugs`, `stale prompts`, `stale merge-queue entries`, `merge-queue files`, `uncommitted backlog`).
-
-**Approach.**
-- Delete src/ui/team-alert-backlog-feed.ts (`pushStaleBugsAlert`, `pushNotifyAlert`, `pushWaitingBugsAlert`, `pushStalePromptsAlert`, `pushStaleMergesAlert`, `pushSkippedMergesAlert`, `pushPrimaryOverwriteAlert`, `buildBacklogFeedAlerts`), its `buildBacklogFeedAlerts` call and parameters in `teamAlerts` (src/ui/team-alerts.ts), and its type re-exports.
-- Delete the feeds and their result types from src/ui/alert-feeds.ts: `staleOpenBugs`, `notifyFailures`, `staleWaitingBugs`, `stalePrompts`, `staleMerges`, `skippedMergeFiles`, `primaryOverwriteBlocks`, and `StaleBug`, `NotifyFailure`, `PrimaryOverwriteBlock`, `StalePrompt`, `StaleMerge`, `StaleWaitingBug` (src/ui/team-alert-shared.ts); drop the imports (`doctor-backlog.ts`, `collections.ts`, `backlog.ts`, `events/notify.ts`) that go with them.
-- Drop the removed positional arguments from the three `teamAlerts(...)` calls (src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx) and the matching status-payload.ts imports/type re-exports.
-- Remove the team-alerts.test.ts / status-payload.test.ts cases asserting these seven banners; keep every test whose subject is the doctor row.
-- Sweep docs/how-it-works.md's sentences naming these banners, pointing at the doctor rows.
-- Do not touch src/doctor/doctor-backlog.ts or doctor-notify.ts: their rows are the surviving detail.
-
-**Files touched.** src/ui/team-alert-backlog-feed.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts
-
-**Acceptance criteria.**
-- `teamAlerts` names none of the seven deleted inputs; `grep -rn 'buildBacklogFeedAlerts\|staleOpenBugs\|notifyFailures\|staleWaitingBugs\|skippedMergeFiles\|primaryOverwriteBlocks' src/` finds no live reference outside the doctor rows' own readers.
-- The seven conditions still print their `tumwater doctor` rows, unchanged.
-- `npm run test:gate` passes.
-
 ### Subtract, part 1c/6: The review and check banners go — quarantine, flapped checks, churn, post-merge risk, dropped reviews, main-diff rules and stale QA move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1b/6 landed; touches src/ui/team-alert-merge.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/doctor/doctor-check-names.ts src/doctor/doctor-project-checks.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts test/doctor-checks.test.ts)
 
 **Previously held 1**

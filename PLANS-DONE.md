@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract, part 1b/6: The staleness, notify and queue banners go — their doctor rows keep the detail (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract parts 1a/6, 2a/6, 2b/6 and 2c/6 landed; touches src/ui/team-alert-backlog-feed.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts) — done 2026-10-26 by the feature role
+
+**Previously held 1**
+
+**Goal.** The six always-on banners that only restate a doctor row leave the feed: stale bugs, a failed notify page, stale prompts, stale merges, skipped merge-queue files, and a merge refused because the primary checkout would be overwritten. Each condition stays visible in `tumwater doctor` (`stale bugs`, `notify`, `stale prompts`, `stale merge-queue entries`, `merge-queue files`, `uncommitted backlog`).
+
+**Approach.**
+- Delete src/ui/team-alert-backlog-feed.ts (`pushStaleBugsAlert`, `pushNotifyAlert`, `pushStalePromptsAlert`, `pushStaleMergesAlert`, `pushSkippedMergesAlert`, `pushPrimaryOverwriteAlert`, `buildBacklogFeedAlerts`), its `buildBacklogFeedAlerts` call and parameters in `teamAlerts` (src/ui/team-alerts.ts), and its type re-exports.
+- Delete the feeds and their result types from src/ui/alert-feeds.ts: `staleOpenBugs`, `notifyFailures`, `stalePrompts`, `staleMerges`, `skippedMergeFiles`, `primaryOverwriteBlocks`, and `StaleBug`, `NotifyFailure`, `PrimaryOverwriteBlock`, `StalePrompt`, `StaleMerge` (src/ui/team-alert-shared.ts); drop the imports (`doctor-backlog.ts`, `collections.ts`, `backlog.ts`, `events/notify.ts`) that go with them.
+- Drop the removed positional arguments from the three `teamAlerts(...)` calls (src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx) and the matching status-payload.ts imports/type re-exports.
+- Remove the team-alerts.test.ts / status-payload.test.ts cases asserting these six banners; keep every test whose subject is the doctor row.
+- Sweep docs/how-it-works.md's sentences naming these banners, pointing at the doctor rows.
+- Do not touch src/doctor/doctor-backlog.ts or doctor-notify.ts: their rows are the surviving detail.
+
+**Files touched.** src/ui/team-alert-backlog-feed.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/tui.test.ts
+
+**Done.** The six banner tests in test/team-alerts.test.ts and the stale-bug attention test in test/tui.test.ts were removed; status-payload.test.ts carried no banner cases and stayed untouched. The doctor's `staleQueuedPromptRows`/`staleQueuedMergeRows`/`STALE_PROMPT_MS`/`MERGE_QUEUE_STALE_MS` (doctor-backlog.ts) and `NOTIFY_CHECK_WINDOW_MS` (doctor-notify.ts) exports, and team-alert-shared's `moreDetail`, were the removed feeds' only external users, so the no-unused-export invariant test required dropping their `export` keyword (the doctor rows/checks are unchanged). docs/how-it-works.md and the acceptance-criterion grep confirm the banners are gone from the feed while their doctor rows remain.
+
+**Acceptance criteria.**
+- `teamAlerts` names none of the six deleted inputs; `grep -rn 'buildBacklogFeedAlerts\|staleOpenBugs\|notifyFailures\|skippedMergeFiles\|primaryOverwriteBlocks' src/` finds no live reference outside the doctor rows' own readers.
+- The six conditions still print their `tumwater doctor` rows, unchanged.
+- `npm run test:gate` passes.
+
 ### Subtract, part 5f/6: The doctor's live image probe, its cache and the `--reprobe` controls go (planned 2026-10-26 by the plan role, split from the too-large part 5a/6 after feature held it twice (held 2); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the second of four finer parts replacing part 5a/6, requires Subtract part 5a/6 landed; touches src/doctor/image-probe.ts src/doctor/doctor-model-checks.ts src/doctor/doctor.ts src/doctor/probe.ts src/doctor/doctor-check-names.ts src/doctor/doctor-claude-checks.ts src/doctor/doctor-opencode-checks.ts src/doctor/doctor-pi-checks.ts src/paths.ts src/agent/image-input.ts src/agent/run-spawn.ts src/cli.ts src/cli/cli-flag-specs.ts src/cli/help.ts src/ui/team-alert-tail.ts src/ui/tui/tui-pane-health.ts src/ui/tui/tui-pane-session.ts src/ui/tui/tui-keys.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/gui/gui-endpoint-commands.ts src/gui/gui-admin-endpoints.ts src/ui/gui/gui-client-settings.ts src/ui/gui/gui-client-boot.ts src/ui/tui/tui-frame.ts src/ui/tui/tui-panes.ts src/inbox/inbox-submit.ts src/roles/role-view.ts src/runner/runner-run.ts src/run/run-verdict.ts src/status/status-roles.ts src/status/status-data.ts src/config/config-fallbacks.ts src/files/json-object.ts src/pi/pi-models.ts src/pi/pi-stream.ts src/text/datetime.ts docs/backends.md docs/invariants.md docs/cli.md README.md test/image-probe.test.ts test/image-input.test.ts test/doctor-model-checks.test.ts test/gui-endpoints.test.ts test/doctor.test.ts test/fakes/fake-pi.ts test/gui-client-settings.test.ts test/role-view.test.ts test/completion.test.ts test/tui-keys.test.ts test/tui-frame.test.ts) — done 2026-10-26 by the feature role
 
 **Previously held 2**

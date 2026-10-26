@@ -40,8 +40,8 @@ function pushQuestionsAlert(out: TeamAlert[], questions: readonly string[]): voi
 
 // A stale question (doctor's STALE_QUESTION_DAYS rule, src/doctor/doctor-backlog-bugs.ts
 // checkStaleQuestions) has waited a week without an answer — a role is stuck behind a decision,
-// the exact class every other backlog row raises as an amber alert — so it asks (amber) the way
-// the stale-bug alert does, naming the oldest question, its age, and the `tumwater questions
+// the exact class every other backlog row raises as an amber alert — so it asks (amber), naming
+// the oldest question, its age, and the `tumwater questions
 // answer` fix. Its callers pass it oldest-first (alert-feeds.ts staleOpenQuestions sorts
 // most-days-waited first), so the first element is the most-stale question and is named with its
 // position and days; the rest are folded through entryListDetail like the questions and refused
@@ -99,7 +99,7 @@ function pushStalledEntriesAlert(out: TeamAlert[], stalledEntries: readonly Stal
 // A broken plan-dependency clause (the doctor's `plan dependencies` rule,
 // src/doctor/doctor-backlog-plans.ts planDependencyProblem, via alert-feeds.ts's
 // planDependencyAlert) is invisible in the backlog listings — the claim allocator keeps
-// acting on the misread clause — so it asks (amber) like the stale-bug alert, named by type
+// acting on the misread clause — so it asks (amber), named by type
 // and carrying the doctor's exact message. One alert at most (the problem set is the single
 // most serious rule), and the fix is editing PLANS.md's heading, so there are no actions.
 function pushPlanDependencyAlert(out: TeamAlert[], planDependency: PlanDependencyProblem | null): void {
