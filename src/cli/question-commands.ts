@@ -83,25 +83,36 @@ function sayQuestionList(root: string, json: boolean, pattern?: string): void {
 /** `questions answer`'s `--file <path>` flag: the decision comes from the file, lines kept. */
 const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
 
-/** `tumwater questions`: list open questions, or answer one with `answer <n> <decision>`. */
-export async function cmdQuestions(root: string, args: string[]): Promise<void> {
-  // No requireReadyRepo gate, like backlog: the reader degrades to an empty list on a
-  // missing QUESTIONS.md, so the command inspects any directory instead of refusing (a team
-  // workspace still refuses).
-  // The answer form's decision is free-form prose, so peelPositionals cannot route the
-  // tokens: a decision word may begin with a single dash (`questions answer 1 "-50% spend
-  // cap"`), and peelPositionals would hand it to the flag gate as an unknown flag — the
-  // same masking parsePromptArgs avoids for prompt text by owning only `--`-prefixed
-  // tokens. So the questions parse scans args itself: a `--json` token before the
-  // question's number positional is the one flag (repeats refused, equals form named by
-  // rejectEqualsForm), any other `--`-prefixed token before it is refused as unknown, and
-  // every remaining token in order is prose — subcommand, position number, then the
-  // decision words. Past the number positional, tokens are decision words even when one
-  // is spelled `--json`: unquoted decision prose (`questions answer 1 keep --json output`)
-  // reaches the command as separate argv tokens, and a flag scan that matched `--json`
-  // anywhere silently ate the token out of the recorded decision and flipped the command
-  // into JSON mode. Unknown `--`-prefixed tokens stay refused even there, so a misspelled
-  // flag is still an error rather than silent decision text.
+/** The parsed shape of `tumwater questions`' `args`: the position words (subcommand, number,
+ * then decision prose) plus each flag's value. */
+interface QuestionsInvocation {
+  words: string[];
+  jsonFlag: boolean;
+  file: string | undefined;
+  answeredFlag: boolean;
+  limit: number | undefined;
+  grep: string | undefined;
+  show: number | undefined;
+}
+
+/** No requireReadyRepo gate, like backlog: the reader degrades to an empty list on a
+ * missing QUESTIONS.md, so the command inspects any directory instead of refusing (a team
+ * workspace still refuses).
+ * The answer form's decision is free-form prose, so peelPositionals cannot route the
+ * tokens: a decision word may begin with a single dash (`questions answer 1 "-50% spend
+ * cap"`), and peelPositionals would hand it to the flag gate as an unknown flag — the
+ * same masking parsePromptArgs avoids for prompt text by owning only `--`-prefixed
+ * tokens. So the questions parse scans args itself: a `--json` token before the
+ * question's number positional is the one flag (repeats refused, equals form named by
+ * rejectEqualsForm), any other `--`-prefixed token before it is refused as unknown, and
+ * every remaining token in order is prose — subcommand, position number, then the
+ * decision words. Past the number positional, tokens are decision words even when one
+ * is spelled `--json`: unquoted decision prose (`questions answer 1 keep --json output`)
+ * reaches the command as separate argv tokens, and a flag scan that matched `--json`
+ * anywhere silently ate the token out of the recorded decision and flipped the command
+ * into JSON mode. Unknown `--`-prefixed tokens stay refused even there, so a misspelled
+ * flag is still an error rather than silent decision text. */
+function parseQuestionsInvocation(args: string[]): QuestionsInvocation {
   const words: string[] = [];
   let jsonFlag = false;
   let numbered = false;
@@ -164,45 +175,49 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     words.push(arg);
   }
   if (limit !== undefined && !answeredFlag) fail("-n needs --answered (it limits the answered questions listed)");
-  refuseTeamWorkspace(root);
-  if (show !== undefined) {
-    if (grep !== undefined) fail("--grep does not apply to --show");
-    if (words.length > 0) fail("--show prints one open question; it takes no subcommand");
-    if (file !== undefined) fail("--file only applies to questions answer <n>");
-    if (answeredFlag) {
-      if (limit !== undefined) fail("-n does not apply to --show");
-      const a = answeredQuestionAt(root, show);
-      if (a === null) {
-        const count = answeredQuestionCount(root);
-        const range = count > 0 ? ` — valid: 1-${count}` : "";
-        fail(`no answered question at position ${show} (${count} in QUESTIONS.md)${range}`);
-      }
-      if (jsonFlag) sayJson(a);
-      else say(renderShownQuestion(a));
-      return;
-    }
-    const q = openQuestionAt(root, show);
-    if (q === null) {
-      const count = questionListPayload(root).questions.length;
-      const range = count > 0 ? ` — valid: 1-${count}` : "";
-      fail(`no open question at position ${show} (${count} in QUESTIONS.md)${range}`);
-    }
-    if (jsonFlag) sayJson(q);
-    else say(renderShownQuestion(q));
-    return;
-  }
+  return { words, jsonFlag, file, answeredFlag, limit, grep, show };
+}
+
+/** The `--show` output branch: one open (or, with `--answered`, answered) question in full. */
+function sayShownQuestion(root: string, inv: QuestionsInvocation): void {
+  const { show, answeredFlag, jsonFlag, grep, words, file, limit } = inv;
+  if (grep !== undefined) fail("--grep does not apply to --show");
+  if (words.length > 0) fail("--show prints one open question; it takes no subcommand");
+  if (file !== undefined) fail("--file only applies to questions answer <n>");
   if (answeredFlag) {
-    if (words.length > 0) fail("--answered lists answered questions; it takes no subcommand");
-    if (file !== undefined) fail("--file only applies to questions answer <n>");
-    if (jsonFlag) sayJson(answeredQuestionPayload(root, limit ?? 10, grep));
-    else say(answeredQuestionList(root, limit ?? 10, grep));
+    if (limit !== undefined) fail("-n does not apply to --show");
+    const a = answeredQuestionAt(root, show!);
+    if (a === null) {
+      const count = answeredQuestionCount(root);
+      const range = count > 0 ? ` — valid: 1-${count}` : "";
+      fail(`no answered question at position ${show} (${count} in QUESTIONS.md)${range}`);
+    }
+    if (jsonFlag) sayJson(a);
+    else say(renderShownQuestion(a));
     return;
   }
-  if (words.length === 0 && file !== undefined) fail("--file only applies to questions answer <n>");
-  if (words.length === 0) {
-    sayQuestionList(root, jsonFlag, grep);
-    return;
+  const q = openQuestionAt(root, show!);
+  if (q === null) {
+    const count = questionListPayload(root).questions.length;
+    const range = count > 0 ? ` — valid: 1-${count}` : "";
+    fail(`no open question at position ${show} (${count} in QUESTIONS.md)${range}`);
   }
+  if (jsonFlag) sayJson(q);
+  else say(renderShownQuestion(q));
+}
+
+/** The `--answered` list output branch. */
+function sayAnsweredQuestions(root: string, inv: QuestionsInvocation): void {
+  const { jsonFlag, grep, words, file, limit } = inv;
+  if (words.length > 0) fail("--answered lists answered questions; it takes no subcommand");
+  if (file !== undefined) fail("--file only applies to questions answer <n>");
+  if (jsonFlag) sayJson(answeredQuestionPayload(root, limit ?? 10, grep));
+  else say(answeredQuestionList(root, limit ?? 10, grep));
+}
+
+/** The `questions answer` branch: the inline, editor-backed and `--file` answer flows. */
+async function runQuestionsAnswer(root: string, inv: QuestionsInvocation): Promise<void> {
+  const { jsonFlag, grep, words, file } = inv;
   if (grep !== undefined) fail("--grep only applies to listing questions");
   if (words[0] !== "answer")
     fail(
@@ -244,6 +259,26 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   // that written text in the --json payload so it matches the file, not the caller's spacing.
   const { title, decision: writtenDecision } = answerQuestion(root, n, decision);
   await commitAndReportAnswer(root, n, jsonFlag, title, writtenDecision);
+}
+
+/** `tumwater questions`: list open questions, or answer one with `answer <n> <decision>`. */
+export async function cmdQuestions(root: string, args: string[]): Promise<void> {
+  const inv = parseQuestionsInvocation(args);
+  refuseTeamWorkspace(root);
+  if (inv.show !== undefined) {
+    sayShownQuestion(root, inv);
+    return;
+  }
+  if (inv.answeredFlag) {
+    sayAnsweredQuestions(root, inv);
+    return;
+  }
+  if (inv.words.length === 0) {
+    if (inv.file !== undefined) fail("--file only applies to questions answer <n>");
+    sayQuestionList(root, inv.jsonFlag, inv.grep);
+    return;
+  }
+  await runQuestionsAnswer(root, inv);
 }
 
 /** Commit the answered question, report it in the requested output mode, and wake the
