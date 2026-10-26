@@ -397,6 +397,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `npm run test:gate` passes.
 
 ### Subtract, part 2/6: One hold vocabulary — Refused and Needs review (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-cli.ts src/backlog/backlog-cli-view.ts src/backlog/backlog-index.ts src/runner/revision.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts src/doctor/doctor-backlog-bugs.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/gui/gui-client-backlog.ts src/ui/tui/tui-pane-backlog.ts docs/glossary.md docs/how-it-works.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts)
+**Needs review 2026-10-26 by feature: too large for one run (held 1)**
 
 **Goal.** A backlog entry can be parked exactly two ways: `**Refused …**` (the system declined and wants a decision) and `**Needs review …**` (the work is not done, and the note says why). The other three kinds and the held counters go. An entry a work role reports too large for one run is one such `**Needs review …**` entry: the plan role always refines and splits it, automatically, and it never escalates to the operator to release (user request 2026-10-26).
 
