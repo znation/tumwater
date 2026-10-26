@@ -7,6 +7,7 @@
  * (no I/O, no clock): every branch has its own unit tests. */
 
 import { plural } from "../text/phrases.js";
+import { compareCodeUnits } from "../collections.js";
 import { squash } from "../text/text.js";
 import { humanAgo } from "../text/datetime.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
@@ -27,7 +28,7 @@ export interface QuarantineRow {
  * through with `""` staying `""`. */
 export function quarantineRows(entries: readonly QuarantineEntry[]): QuarantineRow[] {
   return [...entries]
-    .sort((a, b) => a.firstSeen - b.firstSeen || (a.test < b.test ? -1 : a.test > b.test ? 1 : 0))
+    .sort((a, b) => a.firstSeen - b.firstSeen || compareCodeUnits(a.test, b.test))
     .map((e, i) => ({
       position: i + 1,
       test: e.test,

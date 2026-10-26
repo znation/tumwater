@@ -9,6 +9,7 @@
  * runner-state.ts. */
 
 import { MODEL_TIERS, type TumwaterConfig } from "../config/config-schema.js";
+import { compareCodeUnits } from "../collections.js";
 import { nonNegativeNumber, setOwn } from "../files/json-object.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { dayAt, dayKey } from "../text/datetime.js";
@@ -96,7 +97,7 @@ export function topDailySpenders(
   return states
     .map((s) => ({ role: s.role, spentUsd: dailyCost(s, now) }))
     .filter((r) => r.spentUsd > 0)
-    .sort((a, b) => b.spentUsd - a.spentUsd || (a.role < b.role ? -1 : a.role > b.role ? 1 : 0))
+    .sort((a, b) => b.spentUsd - a.spentUsd || compareCodeUnits(a.role, b.role))
     .slice(0, limit);
 }
 

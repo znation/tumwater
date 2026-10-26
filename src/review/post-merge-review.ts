@@ -1,4 +1,5 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { compareCodeUnits } from "../collections.js";
 import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir, reviewFixRef } from "../paths.js";
 import { reviewedAfterMerge, reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, TUMWATER_SOURCE, tryOrWarn } from "../events/events.js";
@@ -87,7 +88,7 @@ export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostM
   }
   return [...byRole.entries()]
     .map(([role, count]) => ({ role, count }))
-    .sort((a, b) => b.count - a.count || (a.role < b.role ? -1 : a.role > b.role ? 1 : 0));
+    .sort((a, b) => b.count - a.count || compareCodeUnits(a.role, b.role));
 }
 
 /** The one home of the trigger and selection the `post-merge-churn` alert
