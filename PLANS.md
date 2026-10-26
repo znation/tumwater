@@ -299,6 +299,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Previously held 7**
 
+**Needs review 2026-10-25 by feature: too large for one run (held 8)**
+
 **Goal.** The drain-verify and runner twin of part 3s/3: part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/merge-drain-verify.test.ts`'s reviewer-held verifications and `test/runner.test.ts`'s `review_start` model-recording pair fail. Move those cases first so the source switch lands against a suite that no longer depends on the reviewer.
 
 **Approach.** In `test/merge-drain-verify.test.ts`, retire or re-point the reviewer-held verification cases (the `review_start`-to-`merged` timing window and the beta-under-an-alpha-reviewer-hold cases): delete a case that exists only to pin the reviewer, re-point one whose real subject is drain scheduling to a deterministic gate rejection. In `test/runner.test.ts`, re-point the `review_start` model-recording pair (`run_start and review_start record the model each run starts on` and `run_start and review_start omit model when none is configured`) to the surviving post-landing review, or delete the `review_start` half if that path does not carry the reviewer's model. Leave the reviewer-run helpers in place; part 3e/3 deletes them.
