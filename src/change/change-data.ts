@@ -15,6 +15,7 @@ import { isAbsolute } from "node:path";
 import { branchName } from "../paths.js";
 import { isUsableWorktree } from "../git/worktree.js";
 import { roleWorktreeDir } from "../git/slots-state.js";
+import { compareCodeUnits } from "../collections.js";
 
 /** One unmerged commit: its abbreviated sha and subject, from `git log --oneline`. */
 interface RoleChangeCommit {
@@ -279,7 +280,7 @@ export function fileOverlaps(holdings: { role: string; files: string[] }[]): Cha
   }
   return [...byPath.entries()]
     .filter(([, roles]) => roles.length >= 2)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .sort(([a], [b]) => compareCodeUnits(a, b))
     .map(([path, roles]) => ({ path, roles }));
 }
 
