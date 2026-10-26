@@ -314,12 +314,8 @@ export function hasFollowFlag(args: readonly string[]): boolean {
  * being picked. Value-less, like STAT_FLAG. */
 export const READY_FLAG: FlagSpec = { names: ["--ready"] };
 
-/** Force re-probing of every claimed image-input model in `tumwater doctor` (part 2/5),
- * bypassing the 7-day cache: `--reprobe` (a value-less flag like JSON_FLAG). */
-export const REPROBE_FLAG: FlagSpec = { names: ["--reprobe"] };
-
 /** The `--problems` flag spec, accepted by `doctor`: print only the warn and fail rows. Value-less,
- * like REPROBE_FLAG. */
+ * like KILL_ORPHANS_FLAG. */
 export const PROBLEMS_FLAG: FlagSpec = { names: ["--problems"] };
 
 /** The `--kill-orphans` flag spec, accepted by `doctor`: first kill the orphaned processes the

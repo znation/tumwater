@@ -11,7 +11,6 @@
  * gui-client.ts's script, reaching its helpers (esc, $, getJson, postJson, showFlash) through
  * that concatenation. A second card, "Health check", runs the same checks as `tumwater doctor`
  * through GET /api/doctor on each open (and on its Re-run button) and paints the report (its
- * Re-probe models button POSTs /api/doctor-reprobe instead, spending the image probes; its
  * Commit backlog button POSTs /api/doctor-commit-backlog instead, the same commitUncommittedBacklog
  * `tumwater doctor --commit-backlog` runs; its Archive backlog button POSTs
  * /api/doctor-archive-backlog instead, the same archiveFinishedOnMain `tumwater archive` runs); a
@@ -74,7 +73,6 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<span>The same checks as <code>tumwater doctor</code>.</span>" +
       "<label><input type='checkbox' data-action='doctor-problems'> Problems only</label>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button>" +
-      "<button type='button' class='btn btn-sm' data-action='doctor-reprobe' title='Re-probe every image-input model (spends one model call each), like tumwater doctor --reprobe'>Re-probe models</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-kill-orphans'>Kill orphans</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-drop-broken-pins' title=\"Drops each refs/tumwater/ pin whose commit is gone - the manual git update-ref -d the tumwater pins row names, like tumwater doctor --drop-broken-pins\">Drop broken pins</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-commit-backlog' title='Commit each uncommitted tracked backlog or brief file on main, like tumwater doctor --commit-backlog'>Commit backlog</button>" +
@@ -117,27 +115,6 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       body.innerHTML = renderDoctorReport(report, doctorProblems);
     } catch (err) {
       body.innerHTML = errorPanel("Health checks could not run", err, "empty");
-    }
-  }
-  let doctorReprobing = false;
-  async function reprobeDoctorClick() {
-    if (doctorReprobing) return;
-    doctorReprobing = true;
-    try {
-      buildSettingsView();
-      const body = $("doctorbody");
-      body.innerHTML = "<div class='empty'>Re-probing…</div>";
-      showFlash("Re-probing image-input models…");
-      try {
-        const report = await postJson("/api/doctor-reprobe", {});
-        lastDoctor = report;
-        body.innerHTML = renderDoctorReport(report, doctorProblems);
-      } catch (err) {
-        body.innerHTML = errorPanel("Health checks could not run", err, "empty");
-        showFlash("error: " + clientErrorMessage(err));
-      }
-    } finally {
-      doctorReprobing = false;
     }
   }
   function toggleDoctorProblems(checked) {

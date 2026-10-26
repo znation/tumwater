@@ -481,7 +481,7 @@ export function rolePayload(
     ...(account !== null ? { billing: account.billing, billingBackend } : {}),
     ...(billingWindow !== undefined ? { billingWindow } : {}),
     chainStep,
-    ...roleImageInfo(cfg, role, modelsPath, undefined, readPiListedModels(root)),
+    ...roleImageInfo(cfg, role, modelsPath, readPiListedModels(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,
     ...(minRunIntervalOverride !== undefined ? { minRunIntervalOverride } : {}),
     ...(providerOverride !== undefined ? { providerOverride } : {}),

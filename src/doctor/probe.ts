@@ -23,7 +23,7 @@ export const AUTH_CHECK_MAX_OUTPUT_BYTES = 1024 * 1024;
  * spawn closes for git). stderr is ignored rather than piped, since nothing reads it and a
  * full stderr pipe would block the child. `timeoutMs` and `maxOutputBytes` are test seams;
  * production callers pass their own named constants. One home of the shape, shared by the
- * model checks' credential/version probes, the tier-model probes, and the image-input probe —
+ * model checks' credential/version probes, and the tier-model probes —
  * before the split each doctor module carried its own byte-for-byte copy. The credential probes'
  * named budgets (AUTH_CHECK_TIMEOUT_MS, AUTH_CHECK_MAX_OUTPUT_BYTES) live beside it here, so the
  * backend check modules share them without importing them from one another. */

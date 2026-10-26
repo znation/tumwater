@@ -93,25 +93,18 @@ fallback is carrying the team.
   `models.json` entry sets `compat.thinkingTokenBudgetField: "thinking_budget"`; without it,
   `:high` on that model is a no-op.
 
-## Image input (claims, probe, reroute)
+## Image input (claims, reroute)
 
 A role reads an image (an `--attach` on a message in its inbox, or a file the run itself points pi
 at) only when its model job can. Capability has one source of truth — `seamImageInput`
 (`src/agent/image-input.ts`):
 
 - **Claude model jobs** can always read images (every Claude model does), so a job on the claude backend
-  answers `true` for any model, never probed.
+  answers `true` for any model.
 - **pi model jobs** read the model's `input` list in pi's `models.json` — `"image"` present means
   capable, and *absent* means text-only. A pair missing from `models.json` is *unknown*, not
   assumed capable (the `models for each tier` doctor check flags a pair that is in neither
   `models.json` nor `pi --list-models`; the image-capability lookup reads `models.json` only).
-
-A claimed pi model job is only as good as the **live probe** confirms: `tumwater doctor` shows each
-claimed model a real generated PNG and checks the answer, caching the verdict in
-`.tumwater/state/image-probes.json` for 7 days. The TUI Health tab and the dashboard never probe
-on a refresh (it must not spend a model call); `--reprobe`
-forces terminal runs to probe again, and the dashboard Health card's Re-probe models button
-and the TUI Health tab's Ctrl+P force every probe, as `--reprobe` does.
 
 When a run does read an image on a text-only model job, it is stopped and the role **reroutes**
 onto a peer tier that reads images (small → default → strong from the role's own tier; a strong

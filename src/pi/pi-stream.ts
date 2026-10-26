@@ -336,8 +336,8 @@ export class PiStreamParser {
     private readonly onToolCallStart?: (toolName: string, args: unknown) => void,
     private readonly image: {
       /** The seam's effective image input (plans/image-input.md "Detecting a blind read"): a
-       * text-only seam makes every image read blind even when pi adds no note (a claim its
-       * doctor probe proved false), while `null` (unknown, or reads images) leaves the pi note
+       * text-only seam makes every image read blind even when pi adds no note, while `null`
+       * (unknown, or reads images) leaves the pi note
        * the only blind signal. */
       imageInput?: boolean | null;
       /** Called once, at the FIRST blind read, with its path — the runner's hook to kill an

@@ -7,7 +7,7 @@ import { parsePiModelImages, parsePiModelTable, writePiListedModels } from "../p
 import type { TumwaterConfig } from "../config/config-schema.js";
 
 /** The doctor's pi provider checks, split out of doctor-model-checks.ts (whose shared seam/model
- * framework and the fallback, tier-models and image-input checks stay there): the provider
+ * framework and the fallback and tier-models checks stay there): the provider
  * credential probe piProviderAuth and the model-list probe piListedModels. claude, opencode and
  * codex each keep their provider checks in a doctor-<agent>-checks.ts module, so pi has the same
  * shape. This is doctor's only probe of `pi auth check --provider` and `pi --list-models`, a

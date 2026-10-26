@@ -8,7 +8,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { runNotFoundLastMessage } from "../src/run/run-detail.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleRun, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleReviewAfterMerge, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleReviewAfterMerge, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { rootInstallResyncLines, type RootInstallResync } from "../src/build/dep-install.js";
 import { renderRunDetail } from "../src/run/run-detail-render.js";
 import { readRunDetail, type RunDetail } from "../src/run/run-detail-data.js";
@@ -643,18 +643,6 @@ test("handleDoctor answers the run's DoctorReport and passes it the root", async
   assert.equal(out.captured.status, 200);
   assert.deepEqual(JSON.parse(out.captured.body as string), report);
   assert.equal(seen, "/some/root");
-});
-
-test("handleDoctorReprobe answers the run's DoctorReport and asks for every probe", async () => {
-  const report = { header: "h", checks: [{ name: "Node", level: "ok" as const, detail: "d" }], routing: [], verdict: "v" };
-  const calls: Array<[string, string]> = [];
-  const out = await captureJson((res) => handleDoctorReprobe(fakeReq("{}"), res, "/some/root", async (r, p) => (calls.push([r, p]), report)));
-  assert.equal(out.captured.status, 200);
-  assert.deepEqual(out.data, report);
-  assert.deepEqual(calls, [["/some/root", "all"]]);
-  const bad = await captureJson((res) => handleDoctorReprobe(fakeReq("not json"), res, "/some/root", async (r, p) => (calls.push([r, p]), report)));
-  assert.equal(bad.captured.status, 400);
-  assert.equal(calls.length, 1);
 });
 
 test("the live server routes GET /api/doctor to the doctor report", async () => {

@@ -221,8 +221,7 @@ function pushImagesAlert(out: TeamAlert[], roles: readonly AlertRole[]): void {
   // Image input (plans/image-input.md "Surfaces", part 5/5): a role whose model cannot read
   // images. Blue when every text-only role has a reroute target (a run that reads an image
   // stops and reruns — nothing fails); amber when some text-only role has none (a blind read
-  // fails and image submissions are refused); a separate amber when a claimed model failed
-  // doctor's live probe (the claim is contradicted, whatever any role resolved to). No alert
+  // fails and image submissions are refused). No alert
   // when every enabled role reads images (imageInput true or unknown — an unknown seam is not
   // counted as text-only, mirroring the submit gate and the doctor's `tier models` stance).
   const textOnly = roles.filter((l) => l.imageInput === false);

@@ -40,7 +40,7 @@ export function logFlagsTo(file: string): string {
  * when the prompt rode argv. Real pi trims the piped text; `$(cat)` drops trailing newlines.
  * `cat` when PATH has it (one spawn; a builtin read loop spends ~25 ms of CPU on a 37 KB
  * prompt, measured 2026-10-18), else the read loop, so a fake under a restricted PATH still
- * sees its prompt. An empty stdin (the image probe's `ignore`) adds no argument. */
+ * sees its prompt. An empty stdin adds no argument. */
 export const PROMPT_FROM_STDIN = [
   `for __pi_a in "$@"; do`,
   `  if [ "$__pi_a" = --print ] && [ ! -t 0 ]; then`,

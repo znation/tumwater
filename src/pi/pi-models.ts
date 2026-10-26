@@ -38,7 +38,7 @@ export interface PiModelDef {
   cost?: unknown;
   /** The input modalities pi's models.json declares for the model (e.g. `["text"]` or
    * `["text","image"]`). Kept through readPiProviders so the seam image-input resolver
-   * (src/agent/image-input.ts) and the doctor's `image input` check can read it; absent — the
+   * (src/agent/image-input.ts) can read it; absent — the
    * common case for a hand-written catalog — means pi treats the model as text-only. */
   input?: unknown;
   /** The context window, in tokens, pi's models.json declares for the model — what pi sizes

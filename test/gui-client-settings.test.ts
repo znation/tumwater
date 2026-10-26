@@ -35,7 +35,6 @@ interface SettingsFns {
   commitBacklogClick(): Promise<void>;
   archiveBacklogClick(): Promise<void>;
   resyncInstallClick(): Promise<void>;
-  reprobeDoctorClick(): Promise<void>;
   paintKillButton(): void;
   paintDropButton(): void;
   paintRetireLeftoversButton(): void;
@@ -45,7 +44,7 @@ interface SettingsFns {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "err-message", "settings-view", "format"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "reprobeDoctorClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -695,60 +694,3 @@ test("resyncInstallClick posts /api/doctor-resync-install, flashes the re-sync l
   assert.equal(doctorFetches, 1);
 });
 
-function reprobeScope(post: (url: string, body: unknown) => Promise<unknown>) {
-  const body = { innerHTML: "", dataset: {} as Record<string, string> };
-  const flashes: string[] = [];
-  let gets = 0;
-  const scope = settingsScope({
-    errorPanel: (title: string, err: { message: string }) => "<div>" + title + " " + err.message + "</div>",
-    clientErrorMessage: (err: { message: string }) => err.message,
-    $: () => body,
-    getJson: async () => {
-      gets++;
-      return {};
-    },
-    postJson: post,
-    showFlash: (m: string) => flashes.push(m),
-  });
-  return { ...scope, body, flashes, gets: () => gets };
-}
-
-test("reprobeDoctorClick posts /api/doctor-reprobe and paints the returned report", async () => {
-  const posts: Array<[string, unknown]> = [];
-  const { reprobeDoctorClick, body, flashes, gets } = reprobeScope(async (url, b) => {
-    posts.push([url, b]);
-    return { checks: [{ level: "fail", name: "image input", detail: "x" }] };
-  });
-  await reprobeDoctorClick();
-  assert.deepEqual(posts, [["/api/doctor-reprobe", {}]]);
-  assert.match(body.innerHTML, /image input/);
-  assert.equal(gets(), 0);
-  assert.ok(flashes[0]!.startsWith("Re-probing image-input models…"));
-});
-
-test("reprobeDoctorClick ignores a click while one is in flight", async () => {
-  let posts = 0;
-  let release: (v: unknown) => void = () => {};
-  const { reprobeDoctorClick } = reprobeScope(() => {
-    posts++;
-    return new Promise((resolve) => (release = resolve));
-  });
-  const first = reprobeDoctorClick();
-  const second = reprobeDoctorClick();
-  release({ checks: [] });
-  await Promise.all([first, second]);
-  assert.equal(posts, 1);
-});
-
-test("reprobeDoctorClick paints the error panel on a rejection and clears the in-flight flag", async () => {
-  let posts = 0;
-  const { reprobeDoctorClick, body, flashes } = reprobeScope(async () => {
-    posts++;
-    throw new Error("boom");
-  });
-  await reprobeDoctorClick();
-  assert.match(body.innerHTML, /Health checks could not run/);
-  assert.ok(flashes.some((f) => f.startsWith("error: ")));
-  await reprobeDoctorClick();
-  assert.equal(posts, 2);
-});

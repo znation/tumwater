@@ -199,8 +199,7 @@ export function spawnPiRun(
   }
   const parser = new PiStreamParser(opts.onToolCallStart, {
     // The seam's effective image input (src/agent/image-input.ts): a text-only seam makes every
-    // image read blind even when pi adds no note — a claim its doctor probe proved false — which
-    // the parser checks against its own note rule.
+    // image read blind even when pi adds no note — the parser checks against its own note rule.
     imageInput: seamImageInput(opts.config, readPiProviders(piModelsPath())),
     onBlindRead: (path) => {
       // Kill an authoring run at once, before the agent goes on working from a picture it never

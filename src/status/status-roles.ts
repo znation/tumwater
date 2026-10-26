@@ -107,7 +107,7 @@ export function collectRoleRows(
     // capability and its reroute target, one shared resolver so the status rows, the role
     // page, and the submit gate cannot disagree about who reads images or where a blind
     // prompt would run.
-    const image = roleImageInfo(cfg, r, modelsPath, undefined, listed);
+    const image = roleImageInfo(cfg, r, modelsPath, listed);
     // The peak-ctx share denominator (the role's context window, part 3c): resolved once per
     // poll here, beside `eff` (the same seam the role page resolves and names) — the same seam
     // `seamContextWindow` run against, so row, page and drawer cannot disagree.

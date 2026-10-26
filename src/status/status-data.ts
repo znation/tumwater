@@ -446,8 +446,8 @@ function snapshotRunFields(
   };
 }
 
-/** The director and per-role inbox fields, the open question count, and the doctor's cached
- * image-probe failures of the snapshot. The `collectInboxes` read stays in `snapshot`; the
+/** The director and per-role inbox fields and the open question count of the snapshot. The
+ * `collectInboxes` read stays in `snapshot`; the
  * builder recomposes the destructured values and reads the open question count from `root`. */
 function snapshotInboxFields(
   root: string,

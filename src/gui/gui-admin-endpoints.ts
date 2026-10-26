@@ -44,12 +44,11 @@ export function handlePromptText(q: URLSearchParams, res: http.ServerResponse, r
 /** Handle GET /api/doctor: the same DoctorReport `tumwater doctor --json` prints, so the
  * Settings view's Health check card and the CLI cannot disagree. Read-only — the checks write
  * nothing (runDoctor's own contract) — and it works whether or not the team is running. `run`
- * exists so tests can skip the host probes; it never probes images ("never") — the explicit
- * re-probe is POST /api/doctor-reprobe; a throw reaches the server's outer 500. */
+ * exists so tests can skip the host probes; a throw reaches the server's outer 500. */
 export async function handleDoctor(
   res: http.ServerResponse,
   root: string,
-  run: (root: string) => Promise<DoctorReport> = (r: string) => runDoctor(r, undefined, undefined, "never"),
+  run: (root: string) => Promise<DoctorReport> = (r: string) => runDoctor(r),
 ): Promise<void> {
   sendJson(res, 200, await run(root));
 }

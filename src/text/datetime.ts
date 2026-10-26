@@ -19,7 +19,7 @@ import { EVENTS_LOG_BASENAME } from "../paths.js";
 export const HOUR_MS = 60 * 60 * 1000;
 
 /** Milliseconds in a day — the sibling of `HOUR_MS`: the shared day unit for the
- * day-sized retention and lookback constants (the opencode-catalog and image-probe TTLs,
+ * day-sized retention and lookback constants (the opencode-catalog TTL,
  * the doctor's stale-pin/merge/prompt/wait checks, the known-flake and selfcheck
  * windows, the dashboard-history since bound, the retention prune, the claude-window
  * lookback) so one day cannot mean slightly different spans per consumer. */

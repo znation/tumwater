@@ -45,7 +45,6 @@ import {
   FOLLOW_FLAG,
   STOP_CANCEL_FLAG,
   STOP_IN_FLAG,
-  REPROBE_FLAG,
   PROBLEMS_FLAG,
   KILL_ORPHANS_FLAG,
   COMMIT_BACKLOG_FLAG,
@@ -173,7 +172,7 @@ async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
   // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
   // so it must run outside a git repo and print fail lines rather than throwing.
   const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
-  rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG, RETIRE_LEFTOVERS_FLAG]);
+  rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG, RETIRE_LEFTOVERS_FLAG]);
   const only = parseDoctorChecks(checkNames);
   const { runDoctor } = await import("./doctor/doctor.js");
   let orphanKill: OrphanKillReport | undefined;
@@ -236,11 +235,7 @@ async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
   const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(
     "./doctor/doctor-render.js"
   );
-  // The terminal probes unclaimed-verified models by default (7-day cache); --reprobe
-  // forces every claimed model. The TUI/GUI call runDoctor with the default "never", so a
-  // refresh never spends a model call.
-  const probeImages = args.includes("--reprobe") ? "all" : "missing";
-  const report = await runDoctor(root, undefined, undefined, probeImages, only);
+  const report = await runDoctor(root, undefined, undefined, only);
   // --json prints the collector's own payload (the DoctorReport object), not a re-parse of
   // the render — the `report --json` precedent. The exit-code contract below holds in both
   // forms: 1 when any check fails, 0 otherwise; warnings never fail the exit.

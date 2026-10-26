@@ -12,7 +12,7 @@ import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
 /** The Health pane (view roleIds.length + 7) of the TUI (src/ui/tui/tui.tsx): the problems-only
- * Ctrl+O toggle, the Ctrl+P image-model re-probe, the Ctrl+A commit-backlog, the Ctrl+B
+ * Ctrl+O toggle, the Ctrl+A commit-backlog, the Ctrl+B
  * backlog archive, and the runDoctor collector it re-reads on every entry. Split out of the
  * pane-navigation monolith; it owns the problems flag and the last resolved report. */
 export function createHealthPane(session: TuiPaneSession) {
@@ -30,16 +30,14 @@ export function createHealthPane(session: TuiPaneSession) {
   // current. Extracted so both the enter half of the Ctrl+T cycle and the Ctrl+R in-place
   // refresh run the same body; a run already in flight is superseded by the new read.
   let runGen = 0;
-  // Whether a Ctrl+P re-probe is in flight, so a held key never spends a second round of probes.
-  let reprobing = false;
-  const run = (probeImages: "never" | "all" = "never"): Promise<void> => {
+  const run = (): Promise<void> => {
     // Generation guard: each run bumps the counter, and a resolution paints only if it is
     // the latest request's — Ctrl+R held twice, or a re-run raced with a re-entry, must not
     // let an out-of-order older resolution overwrite the newer report.
     const gen = ++runGen;
     session.paneCache = null;
     lastDoctorReport = null;
-    return session.runDoctor(session.root, probeImages).then(
+    return session.runDoctor(session.root).then(
       (report) => {
         if (gen !== runGen || session.view !== session.roleIds.length + 7) return;
         lastDoctorReport = report;
@@ -64,25 +62,6 @@ export function createHealthPane(session: TuiPaneSession) {
       // problems-only toggle, and re-enters at the head so the changed body starts at the
       // top. Every other view keeps today's Ctrl+R (the backlog release).
       void run();
-      session.paneScroll = 0;
-      session.requestRender();
-      return true;
-    }
-    if (key.ctrl && key.name === "p" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 7) {
-      // Ctrl+P on the Health pane (mnemonic: **P**robe) is the terminal twin of `tumwater doctor
-      // --reprobe` and the dashboard's Re-probe models: it re-runs the checks with every claimed
-      // pi image-input model re-probed, spending one model call each and rewriting
-      // .tumwater/state/image-probes.json. Every other view keeps its own Ctrl+P.
-      if (reprobing) {
-        session.flashMessage("a re-probe is already running");
-        session.requestRender();
-        return true;
-      }
-      reprobing = true;
-      session.flashMessage("re-probing image-input models (one model call each) …");
-      void run("all").finally(() => {
-        reprobing = false;
-      });
       session.paneScroll = 0;
       session.requestRender();
       return true;

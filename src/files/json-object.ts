@@ -113,7 +113,7 @@ export function objectOrEmpty(value: unknown): Record<string, unknown> {
 
 /** The entries of `value` that pass `guard`, as a fresh record; `{}` when `value` is not a JSON
  * object. The one home of "keep the well-formed entries of an untrusted map, drop the foreign
- * ones" (the image-probe and opencode-catalog caches, the per-pair daily spend map). Built with
+ * ones" (the opencode-catalog cache, the per-pair daily spend map). Built with
  * `Object.fromEntries`, so a `__proto__` key stays an own property. */
 export function validEntries<T>(value: unknown, guard: (entry: unknown) => entry is T): Record<string, T> {
   if (!isJsonObject(value)) return {};

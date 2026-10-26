@@ -18,7 +18,7 @@ import {
 } from "./doctor-model-checks.js";
 
 /** The doctor's opencode credential and leak readiness check, split out of doctor-model-checks.ts
- * (whose shared seam/model framework and the pi, tier-models and image-input checks stay there):
+ * (whose shared seam/model framework and the pi and tier-models checks stay there):
  * checkOpencode and its helpers (opencodeProviderOf, opencodeAuthLists, jsonKeyPresent,
  * opencodeConfigLeaks). This is the doctor's only check that spawns the `opencode` CLI and reads
  * its catalog and the operator's global opencode config — a distinct concern from the

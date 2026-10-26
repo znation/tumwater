@@ -218,9 +218,9 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
     if (carriesImages) {
       const providers = readPiProviders(piModelsPath());
       const listed = readPiListedModels(ctx.root);
-      if (seamImageInput(cfg, providers, undefined, listed) !== true) {
+      if (seamImageInput(cfg, providers, listed) !== true) {
         const target = imageReroute(
-          ctx.config, ctx.role, ctx.rerouteRegime(now), undefined, null, undefined, null, listed,
+          ctx.config, ctx.role, ctx.rerouteRegime(now), undefined, null, null, listed,
         );
         if (target !== null) {
           cfg = target.config;

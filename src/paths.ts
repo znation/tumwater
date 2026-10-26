@@ -146,13 +146,6 @@ export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
 
-/** The doctor's image-probe verdict cache (src/doctor/image-probe.ts): how each claimed
- * image-input model actually answered a live probe, keyed agent/provider/model. Runtime state
- * under .tumwater/state/, never committed. */
-export function imageProbesPath(root: string): string {
-  return path.join(tumwaterDir(root), "state", "image-probes.json");
-}
-
 /** The images column `tumwater doctor` last read from `pi --list-models`, keyed provider/model.
  * Runtime state under .tumwater/state/, never committed. */
 export function piListedModelsPath(root: string): string {

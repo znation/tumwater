@@ -10,8 +10,6 @@
  */
 import { resyncRootInstall, rootInstallResyncLines, type RootInstallResync } from "../build/dep-install.js";
 import { cancelScheduledStopMessage, requestAbort, requestAbortAll, requestResetCounters, requestRestart, requestScheduledStop, runManualReclaim } from "../operator/operator-intent.js";
-import { runDoctor } from "../doctor/doctor.js";
-import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { killOrphans, orphanKillLines, type OrphanKillReport } from "../doctor/doctor-orphans.js";
 import { dropBrokenPins, brokenPinDropLines, type BrokenPinDrop, retireLeftovers, leftoverRetireLines, type LeftoverRetireReport } from "../doctor/doctor-contention-checks.js";
 import { commitUncommittedBacklog, backlogCommitMessage, type BacklogCommitReport } from "../doctor/doctor-backlog.js";
@@ -199,22 +197,6 @@ export async function handleResyncInstall(
   if (!body) return;
   const r = await resync(root);
   sendJson(res, 200, { ok: r.ok, message: rootInstallResyncLines(r).join("; ") });
-}
-
-/** Handle POST /api/doctor-reprobe: the dashboard Health card's Re-probe models button, the
- * twin of `tumwater doctor --reprobe`. A POST because it spends one model call per claimed pi
- * image-input model and rewrites `.tumwater/state/image-probes.json`; GET /api/doctor stays
- * probe-free. Same body discipline as /api/kill-orphans; `run` takes the probe mode so a test
- * can pin that the handler asks for "all" without spawning a probe. */
-export async function handleDoctorReprobe(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  root: string,
-  run: (root: string, probeImages: "all") => Promise<DoctorReport> = (r, p) => runDoctor(r, undefined, undefined, p),
-): Promise<void> {
-  const body = await readPostBody(req, res, "{}");
-  if (!body) return;
-  sendJson(res, 200, await run(root, "all"));
 }
 
 /** Handle POST /api/abort: the dashboard's per-row abort control — the same marker-writing

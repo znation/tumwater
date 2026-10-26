@@ -1,41 +1,26 @@
 import { childEnv } from "../process/process.js";
 import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
-import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
-import { configForRole } from "../config/config-views.js";
-import { resolveTierFallbacks, seamsInUse } from "../config/config-fallbacks.js";
-import { cacheReadUnpriced, piModelsPath, piPairFree, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
-import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
-import { imageReroute, seamImageInput } from "../agent/image-input.js";
-import { modelLabel, usesPiModels } from "../agent/backend-traits.js";
-import { backendById } from "../agent/agent-backend.js";
-import {
-  imageProbeEntryFresh,
-  imageProbeKey,
-  readImageProbeCache,
-  runImageProbe,
-  writeImageProbeCache,
-  type ImageProbeResult,
-} from "./image-probe.js";
-import { readClaudeAccount, type ClaudeAccount } from "../agent/claude/claude-account.js";
+import { defaultConfig, loadConfigSafe } from "../config/config.js";
+import { seamsInUse } from "../config/config-fallbacks.js";
+import { cacheReadUnpriced, piModelsPath, readPiProviders } from "../pi/pi-models.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import { envPath } from "../files/files.js";
 import { piListedModels, piProviderAuth, type ProviderAuth } from "./doctor-pi-checks.js";
-import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { agree } from "../text/phrases.js";
-import { formatDate } from "../text/datetime.js";
-import { errorMessage, joinParts } from "../text/text.js";
+import { joinParts } from "../text/text.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import { belowNodeFloor } from "../version.js";
 
 /** The one phrase a configured-models check uses when the config declares no models at all:
  * informational (capability falls to pi's own defaults), not a warning. Shared by
- * checkTierModels and checkImageInput so the two checks word the same "nothing configured"
- * stance identically. */
+ * checkTierModels so the check words the same "nothing configured"
+ * stance. */
 const PHRASE_NO_MODELS_DECLARED =
   "no models declared — every model job uses pi's own default";
 
 /** The one phrase a configured-models check uses when pi's definitions file could not be read
  * at all: the check cannot answer what it was asked, so it warns instead of guessing. Shared by
- * checkTierModels and checkImageInput so the two checks word the "cannot check" stance
+ * checkTierModels so the check words the "cannot check" stance
  * identically; each appends its own modelsPath after the shared stem, and checkTierModels
  * also appends its ompNote. */
 const PHRASE_CANNOT_READ_MODELS = "cannot check — could not read pi's model definitions at ";
@@ -44,7 +29,7 @@ const PHRASE_CANNOT_READ_MODELS = "cannot check — could not read pi's model de
  * repo-setup checks stay there, and whose state/disk/build checks live in
  * doctor-project-checks.ts), and split apart again so one theme owns one module: this file holds
  * the shared config guard, the seam framework (seamPairs and the per-backend seam predicates),
- * and the declared-tier and image-input checks (checkTierModels, checkImageInput). The cap
+ * and the declared-tier check (checkTierModels). The cap
  * fallback price and fallback-chain checks (checkFallbackModel, checkFallbackChain) live in
  * doctor-fallback-checks.ts, importing this file's loadConfigForCheck just as the per-backend
  * modules do. The claude, opencode, codex and pi provider checks live in their own per-backend
@@ -328,184 +313,6 @@ export async function checkTierModels(
       : found;
   if (fails.length > 0) return failOutcome(`${base}${ompNote}`);
   return (warns.length > 0 || ompVars.length > 0 ? warnOutcome : okOutcome)(`${base}${ompNote}`);
-}
-
-/** The doctor's image-input capability check (plans/image-input.md "Doctor", parts 1-2/5):
- * which of the team's seams claim to read images, and whether every text-only enabled role can
- * reroute to one that does. Part 2 adds the live probe — with `probeImages` "missing" (the
- * terminal `tumwater doctor` default) each claimed pi model with no fresh cached verdict is
- * shown a real image and the answer is checked; with "all" (the `--reprobe` flag, the
- * dashboard's Re-probe models button and the TUI Health tab's Ctrl+P) every claimed model is
- * re-probed; with "never" (the TUI Health tab and GUI doctor endpoint on entry and refresh)
- * nothing is spawned and only cached verdicts are read, so a refresh never spends a model call.
- * claude seams are never probed — every Claude model reads images, and a probe would spend
- * subscription window to confirm it.
- *
- * Covers the same seams as `tier models` (seamPairs — the tiers, enabled roles and the
- * reviewer) plus the tiers' fallback pairs (the reroute part picks its target among them, so a
- * text-only fallback would promise a reroute no fallback can serve). A claimed model whose probe
- * failed (fresh verdict) is dropped from the readers and reads false from seamImageInput, so the
- * reroute sweep never sends a text-only role to a model that lost its probe. `providers`,
- * `account`, `pathEnv` and `probe` are injectable so tests need no real pi install or account. */
-export async function checkImageInput(
-  root: string,
-  modelsPath: string = piModelsPath(),
-  providers: Map<string, PiModelDef[]> | null = readPiProviders(modelsPath),
-  account?: ClaudeAccount | null,
-  probeImages: "missing" | "all" | "never" = "never",
-  pathEnv: string = envPath(),
-  probe: (
-    config: TumwaterConfig,
-    seam: { provider?: string; model: string; thinking?: string },
-    env: NodeJS.ProcessEnv,
-  ) => Promise<ImageProbeResult> = runImageProbe,
-): Promise<CheckOutcome> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  // `tier models` already fails on a missing/unknown pair, so this check names only what it can
-  // answer; unknown (null) pairs are left to that check. A missing definitions file only blocks
-  // this check when a seam actually needs it — an all-claude team reads images without it.
-  const accountNow = account === undefined ? readClaudeAccount(root) : account;
-  // The free-ness lookup reads the image-input check's one claude account (part 2a/9).
-  const accounts = (b: string) => (b === "claude" ? accountNow : null);
-  const listed = readPiListedModels(root);
-  const pairs = seamPairs(config);
-  const needsDefinitions = pairs.some((p) => usesPiModels(p.agent ?? "pi"));
-  if (providers === null && needsDefinitions)
-    return warnOutcome(`${PHRASE_CANNOT_READ_MODELS}${modelsPath}`);
-  const label = modelLabel;
-  // The catalog claims (raw `input`, ignoring the cache): what to probe and report, including a
-  // model whose earlier probe failed (it must still be named and re-probed by --reprobe).
-  const claimed = new Map<string, { agent?: string; provider?: string; model: string; thinking?: string }>();
-  for (const pair of pairs) {
-    if (pair.model === undefined) continue;
-    if (seamImageInput(pair, providers, undefined, listed) === true)
-      claimed.set(imageProbeKey(pair.agent, pair.provider, pair.model), {
-        agent: pair.agent,
-        provider: pair.provider,
-        model: pair.model,
-        thinking: pair.thinking,
-      });
-  }
-  // The tiers' fallback pairs: a reroute target must itself read images to help, and part 4's
-  // fallback regime picks among these, so a text-only fallback team is a coverage gap here.
-  const resolved = resolveTierFallbacks(config, (p: FallbackModelConfig) =>
-    piPairFree(providers, p, accounts),
-  );
-  for (const tier of MODEL_TIERS) {
-    const pair = resolved[tier].pair;
-    if (pair?.model === undefined) continue;
-    // The readers (seamImageInput, imageReroute) resolve a pair with no backend to the "pi"
-    // agent, so the cache key must carry "pi" — keying it `undefined` would write a verdict the
-    // readers never read.
-    const agent = pair.backend ?? "pi";
-    if (seamImageInput({ ...pair, agent }, providers, undefined, listed) === true)
-      claimed.set(imageProbeKey(agent, pair.provider, pair.model), {
-        agent,
-        provider: pair.provider,
-        model: pair.model,
-        thinking: pair.thinking,
-      });
-  }
-  const probes = readImageProbeCache(root);
-  const now = Date.now();
-  const env = childEnv({ PATH: pathEnv });
-  const readsItems: string[] = [];
-  const failed: string[] = [];
-  const couldNot: string[] = [];
-  let probedAny = false;
-  // Settle one claimed seam: probe when asked and uncached, read a fresh cached verdict
-  // otherwise, or report "not verified yet". Only pass/fail are cached; could-not-verify is
-  // reported but never cached.
-  for (const seam of claimed.values()) {
-    const agent = seam.agent;
-    // A backend that registers an imageInput hook trusts the hook (claude today, which reads
-    // every model); a backend without one is probed through its model catalog.
-    if (agent !== undefined && backendById(agent)?.imageInput !== undefined) {
-      readsItems.push(label(agent, seam.provider, seam.model));
-      continue;
-    }
-    const key = imageProbeKey(agent, seam.provider, seam.model);
-    const cached = probes[key];
-    const valid = imageProbeEntryFresh(cached, now);
-    const wantProbe = probeImages !== "never" && (probeImages === "all" || !valid);
-    if (wantProbe) {
-      probedAny = true;
-      const result = await probe(config, { provider: seam.provider, model: seam.model, thinking: seam.thinking }, env);
-      if (result.verdict === "pass") {
-        probes[key] = { verdict: "pass", detail: result.detail, at: now, claim: true };
-        readsItems.push(`${label(agent, seam.provider, seam.model)} (verified ${formatDate(new Date(now))})`);
-      } else if (result.verdict === "fail") {
-        probes[key] = { verdict: "fail", detail: result.detail, at: now, claim: true };
-        failed.push(`${label(agent, seam.provider, seam.model)} failed the image probe — ${result.detail}`);
-      } else {
-        couldNot.push(`${label(agent, seam.provider, seam.model)} could not be verified — ${result.detail}`);
-      }
-    } else if (cached && imageProbeEntryFresh(cached, now)) {
-      if (cached.verdict === "pass") {
-        readsItems.push(`${label(agent, seam.provider, seam.model)} (verified ${formatDate(new Date(cached.at))})`);
-      } else {
-        failed.push(`${label(agent, seam.provider, seam.model)} failed the image probe — ${cached.detail}`);
-      }
-    } else {
-      readsItems.push(`${label(agent, seam.provider, seam.model)} (not verified yet — run \`tumwater doctor\`)`);
-    }
-  }
-  let saveProblem: string | null = null;
-  if (probedAny) {
-    try {
-      writeImageProbeCache(root, probes);
-    } catch (err) {
-      saveProblem = errorMessage(err);
-    }
-  }
-  const verdict = (): CheckOutcome => {
-    // Text-only enabled roles: which can reroute to a tier that reads images (honoring failed
-    // probes), and which cannot.
-    const reroutes: string[] = [];
-    const noTarget: string[] = [];
-    for (const role of enabledRoleIds(config)) {
-      const rc = configForRole(config, role);
-      if (rc.model === undefined) continue;
-      if (seamImageInput(rc, providers, probes, listed) !== false) continue; // reads images, or unknown (to tier models)
-      const rr = imageReroute(config, role, "primary", modelsPath, accountNow, probes, null, listed);
-      if (rr && seamImageInput(rr.config, providers, probes, listed) === true)
-        reroutes.push(
-          `${role} text-only (${label(rc.agent, rc.provider, rc.model)}) — reroutes to ${rr.tier} (${label(rr.config.agent, rr.config.provider, rr.config.model)})`,
-        );
-      else noTarget.push(`${role} text-only (${label(rc.agent, rc.provider, rc.model)})`);
-    }
-    // A team that declared no models at all leaves capability to pi's own defaults — the same
-    // "nothing configured" stance as tier models, informational rather than a warning.
-    const declared =
-      pairs.some((p) => p.model !== undefined) ||
-      MODEL_TIERS.some((t) => resolved[t].pair?.model !== undefined);
-    if (!declared) return okOutcome(PHRASE_NO_MODELS_DECLARED);
-    const readsLine =
-      readsItems.length > 0 ? `reads images: ${[...readsItems].sort().join(", ")}` : "";
-    const details = joinParts([readsLine, ...reroutes]);
-    if (failed.length > 0)
-      return failOutcome(
-        `${failed.join("; ")} — remove "image" from its input in pi's models.json or fix the endpoint, then run \`tumwater doctor --reprobe\``,
-      );
-    if (couldNot.length > 0)
-      return warnOutcome(`${couldNot.join("; ")}; ${details}`.replace(/;\s*$/, ""));
-    if (noTarget.length > 0)
-      return warnOutcome(
-        `${noTarget.join("; ")} — no configured model reads images, so a run that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one`,
-      );
-    if (readsItems.length === 0)
-      return warnOutcome(
-        "no configured model reads images — a run that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one",
-      );
-    return okOutcome(details);
-  };
-  const outcome = verdict();
-  if (saveProblem === null) return outcome;
-  return {
-    level: outcome.level === "ok" ? "warn" : outcome.level,
-    detail: `${outcome.detail} — could not save the image-probe cache (${saveProblem}), so the next doctor probes again`,
-  };
 }
 
 /** `gh` readiness for the opt-in `feedback` observer (plans/feedback-role.md "Shape" → "Part 1"):

@@ -41,7 +41,7 @@ interface TuiKeysDeps {
   collectOverlaps?(root: string): Promise<ChangeOverlapsView>;
   /** Seam for the Health tab's checks; defaults to `runDoctor` so tests need not probe
    * binaries or git. */
-  runDoctor?(root: string, probeImages: "never" | "all"): Promise<DoctorReport>;
+  runDoctor?(root: string): Promise<DoctorReport>;
   /** Seam for the Health tab's Ctrl+K orphan kill; defaults to `killOrphans` so tests need not
    * scan the process table or signal anything. */
   killOrphans?(root: string): Promise<OrphanKillReport>;
@@ -325,7 +325,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const { root } = deps;
   const collectPending = deps.collectPending ?? collectTeamChanges;
   const collectOverlaps = deps.collectOverlaps ?? collectChangeOverlaps;
-  const runDoctorSeam = deps.runDoctor ?? ((r: string, p: "never" | "all") => runDoctor(r, undefined, undefined, p));
+  const runDoctorSeam = deps.runDoctor ?? ((r: string) => runDoctor(r));
   const killOrphansSeam = deps.killOrphans ?? ((r: string) => killOrphans(r));
   const dropBrokenPinsSeam = deps.dropBrokenPins ?? ((r: string) => dropBrokenPins(r));
   const retireLeftoversSeam = deps.retireLeftovers ?? ((r: string) => retireLeftovers(r, loadConfigSafe(r).config));

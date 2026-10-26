@@ -389,18 +389,18 @@ test("the fish script parses under fish when fish is installed", { skip: !fishIn
 
 test("the bash script completes doctor check names, escaping spaces and apostrophes", async () => {
   const script = completionScript("bash");
-  assert.deepEqual(await complete(script, ["tumwater", "doctor", "im"], 2), ["image\\ input"]);
+  assert.deepEqual(await complete(script, ["tumwater", "doctor", "disk"], 2), ["disk\\ space"]);
   assert.deepEqual(await complete(script, ["tumwater", "doctor", "mai"], 2), ["maintenance\\ allowance", "main\\'s\\ check"]);
-  assert.deepEqual(await complete(script, ["tumwater", "doctor", "image\\ in"], 2), ["image\\ input"]);
+  assert.deepEqual(await complete(script, ["tumwater", "doctor", "disk\\ s"], 2), ["disk\\ space"]);
   assert.equal((await complete(script, ["tumwater", "doctor", ""], 2)).length, DOCTOR_CHECK_NAMES.length);
   assert.deepEqual(await complete(script, ["tumwater", "doctor", "repo", "or"], 3), ["orphans"]);
   assert.deepEqual(await complete(script, ["tumwater", "doctor", "--pr"], 2), ["--problems"]);
-  assert.ok(!(await complete(script, ["tumwater", "status", ""], 2)).includes("image\\ input"));
+  assert.ok(!(await complete(script, ["tumwater", "status", ""], 2)).includes("disk\\ space"));
   for (const name of DOCTOR_CHECK_NAMES) assert.match(name, /^[a-z0-9' -]+$/i);
 });
 
 test("the fish script completes doctor check names", () => {
   const lines = fishScriptLines();
-  assert.ok(lines.some((l) => l.includes("__tumwater_doctor_checks") && l.includes(`"main's check"`) && l.includes(`"image input"`)));
+  assert.ok(lines.some((l) => l.includes("__tumwater_doctor_checks") && l.includes(`"main's check"`) && l.includes(`"claude auth"`)));
   assert.ok(lines.some((l) => l.includes("__fish_seen_subcommand_from doctor") && l.includes(`-a "(__tumwater_doctor_checks)"`)));
 });

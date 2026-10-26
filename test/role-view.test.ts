@@ -26,7 +26,6 @@ import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { recordFlow } from "../src/run/qa-coverage.js";
 import { recordFiled } from "../src/run/feedback-filings.js";
-import { imageProbeKey, writeImageProbeCache } from "../src/doctor/image-probe.js";
 
 const NO_MODELS = "/nonexistent/tumwater-test-models.json"; // readPiProviders degrades to []
 const NOW = 1_800_000_000_000;
@@ -843,32 +842,6 @@ test("role payload reports image input and the renderer's Images line", () => {
   assert.match(renderRoleMarkdown(unknown), /- Images: unknown/);
 });
 
-// Subtracting the doctor's probe from the role page (part 5a/6): a fresh cached probe failure
-// no longer makes the page text-only — the page reports the declaration answer (seamImageInput)
-// and reads no probe cache. This pins the removed read in role-view.ts.
-test("a failing cached probe no longer makes the role's page text-only", () => {
-  const dir = root();
-  const models = writeModelsFile(
-    tmpdir("role-image-probe-"),
-    JSON.stringify({
-      providers: {
-        local: {
-          models: [{ id: "vision", input: ["text", "image"] }],
-        },
-      },
-    }),
-  );
-  writeConfig(dir, { model: { default: "local/vision", strong: "local/vision" } });
-  // A vision role reads images by declaration.
-  assert.equal(rolePayload(dir, "feature", models).imageInput, true);
-  // With the probe cache gone from the page read, a fresh failing probe changes nothing.
-  writeImageProbeCache(dir, {
-    [imageProbeKey("pi", "local", "vision")]: { verdict: "fail", detail: "answered 429", at: Date.now(), claim: true },
-  });
-  const p = rolePayload(dir, "feature", models);
-  assert.equal(p.imageInput, true);
-  assert.match(renderRoleMarkdown(p), /- Images: yes/);
-});
 
 // Recent runs (the `tumwater role <id>` section): the role's last few run_end
 // results, read from the event log so the command answers with the team stopped. Newest

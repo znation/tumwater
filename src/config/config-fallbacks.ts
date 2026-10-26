@@ -138,8 +138,7 @@ const BORROW_ORDER: Record<ModelTier, readonly ModelTier[]> = {
 };
 
 /** Exported for imageRerouteTarget (src/agent/image-input.ts), which walks a rerouting role's
- * tier through the same borrow order the budget fallback uses (skipping the tier itself), and
- * for the doctor's `image input` check naming the tier a text-only role reroutes to. */
+ * tier through the same borrow order the budget fallback uses (skipping the tier itself). */
 export { BORROW_ORDER };
 
 type FallbackChain = FallbackStep | FallbackStep[];

@@ -59,7 +59,7 @@ export function imagePromptGuidance(root: string, role: string): { refusal?: str
   const { config } = loadConfigSafe(root);
   const cfg = config ?? defaultConfig();
   const { imageInput, imageReroute } = roleImageInfo(
-    cfg, role, undefined, undefined, readPiListedModels(root),
+    cfg, role, undefined, readPiListedModels(root),
   );
   if (imageInput !== false) return {};
   if (imageReroute) {

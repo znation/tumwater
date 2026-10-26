@@ -93,7 +93,6 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   // The Health check card's Re-run button: runs the doctor checks again.
   document.addEventListener("click", (ev) => {
     if (clickClosest(ev, "button[data-action='doctor-rerun']")) { ev.preventDefault(); fetchDoctor(); }
-    if (clickClosest(ev, "button[data-action='doctor-reprobe']")) { ev.preventDefault(); reprobeDoctorClick(); }
     if (clickClosest(ev, "button[data-action='doctor-kill-orphans']")) { ev.preventDefault(); killOrphansClick(); }
     if (clickClosest(ev, "button[data-action='doctor-drop-broken-pins']")) { ev.preventDefault(); dropBrokenPinsClick(); }
     if (clickClosest(ev, "button[data-action='doctor-commit-backlog']")) { ev.preventDefault(); commitBacklogClick(); }

@@ -50,7 +50,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "node binary", "git binary", "repo", "init", "config key names", "brief", "principles", "bootstrap", "pause", "quiet hours", "budget", "provider waits", "maintenance allowance", "provider concurrency", "provider contention", "check contention", "repeated failures", "main's check", "over-cap model", "fallback chain", "models for each tier", "image input", "claude auth", "claude api key", "claude version", "opencode version", "opencode", "backend binary", "claude transcripts", "pi extensions", "state dir", "event log", "notify", "merge lock", "workspaces", "parallel instances", "leftover role branches", "tumwater pins", "disk space", "check", "ci parity", "qa coverage", "role notes", "root install", "flaky checks", "post-merge churn", "claimed bugs", "validation gaps", "plans stuck in Planned", "backlog headings", "backlog archive", "refusals", "stalled entries", "plan dependencies", "stale questions", "stale bugs", "regressed fixes", "stale merge-queue entries", "merge-queue files", "post-merge reviews", "stale prompts", "uncommitted backlog", "update", "orphans", "macOS port leak"],
+    ["node", "node binary", "git binary", "repo", "init", "config key names", "brief", "principles", "bootstrap", "pause", "quiet hours", "budget", "provider waits", "maintenance allowance", "provider concurrency", "provider contention", "check contention", "repeated failures", "main's check", "over-cap model", "fallback chain", "models for each tier", "claude auth", "claude api key", "claude version", "opencode version", "opencode", "backend binary", "claude transcripts", "pi extensions", "state dir", "event log", "notify", "merge lock", "workspaces", "parallel instances", "leftover role branches", "tumwater pins", "disk space", "check", "ci parity", "qa coverage", "role notes", "root install", "flaky checks", "post-merge churn", "claimed bugs", "validation gaps", "plans stuck in Planned", "backlog headings", "backlog archive", "refusals", "stalled entries", "plan dependencies", "stale questions", "stale bugs", "regressed fixes", "stale merge-queue entries", "merge-queue files", "post-merge reviews", "stale prompts", "uncommitted backlog", "update", "orphans", "macOS port leak"],
   );
   // funes is absent: the fake PATH has no funes; and the two subscription-window rows are
   // conditional (a ready repo has no claude or codex subscription account, so both are omitted).
@@ -93,7 +93,7 @@ test("runDoctor counts failures in the verdict — plural and singular", async (
   // disk sampler is injected (100 GB, the gate-polls tests' ample sample) so the host's real
   // free space cannot add a fourth — the config is absent by design, so the disk step would
   // fall back to the 10 GB default.
-  const report = await runDoctor(makeRepo(), "", noProcesses, "never", undefined, () => 100 * BYTES_PER_GB);
+  const report = await runDoctor(makeRepo(), "", noProcesses, undefined, () => 100 * BYTES_PER_GB);
   assert.equal(report.verdict, "3 problems");
   assert.deepEqual(
     report.checks.filter((c) => c.level === "fail").map((c) => c.name),
@@ -101,7 +101,7 @@ test("runDoctor counts failures in the verdict — plural and singular", async (
   );
 
   // A ready repo whose PATH has git but no pi: exactly one problem (singular).
-  const singular = await runDoctor(readyRepo(), fakeBins("git"), noProcesses, "never", undefined, () => 100 * BYTES_PER_GB);
+  const singular = await runDoctor(readyRepo(), fakeBins("git"), noProcesses, undefined, () => 100 * BYTES_PER_GB);
   assert.equal(singular.verdict, "1 problem");
 });
 
@@ -417,36 +417,6 @@ test("doctor --json keeps the exit-code contract: fail checks exit 1 with no pro
   assert.match(report.verdict, /2 problems/);
 });
 
-test("doctor --reprobe is accepted and wired — full report, same exit contract", async () => {
-  const repo = await diskHermeticRepo("cli doctor reprobe");
-
-  // --reprobe is the one flag the dispatch reads (probeImages "all" instead of "missing") and
-  // it must reach runDoctor like any other accepted flag — accepted rather than rejected, and
-  // rendering the same full report with the same exit-code contract as a plain run.
-  // The hermetic PATH supplies a fake `pi` (and ps/top): without it the backend-binary check
-  // fails on a host that has no `pi` — CI, e.g. — and the "ready repo" exit-0 contract this
-  // test pins would assert against a genuinely unready host instead of the fixture.
-  const psRan = path.join(tmpdir("doctor-ps-"), "ran");
-  const restore = pathPrepend(hermeticHostBins(psRan));
-  try {
-    const r = await cli(repo, "doctor", "--reprobe");
-    assert.equal(r.code, 0, `expected exit 0 on a ready repo:\n${r.stdout}\n${r.stderr}`);
-    assert.match(r.stdout, /tumwater doctor — not running/);
-    assert.match(r.stdout, /ok\s+git binary/);
-    assert.match(r.stdout, /ready to run/);
-
-    // The flag composes with --json (the other accepted flag) instead of tripping the shared
-    // rejector: the stdout is one JSON.parse-able DoctorReport, same as --json alone.
-    const json = await cli(repo, "doctor", "--reprobe", "--json");
-    assert.equal(json.code, 0, `expected exit 0:\n${json.stdout}\n${json.stderr}`);
-    const report = JSON.parse(json.stdout);
-    assert.equal(typeof report.verdict, "string");
-    assert.ok(Array.isArray(report.checks) && report.checks.length > 0);
-    assert.match(report.header, /tumwater doctor/);
-  } finally {
-    restore();
-  }
-});
 
 test("doctor rejects unknown arguments", async () => {
   const repo = makeRepo();
@@ -531,11 +501,11 @@ test("doctor --problems keeps the exit-code contract on a failing environment", 
 });
 
 test("runDoctor with only runs just the named checks, in report order", async () => {
-  const ready = await runDoctor(readyRepo(), fakeBins("git", "pi"), noProcesses, "never", ["orphans", "repo"]);
+  const ready = await runDoctor(readyRepo(), fakeBins("git", "pi"), noProcesses, ["orphans", "repo"]);
   assert.deepEqual(ready.checks.map((c) => c.name), ["repo", "orphans"]);
   assert.equal(ready.verdict, "ready to run");
 
-  const failing = await runDoctor(makeRepo(), "", noProcesses, "never", ["git binary"]);
+  const failing = await runDoctor(makeRepo(), "", noProcesses, ["git binary"]);
   assert.deepEqual(failing.checks.map((c) => [c.name, c.level]), [["git binary", "fail"]]);
   assert.equal(failing.verdict, "1 problem");
 
@@ -554,7 +524,7 @@ test("runDoctor with only runs just the named checks, in report order", async ()
     runMarkers: async () => new Map(),
     launchServicesPorts: async () => 1_000,
   };
-  await runDoctor(readyRepo(), fakeBins("git", "pi"), counting, "never", ["node"]);
+  await runDoctor(readyRepo(), fakeBins("git", "pi"), counting, ["node"]);
   assert.equal(listed, 0);
   assert.equal(cwdsRead, 0);
 });
@@ -565,8 +535,8 @@ test("doctor <check>... runs the named checks and rejects an unknown name", asyn
   assert.equal(one.code, 0, `${one.stdout}\n${one.stderr}`);
   assert.deepEqual(JSON.parse(one.stdout).checks.map((c: { name: string }) => c.name), ["orphans"]);
 
-  const two = await cli(repo, "doctor", "image input", "repo");
-  assert.ok(two.stdout.indexOf("repo") < two.stdout.indexOf("image input"), two.stdout);
+  const two = await cli(repo, "doctor", "claude auth", "repo");
+  assert.ok(two.stdout.indexOf("repo") < two.stdout.indexOf("claude auth"), two.stdout);
   assert.doesNotMatch(two.stdout, /orphans/);
 
   const typo = await cli(repo, "doctor", "orphan");

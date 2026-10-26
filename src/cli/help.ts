@@ -88,7 +88,7 @@ Usage:
                                    (merge runs and backlog tallies omitted); --until <duration>
                                    ends that window the given duration ago (requires --since);
                                    not combinable with --days
-  tumwater doctor [<check>...] [--json] [--reprobe] [--problems] [--kill-orphans] [--commit-backlog] [--resync-install] [--drop-broken-pins] [--retire-leftovers]
+  tumwater doctor [<check>...] [--json] [--problems] [--kill-orphans] [--commit-backlog] [--resync-install] [--drop-broken-pins] [--retire-leftovers]
                                    Pre-flight check: node, git, repo, config, fallback
                                    model, pi, locks, update, orphans, macOS port leak
                                    (read-only unless --kill-orphans, --commit-backlog
@@ -105,8 +105,7 @@ Usage:
                                    worktree, branch and merge ref, like tumwater retire --role <id> per role,
                                    never --force; exit 0/1; --json prints the report object —
                                    header, the checks array with level, name, and detail,
-                                   and verdict; probes image-input models — --reprobe
-                                   re-probes every one, bypassing the 7-day cache; --problems prints only the warn
+                                   and verdict; --problems prints only the warn
                                    and fail rows (and how many ok rows it hid), the same
                                    verdict and exit code; with --json the checks array holds
                                    only those rows; naming checks (as the report prints them, any case; quote names

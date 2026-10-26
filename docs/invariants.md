@@ -4252,20 +4252,6 @@ so neither accept variant can throw out of its command.
 
 **Pinned by.** `test/post-merge-review-accept.test.ts`, `test/gui-post-review-accept.test.ts`.
 
-## Image-probe cache: a foreign entry reads as unprobed
-
-### INV-BU1: the probe cache reader returns only well-formed entries
-
-**Guarantee.** `readImageProbeCache` returns only well-formed entries, so a missing, torn or foreign
-cache file or entry never throws out of `snapshot` or the doctor's probe
-check, and a dropped entry reads as unprobed.
-
-**Binds.** `src/doctor/image-probe.ts` (`readImageProbeCache`, `isImageProbeCacheEntry`).
-
-**Pinned by.** `test/image-probe.test.ts` — "the probe cache drops a foreign entry and keeps the valid
-ones" and "the probe cache round-trips and a verdict expires after the 7-day TTL" (a valid entry still
-survives).
-
 ## Observer run ledgers: a failed ledger write never fails a run
 
 ### INV-BW1: a failed qa-coverage.json write warns and the run keeps its outcome
@@ -4426,13 +4412,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 ## Doctor: one failing check never takes down the report
 
-### INV-CE1: a doctor check that throws becomes its own fail row, and a failed image-probe cache write keeps the run's verdicts
+### INV-CE1: a doctor check that throws becomes its own fail row
 
-**Guarantee.** A doctor check that throws or rejects is reported as its own `fail` row ("the check threw: …") and every other check still runs. When `checkImageInput` cannot save the image-probe cache after probing, it does not throw: it keeps this run's verdicts and appends that it could not save the cache, downgrading an `ok` to `warn`.
+**Guarantee.** A doctor check that throws or rejects is reported as its own `fail` row ("the check threw: …") and every other check still runs.
 
-**Binds.** `src/doctor/doctor.ts` (`runDoctorCheck`, `runDoctor`); `src/doctor/doctor-model-checks.ts` (`checkImageInput`).
+**Binds.** `src/doctor/doctor.ts` (`runDoctorCheck`, `runDoctor`).
 
-**Pinned by.** `test/doctor.test.ts` — "runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through"; `test/doctor-model-checks.test.ts` — "checkImageInput keeps a fresh probe's verdict when the probe cache cannot be saved, and warns".
+**Pinned by.** `test/doctor.test.ts` — "runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through".
 
 ## Quarantine filing: a landed filing is never repeated
 

@@ -275,7 +275,7 @@ function imageBlindArm(ctx: RunVerdictContext): RunOutcome | undefined {
     // kept worktree off to a FRESH session on the target.
     const regime = ctx.rerouteRegime ?? "primary";
     const target =
-      ctx.config !== undefined ? imageReroute(ctx.config, ctx.role, regime, undefined, null, undefined, null, readPiListedModels(ctx.root))
+      ctx.config !== undefined ? imageReroute(ctx.config, ctx.role, regime, undefined, null, null, readPiListedModels(ctx.root))
         : null;
     if (target) {
       const from = ctx.runModel ?? target.config.model ?? "the model";

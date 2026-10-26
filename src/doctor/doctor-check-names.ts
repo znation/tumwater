@@ -29,7 +29,6 @@ export const DOCTOR_CHECK_NAMES = [
   "over-cap model",
   "fallback chain",
   "models for each tier",
-  "image input",
   "claude auth",
   "claude api key",
   "claude version",

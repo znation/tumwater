@@ -17,8 +17,8 @@ import {
 } from "./doctor-model-checks.js";
 
 /** The doctor's claude credential and version readiness checks, split out of
- * doctor-model-checks.ts (whose shared seam/model framework and the pi, tier-models and
- * image-input checks stay there): checkClaudeAuth, checkAnthroApiKey and checkClaudeVersion.
+ * doctor-model-checks.ts (whose shared seam/model framework and the pi and tier-models
+ * checks stay there): checkClaudeAuth, checkAnthroApiKey and checkClaudeVersion.
  * These are the doctor's only checks that spawn the `claude` binary and read its auth — a
  * distinct concern from the filesystem/git checks, kept together so a change to how doctor
  * spawns or scrubs claude does not touch the other model checks. The shared report contract
