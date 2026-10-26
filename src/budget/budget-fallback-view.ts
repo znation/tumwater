@@ -93,13 +93,11 @@ interface BudgetFallbackView {
   chain: Partial<Record<ModelTier, ChainTierInfo>>;
 }
 
-/** Derive the fallback view for one poll from the verdict half's already-resolved inputs
- * (`priceResolved`, `servingResolved`, `chainPairs`, `pairNames`) and the `reached` flag
- * and the shared reads (`state`, `config`, `accounts`, `windowOutFor`/`directorWindowOutFor`,
- * `providers`, `catalog`), writing the cross-poll view state (`from`/`fromKey`/`fallbackConfig`,
- * `directorFrom`/`directorKey`/`directorView`, `prevWindowMoved`) and returning the view fields
- * pollBudgetGate hands back. */
-export function budgetFallbackView(a: {
+/** The inputs `budgetFallbackView` and its phase helpers read: the verdict half's
+ * already-resolved inputs (`priceResolved`, `servingResolved`, `chainPairs`, `pairNames`),
+ * the `reached` flag, and the shared reads (`state`, `config`, `accounts`,
+ * `windowOutFor`/`directorWindowOutFor`, `providers`, `catalog`). */
+interface BudgetFallbackViewInput {
   state: BudgetGateState;
   config: TumwaterConfig;
   now: number;
@@ -114,20 +112,17 @@ export function budgetFallbackView(a: {
   chainPairs: FallbackModelConfig[];
   pairNames: string[];
   reached: boolean;
-}): BudgetFallbackView {
+}
+
+/** Resolve the window move: whether the fallback holds, which subscription backends' used-up
+ * windows move, and the motion keys the view re-derives on. Read by every phase that needs
+ * the move to decide what to install. Returns the move's facts; `movedKey` stays local. */
+function resolveWindowMove(a: BudgetFallbackViewInput) {
   const {
-    state,
     config: liveConfig,
-    now,
-    states,
-    providers,
-    catalog,
     accounts,
     windowOutFor,
-    directorWindowOutFor,
     priceResolved,
-    servingResolved,
-    chainPairs,
     pairNames,
     reached,
   } = a;
@@ -174,6 +169,23 @@ export function budgetFallbackView(a: {
   // for the roles it newly blocks or frees.
   const movedKey = [...movedBackends].sort().join("+");
   const fromKey = `${windowMove ? "w" : ""}${reached ? "c" : ""}|${movedKey}|${resolvedKey}`;
+  return { onFallback, windowOut, movedBackends, windowMove, resolvedKey, fromKey };
+}
+
+/** Install `state.fallbackConfig` when the fallback or a window move changed the view key,
+ * including the pinned-role and pinned-reviewer escapes. Read by the pinned loops. */
+function installFallbackConfig(
+  a: BudgetFallbackViewInput,
+  o: {
+    onFallback: boolean;
+    windowMove: boolean;
+    windowOut: Partial<Record<string, { type: string; resetsAt: number; reserve?: true }>>;
+    movedBackends: Set<string>;
+    fromKey: string;
+  },
+) {
+  const { state, config: liveConfig, accounts, providers, catalog, priceResolved, reached } = a;
+  const { onFallback, windowMove, windowOut, movedBackends, fromKey } = o;
   if ((onFallback || windowMove) && (state.from !== liveConfig || state.fromKey !== fromKey)) {
     state.from = liveConfig;
     state.fromKey = fromKey;
@@ -227,6 +239,16 @@ export function budgetFallbackView(a: {
     }
     state.fallbackConfig = view;
   }
+}
+
+/** The tiers the window move put on a fallback pair: those whose own seam is a subscription
+ * backend whose window stands. */
+function deriveWindowTiers(
+  a: BudgetFallbackViewInput,
+  windowOut: Partial<Record<string, { type: string; resetsAt: number; reserve?: true }>>,
+  windowMove: boolean,
+): Partial<Record<ModelTier, string>> {
+  const { config: liveConfig, accounts, priceResolved } = a;
   // The tiers the window move put on a fallback pair: those whose own seam is a subscription
   // backend whose window stands.
   const windowTiers: Partial<Record<ModelTier, string>> = {};
@@ -239,6 +261,17 @@ export function budgetFallbackView(a: {
     const labels = tierFallbackLabels(priceResolved);
     for (const tier of MODEL_TIERS) if (moved.has(tier) && labels[tier] !== undefined) windowTiers[tier] = labels[tier];
   }
+  return windowTiers;
+}
+
+/** Install the director's `state.directorFrom`/`directorKey`/`directorView` and return whether
+ * the director moved. */
+function installDirectorFallback(
+  a: BudgetFallbackViewInput,
+  resolvedKey: string,
+  windowOut: Partial<Record<string, { type: string; resetsAt: number; reserve?: true }>>,
+): boolean {
+  const { state, config: liveConfig, accounts, pairNames, directorWindowOutFor, priceResolved } = a;
   // The director follows availability, not the cap: while the window move stands and its own
   // model job is a subscription backend, its tier's resolved pair replaces the live config (only
   // subscription jobs of a used-up window are unavailable, so a priced director primary keeps
@@ -260,9 +293,26 @@ export function budgetFallbackView(a: {
       },
     );
   }
+  return directorMoved;
+}
+
+/** Fold `state.prevWindowMoved` into the resumed-backends signal and record the new move. */
+function deriveWindowResumed(a: BudgetFallbackViewInput, movedBackends: Set<string>) {
+  const { state } = a;
   const windowResumedBackends = [...state.prevWindowMoved].filter((b) => !movedBackends.has(b));
   const windowResumed = windowResumedBackends.length > 0;
   state.prevWindowMoved = movedBackends;
+  return { windowResumed, windowResumedBackends };
+}
+
+/** The tiers `applyFallbackModel` moved: those whose own seam fails the `available` test above.
+ * Feeds the `chain` block's `moved` set. */
+function deriveMovedTiers(
+  a: BudgetFallbackViewInput,
+  windowOut: Partial<Record<string, { type: string; resetsAt: number; reserve?: true }>>,
+  windowMove: boolean,
+): Set<ModelTier> {
+  const { config: liveConfig, accounts, providers, catalog, reached } = a;
   const movedTiers = new Set<ModelTier>();
   // The tiers `applyFallbackModel` moved: those whose own seam fails the `available` test above.
   for (const tier of MODEL_TIERS) {
@@ -271,6 +321,35 @@ export function budgetFallbackView(a: {
     const out = (windowMove && b !== null && windowOut[b] !== undefined) || (reached && !seamFree(providers, seam, accounts, catalog));
     if (out) movedTiers.add(tier);
   }
+  return movedTiers;
+}
+
+/** Derive the fallback view for one poll from the verdict half's already-resolved inputs
+ * (`priceResolved`, `servingResolved`, `chainPairs`, `pairNames`) and the `reached` flag
+ * and the shared reads (`state`, `config`, `accounts`, `windowOutFor`/`directorWindowOutFor`,
+ * `providers`, `catalog`), writing the cross-poll view state (`from`/`fromKey`/`fallbackConfig`,
+ * `directorFrom`/`directorKey`/`directorView`, `prevWindowMoved`) and returning the view fields
+ * pollBudgetGate hands back. */
+export function budgetFallbackView(a: BudgetFallbackViewInput): BudgetFallbackView {
+  const {
+    state,
+    config: liveConfig,
+    now,
+    states,
+    providers,
+    catalog,
+    accounts,
+    windowOutFor,
+    priceResolved,
+    servingResolved,
+    chainPairs,
+  } = a;
+  const { onFallback, windowOut, movedBackends, windowMove, resolvedKey, fromKey } = resolveWindowMove(a);
+  installFallbackConfig(a, { onFallback, windowMove, windowOut, movedBackends, fromKey });
+  const windowTiers = deriveWindowTiers(a, windowOut, windowMove);
+  const directorMoved = installDirectorFallback(a, resolvedKey, windowOut);
+  const { windowResumed, windowResumedBackends } = deriveWindowResumed(a, movedBackends);
+  const movedTiers = deriveMovedTiers(a, windowOut, windowMove);
   const chain = chainInfo({
     config: liveConfig,
     resolved: servingResolved,
