@@ -121,43 +121,31 @@ export async function runStartupCheck(
   }
   // Seed the claude account state before the first run (plans/agent-backends.md part 6a):
   // `claude auth status` decides subscription vs API key, and an existing file is left alone.
-  // Gated on a claude seam so a pi-only team spawns nothing, and attempted once per root per
-  // process: runStartupCheck is also the redeploy/supervisor poll's ask (runStartupProblem),
-  // and a logged-out claude would otherwise spawn a bounded probe on every poll. If the seed
-  // fails, the first claude run's observation fills the file in.
-  if (!claudeSeedAttempted.has(root) && backendsInUse(config).includes("claude")) {
-    claudeSeedAttempted.add(root);
-    seedClaudeAccount(root, config);
-  }
+  // If the seed fails, the first claude run's observation fills the file in.
+  seedOnce(root, config, "claude", claudeSeedAttempted, () => seedClaudeAccount(root, config));
   // Seed the codex account state before the first codex run (plans/codex-backend.md §7):
   // `codex login status` decides subscription vs API key, and an existing file is left alone.
-  // Gated on a codex seam like the claude seed above, and attempted once per root per process.
   // API-key billing is refused (decision 5): Codex reports no cost, so per-token billing would
   // spend money the cap cannot see. If the seed fails or reads something else, the first codex
   // run's observation fills the file in.
-  if (!codexSeedAttempted.has(root) && backendsInUse(config).includes("codex")) {
-    codexSeedAttempted.add(root);
-    const codexAccount = seedCodexAccount(root, config);
-    if (codexAccount?.billing === "api") {
-      return {
-        problem:
-          "Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`",
-      };
-    }
+  const codexAccount = seedOnce(root, config, "codex", codexSeedAttempted, () => seedCodexAccount(root, config));
+  if (codexAccount?.billing === "api") {
+    return {
+      problem:
+        "Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`",
+    };
   }
   // Seed the opencode models catalog (part 6b/7) before the first run: the poll surfaces price
   // opencode seams from the cached `.tumwater/state/opencode-models.json`, and an absent cache
-  // reads every opencode seam NOT free (the safe direction for the budget gate). Mirroring the
-  // claude seed above, it runs once per root per process when a model job routes to opencode;
-  // a failed fetch keeps the last good cache (or an empty one) and never blocks startup; a
-  // failed fetch or cache write logs one warning event.
-  if (!opencodeSeedAttempted.has(root) && backendsInUse(config).includes("opencode")) {
-    opencodeSeedAttempted.add(root);
-    await seedOpencodeCatalog(root, config, {
+  // reads every opencode seam NOT free (the safe direction for the budget gate). A failed fetch
+  // keeps the last good cache (or an empty one) and never blocks startup; a failed fetch or
+  // cache write logs one warning event.
+  await seedOnce(root, config, "opencode", opencodeSeedAttempted, () =>
+    seedOpencodeCatalog(root, config, {
       ...opencodeSeed,
       warn: (message) => warnEventBestEffort(root, TUMWATER_SOURCE, message),
-    });
-  }
+    }),
+  );
   const branch = await resolveMainBranch(root, config, branchArg);
   if ("problem" in branch) return branch;
   return { config, mainBranch: branch.mainBranch };
@@ -211,6 +199,27 @@ export function newOpencodeCatalogRefresh(
       );
     },
   };
+}
+
+/** Run a per-backend seed at most once per root per process, and only when that backend is in
+ * use — the guard the claude-account, codex-account and opencode-catalog seeds share
+ * (runStartupCheck is also the redeploy/supervisor poll's ask runStartupProblem, and a seed
+ * would otherwise spawn a bounded probe on every poll). Returns the seed body's value when it
+ * ran, undefined when the backend is unused or was already attempted this process; each caller
+ * decides what to do with the value (refuse on a codex API-key billing, ignore for claude and
+ * opencode). */
+function seedOnce<T>(
+  root: string,
+  config: TumwaterConfig,
+  backend: string,
+  attempted: Set<string>,
+  seed: () => T,
+): T | undefined {
+  if (!attempted.has(root) && backendsInUse(config).includes(backend)) {
+    attempted.add(root);
+    return seed();
+  }
+  return undefined;
 }
 
 /** Roots this process has already attempted a claude-account seed for (see runStartupCheck),
