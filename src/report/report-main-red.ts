@@ -71,8 +71,8 @@ export function mainRedMinutesByDay(
 }
 
 /** Main's red failing tests per local calendar day (`YYYY-MM-DD` → test → count), over the
- * window `[fromMs, toMs)`: for each in-window event (`typeof e.ts === "number"` and `fromMs
- * <= e.ts < toMs`) that G1 accepts as red (`isRedMain`) — a `main_check` that ran the full
+ * window `[fromMs, toMs)`: for each event `inWindowEvents` admits (numeric `ts` in `[fromMs,
+ * toMs)`) that G1 accepts as red (`isRedMain`) — a `main_check` that ran the full
  * check and failed, or a `main_red_hold` — count each `failingTests` element that is a string
  * once into that event's day (`dayKey`). A passing check is not red, and a red event that
  * carries no `failingTests` (a hold whose red named none, or a torn non-array `failingTests`;
@@ -99,8 +99,8 @@ export function mainRedFailingTestsByDay(
 }
 
 /** Main's red culprits per local calendar day (`YYYY-MM-DD` → label → count), over the window
- * `[fromMs, toMs)`: for each in-window event (`typeof e.ts === "number"` and `fromMs <= e.ts
- * < toMs`) that is a `main_culprit` whose `commit` is a non-empty string, label it
+ * `[fromMs, toMs)`: for each event `inWindowEvents` admits (numeric `ts` in `[fromMs, toMs)`)
+ * that is a `main_culprit` whose `commit` is a non-empty string, label it
  * `<roleLabel(runner)> <shortSha(commit)>` when `runner` is a non-empty string, else
  * `merge <shortSha(commit)>`, and count it once into that event's day (`dayKey`). This is the
  * live `mainred` alert's own event (`src/status/status-polls.ts`'s `MainCheckStatus.red
