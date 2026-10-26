@@ -17,7 +17,7 @@
 
 import { joinParts } from "../../text/text.js";
 import { secondsUntilUnixStamp } from "../../text/datetime.js";
-import { canonicalUsageBlock, isJsonObject, objectOrEmpty, optionalString, nonNegativeNumber, parseJsonObject } from "../../files/json-object.js";
+import { canonicalUsageBlock, isJsonObject, nonNegativeNumber, objectOrEmpty, optionalString, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
