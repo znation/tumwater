@@ -323,25 +323,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Every case that remains keeps its original subject (rebase, check or batch/stack bookkeeping) and asserts the same outcome through a deterministic rejection.
 - No edit outside test/merger.test.ts.
 
-### Subtract, part 1/6: Only a stopped team asks for a person — the banner feed keeps the seven alerts that mean the team is stopped or a decision is the operator's (planned 2026-10-26 by the operator, from the "simplicity over being heavily optimized" request; design in plans/subtract.md "The six strokes", stroke 6; touches src/ui/team-alerts.ts src/ui/team-alert-shared.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/team-alert-merge.ts src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
-
-**Needs review 2026-10-26 by feature: too large for one run (held 1)**
-
-**Goal.** `teamAlerts` (src/ui/team-alerts.ts) emits only what means the team cannot make progress on its own, plus the operator's own decision queue. Every other amber, blue and gray banner becomes a `tumwater doctor` row — or is deleted with the mechanism its own part removes.
-
-**Approach.**
-- Keep exactly these builders: in team-alert-status.ts `main's check is failing — N roles are blocked`, `N roles are failing run after run`, `N roles look stuck`, `Today's budget is spent, so the roles are paused`; in team-alert-tail.ts `tumwater is not running`, the low-disk alert, the root-install drift alert; in team-alert-backlog.ts the question alert (`:35`) and the refused-entry alert (`:74`).
-- Delete every other builder and its feeder in src/ui/alert-feeds.ts (quarantineAlert, flappedChecksAlert, postMergeChurnAlert, postReviewRiskAlert, droppedPostReviewsAlert, mainRuleFailures, qaCoverageAlert, regressedFixesAlert, staleOpenBugs, staleOpenQuestions, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwriteBlocks, capacityContention, providerCapProblems, instancePoolProblems, staleWorkspacePins, staleClaimEntries, stalledEntries, operatorHeldEntries, strandedPlanEntriesFor, duplicatedBacklogHeadings, validationGapProblems, planDependencyAlert, notifyFailures, liveFinished, staleQuestions, staleWaitingBugs), the matching `TeamAlert` members in team-alert-shared.ts, the `teamAlerts` parameters they feed, and their fields in status-payload.ts / status-render.ts.
-- The doctor keeps its rows unchanged (src/doctor/doctor-check-names.ts): each deleted alert already has one. Where one does not, add the row in this same change, so no condition becomes invisible — that is the part's rule, not a follow-up.
-- The dashboard's alert banner shows the count and links to the doctor view; the TUI's Alert pane shows the kept set.
-
-**Files touched.** src/ui/team-alerts.ts src/ui/team-alert-shared.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/team-alert-merge.ts src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts
-
-**Acceptance criteria.**
-- For any snapshot, `teamAlerts` returns only the kept titles; the deleted ones cannot be produced because their builders and inputs are gone (no `tone: "amber"` builder left outside the kept set).
-- Every condition a deleted alert reported still prints in `tumwater doctor`, or its mechanism was deleted by the part that owns it.
-- `npm run test:gate` passes.
-
 ### Subtract, part 2/6: One hold vocabulary — Refused and Needs review (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-cli.ts src/backlog/backlog-cli-view.ts src/backlog/backlog-index.ts src/runner/revision.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts src/doctor/doctor-backlog-bugs.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/gui/gui-client-backlog.ts src/ui/tui/tui-pane-backlog.ts docs/glossary.md docs/how-it-works.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts)
 **Needs review 2026-10-26 by feature: too large for one run (held 1)**
 
@@ -371,7 +352,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Delete the queue and its stages: src/merge/merge-queue.ts, merge-queue-render.ts, merge-requeue.ts, merge-cancel.ts, merge-pipeline.ts, merge-slot.ts, merge-drain.ts, merge-batch.ts, merge-stack.ts, and the `.tumwater/merge-queue/` directory with its `uncommitted backlog`-style checks.
 - `merge-core.ts` and `merge-to-main.ts` keep the pin read, the rebase, the merge lock and the fast-forward; the conflict-resolution pi run stays as the one non-deterministic step. `MERGE_CONFLICT_LIMIT` and the entry attempt/drop limits go: a conflict whose resolution fails comes back as a `**Needs review …**` note naming the conflict (part 2/6's vocabulary).
 - Delete the scheduling interlock: `queuedRoles` (orchestrator-scheduling.ts), its legs in scheduling-skip.ts and scheduling-scope.ts, and `mergeStartHeld`'s merge half (orchestrator-poll.ts). A role whose change is merging authors its next run, as plans/interlock-relief.md's per-role tiering intended for the low-blast-radius roles only.
-- Delete the check permit with the in-lock and batch checks it served (src/concurrency/check-permit.ts) and the three contention rows and the `capacity bottleneck` alert (part 1/6 removes the alert; doctor-contention-checks.ts keeps `slot_wait`/`provider_wait` only if part 4/6 has not yet removed the pool).
+- Delete the check permit with the in-lock and batch checks it served (src/concurrency/check-permit.ts) and the three contention rows and the `capacity bottleneck` alert (part 1d/6 removes the alert; doctor-contention-checks.ts keeps `slot_wait`/`provider_wait` only if part 4/6 has not yet removed the pool).
 - docs/how-it-works.md's merge-pipeline section and docs/invariants.md's cross-process invariants (INV-CT1 and the merge-slot guarantees) say what replaces the queue: one lock, linear history, and the post-landing check.
 
 **Files touched.** src/merge src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts src/orchestrator/scheduling-scope.ts src/runner/runner-run.ts src/status/status-data.ts src/doctor/doctor-contention-checks.ts src/doctor/doctor-check-names.ts src/concurrency/check-permit.ts docs/how-it-works.md docs/invariants.md test/merger-restack.test.ts test/merge-backlog-conflicts.test.ts test/worktree-pool.test.ts
@@ -431,7 +412,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 **Approach.**
 - Sweep the deleted names out of the live prose and the example config: `instances`, `slotCount`, `slot_wait`, `check_wait`, `maxConcurrentChecks`, `mergeBatchMax`, `mergeCommand`, `review.afterMerge`, `maxConcurrentPerProvider`, `fallback`, `fallbackModel`, `model.<tier>`, `over-cap model`, `slot salvage`, `merge queue`, `interlock`, `held-for-operator`, `Needs replan`, `Waiting for the next failure`, `(held N)`.
 - Delete the rows and tests rather than re-pointing them: a case whose whole subject is a deleted mechanism goes (the existing wording/implementation tests rule: never re-pin), and test/doctor-checks.test.ts's row list, test/event-format.test.ts's deleted event types (`slot_wait`, `check_wait`, the merge-stage events), test/retention.test.ts's pool artifacts and test/config.test.ts's deleted keys are updated to the surviving row/key set.
-- Re-check the part 1/6 rule end to end: for every condition that used to have a banner and no longer does, the doctor row exists; for every row this series deleted, the mechanism is gone.
+- Re-check the parts 1a–1e/6 rule end to end: for every condition that used to have a banner and no longer does, the doctor row exists; for every row this series deleted, the mechanism is gone.
 - docs/invariants.md drops or re-scopes the invariants of deleted subsystems (merge-slot, pool, permit, instance claims, model routing) in the same commit, per the standing rule.
 - Record in the part's PLANS-DONE entry: the doctor row count and the config key count before and after the series, and the measurement table from plans/subtract.md "Before deleting concurrency and model policy".
 
@@ -441,6 +422,108 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `grep -rnE 'maxConcurrentChecks|maxConcurrentPerProvider|mergeBatchMax|mergeCommand|instances|slot_wait|check_wait|fallbackModel|review\.afterMerge|held-for-operator' src/ docs/ README.md DEVELOPMENT.md tumwater.example.json` finds no live reference (the archive files PLANS-DONE.md and BUGS-FIXED.md are excluded by construction).
 - Every doctor row name in doctor-check-names.ts resolves to a check that reads a mechanism that still exists; no row reports a path nothing writes.
 - The before/after row and key counts, and the deletions' measurement premise, are in the part's PLANS-DONE entry.
+- `npm run test:gate` passes.
+
+### Subtract, part 1a/6: The dashboard's alert band links to the doctor — the count it already shows stays the one place the deleted banners' detail went (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; touches src/ui/gui/gui-client-team.ts docs/how-it-works.md test/gui-client-team.test.ts)
+
+**Previously held 1**
+
+**Goal.** The dashboard's alerts band keeps its count (`renderAlerts`'s `needsYou` badge, `navbadge` and document title) and gains one link to where the deleted banners' detail lives: the Settings view's Health-check card (`gui-client-settings.ts`'s `#doctorcard`). Nothing else in the feed changes here.
+
+**Approach.**
+- In src/ui/gui/gui-client-team.ts's alerts section, render a `Doctor` control beside the band (or as the band's last item when alerts exist) that routes through the dashboard's existing click delegation to the Settings view — the `act: "view"` / `data-act` path `gui-client-boot.ts` already handles (`location.hash = arg`), with `arg: "settings"`; scroll `#doctorcard` into view after the view paints rather than adding a page.
+- Keep the empty-feed state: no banner and no “0 alerts” copy when `pageAlerts` is empty.
+- docs/how-it-works.md's dashboard alert paragraph says the band names the count and links to the Settings Health card, which keeps the detail.
+- test/gui-client-team.test.ts asserts the control's markup/action and that an empty `pageAlerts` list draws no banner.
+
+**Files touched.** src/ui/gui/gui-client-team.ts docs/how-it-works.md test/gui-client-team.test.ts
+
+**Acceptance criteria.**
+- The alerts band exposes one control that opens the Settings view (the existing `view`/hash routing) at the Health card `#doctorcard`; no new view or route is added.
+- With no alerts the band renders nothing; the existing count/badge/title behavior in `renderAlerts` is unchanged.
+- test/gui-client-team.test.ts covers the control's action and the empty-feed case.
+- `npm run test:gate` passes.
+
+### Subtract, part 1b/6: The staleness, notify and queue banners go — their doctor rows keep the detail (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1a/6 and Subtract part 2/6 landed; touches src/ui/team-alert-backlog-feed.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
+
+**Previously held 1**
+
+**Goal.** The seven always-on banners that only restate a doctor row leave the feed: stale bugs, a failed notify page, bugs held waiting for a failure, stale prompts, stale merges, skipped merge-queue files, and a merge refused because the primary checkout would be overwritten. Each condition stays visible in `tumwater doctor` (`stale bugs`, `notify`, `waiting bugs`, `stale prompts`, `stale merge-queue entries`, `merge-queue files`, `uncommitted backlog`).
+
+**Approach.**
+- Delete src/ui/team-alert-backlog-feed.ts (`pushStaleBugsAlert`, `pushNotifyAlert`, `pushWaitingBugsAlert`, `pushStalePromptsAlert`, `pushStaleMergesAlert`, `pushSkippedMergesAlert`, `pushPrimaryOverwriteAlert`, `buildBacklogFeedAlerts`), its `buildBacklogFeedAlerts` call and parameters in `teamAlerts` (src/ui/team-alerts.ts), and its type re-exports.
+- Delete the feeds and their result types from src/ui/alert-feeds.ts: `staleOpenBugs`, `notifyFailures`, `staleWaitingBugs`, `stalePrompts`, `staleMerges`, `skippedMergeFiles`, `primaryOverwriteBlocks`, and `StaleBug`, `NotifyFailure`, `PrimaryOverwriteBlock`, `StalePrompt`, `StaleMerge`, `StaleWaitingBug` (src/ui/team-alert-shared.ts); drop the imports (`doctor-backlog.ts`, `collections.ts`, `backlog.ts`, `events/notify.ts`) that go with them.
+- Drop the removed positional arguments from the three `teamAlerts(...)` calls (src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx) and the matching status-payload.ts imports/type re-exports.
+- Remove the team-alerts.test.ts / status-payload.test.ts cases asserting these seven banners; keep every test whose subject is the doctor row.
+- Sweep docs/how-it-works.md's sentences naming these banners, pointing at the doctor rows.
+- Do not touch src/doctor/doctor-backlog.ts or doctor-notify.ts: their rows are the surviving detail.
+
+**Files touched.** src/ui/team-alert-backlog-feed.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts
+
+**Acceptance criteria.**
+- `teamAlerts` names none of the seven deleted inputs; `grep -rn 'buildBacklogFeedAlerts\|staleOpenBugs\|notifyFailures\|staleWaitingBugs\|skippedMergeFiles\|primaryOverwriteBlocks' src/` finds no live reference outside the doctor rows' own readers.
+- The seven conditions still print their `tumwater doctor` rows, unchanged.
+- `npm run test:gate` passes.
+
+### Subtract, part 1c/6: The review and check banners go — quarantine, flapped checks, churn, post-merge risk, dropped reviews, main-diff rules and stale QA move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1b/6 landed; touches src/ui/team-alert-merge.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/doctor/doctor-check-names.ts src/doctor/doctor-project-checks.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts test/doctor-checks.test.ts)
+
+**Previously held 1**
+
+**Goal.** The review/check banners leave the feed: a stale flake quarantine, flapping checks, post-merge churn, a post-merge review one run from being dropped, a review dropped after repeated failures, a main tip the watch's diff rules reject, a stalled CI parity, and stale QA coverage. Their doctor rows (`flaky checks`, `post-merge churn`, `post-merge reviews`, `ci parity`, `qa coverage`) keep the detail. `main-diff-rules` is the one condition `DOCTOR_CHECK_NAMES` does not carry, so this part adds its row.
+
+**Approach.**
+- Delete src/ui/team-alert-merge.ts (`pushQuarantineAlert`, `pushFlappedChecksAlert`, `pushPostMergeChurnAlert`, `pushPostMergeRiskAlert`, `pushDroppedPostReviewsAlert`, `pushMainDiffRulesAlert`, `pushCiStaleAlert`, `pushQaStaleAlert`, `buildMergeAlerts`), its call/parameters in `teamAlerts` (`quarantined`, `flappedChecks`, `postMergeChurn`, `postReviewRisk`, `droppedPostReviews`, `mainRuleFailure`, `qaCoverage`), and its re-exports.
+- Delete `quarantineAlert`, `flappedChecksAlert`, `postMergeChurnAlert`, `postReviewRiskAlert`, `droppedPostReviewsAlert`, `mainRuleFailures`, `qaCoverageAlert` and their result types (`QuarantinedTests`, `FlappedChecks`, `PostMergeChurn`, `PostReviewRisk`, `DroppedPostReviews`, `MainRuleFailure`, `QaCoverageStale`) from src/ui/alert-feeds.ts / team-alert-shared.ts. Keep `snap.ciParity`: it is the snapshot field the doctor's `ci parity` row still reads; only `pushCiStaleAlert` goes.
+- Add the missing doctor row: a `main diff rules` check reading the `warning` events whose message contains `fails the diff rules` (src/baseline/main-watch.ts) within the deleted feed's 24 h window, with the marker/window constant moved to the check that now owns it; register the name in src/doctor/doctor-check-names.ts and cover it in test/doctor-checks.test.ts.
+- Update the three `teamAlerts(...)` call sites and the team-alerts.test.ts / status-payload.test.ts cases; sweep docs/how-it-works.md's sentences naming these banners.
+- Do not touch the surviving doctor checks (`checkFlakyChecks`, `checkPostReviews`, `checkPostMergeChurn`, `checkCiParity`, `checkQaCoverage`): they are the detail.
+
+**Files touched.** src/ui/team-alert-merge.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/doctor/doctor-check-names.ts src/doctor/doctor-project-checks.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts test/doctor-checks.test.ts
+
+**Acceptance criteria.**
+- `teamAlerts` produces none of the eight deleted keys; `grep -rn 'buildMergeAlerts\|quarantineAlert\|flappedChecksAlert\|postMergeChurnAlert\|postReviewRiskAlert\|droppedPostReviewsAlert\|qaCoverageAlert' src/` finds no live reference outside the doctor checks.
+- Each deleted condition prints a `tumwater doctor` row: `flaky checks`, `post-merge churn`, `post-merge reviews`, `ci parity`, `qa coverage`, and the new `main diff rules`; a main tip failing a diff rule names the tip and the rule in that row.
+- `npm run test:gate` passes.
+
+### Subtract, part 1d/6: The status and tail banners that are not a stopped team go — chain, role cap, no-check, brief, truncation, build, stale claims, quiet, maintenance, provider holds/caps, pause, contention, pins, pool, regressed fixes and image probes move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1c/6 and Subtract part 5/6 landed; touches src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
+
+**Previously held 1**
+
+**Goal.** Only the stopped-team and decision-queue banners remain. Kept in src/ui/team-alert-status.ts: `pushMainRedAlert`, `pushFailingStreakAlert`, `pushStuckRoleAlert`, `pushSpentBudgetAlert` (the red `budget` arm) and `pushDiskAlert`, `pushInstallDriftAlert`; kept in src/ui/team-alert-tail.ts: `pushStoppedAlert` (`tumwater is not running`). Everything else becomes a doctor row: `repeated failures`, `budget` (role cap), `check`/`brief` (no-check, no-brief, brief-truncated), `role notes`, `principles`, `update` (stale build), `parallel instances` (stale claims and the instance pool), `quiet hours`, `maintenance allowance`, `provider waits`, `provider concurrency`, `pause`, `provider contention`/`check contention`/`workspaces` (contention and stale workspace pins), `regressed fixes`, and `image input` (images and image probes). The chain/fallback condition leaves with part 5/6's fallback removal, which this part waits on.
+
+**Approach.**
+- Delete from src/ui/team-alert-status.ts: `pushChainAlert`, `pushRoleCapAlert`, `pushNoCheckAlert`, `pushNoBriefAlert`, `pushBriefTruncatedAlert`, `pushRoleNotesTruncatedAlert`, `pushPrinciplesTruncatedAlert`, `pushBuildAlert`, `pushStaleClaimsAlert` and their calls in `buildStatusAlerts`; keep the six kept builders.
+- Delete from src/ui/team-alert-tail.ts: `pushQuietAlert`, `pushMaintenanceAlert`, `pushProviderHoldAlert`, `pushProviderCapsAlert`, `pushPausedAlert`, `pushContentionAlert`, `pushWorkspacePinsAlert`, `pushInstancePoolAlert`, `pushRegressedFixesAlert`, `pushImagesAlert`, `pushImageProbeAlert` and their calls in `buildTailAlerts`; keep `pushStoppedAlert`.
+- Delete `capacityContention`, `providerCapProblems`, `instancePoolProblems`, `regressedFixesAlert`, `staleWorkspacePins` and the `CapacityBottleneck`/`RegressedFixAlert` types from src/ui/alert-feeds.ts / team-alert-shared.ts; keep `staleClaimEntries` (src/scheduling/claim-entries.ts), which the doctor's `parallel instances` row still reads.
+- Update `teamAlerts`' parameters and the three call sites, and the team-alerts.test.ts / status-payload.test.ts cases; sweep docs/how-it-works.md's sentences naming these banners.
+- Do not touch src/doctor/doctor-contention-checks.ts, doctor-project-checks.ts or doctor.ts: their rows are the detail.
+
+**Files touched.** src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts
+
+**Acceptance criteria.**
+- `buildStatusAlerts` emits only main-red, failing-streak, stuck-role, spent-budget, disk and install-drift; `buildTailAlerts` emits only `stopped`. No other builder remains in either module.
+- Each deleted condition prints its `tumwater doctor` row (listed above); the chain/fallback condition has no row because part 5/6 removes fallback.
+- `npm run test:gate` passes.
+
+### Subtract, part 1e/6: The backlog staleness and structure banners go — stale questions, stalled entries, plan dependencies, stranded plans, duplicated headings, live archive, validation gaps and false fixes move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1d/6 landed; touches src/ui/team-alert-backlog.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
+
+**Previously held 1**
+
+**Goal.** src/ui/team-alert-backlog.ts keeps its two decision-queue builders — `pushQuestionsAlert` (open questions need your answer) and `pushRefusedAlert` — and loses the rest: stale questions, stalled entries, plan dependencies, stranded plans, duplicated headings, finished history under a live `## Done`/`## Fixed`, validation gaps and false fixes. Each maps to a doctor row: `stale questions`, `stalled entries`, `plan dependencies`, `plans stuck in Planned`, `backlog headings`, `backlog archive`, `validation gaps`, `regressed fixes`. (`pushOperatorHeldAlert` is already gone after part 2/6.)
+
+**Approach.**
+- Delete from src/ui/team-alert-backlog.ts: `pushStaleQuestionsAlert`, `pushStalledEntriesAlert`, `pushPlanDependencyAlert`, `pushStrandedPlansAlert`, `pushBacklogHeadingsAlert`, `pushBacklogArchiveAlert`, `pushValidationGapsAlert`, `pushFalseFixesAlert` and their calls in `buildBacklogAlerts`; keep `pushQuestionsAlert` and `pushRefusedAlert`.
+- Delete the `staleOpenQuestions` and `planDependencyAlert` feeds and the `StaleQuestion`/`PlanDependencyProblem` types from src/ui/alert-feeds.ts / team-alert-shared.ts, plus `BacklogHeadingDuplicate`/`LiveFinishedEntry` when no kept builder reads them. Keep the shared structural readers (`stalledEntries`, `strandedPlanEntriesFor`, `duplicatedBacklogHeadings`, `liveFinishedEntriesFor`, `validationGapProblems`, `fixClaimProblems`) that the doctor checks call.
+- Update `teamAlerts`' parameters and the three call sites, and the team-alerts.test.ts / status-payload.test.ts cases; sweep docs/how-it-works.md's sentences naming these banners.
+- Remove any src/ui/team-alert-shared.ts export whose last caller this part deletes, verified by grep.
+- Do not touch the doctor checks or their shared readers (src/doctor/doctor-backlog-plans.ts, doctor-backlog.ts): they are the detail.
+
+**Files touched.** src/ui/team-alert-backlog.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts
+
+**Acceptance criteria.**
+- `buildBacklogAlerts` emits only the question and refused alerts; no other builder remains in the module.
+- Each deleted condition prints its `tumwater doctor` row (listed above).
+- No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
 ## Done
