@@ -185,6 +185,25 @@ at waitFor (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-9/dist/test/wo
 at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-9/dist/test/worktree-pool.test.js:64:22)
 ~~~~
 
+### `a run timeout that fires on a run still making progress is resumed like a quiet kill (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ a run timeout that fires on a run still making progress is resumed like a quiet kill (regression) (5820.799625ms)
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+at file:///Users/zach/tumwater/.tumwater/worktrees/_slot-2/dist/test/runner-5.test.js:252:16
+at async withPi (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-2/dist/test/fakes/fake-pi.js:96:16)
+at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-2/dist/test/runner-5.test.js:242:5)
+generatedMessage: true,
+code: 'ERR_ASSERTION',
+actual: 'error',
+expected: 'quiet_killed',
+operator: 'strictEqual',
+diff: 'simple'
+}
+~~~~
+
 ## Fixed
 
 ## Verified
