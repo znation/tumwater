@@ -23,21 +23,16 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
     restoreDraft();
   };
 
-  const handleKey = (
-    _str: string | undefined,
-    key: { ctrl?: boolean; name?: string },
-    ctx: TuiEditorCtx,
-  ): boolean => {
-    // Ctrl+R toggles role-prompt mode for the viewed role (mnemonic: p**R**ompt — Ctrl+P is
-    // taken by pause): entering saves the director draft in this mode's own pair and blanks
-    // the line; entering again (or Esc) restores it. Mutually exclusive with budget mode by
-    // the outer guard and the mirrored refusal in the Ctrl+B branch. Rides the same per-role
-    // guard as the Ctrl+P/A/W pause controls so an editor's prompt line is never disturbed.
+  // Ctrl+R toggles role-prompt mode for the viewed role (mnemonic: p**R**ompt — Ctrl+P is
+  // taken by pause): entering saves the director draft in this mode's own pair and blanks
+  // the line; entering again (or Esc) restores it. Mutually exclusive with budget mode by
+  // the outer guard and the mirrored refusal in the Ctrl+B branch. Rides the same per-role
+  // guard as the Ctrl+P/A/W pause controls so an editor's prompt line is never disturbed.
+  const toggleRolePromptEdit = (ctx: TuiEditorCtx): boolean => {
     if (
       !session.anyEditorHeld("rolePromptFor") &&
       ctx.roleIds.length > 0 &&
-      ctx.view >= 1 && ctx.view <= ctx.roleIds.length &&
-      key.ctrl && key.name === "r"
+      ctx.view >= 1 && ctx.view <= ctx.roleIds.length
     ) {
       const role = viewedRole(ctx); // defined: view is clamped inside the transcript range
       try {
@@ -61,35 +56,49 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
       }
       return true;
     }
-    if (key.name === "escape" && rolePromptFor) {
-      // Esc cancels role-prompt mode the same way, restoring the previous prompt text.
-      exitRolePromptMode();
-      return true;
-    }
-    if (key.name === "return" && rolePromptFor) {
-      // Enter in role-prompt mode submits for the viewed role through the same path
-      // `tumwater prompt --role` uses: the shared submitRolePromptAndWake enqueues into
-      // that role's own queue (length-capped by the shared rule), logs under the role,
-      // and wakes it so a live team's role comes in within one poll. An invalid
-      // (whitespace-only) line flashes and STAYS in edit mode; a failed queue write
-      // flashes the reason and keeps the text, the same contract the director path
-      // honors; success restores the saved draft.
-      const parsed = parseRolePromptInput(session.input);
-      if (!parsed.ok) {
-        session.flashMessage(parsed.error);
-      } else {
-        const role = rolePromptFor;
-        try {
-          submitRolePromptAndWake(session.root, role, parsed.value, undefined);
-          session.promptHistory = pushPromptHistory(session.promptHistory, parsed.value);
-          exitRolePromptMode();
-          session.flashMessage(`added to ${role}'s inbox`);
-        } catch (err) {
-          session.flashError(err);
-        }
+    return false;
+  };
+
+  // Esc cancels role-prompt mode the same way, restoring the previous prompt text.
+  const cancelRolePromptEdit = (): boolean => {
+    exitRolePromptMode();
+    return true;
+  };
+
+  // Enter in role-prompt mode submits for the viewed role through the same path
+  // `tumwater prompt --role` uses: the shared submitRolePromptAndWake enqueues into
+  // that role's own queue (length-capped by the shared rule), logs under the role,
+  // and wakes it so a live team's role comes in within one poll. An invalid
+  // (whitespace-only) line flashes and STAYS in edit mode; a failed queue write
+  // flashes the reason and keeps the text, the same contract the director path
+  // honors; success restores the saved draft.
+  const submitRolePromptEdit = (): boolean => {
+    const role = rolePromptFor; // dispatch guarantees it is set; kept for TS narrowing
+    if (role === null) return true;
+    const parsed = parseRolePromptInput(session.input);
+    if (!parsed.ok) {
+      session.flashMessage(parsed.error);
+    } else {
+      try {
+        submitRolePromptAndWake(session.root, role, parsed.value, undefined);
+        session.promptHistory = pushPromptHistory(session.promptHistory, parsed.value);
+        exitRolePromptMode();
+        session.flashMessage(`added to ${role}'s inbox`);
+      } catch (err) {
+        session.flashError(err);
       }
-      return true;
     }
+    return true;
+  };
+
+  const handleKey = (
+    _str: string | undefined,
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiEditorCtx,
+  ): boolean => {
+    if (key.ctrl && key.name === "r") return toggleRolePromptEdit(ctx);
+    if (key.name === "escape" && rolePromptFor) return cancelRolePromptEdit();
+    if (key.name === "return" && rolePromptFor) return submitRolePromptEdit();
     return false;
   };
 
