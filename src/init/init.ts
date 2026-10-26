@@ -117,21 +117,39 @@ interface InitResult {
   bootstrap: number | null;
 }
 
-/** Initialize a repo for tumwater: README (with prompt + status) when no project brief exists
- * yet, PLANS, BUGS, QUESTIONS, PRINCIPLES, tumwater.json, .gitignore — then commit whatever was
- * created. When the cwd is not a git repository yet, one is seeded first (`git init -b main`),
- * matching the README's "seeds a git repo" promise for brand-new projects. An existing repo
- * whose README.md carries no tumwater markers (or any repo without a brief, with `adopt`) is
- * adopted instead: the brief goes in TUMWATER.md and README.md is never touched. `--branch` seeds a
-new repository only and is refused on an existing one, where its value would otherwise be silently
-ignored. `dryRun` runs
- * the same validation and computes the same lists, but writes, inits and commits nothing. */
-export async function initProject(
+/** What `resolveInitPlan` settled about the request before any side effect, so `seedProject`
+ * can act on it without re-asking anything. */
+interface InitPlan {
+  /** True when nothing may be written, initted or committed. */
+  dryRun: boolean;
+  /** The resolved template — the brief preamble, starter plans and starter dirs come from it. */
+  tpl: NonNullable<ReturnType<typeof getTemplate>>;
+  /** The template's preamble joined with the operator's words, capped by BRIEF_TEXT_MAX_CHARS. */
+  combinedPrompt: string;
+  /** The brief file that already owns the managed brief sections, null when none does. */
+  brief: string | null;
+  /** Whether README.md exists at `root`. */
+  readmeExists: boolean;
+  /** True when the brief goes to TUMWATER.md and README.md is left untouched. */
+  adopted: boolean;
+  /** Whether `root` was already a git repository before this run. */
+  wasRepo: boolean;
+  /** The branch `git init -b` will use; set only when a new repo is seeded (`!wasRepo`). */
+  preferredBranch: string | undefined;
+}
+
+/** Validate an init request and resolve everything it needs, in the existing order, with no
+ * write, no `git init`, no `created`/`leftAlone` allocation and no commit — every refusal
+ * an over-long brief, `--branch` on an existing repo, an invalid branch name or a team
+ * workspace (INV-Q1) throws here, ahead of any side effect, dry run included. The new-repo
+ * branch is validated last (only when a repo will be seeded) so the invalid-branch refusal
+ * still precedes any write. Returns the resolved plan for `seedProject` to act on. */
+async function resolveInitPlan(
   root: string,
   briefText: string,
-  branch?: string,
-  opts: { adopt?: boolean; dryRun?: boolean; template?: string } = {},
-): Promise<InitResult> {
+  branch: string | undefined,
+  opts: { adopt?: boolean; dryRun?: boolean; template?: string },
+): Promise<InitPlan> {
   const dryRun = opts.dryRun === true;
   // Resolve the template before any side effect: an unknown id (possible for direct callers of
   // initProject — the CLI parser already validated its own path) is refused up front, and the
@@ -223,9 +241,9 @@ export async function initProject(
       `${brief} already carries a different brief between the tumwater:prompt markers, and init never rewrites an existing project brief, so your prompt would be lost — to change the prompt, edit it in ${brief} between ${PROMPT_START} and ${PROMPT_END}; to re-seed with the current one, re-run a bare \`tumwater init\``,
     );
   }
-
-  let repoInitialized = false;
-  let createdBranch: string | undefined;
+  // Last, resolve the new-repo branch — only when a repo will be seeded — and validate it with
+  // git's own rule before any side effect, dry run included.
+  let preferredBranch: string | undefined;
   if (!wasRepo) {
     // Branch precedence: the caller's explicit --branch, else git's own init.defaultBranch
     // preference, else main. `git init -b` does not consult init.defaultBranch, so the
@@ -248,9 +266,29 @@ export async function initProject(
         `${namedBy} is not a valid git branch name — pick a name like main, trunk, or release/2.0 (git's rules: no spaces, colons, or ~^?*[ characters; no leading/trailing slash or double slash; not a dotted or .lock-suffixed component)`,
       );
     }
-    if (!dryRun) await git(root, "init", "-b", preferred);
+    preferredBranch = preferred;
+  }
+  return { dryRun, tpl, combinedPrompt, brief, readmeExists, adopted, wasRepo, preferredBranch };
+}
+
+/** Seed `root` from a resolved `InitPlan`: git init (a new repo only), every absent project
+ * file and starter directory, the config, and the commit. Holds the `created`/`leftAlone`
+ * bookkeeping locally; performs no validation and never refuses. Returns everything the
+ * composed `InitResult` needs except `adopted`, `dryRun` and `template`, which `initProject`
+ * reads off `plan`. */
+async function seedProject(
+  root: string,
+  plan: InitPlan,
+): Promise<
+  Pick<InitResult, "created" | "leftAlone" | "committed" | "repoInitialized" | "branch" | "bootstrap">
+> {
+  const { dryRun, tpl, combinedPrompt, brief, readmeExists, adopted, wasRepo, preferredBranch } = plan;
+  let repoInitialized = false;
+  let createdBranch: string | undefined;
+  if (!wasRepo) {
+    if (!dryRun) await git(root, "init", "-b", preferredBranch!);
     repoInitialized = true;
-    createdBranch = preferred;
+    createdBranch = preferredBranch;
   }
 
   // Decided before any project file is written (init only seeds bootstrap on a fresh project).
@@ -342,5 +380,25 @@ export async function initProject(
       committed = true;
     }
   }
-  return { created, leftAlone, committed, repoInitialized, branch: createdBranch, adopted, dryRun, template: tpl.id, bootstrap };
+  return { created, leftAlone, committed, repoInitialized, branch: createdBranch, bootstrap };
+}
+
+/** Initialize a repo for tumwater: README (with prompt + status) when no project brief exists
+ * yet, PLANS, BUGS, QUESTIONS, PRINCIPLES, tumwater.json, .gitignore — then commit whatever was
+ * created. When the cwd is not a git repository yet, one is seeded first (`git init -b main`),
+ * matching the README's "seeds a git repo" promise for brand-new projects. An existing repo
+ * whose README.md carries no tumwater markers (or any repo without a brief, with `adopt`) is
+ * adopted instead: the brief goes in TUMWATER.md and README.md is never touched. `--branch` seeds a
+new repository only and is refused on an existing one, where its value would otherwise be silently
+ignored. `dryRun` runs
+ * the same validation and computes the same lists, but writes, inits and commits nothing. */
+export async function initProject(
+  root: string,
+  briefText: string,
+  branch?: string,
+  opts: { adopt?: boolean; dryRun?: boolean; template?: string } = {},
+): Promise<InitResult> {
+  const plan = await resolveInitPlan(root, briefText, branch, opts);
+  const seeded = await seedProject(root, plan);
+  return { ...seeded, adopted: plan.adopted, dryRun: plan.dryRun, template: plan.tpl.id };
 }

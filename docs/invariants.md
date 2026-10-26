@@ -917,7 +917,7 @@ same steps and writes nothing.
 prompt with no brief to read, an invalid branch name, `--branch` on an existing repo, and a team
 workspace are each refused before any write, `git init` or commit, in a dry run too.
 
-**Binds.** `src/init/init.ts` (`initProject`), `src/paths.ts` (`owningTeamRoot`).
+**Binds.** `src/init/init.ts` (`resolveInitPlan`), `src/paths.ts` (`owningTeamRoot`).
 
 **Pinned by.** `test/init.test.ts` — "initProject validates before seeding: a bad prompt leaves no
 repo behind", "initProject rejects an over-long brief text before seeding", "initProject
@@ -932,7 +932,7 @@ reported in `leftAlone`. An existing .gitignore only gains the missing ignore li
 own line. A README.md without the managed markers is adopted (the brief goes to TUMWATER.md) and
 never rewritten.
 
-**Binds.** `src/init/init.ts` (`initProject`'s local `claim`, `ensureGitignore`),
+**Binds.** `src/init/init.ts` (`seedProject`'s local `claim`, `ensureGitignore`),
 `src/brief/brief.ts` (`briefFile`).
 
 **Pinned by.** `test/init.test.ts` — "initProject never clobbers existing files and is
@@ -948,7 +948,7 @@ and the refusal names the file that owns the brief. Adopting over a TUMWATER.md 
 refused. A marked TUMWATER.md never gains a duplicate README.md. A bare init re-seeds from the
 existing brief.
 
-**Binds.** `src/init/init.ts` (`initProject`), `src/brief/brief.ts` (`briefFile`).
+**Binds.** `src/init/init.ts` (`resolveInitPlan`), `src/brief/brief.ts` (`briefFile`).
 
 **Pinned by.** `test/init.test.ts` — "initProject refuses a prompt that differs from the one a
 README-owned brief carries", "a TUMWATER.md-owned brief refuses a different prompt instead of
@@ -962,7 +962,7 @@ and "a bare init re-seeds a lost config from the README's prompt (portability 4a
 directories, so a user's unrelated dirty files stay uncommitted and the config stays untracked. A
 repo that only gained a config gets no commit. Seeded files are written atomically.
 
-**Binds.** `src/init/init.ts` (`initProject`), `src/files/files.ts` (`writeTextAtomic`).
+**Binds.** `src/init/init.ts` (`seedProject`), `src/files/files.ts` (`writeTextAtomic`).
 
 **Pinned by.** `test/init.test.ts` — "initProject leaves user's unrelated dirty files
 uncommitted", "initProject seeds the config from a tracked tumwater.example.json and keeps it
@@ -975,7 +975,7 @@ leaves no half-written file when a seeded write dies mid-way".
 lists, but writes no file, edits no .gitignore, calls no `git init` and makes no commit. Listing
 templates touches nothing either.
 
-**Binds.** `src/init/init.ts` (`initProject`, `ensureGitignore`), `src/cli/cli-init.ts`
+**Binds.** `src/init/init.ts` (`resolveInitPlan`, `seedProject`, `ensureGitignore`), `src/cli/cli-init.ts`
 (`cmdInit`).
 
 **Pinned by.** `test/init.test.ts` — "initProject --dry-run writes nothing: no files, no gitignore
