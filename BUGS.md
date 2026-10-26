@@ -193,6 +193,23 @@ an abort between re-stack attempts stops the batch: aborted, refs kept, nothing 
       at async .../merger-restack.test.js:114:13
 ~~~~
 
+### `a timed-out check does not settle on its leader's close while a grandchild survives` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 145474.570875
+✖ failing tests:
+test at dist/test/build-check-process.test.js:195:1
+✖ a timed-out check does not settle on its leader's close while a grandchild survives (3696.310917ms)
+Error: timed out waiting for the surviving grandchild to be reaped
+at waitFor (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-7/dist/test/helpers/wait.js:38:19)
+at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-7/dist/test/build-check-process.test.js:205:9)
+~~~~
+
 ## Fixed
 
 ## Verified
