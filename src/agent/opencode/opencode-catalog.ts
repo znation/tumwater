@@ -4,8 +4,8 @@
  * `.tumwater/state/opencode-models.json` that survives a failed fetch, and
  * `opencodeModelFree` as the one predicate part 6b/7's seam reads. No seam is wired here: that
  * is part 6b/7 (the budget gate), part 6c/7 (a billedAt demotion on an observed cost) and
- * part 7/7 (a startup-cache seed and doctor), so this module's only callers today are its own
- * tests. */
+ * part 7/7 (a startup-cache seed and doctor), so this module only publishes the data and
+ * predicates those seam consumers read. */
 
 import { spawnSync } from "node:child_process";
 import { isJsonObject, validEntries } from "../../files/json-object.js";

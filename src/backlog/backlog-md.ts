@@ -162,7 +162,7 @@ export function nextSectionHeading(
 /** The body lines of one `## <sectionTitle>` section with fenced content stripped: the
  * sectionLines walk, then a fresh fenceTracker's filter — the shape every reader that
  * classifies a section's lines as markdown structure (entry headings, bullets, dates) walks.
- * Exactly three call sites today: entryDates (below), backlog-structure.ts's
+ * Exactly four call sites today: entryDates and entryLags (both below), backlog-structure.ts's
  * strandedPlanEntries, and stage-backlog-checks.ts's placeholderSections. The fresh
  * tracker is in sync with the document here: sectionLines
  * only recognizes a `## ` boundary outside a fence, so the section's heading line is
