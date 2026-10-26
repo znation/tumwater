@@ -1,5 +1,5 @@
 /** Collection half of the usage report: read the harness's event log (through the shared
- * event-folding layer in src/report/report-fold.ts) and the backlog history over a window of
+ * event-folding core in src/report/report-usage-fold.ts) and the backlog history over a window of
  * local calendar days and distill it into a `ReportData` / `SinceReport` — per-day
  * run/token/commit/cost counts plus features-done and bugs-fixed tallies from PLANS.md and
  * BUGS.md. The Markdown rendering of this data lives in src/report/report-render.ts, a pure
@@ -9,8 +9,8 @@
  * keeps core data collection out of the presentation layer, so a core consumer (as
  * /api/report already is) never forces a core→ui import. This file holds the two window
  * collectors; the report shapes they produce live in src/report/report-types.ts, and the
- * event-log folding and its memoized per-window cache in src/report/report-fold.ts (its own
- * test, report-fold-cache). */
+ * event-log folding's one-event core in src/report/report-usage-fold.ts and its memoized
+ * per-window cache in src/report/report-fold.ts (its own test, report-fold-cache). */
 import { assertReportSinceMs, eventWindowCovers, readWindowEvents, sinceWindowTiming } from "../events/event-window.js";
 import {
   DONE_DATE_RE,
@@ -26,17 +26,8 @@ import { validationGapTag } from "../backlog/backlog-md.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { addTo, lowerMedian } from "../collections.js";
 import { commitTier } from "../roles/roles.js";
-import {
-  foldUsageEvent,
-  foldWindowEvents,
-  narrowToRole,
-  roleSum,
-  scopeBases,
-  scopedByRole,
-  zeroCommitCounts,
-  zeroMergeCounts,
-  type UsageFold,
-} from "./report-fold.js";
+import { foldWindowEvents, narrowToRole, roleSum, scopeBases, scopedByRole, zeroCommitCounts, zeroMergeCounts } from "./report-fold.js";
+import { foldUsageEvent, type UsageFold } from "./report-usage-fold.js";
 import { mainRedCulpritsByDay, mainRedFailingTestsByDay, mainRedMinutesByDay } from "./report-main-red.js";
 import type { ReportData, ReportDay, ReportTotals, SinceReport } from "./report-types.js";
 

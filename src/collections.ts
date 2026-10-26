@@ -68,7 +68,7 @@ export function increment<K>(map: Map<K, number>, key: K): void {
  * step (the seed matters because `noUncheckedIndexedAccess` reads every entry as possibly
  * undefined), shared by the failure digest's outcome tally per role (failure-data.ts), the
  * usage report's window role totals (report-render.ts), and its per-day fold's run and cost
- * tallies (report-fold.ts), so those sites cannot drift on how a missing key is seeded. The
+ * tallies (report-usage-fold.ts), so those sites cannot drift on how a missing key is seeded. The
  * test duration reporter (test/test-durations-reporter.ts) keeps its own copy: it imports no
  * tumwater module by design, since node --test loads it into its own parent process.
  *

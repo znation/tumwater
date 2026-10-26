@@ -1079,7 +1079,7 @@ go into `mergeTokens` and `mergeCostUsd`, never into `tokensOut` or `costUsd` in
 each collector adds the merge share to its surfaced totals. A role-scoped window excludes the
 merge share.
 
-**Binds.** `src/report/report-fold.ts` (`foldUsageEvent`, `UsageFold`),
+**Binds.** `src/report/report-usage-fold.ts` (`foldUsageEvent`, `UsageFold`),
 `src/report/report-data.ts` (`collectReport`, `collectReportSince`).
 
 **Pinned by.** `test/report-data.test.ts` — "collectReportSince aggregation matches a same-seed
