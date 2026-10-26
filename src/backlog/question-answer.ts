@@ -213,10 +213,21 @@ interface OpenEntryBlock {
   title: string;
 }
 
+/** What `scanQuestions` found: the fence-aware line indexes of the `## Open` and `## Answered`
+ * sections, where Open's content ends (`openEnd`), whether a fence in Open runs unclosed to
+ * EOF (`fenceOpen`), and every open entry's block between the two headings. */
+interface QuestionsScan {
+  openIdx: number;
+  answeredIdx: number;
+  openEnd: number;
+  fenceOpen: boolean;
+  blocks: OpenEntryBlock[];
+}
+
 /** Locate QUESTIONS.md's `## Open` and `## Answered` section heading lines (fence-aware) and
  * every open entry's block between them. Returns null when the file has no `## Open` section
  * at all — then there is nothing to answer, whatever the position. */
-function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number; openEnd: number; fenceOpen: boolean; blocks: OpenEntryBlock[] } | null {
+function scanQuestions(lines: string[]): QuestionsScan | null {
   const fenced = fenceTracker();
   let openIdx = -1;
   let answeredIdx = -1;
@@ -315,45 +326,62 @@ function answerQuestionLocked(root: string, n: number, rawDecision: string, expe
   const block = scanned.blocks[n - 1] as OpenEntryBlock;
   if (expectedTitle !== undefined && block.title !== expectedTitle) return { status: "moved", title: block.title };
   const moved = lines!.slice(block.start, block.end);
-  trimTrailingBlankLines(moved);
 
+  const rebuilt = cutOpenBlock(lines!, scanned, block);
+  const text = appendAnsweredEntry(rebuilt, moved, decision, scanned.answeredIdx !== -1);
+  writeTextAtomic(file, text);
+  return { status: "answered", title: block.title, decision };
+}
+
+/** Cut `block` out of `## Open`, returning the rebuilt file text (as lines). When the section
+ * is left with no content at all, restores the `_None yet._` placeholder the skeleton carries,
+ * so an empty outbox still reads as an intentionally empty section. */
+function cutOpenBlock(lines: string[], scan: QuestionsScan, block: OpenEntryBlock): string[] {
   // Cut the block out of ## Open: everything before it, everything from its end on. When the
   // section is left with no content at all, restore the `_None yet._` placeholder the skeleton
   // carries, so an empty outbox still reads as an intentionally empty section.
   // Emptiness is judged against the Open section only (openIdx+1 .. openEnd): with an
   // intermediate section between Open and Answered, judging against answeredIdx would keep
   // the placeholder from returning and, worse, the empty rebuild would drop that section.
-  const openContent = lines!.slice(scanned.openIdx + 1, scanned.openEnd);
-  const remaining = openContent.filter((_, i) => i < block.start - scanned.openIdx - 1 || i >= block.end - scanned.openIdx - 1);
+  const openContent = lines.slice(scan.openIdx + 1, scan.openEnd);
+  const remaining = openContent.filter((_, i) => i < block.start - scan.openIdx - 1 || i >= block.end - scan.openIdx - 1);
   const openEmpty = remaining.every((l) => l.trim() === "");
   const rebuilt: string[] = [];
   if (openEmpty) {
     rebuilt.push(
-      ...lines!.slice(0, scanned.openIdx + 1),
+      ...lines.slice(0, scan.openIdx + 1),
       "",
       "_None yet._",
       // Resume at the section that followed Open (openEnd, not answeredIdx — an intermediate
       // section between the two must survive) with the blank separator line the dropped Open
       // content used to carry, so `_None yet._` never reads as a paragraph glued to a heading.
       "",
-      ...lines!.slice(scanned.openEnd),
+      ...lines.slice(scan.openEnd),
     );
   } else {
-    rebuilt.push(...lines!.slice(0, block.start), ...lines!.slice(block.end));
+    rebuilt.push(...lines.slice(0, block.start), ...lines.slice(block.end));
   }
+  return rebuilt;
+}
 
+/** Append the moved block at the end of `## Answered` (growing the section when the file has
+ * none, stripping a real `_None yet._` placeholder from it), returning the full text to write.
+ * `hasAnswered` is whether the file already held a `## Answered` section. */
+function appendAnsweredEntry(rebuilt: string[], moved: string[], decision: string, hasAnswered: boolean): string {
+  // The moved block's trailing blank lines are dropped, so the appended entry never reads
+  // as a spill of blank lines before the dated answer stamp.
+  trimTrailingBlankLines(moved);
   // Append the block at the end of ## Answered: before the next `## ` heading when one
   // follows, at the file's end otherwise — the section is last in the documented skeleton.
   const stamp = `**Answered ${formatDate(new Date())} by the user:**`;
   const stamped = decision.includes("\n") ? [stamp, "", ...decision.split("\n")] : [`${stamp} ${decision}`];
   const answerLines = moved.concat("", ...stamped, "");
-  if (scanned.answeredIdx === -1) {
+  if (!hasAnswered) {
     // No ## Answered section: grow the file's end with the skeleton section plus the block.
     let out = rebuilt.join("\n");
     if (out !== "" && !out.endsWith("\n")) out += "\n";
     out += `\n## Answered\n\n${answerLines.join("\n")}`;
-    writeTextAtomic(file, out);
-    return { status: "answered", title: block.title, decision };
+    return out;
   }
   const fenced2 = fenceTracker();
   let answeredAt = -1;
@@ -385,6 +413,5 @@ function answerQuestionLocked(root: string, n: number, rawDecision: string, expe
   trimTrailingBlankLines(head);
   trimLeadingBlankLines(tail);
   const result = head.concat("", answerLines, tail);
-  writeTextAtomic(file, result.join("\n"));
-  return { status: "answered", title: block.title, decision };
+  return result.join("\n");
 }
