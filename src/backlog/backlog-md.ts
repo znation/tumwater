@@ -278,26 +278,44 @@ export function entryDates(
   const dates: string[] = [];
   const pick = first ? firstDate : lastDate;
   const lines = sectionBodyLines(md, sectionTitle);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    if (!line.startsWith("### ") && !line.startsWith("- ")) continue;
-    const meta = headingMetadata(lines, i);
+  eachEntryStart(lines, ({ isBullet, meta, tail }) => {
     let date: string | null = null;
-    if (line.startsWith("- ")) {
+    if (isBullet) {
       // Epitaph guard (see the doc comment): the date must live in the line's trailing
       // parenthetical beside a commit reference, or the bullet is body text, not an entry.
       // Within the parenthetical the completion is the LAST dated verb, matching the heading
       // branch: a decomposition cross-reference ("decomposed from the sibling bug fixed
       // <date>, fixed <date>") precedes the entry's own completion record.
-      const tail = trailingParenthetical(line);
-      if (/\bcommits?\b/.test(tail)) date = pick(tail, dateRe);
+      const bulletTail = tail ?? "";
+      if (/\bcommits?\b/.test(bulletTail)) date = pick(bulletTail, dateRe);
     } else {
       date = pick(meta.text, dateRe);
     }
     if (date) dates.push(date);
+  });
+  return dates;
+}
+
+/** One walk over the entry starts inside a `## ` section's body lines, visiting each `### `
+ * heading or `- ` bullet line in order. An entry start is a line that begins `### ` or `- `
+ * (any other line is body content, skipped); `meta` is headingMetadata's join of the entry's
+ * metadata, `tail` is a bullet's trailing `(…)` parenthetical (null for a heading), and
+ * `isBullet` tells which shape it is. Advances past each entry's metadata by
+ * headingMetadata.next, so a later entry cannot scan the earlier one's continuation as body.
+ * Shared by entryDates and entryLags, whose date readings branch on the same `### `/`- `
+ * shape, so the two walks stay in lockstep. */
+function eachEntryStart(
+  lines: string[],
+  visit: (e: { isBullet: boolean; meta: { text: string; next: number }; tail: string | null }) => void,
+): void {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (!line.startsWith("### ") && !line.startsWith("- ")) continue;
+    const meta = headingMetadata(lines, i);
+    const isBullet = line.startsWith("- ");
+    visit({ isBullet, meta, tail: isBullet ? trailingParenthetical(line) : null });
     i = meta.next - 1; // The loop's ++ resumes at the first line not consumed as metadata.
   }
-  return dates;
 }
 
 /** The filing-to-done span of each finished entry inside one `## <sectionTitle>` section,
@@ -319,21 +337,18 @@ export function entryLags(
 ): { done: string; lagDays: number }[] {
   const lags: { done: string; lagDays: number }[] = [];
   const lines = sectionBodyLines(md, sectionTitle);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    if (!line.startsWith("### ") && !line.startsWith("- ")) continue;
-    const meta = headingMetadata(lines, i);
+  eachEntryStart(lines, ({ isBullet, meta, tail }) => {
     let done: string | null = null;
     let filed: string | null = null;
-    if (line.startsWith("- ")) {
+    if (isBullet) {
       // Same epitaph guard as entryDates: the completion must live in the trailing
       // parenthetical beside a commit reference, and the filing read follows the same
       // rule — sectionFilingDates matches the first stamp inside that same parenthetical
       // for a `- ` bullet, so a description-date mention before it must not pair.
-      const tail = trailingParenthetical(line);
-      if (/\bcommits?\b/.test(tail)) {
-        done = lastDate(tail, dateRe);
-        filed = firstDate(tail, filingRe);
+      const bulletTail = tail ?? "";
+      if (/\bcommits?\b/.test(bulletTail)) {
+        done = lastDate(bulletTail, dateRe);
+        filed = firstDate(bulletTail, filingRe);
       }
     } else {
       done = lastDate(meta.text, dateRe);
@@ -343,8 +358,7 @@ export function entryLags(
       const lagDays = daysBetween(filed, done);
       if (lagDays >= 0) lags.push({ done, lagDays });
     }
-    i = meta.next - 1; // The loop's ++ resumes at the first line not consumed as metadata.
-  }
+  });
   return lags;
 }
 
