@@ -752,7 +752,7 @@ test("a slot a killed run left with uncommitted edits is saved as a patch and re
   const patch = join(salvageDir(root), saved[0]!);
   assert.match(
     warningMessages(root).join("\n"),
-    /workspace _slot-1 still held 2 uncommitted file\(s\) feature left behind; saved them to \.tumwater\/salvage\/\S+ and reset it for security/,
+    /workspace _slot-1 still held 2 uncommitted files feature left behind; saved them to \.tumwater\/salvage\/\S+ and reset it for security/,
   );
   // The patch gives the work back: applied on the base, both edits return.
   sh(next.dir, "git", "apply", "--index", patch);
@@ -786,7 +786,7 @@ test("an unsettled run's leftovers wait for that role's next run; a settled run'
   assert.match(waiting[0]!, /-_slot-1-feature\.patch$/);
   assert.match(
     warningMessages(root).join("\n"),
-    /workspace _slot-1 still held 1 uncommitted file\(s\) from feature's unfinished run; saved them to \.tumwater\/salvage\/pending\/feature\/\S+ for its next run and reset it for security/,
+    /workspace _slot-1 still held 1 uncommitted file from feature's unfinished run; saved them to \.tumwater\/salvage\/pending\/feature\/\S+ for its next run and reset it for security/,
   );
   // A settled release (the run's verdict chose what to keep) leaves its edits only to the operator.
   writeFileSync(join(next.dir, "scratch.md"), "discarded on purpose\n");

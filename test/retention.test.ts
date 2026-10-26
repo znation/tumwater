@@ -60,7 +60,7 @@ test("RetentionPruner: salvaged workspace patches past the window are pruned, wa
   assert.equal(fs.existsSync(fresh), true, "a patch inside the window stays");
   assert.match(
     eventsOfType(root, "warning").map((e) => String(e.message)).join("\n"),
-    /pruned 2 old salvaged workspace patch\(es\)/,
+    /pruned 2 old salvaged workspace patches/,
   );
 });
 
@@ -138,7 +138,7 @@ test("RetentionPruner: an idle role's expired codex session is purged before its
   assert.equal(fs.existsSync(ledger), false, "the stale ledger itself is still aged out by the file pass");
   assert.match(
     eventsOfType(root, "warning").map((e) => String(e.message)).join("\n"),
-    /deleted 1 expired codex session\(s\)/,
+    /deleted 1 expired codex session/,
   );
 });
 

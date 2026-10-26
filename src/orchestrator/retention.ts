@@ -7,6 +7,7 @@
 
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { DAY_MS } from "../text/datetime.js";
+import { plural } from "../text/phrases.js";
 import { ensureParentDir, pruneOldFiles } from "../files/files.js";
 import { pruneSessionLedgers, pruneOpencodeSessions, pruneCodexSessions } from "../agent/session-ledger.js";
 import { loadConfigSafe } from "../config/config.js";
@@ -92,7 +93,7 @@ export class RetentionPruner {
       spillDir: opencodeSpillDir(root),
     });
     if (deleted > 0)
-      warnEventBestEffort(root, TUMWATER_SOURCE, `deleted ${deleted} expired opencode session(s)`);
+      warnEventBestEffort(root, TUMWATER_SOURCE, `deleted ${plural(deleted, "expired opencode session")}`);
     // Codex's sessions also live outside .tumwater — under the team's CODEX_HOME (part 8/9).
     // Resolve its binary and home exactly as a run's invocation would and purge its expired
     // sessions from the ledger BEFORE the file pass below ages it out. Like the OpenCode twin,
@@ -108,21 +109,21 @@ export class RetentionPruner {
       env: { ...process.env, CODEX_HOME: codexHomeDir },
     });
     if (deletedCodex > 0)
-      warnEventBestEffort(root, TUMWATER_SOURCE, `deleted ${deletedCodex} expired codex session(s)`);
+      warnEventBestEffort(root, TUMWATER_SOURCE, `deleted ${plural(deletedCodex, "expired codex session")}`);
     // Age out session/tool-output files now: an entirely stale dir is gone before the line
     // pass reads it. A running role's ledger mtime stays young, so pruneOldFiles never ages
     // that file out; each warning must name the unit it pruned.
     const pruned = pruneOldFiles(sessions, days) + pruneOldFiles(toolOutputDir(root), days);
     if (pruned > 0)
-      warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${pruned} old agent session/tool-output file(s)`);
+      warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${plural(pruned, "old agent session/tool-output file")}`);
     const prunedLines = pruneSessionLedgers(sessions, days);
     if (prunedLines > 0)
-      warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${prunedLines} stale session ledger line(s)`);
+      warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${plural(prunedLines, "stale session ledger line")}`);
     // Salvaged slot leftovers (src/git/slot-salvage.ts) age out on the same window as the
     // sessions that made them: a patch still waiting by then belongs to a role that has not run
     // since, and the operator had the window's length to take a kept one.
     const prunedPatches = pruneOldFiles(salvageDir(root), days);
     if (prunedPatches > 0)
-      warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${prunedPatches} old salvaged workspace patch(es)`);
+      warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${plural(prunedPatches, "old salvaged workspace patch", "old salvaged workspace patches")}`);
   }
 }

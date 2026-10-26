@@ -31,6 +31,7 @@ import { conflictedFiles } from "../merge/merge-git.js";
 import { salvageDir, salvagePendingDir } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { formatDate, pad2 } from "../text/datetime.js";
+import { plural } from "../text/phrases.js";
 import { git, gitCouldNotStart, gitTry, runGit } from "./git-run.js";
 import { isUsableWorktree } from "./worktree.js";
 
@@ -97,7 +98,7 @@ export async function salvageSlotLeftovers(
     // no file or the complete patch, never a prefix.
     writeTextAtomic(
       file,
-      `# ${files} uncommitted file(s) ${by} left in workspace ${slot}, saved before ${forRole} reused it\n` +
+      `# ${plural(files, "uncommitted file")} ${by} left in workspace ${slot}, saved before ${forRole} reused it\n` +
         `# base ${base}; apply with: git apply --index <this file> on a checkout of that commit\n` +
         `${patch}\n`,
     );
@@ -106,8 +107,8 @@ export async function salvageSlotLeftovers(
       root,
       TUMWATER_SOURCE,
       recoverFor === null
-        ? `workspace ${slot} still held ${files} uncommitted file(s) ${by} left behind; saved them to ${saved} and reset it for ${forRole}`
-        : `workspace ${slot} still held ${files} uncommitted file(s) from ${recoverFor}'s unfinished run; saved them to ${saved} for its next run and reset it for ${forRole}`,
+        ? `workspace ${slot} still held ${plural(files, "uncommitted file")} ${by} left behind; saved them to ${saved} and reset it for ${forRole}`
+        : `workspace ${slot} still held ${plural(files, "uncommitted file")} from ${recoverFor}'s unfinished run; saved them to ${saved} for its next run and reset it for ${forRole}`,
     );
     return file;
   } catch (err) {
@@ -115,7 +116,7 @@ export async function salvageSlotLeftovers(
     warnEventBestEffort(
       root,
       TUMWATER_SOURCE,
-      `workspace ${slot} still held ${files} uncommitted file(s) ${by} left behind, and saving them failed (${errorMessage(err)}); resetting it for ${forRole} discards them`,
+      `workspace ${slot} still held ${plural(files, "uncommitted file")} ${by} left behind, and saving them failed (${errorMessage(err)}); resetting it for ${forRole} discards them`,
     );
     return null;
   } finally {
