@@ -11,11 +11,11 @@ import { knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { aheadOfMain, branchExists, countCommitsInRange, currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { aheadOfMainDiff, aheadOfMainFiles, changedFiles } from "../git/git-diff.js";
+import { compareCodeUnits } from "../collections.js";
 import { isAbsolute } from "node:path";
 import { branchName } from "../paths.js";
 import { isUsableWorktree } from "../git/worktree.js";
 import { roleWorktreeDir } from "../git/slots-state.js";
-import { compareCodeUnits } from "../collections.js";
 
 /** One unmerged commit: its abbreviated sha and subject, from `git log --oneline`. */
 interface RoleChangeCommit {
