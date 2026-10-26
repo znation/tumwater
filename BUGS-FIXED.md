@@ -5,6 +5,16 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `a pre-check that fails twice with no verdict for main rejects, saying the baseline was unavailable` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it. Cause: the test hung main's baseline on a real `sleep 5` racing a 0.5 s deadline; under load the deadline can fire >5 s late (reprising a clean retry and a second `baseline:skipped` event, which flips the 3-event assertion) or the sleep can finish first. Fixed by making main's no-verdict deterministic: the configured command now exits nonzero naming a broken toolchain on main's clean tree — an immediate environmental skip with no wall-clock timing — while it still fails fast with `boom` on the change's tree; the attribution assertion now names `(toolchain)`.
+
+**Validation gap:** no-repro — the flake is intermittent and could not be reproduced deterministically; the fix removes the load-sensitive real-sleep dependency on the strength of code analysis.
+
+~~~~
+a pre-check that fails twice with no verdict for main rejects, saying the baseline was unavailable
+~~~~
+
 ### A backgrounded `logs -f` outlives the shell that started it when that shell exits before the follow's first parent-pid read, so the follow leaks to PPID 1 and never stops (found by the qa role 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 - **Symptom:** `tumwater logs -f` is documented (`docs/cli.md` line for `logs`) to "end[] on its own once the shell or process that started it exits, so a backgrounded follow does not outlive it." That holds only when the starting shell stays alive long enough for the follow's first `process.ppid` read. When the shell exits first (the classic `( tumwater logs -f 2>&1 & )` detached background), the follow is reparented to init before it reads `ppid`, so `startParentDeathWatch` arms its baseline as `1` and — comparing `ppid()` (always `1`) to its baseline (`1`) — never fires. The follow keeps polling forever, reparented to PPID 1. This is the same leak route behind the open "Two `logs -f` processes leaked…" entry, which the 10-19 `followUntilParentGone` change was meant to close; this race is its remaining hole.

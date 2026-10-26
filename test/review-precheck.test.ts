@@ -246,8 +246,12 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
 });
 
 test("a pre-check that fails twice with no verdict for main rejects, saying the baseline was unavailable", async () => {
-  // A configured command that fails fast on the change's tree (it carries change.txt) and hangs
-  // on main's, past its own cap: main's run is a timeout skip, which yields no verdict.
+  // A configured command that fails fast on the change's tree (it carries change.txt) and, on
+  // main's clean tree, exits nonzero naming a broken toolchain: an environmental skip, no
+  // verdict. This used to hang main's run past a 0.5 s deadline with a real `sleep 5`, a
+  // load- and clock-sensitive race (the deadline firing late past the 5 s retry tolerance would
+  // price a second baseline attempt and flip the event count below) — BUGS.md 2026-10-26. The
+  // toolchain skip is deterministic: no wall-clock subprocess timing.
   const root = makeRepo();
   uniqueMain(root);
   const wt = await ensureWorktree(root, ROLE, "main");
@@ -257,7 +261,7 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
     ...gateCtx(root, wt),
     config: {
       ...defaultConfig(),
-      check: { command: "if [ -f change.txt ]; then echo 'boom'; exit 1; fi; sleep 5", timeoutSeconds: 0.5 },
+      check: { command: "if [ -f change.txt ]; then echo 'boom'; exit 1; fi; echo 'xcrun: error: unable to find utility'; exit 1" },
     },
   };
   const marker = piRanMarker();
@@ -270,7 +274,7 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
     assert.match(reasons[0] ?? "", /^check failed \(`.*`\): boom$/);
     assert.equal(
       reasons.at(-1),
-      "main's baseline was unavailable (its check was skipped (timeout)), so the failure is attributed to this change",
+      "main's baseline was unavailable (its check was skipped (toolchain)), so the failure is attributed to this change",
     );
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "baseline:skipped"]);
   });
