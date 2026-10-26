@@ -281,7 +281,11 @@ test("a run timeout that fires on a run still making progress is resumed like a 
       const runner = makeRoleRunner(repo, "improve", config);
       const before = mainSha(repo);
       const outcome = await runner.run();
-      assert.equal(outcome.result, "quiet_killed");
+      // The result assertion carries `lastError` so a flake names its branch: the discard
+      // path sets plain "timed out after 2s", the resumable path "…while still making
+      // progress", and a spawn/parse failure sets something else again — a failed run reads
+      // out which verdict fired instead of an opaque 'error'.
+      assert.equal(outcome.result, "quiet_killed", String(runner.state.lastError ?? ""));
       assert.match(runner.state.lastError ?? "", /timed out .* making progress/);
       assert.equal(mainSha(repo), before, "nothing merged on main");
       assert.equal(runner.state.resumePending, true, "the slow run's session is resumed, not discarded");
