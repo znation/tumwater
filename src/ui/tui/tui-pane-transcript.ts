@@ -39,6 +39,10 @@ export function createTranscriptPane(session: TuiPaneSession) {
   // The `/` search over the live transcript step: the pattern belongs to the role it was applied
   // on, so a roster shift that puts another role at the same index does not inherit it.
   let transcriptSearch: { role: string; pattern: string } | null = null;
+  // The currently viewed role (TuiPaneSession.roleIds is a 1-based per-role index); the
+  // deref is safe because every read below sits in an arm that has already clamped
+  // session.view into 1..roleIds.length or compares against a known role id.
+  const viewedRole = (): string => session.roleIds[session.view - 1]!;
 
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
@@ -71,12 +75,12 @@ export function createTranscriptPane(session: TuiPaneSession) {
           // changeGen drops a load superseded by a re-load or a leave; the role match drops one
           // a roster change (syncRoster mutates session.roleIds without resetting this pane)
           // made stale, so an in-flight collection cannot paint the previous role's change.
-          if (gen !== changeGen || session.roleIds[session.view - 1] !== target) return;
+          if (gen !== changeGen || viewedRole() !== target) return;
           changeCache = queueText + renderRoleChange(change);
           session.requestRender();
         },
         (err: unknown) => {
-          if (gen !== changeGen || session.roleIds[session.view - 1] !== target) return;
+          if (gen !== changeGen || viewedRole() !== target) return;
           session.flashError(err);
           session.requestRender();
         },
@@ -104,7 +108,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
         session.requestRender();
         return true;
       }
-      const role = session.roleIds[session.view - 1]!; // defined: view is clamped inside the transcript range
+      const role = viewedRole(); // defined: view is clamped inside the transcript range
       if (changeMode) {
         changeMode = false;
         changeGen += 1;
@@ -145,7 +149,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
       // pane paints its loading note and the new view when it resolves); jumping straight to
       // the diffstat is the first question a large pending change answers. With any guard
       // false it returns false so the router falls through to History's Summary toggle.
-      const role = session.roleIds[session.view - 1]!;
+      const role = viewedRole();
       changeStat = !changeStat;
       session.paneScroll = 0;
       loadChange(role);
@@ -159,7 +163,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
     ) {
       // Ctrl+X twice clears the viewed role's notes through the writer the CLI's
       // `--clear-notes` and the dashboard drawer share, then re-renders the notes view.
-      const role = session.roleIds[session.view - 1]!;
+      const role = viewedRole();
       if (session.armedNotes === role) {
         try {
           session.flashMessage(`${role}: ${saveRoleNote(roleNotesPath(session.root, role), "")}`);
@@ -194,7 +198,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
     // that role — a write whose view cycled away or whose roster shifted must not overwrite
     // the pane now shown or repaint a stale frame.
     refreshNotes(role: string) {
-      if (!noteMode || session.roleIds[session.view - 1] !== role) return;
+      if (!noteMode || viewedRole() !== role) return;
       noteCache = roleInspectMarkdown(session.root, role);
       session.paneScroll = 0;
       session.requestRender();
@@ -216,12 +220,12 @@ export function createTranscriptPane(session: TuiPaneSession) {
       // The `/` editor's Enter on a role's live transcript: sets (or clears) the pattern for the
       // viewed role and returns the pane to its head.
       if (session.view < 1 || session.view > session.roleIds.length) return;
-      transcriptSearch = pattern === null ? null : { role: session.roleIds[session.view - 1]!, pattern };
+      transcriptSearch = pattern === null ? null : { role: viewedRole(), pattern };
       session.paneScroll = 0;
       session.requestRender();
     },
     state() {
-      const transcriptGrep = transcriptSearch !== null && session.roleIds[session.view - 1] === transcriptSearch.role
+      const transcriptGrep = transcriptSearch !== null && viewedRole() === transcriptSearch.role
         ? transcriptSearch.pattern
         : null;
       return { noteMode, noteCache, changeMode, changeCache, changeStat, transcriptGrep };
