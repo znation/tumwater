@@ -90,161 +90,199 @@ export function newLiveConfigReload(deps: {
   // the shared "logging must not throw" policy.
   const { emit, warn } = bestEffortEventLogger(deps.root);
 
+  // Warn once per vanish and once per reappearance of tumwater.json.
+  function noteConfigPresence(reloaded: ReturnType<typeof loadConfigCached>): void {
+    // A missing file keeps the last-known-good config too, and never reloads as defaults: the
+    // team was started on a real file (startup refuses to run without one), so its vanishing
+    // mid-run is an incident — a merge's fast-forward deleted it on 2026-09-22 and the team
+    // silently ran 8.6 h on defaults (BUGS.md 2026-09-23). One warning per vanish, not per
+    // poll; its return logs one line, then the normal reload below diffs it against the
+    // retained config — so config_changed names only what the returned file really changed.
+    if (reloaded.missing) {
+      if (!configMissing) {
+        warn(`tumwater.json missing — keeping current config until it returns (${configPath(deps.root)})`);
+        configMissing = true;
+        lastConfigError = null; // Whatever state it returns in is stated afresh.
+      }
+    } else if (configMissing) {
+      warn("tumwater.json reappeared — reloading it");
+      configMissing = false;
+    }
+  }
+
+  // Refuse a live edit that routes a seam to an API-key-logged-in codex, keeping prevLive.
+  function refuseApiKeyCodex(nextConfig: TumwaterConfig, prevBackends: ReadonlySet<string>): boolean {
+    // A live edit that routes a seam to a codex logged in with an API key is refused before
+    // the reload is applied: startup refuses the same codex seam (decision 5), and here a
+    // warn-only would let the running team spend per-token Codex the budget cap cannot see
+    // (review objection 1). Refusing keeps the last-known-good config, like a missing or
+    // broken file. The seed runs once per root (`codex login status` is a real probe); the
+    // persisted account file is the voice of the refusal on later polls, re-probing a stale
+    // api answer (codex-account.ts) so the operator's `codex login --device-auth` remedy
+    // clears it at the next seed. A subscription codex passes through to the backend loop.
+    const newlyRoutedCodex =
+      !prevBackends.has("codex") && backendsInUse(nextConfig).includes("codex");
+    if (newlyRoutedCodex && !liveCodexSeedAttempted.has(deps.root)) {
+      liveCodexSeedAttempted.add(deps.root);
+      seedCodexAccount(deps.root, nextConfig);
+    }
+    if (newlyRoutedCodex && readCodexAccount(deps.root)?.billing === "api") {
+      if (codexLiveRefused) return true;
+      codexLiveRefused = true;
+      warn(
+        "refusing live edit: Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`",
+      );
+      return true;
+    }
+    // A poll that did not refuse clears the warn-once marker so a later re-entry into the
+    // refusal (the operator reverts, then re-adds the API-billed codex seam) warns again.
+    codexLiveRefused = false;
+    return false;
+  }
+
+  // Emit config_changed and model_changed for what this reload actually changed.
+  function emitConfigChangeEvents(nextConfig: TumwaterConfig): void {
+    // A live edit that changes behavior elsewhere logs one event naming the settings that
+    // changed (maxConcurrent and sessionRetentionDays have their own events elsewhere).
+    const changedKeys = changedConfigKeys(prevLive, nextConfig);
+    if (changedKeys.length > 0) {
+      emit({ source: TUMWATER_SOURCE, type: "config_changed", keys: changedKeys });
+      // A real model-wiring change gets its own event naming the new selector(s), which the
+      // key list cannot show; a non-model edit (instructions, an interval) emits nothing.
+      const fromModel = teamModelLabel(prevLive);
+      const toModel = teamModelLabel(nextConfig);
+      const roleDiffs = changedKeys
+        .filter((key) => key.startsWith("roles."))
+        .map((key) => {
+          const role = key.slice("roles.".length);
+          const from = modelSelectorField(configForRole(prevLive, role)).model ?? null;
+          const to = modelSelectorField(configForRole(nextConfig, role)).model ?? null;
+          return { role, from, to };
+        })
+        .filter((d) => d.from !== d.to);
+      if (fromModel !== toModel || roleDiffs.length > 0)
+        emit({
+          source: TUMWATER_SOURCE,
+          type: "model_changed",
+          from: fromModel,
+          to: toModel,
+          ...(roleDiffs.length > 0 ? { roles: roleDiffs } : {}),
+        });
+    }
+  }
+
+  // Verify and seed each backend a live edit newly routes to.
+  function seedNewlyRoutedBackends(nextConfig: TumwaterConfig, prevBackends: ReadonlySet<string>): void {
+    // A live edit that routes a seam to a backend the previous config did not use: the
+    // team keeps running, but that backend must be verified and its account (claude) or
+    // models catalog (opencode) seeded, exactly as startup would — so a claude reviewer
+    // added to a pi team does not start uncheckable. A missing binary is a warning event,
+    // never a crash; a present one logs its verdict as a backend_binary event. The seed is
+    // attempted once per root. (The codex seed moved to the refusal check at the top of
+    // this block, which also refuses an API-key-logged-in codex seam.)
+    for (const backend of backendsInUse(nextConfig)) {
+      if (prevBackends.has(backend)) continue;
+      const resolved = resolveBackendBin(nextConfig, backend);
+      if (findBackendBinary(resolved)) {
+        emit({ source: TUMWATER_SOURCE, type: "backend_binary", agent: backend, found: true });
+      } else {
+        warn(`newly routed ${backend} backend: ${backendMissingMessage(resolved, backend)}`);
+      }
+      if (backend === "claude" && !liveClaudeSeedAttempted.has(deps.root)) {
+        liveClaudeSeedAttempted.add(deps.root);
+        seedClaudeAccount(deps.root, nextConfig);
+      }
+      if (backend === "opencode" && !liveOpencodeSeedAttempted.has(deps.root)) {
+        liveOpencodeSeedAttempted.add(deps.root);
+        // Not awaited: poll() is synchronous and a models.dev fetch must not stall the loop.
+        void seedOpencodeCatalog(deps.root, nextConfig, { ...deps.opencodeSeed, warn }).catch(
+          (err: unknown) => warn(`open code model catalog seed failed: ${errorMessage(err)}`),
+        );
+      }
+    }
+  }
+
+  // Live-resize the concurrency cap and the per-provider key caps.
+  function resizeConcurrency(nextConfig: TumwaterConfig): void {
+    // Live-resize the concurrency cap: a mid-run edit changes how many pi runs execute
+    // concurrently within this poll — no restart. Growing admits already-queued runs;
+    // shrinking never preempts in-flight work, it only caps future grants.
+    const newMaxConcurrent = Math.max(1, nextConfig.maxConcurrent);
+    if (newMaxConcurrent !== lastMaxConcurrent) {
+      deps.semaphore.setCapacity(newMaxConcurrent);
+      emit({ source: TUMWATER_SOURCE, type: "max_concurrent_changed", from: lastMaxConcurrent, to: newMaxConcurrent });
+      lastMaxConcurrent = newMaxConcurrent;
+    }
+    // Live-resize the per-provider caps (plans/provider-concurrency.md §7): an edit
+    // re-applies the whole map to the pool, and each changed provider fires its own
+    // `provider_concurrency_changed` event. setKeyCaps never preempts — shrinking only
+    // withholds future grants on that key until releases drain it under the new cap.
+    const nextKeyCaps = nextConfig.maxConcurrentPerProvider ?? {};
+    deps.semaphore.setKeyCaps(nextKeyCaps);
+    for (const provider of new Set([...Object.keys(lastKeyCaps), ...Object.keys(nextKeyCaps)])) {
+      const from = lastKeyCaps[provider];
+      const to = nextKeyCaps[provider];
+      if (from !== to) {
+        emit({
+          source: TUMWATER_SOURCE,
+          type: "provider_concurrency_changed",
+          provider,
+          from: from ?? 0,
+          to: to ?? 0,
+        });
+      }
+    }
+    lastKeyCaps = nextKeyCaps;
+  }
+
+  // Sync the runner list to newly enabled roles and warn on enable/disable.
+  function syncRunners(nextConfig: TumwaterConfig): void {
+    const nowEnabled = runnerIds(nextConfig);
+    // Enabling a role — or raising `roles.<id>.instances` — mid-run starts it: create the
+    // runner for each newly present role id (its persisted state survives). A lowered
+    // instance count keeps its runner; `runnerEnabled` skips its future runs. A scoped round
+    // skips every other id: the enabling is logged (the warn loop below), but its runner
+    // waits for the next unscoped round.
+    for (const role of nowEnabled) {
+      if (deps.roleFilter !== undefined && !deps.roleFilter.includes(role)) continue;
+      if (!deps.runners.some((r) => r.role === role))
+        deps.runners.push(new RoleRunner(deps.root, role, nextConfig, deps.mainBranch, deps.runnerSignal));
+    }
+    for (const role of prevEnabled)
+      if (!nowEnabled.includes(role))
+        warn(`role ${role} disabled — no new runs`);
+    for (const role of nowEnabled)
+      if (!prevEnabled.has(role))
+        warn(`role ${role} enabled — starting runs`);
+    prevEnabled = new Set(nowEnabled);
+  }
+
+  // Warn once per distinct broken-file error text.
+  function noteInvalidConfig(reloaded: ReturnType<typeof loadConfigCached>): void {
+    if (reloaded.error && reloaded.error !== lastConfigError) {
+      warn(`tumwater.json invalid — keeping current config: ${reloaded.error}`);
+      lastConfigError = reloaded.error;
+    }
+  }
+
   return {
     poll() {
       const reloaded = loadConfigCached(deps.root);
-      // A missing file keeps the last-known-good config too, and never reloads as defaults: the
-      // team was started on a real file (startup refuses to run without one), so its vanishing
-      // mid-run is an incident — a merge's fast-forward deleted it on 2026-09-22 and the team
-      // silently ran 8.6 h on defaults (BUGS.md 2026-09-23). One warning per vanish, not per
-      // poll; its return logs one line, then the normal reload below diffs it against the
-      // retained config — so config_changed names only what the returned file really changed.
-      if (reloaded.missing) {
-        if (!configMissing) {
-          warn(`tumwater.json missing — keeping current config until it returns (${configPath(deps.root)})`);
-          configMissing = true;
-          lastConfigError = null; // Whatever state it returns in is stated afresh.
-        }
-      } else if (configMissing) {
-        warn("tumwater.json reappeared — reloading it");
-        configMissing = false;
-      }
+      noteConfigPresence(reloaded);
       if (reloaded.config) {
         const nextConfig = reloaded.config;
-        // A live edit that routes a seam to a codex logged in with an API key is refused before
-        // the reload is applied: startup refuses the same codex seam (decision 5), and here a
-        // warn-only would let the running team spend per-token Codex the budget cap cannot see
-        // (review objection 1). Refusing keeps the last-known-good config, like a missing or
-        // broken file. The seed runs once per root (`codex login status` is a real probe); the
-        // persisted account file is the voice of the refusal on later polls, re-probing a stale
-        // api answer (codex-account.ts) so the operator's `codex login --device-auth` remedy
-        // clears it at the next seed. A subscription codex passes through to the backend loop.
         const prevBackends = new Set(backendsInUse(prevLive));
-        const newlyRoutedCodex =
-          !prevBackends.has("codex") && backendsInUse(nextConfig).includes("codex");
-        if (newlyRoutedCodex && !liveCodexSeedAttempted.has(deps.root)) {
-          liveCodexSeedAttempted.add(deps.root);
-          seedCodexAccount(deps.root, nextConfig);
-        }
-        if (newlyRoutedCodex && readCodexAccount(deps.root)?.billing === "api") {
-          if (codexLiveRefused) return prevLive;
-          codexLiveRefused = true;
-          warn(
-            "refusing live edit: Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`",
-          );
-          return prevLive;
-        }
-        // A poll that did not refuse clears the warn-once marker so a later re-entry into the
-        // refusal (the operator reverts, then re-adds the API-billed codex seam) warns again.
-        codexLiveRefused = false;
-        live = reloaded.config;
-        // A live edit that changes behavior elsewhere logs one event naming the settings that
-        // changed (maxConcurrent and sessionRetentionDays have their own events elsewhere).
-        const changedKeys = changedConfigKeys(prevLive, reloaded.config);
-        if (changedKeys.length > 0) {
-          emit({ source: TUMWATER_SOURCE, type: "config_changed", keys: changedKeys });
-          // A real model-wiring change gets its own event naming the new selector(s), which the
-          // key list cannot show; a non-model edit (instructions, an interval) emits nothing.
-          const fromModel = teamModelLabel(prevLive);
-          const toModel = teamModelLabel(reloaded.config);
-          const roleDiffs = changedKeys
-            .filter((key) => key.startsWith("roles."))
-            .map((key) => {
-              const role = key.slice("roles.".length);
-              const from = modelSelectorField(configForRole(prevLive, role)).model ?? null;
-              const to = modelSelectorField(configForRole(nextConfig, role)).model ?? null;
-              return { role, from, to };
-            })
-            .filter((d) => d.from !== d.to);
-          if (fromModel !== toModel || roleDiffs.length > 0)
-            emit({
-              source: TUMWATER_SOURCE,
-              type: "model_changed",
-              from: fromModel,
-              to: toModel,
-              ...(roleDiffs.length > 0 ? { roles: roleDiffs } : {}),
-            });
-        }
-        // A live edit that routes a seam to a backend the previous config did not use: the
-        // team keeps running, but that backend must be verified and its account (claude) or
-        // models catalog (opencode) seeded, exactly as startup would — so a claude reviewer
-        // added to a pi team does not start uncheckable. A missing binary is a warning event,
-        // never a crash; a present one logs its verdict as a backend_binary event. The seed is
-        // attempted once per root. (The codex seed moved to the refusal check at the top of
-        // this block, which also refuses an API-key-logged-in codex seam.)
-        for (const backend of backendsInUse(reloaded.config)) {
-          if (prevBackends.has(backend)) continue;
-          const resolved = resolveBackendBin(reloaded.config, backend);
-          if (findBackendBinary(resolved)) {
-            emit({ source: TUMWATER_SOURCE, type: "backend_binary", agent: backend, found: true });
-          } else {
-            warn(`newly routed ${backend} backend: ${backendMissingMessage(resolved, backend)}`);
-          }
-          if (backend === "claude" && !liveClaudeSeedAttempted.has(deps.root)) {
-            liveClaudeSeedAttempted.add(deps.root);
-            seedClaudeAccount(deps.root, reloaded.config);
-          }
-          if (backend === "opencode" && !liveOpencodeSeedAttempted.has(deps.root)) {
-            liveOpencodeSeedAttempted.add(deps.root);
-            // Not awaited: poll() is synchronous and a models.dev fetch must not stall the loop.
-            void seedOpencodeCatalog(deps.root, reloaded.config, { ...deps.opencodeSeed, warn }).catch(
-              (err: unknown) => warn(`open code model catalog seed failed: ${errorMessage(err)}`),
-            );
-          }
-        }
-        prevLive = reloaded.config;
-        for (const r of deps.runners) r.config = reloaded.config;
-        // Live-resize the concurrency cap: a mid-run edit changes how many pi runs execute
-        // concurrently within this poll — no restart. Growing admits already-queued runs;
-        // shrinking never preempts in-flight work, it only caps future grants.
-        const newMaxConcurrent = Math.max(1, reloaded.config.maxConcurrent);
-        if (newMaxConcurrent !== lastMaxConcurrent) {
-          deps.semaphore.setCapacity(newMaxConcurrent);
-          emit({ source: TUMWATER_SOURCE, type: "max_concurrent_changed", from: lastMaxConcurrent, to: newMaxConcurrent });
-          lastMaxConcurrent = newMaxConcurrent;
-        }
-        // Live-resize the per-provider caps (plans/provider-concurrency.md §7): an edit
-        // re-applies the whole map to the pool, and each changed provider fires its own
-        // `provider_concurrency_changed` event. setKeyCaps never preempts — shrinking only
-        // withholds future grants on that key until releases drain it under the new cap.
-        const nextKeyCaps = reloaded.config.maxConcurrentPerProvider ?? {};
-        deps.semaphore.setKeyCaps(nextKeyCaps);
-        for (const provider of new Set([...Object.keys(lastKeyCaps), ...Object.keys(nextKeyCaps)])) {
-          const from = lastKeyCaps[provider];
-          const to = nextKeyCaps[provider];
-          if (from !== to) {
-            emit({
-              source: TUMWATER_SOURCE,
-              type: "provider_concurrency_changed",
-              provider,
-              from: from ?? 0,
-              to: to ?? 0,
-            });
-          }
-        }
-        lastKeyCaps = nextKeyCaps;
-        const nowEnabled = runnerIds(reloaded.config);
-        // Enabling a role — or raising `roles.<id>.instances` — mid-run starts it: create the
-        // runner for each newly present role id (its persisted state survives). A lowered
-        // instance count keeps its runner; `runnerEnabled` skips its future runs. A scoped round
-        // skips every other id: the enabling is logged (the warn loop below), but its runner
-        // waits for the next unscoped round.
-        for (const role of nowEnabled) {
-          if (deps.roleFilter !== undefined && !deps.roleFilter.includes(role)) continue;
-          if (!deps.runners.some((r) => r.role === role))
-            deps.runners.push(new RoleRunner(deps.root, role, reloaded.config, deps.mainBranch, deps.runnerSignal));
-        }
-        for (const role of prevEnabled)
-          if (!nowEnabled.includes(role))
-            warn(`role ${role} disabled — no new runs`);
-        for (const role of nowEnabled)
-          if (!prevEnabled.has(role))
-            warn(`role ${role} enabled — starting runs`);
-        prevEnabled = new Set(nowEnabled);
+        if (refuseApiKeyCodex(nextConfig, prevBackends)) return prevLive;
+        live = nextConfig;
+        emitConfigChangeEvents(nextConfig);
+        seedNewlyRoutedBackends(nextConfig, prevBackends);
+        prevLive = nextConfig;
+        for (const r of deps.runners) r.config = nextConfig;
+        resizeConcurrency(nextConfig);
+        syncRunners(nextConfig);
         lastConfigError = null;
-      } else if (reloaded.error && reloaded.error !== lastConfigError) {
-        warn(`tumwater.json invalid — keeping current config: ${reloaded.error}`);
-        lastConfigError = reloaded.error;
+      } else {
+        noteInvalidConfig(reloaded);
       }
       return live;
     },
