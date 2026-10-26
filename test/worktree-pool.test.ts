@@ -22,8 +22,11 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { commitIn, headSha, makeRepo, sh, worktreeAt, writeConfig } from "./fixtures/repo-fixtures.js";
 
 /** Poll until `fn` returns a value, so a waiter test does not assume how many macrotasks its
- * release-to-claim path takes (the claim itself is synchronous, but the git prepare is not). */
-async function waitFor<T>(fn: () => T | undefined, ms = 3000): Promise<T> {
+ * release-to-claim path takes (the claim itself is synchronous, but the git prepare is not).
+ * The bound is generous (the suite's norm) because every caller here waits on real git work —
+ * a worktree prepare/reset or removal — which a saturated full-suite run can stretch far past
+ * a tight bound; a genuine hang (a lost-wake or swallowed abort) still exhausts it and fails. */
+async function waitFor<T>(fn: () => T | undefined, ms = 30_000): Promise<T> {
   const end = Date.now() + ms;
   for (;;) {
     const value = fn();

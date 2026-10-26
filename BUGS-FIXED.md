@@ -5,6 +5,12 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `two concurrent leases take different slots and a third waits for a release` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it. The failure was the local `waitFor` in test/worktree-pool.test.ts throwing "timed out waiting for the condition" on the re-acquire after a release (compiled the call `const acquired = await waitFor(third.claimed)`). Every caller of that helper waits on real git work — a worktree prepare/reset or removal — and its 3000&nbsp;ms deadline is far tighter than the suite's norm (the shared `waitFor` in helpers/wait.ts defaults to 60&nbsp;s). Under a saturated full-suite run (duration_ms 163071 here) a real prepare can legitimately cross 3&nbsp;s, so the real-time deadline expires even though the work completes; a genuine hang still exhausts the bound and fails. Fix: raised this file's local `waitFor` bound to the suite's generous norm; it polls the actual condition, so a healthy re-acquire still returns immediately.
+
+**Validation gap:** no-repro — the isolated test passes green and the timeout could not be reproduced even under heavy local concurrency (the reported failure names the exact assertion already), so the fix relaxes a real-time bound a saturated suite can exceed rather than a failing assertion a regression test proves.
+
 ### `a corrupted cache entry is ignored and re-looked-up` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
