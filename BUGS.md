@@ -209,6 +209,14 @@ diff: 'simple'
 }
 ~~~~
 
+### `a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)
+~~~~
+
 ## Fixed
 
 ## Verified
