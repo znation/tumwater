@@ -379,6 +379,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Subtract, part 1/6: Only a stopped team asks for a person — the banner feed keeps the seven alerts that mean the team is stopped or a decision is the operator's (planned 2026-10-26 by the operator, from the "simplicity over being heavily optimized" request; design in plans/subtract.md "The six strokes", stroke 6; touches src/ui/team-alerts.ts src/ui/team-alert-shared.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/team-alert-merge.ts src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
 
+**Needs review 2026-10-26 by feature: too large for one run (held 1)**
+
 **Goal.** `teamAlerts` (src/ui/team-alerts.ts) emits only what means the team cannot make progress on its own, plus the operator's own decision queue. Every other amber, blue and gray banner becomes a `tumwater doctor` row — or is deleted with the mechanism its own part removes.
 
 **Approach.**
