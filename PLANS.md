@@ -508,6 +508,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Subtract, part 5a/6: The image-capability probe and its peer-tier reroute go (planned 2026-10-26 by the plan role, split from the too-large part 5/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the first of five finer parts replacing part 5/6, holding no prerequisite; touches src/doctor/image-probe.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-check-names.ts src/agent/image-input.ts src/inbox/inbox-submit.ts src/roles/role-view.ts src/status/status-roles.ts src/ui/team-alert-tail.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/tui/tui-pane-health.ts docs/how-it-works.md docs/config.md docs/invariants.md plans/image-input.md test/image-probe.test.ts test/image-input.test.ts test/doctor-checks.test.ts)
 
+**Needs review 2026-10-26 by feature: too large for one run (held 2)**
+
 **Previously held 1**
 
 **Goal.** A model is trusted on the `input` its pi `models.json` declares: no live probe, no probe cache and no peer-tier reroute. An image attachment to a model that declares no image input is refused once, from the declaration.
