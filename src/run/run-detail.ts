@@ -9,7 +9,7 @@ import { parseCountFlag } from "../cli/cli-args.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, historyClass, readRunRows, runRowsOnModels, type HistoryResultClass, type RunRow } from "../history/history-data.js";
 import { parseHistoryModelList, parseHistoryResultList } from "../history/history.js";
-import { readRunDetail } from "./run-detail-data.js";
+import { readRunDetail, type RunDetail } from "./run-detail-data.js";
 import { runDetailPatch, runDetailStat, renderRunDetail, runTranscriptLines } from "./run-detail-render.js";
 import { unknownRoleMessage } from "../roles/roles.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
@@ -77,38 +77,35 @@ function newestRunNumber(
   return newestRunRow(root, role, classes, models)?.run ?? null;
 }
 
-/** `tumwater history <role> [<n>] [--last [--result <class>[,...]]] [--stat] [--patch]
- * [--transcript [--prompt] [--grep <text>]] [--json]`: print one completed
- * run's full event trail. Read-only: stdout only, no state file created — a run the
- * scan cannot find prints a not-found line and exits 0 (history's empty-output convention:
- * an absent record is an answer, not a failure), and under --json it prints the JSON document
- * `null` instead — the report --json precedent
- * that every exit-0 output is parseable, never prose. `tumwater history <role> --last` resolves
- * the role's newest completed run in the scanned window and prints its trail exactly as the
- * numbered form would — the summary header and event rendering are shared, only the number's
- * provenance differs (readRunRows' newest-first scan, not the user's argument). --last and
- * a numeric <n> are rivals: exactly one positional under --last, exactly two without. With
- * --last, `--result <class>[,...]` picks the newest run in the listed outcome classes instead
- * (the listing's classes, scanning up to HISTORY_MAX_RUNS runs); it needs --last. `--model
- * <selector>[,...]` with --last keeps only runs that started on a listed model (the listing's
- * exact match) and composes with --result; it needs --last too. With --last and no role, the
- * newest run of any role is opened (newestRunRow with a null role) and renders as its
- * role's form. */
-export async function cmdRunDetail(
+/** The validated shape of a `tumwater history` invocation, handed from the validator to the
+ * resolver so cmdRunDetail's body is the two calls and the not-found branches alone. */
+interface ParsedRunDetailInvocation {
+  bare: boolean;
+  role: string;
+  classes: HistoryResultClass[] | null;
+  models: string[] | null;
+}
+
+/** The invocation half of cmdRunDetail: rule out the arity and flag mistakes before any run is
+ * resolved, so the shared unknown-role wording and the usage string are the whole validation
+ * surface, found by this one name. Succeeds only for a well-formed call; returns the parsed
+ * bare/role/classes/models for the resolver. The role is checked first, so a typo is named
+ * whatever the count (knownRoleIdsCached: the built-ins plus user-defined roles, read through
+ * the never-throwing cached loader so a transiently broken tumwater.json cannot take a
+ * read-only view down). The arity, unknown-role and flag-dependency failures all `fail` with
+ * the usage. */
+function parseRunDetailInvocation(
   root: string,
   positionals: string[],
-  json: boolean,
-  { last = false, stat = false, patch = false, transcript = false, prompt = false, grep = null, result = null, model = null }: {
-    last?: boolean;
-    stat?: boolean;
-    patch?: boolean;
-    transcript?: boolean;
-    prompt?: boolean;
-    grep?: string | null;
-    result?: string | null;
-    model?: string | null;
-  } = {},
-): Promise<void> {
+  { last, transcript, prompt, grep, result, model }: {
+    last: boolean;
+    transcript: boolean;
+    prompt: boolean;
+    grep: string | null;
+    result: string | null;
+    model: string | null;
+  },
+): ParsedRunDetailInvocation {
   // Positional arity by form: cli.ts has already peeled the flags off and gated them (only
   // --json and --last are admitted), so anything left over that does not fit the chosen form
   // is a mistake. The role is checked first, so a typo is named whatever the count; then
@@ -141,25 +138,77 @@ export async function cmdRunDetail(
   if (model !== null && !last) fail(`history --model needs --last on a one-run trail (usage: ${RUN_DETAIL_USAGE})`);
   const classes = result !== null ? parseHistoryResultList(result) : null;
   const models = model !== null ? parseHistoryModelList(model) : null;
+  return { bare, role, classes, models };
+}
+
+/** The resolution half of cmdRunDetail: pick the run to open and read its detail. Bare `--last`
+ * takes the newest run of any role (its role from the row); `--last` with a role the newest run
+ * by number; the numbered path the user's positive integer. An empty or unreadable scan is null
+ * (the detail stays null, and the not-found branch of cmdRunDetail words it), so the resolver
+ * never reports a miss itself. */
+function resolveRunDetailTarget(
+  root: string,
+  parsed: ParsedRunDetailInvocation,
+  positionals: string[],
+  last: boolean,
+): { role: string; runNumber: number | null; detail: RunDetail | null } {
+  let role = parsed.role;
   // The run number: either the user's positive integer (the numbered path, through the
   // shared count parser — a non-positive or non-numeric n fails naming the shape; there is
   // no cap — the number selects, it does not size the scan) or the newest completed run's
   // number, read from readRunRows' newest-first scan for the role. An empty scan is not
   // found by construction, so the not-found path below takes it with the last-form wording.
   let runNumber: number | null;
-  if (bare) {
+  if (parsed.bare) {
     // `history --last` with no role: the newest completed run of any role; its role is the row's.
-    const row = newestRunRow(root, null, classes, models);
+    const row = newestRunRow(root, null, parsed.classes, parsed.models);
     if (row !== null) role = row.role;
     runNumber = row?.run ?? null;
   } else {
-    runNumber = last ? newestRunNumber(root, role, classes, models) : parseCountFlag("history <n>", positionals[1]);
+    runNumber = last ? newestRunNumber(root, role, parsed.classes, parsed.models) : parseCountFlag("history <n>", positionals[1]);
   }
   const detail = runNumber === null ? null : readRunDetail(root, role, runNumber);
+  return { role, runNumber, detail };
+}
+
+/** `tumwater history <role> [<n>] [--last [--result <class>[,...]]] [--stat] [--patch]
+ * [--transcript [--prompt] [--grep <text>]] [--json]`: print one completed
+ * run's full event trail. Read-only: stdout only, no state file created — a run the
+ * scan cannot find prints a not-found line and exits 0 (history's empty-output convention:
+ * an absent record is an answer, not a failure), and under --json it prints the JSON document
+ * `null` instead — the report --json precedent
+ * that every exit-0 output is parseable, never prose. `tumwater history <role> --last` resolves
+ * the role's newest completed run in the scanned window and prints its trail exactly as the
+ * numbered form would — the summary header and event rendering are shared, only the number's
+ * provenance differs (readRunRows' newest-first scan, not the user's argument). --last and
+ * a numeric <n> are rivals: exactly one positional under --last, exactly two without. With
+ * --last, `--result <class>[,...]` picks the newest run in the listed outcome classes instead
+ * (the listing's classes, scanning up to HISTORY_MAX_RUNS runs); it needs --last. `--model
+ * <selector>[,...]` with --last keeps only runs that started on a listed model (the listing's
+ * exact match) and composes with --result; it needs --last too. With --last and no role, the
+ * newest run of any role is opened (newestRunRow with a null role) and renders as its
+ * role's form. */
+export async function cmdRunDetail(
+  root: string,
+  positionals: string[],
+  json: boolean,
+  { last = false, stat = false, patch = false, transcript = false, prompt = false, grep = null, result = null, model = null }: {
+    last?: boolean;
+    stat?: boolean;
+    patch?: boolean;
+    transcript?: boolean;
+    prompt?: boolean;
+    grep?: string | null;
+    result?: string | null;
+    model?: string | null;
+  } = {},
+): Promise<void> {
+  const parsed = parseRunDetailInvocation(root, positionals, { last, transcript, prompt, grep, result, model });
+  const { role, runNumber, detail } = resolveRunDetailTarget(root, parsed, positionals, last);
   if (runNumber === null) {
     // The --last scan came up empty: not found by construction, the last-form wording.
     if (json) sayJson(null);
-    else say(runNotFoundLastMessage(bare ? null : role, classes, models));
+    else say(runNotFoundLastMessage(parsed.bare ? null : role, parsed.classes, parsed.models));
     return;
   }
   if (detail === null) {
