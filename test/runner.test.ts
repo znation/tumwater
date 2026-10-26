@@ -50,10 +50,10 @@ test("a run that changes files commits and merges to main", async () => {
   });
 });
 
-// Model-tiers part 2/8 (PLANS.md): the model each run starts on rides on the start events —
-// run_start names the role's resolved config (the budget fallback included, since the gate
-// swaps the runner's config to the fallback pair) and review_start the reviewer's.
-test("run_start and review_start record the model each run starts on", async () => {
+// Model-tiers part 2/8 (PLANS.md): the model each run starts on rides on the run_start
+// event — run_start names the role's resolved config (the budget fallback included, since the
+// gate swaps the runner's config to the fallback pair).
+test("run_start records the model each run starts on", async () => {
   const repo = await initializedRepo();
   const script = [
     // The review gate (enabled by default) runs after the commit: approve with zero usage so
@@ -65,7 +65,6 @@ test("run_start and review_start record the model each run starts on", async () 
   await withPi(script, async () => {
     const config = defaultConfig();
     config.model = "prov/m1";
-    config.review.model = "prov/r1";
     const runner = makeRoleRunner(repo, "improve", config);
     const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
@@ -73,12 +72,10 @@ test("run_start and review_start record the model each run starts on", async () 
     assert.equal(await mergeHead(repo, runner, config, "improve"), "changed");
     const starts = eventsOfType(repo, "run_start");
     assert.equal(starts[starts.length - 1]!.model, "prov/m1");
-    const reviews = eventsOfType(repo, "review_start");
-    assert.equal(reviews[reviews.length - 1]!.model, "prov/r1");
   });
 });
 
-test("run_start and review_start omit model when none is configured (pi's own default)", async () => {
+test("run_start omits model when none is configured (pi's own default)", async () => {
   const repo = await initializedRepo();
   const script = [
     APPROVE_PI,
@@ -92,8 +89,6 @@ test("run_start and review_start omit model when none is configured (pi's own de
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     const starts = eventsOfType(repo, "run_start");
     assert.equal("model" in starts[starts.length - 1]!, false);
-    const reviews = eventsOfType(repo, "review_start");
-    assert.equal("model" in reviews[reviews.length - 1]!, false);
   });
 });
 

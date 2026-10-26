@@ -363,21 +363,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Every case that remains keeps its original subject (rebase, check or batch/stack bookkeeping) and asserts the same outcome through a deterministic rejection.
 - No edit outside test/merger.test.ts.
 
-### Every commit is verified on main, part 3y/3: the runner's `review_start` model-recording cases are re-pointed to the surviving post-landing review (planned 2026-10-26 by the plan role, split from the too-large part 3t/3 after feature held it too large again (held 8); the second of two finer parts replacing part 3t/3's two-file scope, and independent in files of part 3t/3 and of every other planned part since it edits only test/runner.test.ts; touches test/runner.test.ts)
-
-**Previously held 8**
-
-**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/runner.test.ts`'s `run_start and review_start record the model each run starts on` and `run_start and review_start omit model when none is configured (pi's own default)` fail: both read the pre-merge reviewer's `review_start`. Re-point or drop the `review_start` half so the source switch lands against a suite that no longer depends on the reviewer.
-
-**Approach.** In `test/runner.test.ts`, re-point the `review_start` model-recording pair to the surviving post-landing review (`afterMerge: true`), or delete the `review_start` half if that path does not carry the reviewer's model. Keep the `run_start` assertions unchanged and leave every other case in the file untouched. The reviewer-run helpers in `test/fixtures/pi-events.ts` stay in place; part 3e/3 deletes them.
-
-**Files touched.** test/runner.test.ts
-
-**Acceptance criteria.**
-- `npm run test:gate` passes with the pre-merge reviewer still running.
-- A grep over `test/runner.test.ts` for `review_start` returns only post-landing (`afterMerge: true`) reviewer runs, or no reviewer-model pair at all.
-- No edit outside test/runner.test.ts.
-
 ### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 1/3: the pause-role lost-update test drives contention through the lock, not a spin barrier (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 2/3 and part 3/3 and editing only test/team-state.test.ts, so it holds no prerequisite and merges independently; the class plan's "isolation" option is dropped because the existing e2e step already runs the tier apart from the full suite and it still went red at host load ≈ 146, so only a deterministic signal fixes the verdict; touches test/team-state.test.ts)
 
 **Previously held 1**

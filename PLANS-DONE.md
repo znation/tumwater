@@ -5,6 +5,21 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3y/3: the runner's `review_start` model-recording cases are re-pointed to the surviving post-landing review (planned 2026-10-26 by the plan role, split from the too-large part 3t/3 after feature held it too large again (held 8); the second of two finer parts replacing part 3t/3's two-file scope, and independent in files of part 3t/3 and of every other planned part since it edits only test/runner.test.ts; touches test/runner.test.ts) — done 2026-10-26 by the feature role
+
+**Previously held 8**
+
+**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/runner.test.ts`'s `run_start and review_start record the model each run starts on` and `run_start and review_start omit model when none is configured (pi's own default)` fail: both read the pre-merge reviewer's `review_start`. Drop the `review_start` half so the source switch lands against a suite that no longer depends on the reviewer.
+
+**Approach.** In `test/runner.test.ts`, deleted the `review_start` model-recording pair from both cases: the surviving post-landing review's `review_start` (post-merge-review.ts) records no `model` — only the retiring pre-merge review-run.ts did — so the plan's own fallback applied (delete when that path does not carry the reviewer's model). Kept the `run_start` assertions unchanged and left every other case in the file untouched. The reviewer-run helpers in `test/fixtures/pi-events.ts` stay in place; part 3e/3 deletes them.
+
+**Files touched.** test/runner.test.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with the pre-merge reviewer still running.
+- A grep over `test/runner.test.ts` for `review_start` returns only post-landing (`afterMerge: true`) reviewer runs, or no reviewer-model pair at all — here, no reviewer-model pair remains.
+- No edit outside test/runner.test.ts.
+
 ### Every commit is verified on main, part 3q/3: the pre-merge reviewer's restack, bisect and check-strike cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3n/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/merger-bisect.test.ts test/merger-restack.test.ts test/merge-check-strikes.test.ts test/fixtures/merger-fixtures.ts) — done 2026-10-25 by the feature role
 
 **Previously held 7**
