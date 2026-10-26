@@ -231,6 +231,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Every commit is verified on main, part 3p/3: the pre-merge reviewer's single-change verdict, failure and re-review cases in test/merger.test.ts are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3n/3 after feature held it (held 7); split again 2026-10-26 by the plan role after feature held it too large again (held 8): the rebase, check and batch/stack cases in the same file moved to part 3x/3, which is held until this part lands so the two serialise on one file; touches test/merger.test.ts)
 
+**Needs review 2026-10-26 by feature: too large for one run (held 9)**
+
 **Previously held 8**
 
 **Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes every `test/merger.test.ts` case in the file's first half — the single-change verify and merge path through the re-review cases — fail, because each drives a `reviewerPi` verdict, a reviewer failure or the reviewer's usage fold. Move those cases first, as part 3l/3 did for `test/review.test.ts` and `test/review-precheck.test.ts`, so the source switch lands against a suite that no longer depends on the reviewer. Part 3x/3 takes the file's other reviewer cases, the rebase/check/batch/stack blocks below `a merge pinned behind main's advance is rebased onto main BEFORE the gate and merges both`.
