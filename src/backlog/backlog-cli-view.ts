@@ -37,37 +37,19 @@ function positionRuns(positions: readonly number[]): string {
   return runs.join(", ");
 }
 
-/** The shared shell of the `bug --list` and `plan --list` CLI cases — the read half of the
- * operator queue whose `--edit`/`--cancel` flags address entries by position. Reads the same
- * entries, in the same file order, that locateEntry numbers for `--edit`/`--cancel`, pairs
- * each with its eligibility hold (backlogHolds), and prints them numbered from 1, or the
- * command's `no …` line on an empty or missing file. Like `tumwater backlog` and `tumwater
- * questions` it is read-only: no requireReadyRepo gate and no wake. `--list` and `--json` are
- * the two booleans this shell consumes (repeats refused), `--help`/`-h` is tolerated, and any
- * positional or other flag is refused through rejectUnknownArgs.
- *
- * `--grep <text>` searches the active entries too: it keeps the entries whose heading or
- * body contains the text (case-insensitive), each under its unfiltered number so a printed
- * position still reaches `--show`/`--edit`/`--cancel` — the active twin of the finished
- * entries' `--done --grep`.
- *
- * `--ready` keeps the entries with no hold under their unfiltered numbers (composes with
- * `--grep` and `--json`; refused with `--done`, whose entries carry no holds).
- *
- * `--done [-n <count>] [--grep <text>]` (each once; `-n` and `--grep` need `--done`) lists the
- * newest finished entries instead (BUGS.md ## Fixed or PLANS.md ## Done, numbered, default 10)
- * with `older` counting those left out; --json carries each entry's `position` and
- * `completedOn` heading date. `--grep` keeps the entries whose heading or body contains the
- * text (case-insensitive); each keeps its unfiltered number, so it is the `--show <n> --done`
- * number, and `older` counts matches left out. `plan --list` prose
- * groups a series' blocked parts into one line (groupBlockedSeries). */
-export function listAndAnnounce(
-  root: string,
-  args: string[],
-  command: string,
-  fileName: string,
-  sectionTitle: string,
-): void {
+/** Scans the `--list` flag vocabulary (`--list`, `--json`, `--done`, `--ready`, `-n`, `--grep`,
+ * each once, plus tolerated `--help`/`-h`) into the parsed locals and returns them with `rest`,
+ * the leftover args rejectUnknownArgs will refuse. Reads no entry, filters nothing, prints
+ * nothing; the `fail` calls it makes are the flag-usage refusals (a repeat or a `--grep`/`-n`
+ * with missing text). */
+function parseListArgs(args: string[], command: string): {
+  json: boolean;
+  done: boolean;
+  ready: boolean;
+  count: number | null;
+  grep: string | null;
+  rest: string[];
+} {
   let json = false;
   let list = false;
   let done = false;
@@ -114,49 +96,65 @@ export function listAndAnnounce(
     if (arg === "--help" || arg === "-h") continue;
     rest.push(arg);
   }
-  // rejectUnknownArgs names a stray positional and an unknown flag with this command's (empty)
-  // valid-flag list: the vocabulary a list invocation accepts is exactly --list and --json,
-  // both consumed above.
-  rejectUnknownArgs(command, rest, []);
-  refuseTeamWorkspace(root);
-  if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
-  // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
-  if (ready && done) fail("--ready needs the active list (finished entries carry no holds)");
-  const bugSection = sectionTitle === "Open";
-  if (done) {
-    const numbered = (bugSection ? fixedBugEntries(root) : donePlanEntries(root)).map((entry, i) => ({
-      entry,
-      position: i + 1,
-    }));
-    const pattern = grep;
-    const matches = pattern === null ? numbered : numbered.filter((m) => entryMatches(m.entry, pattern));
-    const limit = count ?? 10;
-    const shown = matches.slice(0, limit);
-    const older = matches.length - shown.length;
-    if (json) {
-      const dateRe = bugSection ? FIXED_DATE_RE : DONE_DATE_RE;
-      sayJson({
-        entries: shown.map(({ entry: e, position }) => ({
-          position,
-          title: e.title,
-          body: e.body,
-          completedOn: completionDate(e.title, dateRe),
-        })),
-        older,
-      });
-      return;
-    }
-    const what = bugSection ? "fixed bugs" : "done plans";
-    if (shown.length === 0) {
-      say(pattern === null ? `no ${what}` : `no ${what} match "${pattern}"`);
-      return;
-    }
-    const lines = shown.map((m) => `${m.position}. ${m.entry.title}`);
-    if (older > 0) lines.push(`(${older} older; -n ${matches.length} shows more)`);
-    const header = pattern === null ? `${what} in ${fileName}, newest first:` : `${what} in ${fileName} matching "${pattern}", newest first:`;
-    say(`${header}\n${lines.join("\n")}`);
+  return { json, done, ready, count, grep, rest };
+}
+
+/** The `--done` half of the list shell: the newest finished entries (BUGS.md ## Fixed or
+ * PLANS.md ## Done), filtered by `--grep`, limited by `-n`, printed as `--json` or prose. */
+function announceFinishedList(
+  root: string,
+  fileName: string,
+  bugSection: boolean,
+  grep: string | null,
+  count: number | null,
+  json: boolean,
+): void {
+  const numbered = (bugSection ? fixedBugEntries(root) : donePlanEntries(root)).map((entry, i) => ({
+    entry,
+    position: i + 1,
+  }));
+  const pattern = grep;
+  const matches = pattern === null ? numbered : numbered.filter((m) => entryMatches(m.entry, pattern));
+  const limit = count ?? 10;
+  const shown = matches.slice(0, limit);
+  const older = matches.length - shown.length;
+  if (json) {
+    const dateRe = bugSection ? FIXED_DATE_RE : DONE_DATE_RE;
+    sayJson({
+      entries: shown.map(({ entry: e, position }) => ({
+        position,
+        title: e.title,
+        body: e.body,
+        completedOn: completionDate(e.title, dateRe),
+      })),
+      older,
+    });
     return;
   }
+  const what = bugSection ? "fixed bugs" : "done plans";
+  if (shown.length === 0) {
+    say(pattern === null ? `no ${what}` : `no ${what} match "${pattern}"`);
+    return;
+  }
+  const lines = shown.map((m) => `${m.position}. ${m.entry.title}`);
+  if (older > 0) lines.push(`(${older} older; -n ${matches.length} shows more)`);
+  const header = pattern === null ? `${what} in ${fileName}, newest first:` : `${what} in ${fileName} matching "${pattern}", newest first:`;
+  say(`${header}\n${lines.join("\n")}`);
+}
+
+/** The active half of the list shell: the open entries with their holds, in-progress claim
+ * marks and age suffixes, optionally reduced to the ready ones, as `--json` or prose, grouping
+ * a plan's blocked parts into one line (groupBlockedSeries). */
+function announceActiveList(
+  root: string,
+  fileName: string,
+  command: string,
+  bugSection: boolean,
+  sectionTitle: string,
+  grep: string | null,
+  ready: boolean,
+  json: boolean,
+): void {
   const entries = bugSection ? openBugEntries(root) : plannedPlanEntries(root);
   const holds = backlogHolds(root);
   const entryHolds = bugSection ? holds.bugs : holds.plans;
@@ -226,6 +224,51 @@ export function listAndAnnounce(
   if (grouped) lines.push("(each blocked series is one line; --show <n> prints a part, --json lists every entry)");
   if (hidden > 0) lines.push(hiddenNote);
   say(`${noun}s in ${fileName}:\n${lines.join("\n")}`);
+}
+
+/** The shared shell of the `bug --list` and `plan --list` CLI cases — the read half of the
+ * operator queue whose `--edit`/`--cancel` flags address entries by position. Reads the same
+ * entries, in the same file order, that locateEntry numbers for `--edit`/`--cancel`, pairs
+ * each with its eligibility hold (backlogHolds), and prints them numbered from 1, or the
+ * command's `no …` line on an empty or missing file. Like `tumwater backlog` and `tumwater
+ * questions` it is read-only: no requireReadyRepo gate and no wake. `--list` and `--json` are
+ * the two booleans this shell consumes (repeats refused), `--help`/`-h` is tolerated, and any
+ * positional or other flag is refused through rejectUnknownArgs.
+ *
+ * `--grep <text>` searches the active entries too: it keeps the entries whose heading or
+ * body contains the text (case-insensitive), each under its unfiltered number so a printed
+ * position still reaches `--show`/`--edit`/`--cancel` — the active twin of the finished
+ * entries' `--done --grep`.
+ *
+ * `--ready` keeps the entries with no hold under their unfiltered numbers (composes with
+ * `--grep` and `--json`; refused with `--done`, whose entries carry no holds).
+ *
+ * `--done [-n <count>] [--grep <text>]` (each once; `-n` and `--grep` need `--done`) lists the
+ * newest finished entries instead (BUGS.md ## Fixed or PLANS.md ## Done, numbered, default 10)
+ * with `older` counting those left out; --json carries each entry's `position` and
+ * `completedOn` heading date. `--grep` keeps the entries whose heading or body contains the
+ * text (case-insensitive); each keeps its unfiltered number, so it is the `--show <n> --done`
+ * number, and `older` counts matches left out. `plan --list` prose
+ * groups a series' blocked parts into one line (groupBlockedSeries). */
+export function listAndAnnounce(
+  root: string,
+  args: string[],
+  command: string,
+  fileName: string,
+  sectionTitle: string,
+): void {
+  const { json, done, ready, count, grep, rest } = parseListArgs(args, command);
+  // rejectUnknownArgs names a stray positional and an unknown flag with this command's (empty)
+  // valid-flag list: the vocabulary a list invocation accepts is exactly --list and --json,
+  // both consumed above.
+  rejectUnknownArgs(command, rest, []);
+  refuseTeamWorkspace(root);
+  if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
+  // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
+  if (ready && done) fail("--ready needs the active list (finished entries carry no holds)");
+  const bugSection = sectionTitle === "Open";
+  if (done) announceFinishedList(root, fileName, bugSection, grep, count, json);
+  else announceActiveList(root, fileName, command, bugSection, sectionTitle, grep, ready, json);
 }
 
 /** The shell of `bug --show` and `plan --show`: `--show <n>` (once), an optional `--json`
