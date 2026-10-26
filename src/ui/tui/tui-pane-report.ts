@@ -66,78 +66,92 @@ export function createReportPane(session: TuiPaneSession) {
     return true;
   };
 
-  const handleKey = (
-    key: { ctrl?: boolean; name?: string },
-    ctx: TuiPaneCtx,
-  ): boolean => {
+  /** Ctrl+E arm: advances the Usage and Failures panes' trailing report window (mnemonic:
+   * **E**lapsed). Guarded out of the budget and role-prompt editors like the other
+   * mode-sensitive keys. (The Queued-edit and backlog title-edit Ctrl+E arms live in
+   * tui-editors, which handled them above and returned before this branch when they
+   * matched.) The window is session state: advancing it off either report pane
+   * only changes the label, and the next Ctrl+T into one computes the cache with it; on a
+   * report pane this handler recomputes the cached Markdown from the newly windowed
+   * collector and re-enters the body at its head. True when consumed. */
+  const reportWindowCycle = (ctx: TuiPaneCtx): boolean => {
     if (
-      key.ctrl && key.name === "e" &&
       !ctx.es.budgetMode && !ctx.es.rolePromptFor && !ctx.es.pauseEditMode &&
       !ctx.es.queuedEditFor && !ctx.es.answerFor && !ctx.es.entryEditFor &&
       !ctx.es.retireMode && promptLineFree(ctx.es)
     ) {
-      // Ctrl+E advances the Usage and Failures panes' trailing report window (mnemonic:
-      // **E**lapsed). Guarded out of the budget and role-prompt editors like the other
-      // mode-sensitive keys. (The Queued-edit and backlog title-edit Ctrl+E arms live in
-      // tui-editors, which handled them above and returned before this branch when they
-      // matched.) The window is session state: advancing it off either report pane
-      // only changes the label, and the next Ctrl+T into one computes the cache with it; on a
-      // report pane this handler recomputes the cached Markdown from the newly windowed
-      // collector and re-enters the body at its head.
       reportStep = 0;
       reportWindow = nextInCycle(REPORT_WINDOWS, reportWindow);
       recompute();
       session.requestRender();
       return true;
     }
+    return false;
+  };
+
+  /** Ctrl+P arm: steps the chosen trailing window back one window length (the `report --since
+   * --until` window), wrapping to the trailing window once the next window's start would
+   * pass the 7-day cap. */
+  const reportStepBack = (ctx: TuiPaneCtx): boolean => {
     if (
-      key.ctrl && key.name === "p" &&
-      (session.view === session.roleIds.length + 2 || session.view === session.roleIds.length + 3) &&
-      !ctx.es.budgetMode && !ctx.es.rolePromptFor && !ctx.es.pauseEditMode &&
-      !ctx.es.queuedEditFor && !ctx.es.answerFor && !ctx.es.entryEditFor &&
-      !ctx.es.retireMode && promptLineFree(ctx.es)
+      (session.view !== session.roleIds.length + 2 && session.view !== session.roleIds.length + 3) ||
+      ctx.es.budgetMode || ctx.es.rolePromptFor || ctx.es.pauseEditMode ||
+      ctx.es.queuedEditFor || ctx.es.answerFor || ctx.es.entryEditFor ||
+      ctx.es.retireMode || !promptLineFree(ctx.es)
     ) {
-      // Ctrl+P steps the chosen trailing window back one window length (the `report --since
-      // --until` window), wrapping to the trailing window once the next window's start would
-      // pass the 7-day cap.
-      if (reportWindow === null) {
-        session.flashMessage("pick a window with Ctrl+E to step back through earlier windows");
-        return true;
-      }
-      if ((reportStep + 2) * reportWindow <= REPORT_SINCE_MAX_MS) reportStep += 1;
-      else {
-        reportStep = 0;
-        session.flashMessage(`oldest window reached; back to the last ${cycleLabel(REPORT_WINDOWS, reportWindow)}`);
-      }
-      recompute();
-      session.requestRender();
+      return false;
+    }
+    if (reportWindow === null) {
+      session.flashMessage("pick a window with Ctrl+E to step back through earlier windows");
       return true;
     }
-    if (key.ctrl && key.name === "g" && promptLineFree(ctx.es)) {
-      // Ctrl+G's team/base-role scope arm, reached for every view other than Activity (0) and
-      // History (N+4), which the aggregator routes ahead of this module. A pane showing the
-      // scope recomputes its cached Markdown and re-enters the body at its head; every other
-      // view keeps the scope for the Ctrl+T entry that later computes with it.
-      const slots = scopeCycle(session.roleIds);
-      const slot = slots.indexOf(scopeRole);
-      scopeRole = slots[(slot + 1) % slots.length] ?? null;
-      recompute();
-      session.requestRender();
-      return true;
+    if ((reportStep + 2) * reportWindow <= REPORT_SINCE_MAX_MS) reportStep += 1;
+    else {
+      reportStep = 0;
+      session.flashMessage(`oldest window reached; back to the last ${cycleLabel(REPORT_WINDOWS, reportWindow)}`);
     }
+    recompute();
+    session.requestRender();
+    return true;
+  };
+
+  /** Ctrl+G arm (team/base-role scope): reached for every view other than Activity (0) and
+   * History (N+4), which the aggregator routes ahead of this module. A pane showing the
+   * scope recomputes its cached Markdown and re-enters the body at its head; every other
+   * view keeps the scope for the Ctrl+T entry that later computes with it. */
+  const reportScopeCycle = (ctx: TuiPaneCtx): boolean => {
+    if (!promptLineFree(ctx.es)) return false;
+    const slots = scopeCycle(session.roleIds);
+    const slot = slots.indexOf(scopeRole);
+    scopeRole = slots[(slot + 1) % slots.length] ?? null;
+    recompute();
+    session.requestRender();
+    return true;
+  };
+
+  /** PgUp/PgDn arm: within-body scroll in the Markdown panes (usage report, failures — and,
+   * via the same view-index bound, the other text panes from History on): PgDn/PgUp page the
+   * cached string, clamped at both ends. The total is derived from the cache, mirroring how
+   * entry mode derives it from e.body; every other view ignores these keys as today. */
+  const reportBodyPage = (page: "up" | "down"): boolean => {
+    if (session.view < session.roleIds.length + 2) return false;
+    const budget = session.view === session.roleIds.length + 6
+      ? Math.max(1, session.eventBudget - session.queuedSearchLines)
+      : session.eventBudget;
+    session.paneScroll = pageMarkdownBody(session.paneScroll, session.paneCache, budget, page);
+    session.requestRender();
+    return true;
+  };
+
+  const handleKey = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    if (key.ctrl && key.name === "e") return reportWindowCycle(ctx);
+    if (key.ctrl && key.name === "p") return reportStepBack(ctx);
+    if (key.ctrl && key.name === "g") return reportScopeCycle(ctx);
     const page = pageDir(key.name);
-    if (page !== null && session.view >= session.roleIds.length + 2) {
-      // Within-body scroll in the Markdown panes (usage report, failures — and, via the same
-      // view-index bound, the other text panes from History on): PgDn/PgUp page the cached
-      // string, clamped at both ends. The total is derived from the cache, mirroring how entry
-      // mode derives it from e.body; every other view ignores these keys as today.
-      const budget = session.view === session.roleIds.length + 6
-        ? Math.max(1, session.eventBudget - session.queuedSearchLines)
-        : session.eventBudget;
-      session.paneScroll = pageMarkdownBody(session.paneScroll, session.paneCache, budget, page);
-      session.requestRender();
-      return true;
-    }
+    if (page !== null) return reportBodyPage(page);
     return false;
   };
 

@@ -45,61 +45,70 @@ export function createActivityPane(
     activityScroll = null;
   };
 
+  /** Ctrl+G arm: the Activity feed scopes over the same raw roster ids, so `feature-2` is its
+   * own slot; the filter reads exact role ids through eventRole. The scroll resets because its
+   * offset indexed the old (unfiltered or differently filtered) list. */
+  const activityScopeCycle = (ctx: TuiPaneCtx): boolean => {
+    if (!promptLineFree(ctx.es)) return false;
+    const slots: Array<string | null> = [null, ...session.roleIds];
+    const slot = slots.indexOf(activityRole);
+    activityRole = slots[(slot + 1) % slots.length] ?? null;
+    activityScroll = null;
+    session.requestRender();
+    return true;
+  };
+
+  /** Ctrl+O arm: the Activity type/notable cycle: all → notable → first present type → … → last
+   * present type → all. `present` is built from the pre-type read (type `null`, no notable
+   * cull), so every type stays reachable once one is selected — the same reason the dashboard
+   * builds its chip set before its type filter. The scroll resets because its offset indexed
+   * the old filtered list. */
+  const activityTypeCycle = (ctx: TuiPaneCtx): boolean => {
+    if (!promptLineFree(ctx.es)) return false;
+    const present = [...new Set(activityEvents(session.root, activityRole, activityGrep, null).map((e) => e.type))].sort();
+    const slots: Array<{ notable: boolean; type: string | null }> = [
+      { notable: false, type: null },
+      { notable: true, type: null },
+      ...present.map((t) => ({ notable: false, type: t })),
+    ];
+    const idx = slots.findIndex((s) => s.notable === activityNotable && s.type === activityType);
+    const next = slots[(idx + 1) % slots.length] ?? slots[0]!;
+    activityNotable = next.notable;
+    activityType = next.type;
+    activityScroll = null;
+    session.requestRender();
+    return true;
+  };
+
+  /** PgUp/PgDn arm: the Activity pane keeps the live tail by default; PgUp pauses follow and
+   * pages back through the loaded event tail, PgDn returns toward it and re-enables follow once
+   * the window reaches the tail. Both directions clamp to [0, total - rows], and a log with
+   * rows or fewer events stays on the tail. `rows` is the feed's window height — one body
+   * line short of eventBudget while the tally line is drawn (its paneBody twin, the
+   * `rows = Math.max(1, eventBudget - tallyLine.length)` in tui-pane.ts) — so each page
+   * advances exactly as far as the feed displays and no event is skipped or unreachable
+   * while paging. The read is the pane's own fixed tail term (and active role/text
+   * filter), so it hits readEvents' stat cache rather than rescanning the log. */
+  const activityTailPage = (page: "up" | "down"): boolean => {
+    if (session.view !== 0) return false;
+    const total = activityEvents(session.root, activityRole, activityGrep, activityType, activityNotable).length;
+    const rows = total === 0 ? session.eventBudget : Math.max(1, session.eventBudget - 1);
+    const maxStart = Math.max(0, total - rows);
+    const current = activityScroll ?? maxStart;
+    const next = stepEntryScroll(current, total, rows, page);
+    activityScroll = next >= maxStart ? null : next;
+    session.requestRender();
+    return true;
+  };
+
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
-    if (key.ctrl && key.name === "g" && promptLineFree(ctx.es)) {
-      // The Activity feed scopes over the same raw roster ids, so `feature-2` is its own
-      // slot; the filter reads exact role ids through eventRole. The scroll resets because
-      // its offset indexed the old (unfiltered or differently filtered) list.
-      const slots: Array<string | null> = [null, ...session.roleIds];
-      const slot = slots.indexOf(activityRole);
-      activityRole = slots[(slot + 1) % slots.length] ?? null;
-      activityScroll = null;
-      session.requestRender();
-      return true;
-    }
-    if (key.ctrl && key.name === "o" && promptLineFree(ctx.es)) {
-      // The Activity type/notable cycle: all → notable → first present type → … → last present
-      // type → all. `present` is built from the pre-type read (type `null`, no notable cull), so
-      // every type stays reachable once one is selected — the same reason the dashboard builds
-      // its chip set before its type filter. The scroll resets because its offset indexed the
-      // old filtered list.
-      const present = [...new Set(activityEvents(session.root, activityRole, activityGrep, null).map((e) => e.type))].sort();
-      const slots: Array<{ notable: boolean; type: string | null }> = [
-        { notable: false, type: null },
-        { notable: true, type: null },
-        ...present.map((t) => ({ notable: false, type: t })),
-      ];
-      const idx = slots.findIndex((s) => s.notable === activityNotable && s.type === activityType);
-      const next = slots[(idx + 1) % slots.length] ?? slots[0]!;
-      activityNotable = next.notable;
-      activityType = next.type;
-      activityScroll = null;
-      session.requestRender();
-      return true;
-    }
+    if (key.ctrl && key.name === "g") return activityScopeCycle(ctx);
+    if (key.ctrl && key.name === "o") return activityTypeCycle(ctx);
     const page = pageDir(key.name);
-    if (page !== null && session.view === 0) {
-      // The Activity pane keeps the live tail by default; PgUp pauses follow and pages back
-      // through the loaded event tail, PgDn returns toward it and re-enables follow once the
-      // window reaches the tail. Both directions clamp to [0, total - rows], and a log with
-      // rows or fewer events stays on the tail. `rows` is the feed's window height — one body
-      // line short of eventBudget while the tally line is drawn (its paneBody twin, the
-      // `rows = Math.max(1, eventBudget - tallyLine.length)` in tui-pane.ts) — so each page
-      // advances exactly as far as the feed displays and no event is skipped or unreachable
-      // while paging. The read is the pane's own fixed tail term (and active role/text
-      // filter), so it hits readEvents' stat cache rather than rescanning the log.
-      const total = activityEvents(session.root, activityRole, activityGrep, activityType, activityNotable).length;
-      const rows = total === 0 ? session.eventBudget : Math.max(1, session.eventBudget - 1);
-      const maxStart = Math.max(0, total - rows);
-      const current = activityScroll ?? maxStart;
-      const next = stepEntryScroll(current, total, rows, page);
-      activityScroll = next >= maxStart ? null : next;
-      session.requestRender();
-      return true;
-    }
+    if (page !== null) return activityTailPage(page);
     return false;
   };
 
