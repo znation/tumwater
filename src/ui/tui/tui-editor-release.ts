@@ -28,56 +28,63 @@ export function createQuarantineReleaseEditor(session: TuiEditorSession): TuiEdi
     restoreDraft();
   };
 
+  // Open release-edit mode on the Failures view's prompt line (Ctrl+X). The Failures index
+  // guard keeps the same key's other arms (Transcript notes-clear, Backlog cancel, and the
+  // like) on their own views; a guard miss returns false so the key falls through. The line
+  // edits one quarantined test path, typed exactly as the Failures list shows it; Enter
+  // releases that test through the same releaseQuarantinedTest core the CLI and the dashboard
+  // button use. Entering saves the prompt draft and blanks the line; leaving restores it.
+  const openReleaseEdit = (ctx: TuiEditorCtx): boolean => {
+    if (ctx.view !== ctx.roleIds.length + 3 || releaseMode) return false;
+    if (session.editorEntryDenied("release")) return true;
+    // Mid-recall, hand the arrows' saved draft back before the release editor takes the line —
+    // the same settle the retire and role editors do — so leaving restores the draft, not a
+    // history entry, with no stale recall state riding along.
+    restoreDraft = session.takeDraft();
+    releaseMode = true;
+    session.held.release = true;
+    session.input = "";
+    session.cursor = 0;
+    session.flashMessage("release a quarantined test: type its test path as the Failures list shows it, Enter to release, Esc to cancel");
+    return true;
+  };
+
+  // Esc cancels release-edit mode, restoring the previous prompt text and removing nothing.
+  const cancelReleaseEdit = (): boolean => {
+    exitReleaseMode();
+    session.flashMessage("release cancelled");
+    return true;
+  };
+
+  // Enter releases the typed test path through releaseQuarantinedTest — the same core, and
+  // the same single-press confirmation, the CLI's `tumwater quarantine --release <n>` and
+  // the dashboard Failures card's Release button use — then flashes the shared outcome
+  // wording and repaints the Failures body so the released line is gone. An empty name, or
+  // one not in the quarantine, flashes and STAYS in the editor so the operator can fix it.
+  const submitReleaseEdit = (): boolean => {
+    const test = session.input.trim();
+    if (test === "") {
+      session.flashMessage("a test name is required");
+      return true;
+    }
+    if (!releaseQuarantinedTest(session.root, test)) {
+      session.flashMessage(`not in the flake quarantine: ${test}`);
+      return true;
+    }
+    exitReleaseMode();
+    session.flashMessage(`released quarantined test ${test} — the gate no longer excuses it`);
+    session.refreshReport();
+    return true;
+  };
+
   const handleKey = (
     _str: string | undefined,
     key: { ctrl?: boolean; name?: string },
     ctx: TuiEditorCtx,
   ): boolean => {
-    if (key.ctrl && key.name === "x" && ctx.view === ctx.roleIds.length + 3 && !releaseMode) {
-      // Ctrl+X opens release-edit mode on the Failures view's prompt line (the same key the
-      // Transcript notes-clear, Backlog cancel, and other arms use on their own views,
-      // guarded away here by the Failures index). The line edits one quarantined test path,
-      // typed exactly as the Failures list shows it; Enter releases that test through the same
-      // releaseQuarantinedTest core the CLI and the dashboard button use. Entering saves the
-      // prompt draft and blanks the line; leaving restores it.
-      if (session.editorEntryDenied("release")) return true;
-      // Mid-recall, hand the arrows' saved draft back before the release editor takes the line —
-      // the same settle the retire and role editors do — so leaving restores the draft, not a
-      // history entry, with no stale recall state riding along.
-      restoreDraft = session.takeDraft();
-      releaseMode = true;
-      session.held.release = true;
-      session.input = "";
-      session.cursor = 0;
-      session.flashMessage("release a quarantined test: type its test path as the Failures list shows it, Enter to release, Esc to cancel");
-      return true;
-    }
-    if (key.name === "escape" && releaseMode) {
-      // Esc cancels release-edit mode, restoring the previous prompt text and removing nothing.
-      exitReleaseMode();
-      session.flashMessage("release cancelled");
-      return true;
-    }
-    if (key.name === "return" && releaseMode) {
-      // Enter releases the typed test path through releaseQuarantinedTest — the same core, and
-      // the same single-press confirmation, the CLI's `tumwater quarantine --release <n>` and
-      // the dashboard Failures card's Release button use — then flashes the shared outcome
-      // wording and repaints the Failures body so the released line is gone. An empty name, or
-      // one not in the quarantine, flashes and STAYS in the editor so the operator can fix it.
-      const test = session.input.trim();
-      if (test === "") {
-        session.flashMessage("a test name is required");
-        return true;
-      }
-      if (!releaseQuarantinedTest(session.root, test)) {
-        session.flashMessage(`not in the flake quarantine: ${test}`);
-        return true;
-      }
-      exitReleaseMode();
-      session.flashMessage(`released quarantined test ${test} — the gate no longer excuses it`);
-      session.refreshReport();
-      return true;
-    }
+    if (key.ctrl && key.name === "x") return openReleaseEdit(ctx);
+    if (key.name === "escape" && releaseMode) return cancelReleaseEdit();
+    if (key.name === "return" && releaseMode) return submitReleaseEdit();
     return false;
   };
 
