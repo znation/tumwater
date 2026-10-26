@@ -123,6 +123,7 @@ export function followUntilParentGone(
   });
 }
 
+
 /** `tumwater logs [-f] [-n <count>] [--since <duration>] [--until <duration>]
  * [--role <id>[,<id>...]] [--transcript <id>] [--prompt]
  * [--grep <text>]`: follow or dump the harness event log, with `--since` a bounded
@@ -131,6 +132,55 @@ export function followUntilParentGone(
  * or with `--transcript` one role's agent transcript (see cmdLogsTranscript). `-f` follows until
  * Ctrl+C or until its parent process exits. */
 export async function cmdLogs(root: string, args: string[], seams: FollowSeams = {}): Promise<void> {
+  const feed = parseLogsFeed(root, args);
+  // `--since <duration>` is the window-shaped view over the same event log the -n view dumps:
+  // it reads a bounded past window (event-window.ts's day-keyed backwards scan) and prints the
+  // survivors oldest-first, so an operator can ask for "the hour around that 429 storm" without
+  // guessing a count. Rival shapes stay exclusive — follow means "from now on", -n means "last
+  // N", and --transcript swaps in a transcript rather than this log — and each failure names
+  // both flags. (--prompt requires --transcript, so it is excluded with it.)
+  const ms = parseSinceFlag(feed.rest, "logs --since", LOGS_SINCE_MAX_MS);
+  const untilMs = parseSinceFlag(feed.rest, "logs --until", LOGS_SINCE_MAX_MS, "--until");
+  failUntilShorterThanSince("logs", untilMs, ms);
+  if (ms !== null) {
+    sayLogsWindow(root, feed, ms, untilMs);
+    return;
+  }
+  const nRaw = flagValue(feed.rest, "-n");
+  const limit = nRaw !== null ? parseCountFlag("-n", nRaw) : 50;
+  // The event feed (no --transcript) never needs the config at all: parseRoleScope reads it only
+  // when the flag is present.
+  const role = parseRoleScope(root, feed.rest, "--transcript", LOGS_TRANSCRIPT_VALUE_ERROR);
+  const showPrompts = feed.rest.includes("--prompt");
+  if (showPrompts && role === null) fail("logs --prompt needs --transcript <id>");
+  if (role !== null) {
+    await cmdLogsTranscript(root, role, limit, feed.follow, showPrompts, feed.grepLower, feed.grepPattern, seams);
+    return;
+  }
+  await sayLogsTail(root, feed, limit, seams);
+}
+
+interface LogsFeed {
+  rest: string[];
+  grepPattern: string | null;
+  grepLower: string | null;
+  type: string | null;
+  typePieces: string[];
+  roles: string[] | null;
+  roleEmpty: string;
+  notable: boolean;
+  json: boolean;
+  count: boolean;
+  follow: boolean;
+  filtersGrepOrType: boolean;
+  filter: (e: HarnessEvent) => boolean;
+}
+
+/** Scan the one-shot flag vocabulary (`--grep`, `--type`, `--role`, `--notable`, `--json`,
+ * `--count`, `-f`) and compose it into the single `filter` rule plus the locals every feed view
+ * shares. One scan (and one home for each rival check), so no flag rule lives in a view and a
+ * `--since`/`--count`/`-f` rule is found here by name. */
+function parseLogsFeed(root: string, args: string[]): LogsFeed {
   // `--grep <text>` filters the event feed (the -n view and its follow) and, with --transcript,
   // the transcript's entries (see cmdLogsTranscript): case-insensitive
   // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
@@ -156,10 +206,10 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   if (type !== null && typePieces.length === 0) fail(TYPE_VALUE_ERROR);
   const wantedTypes = new Set(typePieces.map(canonicalEventType));
   const typeFilter = type === null ? null : (e: HarnessEvent) => wantedTypes.has(e.type);
-  // The composed feed rule every emit site threads today's grep-only predicate through:
-  // an event passes when it is absent-or-matches the --grep substring AND absent-or-equals
-  // the --type id, held in one place so the --since window, the -n tally, and the follow
-  // cannot drift on what an event must satisfy.
+  // The composed feed rule every emit site threads through: an event passes when it is
+  // absent-or-matches the --grep substring AND absent-or-equals the --type id AND (for --role)
+  // is filed under a listed role AND (for --notable) is not routine, held in one place so the
+  // --since window, the -n tally, and the follow cannot drift on what an event must satisfy.
   // `--role <id>[,<id>...]` joins them: an event passes when the role it was filed under, or
   // that role's base id (so `--role feature` takes `feature-2` too), is listed. It
   // composes with --since. The value scan reads `rest`, which holds no --grep/--type value tokens.
@@ -176,7 +226,7 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   // --transcript transcript view.
   const notable = rest.includes("--notable");
   rejectTranscriptViewRival(rest, "--notable", notable);
-  const feedFilter = (e: HarnessEvent) =>
+  const filter = (e: HarnessEvent) =>
     (grepLower === null || eventMatchesGrep(e, grepLower)) &&
     (typeFilter === null || typeFilter(e)) &&
     (roleFilter === null || roleFilter(e)) &&
@@ -202,112 +252,89 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   if (count && follow)
     failRivalShapes("logs --count", "-f/--follow", "counting implies a bounded window; -f follows from now on");
   if (type !== null) rejectTranscriptViewRival(rest, "--type", true);
-  // `--since <duration>` is the window-shaped view over the same event log the -n view dumps:
-  // it reads a bounded past window (event-window.ts's day-keyed backwards scan) and prints the
-  // survivors oldest-first, so an operator can ask for "the hour around that 429 storm" without
-  // guessing a count. Rival shapes stay exclusive — follow means "from now on", -n means "last
-  // N", and --transcript swaps in a transcript rather than this log — and each failure names
-  // both flags. (--prompt requires --transcript, so it is excluded with it.)
-  const ms = parseSinceFlag(rest, "logs --since", LOGS_SINCE_MAX_MS);
-  const untilMs = parseSinceFlag(rest, "logs --until", LOGS_SINCE_MAX_MS, "--until");
-  failUntilShorterThanSince("logs", untilMs, ms);
-  if (ms !== null) {
-    if (follow)
-      failRivalShapes("logs --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
-    if (rest.includes("-n")) failRivalShapes("logs --since", "-n", "a count and a window are rival shapes");
-    rejectTranscriptViewRival(rest, "--since", true);
-    // covered is only consulted below when the window has rows (an empty window returns
-    // earlier), so the helper's vacuous empty-log branch never reaches the note here.
-    const { cutoff, events: windowEvents, covered } = readEventsSince(root, ms);
-    const events = untilMs === null ? windowEvents : windowEvents.filter((e) => e.ts < cutoff + ms - untilMs);
-    const windowPhrase =
-      untilMs === null ? `in ${durationLabel(ms)}` : betweenWindow(ms, untilMs);
-    // `--grep`, `--type` and `--role` all filter the window through feedFilter: only the
-    // window events that pass are printed, and an all-filtered window answers with the
-    // no-match prose (the filter's own line) instead of the generic empty-window one —
-    // "which merge_failed in the last hour" filters the same as it would the -n view.
-    const filtered = events.filter(feedFilter);
-    if (filtered.length === 0) {
-      // In JSON mode an empty result answers silently — an empty output IS the machine-readable
-      // answer, and prose would corrupt a consumer's NDJSON stream.
-      if (!json) {
-        if (notable && grepPattern === null && type === null && roles === null)
-          say(`no notable events ${windowPhrase}`);
-        else if (grepPattern !== null && type !== null)
-          say(`no events matching "${grepPattern}" or ${typeEmpty(type, typePieces)}`);
-        else if (type !== null) say(typeEmpty(type, typePieces));
-        else if (grepPattern !== null) say(`no events matching "${grepPattern}" ${windowPhrase}`);
-        else say(roles !== null ? `${roleEmpty} ${windowPhrase}` : `no events ${windowPhrase}`);
-      }
-      return;
-    }
-    // `--count` composes with the window: the tally covers exactly the filtered window rows
-    // the plain view would print (and answers the empty window with the plain view's own
-    // prose above), so the two cannot disagree on which events count. Never printed with the
-    // sparse-window note below: the note rides rows, and a count has none.
-    if (count) {
-      sayTally(filtered, json);
-      return;
-    }
-    for (const e of filtered) sayEventLine(e, json);
-    // A sparse window is never mistaken for a quiet team — but the note only ever rides rows:
-    // with no rows at all (a fresh install's missing log among them) there is nothing sparse to
-    // explain, and a flat "rotated out" claim would be false for a log that never had events.
-    // The hedged phrasing stays true whenever it prints: the oldest retained event being inside
-    // the window is exactly the unproven case, whether the cause is rotation or idleness.
-    if (!covered && !json) say(SPARSE_WINDOW_NOTE);
+  return { rest, grepPattern, grepLower, type, typePieces, roles, roleEmpty, notable, json, count, follow, filtersGrepOrType, filter };
+}
+
+/** The `--since`/`--until` bounded-window view: its three rival checks (`-f`, `-n`,
+ * `--transcript`), the `readEventsSince` read and the `untilMs` filter, then the empty-window
+ * prose, the `--count` tally, the per-event print and the sparse-window note. */
+function sayLogsWindow(root: string, feed: LogsFeed, ms: number, untilMs: number | null): void {
+  if (feed.follow)
+    failRivalShapes("logs --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
+  if (feed.rest.includes("-n")) failRivalShapes("logs --since", "-n", "a count and a window are rival shapes");
+  rejectTranscriptViewRival(feed.rest, "--since", true);
+  // covered is only consulted below when the window has rows (an empty window returns
+  // earlier), so the helper's vacuous empty-log branch never reaches the note here.
+  const { cutoff, events: windowEvents, covered } = readEventsSince(root, ms);
+  const events = untilMs === null ? windowEvents : windowEvents.filter((e) => e.ts < cutoff + ms - untilMs);
+  const windowPhrase =
+    untilMs === null ? `in ${durationLabel(ms)}` : betweenWindow(ms, untilMs);
+  // `--grep`, `--type` and `--role` all filter the window through feed.filter: only the
+  // window events that pass are printed, and an all-filtered window answers with the
+  // no-match prose (the filter's own line) instead of the generic empty-window one —
+  // "which merge_failed in the last hour" filters the same as it would the -n view.
+  const filtered = events.filter(feed.filter);
+  if (filtered.length === 0) {
+    // In JSON mode an empty result answers silently — an empty output IS the machine-readable
+    // answer, and prose would corrupt a consumer's NDJSON stream.
+    if (!feed.json) sayLogsWindowNoMatch(feed, windowPhrase);
     return;
   }
-  const nRaw = flagValue(rest, "-n");
-  const limit = nRaw !== null ? parseCountFlag("-n", nRaw) : 50;
-  // The event feed (no --transcript) never needs the config at all: parseRoleScope reads it only
-  // when the flag is present.
-  const role = parseRoleScope(root, rest, "--transcript", LOGS_TRANSCRIPT_VALUE_ERROR);
-  const showPrompts = rest.includes("--prompt");
-  if (showPrompts && role === null) fail("logs --prompt needs --transcript <id>");
-  if (role !== null) {
-    await cmdLogsTranscript(root, role, limit, follow, showPrompts, grepLower, grepPattern, seams);
+  // `--count` composes with the window: the tally covers exactly the filtered window rows
+  // the plain view would print (and answers the empty window with the plain view's own
+  // prose above), so the two cannot disagree on which events count. Never printed with the
+  // sparse-window note below: the note rides rows, and a count has none.
+  if (feed.count) {
+    sayTally(filtered, feed.json);
     return;
   }
+  for (const e of filtered) sayEventLine(e, feed.json);
+  // A sparse window is never mistaken for a quiet team — but the note only ever rides rows:
+  // with no rows at all (a fresh install's missing log among them) there is nothing sparse to
+  // explain, and a flat "rotated out" claim would be false for a log that never had events.
+  // The hedged phrasing stays true whenever it prints: the oldest retained event being inside
+  // the window is exactly the unproven case, whether the cause is rotation or idleness.
+  if (!covered && !feed.json) say(SPARSE_WINDOW_NOTE);
+}
+
+/** The `--since` window's empty-match prose (the `no notable events <window>`,
+ * `no events matching … or …`, typeEmpty, grep and role branches), kept byte-identical and
+ * still skipped in JSON mode. */
+function sayLogsWindowNoMatch(feed: LogsFeed, windowPhrase: string): void {
+  if (feed.notable && feed.grepPattern === null && feed.type === null && feed.roles === null)
+    say(`no notable events ${windowPhrase}`);
+  else if (feed.grepPattern !== null && feed.type !== null)
+    say(`no events matching "${feed.grepPattern}" or ${typeEmpty(feed.type, feed.typePieces)}`);
+  else if (feed.type !== null) say(typeEmpty(feed.type, feed.typePieces));
+  else if (feed.grepPattern !== null) say(`no events matching "${feed.grepPattern}" ${windowPhrase}`);
+  else say(feed.roles !== null ? `${feed.roleEmpty} ${windowPhrase}` : `no events ${windowPhrase}`);
+}
+
+/** The `-n` tail view and its follow: `readEventsTailWithEnd`, the `shown` filter, the
+ * `--count` branch and its empty-match prose, the per-event print, the `!follow` return, and
+ * `followUntilParentGone` seeded from `tail.coveredEnd`. It owns the follow-loop locals. */
+async function sayLogsTail(root: string, feed: LogsFeed, limit: number, seams: FollowSeams): Promise<void> {
   // -n bounds the scan, not the print: the matched subset of the last `limit` events is what
   // appears, so `-n 200 --grep merge_failed` may print 3 rows from 200 scanned. The read is
   // the tail-with-end shape (not the per-poll cached readEvents) so the follow below can seed
   // from the byte end this very read covered instead of a later stat of the file.
   const tail = readEventsTailWithEnd(root, limit);
-  const shown = grepLower !== null || type !== null || roleFilter !== null || notable ? tail.events.filter(feedFilter) : tail.events;
+  const shown = feed.grepLower !== null || feed.type !== null || feed.roles !== null || feed.notable ? tail.events.filter(feed.filter) : tail.events;
   // `--count` over the -n view answers with the tally of exactly the filtered rows the plain
   // view would print, and carries over the plain view's empty-match prose below (a `--type`
   // or `--grep` that matches nothing names its value; an empty unfiltered -n view prints
   // nothing, as the plain view does). In JSON mode the empty output is the answer.
-  if (count) {
-    if (shown.length !== 0) sayTally(shown, json);
-    else if (!json && (filtersGrepOrType || roles !== null || notable)) {
-      if (notable && grepPattern === null && type === null && roles === null)
-        say("no notable events");
-      else if (grepPattern !== null && type !== null)
-        say(`no events matching "${grepPattern}" or ${typeEmpty(type, typePieces)}`);
-      // Type-empty gets the hint (only the type branch); a grep-only empty stays the bare
-      // no-match line, because a free-text pattern is not an event type to suggest against.
-      else if (!filtersGrepOrType) say(roleEmpty);
-      else say(type !== null ? typeEmpty(type, typePieces) : `no events matching "${grepPattern ?? ""}"`);
-    }
+  if (feed.count) {
+    if (shown.length !== 0) sayTally(shown, feed.json);
+    else if (!feed.json && (feed.filtersGrepOrType || feed.roles !== null || feed.notable)) sayLogsTailNoMatch(feed);
     return;
   }
-  for (const e of shown) sayEventLine(e, json);
-  if (!follow) {
+  for (const e of shown) sayEventLine(e, feed.json);
+  if (!feed.follow) {
     // The empty-match line is prose: in JSON mode the empty output is the answer. It fires
     // for either filter, naming the flag's value(s) whose match came up empty so the operator
     // knows what to loosen.
-    if (shown.length === 0 && !json && (filtersGrepOrType || roles !== null || notable)) {
-      if (notable && grepPattern === null && type === null && roles === null)
-        say("no notable events");
-      else if (grepPattern !== null && type !== null)
-        say(`no events matching "${grepPattern}" or ${typeEmpty(type, typePieces)}`);
-      // Type-empty gets the hint (only the type branch); a grep-only empty stays the bare
-      // no-match line, because a free-text pattern is not an event type to suggest against.
-      else if (!filtersGrepOrType) say(roleEmpty);
-      else say(type !== null ? typeEmpty(type, typePieces) : `no events matching "${grepPattern ?? ""}"`);
-    }
+    if (shown.length === 0 && !feed.json && (feed.filtersGrepOrType || feed.roles !== null || feed.notable)) sayLogsTailNoMatch(feed);
     return;
   }
   const file = eventsLogPath(root);
@@ -324,9 +351,22 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
       const e = parseEventLine(line);
       // The filter holds across rotation: every event the follow callback sees goes through
       // the same match rule as the seeded window.
-      if (e && feedFilter(e)) sayEventLine(e, json);
+      if (e && feed.filter(e)) sayEventLine(e, feed.json);
     }
   }, seams);
+}
+
+/** The `-n` view's empty-match prose, shared by the `--count` tally branch and the plain
+ * branch (the two byte-identical blocks become two calls) so they cannot drift. */
+function sayLogsTailNoMatch(feed: LogsFeed): void {
+  if (feed.notable && feed.grepPattern === null && feed.type === null && feed.roles === null)
+    say("no notable events");
+  else if (feed.grepPattern !== null && feed.type !== null)
+    say(`no events matching "${feed.grepPattern}" or ${typeEmpty(feed.type, feed.typePieces)}`);
+  // Type-empty gets the hint (only the type branch); a grep-only empty stays the bare
+  // no-match line, because a free-text pattern is not an event type to suggest against.
+  else if (!feed.filtersGrepOrType) say(feed.roleEmpty);
+  else say(feed.type !== null ? typeEmpty(feed.type, feed.typePieces) : `no events matching "${feed.grepPattern ?? ""}"`);
 }
 
 /** `tumwater logs --transcript <id>`: print (and optionally follow) one role's agent transcript —
