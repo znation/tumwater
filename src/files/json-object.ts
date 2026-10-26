@@ -75,6 +75,18 @@ export function nonNegativeNumber<T>(value: unknown, fallback: T): number | T {
   return typeof n === "number" && n >= 0 ? n : fallback;
 }
 
+/** `value` when it is a string, `undefined` otherwise — the one home of the "this field is
+ * the wire string or it is no data" read the claude translator (claude-stream.ts's block
+ * text/thinking/name/id, terminal_reason, api-key source, message id/stop_reason,
+ * tool_use_id, api error strings and event type) and the codex rollout reader (codex-rollout.ts's
+ * event/payload type, turn_id, model, plan_type and rate_limit_reached_type) apply. Those two
+ * backends each spelled it out as their own local `str`; one shared helper keeps the"status is
+ * null/absent reads as no signal" policy from drifting, the same way stringList and
+ * nonNegativeNumber own their field reads. */
+export function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 /** Parse `text` as JSON and require the result to be a plain object, returning null when
  * either half fails — the one home of the "read one JSON value or read it as no data" policy
  * every line-oriented parser here applies (parseEventLine on the harness event log,

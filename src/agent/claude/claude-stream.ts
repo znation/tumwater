@@ -17,7 +17,7 @@
 
 import { joinParts } from "../../text/text.js";
 import { secondsUntilUnixStamp } from "../../text/datetime.js";
-import { canonicalUsageBlock, isJsonObject, objectOrEmpty, nonNegativeNumber, parseJsonObject } from "../../files/json-object.js";
+import { canonicalUsageBlock, isJsonObject, objectOrEmpty, optionalString, nonNegativeNumber, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
@@ -56,10 +56,6 @@ const TOOL_NAMES: Record<string, string> = {
 /** claude's HTTP status classes that mean a permanent configuration error. */
 const CONFIG_STATUS = new Set([400, 401, 403, 404]);
 
-function str(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
 /** claude's usage block → pi's canonical usage block, with `cost.total` 0 because the run's
  * authoritative cost rides the final `run_cost` event (a split-block message repeats its usage
  * on every event, so summing per event would double-count — the fold takes it once). The
@@ -81,14 +77,14 @@ function canonicalUsage(usage: Json | undefined): Json {
 function canonicalBlock(block: Json): Json | undefined {
   switch (block.type) {
     case "text":
-      return { type: "text", text: str(block.text) ?? "" };
+      return { type: "text", text: optionalString(block.text) ?? "" };
     case "thinking":
-      return { type: "thinking", thinking: str(block.thinking) ?? str(block.text) ?? "" };
+      return { type: "thinking", thinking: optionalString(block.thinking) ?? optionalString(block.text) ?? "" };
     case "tool_use": {
       const input = objectOrEmpty(block.input);
       const args: Json = { ...input };
       if (typeof input.file_path === "string") args.path = input.file_path;
-      const name = str(block.name) ?? "";
+      const name = optionalString(block.name) ?? "";
       // Own-property test, not a bare index: a tool name like `constructor`, `toString`, or
       // `__proto__` would otherwise inherit a function (or Object.prototype) from the table's
       // prototype chain and bypass the lower-cased fallback — JSON.stringify then drops the
@@ -96,7 +92,7 @@ function canonicalBlock(block: Json): Json | undefined {
       // applies to EFFORT_BY_THINKING.
       return {
         type: "toolCall",
-        id: str(block.id) ?? "",
+        id: optionalString(block.id) ?? "",
         name: Object.hasOwn(TOOL_NAMES, name) ? (TOOL_NAMES[name]) : name.toLowerCase(),
         arguments: args,
       };
@@ -116,10 +112,10 @@ function classifyResult(result: Json): {
   kind?: TumwaterKind;
   backendKind?: BackendFailureKind;
 } {
-  const terminal = str(result.terminal_reason);
+  const terminal = optionalString(result.terminal_reason);
   if (terminal === "aborted_tools") return {};
   if (terminal === "error_max_budget_usd") return { kind: "budgetCapped" };
-  const text = joinParts([str(result.result), str(result.error)], " ");
+  const text = joinParts([optionalString(result.result), optionalString(result.error)], " ");
   if (/error_max_budget_usd/i.test(text)) return { kind: "budgetCapped" };
   const status = nonNegativeNumber(result.api_error_status, undefined);
   if (status === 429) return { kind: "transientRateLimit" };
@@ -196,14 +192,14 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
   };
 
   const handleSystem = (event: Json): string[] => {
-    const subtype = str(event.subtype);
+    const subtype = optionalString(event.subtype);
     if (subtype === "init") {
       const out: string[] = [];
-      const cwd = str(event.cwd);
-      const id = str(event.session_id);
+      const cwd = optionalString(event.cwd);
+      const id = optionalString(event.session_id);
       out.push(JSON.stringify({ type: "session", ...(cwd !== undefined ? { cwd } : {}), ...(id !== undefined ? { id } : {}) }));
       out.push(JSON.stringify({ type: "agent_start" }));
-      const billing = billingOf(str(event.apiKeySource), opts.thirdPartyProvider === true);
+      const billing = billingOf(optionalString(event.apiKeySource), opts.thirdPartyProvider === true);
       if (billing) out.push(JSON.stringify({ type: "billing", billing }));
       return out;
     }
@@ -211,7 +207,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
       const attempt = nonNegativeNumber(event.attempt, undefined);
       const maxAttempts = nonNegativeNumber(event.max_retries, undefined);
       const status = nonNegativeNumber(event.error_status, undefined);
-      const error = str(event.error) ?? "";
+      const error = optionalString(event.error) ?? "";
       const errorMessage = joinParts([status !== undefined ? `status ${status}` : "", error], ": ");
       return [
         JSON.stringify({
@@ -232,7 +228,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
   const handleAssistant = (event: Json): string[] => {
     sawActivity = true;
     const message = objectOrEmpty(event.message);
-    const id = str(message.id) ?? `anon-${anonymous++}`;
+    const id = optionalString(message.id) ?? `anon-${anonymous++}`;
     // A new id flushes the open message; a continuing one flushes nothing. Either way the
     // fresh or open pending then folds this event's content, usage, and stop reason the
     // same way — that shared fold is why both branches live on one path.
@@ -252,7 +248,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
     // Usage repeats on every event of the same message; the last read wins and is counted
     // once because the fold emits one message_end per id.
     pending.usage = canonicalUsage(isJsonObject(message.usage) ? message.usage : undefined);
-    const stopReason = str(message.stop_reason);
+    const stopReason = optionalString(message.stop_reason);
     if (stopReason !== undefined) pending.stopReason = stopReason;
     return out;
   };
@@ -266,7 +262,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
       out.push(
         JSON.stringify({
           type: "tool_execution_end",
-          toolCallId: str(raw.tool_use_id) ?? "",
+          toolCallId: optionalString(raw.tool_use_id) ?? "",
           isError: raw.is_error === true,
         }),
       );
@@ -276,8 +272,8 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
 
   const handleRateLimitEvent = (event: Json): string[] => {
     const info = objectOrEmpty(event.rate_limit_info);
-    const rateLimitType = str(info.rateLimitType);
-    const status = str(info.status);
+    const rateLimitType = optionalString(info.rateLimitType);
+    const status = optionalString(info.status);
     // claude 2.1.295 reports every window's utilization and reset under `unifiedWindows`,
     // keyed by window type, and only the binding window's status at the top level.
     const windows: string[] = [];
@@ -298,7 +294,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
     if (resetsAt !== undefined) out.resetsAt = resetsAt;
     const utilization = nonNegativeNumber(info.utilization, undefined) ?? nonNegativeNumber(own?.utilization, undefined);
     if (utilization !== undefined) out.utilization = utilization;
-    const overageStatus = str(info.overageStatus);
+    const overageStatus = optionalString(info.overageStatus);
     if (overageStatus !== undefined) out.overageStatus = overageStatus;
     if (info.isUsingOverage === true) out.isUsingOverage = true;
     if (status === "rejected" && resetsAt !== undefined) {
@@ -329,7 +325,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         content: [],
         stopReason: "error",
       };
-      const errorMessage = str(event.result) ?? str(event.error);
+      const errorMessage = optionalString(event.result) ?? optionalString(event.error);
       if (errorMessage !== undefined) message.errorMessage = errorMessage;
       // tumwaterKind/backendKind ride the canonical EVENT (not its message): the parser
       // reads event.tumwaterKind and trusts it before its text regexes.
@@ -349,7 +345,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
     const parsed = parseJsonObject(line);
     if (!parsed) return []; // Non-JSON noise on stdout; ignore, as pi's parser does.
     const event = parsed as Json;
-    const type = str(event.type);
+    const type = optionalString(event.type);
     switch (type) {
       case "system": return handleSystem(event);
       case "assistant": return handleAssistant(event);

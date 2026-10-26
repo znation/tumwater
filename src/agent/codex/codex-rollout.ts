@@ -14,14 +14,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { walkFiles } from "../../files/files.js";
-import { isJsonObject, nonNegativeNumber, objectOrEmpty, parseJsonObject } from "../../files/json-object.js";
+import { isJsonObject, nonNegativeNumber, objectOrEmpty, optionalString, parseJsonObject } from "../../files/json-object.js";
 import { windowTypeName } from "./codex-stream.js";
 
 type Json = Record<string, unknown>;
-
-function str(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
 
 function finite(value: unknown): number | undefined {
   return nonNegativeNumber(value, undefined);
@@ -79,9 +75,9 @@ function scanTurnRecords(text: string, sinceTurnStart: string | undefined): Turn
     // `task_started`, `task_complete` and `token_count` come wrapped in an `event_msg` whose
     // `payload.type` discriminates; `turn_context` and `token_usage_record` name themselves in
     // the outer `type`. Read either.
-    const ptype = str(parsed.type) === "event_msg" ? str(payload.type) : str(parsed.type);
+    const ptype = optionalString(parsed.type) === "event_msg" ? optionalString(payload.type) : optionalString(parsed.type);
     if (ptype === "task_started") {
-      currentTurn = str(payload.turn_id);
+      currentTurn = optionalString(payload.turn_id);
       // Each new task_started begins a fresh turn (a resume appends a second run to the same
       // file), so the collectors restart at the block we are reading. With no turn id (the
       // adapter's read) every task_started restarts them and the last block wins; with one,
@@ -98,7 +94,7 @@ function scanTurnRecords(text: string, sinceTurnStart: string | undefined): Turn
     if (sinceTurnStart !== undefined && currentTurn !== sinceTurnStart) continue;
     switch (ptype) {
       case "turn_context":
-        if (model === undefined) model = str(payload.model);
+        if (model === undefined) model = optionalString(payload.model);
         break;
       case "token_usage_record": {
         const turnUsage = objectOrEmpty(payload.turn_token_usage);
@@ -110,7 +106,7 @@ function scanTurnRecords(text: string, sinceTurnStart: string | undefined): Turn
       case "token_count": {
         const rateLimits = objectOrEmpty(payload.rate_limits);
         lastRateLimits = rateLimits;
-        const plan = str(rateLimits.plan_type);
+        const plan = optionalString(rateLimits.plan_type);
         if (plan !== undefined) planType = plan;
         break;
       }
@@ -151,7 +147,7 @@ function buildRolloutLines(records: TurnRecords, requestedModel: string): Rollou
   // rollout has a token_usage_record but no token_count, so it yields run_usage with no
   // rate_limit (finding 23).
   if (lastRateLimits !== undefined) {
-    const reached = str(lastRateLimits.rate_limit_reached_type);
+    const reached = optionalString(lastRateLimits.rate_limit_reached_type);
     for (const key of ["primary", "secondary"] as const) {
       const windowRaw = lastRateLimits[key];
       if (!isJsonObject(windowRaw)) continue;
