@@ -328,6 +328,22 @@ export function watchVerifiesMain(root: string, config?: CheckConfigSlice): bool
   return detectBuildCheck(root, config) !== null && mergeCommandOf(config) !== undefined;
 }
 
+/** The newest first-parent commit below `tip`, down to and through `buildSha`, with a green
+ * cached verdict — the walk+scan redeployTarget's watched and un-watched branches share. Only
+ * their fallback differs: `notOnHistory` when `buildSha` is not on the first-parent walk at all
+ * (the caller keeps today's answer, `tip`), `onHistoryNone` when it is but nothing above it is
+ * green (watched keeps the build; un-watched keeps `tip`). Never throws: a git failure leaves
+ * the walk empty, so the fallback answers. */
+async function newestGreenAboveBuild(wt: string, tip: string, buildSha: string, notOnHistory: string, onHistoryNone: string): Promise<string> {
+  const walk = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${REDEPLOY_WALK_MAX}`, tip));
+  const buildAt = walk.indexOf(buildSha);
+  if (buildAt === -1) return notOnHistory;
+  for (const sha of walk.slice(0, buildAt)) {
+    if (baselineCache.get(sha)?.status === "green") return sha;
+  }
+  return onHistoryNone;
+}
+
 /** The commit self-redeploy should run: main's newest first-parent commit with a green full-check
  * verdict in the cache (observed or inherited) that is newer than the running build `buildSha`,
  * looking at most REDEPLOY_WALK_MAX commits down from `tip`.
@@ -353,23 +369,11 @@ export function watchVerifiesMain(root: string, config?: CheckConfigSlice): bool
 export async function redeployTarget(wt: string, tip: string, buildSha: string, watched = false): Promise<string> {
   if (watched) {
     if (tip === "") return tip;
-    const walk = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${REDEPLOY_WALK_MAX}`, tip));
-    const buildAt = walk.indexOf(buildSha);
-    if (buildAt === -1) return tip;
-    for (const sha of walk.slice(0, buildAt)) {
-      if (baselineCache.get(sha)?.status === "green") return sha;
-    }
-    return buildSha;
+    return newestGreenAboveBuild(wt, tip, buildSha, tip, buildSha);
   }
   const red = baselineCache.get(tip);
   if (tip === "" || red?.status !== "red" || !(red.redFrom ?? []).includes(mirrorWorktreePath(wt))) return tip;
-  const walk = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${REDEPLOY_WALK_MAX}`, tip));
-  const buildAt = walk.indexOf(buildSha);
-  if (buildAt === -1) return tip;
-  for (const sha of walk.slice(0, buildAt)) {
-    if (baselineCache.get(sha)?.status === "green") return sha;
-  }
-  return tip;
+  return newestGreenAboveBuild(wt, tip, buildSha, tip, tip);
 }
 
 /** Verify main's own build/test suite at `wt`'s HEAD — which must be pristine main (the caller
