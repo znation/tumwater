@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3p/3: the pre-merge reviewer's approved-merge, durable-verdict and rejected-merge cases in test/merger.test.ts are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split again 2026-10-26 by the plan role after feature held the too-large part 3p/3 nine times (held 9): the first of three finer parts replacing part 3p/3's one-file scope, sibling to parts 3z/3 and 4a/3, which take the same file's reviewer-failure and conflict-resolution cases and serialise behind this one, so this part holds no prerequisite and part 3z/3 serialises behind it; touches test/merger.test.ts) — done 2026-10-26 by the feature role
+
+**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes the `test/merger.test.ts` cases that reach a merge through a `reviewerPi` approval fail. Move the approved-merge and merge-bookkeeping cases first, as part 3l/3 did for `test/review.test.ts` and `test/review-precheck.test.ts`, so the source switch lands against a suite that no longer depends on the reviewer. Part 3z/3 takes the reviewer-failure, strike and abort cases that follow; part 4a/3 takes the conflict-resolution and re-review cases; part 3x/3 takes the rebase/check/batch/stack blocks below `a merge pinned behind main's advance is rebased onto main BEFORE the gate and merges both`.
+
+**Approach.** In `test/merger.test.ts`, retire or re-point the pre-merge reviewer cases `an approved merge merges on main and deletes the ref`, `the gate's verdict is durable on disk before the run's end save`, and `a rejected merge merges nothing: role worktree clean at main, ref deleted, reasons recorded`. Delete a case that exists only to pin the reviewer, or re-point its rejection trigger to a deterministic gate rejection (a `diffRuleReasons` finding such as a conflict-marker diff or a leaked credential, or a failing declared check) when its real subject is the merge or verify bookkeeping that survives. Leave every other case untouched — parts 3z/3, 4a/3 and 3x/3 own those. Leave the reviewer-run helpers (`reviewerPi`, `APPROVE_PI`, `perRoleReviewerPi`, `reviewerByRole`) in `test/fixtures/pi-events.ts` and `test/fixtures/merger-fixtures.ts` in place and edit neither fixture file: the reviewer still runs until part 3h/3, and part 3e/3 deletes the helpers with the plumbing.
+
+**Files touched.** test/merger.test.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with the pre-merge reviewer still running.
+- A grep over the three cases named in Approach for `VERDICT: reject`, `review_error`, `reviewRetries`, `review_failed`, `unreviewFailures`, `folded.length` and `lastReview?.verdict` returns no case that drives the pre-merge reviewer.
+- Every case that remains keeps its original subject (merge or verify bookkeeping) and asserts the same outcome through a deterministic rejection.
+- No edit outside test/merger.test.ts.
+
 ### Subtract, part 1a/6: The dashboard's alert band links to the doctor — the count it already shows stays the one place the deleted banners' detail went (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; touches src/ui/gui/gui-client-team.ts src/ui/gui/gui-client-boot.ts docs/how-it-works.md test/gui-client-team.test.ts) — done 2026-10-26 by the feature role
 
 **Previously held 1**

@@ -15,7 +15,8 @@ import { readEvents } from "../src/events/event-read.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
-import { assertClean, headSha, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { assertClean, headSha, mainSha, sh, tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";
+import { ensureWorktree } from "../src/git/worktree.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { piRanMarker, withApprovePi, withPi } from "./fakes/fake-pi.js";
 import {
@@ -56,12 +57,16 @@ process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
 // the three roughly equal in measured duration when moving tests between them.
 
 test("an approved merge merges on main and deletes the ref", async () => {
+  // The merge's bookkeeping rides the deterministic gate, not the pre-merge reviewer: a passing
+  // declared check is the approval that survives part 3h/3's removal of the model reviewer, so
+  // no assertion here pins the reviewer's verdict or usage fold (part 3p/3).
   await withPi(
     reviewerPi("VERDICT: approve"),
     async () => {
       const { root, sha, wt } = await pinnedFixture();
+      declareCheck(root, "#!/bin/sh\necho ok\n");
       const state = freshRunnerState(ROLE);
-      const { ctx, folded } = makeCtx(root, state);
+      const { ctx } = makeCtx(root, state);
 
       assert.equal(await verifyAndMerge(ctx, request(sha)), "changed");
 
@@ -69,8 +74,6 @@ test("an approved merge merges on main and deletes the ref", async () => {
       assert.equal(warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX)).length, 0, "never red, no flake");
       assert.equal(await refSha(root, REF), null, "the pin was deleted on merge");
       assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree stayed clean at main");
-      assert.equal(folded.length, 1, "the reviewer run's usage folds into the run counters");
-      assert.equal(state.lastReview?.verdict, "approve");
     },
   );
 });
@@ -98,54 +101,72 @@ test("a reviewer killed once (exit 143) is retried in the verify: the change mer
 test("the gate's verdict is durable on disk before the run's end save", async () => {
   // Regression (2026-09-14): state was written to disk only at run boundaries, so a
   // sudden death after the gate's verdict (power loss, kill -9) left the last
-  // run-boundary snapshot on disk — a stale "reject" for work already superseded —
-  // and every later run got a "your previous change was rejected" note about work
-  // that was already on main. The verdict must be durable before the run's tail
-  // (the merge plus the still-to-come authoring run) can die unsaved.
+  // run-boundary snapshot on disk — a stale verdict for work already superseded —
+  // and every later run acted on it. The verdict must be durable before the run's tail
+  // (the merge plus the still-to-come authoring run) can die unsaved. Part 3p/3 asserts the
+  // durable approval record (the approved head), not the reviewer's verdict, so the case
+  // survives part 3h/3's removal of the pre-merge reviewer; the deterministic gate approval
+  // is a passing declared check.
   await withPi(
     reviewerPi("VERDICT: approve"),
     async () => {
       const { root, sha } = await pinnedFixture();
+      declareCheck(root, "#!/bin/sh\necho ok\n");
       const state = freshRunnerState(ROLE);
-      // What disk holds at run start: the superseded rejection's verdict.
-      state.lastReview = {
-        verdict: "reject",
-        reasons: ["check failed (test): stale"],
-        head: "0".repeat(40),
-        at: Date.now() - 3_600_000,
-      };
+      // What disk holds at run start: a stale approval for a superseded head. The verify must
+      // overwrite it with the current approval before the run's tail can die unsaved.
+      state.lastApprovedHead = "0".repeat(40);
       saveRunnerState(root, state);
       const { ctx } = makeCtx(root, state);
 
       assert.equal(await verifyAndMerge(ctx, request(sha)), "changed");
 
-      // Read back from disk, not the in-memory object: without an immediate persist the
-      // file still holds the seeded reject and the stale note would survive the crash.
+      // Read back from disk, not the in-memory object: without an immediate persist the file
+      // still holds the seeded stale approval and the new verdict would be lost to the crash.
       const onDisk = readJson(statePath(root, ROLE)) as RunnerState;
-      assert.equal(onDisk.lastReview?.verdict, "approve", "the approve is durable on disk, not just in memory");
-      assert.equal(onDisk.lastApprovedHead, sha, "the approved head is durable");
+      assert.equal(onDisk.lastApprovedHead, sha, "the approval is durable on disk, not just in memory");
     },
   );
 });
 
 test("a rejected merge merges nothing: role worktree clean at main, ref deleted, reasons recorded", async () => {
-  await withPi(
-    reviewerPi("VERDICT: reject\n1. breaks the zero-dep rule"),
-    async () => {
-      const { root, sha, wt } = await pinnedFixture();
-      const state = freshRunnerState(ROLE);
-      const mainBefore = mainSha(root);
-      const { ctx } = makeCtx(root, state);
+  // Re-pointed (part 3p/3): the rejection is deterministic — the change rewrites the brief block,
+  // which briefEditReason rejects before any check or reviewer runs (part 3h/3 will remove the
+  // reviewer). A brief-block edit is one of the three findings part 3m/3 keeps in the gate's
+  // narrowed scope, so unlike a conflict marker this trigger survives that narrowing. The
+  // bookkeeping is unchanged; the recorded reason is the diff rule's own finding, asserted only
+  // to be present, not pinned to its wording.
+  const root = makeRepo();
+  const prompt = (body: string) =>
+    `# T\n\n<!-- tumwater:prompt:start -->\n${body}\n<!-- tumwater:prompt:end -->\n`;
+  // main carries a README.md with a brief block, which the change then rewrites.
+  fs.writeFileSync(path.join(root, "README.md"), prompt("original"));
+  sh(root, "git", "add", "README.md");
+  sh(root, "git", "commit", "-q", "-m", "seed the brief");
+  const mainBefore = mainSha(root);
+  // The change is one commit on main's tip that adds the code work and rewrites the brief,
+  // pinned by the merge ref so main stays at the seed commit (a fresh single-commit pin makes
+  // the verify's rebase a no-op, so the gate judges the brief edit directly).
+  sh(root, "git", "checkout", "-q", mainBefore);
+  fs.writeFileSync(path.join(root, "seed.txt"), "the work\n");
+  fs.writeFileSync(path.join(root, "README.md"), prompt("rewritten"));
+  sh(root, "git", "add", "seed.txt", "README.md");
+  sh(root, "git", "commit", "-q", "-m", "the work");
+  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  sh(root, "git", "checkout", "-q", "main");
+  await setRef(root, REF, sha);
+  const wt = await ensureWorktree(root, ROLE, "main");
+  const state = freshRunnerState(ROLE);
+  const { ctx } = makeCtx(root, state);
 
-      assert.equal(await verifyAndMerge(ctx, request(sha)), "rejected");
+  assert.equal(await verifyAndMerge(ctx, request(sha)), "rejected");
 
-      assert.equal(mainSha(root), mainBefore, "nothing merged on main");
-      assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree is clean at main");
-      assertClean(wt, "no stray edits in the role worktree");
-      assert.equal(await refSha(root, REF), null, "a rejection is terminal: the pin goes too");
-      assert.deepEqual(state.lastReview?.reasons, ["breaks the zero-dep rule"]);
-    },
-  );
+  assert.equal(mainSha(root), mainBefore, "nothing merged on main");
+  assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree is clean at main");
+  assertClean(wt, "no stray edits in the role worktree");
+  assert.equal(await refSha(root, REF), null, "a rejection is terminal: the pin goes too");
+  assert.equal(state.lastReview?.verdict, "reject", "the deterministic gate's rejection is recorded");
+  assert.ok(state.lastReview?.reasons?.length, "the diff rule's reason is recorded");
 });
 
 test("a verdict-less failure under the strike cap returns review_error and keeps the ref", async () => {
