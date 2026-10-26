@@ -5,6 +5,18 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `a corrupted cache entry is ignored and re-looked-up` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+The instability was in the test itself: it hardcoded the `0.163.0` version prefix when seeding and reading back the cache key. A `--version` probe that times out under load reports `""` (codexVersion's fallback), which changes the cache key, so the read-back found only the corrupt marker and the assertions failed; on the next run the probe returned normally and the test passed. The test now seeds the cache under whatever key the probe actually produces and corrupts that entry in place, so it is agnostic to the probe's value and still verifies the ignore-and-re-look-up behavior.
+
+**Validation gap:** no-repro — could not reproduce the load-triggered `--version` probe timeout itself; confirmed the mechanism by forcing the probe to report `""`, which made the old assertions fail and the rewritten test pass regardless.
+
+~~~~
+a corrupted cache entry is ignored and re-looked-up
+~~~~
+
 ### `a pre-check that fails twice with no verdict for main rejects, saying the baseline was unavailable` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it. Cause: the test hung main's baseline on a real `sleep 5` racing a 0.5 s deadline; under load the deadline can fire >5 s late (reprising a clean retry and a second `baseline:skipped` event, which flips the 3-event assertion) or the sleep can finish first. Fixed by making main's no-verdict deterministic: the configured command now exits nonzero naming a broken toolchain on main's clean tree — an immediate environmental skip with no wall-clock timing — while it still fails fast with `boom` on the change's tree; the attribution assertion now names `(toolchain)`.

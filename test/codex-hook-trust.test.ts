@@ -280,12 +280,22 @@ test("a corrupted cache entry is ignored and re-looked-up", async () => {
     const def = definition();
     const file = codexHookTrustPath(root);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ [`0.163.0${JSON.stringify(def)}`]: "not-a-trust" }));
+    // Seed the cache under whatever key this build's --version probe produces, then corrupt
+    // that entry in place. Hardcoding the version prefix (0.163.0) made this test flaky: a
+    // --version probe that times out under load reports "" (codexVersion's fallback), which
+    // changes the cache key, so the corrupt-and-read-back keys diverged and the read-back
+    // found only the marker. Seeding first means the corrupted key is always the real one.
+    await codexHookTrust(root, { bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 });
+    const seeded = JSON.parse(fs.readFileSync(file, "utf8"));
+    const entries = Object.entries(seeded);
+    assert.equal(entries.length, 1, "the seed wrote exactly one cache entry");
+    const seedKey = entries[0]![0];
+    fs.writeFileSync(file, JSON.stringify({ [seedKey]: "not-a-trust" }));
     const trust = await codexHookTrust(root, { bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 });
     assert.equal(trust.hash, `sha256:${createHash("sha256").update(def.command).digest("hex")}`);
-    // The non-trust cache value did not short-circuit the lookup: exactly one app-server start.
-    assert.equal(fs.readFileSync(fake.callsFile, "utf8").trim().split("\n").length, 1);
-    const cached = JSON.parse(fs.readFileSync(file, "utf8"))[`0.163.0${JSON.stringify(def)}`];
+    // The non-trust cache value did not short-circuit the lookup: exactly two app-server starts.
+    assert.equal(fs.readFileSync(fake.callsFile, "utf8").trim().split("\n").length, 2);
+    const cached = JSON.parse(fs.readFileSync(file, "utf8"))[seedKey];
     assert.equal(cached.key, trust.key);
     assert.equal(cached.hash, trust.hash);
   } finally {
