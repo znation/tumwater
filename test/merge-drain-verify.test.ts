@@ -3,13 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { drainMergeQueue } from "../src/merge/merge-drain.js";
-import { abortableMerges, mergeTasks } from "../src/merge/merge-pipeline.js";
-import { queuedMergeFiles } from "../src/merge/merge-queue.js";
-import { mergeRefName, slotsStatePath } from "../src/paths.js";
+import { mergeTasks } from "../src/merge/merge-pipeline.js";
+import { slotsStatePath } from "../src/paths.js";
 import { readSlotsState } from "../src/git/slots-state.js";
-import { refSha } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
-import { readMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig } from "../src/config/config.js";
 import {
   APPROVE,
@@ -17,19 +14,14 @@ import {
   busySlot,
   drained,
   makePipeline,
-  pump,
   pumpUntil,
   queueChanges,
-  reviewers,
-  REVIEWING,
-  rowReader,
   runnersFor,
 } from "./fixtures/merge-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
-import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
-import { waitFor, waitForFile, within } from "./helpers/wait.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 import { readJson } from "./helpers/json-read.js";
 
 // These tests pin the sequential merge stages (the check, then the review).
@@ -82,191 +74,6 @@ test("mergeBatchMax caps each merge's stack, read from the live config at each d
     await Promise.allSettled(allTasks(pipeline));
     restore();
   }
-});
-
-test("every verification holds a shared permit: with one free, one reviews while the other parks, showing nothing, and no permit leaks", async () => {
-  // A merge's pi runs take the same permit role runs do (BUGS.md 2026-09-18), and merges
-  // count as active work. At cap 3 (verifyLimit 2) with no role run running, both reviews run at
-  // once; with two role runs holding permits, one is free, so the second verify parks — no
-  // marker record, its row plainly queued, out of reach of abort --role and of the shutdown
-  // wait — until the first verification frees it. Each review records how many reviews were in
-  // flight as it started. With both free, beta's review also holds (bounded) until alpha's has
-  // begun: two verifications that may overlap can still happen not to — beta's review can finish
-  // before alpha's starts — so the overlap a working pipeline allows is made certain rather than
-  // left to timing; a pipeline that serializes them leaves beta waiting out its bound alone.
-  const cap = 3;
-  for (const runs of [0, 2]) {
-    const free = cap - runs;
-    const root = makeRepo();
-    const roles = ["alpha", "beta"];
-    await queueChanges(root, roles);
-    const rowOf = rowReader(root, roles);
-    const flags = tmpdir("vet-permits-");
-    const awaitAlpha =
-      runs === 0
-        ? `beta) i=0; while [ ! -f '${flags}/alpha-reviewing' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done;;`
-        : "";
-    const restore = fakePi(
-      [
-        // Part 3g/3: a merged change queues a post-merge review whatever its role, and it reuses
-        // this reviewer — skip those (advertised by `-post-` in the session label) so they neither
-        // count toward the in-flight samples nor touch the release flags this verify test stages.
-        skipPostReview,
-        leasedRoleShell(),
-        `d='${flags}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
-        `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${flags}/samples.log'`,
-        `case "$role" in alpha) touch '${flags}/alpha-reviewing'; i=0; while [ ! -f '${flags}/alpha-release' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done;; ${awaitAlpha} esac`,
-        `rm -f "$f"`,
-        APPROVE(),
-      ].join("\n"),
-    );
-    const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap });
-    for (let k = 0; k < runs; k++) await ctx.semaphore.acquire(0); // role runs already running
-    const bg = pump(ctx, pipeline);
-    try {
-      await waitForFile(path.join(flags, "alpha-reviewing"));
-      if (runs > 0) {
-        await waitFor(() => pipeline.verifying.get("beta")?.parked === true, "beta's vet to park for the permit", 30_000);
-        assert.match(rowOf("alpha"), REVIEWING, "one free: the verification holding the permit shows its stage");
-        assert.equal(rowOf("beta"), "due", "one free: the parked verification's role reads plainly due");
-        assert.deepEqual(readMergeMarker(root)?.changes?.map((c) => c.role), ["alpha"], "one free: no record for the parked verification");
-        assert.deepEqual(mergeTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: the parked verification is not in flight");
-        assert.deepEqual(abortableMerges(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: nor abortable");
-      } else {
-        await waitFor(() => readEvents(root).some((e) => e.type === "review_verdict" && e.source === "beta"), "beta's review beside alpha's", 30_000);
-      }
-      fs.writeFileSync(path.join(flags, "alpha-release"), "");
-      await waitFor(drained(root, pipeline), `${free} free: both changes to merge`, 60_000);
-
-      const samples = fs.readFileSync(path.join(flags, "samples.log"), "utf8").trim().split("\n").map(Number);
-      assert.equal(samples.length, 2, `${free} free: one review per change`);
-      assert.equal(Math.max(...samples), Math.min(free, 2), `${free} free: reviews in flight at each start never exceed the free permits (${samples})`);
-      await bg.stop();
-      // Every verification's permit came back: all the runs left free are acquirable again.
-      for (let k = 0; k < free; k++) {
-        assert.ok(await within(ctx.semaphore.acquire(0), 5_000), `${free} free: permit ${k + 1} was never released`);
-      }
-    } finally {
-      fs.writeFileSync(path.join(flags, "alpha-release"), "");
-      await bg.stop();
-      await Promise.allSettled(allTasks(pipeline));
-      restore();
-    }
-  }
-});
-
-test("a parked verification starts nothing when a shutdown or a closed start gate meets it: entry and pin stay queued", async () => {
-  // A verify parked for its permit has started nothing, so it must end like a parked role run —
-  // no outcome, no review, no marker record — whether the harness stops (its controller) or a
-  // restart / 429 hold closes the start gate before its permit comes (the gate at its grant).
-  for (const stop of ["gate", "shutdown"] as const) {
-    const root = makeRepo();
-    const roles = ["alpha", "beta"];
-    const shas = await queueChanges(root, roles);
-    const flags = tmpdir("vet-parked-");
-    const restore = fakePi(reviewers(flags, roles, {}, ["alpha"]));
-    const shutdown = new AbortController();
-    let held = false;
-    const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, shutdown.signal), {
-      cap: 3,
-      signal: shutdown.signal,
-      held: () => held,
-    });
-    // Two role runs hold two of the three permits: one is free, so beta's verify parks behind
-    // alpha's.
-    await ctx.semaphore.acquire(0);
-    await ctx.semaphore.acquire(0);
-    try {
-      await drainMergeQueue(ctx, pipeline);
-      await waitForFile(path.join(flags, "alpha-reviewing"));
-      const beta = pipeline.verifying.get("beta");
-      assert.equal(beta?.parked, true, `${stop}: beta's verify is parked behind alpha's`);
-      if (stop === "gate") {
-        held = true; // a restart hold, say: the scheduler stops draining, and parked verifications meet it
-        fs.writeFileSync(path.join(flags, "alpha-release"), "");
-      } else {
-        shutdown.abort();
-      }
-      assert.ok(await within(beta!.promise, 30_000), `${stop}: the parked verification settled`);
-      await Promise.allSettled(allTasks(pipeline));
-
-      assert.equal(pipeline.verifying.has("beta"), false, `${stop}: beta holds no verification any more`);
-      assert.ok(queuedMergeFiles(root).some((q) => q.entry.role === "beta"), `${stop}: beta's entry is still queued`);
-      assert.equal(await refSha(root, mergeRefName("beta")), shas.beta, `${stop}: with its pin`);
-      assert.equal(readEvents(root).some((e) => e.source === "beta" && (e.type === "merge_failed" || e.type === "review_start")), false, `${stop}: nothing ran for beta`);
-      assert.ok(!readMergeMarker(root)?.changes?.some((c) => c.role === "beta"), `${stop}: beta never had a record`);
-      if (stop === "shutdown") {
-        const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha");
-        assert.deepEqual(failed.map((e) => e.result), ["aborted"], "the verification under review ended aborted");
-        assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha, "its pin survives the shutdown");
-      } else {
-        held = false; // the hold lifts: the next drain verifies beta afresh
-        await pumpUntil(ctx, pipeline, drained(root, pipeline), "both to merge once the gate reopens");
-        assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"), "beta merged once the gate reopened");
-      }
-      assert.ok(await within(ctx.semaphore.acquire(0), 5_000), `${stop}: the handed-back permit is free again`);
-    } finally {
-      fs.writeFileSync(path.join(flags, "alpha-release"), "");
-      shutdown.abort();
-      await Promise.allSettled(allTasks(pipeline));
-      restore();
-    }
-  }
-});
-
-test("three T-long reviews run at once at cap 4, so all three merge in about T, not 3T", async () => {
-  // Acceptance for land-queue speed 2c. Each review records how many reviews were in flight as it
-  // started, holds (bounded) until all three are in flight — three verifications that may overlap
-  // can still happen not to, and the overlap a working pipeline allows is made certain rather than
-  // left to a long hold — and then holds T. As in merger.test.ts's timing tests, the span is read
-  // off the harness's own timeline — first review_start to last `merged` — and held against the
-  // floor of any one-after-another schedule: each change's whole [review start → merge outcome]
-  // interval summed. merge_done's durationMs spans exactly that (written as `Date.now() -
-  // v.startedAt` from the merge's start in startMerge), so the span (which already includes the
-  // git merges) and the floor stretch together with merge load — only the reviews missing their
-  // overlap can breach it, and the in-flight samples assertion below already pins that they
-  // overlapped.
-  const T = 2;
-  const root = makeRepo();
-  const roles = ["alpha", "beta", "gamma"];
-  const mainBefore = mainSha(root);
-  await queueChanges(root, roles);
-  const runDir = tmpdir();
-  await withPi(
-    [
-      // Part 3g/3: skip the merged changes' post-merge reviews (a `-post-` session) so they
-      // neither count toward the in-flight samples nor hold for three peers — the overlap being
-      // pinned is the three verifications', before any merge.
-      skipPostReview,
-      `d='${runDir}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
-      `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${runDir}/samples.log'`,
-      `i=0; while [ $(ls "$d" | wc -l) -lt 3 ] && [ $i -lt 300 ]; do sleep 0.05; i=$((i+1)); done`,
-      `sleep ${T}; rm -f "$f"`,
-      APPROVE(),
-    ].join("\n"),
-    async () => {
-      // Cap 4: verifyLimit keeps one permit for authoring, so three verifications may run.
-      const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 4 });
-      await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to merge");
-
-      assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3", "all three merged");
-      const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
-      assert.equal(samples.length, 3, "one review per change");
-      assert.equal(Math.max(...samples), 3, `all three reviews overlapped (in flight at each start: ${samples})`);
-      const events = readEvents(root);
-      const firstStart = Math.min(...events.filter((e) => e.type === "review_start").map((e) => e.ts));
-      const lastMerged = Math.max(...events.filter((e) => e.type === "merged").map((e) => e.ts));
-      const serialFloorMs = events
-        .filter((e) => e.type === "merge_done")
-        .reduce((sum, e) => sum + Number(e.durationMs), 0);
-      assert.ok(
-        lastMerged - firstStart < serialFloorMs,
-        `review to last merge took ${lastMerged - firstStart} ms, no less than the changes' ${serialFloorMs} ms sum — they ran one after another`,
-      );
-      assert.equal(events.filter((e) => e.type === "merge_done").length, 3, "each change's outcome written once");
-      assert.equal(readMergeMarker(root), null, "the marker is gone once nothing is in flight");
-    },
-  );
 });
 
 test("a verification runs in a pooled slot (purpose vet while it works, no lease after) and creates no _land-<role>", async () => {

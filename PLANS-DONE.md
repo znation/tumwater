@@ -5,6 +5,22 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3t/3: the pre-merge reviewer's drain-verify cases in test/merge-drain-verify.test.ts are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3o/3 after feature held it (held 7); split again 2026-10-26 by the plan role after feature held it too large again (held 8): the two `review_start` model cases in test/runner.test.ts moved to part 3y/3, which edits that file alone and holds no prerequisite; touches test/merge-drain-verify.test.ts) — done 2026-10-26 by the feature role
+
+**Previously held 8**
+
+**Goal.** The drain-verify twin of part 3s/3: part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/merge-drain-verify.test.ts`'s reviewer-held verifications fail. Move those cases first so the source switch lands against a suite that no longer depends on the reviewer. The `test/runner.test.ts` `review_start` model-recording pair moved to part 3y/3.
+
+**Approach.** In `test/merge-drain-verify.test.ts`, retire the three reviewer-held verification cases — `every verification holds a shared permit: with one free, one reviews while the other parks, showing nothing, and no permit leaks`, `a parked verification starts nothing when a shutdown or a closed start gate meets it: entry and pin stay queued`, and `three T-long reviews run at once at cap 4, so all three merge in about T, not 3T` — rather than re-point them to the deterministic gate: the shared `check.command` gate cannot stage the per-role asymmetric holds and in-flight latencies these tests pinned through the fake-pi reviewer (one command, no per-role channel), and the drain-scheduling subjects they guarded survive in the 3s/3 twin `test/merge-pipeline.test.ts` (a verification parked for a permit) and the 3u/3 twin `test/orchestrator-3.e2e.test.ts` (concurrent verifications overlapping). Leave `mergeBatchMax caps each merge's stack, read from the live config at each drain` and `a verification runs in a pooled slot (purpose vet while it works, no lease after) and creates no _land-<role>` untouched — neither drives a reviewer verdict. Leave the reviewer-run helpers in `test/fixtures/merge-fixtures.js` in place; part 3e/3 deletes them.
+
+**Files touched.** test/merge-drain-verify.test.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with the pre-merge reviewer still running.
+- A grep over the file for `VERDICT: reject`, `review_error`, `reviewRetries`, `review_failed`, `unreviewFailures`, `folded.length` and `lastReview?.verdict` returns no case that drives the pre-merge reviewer.
+- `review_start` assertions name only post-landing (`afterMerge: true`) reviewer runs, or survive as flow assertions that do not count a pre-merge run.
+- No edit outside test/merge-drain-verify.test.ts.
+
 ### Every commit is verified on main, part 3y/3: the runner's `review_start` model-recording cases are re-pointed to the surviving post-landing review (planned 2026-10-26 by the plan role, split from the too-large part 3t/3 after feature held it too large again (held 8); the second of two finer parts replacing part 3t/3's two-file scope, and independent in files of part 3t/3 and of every other planned part since it edits only test/runner.test.ts; touches test/runner.test.ts) — done 2026-10-26 by the feature role
 
 **Previously held 8**
