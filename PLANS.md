@@ -349,4 +349,21 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `review_start` assertions name only post-landing (`afterMerge: true`) reviewer runs, or survive as flow assertions that do not count a pre-merge run.
 - No edit outside test/orchestrator-mixed.e2e.test.ts and test/orchestrator-director.test.ts.
 
+### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic or isolated, so a loaded host no longer turns the suite red (promoted 2026-10-26 by the steward from BUGS.md's "e2e/concurrency tests can fail on a loaded host…" class entry, lines 70-103, after three consecutive main tips' whole e2e tier never went green under record host load and even file-isolation runs of the failing tests went red)
+
+**Goal.** Retire BUGS.md's open e2e/concurrency class (lines 70-103): tests that fail on a loaded host and pass on a re-run because their verdicts hinge on cross-process wall-clock waits, pid probes and timing bounds that hold only when the host is quiet. As of 2026-10-25 the class has kept the whole e2e tier red across three consecutive main tips (9a99637, f211fee, 2aba648) under host load ≈ 118-146, and — first for the class — even a single e2e file run alone goes red, so no offline isolation run shelters the failing waits any more. The members are already their own open BUGS.md entries (the supervisor SIGKILL-grandchild watch, the pauseRole lost-update, the hanging-fake reused-pid probe) plus the e2e grow-waits `budget_resumed`, reached-cap, free-fallback demote, and the maxConcurrent / maxConcurrentPerProvider cap-resize — each keeps its own hold; this plan supplies the infrastructure those waits convert onto, it does not fold the bugs together.
+
+**Approach.** Land the class entry's deterministic-contention / isolation sketch as the step it names, one or both:
+1. **Deterministic contention** — drive the cross-process concurrency the tests assert deterministically instead of by wall clock: contend through the pause-role lock and seed (src/concurrency/lock.ts) and give reap checks a handle that cannot read a reused pid (a pid-file/epoch or process-group token, not `process.kill(pid, 0)`), so the load-stretched 60 s/150 s grows and the 2 s `gone` poll settle to bounded, host-independent verdicts.
+2. **Isolation** — run the e2e/concurrency tier apart from the full suite's thousands of concurrent spawns (its own npm script / ci step with the wall-clock threads to itself), so the bounds stretch only with that file's own shims, never the suite's load.
+Convert each member onto the chosen step as it lands, moving its BUGS.md hold to Fixed only once the deterministic/isolation step makes it green under full-suite load, not merely in a quiet isolation run.
+
+**Files touched.** src/concurrency/lock.ts src/concurrency/cross-process-lock.ts src/process/supervisor.ts src/runner/runner-run.ts src/runner/runner-recovery.ts test/supervisor.test.ts test/team-state.test.ts test/codex-hook-trust.test.ts test/orchestrator-budget.e2e.test.ts test/orchestrator-resize.e2e.test.ts. (The reviewer-repoint parts 3p/3-3w/3 touch some of the same e2e files at the reviewer cases only; this plan's edits are the orchestration wait/pid bounds, so whichever lands second rebases there.)
+
+**Acceptance criteria.**
+- Every member the class entry names — supervisor watch, pauseRole lost-update, hanging-fake reject, `budget_resumed`, reached-cap, free-fallback demote, maxConcurrent / maxConcurrentPerProvider grow-waits, and the director-prompt / custom-roles ordering races — passes under full-suite load, or the tier is run isolated so those waits hold.
+- No member's fix adds a new wall-clock/path-timing bound that the suite's load can stretch; each new bound names the deterministic signal it waits on.
+- Each member's BUGS.md hold is moved to Fixed only when green under load, not merely in isolation.
+- `npm run test:gate` passes.
+
 ## Done
