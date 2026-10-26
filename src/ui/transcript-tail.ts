@@ -64,6 +64,32 @@ interface TranscriptWindow {
   end: number;
 }
 
+/** The state a backward tail scan threads across its chunk helpers: the fstat size (for the
+ * whole-file fallback), the exclusive end of the unscanned region (`pos`), the straddling
+ * line's tail (`held`), the complete lines newest-first (`lines`), the entry-candidate count
+ * from EOF (`candidates`), the offset just past the newest complete newline (`end`), and the
+ * arming walk's progress (`stoppedAtBoundary`/`armed`/`boundaryIndex`). */
+interface TailScanState {
+  /** The opened file's fstat size, kept for the whole-file fallback in finalizeTailWindow. */
+  size: number;
+  /** Exclusive end of the not-yet-scanned region [pos - chunk, pos). */
+  pos: number;
+  /** Tail (with its newline) of a line that starts before the current chunk and ends inside it. */
+  held: Buffer;
+  /** Complete lines, newest first. */
+  lines: string[];
+  /** Entry-candidate lines seen so far, counting from EOF. */
+  candidates: number;
+  /** Offset just past the last complete newline; 0 when the file has none. */
+  end: number;
+  /** True once a boundary (or EOF-while-armed) stopped the walk, so the final window is exact. */
+  stoppedAtBoundary: boolean;
+  /** A qualifying agent_start was recorded; walking older lines for its marker line. */
+  armed: boolean;
+  /** Index in `lines` of the arming agent_start (valid while armed). */
+  boundaryIndex: number;
+}
+
 /** Rendered tail of a raw pi log for one-shot display (`tumwater logs --transcript <id>`): the last
  * `limit` transcript entries without reading (or parsing) the whole file — which grows to
  * logMaxBytes (~16MB+) between rotations. Scans backwards from EOF in chunks, collecting
@@ -92,7 +118,19 @@ export function readTranscriptTail(
   limit: number,
   opts: { includePrompts?: boolean } = {},
 ): TranscriptWindow | null {
-  const includePrompts = opts.includePrompts === true;
+  const opened = openTailFile(file);
+  if (opened === null) return null;
+  try {
+    const state = scanTailFromEof(opened.fd, opened.size, limit, opts.includePrompts === true);
+    return finalizeTailWindow(file, state, limit, opts);
+  } finally {
+    fs.closeSync(opened.fd);
+  }
+}
+
+/** Opens the log and stat-guards it: returns the opened `{ fd, size }`, or null when the file
+ * is missing, empty, or rotated away between stat and open. Owns the open/stat guard. */
+function openTailFile(file: string): { fd: number; size: number } | null {
   const st = statOrNull(file);
   if (!st || st.size === 0) return null;
 
@@ -112,123 +150,183 @@ export function readTranscriptTail(
     fs.closeSync(fd);
     return null;
   }
-  let pos = size; // Exclusive end of the not-yet-scanned region [pos - chunk, pos).
-  let held: Buffer = EMPTY_BUFFER; // Tail (with its newline) of a line that starts before the current chunk and ends inside it.
-  const lines: string[] = []; // Complete lines, newest first.
-  let candidates = 0; // Entry-candidate lines seen so far, counting from EOF.
-  let end = 0; // Offset just past the last complete newline; 0 when the file has none.
-  let stoppedAtBoundary = false;
-  let armed = false; // A qualifying agent_start was recorded; walking older lines for its marker line.
-  let boundaryIndex = -1; // Index in `lines` of the arming agent_start (valid while armed).
+  return { fd, size };
+}
 
+/** Finds the newest complete line's start in a chunk and sets up the straddling-line hold at
+ * the chunk's outer boundary; returns the walk's emitStart, or null when the whole chunk is one
+ * incomplete line. Owns the chunk-boundary arithmetic. */
+function prepareTailChunk(
+  fd: number,
+  c: Buffer,
+  got: number,
+  state: TailScanState,
+): number | null {
+  const lastNl = c.lastIndexOf(10);
+  if (lastNl < 0) return null; // No complete line in this stretch yet.
+  if (state.end === 0) state.end = state.pos - got + lastNl + 1; // The first complete line found is the newest one.
+  // The oldest line of c is incomplete when older bytes exist and the region does not
+  // start at a line boundary — hold it for the next chunk instead of decoding it torn.
+  let emitStart = 0;
+  if (state.pos - got > 0) {
+    const boundary = Buffer.alloc(1);
+    fs.readSync(fd, boundary, 0, 1, state.pos - got - 1);
+    if (boundary[0] !== 10) {
+      const firstNl = c.indexOf(10); // ≥ 0 — lastNl exists.
+      state.held = Buffer.from(c.subarray(0, firstNl + 1));
+      emitStart = firstNl + 1;
+    }
+  } else {
+    state.held = EMPTY_BUFFER; // Reached file start: nothing older to hold for.
+  }
+  // A newline at c's start terminates a zero-length line (a blank line whose terminating
+  // \n is the region's first byte — e.g. the log starts with one). The walk below finds a
+  // line's start via lastIndexOf(10, lineEnd - 1), which for that line would search from
+  // index -1 and wrap to c's LAST newline — re-emitting every newer line until the
+  // candidate count reaches limit. Skip the zero-length line by starting the walk after it.
+  if (c[emitStart] === 10) emitStart += 1;
+  return emitStart;
+}
+
+/** Advances the scan state across one pushed line: the arming walk while armed, else the
+ * candidate/agent_start transition; returns true when the walk must stop. Owns the arming
+ * state walk. */
+function advanceTailScan(
+  raw: string,
+  state: TailScanState,
+  includePrompts: boolean,
+  limit: number,
+): boolean {
   // Advances the arming state across one pushed line while `armed` — walking older lines for
   // the label-bearing marker that precedes the arming agent_start. Every line pushed here
   // sits inside [marker .. EOF] when a boundary lands, so the walk keeps it. Returns true when
   // a boundary was found and the walk must stop; false to keep walking.
-  const walkArmed = (raw: string): boolean => {
+  const walkArmed = (): boolean => {
     if (raw.includes('"tumwater_run"')) {
       // A kind-only marker carries no label and is skipped — a full re-read lets it pass
       // through too — so the scan keeps walking to the labeled marker that actually applies,
       // or to the older agent_start when the run is unlabeled.
       if (markerHasLabel(raw)) {
-        armed = false; // Boundary found — the post-loop EOF-while-armed fallback must not fire.
-        stoppedAtBoundary = true; // Window [this marker .. EOF] renders identically to a full re-read.
+        state.armed = false; // Boundary found — the post-loop EOF-while-armed fallback must not fire.
+        state.stoppedAtBoundary = true; // Window [this marker .. EOF] renders identically to a full re-read.
         return true;
       }
       return false;
     }
     if (raw.includes('"agent_start"')) {
-      lines.splice(boundaryIndex + 1); // No label before the next older run: unlabeled — stop at A.
-      armed = false;
-      stoppedAtBoundary = true;
+      state.lines.splice(state.boundaryIndex + 1); // No label before the next older run: unlabeled — stop at A.
+      state.armed = false;
+      state.stoppedAtBoundary = true;
       return true;
     }
     return false;
   };
 
-  try {
-    for (;;) {
-      const len = Math.min(TAIL_SCAN_CHUNK, pos);
-      if (len <= 0) break;
-      const buf = Buffer.alloc(len);
-      const got = fs.readSync(fd, buf, 0, len, pos - len);
-      if (got <= 0) break; // Shrank under us — use what we have.
-      // Covers the file region [pos - got, pos + held.length): this chunk plus the tail of
-      // the line that straddles its newer boundary (if any).
-      const c = held.length > 0 ? Buffer.concat([buf.subarray(0, got), held]) : buf.subarray(0, got);
-      const lastNl = c.lastIndexOf(10);
-      if (lastNl < 0) {
-        held = Buffer.from(c); // No complete line in this stretch yet.
-        pos -= got;
-        continue;
-      }
-      if (end === 0) end = pos - got + lastNl + 1; // The first complete line found is the newest one.
-      // The oldest line of c is incomplete when older bytes exist and the region does not
-      // start at a line boundary — hold it for the next chunk instead of decoding it torn.
-      let emitStart = 0;
-      if (pos - got > 0) {
-        const boundary = Buffer.alloc(1);
-        fs.readSync(fd, boundary, 0, 1, pos - got - 1);
-        if (boundary[0] !== 10) {
-          const firstNl = c.indexOf(10); // ≥ 0 — lastNl exists.
-          held = Buffer.from(c.subarray(0, firstNl + 1));
-          emitStart = firstNl + 1;
-        }
-      } else {
-        held = EMPTY_BUFFER; // Reached file start: nothing older to hold for.
-      }
-      // A newline at c's start terminates a zero-length line (a blank line whose terminating
-      // \n is the region's first byte — e.g. the log starts with one). The walk below finds a
-      // line's start via lastIndexOf(10, lineEnd - 1), which for that line would search from
-      // index -1 and wrap to c's LAST newline — re-emitting every newer line until the
-      // candidate count reaches limit. Skip the zero-length line by starting the walk after it.
-      if (c[emitStart] === 10) emitStart += 1;
-      let lineEnd = lastNl; // Byte index of the \n terminating the newest complete line in c.
-      while (lineEnd >= emitStart) {
-        const lineStart = c.lastIndexOf(10, lineEnd - 1) + 1;
-        if (lineStart < emitStart) break; // Safety — cannot happen: emitStart follows a \n.
-        const raw = c.toString("utf8", lineStart, lineEnd);
-        if (!raw.trim()) {
-          lineEnd = lineStart - 1; // Blank lines render nothing.
-          continue;
-        }
-        lines.push(raw);
-        if (armed) {
-          // Walking for the label-bearing marker line preceding the arming agent_start.
-          if (walkArmed(raw)) break;
-        } else if (isEntryCandidate(raw, includePrompts)) {
-          candidates += 1;
-        } else if (raw.includes('"agent_start"') && candidates >= limit) {
-          armed = true; // Keep walking for the marker line preceding this agent_start.
-          boundaryIndex = lines.length - 1;
-        }
-        lineEnd = lineStart - 1;
-      }
-      pos -= got;
-      if (stoppedAtBoundary || pos <= 0) break;
-    }
-  } finally {
-    fs.closeSync(fd);
+  if (state.armed) return walkArmed();
+  if (isEntryCandidate(raw, includePrompts)) {
+    state.candidates += 1;
+    return false;
   }
+  if (raw.includes('"agent_start"') && state.candidates >= limit) {
+    state.armed = true; // Keep walking for the marker line preceding this agent_start.
+    state.boundaryIndex = state.lines.length - 1;
+  }
+  return false;
+}
 
-  if (armed) {
+/** Decodes and collects a chunk's complete lines newest-first, threading the arming state
+ * through advanceTailScan until the walk must stop. Owns the per-chunk line walk. */
+function walkTailChunkLines(
+  state: TailScanState,
+  c: Buffer,
+  emitStart: number,
+  includePrompts: boolean,
+  limit: number,
+): void {
+  let lineEnd = c.lastIndexOf(10); // Byte index of the \n terminating the newest complete line in c.
+  while (lineEnd >= emitStart) {
+    const lineStart = c.lastIndexOf(10, lineEnd - 1) + 1;
+    if (lineStart < emitStart) break; // Safety — cannot happen: emitStart follows a \n.
+    const raw = c.toString("utf8", lineStart, lineEnd);
+    if (!raw.trim()) {
+      lineEnd = lineStart - 1; // Blank lines render nothing.
+      continue;
+    }
+    state.lines.push(raw);
+    if (advanceTailScan(raw, state, includePrompts, limit)) break;
+    lineEnd = lineStart - 1;
+  }
+}
+
+/** The backward chunk-scan loop over the opened fd, from EOF to file start, returning the
+ * threaded TailScanState. Owns the chunk scan loop. */
+function scanTailFromEof(
+  fd: number,
+  size: number,
+  limit: number,
+  includePrompts: boolean,
+): TailScanState {
+  const state: TailScanState = {
+    size,
+    pos: size, // Exclusive end of the not-yet-scanned region [pos - chunk, pos).
+    held: EMPTY_BUFFER, // Tail (with its newline) of a line that starts before the current chunk and ends inside it.
+    lines: [], // Complete lines, newest first.
+    candidates: 0, // Entry-candidate lines seen so far, counting from EOF.
+    end: 0, // Offset just past the last complete newline; 0 when the file has none.
+    stoppedAtBoundary: false,
+    armed: false, // A qualifying agent_start was recorded; walking older lines for its marker line.
+    boundaryIndex: -1, // Index in `lines` of the arming agent_start (valid while armed).
+  };
+  for (;;) {
+    const len = Math.min(TAIL_SCAN_CHUNK, state.pos);
+    if (len <= 0) break;
+    const buf = Buffer.alloc(len);
+    const got = fs.readSync(fd, buf, 0, len, state.pos - len);
+    if (got <= 0) break; // Shrank under us — use what we have.
+    // Covers the file region [pos - got, pos + held.length): this chunk plus the tail of
+    // the line that straddles its newer boundary (if any).
+    const c =
+      state.held.length > 0
+        ? Buffer.concat([buf.subarray(0, got), state.held])
+        : buf.subarray(0, got);
+    const emitStart = prepareTailChunk(fd, c, got, state);
+    if (emitStart === null) {
+      state.held = Buffer.from(c); // No complete line in this stretch yet.
+      state.pos -= got;
+      continue;
+    }
+    walkTailChunkLines(state, c, emitStart, includePrompts, limit);
+    state.pos -= got;
+    if (state.stoppedAtBoundary || state.pos <= 0) break;
+  }
+  return state;
+}
+
+/** Builds the rendered window from a finished (or EOF-armed) scan: the arming splice, the
+ * whole-file fallback and the slice(-limit) guard. Owns the final window. */
+function finalizeTailWindow(
+  file: string,
+  state: TailScanState,
+  limit: number,
+  opts: { includePrompts?: boolean },
+): TranscriptWindow {
+  if (state.armed) {
     // Reached EOF while still arming: no marker precedes the run — unlabeled, stop at its
     // agent_start.
-    lines.splice(boundaryIndex + 1);
-    stoppedAtBoundary = true;
+    state.lines.splice(state.boundaryIndex + 1);
+    state.stoppedAtBoundary = true;
   }
-
-  let entries = formatTranscript(lines.reverse(), opts); // Oldest first.
-  if (entries.length < limit && stoppedAtBoundary) {
+  let entries = formatTranscript(state.lines.reverse(), opts); // Oldest first.
+  if (entries.length < limit && state.stoppedAtBoundary) {
     // Contentless assistant turns made the rendered entries fewer than the candidate count
     // promised — re-read the whole file (the pre-optimization behavior) so slice(-limit) is
     // exact.
-    entries = formatTranscript(readCompleteLines(file, 0, size).lines, opts);
+    entries = formatTranscript(readCompleteLines(file, 0, state.size).lines, opts);
   }
   // limit can be 0 (or negative — nonsense a caller should never pass): entries.slice(-0) is
   // entries.slice(0) — the whole window — because -0 === 0, so a bare slice(-limit) would
   // return everything instead of nothing; guard it, the same contract readTranscript's take
   // guard pins (the last `limit` entries of a zero-sized window is the empty list).
   const kept = limit > 0 ? entries.slice(-limit) : [];
-  return { entries: kept, end };
+  return { entries: kept, end: state.end };
 }
