@@ -177,7 +177,22 @@ export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
   ensureParentDir(file);
   rotateIfLarge(file, EVENTS_MAX_BYTES, EVENTS_KEEP);
   appendEventLine(file, JSON.stringify(full) + "\n");
-  for (const listener of listeners) listener(full);
+  // The event is committed to the log before dispatch, so a subscriber's own failure must not
+  // make the write look like it failed to the caller, starve the other subscribers of this or
+  // any later event, or crash an unwrapped writer (the orchestrator's poll-loop warn site)
+  // for one listener's bug. Each listener is isolated: its throw is surfaced loudly on stderr
+  // (a terminal boundary, so the text is sanitized) and the dispatch moves on. The set is
+  // snapshotted so a listener that unsubscribes itself mid-dispatch cannot skip or double-run
+  // a sibling.
+  for (const listener of [...listeners]) {
+    try {
+      listener(full);
+    } catch (err) {
+      process.stderr.write(
+        `tumwater: event subscriber failed: ${stripTerminalControls(errorMessage(err))}\n`,
+      );
+    }
+  }
   return full;
 }
 

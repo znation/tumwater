@@ -235,6 +235,19 @@ throws: a missing, torn, or non-finite marker reads as no stop.
 
 **Pinned by.** `test/scheduled-stop.test.ts`.
 
+### INV-B7: a throwing event subscriber does not stop the others or the event write
+
+**Guarantee.** `logEvent` commits the event line to the log before dispatching to its
+subscribers, and isolates each subscriber: one subscriber's throw surfaces loudly on stderr
+(sanitized) and the dispatch moves on, so the remaining subscribers still receive the event,
+the event write does not appear to have failed to the caller, and an unwrapped writer (the
+orchestrator's poll-loop warn site) is not crashed for one listener's bug.
+
+**Binds.** `src/events/events.ts` (`logEvent`, `subscribeEvents`).
+
+**Pinned by.** `test/events.test.ts` — "a throwing event subscriber does not stop the other
+subscribers or the event write".
+
 ## Sibling result shapes a classifier treats alike
 
 When a classifier groups outcomes into classes, every result shape that belongs to a class must

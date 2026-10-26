@@ -250,3 +250,33 @@ test("subscribeEvents sees logged events until unsubscribed", () => {
   logEvent(dir, { source: "x", type: "run_end", run: 1, result: "no_change" });
   assert.deepEqual(seen, ["run_start"]);
 });
+
+// One subscriber's throw must not starve the others of the event, nor make the already-
+// appended event write appear to fail to its caller: logEvent keeps running every listener
+// and returns normally, surfacing the failed listener's error on stderr instead. (A register
+// ordering where the throwing listener is registered before the watching one is the only one
+// that exercises the isolation both arms need: the throw must not prevent the later-
+// registered listener from running.)
+test("a throwing event subscriber does not stop the other subscribers or the event write", (t) => {
+  const dir = tmpdir();
+  const seen: string[] = [];
+  const boom = subscribeEvents(() => {
+    throw new Error("boom \u001b[31mred\u001b[0m");
+  });
+  const watch = subscribeEvents((e) => seen.push(e.type));
+  const writes: string[] = [];
+  t.mock.method(process.stderr, "write", (chunk: string | Uint8Array) => {
+    writes.push(String(chunk));
+    return true;
+  });
+  // Returns normally rather than throwing to the caller, and the event still lands in the log.
+  const evt = logEvent(dir, { source: "x", type: "run_start", run: 1 });
+  assert.equal(evt.type, "run_start");
+  assert.deepEqual(seen, ["run_start"], "the later subscriber still receives the event");
+  assert.equal(readEvents(dir).length, 1, "the event is committed despite the subscriber failure");
+  const out = writes.join("");
+  assert.ok(out.includes("event subscriber failed"), "the subscriber failure is surfaced, not swallowed");
+  assert.ok(out.includes("boom") && !out.includes("\u001b"), "the surfaced text is sanitized");
+  boom();
+  watch();
+});
