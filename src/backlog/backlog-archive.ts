@@ -168,6 +168,69 @@ function entryBlocks(lines: readonly string[], entries: readonly ActionableEntry
   return out;
 }
 
+/** The selected entries of `entries`: the keep slice, or the baseKeys/park filter. */
+function selectArchiveEntries(
+  entries: readonly ActionableEntryRange[],
+  select: ArchiveSelection,
+): ActionableEntryRange[] {
+  return "keep" in select
+    ? entries.slice(Math.max(0, select.keep))
+    : entries.filter((e) => !select.baseKeys.has(archiveKey(e.title)) && !(select.park?.has(archiveKey(e.title)) ?? false));
+}
+
+/** Add the 0-based live lines of `entries` to `into`. */
+function addEntryLines(entries: readonly ActionableEntryRange[], into: Set<number>): void {
+  for (const e of entries) for (let i = e.start - 1; i < e.end; i++) into.add(i);
+}
+
+/** The bulk-archive split: the tail past the kept entries moves but for the dropped and staying
+ * entries, and a `_None yet._` placeholder stays in the live section, never in the archive.
+ * null when no entry sits past the kept ones. */
+function splitByKeep(
+  lines: readonly string[],
+  span: { heading: number; end: number },
+  entries: readonly ActionableEntryRange[],
+  keep: number,
+  staying: readonly ActionableEntryRange[],
+  droppedLine: ReadonlySet<number>,
+): { kept: string[]; moved: string[] } | null {
+  const from = keep <= 0 ? span.heading + 1 : (entries[keep]?.start ?? 0) - 1;
+  if (from < 0) return null; // no entry past the kept ones
+  // The tail moves but for the dropped and staying entries; a `_None yet._` placeholder stays
+  // in the live section, never in the archive. Staying entries follow the kept ones.
+  const stayLine = new Set<number>();
+  addEntryLines(staying, stayLine);
+  const tail: string[] = [];
+  for (let i = from; i < span.end; i++) if (!droppedLine.has(i) && !stayLine.has(i)) tail.push(lines[i] ?? "");
+  const moved = trimBlank(tail.filter((l) => !PLACEHOLDER.test(l.trim())));
+  const stayingBlocks = entryBlocks(lines, staying);
+  const head = keep <= 0 ? [] : trimBlank(lines.slice(span.heading + 1, from));
+  const kept = head.length > 0 && stayingBlocks.length > 0 ? [...head, "", ...stayingBlocks] : [...head, ...stayingBlocks];
+  return {
+    kept: kept.length === 0 ? tail.filter((l) => PLACEHOLDER.test(l.trim())).slice(0, 1) : kept,
+    moved,
+  };
+}
+
+/** The commit-time-sweep split: the kept body drops the moved and dropped lines, refusing when
+ * no archive exists and other content would stay in the live section. */
+function splitByBaseKeys(
+  lines: readonly string[],
+  span: { heading: number; end: number },
+  archiveMd: string | null,
+  moving: readonly ActionableEntryRange[],
+  droppedLine: ReadonlySet<number>,
+): { kept: string[]; moved: string[] } | null {
+  const leaves = new Set(droppedLine);
+  addEntryLines(moving, leaves);
+  let kept: string[] = [];
+  for (let i = span.heading + 1; i < span.end; i++) if (!leaves.has(i)) kept.push(lines[i] ?? "");
+  kept = trimBlank(kept);
+  if (archiveMd === null && kept.some((l) => l.trim() !== "" && !PLACEHOLDER.test(l.trim()))) return null;
+  const moved = entryBlocks(lines, moving);
+  return { kept, moved };
+}
+
 /** Move the selected part of `liveMd`'s finished section to the top of `archiveMd`'s (a new
  * archive starts from archiveTemplate), keeping the moved lines' order. A selected entry whose
  * heading the archive already holds never moves (EntryFate): with the same text it is dropped
@@ -186,10 +249,7 @@ export function archiveFinishedText(
   const span = sectionSpan(lines, spec.section);
   if (span === null) return null;
   const entries = entriesIn(liveMd, span, spec.section);
-  const selected =
-    "keep" in select
-      ? entries.slice(Math.max(0, select.keep))
-      : entries.filter((e) => !select.baseKeys.has(archiveKey(e.title)) && !(select.park?.has(archiveKey(e.title)) ?? false));
+  const selected = selectArchiveEntries(entries, select);
   if (!("keep" in select) && selected.length === 0) return null;
   const archiveText = archiveMd ?? archiveTemplate(spec);
   const archiveLines = archiveText.split("\n");
@@ -199,32 +259,14 @@ export function archiveFinishedText(
   const withFate = (fate: EntryFate): ActionableEntryRange[] => selected.filter((_, i) => fates[i] === fate);
   // The 0-based live lines of the entries that leave the live section without moving.
   const droppedLine = new Set<number>();
-  for (const e of withFate("drop")) for (let i = e.start - 1; i < e.end; i++) droppedLine.add(i);
-  let moved: string[];
-  let kept: string[];
-  if ("keep" in select) {
-    const from = select.keep <= 0 ? span.heading + 1 : (entries[select.keep]?.start ?? 0) - 1;
-    if (from < 0) return null; // no entry past the kept ones
-    // The tail moves but for the dropped and staying entries; a `_None yet._` placeholder stays
-    // in the live section, never in the archive. Staying entries follow the kept ones.
-    const stayLine = new Set<number>();
-    for (const e of withFate("stay")) for (let i = e.start - 1; i < e.end; i++) stayLine.add(i);
-    const tail: string[] = [];
-    for (let i = from; i < span.end; i++) if (!droppedLine.has(i) && !stayLine.has(i)) tail.push(lines[i] ?? "");
-    moved = trimBlank(tail.filter((l) => !PLACEHOLDER.test(l.trim())));
-    const staying = entryBlocks(lines, withFate("stay"));
-    const head = select.keep <= 0 ? [] : trimBlank(lines.slice(span.heading + 1, from));
-    kept = head.length > 0 && staying.length > 0 ? [...head, "", ...staying] : [...head, ...staying];
-    if (kept.length === 0) kept = tail.filter((l) => PLACEHOLDER.test(l.trim())).slice(0, 1);
-  } else {
-    const leaves = new Set(droppedLine);
-    for (const e of withFate("move")) for (let i = e.start - 1; i < e.end; i++) leaves.add(i);
-    kept = [];
-    for (let i = span.heading + 1; i < span.end; i++) if (!leaves.has(i)) kept.push(lines[i] ?? "");
-    kept = trimBlank(kept);
-    if (archiveMd === null && kept.some((l) => l.trim() !== "" && !PLACEHOLDER.test(l.trim()))) return null;
-    moved = entryBlocks(lines, withFate("move"));
-  }
+  addEntryLines(withFate("drop"), droppedLine);
+  const split =
+    "keep" in select
+      ? splitByKeep(lines, span, entries, select.keep, withFate("stay"), droppedLine)
+      : splitByBaseKeys(lines, span, archiveMd, withFate("move"), droppedLine);
+  if (split === null) return null;
+  const moved = split.moved;
+  const kept = split.kept;
   const dropped = withFate("drop").map((e) => e.title);
   if (moved.length === 0 && dropped.length === 0) return null;
   const existing = trimBlank(archiveLines.slice(archiveSpan.heading + 1, archiveSpan.end));
