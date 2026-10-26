@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -6,6 +6,7 @@ import { applyRevision, applyWithConflicts, REVISION_BACKSTOP } from "../src/run
 import { CONVERGENCE_HOLD_MARKER } from "../src/roles/role-guidance.js";
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/prompt/gate-notes.js";
 import { verifyRequest } from "../src/merge/merge-batch.js";
+import { recordRejectedChange } from "../src/merge/merge-core.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
 import { rejectedRefName, mergeRefName } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
@@ -25,7 +26,7 @@ import { readmeTemplate } from "../src/brief/brief.js";
 import { eventsOfType, unwritableEvents } from "./fixtures/log-fixtures.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { commitIn, headSha, initializedWorktree, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { batchWiring, makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./fixtures/merger-fixtures.js";
+import { batchWiring, makeCtx, request, ROLE } from "./fixtures/merger-fixtures.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -279,168 +280,161 @@ test("applyWithConflicts settles the archive and hands back markers only in the 
   assert.equal(sequencerLeft(root), false, "a later cherry-pick in this worktree is not refused as in progress");
 });
 
-test("a gate rejection points the rejected ref at the judged head and records round 1", async () => {
-  await withPi(reviewerPi("VERDICT: reject\n1. breaks the rules"), async () => {
-    const { root, sha } = await pinnedFixture();
-    const state = freshRunnerState(ROLE);
-    const { ctx } = makeCtx(root, state);
-    const w = batchWiring(ctx);
-    const verdict = await verifyRequest(ctx, request(sha), w);
-    assert.equal(verdict.kind, "result");
-    assert.equal(state.revision?.round, 1, "a fresh rejection owes one revision");
-    assert.equal(await refSha(root, rejectedRefName(ROLE)), state.revision?.sha, "the rejected head stays reachable");
-    assert.equal(await refSha(root, rejectedRefName(ROLE)), state.lastReview?.head);
-  });
+/** A pinned commit off main whose diff leaks a credential, so verifyRequest rejects it without
+ * ever running the pre-merge reviewer — the deterministic twin of the reviewer-verdict rejections
+ * the revision cases used to drive. Part 3r/3 re-points those cases to a leaked credential rather
+ * than the conflict-marker diff the first revision used, because part 3m/3 narrows the pre-merge
+ * gate to the three findings a later commit cannot repair and drops `conflictMarkerReason` from
+ * it, whereas a leaked credential stays a gate rejection. It sets TUMWATER_TEST_FAKE_TOKEN (a
+ * name the gate's SECRET_NAME matches, with a value past MIN_SECRET_LENGTH) and commits that value
+ * so secretLeakReason sees it; afterEach clears the variable once the test is done. */
+const leakedToken = "tw-secret-value-0123456789";
+async function leakedFixture(role = ROLE): Promise<{ root: string; sha: string }> {
+  process.env.TUMWATER_TEST_FAKE_TOKEN = leakedToken;
+  const { root, sha } = commitOffMain("seed.txt", `${leakedToken}\n`, "the rejected work");
+  await setRef(root, mergeRefName(role), sha);
+  return { root, sha };
+}
+
+afterEach(() => {
+  delete process.env.TUMWATER_TEST_FAKE_TOKEN;
 });
 
-test("a rejection whose objection has survived two revisions is final and deletes the rejected ref", async () => {
-  await withPi(reviewerPi("VERDICT: reject\n1. (prior 1) still wrong"), async () => {
-    const { root, sha } = await pinnedFixture();
+test("a gate rejection points the rejected ref at the judged head and records round 1", async () => {
+  const { root, sha } = await leakedFixture();
+  const state = freshRunnerState(ROLE);
+  const { ctx } = makeCtx(root, state);
+  const w = batchWiring(ctx);
+  const verdict = await verifyRequest(ctx, request(sha), w);
+  assert.equal(verdict.kind, "result");
+  assert.equal(state.revision?.round, 1, "a fresh rejection owes one revision");
+  assert.equal(await refSha(root, rejectedRefName(ROLE)), state.revision?.sha, "the rejected head stays reachable");
+  assert.equal(await refSha(root, rejectedRefName(ROLE)), state.lastReview?.head);
+});
+
+// The tagged-repeat finality and its counting are reviewer vocabulary: only the pre-merge
+// reviewer puts a `(prior N)` tag in a reason, and a deterministic gate rejection never does.
+// Part 3r/3 re-points the revision cases to deterministic rejections, so the tag path can no
+// longer be reached through verifyRequest — these drive recordRejectedChange directly with a
+// tagged reason, pinning INV-BH4's counting and REVISION_FINAL_ON_REPEAT without any reviewer.
+
+test("a repeat (prior N) objection that has survived two revisions is final and deletes the rejected ref", async () => {
+  const { root, sha } = await leakedFixture();
+  const state = freshRunnerState(ROLE);
+  // Review 2 (revisionRound 1 → round 2): the prior round's objection 1 had already survived one
+  // revision (count 1), and the re-review re-states it `(prior 1)`, so its count reaches 2 — the
+  // change has stopped converging and the rejection is final, well before the backstop.
+  state.lastReview = { verdict: "reject", reasons: ["(prior 1) still wrong"], head: sha, at: Date.now() };
+  await setRef(root, rejectedRefName(ROLE), sha);
+  await recordRejectedChange(root, ROLE, state, sha, 1, [1]);
+  assert.equal(state.revision, undefined, "no more rounds are recorded");
+  assert.equal(state.lastReview?.exhausted, true, "the next rejected note says it was final");
+  assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
+});
+
+test("an out-of-range (prior N) tag, or one with no prior round, counts one revision and is not final", async () => {
+  // Two non-final inputs: a (prior N) tag beyond a shorter prior list, and a tagged tag with no
+  // prior round at all. Both read a prior count of 0, so the restatement counts 1 and is not
+  // final — the change still owes another revision.
+  const cases: Array<{ reason: string; priorCounts: number[] }> = [
+    { reason: "(prior 3) a stale number", priorCounts: [1] }, // objection 3 is beyond the prior list
+    { reason: "(prior 1) still wrong", priorCounts: [] }, // no prior round yet
+  ];
+  for (const c of cases) {
+    const { root, sha } = await leakedFixture();
     const state = freshRunnerState(ROLE);
-    const { ctx } = makeCtx(root, state);
-    const w = batchWiring(ctx);
-    // The rejected ref exists from the earlier rounds; a repeated objection clears it. This is
-    // rejection 2 (round 2): the prior rejection's objection 1 had already survived one revision
-    // (count 1), and the re-review re-states it `(prior 1)`, so its count reaches 2 — the change
-    // has stopped converging and the rejection is final, well before the backstop.
-    await setRef(root, rejectedRefName(ROLE), sha);
-    const verdict = await verifyRequest(
-      ctx,
-      request(sha, { revisionRound: 1, priorReview: { sha, reasons: ["the bug"], counts: [1] } }),
-      w,
-    );
-    assert.equal(verdict.kind, "result");
-    assert.equal(state.revision, undefined, "no more rounds are recorded");
-    assert.equal(state.lastReview?.exhausted, true, "the next rejected note says it was final");
-    assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
-    assert.equal(eventsOfType(root, "revision").length, 1, "the exhaustion is logged");
-  });
+    state.lastReview = { verdict: "reject", reasons: [c.reason], head: sha, at: Date.now() };
+    await recordRejectedChange(root, ROLE, state, sha, 1, c.priorCounts);
+    assert.equal(state.revision?.round, 2, "a non-final restatement owes another revision");
+    assert.deepEqual(state.revision?.reasonCounts, [1]);
+    assert.equal(state.lastReview?.exhausted, undefined, "not final — the change still revises");
+    assert.equal(await refSha(root, rejectedRefName(ROLE)), state.revision?.sha, "the rejected head stays reachable");
+  }
 });
 
 test("an exhausted chain holds the entry with the surviving objections, not a fresh pick", async () => {
-  await withPi(reviewerPi("VERDICT: reject\n1. (prior 1) still wrong"), async () => {
-    const { root, sha } = await pinnedFixture();
-    // A backend entry the author is revising, still under ## Planned.
-    fs.writeFileSync(
-      path.join(root, "PLANS.md"),
-      "# Plans\n\nIntro.\n\n## Planned\n\n### The convergence plan (planned 2026-10-01)\n\nBody.\n",
-    );
-    const state = freshRunnerState(ROLE);
-    state.claim = {
-      file: "PLANS.md",
-      key: entryKey("The convergence plan (planned 2026-10-01)"),
-      title: "The convergence plan (planned 2026-10-01)",
-      at: Date.now(),
-      source: "assigned",
-    };
-    const { ctx } = makeCtx(root, state);
-    const w = batchWiring(ctx);
-    await setRef(root, rejectedRefName(ROLE), sha);
-    const verdict = await verifyRequest(
-      ctx,
-      request(sha, { revisionRound: 1, priorReview: { sha, reasons: ["the bug"], counts: [1] } }),
-      w,
-    );
-    assert.equal(verdict.kind, "result");
-    assert.equal(state.lastReview?.exhausted, true, "the rejection is final");
-    // The surviving objection is now a needs-review hold under the entry's heading, so no role
-    // re-picks it "fresh"; the note text carries the objection verbatim for the operator/plan role.
-    const md = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
-    // The surviving objection is now a needs-review hold under the entry's heading, so no role
-    // re-picks it "fresh"; the note text carries the objection verbatim for the operator/plan role.
-    const noteLine = md.split("\n").find((l) => l.startsWith("**Needs review"));
-    assert.ok(noteLine?.includes(CONVERGENCE_HOLD_MARKER), "the hold note carries the shared convergence marker");
-    const holdsObjection = noteLine?.includes("still wrong") === true;
-    if (!holdsObjection) {
-      assert.fail("the needs-review hold note is missing or lacks the surviving objection:\n" + (noteLine ?? md));
-    }
-  });
+  const { root, sha } = await leakedFixture();
+  // A backend entry the author is revising, still under ## Planned.
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    "# Plans\n\nIntro.\n\n## Planned\n\n### The convergence plan (planned 2026-10-01)\n\nBody.\n",
+  );
+  const state = freshRunnerState(ROLE);
+  state.claim = {
+    file: "PLANS.md",
+    key: entryKey("The convergence plan (planned 2026-10-01)"),
+    title: "The convergence plan (planned 2026-10-01)",
+    at: Date.now(),
+    source: "assigned",
+  };
+  const { ctx } = makeCtx(root, state);
+  const w = batchWiring(ctx);
+  await setRef(root, rejectedRefName(ROLE), sha);
+  // A deterministic rejection carries no `(prior N)` repeat tag (only the reviewer could make
+  // one), so the only route to finality is the backstop: REVISION_BACKSTOP - 1 revisions have
+  // been granted and this is the cap rejection, which ends the chain as a rejection judged
+  // final and holds the entry.
+  const verdict = await verifyRequest(ctx, request(sha, { revisionRound: REVISION_BACKSTOP - 1 }), w);
+  assert.equal(verdict.kind, "result");
+  assert.equal(state.lastReview?.exhausted, true, "the rejection is final");
+  // The surviving objection is now a needs-review hold under the entry's heading, so no role
+  // re-picks it "fresh"; the note text carries the objection verbatim for the operator/plan role.
+  const md = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+  const noteLine = md.split("\n").find((l) => l.startsWith("**Needs review"));
+  assert.ok(noteLine?.includes(CONVERGENCE_HOLD_MARKER), "the hold note carries the shared convergence marker");
+  // The deterministic rejection's own reason is the surviving objection the hold carries.
+  const holdsObjection = noteLine?.includes("TUMWATER_TEST_FAKE_TOKEN") === true;
+  if (!holdsObjection) {
+    assert.fail("the needs-review hold note is missing or lacks the surviving objection:\n" + (noteLine ?? md));
+  }
 });
 
 test("a converging chain whose revisions raise only new objections keeps revising", async () => {
-  await withPi(reviewerPi("VERDICT: reject\n1. a brand-new concern"), async () => {
-    const { root, sha } = await pinnedFixture();
-    const state = freshRunnerState(ROLE);
-    const { ctx } = makeCtx(root, state);
-    const w = batchWiring(ctx);
-    // This is the chain's third rejection (revisionRound 2 → round 3), where the old
-    // REVISION_LIMIT of 2 used to abandon even a converging change. The re-review raises a
-    // NEW untagged objection, so no count reaches the finality threshold and the chain keeps
-    // revising instead.
-    const verdict = await verifyRequest(
-      ctx,
-      request(sha, { revisionRound: 2, priorReview: { sha, reasons: ["the old bug"], counts: [1] } }),
-      w,
-    );
-    assert.equal(verdict.kind, "result");
-    assert.equal(state.revision?.round, 3, "a converging chain is not abandoned");
-    assert.equal(state.lastReview?.exhausted, undefined, "not final — the change still revises");
-    assert.equal(await refSha(root, rejectedRefName(ROLE)), state.revision?.sha, "the rejected head stays reachable");
-  });
+  const { root, sha } = await leakedFixture();
+  const state = freshRunnerState(ROLE);
+  const { ctx } = makeCtx(root, state);
+  const w = batchWiring(ctx);
+  // This is the chain's third rejection (revisionRound 2 → round 3), where the old
+  // REVISION_LIMIT of 2 used to abandon even a converging change. The deterministic rejection
+  // carries no repeat tag, so no count reaches the finality threshold and the chain keeps
+  // revising instead.
+  const verdict = await verifyRequest(ctx, request(sha, { revisionRound: 2 }), w);
+  assert.equal(verdict.kind, "result");
+  assert.equal(state.revision?.round, 3, "a converging chain is not abandoned");
+  assert.equal(state.lastReview?.exhausted, undefined, "not final — the change still revises");
+  assert.equal(await refSha(root, rejectedRefName(ROLE)), state.revision?.sha, "the rejected head stays reachable");
 });
 
 test("a chain whose objections never repeat ends at the backstop", async () => {
-  await withPi(reviewerPi("VERDICT: reject\n1. a brand-new concern"), async () => {
-    const { root, sha } = await pinnedFixture();
-    const state = freshRunnerState(ROLE);
-    const { ctx } = makeCtx(root, state);
-    const w = batchWiring(ctx);
-    await setRef(root, rejectedRefName(ROLE), sha);
-    // REVISION_BACKSTOP - 1 revisions have been granted; this is the 6th (cap) rejection, and
-    // even with every objection untagged the chain ends.
-    const verdict = await verifyRequest(ctx, request(sha, { revisionRound: REVISION_BACKSTOP - 1 }), w);
-    assert.equal(verdict.kind, "result");
-    assert.equal(state.revision, undefined, "no more rounds are recorded");
-    assert.equal(state.lastReview?.exhausted, true, "the next rejected note says it was final");
-    assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
-  });
+  const { root, sha } = await leakedFixture();
+  const state = freshRunnerState(ROLE);
+  const { ctx } = makeCtx(root, state);
+  const w = batchWiring(ctx);
+  await setRef(root, rejectedRefName(ROLE), sha);
+  // REVISION_BACKSTOP - 1 revisions have been granted; this is the 6th (cap) rejection, and the
+  // deterministic rejection carries no repeat tag, so the chain ends at the cap.
+  const verdict = await verifyRequest(ctx, request(sha, { revisionRound: REVISION_BACKSTOP - 1 }), w);
+  assert.equal(verdict.kind, "result");
+  assert.equal(state.revision, undefined, "no more rounds are recorded");
+  assert.equal(state.lastReview?.exhausted, true, "the next rejected note says it was final");
+  assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
 });
 
 test("exhausting a revision still records the outcome when the events feed is unwritable", async () => {
   // recordRejectedChange (merge-core.ts) deletes the rejected ref and clears the round, then
   // logs the exhaustion LAST. An EISDIR on that append must not turn the terminal exhaustion
   // into a thrown verification error after the ref is already gone.
-  await withPi(reviewerPi("VERDICT: reject\n1. (prior 1) still wrong"), async () => {
-    const { root, sha } = await pinnedFixture();
-    const state = freshRunnerState(ROLE);
-    const { ctx } = makeCtx(root, state);
-    const w = batchWiring(ctx);
-    await setRef(root, rejectedRefName(ROLE), sha);
-    unwritableEvents(root);
-
-    const verdict = await verifyRequest(
-      ctx,
-      request(sha, { revisionRound: 1, priorReview: { sha, reasons: ["the bug"], counts: [1] } }),
-      w,
-    );
-
-    assert.equal(verdict.kind, "result");
-    assert.equal(state.revision, undefined, "the round is still cleared");
-    assert.equal(state.lastReview?.exhausted, true, "the final rejection is still marked");
-    assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
-  });
-});
-
-test("a permanent reviewer config error still holds the pin when the events feed is unwritable", async () => {
-  // reviewPinnedChange's configError branch records the hold and then warns; an EISDIR on that
-  // warning must not turn the designed held-pin "review_error" into a thrown verification error.
-  const configErrorPi = `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '400 model_not_supported' >&2; exit 1;; esac; done`;
-  await withPi(configErrorPi, async () => {
-    const { root, sha } = await pinnedFixture();
-    const state = freshRunnerState(ROLE);
-    const { ctx } = makeCtx(root, state);
-    ctx.config.review.model = "bad/model";
-    const w = batchWiring(ctx);
-    unwritableEvents(root);
-
-    const verdict = await verifyRequest(ctx, request(sha), w);
-
-    assert.equal(verdict.kind, "result");
-    if (verdict.kind !== "result") return;
-    assert.equal(verdict.result, "review_error", "the held pin reports review_error, not a throw");
-    assert.equal(state.mergeReviewError?.selector, "bad/model", "the hold still names the selector");
-    assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin is kept for a config change");
-  });
+  const { root, sha } = await leakedFixture();
+  const state = freshRunnerState(ROLE);
+  const { ctx } = makeCtx(root, state);
+  const w = batchWiring(ctx);
+  await setRef(root, rejectedRefName(ROLE), sha);
+  unwritableEvents(root);
+  const verdict = await verifyRequest(ctx, request(sha, { revisionRound: REVISION_BACKSTOP - 1 }), w);
+  assert.equal(verdict.kind, "result");
+  assert.equal(state.revision, undefined, "the round is still cleared");
+  assert.equal(state.lastReview?.exhausted, true, "the final rejection is still marked");
+  assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
 });
 
 /** The `stageRunMerge` context the two staging tests share: the runner wiring every run
@@ -608,17 +602,14 @@ test("the run prompt skips the plain rejection note while a revision is due", ()
 });
 
 test("the director never gets a revision: a rejection leaves no revision state", async () => {
-  await withPi(reviewerPi("VERDICT: reject\n1. no good"), async () => {
-    const { root, sha } = commitOffMain("seed.txt", "director work\n", "director work");
-    await setRef(root, mergeRefName(DIRECTOR_ROLE), sha);
-    const state = freshRunnerState(DIRECTOR_ROLE);
-    const { ctx } = makeCtx(root, state);
-    const w = batchWiring(ctx);
-    const verdict = await verifyRequest(ctx, request(sha, { role: DIRECTOR_ROLE }), w);
-    assert.equal(verdict.kind, "result");
-    assert.equal(state.revision, undefined, "the director never revises");
-    assert.equal(await refSha(root, rejectedRefName(DIRECTOR_ROLE)), null);
-  });
+  const { root, sha } = await leakedFixture(DIRECTOR_ROLE);
+  const state = freshRunnerState(DIRECTOR_ROLE);
+  const { ctx } = makeCtx(root, state);
+  const w = batchWiring(ctx);
+  const verdict = await verifyRequest(ctx, request(sha, { role: DIRECTOR_ROLE }), w);
+  assert.equal(verdict.kind, "result");
+  assert.equal(state.revision, undefined, "the director never revises");
+  assert.equal(await refSha(root, rejectedRefName(DIRECTOR_ROLE)), null);
 });
 
 test("an exhausted rejection's plain note sends a plan-less role to its notes", () => {

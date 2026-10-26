@@ -255,22 +255,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Every case that remains keeps its original subject (conflict resolution or re-review bookkeeping) and asserts the same outcome through a deterministic rejection.
 - No edit outside test/merger.test.ts.
 
-### Every commit is verified on main, part 3r/3: the pre-merge reviewer's revision cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3n/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/revision.test.ts test/revision-prior-tags.test.ts)
-
-**Previously held 7**
-
-**Goal.** The revision twin of parts 3p/3 and 3q/3: part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes every revision case that pins a reviewer verdict, a reviewer failure or the reviewer's usage fold fail. Move those cases first so the source switch lands against a suite that no longer depends on the reviewer.
-
-**Approach.** Apply part 3p/3's rule to `test/revision.test.ts` and `test/revision-prior-tags.test.ts`: delete a case that exists only to pin the reviewer; re-point one whose real subject is revision bookkeeping to a deterministic gate rejection (a conflict-marker diff, a leaked credential or a failing declared check). Both files import `makeCtx`/`pinnedFixture`/`reviewerPi`/`ROLE` from `test/fixtures/merger-fixtures.ts` and use them as they stand — part 3q/3 owns that file, and no re-point here edits it. Leave the reviewer-run helpers in `test/fixtures/pi-events.ts` in place; part 3e/3 deletes them.
-
-**Files touched.** test/revision.test.ts test/revision-prior-tags.test.ts
-
-**Acceptance criteria.**
-- `npm run test:gate` passes with the pre-merge reviewer still running.
-- A grep over the two revision files for `VERDICT: reject`, `review_error`, `reviewRetries`, `review_failed`, `unreviewFailures`, `folded.length` and `lastReview?.verdict` returns no case that drives the pre-merge reviewer.
-- Every case that remains keeps its original subject (revision bookkeeping) and asserts the same outcome through a deterministic rejection.
-- No edit outside test/revision.test.ts and test/revision-prior-tags.test.ts.
-
 ### Every commit is verified on main, part 3s/3: the pre-merge reviewer's merge-pipeline sequencing cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3o/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/merge-pipeline.test.ts)
 
 **Previously held 7**

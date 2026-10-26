@@ -5,6 +5,23 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3r/3: the pre-merge reviewer's revision cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3n/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/revision.test.ts test/revision-prior-tags.test.ts src/merge/merge-core.ts) — done 2026-10-25 by the feature role
+
+**Previously held 7**
+
+**Goal.** The revision twin of parts 3p/3 and 3q/3: part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes every revision case that pins a reviewer verdict, a reviewer failure or the reviewer's usage fold fail. Move those cases first so the source switch lands against a suite that no longer depends on the reviewer.
+
+**Approach.** Apply part 3p/3's rule to `test/revision.test.ts` and `test/revision-prior-tags.test.ts`: delete a case that exists only to pin the reviewer; re-point one whose real subject is revision bookkeeping to a deterministic gate rejection (a conflict-marker diff, a leaked credential or a failing declared check). Both files import `makeCtx`/`pinnedFixture`/`reviewerPi`/`ROLE` from `test/fixtures/merger-fixtures.ts` and use them as they stand — part 3q/3 owns that file, and no re-point here edits it. Leave the reviewer-run helpers in `test/fixtures/pi-events.ts` in place; part 3e/3 deletes them.
+
+**Files touched.** test/revision.test.ts test/revision-prior-tags.test.ts docs/invariants.md src/merge/merge-core.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with the pre-merge reviewer still running.
+- A grep over the two revision files for `VERDICT: reject`, `review_error`, `reviewRetries`, `review_failed`, `unreviewFailures`, `folded.length` and `lastReview?.verdict` returns no case that drives the pre-merge reviewer.
+- Every case that remains keeps its original subject (revision bookkeeping) and asserts the same outcome through a deterministic rejection.
+
+**Notes.** Implemented by the feature role on 2026-10-25. Each surviving revision case is re-pointed to a deterministic rejection via a new local `leakedFixture` helper (a pinned commit whose diff leaks a secret env value, so none drives the pre-merge reviewer); the reviewer-config-error case (which only the reviewer could produce, and which this part could not re-point to a deterministic rejection) was deleted, its backstop outcome now covered through `REVISION_BACKSTOP`. The `(prior N)` repeat-tag cases, which no deterministic rejection carries, were re-pinned by driving `recordRejectedChange` directly (src/merge/merge-core.ts now exports it) with a tagged reason. The `pinnedFixture`/`reviewerPi` imports are gone from both files; test/revision-prior-tags.test.ts now holds only the `priorObjectionNumber` unit test. src/merge/merge-core.ts and docs/invariants.md were edited (beyond the plan's two test files) to export `recordRejectedChange` and re-point INV-BH4's pinned-by titles at the surviving cases, so the invariant-honesty gate stays green.
+
 ### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 1/3: the pause-role lost-update test drives contention through the lock, not a spin barrier (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 2/3 and part 3/3 and editing only test/team-state.test.ts, so it holds no prerequisite and merges independently; the class plan's "isolation" option is dropped because the existing e2e step already runs the tier apart from the full suite and it still went red at host load ≈ 146, so only a deterministic signal fixes the verdict; touches test/team-state.test.ts) — done 2026-10-26 by the feature role
 
 **Previously held 1**

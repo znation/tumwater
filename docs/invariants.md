@@ -3757,15 +3757,16 @@ advances. The director never revises.
 (`REVISION_FINAL_ON_REPEAT`, `REVISION_BACKSTOP`, `holdEntryAfterExhaustion`).
 
 **Pinned by.** `test/revision.test.ts` — "a gate rejection points the rejected ref at the judged
-head and records round 1", "a rejection whose objection has survived two revisions is final and
-deletes the rejected ref", "a converging chain whose revisions raise only new objections keeps
+head and records round 1", "a repeat (prior N) objection that has survived two revisions is final
+and deletes the rejected ref", "an out-of-range (prior N) tag, or one with no prior round, counts
+one revision and is not final", "a converging chain whose revisions raise only new objections keeps
 revising", "a chain whose objections never repeat ends at the backstop", "an exhausted chain holds
 the entry with the surviving objections, not a fresh pick" and "the director never
 gets a revision: a rejection leaves no revision state"; `test/prompt-roles.test.ts` — "the plan
 role prioritizes a Needs review plan, clears the note after splitting, and stops while plans
 wait"; `test/role-guidance.test.ts` — "the convergence-hold marker is embedded in the plan
-charter and pinned to its literal"; `test/revision-prior-tags.test.ts` — "a
-(prior N) tag beyond the prior list, or with no prior list, counts one revision and is not final".
+charter and pinned to its literal"; `test/revision-prior-tags.test.ts` — "priorObjectionNumber
+reads only a leading (prior N) tag with N of at least one".
 
 ### INV-BH5: a re-apply git could not start keeps the revision and its ref
 

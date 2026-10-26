@@ -349,7 +349,7 @@ export const RETRIABLE_MERGE_RESULTS: ReadonlySet<RunResult> = new Set([
  * conflict (mergeApprovedChange), so both send the change back for revision the same way. A
  * rejection with no `revisionRound` is a fresh change's first round (1). The director never
  * revises. */
-async function recordRejectedChange(
+export async function recordRejectedChange(
   root: string,
   role: string,
   state: RunnerState,
