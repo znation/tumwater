@@ -1,11 +1,13 @@
-import { sleep } from "./helpers/wait.js";
+import { sleep, flushImmediate } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  MERGE_ABORT_SETTLE_FLOOR_MS,
   awaitMergeForHandoff,
   p75RunDurationMs,
   runTimedRoleRun,
   sleepInterruptible,
+  type AfterDelay,
 } from "../src/run/run-timing.js";
 import { pollTeamHold, type HoldInputs } from "../src/team/team-polls.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
@@ -37,6 +39,26 @@ import { warningMessages } from "./fixtures/log-fixtures.js";
 // break (an already-aborted signal that addEventListener alone would never fire; an aborted
 // run whose duration must not drag the window down), and none of that was under any unit
 // test before this file.
+
+/** A one-shot deadline scheduler the test fires by hand (see run-timing-edges.test.ts) so a
+ * hand-off's windows pass deterministically instead of living through them. */
+function scriptedAfter(): { after: AfterDelay; delays: number[]; pending(): number; fire(): void } {
+  const pending: Array<() => void> = [];
+  const delays: number[] = [];
+  return {
+    after: (ms, fn) => {
+      delays.push(ms);
+      pending.push(fn);
+      return () => {
+        const i = pending.indexOf(fn);
+        if (i >= 0) pending.splice(i, 1);
+      };
+    },
+    delays,
+    pending: () => pending.length,
+    fire: () => void pending.shift()?.(),
+  };
+}
 
 /** Minimal recording harness for runTimedRoleRun: counts acquire/release, replays the given
  * run outcomes, and serves a controllable fake clock (each call advances by `stepMs`). */
@@ -426,16 +448,44 @@ test("awaitMergeForHandoff aborts a merge past its window and waits for it to st
 test("awaitMergeForHandoff hands off without a merge still running after the abort, clearing its marker", async () => {
   const root = tmpdir();
   writeMergeMarker(root, { role: "clean", sha: "a".repeat(40), summary: "wedged", startedAt: Date.now(), stage: "build-check" });
+  const timers = scriptedAfter();
   let aborts = 0;
-  const startedAt = Date.now();
   // Never settles: a step wedged past its own bound, which no abort reaches.
-  const outcome = await awaitMergeForHandoff(root, { promise: new Promise(() => {}), roles: ["clean"] }, 100, () => void aborts++);
-  const elapsed = Date.now() - startedAt;
-  assert.equal(outcome, "abandoned");
+  const outcome = awaitMergeForHandoff(root, { promise: new Promise(() => {}), roles: ["clean"] }, 100, () => void aborts++, timers.after);
+  await flushImmediate();
+  assert.equal(timers.delays[0], 100, "the deadline is the window, so the lapse comes quickly");
+  timers.fire(); // the deadline lapses — the merge is aborted
+  await flushImmediate();
   assert.equal(aborts, 1);
-  assert.ok(elapsed >= 200 && elapsed < 5_000, `the hand-off is bounded by two windows (${elapsed}ms)`);
+  assert.equal(
+    timers.delays[1],
+    MERGE_ABORT_SETTLE_FLOOR_MS,
+    "the abort's settle gets the floor, decoupled from the tight deadline (BUGS.md 2026-10-26)",
+  );
+  timers.fire(); // the settle allowance elapses with the merge still wedged
+  assert.equal(await outcome, "abandoned");
   assert.equal(readMergeMarker(root), null, "the exiting process's marker is cleared for the next generation");
   const w = warningMessages(root);
   assert.equal(w.length, 3);
-  assert.match(w[2]!, /the aborted merge for clean was still running 0\.1s later — restarting without it/);
+  assert.match(w[2]!, /the aborted merge for clean was still running 10s later — restarting without it/);
+});
+
+test("awaitMergeForHandoff gives an aborted merge the settle floor, so a short deadline cannot abandon it mid-stop", async () => {
+  const root = tmpdir();
+  const timers = scriptedAfter();
+  let stop = () => {};
+  const promise = new Promise<void>((r) => (stop = r));
+  let aborts = 0;
+  const outcome = awaitMergeForHandoff(root, { promise, roles: ["organize"] }, 1, () => {
+    aborts++;
+    // The abort reaches the merge at its next step boundary (here, at once — after the 1 ms
+    // deadline, long past where the old code would have abandoned it), and it records aborted.
+    stop();
+  }, timers.after);
+  await flushImmediate();
+  timers.fire(); // 1 ms deadline lapses — abort fires, the settle window arms
+  await flushImmediate();
+  assert.equal(aborts, 1);
+  assert.equal(timers.delays[1], MERGE_ABORT_SETTLE_FLOOR_MS, "the settle window is the floor, not the 1 ms deadline");
+  assert.equal(await outcome, "aborted", "a merge that stops past a tiny deadline is aborted, not abandoned");
 });

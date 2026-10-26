@@ -166,14 +166,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 **Waiting for the next failure 2026-10-25 by bugfix: the failure message names the exact assertion, so the next flake reads which line broke — if it is the `.durations.json` byte-identity assert, check whether an outer run's final `recordDurations` overlapped a nested writer (`before` vs `after` diff in the output); if it is a coverage-table line, the `**/test/**` exclude or the `all files` row under peak process contention; if it is `status`, the nested spawn itself.**
 
-### `restart hand-off: an in-flight merge outliving its deadline is aborted, not waited out` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-restart hand-off: an in-flight merge outliving its deadline is aborted, not waited out
-~~~~
-
 ## Fixed
 
 ## Verified

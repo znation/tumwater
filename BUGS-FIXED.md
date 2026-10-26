@@ -5,6 +5,16 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `restart hand-off: an in-flight merge outliving its deadline is aborted, not waited out` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it is a known failure until it leaves `## Open`. The instability: the hand-off gave the abort's settle the SAME window as the deadline (`handoffMergeWindowMs`, 500 ms in this test), and stopping a merge is real work — killing the reviewer pi run, finalizing the review, writing the `aborted` outcome. Under host load that settle could outlast the 500 ms window and the drain misclassified a merge that WAS stopping as `abandoned`, dropping its fail-closed `merge_failed … aborted` outcome. Fixed by decoupling: the post-abort settle now runs off `MERGE_ABORT_SETTLE_FLOOR_MS` (10 s), never the (possibly tiny) deadline; the production `HANDOFF_MERGE_WINDOW_MS` is minutes, so a real self-hosting team is unchanged.
+
+~~~~
+restart hand-off: an in-flight merge outliving its deadline is aborted, not waited out
+~~~~
+
+**Validation gap:** no-repro — the flake failed once then passed on the same tree and never reproduced on re-runs (the original commit's risk note named the tight 0.5 s hand-off window under load); the race was reconstructed from the hand-off's two windows in src/run/run-timing.ts, and the deterministic `scriptedAfter` seams pin the floor without living through it.
+
 ### `redeployTarget in watch mode targets the build itself when nothing newer is green` failed, then passed on the same tree (quarantined by tumwater 2026-10-25) — fixed 2026-10-25 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it. Root cause (test isolation, not the production `redeployTarget`):

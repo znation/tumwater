@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drainInFlightWork, type AfterDelay } from "../src/run/run-timing.js";
+import { drainInFlightWork, MERGE_ABORT_SETTLE_FLOOR_MS, type AfterDelay } from "../src/run/run-timing.js";
 import { writeMergeMarker, readMergeMarker } from "../src/merge/merge-slot.js";
 import type { InFlightMerge } from "../src/merge/merge-pipeline.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -110,12 +110,16 @@ test("drainInFlightWork hands off without a wedged merge and without waiting on 
   timers.fire(); // the first window lapses: the merge is aborted
   await flushImmediate();
   assert.equal(aborts, 1, "the hand-off aborted the wedged merge exactly once");
-  assert.deepEqual(timers.delays, [50, 50], "the post-abort window is armed");
+  assert.deepEqual(
+    timers.delays,
+    [50, MERGE_ABORT_SETTLE_FLOOR_MS],
+    "the abort's settle window is the floor, not the tiny deadline (BUGS.md 2026-10-26)",
+  );
   timers.fire(); // the second window lapses: hand off without it
   await drain;
   assert.equal(returned, true, "the hand-off is bounded by two windows on the injected clock");
   assert.equal(readMergeMarker(root), null, "the exiting process's marker is cleared for the next generation");
   const w = warningMessages(root);
   assert.equal(w.length, 3, "wait, lapse, and abandon are each announced");
-  assert.match(w[2]!, /the aborted merge for clean was still running 0\.05s later — restarting without it/);
+  assert.match(w[2]!, /the aborted merge for clean was still running 10s later — restarting without it/);
 });

@@ -45,6 +45,17 @@ export function p75RunDurationMs(durations: readonly number[]): number | null {
  * role runs (over an hour on this team) — the very lag this bounds. */
 export const HANDOFF_MERGE_WINDOW_MS = BUILD_CHECK_TIMEOUT_MS + 60_000;
 
+/** The floor a restart's hand-off gives an ABORTED merge to reach its next step boundary and
+ * record its `aborted` outcome, however short the hand-off deadline was. The deadline bounds
+ * how long the drain waits for the merge to finish on its own; the instant it lapses the merge
+ * is aborted, and stopping it is real work — killing the reviewer pi run, finalizing the review,
+ * writing the outcome — that a deadline as tight as a test's seam value (500 ms) could cut off,
+ * misclassifying a legitimately-aborting merge as `abandoned` and dropping its fail-closed
+ * outcome. The floor keeps that grace decoupled from the (possibly tiny) deadline, and caps the
+ * abandoned-case wait. Larger than the deadline in tests, never larger than the production
+ * HANDOFF_MERGE_WINDOW_MS, so it changes nothing for a real self-hosting team. */
+export const MERGE_ABORT_SETTLE_FLOOR_MS = 10_000;
+
 /** Run one role run under the concurrency semaphore and return how long the run itself ran,
  * in ms — null when it never started (the harness is already stopping, or `held`) or was cut
  * off by an abort. This is the restart drain's p75 sample (BUGS.md 2026-09-18). The clock starts
@@ -157,8 +168,11 @@ type HandoffMergeOutcome = "finished" | "aborted" | "abandoned";
  * new build. One still running a window after the abort (a step wedged past its own bound) is left
  * behind: its 4/5 marker is cleared here, since this process exits the moment the hand-off returns,
  * and its entries and pins survive exactly as a crash leaves them — the next generation's first
- * drain re-merges them. Its announcements are best-effort: an events feed that cannot be written
- * does not shorten the wait. Exported as a unit-test seam, like runTimedRoleRun. */
+ * drain re-merges them. The post-abort settle gets a floor (MERGE_ABORT_SETTLE_FLOOR_MS) so a
+ * short deadline (a test's seam value) cannot cut the abort's real stop-and-record work off and
+ * turn a merge that IS stopping into an `abandoned` one. Its announcements are best-effort: an
+ * events feed that cannot be written does not shorten the wait. Exported as a unit-test seam,
+ * like runTimedRoleRun. */
 export async function awaitMergeForHandoff(
   root: string,
   merge: Pick<InFlightMerge, "promise" | "roles">,
@@ -180,12 +194,13 @@ export async function awaitMergeForHandoff(
     TUMWATER_SOURCE,
     `restart: the merge for ${roles} outlived its ${deadline} deadline — aborted; its pinned commits survive for the next restart`,
   );
-  if (await settlesWithin(merge.promise, windowMs, after)) return "aborted";
+  const settle = `${Math.max(windowMs, MERGE_ABORT_SETTLE_FLOOR_MS) / 1000}s`;
+  if (await settlesWithin(merge.promise, Math.max(windowMs, MERGE_ABORT_SETTLE_FLOOR_MS), after)) return "aborted";
   removeQuiet(mergeStatePath(root));
   warnEventBestEffort(
     root,
     TUMWATER_SOURCE,
-    `restart: the aborted merge for ${roles} was still running ${deadline} later — restarting without it; its queue entries and pinned commits survive for the next restart`,
+    `restart: the aborted merge for ${roles} was still running ${settle} later — restarting without it; its queue entries and pinned commits survive for the next restart`,
   );
   return "abandoned";
 }
