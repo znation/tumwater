@@ -15,7 +15,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
-import { assertClean, headSha, mainSha, sh, tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";
+import { assertClean, headSha, mainSha, pinOffMain, sh, tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { piRanMarker, withApprovePi, withPi } from "./fakes/fake-pi.js";
@@ -37,7 +37,6 @@ import {
   perRoleReviewerPi,
   runBatchRecorded,
 } from "./fixtures/merger-fixtures.js";
-import { assistantLine } from "./fixtures/pi-events.js";
 
 // These tests pin the sequential merge stages (the check, then the review).
 process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
@@ -171,6 +170,9 @@ test("a conflicting merge gets one resolution run and then merges", async () => 
     reviewerPi("VERDICT: approve"),
     async () => {
       const { root, sha } = await pinnedFixture();
+      // A passing declared check is the deterministic approval that survives part 3h/3's
+      // removal of the pre-merge reviewer (part 3p/3); the resolution flow is unchanged.
+      declareCheck(root, "#!/bin/sh\necho ok\n");
       // Advance main with a conflicting edit after the pin — the common concurrent case.
       advanceMain(root, "seed.txt", "main\n");
 
@@ -191,51 +193,65 @@ test("a conflicting merge gets one resolution run and then merges", async () => 
   );
 });
 
-// The re-review gate over a diverging resolution (merge-core.ts's recheckResolved) has two
-// non-approval outcomes the approved test above cannot reach: a model REJECT (the verdict is
-// final — the pin is deleted, nothing merges) and a FAILED review (no parseable verdict — no
-// verdict about the tree, the pin stays for recovery's retry). The shim numbers the review
-// runs it sees: run 1 is the verify's approval, run 2 is the re-review.
+// The re-review gate over a diverging resolution (merge-core.ts's recheckResolved) has one
+// non-approval outcome these cases reach deterministically: a REJECT (the verdict is final —
+// the pin is deleted, nothing merges). Re-pointed (part 4a/3): the rejection is now the
+// deterministic gate's — the resolution rewrites the brief block, which briefEditReason rejects
+// before any reviewer run — so the cases drive no model reviewer and survive the reviewer's
+// removal in part 3h/3 (a brief-block edit is one of the three findings the part 3m/3
+// narrowing keeps in the gate's scope). The reviewer's no-parseable-verdict retry path dies
+// with the reviewer and is retired.
 
 test("a resolution the re-review rejects deletes the pin and merges nothing", async () => {
-  const rec = path.join(tmpdir("merger-rereview-rej-"), "n");
+  // Re-pointed (part 4a/3): the re-review now rejects on a deterministic diff-rule finding —
+  // the resolution rewrites the brief block, which briefEditReason rejects before any reviewer
+  // run (part 3h/3 removes the reviewer). A brief-block edit is one of the three findings the
+  // part 3m/3 narrowing keeps in the gate's scope, so the trigger survives it. The re-review
+  // bookkeeping is unchanged: the pin is deleted, review_rejected is logged, the resolved
+  // change owes one revision and its rejected ref keeps the head the re-review judged.
   await withPi(
-    `n=1
-     if [ -f '${rec}' ]; then n=$(( $(cat '${rec}') + 1 )); fi
-     printf '%s\n' "$n" > '${rec}'
-     for a in "$@"; do case "$a" in *"VERDICT:"*)
-       if [ "$n" -eq 1 ]; then
-         printf '%s\n' '${assistantLine("VERDICT: approve")}'
-       else
-         printf '%s\n' '${assistantLine("VERDICT: reject\n1. the resolution restored code main reverted")}'
-       fi
-       exit 0;; esac; done`,
+    reviewerPi("VERDICT: approve"), // the verify's approve; the re-review rejects on the diff rule
     async () => {
-      const { root, sha } = await pinnedFixture();
-      advanceMain(root, "seed.txt", "main\n");
-
+      const root = makeRepo();
+      const prompt = (body: string) =>
+        `# T\n\n<!-- tumwater:prompt:start -->\n${body}\n<!-- tumwater:prompt:end -->\n`;
+      // main carries a seed commit with a brief block and the file the pin will conflict on, so
+      // the pin's own diff (seed.txt only) leaves the brief untouched and the verify approves.
+      fs.writeFileSync(path.join(root, "README.md"), prompt("original"));
+      fs.writeFileSync(path.join(root, "seed.txt"), "seed\n");
+      sh(root, "git", "add", "README.md", "seed.txt");
+      sh(root, "git", "commit", "-q", "-m", "seed the brief and seed");
+      const sha = pinOffMain(
+        root,
+        (d) => fs.writeFileSync(path.join(d, "seed.txt"), "seed\nthe work\n"),
+        "the work",
+      );
+      await setRef(root, REF, sha);
+      await ensureWorktree(root, ROLE, "main");
+      // Advance main with a conflicting edit to seed.txt after the pin — the common concurrent
+      // case (the brief on main is unchanged, so the verify still approves).
+      advanceMain(root, "seed.txt", "seed\nmain\n");
       const state = freshRunnerState(ROLE);
-      const { ctx, calls } = makeCtx(root, state, (wt) => {
-        fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n"); // diverges from the reviewed diff
-      });
       const mainBefore = mainSha(root);
+      const { ctx, calls } = makeCtx(root, state, (wt) => {
+        // The resolver edits seed.txt to resolve the conflict AND rewrites the brief — the re-
+        // review's deterministic gate rejects the resolution on briefEditReason.
+        fs.writeFileSync(path.join(wt, "seed.txt"), "seed\ncombined\n");
+        fs.writeFileSync(path.join(wt, "README.md"), prompt("rewritten"));
+      });
 
       assert.equal(await verifyAndMerge(ctx, request(sha)), "rejected");
 
       assert.equal(mainSha(root), mainBefore, "nothing merged on main");
       assert.equal(await refSha(root, REF), null, "a rejected re-review is final: the pin is deleted");
-      assert.equal(
-        state.lastError,
-        "merge failed: conflict resolution rejected on re-review",
-      );
-      assert.equal(state.lastReview?.verdict, "reject", "the re-review's verdict is recorded");
+      assert.equal(state.lastError, "merge failed: conflict resolution rejected on re-review");
       assert.equal(eventsOfType(root, "review_rejected").length, 1, "the rejection is logged");
       // A re-review rejection sends the resolved change back for revision too (plans/revise-
       // rejected.md): round 1 is recorded and the rejected ref keeps the head the re-review judged
       // alive, even though the merge pin itself is deleted.
       assert.equal(state.revision?.round, 1, "a re-review rejection owes one revision");
       assert.equal(await refSha(root, rejectedRefName(ROLE)), state.lastReview?.head);
-      // The resolution run went through the wiring stub; the re-review was a real gate run.
+      // The resolution run went through the wiring stub.
       assert.equal(calls.length, 1);
       // Terminal rejection deletes the pin; the shared `_merge` checkout persists (plans/
       // worktree-pool.md, part 2c) — the resolution is discarded by dropping the pin, not the
@@ -246,25 +262,35 @@ test("a resolution the re-review rejects deletes the pin and merges nothing", as
 });
 
 test("an unwritable state file mid-review still folds the reviewer runs and settles a rejected re-review", async () => {
-  const rec = path.join(tmpdir("merger-rereview-enospc-"), "n");
+  // Re-pointed (part 4a/3): the rejection is the deterministic gate's — the resolution rewrites
+  // the brief block, a finding that survives the part 3m/3 narrowing — as in the rejection case
+  // above. The case's own subject survives too: an unwritable state file does not derail the
+  // rejected re-review (the pin is deleted and the rejection is logged) and the failed save
+  // warns. The reviewer-run folding this case used to assert dies with the reviewer; the title
+  // is kept because docs/invariants.md (INV-CL1) pins this case for the recheckResolved saves.
   await withPi(
-    `n=1
-     if [ -f '${rec}' ]; then n=$(( $(cat '${rec}') + 1 )); fi
-     printf '%s\n' "$n" > '${rec}'
-     for a in "$@"; do case "$a" in *"VERDICT:"*)
-       if [ "$n" -eq 1 ]; then
-         printf '%s\n' '${assistantLine("VERDICT: approve")}'
-       else
-         printf '%s\n' '${assistantLine("VERDICT: reject\n1. the resolution restored code main reverted")}'
-       fi
-       exit 0;; esac; done`,
+    reviewerPi("VERDICT: approve"),
     async () => {
-      const { root, sha } = await pinnedFixture();
-      advanceMain(root, "seed.txt", "main\n");
+      const root = makeRepo();
+      const prompt = (body: string) =>
+        `# T\n\n<!-- tumwater:prompt:start -->\n${body}\n<!-- tumwater:prompt:end -->\n`;
+      fs.writeFileSync(path.join(root, "README.md"), prompt("original"));
+      fs.writeFileSync(path.join(root, "seed.txt"), "seed\n");
+      sh(root, "git", "add", "README.md", "seed.txt");
+      sh(root, "git", "commit", "-q", "-m", "seed the brief and seed");
+      const sha = pinOffMain(
+        root,
+        (d) => fs.writeFileSync(path.join(d, "seed.txt"), "seed\nthe work\n"),
+        "the work",
+      );
+      await setRef(root, REF, sha);
+      await ensureWorktree(root, ROLE, "main");
+      advanceMain(root, "seed.txt", "seed\nmain\n");
 
       const state = freshRunnerState(ROLE);
-      const { ctx, folded } = makeCtx(root, state, (wt) => {
-        fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n");
+      const { ctx } = makeCtx(root, state, (wt) => {
+        fs.writeFileSync(path.join(wt, "seed.txt"), "seed\ncombined\n");
+        fs.writeFileSync(path.join(wt, "README.md"), prompt("rewritten"));
       });
       const stateTmp = `${statePath(root, ROLE)}.tmp-`;
       const undo = patchFsMethod("writeFileSync", (orig) => (...args) => {
@@ -278,50 +304,12 @@ test("an unwritable state file mid-review still folds the reviewer runs and sett
         undo();
       }
 
-      assert.equal(folded.length, 2, "the first review and the re-review both fold");
       assert.equal(await refSha(root, REF), null, "the rejected pin is deleted");
       assert.equal(eventsOfType(root, "review_rejected").length, 1, "the rejection is logged");
       assert.ok(
         warningMessages(root).some((m) => m.startsWith("could not save the role's state")),
         "a failed save warns",
       );
-    },
-  );
-});
-
-test("a re-review with no parseable verdict keeps the pin for a retry", async () => {
-  const rec = path.join(tmpdir("merger-rereview-fail-"), "n");
-  await withPi(
-    `n=1
-     if [ -f '${rec}' ]; then n=$(( $(cat '${rec}') + 1 )); fi
-     printf '%s\n' "$n" > '${rec}'
-     for a in "$@"; do case "$a" in *"VERDICT:"*)
-       if [ "$n" -eq 1 ]; then
-         printf '%s\n' '${assistantLine("VERDICT: approve")}'
-       else
-         printf '%s\n' '${assistantLine("looks fine to me")}'
-       fi
-       exit 0;; esac; done`,
-    async () => {
-      const { root, sha } = await pinnedFixture();
-      advanceMain(root, "seed.txt", "main\n");
-
-      const state = freshRunnerState(ROLE);
-      const { ctx } = makeCtx(root, state, (wt) => {
-        fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n");
-      });
-      const mainBefore = mainSha(root);
-
-      assert.equal(await verifyAndMerge(ctx, request(sha)), "merge_conflict");
-
-      assert.equal(mainSha(root), mainBefore, "nothing merged on main");
-      assert.equal(await refSha(root, REF), sha, "a failed re-review is no verdict: the pin stays");
-      // The retry's lastError names the retryable outcome (the failed review's detail rides
-      // state.lastReview and the unreviewFailures counter instead — merge-core.ts keeps a
-      // rejected recheck's own lastError, and a retry gets the plain one).
-      assert.equal(state.lastError, "merge failed: merge_conflict");
-      assert.equal(state.unreviewFailures, 1, "the failed review counts toward the discard cap");
-      assert.equal(state.lastReview?.verdict, "failed");
     },
   );
 });
