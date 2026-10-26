@@ -11,6 +11,18 @@ import { shortSha } from "../text/format.js";
 import { roleLabel } from "../roles/role-labels.js";
 import type { HarnessEvent } from "../events/events.js";
 
+/** The events whose `ts` is a number in `[fromMs, toMs)`, in log order. The three byDay walks
+ * (mainRedMinutesByDay, mainRedFailingTestsByDay, mainRedCulpritsByDay) each iterate these, so
+ * they cannot disagree about which events fall in the window; the `typeof e.ts === "number"`
+ * guard also drops a torn log line whose stamp never landed on the event. */
+function inWindowEvents(
+  events: readonly HarnessEvent[],
+  fromMs: number,
+  toMs: number,
+): HarnessEvent[] {
+  return events.filter((e) => typeof e.ts === "number" && e.ts >= fromMs && e.ts < toMs);
+}
+
 /** Add a spell's ms, split across the local calendar days it spans, to `map` (a Map, so the
  * caller keeps the day-key order the walk produced). */
 function addSpell(map: Map<string, number>, start: number, end: number): void {
@@ -41,9 +53,7 @@ export function mainRedMinutesByDay(
   toMs: number,
 ): Map<string, number> {
   const map = new Map<string, number>();
-  const inWindow = events
-    .filter((e) => typeof e.ts === "number" && e.ts >= fromMs && e.ts < toMs)
-    .sort((a, b) => a.ts - b.ts);
+  const inWindow = inWindowEvents(events, fromMs, toMs).sort((a, b) => a.ts - b.ts);
   let openStart: number | undefined;
   for (const e of inWindow) {
     const ts = e.ts;
@@ -77,8 +87,7 @@ export function mainRedFailingTestsByDay(
   toMs: number,
 ): Map<string, Record<string, number>> {
   const map = new Map<string, Record<string, number>>();
-  for (const e of events) {
-    if (typeof e.ts !== "number" || e.ts < fromMs || e.ts >= toMs) continue;
+  for (const e of inWindowEvents(events, fromMs, toMs)) {
     if (!isRedMain(e)) continue;
     if (!Array.isArray(e.failingTests)) continue;
     const record = getOrCreate(map, dayKey(e.ts), () => ({}));
@@ -107,8 +116,7 @@ export function mainRedCulpritsByDay(
   toMs: number,
 ): Map<string, Record<string, number>> {
   const map = new Map<string, Record<string, number>>();
-  for (const e of events) {
-    if (typeof e.ts !== "number" || e.ts < fromMs || e.ts >= toMs) continue;
+  for (const e of inWindowEvents(events, fromMs, toMs)) {
     if (e.type !== "main_culprit") continue;
     if (typeof e.commit !== "string" || e.commit.length === 0) continue;
     const label =
