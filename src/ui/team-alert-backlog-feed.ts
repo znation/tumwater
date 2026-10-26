@@ -3,7 +3,7 @@
  * merges refused by an uncommitted primary checkout. One of the per-domain builders split out of
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts. */
 
-import { moreDetail, openBacklogAction, type TeamAlert, type StaleBug, type NotifyFailure, type StaleWaitingBug, type StalePrompt, type StaleMerge, type PrimaryOverwriteBlock } from "./team-alert-shared.js";
+import { firstAndMore, moreDetail, openBacklogAction, type TeamAlert, type StaleBug, type NotifyFailure, type StaleWaitingBug, type StalePrompt, type StaleMerge, type PrimaryOverwriteBlock } from "./team-alert-shared.js";
 import { plural } from "../text/phrases.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { duration } from "./run-progress-model.js";
@@ -23,15 +23,14 @@ function pushStaleBugsAlert(out: TeamAlert[], staleBugs: readonly StaleBug[]): v
   // are folded through entryListDetail like the questions and refused alerts, so the wording and
   // counts cannot drift.
   if (staleBugs.length) {
-    const first = staleBugs[0]!;
-    const rest = staleBugs.slice(1);
+    const { first, more } = firstAndMore(staleBugs, (r) => r.title);
     out.push({
       key: "stale-bugs",
       tone: "amber",
       title: `${plural(staleBugs.length, "open bug waited", "open bugs waited")} 3+ days for a fix`,
       detail:
         `#${first.position} "${first.title}" has waited ${first.days}d for a fix` +
-        moreDetail(rest.map((r) => r.title)) +
+        more +
         ` · check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``,
       // The action lands the operator on the first stale bug.
       actions: openBacklogAction({ file: "bugs", index: first.index }),
@@ -69,15 +68,14 @@ function pushWaitingBugsAlert(out: TeamAlert[], staleWaitingBugs: readonly Stale
   // entryListDetail like the questions and refused alerts, so the wording and counts cannot
   // drift.
   if (staleWaitingBugs.length) {
-    const first = staleWaitingBugs[0]!;
-    const rest = staleWaitingBugs.slice(1);
+    const { first, more } = firstAndMore(staleWaitingBugs, (r) => `#${r.position} "${r.title}"`);
     out.push({
       key: "waiting-bugs", // vocabulary-ok: the waiting-bugs amber alert's key
       tone: "amber",
       title: `${plural(staleWaitingBugs.length, "waiting bug held", "waiting bugs held")} 7+ days`,
       detail:
         `#${first.position} "${first.title}" has waited ${first.days}d for its next failure` +
-        moreDetail(rest.map((r) => `#${r.position} "${r.title}"`)) +
+        more +
         ` · the hold has outlived a week and this surface omits the doctor's recurrence scan — \`tumwater doctor\` reports whether the flake came back; release it with \`tumwater bug --release ${first.position}\`, or keep the hold if the failure is still expected`,
       // The action lands the operator on the first stale waiting bug.
       actions: openBacklogAction({ file: "bugs", index: first.index }),
@@ -94,15 +92,14 @@ function pushStalePromptsAlert(out: TeamAlert[], stalePrompts: readonly StalePro
   // and is named with its role, position and wait; the rest are folded through entryListDetail
   // like the questions and refused alerts, so the wording and counts cannot drift.
   if (stalePrompts.length) {
-    const first = stalePrompts[0]!;
-    const rest = stalePrompts.slice(1);
+    const { first, more } = firstAndMore(stalePrompts, (p) => `${roleLabel(p.role)} #${p.position}`);
     out.push({
       key: "stale-prompts",
       tone: "amber",
       title: `${plural(stalePrompts.length, "queued prompt waited", "queued prompts waited")} 1+ day for its role`,
       detail:
         `inbox prompt for ${roleLabel(first.role)} #${first.position} has waited ${duration(first.waitedMs)} — the role is not dequeuing it (paused, disabled, or failing); resume or enable it, or drop the prompt with \`tumwater prompt --cancel ${first.position} --role ${first.role}\`` +
-        moreDetail(rest.map((p) => `${roleLabel(p.role)} #${p.position}`)),
+        more,
       // The action lands the operator on the Inbox tab (the dashboard's backlog arm reads `act:
       // "queued"` as the Inbox view), where the stranded prompt is cancellable.
       actions: [{ label: "Open inbox", act: "queued" }],
@@ -119,15 +116,14 @@ function pushStaleMergesAlert(out: TeamAlert[], staleMerges: readonly StaleMerge
   // named with its role, summary and wait; the rest are folded through joinWithMore like the
   // actions and no-image alerts, so the wording and counts cannot drift.
   if (staleMerges.length) {
-    const first = staleMerges[0]!;
-    const rest = staleMerges.slice(1);
+    const { first, more } = firstAndMore(staleMerges, (m) => roleLabel(m.role), (labels) => joinWithMore(labels, 3));
     out.push({
       key: "stale-merges",
       tone: "amber",
       title: `${plural(staleMerges.length, "queued merge waited", "queued merges waited")} 6+ hours to start`,
       detail:
         `${roleLabel(first.role)} — "${first.summary}" — has waited ${duration(first.waitedMs)} to start` +
-        moreDetail(rest.map((m) => roleLabel(m.role)), (labels) => joinWithMore(labels, 3)) +
+        more +
         ` — the merge queue has stopped moving; run \`tumwater queue\` to see it, or drop the entry with \`tumwater queue --cancel <n>\``,
       // The header's `merge queue: N` badge and the Pending view already carry the drill-in.
       actions: [],

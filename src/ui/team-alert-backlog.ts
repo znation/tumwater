@@ -4,7 +4,7 @@
  * Validation gap trace. One of the per-domain builders split out of src/ui/team-alerts.ts; the
  * shared types and wording helpers live in team-alert-shared.ts. */
 
-import { entryListDetail, moreDetail, openBacklogAction, type TeamAlert, type StaleQuestion, type PlanDependencyProblem, type BacklogHeadingDuplicate, type LiveFinishedEntry } from "./team-alert-shared.js";
+import { entryListDetail, firstAndMore, openBacklogAction, type TeamAlert, type StaleQuestion, type PlanDependencyProblem, type BacklogHeadingDuplicate, type LiveFinishedEntry } from "./team-alert-shared.js";
 import { entryKindLabel, type RefusedEntry, type StalledEntry } from "../backlog/backlog-eligibility.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
@@ -50,15 +50,14 @@ function pushQuestionsAlert(out: TeamAlert[], questions: readonly string[]): voi
 // so the alert carries no row address.
 function pushStaleQuestionsAlert(out: TeamAlert[], staleQuestions: readonly StaleQuestion[]): void {
   if (staleQuestions.length) {
-    const first = staleQuestions[0]!;
-    const rest = staleQuestions.slice(1);
+    const { first, more } = firstAndMore(staleQuestions, (q) => q.title);
     out.push({
       key: "stale-questions", // vocabulary-ok: the stale-questions amber alert's key
       tone: "amber",
       title: `${plural(staleQuestions.length, "open question waited", "open questions waited")} 7+ days for an answer`,
       detail:
         `#${first.position} "${first.title}" has waited ${first.days}d for an answer` +
-        moreDetail(rest.map((q) => q.title)) +
+        more +
         ` · answer it with \`tumwater questions answer ${first.position} "<decision>"\`, or close it in QUESTIONS.md`,
       actions: [{ label: "Answer", act: "questions" }],
     });
@@ -154,10 +153,9 @@ function pushPlanDependencyAlert(out: TeamAlert[], planDependency: PlanDependenc
 // the section it belongs under; the rest are folded through joinWithMore.
 function pushStrandedPlansAlert(out: TeamAlert[], strandedPlans: readonly StrandedPlanEntry[]): void {
   if (strandedPlans.length) {
-    const first = strandedPlans[0]!;
-    const rest = strandedPlans.slice(1);
-    const more = moreDetail(
-      rest.map((e) => `"${e.title}" in ${e.file ?? "PLANS.md"} ## ${e.section}`),
+    const { first, more } = firstAndMore(
+      strandedPlans,
+      (e) => `"${e.title}" in ${e.file ?? "PLANS.md"} ## ${e.section}`,
       (labels) => joinWithMore(labels, 3),
     );
     out.push({
@@ -181,10 +179,9 @@ function pushStrandedPlansAlert(out: TeamAlert[], strandedPlans: readonly Strand
 // through joinWithMore; the fix is editing a backlog file, so there are no actions.
 function pushBacklogHeadingsAlert(out: TeamAlert[], duplicatedHeadings: readonly BacklogHeadingDuplicate[]): void {
   if (duplicatedHeadings.length) {
-    const first = duplicatedHeadings[0]!;
-    const rest = duplicatedHeadings.slice(1);
-    const more = moreDetail(
-      rest.map((d) => `"## ${d.heading}" in ${d.file}`),
+    const { first, more } = firstAndMore(
+      duplicatedHeadings,
+      (d) => `"## ${d.heading}" in ${d.file}`,
       (labels) => joinWithMore(labels, 3),
     );
     out.push({
@@ -234,15 +231,17 @@ function pushBacklogArchiveAlert(out: TeamAlert[], liveFinished: readonly LiveFi
 // buttons.
 function pushValidationGapsAlert(out: TeamAlert[], validationGaps: readonly ValidationGapProblem[]): void {
   if (validationGaps.length) {
-    const first = validationGaps[0]!;
-    const rest = validationGaps.slice(1);
+    const { first, more } = firstAndMore(
+      validationGaps,
+      (v) => `"${v.title}"`,
+      (labels) => joinWithMore(labels, 3),
+    );
     const reason =
       first.kind === "missing"
         ? "has no **Validation gap:** line"
         : first.kind === "unrecognized"
           ? `names unrecognized Validation gap tag "${first.tag}"`
           : "is an unclear-invariant fix but names no docs/invariants.md section";
-    const more = rest.length ? ` · ${joinWithMore(rest.map((v) => `"${v.title}"`), 3)}` : "";
     out.push({
       key: "validation-gaps",
       tone: "amber",
@@ -266,9 +265,11 @@ function pushValidationGapsAlert(out: TeamAlert[], validationGaps: readonly Vali
 // to the 1 Hz poll path. The fix is editing BUGS.md, so it has no buttons.
 function pushFalseFixesAlert(out: TeamAlert[], fixClaims: readonly FixClaimProblem[]): void {
   if (fixClaims.length) {
-    const first = fixClaims[0]!;
-    const rest = fixClaims.slice(1);
-    const more = rest.length ? ` · ${joinWithMore(rest.map((p) => `"${p.heading}"`), 3)}` : "";
+    const { first, more } = firstAndMore(
+      fixClaims,
+      (p) => `"${p.heading}"`,
+      (labels) => joinWithMore(labels, 3),
+    );
     out.push({
       key: "false-fixes",
       tone: "amber",

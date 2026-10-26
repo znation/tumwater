@@ -186,6 +186,24 @@ export function moreDetail(
   return restLabels.length > 0 ? ` · ${fold(restLabels)}` : "";
 }
 
+/** Split a bounded entry list into its first (oldest, named) item and the " · rest" suffix
+ * moreDetail builds for the entries past it — the shared shape every amber "name the oldest,
+ * fold the rest" alert (stale-bugs, stale-questions, waiting-bugs, stale-prompts,
+ * stale-merges, stranded-plans, backlog-headings, validation-gaps, false-fixes) composes, so
+ * the split and the separator/empty case have one home beside moreDetail. `label` maps each
+ * rest element to the string its clause already named; `fold` defaults to entryListDetail
+ * (moreDetail's own default), with joinWithMore(labels, 3) for the alerts that fold their rest
+ * labels the merge-queue way. */
+export function firstAndMore<T>(
+  items: readonly T[],
+  label: (item: T) => string,
+  fold: (labels: readonly string[]) => string = entryListDetail,
+): { first: T; more: string } {
+  const first = items[0]!;
+  const rest = items.slice(1);
+  return { first, more: moreDetail(rest.map(label), fold) };
+}
+
 /** Something that needs the operator — or that they should know — about the team as a whole,
  * phrased once for both observer surfaces: the dashboard's alert banners (shipped in the status
  * payload as `alerts`) and the TUI's attention lines. `tone` ranks it (red and amber ask for
