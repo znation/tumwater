@@ -398,47 +398,29 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     writeRoleConfigKey(root, base, clearInstances, n, `roles.${base}.instances`, "instances", (v) => v, (v) => v);
     return;
   }
-  // The model-triple writes: the terminal twins of `config set roles.<base>.provider|model|thinking
-  // <value>` and `config unset` — the three fields configForRole resolves through seamOverrides.
-  // `tumwater role <id>` renders them as its Model: line. Each lands in roles.<base>.<field>.
-  // Through setConfigKey/unsetConfigKey, validateConfig's checkModelTripleField ("tier-name"
-  // shape) owns validation (model accepts a tier name; thinking must be a THINKING_LEVELS level)
-  // and each write is atomic. No director refusal: accepted exactly as --min-run-interval is.
-  if (providerWrite) {
-    rejectSetClearAndJson(rest, "--provider", "--clear-provider", "a provider write");
+  // The model-writing branches — provider, model, thinking and backend — are one shape: each
+  // lands the role's field in roles.<base>.<field> (the terminal twin of `config set
+  // roles.<base>.<field> <value>` and `config unset`) through the same setConfigKey/unsetConfigKey
+  // core, so validateConfig owns the id — checkModelTripleField ("tier-name" shape: model
+  // accepts a tier name, thinking a THINKING_LEVELS level) for the provider/model/thinking
+  // fields that configForRole resolves through seamOverrides, checkEntryBackend for backend
+  // (`pi`, `claude`, `opencode` or `codex`, refusing an unknown one and a model that cannot
+  // pair with it) — and each write is atomic. No director refusal: each is accepted exactly as
+  // --min-run-interval is, and an instance id writes its base role's key. Every branch calls
+  // writeRoleConfigKey with the same JSON-encode/identity shaping, differing only in the flag
+  // spellings, the key field and the noun the confirmation line names — one table, one body.
+  for (const { flag, clearFlag, write, clear, field, noun } of [
+    { flag: "--provider", clearFlag: "--clear-provider", write: providerWrite, clear: clearProvider, field: "provider", noun: "provider" },
+    { flag: "--model", clearFlag: "--clear-model", write: modelWrite, clear: clearModel, field: "model", noun: "model" },
+    { flag: "--thinking", clearFlag: "--clear-thinking", write: thinkingWrite, clear: clearThinking, field: "thinking", noun: "thinking" },
+    { flag: "--backend", clearFlag: "--clear-backend", write: backendWrite, clear: clearBackend, field: "backend", noun: "backend" },
+  ]) {
+    if (!write) continue;
+    rejectSetClearAndJson(rest, flag, clearFlag, `a ${noun} write`);
     requireKnownRole(root, id);
     const base = baseRoleOf(id);
-    const provider = flagValue(rest, "--provider") ?? "";
-    writeRoleConfigKey(root, base, clearProvider, provider, `roles.${base}.provider`, "provider", (v) => JSON.stringify(v), (v) => v);
-    return;
-  }
-  if (modelWrite) {
-    rejectSetClearAndJson(rest, "--model", "--clear-model", "a model write");
-    requireKnownRole(root, id);
-    const base = baseRoleOf(id);
-    const model = flagValue(rest, "--model") ?? "";
-    writeRoleConfigKey(root, base, clearModel, model, `roles.${base}.model`, "model", (v) => JSON.stringify(v), (v) => v);
-    return;
-  }
-  if (thinkingWrite) {
-    rejectSetClearAndJson(rest, "--thinking", "--clear-thinking", "a thinking write");
-    requireKnownRole(root, id);
-    const base = baseRoleOf(id);
-    const level = flagValue(rest, "--thinking") ?? "";
-    writeRoleConfigKey(root, base, clearThinking, level, `roles.${base}.thinking`, "thinking", (v) => JSON.stringify(v), (v) => v);
-    return;
-  }
-  // The backend write: the twin of the provider/model/thinking writes, landing the role's
-  // backend (`pi`, `claude`, `opencode` or `codex`) in roles.<base>.backend through the same
-  // setConfigKey/unsetConfigKey core, so validateConfig's checkEntryBackend owns the id
-  // (rejecting an unknown one, and a `model` that cannot pair with the named backend) and
-  // the write stays atomic. An instance id writes its base role's key, like the others.
-  if (backendWrite) {
-    rejectSetClearAndJson(rest, "--backend", "--clear-backend", "a backend write");
-    requireKnownRole(root, id);
-    const base = baseRoleOf(id);
-    const backend = flagValue(rest, "--backend") ?? "";
-    writeRoleConfigKey(root, base, clearBackend, backend, `roles.${base}.backend`, "backend", (v) => JSON.stringify(v), (v) => v);
+    const value = flagValue(rest, flag) ?? "";
+    writeRoleConfigKey(root, base, clear, value, `roles.${base}.${field}`, noun, (v) => JSON.stringify(v), (v) => v);
     return;
   }
   // The enable/disable write: the scoped write for the enabled state `tumwater role <id>`
