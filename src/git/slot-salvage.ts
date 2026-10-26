@@ -30,16 +30,14 @@ import { ensureDir, writeTextAtomic } from "../files/files.js";
 import { conflictedFiles } from "../merge/merge-git.js";
 import { salvageDir, salvagePendingDir } from "../paths.js";
 import { errorMessage } from "../text/text.js";
-import { pad2 } from "../text/datetime.js";
+import { formatDate, pad2 } from "../text/datetime.js";
 import { git, gitCouldNotStart, gitTry, runGit } from "./git-run.js";
 import { isUsableWorktree } from "./worktree.js";
 
 /** The patch file's name: a sortable local timestamp, the slot's directory name and the role that
  * last held it, so a listing reads in order and names whose work each file is. */
 function salvageFileName(now: Date, slotDir: string, leftBy: string | null): string {
-  const stamp =
-    `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}` +
-    `-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`;
+  const stamp = `${formatDate(now)}-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`;
   return `${stamp}-${path.basename(slotDir)}-${leftBy ?? "unknown"}.patch`;
 }
 
