@@ -458,6 +458,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Subtract, part 5/6: One model per role — tiers, fallback chains and provider caps go (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 5; touches src/config/config-schema.ts src/config/config.ts src/config/config-views.ts src/config/config-validation.ts src/runner/model-fallback.ts src/runner/runner-fallback.ts src/runner/runner-run.ts src/agent/subscription-account.ts src/team/team-polls.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-fallback-checks.ts src/doctor/doctor-contention-checks.ts src/doctor/image-probe.ts src/ui/team-alert-status.ts src/ui/team-alert-tail.ts docs/config.md docs/backends.md docs/how-it-works.md tumwater.example.json test/config.test.ts test/doctor-checks.test.ts)
 
+**Needs review 2026-10-26 by feature: too large for one run (held 1)**
+
 **Goal.** The model a run uses is the role's (or the seam's) model, named once in `tumwater.json`. The tier map, the fallback maps and chain steps, the per-provider caps, the subscription-window carve-outs and the image-capability probe are deleted: they route around a fleet that is expected to change, which is optimization for the wrong thing.
 
 **Approach.**
