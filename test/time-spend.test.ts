@@ -173,6 +173,33 @@ test("a merge_blocked merge whose merge-scope check was killed at its own deadli
   assert.match(lossCauses[0]!.example, /batch build check killed at its 300s deadline/);
 });
 
+test("a deadline-killed merge whose timeoutMs is not finite prices as 0s, never NaN", () => {
+  // The merge_blocked_deadline example renders the deadlineKilledByRunner filter's matched
+  // event — which admits ANY `typeof timeoutMs === "number"`, so a torn/foreign build_check
+  // can carry NaN/Infinity. The example reads it through nonNegativeNumber(killed.timeoutMs,
+  // 0), so an un-attestable deadline prices as 0s instead of the "its NaNs deadline" a bare
+  // `Number(killed.timeoutMs) / 1000` would render. In-memory (timeAndSpend) so the non-finite
+  // value survives where a JSON event log would round it to null.
+  const { lossCauses } = timeAndSpend(
+    [
+      ev({ ts: 100, source: "alpha", run: 1, result: "queued", durationMs: 6000, costUsd: 0.1 }),
+      ev({ ts: 101, source: "beta", run: 1, result: "queued", durationMs: 6000, costUsd: 0.2 }),
+    ],
+    [
+      ev({ ts: 90, source: "alpha", type: "merge_queued", commit: "def5678" }),
+      ev({ ts: 110, source: "alpha", type: "build_check", scope: "merge", status: "failed", timeoutMs: NaN }),
+      ev({ ts: 120, source: "alpha", type: "merge_failed", commit: "def5678", result: "merge_blocked" }),
+      ev({ ts: 90, source: "beta", type: "merge_queued", commit: "abc1234" }),
+      ev({ ts: 110, source: "beta", type: "build_check", scope: "merge", status: "failed", timeoutMs: Infinity }),
+      ev({ ts: 120, source: "beta", type: "merge_failed", commit: "abc1234", result: "merge_blocked" }),
+    ],
+  );
+  assert.equal(lossCauses.length, 2);
+  assert.ok(lossCauses.every((c) => c.kind === "merge-blocked"));
+  assert.equal(lossCauses[0]!.example, "merge build check killed at its 0s deadline (tumwater's own timeout, not a test failure)");
+  assert.equal(lossCauses[1]!.example, "merge build check killed at its 0s deadline (tumwater's own timeout, not a test failure)");
+});
+
 test("a queued run that failed retriably, was rebased, and recovered into a merge prices into the merged cell (BUGS.md 2026-10-10)", () => {
   // A first merge_blocked keeps the pin; the verification had already rebased the ref to sha2, so
   // recovery re-enqueues sha2 while the failed attempt logged sha1, and sha2's retry lands.

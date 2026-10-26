@@ -61,7 +61,9 @@ export function finiteNumber<T>(value: unknown, fallback: T): number | T {
  * run/run-usage.ts's counter (each persisted usage count → 0), pi/pi-stream.ts's usageNumber
  * (one wire usage number → 0), ui/progress-data.ts's message_end read (totalTokens → the
  * previous context, output and its peak floor → 0), time-spend.ts's runDurationMs (an event's
- * durationMs → null, the "no own duration" marker), pi-extension/context-budget.ts's
+ * durationMs → null, the "no own duration" marker) and its merge_blocked_deadline example
+ * (the deadline-killed check's timeoutMs → 0, so a torn deadline prices as 0s, never NaN);
+ * pi-extension/context-budget.ts's
  * contextNote (usedTokens, usedWindow → null), pi-extension/context-shake.ts's percentOf
  * (tokens, contextWindow → null), merge/merge-queue.ts's isMergeEntry (run, enqueuedAt,
  * revisionRound → null), git/slots-state.ts's isSlotLease (since, pid → null); and

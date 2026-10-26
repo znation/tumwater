@@ -259,7 +259,7 @@ function lossCauseFor(
     const killed = newestAttemptEvent(indexes.deadlineKilledByRunner, eventRole(ev), resolvedOutcome);
     if (kind === "merge-blocked" && killed) {
       key = `merge_blocked_deadline\u0000${eventRole(ev)}`;
-      example = `${String(killed.scope)} build check killed at its ${Number(killed.timeoutMs) / 1000}s deadline (tumwater's own timeout, not a test failure)`;
+      example = `${String(killed.scope)} build check killed at its ${nonNegativeNumber(killed.timeoutMs, 0) / 1000}s deadline (tumwater's own timeout, not a test failure)`;
     }
   }
   return key === null ? null : { key, kind, example };
