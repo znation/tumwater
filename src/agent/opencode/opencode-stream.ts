@@ -157,14 +157,7 @@ export function opencodeTranslator(opts: { cwd?: string } = {}): OpencodeStreamT
     return out;
   };
 
-  const translate = (line: string): string[] => {
-    const parsed = parseJsonObject(line);
-    if (!parsed) {
-      // A malformed / non-JSON line on stdout is skipped with one warning for the run.
-      record("malformed");
-      return [];
-    }
-    const event = parsed as Json;
+  const announceSession = (event: Json): string[] => {
     // The first event with a non-empty `sessionID` announces the session and the agent start.
     // An error raised before a session exists has `sessionID: ""` (or none) and emits neither.
     let out: string[] = [];
@@ -182,94 +175,116 @@ export function opencodeTranslator(opts: { cwd?: string } = {}): OpencodeStreamT
         out.push(JSON.stringify({ type: "agent_start" }));
       }
     }
+    return out;
+  };
 
+  const handleStepStart = (): string[] => {
+    step = { content: [], calls: [] };
+    return [];
+  };
+
+  const handleText = (event: Json): string[] => {
+    // A content block with no open buffer opens one: `step_start` is sometimes missing, and
+    // edit-run.jsonl's final `text` lands after its last `step_finish`, so a block dropped
+    // for want of a buffer would lose the run's last turn.
+    step ??= { content: [], calls: [] };
+    step.content.push({ type: "text", text: objectOrEmpty(event.part).text ?? "" });
+    return [];
+  };
+
+  const handleReasoning = (event: Json): string[] => {
+    step ??= { content: [], calls: [] };
+    const thinking = objectOrEmpty(event.part).text ?? "";
+    step.content.push({ type: "thinking", thinking: typeof thinking === "string" ? thinking : "" });
+    return [];
+  };
+
+  const handleToolUse = (event: Json): string[] => {
+    // As above, a tool reported with no open buffer opens one.
+    step ??= { content: [], calls: [] };
+    const partValue = objectOrEmpty(event.part);
+    const state = objectOrEmpty(partValue.state);
+    const input = objectOrEmpty(state.input);
+    // `arguments` is the tool's `input` plus a `path` alias of `filePath` —
+    // describeToolCall reads either.
+    const args: Json = { ...input };
+    if (typeof input.filePath === "string") args.path = input.filePath;
+    // V2 2.0.32 emits the native tool name in `part.tool` (not `part.name`); the live
+    // captures agree.
+    const name = typeof partValue.tool === "string" ? partValue.tool : "";
+    // Own-property test, not a bare index: a tool name like `constructor` or
+    // `__proto__` would otherwise inherit a function from the table's prototype chain and
+    // bypass the lower-cased fallback (the same guard claude-stream.ts applies).
+    const canonicalName = Object.hasOwn(TOOL_NAMES, name) ? (TOOL_NAMES[name] ?? name.toLowerCase()) : name.toLowerCase();
+    const id = typeof partValue.id === "string" ? partValue.id : "";
+    step.content.push({ type: "toolCall", id, name: canonicalName, arguments: args });
+    step.calls.push({ id, name: canonicalName, args, isError: state.status === "error" });
+    return [];
+  };
+
+  const handleStepFinish = (event: Json): string[] => {
+    if (!step) return [];
+    const part = objectOrEmpty(event.part);
+    const tokens = objectOrEmpty(part.tokens);
+    const cache = objectOrEmpty(tokens.cache);
+    step.usage = canonicalUsage(
+      {
+        input: tokens.input,
+        output: tokens.output,
+        cache: { read: cache.read, write: cache.write },
+      },
+      nonNegativeNumber(part.cost, 0),
+    );
+    return flush(true);
+  };
+
+  const handleError = (event: Json): string[] => {
+    // Errors carry their payload in `event.error` (`{type, message, status?, response?}`,
+    // plan finding 8); classification reads type first, message second.
+    const err = objectOrEmpty(event.error);
+    const cls = classifyError(err);
+    if (cls.freeTier) sawFreeTier = true;
+    const message = typeof err.message === "string" ? err.message : "";
+    // The open step (if any) is cut off by the error and flushed without usage first.
+    const out = flush(false);
+    const m: Json = { role: "assistant", content: [], stopReason: "error" };
+    if (message !== "") m.errorMessage = message;
+    // tumwaterKind/backendKind ride the canonical EVENT (not its message): the parser
+    // reads event.tumwaterKind and trusts it before its text regexes.
+    out.push(
+      JSON.stringify({
+        type: "message_end",
+        message: m,
+        ...(cls.kind !== undefined ? { tumwaterKind: cls.kind } : {}),
+        ...(cls.backendKind !== undefined ? { backendKind: cls.backendKind } : {}),
+        ...(cls.retryAfterSeconds !== undefined ? { retryAfterSeconds: cls.retryAfterSeconds } : {}),
+      }),
+    );
+    return out;
+  };
+
+  const translate = (line: string): string[] => {
+    const parsed = parseJsonObject(line);
+    if (!parsed) {
+      // A malformed / non-JSON line on stdout is skipped with one warning for the run.
+      record("malformed");
+      return [];
+    }
+    const event = parsed as Json;
+    const out = announceSession(event);
     const type = event.type;
     switch (type) {
-      case "step_start":
-        step = { content: [], calls: [] };
-        break;
-      case "text": {
-        // A content block with no open buffer opens one: `step_start` is sometimes missing, and
-        // edit-run.jsonl's final `text` lands after its last `step_finish`, so a block dropped
-        // for want of a buffer would lose the run's last turn.
-        step ??= { content: [], calls: [] };
-        step.content.push({ type: "text", text: objectOrEmpty(event.part).text ?? "" });
-        break;
-      }
-      case "reasoning": {
-        step ??= { content: [], calls: [] };
-        const thinking = objectOrEmpty(event.part).text ?? "";
-        step.content.push({ type: "thinking", thinking: typeof thinking === "string" ? thinking : "" });
-        break;
-      }
-      case "tool_use": {
-        // As above, a tool reported with no open buffer opens one.
-        step ??= { content: [], calls: [] };
-        const partValue = objectOrEmpty(event.part);
-        const state = objectOrEmpty(partValue.state);
-        const input = objectOrEmpty(state.input);
-        // `arguments` is the tool's `input` plus a `path` alias of `filePath` —
-        // describeToolCall reads either.
-        const args: Json = { ...input };
-        if (typeof input.filePath === "string") args.path = input.filePath;
-        // V2 2.0.32 emits the native tool name in `part.tool` (not `part.name`); the live
-        // captures agree.
-        const name = typeof partValue.tool === "string" ? partValue.tool : "";
-        // Own-property test, not a bare index: a tool name like `constructor` or
-        // `__proto__` would otherwise inherit a function from the table's prototype chain and
-        // bypass the lower-cased fallback (the same guard claude-stream.ts applies).
-        const canonicalName = Object.hasOwn(TOOL_NAMES, name) ? (TOOL_NAMES[name] ?? name.toLowerCase()) : name.toLowerCase();
-        const id = typeof partValue.id === "string" ? partValue.id : "";
-        step.content.push({ type: "toolCall", id, name: canonicalName, arguments: args });
-        step.calls.push({ id, name: canonicalName, args, isError: state.status === "error" });
-        break;
-      }
-      case "step_finish": {
-        if (!step) break;
-        const part = objectOrEmpty(event.part);
-        const tokens = objectOrEmpty(part.tokens);
-        const cache = objectOrEmpty(tokens.cache);
-        step.usage = canonicalUsage(
-          {
-            input: tokens.input,
-            output: tokens.output,
-            cache: { read: cache.read, write: cache.write },
-          },
-          nonNegativeNumber(part.cost, 0),
-        );
-        out.push(...flush(true));
-        break;
-      }
-      case "error": {
-        // Errors carry their payload in `event.error` (`{type, message, status?, response?}`,
-        // plan finding 8); classification reads type first, message second.
-        const err = objectOrEmpty(event.error);
-        const cls = classifyError(err);
-        if (cls.freeTier) sawFreeTier = true;
-        const message = typeof err.message === "string" ? err.message : "";
-        // The open step (if any) is cut off by the error and flushed without usage first.
-        out.push(...flush(false));
-        const m: Json = { role: "assistant", content: [], stopReason: "error" };
-        if (message !== "") m.errorMessage = message;
-        // tumwaterKind/backendKind ride the canonical EVENT (not its message): the parser
-        // reads event.tumwaterKind and trusts it before its text regexes.
-        out.push(
-          JSON.stringify({
-            type: "message_end",
-            message: m,
-            ...(cls.kind !== undefined ? { tumwaterKind: cls.kind } : {}),
-            ...(cls.backendKind !== undefined ? { backendKind: cls.backendKind } : {}),
-            ...(cls.retryAfterSeconds !== undefined ? { retryAfterSeconds: cls.retryAfterSeconds } : {}),
-          }),
-        );
-        break;
-      }
+      case "step_start": return [...out, ...handleStepStart()];
+      case "text": return [...out, ...handleText(event)];
+      case "reasoning": return [...out, ...handleReasoning(event)];
+      case "tool_use": return [...out, ...handleToolUse(event)];
+      case "step_finish": return [...out, ...handleStepFinish(event)];
+      case "error": return [...out, ...handleError(event)];
       default:
         // Record the unknown type ("" for a type-less line), once, in first-seen order.
         record(typeof type === "string" ? type : "unknown");
-        break;
+        return out;
     }
-    return out;
   };
 
   return {

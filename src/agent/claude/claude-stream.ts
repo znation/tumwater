@@ -195,157 +195,167 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
     warnings.add(kind);
   };
 
+  const handleSystem = (event: Json): string[] => {
+    const subtype = str(event.subtype);
+    if (subtype === "init") {
+      const out: string[] = [];
+      const cwd = str(event.cwd);
+      const id = str(event.session_id);
+      out.push(JSON.stringify({ type: "session", ...(cwd !== undefined ? { cwd } : {}), ...(id !== undefined ? { id } : {}) }));
+      out.push(JSON.stringify({ type: "agent_start" }));
+      const billing = billingOf(str(event.apiKeySource), opts.thirdPartyProvider === true);
+      if (billing) out.push(JSON.stringify({ type: "billing", billing }));
+      return out;
+    }
+    if (subtype === "api_retry") {
+      const attempt = nonNegativeNumber(event.attempt, undefined);
+      const maxAttempts = nonNegativeNumber(event.max_retries, undefined);
+      const status = nonNegativeNumber(event.error_status, undefined);
+      const error = str(event.error) ?? "";
+      const errorMessage = joinParts([status !== undefined ? `status ${status}` : "", error], ": ");
+      return [
+        JSON.stringify({
+          type: "auto_retry_start",
+          ...(attempt !== undefined ? { attempt } : {}),
+          ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+          errorMessage: errorMessage || "api retry",
+        }),
+      ];
+    }
+    if (subtype === "compact_boundary") return [JSON.stringify({ type: "compaction_start" })];
+    // A thinking-token estimate during extended thinking: known, carries nothing canonical.
+    if (subtype === "thinking_tokens") return [];
+    record(`system:${subtype ?? "unknown"}`);
+    return [];
+  };
+
+  const handleAssistant = (event: Json): string[] => {
+    sawActivity = true;
+    const message = objectOrEmpty(event.message);
+    const id = str(message.id) ?? `anon-${anonymous++}`;
+    // A new id flushes the open message; a continuing one flushes nothing. Either way the
+    // fresh or open pending then folds this event's content, usage, and stop reason the
+    // same way — that shared fold is why both branches live on one path.
+    let out: string[] = [];
+    if (pending?.id !== id) {
+      out = flush();
+      pending = { id, content: [], usage: canonicalUsage(isJsonObject(message.usage) ? message.usage : undefined) };
+    }
+    const blocks = Array.isArray(message.content) ? message.content : [];
+    for (const raw of blocks) {
+      if (!isJsonObject(raw)) continue;
+      const block = canonicalBlock(raw);
+      if (!block) continue;
+      pending.content.push(block);
+      if (block.type === "toolCall") out.push(startToolCall(block));
+    }
+    // Usage repeats on every event of the same message; the last read wins and is counted
+    // once because the fold emits one message_end per id.
+    pending.usage = canonicalUsage(isJsonObject(message.usage) ? message.usage : undefined);
+    const stopReason = str(message.stop_reason);
+    if (stopReason !== undefined) pending.stopReason = stopReason;
+    return out;
+  };
+
+  const handleUser = (event: Json): string[] => {
+    const out = flush();
+    const message = objectOrEmpty(event.message);
+    const blocks = Array.isArray(message.content) ? message.content : [];
+    for (const raw of blocks) {
+      if (!isJsonObject(raw) || raw.type !== "tool_result") continue;
+      out.push(
+        JSON.stringify({
+          type: "tool_execution_end",
+          toolCallId: str(raw.tool_use_id) ?? "",
+          isError: raw.is_error === true,
+        }),
+      );
+    }
+    return out;
+  };
+
+  const handleRateLimitEvent = (event: Json): string[] => {
+    const info = objectOrEmpty(event.rate_limit_info);
+    const rateLimitType = str(info.rateLimitType);
+    const status = str(info.status);
+    // claude 2.1.295 reports every window's utilization and reset under `unifiedWindows`,
+    // keyed by window type, and only the binding window's status at the top level.
+    const windows: string[] = [];
+    for (const [type, raw] of Object.entries(objectOrEmpty(info.unifiedWindows))) {
+      if (type === rateLimitType || !isJsonObject(raw)) continue;
+      const reading: Json = { type: "rate_limit", rateLimitType: type };
+      const windowResets = nonNegativeNumber(raw.resetsAt, undefined);
+      if (windowResets !== undefined) reading.resetsAt = windowResets;
+      const windowUtil = nonNegativeNumber(raw.utilization, undefined);
+      if (windowUtil !== undefined) reading.utilization = windowUtil;
+      windows.push(JSON.stringify(reading));
+    }
+    const own = rateLimitType === undefined ? undefined : objectOrEmpty(objectOrEmpty(info.unifiedWindows)[rateLimitType]);
+    const resetsAt = nonNegativeNumber(info.resetsAt, undefined) ?? nonNegativeNumber(own?.resetsAt, undefined);
+    const out: Json = { type: "rate_limit" };
+    if (rateLimitType !== undefined) out.rateLimitType = rateLimitType;
+    if (status !== undefined) out.status = status;
+    if (resetsAt !== undefined) out.resetsAt = resetsAt;
+    const utilization = nonNegativeNumber(info.utilization, undefined) ?? nonNegativeNumber(own?.utilization, undefined);
+    if (utilization !== undefined) out.utilization = utilization;
+    const overageStatus = str(info.overageStatus);
+    if (overageStatus !== undefined) out.overageStatus = overageStatus;
+    if (info.isUsingOverage === true) out.isUsingOverage = true;
+    if (status === "rejected" && resetsAt !== undefined) {
+      // resetsAt is a unix-seconds stamp; secondsUntil folds it (×1000) to whole seconds.
+      out.retryAfterSeconds = secondsUntil(resetsAt * 1000, Date.now());
+    }
+    return [JSON.stringify(out), ...windows];
+  };
+
+  const handleResult = (event: Json): string[] => {
+    sawActivity = true;
+    const out = flush();
+    // The assistant events' usage is the message-start snapshot, so the result's total
+    // is the run's real output-token count (thinking included).
+    const outputTokens = nonNegativeNumber(objectOrEmpty(event.usage).output_tokens, undefined);
+    if (outputTokens !== undefined) out.push(JSON.stringify({ type: "run_usage", outputTokens }));
+    const total = nonNegativeNumber(event.total_cost_usd, undefined);
+    if (total !== undefined) {
+      sawRunCost = true;
+      out.push(JSON.stringify({ type: "run_cost", total }));
+    } else {
+      warnings.add("cost_unknown");
+    }
+    if (event.is_error === true) {
+      const { kind, backendKind } = classifyResult(event);
+      const message: Json = {
+        role: "assistant",
+        content: [],
+        stopReason: "error",
+      };
+      const errorMessage = str(event.result) ?? str(event.error);
+      if (errorMessage !== undefined) message.errorMessage = errorMessage;
+      // tumwaterKind/backendKind ride the canonical EVENT (not its message): the parser
+      // reads event.tumwaterKind and trusts it before its text regexes.
+      out.push(
+        JSON.stringify({
+          type: "message_end",
+          message,
+          ...(kind !== undefined ? { tumwaterKind: kind } : {}),
+          ...(backendKind !== undefined ? { backendKind } : {}),
+        }),
+      );
+    }
+    return out;
+  };
+
   const translate = (line: string): string[] => {
     const parsed = parseJsonObject(line);
     if (!parsed) return []; // Non-JSON noise on stdout; ignore, as pi's parser does.
     const event = parsed as Json;
     const type = str(event.type);
     switch (type) {
-      case "system": {
-        const subtype = str(event.subtype);
-        if (subtype === "init") {
-          const out: string[] = [];
-          const cwd = str(event.cwd);
-          const id = str(event.session_id);
-          out.push(JSON.stringify({ type: "session", ...(cwd !== undefined ? { cwd } : {}), ...(id !== undefined ? { id } : {}) }));
-          out.push(JSON.stringify({ type: "agent_start" }));
-          const billing = billingOf(str(event.apiKeySource), opts.thirdPartyProvider === true);
-          if (billing) out.push(JSON.stringify({ type: "billing", billing }));
-          return out;
-        }
-        if (subtype === "api_retry") {
-          const attempt = nonNegativeNumber(event.attempt, undefined);
-          const maxAttempts = nonNegativeNumber(event.max_retries, undefined);
-          const status = nonNegativeNumber(event.error_status, undefined);
-          const error = str(event.error) ?? "";
-          const errorMessage = joinParts([status !== undefined ? `status ${status}` : "", error], ": ");
-          return [
-            JSON.stringify({
-              type: "auto_retry_start",
-              ...(attempt !== undefined ? { attempt } : {}),
-              ...(maxAttempts !== undefined ? { maxAttempts } : {}),
-              errorMessage: errorMessage || "api retry",
-            }),
-          ];
-        }
-        if (subtype === "compact_boundary") return [JSON.stringify({ type: "compaction_start" })];
-        // A thinking-token estimate during extended thinking: known, carries nothing canonical.
-        if (subtype === "thinking_tokens") return [];
-        record(`system:${subtype ?? "unknown"}`);
-        return [];
-      }
-      case "assistant": {
-        sawActivity = true;
-        const message = objectOrEmpty(event.message);
-        const id = str(message.id) ?? `anon-${anonymous++}`;
-        // A new id flushes the open message; a continuing one flushes nothing. Either way the
-        // fresh or open pending then folds this event's content, usage, and stop reason the
-        // same way — that shared fold is why both branches live on one path.
-        let out: string[] = [];
-        if (pending?.id !== id) {
-          out = flush();
-          pending = { id, content: [], usage: canonicalUsage(isJsonObject(message.usage) ? message.usage : undefined) };
-        }
-        const blocks = Array.isArray(message.content) ? message.content : [];
-        for (const raw of blocks) {
-          if (!isJsonObject(raw)) continue;
-          const block = canonicalBlock(raw);
-          if (!block) continue;
-          pending.content.push(block);
-          if (block.type === "toolCall") out.push(startToolCall(block));
-        }
-        // Usage repeats on every event of the same message; the last read wins and is counted
-        // once because the fold emits one message_end per id.
-        pending.usage = canonicalUsage(isJsonObject(message.usage) ? message.usage : undefined);
-        const stopReason = str(message.stop_reason);
-        if (stopReason !== undefined) pending.stopReason = stopReason;
-        return out;
-      }
-      case "user": {
-        const out = flush();
-        const message = objectOrEmpty(event.message);
-        const blocks = Array.isArray(message.content) ? message.content : [];
-        for (const raw of blocks) {
-          if (!isJsonObject(raw) || raw.type !== "tool_result") continue;
-          out.push(
-            JSON.stringify({
-              type: "tool_execution_end",
-              toolCallId: str(raw.tool_use_id) ?? "",
-              isError: raw.is_error === true,
-            }),
-          );
-        }
-        return out;
-      }
-      case "rate_limit_event": {
-        const info = objectOrEmpty(event.rate_limit_info);
-        const rateLimitType = str(info.rateLimitType);
-        const status = str(info.status);
-        // claude 2.1.295 reports every window's utilization and reset under `unifiedWindows`,
-        // keyed by window type, and only the binding window's status at the top level.
-        const windows: string[] = [];
-        for (const [type, raw] of Object.entries(objectOrEmpty(info.unifiedWindows))) {
-          if (type === rateLimitType || !isJsonObject(raw)) continue;
-          const reading: Json = { type: "rate_limit", rateLimitType: type };
-          const windowResets = nonNegativeNumber(raw.resetsAt, undefined);
-          if (windowResets !== undefined) reading.resetsAt = windowResets;
-          const windowUtil = nonNegativeNumber(raw.utilization, undefined);
-          if (windowUtil !== undefined) reading.utilization = windowUtil;
-          windows.push(JSON.stringify(reading));
-        }
-        const own = rateLimitType === undefined ? undefined : objectOrEmpty(objectOrEmpty(info.unifiedWindows)[rateLimitType]);
-        const resetsAt = nonNegativeNumber(info.resetsAt, undefined) ?? nonNegativeNumber(own?.resetsAt, undefined);
-        const out: Json = { type: "rate_limit" };
-        if (rateLimitType !== undefined) out.rateLimitType = rateLimitType;
-        if (status !== undefined) out.status = status;
-        if (resetsAt !== undefined) out.resetsAt = resetsAt;
-        const utilization = nonNegativeNumber(info.utilization, undefined) ?? nonNegativeNumber(own?.utilization, undefined);
-        if (utilization !== undefined) out.utilization = utilization;
-        const overageStatus = str(info.overageStatus);
-        if (overageStatus !== undefined) out.overageStatus = overageStatus;
-        if (info.isUsingOverage === true) out.isUsingOverage = true;
-        if (status === "rejected" && resetsAt !== undefined) {
-          // resetsAt is a unix-seconds stamp; secondsUntil folds it (×1000) to whole seconds.
-          out.retryAfterSeconds = secondsUntil(resetsAt * 1000, Date.now());
-        }
-        return [JSON.stringify(out), ...windows];
-      }
-      case "result": {
-        sawActivity = true;
-        const out = flush();
-        // The assistant events' usage is the message-start snapshot, so the result's total
-        // is the run's real output-token count (thinking included).
-        const outputTokens = nonNegativeNumber(objectOrEmpty(event.usage).output_tokens, undefined);
-        if (outputTokens !== undefined) out.push(JSON.stringify({ type: "run_usage", outputTokens }));
-        const total = nonNegativeNumber(event.total_cost_usd, undefined);
-        if (total !== undefined) {
-          sawRunCost = true;
-          out.push(JSON.stringify({ type: "run_cost", total }));
-        } else {
-          warnings.add("cost_unknown");
-        }
-        if (event.is_error === true) {
-          const { kind, backendKind } = classifyResult(event);
-          const message: Json = {
-            role: "assistant",
-            content: [],
-            stopReason: "error",
-          };
-          const errorMessage = str(event.result) ?? str(event.error);
-          if (errorMessage !== undefined) message.errorMessage = errorMessage;
-          // tumwaterKind/backendKind ride the canonical EVENT (not its message): the parser
-          // reads event.tumwaterKind and trusts it before its text regexes.
-          out.push(
-            JSON.stringify({
-              type: "message_end",
-              message,
-              ...(kind !== undefined ? { tumwaterKind: kind } : {}),
-              ...(backendKind !== undefined ? { backendKind } : {}),
-            }),
-          );
-        }
-        return out;
-      }
+      case "system": return handleSystem(event);
+      case "assistant": return handleAssistant(event);
+      case "user": return handleUser(event);
+      case "rate_limit_event": return handleRateLimitEvent(event);
+      case "result": return handleResult(event);
       case "tool_progress":
         // A 30 s heartbeat of a running tool call: known, and the open call already tracks
         // liveness.
