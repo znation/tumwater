@@ -1,5 +1,10 @@
 # Check-permit priority and demand — merge-scope checks go first, and the gate's check count drops with review
 
+**Superseded 2026-10-26** by [subtract.md](subtract.md): part 1/2 landed and goes with the check
+permit itself (Subtract part 3/6); part 2/2 — the decision whether the cap rises — is **cancelled**
+(PLANS.md, 2026-10-26), because the in-lock landing it measured is deleted, so the cap has no
+subject.
+
 Planned 2026-10-23 · requested by user (from the 2026-10-21→23 flow audit: "why are there
 24-minute waits?"). Companion to [reviewer-as-role.md](reviewer-as-role.md) — that plan removes
 check *demand*; this one removes the *waits* the remaining demand still causes.

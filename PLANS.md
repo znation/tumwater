@@ -387,4 +387,116 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - In test/orchestrator-budget.e2e.test.ts, the three named cases no longer decide the grow/handback step on a fixed `sleep` followed by a `waitFor` over live-run counts; each waits on an emitted event or a run marker.
 - Every peak-overlap assertion keeps its subject and still reads the concurrency fake's samples.
 
+### Subtract, part 1/6: Only a stopped team asks for a person — the banner feed keeps the seven alerts that mean the team is stopped or a decision is the operator's (planned 2026-10-26 by the operator, from the "simplicity over being heavily optimized" request; design in plans/subtract.md "The six strokes", stroke 6; touches src/ui/team-alerts.ts src/ui/team-alert-shared.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/team-alert-merge.ts src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
+
+**Goal.** `teamAlerts` (src/ui/team-alerts.ts) emits only what means the team cannot make progress on its own, plus the operator's own decision queue. Every other amber, blue and gray banner becomes a `tumwater doctor` row — or is deleted with the mechanism its own part removes.
+
+**Approach.**
+- Keep exactly these builders: in team-alert-status.ts `main's check is failing — N roles are blocked`, `N roles are failing run after run`, `N roles look stuck`, `Today's budget is spent, so the roles are paused`; in team-alert-tail.ts `tumwater is not running`, the low-disk alert, the root-install drift alert; in team-alert-backlog.ts the question alert (`:35`) and the refused-entry alert (`:74`).
+- Delete every other builder and its feeder in src/ui/alert-feeds.ts (quarantineAlert, flappedChecksAlert, postMergeChurnAlert, postReviewRiskAlert, droppedPostReviewsAlert, mainRuleFailures, qaCoverageAlert, regressedFixesAlert, staleOpenBugs, staleOpenQuestions, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwriteBlocks, capacityContention, providerCapProblems, instancePoolProblems, staleWorkspacePins, staleClaimEntries, stalledEntries, operatorHeldEntries, strandedPlanEntriesFor, duplicatedBacklogHeadings, validationGapProblems, planDependencyAlert, notifyFailures, liveFinished, staleQuestions, staleWaitingBugs), the matching `TeamAlert` members in team-alert-shared.ts, the `teamAlerts` parameters they feed, and their fields in status-payload.ts / status-render.ts.
+- The doctor keeps its rows unchanged (src/doctor/doctor-check-names.ts): each deleted alert already has one. Where one does not, add the row in this same change, so no condition becomes invisible — that is the part's rule, not a follow-up.
+- The dashboard's alert banner shows the count and links to the doctor view; the TUI's Alert pane shows the kept set.
+
+**Files touched.** src/ui/team-alerts.ts src/ui/team-alert-shared.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/team-alert-merge.ts src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts
+
+**Acceptance criteria.**
+- For any snapshot, `teamAlerts` returns only the kept titles; the deleted ones cannot be produced because their builders and inputs are gone (no `tone: "amber"` builder left outside the kept set).
+- Every condition a deleted alert reported still prints in `tumwater doctor`, or its mechanism was deleted by the part that owns it.
+- `npm run test:gate` passes.
+
+### Subtract, part 2/6: One hold vocabulary — Refused and Needs review (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-cli.ts src/backlog/backlog-cli-view.ts src/backlog/backlog-index.ts src/runner/revision.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts src/doctor/doctor-backlog-bugs.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/gui/gui-client-backlog.ts src/ui/tui/tui-pane-backlog.ts docs/glossary.md docs/how-it-works.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts)
+
+**Goal.** A backlog entry can be parked exactly two ways: `**Refused …**` (the system declined and wants a decision) and `**Needs review …**` (the work is not done, and the note says why). The other three kinds and the held counters go.
+
+**Approach.**
+- Delete `NEEDS_REPLAN_PREFIX` and `NEEDS_REPLAN_NOTE` (src/roles/role-guidance.ts:189, :198) and `WAITING_FOR_FAILURE_PREFIX`/`WAITING_FOR_FAILURE_NOTE` (:203, :209): a rejected plan is a `**Needs review …**` note carrying the reviewer's objections, and a bug nobody can reproduce is a `**Needs review …**` note naming what would make it fail.
+- Delete the held counters — `HELD_TAG_PREFIX` (:144), `PRIOR_HELD_PREFIX` (:169), `PRIOR_HELD_NOTE` (:175) — and `CONVERGENCE_HOLD_MARKER` (:163) as a separate kind: `holdEntryAfterExhaustion` (src/runner/revision.ts) writes a plain `**Needs review <date> by <role>: could not converge — <objections>**`. The count's only readers were the split ordering and the operator-held alert; the note's text carries what the plan role needs, and age is already the doctor's signal.
+- `EntryHold` (src/backlog/backlog-eligibility.ts:25) becomes `"refused" | "needs-review" | { blockedBy } | null`; the held-for-operator derivation (:248) and `operatorHeldEntries` (:375) go with the alert that read them, and the doctor's `stalled entries` row reports `needs-review` only.
+- One release verb: `src/backlog/backlog-release.ts` lifts Refused, else Needs review; `tumwater plan|bug --release <n>`, the TUI's Ctrl+R and the dashboard's Release all call it, and `LiftableHold` (backlog-release.ts:17) has one member.
+- The prompts say two holds: src/prompt/prompt.ts's refusal bullet, the plan/feature/bugfix steps in src/roles/role-catalog.ts, docs/glossary.md's hold rows.
+
+**Files touched.** src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-cli.ts src/backlog/backlog-cli-view.ts src/backlog/backlog-index.ts src/runner/revision.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts src/doctor/doctor-backlog-bugs.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/gui/gui-client-backlog.ts src/ui/tui/tui-pane-backlog.ts docs/glossary.md docs/how-it-works.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts
+
+**Acceptance criteria.**
+- After the change, no live reader or writer of `Needs replan`, `Waiting for the next failure`, `(held ` or `**Previously held ` remains in `src/` (grep is empty apart from the archived PLANS-DONE.md and BUGS-FIXED.md records).
+- A `**Needs review 2026-10-26 by feature: could not converge — <objections>**` note classifies as the needs-review hold and `--release` lifts it; a Refused note is lifted first when an entry carries both.
+- The plan role's split flow still sees why an entry is held (the note's text), with no count to carry.
+- `npm run test:gate` passes.
+
+### Subtract, part 3/6: The merge queue becomes a lock and a fast-forward (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 3; requires Every commit is verified on main part 3f/3 landed; touches src/merge src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts src/orchestrator/scheduling-scope.ts src/runner/runner-run.ts src/status/status-data.ts src/doctor/doctor-contention-checks.ts src/concurrency/check-permit.ts docs/how-it-works.md docs/invariants.md test/merger-restack.test.ts test/merge-backlog-conflicts.test.ts test/worktree-pool.test.ts)
+
+**Goal.** A change lands as `pin → rebase onto main → fast-forward under the merge lock`. The queue, its stage machine, the coalesced batch check with its prefix bisect, the re-queue, the entry drop limits and the scheduling interlock are gone, because nothing about landing can fail any more: verification moved after the merge (part 3f/3), and a break is an ordinary open bug owned by the author.
+
+**Approach.**
+- Delete the queue and its stages: src/merge/merge-queue.ts, merge-queue-render.ts, merge-requeue.ts, merge-cancel.ts, merge-pipeline.ts, merge-slot.ts, merge-drain.ts, merge-batch.ts, merge-stack.ts, and the `.tumwater/merge-queue/` directory with its `uncommitted backlog`-style checks.
+- `merge-core.ts` and `merge-to-main.ts` keep the pin read, the rebase, the merge lock and the fast-forward; the conflict-resolution pi run stays as the one non-deterministic step. `MERGE_CONFLICT_LIMIT` and the entry attempt/drop limits go: a conflict whose resolution fails comes back as a `**Needs review …**` note naming the conflict (part 2/6's vocabulary).
+- Delete the scheduling interlock: `queuedRoles` (orchestrator-scheduling.ts), its legs in scheduling-skip.ts and scheduling-scope.ts, and `mergeStartHeld`'s merge half (orchestrator-poll.ts). A role whose change is merging authors its next run, as plans/interlock-relief.md's per-role tiering intended for the low-blast-radius roles only.
+- Delete the check permit with the in-lock and batch checks it served (src/concurrency/check-permit.ts) and the three contention rows and the `capacity bottleneck` alert (part 1/6 removes the alert; doctor-contention-checks.ts keeps `slot_wait`/`provider_wait` only if part 4/6 has not yet removed the pool).
+- docs/how-it-works.md's merge-pipeline section and docs/invariants.md's cross-process invariants (INV-CT1 and the merge-slot guarantees) say what replaces the queue: one lock, linear history, and the post-landing check.
+
+**Files touched.** src/merge src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts src/orchestrator/scheduling-scope.ts src/runner/runner-run.ts src/status/status-data.ts src/doctor/doctor-contention-checks.ts src/doctor/doctor-check-names.ts src/concurrency/check-permit.ts docs/how-it-works.md docs/invariants.md test/merger-restack.test.ts test/merge-backlog-conflicts.test.ts test/worktree-pool.test.ts
+
+**Acceptance criteria.**
+- A code change's log path from run end to main is `merge_queued → merged`, with no stage events and no second check run; `build_check` events per merged commit are 1 (the post-landing one).
+- Two roles land back to back with no interlock: the second role's run starts while the first's merge is in flight, and neither waits on the other's check.
+- A conflicting change comes back to its author as one `**Needs review …**` note; nothing is dropped from a queue, because there is no queue.
+- No `.tumwater/merge-queue/` directory is written; the doctor's `stale merge-queue entries` and `merge-queue files` rows are deleted (doctor-check-names.ts) rather than left to warn about a path nothing writes.
+- `npm run test:gate` passes.
+
+### Subtract, part 4/6: One runner per role — the instance claims and the worktree pool go (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 4, and its measurement gate; requires Subtract part 3/6 landed; touches src/config/config-schema.ts src/config/config.ts src/config/config-validation.ts src/roles/runner-ids.ts src/scheduling/claims.ts src/scheduling/claim-entries.ts src/backlog/backlog-index.ts src/git/worktree-pool.ts src/git/worktree-pool-startup.ts src/git/slots-state.ts src/git/worktree-use.ts src/git/slot-salvage.ts src/doctor/doctor-contention-checks.ts src/ui/status-payload.ts docs/config.md test/worktree-pool.test.ts test/retention.test.ts)
+
+**Goal.** One runner id per role and one persistent checkout per role. `instances`, the instance claims and the slot pool existed to keep a role authoring while its own change merged (fast-merge measured 60% of role time waiting); with landing in minutes that wait is not the constraint, and the pool's own costs — slot waits, pins, stale claims, salvage — go with it.
+
+**Approach.**
+- **Measure first, and record it.** Before changing code, read the day report and the log for the week after part 3/6 landed: end-of-run → on main p50/mean/p90 (`merge_done`), `slot_wait` count and total, and red-main minutes (`main_check`/`main_red_hold`). If p90 is at or under ~15 minutes with one runner per role, proceed; if not, hold this part with a `**Needs review …**` note quoting the numbers instead of deleting capacity on a prediction.
+- Delete the `instances` key (config-schema.ts, config.ts, docs/config.md) and `INSTANCE_ROLES`; `runnerIds` (src/roles/runner-ids.ts) returns the configured roles, one runner each.
+- Delete the claims (src/scheduling/claims.ts, src/scheduling/claim-entries.ts) and their readers (backlog-index.ts's live-claim marks, status-payload.ts's instance pool, the `parallel instances` doctor row); a role claims an entry by working on it in the run that picked it up.
+- Delete the pool (src/git/worktree-pool.ts, worktree-pool-startup.ts, slots-state.ts, worktree-use.ts, slot-salvage.ts) and the `slot_wait` event; a role keeps one worktree through src/git/worktree.ts's ensureWorktree, which already self-heals a dead registration.
+- Delete the pool rows and their inputs: doctor's `workspaces` (pool half), `parallel instances`, `tumwater pins`' pool wording, and `slotCount`.
+
+**Files touched.** src/config/config-schema.ts src/config/config.ts src/config/config-validation.ts src/roles/runner-ids.ts src/scheduling/claims.ts src/scheduling/claim-entries.ts src/backlog/backlog-index.ts src/git/worktree-pool.ts src/git/worktree-pool-startup.ts src/git/slots-state.ts src/git/worktree-use.ts src/git/slot-salvage.ts src/doctor/doctor-contention-checks.ts src/doctor/doctor-check-names.ts src/ui/status-payload.ts docs/config.md docs/how-it-works.md test/worktree-pool.test.ts test/retention.test.ts
+
+**Acceptance criteria.**
+- One runner id per configured role; `tumwater status --json` carries no instance-pool or slot fields, and a run leases no slot.
+- `tumwater.json` with `instances` set is refused by validation naming the deleted key (the same treatment the other deleted keys get in part 5/6), not silently ignored.
+- The measured p90 end-of-run → on main from the gate above is quoted in the part's PLANS-DONE entry, so the deletion's premise is on the record.
+- `npm run test:gate` passes.
+
+### Subtract, part 5/6: One model per role — tiers, fallback chains and provider caps go (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 5; touches src/config/config-schema.ts src/config/config.ts src/config/config-views.ts src/config/config-validation.ts src/runner/model-fallback.ts src/runner/runner-fallback.ts src/runner/runner-run.ts src/agent/subscription-account.ts src/team/team-polls.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-fallback-checks.ts src/doctor/doctor-contention-checks.ts src/doctor/image-probe.ts src/ui/team-alert-status.ts src/ui/team-alert-tail.ts docs/config.md docs/backends.md docs/how-it-works.md tumwater.example.json test/config.test.ts test/doctor-checks.test.ts)
+
+**Goal.** The model a run uses is the role's (or the seam's) model, named once in `tumwater.json`. The tier map, the fallback maps and chain steps, the per-provider caps, the subscription-window carve-outs and the image-capability probe are deleted: they route around a fleet that is expected to change, which is optimization for the wrong thing.
+
+**Approach.**
+- Config: keep the `model` map (role or seam id → selector). Delete the tier keys of `model` (TierMap, src/config/config-schema.ts:18, :46), the `fallback` maps and their chain steps (FallbackStep :24, FALLBACK_STEP_KEYS :33, the ordered-list form :35), `fallbackModel`/the fallback pair (:148-165), and `maxConcurrentPerProvider` (:298) with its audit (`checkProviderConcurrency`) — validation refuses each deleted key by name rather than ignoring it.
+- Delete the routing code and its observations: src/runner/model-fallback.ts, src/runner/runner-fallback.ts, the fallback legs of runner-run.ts, src/agent/subscription-account.ts with the `claude window`/`codex window` rows and team-polls' window observation, and src/doctor/image-probe.ts with the `image input` row and the two image alerts.
+- `maxDailyCostUsd` stays as the one spend limit, now per role; a spent cap pauses the role (today's budget behaviour) instead of switching it to an over-cap model, so `budget_fallback`/`budget_handback` and the fallback-budget rows go.
+- Delete the rows and alerts this removes: `models for each tier`, `fallback chain`, `over-cap model`, `provider concurrency`, `provider contention`, `claude window`, `codex window`, `image input`, `maxConcurrentPerProvider is misconfigured`, `No configured model can read images…`, `…on models that can't read images`, `A claimed image-capable model failed doctor's probe`, and the fallback/over-cap budget alerts.
+
+**Files touched.** src/config/config-schema.ts src/config/config.ts src/config/config-views.ts src/config/config-validation.ts src/runner/model-fallback.ts src/runner/runner-fallback.ts src/runner/runner-run.ts src/agent/subscription-account.ts src/team/team-polls.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-fallback-checks.ts src/doctor/doctor-contention-checks.ts src/doctor/doctor-check-names.ts src/doctor/image-probe.ts src/ui/team-alert-status.ts src/ui/team-alert-tail.ts docs/config.md docs/backends.md docs/how-it-works.md tumwater.example.json test/config.test.ts test/doctor-checks.test.ts
+
+**Acceptance criteria.**
+- One place names a run's model: the role's entry in the `model` map, else its catalog default; a run never substitutes a different model, and a spent daily cap pauses the role with the existing pause wording.
+- A `tumwater.json` carrying `fallback`, `fallbackModel`, a tier key or `maxConcurrentPerProvider` is refused with a message naming the deleted key.
+- The named rows and alerts are gone from doctor-check-names.ts and the alert builders; the subscription-window and image-probe modules are deleted, not orphaned.
+- `npm run test:gate` passes.
+
+### Subtract, part 6/6: The sweep — the rows, keys and docs the five parts left behind (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes" and "How we will know it worked"; touches docs/config.md docs/cli.md docs/glossary.md docs/how-it-works.md docs/invariants.md README.md DEVELOPMENT.md tumwater.example.json src/doctor/doctor-check-names.ts test/doctor-checks.test.ts test/event-format.test.ts test/retention.test.ts test/config.test.ts)
+
+**Goal.** The deletion reads as one system. Every name parts 1/6–5/6 removed is gone from the live docs, the example config, the doctor's row list, the alerts and the tests that assert them; the archive keeps the record.
+
+**Approach.**
+- Sweep the deleted names out of the live prose and the example config: `instances`, `slotCount`, `slot_wait`, `check_wait`, `maxConcurrentChecks`, `mergeBatchMax`, `mergeCommand`, `review.afterMerge`, `maxConcurrentPerProvider`, `fallback`, `fallbackModel`, `model.<tier>`, `over-cap model`, `slot salvage`, `merge queue`, `interlock`, `held-for-operator`, `Needs replan`, `Waiting for the next failure`, `(held N)`.
+- Delete the rows and tests rather than re-pointing them: a case whose whole subject is a deleted mechanism goes (the existing wording/implementation tests rule: never re-pin), and test/doctor-checks.test.ts's row list, test/event-format.test.ts's deleted event types (`slot_wait`, `check_wait`, the merge-stage events), test/retention.test.ts's pool artifacts and test/config.test.ts's deleted keys are updated to the surviving row/key set.
+- Re-check the part 1/6 rule end to end: for every condition that used to have a banner and no longer does, the doctor row exists; for every row this series deleted, the mechanism is gone.
+- docs/invariants.md drops or re-scopes the invariants of deleted subsystems (merge-slot, pool, permit, instance claims, model routing) in the same commit, per the standing rule.
+- Record in the part's PLANS-DONE entry: the doctor row count and the config key count before and after the series, and the measurement table from plans/subtract.md "Before deleting concurrency and model policy".
+
+**Files touched.** docs/config.md docs/cli.md docs/glossary.md docs/how-it-works.md docs/invariants.md README.md DEVELOPMENT.md tumwater.example.json src/doctor/doctor-check-names.ts PLANS.md test/doctor-checks.test.ts test/event-format.test.ts test/retention.test.ts test/config.test.ts
+
+**Acceptance criteria.**
+- `grep -rnE 'maxConcurrentChecks|maxConcurrentPerProvider|mergeBatchMax|mergeCommand|instances|slot_wait|check_wait|fallbackModel|review\.afterMerge|held-for-operator' src/ docs/ README.md DEVELOPMENT.md tumwater.example.json` finds no live reference (the archive files PLANS-DONE.md and BUGS-FIXED.md are excluded by construction).
+- Every doctor row name in doctor-check-names.ts resolves to a check that reads a mechanism that still exists; no row reports a path nothing writes.
+- The before/after row and key counts, and the deletions' measurement premise, are in the part's PLANS-DONE entry.
+- `npm run test:gate` passes.
+
 ## Done

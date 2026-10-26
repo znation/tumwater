@@ -1,5 +1,9 @@
 # The right to refuse, and friction as a signal
 
+**Narrowed 2026-10-26** by [subtract.md](subtract.md) (Subtract part 2/6): the refusal stays as one
+of the two holds, `**Refused …**` beside `**Needs review …**`. The other three note kinds and the
+held counters go — a park is one note whose text says why, not a vocabulary.
+
 Planned 2026-08-24 · refined 2026-08-25 (discard semantics, md-only detection, thrash data
 sources) · refined 2026-08-27 (repeated-refusal blocking: fixed note format, skip rule,
 unblock paths) · from the "Senior Tumwater" report (HN 49421554) · report item R2

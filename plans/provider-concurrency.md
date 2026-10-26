@@ -1,5 +1,9 @@
 # Provider concurrency — per-provider caps, and claude + pi in one fleet
 
+**Retired 2026-10-26** by [subtract.md](subtract.md) (Subtract part 5/6): `maxConcurrentPerProvider`,
+its audit row, its alert and the `provider_wait` observation go. One model per role means one
+provider decision per role, and the fleet-wide concurrency limit already bounds it.
+
 Planned 2026-10-15 · requested by user · audited against main `a2131b5a`
 
 ## Goal

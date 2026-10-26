@@ -1,5 +1,9 @@
 # Image input — know which models can read images, stop blind reads, rerun on one that can
 
+**Retired 2026-10-26** by [subtract.md](subtract.md) (Subtract part 5/6): the capability probe, the
+`image input` row and the three image alerts go with the model routing they existed to guide. A
+role whose model cannot read an image fails that run and reports it like any other run failure.
+
 Planned 2026-10-15 · requested by user · decisions settled with the user the same day (end of file)
 
 ## Goal

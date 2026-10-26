@@ -1,5 +1,9 @@
 # Model tiers — small, default, and strong models, each with its own free fallback
 
+**Retired 2026-10-26** by [subtract.md](subtract.md) (Subtract part 5/6): one model per role, named
+once in `tumwater.json`. The tier map goes; a role whose model is unusable fails its run like any
+other failure, and says so once in doctor and in the report.
+
 Planned 2026-10-05 · requested by user
 
 ## Goal

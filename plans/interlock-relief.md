@@ -1,5 +1,9 @@
 # Merge-queue interlock relief — a queued author may run again
 
+**Superseded 2026-10-26** by [subtract.md](subtract.md) (Subtract part 3/6): the interlock this
+plan scopes per role is deleted outright — there is no queue to be interlocked with once a change
+lands as a rebase and a fast-forward. The relaxation it argued for becomes universal.
+
 Planned 2026-10-23 · requested by user (from the 2026-10-21→23 flow audit). Extends
 [fast-merge.md](fast-merge.md) (2026-10-19, "a role queues its change and starts its next run at
 once" — that landed) and composes with [reviewer-as-role.md](reviewer-as-role.md).

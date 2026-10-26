@@ -1,5 +1,10 @@
 # Fallback chain: what runs when the Claude subscription window runs out
 
+**Retired 2026-10-26** by [subtract.md](subtract.md) (Subtract part 5/6): the chain steps and the
+per-tier fallback maps go. Routing around a spent window or a capped provider is optimization for
+one model fleet; the plan under it — one model per role — is the simpler target, and a spent
+`maxDailyCostUsd` pauses the role instead.
+
 Planned 2026-10-16 · requested by user · not started
 
 ## Goal

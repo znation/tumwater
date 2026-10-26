@@ -1,5 +1,11 @@
 # Harness-level merge queue — land changes outside the authoring tick
 
+**Partly superseded 2026-10-26** by [subtract.md](subtract.md) (Subtract part 3/6): the queue's
+stages, the coalesced batch check with its prefix bisect, the re-queue, the entry drop limits and
+the scheduling interlock go, because verification moved after the merge and landing became a
+rebase and a fast-forward. Invariants 2 (linear history) and 5 (landing costs belong to the
+author) survive; 1 and 3 lose their mechanism; 6 is deleted with the limits.
+
 Planned 2026-09-08, requested by the user (design discussion transcript: role-branch strategy).
 Shared architecture for the five `Merge queue N/5` entries in PLANS.md; each of those is
 independently landable and cross-references this document for the invariants below.
