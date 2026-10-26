@@ -27,7 +27,7 @@ const ROLES = await distRoleIds();
 function makeFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tw-diff-"));
   seedLiveTeam(root, ROLES);
-  // One idle loop and one review-phase loop to cover the non-working branches.
+  // One idle role and one review-phase role to cover the non-working branches.
   for (const [role, patch] of [["qa", { running: false, phase: undefined }], ["steward", { phase: "review" }]]) {
     const st = JSON.parse(fs.readFileSync(path.join(root, ".tumwater", "state", `${role}.json`), "utf8"));
     Object.assign(st, patch);
@@ -43,7 +43,7 @@ const curRender = (await import("../dist/src/ui/status-render.js")).renderStatus
 const basePayload = (await import("/tmp/tw-baseline/dist/src/ui/status-payload.js")).statusPayload;
 const curPayload = (await import("../dist/src/ui/status-payload.js")).statusPayload;
 
-// Sanity, before any comparison: the shared fixture must actually render a working loop's
+// Sanity, before any comparison: the shared fixture must actually render a working role's
 // live detail. Without this, a fixture that stopped covering the working branch renders the
 // same (empty) table from both builds and every width reports "identical" — a vacuous PASS
 // from the check whose whole point is to catch status-read drift. bench-live.mjs opens with

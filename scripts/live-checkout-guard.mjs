@@ -27,7 +27,7 @@ if (Number.isInteger(pid) && pid > 0 && alive(pid)) {
     `tumwater: refusing to run the suite in ${root} — a live team runs from this checkout ` +
       `(\`tumwater start\`, pid ${pid}).\n` +
       "Its first steps recompile and restamp this checkout's dist/, the code that team and its dashboards execute.\n" +
-      "Run it from a worktree instead: a team loop's own is .tumwater/worktrees/<role>, the directory its run started in.\n",
+      "Run it from a worktree instead: a role's own is .tumwater/worktrees/<role>, the directory its run started in.\n",
   );
   process.exit(1);
 }

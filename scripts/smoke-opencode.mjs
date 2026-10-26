@@ -58,7 +58,7 @@ fs.mkdirSync(SESSIONS, { recursive: true });
 const BASE = { ...defaultConfig(), agent: "opencode", model: FREE_MODEL };
 
 let logSeq = 0;
-/** One live run through the real adapter, exactly as a tick builds it. */
+/** One live run through the real adapter, exactly as a run builds it. */
 function runOpencode({ prompt, sessionName, continueSession = false, signal, notesPath }) {
   logSeq += 1;
   return runAgent({

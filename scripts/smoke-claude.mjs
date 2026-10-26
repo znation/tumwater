@@ -96,7 +96,7 @@ const MODEL = Object.fromEntries(
 const BASE = { ...defaultConfig(), agent: "claude", model: MODEL.default };
 
 let logSeq = 0;
-/** One live run through the real adapter, exactly as a tick builds it. */
+/** One live run through the real adapter, exactly as a run builds it. */
 function runClaude({ model, prompt, sessionName, continueSession = false, signal, onToolCallStart, notesPath }) {
   logSeq += 1;
   return runAgent({
@@ -257,7 +257,7 @@ try {
     `configError=${unknown.configError} ${unknown.errorMessage ?? ""}`,
   );
 
-  // 8. A run carrying a notebook saves its note through `tumwater-notes` (part 2/4): the
+  // 8. A run carrying a note saves it through `tumwater-notes` (part 2/4): the
   //    command is first on PATH, so a prompt that asks the run to write its end-of-run note
   //    through the heredoc lands in the notes file, which this check reads back.
   const notesFile = path.join(ROOT, "note.md");

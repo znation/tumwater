@@ -71,7 +71,7 @@ const MODEL = routeModel(undefined, undefined, "codex", "default").model;
 const BASE = { ...defaultConfig(), agent: "codex", model: MODEL };
 
 let logSeq = 0;
-/** One live run through the real adapter, exactly as a tick builds it. */
+/** One live run through the real adapter, exactly as a run builds it. */
 function runCodex({ prompt, sessionName, continueSession = false, signal, notesPath, onAgentWarning }) {
   logSeq += 1;
   return runAgent({

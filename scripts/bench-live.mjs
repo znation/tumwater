@@ -1,8 +1,8 @@
 // Benchmark: steady-state cost of one dashboard frame (snapshot + renderStatus) with
-// every loop running. Not a pass/fail gate — run it by hand before and after a change to
+// every role running. Not a pass/fail gate — run it by hand before and after a change to
 // status/status-data.ts, ui/status-render.ts, or ui/progress-data.ts and compare the us/frame
 // numbers. A jump usually means a helper stopped receiving the threaded readLiveProgress tail
-// and re-reads the log per cell; renderStatus reads once per running loop and passes `live`
+// and re-reads the log per cell; renderStatus reads once per running role and passes `live`
 // down on purpose.
 import fs from "node:fs";
 import os from "node:os";
@@ -27,7 +27,7 @@ try {
   snapshot(root);
   renderStatus(root, snapshot(root), 120);
 
-  // Sanity: the rendered table must show live detail for a working loop. Checked before the
+  // Sanity: the rendered table must show live detail for a working role. Checked before the
   // timed loop, not after it: a broken fixture must fail in a second rather than behind a
   // full benchmark's worth of meaningless us/frame numbers.
   const out = renderStatus(root, snapshot(root), 200);

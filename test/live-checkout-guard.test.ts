@@ -52,5 +52,5 @@ test("the guard refuses the checkout a live team runs from, naming the pid and w
   assert.equal(r.stdout, "");
   assert.match(r.stderr, new RegExp(`\\(\`tumwater start\`, pid ${process.pid}\\)`));
   assert.match(r.stderr, /recompile and restamp this checkout's dist\//);
-  assert.match(r.stderr, /Run it from a worktree instead: a team loop's own is \.tumwater\/worktrees\/<role>/);
+  assert.match(r.stderr, /Run it from a worktree instead: a role's own is \.tumwater\/worktrees\/<role>/);
 });
