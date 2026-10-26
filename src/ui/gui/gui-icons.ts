@@ -6,7 +6,13 @@
 
 const FILLED = 'fill="currentColor" stroke="none"';
 
-export const ICON_PATHS: Record<string, string> = {
+/** The fixed icon set, keyed by the name every renderer passes: a `Record<string, string>`
+ * here would let a typo'd icon name (a misspelled key in `iconSvg`'s argument) compile and
+ * silently render an empty SVG in the dashboard — the literal key union below turns that
+ * into a compile error at every call site. The browser script still embeds the whole map
+ * (gui-client.ts JSON.stringify) and looks names up dynamically, so a dynamic name there is
+ * unchecked the same way its other data-driven lookups are. */
+export const ICON_PATHS = {
   grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
   list: `<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2" ${FILLED}/><circle cx="4.5" cy="12" r="1.2" ${FILLED}/><circle cx="4.5" cy="18" r="1.2" ${FILLED}/>`,
   bars: '<path d="M4 20h16M6.5 16.5V11M12 16.5V5.5M17.5 16.5V8.5"/>',
@@ -35,11 +41,11 @@ export const ICON_PATHS: Record<string, string> = {
   fail: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
   offline: '<path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 12.6a10 10 0 0 1 4.2-2.3M14.8 10.3A10 10 0 0 1 19 12.6M12 20h.01"/>',
   settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.6M12 18.4V21M3 12h2.6M18.4 12H21M5.6 5.6l1.9 1.9M16.5 16.5l1.9 1.9M5.6 18.4l1.9-1.9M16.5 7.5l1.9-1.9"/>',
-};
+} as const;
 
 /** One icon's markup — the same shape the browser script's icon() builds. */
-export function iconSvg(name: string, extraClass = ""): string {
-  return `<svg class="i${extraClass ? ` ${extraClass}` : ""}" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name] ?? ""}</svg>`;
+export function iconSvg(name: keyof typeof ICON_PATHS, extraClass = ""): string {
+  return `<svg class="i${extraClass ? ` ${extraClass}` : ""}" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name]}</svg>`;
 }
 
 /** The tumwater mark: two waves on a teal tile (the name is Chinook Jargon for "thumping water").
