@@ -171,6 +171,113 @@ interface BudgetGatePoll {
   chain: Partial<Record<ModelTier, ChainTierInfo>>;
 }
 
+/** The inputs the warning-and-transition half of the budget gate logs from: everything
+ * `logBudgetGateEvents` reads off one argument, so the helper's locals have a single named
+ * source instead of scattering through pollBudgetGate's body. */
+interface BudgetGateEventInput {
+  root: string;
+  state: BudgetGateState;
+  states: RunnerState[];
+  now: number;
+  gate: BudgetGate;
+  spentUsd: number;
+  capUsd: number;
+  pair: FallbackModelConfig | null;
+  pairName: string;
+  rejectedPair: FallbackModelConfig | null;
+  priceResolved: TierFallbackMap;
+  servingResolved: TierFallbackMap;
+}
+
+/** The budget gate's warning-and-transition half (split out of pollBudgetGate so a
+ * budget_warning event field or an edge-trigger rule is found by name): edge-triggers the
+ * 80%-of-cap warning into one budget_warning, computes the top spenders for whichever event
+ * fires, logs exactly one budget_resumed/budget_fallback/budget_paused on a gate crossing
+ * with the per-tier story and the pause cause, and advances state.prevGate. */
+function logBudgetGateEvents(input: BudgetGateEventInput): void {
+  const {
+    root,
+    state,
+    states,
+    now,
+    gate,
+    spentUsd,
+    capUsd,
+    pair,
+    pairName,
+    rejectedPair,
+    priceResolved,
+    servingResolved,
+  } = input;
+  // The 80% early warning (PLANS.md 2026-09-30), edge-triggered with reset-on-below — the
+  // whole state machine: crossing the threshold while the gate is still open logs one
+  // budget_warning, midnight or a cap raise drops spend back under and re-arms it, and a
+  // second crossing the same day warns again. Warn only while the gate is open: a poll that
+  // engages fallback/paused already logs its own transition event, so the warning never
+  // doubles the page on the poll the cap itself is reached.
+  const warn = gate === "open" && budgetWarning({ spentUsd, capUsd });
+  // Who spent the most today, read once for whichever of the warning or a transition fires.
+  const topRoles = (warn && !state.warned) || gate !== state.prevGate ? topDailySpenders(states, now) : [];
+  if (warn && !state.warned) {
+    logEventBestEffort(root, {
+      source: TUMWATER_SOURCE,
+      type: "budget_warning",
+      spentUsd,
+      capUsd,
+      ...(topRoles.length > 0 ? { topRoles } : {}),
+    });
+    state.warned = true;
+  } else if (!warn) {
+    state.warned = false;
+  }
+  if (gate !== state.prevGate) {
+    logEventBestEffort(root, {
+      source: TUMWATER_SOURCE,
+      type: gate === "open" ? "budget_resumed" : gate === "fallback" ? "budget_fallback" : "budget_paused",
+      spentUsd,
+      capUsd,
+      // The cap pages say where the money went, since a poll can jump past the cap with no
+      // warning first; a resume does not (midnight reads zero spend, a cap raise is the
+      // operator's own act).
+      ...(gate !== "open" && topRoles.length > 0 ? { topRoles } : {}),
+      // On the way into a gate the fallback's identity is the operator's answer to "why
+      // this and not the other one": which free pair took over, which configured pair was
+      // refused because pi's definitions do not price it at zero, or which free pair the
+      // breaker demoted after its runs kept failing (and after how many).
+      ...(gate === "fallback"
+        ? {
+            provider: pair?.provider,
+            model: pair?.model,
+            // The per-tier story (part 7b/8): which pair each tier resolved to, borrowed
+            // ones marked. Carried only when the tiers resolve to two or more distinct
+            // pairs — a single fallback (its pair borrowed by the other tiers) keeps the
+            // event tier-free, so today's single-pair readers keep today's text.
+            ...(tiersResolveDistinctPairs(servingResolved)
+              ? { tiers: tierFallbackLabels(servingResolved) }
+              : {}),
+          }
+        : {}),
+      // The pause's cause, named by the pair story that produced it. The default tier is the
+      // cause only when it failed to serve: a price-free default the breaker dropped is its
+      // own demotion (with the failure count), and a default with no price-free pair at all
+      // names the declared pair the price check refused. When the default serves, the
+      // review-on pause is the strong tier's: name its price-free pair when the breaker
+      // demoted it, and leave the cause unset when strong simply had no pair to borrow.
+      ...(gate === "paused" && servingResolved.default.pair === null && pair
+        ? { fallbackDemoted: pairName, failures: state.breakers[pairName]?.failures ?? 0 }
+        : gate === "paused" && servingResolved.default.pair === null && rejectedPair
+          ? { fallbackRejected: modelPairName(rejectedPair) }
+          : gate === "paused" && priceResolved.strong.pair !== null
+            ? {
+                fallbackDemoted: modelPairName(priceResolved.strong.pair),
+                failures: state.breakers[modelPairName(priceResolved.strong.pair)]?.failures ?? 0,
+              }
+            : {}),
+    });
+    state.prevGate = gate;
+  }
+}
+
 /** Does an in-flight run's captured model pair (RoleRunner.runModelPair()) match the fallback
  * pair a reopening budget gate just left? The orchestrator hands back exactly those runs
  * (PLANS.md 2026-09-30): both sides must be present — no fallback pair means no run is on
@@ -351,73 +458,20 @@ export function pollBudgetGate(
   );
   // Read before prevGate is advanced below: true on exactly the reopening transition.
   const resumed = gate === "open" && (state.prevGate === "fallback" || state.prevGate === "paused");
-  // The 80% early warning (PLANS.md 2026-09-30), edge-triggered with reset-on-below — the
-  // whole state machine: crossing the threshold while the gate is still open logs one
-  // budget_warning, midnight or a cap raise drops spend back under and re-arms it, and a
-  // second crossing the same day warns again. Warn only while the gate is open: a poll that
-  // engages fallback/paused already logs its own transition event, so the warning never
-  // doubles the page on the poll the cap itself is reached.
-  const warn = gate === "open" && budgetWarning({ spentUsd, capUsd });
-  // Who spent the most today, read once for whichever of the warning or a transition fires.
-  const topRoles = (warn && !state.warned) || gate !== state.prevGate ? topDailySpenders(states, now) : [];
-  if (warn && !state.warned) {
-    logEventBestEffort(root, {
-      source: TUMWATER_SOURCE,
-      type: "budget_warning",
-      spentUsd,
-      capUsd,
-      ...(topRoles.length > 0 ? { topRoles } : {}),
-    });
-    state.warned = true;
-  } else if (!warn) {
-    state.warned = false;
-  }
-  if (gate !== state.prevGate) {
-    logEventBestEffort(root, {
-      source: TUMWATER_SOURCE,
-      type: gate === "open" ? "budget_resumed" : gate === "fallback" ? "budget_fallback" : "budget_paused",
-      spentUsd,
-      capUsd,
-      // The cap pages say where the money went, since a poll can jump past the cap with no
-      // warning first; a resume does not (midnight reads zero spend, a cap raise is the
-      // operator's own act).
-      ...(gate !== "open" && topRoles.length > 0 ? { topRoles } : {}),
-      // On the way into a gate the fallback's identity is the operator's answer to "why
-      // this and not the other one": which free pair took over, which configured pair was
-      // refused because pi's definitions do not price it at zero, or which free pair the
-      // breaker demoted after its runs kept failing (and after how many).
-      ...(gate === "fallback"
-        ? {
-            provider: pair?.provider,
-            model: pair?.model,
-            // The per-tier story (part 7b/8): which pair each tier resolved to, borrowed
-            // ones marked. Carried only when the tiers resolve to two or more distinct
-            // pairs — a single fallback (its pair borrowed by the other tiers) keeps the
-            // event tier-free, so today's single-pair readers keep today's text.
-            ...(tiersResolveDistinctPairs(servingResolved)
-              ? { tiers: tierFallbackLabels(servingResolved) }
-              : {}),
-          }
-        : {}),
-      // The pause's cause, named by the pair story that produced it. The default tier is the
-      // cause only when it failed to serve: a price-free default the breaker dropped is its
-      // own demotion (with the failure count), and a default with no price-free pair at all
-      // names the declared pair the price check refused. When the default serves, the
-      // review-on pause is the strong tier's: name its price-free pair when the breaker
-      // demoted it, and leave the cause unset when strong simply had no pair to borrow.
-      ...(gate === "paused" && servingResolved.default.pair === null && pair
-        ? { fallbackDemoted: pairName, failures: state.breakers[pairName]?.failures ?? 0 }
-        : gate === "paused" && servingResolved.default.pair === null && rejectedPair
-          ? { fallbackRejected: modelPairName(rejectedPair) }
-          : gate === "paused" && priceResolved.strong.pair !== null
-            ? {
-                fallbackDemoted: modelPairName(priceResolved.strong.pair),
-                failures: state.breakers[modelPairName(priceResolved.strong.pair)]?.failures ?? 0,
-              }
-            : {}),
-    });
-    state.prevGate = gate;
-  }
+  logBudgetGateEvents({
+    root,
+    state,
+    states,
+    now,
+    gate,
+    spentUsd,
+    capUsd,
+    pair,
+    pairName,
+    rejectedPair,
+    priceResolved,
+    servingResolved,
+  });
   // The fallback config view — the derived config roles run under, the used-up window moves
   // (windowOut/windowTiers/windowResumedBackends), the chain block, and the handback pairs —
   // lives in src/budget/budget-fallback-view.ts (the view half, plan's part 5b/8, 5c/8, 6a/7):
