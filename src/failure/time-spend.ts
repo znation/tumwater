@@ -117,6 +117,154 @@ function newestAttemptEvent(
     .at(-1);
 }
 
+/** The per-runner event indexes the loss-cause classifier reads: the `review_rejected` and
+ * `review_failed` events (keyed by source) for the queued review-error/rejection joins, and
+ * the deadline-killed merge-scope `build_check`s for the merge-block special case. Built
+ * once up front so `lossCauseFor` stays a pure classifier over one event and its outcome. */
+interface LossIndexes {
+  rejectedByRunner: Map<string, HarnessEvent[]>;
+  reviewFailedByRunner: Map<string, HarnessEvent[]>;
+  deadlineKilledByRunner: Map<string, HarnessEvent[]>;
+}
+
+function buildLossIndexes(allEvents: HarnessEvent[]): LossIndexes {
+  const rejectedByRunner = groupBy(
+    allEvents.filter((e) => e.type === "review_rejected"),
+    (e) => e.source,
+  );
+  // A review_error merge kept its pin but left no message on its own merge_failed; the
+  // matching review_failed event for the same role+sha carries it, so the span prices under
+  // the same cluster key the digest's review-failure section already counts.
+  const reviewFailedByRunner = groupBy(
+    allEvents.filter((e) => e.type === "review_failed"),
+    (e) => e.source,
+  );
+  const deadlineKilledByRunner = groupBy(
+    allEvents.filter(
+      (e) =>
+        e.type === "build_check" &&
+        e.status === "failed" &&
+        (e.scope === "merge" || e.scope === "batch") &&
+        typeof e.timeoutMs === "number",
+    ),
+    (e) => e.source,
+  );
+  return { rejectedByRunner, reviewFailedByRunner, deadlineKilledByRunner };
+}
+
+/** Resolve each queued `run_end` to its merge outcome with the newest-claim rule, so the
+ * loss causes and the outcome-class folding agree with history's rows (BUGS.md 2026-09-30).
+ * The returned map is the run→outcome pair `resolveQueuedResult` claimed for each queued
+ * run; runs that resolve to no outcome are absent. */
+function resolveQueuedRuns(runEvents: HarnessEvent[], allEvents: HarnessEvent[]): Map<HarnessEvent, ResolvedMerge> {
+  // The merge evidence rides history-queued.ts's bucketMergeEvents — the same buckets
+  // history's rows read — so the digest's join cannot drift from the rows' join.
+  const { mergeQueuedByRunner, outcomeByRunner } = bucketMergeEvents(allEvents);
+  // Queued run_ends resolve newest-first so each claims the newest pin at or before its end
+  // that no newer run has claimed — resolveQueuedResult's exact claim rule, shared with the
+  // history rows. runEvents is oldest-first, hence the backward walk.
+  const claimTop = new Map<string, number>();
+  const resolved = new Map<HarnessEvent, ResolvedMerge>();
+  for (let i = runEvents.length - 1; i >= 0; i--) {
+    const ev = runEvents[i]!;
+    if (ev.result !== "queued") continue;
+    const joined = resolveQueuedResult(ev, mergeQueuedByRunner, outcomeByRunner, claimTop, new Map(), null);
+    if (joined !== null) resolved.set(ev, joined);
+  }
+  return resolved;
+}
+
+/** Classify one run's loss cause into the key/kind/example triple the ranking folds, or null
+ * when the run prices no loss. The branch order is the contract: refused, then cut-off, then
+ * no_change, then clustered, then the three queued outcomes; the deadline-killed merge-block
+ * special case still overrides `key`/`example` inside its branch. Reads the per-runner join
+ * indexes from `indexes` so the ladder names each rule by a single lookup. */
+function lossCauseFor(
+  ev: HarnessEvent,
+  cls: "merged" | "no_change" | "error",
+  resolvedOutcome: ResolvedMerge | null,
+  indexes: LossIndexes,
+): { key: string; kind: LossDraft["kind"]; example: string } | null {
+  let key: string | null = null;
+  let kind: LossDraft["kind"] = "error-cluster";
+  let example = "";
+  if (ev.result === "refused") {
+    // A refusal is a deliberate objection that blocks its entry, not quiet idleness — the
+    // reason live in the event + lastSummary (src/verdict/refusal.ts). Rank it as its own
+    // per-role cause so the digest surfaces the objection instead of pricing the run
+    // exactly like a silently idle one; the branch sits BEFORE the no_change one because a
+    // refused run is also no_change-class in the outcome table. The example rides the
+    // refusal's summary the way a review-rejected cause rides its reason.
+    key = `refused\u0000${eventRole(ev)}`;
+    kind = "refused";
+    example = typeof ev.summary === "string" ? truncateExample(ev.summary) : "";
+  } else if (cls === "no_change" && ev.cutOff === true) {
+    // A run truncated at its model's context ceiling ends no_change with cutOff: true
+    // (diagnoseNoChange in src/run/run-verdict.ts), and finalizeRun rides that flag onto
+    // the run_end. Rank it as its own per-role cause so the digest separates the churn of
+    // a context ceiling — a cost of a long session, which the harness resumes — from
+    // deliberate idleness; the branch sits BEFORE the no_change one because a cut-off run
+    // is also no_change-class in the outcome table. No example, like the no_change cause.
+    key = `cutoff\u0000${eventRole(ev)}`;
+    kind = "cutoff";
+  } else if (cls === "no_change") {
+    key = `no_change\u0000${eventRole(ev)}`;
+    kind = "no_change";
+  } else if (CLUSTERED_RESULTS.has(String(ev.result))) {
+    // A clustered result with no error text still owns its time: an abort's run_end never
+    // carries one (planRunStart clears s.lastError, run-finalize logs error: undefined),
+    // and a malformed error run can lose it too, so both take the same placeholder cause the
+    // error-clusters section already itemizes rather than dropping the span itemized nowhere.
+    ({ key, example } = pooledClusterCause(ev.error));
+  } else if (ev.result === "queued" && resolvedOutcome?.result === "rejected") {
+    key = `review-rejected\u0000${eventRole(ev)}`;
+    kind = "review-rejected";
+    // Match the merge ATTEMPT, not the pin's sha: every verification rebases its pin onto main
+    // before the gate (syncPinToMain), so `review_rejected.head` is the rebased commit while
+    // `merge_queued` keeps the authored one — exact-sha equality names no reason for a rebased
+    // rejection (BUGS.md 2026-10-10). The rejection for this attempt is the one inside the
+    // claimed pin and its outcome, the window no other attempt can occupy.
+    const rej = newestAttemptEvent(indexes.rejectedByRunner, eventRole(ev), resolvedOutcome);
+    const reasons = stringList(rej?.reasons);
+    example = reasons[0] !== undefined ? truncateExample(reasons[0]) : "";
+  } else if (ev.result === "queued" && resolvedOutcome?.result === "review_error") {
+    // The review process itself failed (a dead backend, a timeout, no parseable verdict):
+    // the pin was kept and re-queued, and the matching `review_failed` event carries the
+    // message the review-failure section already clusters. Price the authoring span under
+    // that cluster's key — a review timeout pools into the shared `timed out after <dur>`
+    // cause via poolTimeoutKey — and fall back to the shared placeholder when no event is
+    // visible, so the span is itemized rather than hidden. The match keys on the merge
+    // ATTEMPT, not the pin's sha: every verification rebases its pin onto main before the gate
+    // (syncPinToMain), so `review_failed.head` is the rebased commit while `merge_queued`
+    // keeps the authored one — exact-sha equality missed every rebased verification (BUGS.md
+    // 2026-10-10). The review failure for this attempt is the one that falls inside the
+    // claimed pin and its outcome, the window no other attempt can occupy.
+    const failed = newestAttemptEvent(indexes.reviewFailedByRunner, eventRole(ev), resolvedOutcome);
+    ({ key, example } = pooledClusterCause(failed?.message));
+  } else if (
+    ev.result === "queued" &&
+    (resolvedOutcome?.result === "merge_conflict" || resolvedOutcome?.result === "merge_blocked")
+  ) {
+    // The merge failed to merge (a conflict, or a blocked fast-forward/rebase): this
+    // authoring span burned. The `merge_failed` event carries no message — writeMergeOutcome
+    // logs only result/commit/durationMs/usage — so the cause is named by its own result and
+    // takes the shared no-text placeholder, the same fallback a message-less aborted run_end
+    // uses, rather than dropping a span the error-class cell already priced (BUGS.md
+    // 2026-10-10).
+    key = `${resolvedOutcome.result}\u0000${eventRole(ev)}`;
+    kind = resolvedOutcome.result === "merge_conflict" ? "merge-conflict" : "merge-blocked";
+    example = errorTextOrPlaceholder(undefined);
+    // A merge-scope check the harness killed at its own deadline is the team's load, not a
+    // verdict on the change: split it into its own cause so the ranking names it.
+    const killed = newestAttemptEvent(indexes.deadlineKilledByRunner, eventRole(ev), resolvedOutcome);
+    if (kind === "merge-blocked" && killed) {
+      key = `merge_blocked_deadline\u0000${eventRole(ev)}`;
+      example = `${String(killed.scope)} build check killed at its ${Number(killed.timeoutMs) / 1000}s deadline (tumwater's own timeout, not a test failure)`;
+    }
+  }
+  return key === null ? null : { key, kind, example };
+}
+
 /** The pooled cluster key and truncated example a failure-message source's span prices under:
  * the shared placeholder when the source carries no message, the pooled render
  * (poolTimeoutKey(normalizeClusterKey)) of the message's cluster — so a review timeout pools
@@ -161,7 +309,9 @@ function tally(target: { runs: number; ms: number; costUsd: number }, durationMs
  * re-queued (the history row's rule), so its near-zero span counts under that failure — a
  * review timeout's cluster, say — rather than adding a run to the change's final
  * review-rejected cause once per re-queue. A merge still in the pipeline, or an outcome event
- * matching no pin, keeps the queued→merged reading: the conservative fallback. */
+ * matching no pin, keeps the queued→merged reading: the conservative fallback. The index
+ * building, the queued-claim pass and the cause ladder live in buildLossIndexes,
+ * resolveQueuedRuns and lossCauseFor respectively, so each rule is found by name. */
 export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
   timeSpend: TimeSpendRow[];
   lossCauses: LossCause[];
@@ -173,41 +323,8 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
   const emptyCell = (): SpendCell => ({ runs: 0, ms: 0, costUsd: 0 });
   const byRole = new Map<string, Record<"merged" | "no_change" | "error", SpendCell>>();
   const losses = new Map<string, LossDraft>();
-  // The merge evidence rides history-queued.ts's bucketMergeEvents — the same buckets
-  // history's rows read — so the digest's join cannot drift from the rows' join.
-  const { mergeQueuedByRunner, outcomeByRunner } = bucketMergeEvents(allEvents);
-  const rejectedByRunner = groupBy(
-    allEvents.filter((e) => e.type === "review_rejected"),
-    (e) => e.source,
-  );
-  // A review_error merge kept its pin but left no message on its own merge_failed; the
-  // matching review_failed event for the same role+sha carries it, so the span prices under
-  // the same cluster key the digest's review-failure section already counts.
-  const reviewFailedByRunner = groupBy(
-    allEvents.filter((e) => e.type === "review_failed"),
-    (e) => e.source,
-  );
-  const deadlineKilledByRunner = groupBy(
-    allEvents.filter(
-      (e) =>
-        e.type === "build_check" &&
-        e.status === "failed" &&
-        (e.scope === "merge" || e.scope === "batch") &&
-        typeof e.timeoutMs === "number",
-    ),
-    (e) => e.source,
-  );
-  // Queued run_ends resolve newest-first so each claims the newest pin at or before its end
-  // that no newer run has claimed — resolveQueuedResult's exact claim rule, shared with the
-  // history rows. runEvents is oldest-first, hence the backward walk.
-  const claimTop = new Map<string, number>();
-  const resolved = new Map<HarnessEvent, ResolvedMerge>();
-  for (let i = runEvents.length - 1; i >= 0; i--) {
-    const ev = runEvents[i]!;
-    if (ev.result !== "queued") continue;
-    const joined = resolveQueuedResult(ev, mergeQueuedByRunner, outcomeByRunner, claimTop, new Map(), null);
-    if (joined !== null) resolved.set(ev, joined);
-  }
+  const indexes = buildLossIndexes(allEvents);
+  const resolved = resolveQueuedRuns(runEvents, allEvents);
   for (const ev of runEvents) {
     let cls = OUTCOME_CLASS[ev.result as RunResult];
     if (cls === undefined) continue; // An unknown result is tallied in the Outcome table; costing it would need a class first.
@@ -233,102 +350,26 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
     // a merge-gate rejection prices its authoring span under a per-role cause of its own —
     // unrepresentable as an error cluster, since the merge_failed event carries no message;
     // the example is the matching review_rejected's first reason, matched by merge attempt.
-    let key: string | null = null;
-    let kind: LossDraft["kind"] = "error-cluster";
-    let example = "";
-    if (ev.result === "refused") {
-      // A refusal is a deliberate objection that blocks its entry, not quiet idleness — the
-      // reason live in the event + lastSummary (src/verdict/refusal.ts). Rank it as its own
-      // per-role cause so the digest surfaces the objection instead of pricing the run
-      // exactly like a silently idle one; the branch sits BEFORE the no_change one because a
-      // refused run is also no_change-class in the outcome table. The example rides the
-      // refusal's summary the way a review-rejected cause rides its reason.
-      key = `refused\u0000${role}`;
-      kind = "refused";
-      example = typeof ev.summary === "string" ? truncateExample(ev.summary) : "";
-    } else if (cls === "no_change" && ev.cutOff === true) {
-      // A run truncated at its model's context ceiling ends no_change with cutOff: true
-      // (diagnoseNoChange in src/run/run-verdict.ts), and finalizeRun rides that flag onto
-      // the run_end. Rank it as its own per-role cause so the digest separates the churn of
-      // a context ceiling — a cost of a long session, which the harness resumes — from
-      // deliberate idleness; the branch sits BEFORE the no_change one because a cut-off run
-      // is also no_change-class in the outcome table. No example, like the no_change cause.
-      key = `cutoff\u0000${role}`;
-      kind = "cutoff";
-    } else if (cls === "no_change") {
-      key = `no_change\u0000${role}`;
-      kind = "no_change";
-    } else if (CLUSTERED_RESULTS.has(String(ev.result))) {
-      // A clustered result with no error text still owns its time: an abort's run_end never
-      // carries one (planRunStart clears s.lastError, run-finalize logs error: undefined),
-      // and a malformed error run can lose it too, so both take the same placeholder cause the
-      // error-clusters section already itemizes rather than dropping the span itemized nowhere.
-      ({ key, example } = pooledClusterCause(ev.error));
-    } else if (ev.result === "queued" && resolvedOutcome?.result === "rejected") {
-      key = `review-rejected\u0000${role}`;
-      kind = "review-rejected";
-      // Match the merge ATTEMPT, not the pin's sha: every verification rebases its pin onto main
-      // before the gate (syncPinToMain), so `review_rejected.head` is the rebased commit while
-      // `merge_queued` keeps the authored one — exact-sha equality names no reason for a rebased
-      // rejection (BUGS.md 2026-10-10). The rejection for this attempt is the one inside the
-      // claimed pin and its outcome, the window no other attempt can occupy.
-      const rej = newestAttemptEvent(rejectedByRunner, role, resolvedOutcome);
-      const reasons = stringList(rej?.reasons);
-      example = reasons[0] !== undefined ? truncateExample(reasons[0]) : "";
-    } else if (ev.result === "queued" && resolvedOutcome?.result === "review_error") {
-      // The review process itself failed (a dead backend, a timeout, no parseable verdict):
-      // the pin was kept and re-queued, and the matching `review_failed` event carries the
-      // message the review-failure section already clusters. Price the authoring span under
-      // that cluster's key — a review timeout pools into the shared `timed out after <dur>`
-      // cause via poolTimeoutKey — and fall back to the shared placeholder when no event is
-      // visible, so the span is itemized rather than hidden. The match keys on the merge
-      // ATTEMPT, not the pin's sha: every verification rebases its pin onto main before the gate
-      // (syncPinToMain), so `review_failed.head` is the rebased commit while `merge_queued`
-      // keeps the authored one — exact-sha equality missed every rebased verification (BUGS.md
-      // 2026-10-10). The review failure for this attempt is the one that falls inside the
-      // claimed pin and its outcome, the window no other attempt can occupy.
-      const failed = newestAttemptEvent(reviewFailedByRunner, role, resolvedOutcome);
-      ({ key, example } = pooledClusterCause(failed?.message));
-    } else if (
-      ev.result === "queued" &&
-      (resolvedOutcome?.result === "merge_conflict" || resolvedOutcome?.result === "merge_blocked")
-    ) {
-      // The merge failed to merge (a conflict, or a blocked fast-forward/rebase): this
-      // authoring span burned. The `merge_failed` event carries no message — writeMergeOutcome
-      // logs only result/commit/durationMs/usage — so the cause is named by its own result and
-      // takes the shared no-text placeholder, the same fallback a message-less aborted run_end
-      // uses, rather than dropping a span the error-class cell already priced (BUGS.md
-      // 2026-10-10).
-      key = `${resolvedOutcome.result}\u0000${role}`;
-      kind = resolvedOutcome.result === "merge_conflict" ? "merge-conflict" : "merge-blocked";
-      example = errorTextOrPlaceholder(undefined);
-      // A merge-scope check the harness killed at its own deadline is the team's load, not a
-      // verdict on the change: split it into its own cause so the ranking names it.
-      const killed = newestAttemptEvent(deadlineKilledByRunner, role, resolvedOutcome);
-      if (kind === "merge-blocked" && killed) {
-        key = `merge_blocked_deadline\u0000${role}`;
-        example = `${String(killed.scope)} build check killed at its ${Number(killed.timeoutMs) / 1000}s deadline (tumwater's own timeout, not a test failure)`;
-      }
-    }
-    if (key === null) continue;
-    let draft = losses.get(key);
+    const cause = lossCauseFor(ev, cls, resolvedOutcome, indexes);
+    if (cause === null) continue;
+    let draft = losses.get(cause.key);
     if (!draft) {
       draft = {
-        kind,
+        kind: cause.kind,
         roles: new Set<string>(),
         lastSeen: ev.ts,
-        example,
+        example: cause.example,
         runs: 0,
         ms: 0,
         costUsd: 0,
       };
-      losses.set(key, draft);
+      losses.set(cause.key, draft);
     }
     // The example rides lastSeen, like clusterMessages': the cause as it happens now, not
     // the first-seen value a config change retired (BUGS.md 2026-09-30).
     if (ev.ts >= draft.lastSeen) {
       draft.lastSeen = ev.ts;
-      draft.example = example;
+      draft.example = cause.example;
     }
     draft.roles.add(role);
     tally(draft, durationMs, usage);
