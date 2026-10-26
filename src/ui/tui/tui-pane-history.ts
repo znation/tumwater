@@ -581,6 +581,20 @@ export function createHistoryPane(
     return true;
   };
 
+  // The History view's cycle handlers share one close: after they mutate the pane's session
+  // filter/window/scope, any open trail follows the change (a scope or filter change re-reads
+  // the new selection's newest run), the rows/cache are recomputed, and a render is requested.
+  // Folding the tail keeps the four handlers from drifting on which steps run — a filter
+  // change must refresh the trail and re-read rows the same way every time. Returns true so
+  // each handler reports it handled the key up the aggregator. Ctrl+Y toggles only the summary
+  // view (rows never re-follow a closed trail), so it passes withTrail=false.
+  const commitHistoryChange = (withTrail = true): boolean => {
+    if (withTrail && trailMode) refreshTrail();
+    recompute();
+    session.requestRender();
+    return true;
+  };
+
   const historyScopeCycle = (ctx: TuiPaneCtx): boolean => {
     if (!promptLineFree(ctx.es)) return false;
     // Routed here only for the History view; every other view's scope arm is Activity (0) or
@@ -594,10 +608,7 @@ export function createHistoryPane(
     const slots: Array<string | null> = [null, ...session.roleIds];
     const slot = slots.indexOf(historyRole);
     historyRole = slots[(slot + 1) % slots.length] ?? null;
-    if (trailMode) refreshTrail();
-    recompute();
-    session.requestRender();
-    return true;
+    return commitHistoryChange();
   };
 
   const historyWindowCycle = (ctx: TuiPaneCtx): boolean => {
@@ -609,10 +620,7 @@ export function createHistoryPane(
     // re-reads the rows now and resets the scroll so the changed body re-enters at its head.
     historyStep = 0;
     historyWindow = nextInCycle(HISTORY_WINDOWS, historyWindow);
-    if (trailMode) refreshTrail();
-    recompute();
-    session.requestRender();
-    return true;
+    return commitHistoryChange();
   };
 
   const historyResultCycle = (ctx: TuiPaneCtx): boolean => {
@@ -625,10 +633,7 @@ export function createHistoryPane(
     // this handler re-reads and re-filters the rows now and resets the scroll so the changed
     // body re-enters at its head.
     historyResult = nextInCycle(HISTORY_RESULTS, historyResult);
-    if (trailMode) refreshTrail();
-    recompute();
-    session.requestRender();
-    return true;
+    return commitHistoryChange();
   };
 
   const historyModelCycle = (ctx: TuiPaneCtx): boolean => {
@@ -645,10 +650,7 @@ export function createHistoryPane(
     }
     const i = list.indexOf(historyModel ?? "");
     historyModel = i + 1 < list.length ? list[i + 1]! : null;
-    if (trailMode) refreshTrail();
-    recompute();
-    session.requestRender();
-    return true;
+    return commitHistoryChange();
   };
 
   const historySummaryCycle = (ctx: TuiPaneCtx): boolean => {
@@ -662,9 +664,7 @@ export function createHistoryPane(
     // cache with it; on the History view this handler re-reads and re-renders now and resets
     // the scroll so the changed body re-enters at its head.
     historySummary = historySummary === null ? "role" : historySummary === "role" ? "model" : null;
-    recompute();
-    session.requestRender();
-    return true;
+    return commitHistoryChange(false);
   };
 
   const historyTrailPage = (page: "up" | "down"): boolean => {
