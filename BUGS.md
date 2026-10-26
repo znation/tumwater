@@ -113,6 +113,8 @@ a hanging fake rejects within timeoutMs and its child is gone afterwards
 
 **Progress 2026-10-26 by the steward: the deterministic-contention step this entry sketches is promoted and its three parts landed today — the ci notes above all read it as unpromoted, which is now stale.** `The e2e/concurrency tier's wall-clock waits and pid probes become deterministic` (PLANS-DONE.md, parts 1/3, 2/3 and 3/3, all done 2026-10-26 by the feature role) retired the three member tests this entry names as open: part 1/3 re-drives `simultaneous cross-process pauseRole calls all survive in the marker` (test/team-state.test.ts) through `spawnReadyChild` instead of a CPU spin; part 2/3 re-points `a hanging fake rejects within timeoutMs…` and `startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it` onto a process-identity reap handle (test/codex-hook-trust.test.ts, test/supervisor.test.ts, src/process/process.ts) and ends the grandchild signal loop on the reparent it observes rather than a 60 s deadline; part 3/3 re-points `budget_resumed`'s handback onto the orchestrator's `budget_handback` event. The class is not retired: part 3/3 deliberately keeps the two resize grow-waits' robust 150 s/60 s `readSamples` budgets and leaves `a reached cap…` / `a free fallback whose runs keep failing…` unchanged, so those waits and the permits part-3/5 overlap can still go red under load and this entry stays open for them — later ci notes should reconcile against the landed parts, not re-record them as unpromoted.
 
+**Progress 2026-10-26 by the ci role: the class keeps the e2e tier red against main tip 4c27e3f @ 190f1e2 under extreme host load (load avg ≈ 170/171/171 at the e2e re-runs).** Reconciling with the steward's note above: this run's failures are exactly the members it deliberately left open, not a new class or a regression. Full workflow run: `npm ci` clean (0 vulns); `npm test` green on the full re-run (see the new `merger-restack` flake entry below), `npm pack` clean (tumwater-0.4.2.tgz, 497 files, removed after). The e2e step failed two `test/orchestrator-budget.e2e.test.ts` members in the full run (96 tests, 94 pass / 2 fail): `a reached cap switches roles to the free fallback model instead of stopping them` (~62 s, "timed out waiting for a role run after the cap was reached") and `a free fallback whose runs keep failing is demoted to a pause, then probed back once it serves` (~62 s, "timed out waiting for the first fallback run"); a file-isolation re-run of orchestrator-budget failed `a reached cap…` again (7/8). No new member surfaced. `git diff --name-only 99d8836..4c27e3f -- src/concurrency src/scheduling src/merge src/gates src/runner src/process` shows the landed deterministic-contention re-points plus the budget/merge/process files; `budget-gates.ts`'s wait logic, `runner-run.ts`, `runner-state.ts`, `run-resume.ts` and the maxConcurrent permit logic are unchanged since the class's last green coverage, so no regression — the tier is red purely because the host sits at load ≈ 170, far past the ≈ 67 ceiling, so the 60 s/150 s wall-clock waits cannot finish. The two resize grow-waits and the permits part-3/5 overlap remain the class's other open members.
+
 ### `a revision whose re-apply conflicts reaches the author with markers, not a plain rejection` failed, then passed on the same tree (quarantined by tumwater 2026-10-24)
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
@@ -198,6 +200,17 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 
 ~~~~
 a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)
+~~~~
+
+### `test/merger-restack.test.ts` "an abort between re-stack attempts stops the batch: aborted, refs kept, nothing merges" failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it. (Found by the ci role 2026-10-26 while running the full workflow against main tip 4c27e3f; the failing output follows.)
+
+~~~~
+an abort between re-stack attempts stops the batch: aborted, refs kept, nothing merges (36764.96ms)
+  Error: timed out waiting for .../tumwater-run-XXX/.batch-started
+      at waitForFile (.../helpers/wait.js:50:19)
+      at async .../merger-restack.test.js:114:13
 ~~~~
 
 ## Fixed
