@@ -17,6 +17,7 @@
  * never passed, so no `reasoning` event appears; the mapping below still recognizes one so a
  * future `--thinking` run degrades gracefully. */
 
+import { transientProseKind } from "../backend-traits.js";
 import { canonicalUsageBlock, isJsonObject, nonNegativeNumber, objectOrEmpty, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
@@ -96,8 +97,8 @@ function classifyError(err: Json): {
   // Transient server, connection and timeout failures.
   if (/\b(500|501|502|503|504|529)\b|internal server error|bad gateway|service unavailable|gateway timeout|overloaded/i.test(message))
     return { kind: "transientBackend", backendKind: "server" };
-  if (/connection|econn|refused|reset|terminated/i.test(message)) return { kind: "transientBackend", backendKind: "connection" };
-  if (/timed out|timeout/i.test(message)) return { kind: "transientBackend", backendKind: "timeout" };
+  const prose = transientProseKind(message);
+  if (prose) return prose;
   return {};
 }
 

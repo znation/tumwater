@@ -103,3 +103,18 @@ export function backendDefaultLabel(backend: string | undefined): string {
  * for one cannot go missing from the other (opencode classifies the same failure from message
  * text, not a status code, so it is not in the set). */
 export const SERVER_TRANSIENT_STATUS: ReadonlySet<number> = new Set([500, 502, 503, 504, 529]);
+
+/** Classify a failure message's prose into the transient-backend failure it names, when the
+ * wire carries no structured signal: a dropped connection or a timeout, read from the message
+ * text by claude's and opencode's stream translators, which both fall back to prose for the
+ * statuses their native events leave to the message (claude's classifyResult and opencode's
+ * classifyError end with this same connection/then-timeout tail). The single home of the
+ * connection/timeout vocabulary, so the two backends' tail regexes cannot drift. undefined
+ * when the text names neither. */
+export function transientProseKind(
+  text: string,
+): { kind: "transientBackend"; backendKind: "connection" | "timeout" } | undefined {
+  if (/connection|econn|refused|reset|terminated/i.test(text)) return { kind: "transientBackend", backendKind: "connection" };
+  if (/timed out|timeout/i.test(text)) return { kind: "transientBackend", backendKind: "timeout" };
+  return undefined;
+}

@@ -21,7 +21,7 @@ import { canonicalUsageBlock, isJsonObject, nonNegativeNumber, objectOrEmpty, op
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
-import { SERVER_TRANSIENT_STATUS } from "../backend-traits.js";
+import { SERVER_TRANSIENT_STATUS, transientProseKind } from "../backend-traits.js";
 
 type Json = Record<string, unknown>;
 
@@ -131,8 +131,8 @@ function classifyResult(result: Json): {
   if (/\b429\b|rate limit/i.test(text)) return { kind: "transientRateLimit" };
   if (/overloaded|internal server error|bad gateway|service unavailable|gateway timeout|\b5\d\d\b/i.test(text))
     return { kind: "transientBackend", backendKind: "server" };
-  if (/connection|econn|refused|reset|terminated/i.test(text)) return { kind: "transientBackend", backendKind: "connection" };
-  if (/timed out|timeout/i.test(text)) return { kind: "transientBackend", backendKind: "timeout" };
+  const prose = transientProseKind(text);
+  if (prose) return prose;
   if (/\b(400|401|403|404)\b/i.test(text)) return { kind: "configError" };
   return {};
 }
