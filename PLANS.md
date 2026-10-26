@@ -509,13 +509,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Subtract, part 2e/6: The release surfaces stop offering the operator hold (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2; the third of four finer parts replacing part 2c/6, independent in files of the other three (2c/6, 2d/6, 2f/6) and holding no prerequisite, since the CLI release still lifts a held note until 2f/6; touches src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts src/gui/gui-backlog-endpoints.ts src/gui/gui-backlog-commands.ts test/tui-keys.test.ts test/gui-client-drawer.test.ts test/gui.test.ts)
 
-**Needs review 2026-10-26 by feature: rejected after 5 review rounds**
-
-This entry's implementation was rejected on the final revision round (the same objection survived two revisions), so the plan role should rewrite it. Objections from the reviewing run:
-
-1. (prior 1) The changed drawer test still does not exercise the behavior it was changed for. In the final `test/gui-client-drawer.test.ts` the `HeldForOperator` fixture and the index‑3 assertion were removed outright, leaving only fixtures that behave identically under the old `d.refused || d.heldFor…`.
-2. The archived PLANS-DONE.md entry contradicts the code it describes: its Tests bullet says `test/gui-client-drawer.test.ts` "inverts the held-for-operator fixture" so the drawer shows Release "on no held-for-operator one", but that fixture no longer exists in the test at all, leaving the record stal….
-
 **Previously held 2**
 
 **Goal.** The release surfaces that offer the operator hold name only the Refused note: the TUI Backlog pane's Ctrl+R guard admits `hold === "refused"`, the dashboard drawer's Release button renders only for `d.refused`, and `GET /api/backlog` drops its `heldForOperator` field. The release core is deliberately untouched until part 2f/6: `liftRefusal` in src/backlog/backlog-release.ts still lifts a held-for-operator note, so `tumwater plan|bug --release` and the `handleBacklogRelease` endpoint keep their behavior and their existing tests.
@@ -528,7 +521,33 @@ This entry's implementation was rejected on the final revision round (the same o
 - `src/gui/gui-backlog-endpoints.ts`: the backlog payload drops the `heldForOperator` key and the `operatorHeldEntries` import and lookup.
 - `src/gui/gui-backlog-commands.ts`: `handleBacklogRelease`'s doc comment drops the held-for-operator sentence. Its behavior is unchanged — the core still lifts that note until 2f/6 — so both its stop-at-the-comment scope and its test stay.
 - Tests: each flipped case must fail against today's source, so the flip is behavior-pinning.
-- `test/gui-client-drawer.test.ts`, "the entry drawer offers Release this entry only on a refused or held-for-operator entry": rename it to end "only on a refused entry", KEEP the index-3 `HeldForOperator` fixture (`{ title: "HeldForOperator", body: "**Needs review 2026-10-16 by feature: x (held 3)**", refused: false, heldForOperator: true }`), and change its index-3 assertion to `assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/)` — it fails while the drawer still tests `d.refused || d.heldForOperator`. Index 0 (refused) keeps its `entry-release` match; index 1 (note-less) and index 2 (below threshold) keep it absent.
+- `test/gui-client-drawer.test.ts`, "the entry drawer offers Release this entry only on a refused or held-for-operator entry": rename it to "the entry drawer offers Release this entry only on a refused entry", keep all four fixtures, and change ONLY the index-3 assertion to `assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);`. The final test is:
+  ```ts
+  test("the entry drawer offers Release this entry only on a refused entry", async () => {
+    const t = openDrawer(["toggleEntry"], {
+      status: { roles: [] },
+      responses: {
+        "/api/backlog?file=plans&index=0": { title: "Held", body: "**Refused 2026-10-16 by feature: x**", refused: true },
+        "/api/backlog?file=plans&index=1": { title: "Open", body: "body", refused: false },
+        "/api/backlog?file=plans&index=2": { title: "NeedsReview", body: "**Needs review 2026-10-16 by feature: x**", refused: false },
+        "/api/backlog?file=plans&index=3": { title: "HeldForOperator", body: "**Needs review 2026-10-16 by feature: x (held 3)**", refused: false, heldForOperator: true },
+      },
+    });
+    t.scope.toggleEntry("plans", 0);
+    await flush();
+    assert.match(t.paintedFor("entrybody"), /data-act='entry-release' data-arg='plans:0'/);
+    t.scope.toggleEntry("plans", 2);
+    await flush();
+    assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
+    t.scope.toggleEntry("plans", 3);
+    await flush();
+    assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
+    t.scope.toggleEntry("plans", 1);
+    await flush();
+    assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
+  });
+  ```
+  Do NOT delete the index-3 `HeldForOperator` fixture (and do not delete its `toggleEntry("plans", 3)` assertion): that fixture is what makes this case fail against today's source, where index 3 still paints `entry-release`, and pass only after `gui-client-drawer.ts` stops testing `d.heldForOperator`. Keeping the fixture also keeps the archived PLANS-DONE.md record for "A held-for-operator plan can be released from the TUI and the dashboard drawer" true about the fixture; only the `entry-release` assertion it recorded is superseded by this later part, which is ordinary history, so do not edit PLANS-DONE.md.
 - `test/tui-keys.test.ts`: re-point "backlog Ctrl+R twice releases a held-for-operator plan and wakes the plan role" to "backlog Ctrl+R on a held-for-operator plan refuses and writes nothing": one Ctrl+R on the `(held 3)` plan leaves `releaseArmed === null`, flashes `/carries no Refused note/`, leaves both the Needs-review and `Previously held 2` lines, and writes no wake marker. Update the flash assertions in "backlog Ctrl+R on a below-threshold Needs-review plan still says so and writes nothing" and "backlog Ctrl+R on a note-less entry, question, or done row refuses, and budget mode blocks it" to `/carries no Refused note/`.
 - `test/gui.test.ts`, "gui /api/backlog marks a held-for-operator plan for the drawer's Release button": rename it "…carries no heldForOperator key for a held-for-operator plan", keep its seeded PLANS.md, and invert its index-1 assertion to `assert.equal(("heldForOperator" in held), false)` (today it asserts `held.heldForOperator === true`); the plain plan's absent-key assertion stays.
 - `test/gui-endpoints.test.ts` is NOT edited: "handleBacklogRelease lifts a held-for-operator note from a bug" still passes because the core is unchanged, and it pins that this part leaves the core alone.
@@ -537,6 +556,7 @@ This entry's implementation was rejected on the final revision round (the same o
 
 **Acceptance criteria.**
 - `grep -rn 'heldForOperator' src/` is empty; `grep -rn 'held-for-operator' src/ui src/gui` is empty.
+- `test/gui-client-drawer.test.ts` still holds the `HeldForOperator` fixture (`grep -c 'HeldForOperator' test/gui-client-drawer.test.ts` prints 1) and its index-3 case asserts no `entry-release`; that case fails against the pre-change `gui-client-drawer.ts` and passes after it.
 - `GET /api/backlog` for a held-for-operator plan has no `heldForOperator` key and the drawer paints no `entry-release` button for it; the inverted drawer and payload cases fail if the old condition or key is restored.
 - The TUI release guard accepts a `refused` hold only: Ctrl+R on the held-for-operator plan writes nothing, wakes no role and flashes the no-Refused-note wording.
 - The release core is untouched: `test/gui-endpoints.test.ts`'s held-for-operator lift case passes unmodified, and no src/backlog file is edited.
