@@ -171,6 +171,14 @@ export function envPath(): string {
   return process.env.PATH ?? "";
 }
 
+/** The operator's XDG config home — `$XDG_CONFIG_HOME` when set, else `~/.config` — the one
+ * answer the readers of the operator's global config files use (opencode's operatorMcpNames,
+ * doctor's opencodeGlobalConfigPaths), so they cannot disagree on where those files live. `env`
+ * is passed in so a caller can supply a test env; `homeDir` is the operator's home directory. */
+export function xdgConfigHomeDir(env: NodeJS.ProcessEnv, homeDir: string): string {
+  return env.XDG_CONFIG_HOME ?? path.join(homeDir, ".config");
+}
+
 /** Locate an executable on PATH the same way spawn() would resolve it: a regular file
  * with the execute bit in some PATH directory. Returns its absolute path, or null when
  * missing (or not executable), so callers can fail fast with a clear message instead of

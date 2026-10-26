@@ -10,7 +10,7 @@ import {
 import { exampleConfigProblem, exampleDrift } from "../config/config-example.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
-import { envPath, findOnPath, readTextOrNull, treeBytes } from "../files/files.js";
+import { envPath, findOnPath, readTextOrNull, treeBytes, xdgConfigHomeDir } from "../files/files.js";
 import { readJsonFile } from "../files/json-files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
@@ -438,7 +438,7 @@ export function checkPiExtensions(
 /** The operator's global opencode config files, in XDG order — the same home `opencode-config.ts`
  * reads for MCP names. Home is the operator's home; `$XDG_CONFIG_HOME`, when set, wins. */
 function opencodeGlobalConfigPaths(homeDir: string): string[] {
-  const configHome = process.env.XDG_CONFIG_HOME ?? path.join(homeDir, ".config");
+  const configHome = xdgConfigHomeDir(process.env, homeDir);
   return ["config.json", "opencode.json", "opencode.jsonc"].map((file) =>
     path.join(configHome, "opencode", file),
   );

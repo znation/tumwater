@@ -19,7 +19,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { readTextOrNull } from "../../files/files.js";
+import { readTextOrNull, xdgConfigHomeDir } from "../../files/files.js";
 import { isJsonObject } from "../../files/json-object.js";
 
 /** The operator's global opencode config lives in `$XDG_CONFIG_HOME/opencode/` (or
@@ -126,7 +126,7 @@ function stripJsonc(src: string): string {
  * parse; doctor reports a broken one in part 7/7. `homeDir` is the operator's home directory;
  * the process's own `XDG_CONFIG_HOME` env, when set, wins over `~/.config` (the XDG default). */
 export function operatorMcpNames(env: NodeJS.ProcessEnv, homeDir: string): string[] {
-  const configHome = env.XDG_CONFIG_HOME ?? path.join(homeDir, ".config");
+  const configHome = xdgConfigHomeDir(env, homeDir);
   const dir = path.join(configHome, "opencode");
   for (const file of OPERATOR_CONFIG_FILES) {
     const text = readTextOrNull(path.join(dir, file));
