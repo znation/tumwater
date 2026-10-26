@@ -84,12 +84,10 @@ interface SupervisedGenerationInput {
   roleFilter: string[] | null;
 }
 
-/** Parse and validate the invocation before any team boots: the --tui/--gui/--json/--port/
- * --all-interfaces/--token/--role/--for/--branch guards, the --token argv scrub, runStartupCheck,
- * and the already-running-orchestrator refusal. Returns the resolved invocation. */
-async function parseStartInvocation(root: string, args: string[]): Promise<StartInvocation> {
-  const once = args.includes("--once");
-  const json = args.includes("--json");
+/** Refuse the --once run-mode rivals: a TUI and a dashboard each cannot be hosted by a run that
+ * is about to stop, so both are refused together before any boot. --for stays allowed — both
+ * serve for the window. Owns the run-mode rival refusals. */
+function assertOnceRivalFlags(args: string[], once: boolean): void {
   // The TUI cannot be hosted by a run that is about to stop, like the dashboard: a --once round
   // drains and exits within the same invocation, so the two shapes are refused together before
   // any boot. --for stays allowed — the TUI runs for the window, like the dashboard.
@@ -100,6 +98,11 @@ async function parseStartInvocation(root: string, args: string[]): Promise<Start
   // stays allowed — the dashboard serves for the window.
   if (once && args.includes("--gui"))
     failRivalShapes("--gui", "--once", "a one-round run cannot serve a dashboard it is about to kill");
+}
+
+/** Refuse the dashboard-only flags that name nothing without --gui. Owns the dashboard-only
+ * refusals. */
+function assertDashboardOnlyFlags(args: string[]): void {
   // `--port` chooses the `--gui` dashboard's port; without `--gui` it names no port for this
   // command, so refuse it (a valid value already passed the spec's shape gate) before any boot.
   if (args.includes("--port") && !args.includes("--gui"))
@@ -118,6 +121,11 @@ async function parseStartInvocation(root: string, args: string[]): Promise<Start
     fail(
       "--token is only valid with --gui (e.g. `tumwater start --gui --token s3cret`); the standalone dashboard is `tumwater gui --token <secret>`",
     );
+}
+
+/** Check the --token value and scrub `--token <value>` off this process's argv. Owns the --token
+ * value check and the argv scrub. */
+function handleTokenFlag(args: string[]): void {
   // A malformed --token (valueless, empty, or flag-looking) must fail here before any boot, so
   // a bad secret never leaves the team running behind a dashboard that exited. The same
   // tokenValueProblem `tumwater gui` runs, named for the one-command form the operator typed.
@@ -134,11 +142,11 @@ async function parseStartInvocation(root: string, args: string[]): Promise<Start
     process.argv.splice(argvToken, 2);
     say(`removed --token from this process's command line; prefer the ${GUI_TOKEN_ENV} env var`);
   }
-  const forMs = parseRunWindow(args, once);
-  const branchArg = parseBranchFlag(args);
-  const startup = await runStartupCheck(root, branchArg);
-  if ("problem" in startup) fail(startup.problem);
-  const { config, mainBranch } = startup;
+}
+
+/** Parse the --role filter against the live config and guard it to --once rounds. Owns the
+ * --role parse and its --once guard; the disabled/unknown guards stay separate (see below). */
+function resolveRoleFilter(args: string[], config: TumwaterConfig, once: boolean): string[] | null {
   // A scoped once round: `--role <id>[,<id>...]` names the runners that run. Parsed here, where the
   // live config is readable. The parser accepts every known id (custom roles included, enabled
   // or not) so a typo still fails with the did-you-mean hint; an id that is known but has no
@@ -147,6 +155,12 @@ async function parseStartInvocation(root: string, args: string[]): Promise<Start
   // queued that role a prompt. Daemon `run --role` stays an error: scoping is a once-round concept.
   const roleFilter = parseRoleListFlag(args, knownRoleIds(config));
   if (roleFilter !== null && !once) fail("--role is only valid with --once");
+  return roleFilter;
+}
+
+/** Refuse --json without --once or --for, and the --gui/--tui rivals of a --json round/window.
+ * Owns the --json mode refusals. */
+function assertJsonMode(args: string[], json: boolean, once: boolean, forMs: number | null): void {
   if (json && !once && forMs === null) fail("--json is only valid with --once or --for");
   // Both interactive modes write their own banner to the stdout a JSON document must own, so a
   // --json round/window refuses them before any boot.
@@ -154,6 +168,11 @@ async function parseStartInvocation(root: string, args: string[]): Promise<Start
     failRivalShapes("--json", "--gui", "the dashboard writes its banner to the stdout a JSON document must own");
   if (json && args.includes("--tui"))
     failRivalShapes("--json", "--tui", "a TUI owns the terminal");
+}
+
+/** Guard a non-null --role filter against a disabled or unknown id. Owns the disabled/unknown
+ * --role guards, firing after the --json mode refusals so the fire order upstream is unchanged. */
+function assertRoleFilterRunnable(roleFilter: string[] | null, config: TumwaterConfig): void {
   if (roleFilter !== null) {
     const runners = runnerIds(config);
     const missing = roleFilter.find((id) => !runners.includes(id));
@@ -164,6 +183,11 @@ async function parseStartInvocation(root: string, args: string[]): Promise<Start
       fail(unknownRoleMessage(missing, runners));
     }
   }
+}
+
+/** Refuse a second team in one repo by naming the running pid and the two ways to stop it. Owns
+ * the already-running-orchestrator refusal. */
+function assertNoRunningOrchestrator(root: string): void {
   // The refusal an operator hits by trying to start a second team in one repo: name the
   // running pid and the two ways to stop it, so the fix is in the message instead of a
   // separate `tumwater status`/help lookup. The info file is read once and reused for the
@@ -173,6 +197,29 @@ async function parseStartInvocation(root: string, args: string[]): Promise<Start
     fail(
       `an orchestrator is already running for this repo (pid ${running.pid}) — stop it with \`tumwater stop\` from another terminal, or press Ctrl+C in the terminal that started it`,
     );
+}
+
+/** Parse and validate the invocation before any team boots: the --tui/--gui/--json/--port/
+ * --all-interfaces/--token/--role/--for/--branch guards, the --token argv scrub, runStartupCheck,
+ * and the already-running-orchestrator refusal. Returns the resolved invocation. The per-job
+ * guard groups each live in a named helper — assertOnceRivalFlags, assertDashboardOnlyFlags,
+ * handleTokenFlag, resolveRoleFilter, assertJsonMode, assertRoleFilterRunnable and
+ * assertNoRunningOrchestrator — called here in fire order. */
+async function parseStartInvocation(root: string, args: string[]): Promise<StartInvocation> {
+  const once = args.includes("--once");
+  const json = args.includes("--json");
+  assertOnceRivalFlags(args, once);
+  assertDashboardOnlyFlags(args);
+  handleTokenFlag(args);
+  const forMs = parseRunWindow(args, once);
+  const branchArg = parseBranchFlag(args);
+  const startup = await runStartupCheck(root, branchArg);
+  if ("problem" in startup) fail(startup.problem);
+  const { config, mainBranch } = startup;
+  const roleFilter = resolveRoleFilter(args, config, once);
+  assertJsonMode(args, json, once, forMs);
+  assertRoleFilterRunnable(roleFilter, config);
+  assertNoRunningOrchestrator(root);
   return { once, json, forMs, branchArg, roleFilter, config, mainBranch };
 }
 
