@@ -378,6 +378,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic or isolated, so a loaded host no longer turns the suite red (promoted 2026-10-26 by the steward from BUGS.md's "e2e/concurrency tests can fail on a loaded host…" class entry, lines 70-103, after three consecutive main tips' whole e2e tier never went green under record host load and even file-isolation runs of the failing tests went red)
 
+**Needs review 2026-10-26 by feature: too large for one run (held 1)**
+
 **Goal.** Retire BUGS.md's open e2e/concurrency class (lines 70-103): tests that fail on a loaded host and pass on a re-run because their verdicts hinge on cross-process wall-clock waits, pid probes and timing bounds that hold only when the host is quiet. As of 2026-10-25 the class has kept the whole e2e tier red across three consecutive main tips (9a99637, f211fee, 2aba648) under host load ≈ 118-146, and — first for the class — even a single e2e file run alone goes red, so no offline isolation run shelters the failing waits any more. The members are already their own open BUGS.md entries (the supervisor SIGKILL-grandchild watch, the pauseRole lost-update, the hanging-fake reused-pid probe) plus the e2e grow-waits `budget_resumed`, reached-cap, free-fallback demote, and the maxConcurrent / maxConcurrentPerProvider cap-resize — each keeps its own hold; this plan supplies the infrastructure those waits convert onto, it does not fold the bugs together.
 
 **Approach.** Land the class entry's deterministic-contention / isolation sketch as the step it names, one or both:
