@@ -314,7 +314,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Acceptance criteria.**
 - One runner id per configured role; `tumwater status --json` carries no instance-pool or slot fields, and a run leases no slot.
-- `tumwater.json` with `instances` set is refused by validation naming the deleted key (the same treatment the other deleted keys get in parts 5a/6–5e/6), not silently ignored.
+- `tumwater.json` with `instances` set is refused by validation naming the deleted key (the same treatment the other deleted keys get in parts 5a/6–5h/6), not silently ignored.
 - The measured p90 end-of-run → on main from the gate above is quoted in the part's PLANS-DONE entry, so the deletion's premise is on the record.
 - `npm run test:gate` passes.
 
@@ -492,29 +492,90 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The `stalled entries` doctor row reports Needs-review entries only, and the operator-held alert is gone from `teamAlerts` and its three call sites.
 - `npm run test:gate` passes.
 
-### Subtract, part 5a/6: The image-capability probe and its peer-tier reroute go (planned 2026-10-26 by the plan role, split from the too-large part 5/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the first of five finer parts replacing part 5/6, holding no prerequisite; touches src/doctor/image-probe.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-check-names.ts src/agent/image-input.ts src/inbox/inbox-submit.ts src/roles/role-view.ts src/status/status-roles.ts src/ui/team-alert-tail.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/tui/tui-pane-health.ts docs/how-it-works.md docs/config.md docs/invariants.md plans/image-input.md test/image-probe.test.ts test/image-input.test.ts test/doctor-checks.test.ts)
+### Subtract, part 5a/6: The image probe's cache readers and its failed-probe alert go (planned 2026-10-26 by the plan role, split from the too-large part 5a/6 after feature held it twice (held 2); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the first of four finer parts replacing part 5a/6, holding no prerequisite; touches src/status/status-data.ts src/status/status-roles.ts src/inbox/inbox-submit.ts src/roles/role-view.ts src/ui/team-alert-tail.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts docs/how-it-works.md test/inbox-submit.test.ts test/status-data-models.test.ts test/team-alerts.test.ts)
 
-**Needs review 2026-10-26 by feature: too large for one run (held 2)**
+**Previously held 2**
 
-**Previously held 1**
-
-**Goal.** A model is trusted on the `input` its pi `models.json` declares: no live probe, no probe cache and no peer-tier reroute. An image attachment to a model that declares no image input is refused once, from the declaration.
+**Goal.** The probe cache is read by the doctor alone: no status, role or inbox surface passes it to `seamImageInput`, and no alert or status snapshot carries an `imageProbeFailures` list. Capability on every surface is the declaration, so a model whose cached probe failed no longer drops out of the readable set (the doctor still reports it until 5f deletes the probe itself).
 
 **Approach.**
-- Delete `src/doctor/image-probe.ts` (`runImageProbe`, `readImageProbeCache`, `writeImageProbeCache`, `imageProbeKey`, `imageProbeEntryFresh`, `ImageProbeResult`, `ImageProbeCache`) and the `.tumwater/state/image-probes.json` cache with the `--reprobe` path.
-- `src/doctor/doctor-model-checks.ts`: delete `checkImageInput`'s probe runner, its cache read/write and the `image input` row with its outcomes (`…declare image input but failed the live probe`, `…on models that can't read images`, `No configured model can read images…`); keep `seamPairs`/`seamedModels` for the checks that still use them. Remove `image input` from `DOCTOR_CHECK_NAMES` (`src/doctor/doctor-check-names.ts`).
-- `src/agent/image-input.ts`: keep `seamImageInput` and the attach/refusal path; delete `imageReroute`/`imageRerouteTarget` and every `probes`/`ImageProbeCache` parameter, so the refusal reads the declaration alone.
-- Drop the probe-cache read at the surviving callers: `src/inbox/inbox-submit.ts`, `src/roles/role-view.ts` and `src/status/status-roles.ts` (`collectImageProbeFailures` deleted).
-- Delete the probe alerts and their inputs: `pushImageProbeAlert` and the `imageProbeFailures` arm in `src/ui/team-alert-tail.ts`, `src/ui/team-alert-shared.ts`, `src/ui/team-alerts.ts`, `src/ui/status-payload.ts`; delete Health view's Ctrl+P reprobe in `src/ui/tui/tui-pane-health.ts` (leave the Activity view's Ctrl+P provider caps to part 5b/6).
-- Docs: `plans/image-input.md` gets a superseded head note; `docs/how-it-works.md`, `docs/config.md` and `docs/invariants.md`'s image guarantees drop the probe. Tests: delete `test/image-probe.test.ts`; drop the probe cases from `test/image-input.test.ts` and `test/doctor-checks.test.ts`.
+- `src/status/status-roles.ts`: delete `collectImageProbeFailures` and its `readImageProbeCache`/`imageProbeEntryFresh` reads, so the role image view reports `seamImageInput`'s declaration answer. `src/status/status-data.ts` drops the `imageProbeFailures` field and its `collectImageProbeFailures` import.
+- `src/inbox/inbox-submit.ts` and `src/roles/role-view.ts`: drop the `readImageProbeCache` import and the `probes` argument to `roleImageInfo`.
+- `src/ui/team-alert-tail.ts`, `src/ui/team-alert-shared.ts`, `src/ui/team-alerts.ts` and `src/ui/status-payload.ts`: delete `pushImageProbeAlert` and the `imageProbeFailures` arm/field/input.
+- `docs/how-it-works.md`: drop the failed-probe alert's sentence. Tests: drop the probe-cache and probe-alert cases from `test/inbox-submit.test.ts`, `test/status-data-models.test.ts` and `test/team-alerts.test.ts`.
+
+**Files touched.** src/status/status-data.ts src/status/status-roles.ts src/inbox/inbox-submit.ts src/roles/role-view.ts src/ui/team-alert-tail.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts docs/how-it-works.md test/inbox-submit.test.ts test/status-data-models.test.ts test/team-alerts.test.ts
 
 **Acceptance criteria.**
-- `grep -rnE 'image-probe|imageProbe|ImageProbe|reprobe' src/ docs/` finds no live reference; no `.tumwater/state/image-probes.json` is read or written.
-- An image attached to a model whose declared `input` omits `image` is refused with the declaration-only message; a model declaring `image` runs without a probe.
-- `image input` is gone from `DOCTOR_CHECK_NAMES`; no doctor row or alert names a probe.
+- `grep -rn 'imageProbeFailures\|collectImageProbeFailures\|pushImageProbeAlert' src/` is empty.
+- `grep -rn 'readImageProbeCache' src/` names only `src/doctor/image-probe.ts` and `src/doctor/doctor-model-checks.ts`.
+- The status payload carries no probe-failure list, and no team alert names a live probe.
 - `npm run test:gate` passes.
 
-### Subtract, part 5b/6: The per-provider concurrency caps go — `maxConcurrent` is the one bound (planned 2026-10-26 by the plan role, split from the too-large part 5/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 5; requires Subtract part 5a/6 landed, since both edit the doctor row list and the alert builders; touches src/config/config-schema.ts src/config/config-validation-roles.ts src/config/config-keys.ts src/config/config-editable-keys.ts src/config/config-example.ts src/concurrency/provider-lease.ts src/concurrency/semaphore.ts src/merge/merge-verify.ts src/merge/merge-slot.ts src/orchestrator/orchestrator.ts src/orchestrator/orchestrator-launch.ts src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/report/report-types.ts src/report/report-fold.ts src/report/report-render.ts src/doctor/doctor-contention-checks.ts src/doctor/doctor-check-names.ts src/ui/alert-feeds.ts src/ui/team-alert-tail.ts src/ui/team-alerts.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-provider-caps.ts src/ui/tui/tui-editor-session.ts src/ui/tui/tui-editors.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-editor-config.ts src/ui/tui/tui-frame.ts src/ui/tui/tui-pane-ctx.ts docs/config.md docs/how-it-works.md docs/invariants.md test/provider-lease.test.ts test/tui-provider-caps.test.ts test/doctor-checks.test.ts test/event-format.test.ts test/config.test.ts)
+### Subtract, part 5f/6: The doctor's live image probe, its cache and the `--reprobe` controls go (planned 2026-10-26 by the plan role, split from the too-large part 5a/6 after feature held it twice (held 2); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the second of four finer parts replacing part 5a/6, requires Subtract part 5a/6 landed, since both edit the status and alert surfaces and the doctor consumes the probe cache those surfaces stop reading first; touches src/doctor/image-probe.ts src/doctor/doctor-model-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/paths.ts src/agent/image-input.ts src/cli.ts src/cli/cli-flag-specs.ts src/cli/help.ts src/ui/tui/tui-pane-health.ts src/ui/tui/tui-pane-session.ts src/ui/tui/tui-keys.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/gui/gui-endpoint-commands.ts src/gui/gui-admin-endpoints.ts src/ui/gui/gui-client-settings.ts src/ui/gui/gui-client-boot.ts docs/how-it-works.md docs/config.md docs/invariants.md docs/cli.md test/image-probe.test.ts test/image-input.test.ts test/doctor-checks.test.ts test/doctor-model-checks.test.ts test/gui-endpoints.test.ts)
+
+**Previously held 2**
+
+**Goal.** A model is trusted on the `input` its pi `models.json` declares: no live probe, no `.tumwater/state/image-probes.json` cache, no `image input` doctor row and no `--reprobe`/Ctrl+P/Re-probe control. An image attached to a model whose declaration omits `image` is refused once, from the declaration.
+
+**Approach.**
+- Delete `src/doctor/image-probe.ts` (`runImageProbe`, `readImageProbeCache`, `writeImageProbeCache`, `imageProbeKey`, `imageProbeEntryFresh`, `ImageProbeResult`, `ImageProbeCache`, the PNG generator and `IMAGE_PROBE_TTL_MS`) and `imageProbesPath` in `src/paths.ts`.
+- `src/agent/image-input.ts`: drop the `probes`/`ImageProbeCache` parameter and the failed-probe override from `seamImageInput`, and the `probes` parameter from `imageReroute`, `imageRerouteTarget` and `roleImageInfo`.
+- `src/doctor/doctor-model-checks.ts`: delete `checkImageInput` and its probe helpers; keep `seamPairs`/`seamedModels` for the checks that still use them. `src/doctor/doctor.ts` drops the `probeImages` parameter and the `image input` row; `src/doctor/doctor-check-names.ts` drops `"image input"`.
+- Reprobe controls: `src/cli.ts` drops `--reprobe` -> `probeImages`; `src/cli/cli-flag-specs.ts` drops `REPROBE_FLAG`; `src/cli/help.ts` drops the flag and its line; `src/ui/tui/tui-pane-health.ts` drops Ctrl+P and `tui-pane-session.ts`/`tui-keys.ts` drop the `probeImages` parameter; `src/gui/gui-operator-commands.ts` deletes `handleDoctorReprobe` and `gui-server.ts`/`gui-endpoint-commands.ts`/`gui-admin-endpoints.ts` drop the route; `src/ui/gui/gui-client-settings.ts` and `gui-client-boot.ts` drop the Re-probe models button and its handler.
+- Docs: `docs/how-it-works.md`, `docs/config.md`, `docs/invariants.md` (the probe-cache guarantee and INV-CE1's probe-cache-write clause) and `docs/cli.md`'s `doctor` row drop the probe/reprobe text. Tests: delete `test/image-probe.test.ts`; drop the probe cases from `test/image-input.test.ts`, `test/doctor-checks.test.ts`, `test/doctor-model-checks.test.ts` and `test/gui-endpoints.test.ts`.
+
+**Files touched.** src/doctor/image-probe.ts src/doctor/doctor-model-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/paths.ts src/agent/image-input.ts src/cli.ts src/cli/cli-flag-specs.ts src/cli/help.ts src/ui/tui/tui-pane-health.ts src/ui/tui/tui-pane-session.ts src/ui/tui/tui-keys.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/gui/gui-endpoint-commands.ts src/gui/gui-admin-endpoints.ts src/ui/gui/gui-client-settings.ts src/ui/gui/gui-client-boot.ts docs/how-it-works.md docs/config.md docs/invariants.md docs/cli.md test/image-probe.test.ts test/image-input.test.ts test/doctor-checks.test.ts test/doctor-model-checks.test.ts test/gui-endpoints.test.ts
+
+**Acceptance criteria.**
+- `grep -rnE 'image-probe|imageProbe|ImageProbe|reprobe|probeImages' src/ docs/` finds no live reference; no `.tumwater/state/image-probes.json` is read or written.
+- `runDoctor` has no `probeImages` parameter and `image input` is gone from `DOCTOR_CHECK_NAMES`; no doctor row, flag, TUI key or GUI button names a probe.
+- An image attached to a model whose declared `input` omits `image` is refused with the declaration-only message; a model declaring `image` runs without a probe.
+- `npm run test:gate` passes.
+
+### Subtract, part 5g/6: The peer-tier image reroute's runtime and state go (planned 2026-10-26 by the plan role, split from the too-large part 5a/6 after feature held it twice (held 2); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the third of four finer parts replacing part 5a/6, requires Subtract part 5f/6 landed, since both edit `src/agent/image-input.ts` and the config exports `imageRerouteTarget` alone reads; touches src/agent/image-input.ts src/runner/runner-run.ts src/runner/runner.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/run/run-verdict.ts src/run/run-resume.ts src/prompt/prompt-followup.ts src/config/config-fallbacks.ts src/config/config-views.ts src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/events/event-legacy.ts src/report/report-types.ts src/report/report-data.ts src/report/report-fold.ts src/report/report-render.ts docs/how-it-works.md docs/invariants.md test/image-input.test.ts test/run-verdict.test.ts test/runner-2.test.ts test/report-data.test.ts test/report-fold-cache.test.ts test/event-format.test.ts)
+
+**Previously held 2**
+
+**Goal.** A blind image read ends its run `error` with `lastError`; no run is handed to a peer tier. `imageReroute`/`imageRerouteTarget`, the `image-reroute` resume cause, the `RunnerState.imageReroute` marker, the `image_reroute` event and the `imageReroutesByRole` report field are deleted. `roleImageInfo.imageReroute` stays a literal null until 5h removes the field.
+
+**Approach.**
+- `src/agent/image-input.ts`: delete `imageReroute`, `imageRerouteTarget`, `RerouteRegime` and `ImageReroute`; `roleImageInfo` stops computing a reroute and returns `imageReroute: null`; prune the imports only the reroute used (`BORROW_ORDER`, `resolveTierFallbacks`, `ModelTier`, `FallbackModelConfig`, `piPairFree`, `ClaudeAccount`, `withModelOverrides`, `roleSeamTier` as they fall unused - keep any the fallback budget path still reads).
+- `src/runner/runner-run.ts` deletes its reroute block and the `reroute: "image"` stamp; `src/runner/runner.ts` deletes the `state.imageReroute` branch; `src/runner/runner-state.ts` drops `imageReroute`/`imageRerouteActive`; `src/runner/runner-state-load.ts` drops their healing.
+- `src/run/run-verdict.ts`: drop the `imageReroute` import and the reroute arm, keeping the `pi.imageBlind` error path (`lastError`, requeue). `src/run/run-resume.ts` drops the `image-reroute` resume cause and its flags; `src/prompt/prompt-followup.ts` drops the `imageReroute` handoff note.
+- `src/config/config-fallbacks.ts`/`config-views.ts`: drop the exports whose only caller was `imageRerouteTarget` (both files' comments name it).
+- Events/report: delete `image_reroute` from `src/events/events.ts`, `event-labels.ts`, `event-format.ts`, `event-legacy.ts`; delete `imageReroutesByRole` from `src/report/report-types.ts`, `report-data.ts`, `report-fold.ts`, `report-render.ts`.
+- Docs: `docs/how-it-works.md` and `docs/invariants.md`'s INV-J2 (reroute) go; `docs/cli.md`'s `report` row drops the image-reroute line. Tests: drop the reroute cases from `test/image-input.test.ts`, `test/run-verdict.test.ts`, `test/runner-2.test.ts`, `test/report-data.test.ts`, `test/report-fold-cache.test.ts` and `test/event-format.test.ts`.
+
+**Files touched.** src/agent/image-input.ts src/runner/runner-run.ts src/runner/runner.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/run/run-verdict.ts src/run/run-resume.ts src/prompt/prompt-followup.ts src/config/config-fallbacks.ts src/config/config-views.ts src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/events/event-legacy.ts src/report/report-types.ts src/report/report-data.ts src/report/report-fold.ts src/report/report-render.ts docs/how-it-works.md docs/invariants.md docs/cli.md test/image-input.test.ts test/run-verdict.test.ts test/runner-2.test.ts test/report-data.test.ts test/report-fold-cache.test.ts test/event-format.test.ts
+
+**Acceptance criteria.**
+- `grep -rnE 'imageRerouteTarget|imageReroute\(|RerouteRegime|image_reroute|imageReroutesByRole|image-reroute' src/` is empty.
+- A run whose agent reads an image its model cannot see fails with `lastError` and no handoff; the run log carries no `image_reroute` event and the report no Image-reroutes line.
+- `roleImageInfo` never names a reroute target.
+- `npm run test:gate` passes.
+
+### Subtract, part 5h/6: The image reroute's display surfaces go (planned 2026-10-26 by the plan role, split from the too-large part 5a/6 after feature held it twice (held 2); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the fourth of four finer parts replacing part 5a/6, requires Subtract part 5g/6 landed, since it removes the field that part leaves null; touches src/agent/image-input.ts src/status/status-roles.ts src/status/status-data.ts src/roles/role-view.ts src/roles/role-render.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/team-alert-shared.ts src/ui/team-alert-tail.ts src/ui/gui/gui-client-composer.ts src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/status-payload.test.ts test/role-view.test.ts test/status-render.test.ts test/team-alerts.test.ts test/status-data-models.test.ts)
+
+**Previously held 2**
+
+**Goal.** No status payload, role page, role view, alert or GUI composer notice names an image reroute. A role's image input is reported as the declaration alone.
+
+**Approach.**
+- `src/agent/image-input.ts`: drop the `imageReroute` field from `RoleImageInfo` and its doc comment; `roleImageInfo` returns `{ imageInput }`.
+- `src/status/status-roles.ts` drops `imageRerouteLabel`; `src/status/status-data.ts` drops the field and its comment; `src/roles/role-view.ts` drops `imageReroute` from the view type; `src/roles/role-render.ts` drops the `no - reruns on ...` arm.
+- `src/ui/status-payload.ts`/`status-render.ts` drop the `imageReroute` field; `src/ui/team-alert-shared.ts` drops the `imageReroute` field and the text-only grouping that read it; `src/ui/team-alert-tail.ts` drops the reroute grouping.
+- `src/ui/gui/gui-client-composer.ts` and `gui-client-drawer-config.ts` drop the reroute notice and its "reruns on" arm.
+- `docs/invariants.md` drops the remaining image-surface sentences. Tests: update `test/status-payload.test.ts`, `test/role-view.test.ts`, `test/status-render.test.ts`, `test/team-alerts.test.ts` and `test/status-data-models.test.ts`.
+
+**Files touched.** src/agent/image-input.ts src/status/status-roles.ts src/status/status-data.ts src/roles/role-view.ts src/roles/role-render.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/team-alert-shared.ts src/ui/team-alert-tail.ts src/ui/gui/gui-client-composer.ts src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/status-payload.test.ts test/role-view.test.ts test/status-render.test.ts test/team-alerts.test.ts test/status-data-models.test.ts
+
+**Acceptance criteria.**
+- `grep -rnE 'imageReroute|image-reroute|image_reroute' src/ docs/` is empty.
+- The role page, status payload and dashboard composer show the role's declared image input with no reroute text.
+- `npm run test:gate` passes.
+
+### Subtract, part 5b/6: The per-provider concurrency caps go — `maxConcurrent` is the one bound (planned 2026-10-26 by the plan role, split from the too-large part 5/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 5; requires Subtract part 5h/6 landed, since both edit the doctor row list and the alert builders; touches src/config/config-schema.ts src/config/config-validation-roles.ts src/config/config-keys.ts src/config/config-editable-keys.ts src/config/config-example.ts src/concurrency/provider-lease.ts src/concurrency/semaphore.ts src/merge/merge-verify.ts src/merge/merge-slot.ts src/orchestrator/orchestrator.ts src/orchestrator/orchestrator-launch.ts src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/report/report-types.ts src/report/report-fold.ts src/report/report-render.ts src/doctor/doctor-contention-checks.ts src/doctor/doctor-check-names.ts src/ui/alert-feeds.ts src/ui/team-alert-tail.ts src/ui/team-alerts.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-provider-caps.ts src/ui/tui/tui-editor-session.ts src/ui/tui/tui-editors.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-editor-config.ts src/ui/tui/tui-frame.ts src/ui/tui/tui-pane-ctx.ts docs/config.md docs/how-it-works.md docs/invariants.md test/provider-lease.test.ts test/tui-provider-caps.test.ts test/doctor-checks.test.ts test/event-format.test.ts test/config.test.ts)
 
 **Previously held 1**
 
