@@ -60,6 +60,14 @@ export function secondsUntil(atMs: number, now: number): number {
   return Math.max(0, Math.round((atMs - now) / 1000));
 }
 
+/** Whole seconds from `now` to a unix-seconds instant (stamps providers emit as whole seconds,
+ * not millis), clamped at zero — the secondsUntil ×1000 fold shared by the claude and codex
+ * stream translators' rate-limit retry-after computations (both carry a `resetsAt`/`resets_at`
+ * unix-seconds stamp), so the unix-seconds-to-epoch-ms conversion lives in one place. */
+export function secondsUntilUnixStamp(seconds: number, now: number): number {
+  return secondsUntil(seconds * 1000, now);
+}
+
 /** Calendar date as `YYYY-MM-DD` in local time — shared by the transcript run separators,
  * the daily-budget day stamp (todayStamp), and the usage report's per-day buckets, which must
  * all agree on what counts as one day. */

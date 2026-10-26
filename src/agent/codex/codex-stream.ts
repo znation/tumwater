@@ -16,7 +16,7 @@
 
 import { nonNegativeNumber, objectOrEmpty, parseJsonObject } from "../../files/json-object.js";
 import { boundText, outputLimits } from "../../pi-extension/bounded-output.js";
-import { secondsUntil } from "../../text/datetime.js";
+import { secondsUntilUnixStamp } from "../../text/datetime.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
@@ -111,8 +111,8 @@ function classifyTurnFailed(
     const minutes = nonNegativeNumber(parsed.rate_limit_reached_type as number, undefined);
     const named = typeof parsed.rate_limit_reached_type === "string" ? parsed.rate_limit_reached_type : undefined;
     const resetsAt = nonNegativeNumber(parsed.resets_at, undefined);
-    // secondsUntil folds the unix-seconds resets stamp (×1000 to epoch-ms), clamped at 0.
-    const retryAfter = resetsAt === undefined ? undefined : secondsUntil(resetsAt * 1000, Date.now());
+    // secondsUntilUnixStamp folds the unix-seconds resets stamp to epoch-ms, clamped at 0.
+    const retryAfter = resetsAt === undefined ? undefined : secondsUntilUnixStamp(resetsAt, Date.now());
     kind.kind = "transientRateLimit";
     kind.rateLimit = {
       type: "rate_limit",

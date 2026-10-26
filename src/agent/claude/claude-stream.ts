@@ -16,7 +16,7 @@
  * run produced no authoritative `run_cost`. */
 
 import { joinParts } from "../../text/text.js";
-import { secondsUntil } from "../../text/datetime.js";
+import { secondsUntilUnixStamp } from "../../text/datetime.js";
 import { canonicalUsageBlock, isJsonObject, objectOrEmpty, nonNegativeNumber, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
@@ -302,8 +302,8 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
     if (overageStatus !== undefined) out.overageStatus = overageStatus;
     if (info.isUsingOverage === true) out.isUsingOverage = true;
     if (status === "rejected" && resetsAt !== undefined) {
-      // resetsAt is a unix-seconds stamp; secondsUntil folds it (×1000) to whole seconds.
-      out.retryAfterSeconds = secondsUntil(resetsAt * 1000, Date.now());
+      // resetsAt is a unix-seconds stamp; secondsUntilUnixStamp folds it to whole seconds.
+      out.retryAfterSeconds = secondsUntilUnixStamp(resetsAt, Date.now());
     }
     return [JSON.stringify(out), ...windows];
   };
