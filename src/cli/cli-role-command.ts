@@ -18,7 +18,7 @@ import { renderRoleMarkdown } from "../roles/role-render.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
-import { errorMessage } from "../text/text.js";
+import { errorMessage, isExponentSpelling } from "../text/text.js";
 import { readPromptFileArg } from "./cli-command-args.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
@@ -49,13 +49,6 @@ const CAP_SPEC = { names: ["--cap"], value: true, valueName: "<usd>" };
  * owns the rest). */
 function plainDecimalToJson(raw: string): string | null {
   return /^\d*\.?\d+$/.test(raw) ? String(Number(raw)) : null;
-}
-
-/** Detect exponent spellings that the cap, interval and instances writes must reject
- * before JSON parsing can turn them into otherwise valid numeric config values. Other
- * invalid spellings fall through to the config validator, which names the key. */
-function isExponentSpelling(raw: string): boolean {
-  return raw.trim() !== "" && plainDecimalToJson(raw) === null && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(raw.trim());
 }
 
 /** `role`'s min-run-interval write flags: clear it, or set it to a second count (0 is
@@ -330,7 +323,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     // already a plain decimal, so the exponent form is exactly the silent-write set; hex,
     // negative and non-numeric spellings fall through to the write path, whose
     // validateConfig message names the key.
-    if (isExponentSpelling(cap))
+    if (isExponentSpelling(cap.trim()))
       fail(`${cfgKey} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation`);
     writeRoleConfigKey(root, base, clearCap, cap, cfgKey, "daily cap", (v) => plainDecimalToJson(v) ?? v, (v) => v);
     return;
@@ -357,7 +350,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     // plain decimal, so the exponent form is exactly the silent-write set; hex, negative and
     // non-numeric spellings fall through to the write path, whose validateConfig message
     // names the key.
-    if (isExponentSpelling(secs))
+    if (isExponentSpelling(secs.trim()))
       fail(`${cfgKey} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation`);
     writeRoleConfigKey(root, base, clearInterval, secs, cfgKey, "min run interval", (v) => plainDecimalToJson(v) ?? v, (v) => `${v}s`);
     return;
@@ -386,7 +379,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     // or out ("9e0" → 9 too) — is refused here, while fractional, hex, negative and plain
     // out-of-range integer spellings fall through to the write path, whose validateConfig
     // message names the key.
-    if (isExponentSpelling(n))
+    if (isExponentSpelling(n.trim()))
       fail(`${cfgKey} must be a plain integer from 1 to 8 — no exponent notation`);
     // An absent count already means 1 (instanceCount's default), so asking for 1 is a no-op —
     // but only for a role that may split; any other role falls through to validateConfig's refusal.

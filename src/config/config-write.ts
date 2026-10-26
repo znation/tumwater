@@ -13,6 +13,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { modelTierMap, type TumwaterConfig } from "./config-schema.js";
 import { isJsonObject, objectOrEmpty } from "../files/json-object.js";
+import { isExponentSpelling } from "../text/text.js";
 import { show } from "./config-field-checks.js";
 import { canonicalConfigKey } from "./config-aliases.js";
 import { unknownRoleMessage } from "../roles/roles.js";
@@ -141,12 +142,7 @@ export function setConfigKey(
       (parsed.kind === "map" && parsed.map === "maxConcurrentPerProvider") ||
       (parsed.kind === "role" && parsed.field === "instances") ||
       (parsed.kind === "section" && parsed.section === "bootstrap" && parsed.field === "untilPlansDone");
-    if (
-      isPlainIntegerKey &&
-      trimmed !== "" &&
-      !/^\d*\.?\d+$/.test(trimmed) &&
-      /^\d+(\.\d+)?[eE][+-]?\d+$/.test(trimmed)
-    )
+    if (isPlainIntegerKey && trimmed !== "" && isExponentSpelling(trimmed))
       return `${key} must be a plain integer — no exponent notation`;
     return null;
   };

@@ -262,6 +262,19 @@ export function parseNonNegativeInt(raw: string): number | null {
   return parseDecimalInt(raw);
 }
 
+/** Whether a string is an exponent spelling of a number ("1e2", "2.5E-3", "4e1") rather
+ * than a plain decimal: a run of digits Number() represents exactly. `Number()` would read an
+ * exponent spelling as a real number ("1e2" → 100), which is why every integer-writing
+ * surface refuses it — JSON.parse would silently read it past an integer validator — while
+ * the plain-decimal rule above admits only the literal spelling. The two shapes are mutually
+ * exclusive (a plain decimal has no `e`), so the plain-decimal exclusion is kept here as the
+ * shape's honest statement: one home for the predicate the config writer, the TUI team-key
+ * editor, the per-role instances editor, and the CLI role writes' local helper each
+ * hand-rolled. */
+export function isExponentSpelling(raw: string): boolean {
+  return !/^\d*\.?\d+$/.test(raw) && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(raw);
+}
+
 /** The shared over-long-text message: `<subject> is <n> chars — shorten it to at most <max>`,
  * with `tail` naming where the text rides once accepted. The one home of that phrasing, used
  * by init's seed check (init.ts, "the brief text … every run's prefill"), inbox-submit's
