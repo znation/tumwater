@@ -23,9 +23,11 @@ import { commitIn, headSha, makeRepo, sh, worktreeAt, writeConfig } from "./fixt
 
 /** Poll until `fn` returns a value, so a waiter test does not assume how many macrotasks its
  * release-to-claim path takes (the claim itself is synchronous, but the git prepare is not).
- * The bound is generous (the suite's norm) because every caller here waits on real git work —
- * a worktree prepare/reset or removal — which a saturated full-suite run can stretch far past
- * a tight bound; a genuine hang (a lost-wake or swallowed abort) still exhausts it and fails. */
+ * The default mirrors the shared suite waitFor (test/helpers/wait.ts, 60 s) — tighter than a
+ * real full-suite run's per-step budget. Every call here waits on real git work (prepare,
+ * reset, removal), and a saturated suite can legitimately stretch that past a few seconds,
+ * expiring a tight deadline even though the work completes; this polls the actual condition, so
+ * a healthy release-to-claim returns immediately and only a genuine hang exhausts the bound. */
 async function waitFor<T>(fn: () => T | undefined, ms = 30_000): Promise<T> {
   const end = Date.now() + ms;
   for (;;) {
