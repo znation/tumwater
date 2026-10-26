@@ -104,11 +104,18 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   });
   // ---- global actions: alert and tile buttons, role names anywhere, questions ----
   // run-act:start
+  // The backlog drawer rows, the refused-banner card action and the mention action all receive
+  // their target as a "file:index" string (a data-act arg or a .backloglink); one place parses
+  // that shape into the file name and the 0-based row number every consumer dereferences, so
+  // the Number() coercion and split cannot drift across the seven call sites.
+  function entryRef(arg) {
+    const [file, index] = arg.split(":");
+    return { file, index: Number(index) };
+  }
   // The backlog drawer rows resolve a list entry's title from the last polled status by its
-  // backlog file and 0-based position (entry-cancel, entry-edit, and the mention action). The
-  // call sites keep their arg's "file:index" split because that shape is theirs alone.
+  // backlog file and 0-based position (entry-cancel, entry-edit, and the mention action).
   function entryTitleAt(file, index) {
-    return ((lastStatus && lastStatus[file]) || [])[Number(index)];
+    return ((lastStatus && lastStatus[file]) || [])[index];
   }
   // The backlog drawer rows carry their file as "bugs" or "plans"; three other words derive
   // from it — the singular kind the drawer's POST carries, the display filename the toasts name,
@@ -161,9 +168,9 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       else if (act === "backlog" && arg) {
         // The refused banner's action names the entry it points at as file:index; open the
         // card on that file's tab and land on the row, the way a .backloglink click does.
-        const [file, index] = arg.split(":");
+        const { file, index } = entryRef(arg);
         setBacklogTab(file);
-        toggleEntry(file, Number(index));
+        toggleEntry(file, index);
       }
       $("backlogcard").scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (act === "answer") {
@@ -182,22 +189,22 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
           : "That question was already answered or moved — refreshed";
       });
     } else if (act === "entry-cancel") {
-      const [file, index] = arg.split(":");
+      const { file, index } = entryRef(arg);
       const title = entryTitleAt(file, index);
       if (title === undefined) return;
       if (!entryCancelArmed(arg, title)) { armEntryCancel(arg, title); return; }
       disarmEntryCancel();
-      postAction("/api/backlog-cancel", { kind: kindOf(file), position: Number(index) + 1, title }, (d) => {
+      postAction("/api/backlog-cancel", { kind: kindOf(file), position: index + 1, title }, (d) => {
         closeDrawer();
         return d && d.status === "cancelled"
           ? "Cancelled “" + splitTitle(title).title + "” from " + entryFile(file) + uncommittedTail(d) + (d.workingNote ? " — " + d.workingNote : "") + (d.releasedNote ? " — " + d.releasedNote : "")
           : "That entry was already removed or moved — refreshed";
       });
     } else if (act === "entry-release") {
-      const [file, index] = arg.split(":");
+      const { file, index } = entryRef(arg);
       const title = entryTitleAt(file, index);
       if (title === undefined) return;
-      postAction("/api/backlog-release", { kind: kindOf(file), position: Number(index) + 1, title }, (d) => {
+      postAction("/api/backlog-release", { kind: kindOf(file), position: index + 1, title }, (d) => {
         closeDrawer();
         if (d && d.status === "released") {
           return "Released “" + splitTitle(title).title + "” in " + entryFile(file) + " — lifted " + (d.lifted === "refused" ? "the Refused note" : d.lifted === "waiting-for-failure" ? "the Waiting-for-the-next-failure note" : "the held-for-operator note") + " — " + (d.heldNote || pickupRole(file) + " will pick it up") + uncommittedTail(d); // vocabulary-ok: the held-for-operator note's release wording
@@ -207,10 +214,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
           : "That entry was removed or moved — refreshed";
       });
     } else if (act === "entry-top") {
-      const [file, index] = arg.split(":");
+      const { file, index } = entryRef(arg);
       const title = entryTitleAt(file, index);
       if (title === undefined) return;
-      postAction("/api/backlog-top", { kind: kindOf(file), position: Number(index) + 1, title }, (d) => {
+      postAction("/api/backlog-top", { kind: kindOf(file), position: index + 1, title }, (d) => {
         closeDrawer();
         if (d && d.status === "moved_to_top") {
           return "Moved “" + splitTitle(title).title + "” to the top of " + entryFile(file) + " — " + (d.heldNote || pickupRole(file) + " takes it next") + uncommittedTail(d);
@@ -220,14 +227,14 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
           : "That entry was removed or moved — refreshed";
       });
     } else if (act === "entry-edit") {
-      const [file, index] = arg.split(":");
+      const { file, index } = entryRef(arg);
       const title = entryTitleAt(file, index);
       if (title !== undefined) startEntryEdit(arg, title);
     } else if (act === "entry-edit-discard") {
       stopEntryEdit();
       refreshEntry();
     } else if (act === "entry-edit-save") {
-      const [file, index] = arg.split(":");
+      const { file, index } = entryRef(arg);
       // The title captured when editing began, not the list's current one: a shifted list must
       // reach the server's title check as a mismatch rather than silently retarget the save.
       const title = entryEditing && entryEditing.key === arg ? entryEditing.title : undefined;
@@ -236,7 +243,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       const newTitle = titleBox ? titleBox.value.trim() : "";
       if (title === undefined) return;
       if (!newTitle) { showFlash("Write a title first"); return; }
-      postAction("/api/backlog-edit", { kind: kindOf(file), position: Number(index) + 1, title, newTitle, newBody: bodyBox ? bodyBox.value : "" }, (d) => {
+      postAction("/api/backlog-edit", { kind: kindOf(file), position: index + 1, title, newTitle, newBody: bodyBox ? bodyBox.value : "" }, (d) => {
         stopEntryEdit();
         closeDrawer();
         return d && d.status === "edited"
@@ -368,7 +375,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         return d && d.message ? d.message : "Review tier updated";
       });
     } else if (act === "mention") {
-      const [file, index] = arg.split(":");
+      const { file, index } = entryRef(arg);
       const title = entryTitleAt(file, index);
       if (title !== undefined) draftForDirector("About “" + splitTitle(title).title + "”: ");
     }
