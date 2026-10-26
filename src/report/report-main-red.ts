@@ -6,7 +6,7 @@
  * only on the team scope. */
 import { dayKey } from "../text/datetime.js";
 import { isPassingMainCheck, isRedMain } from "../baseline/main-guardrails.js";
-import { addTo } from "../collections.js";
+import { addTo, getOrCreate } from "../collections.js";
 import { shortSha } from "../text/format.js";
 import { roleLabel } from "../roles/role-labels.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -81,8 +81,7 @@ export function mainRedFailingTestsByDay(
     if (typeof e.ts !== "number" || e.ts < fromMs || e.ts >= toMs) continue;
     if (!isRedMain(e)) continue;
     if (!Array.isArray(e.failingTests)) continue;
-    let record = map.get(dayKey(e.ts));
-    if (record === undefined) map.set(dayKey(e.ts), (record = {}));
+    const record = getOrCreate(map, dayKey(e.ts), () => ({}));
     for (const t of e.failingTests) {
       if (typeof t === "string") addTo(record, t, 1);
     }
@@ -116,8 +115,7 @@ export function mainRedCulpritsByDay(
       typeof e.runner === "string" && e.runner.length > 0
         ? `${roleLabel(e.runner)} ${shortSha(e.commit)}`
         : `merge ${shortSha(e.commit)}`;
-    let record = map.get(dayKey(e.ts));
-    if (record === undefined) map.set(dayKey(e.ts), (record = {}));
+    const record = getOrCreate(map, dayKey(e.ts), () => ({}));
     addTo(record, label, 1);
   }
   return map;
