@@ -64,57 +64,67 @@ export function createRoleFileEditor(
     restoreDraft();
   };
 
+  // The Ctrl+<openCtrl> open/toggle arm: toggles the editor out while open; otherwise opens on
+  // the guarded view and elsewhere keeps its own meaning and falls through to the pane arms.
+  const openRoleFileEdit = (ctx: TuiEditorCtx): boolean => {
+    // A view/state guard miss falls through so the key keeps its own meaning on the pane arms.
+    if (!spec.mayOpen(ctx)) return false;
+    // The key toggles the editor out while open; otherwise it opens on the guarded view and
+    // elsewhere keeps its own meaning and falls through to the pane arms.
+    if (session.editorEntryDenied(spec.held)) return true;
+    if (editFor !== null) {
+      exit();
+    } else {
+      // Mid-recall, hand the arrows' saved draft back before the editor takes the line — the
+      // same settle the role editors do — so leaving restores the draft, not a history entry,
+      // with no stale recall state riding along.
+      const role = viewedRole(ctx); // defined: the open-arm range guard above pins the view into roleIds
+      restoreDraft = session.takeDraft();
+      editFor = role;
+      session.held[spec.held] = role;
+      session.input = "";
+      session.cursor = 0;
+      session.flashMessage(spec.openFlash(role));
+    }
+    return true;
+  };
+
+  // Esc cancels the editor, restoring the previous prompt text and writing nothing.
+  const cancelRoleFileEdit = (): boolean => {
+    exit();
+    session.flashMessage(spec.cancelFlash);
+    return true;
+  };
+
+  // Enter reads the typed path whole and commits it through the caller's shared setter — the
+  // same setConfigKey/saveRoleNote write the CLI's non-interactive replacements and the
+  // dashboard drawer make, so the caps and their wording cannot drift. A missing or unreadable
+  // path (readEditorPath) or a refused write flashes and STAYS in the editor so the operator
+  // can fix the path; success repaints the notes and exits with the shared success wording.
+  const submitRoleFileEdit = (): boolean => {
+    const role = editFor;
+    if (role === null) return true;
+    const text = readEditorPath(session);
+    if (text === null) return true;
+    const outcome = spec.commit(session, role, text);
+    if (outcome.ok) {
+      spec.refresh(session, role);
+      exit();
+      session.flashMessage(outcome.message);
+    } else {
+      spec.flashFailure(session, outcome.reason);
+    }
+    return true;
+  };
+
   const handleKey = (
     _str: string | undefined,
     key: { ctrl?: boolean; name?: string },
     ctx: TuiEditorCtx,
   ): boolean => {
-    if (key.ctrl && key.name === spec.openCtrl && spec.mayOpen(ctx)) {
-      // The key toggles the editor out while open; otherwise it opens on the guarded view and
-      // elsewhere keeps its own meaning and falls through to the pane arms.
-      if (session.editorEntryDenied(spec.held)) return true;
-      if (editFor !== null) {
-        exit();
-      } else {
-        // Mid-recall, hand the arrows' saved draft back before the editor takes the line — the
-        // same settle the role editors do — so leaving restores the draft, not a history entry,
-        // with no stale recall state riding along.
-        const role = viewedRole(ctx); // defined: the open-arm range guard above pins the view into roleIds
-        restoreDraft = session.takeDraft();
-        editFor = role;
-        session.held[spec.held] = role;
-        session.input = "";
-        session.cursor = 0;
-        session.flashMessage(spec.openFlash(role));
-      }
-      return true;
-    }
-    if (key.name === "escape" && editFor !== null) {
-      // Esc cancels the editor, restoring the previous prompt text and writing nothing.
-      exit();
-      session.flashMessage(spec.cancelFlash);
-      return true;
-    }
-    if (key.name === "return" && editFor !== null) {
-      // Enter reads the typed path whole and commits it through the caller's shared setter —
-      // the same setConfigKey/saveRoleNote write the CLI's non-interactive replacements and the
-      // dashboard drawer make, so the caps and their wording cannot drift. A missing or
-      // unreadable path (readEditorPath) or a refused write flashes and STAYS in the editor so
-      // the operator can fix the path; success repaints the notes and exits with the shared
-      // success wording.
-      const role = editFor;
-      const text = readEditorPath(session);
-      if (text === null) return true;
-      const outcome = spec.commit(session, role, text);
-      if (outcome.ok) {
-        spec.refresh(session, role);
-        exit();
-        session.flashMessage(outcome.message);
-      } else {
-        spec.flashFailure(session, outcome.reason);
-      }
-      return true;
-    }
+    if (key.ctrl && key.name === spec.openCtrl) return openRoleFileEdit(ctx);
+    if (key.name === "escape" && editFor !== null) return cancelRoleFileEdit();
+    if (key.name === "return" && editFor !== null) return submitRoleFileEdit();
     return false;
   };
 
