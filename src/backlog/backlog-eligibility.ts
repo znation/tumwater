@@ -468,17 +468,26 @@ export function cancelledClaimNote(runner: string | null): string {
     : `${roleLabel(runner)} is still working on it — its run goes on; \`tumwater abort --role ${runner}\` stops it`;
 }
 
+/** The backlog file and section a claim-taking role's entries live under: BUGS.md's `## Open`
+ * for bugfix, PLANS.md's `## Planned` for every other base. An instance id resolves through its
+ * base role. The one home of the role → (file, section) mapping, so eligibility (eligibleEntries
+ * below) and claim staging (scheduling/claims.ts) read a claim's line range from the right file
+ * and cannot drift on which section a role owns. */
+export function roleSection(role: string): { file: "PLANS.md" | "BUGS.md"; section: string } {
+  return baseRoleOf(role) === "bugfix"
+    ? { file: "BUGS.md", section: "Open" }
+    : { file: "PLANS.md", section: "Planned" };
+}
+
 /** The entries `role` may take now, in file order: PLANS.md's `## Planned` entries for
  * feature, BUGS.md's `## Open` entries for bugfix, minus every entry entryHold holds, each with
  * its stamp-free key, verbatim title and 1-based line range. Reads the primary checkout through
  * the same stat-cached readers the index uses; a missing or unreadable file yields []. */
 export function eligibleEntries(root: string, role: string): EligibleEntry[] {
-  // An instance id (`bugfix-2`) resolves through its base role, exactly as claims.ts's
-  // roleSection does, so a claim's line range is read from the right file.
-  const bugfix = baseRoleOf(role) === "bugfix";
-  const file = bugfix ? "BUGS.md" : "PLANS.md";
-  const section = bugfix ? "Open" : "Planned";
-  const entries = bugfix ? openBugEntries(root) : plannedPlanEntries(root);
+  // An instance id (`bugfix-2`) resolves through its base role, as roleSection does, so a
+  // claim's line range and the entry list are read from the right file.
+  const { file, section } = roleSection(role);
+  const entries = section === "Open" ? openBugEntries(root) : plannedPlanEntries(root);
   const ranges = actionableEntryRangesFor(root, file, section);
   const planned = plannedPlanEntries(root);
   const parts = plannedPartKeys(planned);

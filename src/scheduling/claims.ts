@@ -10,7 +10,7 @@ import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { DAY_MS } from "../text/datetime.js";
 import { hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
-import { type EligibleEntry, backlogHolds, eligibleEntries } from "../backlog/backlog-eligibility.js";
+import { type EligibleEntry, backlogHolds, eligibleEntries, roleSection } from "../backlog/backlog-eligibility.js";
 import { entryKey } from "../backlog/backlog-parts.js";
 import { actionableEntryRanges, actionableEntryRangesFor } from "../backlog/backlog-index-data.js";
 import { readTextOrNull } from "../files/files.js";
@@ -45,14 +45,6 @@ export function planBacklogFull(root: string, config: TumwaterConfig): boolean {
 export interface ClaimRunner {
   role: string;
   state: RunnerState;
-}
-
-/** The backlog file and section a role's entries live under: PLANS.md's `## Planned` for
- * feature, BUGS.md's `## Open` for bugfix. An instance id resolves through its base role. */
-function roleSection(role: string): { file: "PLANS.md" | "BUGS.md"; section: string } {
-  return baseRoleOf(role) === "bugfix"
-    ? { file: "BUGS.md", section: "Open" }
-    : { file: "PLANS.md", section: "Planned" };
 }
 
 /** Every entry key listed under a role's backlog section, held or not: the set that separates a
