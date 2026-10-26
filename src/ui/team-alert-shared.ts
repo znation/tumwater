@@ -174,9 +174,9 @@ export function entryListDetail(titles: readonly string[]): string {
 
 /** Append the folded names of the entries past an alert's first one, after a ` · ` separator,
  * when there are any, and the empty string otherwise — the shared idiom every amber
- * "name the oldest, fold the rest" alert (stale-bugs, waiting-bugs, stale-prompts,
- * stale-merges, stranded-plans, skipped-merges, backlog-headings, validation-gaps,
- * false-fixes) uses to compose its
+ * "name the oldest, fold the rest" alert (stale-bugs, stale-questions, waiting-bugs,
+ * stale-prompts, stale-merges, stranded-plans, skipped-merges, backlog-headings,
+ * validation-gaps, false-fixes) uses to compose its
  * `detail`, so the separator, the empty case, and the default fold (entryListDetail;
  * joinWithMore for the merge-queue and heading alerts) cannot drift. Callers pre-map each
  * rest element to the label the first clause already named. */
