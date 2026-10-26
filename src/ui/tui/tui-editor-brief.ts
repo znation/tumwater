@@ -26,69 +26,78 @@ export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
     restoreDraft();
   };
 
+  // Ctrl+E opens the replace-the-brief editor on the Brief view's prompt line (mnemonic:
+  // **e**dit brief — the same key the Health reclaim, Report window-cycle, Queued row-edit
+  // and Backlog entry-edit arms use on their own views, guarded away here by ctx.briefMode).
+  // The line edits one file path that becomes the whole brief through the same
+  // editBriefText write the CLI and the dashboard's Brief card use. Entering saves the
+  // prompt draft and blanks the line; leaving restores it. The `!ctx.briefMode || briefEdit`
+  // guard returns false when it misses so Ctrl+E still reaches the Health reclaim and Report
+  // window-cycle arms on their own views.
+  const toggleBriefEdit = (ctx: TuiEditorCtx): boolean => {
+    if (!ctx.briefMode || briefEdit) return false;
+    if (session.editorEntryDenied("brief")) return true;
+    // Mid-recall, hand the arrows' saved draft back before the brief editor takes the line —
+    // the same settle the other editors do — so leaving restores the draft, not a history
+    // entry, with no stale recall state riding along.
+    restoreDraft = session.takeDraft();
+    briefEdit = true;
+    session.held.brief = true;
+    session.input = "";
+    session.cursor = 0;
+    session.flashMessage("replace the brief from a file — Enter to save, Esc to cancel");
+    return true;
+  };
+
+  // Esc cancels the brief editor, restoring the previous prompt text and writing nothing.
+  const cancelBriefEdit = (): boolean => {
+    exitBriefMode();
+    session.flashMessage("brief edit cancelled");
+    return true;
+  };
+
+  // Enter reads the typed path whole and replaces the brief through editBriefText — the
+  // shared write the CLI's `--file` and the dashboard's Brief card make, so the 4096 cap,
+  // the marker check and its wording cannot drift. An empty path, a missing file, an
+  // unreadable file, and a refused replacement all flash and STAY in the editor so the
+  // operator can pick another file; only a successful replacement exits, repainting the
+  // Brief pane in place with the shared outcome wording.
+  const submitBriefEdit = (): boolean => {
+    const text = readEditorPath(session);
+    if (text === null) return true;
+    void editBriefText(session.root, text).then(
+      (outcome) => {
+        if (!outcome.ok) {
+          // The core refused the replacement (empty, over the cap, a marker, no prompt
+          // block): flash the reason and stay so the operator can pick another file.
+          session.flashMessage(outcome.error);
+          return;
+        }
+        session.refreshBrief();
+        exitBriefMode();
+        session.flashMessage(
+          outcome.changed
+            ? `brief updated in ${outcome.file}${outcome.committed ? " (committed to main)" : ""}`
+            : "brief unchanged",
+        );
+      },
+      (err: unknown) => {
+        // The read/replace/commit threw: flash the reason and stay in the editor so the
+        // operator can fix things, as the other editor Enter arms do.
+        session.flashError(err);
+      },
+    );
+    return true;
+  };
+
   const handleKey = (
     _str: string | undefined,
     key: { ctrl?: boolean; name?: string },
     ctx: TuiEditorCtx,
   ): boolean => {
-    if (key.ctrl && key.name === "e" && ctx.briefMode && !briefEdit) {
-      // Ctrl+E opens the replace-the-brief editor on the Brief view's prompt line (mnemonic:
-      // **e**dit brief — the same key the Health reclaim, Report window-cycle, Queued row-edit
-      // and Backlog entry-edit arms use on their own views, guarded away here by ctx.briefMode).
-      // The line edits one file path that becomes the whole brief through the same
-      // editBriefText write the CLI and the dashboard's Brief card use. Entering saves the
-      // prompt draft and blanks the line; leaving restores it.
-      if (session.editorEntryDenied("brief")) return true;
-      // Mid-recall, hand the arrows' saved draft back before the brief editor takes the line —
-      // the same settle the other editors do — so leaving restores the draft, not a history
-      // entry, with no stale recall state riding along.
-      restoreDraft = session.takeDraft();
-      briefEdit = true;
-      session.held.brief = true;
-      session.input = "";
-      session.cursor = 0;
-      session.flashMessage("replace the brief from a file — Enter to save, Esc to cancel");
-      return true;
-    }
-    if (key.name === "escape" && briefEdit) {
-      // Esc cancels the brief editor, restoring the previous prompt text and writing nothing.
-      exitBriefMode();
-      session.flashMessage("brief edit cancelled");
-      return true;
-    }
-    if (key.name === "return" && briefEdit) {
-      // Enter reads the typed path whole and replaces the brief through editBriefText — the
-      // shared write the CLI's `--file` and the dashboard's Brief card make, so the 4096 cap,
-      // the marker check and its wording cannot drift. An empty path, a missing file, an
-      // unreadable file, and a refused replacement all flash and STAY in the editor so the
-      // operator can pick another file; only a successful replacement exits, repainting the
-      // Brief pane in place with the shared outcome wording.
-      const text = readEditorPath(session);
-      if (text === null) return true;
-      void editBriefText(session.root, text).then(
-        (outcome) => {
-          if (!outcome.ok) {
-            // The core refused the replacement (empty, over the cap, a marker, no prompt
-            // block): flash the reason and stay so the operator can pick another file.
-            session.flashMessage(outcome.error);
-            return;
-          }
-          session.refreshBrief();
-          exitBriefMode();
-          session.flashMessage(
-            outcome.changed
-              ? `brief updated in ${outcome.file}${outcome.committed ? " (committed to main)" : ""}`
-              : "brief unchanged",
-          );
-        },
-        (err: unknown) => {
-          // The read/replace/commit threw: flash the reason and stay in the editor so the
-          // operator can fix things, as the other editor Enter arms do.
-          session.flashError(err);
-        },
-      );
-      return true;
-    }
+    if (key.ctrl && key.name === "e") return toggleBriefEdit(ctx);
+    if (key.name === "escape" && briefEdit) return cancelBriefEdit();
+    if (key.name === "return" && briefEdit) return submitBriefEdit();
     return false;
   };
 
