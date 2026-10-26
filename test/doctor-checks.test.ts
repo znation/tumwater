@@ -1193,6 +1193,30 @@ test("providerConcurrencyProblems returns the row's own warnings", () => {
   ]);
 });
 
+// The key-less seam warning (a capped team whose provider pi's settings cannot name) is
+// phrased through the shared plural()/agree() helpers, so the count and the verb agree: one
+// key-less seam reads "1 model job resolves", several read "N model jobs resolve". This pins
+// the exact wording so a regression in the singular/plural agreement is caught.
+test("providerConcurrencyProblems warns on key-less seams with agreeing count and verb", () => {
+  const piDefault = null;
+  // A role whose model override names a bare pi id (no provider slash) resolves no provider
+  // key while every other seam rides the default omlx tier, so exactly one seam is key-less.
+  const cfg = {
+    ...defaultConfig(),
+    maxConcurrent: 4,
+    model: { default: "omlx/m" },
+    maxConcurrentPerProvider: { omlx: 3 },
+  };
+  cfg.roles.feature = { enabled: true, model: "bare-model" };
+  assert.deepEqual(providerConcurrencyProblems(cfg, piDefault), [
+    "1 model job resolves to no provider key (pi's default provider is unreadable, so they cannot be capped): feature",
+  ]);
+  cfg.roles.bugfix = { enabled: true, model: "bare2" };
+  assert.deepEqual(providerConcurrencyProblems(cfg, piDefault), [
+    "2 model jobs resolve to no provider key (pi's default provider is unreadable, so they cannot be capped): feature, bugfix",
+  ]);
+});
+
 // claude transcript disk (plans/agent-backends.md "Sessions" retention, part 4e/7): doctor
 // reports the total size for a claude team and reads nothing for a pi-only one.
 test("checkClaudeTranscripts totals the transcript dirs for a claude team", () => {

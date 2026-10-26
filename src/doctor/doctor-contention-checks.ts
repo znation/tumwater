@@ -599,7 +599,7 @@ export function providerConcurrencyProblems(config: TumwaterConfig | undefined, 
   const capSet = new Set(capKeys);
   const keyless = seams.filter((s) => seamConcurrencyKey(s, piDefault) === undefined);
   if (capSet.size > 0 && keyless.length > 0) {
-    warnings.push(`${keyless.length} model job(s) resolve to no provider key (pi's default provider is unreadable, so they cannot be capped): ${keyless.map((s) => s.label).join(", ")}`);
+    warnings.push(`${plural(keyless.length, "model job")} ${agree(keyless.length, "resolves", "resolve")} to no provider key (pi's default provider is unreadable, so they cannot be capped): ${keyless.map((s) => s.label).join(", ")}`);
   }
   return warnings;
 }
