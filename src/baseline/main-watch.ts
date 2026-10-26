@@ -7,7 +7,7 @@ import { git, gitTry } from "../git/git-run.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
-import { fileQuarantineBugsOnMain } from "../backlog/backlog-archive.js";
+import { fileQuarantineBugsOnMain } from "../backlog/backlog-file-bugs.js";
 import {
   loadQuarantine,
   markQuarantineFiled,

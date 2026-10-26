@@ -4440,7 +4440,7 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 **Guarantee.** `fileQuarantineBugsOnMain` reuses the BUGS.md `## Open` heading of a quarantined test whose entry is already there (a filing whose `markQuarantineFiled` failed after the commit) instead of appending a duplicate, and commits nothing when every test already has its entry.
 
-**Binds.** `src/backlog/backlog-archive.ts` (`fileQuarantineBugsOnMain`).
+**Binds.** `src/backlog/backlog-file-bugs.ts` (`fileQuarantineBugsOnMain`).
 
 **Pinned by.** `test/main-watch.test.ts` — "a filing whose quarantine.json write failed is not filed again on the next poll".
 
@@ -4468,7 +4468,7 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 **Guarantee.** `fileQuarantineBugsOnMain` appends its entries inside a `try` whose catch restores BUGS.md to its prior text (or removes it when it did not exist) and returns `skipped`. A failed commit restores it the same way. A half-filed BUGS.md never blocks the next filing.
 
-**Binds.** `src/backlog/backlog-archive.ts` (`fileQuarantineBugsOnMain`).
+**Binds.** `src/backlog/backlog-file-bugs.ts` (`fileQuarantineBugsOnMain`).
 
 **Pinned by.** `test/backlog-archive.test.ts` — "fileQuarantineBugsOnMain restores BUGS.md when a second entry's write fails, and files both on the next call".
 
@@ -4476,7 +4476,7 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 **Guarantee.** A file that exists but cannot be read (EMFILE, EIO) is not treated as absent. `fileQuarantineBugsOnMain` and `archiveFinishedOnMain` return `skipped` before writing anything, and `archiveNewFinishedEntries` rejects, so BUGS.md, PLANS-DONE.md and BUGS-FIXED.md are neither removed nor replaced by a fresh template.
 
-**Binds.** `src/backlog/backlog-archive.ts` (`fileQuarantineBugsOnMain`, `archiveFinishedOnMain`, `planArchiveAll`, `archiveNewFinishedEntries`).
+**Binds.** `src/backlog/backlog-file-bugs.ts` (`fileQuarantineBugsOnMain`); `src/backlog/backlog-archive.ts` (`archiveFinishedOnMain`, `planArchiveAll`, `archiveNewFinishedEntries`).
 
 **Pinned by.** `test/backlog-archive.test.ts` — "fileQuarantineBugsOnMain skips and leaves BUGS.md in place when BUGS.md cannot be read"; "archiveFinishedOnMain skips and leaves the archive intact when an archive file cannot be read"; "archiveNewFinishedEntries rejects and writes nothing when the archive file cannot be read".
 

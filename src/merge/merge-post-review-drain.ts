@@ -16,7 +16,7 @@ import {
 import { shortSha } from "../text/format.js";
 import { formatDate } from "../text/datetime.js";
 import { collapseWhitespace, errorMessage } from "../text/text.js";
-import { fileBugsOnMain } from "../backlog/backlog-archive.js";
+import { fileBugsOnMain } from "../backlog/backlog-file-bugs.js";
 import { abortOnShutdown, acquireUnlessAborted, guardMergeTask, type InFlightMerge, type MergePipeline, type MergePipelineContext } from "./merge-pipeline.js";
 import { resolveWaitStage } from "./merge-slot.js";
 import { mergeToMain } from "./merge-to-main.js";

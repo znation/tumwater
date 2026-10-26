@@ -7,11 +7,10 @@ import {
   archiveFinishedOnMain,
   archiveFinishedText,
   archiveNewFinishedEntries,
-  fileBugsOnMain,
-  fileQuarantineBugsOnMain,
   archiveTemplate,
   liveFinishedHistory,
 } from "../src/backlog/backlog-archive.js";
+import { fileBugsOnMain, fileQuarantineBugsOnMain } from "../src/backlog/backlog-file-bugs.js";
 import { readEvents } from "../src/events/event-read.js";
 import { finishedArchiveOf } from "../src/backlog/backlog-md.js";
 import { donePlanEntries, donePlans, fixedBugEntries } from "../src/backlog/backlog.js";
