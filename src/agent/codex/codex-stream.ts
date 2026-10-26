@@ -221,194 +221,211 @@ export function codexTranslator(opts: { contextWindow?: unknown; cwd?: string } 
     return out;
   };
 
+  /** The `thread.started` arm: announces the session and the agent start, or records the
+   * unmapped event once when the thread id is missing. */
+  const handleThreadStarted = (event: Json): string[] => {
+    const id = typeof event.thread_id === "string" ? event.thread_id : undefined;
+    if (id === undefined) {
+      recordEvent("thread.started");
+      return [];
+    }
+    sessionIdValue = id;
+    const out: string[] = [];
+    out.push(
+      JSON.stringify({
+        type: "session",
+        id,
+        ...(cwd !== undefined ? { cwd } : {}),
+      }),
+    );
+    out.push(JSON.stringify({ type: "agent_start" }));
+    return out;
+  };
+  /** The `turn.completed` arm: folds the usage block and abandons the open calls. */
+  const handleTurnCompleted = (event: Json): string[] => {
+    sawTurnCompleted = true;
+    const usage = objectOrEmpty(event.usage);
+    turnUsage =
+      usage.input_tokens !== undefined || usage.output_tokens !== undefined
+        ? {
+            input: nonNegativeNumber(usage.input_tokens, 0),
+            cacheRead: nonNegativeNumber(usage.cached_input_tokens, 0),
+            cacheWrite: nonNegativeNumber(usage.cache_write_input_tokens, 0),
+            output: nonNegativeNumber(usage.output_tokens, 0),
+          }
+        : undefined;
+    return abandonOpenCalls();
+  };
+  /** The `turn.failed` arm: classifies the inner-JSON error and closes the turn. */
+  const handleTurnFailed = (event: Json): string[] => {
+    sawTurnFailed = true;
+    // The error message is itself a JSON string (finding 11); fall back to the held
+    // top-level error text when it is not.
+    const raw = typeof event.error === "object" && event.error !== null && !Array.isArray(event.error)
+      ? (event.error as Json).message
+      : undefined;
+    const inner = typeof raw === "string" ? (parseJsonObject(raw) as Json | undefined) : undefined;
+    const cls = inner ? classifyTurnFailed(inner) : {};
+    const errorMessage = cls.errorMessage ?? (typeof raw === "string" ? raw : pendingFailureText);
+    const closes = abandonOpenCalls();
+    const message: Json = { role: "assistant", content: [], stopReason: "error" };
+    if (errorMessage !== undefined) message.errorMessage = errorMessage;
+    const end: Json = {
+      type: "message_end",
+      message,
+      ...(cls.kind !== undefined ? { tumwaterKind: cls.kind } : {}),
+      ...(cls.backendKind !== undefined ? { backendKind: cls.backendKind } : {}),
+    };
+    if (cls.kind === "transientRateLimit" && typeof cls.rateLimit?.retryAfterSeconds === "number")
+      end.retryAfterSeconds = cls.rateLimit.retryAfterSeconds;
+    return [...(cls.rateLimit !== undefined ? [JSON.stringify(cls.rateLimit)] : []), ...closes, JSON.stringify(end)];
+  };
+  /** The top-level `error` arm: a reconnect text emits an `auto_retry_start`; any other
+   * message is held as the next `turn.failed`'s fallback text. */
+  const handleErrorLine = (event: Json): string[] => {
+    const message = typeof event.message === "string" ? event.message : undefined;
+    const reconnect = message === undefined ? undefined : RECONNECT.exec(message);
+    if (reconnect) {
+      return [
+        JSON.stringify({
+          type: "auto_retry_start",
+          attempt: Number(reconnect[1]),
+          maxAttempts: Number(reconnect[2]),
+          errorMessage: message,
+        }),
+      ];
+    }
+    // Other top-level `error` lines are not fatal (design §5): held as the fallback text
+    // for a following `turn.failed`.
+    if (message !== undefined) pendingFailureText = message;
+    return [];
+  };
+  /** The `item.started`/`item.completed` arm: reads the item and delegates by type to the
+   * item handlers, dropping the silent types and warning once on the unknown tail. */
+  const handleItem = (event: Json, started: boolean): string[] => {
+    const item = objectOrEmpty(event.item);
+    const itemType = typeof item.type === "string" ? item.type : "unknown";
+    if (itemType === "command_execution") return handleCommandItem(item, started);
+    if (itemType === "file_change") return handleFileChangeItem(item, started);
+    if (itemType === "error") return handleErrorItem(item);
+    if (itemType === "agent_message") return handleAgentMessageItem(item);
+    if (DROPPED_ITEM_TYPES.has(itemType)) return [];
+    // mcp_tool_call / reasoning and any unknown item shape map to nothing canonical; a
+    // once-per-type warning only (design §5).
+    recordItem(item);
+    return [];
+  };
+  /** The `command_execution` item arm: opens or closes the bash call, capping the result. */
+  const handleCommandItem = (item: Json, started: boolean): string[] => {
+    const command = typeof item.command === "string" ? item.command : "";
+    const out: string[] = [];
+    if (started) {
+      const id = typeof item.id === "string" ? item.id : `cmd-${openCalls.size}`;
+      openCalls.set(id, "command_execution");
+      const inner = innerCommand(command);
+      out.push(
+        JSON.stringify({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [{ type: "toolCall", id, name: "bash", arguments: { command: inner } }],
+          },
+        }),
+      );
+      out.push(
+        JSON.stringify({
+          type: "tool_execution_start",
+          toolCallId: id,
+          toolName: "bash",
+          args: { command: inner },
+        }),
+      );
+    } else {
+      const id = typeof item.id === "string" ? item.id : "";
+      openCalls.delete(id);
+      const aggregated = typeof item.aggregated_output === "string" ? item.aggregated_output : "";
+      const exitCode = nonNegativeNumber(item.exit_code, undefined);
+      out.push(
+        JSON.stringify({
+          type: "tool_execution_end",
+          toolCallId: id,
+          isError: exitCode !== undefined ? exitCode !== 0 : item.status !== "completed",
+          result: boundText(aggregated, bashLimit),
+        }),
+      );
+    }
+    return out;
+  };
+  /** The `file_change` item arm: mirrors each change as an `edit` tool call. */
+  const handleFileChangeItem = (item: Json, started: boolean): string[] => {
+    const changes = Array.isArray(item.changes) ? item.changes.filter((c): c is Json => typeof c === "object" && c !== null) : [];
+    const id = typeof item.id === "string" ? item.id : "";
+    const out: string[] = [];
+    if (!started) {
+      const isError = typeof item.status === "string" && item.status !== "completed";
+      for (let i = 0; i < changes.length; i++) {
+        const callId = `${id}-${i}`;
+        openCalls.delete(callId);
+        out.push(JSON.stringify({ type: "tool_execution_end", toolCallId: callId, isError }));
+      }
+      return out;
+    }
+    const content: Json[] = changes.map((c, i) => ({
+      type: "toolCall",
+      id: `${id}-${i}`,
+      name: "edit",
+      arguments: {
+        path: typeof c.path === "string" ? c.path : undefined,
+        kind: typeof c.kind === "string" ? c.kind : undefined,
+      },
+    }));
+    if (content.length === 0) return out; // no changes to mirror, nothing else to emit
+    out.push(JSON.stringify({ type: "message_end", message: { role: "assistant", content } }));
+    for (let i = 0; i < content.length; i++) {
+      const callId = `${id}-${i}`;
+      openCalls.set(callId, "file_change");
+      out.push(
+        JSON.stringify({
+          type: "tool_execution_start",
+          toolCallId: callId,
+          toolName: "edit",
+          args: (content[i] as Json).arguments,
+        }),
+      );
+    }
+    return out;
+  };
+  /** The `item.type === "error"` arm: a non-fatal notice warned once per distinct message. */
+  const handleErrorItem = (item: Json): string[] => {
+    const message = typeof item.message === "string" ? item.message : undefined;
+    if (message !== undefined) recordErrorItem(message);
+    return [];
+  };
+  /** The `agent_message` arm: the model's reply as one canonical `message_end`. */
+  const handleAgentMessageItem = (item: Json): string[] => {
+    const text = typeof item.text === "string" ? item.text : "";
+    return [
+      JSON.stringify({
+        type: "message_end",
+        message: { role: "assistant", content: [{ type: "text", text }] },
+      }),
+    ];
+  };
+
   const translate = (line: string): string[] => {
     const parsed = parseJsonObject(line);
     if (!parsed) return []; // Non-JSON noise on stdout; ignore, as pi's parser does.
     const event = parsed as Json;
     const type = typeof event.type === "string" ? event.type : "unknown";
-    const out: string[] = [];
-
     switch (type) {
-      case "thread.started": {
-        const id = typeof event.thread_id === "string" ? event.thread_id : undefined;
-        if (id === undefined) {
-          recordEvent(type);
-          return [];
-        }
-        sessionIdValue = id;
-        out.push(
-          JSON.stringify({
-            type: "session",
-            id,
-            ...(cwd !== undefined ? { cwd } : {}),
-          }),
-        );
-        out.push(JSON.stringify({ type: "agent_start" }));
-        return out;
-      }
-      case "turn.started":
-        return [];
-      case "turn.completed": {
-        sawTurnCompleted = true;
-        const usage = objectOrEmpty(event.usage);
-        turnUsage =
-          usage.input_tokens !== undefined || usage.output_tokens !== undefined
-            ? {
-                input: nonNegativeNumber(usage.input_tokens, 0),
-                cacheRead: nonNegativeNumber(usage.cached_input_tokens, 0),
-                cacheWrite: nonNegativeNumber(usage.cache_write_input_tokens, 0),
-                output: nonNegativeNumber(usage.output_tokens, 0),
-              }
-            : undefined;
-        return abandonOpenCalls();
-      }
-      case "turn.failed": {
-        sawTurnFailed = true;
-        // The error message is itself a JSON string (finding 11); fall back to the held
-        // top-level error text when it is not.
-        const raw = typeof event.error === "object" && event.error !== null && !Array.isArray(event.error)
-          ? (event.error as Json).message
-          : undefined;
-        const inner = typeof raw === "string" ? (parseJsonObject(raw) as Json | undefined) : undefined;
-        const cls = inner ? classifyTurnFailed(inner) : {};
-        const errorMessage = cls.errorMessage ?? (typeof raw === "string" ? raw : pendingFailureText);
-        const closes = abandonOpenCalls();
-        const message: Json = { role: "assistant", content: [], stopReason: "error" };
-        if (errorMessage !== undefined) message.errorMessage = errorMessage;
-        const end: Json = {
-          type: "message_end",
-          message,
-          ...(cls.kind !== undefined ? { tumwaterKind: cls.kind } : {}),
-          ...(cls.backendKind !== undefined ? { backendKind: cls.backendKind } : {}),
-        };
-        if (cls.kind === "transientRateLimit" && typeof cls.rateLimit?.retryAfterSeconds === "number")
-          end.retryAfterSeconds = cls.rateLimit.retryAfterSeconds;
-        return [...(cls.rateLimit !== undefined ? [JSON.stringify(cls.rateLimit)] : []), ...closes, JSON.stringify(end)];
-      }
-      case "error": {
-        const message = typeof event.message === "string" ? event.message : undefined;
-        const reconnect = message === undefined ? undefined : RECONNECT.exec(message);
-        if (reconnect) {
-          return [
-            JSON.stringify({
-              type: "auto_retry_start",
-              attempt: Number(reconnect[1]),
-              maxAttempts: Number(reconnect[2]),
-              errorMessage: message,
-            }),
-          ];
-        }
-        // Other top-level `error` lines are not fatal (design §5): held as the fallback text
-        // for a following `turn.failed`.
-        if (message !== undefined) pendingFailureText = message;
-        return [];
-      }
+      case "thread.started": return handleThreadStarted(event);
+      case "turn.started": return [];
+      case "turn.completed": return handleTurnCompleted(event);
+      case "turn.failed": return handleTurnFailed(event);
+      case "error": return handleErrorLine(event);
       case "item.started":
-      case "item.completed": {
-        const item = objectOrEmpty(event.item);
-        const itemType = typeof item.type === "string" ? item.type : "unknown";
-        const started = type === "item.started";
-        if (itemType === "command_execution") {
-          const command = typeof item.command === "string" ? item.command : "";
-          if (started) {
-            const id = typeof item.id === "string" ? item.id : `cmd-${openCalls.size}`;
-            openCalls.set(id, "command_execution");
-            const inner = innerCommand(command);
-            out.push(
-              JSON.stringify({
-                type: "message_end",
-                message: {
-                  role: "assistant",
-                  content: [{ type: "toolCall", id, name: "bash", arguments: { command: inner } }],
-                },
-              }),
-            );
-            out.push(
-              JSON.stringify({
-                type: "tool_execution_start",
-                toolCallId: id,
-                toolName: "bash",
-                args: { command: inner },
-              }),
-            );
-          } else {
-            const id = typeof item.id === "string" ? item.id : "";
-            openCalls.delete(id);
-            const aggregated = typeof item.aggregated_output === "string" ? item.aggregated_output : "";
-            const exitCode = nonNegativeNumber(item.exit_code, undefined);
-            out.push(
-              JSON.stringify({
-                type: "tool_execution_end",
-                toolCallId: id,
-                isError: exitCode !== undefined ? exitCode !== 0 : item.status !== "completed",
-                result: boundText(aggregated, bashLimit),
-              }),
-            );
-          }
-          return out;
-        }
-        if (itemType === "file_change") {
-          const changes = Array.isArray(item.changes) ? item.changes.filter((c): c is Json => typeof c === "object" && c !== null) : [];
-          const id = typeof item.id === "string" ? item.id : "";
-          if (!started) {
-            const isError = typeof item.status === "string" && item.status !== "completed";
-            for (let i = 0; i < changes.length; i++) {
-              const callId = `${id}-${i}`;
-              openCalls.delete(callId);
-              out.push(JSON.stringify({ type: "tool_execution_end", toolCallId: callId, isError }));
-            }
-            return out;
-          }
-          const content: Json[] = changes.map((c, i) => ({
-            type: "toolCall",
-            id: `${id}-${i}`,
-            name: "edit",
-            arguments: {
-              path: typeof c.path === "string" ? c.path : undefined,
-              kind: typeof c.kind === "string" ? c.kind : undefined,
-            },
-          }));
-          if (content.length === 0) return out; // no changes to mirror, nothing else to emit
-          out.push(JSON.stringify({ type: "message_end", message: { role: "assistant", content } }));
-          for (let i = 0; i < content.length; i++) {
-            const callId = `${id}-${i}`;
-            openCalls.set(callId, "file_change");
-            out.push(
-              JSON.stringify({
-                type: "tool_execution_start",
-                toolCallId: callId,
-                toolName: "edit",
-                args: (content[i] as Json).arguments,
-              }),
-            );
-          }
-          return out;
-        }
-        if (itemType === "error") {
-          // An error item is a non-fatal notice (finding 11); warned once per distinct message.
-          const message = typeof item.message === "string" ? item.message : undefined;
-          if (message !== undefined) recordErrorItem(message);
-          return [];
-        }
-        if (itemType === "agent_message") {
-          // The model's reply: one canonical `message_end` with one text block.
-          const text = typeof item.text === "string" ? item.text : "";
-          return [
-            JSON.stringify({
-              type: "message_end",
-              message: { role: "assistant", content: [{ type: "text", text }] },
-            }),
-          ];
-        }
-        if (DROPPED_ITEM_TYPES.has(itemType)) return [];
-        // mcp_tool_call / reasoning and any unknown item shape map to nothing canonical; a
-        // once-per-type warning only (design §5).
-        recordItem(item);
-        return [];
-      }
-      default:
-        recordEvent(type);
-        return [];
+      case "item.completed": return handleItem(event, type === "item.started");
+      default: recordEvent(type); return [];
     }
   };
 
