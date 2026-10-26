@@ -404,11 +404,8 @@ function costPerCommitLine(label: string, pairs: ReturnType<typeof costPerCommit
   return `**${label}:** ${parts.length === 0 ? "-" : parts.join(" · ")}`;
 }
 
-/** Render a report as Markdown — the pinned shape the CLI prints and the TUI usage pane
- * (report 3/3) reuses; the GUI tab (report 2/3) renders its own SVG charts from the same
- * ReportData instead. Pure function of ReportData: no I/O, no clock reads. */
-export function renderReportMarkdown(data: ReportData): string {
-  const lines: string[] = [];
+/** The title, window line, optional role line, then the report summary line. */
+function pushReportHeader(lines: string[], data: ReportData): void {
   lines.push("# tumwater usage report");
   lines.push("");
   lines.push(reportWindow(data.from, data.to, data.days, eventsRotationLabel()));
@@ -427,6 +424,10 @@ export function renderReportMarkdown(data: ReportData): string {
       : "";
   pushReportSummary(lines, t, tail, data.role !== undefined);
   lines.push("");
+}
+
+/** The day-by-day window table (day, tokens out, runs, commits, cost) and its blank line. */
+function pushReportSeriesTable(lines: string[], data: ReportData): void {
   const maxTokens = data.series.reduce((m, d) => Math.max(m, d.tokensOut), 0);
   lines.push(
     ...markdownTable(
@@ -441,6 +442,10 @@ export function renderReportMarkdown(data: ReportData): string {
     ),
   );
   lines.push("");
+}
+
+/** The per-role runs/tokens/prompt/cost breakdown lines. */
+function pushReportRoleLines(lines: string[], data: ReportData): void {
   lines.push(rankedRoleLine("Runs by role", rankedRoleTotals(data.series, (d) => d.runsByRole), String));
   // The same breakdown for output tokens (the resource the budget charges): window totals per
   // role from tokensByRole, ranked like the runs line. Zero-token roles are omitted; an
@@ -460,6 +465,10 @@ export function renderReportMarkdown(data: ReportData): string {
   // intervals wants the burning role first, not the busiest one). Zero-spend roles are
   // omitted; an all-zero window renders "-" like the runs line.
   pushRankedRoleLine(lines, "Cost by role", rankedRoleTotals(data.series, (d) => d.costByRole), usd);
+}
+
+/** The team-only per-provider and per-model breakdown lines. */
+function pushReportProviderLines(lines: string[], data: ReportData): void {
   // The same breakdown per PROVIDER (plans: per-provider spend): which seam of a mixed team
   // spent what, straight from the events' providerCost maps (run_end's own runs and the
   // merge's reviewer seam). Gated to the team report — a provider is not a role, so a
@@ -481,6 +490,10 @@ export function renderReportMarkdown(data: ReportData): string {
     const modelPairs = rankedRoleTotals(data.series, (d) => d.runsByModel ?? {}).filter(([, n]) => n > 0);
     if (modelPairs.length > 0) lines.push(rankedRoleLine("Runs by model", modelPairs, String));
   }
+}
+
+/** The per-role review-friction and outright-failure lines. */
+function pushReportFrictionLines(lines: string[], data: ReportData): void {
   // The same breakdown for review friction: window rejections per role from review_rejected
   // events, ranked like the runs line; a window with none renders "-". The post-merge line
   // is the afterMerge: true subset — rejections that reached an already-merged commit.
@@ -495,6 +508,10 @@ export function renderReportMarkdown(data: ReportData): string {
   pushRankedRoleLine(lines, "Failed runs by role", rankedRoleTotals(data.series, (d) => d.failedRunsByRole ?? {}));
   pushRankedRoleLine(lines, "Fallbacks by role", rankedRoleTotals(data.series, (d) => d.fallbacksByRole ?? {}));
   pushRankedRoleLine(lines, "Image reroutes by role", rankedRoleTotals(data.series, (d) => d.imageReroutesByRole ?? {}));
+}
+
+/** The team-only deferred-runs-by-reason line. */
+function pushReportDeferralLines(lines: string[], data: ReportData): void {
   // Deferred maintenance runs per reason code — how many due maintenance runs stood down
   // and why, so an idle day reads as backlog-open / no-work / plans-full rather than blank,
   // the per-role breakdown of the deferred maintenances. Gated to the team report — a
@@ -504,6 +521,10 @@ export function renderReportMarkdown(data: ReportData): string {
     const deferred = rankedRoleTotals(data.series, (d) => d.deferredByReason ?? {}).filter(([, n]) => n > 0);
     if (deferred.length > 0) lines.push(rankedRoleLine("Deferred runs by reason", deferred, String));
   }
+}
+
+/** The Commits-by-role line plus the team-only merge/main-red/cameo block. */
+function pushReportMergeLines(lines: string[], data: ReportData): void {
   // Work ratio 4/4: the merged commits split by base role and by tier. The totals line's
   // `commits` carries the count; these lines say who made it and how much of it was work.
   lines.push(rankedRoleLine("Commits by role", rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {}), String));
@@ -558,6 +579,11 @@ export function renderReportMarkdown(data: ReportData): string {
     pushDayCameoLine(lines, data.series, "Workspace wait median", (d) => d.slotWaitMedianMs);
     pushDayCameoLine(lines, data.series, "Check wait median", (d) => d.checkWaitMedianMs);
   }
+}
+
+/** Cost/commits tail: cost per commit, notional block, lag, validation gaps, sparse note. */
+function pushReportTail(lines: string[], data: ReportData): void {
+  const t = data.totals;
   lines.push(costPerCommitLine("Cost per commit", costPerCommitPairs(data.series)));
   // Subscription spend is notional: its own two lines, only when the window has any.
   if ((t.notionalCostUsd ?? 0) > 0) {
@@ -595,5 +621,20 @@ export function renderReportMarkdown(data: ReportData): string {
   // oldest retained event lies inside the window, so the hedged sentence stays true whenever
   // it prints — an empty or fully covered log never claims a history it cannot see.
   if (!data.coversFullWindow) lines.push("", SPARSE_WINDOW_NOTE);
+}
+
+/** Render a report as Markdown — the pinned shape the CLI prints and the TUI usage pane
+ * (report 3/3) reuses; the GUI tab (report 2/3) renders its own SVG charts from the same
+ * ReportData instead. Pure function of ReportData: no I/O, no clock reads. */
+export function renderReportMarkdown(data: ReportData): string {
+  const lines: string[] = [];
+  pushReportHeader(lines, data);
+  pushReportSeriesTable(lines, data);
+  pushReportRoleLines(lines, data);
+  pushReportProviderLines(lines, data);
+  pushReportFrictionLines(lines, data);
+  pushReportDeferralLines(lines, data);
+  pushReportMergeLines(lines, data);
+  pushReportTail(lines, data);
   return lines.join("\n");
 }
