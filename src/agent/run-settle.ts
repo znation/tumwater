@@ -164,6 +164,35 @@ export function settleExit(state: RunSettleState): void {
     .catch(() => {});
 }
 
+/** Settle the run's `lastError` text in priority order: a failed blind image read names both
+ * the file and the model (plans/image-input.md "Failing the run"), then the abort, quiet-kill
+ * and timeout causes the watchdogs and signal path set, then the parser's own event-derived
+ * error, else the raw stderr tail. Undefined for a run that simply ended with a message. */
+function settleErrorMessage(
+  state: RunSettleState,
+  blindRead: string | undefined,
+  failed: boolean,
+  stderr: string,
+  code: number | null,
+): string | undefined {
+  if (blindRead !== undefined) {
+    return `read ${blindRead}, but ${state.config.model ?? "the model"} cannot read images`;
+  }
+  if (state.aborted()) return "stopped by tumwater shutdown";
+  if (state.wd.quietKilled) {
+    return `killed as hung: no agent progress for over ${state.config.quietTimeoutSeconds}s`;
+  }
+  if (state.wd.timedOut) {
+    return state.wd.timedOutProgressing
+      ? `timed out after ${state.wd.timeoutBudgetMs / 1000}s while still making progress — session and worktree edits preserved for resume`
+      : `timed out after ${state.wd.timeoutBudgetMs / 1000}s`;
+  }
+  return (
+    state.parser.errorMessage ??
+    (failed ? stderr.trim().slice(-500) || `the agent exited ${code}` : undefined)
+  );
+}
+
 /** The run's `close` event: the process died and all its streams closed. Flush what the
  * decoders held back, reconcile the backend's post-run work, classify the exit cause, and
  * settle the run's result. */
@@ -203,20 +232,8 @@ export function settleClose(state: RunSettleState, code: number | null): void {
     cls.transientPiCrash !== true &&
     stderrBackend === undefined &&
     (state.parser.configError || cls.configError === true);
-  // The blind-read failure names both the file and the model (plans/image-input.md
-  // "Failing the run"): take it over any generic exit text so lastError is actionable.
   const blindRead = state.blindRead();
-  const errorMessage = blindRead !== undefined
-    ? `read ${blindRead}, but ${state.config.model ?? "the model"} cannot read images`
-    : state.aborted()
-      ? "stopped by tumwater shutdown"
-      : state.wd.quietKilled
-        ? `killed as hung: no agent progress for over ${state.config.quietTimeoutSeconds}s`
-        : state.wd.timedOut
-          ? state.wd.timedOutProgressing
-            ? `timed out after ${state.wd.timeoutBudgetMs / 1000}s while still making progress — session and worktree edits preserved for resume`
-            : `timed out after ${state.wd.timeoutBudgetMs / 1000}s`
-          : (state.parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `the agent exited ${code}` : undefined));
+  const errorMessage = settleErrorMessage(state, blindRead, failed, stderr, code);
   state.finish(
     resultFromParser(state, {
       ok: !failed,
