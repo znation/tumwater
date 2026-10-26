@@ -35,6 +35,187 @@ import type { CheckConfigSlice } from "../config/config-schema.js";
 import { sampleHostLoad, sampleSleepClock, type LoadSampler, type SleepSampler } from "./host-sleep.js";
 import { type InstallRunner, npmInstall } from "./dep-install.js";
 
+/** Resolve which command to detect for a scope and the effective deadline it runs under — the
+ * command-swap/detect rule (gateCommandOf/mergeCommandOf over detectBuildCheck), the
+ * merge-scope starved deadline, and the cheaper flag. Returns null when no check is declared
+ * (nothing to run). */
+function resolveScopedCheck(
+  wt: string,
+  scope: BuildCheckScope,
+  config: CheckConfigSlice | undefined,
+  timeoutMs: number,
+  sampleLoad: LoadSampler,
+): {
+  check: BuildCheck;
+  cheaper: boolean;
+  runCheck: BuildCheck;
+  effectiveMs: number;
+  load: ReturnType<LoadSampler>;
+} | null {
+  const swapped = scope === "gate" ? gateCommandOf(config) : MERGE_SCOPES.has(scope) ? mergeCommandOf(config) : undefined;
+  const check = detectBuildCheck(
+    wt,
+    swapped === undefined ? config : { check: { ...config?.check, command: swapped } },
+  );
+  if (!check) return null;
+  const cheaper = scope !== "gate" && swapped !== undefined;
+  // A configured check.timeoutSeconds bounds either kind; otherwise an npm check runs under the
+  // caller's bound. Effective here so the reason text and the skip warning agree with what
+  // runBuildCheck enforced.
+  // A merge scope under a starved host gets a longer deadline (starvedDeadlineMs): the check
+  // runs as long as the team's load stretches it, and a kill at the unstretched bound would
+  // only measure the load (BUGS.md 2026-10-12). The load sampled here is also what the
+  // unverified reason names.
+  const load = sampleLoad();
+  const effectiveMs = MERGE_SCOPES.has(scope)
+    ? starvedDeadlineMs(checkTimeoutMs(check, timeoutMs), load)
+    : checkTimeoutMs(check, timeoutMs);
+  const runCheck = { ...check, timeoutMs: effectiveMs };
+  return { check, cheaper, runCheck, effectiveMs, load };
+}
+
+/** Run the resolved check under one permit, with the one clean retry for a verdict-less death —
+ * the one-permit-two-attempt rule. Prices the first attempt as its own build_check event and
+ * returns the final outcome and its run duration. */
+async function runScopedCheckWithRetry(
+  root: string,
+  role: string,
+  scope: BuildCheckScope,
+  wt: string,
+  runCheck: BuildCheck,
+  timeoutMs: number,
+  config: CheckConfigSlice | undefined,
+  sampleSleep: SleepSampler,
+  install: InstallRunner,
+  permitWait: PermitWaitHooks | undefined,
+  cheaper: boolean,
+): Promise<{ raw: BuildCheckOutcome; durationMs: number }> {
+  // One permit covers both attempts (the killed-check retry re-runs under the permit it
+  // holds); durationMs prices the run itself, not the wait for a permit.
+  let durationMs = 0;
+  const raw = await withCheckPermit(
+    config,
+    MERGE_SCOPES.has(scope) ? CHECK_TIER.merge : CHECK_TIER.other,
+    async () => {
+      // One permit covers both attempts (the killed-check retry re-runs under the permit it
+      // holds); durationMs prices the run itself, not the wait for a permit. A check the
+      // harness did not stop itself says nothing about the tree; a timeout whose deadline
+      // demonstrably fired late, and a failed run the host slept through, are the same weather
+      // — at every scope each owes one retry from a clean attempt, and the second attempt's
+      // outcome stands (runWithCleanRetry). The verdict-less first attempt is priced as its own
+      // event (the feed must answer how long a check took), then the final event below records
+      // the retry's classified outcome.
+      const { outcome, durationMs: d } = await runWithCleanRetry(
+        () => runBuildCheck(wt, runCheck, timeoutMs, undefined, sampleSleep, install),
+        (first, dur) => logEventBestEffort(root, buildCheckEvent(role, scope, first, dur, cheaper)),
+      );
+      durationMs = d;
+      return outcome;
+    },
+    {
+      waiting: () => permitWait?.waiting?.(),
+      granted: () => permitWait?.granted?.(),
+      waited: (waitedMs, parked) => logCheckWaitEvent(root, role, scope, waitedMs, parked),
+    },
+    `${role} ${scope}`,
+  );
+  return { raw, durationMs };
+}
+
+/** Classify the raw outcome: the merge-scope skip and slept-through rules become a deterministic
+ * unverified reject; anything else passes through. Never logs — the caller warns (see
+ * warnScopedCheck). Returns the unverified reason only when a rule fired. */
+function unverifiedOutcomeFor(
+  scope: BuildCheckScope,
+  check: BuildCheck,
+  raw: BuildCheckOutcome,
+  effectiveMs: number,
+  load: ReturnType<LoadSampler>,
+  durationMs: number,
+): { outcome: BuildCheckOutcome; unverifiedReason: string | null } {
+  // A signal kill at a merge scope, or a timeout whose deadline fired on time (real slowness, a
+  // genuinely hung or oversized suite), made no verdict about the tree — and this is the check
+  // whose whole job is to catch a semantic conflict before it merges, so it rejects
+  // deterministically — the author keeps its commit and retries. A timeout whose deadline fired
+  // late has already had its retry above: the lateness is the harness's own evidence the host
+  // slept, so a second verdict-less attempt is recorded as unverified rather than read again as
+  // weather (BUGS.md 2026-09-28). no-npm and a broken toolchain still say nothing about the tree,
+  // and the gate scope still proceeds to the model reviewer, which the merge path's own check backs
+  // up. A retry that ALSO slept made no clean verdict either: it is recorded as unverified — not
+  // attributed to the change, not cached as a red baseline — rather than read as a second
+  // deterministic failure (BUGS.md 2026-09-30). A retry that passed stands: the tree went green
+  // under the project's own check, even if the host napped through parts of it.
+  const sleepFailed = raw.status === "failed" && (raw.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
+  // A failed dependency install is the same at a merge scope: nothing ran against the tree as its
+  // lockfile pins it, so it must not merge (BUGS.md 2026-10-01).
+  const unverifiedSkip =
+    MERGE_SCOPES.has(scope) &&
+    (((raw.status === "skipped" &&
+      (raw.skipReason === "timeout" || raw.skipReason === "killed" || raw.skipReason === "install")) ||
+      sleepFailed));
+  if (!unverifiedSkip) return { outcome: raw, unverifiedReason: null };
+  const unverifiedReason =
+    raw.skipReason === "install"
+      ? installFailedPhrase(SCOPE_WORDS[scope].label, raw.install, UNVERIFIED_TREE)
+      : raw.skipReason === "killed"
+      ? killedPhrase(
+          SCOPE_WORDS[scope].label,
+          raw.killedBy ? { signal: raw.killedBy, durationMs } : undefined,
+          UNVERIFIED_TREE,
+        )
+      : sleepFailed
+        ? sleptPhrase(SCOPE_WORDS[scope].label, raw.run!.sleptMs!, UNVERIFIED_TREE)
+        : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; ${UNVERIFIED_TREE}${
+            // An on-time kill (the late-deadline wording already names its own cause) names the
+            // starved host when the load average says the team was the check's competition.
+            (raw.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS ? "" : loadedHostPhrase(load)
+          }`;
+  const outcome: BuildCheckOutcome = {
+    status: "failed",
+    script: checkScriptName(check),
+    outputTail: [unverifiedReason],
+    run: raw.run,
+    unverified: true,
+    ...(raw.install ? { install: raw.install } : {}),
+  };
+  return { outcome, unverifiedReason };
+}
+
+/** Warn for the two verdict-less roads: a skipped check (buildCheckSkipWarning) or an unverified
+ * merge reject. Reads the scope word table and the killed signal. */
+function warnScopedCheck(
+  root: string,
+  role: string,
+  scope: BuildCheckScope,
+  outcome: BuildCheckOutcome,
+  effectiveMs: number,
+  durationMs: number,
+  unverifiedReason: string | null,
+): void {
+  if (outcome.status === "skipped") {
+    // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
+    // code run into the 3-strike discard (gate) or a merge behind the merge lock.
+    const w = SCOPE_WORDS[scope];
+    warnEventBestEffort(
+      root,
+      role,
+      buildCheckSkipWarning(
+        outcome.skipReason!,
+        w.label,
+        w.proceeding,
+        effectiveMs,
+        outcome.skipReason === "killed" && outcome.killedBy
+          ? { signal: outcome.killedBy, durationMs }
+          : undefined,
+        outcome.run,
+        outcome.install,
+      ),
+    );
+  } else if (unverifiedReason) {
+    warnEventBestEffort(root, role, `${unverifiedReason}; rejecting the merge`);
+  }
+}
+
 /** Run the project's declared check for a named scope — the detect → run → build_check event →
  * skip-warning sequence the review gate's pre-check (scope "gate"), the merge path's in-lock
  * re-check (scope "merge"), and the batch merger's one check over the whole stacked tree (scope
@@ -74,122 +255,30 @@ export async function runScopedBuildCheck(
   permitWait?: PermitWaitHooks,
   sampleLoad: LoadSampler = sampleHostLoad,
 ): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
-  const swapped = scope === "gate" ? gateCommandOf(config) : MERGE_SCOPES.has(scope) ? mergeCommandOf(config) : undefined;
-  const check = detectBuildCheck(
+  const r = resolveScopedCheck(wt, scope, config, timeoutMs, sampleLoad);
+  if (!r) return null;
+  const { raw, durationMs } = await runScopedCheckWithRetry(
+    root,
+    role,
+    scope,
     wt,
-    swapped === undefined ? config : { check: { ...config?.check, command: swapped } },
-  );
-  if (!check) return null;
-  const cheaper = scope !== "gate" && swapped !== undefined;
-  // A configured check.timeoutSeconds bounds either kind; otherwise an npm check runs under the
-  // caller's bound. Effective here so the reason text and the skip warning agree with what
-  // runBuildCheck enforced.
-  // A merge scope under a starved host gets a longer deadline (starvedDeadlineMs): the check
-  // runs as long as the team's load stretches it, and a kill at the unstretched bound would
-  // only measure the load (BUGS.md 2026-10-12). The load sampled here is also what the
-  // unverified reason names.
-  const load = sampleLoad();
-  const effectiveMs = MERGE_SCOPES.has(scope)
-    ? starvedDeadlineMs(checkTimeoutMs(check, timeoutMs), load)
-    : checkTimeoutMs(check, timeoutMs);
-  const runCheck = { ...check, timeoutMs: effectiveMs };
-  // One permit covers both attempts (the killed-check retry re-runs under the permit it
-  // holds); durationMs prices the run itself, not the wait for a permit.
-  let durationMs = 0;
-  const raw = await withCheckPermit(
+    r.runCheck,
+    timeoutMs,
     config,
-    MERGE_SCOPES.has(scope) ? CHECK_TIER.merge : CHECK_TIER.other,
-    async () => {
-      // One permit covers both attempts (the killed-check retry re-runs under the permit it
-      // holds); durationMs prices the run itself, not the wait for a permit. A check the
-      // harness did not stop itself says nothing about the tree; a timeout whose deadline
-      // demonstrably fired late, and a failed run the host slept through, are the same weather
-      // — at every scope each owes one retry from a clean attempt, and the second attempt's
-      // outcome stands (runWithCleanRetry). The verdict-less first attempt is priced as its own
-      // event (the feed must answer how long a check took), then the final event below records
-      // the retry's classified outcome.
-      const { outcome, durationMs: d } = await runWithCleanRetry(
-        () => runBuildCheck(wt, runCheck, timeoutMs, undefined, sampleSleep, install),
-        (first, dur) => logEventBestEffort(root, buildCheckEvent(role, scope, first, dur, cheaper)),
-      );
-      durationMs = d;
-      return outcome;
-    },
-    {
-      waiting: () => permitWait?.waiting?.(),
-      granted: () => permitWait?.granted?.(),
-      waited: (waitedMs, parked) => logCheckWaitEvent(root, role, scope, waitedMs, parked),
-    },
-    `${role} ${scope}`,
+    sampleSleep,
+    install,
+    permitWait,
+    r.cheaper,
   );
-  // A signal kill at a merge scope, or a timeout whose deadline fired on time (real slowness, a
-  // genuinely hung or oversized suite), made no verdict about the tree — and this is the check
-  // whose whole job is to catch a semantic conflict before it merges, so it rejects
-  // deterministically — the author keeps its commit and retries. A timeout whose deadline fired
-  // late has already had its retry above: the lateness is the harness's own evidence the host
-  // slept, so a second verdict-less attempt is recorded as unverified rather than read again as
-  // weather (BUGS.md 2026-09-28). no-npm and a broken toolchain still say nothing about the tree,
-  // and the gate scope still proceeds to the model reviewer, which the merge path's own check backs
-  // up. A retry that ALSO slept made no clean verdict either: it is recorded as unverified — not
-  // attributed to the change, not cached as a red baseline — rather than read as a second
-  // deterministic failure (BUGS.md 2026-09-30). A retry that passed stands: the tree went green
-  // under the project's own check, even if the host napped through parts of it.
-  const sleepFailed = raw.status === "failed" && (raw.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
-  // A failed dependency install is the same at a merge scope: nothing ran against the tree as its
-  // lockfile pins it, so it must not merge (BUGS.md 2026-10-01).
-  const unverifiedSkip =
-    MERGE_SCOPES.has(scope) &&
-    (((raw.status === "skipped" &&
-      (raw.skipReason === "timeout" || raw.skipReason === "killed" || raw.skipReason === "install")) ||
-      sleepFailed));
-  const unverifiedReason =
-    raw.skipReason === "install"
-      ? installFailedPhrase(SCOPE_WORDS[scope].label, raw.install, UNVERIFIED_TREE)
-      : raw.skipReason === "killed"
-      ? killedPhrase(
-          SCOPE_WORDS[scope].label,
-          raw.killedBy ? { signal: raw.killedBy, durationMs } : undefined,
-          UNVERIFIED_TREE,
-        )
-      : sleepFailed
-        ? sleptPhrase(SCOPE_WORDS[scope].label, raw.run!.sleptMs!, UNVERIFIED_TREE)
-        : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; ${UNVERIFIED_TREE}${
-            // An on-time kill (the late-deadline wording already names its own cause) names the
-            // starved host when the load average says the team was the check's competition.
-            (raw.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS ? "" : loadedHostPhrase(load)
-          }`;
-  const outcome: BuildCheckOutcome = unverifiedSkip
-    ? {
-        status: "failed",
-        script: checkScriptName(check),
-        outputTail: [unverifiedReason],
-        run: raw.run,
-        unverified: true,
-        ...(raw.install ? { install: raw.install } : {}),
-      }
-    : raw;
-  logEventBestEffort(root, buildCheckEvent(role, scope, outcome, durationMs, cheaper));
-  if (outcome.status === "skipped") {
-    // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
-    // code run into the 3-strike discard (gate) or a merge behind the merge lock.
-    const w = SCOPE_WORDS[scope];
-    warnEventBestEffort(
-      root,
-      role,
-      buildCheckSkipWarning(
-        outcome.skipReason!,
-        w.label,
-        w.proceeding,
-        effectiveMs,
-        outcome.skipReason === "killed" && outcome.killedBy
-          ? { signal: outcome.killedBy, durationMs }
-          : undefined,
-        outcome.run,
-        outcome.install,
-      ),
-    );
-  } else if (unverifiedSkip) {
-    warnEventBestEffort(root, role, `${unverifiedReason}; rejecting the merge`);
-  }
-  return { check, outcome };
+  const { outcome, unverifiedReason } = unverifiedOutcomeFor(
+    scope,
+    r.check,
+    raw,
+    r.effectiveMs,
+    r.load,
+    durationMs,
+  );
+  logEventBestEffort(root, buildCheckEvent(role, scope, outcome, durationMs, r.cheaper));
+  warnScopedCheck(root, role, scope, outcome, r.effectiveMs, durationMs, unverifiedReason);
+  return { check: r.check, outcome };
 }
