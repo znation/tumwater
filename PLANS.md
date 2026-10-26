@@ -393,6 +393,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Subtract, part 2c/6: The held counters and the operator hold go — a too-large note keeps the plan role running (planned 2026-10-26 by the plan role, split from the too-large part 2/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; requires Subtract part 2b/6 landed, since all three edit the same guidance constants, classifier and release surfaces; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-index.ts src/backlog/backlog-cli.ts src/backlog/backlog-cli-view.ts src/runner/revision.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-backlog.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts docs/glossary.md docs/how-it-works.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts test/team-alerts.test.ts test/status-payload.test.ts test/tui-keys.test.ts)
 
+**Needs review 2026-10-26 by feature: too large for one run (held 2)**
+
 **Previously held 1**
 
 **Goal.** No `(held N)`/`**Previously held N**` count is written or read, no Needs-review note escalates to a derived *held-for-operator* hold, and one release verb lifts Refused then Needs review; a `**Needs review … too large for one run**` note always routes to the plan role (`planBacklogFull` false), never to the operator.
