@@ -170,13 +170,12 @@ function pct(v: unknown): number {
   return claudeUtilizationPct(finiteNumber(v, 0));
 }
 
-/** A compact, bounded one-liner for one harness decision event, for the Team state changes
- * section. Every free string is sliced (field) and the whole line is capped again at
- * STATE_CHANGE_MAX so the digest's byte bound holds for any event shape — the cap cut falls on
- * a word boundary and carries truncateExample's `… (+N chars)` marker, so a cut line can never
- * read as complete or stand mid-word where a key or value should be; the render adds the
- * timestamp and a roleCell-sliced role, so no unbounded field reaches the page. */
-export function describeStateChange(ev: HarnessEvent): string {
+/** A per-family builder of one state-change line, one per event family, so the budget, pause,
+ * model-wiring, provider-hold, live-config, update, wait and lifecycle wordings are each found
+ * by name. Each is a total function over any HarnessEvent — its `default` returns the bare type
+ * name, unreachable through the dispatcher below — and each returns the untruncated line; the
+ * caller truncates exactly once, so the byte bound and its marker apply as before. */
+function budgetStateChange(ev: HarnessEvent): string {
   let text: string;
   switch (ev.type) {
     case "budget_paused": {
@@ -198,6 +197,15 @@ export function describeStateChange(ev: HarnessEvent): string {
     case "budget_resumed":
       text = `budget resumed (${budgetPhrase(ev.spentUsd, ev.capUsd)} today)`;
       break;
+    default:
+      return ev.type;
+  }
+  return text;
+}
+
+function pauseStateChange(ev: HarnessEvent): string {
+  let text: string;
+  switch (ev.type) {
     case "team_paused":
       text = teamPausePhrase() + untilClockSuffix(ev.until);
       if (isNonBlankString(ev.reason)) text += `: ${field(ev.reason)}`;
@@ -223,6 +231,15 @@ export function describeStateChange(ev: HarnessEvent): string {
     case "role_cap_resumed":
       text = `role ${field(ev.role ?? "?")} resumed — under its daily cap again`;
       break;
+    default:
+      return ev.type;
+  }
+  return text;
+}
+
+function modelStateChange(ev: HarnessEvent): string {
+  let text: string;
+  switch (ev.type) {
     case "model_fallback_started":
       // The role tripped off its primary onto its fallback after provider-class failures.
       text = `model fallback — ${providerModel(ev)} engaged (${field(ev.reason ?? "backend failure")})`;
@@ -231,110 +248,6 @@ export function describeStateChange(ev: HarnessEvent): string {
       // The return counterpart: names the primary the role resumed on and how long the
       // off-model episode ran.
       text = `model fallback ended — back on ${providerModel(ev)} after ${shortSpanPhrase(finiteNumber(ev.durationMs, 0))}`;
-      break;
-    case "rate_limit_hold": {
-      // Same split as the event feed's rendering (event-format.ts): a rate-limit hold keeps
-      // the 429 wording; a backend-failure kind names itself. The role list caps at four and
-      // each role is byte-sliced through field() so the section's bound holds.
-      const roles = rolesPhrase(ev.roles, "?", 4, field);
-      text =
-        rendersAsBackendFailure(ev.kind)
-          ? `backend hold (${backendKindPhrase(ev.kind)}) ${holdPhrase(ev.holdMs, ev.escalation)} — ${roles}`
-          : `429 hold ${holdPhrase(ev.holdMs, ev.escalation)} — ${roles}`;
-      break;
-    }
-    case "rate_limit_resumed":
-      // Same split as the hold line above (and the event feed's rendering): the resumed event
-      // carries the ended hold's kind, so a backend hold's lift names itself.
-      text =
-        rendersAsBackendFailure(ev.kind)
-          ? `backend hold lifted (${backendKindPhrase(ev.kind)}) — roles run again`
-          : "429 hold lifted — roles run again";
-      break;
-    case "max_concurrent_changed":
-      text = `maxConcurrent ${field(ev.from)} → ${field(ev.to)}`;
-      break;
-    case "retention_changed":
-      text = `sessionRetentionDays ${field(ev.from)} → ${field(ev.to)}`;
-      break;
-    case "config_changed": {
-      // Whole keys only, and a marked drop when any are cut (BUGS.md 2026-10-01): the old
-      // slice(0, 6) could leave a mid-word fragment standing in for a key and hid the rest of
-      // the edit with no marker. Keys are dropped from the tail until the line — plus the
-      // marker naming the drop — fits the section cap, so the final STATE_CHANGE_MAX pass
-      // below can never cut the marker or a key mid-word.
-      const keys = stringList(ev.keys).map(field);
-      text = keys.length > 0 ? `config changed: ${keys.join(", ")}` : "config changed";
-      let hidden = 0;
-      while (text.length > STATE_CHANGE_MAX) {
-        keys.pop();
-        hidden += 1;
-        text =
-          keys.length > 0
-            ? `config changed: ${keys.join(", ")} … +${hidden} more keys`
-            : `config changed … +${hidden} more keys`;
-      }
-      break;
-    }
-    case "build_stale":
-      // The digest's 72-char line cap (§ STATE_CHANGE_MAX) cannot hold the full alert phrase
-      // "restarts after cooldown; work continues" beside the ahead-count prefix, so it says
-      // the same thing compactly: the restart waits while work continues (cooldown scope,
-      // PLANS.md 2026-10-23).
-      text = `update available (${plural(finiteNumber(ev.aheadCommits, 0), "commit")} behind) — restart waits; work continues`;
-      break;
-    case "restart_pending":
-      text = `restart pending — main ${shortSha(ev.head)} green`;
-      break;
-    case "restart":
-      text = `restarting onto update ${shortSha(ev.to)}`;
-      break;
-    case "restart_refused":
-      text = `restart onto ${shortSha(ev.to)} refused: ${field(ev.reason)}`;
-      break;
-    case "restart_blocked":
-      text = `restart blocked — ${field(ev.reason)}; staying on build ${shortSha(ev.from)}`;
-      break;
-    case "run_deferred":
-      text = `deferred — ${deferredReasonText(ev)}`;
-      break;
-    case "orchestrator_start":
-      text = `tumwater started (pid ${field(ev.pid)}${ev.build ? `, build ${shortSha(ev.build)}` : ""})`;
-      break;
-    case "orchestrator_stop":
-      text = orchestratorStopPhrase(ev.cause);
-      break;
-    case "supervisor_exit":
-      text = `tumwater down — restart ${field(ev.generation)} ${ev.signal ? `killed by ${field(ev.signal)}` : `exited ${field(ev.code)}`}${ev.reason ? `: ${field(ev.reason)}` : ""}`;
-      break;
-    case "disk_low":
-      // The disk floor stopped the team from starting runs; the free space and floor read
-      // through the feed's own gigabytes so the digest and the event feed cannot drift.
-      text = `waiting: low disk — ${gigabytes(ev.freeGB)} free (floor ${gigabytes(ev.holdGB)})`;
-      break;
-    case "disk_ok":
-      text = `disk recovered — ${gigabytes(ev.freeGB)} free`;
-      break;
-    case "quiet_hours_started":
-      text = `waiting: quiet hours${windowSuffix(ev)}`;
-      break;
-    case "quiet_hours_ended":
-      text = `quiet hours ended${windowSuffix(ev)}`;
-      break;
-    case "maintenance_quota_hold":
-      text = `waiting: maintenance allowance used — ${field(ev.maint)}/${field(ev.allowance)} in 24h (${field(ev.work)} work)`;
-      break;
-    case "maintenance_quota_resumed":
-      text = `maintenance allowance reopened — ${field(ev.maint)}/${field(ev.allowance)} in 24h`;
-      break;
-    case "subscription_window_reserved":
-      text = `waiting: ${backendLabel(ev)} window ${field(ev.windowType)} at ${pct(ev.utilization)}% past its ${pct(ev.reserve)}% reserve`;
-      break;
-    case "subscription_window_limited":
-      text = `waiting: ${backendLabel(ev)} window ${field(ev.windowType)} rejected${windowResetPhrase(ev)}`;
-      break;
-    case "subscription_window_reset":
-      text = `${backendLabel(ev)} window reset — model jobs run again`;
       break;
     case "provider_concurrency_changed":
       text = `${field(ev.provider)} concurrency ${field(ev.from)} → ${field(ev.to)}`;
@@ -378,11 +291,221 @@ export function describeStateChange(ev: HarnessEvent): string {
           ? `window reset — handed ${rolesPhrase(ev.roles, "?", 4, field)} back to the primary`
           : `budget reopened — handed ${rolesPhrase(ev.roles, "?", 4, field)} back to the primary`;
       break;
+    default:
+      return ev.type;
+  }
+  return text;
+}
+
+function providerHoldStateChange(ev: HarnessEvent): string {
+  let text: string;
+  switch (ev.type) {
+    case "rate_limit_hold": {
+      // Same split as the event feed's rendering (event-format.ts): a rate-limit hold keeps
+      // the 429 wording; a backend-failure kind names itself. The role list caps at four and
+      // each role is byte-sliced through field() so the section's bound holds.
+      const roles = rolesPhrase(ev.roles, "?", 4, field);
+      text =
+        rendersAsBackendFailure(ev.kind)
+          ? `backend hold (${backendKindPhrase(ev.kind)}) ${holdPhrase(ev.holdMs, ev.escalation)} — ${roles}`
+          : `429 hold ${holdPhrase(ev.holdMs, ev.escalation)} — ${roles}`;
+      break;
+    }
+    case "rate_limit_resumed":
+      // Same split as the hold line above (and the event feed's rendering): the resumed event
+      // carries the ended hold's kind, so a backend hold's lift names itself.
+      text =
+        rendersAsBackendFailure(ev.kind)
+          ? `backend hold lifted (${backendKindPhrase(ev.kind)}) — roles run again`
+          : "429 hold lifted — roles run again";
+      break;
+    default:
+      return ev.type;
+  }
+  return text;
+}
+
+function liveConfigStateChange(ev: HarnessEvent): string {
+  let text: string;
+  switch (ev.type) {
+    case "max_concurrent_changed":
+      text = `maxConcurrent ${field(ev.from)} → ${field(ev.to)}`;
+      break;
+    case "retention_changed":
+      text = `sessionRetentionDays ${field(ev.from)} → ${field(ev.to)}`;
+      break;
+    case "config_changed": {
+      // Whole keys only, and a marked drop when any are cut (BUGS.md 2026-10-01): the old
+      // slice(0, 6) could leave a mid-word fragment standing in for a key and hid the rest of
+      // the edit with no marker. Keys are dropped from the tail until the line — plus the
+      // marker naming the drop — fits the section cap, so the final STATE_CHANGE_MAX pass
+      // below can never cut the marker or a key mid-word.
+      const keys = stringList(ev.keys).map(field);
+      text = keys.length > 0 ? `config changed: ${keys.join(", ")}` : "config changed";
+      let hidden = 0;
+      while (text.length > STATE_CHANGE_MAX) {
+        keys.pop();
+        hidden += 1;
+        text =
+          keys.length > 0
+            ? `config changed: ${keys.join(", ")} … +${hidden} more keys`
+            : `config changed … +${hidden} more keys`;
+      }
+      break;
+    }
+    default:
+      return ev.type;
+  }
+  return text;
+}
+
+function updateStateChange(ev: HarnessEvent): string {
+  let text: string;
+  switch (ev.type) {
+    case "build_stale":
+      // The digest's 72-char line cap (§ STATE_CHANGE_MAX) cannot hold the full alert phrase
+      // "restarts after cooldown; work continues" beside the ahead-count prefix, so it says
+      // the same thing compactly: the restart waits while work continues (cooldown scope,
+      // PLANS.md 2026-10-23).
+      text = `update available (${plural(finiteNumber(ev.aheadCommits, 0), "commit")} behind) — restart waits; work continues`;
+      break;
+    case "restart_pending":
+      text = `restart pending — main ${shortSha(ev.head)} green`;
+      break;
+    case "restart":
+      text = `restarting onto update ${shortSha(ev.to)}`;
+      break;
+    case "restart_refused":
+      text = `restart onto ${shortSha(ev.to)} refused: ${field(ev.reason)}`;
+      break;
+    case "restart_blocked":
+      text = `restart blocked — ${field(ev.reason)}; staying on build ${shortSha(ev.from)}`;
+      break;
+    default:
+      return ev.type;
+  }
+  return text;
+}
+
+function waitStateChange(ev: HarnessEvent): string {
+  let text: string;
+  switch (ev.type) {
+    case "run_deferred":
+      text = `deferred — ${deferredReasonText(ev)}`;
+      break;
+    case "disk_low":
+      // The disk floor stopped the team from starting runs; the free space and floor read
+      // through the feed's own gigabytes so the digest and the event feed cannot drift.
+      text = `waiting: low disk — ${gigabytes(ev.freeGB)} free (floor ${gigabytes(ev.holdGB)})`;
+      break;
+    case "disk_ok":
+      text = `disk recovered — ${gigabytes(ev.freeGB)} free`;
+      break;
+    case "quiet_hours_started":
+      text = `waiting: quiet hours${windowSuffix(ev)}`;
+      break;
+    case "quiet_hours_ended":
+      text = `quiet hours ended${windowSuffix(ev)}`;
+      break;
+    case "maintenance_quota_hold":
+      text = `waiting: maintenance allowance used — ${field(ev.maint)}/${field(ev.allowance)} in 24h (${field(ev.work)} work)`;
+      break;
+    case "maintenance_quota_resumed":
+      text = `maintenance allowance reopened — ${field(ev.maint)}/${field(ev.allowance)} in 24h`;
+      break;
+    case "subscription_window_reserved":
+      text = `waiting: ${backendLabel(ev)} window ${field(ev.windowType)} at ${pct(ev.utilization)}% past its ${pct(ev.reserve)}% reserve`;
+      break;
+    case "subscription_window_limited":
+      text = `waiting: ${backendLabel(ev)} window ${field(ev.windowType)} rejected${windowResetPhrase(ev)}`;
+      break;
+    case "subscription_window_reset":
+      text = `${backendLabel(ev)} window reset — model jobs run again`;
+      break;
+    default:
+      return ev.type;
+  }
+  return text;
+}
+
+function lifecycleStateChange(ev: HarnessEvent): string {
+  let text: string;
+  switch (ev.type) {
+    case "orchestrator_start":
+      text = `tumwater started (pid ${field(ev.pid)}${ev.build ? `, build ${shortSha(ev.build)}` : ""})`;
+      break;
+    case "orchestrator_stop":
+      text = orchestratorStopPhrase(ev.cause);
+      break;
+    case "supervisor_exit":
+      text = `tumwater down — restart ${field(ev.generation)} ${ev.signal ? `killed by ${field(ev.signal)}` : `exited ${field(ev.code)}`}${ev.reason ? `: ${field(ev.reason)}` : ""}`;
+      break;
     case "bootstrap_complete":
       text = `bootstrap complete — ${field(ev.plansDone)}/${field(ev.untilPlansDone)} plans done`;
       break;
     default:
-      text = ev.type;
+      return ev.type;
   }
-  return truncateExample(text, STATE_CHANGE_MAX);
+  return text;
+}
+
+/** A compact, bounded one-liner for one harness decision event, for the Team state changes
+ * section. Every free string is sliced (field) and the whole line is capped again at
+ * STATE_CHANGE_MAX so the digest's byte bound holds for any event shape — the cap cut falls on
+ * a word boundary and carries truncateExample's `… (+N chars)` marker, so a cut line can never
+ * read as complete or stand mid-word where a key or value should be; the render adds the
+ * timestamp and a roleCell-sliced role, so no unbounded field reaches the page. */
+export function describeStateChange(ev: HarnessEvent): string {
+  switch (ev.type) {
+    case "budget_paused":
+    case "budget_fallback":
+    case "budget_resumed":
+      return truncateExample(budgetStateChange(ev), STATE_CHANGE_MAX);
+    case "team_paused":
+    case "team_resumed":
+    case "role_paused":
+    case "role_resumed":
+    case "role_streak_paused":
+    case "role_cap_paused":
+    case "role_cap_resumed":
+      return truncateExample(pauseStateChange(ev), STATE_CHANGE_MAX);
+    case "model_fallback_started":
+    case "model_fallback_ended":
+    case "provider_concurrency_changed":
+    case "model_changed":
+    case "fallback_switched":
+    case "budget_handback":
+      return truncateExample(modelStateChange(ev), STATE_CHANGE_MAX);
+    case "rate_limit_hold":
+    case "rate_limit_resumed":
+      return truncateExample(providerHoldStateChange(ev), STATE_CHANGE_MAX);
+    case "max_concurrent_changed":
+    case "retention_changed":
+    case "config_changed":
+      return truncateExample(liveConfigStateChange(ev), STATE_CHANGE_MAX);
+    case "build_stale":
+    case "restart_pending":
+    case "restart":
+    case "restart_refused":
+    case "restart_blocked":
+      return truncateExample(updateStateChange(ev), STATE_CHANGE_MAX);
+    case "run_deferred":
+    case "disk_low":
+    case "disk_ok":
+    case "quiet_hours_started":
+    case "quiet_hours_ended":
+    case "maintenance_quota_hold":
+    case "maintenance_quota_resumed":
+    case "subscription_window_reserved":
+    case "subscription_window_limited":
+    case "subscription_window_reset":
+      return truncateExample(waitStateChange(ev), STATE_CHANGE_MAX);
+    case "orchestrator_start":
+    case "orchestrator_stop":
+    case "supervisor_exit":
+    case "bootstrap_complete":
+      return truncateExample(lifecycleStateChange(ev), STATE_CHANGE_MAX);
+    default:
+      return truncateExample(ev.type, STATE_CHANGE_MAX);
+  }
 }
