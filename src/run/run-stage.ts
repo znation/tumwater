@@ -21,9 +21,8 @@ import { enqueueMerge, entryRevisionFields, queuedMerges } from "../merge/merge-
 import type { PriorReview } from "../merge/merge-queue.js";
 import { hasUnmergedPin } from "../runner/leftover.js";
 import { plural } from "../text/phrases.js";
-import { errorMessage, squash } from "../text/text.js";
-import { recordFlow } from "./qa-coverage.js";
-import { recordFiled } from "./feedback-filings.js";
+import { squash } from "../text/text.js";
+import { recordDismissedFiling, recordDismissedFlow } from "./run-dismiss.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
 import { stagedMovedEntries } from "../scheduling/claims.js";
 import { entryKey } from "../backlog/backlog-parts.js";
@@ -401,31 +400,18 @@ function recordStageRecords(
   if (ctx.flow) {
     // The merge is already queued and the ledger only orders the qa menu, so a failed write
     // warns rather than failing the run.
-    try {
-      recordFlow(
-        ctx.root,
-        ctx.flow.flow,
-        ctx.flow.result,
-        ctx.flow.result === "bug" ? summary : undefined,
-      );
-    } catch (err) {
-      ctx.warn(`qa flow "${ctx.flow.flow}" not recorded: ${errorMessage(err)}`);
-    }
+    recordDismissedFlow(
+      ctx,
+      ctx.root,
+      ctx.flow.flow,
+      ctx.flow.result,
+      ctx.flow.result === "bug" ? summary : undefined,
+    );
   }
   // A feedback run that somehow changed the tree still records its filing, exactly as the
   // qa flow does above — a filing is a result independent of the run leaving files behind.
   if (ctx.filed) {
-    logEventBestEffort(ctx.root, {
-      source: ctx.role,
-      type: "issue_filed",
-      issue: ctx.filed.issue,
-      title: ctx.filed.title,
-    });
-    try {
-      recordFiled(ctx.root, ctx.filed.issue, ctx.filed.title);
-    } catch (err) {
-      ctx.warn(`feedback filing #${ctx.filed.issue} not recorded: ${errorMessage(err)}`);
-    }
+    recordDismissedFiling(ctx, ctx.root, ctx.filed);
   }
   // No ci parity is recorded here. qa flow and feedback filings above are durable books of
   // their own result, which is why a changed run still files them; but a parity entry says

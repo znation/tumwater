@@ -20,10 +20,9 @@ import { diagnoseNoChange, extractNoChangeAnswer } from "../verdict/no-change.js
 import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../git/commit-message.js";
 import { errorMessage } from "../text/text.js";
-import { recordFlow } from "./qa-coverage.js";
 import { recordParity } from "./ci-parity.js";
-import { recordFiled } from "./feedback-filings.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
+import { recordDismissedFiling, recordDismissedFlow } from "./run-dismiss.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
@@ -435,16 +434,13 @@ function noChangeArm(ctx: RunVerdictContext, changed: boolean): RunOutcome | und
     // rotation past a check that did not complete. Only a run that was not cut off records.
     if (ctx.flow && !diagnosis.cutOff) {
       // The ledger only orders the qa menu, so a failed write warns rather than failing the run.
-      try {
-        recordFlow(
-          ctx.root,
-          ctx.flow.flow,
-          ctx.flow.result,
-          ctx.flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
-        );
-      } catch (err) {
-        ctx.warn(`qa flow "${ctx.flow.flow}" not recorded: ${errorMessage(err)}`);
-      }
+      recordDismissedFlow(
+        ctx,
+        ctx.root,
+        ctx.flow.flow,
+        ctx.flow.result,
+        ctx.flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
+      );
     }
     // A fulfilled feedback run that filed records its per-install ledger entry and logs the
     // issue_filed event so the filing is visible in the operator's activity feed. Recording is
@@ -452,17 +448,7 @@ function noChangeArm(ctx: RunVerdictContext, changed: boolean): RunOutcome | und
     // outcome stands. A cut-off run records nothing — truncation is not a filing the run
     // declared (the same guard the FLOW line carries).
     if (ctx.filed && !diagnosis.cutOff) {
-      logEventBestEffort(ctx.root, {
-        source: ctx.role,
-        type: "issue_filed",
-        issue: ctx.filed.issue,
-        title: ctx.filed.title,
-      });
-      try {
-        recordFiled(ctx.root, ctx.filed.issue, ctx.filed.title);
-      } catch (err) {
-        ctx.warn(`feedback filing #${ctx.filed.issue} not recorded: ${errorMessage(err)}`);
-      }
+      recordDismissedFiling(ctx, ctx.root, ctx.filed);
     }
     // A fulfilled ci run that declared its coverage records it in the parity ledger so the
     // next fresh session's block knows what the last run covered (part 3/3). The ledger is
