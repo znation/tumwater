@@ -42,9 +42,9 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * would warn forever on records nobody should rewrite. */
 export const FIX_CLAIMS_CHECKED = 10;
 
-/** A second or later suspect record's heading is trimmed to this many characters in the warn —
- * the first is named in full, the rest only enough to find them in BUGS.md. */
-export const FIX_CLAIM_HEADING_MAX = 60;
+/** A cited record's heading is trimmed to this many characters in a doctor warn — enough to
+ * find it back in its file; quoteHeading applies it to every citation. */
+const FIX_CLAIM_HEADING_MAX = 60;
 
 /** A refused entry's note is trimmed to this many characters in the refusals warn. */
 export const REFUSAL_NOTE_MAX = 120;
@@ -78,6 +78,13 @@ export function andMore<T>(rest: readonly T[], render: (item: T) => string, noun
   return rest.length > 0
     ? ` (and ${rest.length} more${noun ? ` ${noun}` : ""}: ${rest.map(render).join(", ")})`
     : "";
+}
+
+/** Quote a heading/summary in a doctor sentence, truncated to FIX_CLAIM_HEADING_MAX so a check
+ * stays one line: `"…"`. The doctor's citations all quote-then-truncate the same way; this is
+ * the one home for that shape. */
+export function quoteHeading(title: string): string {
+  return `"${truncate(title, FIX_CLAIM_HEADING_MAX)}"`;
 }
 
 /** Read one backlog file for a check, or the failure message explaining why it could not be
@@ -152,8 +159,8 @@ export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome 
   const [first, ...rest] = stale;
   if (!first)
     return withWait(okOutcome(`no merge-queue entry has waited more than ${humanSeconds(MERGE_QUEUE_STALE_MS / 1000)} to start`));
-  const more = andMore(rest, (e) => `${e.role} — "${truncate(e.summary, FIX_CLAIM_HEADING_MAX)}"`);
-  return withWait(warnOutcome(`merge-queue entry of ${roleLabel(first.role)} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has waited ` +
+  const more = andMore(rest, (e) => `${e.role} — ${quoteHeading(e.summary)}`);
+  return withWait(warnOutcome(`merge-queue entry of ${roleLabel(first.role)} — ${quoteHeading(first.summary)} — has waited ` +
       `${first.age} to start${more}; a queued change the pipeline neither approves nor flags reads as healthy, so the merge queue has stopped moving`));
 }
 
@@ -242,7 +249,7 @@ export function atRiskPostReviewsPhrase(rows: readonly AtRiskPostReview[]): stri
   const [first, ...rest] = rows;
   if (!first) return null;
   const more = andMore(rest, (r) => `${roleLabel(r.role)} ${shortSha(r.commit)}`);
-  return `the post-merge review of ${roleLabel(first.role)} ${shortSha(first.commit)} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has ended without a verdict ${first.failures} times${more}; ` +
+  return `the post-merge review of ${roleLabel(first.role)} ${shortSha(first.commit)} — ${quoteHeading(first.summary)} — has ended without a verdict ${first.failures} times${more}; ` +
     `one more failed run drops it and the commit stays on main unreviewed — fix the reviewer backend or accept the commit unreviewed deliberately`;
 }
 

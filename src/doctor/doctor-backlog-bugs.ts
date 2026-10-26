@@ -1,4 +1,4 @@
-import { andMore, readBacklogChecked, FIX_CLAIMS_CHECKED, FIX_CLAIM_HEADING_MAX, REFUSAL_NOTE_MAX, STALE_QUESTION_DAYS, STALE_BUG_DAYS, STALE_WAIT_DAYS } from "./doctor-backlog.js";
+import { andMore, quoteHeading, readBacklogChecked, FIX_CLAIMS_CHECKED, REFUSAL_NOTE_MAX, STALE_QUESTION_DAYS, STALE_BUG_DAYS, STALE_WAIT_DAYS } from "./doctor-backlog.js";
 import { truncate } from "../text/text.js";
 import { ageInDays, filingDate, fixedBugEntries, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
@@ -44,8 +44,8 @@ export function checkStaleQuestions(root: string): CheckOutcome {
   });
   const [first, ...rest] = stale;
   if (!first) return okOutcome("no open question has waited more than 7 days for an answer");
-  const more = andMore(rest, (q) => `"${truncate(q.title, FIX_CLAIM_HEADING_MAX)}"`);
-  return warnOutcome(`QUESTIONS.md question "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" has waited ${first.days} d for an answer${more} — ` +
+  const more = andMore(rest, (q) => quoteHeading(q.title));
+  return warnOutcome(`QUESTIONS.md question ${quoteHeading(first.title)} has waited ${first.days} d for an answer${more} — ` +
       `a question that waits too long for a human answer is worth your attention`);
 }
 
@@ -66,8 +66,8 @@ export function checkStaleBugs(root: string): CheckOutcome {
   });
   const [first, ...rest] = stale;
   if (!first) return okOutcome("no open bug has waited more than 3 days for a fix");
-  const more = andMore(rest, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
-  return warnOutcome(`BUGS.md bug #${first.position} "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" has waited ${first.days} d for a fix${more} — ` +
+  const more = andMore(rest, (b) => `#${b.position} ${quoteHeading(b.title)}`);
+  return warnOutcome(`BUGS.md bug #${first.position} ${quoteHeading(first.title)} has waited ${first.days} d for a fix${more} — ` +
       `no role is fixing it: check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``);
 }
 
@@ -181,8 +181,8 @@ export function checkWaitingBugs(root: string): CheckOutcome {
     });
     const [again, ...others] = recurred;
     if (again) {
-      const more = andMore(others, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
-      return warnOutcome(`BUGS.md bug #${again.position} "${truncate(again.title, FIX_CLAIM_HEADING_MAX)}" failed again since its Waiting for the next failure note ` +
+      const more = andMore(others, (b) => `#${b.position} ${quoteHeading(b.title)}`);
+      return warnOutcome(`BUGS.md bug #${again.position} ${quoteHeading(again.title)} failed again since its Waiting for the next failure note ` +
         `(${formatTimestamp(again.newest.ts)}: ${truncate(again.newest.text, REFUSAL_NOTE_MAX)})${more} — ` +
         `record the occurrence under the entry and release it with \`tumwater bug --release ${again.position}\``);
     }
@@ -201,12 +201,12 @@ export function checkWaitingBugs(root: string): CheckOutcome {
   });
   const [firstLapsed, ...restLapsed] = lapsed;
   if (firstLapsed) {
-    const more = andMore(restLapsed, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
-    return warnOutcome(`BUGS.md bug #${firstLapsed.position} "${truncate(firstLapsed.title, FIX_CLAIM_HEADING_MAX)}" has waited ${firstLapsed.days} d for its next failure without one ` +
+    const more = andMore(restLapsed, (b) => `#${b.position} ${quoteHeading(b.title)}`);
+    return warnOutcome(`BUGS.md bug #${firstLapsed.position} ${quoteHeading(firstLapsed.title)} has waited ${firstLapsed.days} d for its next failure without one ` +
         `— its flake likely never comes back, so it parks indefinitely; release it with \`tumwater bug --release ${firstLapsed.position}\`${more}`);
   }
-  const more = andMore(rest, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
-  return okOutcome(`BUGS.md bug #${first.position} "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held until it fails again ` +
+  const more = andMore(rest, (b) => `#${b.position} ${quoteHeading(b.title)}`);
+  return okOutcome(`BUGS.md bug #${first.position} ${quoteHeading(first.title)} is held until it fails again ` +
       `(${truncate(first.note, REFUSAL_NOTE_MAX)})${more} — selfcheck lifts the note when it records a new occurrence; ` +
       `release it now with \`tumwater bug --release ${first.position}\``);
 }
@@ -269,8 +269,8 @@ export function matchedRegressedFixes(
 export function regressedFixesPhrase(regressed: readonly RegressedFix[]): string | null {
   const [first, ...rest] = regressed;
   if (!first) return null;
-  const more = andMore(rest, (c) => `"${truncate(c.title, FIX_CLAIM_HEADING_MAX)}"`);
-  return `BUGS.md Fixed record "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" quotes a test that failed again after its ${first.date} fix ` +
+  const more = andMore(rest, (c) => quoteHeading(c.title));
+  return `BUGS.md Fixed record ${quoteHeading(first.title)} quotes a test that failed again after its ${first.date} fix ` +
     `(${formatTimestamp(first.newest.ts)}: ${truncate(first.newest.text, REFUSAL_NOTE_MAX)})${more} — ` +
     "file it as a new bug with `tumwater bug`, quoting the test name and citing the Fixed record";
 }
@@ -330,7 +330,7 @@ export function checkRefusedEntries(root: string): CheckOutcome {
   const [first, ...rest] = held;
   if (!first) return okOutcome("no planned plan or open bug is held by a Refused note");
   const more = andMore(rest, (e) =>
-    `${e.file} ${e.command} #${e.position} "${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"` +
+    `${e.file} ${e.command} #${e.position} ${quoteHeading(e.title)}` +
     (e.mergeDone.length > 0 ? " [prerequisites no longer planned]" : "") +
     (e.waiting > 0 ? ` [${e.waiting} part(s) wait on it]` : ""));
   const stale = first.mergeDone.length > 0

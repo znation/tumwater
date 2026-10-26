@@ -1,4 +1,4 @@
-import { andMore, readDoc, readBacklogChecked, FIX_CLAIMS_CHECKED, FIX_CLAIM_HEADING_MAX, REFUSAL_NOTE_MAX } from "./doctor-backlog.js";
+import { andMore, quoteHeading, readDoc, readBacklogChecked, FIX_CLAIMS_CHECKED, REFUSAL_NOTE_MAX } from "./doctor-backlog.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import path from "node:path";
@@ -46,7 +46,7 @@ export function checkFixClaims(root: string): CheckOutcome {
   const { heading, missing } = first;
   const names = missingSymbolNames(missing);
   // Every other suspect is still named, shortened: a doctor check is one line.
-  const more = andMore(rest, (p) => `"${truncate(p.heading, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
+  const more = andMore(rest, (p) => quoteHeading(p.heading), "record(s)");
   return warnOutcome(`BUGS.md records "${heading}" as Fixed, but none of the symbols its Fix paragraph names ` +
       `exist on this tree: ${names}${more} — land the fix or keep the bug Open / refresh a stale record`);
 }
@@ -173,14 +173,14 @@ export function checkValidationGaps(root: string): CheckOutcome {
   if (!first) {
     if (unpinned.length > 0) {
       const up = unpinned[0]!;
-      const more = andMore(unpinned.slice(1), (s) => `"${truncate(s.title, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
+      const more = andMore(unpinned.slice(1), (s) => quoteHeading(s.title), "record(s)");
       return warnOutcome(`BUGS.md record "${up.title}" is an \`unclear-invariant\` fix but names no ` +
         `docs/invariants.md section — record the reconstructed guarantee there (a "Pinned by" line) in the ` +
         `same commit so the next bug in that area does not reconstruct it again${more}`);
     }
     return okOutcome(`newest ${validationGapRecords(root).length} Fixed record(s) carry a known Validation gap tag`);
   }
-  const more = andMore(rest, (s) => `"${truncate(s.title, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
+  const more = andMore(rest, (s) => quoteHeading(s.title), "record(s)");
   const what = first.kind === "missing"
     ? `BUGS.md record "${first.title}" has no **Validation gap:** line`
     : `BUGS.md record "${first.title}" names unrecognized Validation gap tag "${first.tag}"`;
@@ -206,7 +206,7 @@ export function checkStrandedPlans(root: string): CheckOutcome {
   if (stranded.length === 0) return okOutcome(clean);
   const [first, ...rest] = stranded;
   if (!first) return okOutcome(clean);
-  const more = andMore(rest, (e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
+  const more = andMore(rest, (e) => quoteHeading(e.title));
   const file = first.file ?? "PLANS.md";
   return warnOutcome(`${file} has a plan stranded under ## ${first.section}: "${first.title}"${more} — ` +
       `move it under ## ${first.section === "Done" ? "Planned" : "Done"}${file === "PLANS.md" ? "" : " in PLANS.md"} ` +
@@ -403,7 +403,7 @@ export function checkStalledEntries(root: string): CheckOutcome {
   ].filter((x): x is { file: "plans" | "bugs"; entry: BacklogEntry } => x !== null);
   const [first, ...rest] = stalled;
   if (!first) return okOutcome("no planned plan or open bug is held by a Needs-review, Needs-replan, or held-for-operator note"); // vocabulary-ok: names the held-for-operator hold
-  const more = andMore(rest, (s) => `"${truncate(s.entry.title, FIX_CLAIM_HEADING_MAX)}"`);
+  const more = andMore(rest, (s) => quoteHeading(s.entry.title));
   const kind = entryKindLabel(first.file); // "Bug" | "Plan"
   const head = `${first.file === "bugs" ? "BUGS.md" : "PLANS.md"} ${kind.toLowerCase()}`;
   const hold = entryHold(first.entry, planned);
@@ -411,9 +411,9 @@ export function checkStalledEntries(root: string): CheckOutcome {
     (line) => line.trimStart().startsWith("**Needs review ") || line.trimStart().startsWith("**Needs replan "),
   ) ?? "").replace(/^\s*\*\*/, "").replace("**", "");
   if (hold === "held-for-operator") { // vocabulary-ok: the held-for-operator hold's key
-    return warnOutcome(`${head} "${truncate(first.entry.title, FIX_CLAIM_HEADING_MAX)}" is held for the operator ${heldCount(first.entry.body)} times${more} — release it with tumwater ${kind.toLowerCase()} --release`); // vocabulary-ok: a held-for-operator entry is the operator's to release
+    return warnOutcome(`${head} ${quoteHeading(first.entry.title)} is held for the operator ${heldCount(first.entry.body)} times${more} — release it with tumwater ${kind.toLowerCase()} --release`); // vocabulary-ok: a held-for-operator entry is the operator's to release
   }
-  return warnOutcome(`${head} "${truncate(first.entry.title, FIX_CLAIM_HEADING_MAX)}" is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
+  return warnOutcome(`${head} ${quoteHeading(first.entry.title)} is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
       `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);
 }
 
@@ -439,7 +439,7 @@ export function planDependencyProblem(root: string): PlanDependencyProblem | nul
   const [firstDangling, ...restDangling] = dangling;
   const [firstUnparsed, ...restUnparsed] = unparsed;
   const [firstMisworded, ...restMisworded] = misworded;
-  const quote = (t: string) => `"${truncate(t, FIX_CLAIM_HEADING_MAX)}"`;
+  const quote = quoteHeading;
   const others = (parts: Array<[number, string]>): string =>
     parts.some(([n]) => n > 0) ? ` (also ${parts.map(([n, noun]) => `${n} ${noun}`).join(", ")})` : "";
   const danglingMsg = (d: { title: string; ref: string }) =>
