@@ -107,12 +107,29 @@ export function validateRolesAndCrossField(
   problems: string[],
   helpers: RolesCrossFieldHelpers,
 ): void {
-  const { checkString, checkBoolean, checkNumber, checkPromptLength, checkModelTripleEntry, checkWindowReserve } = helpers;
-  // Custom roles (plans/user-defined-loops.md): names become worktree dirs and git refs, so
-  // they are validated strictly — a colliding name would silently shadow a built-in's prompt
-  // (roleById wins in runPrompt), validation makes that impossible instead of subtle. The
-  // collected names feed the roles cross-check below: an id under `roles` is valid when it is
-  // in the catalog OR listed as a customRoles name.
+  const customNames = validateCustomRoles(r, problems, helpers);
+  validateRoleEntries(r, problems, helpers, customNames);
+  validateReviewAfterMerge(r, problems, customNames);
+  validatePerRoleCostCaps(r, problems, customNames);
+  validatePerRoleQuietHours(r, problems, customNames);
+  validateMaxConcurrentPerProvider(r, problems);
+  validateClaudeWindowReserve(r, problems, helpers);
+  validateIdleBackoff(r, problems);
+}
+
+/** Collect the `customRoles` names and refuse this block's bad shapes, appending to
+ * `problems` and returning the set of accepted names for the later per-role sections. Names
+ * become worktree dirs and git refs (plans/user-defined-loops.md), so they are validated
+ * strictly — a colliding name would silently shadow a built-in's prompt (roleById wins in
+ * runPrompt), validation makes that impossible instead of subtle. The collected names feed
+ * the roles cross-check: an id under `roles` is valid when it is in the catalog OR listed as
+ * a customRoles name. */
+function validateCustomRoles(
+  r: Record<string, unknown>,
+  problems: string[],
+  helpers: RolesCrossFieldHelpers,
+): Set<string> {
+  const { checkPromptLength } = helpers;
   const customNames = new Set<string>();
   if ("customRoles" in r) {
     const cl = r.customRoles;
@@ -163,7 +180,18 @@ export function validateRolesAndCrossField(
       });
     }
   }
+  return customNames;
+}
 
+/** Validate the `roles.<id>` entry block: the object shape, `checkKnownRoleId`, the per-entry
+ * settings checks, and the INSTANCE_ROLES instances rule. */
+function validateRoleEntries(
+  r: Record<string, unknown>,
+  problems: string[],
+  helpers: RolesCrossFieldHelpers,
+  customNames: ReadonlySet<string>,
+): void {
+  const { checkString, checkBoolean, checkNumber, checkPromptLength, checkModelTripleEntry } = helpers;
   if ("roles" in r) {
     const roles = r.roles;
     if (!isJsonObject(roles)) {
@@ -199,9 +227,16 @@ export function validateRolesAndCrossField(
       }
     }
   }
+}
 
-  // review.afterMerge names roles, so a typo'd id would silently keep that role reviewed before
-  // merging; the director is refused because its changes always merge on a review first.
+/** Validate `review.afterMerge`'s role names: a typo'd id would silently keep that role
+ * reviewed before merging; the director is refused because its changes always merge on a
+ * review first. */
+function validateReviewAfterMerge(
+  r: Record<string, unknown>,
+  problems: string[],
+  customNames: ReadonlySet<string>,
+): void {
   if (isJsonObject(r.review) && Array.isArray(r.review.afterMerge)) {
     r.review.afterMerge.forEach((id: unknown, i) => {
       if (typeof id !== "string" || id.trim() === "") return; // Already reported by checkStringArray.
@@ -209,12 +244,18 @@ export function validateRolesAndCrossField(
       else checkKnownRoleId("review.afterMerge", id, customNames, problems);
     });
   }
+}
 
-  // Per-role daily cost caps (src/gates/role-cap-gates.ts): each key must name a known role —
-  // built-in or customRoles — because a typo'd id would silently no-op the cap, the exact
-  // silent-ignore class the `roles.<id>` check exists to prevent (the customNames set above
-  // is fully collected by this point, so a custom role can be capped). Each value is a
-  // spend threshold with the NON_NEGATIVE_OR_DISABLED semantics: 0 disables that role's cap.
+/** Validate the per-role daily cost caps (src/gates/role-cap-gates.ts): each key must name a
+ * known role — built-in or customRoles — because a typo'd id would silently no-op the cap,
+ * the exact silent-ignore class the `roles.<id>` check exists to prevent (the customNames set
+ * is fully collected by this point, so a custom role can be capped). Each value is a spend
+ * threshold with the NON_NEGATIVE_OR_DISABLED semantics: 0 disables that role's cap. */
+function validatePerRoleCostCaps(
+  r: Record<string, unknown>,
+  problems: string[],
+  customNames: ReadonlySet<string>,
+): void {
   checkPerRoleMap(r, "maxDailyCostUsdPerRole", "USD caps", customNames, problems, (id) => {
     // Same MAX_SAFE_INTEGER bound as maxDailyCostUsd's DOLLAR_CAP rule (BUGS.md
     // 2026-10-02): a finite-but-unrepresentable per-role cap is an effectively
@@ -229,11 +270,17 @@ export function validateRolesAndCrossField(
       DOLLAR_CAP,
     );
   });
+}
 
-  // Per-role quiet hours (src/scheduling/quiet-hours.ts): the same known-role gate as the
-  // caps — a typo'd role id would silently no-op the window. Each value must parse as a
-  // quiet-hours window (an empty string means off for that role, the same disablement the
-  // team-wide key takes), and the message names the key and the offending id/value verbatim.
+/** Validate the per-role quiet hours (src/scheduling/quiet-hours.ts): the same known-role gate
+ * as the caps — a typo'd role id would silently no-op the window. Each value must parse as a
+ * quiet-hours window (an empty string means off for that role, the same disablement the
+ * team-wide key takes), and the message names the key and the offending id/value verbatim. */
+function validatePerRoleQuietHours(
+  r: Record<string, unknown>,
+  problems: string[],
+  customNames: ReadonlySet<string>,
+): void {
   checkPerRoleMap(r, "quietHoursPerRole", '"HH:MM-HH:MM" windows', customNames, problems, (id, value) => {
     if (typeof value !== "string") {
       problems.push(
@@ -245,12 +292,17 @@ export function validateRolesAndCrossField(
     const parsed = parseQuietHours(value, `quietHoursPerRole.${id}`);
     if (!parsed.ok) problems.push(parsed.error);
   });
+}
 
-  // Per-provider concurrency caps (plans/provider-concurrency.md §1): a map from provider
-  // key to a positive integer. Unlike the per-role maps above, an unknown provider name is
-  // NOT a validation error — providers live in pi's models.json, which validation does not
-  // read, and a fallback's provider may only come into use later (doctor warns in part 5/5).
-  // Each value must be a positive integer under a non-empty key.
+/** Validate per-provider concurrency caps (plans/provider-concurrency.md §1): a map from
+ * provider key to a positive integer. Unlike the per-role maps, an unknown provider name is
+ * NOT a validation error — providers live in pi's models.json, which validation does not
+ * read, and a fallback's provider may only come into use later (doctor warns in part 5/5).
+ * Each value must be a positive integer under a non-empty key. */
+function validateMaxConcurrentPerProvider(
+  r: Record<string, unknown>,
+  problems: string[],
+): void {
   if (r.maxConcurrentPerProvider !== undefined) {
     const map = r.maxConcurrentPerProvider;
     if (!isJsonObject(map)) {
@@ -271,7 +323,17 @@ export function validateRolesAndCrossField(
       }
     }
   }
+}
 
+/** Validate `claudeWindowReserve` (the subscription-window reserve: a map from window type to
+ * a fraction, 0 < f <= 1) and its mutually-exclusive spelling pair with
+ * `backends.claude.windowReserve`. */
+function validateClaudeWindowReserve(
+  r: Record<string, unknown>,
+  problems: string[],
+  helpers: RolesCrossFieldHelpers,
+): void {
+  const { checkWindowReserve } = helpers;
   // The subscription-window reserve: a map from window type to a fraction, 0 < f <= 1.
   if (r.claudeWindowReserve !== undefined)
     checkWindowReserve("claudeWindowReserve", r.claudeWindowReserve);
@@ -287,11 +349,14 @@ export function validateRolesAndCrossField(
     problems.push(
       "claudeWindowReserve and backends.claude.windowReserve set the same value — keep one (backends.claude.windowReserve is the current spelling; claudeWindowReserve is its old name)",
     );
+}
 
-  // Cross-field (judged on the merged config, where both sides are always present; on a raw
-  // file only when the file itself names both): scheduleBackoff clamps every idle wait — the
-  // first included — to min(initialSeconds, maxSeconds), so a smaller max silently discards
-  // the configured initial wait. Name both values so one edit fixes the pair.
+/** Validate the `idleBackoff` cross-field pair (judged on the merged config, where both sides
+ * are always present; on a raw file only when the file itself names both): scheduleBackoff
+ * clamps every idle wait — the first included — to min(initialSeconds, maxSeconds), so a
+ * smaller max silently discards the configured initial wait. Name both values so one edit
+ * fixes the pair. */
+function validateIdleBackoff(r: Record<string, unknown>, problems: string[]): void {
   const backoff = r.idleBackoff;
   if (
     isJsonObject(backoff) &&
@@ -302,5 +367,5 @@ export function validateRolesAndCrossField(
     problems.push(
       `idleBackoff.maxSeconds (${show(backoff.maxSeconds)}) must be ≥ idleBackoff.initialSeconds (${show(backoff.initialSeconds)}) — every idle wait is clamped to the smaller, so the smaller max would silently shorten the configured first wait`,
     );
-
 }
+
