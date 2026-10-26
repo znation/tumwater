@@ -65,6 +65,22 @@ export async function resolveRevertTarget(
   return { ok: true, full, primary };
 }
 
+/** The shared read-only prologue of a revert and its preview, so the two cannot drift: resolve
+ * `ref` to a merged single-parent commit (the resolveRevertTarget/parentRefusal refusals), then
+ * read its subject. The subject is what the reverted-role follow-up and the event log read, and
+ * both callers needed exactly these three steps before diverging into their own work. */
+async function resolveRevertSubject(
+  root: string,
+  ref: string,
+): Promise<{ ok: true; full: string; primary: string; subject: string } | { ok: false; error: string }> {
+  const target = await resolveRevertTarget(root, ref);
+  if (!target.ok) return target;
+  const refusal = await parentRefusal(root, target.full);
+  if (refusal !== null) return { ok: false, error: refusal };
+  const subject = await runGit(root, ["log", "-1", "--format=%s", target.full]);
+  return { ok: true, full: target.full, primary: target.primary, subject };
+}
+
 /** The refusal for a commit without exactly one parent (a root or a merge), or null. Shared by
  * the revert and its preview: `git revert` of a root deletes the whole tree, of a merge needs
  * `-m`. */
@@ -110,12 +126,9 @@ export async function previewRevert(
   ref: string,
 ): Promise<RevertPreview | { ok: false; error: string }> {
   try {
-    const target = await resolveRevertTarget(root, ref);
+    const target = await resolveRevertSubject(root, ref);
     if (!target.ok) return target;
-    const { full, primary } = target;
-    const refusal = await parentRefusal(root, full);
-    if (refusal !== null) return { ok: false, error: refusal };
-    const subject = await runGit(root, ["log", "-1", "--format=%s", full]);
+    const { full, primary, subject } = target;
     const paths = (await runGit(root, ["diff", "--name-only", "--no-renames", full + "^", full]))
       .split("\n")
       .filter((p) => p.length > 0);
@@ -167,14 +180,11 @@ export async function revertMergedCommit(
     // awaits would block its event loop until the lock times out.
     await new Promise<void>((resolve) => setImmediate(resolve));
     return await withPrimaryWorktreeLockAsync(root, async () => {
-      const target = await resolveRevertTarget(root, ref);
+      const target = await resolveRevertSubject(root, ref);
       if (!target.ok) return target;
-      const { full } = target;
-      const refusal = await parentRefusal(root, full);
-      if (refusal !== null) return { ok: false, error: refusal };
+      const { full, subject } = target;
       // `head` is captured before the revert so a future caller can compare before/after.
       const head = await headOf(root, "HEAD");
-      const subject = await runGit(root, ["log", "-1", "--format=%s", full]);
 
       // Fail-closed on any staged or unstaged change to a tracked path: we refuse to revert a
       // checkout that has one (untracked files are tolerated — the lock dir we just created is
