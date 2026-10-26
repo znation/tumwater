@@ -41,6 +41,24 @@ import {
   type ConfigRecord,
 } from "./config-write-core.js";
 
+/** Drop `field` from the `backends.<backend>` entry of the config `next`, dropping the whole
+ * backend entry when it empties. The one home of the "remove a nested backend field, drop the
+ * backend when empty" step the legacy `agentBin`/`piArgs` collapse and the `claudeWindowReserve`
+ * collapse share, so the empty-entry rule cannot drift between the two. */
+function dropNestedBackendField(
+  next: TumwaterConfig,
+  backend: string,
+  field: string,
+): TumwaterConfig {
+  const record = next as unknown as { backends?: Record<string, Record<string, unknown>> };
+  const backends = { ...(record.backends ?? {}) };
+  const entry = { ...(backends[backend] ?? {}) };
+  delete entry[field];
+  if (Object.keys(entry).length === 0) delete backends[backend];
+  else backends[backend] = entry;
+  return { ...next, backends: backends };
+}
+
 /** Set the daily cost budget cap in tumwater.json through the shared writer idiom (see
  * writeConfigMutation), after checkDailyBudgetUsd has screened the value with its own
  * actionable message — the one both dashboards flash. A cap the config already resolves to
@@ -326,27 +344,13 @@ export function setConfigKey(
     let unchanged: true | undefined;
     // Writers keep one spelling: a legacy top-level set drops the matching backends.pi field, so
     // the file can never hold both (validateConfig's raw pass rejects a file that does).
-    const dropLegacyPiAlias = (next: TumwaterConfig, key: string): TumwaterConfig => {
-      const record = next as unknown as { backends?: Record<string, Record<string, unknown>> };
-      const backends = { ...(record.backends ?? {}) };
-      const entry = { ...(backends.pi ?? {}) };
-      delete entry[key === "agentBin" ? "bin" : "args"];
-      if (Object.keys(entry).length === 0) delete backends.pi;
-      else backends.pi = entry;
-      return { ...next, backends: backends };
-    };
+    const dropLegacyPiAlias = (next: TumwaterConfig, key: string): TumwaterConfig =>
+      dropNestedBackendField(next, "pi", key === "agentBin" ? "bin" : "args");
     // Writers keep one spelling: setting the top-level `claudeWindowReserve` drops the nested
     // `backends.claude.windowReserve`, so a supported `config set` never writes the rejected pair
     // (validateConfig still refuses a hand-edited file holding both).
-    const dropNestedReserve = (next: TumwaterConfig): TumwaterConfig => {
-      const record = next as unknown as { backends?: Record<string, Record<string, unknown>> };
-      const backends = { ...(record.backends ?? {}) };
-      const entry = { ...(backends.claude ?? {}) };
-      delete entry.windowReserve;
-      if (Object.keys(entry).length === 0) delete backends.claude;
-      else backends.claude = entry;
-      return { ...next, backends: backends };
-    };
+    const dropNestedReserve = (next: TumwaterConfig): TumwaterConfig =>
+      dropNestedBackendField(next, "claude", "windowReserve");
     const result = writeConfigMutation(root, (cfg) => {
       oldValue = (cfg as unknown as Record<string, unknown>)[key];
       if (isDeepStrictEqual(oldValue, value)) {
