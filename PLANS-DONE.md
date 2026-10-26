@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract, part 1a/6: The dashboard's alert band links to the doctor — the count it already shows stays the one place the deleted banners' detail went (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; touches src/ui/gui/gui-client-team.ts src/ui/gui/gui-client-boot.ts docs/how-it-works.md test/gui-client-team.test.ts) — done 2026-10-26 by the feature role
+
+**Previously held 1**
+
+**Goal.** The dashboard's alerts band keeps its count (`renderAlerts`'s `needsYou` badge, `navbadge` and document title) and gains one link to where the deleted banners' detail lives: the Settings view's Health-check card (`gui-client-settings.ts`'s `#doctorcard`). Nothing else in the feed changes here.
+
+**Approach.**
+- In src/ui/gui/gui-client-team.ts's alerts section, render a `Doctor` control beside the band (or as the band's last item when alerts exist) that routes through the dashboard's existing click delegation to the Settings view — the `act: "view"` / `data-act` path `gui-client-boot.ts` already handles (`location.hash = arg`), with `arg: "settings"`; scroll `#doctorcard` into view after the view paints rather than adding a page.
+- Keep the empty-feed state: no banner and no “0 alerts” copy when `pageAlerts` is empty.
+- docs/how-it-works.md's dashboard alert paragraph says the band names the count and links to the Settings Health card, which keeps the detail.
+- test/gui-client-team.test.ts asserts the control's markup/action and that an empty `pageAlerts` list draws no banner.
+
+**Files touched.** src/ui/gui/gui-client-team.ts src/ui/gui/gui-client-boot.ts docs/how-it-works.md test/gui-client-team.test.ts (gui-client-boot.ts lets the control's view action scroll #doctorcard into view after the pane paints)
+
+**Acceptance criteria.**
+- The alerts band exposes one control that opens the Settings view (the existing `view`/hash routing) at the Health card `#doctorcard`; no new view or route is added.
+- With no alerts the band renders nothing; the existing count/badge/title behavior in `renderAlerts` is unchanged.
+- test/gui-client-team.test.ts covers the control's action and the empty-feed case.
+- `npm run test:gate` passes.
+
 ### Every commit is verified on main, part 3s/3: the pre-merge reviewer's merge-pipeline sequencing cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3o/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/merge-pipeline.test.ts) — done 2026-10-25 by the feature role
 
 **Previously held 7**

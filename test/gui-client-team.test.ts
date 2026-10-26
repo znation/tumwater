@@ -1220,3 +1220,112 @@ test("Clear filter resets the window", () => {
   assert.equal(stores["feed-window"], "");
   assert.equal(box.value, "");
 });
+
+// ---- the alerts band's Doctor control ----
+// renderAlerts (gui-client-team.ts's `alerts` region) keeps its count/navbadge/title and, while
+// the feed has alerts, adds one doctor-band control that routes to the Settings view's Health
+// check card through the existing view/hash path. An empty feed paints nothing.
+function alertsScope() {
+  interface FakeEl {
+    children: FakeEl[];
+    parent: FakeEl | null;
+    dataset: Record<string, string>;
+    className: string;
+    innerHTML: string;
+    textContent: string;
+    hidden: boolean;
+    title: string;
+    _shell?: string;
+    appendChild(c: FakeEl): void;
+    insertBefore(c: FakeEl, ref: FakeEl | null): void;
+    remove(): void;
+    querySelector(sel: string): FakeEl | null;
+  }
+  const fakeEl = (): FakeEl => {
+    const el = {
+      children: [] as FakeEl[],
+      parent: null as FakeEl | null,
+      dataset: {} as Record<string, string>,
+      className: "",
+      innerHTML: "",
+      textContent: "",
+      hidden: false,
+      title: "",
+      appendChild(c: FakeEl) { c.parent = el; el.children.push(c); },
+      insertBefore(c: FakeEl, ref: FakeEl | null) {
+        c.parent = el;
+        if (!ref) { el.children.push(c); return; }
+        const i = el.children.indexOf(ref);
+        if (i < 0) el.children.push(c); else el.children.splice(i, 0, c);
+      },
+      remove() { if (el.parent) { const i = el.parent.children.indexOf(el); if (i >= 0) el.parent.children.splice(i, 1); el.parent = null; } },
+      querySelector(sel: string): FakeEl | null {
+        const key = /^\[data-key='([^']+)'\]$/.exec(sel);
+        if (key) return el.children.find((c) => c.dataset.key === key[1]) || null;
+        if (sel.startsWith(".")) {
+          // The alert row's .alert-title/.alert-detail live only in its innerHTML string, not
+          // as real child nodes, so hand back a settable stub for those queries.
+          const cls = sel.slice(1);
+          return { ...fakeEl(), className: cls };
+        }
+        return null;
+      },
+    };
+    return el;
+  };
+  const box = fakeEl();
+  const badge = fakeEl();
+  const els: Record<string, FakeEl> = { alerts: box, navbadge: badge };
+  const doc = { title: "", createElement: () => fakeEl() };
+  const renderAlerts = clientScope<{ renderAlerts: (d: unknown) => void }>(
+    ["alerts"],
+    ["renderAlerts"],
+    {
+      offline: false,
+      icon: iconStub,
+      pageAlerts: (d: { alerts?: unknown[] } | undefined, offline: boolean): unknown[] =>
+        offline ? [{ key: "offline" }, ...((d?.alerts) || [])] : ((d?.alerts) || []),
+      needsYou: (alerts: { tone: string }[]) =>
+        alerts.filter((a) => a.tone === "red" || a.tone === "amber" || a.tone === "indigo").length,
+      ALERT_ICONS: {},
+      plural: (n: number, single: string, p: string) => (n === 1 ? single : p),
+      $: (id: string) => els[id],
+      document: doc,
+    },
+  ).renderAlerts;
+  return { renderAlerts, box, badge, doc };
+}
+
+test("the alerts band keeps its count and adds one Doctor control opening the Settings Health card", () => {
+  const { renderAlerts, box, badge, doc } = alertsScope();
+  renderAlerts({
+    project: "demo",
+    alerts: [{ key: "failing", tone: "red", title: "A role failed", detail: "details" }],
+  });
+  const doctor = box.querySelector("[data-key='doctor-band']");
+  assert.ok(doctor, "the band gains a doctor-band control when alerts exist");
+  assert.match(doctor.innerHTML, /data-act='view'\s+data-arg='settings'/, "the control routes through the existing view/hash path");
+  assert.match(doctor.innerHTML, /Open Health check/, "the control names the Health check card");
+  assert.equal(box.children.length, 2, "the alert row plus the doctor-band control");
+  assert.equal(badge.hidden, false, "the navbadge count stays visible");
+  assert.equal(badge.textContent, "1", "the existing badge count is unchanged");
+  assert.match(doc.title, /^\(1\) demo · tumwater$/, "the document title still carries the count");
+});
+
+test("an empty alerts feed paints no Doctor control and no banner", () => {
+  const { renderAlerts, box, badge, doc } = alertsScope();
+  renderAlerts({ project: "demo", alerts: [] });
+  assert.equal(box.children.length, 0, "no banner, no doctor-band, no \"0 alerts\" copy");
+  assert.equal(box.querySelector("[data-key='doctor-band']"), null);
+  assert.ok(badge.hidden, "the navbadge hides with nothing needing you");
+  assert.equal(doc.title, "demo · tumwater");
+});
+
+test("the doctor-band control disappears when the feed empties", () => {
+  const { renderAlerts, box } = alertsScope();
+  renderAlerts({ project: "demo", alerts: [{ key: "failing", tone: "red", title: "t", detail: "d" }] });
+  assert.ok(box.querySelector("[data-key='doctor-band']"), "the control appears with alerts");
+  renderAlerts({ project: "demo", alerts: [] });
+  assert.equal(box.querySelector("[data-key='doctor-band']"), null, "the control leaves an empty feed");
+  assert.equal(box.children.length, 0);
+});

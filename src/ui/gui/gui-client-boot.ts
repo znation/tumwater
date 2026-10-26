@@ -17,6 +17,9 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   // ---- views ----
   // view-routing:start
   const VIEWS = { team: "team-view", history: "history", usage: "report", failures: "failures", pending: "pending", settings: "settings-view" }; // vocabulary-ok: view ids
+  // The team band's "Open Health check" control navigates to Settings and asks for the
+  // #doctorcard scrolled into view once the pane paints (see runAct's view branch).
+  let pendingDoctorScroll = false;
   function switchView(v) {
     if (v === "fleet") v = "team"; // vocabulary-ok: legacy dashboard hash, still routed
     if (!VIEWS[v]) v = "team";
@@ -34,6 +37,13 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (v === "failures") fetchFailures();
     if (v === "pending") fetchPending();
     if (v === "settings") { fetchSettings(); fetchDoctor(); fetchRetirable(); fetchBrief(); }
+    // The band's "Open Health check" control asks for #doctorcard scrolled into view once the
+    // Settings pane paints; buildSettingsView ran synchronously inside fetchSettings above, so
+    // the card exists now. Only that control sets the flag, so a normal Settings tab never moves.
+    if (pendingDoctorScroll && v === "settings" && $("doctorcard")) {
+      pendingDoctorScroll = false;
+      $("doctorcard").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
   // Tabs are plain #fragment links, so Back/Forward and bookmarks work; re-clicking the open
   // tab refetches its data. #role/<role> opens that role's drawer (over Team on a fresh load),
@@ -150,7 +160,13 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     };
     if (act === "role") openRole(arg);
     else if (act === "close") closeDrawer();
-    else if (act === "view") location.hash = arg;
+    else if (act === "view") {
+      // The band's "Open Health check" control routes to the Settings view at its Health check
+      // card (arg "settings") and asks switchView to scroll #doctorcard into view after it
+      // paints; any other view arg scrolls nowhere.
+      if (arg === "settings") pendingDoctorScroll = true;
+      location.hash = arg;
+    }
     else if (act === "budget") openBudgetEditor();
     else if (act === "resume") setTeamPause(false);
     else if (act === "copy") copyText(arg);

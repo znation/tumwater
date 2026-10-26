@@ -387,26 +387,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The before/after row and key counts, and the deletions' measurement premise, are in the part's PLANS-DONE entry.
 - `npm run test:gate` passes.
 
-### Subtract, part 1a/6: The dashboard's alert band links to the doctor — the count it already shows stays the one place the deleted banners' detail went (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; touches src/ui/gui/gui-client-team.ts docs/how-it-works.md test/gui-client-team.test.ts)
-
-**Previously held 1**
-
-**Goal.** The dashboard's alerts band keeps its count (`renderAlerts`'s `needsYou` badge, `navbadge` and document title) and gains one link to where the deleted banners' detail lives: the Settings view's Health-check card (`gui-client-settings.ts`'s `#doctorcard`). Nothing else in the feed changes here.
-
-**Approach.**
-- In src/ui/gui/gui-client-team.ts's alerts section, render a `Doctor` control beside the band (or as the band's last item when alerts exist) that routes through the dashboard's existing click delegation to the Settings view — the `act: "view"` / `data-act` path `gui-client-boot.ts` already handles (`location.hash = arg`), with `arg: "settings"`; scroll `#doctorcard` into view after the view paints rather than adding a page.
-- Keep the empty-feed state: no banner and no “0 alerts” copy when `pageAlerts` is empty.
-- docs/how-it-works.md's dashboard alert paragraph says the band names the count and links to the Settings Health card, which keeps the detail.
-- test/gui-client-team.test.ts asserts the control's markup/action and that an empty `pageAlerts` list draws no banner.
-
-**Files touched.** src/ui/gui/gui-client-team.ts docs/how-it-works.md test/gui-client-team.test.ts
-
-**Acceptance criteria.**
-- The alerts band exposes one control that opens the Settings view (the existing `view`/hash routing) at the Health card `#doctorcard`; no new view or route is added.
-- With no alerts the band renders nothing; the existing count/badge/title behavior in `renderAlerts` is unchanged.
-- test/gui-client-team.test.ts covers the control's action and the empty-feed case.
-- `npm run test:gate` passes.
-
 ### Subtract, part 1b/6: The staleness, notify and queue banners go — their doctor rows keep the detail (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract parts 1a/6, 2a/6, 2b/6 and 2c/6 landed; touches src/ui/team-alert-backlog-feed.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
 
 **Previously held 1**

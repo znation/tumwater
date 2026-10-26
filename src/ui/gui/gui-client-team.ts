@@ -150,6 +150,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   // sidebar:end
 
   // ---- alerts ----
+  // alerts:start
   // Alerts are patched by key, and only their text is rewritten in place: a stall alert's
   // "no pi output for 9m47s" updates every second, and rebuilding it would swap its buttons out
   // from under a click in progress.
@@ -171,6 +172,9 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     const alerts = pageAlerts(d, offline);
     const box = $("alerts");
     const keep = new Set(alerts.map((a) => a.key));
+    // doctor-band is managed below, not by the alert-patch loop (its key would not survive a
+    // keep pass built only from the feed's alert keys).
+    keep.add("doctor-band");
     for (const el of Array.from(box.children)) if (!keep.has(el.dataset.key)) el.remove();
     alerts.forEach((a, i) => {
       const parts = alertParts(a, a.key === "build" && d && d.build && d.build.stale);
@@ -190,6 +194,27 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       detail.hidden = !a.detail;
       if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
     });
+    // The band's one link to where every alert's detail lives: the Settings view's Health check
+    // card (#doctorcard), which runs the same checks as tumwater doctor. It rides the existing
+    // view/hash routing (data-act='view' data-arg='settings' -> location.hash; gui-client-boot).
+    // It appears only while the band has alerts — an empty feed paints nothing, so there is no
+    // "0 alerts" copy.
+    const doctorEl = box.querySelector("[data-key='doctor-band']");
+    if (alerts.length > 0) {
+      if (!doctorEl) {
+        const band = document.createElement("div");
+        band.dataset.key = "doctor-band";
+        band.className = "alert t-blue";
+        band.innerHTML = "<span class='alert-icon'>" + icon("settings") + "</span>" +
+          "<div class='alert-body'><div class='alert-title'>Details in Doctor</div>" +
+          "<div class='alert-detail'>The Settings view's Health check card keeps each alert's detail.</div></div>" +
+          "<div class='alert-actions'><button type='button' class='btn btn-sm' data-act='view' data-arg='settings' " +
+          "title='Open the Health check card'>Open Health check</button></div>";
+        box.appendChild(band);
+      }
+    } else if (doctorEl) {
+      doctorEl.remove();
+    }
     const n = needsYou(alerts);
     const title = (n ? "(" + n + ") " : "") + (d && d.project ? d.project + " · " : "") + "tumwater";
     if (document.title !== title) document.title = title;
@@ -198,6 +223,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     if (badge.textContent !== String(n)) badge.textContent = String(n);
     badge.title = plural(n, "thing needs", "things need") + " you";
   }
+  // alerts:end
 
   // ---- today's progress ----
   // /api/report?days=1, re-read when new events arrive (throttled) — never on a timer.
