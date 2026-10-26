@@ -56,6 +56,13 @@ function failQueueMiss<T extends { status: string }>(listed: T | ListedQueueMiss
   return listed;
 }
 
+/** Resolve a list-wide position to the single role holding it, failing on ambiguity or miss.
+ * The no-`--role` resolution the cancel/edit/top branches each make, shared so the three
+ * verbs cannot drift from one another or from sayListedOutcome's wordings. */
+function resolveListedRole(root: string, position: number): string {
+  return failQueueMiss(resolveListedQueue(root, listWideScope(root), position), position).role;
+}
+
 /** Whether a list-wide outcome is one of the two miss shapes — the guard that narrows the
  * miss fields (`roles`, `queued`) without a cast. */
 function isQueueMiss(listed: { status: string }): listed is ListedQueueMiss {
@@ -208,7 +215,7 @@ function runPromptEdit(root: string, position: number, text: string | null, atta
   // target role is resolved first (the same resolution the verb below makes) so the gate can
   // name it.
   if (images !== undefined && images.length > 0) {
-    const targetRole = role ?? failQueueMiss(resolveListedQueue(root, listWideScope(root), position), position).role;
+    const targetRole = role ?? resolveListedRole(root, position);
     const guidance = imagePromptGuidance(root, targetRole);
     if (guidance.refusal) return fail(guidance.refusal);
     if (guidance.notice) say(guidance.notice);
@@ -218,12 +225,7 @@ function runPromptEdit(root: string, position: number, text: string | null, atta
     // Bare `--edit <n>`: open the prompt's body in the editor. The role is resolved first
     // and the write goes by file name, so a dequeue while the editor is open reports gone
     // instead of editing the neighbour that shifted into the position.
-    let target = role;
-    if (target === null) {
-      const resolved = resolveListedQueue(root, listWideScope(root), position);
-      target = failQueueMiss(resolved, position).role;
-    }
-    const targetRole = target;
+    const targetRole = role ?? resolveListedRole(root, position);
     let name: string;
     let body: string | null;
     try {
@@ -272,7 +274,7 @@ function runPromptTop(root: string, position: number, role: string | null): void
   // with --role it is the role-scoped call. A concurrent dequeue reports gone and exits
   // clean; position 1 of the resolved role is "already first".
   if (role === null) {
-    const targetRole = failQueueMiss(resolveListedQueue(root, listWideScope(root), position), position).role;
+    const targetRole = resolveListedRole(root, position);
     let outcome: TopOutcome;
     try {
       outcome = movePromptToTop(root, targetRole, position);
