@@ -473,6 +473,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Subtract, part 6/6: The sweep — the rows, keys and docs the five parts left behind (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes" and "How we will know it worked"; touches docs/config.md docs/cli.md docs/glossary.md docs/how-it-works.md docs/invariants.md README.md DEVELOPMENT.md tumwater.example.json src/doctor/doctor-check-names.ts test/doctor-checks.test.ts test/event-format.test.ts test/retention.test.ts test/config.test.ts)
 
+**Refused 2026-10-26 by feature: parts 1/6–5/6 have not landed, so the sweep would delete rows, keys, and docs for mechanisms that still exist and src/ still references (instances, mergeCommand, maxConcurrentChecks, maxConcurrentPerProvider, check-permit, worktree-pool, claims, model-fallback all remain live), breaking the build and the gate; re-queue after 5/6 lands.**
+
 **Goal.** The deletion reads as one system. Every name parts 1/6–5/6 removed is gone from the live docs, the example config, the doctor's row list, the alerts and the tests that assert them; the archive keeps the record.
 
 **Approach.**
