@@ -177,5 +177,3 @@ export function rowReader(root: string, roles: string[]): (role: string) => stri
     return rolePhase(freshRunnerState(role), snap.running, undefined, false, undefined, false, mergeForRole(snap.mergeQueue, role));
   };
 }
-
-export const REVIEWING = /^merging \d+s · reviewing \d+s$/;

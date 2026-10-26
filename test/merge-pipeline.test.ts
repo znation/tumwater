@@ -32,8 +32,6 @@ import {
   pump,
   pumpUntil,
   queueChanges,
-  reviewers,
-  REVIEWING,
   rowReader,
   runnersFor,
 } from "./fixtures/merge-fixtures.js";
@@ -397,12 +395,22 @@ test("a red stack merges its passing prefix, rejects the change red alone, and m
     assert.equal(beta.lastResult, "rejected");
     assert.match(beta.lastReview!.reasons[0]!, /: planted failure: beta breaks the suite$/);
     assert.deepEqual(eventsOfType(root, "review_rejected").map((e) => e.source), ["beta"]);
-    // Part 3g/3: the merged changes (alpha, gamma) also queue post-merge reviews, which log their
-    // own review_start (afterMerge: true) — count the verifications' reviews only.
-    assert.equal(
-      eventsOfType(root, "review_start").filter((e) => e.afterMerge !== true).length,
-      3,
-      "one review per change, all in the verifications",
+    // Part 3s/3: the pre-merge reviewer stops at part 3h/3, so the review_start count can no
+    // longer pin the three verifications' pre-merge reviews. The landing review still runs
+    // (afterMerge: true) — alpha and gamma each land, so each queues exactly one; beta is rejected
+    // and lands nothing. Wait for them to start so the count does not race the drain it no longer
+    // controls.
+    await pumpUntil(
+      ctx,
+      pipeline,
+      () => eventsOfType(root, "review_start").filter((e) => e.afterMerge === true).length === 2,
+      "the landed changes to queue their post-merge reviews",
+      30_000,
+    );
+    assert.deepEqual(
+      eventsOfType(root, "review_start").filter((e) => e.afterMerge === true).map((e) => String(e.source)).sort(),
+      ["alpha", "gamma"],
+      "each landed change queues exactly one post-merge review; the rejected change gets none",
     );
     assert.equal(await refSha(root, mergeRefName("beta")), null, "the rejection deleted beta's pin");
     assert.equal(await isMergedInto(root, shas.beta!, "main"), false);
@@ -425,13 +433,28 @@ test("verifications leave one permit for authoring: at cap 3 two review, the thi
   await queueChanges(root, roles);
   const rowOf = rowReader(root, roles);
   const flags = tmpdir("vet-reserve-");
-  const restore = fakePi(reviewers(flags, roles, {}, roles));
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 3 });
+  // Part 3s/3: hold the two in-flight verifications through the deterministic gate, not the
+  // reviewer (part 3h/3 stops it): the check blocks alpha and beta on their release files while
+  // gamma — held back by verifyLimit(3)=2, the very limit under test — never starts. The block
+  // keys off each role's own change file, so the gate's attribution re-check on main's tip (which
+  // holds none of them) neither blocks nor touches the pipeline.
+  const config = {
+    ...defaultConfig(),
+    check: {
+      command:
+        `if [ -f alpha.txt ]; then touch '${path.join(flags, "alpha-blocking")}'; ` +
+        `i=0; while [ ! -f '${path.join(flags, "alpha-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi; ` +
+        `if [ -f beta.txt ]; then touch '${path.join(flags, "beta-blocking")}'; ` +
+        `i=0; while [ ! -f '${path.join(flags, "beta-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi`,
+    },
+  };
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { cap: 3, config });
   const bg = pump(ctx, pipeline);
   let ran = false;
   try {
-    await waitForFile(path.join(flags, "alpha-reviewing"));
-    await waitForFile(path.join(flags, "beta-reviewing"));
+    await waitForFile(path.join(flags, "alpha-blocking"));
+    await waitForFile(path.join(flags, "beta-blocking"));
     await sleep(500); // a few more polls: nothing more may start
     assert.deepEqual([...pipeline.verifying.keys()], ["alpha", "beta"], "only verifyLimit(3) verifications exist");
     assert.equal(rowOf("gamma"), "due", "the third change waits in the queue, not parked on a permit");
@@ -456,11 +479,27 @@ test("a verification rejection drops its entry at once — its role may run next
   const roles = ["alpha", "beta"];
   const shas = await queueChanges(root, roles);
   const flags = tmpdir("vet-reject-");
-  const restore = fakePi(reviewers(flags, roles, { alpha: "VERDICT: reject\n1. no" }, ["beta"]));
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 2 });
+  // Part 3s/3: the rejection and the in-flight hold both come from the deterministic gate, not
+  // the reviewer (part 3h/3 stops it): alpha's declared check fails on its own tree and drops its
+  // entry, while beta's declared check passes and blocks on `beta-release` — so beta stays in
+  // `build-check` while alpha's drop happens, showing the scheduler's interlock freeing alpha
+  // while the other verify is still in flight. The block keys off `beta.txt` (present only in
+  // beta's verification worktree), so the gate's attribution re-check on main's tip — which holds
+  // neither change's file — neither blocks nor touches `beta-checking`.
+  const config = {
+    ...defaultConfig(),
+    check: {
+      command:
+        `if [ -f beta.txt ]; then touch '${path.join(flags, "beta-checking")}'; ` +
+        `i=0; while [ ! -f '${path.join(flags, "beta-release")}' ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; fi; ` +
+        `if [ -f alpha.txt ]; then printf '%s\n' "planted failure: alpha is bad"; exit 1; fi`,
+    },
+  };
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { cap: 2, config });
   const bg = pump(ctx, pipeline);
   try {
-    await waitForFile(path.join(flags, "beta-reviewing"));
+    await waitForFile(path.join(flags, "beta-checking"));
     await waitFor(() => queuedMergeFiles(root).length === 1, "alpha's entry to drop at its verdict", 30_000);
 
     assert.deepEqual(
@@ -475,11 +514,11 @@ test("a verification rejection drops its entry at once — its role may run next
     const marker = readMergeMarker(root);
     assert.deepEqual(
       marker?.changes?.map((c) => [c.role, c.status, c.stage]),
-      [["beta", "merging", "reviewing"]],
+      [["beta", "merging", "build-check"]],
       "the marker holds only the change still in flight, at its own stage",
     );
     assert.equal(marker?.role, "beta", "the top level follows the change still in flight, for older observers");
-    assert.equal(marker?.stage, "reviewing", "at its own stage");
+    assert.equal(marker?.stage, "build-check", "at its own stage");
 
     fs.writeFileSync(path.join(flags, "beta-release"), "");
     await waitFor(drained(root, pipeline), "beta to merge", 30_000);
@@ -610,23 +649,35 @@ test("an aborted approved change settles despite an unwritable state file: no th
   }
 });
 
-test("an approved change merges while an earlier queue entry is still in review", async () => {
+test("an approved change merges while an earlier queue entry is still verifying", async () => {
   const root = makeRepo();
   const roles = ["alpha", "beta"];
   const shas = await queueChanges(root, roles);
   const rowOf = rowReader(root, roles);
   const flags = tmpdir("vet-ahead-");
-  const restore = fakePi(reviewers(flags, roles, {}, ["alpha"]));
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 3 });
+  // Part 3s/3: hold the head in flight through the deterministic gate, not the reviewer: the
+  // check blocks alpha on its release file while beta's passes, so beta merges ahead of the held
+  // queue head. The block keys off alpha.txt (present only in alpha's verification worktree), so
+  // the gate's attribution re-check on main's tip — which holds it — neither blocks nor matches.
+  const config = {
+    ...defaultConfig(),
+    check: {
+      command:
+        `if [ -f alpha.txt ]; then touch '${path.join(flags, "alpha-blocking")}'; ` +
+        `i=0; while [ ! -f '${path.join(flags, "alpha-release")}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; fi`,
+    },
+  };
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { cap: 3, config });
   const bg = pump(ctx, pipeline);
   try {
-    await waitForFile(path.join(flags, "alpha-reviewing"));
+    await waitForFile(path.join(flags, "alpha-blocking"));
     await waitFor(() => readEvents(root).some((e) => e.type === "merge_done" && e.source === "beta"), "beta to merge", 30_000);
 
     assert.ok(await isMergedInto(root, shas.beta!, "main"), "beta merged ahead of the queue head");
     assert.equal(await isMergedInto(root, shas.alpha!, "main"), false);
     assert.deepEqual([...pipeline.verifying.keys()], ["alpha"], "the head is still in review");
-    assert.match(rowOf("alpha"), REVIEWING, "the head's row shows its own verification");
+    assert.match(rowOf("alpha"), /^merging \d+s · checking \d+s$/, "the head's row shows its own verification");
     assert.equal(rowOf("beta"), "due", "beta's row is back to its own state");
 
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
@@ -644,91 +695,16 @@ test("an approved change merges while an earlier queue entry is still in review"
   }
 });
 
-test("a shutdown reaches every verification and keeps their pins; an approved change waits out a busy merge slot", async () => {
-  const root = makeRepo();
-  const roles = ["alpha", "beta", "gamma"];
-  const shas = await queueChanges(root, roles);
-  const rowOf = rowReader(root, roles);
-  const flags = tmpdir("vet-shutdown-");
-  const restore = fakePi(reviewers(flags, roles, {}, ["alpha", "beta"]));
-  const shutdown = new AbortController();
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, shutdown.signal), { cap: 4, signal: shutdown.signal });
-  pipeline.merge = busySlot();
-  const bg = pump(ctx, pipeline);
-  try {
-    await waitForFile(path.join(flags, "alpha-reviewing"));
-    await waitForFile(path.join(flags, "beta-reviewing"));
-    await waitFor(() => pipeline.approved.has("gamma"), "gamma to be approved", 30_000);
-    assert.equal(rowOf("gamma"), "approved, waiting to merge");
-
-    await bg.stop();
-    shutdown.abort();
-    await Promise.allSettled([...pipeline.verifying.values()].map((t) => t.promise));
-
-    for (const role of ["alpha", "beta"]) {
-      const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.source === role);
-      assert.deepEqual(failed.map((e) => e.result), ["aborted"], `${role}'s verify ended aborted`);
-      assert.equal(await refSha(root, mergeRefName(role)), shas[role], `${role}'s pin survives the shutdown`);
-    }
-    assert.deepEqual(
-      queuedMergeFiles(root).map((q) => q.entry.role),
-      ["gamma"],
-      "the approved change stays queued for the next start",
-    );
-    assert.ok(await refSha(root, mergeRefName("gamma")), "with its pin");
-  } finally {
-    fs.writeFileSync(path.join(flags, "alpha-release"), "");
-    fs.writeFileSync(path.join(flags, "beta-release"), "");
-    await bg.stop();
-    shutdown.abort();
-    await Promise.allSettled([...pipeline.verifying.values()].map((t) => t.promise));
-    restore();
-  }
-});
-
-test("abort --role stops that role's verify, or discards its approved change, pin and all, while another verification runs on", async () => {
-  const root = makeRepo();
-  const roles = ["alpha", "beta", "gamma"];
-  const shas = await queueChanges(root, roles);
-  const flags = tmpdir("vet-abort-");
-  const restore = fakePi(reviewers(flags, roles, {}, ["alpha", "beta"]));
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 4 });
-  pipeline.merge = busySlot();
-  const bg = pump(ctx, pipeline);
-  try {
-    await waitForFile(path.join(flags, "alpha-reviewing"));
-    await waitForFile(path.join(flags, "beta-reviewing"));
-    await waitFor(() => pipeline.approved.has("gamma"), "gamma to be approved", 30_000);
-
-    const alphaVerify = pipeline.verifying.get("alpha")?.promise;
-    for (const role of ["alpha", "gamma"]) writeJsonFile(abortRequestPath(root, role), { at: Date.now() });
-    consumeAbortRequests(root, [], abortableMerges(pipeline));
-    await settleAbortedApproved(root, pipeline); // the scheduler settles right after, every poll
-    // The aborted verify drops its entry before it discards its pin and leaves the pipeline, so
-    // wait for the task itself: its outcome, pin discard and exit are all done once it settles.
-    await alphaVerify;
-    await waitFor(() => queuedMergeFiles(root).length === 1, "both aborted entries to drop", 30_000);
-
-    for (const role of ["alpha", "gamma"]) {
-      const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.source === role);
-      assert.deepEqual(failed.map((e) => e.result), ["aborted"], `${role} ended aborted`);
-      assert.equal(await refSha(root, mergeRefName(role)), null, `${role}'s pin was discarded`);
-    }
-    assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "beta's verify runs on");
-
-    pipeline.merge = null; // the busy slot frees
-    fs.writeFileSync(path.join(flags, "beta-release"), "");
-    await waitFor(drained(root, pipeline), "beta to merge", 30_000);
-    assert.ok(await isMergedInto(root, shas.beta!, "main"), "beta merged");
-    assert.equal(await isMergedInto(root, shas.gamma!, "main"), false, "the discarded change never merged");
-  } finally {
-    fs.writeFileSync(path.join(flags, "alpha-release"), "");
-    fs.writeFileSync(path.join(flags, "beta-release"), "");
-    await bg.stop();
-    await Promise.allSettled(allTasks(pipeline));
-    restore();
-  }
-});
+// Part 3s/3 retires the two reviewer-held shutdown/abort cases the earlier revision held in
+// `reviewing` through the fake reviewer (a shutdown reaching every verification and keeping its
+// pins, and `abort --role` stopping one verify while another runs on): the deterministic gate
+// can hold a verification only through its single check.command, and that check's process group
+// is killed only by its own timeout — never by a shutdown or a deliberate `abort --role` — so no
+// gate-hold can suspend a verification across an abort and settle it "aborted". Those abort and
+// shutdown-of-a-verification subjects live on in the end-to-end twin (part 3v/3's
+// test/orchestrator-3.e2e.test.ts) and the leftover-recovery twin (part 3u/3); the gate check's
+// own mid-flight hold is covered above by "an approved change merges while an earlier queue entry
+// is still verifying".
 
 // The reviewer-hold scoping (plans post-merge-review role): a hold on the reviewer's provider
 // parks only the entries a pre-merge review gates. The production pollMergeDrain start gate and
@@ -800,14 +776,17 @@ test("a fresh pre-merge entry stays queued while a review.afterMerge entry drain
 });
 
 // The merge cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23) through the pipeline: each
-// change's own record carries its stage, so a change's stage must leave `reviewing` the moment
-// its gate returns — otherwise its finished reviewer's last turns sit in the cell, accruing a
-// false `no pi output` flag, for as long as it waits for its merge — and one change's verify must
-// advance only its own record. The stage sequence below is a single timeline: one permit, so the
+// change's own record carries its stage, so a change's stage must leave the gate stage the moment
+// its gate returns — otherwise its finished gate's last turns sit in the cell, accruing a false
+// `no pi output` flag, for as long as it waits for its merge — and one change's verify must
+// advance only its own record. Part 3s/3 re-points the observation to the deterministic gate (the
+// pre-check): a change leaves `build-check` the moment its gate returns — a failed pre-check drops
+// its record outright, a passed one advances it to approved/merging — and the model reviewer no
+// longer records any stage here. The stage sequence below is a single timeline: one permit, so the
 // second verify parks (no record) until the first frees it, and a busy merge slot until both are
 // done verifying.
 for (const headVerdict of ["reject", "approve"] as const) {
-  test(`a head ${headVerdict === "reject" ? "rejected" : "approved"} in its verification leaves reviewing when its gate returns; the stack check names itself`, async () => {
+  test(`a head ${headVerdict === "reject" ? "rejected" : "approved"} in its verification leaves build-check when its gate returns; the stack check names itself`, async () => {
     const root = makeRepo();
     const roles = ["alpha", "beta"];
     await queueChanges(root, roles);
@@ -821,22 +800,23 @@ for (const headVerdict of ["reject", "approve"] as const) {
         `process.stdout.write((m.changes ?? []).map((c) => c.role + "=" + c.status + "/" + (c.stage ?? "-")).join(","));\n`,
     );
     const stagesOf = `'${process.execPath}' '${script}' '${mergeStatePath(root)}'`;
-    const config = { ...defaultConfig(), check: { command: `echo "check:$(${stagesOf})" >> '${rec}'` } };
-    const headReply = headVerdict === "reject" ? "VERDICT: reject\n1. no" : "VERDICT: approve";
-    const restore = fakePi(
-      [
-        // Tell the two reviewer runs apart by the session name pi is handed. A part 3g/3
-        // post-merge review advertises itself with `-post-` in its session label (reviewing the
-        // merged commit after the pipeline), which this stage-sequence test is not about — skip
-        // it so it neither records stages nor answers, keeping the rec the pre-merge gate's only.
-        // A bare exit leaves it verdict-less, so it would fail and (at the limit) file a BUGS.md
-        // commit; answer with an approve so it settles cleanly.
-        `for a in "$@"; do case "$a" in tumwater-review-*-post-*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
-        `r=none; for a in "$@"; do case "$a" in tumwater-review-alpha-*) r=alpha ;; tumwater-review-beta-*) r=beta ;; esac; done`,
-        `echo "$r:$(${stagesOf})" >> '${rec}'`,
-        `if [ "$r" = alpha ]; then printf '%s\\n' '${assistantLine(headReply)}'; else printf '%s\\n' '${assistantLine("VERDICT: approve")}'; fi`,
-      ].join("\n"),
-    );
+    // The check command is the deterministic gate's only stage observer, and the head's verdict:
+    // the reject case fails the declared check on alpha's tree, so its gate resolves on the
+    // pre-check (a deterministic rejection never shows as reviewing) and alpha's record leaves
+    // build-check at once; the approve case's gate resolves on a passed check. The model reviewer
+    // still approves a passed pre-check (until part 3h/3), but it records no stage, so the rec
+    // holds only the pre-check's own build-check lines either way.
+    const checkRecord = `echo "check:$(${stagesOf})" >> '${rec}'`;
+    const config = {
+      ...defaultConfig(),
+      check: {
+        command:
+          headVerdict === "reject"
+            ? `${checkRecord}; if [ -f alpha.txt ]; then printf '%s\n' "planted failure: alpha is red"; exit 1; fi`
+            : checkRecord,
+      },
+    };
+    const restore = fakePi(APPROVE());
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { cap: 1, config });
     pipeline.merge = busySlot();
     try {
@@ -845,16 +825,19 @@ for (const headVerdict of ["reject", "approve"] as const) {
       await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to drain");
 
       const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
-      // The head's own verification: pre-check, then its reviewer, with beta parked and showing
-      // nothing. Then beta's verify runs with the head's record already off the gate's stages
-      // (approved, or gone with its rejection) — beta's transitions advance only beta's own record.
+      // The head's own verification: its pre-check, with beta parked and showing nothing. Then
+      // beta's verify runs with the head's record already off the gate's stages (approved, or
+      // gone with its rejection) — beta's transitions advance only beta's own record.
       const alphaAfter = headVerdict === "reject" ? "" : "alpha=approved/merging,";
-      const verifies = [
-        "check:alpha=merging/build-check",
-        "alpha:alpha=merging/reviewing",
-        `check:${alphaAfter}beta=merging/build-check`,
-        `beta:${alphaAfter}beta=merging/reviewing`,
-      ];
+      // The reject case's failing check runs three times before its deterministic rejection: the
+      // gate's first run, its one flake re-run, and main's tip check (the attribution runs main's
+      // own check, recorded while alpha is still in build-check). Every line is alpha's
+      // build-check stage — its record leaves it only when the gate returns and rejects it.
+      const alphaChecks =
+        headVerdict === "reject"
+          ? ["check:alpha=merging/build-check", "check:alpha=merging/build-check", "check:alpha=merging/build-check"]
+          : ["check:alpha=merging/build-check"];
+      const verifies = [...alphaChecks, `check:${alphaAfter}beta=merging/build-check`];
       if (headVerdict === "reject") {
         assert.deepEqual(seen, verifies, "a one-change merge goes through on its own: no stack check, no re-check on an unmoved main");
         assert.equal(loadRunnerState(root, "alpha").lastResult, "rejected");
@@ -967,20 +950,18 @@ test("a git failure inside the gate's reject path settles the verification as an
   const role = "improve";
   const shas = await queueChanges(root, [role]);
   // A stale index.lock in the worktree's gitdir — the wreckage of a crashed concurrent git —
-  // planted by the reviewer shim itself, so it exists by the time the gate's reject path
-  // resets the worktree (after the verdict, before the pin delete). resetWorktreeToMain's
+  // planted by the declared check itself (the deterministic gate), so it exists by the time the
+  // gate's reject path resets the worktree (after the check's failure, before the pin delete).
+  // resetWorktreeToMain's
   // `git reset --hard` throws, the throw rides out of the gate and verifyRequest, and the drain
   // must turn it into the terminal "error" outcome — never a rejected task promise, which
   // would leave the entry queued and its author interlocked forever.
-  const shim = [
-    leasedRoleShell(),
-    `case "$role" in`,
-    `"${role}") gd=$(sed 's/^gitdir: //' "$PWD/.git"); touch "$gd/index.lock"; ` +
-      `printf '%s\\n' '${assistantLine("VERDICT: reject\\n1. no")}'; exit 0;;`,
-    `esac`,
-  ].join("\n");
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role]), { cap: 1 });
-  await withPi(shim, async () => {
+  const config = {
+    ...defaultConfig(),
+    check: { command: `if [ -f improve.txt ]; then gd=$(sed 's/^gitdir: //' "$PWD/.git"); touch "$gd/index.lock"; printf '%s\n' "planted failure: the change is red"; exit 1; fi` },
+  };
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role], undefined, config), { cap: 1, config });
+  await withPi(APPROVE(), async () => {
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the failed verification to settle", 30_000);
   });
   await Promise.allSettled(allTasks(pipeline));
@@ -1003,17 +984,22 @@ test("an unwritable state file on a settling merge warns instead of rejecting th
   const root = makeRepo();
   const role = "improve";
   await queueChanges(root, [role]);
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role]), { cap: 1 });
+  const stateFile = statePath(root, role);
+  fs.mkdirSync(stateFile, { recursive: true });
+  fs.writeFileSync(path.join(stateFile, "keep"), "");
   // Break the author's state write: the state file becomes a non-empty directory, so
   // writeJsonAtomic's rename fails (EISDIR) — the shape an ENOSPC or an immutable state path
   // takes. The outcome write happens in the verification's fire-and-forget task, which nothing
   // awaits during normal operation, so a throw there must be warned about, never left as an
   // unhandled rejection that takes the orchestrator down.
-  const stateFile = statePath(root, role);
-  fs.mkdirSync(stateFile, { recursive: true });
-  fs.writeFileSync(path.join(stateFile, "keep"), "");
-  const flags = tmpdir("landing-state-fault-");
-  const restore = fakePi(reviewers(flags, [role], { [role]: "VERDICT: reject\n1. no" }));
+  // Part 3s/3: the rejection comes from the deterministic gate (a failing declared check), not a
+  // reviewer verdict, so the settle still writes the rejected outcome into the unwritable state.
+  // The check fails only on the change's own tree (where improve.txt exists), so the gate's
+  // attribution re-check on main's tip — which holds no change file — stays green and the settle
+  // records `rejected`, not `main_red`.
+  const config = { ...defaultConfig(), check: { command: `if [ -f improve.txt ]; then printf '%s\n' "planted failure: the change is red"; exit 1; fi` } };
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role], undefined, config), { cap: 1, config });
+  const restore = fakePi(APPROVE());
   try {
     await drainMergeQueue(ctx, pipeline);
     const pending = allTasks(pipeline);

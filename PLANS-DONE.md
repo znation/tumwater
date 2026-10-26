@@ -5,6 +5,22 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3s/3: the pre-merge reviewer's merge-pipeline sequencing cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3o/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/merge-pipeline.test.ts) — done 2026-10-25 by the feature role
+
+**Previously held 7**
+
+**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/merge-pipeline.test.ts`'s per-change `review_start` count (`afterMerge !== true`), its `reviewing`-stage sequencing and its reject-verdict pipeline cases fail. Move those cases first, as part 3l/3 did for the review suites, so the source switch lands against a suite that no longer depends on the reviewer.
+
+**Approach.** In `test/merge-pipeline.test.ts`, retire or re-point the pre-merge reviewer cases: move the per-change `review_start` count and the `reviewing`-stage sequencing to the post-landing review's own `review_start` (`afterMerge: true`) or to the pre-check stage; delete a case that exists only to pin a reviewer verdict or usage fold; re-point a reject-driven case to a deterministic gate rejection (a conflict-marker diff, a leaked credential or a failing declared check). `mergeStartHeld`'s reviewer-hold scoping case stays, since part 3i/3 owns its removal. Leave the reviewer-run helpers in place; part 3e/3 deletes them.
+
+**Files touched.** test/merge-pipeline.test.ts, plus the now-unused `REVIEWING` export removed from test/fixtures/merge-fixtures.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with the pre-merge reviewer still running.
+- A grep over `test/merge-pipeline.test.ts` for `VERDICT: reject`, `review_error`, `reviewRetries`, `review_failed`, `unreviewFailures`, `folded.length` and `lastReview?.verdict` returns no case that drives the pre-merge reviewer.
+- Its `review_start` assertions name only post-landing (`afterMerge: true`) reviewer runs, or survive as flow assertions that do not count a pre-merge run.
+- No edit outside test/merge-pipeline.test.ts and the `REVIEWING` fixture export it stops using.
+
 ### Every commit is verified on main, part 3u/3: the pre-merge reviewer's leftover-recovery cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3o/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/runner-leftover-recovery.test.ts) — done 2026-10-25 by the feature role
 
 **Previously held 7**
