@@ -3,7 +3,7 @@ import { readTextIfExists, readTextOrNull, writeTextAtomic } from "../files/file
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { gitTry, gitTryStarted } from "../git/git-run.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
-import { resolveBacklogInsertConflicts } from "../merge/backlog-conflicts.js";
+import { resolveBacklogInsertConflicts } from "../merge/merge-backlog-conflicts.js";
 import { conflictedFiles } from "../merge/merge-git.js";
 import { formatDate } from "../text/datetime.js";
 import { stampedSubject } from "../git/commit-message.js";

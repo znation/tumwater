@@ -15,7 +15,7 @@ import {
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
 } from "./merge-git.js";
-import { resolveBacklogInsertConflicts } from "./backlog-conflicts.js";
+import { resolveBacklogInsertConflicts } from "./merge-backlog-conflicts.js";
 import { abortSync } from "../git/worktree.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";

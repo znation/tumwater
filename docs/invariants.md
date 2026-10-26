@@ -468,15 +468,15 @@ directory/gitlink) counts as resolved too — it is never followed (lstat, not s
 symlink holds no text of its own and its target could point out of the worktree (the same policy
 INV-G4 pins for the secret-leak check). The review gate rejects it before review, md-only diffs
 included, the stage check flags it, and the merge resolver's resolution is not accepted. The
-deterministic backlog-conflict resolver (backlog-conflicts.ts) reads a conflicted root backlog
+deterministic backlog-conflict resolver (merge-backlog-conflicts.ts) reads a conflicted root backlog
 file only when lstat shows it is a regular file; a symlink (or directory/gitlink, or an
 unreadable path) is left to the pi resolver, never followed out of the worktree.
 
-**Binds.** `src/merge/merge-git.ts`, `src/merge/backlog-conflicts.ts`,
+**Binds.** `src/merge/merge-git.ts`, `src/merge/merge-backlog-conflicts.ts`,
 `src/review/review.ts`, `src/run/stage-check.ts`,
 `src/merge/merge-to-main.ts`.
 
-**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — `test/backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run".
+**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run".
 
 ### INV-G4: a changed file that exists but cannot be read is a secret-leak finding; only a path with no file is skipped
 
@@ -3181,7 +3181,7 @@ non-pi `fallback` with `backend` renders its namespace once in the Budget fallba
 
 ## Backlog conflicts: a backlog rebase conflict settles without a model only when no authored bytes need judgment
 
-`src/merge/backlog-conflicts.ts` settles backlog rebase conflicts without a model run in two
+`src/merge/merge-backlog-conflicts.ts` settles backlog rebase conflicts without a model run in two
 passes: `resolveInsertOnlyText` hunk by hunk, then `mergeBacklogEntries` entry by entry.
 
 ### INV-AY1: a hunk settles only in its insert-only shapes
@@ -3189,9 +3189,9 @@ passes: `resolveInsertOnlyText` hunk by hunk, then `mergeBacklogEntries` entry b
 **Guarantee.** A hunk settles only in its three insert-only shapes. Any other hunk, a malformed
 conflict, or a non-diff3 conflict leaves the file to the resolver.
 
-**Binds.** `src/merge/backlog-conflicts.ts` (`resolveInsertOnlyText`).
+**Binds.** `src/merge/merge-backlog-conflicts.ts` (`resolveInsertOnlyText`).
 
-**Pinned by.** `test/backlog-conflicts.test.ts` — "resolveInsertOnlyText refuses a hunk with a
+**Pinned by.** `test/merge-backlog-conflicts.test.ts` — "resolveInsertOnlyText refuses a hunk with a
 non-empty base section", "resolveInsertOnlyText refuses a hunk with an empty side",
 "resolveInsertOnlyText leaves near misses of an entry above a deleted entry to the resolver" and
 "resolveInsertOnlyText refuses a malformed (non-diff3) conflict".
@@ -3203,12 +3203,12 @@ added entry after its nearest surviving predecessor. It returns null for an entr
 edited, an edit against a delete, a duplicate heading, a renamed section, an unclosed fence, and
 a preamble or section header both sides changed.
 
-**Binds.** `src/merge/backlog-conflicts.ts` (`mergeBacklogEntries`).
+**Binds.** `src/merge/merge-backlog-conflicts.ts` (`mergeBacklogEntries`).
 
-**Pinned by.** `test/backlog-conflicts.test.ts` — "mergeBacklogEntries merges entries each side
+**Pinned by.** `test/merge-backlog-conflicts.test.ts` — "mergeBacklogEntries merges entries each side
 finished or added", "mergeBacklogEntries bails out when judgment is needed" and
 "mergeBacklogEntries keeps a heading inside a fence as body text";
-`test/backlog-conflicts-entries.test.ts` — "mergeBacklogEntries places the change's new entry
+`test/merge-backlog-conflicts-entries.test.ts` — "mergeBacklogEntries places the change's new entry
 after its nearest surviving predecessor, keeps one copy of an entry both sides added, and settles
 a preamble or header only one side changed".
 
@@ -3218,15 +3218,15 @@ a preamble or header only one side changed".
 file, or an archive file the hunk settler cannot settle is returned as still conflicted with its
 markers kept.
 
-**Binds.** `src/merge/backlog-conflicts.ts` (`resolveBacklogInsertConflicts`,
+**Binds.** `src/merge/merge-backlog-conflicts.ts` (`resolveBacklogInsertConflicts`,
 `mergeStagedEntries`).
 
-**Pinned by.** `test/backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts rewrites and
+**Pinned by.** `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts rewrites and
 stages an insert-only PLANS.md", "resolveBacklogInsertConflicts leaves a non-insert-only backlog
 file untouched", "resolveBacklogInsertConflicts ignores non-backlog and non-root files",
 "resolveBacklogInsertConflicts treats an unreadable path as still conflicted" and
 "resolveBacklogInsertConflicts leaves the conflicted file intact when a write dies mid-way";
-`test/backlog-conflicts-entries.test.ts` — "resolveBacklogInsertConflicts leaves an archive
+`test/merge-backlog-conflicts-entries.test.ts` — "resolveBacklogInsertConflicts leaves an archive
 conflict the hunk settler cannot settle to the resolver".
 
 ## Red-main healer: a red main pages once per SHA and queues ci once per failing set

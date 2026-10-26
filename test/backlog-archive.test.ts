@@ -16,7 +16,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { finishedArchiveOf } from "../src/backlog/backlog-md.js";
 import { donePlanEntries, donePlans, fixedBugEntries } from "../src/backlog/backlog.js";
 import { conflictedFiles, rebaseOntoMainLeaveConflicts } from "../src/merge/merge-git.js";
-import { resolveBacklogInsertConflicts, resolveInsertOnlyText } from "../src/merge/backlog-conflicts.js";
+import { resolveBacklogInsertConflicts, resolveInsertOnlyText } from "../src/merge/merge-backlog-conflicts.js";
 import { falseFixReason } from "../src/verdict/fix-claim.js";
 import { backlogStructureReason } from "../src/backlog/backlog-structure.js";
 import { checkLiveFinished, liveFinishedEntriesFor } from "../src/doctor/doctor-backlog-plans.js";
@@ -380,7 +380,7 @@ test("the settler keeps a change's new entries above a finished section main rew
   assert.equal(resolveInsertOnlyText(doc), "## Done\n\n### X (done 2026-10-18)\n\nNew.\n\n");
   // Against a main side that rewrote those lines rather than archiving them, the change's
   // entries stack on main's rewrite, and the same hunk under an open section is the resolver's.
-  // (Main's deletion settles in any section — test/backlog-conflicts.test.ts.)
+  // (Main's deletion settles in any section — test/merge-backlog-conflicts.test.ts.)
   const rewritten = `## Done\n\n${hunk(["### D1 (done 2026-09-01)", "", "Reworded."], base, ["### X (done 2026-10-18)", "", "New.", "", ...base])}\n`;
   assert.equal(resolveInsertOnlyText(rewritten), "## Done\n\n### X (done 2026-10-18)\n\nNew.\n\n### D1 (done 2026-09-01)\n\nReworded.\n");
   assert.equal(resolveInsertOnlyText(rewritten.replace("## Done", "## Planned")), null);

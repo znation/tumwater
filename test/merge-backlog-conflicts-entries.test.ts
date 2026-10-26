@@ -6,11 +6,11 @@ import {
   mergeBacklogEntries,
   resolveBacklogInsertConflicts,
   resolveInsertOnlyText,
-} from "../src/merge/backlog-conflicts.js";
+} from "../src/merge/merge-backlog-conflicts.js";
 import { conflictedFiles, rebaseOntoMainLeaveConflicts } from "../src/merge/merge-git.js";
 import { makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
 
-// Branches of the entry-by-entry backlog merge that test/backlog-conflicts.test.ts leaves
+// Branches of the entry-by-entry backlog merge that test/merge-backlog-conflicts.test.ts leaves
 // unpinned: the archive guard, placement without a surviving predecessor, a heading both sides
 // added, and a preamble or section header only one side changed.
 

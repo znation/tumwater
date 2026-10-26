@@ -6,7 +6,7 @@ import {
   mergeBacklogEntries,
   resolveBacklogInsertConflicts,
   resolveInsertOnlyText,
-} from "../src/merge/backlog-conflicts.js";
+} from "../src/merge/merge-backlog-conflicts.js";
 import { conflictedFiles, rebaseOntoMainLeaveConflicts } from "../src/merge/merge-git.js";
 import { makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";

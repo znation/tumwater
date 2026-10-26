@@ -30,7 +30,7 @@ export function finishedArchiveOf(file: FinishedArchive["file"]): FinishedArchiv
 
 /** The repo-root backlog markdown files shared by every layer that knows them by name: the
  * tracked files roles edit and readers parse by `## ` section — read by backlog-structure.ts's
- * structural checks, merge/backlog-conflicts.ts's mechanical insert-conflict resolver, and
+ * structural checks, merge/merge-backlog-conflicts.ts's mechanical insert-conflict resolver, and
  * doctor-backlog-plans.ts's duplicate-heading check. One definition, so the three cannot disagree
  * about which files count. The archive files count too: merges insert at their top, and their
  * `## ` heading is as load-bearing as the live files'. */
