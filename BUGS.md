@@ -6,6 +6,22 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
+### A backgrounded `logs -f` outlives the shell that started it when that shell exits before the follow's first parent-pid read, so the follow leaks to PPID 1 and never stops (found by the qa role 2026-10-26)
+
+- **Symptom:** `tumwater logs -f` is documented (`docs/cli.md` line for `logs`) to "end[] on its own once the shell or process that started it exits, so a backgrounded follow does not outlive it." That holds only when the starting shell stays alive long enough for the follow's first `process.ppid` read. When the shell exits first (the classic `( tumwater logs -f 2>&1 & )` detached background), the follow is reparented to init before it reads `ppid`, so `startParentDeathWatch` arms its baseline as `1` and — comparing `ppid()` (always `1`) to its baseline (`1`) — never fires. The follow keeps polling forever, reparented to PPID 1. This is the same leak route behind the open "Two `logs -f` processes leaked…" entry, which the 10-19 `followUntilParentGone` change was meant to close; this race is its remaining hole.
+- **Reproduce:** in a scratch project, from a subshell that exits immediately:
+  ```
+  cd <scratch> && git init -q
+  node <checkout>/dist/src/cli.js init "Build a tiny markdown-to-html converter CLI in Python."
+  ( node <checkout>/dist/src/cli.js logs -f > f.log 2>&1 & echo $! > pid )
+  P=$(cat pid); sleep 12
+  ps -o pid,ppid,command -p "$P"   # expected: gone; actual: still running, PPID 1, never ends
+  kill "$P"
+  ```
+  With the parent kept alive ~3 s first (so the baseline is the real shell pid), the same prologue ends ~3 s after the shell exits, within the 5 s parent poll; the immediate-exit case is the one that leaks. Reproduced twice in a row, alive past two 5 s poll intervals.
+- **Cause:** `startParentDeathWatch` (src/process/supervisor.ts) captures `ppid()` as its baseline once, at arming. `followUntilParentGone` (src/cli/log-commands.ts), the shared `followView` (src/cli/follow-view.ts) and `status -f`/`queue -f`/`backlog -f` hand it no `expectedPpid`, so under an immediate-exit spawn the first read already sees `1` and the watchdog can never observe a change.
+- **Expected / fix sketch:** arm the parent-death watch against `expectedSupervisorPid(env)` when one is present, or take the parent's pid from the spawning shell before it can be reparented. A follow that cannot see a distinct parent should treat itself as orphaned immediately and end.
+
 ### `test/supervisor.test.ts` "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" flaked again on 2026-10-16, after its 10-01 and 10-09 Fixed entries and the 10-11 rewrite to a SIGUSR2-driven poll (found by operator session 2026-10-16 from improve's red merge check)
 
 - **Symptom:** at 07:29:28 PDT, improve's in-lock merge check for `d4b62873` failed one test: `✖ startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it — AssertionError [ERR_ASSERTION]: the orphaned grandchild's watch fired and ran its stop path`. The check ran 145 s. Recovery re-landed it green at 07:40, and it merged. That is the same assertion as the Fixed entry "The SIGKILL-grandchild supervisor test flaked twice in one 2026-10-09 window". Since then 4ec5d729 (10-11) replaced the real poll with one driven by SIGUSR2 from the test, and its comment says a loaded host "cannot stretch" the verdict. It still fails.
