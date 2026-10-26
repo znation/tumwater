@@ -61,12 +61,12 @@ interface BudgetGateWiringInput {
   view: BudgetGateWiringView;
 }
 
-/** Perform the budget gate's wiring for one poll, exactly as `pollTeamGates` did inline:
- * publish the demotions and the switch/serve info fields, log the one `fallback_switched`
- * transition event per tier change, assign every runner's config and cap flag, and hand
- * in-flight fallback runs back on a cap reopen or window reset. */
-export function applyBudgetGateWiring(input: BudgetGateWiringInput): void {
-  const { root, runners, liveConfig, info, accounts, budget, view } = input;
+function publishBudgetWiring(
+  root: string,
+  info: OrchestratorInfo,
+  budget: BudgetGateState,
+  view: BudgetGateWiringView,
+): void {
   // Publish what observers cannot derive themselves: every pair's demotion — a per-tier
   // fallback can demote a pair the legacy single `fallback` never names, and a dashboard that
   // only sees the engaged pair's verdict would show a tier's roles running while the
@@ -110,6 +110,13 @@ export function applyBudgetGateWiring(input: BudgetGateWiringInput): void {
       tiers: switched,
     });
   budget.prevChain = view.chain;
+}
+
+function assignRunnerBudgetConfig(
+  runners: readonly RoleRunner[],
+  liveConfig: TumwaterConfig,
+  view: BudgetGateWiringView,
+): void {
   // The director keeps the live config — an explicit human prompt outranks the
   // autonomous-spend cap (gateRoleConfig). Assigned every poll (not only on transitions)
   // so a runner created mid-gate, or one left behind by a broken-file poll that skipped
@@ -122,7 +129,15 @@ export function applyBudgetGateWiring(input: BudgetGateWiringInput): void {
     // and the roles' never disagree.
     r.budgetFallbackActive = view.onFallback;
   }
+}
 
+function handBackFallbackRuns(
+  root: string,
+  runners: readonly RoleRunner[],
+  liveConfig: TumwaterConfig,
+  accounts: (backend: string) => SubscriptionAccount | null,
+  view: BudgetGateWiringView,
+): void {
   // The budget reopened: a run that started on a fallback pair keeps it until it ends, so hand
   // those runs back — abort them resumably (session and worktree edits kept) and let their next
   // run continue the same session on the primary, whose config the assignment above already
@@ -181,6 +196,17 @@ export function applyBudgetGateWiring(input: BudgetGateWiringInput): void {
       }
     }
   }
+}
+
+/** Perform the budget gate's wiring for one poll, exactly as `pollTeamGates` did inline:
+ * publish the demotions and the switch/serve info fields, log the one `fallback_switched`
+ * transition event per tier change, assign every runner's config and cap flag, and hand
+ * in-flight fallback runs back on a cap reopen or window reset. */
+export function applyBudgetGateWiring(input: BudgetGateWiringInput): void {
+  const { root, runners, liveConfig, info, accounts, budget, view } = input;
+  publishBudgetWiring(root, info, budget, view);
+  assignRunnerBudgetConfig(runners, liveConfig, view);
+  handBackFallbackRuns(root, runners, liveConfig, accounts, view);
 }
 
 /** The inputs `budgetPausedSubjects` reads: the poll's runners and the view fields the
