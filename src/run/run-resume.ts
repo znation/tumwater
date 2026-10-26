@@ -77,12 +77,10 @@ export function planWithSalvagedWork(
   };
 }
 
-/** Decide how a run starts, consuming the resume flags as a side effect (the flag is
- * consumed here so a resume that fails falls back to a normal fresh run; another shutdown
- * mid-resume sets it again) and reclaiming the interrupted run's re-queued prompt. Returns
- * null — meaning the run is skipped — when the role has nothing to run (an empty director
- * inbox); a role runner's assembly never returns null. */
-export function planRunStart(opts: {
+/** The options a run-start decision reads: the state's resume flags and the role's prompt
+ * queue, plus the backend the run would run on (for the resume and handoff decisions) and the
+ * prompt assembler. */
+interface RunStartOptions {
   root: string;
   role: string;
   state: RunnerState;
@@ -105,7 +103,25 @@ export function planRunStart(opts: {
   /** The role has no prompt but holds a kept merge pin: instead of the null plan (skip), return
    * a promptless plan so the run's leftover recovery runs. Ignored when a prompt exists. */
   recoveryOnly?: boolean;
-}): RunStartPlan | null {
+}
+
+/** The resolved run-start decision: the retriable merge failure read (and now cleared), whether
+ * the run resumes or hands off to a fresh session, why it resumes/hands off, and whether the
+ * interrupted run ended image-reroute (whose facts the prompt builder reads before their flag is
+ * consumed). */
+interface RunStartDecision {
+  priorMergeFailure: string | undefined;
+  resuming: boolean;
+  handoff: boolean;
+  resumeCause: ResumeCause;
+  imageReroute: boolean;
+}
+
+/** Resolve how a run starts, consuming the resume flags as a side effect (a flag is consumed
+ * here so a resume that fails falls back to a normal fresh run; another shutdown mid-resume
+ * sets it again) and reclaiming the interrupted run's re-queued prompt. Owns every read and
+ * write of the resume flags, so a new cause or handoff rule is added here. */
+function resolveRunStartDecision(opts: RunStartOptions): RunStartDecision {
   const s = opts.state;
   // The last merge's failure, read before the clear below: a merge that failed
   // non-terminally kept its pin (the merger's own vocabulary — review_error, merge_conflict,
@@ -200,9 +216,20 @@ export function planRunStart(opts: {
         ? "image-reroute"
         : "handoff"
     : pendingResumeCause ?? ((s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart");
+  return { priorMergeFailure, resuming, handoff: handingOff, resumeCause, imageReroute };
+}
+
+/** Build the run's prompt from the resolved decision: the resume bridge on a resume, the
+ * handoff bridge (with the image-reroute facts) on a handoff, the assembled prompt otherwise.
+ * Reads the image-reroute facts before consuming their flag, and returns null only when a
+ * handoff/fresh assemble yields nothing. The raw user prompt is read by the caller only when a
+ * prompt exists. */
+function buildRunStartPrompt(opts: RunStartOptions, d: RunStartDecision): string | null {
+  const s = opts.state;
+  const agent = opts.agent ?? "pi";
   let prompt: string | null;
-  if (resuming) {
-    prompt = buildResumePrompt(opts.role, resumeCause, agent);
+  if (d.resuming) {
+    prompt = buildResumePrompt(opts.role, d.resumeCause, agent);
   } else {
     const assembled = opts.runPrompt(agent);
     // The image-reroute handoff note names the model the blind run was on and the image it
@@ -210,23 +237,34 @@ export function planRunStart(opts: {
     // session also needs the to-be-run model named for its own side of the note, but the
     // bridge already carries the facts that matter.
     const rerouteFacts =
-      imageReroute && s.imageReroute
+      d.imageReroute && s.imageReroute
         ? { from: s.imageReroute.from ?? "the prior model", path: s.imageReroute.path ?? "an image" }
         : undefined;
-    if (imageReroute) s.imageReroute = undefined;
+    if (d.imageReroute) s.imageReroute = undefined;
     prompt =
       assembled === null
         ? null
-        : handingOff
-          ? buildHandoffPrompt(opts.role, assembled, resumeCause, rerouteFacts)
+        : d.handoff
+          ? buildHandoffPrompt(opts.role, assembled, d.resumeCause, rerouteFacts)
           : assembled;
   }
+  return prompt;
+}
+
+/** Decide how a run starts, consuming the resume flags as a side effect (a flag is consumed
+ * here so a resume that fails falls back to a normal fresh run; another shutdown mid-resume
+ * sets it again) and reclaiming the interrupted run's re-queued prompt. Returns null — meaning
+ * the run is skipped — when the role has nothing to run (an empty director inbox); a role
+ * runner's assembly never returns null. */
+export function planRunStart(opts: RunStartOptions): RunStartPlan | null {
+  const d = resolveRunStartDecision(opts);
+  const prompt = buildRunStartPrompt(opts, d);
   if (prompt === null) {
     if (!opts.recoveryOnly) return null;
-    return { priorMergeFailure, resuming: false, handoff: false, resumeCause, prompt: null, userPrompt: null };
+    return { priorMergeFailure: d.priorMergeFailure, resuming: false, handoff: false, resumeCause: d.resumeCause, prompt: null, userPrompt: null };
   }
   // The raw user prompt a director run is executing (null for role runners), so an
   // unfulfilled outcome below can re-queue it. Captured before the field is cleared.
   const userPrompt = opts.pending.get();
-  return { priorMergeFailure, resuming, handoff: handingOff, resumeCause, prompt, userPrompt };
+  return { priorMergeFailure: d.priorMergeFailure, resuming: d.resuming, handoff: d.handoff, resumeCause: d.resumeCause, prompt, userPrompt };
 }
