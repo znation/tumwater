@@ -4,6 +4,7 @@
  * its own module (operator/operator-commands.ts, prompt-commands.ts, config-commands.ts,
  * log-commands.ts, doctor.ts, …). */
 import type { StdioOptions } from "node:child_process";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import { baseRoleOf, runnerIds } from "../roles/runner-ids.js";
 import { knownRoleIds } from "../config/config.js";
 import { unknownRoleMessage } from "../roles/roles.js";
@@ -62,23 +63,31 @@ export {
   type WindowReport,
 };
 
-/** `tumwater start`: boot the team and stream its event feed to this terminal until it stops.
- * Three layers cooperate here: without SUPERVISED_ENV this process becomes the supervisor
- * (superviseStartCommand below), spawning the real orchestrator as a child generation; the child
- * runs runOrchestrator to completion, handing the terminal back via RESTART_EXIT_CODE after a
- * self-redeploy so the supervisor respawns on the new build; --once collapses the whole thing
- * into one round of runs and a summary line (onceSummary below), for cron-style invocations.
- * `--for <duration>` keeps the daemon shape (redeployer, LaunchServicesWatch, supervisor hand-off
- * all stay) but arms a deadline: at the deadline the same graceful stop a Ctrl+C runs fires, and
- * the process exits after printing the summary. A mid-run self-redeploy hands the same args
- * (including `--for`) to the supervisor's next child, and the supervisor hands every generation
- * the same window start (RUN_WINDOW_START_ENV), so the deadline and the summary span the whole
- * window; only the final exit prints the summary. */
-export async function cmdStart(root: string, args: string[]): Promise<void> {
-  // The one function the self-redeploy asks before swapping onto a successor and the supervisor
-  // asks when a generation dies, so the three cannot disagree about what boots. The supervisor
-  // half runs it too, so a start that cannot boot fails before any child spawns. The flag
-  // vocabulary is validated by the dispatcher (cli.ts, from the same START_FLAG_SPECS).
+interface StartInvocation {
+  once: boolean;
+  json: boolean;
+  forMs: number | null;
+  branchArg: string | null;
+  roleFilter: string[] | null;
+  config: TumwaterConfig;
+  mainBranch: string;
+}
+
+interface SupervisedGenerationInput {
+  root: string;
+  config: TumwaterConfig;
+  mainBranch: string;
+  branchArg: string | null;
+  once: boolean;
+  json: boolean;
+  forMs: number | null;
+  roleFilter: string[] | null;
+}
+
+/** Parse and validate the invocation before any team boots: the --tui/--gui/--json/--port/
+ * --all-interfaces/--token/--role/--for/--branch guards, the --token argv scrub, runStartupCheck,
+ * and the already-running-orchestrator refusal. Returns the resolved invocation. */
+async function parseStartInvocation(root: string, args: string[]): Promise<StartInvocation> {
   const once = args.includes("--once");
   const json = args.includes("--json");
   // The TUI cannot be hosted by a run that is about to stop, like the dashboard: a --once round
@@ -164,20 +173,16 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
     fail(
       `an orchestrator is already running for this repo (pid ${running.pid}) — stop it with \`tumwater stop\` from another terminal, or press Ctrl+C in the terminal that started it`,
     );
-  // The team-booting machinery loads only once a run actually boots: the orchestrator's
-  // module graph (with its merge pipeline, review gate, and scheduler) is the CLI's heaviest
-  // compile, and the supervisor/redeploy/launch-services pieces ride beside it. Loading them
-  // dynamically, after the fail-fast gates above, keeps every other command's spawn — and
-  // `run`'s fail-fast paths — off that cost (see cli.ts's matching lazy dispatch).
-  const { SUPERVISED_ENV, RUN_WINDOW_START_ENV, ONCE_FAILED_EXIT_CODE, startParentDeathWatch, expectedSupervisorPid } = await import("../process/supervisor.js");
-  if (!process.env[SUPERVISED_ENV]) {
-    // `args` are the flags after the command token — forward them so the child generation
-    // targets the same branch (or whatever else the invocation named).
-    // A stop marker left by a team that died before its deadline must not stop this run.
-    cancelScheduledStop(root);
-    await superviseStartCommand(root, args, branchArg, forMs);
-    return;
-  }
+  return { once, json, forMs, branchArg, roleFilter, config, mainBranch };
+}
+
+/** Boot the supervised generation: the stop closure and SIGINT/SIGTERM handlers, the --for
+ * deadline timer and scheduled-stop watch, the parent-death watch, the baseline/redeploy/
+ * launch-services imports, the banner, the event subscription, runOrchestrator, and the
+ * once/window summaries and exit codes. */
+async function runSupervisedGeneration(input: SupervisedGenerationInput): Promise<void> {
+  const { root, once, json, forMs, branchArg, roleFilter, config, mainBranch } = input;
+  const { RUN_WINDOW_START_ENV, ONCE_FAILED_EXIT_CODE, startParentDeathWatch, expectedSupervisorPid } = await import("../process/supervisor.js");
   const controller = new AbortController();
   let stopping = false;
   const stop = () => {
@@ -296,6 +301,41 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
+}
+
+/** `tumwater start`: boot the team and stream its event feed to this terminal until it stops.
+ * Three layers cooperate here: without SUPERVISED_ENV this process becomes the supervisor
+ * (superviseStartCommand below), spawning the real orchestrator as a child generation; the child
+ * runs runOrchestrator to completion, handing the terminal back via RESTART_EXIT_CODE after a
+ * self-redeploy so the supervisor respawns on the new build; --once collapses the whole thing
+ * into one round of runs and a summary line (onceSummary below), for cron-style invocations.
+ * `--for <duration>` keeps the daemon shape (redeployer, LaunchServicesWatch, supervisor hand-off
+ * all stay) but arms a deadline: at the deadline the same graceful stop a Ctrl+C runs fires, and
+ * the process exits after printing the summary. A mid-run self-redeploy hands the same args
+ * (including `--for`) to the supervisor's next child, and the supervisor hands every generation
+ * the same window start (RUN_WINDOW_START_ENV), so the deadline and the summary span the whole
+ * window; only the final exit prints the summary. */
+export async function cmdStart(root: string, args: string[]): Promise<void> {
+  // The one function the self-redeploy asks before swapping onto a successor and the supervisor
+  // asks when a generation dies, so the three cannot disagree about what boots. The supervisor
+  // half runs it too, so a start that cannot boot fails before any child spawns. The flag
+  // vocabulary is validated by the dispatcher (cli.ts, from the same START_FLAG_SPECS).
+  const { once, json, forMs, branchArg, roleFilter, config, mainBranch } = await parseStartInvocation(root, args);
+  // The team-booting machinery loads only once a run actually boots: the orchestrator's
+  // module graph (with its merge pipeline, review gate, and scheduler) is the CLI's heaviest
+  // compile, and the supervisor/redeploy/launch-services pieces ride beside it. Loading them
+  // dynamically, after the fail-fast gates above, keeps every other command's spawn — and
+  // `run`'s fail-fast paths — off that cost (see cli.ts's matching lazy dispatch).
+  const supervisor = await import("../process/supervisor.js");
+  if (!process.env[supervisor.SUPERVISED_ENV]) {
+    // `args` are the flags after the command token — forward them so the child generation
+    // targets the same branch (or whatever else the invocation named).
+    // A stop marker left by a team that died before its deadline must not stop this run.
+    cancelScheduledStop(root);
+    await superviseStartCommand(root, args, branchArg, forMs);
+    return;
+  }
+  await runSupervisedGeneration({ root, config, mainBranch, branchArg, once, json, forMs, roleFilter });
 }
 
 /** Arm the windowed run's deadline timer: the one home of the arming `cmdStart` does for
