@@ -138,27 +138,25 @@ interface InitPlan {
   preferredBranch: string | undefined;
 }
 
-/** Validate an init request and resolve everything it needs, in the existing order, with no
- * write, no `git init`, no `created`/`leftAlone` allocation and no commit — every refusal
- * an over-long brief, `--branch` on an existing repo, an invalid branch name or a team
- * workspace (INV-Q1) throws here, ahead of any side effect, dry run included. The new-repo
- * branch is validated last (only when a repo will be seeded) so the invalid-branch refusal
- * still precedes any write. Returns the resolved plan for `seedProject` to act on. */
-async function resolveInitPlan(
-  root: string,
-  briefText: string,
-  branch: string | undefined,
-  opts: { adopt?: boolean; dryRun?: boolean; template?: string },
-): Promise<InitPlan> {
-  const dryRun = opts.dryRun === true;
+/** The single job this helper owns: resolve the template up front, refusing an unknown id and
+ * defaulting to the blank template (INV-Q1: before any side effect). */
+function resolveInitTemplate(id: string | undefined): NonNullable<ReturnType<typeof getTemplate>> {
   // Resolve the template before any side effect: an unknown id (possible for direct callers of
   // initProject — the CLI parser already validated its own path) is refused up front, and the
   // template shapes everything below.
-  const template = opts.template ? getTemplate(opts.template) : null;
-  if (opts.template && !template) {
-    throw new Error(unknownTemplateError(opts.template));
+  const template = id ? getTemplate(id) : null;
+  if (id && !template) {
+    throw new Error(unknownTemplateError(id));
   }
-  const tpl = template ?? getTemplate("blank")!;
+  return template ?? getTemplate("blank")!;
+}
+
+/** The single job this helper owns: join the template's preamble with the operator's words and
+ * enforce the brief cap (INV-Q1: before any side effect). */
+function combineInitBrief(
+  tpl: NonNullable<ReturnType<typeof getTemplate>>,
+  briefText: string,
+): string {
   // The brief records the template's preamble ahead of the operator's words, so their words
   // remain the tail ("latest instruction wins" reads naturally). The combined text rides into
   // every run's prefill, so it obeys the same cap as a bare prompt — reject before any side
@@ -176,14 +174,27 @@ async function resolveInitPlan(
       ),
     );
   }
+  return combinedPrompt;
+}
+
+/** The single job this helper owns: refuse when `git` is missing from PATH (INV-Q1: before any
+ * side effect). */
+function requireGitOnPath(): void {
   if (!findOnPath("git")) throw new Error(GIT_MISSING_MESSAGE);
+}
+
+/** The single job this helper owns: refuse when `root` sits inside a team workspace (INV-Q1:
+ * before any side effect). */
+function refuseTeamWorkspace(root: string): void {
   // A team workspace is not a project: seeding it would commit tumwater.json and a phantom
   // .tumwater on the role's branch. Refused before any side effect, dry run included.
   const owner = owningTeamRoot(root);
   if (owner !== undefined) throw new Error(teamWorkspaceMessage(owner));
-  // Validate everything that is pure validation before any side effect, so a bad prompt or
-  // README never leaves a half-seeded repo behind.
-  const prompt = briefText.trim();
+}
+
+/** The single job this helper owns: refuse a bare init that has no prompt to read anywhere
+ * (INV-Q1: before any side effect). */
+function refuseMissingBrief(root: string, prompt: string, combinedPrompt: string): void {
   // A project brief that already carries the prompt makes it optional: a fresh clone of an
   // initialized project, or a checkout that lost its now-untracked tumwater.json
   // (plans/portability.md §4a/7), re-seeds with a bare `tumwater init` — the existing brief
@@ -201,6 +212,11 @@ async function resolveInitPlan(
       `a brief is required: tumwater init <prompt | --file prompt.md>${readmeHint}`,
     );
   }
+}
+
+/** The single job this helper owns: answer whether `root` is already a git repo, refusing
+ * `--branch` on one (INV-Q1: before any side effect). */
+async function resolveInitWasRepo(root: string, branch: string | undefined): Promise<boolean> {
   // `--branch` seeds a NEW repository only: an existing repo's checked-out branch is the
   // team's business (`tumwater start --branch` or baseBranch chooses it at runtime), so a
   // --branch given here would otherwise be silently ignored — the exact failure mode
@@ -213,6 +229,16 @@ async function resolveInitPlan(
       `--branch only seeds a new repository: this directory is already a git repository and init leaves its checked-out branch alone — drop --branch, or point the team at a branch with \`tumwater start --branch ${branch}\` (or baseBranch in tumwater.json)`,
     );
   }
+  return wasRepo;
+}
+
+/** The single job this helper owns: decide adoption — whether the brief goes to TUMWATER.md and
+ * README.md is left untouched — refusing an unmarked TUMWATER.md (INV-Q1: before any side
+ * effect). */
+function resolveInitAdoption(
+  root: string,
+  opts: { adopt?: boolean; dryRun?: boolean; template?: string },
+): { brief: string | null; readmeExists: boolean; adopted: boolean } {
   // The roles read the project's reason to exist back out of the project brief on every
   // run (readBriefText). A README.md without the managed section is the project's own
   // documentation, so it is never rewritten: the repo is adopted instead, with the brief in
@@ -230,6 +256,17 @@ async function resolveInitPlan(
       `TUMWATER.md already exists without a brief between the tumwater:prompt markers, so your prompt would be lost — add it to TUMWATER.md between ${PROMPT_START} and ${PROMPT_END} (or delete TUMWATER.md so init creates one), then re-run \`tumwater init\``,
     );
   }
+  return { brief, readmeExists, adopted };
+}
+
+/** The single job this helper owns: refuse a changed prompt when a brief already owns the
+ * managed sections (INV-Q1: before any side effect). */
+function refuseChangedBrief(
+  root: string,
+  brief: string | null,
+  prompt: string,
+  combinedPrompt: string,
+): void {
   // The same loss one step later: a brief that already owns the managed sections is never
   // rewritten (init only creates what is absent), so a DIFFERENT prompt given here would be
   // silently dropped while every run keeps running the old one. Refuse it and name the file
@@ -241,6 +278,15 @@ async function resolveInitPlan(
       `${brief} already carries a different brief between the tumwater:prompt markers, and init never rewrites an existing project brief, so your prompt would be lost — to change the prompt, edit it in ${brief} between ${PROMPT_START} and ${PROMPT_END}; to re-seed with the current one, re-run a bare \`tumwater init\``,
     );
   }
+}
+
+/** The single job this helper owns: resolve and validate the new-repo branch, last, only when a
+ * repo will be seeded (INV-Q1: before any side effect). */
+async function resolveInitPreferredBranch(
+  root: string,
+  branch: string | undefined,
+  wasRepo: boolean,
+): Promise<string | undefined> {
   // Last, resolve the new-repo branch — only when a repo will be seeded — and validate it with
   // git's own rule before any side effect, dry run included.
   let preferredBranch: string | undefined;
@@ -268,6 +314,37 @@ async function resolveInitPlan(
     }
     preferredBranch = preferred;
   }
+  return preferredBranch;
+}
+
+/** Validate an init request and resolve everything it needs, in the existing order, with no
+ * write, no `git init`, no `created`/`leftAlone` allocation and no commit — every refusal
+ * an over-long brief, `--branch` on an existing repo, an invalid branch name or a team
+ * workspace (INV-Q1) throws here, ahead of any side effect, dry run included. The new-repo
+ * branch is validated last (only when a repo will be seeded) so the invalid-branch refusal
+ * still precedes any write. The body composes the named validation jobs in their invocation
+ * order (the template resolve, the brief cap, the git check, the team-workspace refusal, the
+ * missing-brief refusal, the `--branch`-on-an-existing-repo refusal, the adoption resolve,
+ * the changed-brief refusal and the preferred-branch resolve), so each job is found by name;
+ * every refusal still throws before any side effect (INV-Q1). Returns the resolved plan for
+ * `seedProject` to act on. */
+async function resolveInitPlan(
+  root: string,
+  briefText: string,
+  branch: string | undefined,
+  opts: { adopt?: boolean; dryRun?: boolean; template?: string },
+): Promise<InitPlan> {
+  const dryRun = opts.dryRun === true;
+  const tpl = resolveInitTemplate(opts.template);
+  const combinedPrompt = combineInitBrief(tpl, briefText);
+  requireGitOnPath();
+  refuseTeamWorkspace(root);
+  const prompt = briefText.trim();
+  refuseMissingBrief(root, prompt, combinedPrompt);
+  const wasRepo = await resolveInitWasRepo(root, branch);
+  const { brief, readmeExists, adopted } = resolveInitAdoption(root, opts);
+  refuseChangedBrief(root, brief, prompt, combinedPrompt);
+  const preferredBranch = await resolveInitPreferredBranch(root, branch, wasRepo);
   return { dryRun, tpl, combinedPrompt, brief, readmeExists, adopted, wasRepo, preferredBranch };
 }
 

@@ -586,6 +586,20 @@ test("initProject refuses --branch on an existing repo instead of silently ignor
   assert.ok(!fs.existsSync(path.join(repo, "PLANS.md")));
 });
 
+test("initProject refuses --branch on an existing repo before the changed-brief refusal", async () => {
+  const repo = makeRepo();
+  // A marked README whose prompt differs from the argument would otherwise (had the adoption
+  // and changed-brief guards run first) be refused as a changed brief — but the `--branch`
+  // refusal runs first, so nothing at all is written.
+  fs.writeFileSync(path.join(repo, "README.md"), `# P\n${PROMPT_START}\nBuild a thing.\n${PROMPT_END}\n`);
+  await assert.rejects(
+    () => initProject(repo, "A different prompt.", "trunk"),
+    /--branch only seeds a new repository/,
+  );
+  assert.ok(!fs.existsSync(path.join(repo, "PLANS.md")));
+  assert.ok(!fs.existsSync(path.join(repo, "TUMWATER.md")));
+});
+
 test("initProject leaves user's unrelated dirty files uncommitted", async () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "wip.txt"), "wip\n");
@@ -653,5 +667,20 @@ test("initProject refuses inside a team workspace and writes nothing", async () 
   await assert.rejects(initProject(slot, "", undefined, { dryRun: true }), { message });
   assert.equal(fs.existsSync(path.join(slot, "tumwater.json")), false);
   assert.equal(fs.existsSync(path.join(slot, ".tumwater")), false);
+  assert.equal(commits(), before);
+});
+
+test("initProject refuses an unknown template before the team-workspace refusal", async () => {
+  const { slot } = teamWorkspace();
+  fs.writeFileSync(path.join(slot, "README.md"), `# P\n${PROMPT_START}\nBuild a thing.\n${PROMPT_END}\n`);
+  const commits = () => sh(slot, "git", "rev-list", "--count", "HEAD").trim();
+  const before = commits();
+  // The unknown-template refusal runs before the team-workspace guard, so this fails at the
+  // template with no repo write, even inside a team workspace.
+  await assert.rejects(
+    () => initProject(slot, "Build a thing.", undefined, { template: "no-such-template" }),
+    /unknown template/,
+  );
+  assert.equal(fs.existsSync(path.join(slot, "tumwater.json")), false);
   assert.equal(commits(), before);
 });
