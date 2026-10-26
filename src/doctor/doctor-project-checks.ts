@@ -27,6 +27,7 @@ import { eventLogState, readEventsSince, type EventLogState } from "../events/ev
 import { EVENTS_KEEP, type HarnessEvent } from "../events/events.js";
 import { finiteNumber } from "../files/json-object.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
+import { andMore } from "./doctor-backlog.js";
 import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
 import { POST_MERGE_REJECT_WINDOW_MS, postMergeChurn } from "../review/post-merge-review.js";
 import { roleLabel } from "../roles/role-labels.js";
@@ -294,8 +295,7 @@ export function flappedChecksPhrase(flapped: readonly [string, number][]): strin
   if (flapped.length === 0) return null;
   const render = ([k, n]: [string, number]) => `"${k}" ×${n}`;
   const [first, ...rest] = flapped;
-  const more =
-    rest.length > 0 ? ` (and ${rest.length} more: ${rest.map(render).join(", ")})` : "";
+  const more = andMore(rest, render);
   return `${agree(flapped.length, "check", "checks")} flapped more than once in the last 24h: ${render(first!)}${more}`;
 }
 
