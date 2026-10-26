@@ -1,12 +1,12 @@
-/** The backlog team alerts, in emission order: open questions, refused entries, operator-held
- * entries, stalled entries, a broken plan-dependency clause, stranded plans, duplicated backlog
+/** The backlog team alerts, in emission order: open questions, refused entries, stalled
+ * entries, a broken plan-dependency clause, stranded plans, duplicated backlog
  * headings, finished history still in the live backlog files, and Fixed records with a bad
  * Validation gap trace. One of the per-domain builders split out of src/ui/team-alerts.ts; the
  * shared types and wording helpers live in team-alert-shared.ts. */
 
 import { entryListDetail, firstAndMore, openBacklogAction, type TeamAlert, type StaleQuestion, type PlanDependencyProblem, type BacklogHeadingDuplicate, type LiveFinishedEntry } from "./team-alert-shared.js";
 import { entryKindLabel, type RefusedEntry, type StalledEntry } from "../backlog/backlog-eligibility.js";
-import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
+import type { StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import { missingSymbolNames } from "../verdict/fix-claim.js";
 import { joinWithMore } from "../text/text.js";
@@ -17,7 +17,6 @@ interface BacklogAlertsInput {
   questions: readonly string[];
   staleQuestions: readonly StaleQuestion[];
   refused: readonly RefusedEntry[];
-  operatorHeld: readonly RefusedEntry[];
   stalledEntries: readonly StalledEntry[];
   planDependency: PlanDependencyProblem | null;
   strandedPlans: readonly StrandedPlanEntry[];
@@ -78,33 +77,12 @@ function pushRefusedAlert(out: TeamAlert[], refused: readonly RefusedEntry[]): v
   }
 }
 
-// A Needs-review entry whose held count reached the operator threshold parks
-// until a human releases it (tumwater plan|bug --release, part 2/3); amber because only the
-// operator can clear it, right after the refused alert, naming the entry like the refused
-// alert does. Unlike refused, a held-for-operator entry is still in the normal review
-// cycle below the threshold — only the at-past-threshold list reaches here (operatorHeldEntries).
-function pushOperatorHeldAlert(out: TeamAlert[], operatorHeld: readonly RefusedEntry[]): void {
-  if (operatorHeld.length) {
-    const first = operatorHeld[0]!;
-    out.push({
-      key: "operator-held", // vocabulary-ok: the operator-held amber alert's key
-      tone: "amber",
-      title: `${plural(operatorHeld.length, "backlog entry is held", "backlog entries are held")} for you to release`,
-      detail: operatorHeld.some((r) => r.file === "bugs") && operatorHeld.some((r) => r.file === "plans")
-        ? operatorHeld.map((r) => `${entryKindLabel(r.file)} ${stripEntryStamp(r.title)} (tumwater ${entryKindLabel(r.file).toLowerCase()} --release)`).join("; ")
-        : `${entryKindLabel(first.file)} ${entryListDetail(operatorHeld.map((r) => r.title))} — release it with tumwater ${entryKindLabel(first.file).toLowerCase()} --release`,
-      actions: openBacklogAction(first),
-    });
-  }
-}
-
-// An entry parked by a Needs-review note (the doctor's `stalled entries` row,
-// behind the held threshold) sits until the plan role splits or replans it — amber because
-// the plan role is the only one that can clear it, right after the operator-held alert,
-// naming the first such entry in file order, its file, its note kind, and the fix. Same
-// `entryHold` classification as `operatorHeldEntries` and `checkStalledEntries`, so the
-// always-on alert and the doctor cannot disagree on which holds are role-resolvable. A
-// held-for-operator entry is excluded here.
+// An entry parked by a Needs-review note (the doctor's `stalled entries` row)
+// sits until the plan role splits or replans it — amber because the plan role is the only
+// one that can clear it, naming the first such entry in file order, its file, its note kind,
+// and the fix. Same `entryHold` classification as `stalledEntries` and
+// `checkStalledEntries`, so the always-on alert and the doctor cannot disagree on which
+// holds are role-resolvable.
 function pushStalledEntriesAlert(out: TeamAlert[], stalledEntries: readonly StalledEntry[]): void {
   if (stalledEntries.length) {
     const first = stalledEntries[0]!;
@@ -282,9 +260,9 @@ function pushFalseFixesAlert(out: TeamAlert[], fixClaims: readonly FixClaimProbl
   }
 }
 
-/** The backlog alerts, in emission order: open questions, refused entries, operator-held
- * entries, stalled entries, a broken plan-dependency clause, stranded plans, duplicated
- * backlog headings, finished history still in the live backlog files, and Fixed records with a
+/** The backlog alerts, in emission order: open questions, refused entries, stalled
+ * entries, a broken plan-dependency clause, stranded plans, duplicated backlog
+ * headings, finished history still in the live backlog files, and Fixed records with a
  * bad Validation gap trace. Extracted from
  * teamAlerts (part 2/5 of the teamAlerts split) so the shared module stays small; the input
  * names exactly the fields this run reads. The caller pushes the returned alerts at the
@@ -297,7 +275,6 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
     questions,
     staleQuestions,
     refused,
-    operatorHeld,
     stalledEntries,
     planDependency,
     strandedPlans,
@@ -309,7 +286,6 @@ export function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
   pushQuestionsAlert(out, questions);
   pushStaleQuestionsAlert(out, staleQuestions);
   pushRefusedAlert(out, refused);
-  pushOperatorHeldAlert(out, operatorHeld);
   pushStalledEntriesAlert(out, stalledEntries);
   pushPlanDependencyAlert(out, planDependency);
   pushStrandedPlansAlert(out, strandedPlans);

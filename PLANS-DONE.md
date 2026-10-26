@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract, part 2d/6: The operator-held alert and the notes view stop naming the operator hold (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2; the second of four finer parts replacing part 2c/6, independent in files of the other three (2c/6, 2e/6, 2f/6) and holding no prerequisite, since the hold still parks entries until 2f/6; touches src/ui/team-alert-backlog.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/prompt/notes-backlog.ts test/team-alerts.test.ts test/status-payload.test.ts test/notes-backlog.test.ts) — done 2026-10-26 by the feature role
+
+**Previously held 2**
+
+**Goal.** `teamAlerts` emits no `operator-held` alert and the surfaces it feeds no longer count or phrase a held-for-operator entry. Eligibility is unchanged until part 2f/6, so an at-threshold entry still parks; only its banner and digest line go.
+
+**Approach.**
+- `src/ui/team-alert-backlog.ts`: delete `pushOperatorHeldAlert`, the `operatorHeld` field of `BacklogAlertsInput`, its destructure and its call; trim the comments that name it.
+- `src/ui/team-alerts.ts`: drop the `operatorHeld` parameter of `teamAlerts` and the `operatorHeld` key of its `buildBacklogAlerts` call.
+- `src/ui/status-payload.ts`, `src/ui/status-render.ts` and `src/ui/tui/tui.tsx`: drop the `operatorHeldEntries` import and its positional argument in the `teamAlerts(...)` call.
+- `src/prompt/notes-backlog.ts`: `collectSeriesNotes` counts a `needs-review` hold only; `holdWording` drops the `held-for-operator` branch and its release sentence, with any import it alone used.
+- Tests: `test/team-alerts.test.ts` and `test/status-payload.test.ts` drop the `operator-held`/`operatorHeld` cases; `test/notes-backlog.test.ts` drops "a held-for-operator bug names tumwater bug --release, a plan names plan --release" or re-points it to the `needs review` wording.
+
+**Files touched.** src/ui/team-alert-backlog.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/prompt/notes-backlog.ts test/team-alerts.test.ts test/status-payload.test.ts test/notes-backlog.test.ts
+
+**Acceptance criteria.**
+- `grep -rn 'pushOperatorHeldAlert\|operatorHeldEntries' src/ui src/prompt` is empty.
+- `teamAlerts` emits no `operator-held` alert for a backlog holding an at-threshold note, and the status payload and TUI frame render the same alert list without it.
+- `npm run test:gate` passes.
+
 ### `archiveFinishedText`'s ~65-line body is split into one named helper per job, so the finished-section selection, the kept/moved split for each selection kind, and the no-archive guard are each found by name (planned 2026-10-26 by the plan role; independent in files of every pickable `## Planned` entry — no other `## Planned` entry names the file (`grep -n 'backlog/backlog-archive.ts' PLANS.md` matches only this entry's own heading and Files-touched line, and `grep -n 'backlog-archive' PLANS.md` likewise matches only this entry); the blocked `Every commit is verified on main` and `Subtract` parts edit src/review, src/orchestrator, src/runner, src/merge, src/baseline, src/backlog/backlog-eligibility.ts, backlog-release.ts, backlog-index.ts, backlog-cli.ts, src/status, src/doctor, src/config, src/cli, src/ui and src/ui/tui — none src/backlog/backlog-archive.ts, and `plans/subtract.md`'s six strokes do not name the archive; PLANS-DONE.md's `archiveFinishedText` mentions are landed behavior entries (the commit-time sweep, the unreadable-archive guard, and the INV-O1/O2/O3 descriptions), never a split of its body; docs/invariants.md's INV-O1–O3 bind `archiveFinishedText` and stay true because its exported signature and behavior do not change; touches src/backlog/backlog-archive.ts) — done 2026-10-26 by the feature role
 
 **Goal.** `archiveFinishedText` (src/backlog/backlog-archive.ts, exported; called by `archiveNewFinishedEntries`, `planArchiveAll` and `archiveFinishedOnMain`) is one ~65-line body doing four jobs in order: resolve which live entries the selection picks (the `keep` slice or the `baseKeys`/`park` filter), judge each pick's fate against the archive (`entryFates`), split the section into the moved and kept bodies along one of two branches, and assemble the `ArchiveMove` with its early null returns. Each branch re-derives ids, line sets and early guards inline, so a reader asking "why did this entry stay in the live section?", "which lines count as dropped?" or "when does a missing archive refuse the move?" scans the whole body. Extract one module-private helper per job and leave `archiveFinishedText` as the dispatch plus the assembly. This continues the landed `createHistoryPane`/`createTuiPanes`/`paneBody` splits into a core backlog function. No behavior change: the exported signature, every null return and the returned `live`/`archive`/`titles`/`dropped` are untouched.

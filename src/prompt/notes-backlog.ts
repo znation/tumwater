@@ -22,7 +22,7 @@
  * items`) so a dropped item cannot read as a complete answer; it returns undefined when the notes
  * name nothing live. */
 
-import { entryHoldAgainst, entryKindLabel, type EntryHold } from "../backlog/backlog-eligibility.js";
+import { entryHoldAgainst, type EntryHold } from "../backlog/backlog-eligibility.js";
 import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { entryKey, partKey, plannedPartKeys, seriesPart } from "../backlog/backlog-parts.js";
 import { plural } from "../text/phrases.js";
@@ -75,7 +75,7 @@ function seriesInfos(planned: readonly BacklogEntry[], doneTitles: readonly stri
     info.plannedCount++;
     const hold = entryHoldAgainst(entry, allParts);
     info.holds.set(key, hold);
-    if (hold === "needs-review" || hold === "held-for-operator") info.review++; // vocabulary-ok: the held-for-operator hold is an operator decision
+    if (hold === "needs-review") info.review++;
     else if (hold === "refused") info.refused++;
     else if (typeof hold === "object" && hold !== null) info.waiting++;
   }
@@ -115,17 +115,13 @@ function firstSixWords(normalizedKey: string): string {
   return normalizedKey.split(/\s+/).slice(0, 6).join(" ");
 }
 
-/** The wording of one named item's state: an eligibility hold, `done`, or `not in the backlog`.
- * `file` is which backlog the entry lives in, so a held-for-operator entry names the operator's
- * matching release command (`tumwater plan --release` for a plan, `tumwater bug --release` for a
- * bug) — the same Plan/Bug derivation the operator-held alert uses. */
-function holdWording(state: PartState, file: "plans" | "bugs" = "plans"): string {
+/** The wording of one named item's state: an eligibility hold, `done`, or `not in the backlog`. */
+function holdWording(state: PartState): string {
   if (state === "done") return "done";
   if (state === "not-in-backlog") return "not in the backlog";
   if (state === null) return "eligible";
   if (state === "refused") return "refused (only the operator clears it)"; // vocabulary-ok: the plan-mandated refused hold wording refers to the tumwater operator
-  if (state === "needs-review") return "needs review";
-  if (state === "held-for-operator") return `held for the operator (tumwater ${entryKindLabel(file).toLowerCase()} --release)`; // vocabulary-ok: names the operator-held wording and the operator's release command
+  if (state === "needs-review" || state === "held-for-operator") return "needs review"; // vocabulary-ok: the deprecated held-for-operator hold name, kept only until part 2f/6 retires it
   return `waits on ${state.blockedBy.join(", ")}`;
 }
 
@@ -188,9 +184,9 @@ export function notesBacklogBlock(notes: string, backlog: NotesBacklog): string 
   for (const p of namedParts.values()) {
     const info = series.get(p.seriesLower);
     if (info === undefined) continue;
-    lines.push(`- ${info.name}, part ${p.part}/${p.of} — ${holdWording(p.state, "plans")}`);
+    lines.push(`- ${info.name}, part ${p.part}/${p.of} — ${holdWording(p.state)}`);
   }
-  for (const entry of namedEntries.values()) lines.push(`- ${entry.title} — ${holdWording(entry.state, entry.file)}`);
+  for (const entry of namedEntries.values()) lines.push(`- ${entry.title} — ${holdWording(entry.state)}`);
   if (lines.length === 0) return undefined;
   const cap = MAX_BLOCK_LINES - 1; // the item lines; the header is the twelfth line
   if (lines.length <= cap) return [HEADER, ...lines].join("\n");

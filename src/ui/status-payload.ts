@@ -1,6 +1,6 @@
 import { answeredQuestionSummaries } from "../backlog/question-answer.js";
 import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries, openBugs, openQuestions, plannedPlans, type BacklogEntry } from "../backlog/backlog.js";
-import { backlogHolds, backlogInProgress, backlogMarks, operatorHeldEntries, refusedEntries, stalledEntries } from "../backlog/backlog-eligibility.js";
+import { backlogHolds, backlogInProgress, backlogMarks, refusedEntries, stalledEntries } from "../backlog/backlog-eligibility.js";
 import { finishedTitle, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
 import { groupBlockedSeries, partsLabel } from "../backlog/backlog-index-data.js";
 import { fixClaimProblems, validationGapProblems } from "../doctor/doctor-backlog-plans.js";
@@ -446,7 +446,7 @@ function alertFields(root: string, snap: ReturnType<typeof snapshot>, questions:
   return {
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), skippedMergeFiles(root), stalledEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), qaCoverageAlert(root, now), staleWorkspacePins(root, now), liveFinishedEntriesFor(root), instancePoolProblems(root), providerCapProblems(root)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), skippedMergeFiles(root), stalledEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), qaCoverageAlert(root, now), staleWorkspacePins(root, now), liveFinishedEntriesFor(root), instancePoolProblems(root), providerCapProblems(root)),
   };
 }
 

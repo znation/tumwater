@@ -548,26 +548,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `npm run test:gate` passes.
 
 
-### Subtract, part 2d/6: The operator-held alert and the notes view stop naming the operator hold (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2; the second of four finer parts replacing part 2c/6, independent in files of the other three (2c/6, 2e/6, 2f/6) and holding no prerequisite, since the hold still parks entries until 2f/6; touches src/ui/team-alert-backlog.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/prompt/notes-backlog.ts test/team-alerts.test.ts test/status-payload.test.ts test/notes-backlog.test.ts)
-
-**Previously held 2**
-
-**Goal.** `teamAlerts` emits no `operator-held` alert and the surfaces it feeds no longer count or phrase a held-for-operator entry. Eligibility is unchanged until part 2f/6, so an at-threshold entry still parks; only its banner and digest line go.
-
-**Approach.**
-- `src/ui/team-alert-backlog.ts`: delete `pushOperatorHeldAlert`, the `operatorHeld` field of `BacklogAlertsInput`, its destructure and its call; trim the comments that name it.
-- `src/ui/team-alerts.ts`: drop the `operatorHeld` parameter of `teamAlerts` and the `operatorHeld` key of its `buildBacklogAlerts` call.
-- `src/ui/status-payload.ts`, `src/ui/status-render.ts` and `src/ui/tui/tui.tsx`: drop the `operatorHeldEntries` import and its positional argument in the `teamAlerts(...)` call.
-- `src/prompt/notes-backlog.ts`: `collectSeriesNotes` counts a `needs-review` hold only; `holdWording` drops the `held-for-operator` branch and its release sentence, with any import it alone used.
-- Tests: `test/team-alerts.test.ts` and `test/status-payload.test.ts` drop the `operator-held`/`operatorHeld` cases; `test/notes-backlog.test.ts` drops "a held-for-operator bug names tumwater bug --release, a plan names plan --release" or re-points it to the `needs review` wording.
-
-**Files touched.** src/ui/team-alert-backlog.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/prompt/notes-backlog.ts test/team-alerts.test.ts test/status-payload.test.ts test/notes-backlog.test.ts
-
-**Acceptance criteria.**
-- `grep -rn 'pushOperatorHeldAlert\|operatorHeldEntries' src/ui src/prompt` is empty.
-- `teamAlerts` emits no `operator-held` alert for a backlog holding an at-threshold note, and the status payload and TUI frame render the same alert list without it.
-- `npm run test:gate` passes.
-
 ### Subtract, part 2e/6: The release surfaces stop offering the operator hold (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2; the third of four finer parts replacing part 2c/6, independent in files of the other three (2c/6, 2d/6, 2f/6) and holding no prerequisite, since the CLI release still lifts a held note until 2f/6; touches src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts src/gui/gui-backlog-endpoints.ts src/gui/gui-backlog-commands.ts test/tui-keys.test.ts test/gui-client-drawer.test.ts test/gui-endpoints.test.ts)
 
 **Previously held 2**

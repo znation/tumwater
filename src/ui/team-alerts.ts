@@ -86,7 +86,6 @@ export function teamAlerts(
   roles: readonly AlertRole[],
   now: number,
   refused: readonly RefusedEntry[] = [],
-  operatorHeld: readonly RefusedEntry[] = [],
   staleBugs: readonly StaleBug[] = [],
   stalePrompts: readonly StalePrompt[] = [],
   staleMerges: readonly StaleMerge[] = [],
@@ -117,7 +116,7 @@ export function teamAlerts(
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
-  out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
+  out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   out.push(...buildMergeAlerts({ quarantined, flappedChecks, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, qaCoverage, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, instancePool, providerCaps }));
