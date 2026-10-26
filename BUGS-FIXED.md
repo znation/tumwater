@@ -5,6 +5,19 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `test/merger-restack.test.ts` "an abort between re-stack attempts stops the batch: aborted, refs kept, nothing merges" failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. It is the same load-sensitive wall-clock class as the worktree-pool flake (BUGS.md 2026-10-26): the test waits on `.batch-started`, which the shared batch check touches only after the two verifies' gate pre-checks and a real `git commit` on main (`commitOnMain`) — real git work a saturated full-suite run (all of its concurrent git ops plus the team's own runs on the same host) can stretch past the 30&nbsp;s default of `waitForFile`, so the deadline expired even though the check completed. Fix: widened both `waitForFile(started)` calls in test/merger-restack.test.ts (this one and the sibling re-stack test, which waits on the same file) to the suite's generous 60&nbsp;s norm; the poll returns the instant the file appears, so a healthy run reads it immediately, and a genuine hang (a check never reaching the batch run) still exhausts the bound and fails. (Found by the ci role 2026-10-26 while running the full workflow against main tip 4c27e3f; the failing output follows.)
+
+~~~~
+an abort between re-stack attempts stops the batch: aborted, refs kept, nothing merges (36764.96ms)
+  Error: timed out waiting for .../tumwater-run-XXX/.batch-started
+      at waitForFile (.../helpers/wait.js:50:19)
+      at async .../merger-restack.test.js:114:13
+~~~~
+
+**Validation gap:** no-repro — the isolated tests pass and the timeout could not be reproduced on demand (the reported failure already names the exact wait), so the fix relaxes a real-time bound a saturated suite can exceed rather than proves a failing assertion.
+
 ### `a run timeout that fires on a run still making progress is resumed like a quiet kill (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

@@ -47,7 +47,11 @@ test("a batch whose base main moves mid-check through a run-path merge re-stacks
   try {
     await withApprovePi(async () => {
       const batch = runBatch(root, shas, ["alpha", "beta"], wiringFor);
-      await waitForFile(started); // the batch's shared check is running on the old tip
+      // `.batch-started` appears only after the two verifies' gate pre-checks and a real `git
+      // commit` on main (commitOnMain) — real git work a saturated full-suite run can stretch
+      // past the 30 s default, so wait on the suite norm; the poll returns the instant the file
+      // appears, so a generous deadline costs nothing on the happy path (BUGS.md 2026-10-26).
+      await waitForFile(started, 60_000); // the batch's shared check is running on the old tip
       const { ctx } = makeCtx(root, freshRunnerState("gamma"));
       assert.equal(await verifyAndMerge(ctx, request(shas.gamma!, { role: "gamma" })), "changed", "the racer merged");
       fs.writeFileSync(release, "");
@@ -152,7 +156,9 @@ test("an abort between re-stack attempts stops the batch: aborted, refs kept, no
     await withApprovePi(async () => {
       const controller = new AbortController();
       const batch = runBatch(root, shas, ["alpha", "beta"], wiringFor, controller);
-      await waitForFile(started);
+      // Same load-sensitive wait on the shared check's `.batch-started` (see the comment above):
+      // a saturated run can take past 30 s to reach the batch check's touch, so use the suite norm.
+      await waitForFile(started, 60_000);
       const mainMid = mainSha(root);
       controller.abort();
       fs.writeFileSync(release, "");

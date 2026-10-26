@@ -182,17 +182,6 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)
 ~~~~
 
-### `test/merger-restack.test.ts` "an abort between re-stack attempts stops the batch: aborted, refs kept, nothing merges" failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it. (Found by the ci role 2026-10-26 while running the full workflow against main tip 4c27e3f; the failing output follows.)
-
-~~~~
-an abort between re-stack attempts stops the batch: aborted, refs kept, nothing merges (36764.96ms)
-  Error: timed out waiting for .../tumwater-run-XXX/.batch-started
-      at waitForFile (.../helpers/wait.js:50:19)
-      at async .../merger-restack.test.js:114:13
-~~~~
-
 ### `a timed-out check does not settle on its leader's close while a grandchild survives` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
