@@ -240,12 +240,15 @@ export { readRunBlocks } from "./fake-commands.js";
 
 /** Something the test can hand the trust lookup as its `bin` directly, plus the ledger files
  * the lookup's probes write: `callsFile` counts app-server starts (a cache hit spawns none);
- * `pidFile` records the app-server's pid before it hangs, so the timeout test can prove the
- * child is gone afterwards. `restore` removes the fake's directory. */
+ * `pidFile` records the app-server's pid before it hangs; `identityFile` records its
+ * process-identity handle (`pid<space>kernel-start`, see src/process/process.ts
+ * ProcessIdentity) so the timeout test can tell the original app-server from a pid the kernel
+ * reuses. `restore` removes the fake's directory. */
 interface FakeCodexServer {
   bin: string;
   callsFile: string;
   pidFile: string;
+  identityFile: string;
   restore: () => void;
 }
 
@@ -292,16 +295,25 @@ export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodex
   const dir = tmpdir("fake-codex-server-");
   const callsFile = path.join(dir, "server.calls");
   const pidFile = path.join(dir, "server.pid");
+  const identityFile = path.join(dir, "server.identity");
   const version = opts.version ?? "0.163.0";
   const script = path.join(dir, "app-server.js");
   fs.writeFileSync(script, appServerJs({ callsFile, pidFile, version, mismatch: opts.mismatch === true, hang: opts.hang === true, errorReply: opts.errorReply, noise: opts.noise, exitEarly: opts.exitEarly, versionHang: opts.versionHang, resultData: opts.resultData }));
-  // The pid is stamped in the shim before node starts, so the timeout test can read it the
-  // moment the lookup settles, however slowly node itself cold-starts under parallel load.
-  writeScript(path.join(dir, "codex"), `echo $$ > "${pidFile}"; exec node ${script} "$@"`);
+  // The pid is stamped by the shell BEFORE node starts, so the timeout test can read it the
+  // moment the lookup settles, however slowly node itself cold-starts under parallel load. The
+  // app-server's identity (pid + kernel start) is stamped the same way, only for the `-c`
+  // app-server invocation (the `--version` probe must not clobber it), so the record also
+  // survives a slow node cold-start: identityAlive later re-reads the OS start to tell the
+  // original app-server from a pid the kernel reuses.
+  writeScript(
+    path.join(dir, "codex"),
+    `echo $$ > "${pidFile}"; if [ "$1" = "-c" ]; then printf '%s %s\n' "$$" "$(ps -o lstart= -p $$)" > "${identityFile}"; fi; exec node ${script} "$@"`,
+  );
   return {
     bin: path.join(dir, "codex"),
     callsFile,
     pidFile,
+    identityFile,
     restore: () => {
       fs.rmSync(dir, { recursive: true, force: true });
     },

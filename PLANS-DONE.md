@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 2/3: the concurrency tests' reap checks use a process-identity handle, not a bare pid (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 1/3 and part 3/3 and editing only src/process/process.ts, test/codex-hook-trust.test.ts and test/supervisor.test.ts, so it holds no prerequisite and merges independently; touches src/process/process.ts test/codex-hook-trust.test.ts test/supervisor.test.ts) — done 2026-10-26 by the feature role
+
+**Previously held 1**
+
+**Goal.** Retire the class plan's two pid/signal members. `test/codex-hook-trust.test.ts`'s `a hanging fake rejects within timeoutMs and its child is gone afterwards` decides "gone" by polling `process.kill(pid, 0)`, which reports a reused pid alive; `test/supervisor.test.ts`'s `startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it` retries SIGUSR2 until a 60 s wall-clock deadline, so a starved grandchild can lose on scheduling alone.
+
+**Approach.**
+- src/process/process.ts: add an identity-aware liveness probe beside `pidAlive`. Capture a per-process start identity when the fake app-server is spawned (a recorded nonce, or the OS start time — `/proc/<pid>/stat` field 22 on Linux, `ps -o lstart=` on macOS) and expose it (e.g. `pidIdentity(pid)` / `identityAlive(handle)`); leave `pidAlive`'s signature and behavior unchanged for production callers.
+- test/codex-hook-trust.test.ts: the hanging-fake case reads the fake's recorded identity and decides "gone" from the identity probe, so a reused pid cannot read as the fake still alive. Keep the bounded poll; the bound now only reports a genuine hang.
+- test/supervisor.test.ts: end the grandchild case's signal loop on the reparent it observes (the `seen` file holds a ppid different from `supervisor.pid`), signalling again only until that observation, instead of a `Date.now() + 60_000` deadline. The real-process SIGKILL shape stays.
+
+**Files touched.** src/process/process.ts test/codex-hook-trust.test.ts test/supervisor.test.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes.
+- The hanging-fake case decides "gone" through the identity probe; it contains no bare `process.kill(pid, 0)` liveness poll.
+- The supervisor case's signal loop ends on the reparent it observes in `seen`, not on a `Date.now() + 60_000` deadline.
+- `pidAlive` keeps its current contract: a non-positive or fractional pid is false, and the probe reports a reaped pid as not alive.
+
 ### Every commit is verified on main, part 3r/3: the pre-merge reviewer's revision cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3n/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/revision.test.ts test/revision-prior-tags.test.ts src/merge/merge-core.ts) — done 2026-10-25 by the feature role
 
 **Previously held 7**

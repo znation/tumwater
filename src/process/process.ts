@@ -73,6 +73,44 @@ export function pidAlive(pid: number): boolean {
   }
 }
 
+/** A per-process-instance identity: the pid plus the OS's record of when that process
+ * started. A bare pid is ambiguous once the process dies and the kernel reissues the number
+ * to an unrelated process (`pidAlive` would then report the reused process alive); the start
+ * distinguishes the instance a handle names from any other that later holds the same pid. The
+ * concurrency tier's reap checks read one with `pidIdentity` and re-check it with
+ * `identityAlive`, so a recycled pid can never read as the original child still alive. */
+export interface ProcessIdentity {
+  /** The pid the identity belongs to. */
+  pid: number;
+  /** The OS's start time of the process, as `ps -o lstart=` prints it (supported on macOS and
+   * Linux alike). Compared across reads; not stable to parse, and only meaningful beside a
+   * pid. */
+  start: string;
+}
+
+/** The identity of the live process on `pid`, or null when no process of ours answers for it —
+ * a non-positive or non-integer pid, a reaped pid, or a pid the probe cannot read (a foreign
+ * process `ps` will not disclose, or a host whose ps lacks `lstart`). Null reads as "not
+ * alive" to `identityAlive`, so the reap checks' bounded poll reports only a genuine hang. */
+export async function pidIdentity(pid: number): Promise<ProcessIdentity | null> {
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  try {
+    const { stdout } = await execFileAsync("ps", ["-o", "lstart=", "-p", String(pid)]);
+    const start = stdout.trim();
+    return start.length > 0 ? { pid, start } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** True when the process instance `id` names is still alive: the pid answers and the OS still
+ * reports the same start time. A reaped pid (no answer), a pid reused by a different process
+ * (a different start), or null reads as not alive. */
+export async function identityAlive(id: ProcessIdentity): Promise<boolean> {
+  const now = await pidIdentity(id.pid);
+  return now !== null && now.start === id.start;
+}
+
 /** Terminate a detached child and everything it started: SIGTERM to the process group now,
  * escalating to SIGKILL after 10 s if any of it is still alive. The child is spawned detached
  * (its own process group leader — runPi does this for pi), so a negative PID reaches every

@@ -10,6 +10,8 @@ import {
   signalTree,
   terminateChild,
   withoutLaunchServicesCheckIn,
+  pidIdentity,
+  identityAlive,
 } from "../src/process/process.js";
 import {
   parseLsofCwds,
@@ -86,6 +88,51 @@ test("pidAlive reads a non-positive or fractional pid as NOT alive", () => {
   assert.equal(pidAlive(0), false);
   assert.equal(pidAlive(-1), false);
   assert.equal(pidAlive(1.5), false);
+});
+
+// The identity-aware probe (ProcessIdentity / pidIdentity / identityAlive) is the same
+// "any error reads as not alive" contract as pidAlive, but over a process INSTANCE (pid plus
+// kernel start time) instead of a bare pid: a pid the kernel reuses for an unrelated process
+// must not read as the original child still alive — the concurrency tier's reap checks rely on
+// that (the e2e/concurrency tier's determinate plan).
+
+test("pidIdentity and identityAlive follow a real child across its lifetime", async () => {
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  const pid = child.pid!;
+  try {
+    const identity = await pidIdentity(pid);
+    assert.ok(identity, "a running child has a readable start identity");
+    assert.equal(identity.pid, pid);
+    assert.ok(typeof identity.start === "string" && identity.start.length > 0);
+    assert.equal(await identityAlive(identity), true, "the same instance reads as alive");
+
+    await new Promise<void>((resolve) => {
+      child.once("exit", () => resolve());
+      child.kill("SIGKILL"); // Attach the listener first, then kill.
+    });
+    assert.equal(await identityAlive(identity), false, "the killed instance reads as not alive");
+  } finally {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Already exited.
+    }
+  }
+});
+
+test("pidIdentity reads a non-positive or fractional pid as null", async () => {
+  assert.equal(await pidIdentity(0), null);
+  assert.equal(await pidIdentity(-1), null);
+  assert.equal(await pidIdentity(1.5), null);
+});
+
+test("pidIdentity reads an unreachable pid as null, and identityAlive rejects a mismatched start", async () => {
+  // Far beyond any platform's pid space: ps reports no such process, so no identity.
+  assert.equal(await pidIdentity(2_000_000_000), null);
+  // A handle whose recorded start differs from the pid's real start must not read as alive:
+  // this is exactly the reused-pid hazard identityAlive exists to rule out.
+  assert.equal(await identityAlive({ pid: process.pid, start: "not-the-real-start" }), false);
+  assert.equal(await identityAlive({ pid: process.pid, start: "" }), false);
 });
 
 // The process-table reader behind doctor's orphan check (checkOrphans in src/doctor/doctor.ts,

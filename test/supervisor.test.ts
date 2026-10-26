@@ -572,19 +572,26 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
     for (let i = 0; i < 300 && !fs.existsSync(started); i++) await sleep(50);
     assert.ok(fs.existsSync(started), "the grandchild armed its watch");
     const grandchildPid = Number(fs.readFileSync(started, "utf8"));
+    // The supervisor is running and spawned the grandchild, so its pid is set by now. Carry a
+    // local (TS keeps it narrowed outside the signal-loop callback).
+    const supervisorPid = supervisor.pid!;
     // The shape SIGTERM cannot cover: no handler runs, nothing is forwarded — the supervisor
     // just vanishes and the grandchild reparents.
-    process.kill(supervisor.pid!, "SIGKILL");
+    process.kill(supervisorPid, "SIGKILL");
     // Advance the watch: each signal runs a poll in the grandchild, which sees its parent
     // changed and fires. A signal that lands before the reparent completes simply leaves the
     // watch armed, so retry within the bounded guard. A dropped watch never writes `gone`.
     let signals = 0;
     let brokeOnEsrch = false;
-    // The bound is wall-clock, not a signal count: a starved grandchild coalesces pending
-    // SIGUSR2s and may not be scheduled for many seconds, so a count spent while it was
-    // starved would end the loop before it ever ran a poll.
-    const deadline = Date.now() + 60_000;
-    while (Date.now() < deadline && !fs.existsSync(gone)) {
+    let reparented = false;
+    // Signal until the grandchild's own poll records the reparent — a ppid different from the
+    // supervisor's (`seen`) — not a wall-clock deadline: the grandchild's polls are driven by
+    // these SIGUSR2s, so a starved grandchild that coalesces pending signals and is slow to
+    // schedule must not be cut off by a time bound. Each signal runs one poll, which appends
+    // the ppid it saw; the first poll to see a ppid other than the supervisor's also runs the
+    // watch's stop path (writes `gone`). The grandchild's own 180 s self-exit guard bounds
+    // this loop, so a genuinely stuck case fails here on ESRCH rather than hanging the suite.
+    while (!reparented) {
       try {
         process.kill(grandchildPid, "SIGUSR2");
         signals += 1;
@@ -592,17 +599,31 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
         brokeOnEsrch = true; // the grandchild already exited
         break;
       }
+      if (fs.existsSync(`${gone}.seen`)) {
+        const seenPids = fs
+          .readFileSync(`${gone}.seen`, "utf8")
+          .trim()
+          .split(/\s+/)
+          .filter((s) => s.length > 0)
+          .map(Number);
+        // The supervisor's own pid in `seen` is the pre-reparent parent; observing any ppid
+        // other than it means the grandchild has been reparented, so the watch has fired (or
+        // is busy writing its verdict).
+        reparented = seenPids.some((p) => p !== supervisorPid);
+      }
       await sleep(50);
     }
-    // Look once more: the grandchild writes `gone` just before exiting, so an ESRCH break
-    // can race it.
+    // The reparent observation means the stop path already ran (it busy-waits ~300 ms before
+    // writing `gone`), so this bounded wait only covers the write — it is not the signal loop.
+    const waitStart = Date.now();
+    while (!fs.existsSync(gone) && Date.now() - waitStart < 5_000) await sleep(50);
     const verdict = fs.existsSync(gone);
     const seenPpids = fs.existsSync(`${gone}.seen`) ? fs.readFileSync(`${gone}.seen`, "utf8").trim() : "(none)";
     assert.ok(
       verdict,
       `the orphaned grandchild's watch fired and ran its stop path; ` +
-        `${signals} SIGUSR2 sent, ${brokeOnEsrch ? "loop broke on ESRCH (grandchild exited without writing gone)" : "loop ran out of time"}, ` +
-        `expected ppid ${supervisor.pid}, ppids the grandchild saw per poll: ${seenPpids}`,
+        `${signals} SIGUSR2 sent, ${brokeOnEsrch ? "loop broke on ESRCH (grandchild exited without writing gone)" : "loop stopped only after observing a reparent in seen — never fired"}, ` +
+        `expected ppid ${supervisorPid}, ppids the grandchild saw per poll: ${seenPpids}`,
     );
   } finally {
     // The long self-exit timers above are only a leak guard for a crashed run; a passing

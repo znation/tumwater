@@ -10,6 +10,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { codexHookTrust, lookupCodexHookTrust } from "../src/agent/codex/codex-hook-trust.js";
 import { codexWriteGuardDefinition } from "../src/agent/codex/codex-write-guard.js";
+import { identityAlive } from "../src/process/process.js";
 import { fakeCodexAppServer } from "./fakes/fake-codex.js";
 import { codexHookTrustPath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -95,18 +96,26 @@ test("a hanging fake rejects within timeoutMs and its child is gone afterwards",
       lookupCodexHookTrust({ bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 500 }),
       /timed out after 500 ms/,
     );
-    const pid = Number(fs.readFileSync(fake.pidFile, "utf8"));
-    assert.ok(Number.isInteger(pid) && pid > 0, `pid file held ${pid}`);
+    // The fake records the app-server's process-identity handle (pid + kernel start time) in
+    // its shell shim, before node even bootstraps the script, so it is immutable to a slow
+    // cold start. identityAlive re-reads the OS start and compares, so a pid the kernel later
+    // reuses for an unrelated process cannot read as THE app-server still alive.
+    const identityLine = fs.readFileSync(fake.identityFile, "utf8").trim();
+    const s = identityLine.indexOf(" ");
+    const pid = Number(identityLine.slice(0, s));
+    const start = identityLine.slice(s + 1).trim();
+    assert.ok(Number.isInteger(pid) && pid > 0 && start.length > 0, `identity file held ${JSON.stringify(identityLine)}`);
+    const identity = { pid, start };
     // A SIGKILLed process group's leader is reaped (the test process waits on its own child,
-    // closing the handle only after the kernel reaps it), so probing the pid eventually throws
-    // ESRCH. Poll briefly because the reap trails the kill by a tick or two.
+    // closing the handle only after the kernel reaps it), so the identity probe eventually
+    // reports it not alive. Poll briefly because the reap trails the kill by a tick or two;
+    // the bound now only reports a genuine hang, never a reused pid.
     const deadline = Date.now() + 2_000;
     let gone = false;
     while (Date.now() < deadline) {
-      try {
-        process.kill(pid, 0);
+      if (await identityAlive(identity)) {
         await new Promise((r) => setTimeout(r, 25));
-      } catch {
+      } else {
         gone = true;
         break;
       }
