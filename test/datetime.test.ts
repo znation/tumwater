@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DAY_MS, HOUR_MS, boundedWindowLine, clockHm, daysBetween, dayAt, dayKey, dayLabel, dayWindow, formatAge, formatClock, formatDate, formatTime, formatTimestamp, humanAgo, humanSeconds, humanUntil, monthDay, nextRunPhrase, pad2, reportWindow, secondsSince, secondsUntil, sinceWindowLine } from "../src/text/datetime.js";
+import { DAY_MS, HOUR_MS, boundedWindowLine, clockHm, daysBetween, dayAt, dayKey, dayLabel, dayWindow, formatAge, formatClock, formatDate, formatTime, formatTimestamp, humanAgo, humanSeconds, humanUntil, monthDay, nextRunPhrase, pad2, reportWindow, secondsSince, secondsUntil, secondsUntilUnixStamp, sinceWindowLine } from "../src/text/datetime.js";
 import { clockOf, dateOf } from "./helpers/oracles.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
@@ -164,6 +164,9 @@ test('secondsSince and secondsUntil round to whole seconds and never go negative
   assert.equal(secondsSince(now + 5000, now), 0);
   assert.equal(secondsUntil(now + 120_000, now), 120);
   assert.equal(secondsUntil(now - 1000, now), 0);
+  // secondsUntilUnixStamp folds a unix-seconds stamp (×1000) into the same clamp/round.
+  assert.equal(secondsUntilUnixStamp(now / 1000 + 120, now), 120);
+  assert.equal(secondsUntilUnixStamp(now / 1000 - 1, now), 0);
   assert.equal(humanAgo(now - 120_000, now), "2m ago");
   assert.equal(humanAgo(now - 3 * 3600_000, now), "3h ago");
   assert.equal(humanAgo(now + 60_000, now), "0s ago");
