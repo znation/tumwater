@@ -143,6 +143,32 @@ export const STATE_CHANGE_TOP = 6;
 const STATE_CHANGE_MAX = 72;
 const STATE_CHANGE_FIELD_MAX = 24;
 
+/** Join a list of `items` into one comma/`;`-separated line that fits STATE_CHANGE_MAX: pop
+ * tail items until `prefix + items.join(separator)` — with a `… +N more <noun>` marker naming
+ * the drop, or a bare `bare` fallback once none remain — stays under the cap, so the cut never
+ * lands mid-item and the marker survives the final pass. Shared by the fallback_switched and
+ * config_changed lines, which both bounded-drop a hand-edited/list payload that can overshoot
+ * the cap (BUGS.md 2026-10-01), so the loop shape and marker wording cannot drift between them. */
+function joinToCap(
+  bare: string,
+  prefix: string,
+  separator: string,
+  noun: string,
+  items: string[],
+): string {
+  let text = items.length > 0 ? prefix + items.join(separator) : bare;
+  let hidden = 0;
+  while (text.length > STATE_CHANGE_MAX) {
+    items.pop();
+    hidden += 1;
+    text =
+      items.length > 0
+        ? `${prefix}${items.join(separator)} … +${hidden} more ${noun}`
+        : `${bare} … +${hidden} more ${noun}`;
+  }
+  return text;
+}
+
 /** A free event field, sliced so one hand-edited or future payload cannot blow the section's
  * byte budget. Takes unknown because HarnessEvent carries its fields loosely typed. A cut that
  * would land between an astral character's two UTF-16 units backs off one unit — dropping the
@@ -269,16 +295,7 @@ function modelStateChange(ev: HarnessEvent): string {
         const t = isJsonObject(v) ? v : {};
         return `${field(tier)}: ${field(t.from ?? "primary")} → ${field(t.to ?? "primary")} (${field(t.reason ?? "available")})`;
       });
-      text = parts.length > 0 ? `fallback switched — ${parts.join("; ")}` : "fallback switched";
-      let hidden = 0;
-      while (text.length > STATE_CHANGE_MAX) {
-        parts.pop();
-        hidden += 1;
-        text =
-          parts.length > 0
-            ? `fallback switched — ${parts.join("; ")} … +${hidden} more tiers`
-            : `fallback switched … +${hidden} more tiers`;
-      }
+      text = joinToCap("fallback switched", "fallback switched — ", "; ", "tiers", parts);
       break;
     }
     case "budget_handback":
@@ -341,16 +358,7 @@ function liveConfigStateChange(ev: HarnessEvent): string {
       // marker naming the drop — fits the section cap, so the final STATE_CHANGE_MAX pass
       // below can never cut the marker or a key mid-word.
       const keys = stringList(ev.keys).map(field);
-      text = keys.length > 0 ? `config changed: ${keys.join(", ")}` : "config changed";
-      let hidden = 0;
-      while (text.length > STATE_CHANGE_MAX) {
-        keys.pop();
-        hidden += 1;
-        text =
-          keys.length > 0
-            ? `config changed: ${keys.join(", ")} … +${hidden} more keys`
-            : `config changed … +${hidden} more keys`;
-      }
+      text = joinToCap("config changed", "config changed: ", ", ", "keys", keys);
       break;
     }
     default:
