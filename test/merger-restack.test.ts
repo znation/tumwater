@@ -182,8 +182,8 @@ test("a one-change merge merges on its own: one ff, one merged event", async () 
   });
 });
 
-test("a red stack check that does not reproduce bisects: both changes merge, neither is re-reviewed or rejected", async () => {
-  const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+test("a red stack check that does not reproduce bisects: both changes merge, neither rejected", async () => {
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
   // The check fails on its THIRD run only: the two gate pre-checks pass, the batch's one
   // shared check fails, and every bisect step's check passes again — a flake. One red run
   // never rejects a change: beta's own prefix is checked, not inferred red.
@@ -209,8 +209,6 @@ test("a red stack check that does not reproduce bisects: both changes merge, nei
       ],
       "two gate pre-checks, the red stack check, then alpha's prefix and beta on top of it",
     );
-    assert.equal(folded.get("alpha")!.length, 1, "no reviewer re-run for alpha: its prefix merges its approved head");
-    assert.equal(folded.get("beta")!.length, 1, "nor for beta");
     assert.equal(eventsOfType(root, "review_rejected").length, 0, "nobody rejected");
     assert.equal(eventsOfType(root, "merged").length, 2);
   });

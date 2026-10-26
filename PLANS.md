@@ -247,22 +247,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Every case that remains keeps its original subject (merge, verify or stack bookkeeping) and asserts the same outcome through a deterministic rejection.
 - No edit outside test/merger.test.ts.
 
-### Every commit is verified on main, part 3q/3: the pre-merge reviewer's restack, bisect and check-strike cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3n/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/merger-bisect.test.ts test/merger-restack.test.ts test/merge-check-strikes.test.ts test/fixtures/merger-fixtures.ts)
-
-**Previously held 7**
-
-**Goal.** The restack, prefix-bisect and check-strike twin of part 3p/3: part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes every case in these files that pins a reviewer verdict, a reviewer failure or the reviewer's usage fold fail. Move those cases first so the source switch lands against a suite that no longer depends on the reviewer.
-
-**Approach.** Apply part 3p/3's rule to `test/merger-bisect.test.ts` (the red-stack prefix bisect and one-at-a-time fallback), `test/merger-restack.test.ts` (the re-stack on a moved main) and `test/merge-check-strikes.test.ts` (the check-strike cap): delete a case that exists only to pin the reviewer; re-point one whose real subject is bisect/restack/strike bookkeeping to a deterministic gate rejection (a conflict-marker diff, a leaked credential or a failing declared check). This part owns `test/fixtures/merger-fixtures.ts`, so any shared-fixture change one of these three files' re-points needs lands here; parts 3p/3 and 3r/3 make none. Leave the reviewer-run helpers in `test/fixtures/pi-events.ts` in place; part 3e/3 deletes them.
-
-**Files touched.** test/merger-bisect.test.ts test/merger-restack.test.ts test/merge-check-strikes.test.ts test/fixtures/merger-fixtures.ts
-
-**Acceptance criteria.**
-- `npm run test:gate` passes with the pre-merge reviewer still running.
-- A grep over the three test files for `VERDICT: reject`, `review_error`, `reviewRetries`, `review_failed`, `unreviewFailures`, `folded.length` and `lastReview?.verdict` returns no case that drives the pre-merge reviewer.
-- Every case that remains keeps its original subject (bisect, restack or check-strike bookkeeping) and asserts the same outcome through a deterministic rejection.
-- No edit outside this part's four files.
-
 ### Every commit is verified on main, part 3r/3: the pre-merge reviewer's revision cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3n/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/revision.test.ts test/revision-prior-tags.test.ts)
 
 **Previously held 7**

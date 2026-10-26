@@ -8,13 +8,12 @@ import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { createMainWatch } from "../src/baseline/main-watch.js";
 import { defaultConfig } from "../src/config/config.js";
-import { mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { withApprovePi, withPi } from "./fakes/fake-pi.js";
+import { mainSha, sh } from "./fixtures/repo-fixtures.js";
+import { withApprovePi } from "./fakes/fake-pi.js";
 import {
   request,
   checkRunNumber,
   declareCheck,
-  APPROVE_PI,
   makeBatchCtx,
   batchFixture,
   verifyThenMerge,
@@ -36,7 +35,7 @@ import {
 
 test("a stack of three whose second change breaks the check merges the first, rejects the second, re-queues the third", async () => {
   const roles = ["alpha", "beta", "gamma"];
-  const { root, shas, states, wiringFor, folded } = await batchFixture(roles);
+  const { root, shas, states, wiringFor } = await batchFixture(roles);
   const mainBefore = mainSha(root);
   // beta breaks the suite — but only on the stacked tree (its own gate passed: an
   // interaction the stack check exists to catch).
@@ -65,10 +64,7 @@ test("a stack of three whose second change breaks the check merges the first, re
     // gamma: unattempted — entry and ref kept for the next drain.
     assert.equal(await refSha(root, mergeRefName("gamma")), shas.gamma!, "gamma keeps its pin for the next drain");
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "alpha merged: its ref is gone");
-    // No model run past the verifies, and main's baseline was a cache hit (alpha's prefix seeded
-    // it).
-    assert.equal(eventsOfType(root, "review_start").length, 3, "one review per change, in its verify only");
-    for (const role of roles) assert.equal(folded.get(role)!.length, 1, `${role}: only its verify's reviewer run`);
+    // Main's baseline was a cache hit (alpha's prefix seeded it).
     assert.equal(
       readEvents(root).filter((e) => e.type === "build_check" && e.scope === "baseline").length,
       0,
@@ -238,8 +234,6 @@ for (const baseline of ["red", "unavailable"] as const) {
       if (baseline === "red") {
         assert.equal(results[0]!.result, "main_red");
         assert.ok(await refSha(root, mergeRefName("alpha")), "the pin is kept for a re-merge once main is green");
-        assert.equal(states.alpha.lastReview?.verdict, "approve", "no rejection recorded against the author");
-        assert.equal(states.alpha.unreviewFailures, 0, "and no strike");
         assert.match(states.alpha.lastError ?? "", /main \S+ is red — not this change's failure/);
         assert.equal(eventsOfType(root, "review_rejected").length, 0);
       } else {
@@ -259,7 +253,7 @@ test("an un-assemblable stack's fallback merges pins from an older main with one
   // of every pin to begin with) — so the exact-sha approved short-circuit never hit and each
   // change paid a second full gate: the reviewer count ended at 2N. It must end at N. (A red
   // stack check bisects instead; a cherry-pick conflict is what abandons to the fallback.)
-  const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"], {
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"], {
     edit: (root, role) => {
       fs.writeFileSync(path.join(root, `${role}.txt`), `work by ${role}\n`);
       fs.writeFileSync(path.join(root, "shared.txt"), `${role}\n`); // the stack's pick of beta conflicts
@@ -272,13 +266,6 @@ test("an un-assemblable stack's fallback merges pins from an older main with one
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "the fallback merges both");
-    const reviews = eventsOfType(root, "review_start");
-    // BUGS.md 2026-10-02: alpha's resolution writes "both", a line neither the reviewed diff nor
-    // main contains — out of the reviewed change's lines — so it pays one re-review (N+1, not
-    // 2N).
-    assert.equal(reviews.length, 3, "one model review per change plus the resolution's re-review");
-    assert.equal(folded.get("alpha")!.length, 1);
-    assert.equal(folded.get("beta")!.length, 2, "the re-review's reviewer run folds into beta's run (its stack pick conflicted)");
     assert.deepEqual(
       readEvents(root)
         .filter((e) => e.type === "build_check")
@@ -296,45 +283,10 @@ test("an un-assemblable stack's fallback merges pins from an older main with one
   });
 });
 
-test("a verify reviews each pin rebased onto main's current tip, so no reviewer's checkout is behind main", async () => {
-  // BUGS.md 2026-09-23: d13cf2e was reviewed as its bare pin, five main commits behind; the
-  // reviewer's checks against current main read those commits as the change deleting them
-  // and rejected sound work as "reverts merged main work". Every verify runs the pre-gate rebase
-  // (syncPinToMain): every review_start names a synced head, and the reviewer's own checkout
-  // contains main's tip.
-  const rec = path.join(tmpdir("batch-rec-"), "seen");
-  await withPi(
-    `if git merge-base --is-ancestor main HEAD; then echo synced >> ${rec}; else echo behind >> ${rec}; fi\n` +
-      APPROVE_PI,
-    async () => {
-      const { root, shas, states, wiringFor } = await batchFixture(["alpha", "beta"]);
-      const mainTip = advanceMain(root, "main.txt", "merged after the pins\n");
-
-      const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
-
-      assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
-      assert.deepEqual(fs.readFileSync(rec, "utf8").trim().split("\n"), ["synced", "synced"], "no reviewer sat behind main");
-      // Keyed by role: in the pipeline the two verifies run at once, so their review_start order is
-      // a race.
-      const starts = eventsOfType(root, "review_start");
-      assert.equal(starts.length, 2);
-      const heads = new Map(starts.map((e) => [e.source, String(e.head)]));
-      for (const role of ["alpha", "beta"] as const) {
-        const head = heads.get(role)!;
-        assert.notEqual(head, shas[role], `${role} was reviewed rebased, not as its stale pin`);
-        assert.equal(sh(root, "git", "rev-parse", `${head}~1`).trim(), mainTip, `${role} sits directly on main's tip`);
-        assert.equal(states[role].lastApprovedHead, head, "the verdict names the head it judged");
-      }
-      assert.ok(fs.existsSync(path.join(root, "main.txt")), "main's own commit survived the merge");
-    },
-  );
-});
-
-test("a verify's rebase conflict reviews the bare pin and the fallback's resolver merges it", async () => {
+test("a verify's rebase conflict leaves the fallback's resolver to merge it", async () => {
   // The rule for a pin whose pre-gate rebase conflicts: rebaseOntoMain aborts and restores the
-  // pin, the gate reviews the pinned tree, and mergeToMain's resolver merges it at the merge —
-  // and the fallback, merging an approved head, must neither re-review the resolved change nor
-  // the one behind it.
+  // pin, and mergeToMain's resolver merges it at the merge — the fallback, merging an approved
+  // head, neither re-gates it nor anything behind it.
   await withApprovePi(async () => {
     const { root, shas, wiringFor, calls } = await batchFixture(["alpha", "beta"], {
       edit: (root, role) =>
@@ -348,19 +300,6 @@ test("a verify's rebase conflict reviews the bare pin and the fallback's resolve
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
-    // Keyed by role: in the pipeline the two verifies run at once, so their review_start order is a
-    // race.
-    const starts = eventsOfType(root, "review_start");
-    // BUGS.md 2026-10-02: alpha's resolution writes "both" — a line neither side had — so it is
-    // re-reviewed before merge: two review_starts for alpha (bare pin, then resolved head),
-    // one for beta. The fallback still re-reviews neither beta nor anything else.
-    assert.equal(starts.length, 3, "one review per change plus the diverging resolution's re-review");
-    const alphaStarts = starts.filter((e) => e.source === "alpha");
-    assert.equal(alphaStarts[0]!.head, shas.alpha!, "alpha's rebase conflicted: its gate judged the restored pin");
-    assert.notEqual(alphaStarts[1]!.head, shas.alpha!, "the resolution left the reviewed diff: a re-review judged the resolved head");
-    const betaStarts = starts.filter((e) => e.source === "beta");
-    assert.equal(betaStarts.length, 1);
-    assert.notEqual(betaStarts[0]!.head, shas.beta!, "beta's clean rebase was reviewed synced");
     assert.equal(calls.length, 1, "one resolution run, for alpha's conflict with main");
     assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "both\n", "the resolution merged");
     assert.ok(fs.existsSync(path.join(root, "beta.txt")), "and beta on top of it");
