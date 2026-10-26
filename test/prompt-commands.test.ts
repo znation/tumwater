@@ -450,7 +450,7 @@ test("prompt --attach saves the image beside the queue file, ends the text with 
   const img = path.join(root, "shot.png");
   fs.writeFileSync(img, Buffer.from("png-bytes"));
   const { stdout } = await expectOk(() => cmdPrompt(root, ["--role", "feature", "--attach", img, "fix the layout"]));
-  assert.match(stdout, /added to feature's inbox with 1 image\(s\)/);
+  assert.match(stdout, /added to feature's inbox with 1 image\b/);
   const dir = dirOf(root, "feature");
   const md = fs.readdirSync(dir).filter((f) => f.endsWith(".md"));
   assert.equal(md.length, 1);
@@ -478,7 +478,7 @@ test("prompt --attach repeats up to 4 and fails the fifth with the count-cap mes
   const { stdout } = await expectOk(() =>
     cmdPrompt(root, ["--attach", paths[0] as string, "--attach", paths[1] as string, "note"]),
   );
-  assert.match(stdout, /with 2 image\(s\)/);
+  assert.match(stdout, /with 2 images\b/);
   const fifth = path.join(root, "img5.png");
   fs.writeFileSync(fifth, "x");
   const over = await expectFailAsync(() =>

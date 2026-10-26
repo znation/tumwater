@@ -32,6 +32,7 @@ import { listWideScope, queuedFileAtPosition, promptPreview, queuedListRows, que
 import { durationLabel, parseRoleListFlag } from "../cli/cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage } from "../text/text.js";
+import { plural } from "../text/phrases.js";
 import { readPromptImageFiles, type PromptImageInput } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
@@ -311,7 +312,7 @@ function runPromptSubmit(root: string, text: string, atDelayMs: number | null, a
     if (guidance.notice) say(guidance.notice);
   }
   const wake = submitRolePromptAndWake(root, target, text, images, dueMs);
-  const attached = images !== undefined ? ` with ${images.length} image(s)` : "";
+  const attached = images !== undefined ? ` with ${plural(images.length, "image")}` : "";
   const owner = target === DIRECTOR_ROLE ? "the director's" : `${roleLabel(target)}'s`;
   if (atDelayMs !== null) {
     // A deferred prompt's confirmation names the delivery delay, in the same duration
