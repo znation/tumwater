@@ -436,7 +436,7 @@ test("checkRefusedEntries flags a refusal whose prerequisites have left Planned"
     `## Planned\n\n${extra}${head}\n${note}\n\n### T, part 2/2: z (planned 2026-10-12; requires part 1/2 landed)\n${note}\n\n## Done\n`);
   write("");
   const stale = checkRefusedEntries(dir);
-  assert.match(stale.detail, /S 1\/2 are no longer planned, so the refusal may be stale/);
+  assert.match(stale.detail, /S 1\/2 is no longer planned, so the refusal may be stale/);
   assert.ok(stale.detail.includes("[prerequisites no longer planned])"));
   write("### S, part 1/2: y\n\n");
   const live = checkRefusedEntries(dir);
@@ -452,7 +452,7 @@ test("checkRefusedEntries counts the planned parts that wait on a refused part",
     `### S, part 3/3: c (requires part 2/3 landed)\n\n### Solo\n${note}\n\n## Done\n`);
   const out = checkRefusedEntries(dir);
   assert.equal(out.level, "warn");
-  assert.ok(out.detail.includes("; 2 planned part(s) wait on it, directly or through an earlier part"));
+  assert.ok(out.detail.includes("; 2 planned parts wait on it, directly or through an earlier part"));
   assert.ok(out.detail.includes('(and 1 more: PLANS.md plan #4 "Solo")'));
 });
 

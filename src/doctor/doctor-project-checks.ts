@@ -330,7 +330,7 @@ export async function checkBuild(
       : running?.restartPending
         ? "; auto-restart is under way"
         : "; run `npm run build` and restart `tumwater start` (auto-restart does this for a running team)";
-    return warnOutcome(`dist/ from ${sha} is stale — main has ${stale.aheadCommits} later commit(s) touching ${STALE_INPUTS_LABEL}${next}`);
+    return warnOutcome(`dist/ from ${sha} is stale — main has ${plural(stale.aheadCommits, "later commit")} touching ${STALE_INPUTS_LABEL}${next}`);
   }
   return okOutcome(`dist/ from ${sha}, matches main`);
 }

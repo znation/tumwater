@@ -1,5 +1,6 @@
 import { andMore, quoteHeading, readBacklogChecked, FIX_CLAIMS_CHECKED, REFUSAL_NOTE_MAX, STALE_QUESTION_DAYS, STALE_BUG_DAYS, STALE_WAIT_DAYS } from "./doctor-backlog.js";
 import { truncate } from "../text/text.js";
+import { plural, agree } from "../text/phrases.js";
 import { ageInDays, filingDate, fixedBugEntries, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
@@ -332,12 +333,12 @@ export function checkRefusedEntries(root: string): CheckOutcome {
   const more = andMore(rest, (e) =>
     `${e.file} ${e.command} #${e.position} ${quoteHeading(e.title)}` +
     (e.mergeDone.length > 0 ? " [prerequisites no longer planned]" : "") +
-    (e.waiting > 0 ? ` [${e.waiting} part(s) wait on it]` : ""));
+    (e.waiting > 0 ? ` [${plural(e.waiting, "part waits on it", "parts wait on it")}]` : ""));
   const stale = first.mergeDone.length > 0
-    ? `; its prerequisite(s) ${first.mergeDone.map((r) => `${r.series} ${r.part}/${r.of}`).join(", ")} are no longer planned, so the refusal may be stale`
+    ? `; its ${agree(first.mergeDone.length, "prerequisite", "prerequisites")} ${first.mergeDone.map((r) => `${r.series} ${r.part}/${r.of}`).join(", ")} ${agree(first.mergeDone.length, "is", "are")} no longer planned, so the refusal may be stale`
     : "";
   const waiting = first.waiting > 0
-    ? `; ${first.waiting} planned part(s) wait on it, directly or through an earlier part`
+    ? `; ${plural(first.waiting, "planned part waits on it", "planned parts wait on it")}, directly or through an earlier part`
     : "";
   return warnOutcome(`${first.file} ${first.command} #${first.position} "${first.title}" is held by a Refused note ` +
       `(${truncate(first.note, REFUSAL_NOTE_MAX)})${stale}${waiting}${more} — no role takes a refused entry until it is edited: ` +

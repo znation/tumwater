@@ -14,6 +14,7 @@ import {
   targetBranch,
 } from "../git/git.js";
 import { errorMessage } from "../text/text.js";
+import { plural } from "../text/phrases.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { branchName, mergeRefName, legacyLandingRefName, worktreePath } from "../paths.js";
 import { isUsableWorktree, removeWorktree } from "../git/worktree.js";
@@ -121,7 +122,7 @@ function objections(status: RetireStatus): string[] {
     reasons.push(`role ${status.role} is still enabled in tumwater.json — disable it first`);
   if (status.aheadOfMain > 0)
     reasons.push(
-      `branch ${branchName(status.role)} holds ${status.aheadOfMain} unmerged commit(s) — merge or discard them first`,
+      `branch ${branchName(status.role)} holds ${plural(status.aheadOfMain, "unmerged commit")} — merge or discard them first`,
     );
   if (status.worktreePresent && !status.worktreeUsable)
     reasons.push(

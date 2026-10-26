@@ -843,7 +843,7 @@ test("checkBuild reports an unstamped dist, a foreign harness, a matching build,
   sh(repo, "git", "commit", "-q", "-m", "src");
   const stale = await checkBuild(repo, here); // head resolved from the repo itself
   assert.equal(stale.level, "warn");
-  assert.match(stale.detail, /is stale — main has 2 later commit\(s\) touching src, package\.json, tsconfig\.json/);
+  assert.match(stale.detail, /is stale — main has 2 later commits touching src, package\.json, tsconfig\.json/);
   assert.match(stale.detail, /npm run build/);
 
   // With a team up, doctor reports what auto-restart is actually doing rather than the advice
