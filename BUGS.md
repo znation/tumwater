@@ -176,6 +176,23 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 a pre-check that fails twice with no verdict for main rejects, saying the baseline was unavailable
 ~~~~
 
+### `two concurrent leases take different slots and a third waits for a release` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 163071.448834
+✖ failing tests:
+test at dist/test/worktree-pool.test.js:49:1
+✖ two concurrent leases take different slots and a third waits for a release (7830.884167ms)
+Error: timed out waiting for the condition
+at waitFor (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-9/dist/test/worktree-pool.test.js:31:19)
+at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-9/dist/test/worktree-pool.test.js:64:22)
+~~~~
+
 ## Fixed
 
 ## Verified
