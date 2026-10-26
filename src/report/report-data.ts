@@ -181,41 +181,45 @@ function sinceScopedTotals(acc: UsageFold, bases: string[] | undefined): ReportT
       })();
 }
 
+/** Flatten a per-day main-red record map (day → label → count) into one flat label→count map,
+ * the shared body of sinceMainRedByTest and sinceMainRedByCulprit. Main's red state is main's
+ * own, not any role's, so a role-scoped window carries none — the empty map `nonemptyObj` then
+ * omits from the JSON, keeping a red-free --since byte-identical to today. */
+function flattenMainRedByDay(
+  perDay: ReadonlyMap<string, Record<string, number>>,
+  bases: string[] | undefined,
+): Record<string, number> {
+  if (bases !== undefined) return {};
+  const flat: Record<string, number> = {};
+  for (const record of perDay.values()) {
+    for (const [label, n] of Object.entries(record)) addTo(flat, label, n);
+  }
+  return flat;
+}
+
 /** Main's red failing tests over the window, flattened across the per-day records of the same
  * red `main_check` events the red time uses (G1's rule) into one map. Main's failing tests are
- * main's own, not any role's, so a role-scoped window carries none — the empty map `nonemptyObj`
- * then omits from the JSON, keeping a red-test-free --since byte-identical to today. */
+ * main's own, not any role's, so a role-scoped window carries none (see flattenMainRedByDay). */
 function sinceMainRedByTest(
   raw: ReturnType<typeof readWindowEvents>,
   cutoff: number,
   end: number,
   bases: string[] | undefined,
 ): Record<string, number> {
-  if (bases !== undefined) return {};
-  const flat: Record<string, number> = {};
-  for (const record of mainRedFailingTestsByDay(raw.events, cutoff, end).values()) {
-    for (const [test, n] of Object.entries(record)) addTo(flat, test, n);
-  }
-  return flat;
+  return flattenMainRedByDay(mainRedFailingTestsByDay(raw.events, cutoff, end), bases);
 }
 
 /** Main's red culprits over the window, flattened across the per-day records of the same red
  * `main_culprit` events the live `mainred` alert's `red.culprit` reads (the historical twin)
- * into one map. Main's own blame, not any role's, so a role-scoped window carries none — the
- * empty map `nonemptyObj` then omits from the JSON, keeping a culprit-free --since
- * byte-identical to today. */
+ * into one map. Main's own blame, not any role's, so a role-scoped window carries none (see
+ * flattenMainRedByDay). */
 function sinceMainRedByCulprit(
   raw: ReturnType<typeof readWindowEvents>,
   cutoff: number,
   end: number,
   bases: string[] | undefined,
 ): Record<string, number> {
-  if (bases !== undefined) return {};
-  const flat: Record<string, number> = {};
-  for (const record of mainRedCulpritsByDay(raw.events, cutoff, end).values()) {
-    for (const [label, n] of Object.entries(record)) addTo(flat, label, n);
-  }
-  return flat;
+  return flattenMainRedByDay(mainRedCulpritsByDay(raw.events, cutoff, end), bases);
 }
 
 /** The `SinceReport` return's role-scoped map group — every field a reader names when asking
