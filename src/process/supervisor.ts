@@ -61,7 +61,9 @@ interface ParentDeathWatchOptions {
   intervalMs?: number;
   /** The parent pid to expect, when the spawner handed it down: compared against instead of
    * the watch's own first read, so a parent that died before the watch started still counts
-   * as gone. Defaults to the first `ppid()` read. */
+   * as gone. Defaults to the first `ppid()` read; when no expectation was handed down and
+   * that first read is already 1 (PID 1 — launchd/init, never a real parent), the process
+   * was reparented before the watch armed and is treated as orphaned immediately. */
   expectedPpid?: number;
   /** The poll seam; defaults to `intervalPoll(intervalMs)`. A test whose watch runs in another
    * process (where `t.mock.timers` cannot reach) injects a signal- or manually-driven poll, so
@@ -80,9 +82,22 @@ interface ParentDeathWatchOptions {
  * disarms the watch (a no-op once it fired or was already stopped). */
 export function startParentDeathWatch(onGone: () => void, opts: ParentDeathWatchOptions = {}): () => void {
   const ppid = opts.ppid ?? (() => process.ppid);
-  const original = opts.expectedPpid ?? ppid();
+  const expectedGiven = opts.expectedPpid !== undefined;
+  const original = expectedGiven ? opts.expectedPpid! : ppid();
   let cancel: (() => void) | undefined;
   let fired = false;
+  // No expectation was handed down, so the baseline is the watch's own first read. A first
+  // read of 1 (PID 1 — launchd/init, never a real parent) means the process was already
+  // reparented before the watch armed: the shell that started it exited before this child's
+  // first ppid read, the detached-`&` leak. There is no distinct parent left to watch, so
+  // the child is already orphaned — fire immediately instead of pinning the baseline to 1,
+  // where the watch could never observe a change. This is the same route the follow
+  // commands' parent-death rule closes: a follow that cannot see a distinct parent ends now.
+  if (!expectedGiven && original === 1) {
+    fired = true;
+    onGone();
+    return () => {};
+  }
   // Release the poll at most once: a fired watch, or an explicit stop, must leave nothing armed.
   const release = (): void => {
     const stopPoll = cancel;
@@ -90,6 +105,9 @@ export function startParentDeathWatch(onGone: () => void, opts: ParentDeathWatch
     stopPoll?.();
   };
   const check = () => {
+    // When an expectation was handed down, the first read may legitimately equal it even
+    // when the parent is already gone (the expected pid is compared, not the first read);
+    // otherwise the baseline IS the first read, so only a later change fires the watch.
     if (fired || ppid() === original) return;
     fired = true;
     release();

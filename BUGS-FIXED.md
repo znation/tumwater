@@ -5,6 +5,23 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A backgrounded `logs -f` outlives the shell that started it when that shell exits before the follow's first parent-pid read, so the follow leaks to PPID 1 and never stops (found by the qa role 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+- **Symptom:** `tumwater logs -f` is documented (`docs/cli.md` line for `logs`) to "end[] on its own once the shell or process that started it exits, so a backgrounded follow does not outlive it." That holds only when the starting shell stays alive long enough for the follow's first `process.ppid` read. When the shell exits first (the classic `( tumwater logs -f 2>&1 & )` detached background), the follow is reparented to init before it reads `ppid`, so `startParentDeathWatch` arms its baseline as `1` and — comparing `ppid()` (always `1`) to its baseline (`1`) — never fires. The follow keeps polling forever, reparented to PPID 1. This is the same leak route behind the open "Two `logs -f` processes leaked…" entry, which the 10-19 `followUntilParentGone` change was meant to close; this race is its remaining hole.
+- **Reproduce:** in a scratch project, from a subshell that exits immediately:
+  ```
+  cd <scratch> && git init -q
+  node <checkout>/dist/src/cli.js init "Build a tiny markdown-to-html converter CLI in Python."
+  ( node <checkout>/dist/src/cli.js logs -f > f.log 2>&1 & echo $! > pid )
+  P=$(cat pid); sleep 12
+  ps -o pid,ppid,command -p "$P"   # expected: gone; actual: still running, PPID 1, never ends
+  kill "$P"
+  ```
+  With the parent kept alive ~3 s first (so the baseline is the real shell pid), the same prologue ends ~3 s after the shell exits, within the 5 s parent poll; the immediate-exit case is the one that leaks. Reproduced twice in a row, alive past two 5 s poll intervals.
+- **Cause:** `startParentDeathWatch` (src/process/supervisor.ts) captures `ppid()` as its baseline once, at arming. `followUntilParentGone` (src/cli/log-commands.ts), the shared `followView` (src/cli/follow-view.ts) and `status -f`/`queue -f`/`backlog -f` hand it no `expectedPpid`, so under an immediate-exit spawn the first read already sees `1` and the watchdog can never observe a change.
+- **Expected / fix sketch:** arm the parent-death watch against `expectedSupervisorPid(env)` when one is present, or take the parent's pid from the spawning shell before it can be reparented. A follow that cannot see a distinct parent should treat itself as orphaned immediately and end.
+**Validation gap:** real-run-needed — the detached-`&` reparenting race only reproduces in a real spawned process, not in the offline seam suite, which confirmed the leak only when a real detached `logs -f` was observed still running under PPID 1.
+
 ### `restart hand-off: an in-flight merge outliving its deadline is aborted, not waited out` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it is a known failure until it leaves `## Open`. The instability: the hand-off gave the abort's settle the SAME window as the deadline (`handoffMergeWindowMs`, 500 ms in this test), and stopping a merge is real work — killing the reviewer pi run, finalizing the review, writing the `aborted` outcome. Under host load that settle could outlast the 500 ms window and the drain misclassified a merge that WAS stopping as `abandoned`, dropping its fail-closed `merge_failed … aborted` outcome. Fixed by decoupling: the post-abort settle now runs off `MERGE_ABORT_SETTLE_FLOOR_MS` (10 s), never the (possibly tiny) deadline; the production `HANDOFF_MERGE_WINDOW_MS` is minutes, so a real self-hosting team is unchanged.

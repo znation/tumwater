@@ -458,6 +458,20 @@ test("startParentDeathWatch fires exactly once when the parent pid changes", () 
   stop();
 });
 
+test("startParentDeathWatch treats a first read of PID 1 with no handed-down parent as already orphaned", () => {
+  // The bypassed-`&` leak: the shell that started the child exited before its first ppid read,
+  // so that read is already 1 (launchd/init). With no expectedSupervisorPid handed down, the
+  // baseline would be pinned to 1 and the watch could never observe a change — the follow
+  // would poll forever reparented to PID 1. It must fire onGone immediately instead.
+  let gone = 0;
+  const stop = startParentDeathWatch(() => {
+    gone += 1;
+  }, { ppid: () => 1 });
+  assert.equal(gone, 1, "an already-reparented child with no distinct parent is orphaned immediately");
+  stop();
+  assert.equal(gone, 1, "the orphaned verdict fires once; the stop is a no-op");
+});
+
 test("startParentDeathWatch with an expected parent fires on a parent that was gone before the watch started", () => {
   // The spawner handed its pid down, but died before the child's first read: that read is
   // already launchd's 1, and only the expectation can tell the parent is gone.

@@ -15,7 +15,7 @@ import { canonicalEventType } from "../events/event-legacy.js";
 import { EVENT_TYPE_LABELS, eventTypeLabel } from "../events/event-labels.js";
 import { followFile } from "../files/tail.js";
 import { roleInScope } from "../roles/runner-ids.js";
-import { startParentDeathWatch } from "../process/supervisor.js";
+import { expectedSupervisorPid, startParentDeathWatch } from "../process/supervisor.js";
 import { typoSuffix } from "../text/suggest.js";
 import { splitCommaList } from "../text/text.js";
 import { createTranscriptFilter, createTranscriptRenderer } from "../ui/transcript.js";
@@ -111,12 +111,14 @@ export function followUntilParentGone(
   onLines: (lines: string[]) => void,
   seams: FollowSeams,
 ): Promise<void> {
+  const expected = expectedSupervisorPid();
   const stop = followFile(file, offset, onLines);
   return new Promise((resolve) => {
     startParentDeathWatch(() => {
       stop();
       resolve();
     }, {
+      ...(expected !== undefined ? { expectedPpid: expected } : {}),
       ...(seams.ppid ? { ppid: seams.ppid } : {}),
       ...(seams.intervalMs !== undefined ? { intervalMs: seams.intervalMs } : {}),
     });

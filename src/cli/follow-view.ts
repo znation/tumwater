@@ -4,7 +4,7 @@
  * cli-query-commands.ts when `report -f` landed so the follow views have one leaf
  * home instead of a per-command copy. */
 
-import { startParentDeathWatch } from "../process/supervisor.js";
+import { expectedSupervisorPid, startParentDeathWatch } from "../process/supervisor.js";
 import { stripTerminalControls } from "../text/text.js";
 
 /** The default repaint interval for a follow view — a fixed cadence, no knob. */
@@ -58,6 +58,7 @@ export async function followView(frameText: () => string | Promise<string>, seam
   // would also leave that read's rejections unhandled. Sync callers never set `painting`, so
   // the check is a no-op for them: each of their ticks still paints exactly one frame.
   let painting = false;
+  const expectedSupervisor = expectedSupervisorPid();
   await new Promise<void>((resolve) => {
     const timer = setInterval(() => {
       if (painting) return;
@@ -78,6 +79,7 @@ export async function followView(frameText: () => string | Promise<string>, seam
       clearInterval(timer);
       resolve();
     }, {
+      ...(expectedSupervisor !== undefined ? { expectedPpid: expectedSupervisor } : {}),
       ...(seams.ppid ? { ppid: seams.ppid } : {}),
       ...(seams.intervalMs !== undefined ? { intervalMs: seams.intervalMs } : {}),
     });
