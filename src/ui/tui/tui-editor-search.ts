@@ -24,63 +24,72 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
     restoreDraft();
   };
 
+  // `/` opens a free-text search on the prompt line (the pager's search key; this project
+  // already reserves `/` for a meta action): over the History pane's run rows on History,
+  // over the Activity feed's events on Activity, and over the Backlog pane's active entries
+  // on Backlog, over the Inbox pane's queued prompts, and over a role's live transcript.
+  // Guarded to those views and to an empty line, so elsewhere it types into the prompt as
+  // today and a director draft is never disturbed. Pre-fills the applied pattern so Enter
+  // re-submits it and the operator can edit it; Esc cancels without applying.
+  const openSearchEdit = (ctx: TuiEditorCtx): boolean => {
+    if (
+      searchMode || session.anyEditorHeld() || session.input !== "" ||
+      !(
+        ctx.view === 0 || ctx.view === ctx.roleIds.length + 1 || ctx.view === ctx.roleIds.length + 4 || ctx.view === ctx.roleIds.length + 6 ||
+        (ctx.view >= 1 && ctx.view <= ctx.roleIds.length && !ctx.noteMode && !ctx.changeMode)
+      )
+    ) return false;
+    restoreDraft = session.takeDraft();
+    if (ctx.view === 0) searchFor = "activity";
+    else if (ctx.view === ctx.roleIds.length + 1) searchFor = "backlog";
+    else if (ctx.view === ctx.roleIds.length + 4) searchFor = "history";
+    else if (ctx.view === ctx.roleIds.length + 6) searchFor = "queued";
+    else searchFor = "transcript";
+    searchMode = true;
+    session.held.search = true;
+    const applied = { activity: ctx.activityGrep, history: ctx.trailSearch ? ctx.trailGrep : ctx.historyGrep, backlog: ctx.backlogGrep, queued: ctx.queuedGrep, transcript: ctx.transcriptGrep }[searchFor];
+    const noun = { activity: "events", history: ctx.trailSearch ? "transcript" : "runs", backlog: "backlog", queued: "inbox", transcript: "transcript" }[searchFor];
+    session.input = applied ?? "";
+    session.cursor = session.input.length;
+    session.flashMessage(`search ${noun}: Enter to filter, Esc to cancel`);
+    return true;
+  };
+
+  // Esc cancels the History search without applying it; the applied pattern is unchanged.
+  const cancelSearchEdit = (): boolean => {
+    if (!searchMode) return false;
+    exitHistorySearch();
+    return true;
+  };
+
+  // Enter applies the trimmed line to the pane the editor opened over: Activity sets
+  // activityGrep (an empty line clears it) and resets the scroll to the live tail — the
+  // offset indexed the old filtered list; History recomputes its row cache now (the pane
+  // is showing) and re-enters at its head; Backlog sets backlogGrep and clears its entry
+  // selection so the next frame starts in list mode; Inbox sets queuedGrep, clears its row
+  // selection, and re-reads the filtered rows. A successful apply restores the saved
+  // prompt draft through exitHistorySearch, the shared editor's exit.
+  const submitSearchEdit = (): boolean => {
+    if (!searchMode) return false;
+    const applied = session.input.trim() === "" ? null : session.input.trim();
+    if (searchFor === "activity") session.applyActivitySearch(applied);
+    else if (searchFor === "history") session.applyHistorySearch(applied);
+    else if (searchFor === "backlog") session.applyBacklogSearch(applied);
+    else if (searchFor === "queued") session.applyQueuedSearch(applied);
+    else session.applyTranscriptSearch(applied);
+    exitHistorySearch();
+    session.flashMessage(applied === null ? "search cleared" : `search: "${applied}"`);
+    return true;
+  };
+
   const handleKey = (
     str: string | undefined,
     key: { ctrl?: boolean; name?: string },
     ctx: TuiEditorCtx,
   ): boolean => {
-    if (
-      !key.ctrl && str === "/" && !searchMode && !session.anyEditorHeld() &&
-      (
-      ctx.view === 0 || ctx.view === ctx.roleIds.length + 1 || ctx.view === ctx.roleIds.length + 4 || ctx.view === ctx.roleIds.length + 6 ||
-      (ctx.view >= 1 && ctx.view <= ctx.roleIds.length && !ctx.noteMode && !ctx.changeMode)
-    ) && session.input === ""
-    ) {
-      // `/` opens a free-text search on the prompt line (the pager's search key; this project
-      // already reserves `/` for a meta action): over the History pane's run rows on History,
-      // over the Activity feed's events on Activity, and over the Backlog pane's active entries
-      // on Backlog, over the Inbox pane's queued prompts, and over a role's live transcript.
-      // Guarded to those views and to an empty line, so elsewhere it types into the prompt as
-      // today and a director draft is never disturbed. Pre-fills the applied pattern so Enter
-      // re-submits it and the operator can edit it; Esc cancels without applying.
-      restoreDraft = session.takeDraft();
-      if (ctx.view === 0) searchFor = "activity";
-      else if (ctx.view === ctx.roleIds.length + 1) searchFor = "backlog";
-      else if (ctx.view === ctx.roleIds.length + 4) searchFor = "history";
-      else if (ctx.view === ctx.roleIds.length + 6) searchFor = "queued";
-      else searchFor = "transcript";
-      searchMode = true;
-      session.held.search = true;
-      const applied = { activity: ctx.activityGrep, history: ctx.trailSearch ? ctx.trailGrep : ctx.historyGrep, backlog: ctx.backlogGrep, queued: ctx.queuedGrep, transcript: ctx.transcriptGrep }[searchFor];
-      const noun = { activity: "events", history: ctx.trailSearch ? "transcript" : "runs", backlog: "backlog", queued: "inbox", transcript: "transcript" }[searchFor];
-      session.input = applied ?? "";
-      session.cursor = session.input.length;
-      session.flashMessage(`search ${noun}: Enter to filter, Esc to cancel`);
-      return true;
-    }
-    if (key.name === "escape" && searchMode) {
-      // Esc cancels the History search without applying it; the applied pattern is unchanged.
-      exitHistorySearch();
-      return true;
-    }
-    if (key.name === "return" && searchMode) {
-      // Enter applies the trimmed line to the pane the editor opened over: Activity sets
-      // activityGrep (an empty line clears it) and resets the scroll to the live tail — the
-      // offset indexed the old filtered list; History recomputes its row cache now (the pane
-      // is showing) and re-enters at its head; Backlog sets backlogGrep and clears its entry
-      // selection so the next frame starts in list mode; Inbox sets queuedGrep, clears its row
-      // selection, and re-reads the filtered rows. A successful apply restores the saved
-      // prompt draft through exitHistorySearch, the shared editor's exit.
-      const applied = session.input.trim() === "" ? null : session.input.trim();
-      if (searchFor === "activity") session.applyActivitySearch(applied);
-      else if (searchFor === "history") session.applyHistorySearch(applied);
-      else if (searchFor === "backlog") session.applyBacklogSearch(applied);
-      else if (searchFor === "queued") session.applyQueuedSearch(applied);
-      else session.applyTranscriptSearch(applied);
-      exitHistorySearch();
-      session.flashMessage(applied === null ? "search cleared" : `search: "${applied}"`);
-      return true;
-    }
+    if (!key.ctrl && str === "/") return openSearchEdit(ctx);
+    if (key.name === "escape" && searchMode) return cancelSearchEdit();
+    if (key.name === "return" && searchMode) return submitSearchEdit();
     return false;
   };
 
