@@ -78,26 +78,6 @@ test("an approved merge merges on main and deletes the ref", async () => {
   );
 });
 
-test("a reviewer killed once (exit 143) is retried in the verify: the change merges with no merge_failed", async () => {
-  const counter = path.join(tmpdir(), "runs");
-  await withPi(
-    `n=$(cat '${counter}' 2>/dev/null || echo 0)\nn=$((n+1))\necho $n > '${counter}'\n` +
-      `if [ $n -le 1 ]; then exit 143; fi\n` +
-      `printf '%s\\n' '${assistantLine("VERDICT: approve\nfine")}'`,
-    async () => {
-      const { root, sha } = await pinnedFixture();
-      const state = freshRunnerState(ROLE);
-      const { ctx } = makeCtx(root, state);
-
-      assert.equal(await verifyAndMerge({ ...ctx, reviewRetries: 2 }, request(sha)), "changed");
-
-      assert.equal(mainSha(root), sha, "the pinned commit is main's head");
-      assert.equal(fs.readFileSync(counter, "utf8").trim(), "2", "one failed run, one approving run");
-      assert.equal(eventsOfType(root, "merge_failed").length, 0);
-    },
-  );
-});
-
 test("the gate's verdict is durable on disk before the run's end save", async () => {
   // Regression (2026-09-14): state was written to disk only at run boundaries, so a
   // sudden death after the gate's verdict (power loss, kill -9) left the last
@@ -169,59 +149,21 @@ test("a rejected merge merges nothing: role worktree clean at main, ref deleted,
   assert.ok(state.lastReview?.reasons?.length, "the diff rule's reason is recorded");
 });
 
-test("a verdict-less failure under the strike cap returns review_error and keeps the ref", async () => {
-  await withPi(
-    reviewerPi("I think this is fine overall."),
-    async () => {
-      const { root, sha } = await pinnedFixture();
-      const state = freshRunnerState(ROLE);
-      const mainBefore = mainSha(root);
-      const { ctx } = makeCtx(root, state);
+test("an abort before the gate returns aborted and keeps the ref", async () => {
+  // Re-pointed (part 3z/3): the abort is observed before the gate ever starts, so it is fully
+  // deterministic — no fake pi run is needed and none will survive part 3h/3's removal of the
+  // pre-merge reviewer. The abort bookkeeping (nothing merged, pin kept for the next run's
+  // recovery) is unchanged.
+  const { root, sha } = await pinnedFixture();
+  const state = freshRunnerState(ROLE);
+  const mainBefore = mainSha(root);
+  const { ctx, controller } = makeCtx(root, state);
+  controller.abort(); // a shutdown that arrives before the merge's gate starts
 
-      assert.equal(await verifyAndMerge(ctx, request(sha)), "review_error");
+  assert.equal(await verifyAndMerge(ctx, request(sha)), "aborted");
 
-      assert.equal(mainSha(root), mainBefore, "nothing merged on main");
-      assert.ok(state.lastError?.startsWith("review failed:"), `lastError names the failure: ${state.lastError}`);
-      assert.equal(await refSha(root, REF), sha, "under the cap the pin stays for next-run recovery");
-    },
-  );
-});
-
-test("three verdict-less failures discard the merge and delete the ref", async () => {
-  await withPi(
-    reviewerPi("I think this is fine overall."),
-    async () => {
-      const { root, sha } = await pinnedFixture();
-      const state = freshRunnerState(ROLE); // one state object across all three attempts
-      const mainBefore = mainSha(root);
-
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        const { ctx } = makeCtx(root, state);
-        assert.equal(await verifyAndMerge(ctx, request(sha)), "review_error");
-        assert.equal(await refSha(root, REF), sha, `attempt ${attempt} is under the cap: pin kept`);
-      }
-
-      const { ctx } = makeCtx(root, state);
-      assert.equal(await verifyAndMerge(ctx, request(sha)), "review_error", "the discard reports like a failure");
-      assert.equal(mainSha(root), mainBefore, "nothing merged on main");
-      assert.equal(await refSha(root, REF), null, "past the strike cap the pin is deleted with it");
-    },
-  );
-});
-
-test("an abort mid-review returns aborted and keeps the ref", async () => {
-  await withPi(`exec sleep 30`, async () => { // never reached: the signal is already aborted
-    const { root, sha } = await pinnedFixture();
-    const state = freshRunnerState(ROLE);
-    const mainBefore = mainSha(root);
-    const { ctx, controller } = makeCtx(root, state);
-    controller.abort(); // a shutdown that arrives before the reviewer starts
-
-    assert.equal(await verifyAndMerge(ctx, request(sha)), "aborted");
-
-    assert.equal(mainSha(root), mainBefore, "nothing merged on main");
-    assert.equal(await refSha(root, REF), sha, "an aborted merge keeps its pin for recovery");
-  });
+  assert.equal(mainSha(root), mainBefore, "nothing merged on main");
+  assert.equal(await refSha(root, REF), sha, "an aborted merge keeps its pin for recovery");
 });
 
 test("a conflicting merge gets one resolution run and then merges", async () => {
