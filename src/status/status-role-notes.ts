@@ -18,24 +18,24 @@ export interface RoleNoteOverCap {
  * dashboards' once-a-second poll never re-reads an unchanged notes file. */
 const noteLengthCache = new Map<string, StatKeyedValue<number>>();
 
-/** The role-notes slice of a status snapshot: every role whose notes file runs past the read
- * bound. `readRoleNote` (src/run/run-prompt.ts) cuts every notes file at ROLE_NOTES_MAX_BYTES
- * *characters* on read, but every operator surface reads the file whole — so a hand-edited or
- * old-build note past the bound reaches that role's run prompt as only its head plus a
- * truncation marker while `tumwater status` looks green. This is the standing twin of the
- * doctor `role notes` row's warn (src/doctor/doctor-role-notes.ts's checkRoleNotes): it reads
- * the same directory and shares the same length predicate (text.length > ROLE_NOTES_MAX_BYTES,
- * characters not bytes), so the alert and the doctor row cannot disagree. Sorted descending by
- * chars (the doctor row's order). Never throws: a missing or unreadable notes dir is the same
- * "nothing recorded yet" degrade checkRoleNotes returns as a pass. */
-export function collectRoleNotesOverCap(root: string): RoleNoteOverCap[] {
+/** Every role whose notes file runs past the read bound, in descending-char order — the
+ * single home of the role-notes over-cap walk, shared by the status snapshot's
+ * `collectRoleNotesOverCap` and the doctor `role notes` row
+ * (src/doctor/doctor-role-notes.ts's checkRoleNotes), so the alert and the doctor row cannot
+ * disagree about which notes are over the bound. `readRoleNote` (src/run/run-prompt.ts) cuts
+ * every notes file at ROLE_NOTES_MAX_BYTES *characters* on read, but every operator surface
+ * reads the file whole — so a hand-edited or old-build note past the bound reaches that role's
+ * run prompt as only its head plus a truncation marker while `tumwater status` looks green.
+ * Returns null when the notes dir is missing or unreadable (the write path creates it on first
+ * write), whose callers each map to their own "nothing recorded yet" reading. Never throws. */
+export function readRoleNotesOverCap(root: string): RoleNoteOverCap[] | null {
   const notesDir = path.dirname(roleNotesPath(root, "role"));
   let entries: readonly string[];
   try {
     entries = fs.readdirSync(notesDir);
   } catch {
     // Missing or unreadable notes dir: nothing recorded yet (the write path creates it).
-    return [];
+    return null;
   }
   const over: RoleNoteOverCap[] = [];
   for (const name of entries) {
@@ -54,7 +54,13 @@ export function collectRoleNotesOverCap(root: string): RoleNoteOverCap[] {
     if (chars === null) continue;
     if (chars > ROLE_NOTES_MAX_BYTES) over.push({ role: name.slice(0, -3), chars });
   }
-  if (over.length === 0) return [];
   over.sort((a, b) => b.chars - a.chars);
   return over;
+}
+
+/** The role-notes slice of a status snapshot as a plain array for the dashboard payloads:
+ * every over-cap note in descending-char order, or [] when the notes dir is missing (the same
+ * "nothing recorded yet" degrade the doctor's checkRoleNotes treats as a pass). */
+export function collectRoleNotesOverCap(root: string): RoleNoteOverCap[] {
+  return readRoleNotesOverCap(root) ?? [];
 }

@@ -1,7 +1,4 @@
-import fs from "node:fs";
-import path from "node:path";
-import { readTextOrNull } from "../files/files.js";
-import { roleNotesPath } from "../paths.js";
+import { readRoleNotesOverCap } from "../status/status-role-notes.js";
 import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
 import { agree, plural } from "../text/phrases.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
@@ -16,30 +13,19 @@ const ROLE_NOTES_NAMED_CAP = 3;
  * ROLE_NOTES_MAX_BYTES *characters* on read (truncateWithNote's text.length bound), but every
  * operator surface reads the file whole — so a hand edit or old build can leave a note the
  * operator sees and the role never does. This row warns on that gap without touching the file.
+ * The over-cap walk is shared with the status snapshot's collectRoleNotesOverCap
+ * (src/status/status-role-notes.ts), so the row and the status alert cannot disagree about
+ * which notes are over the bound; null means the notes dir is missing or unreadable.
  * Read-only against .tumwater/, like every check. Never throws. */
 export function checkRoleNotes(root: string): CheckOutcome {
-  const notesDir = path.dirname(roleNotesPath(root, "role"));
-  let entries: readonly string[];
-  try {
-    entries = fs.readdirSync(notesDir);
-  } catch {
+  const over = readRoleNotesOverCap(root);
+  if (over === null) {
     // Missing or unreadable notes dir: nothing recorded yet (the write path creates it).
     return okOutcome("no role notes recorded yet");
-  }
-  // The bound is the read's own unit — truncateWithNote cuts on text.length (UTF-16
-  // characters), not the write path's Buffer.byteLength, so compare characters too or a
-  // multibyte note the prompt reads in full would false-positive; never statSync().size.
-  const over: Array<{ role: string; chars: number }> = [];
-  for (const name of entries) {
-    if (!name.endsWith(".md")) continue;
-    const text = readTextOrNull(path.join(notesDir, name));
-    if (text === null) continue;
-    if (text.length > ROLE_NOTES_MAX_BYTES) over.push({ role: name.slice(0, -3), chars: text.length });
   }
   if (over.length === 0) {
     return okOutcome(`every role note is within the ${ROLE_NOTES_MAX_BYTES}-character read bound`);
   }
-  over.sort((a, b) => b.chars - a.chars);
   const first = over
     .slice(0, ROLE_NOTES_NAMED_CAP)
     .map((o) => `${o.role} (${o.chars})`)
