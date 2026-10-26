@@ -15,7 +15,7 @@ import { testNotifyHook } from "../cli/notify-command.js";
 import { rejectBadRole, requireConfigKey, requireRoleField, requireStringField } from "./gui-args.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { badRequest, sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./gui-http-body.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 

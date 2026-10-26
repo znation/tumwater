@@ -9,7 +9,7 @@
  */
 import { releaseQuarantinedTest } from "../review/known-flakes.js";
 import { readPostBody } from "./gui-endpoint-common.js";
-import { badRequest, sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./gui-http-body.js";
 import type http from "node:http";
 
 /** Handle POST /api/quarantine-release: release one quarantined test (the body's `test`), so

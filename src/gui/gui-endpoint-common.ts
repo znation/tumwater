@@ -8,7 +8,7 @@
  * per-domain `checked*` validators live with their domain's module, not here.
  */
 import { rejectBadRole } from "./gui-args.js";
-import { readJsonObject, sendJson } from "./http-body.js";
+import { readJsonObject, sendJson } from "./gui-http-body.js";
 import type { RequestResult } from "../operator/operator-intent.js";
 import type http from "node:http";
 

@@ -86,7 +86,7 @@ import {
   handleWake,
   handleWakeCancel,
 } from "./gui-endpoint-commands.js";
-import { sendJson } from "./http-body.js";
+import { sendJson } from "./gui-http-body.js";
 
 /** A dashboard route handler: the one callback shape guiRoutes stores per `METHOD path`, so its
  * table can hold the page, the JSON GET handlers, and the POST operator handlers together.

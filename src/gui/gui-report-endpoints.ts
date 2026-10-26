@@ -14,7 +14,7 @@ import { quarantineRows, quarantineViewRows, type QuarantineViewRow } from "../r
 import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { roleListQuery, sinceMsQuery, untilMsQuery, windowDays } from "./gui-args.js";
-import { badRequest, sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./gui-http-body.js";
 import type http from "node:http";
 /** Parse and validate the role-scoped, sinceMs-or-days query the report and failures endpoints
  * both take: the `?role=` filter, a comma-separated list (each id trimmed, deduplicated, and

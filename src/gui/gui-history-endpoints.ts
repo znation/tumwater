@@ -32,7 +32,7 @@ import { renderRunDetail, runDetailPatch, runDetailStat, runTranscriptLines } fr
 import { resolveRevertTarget } from "../operator/revert.js";
 import { rolePayload } from "../roles/role-view.js";
 import { clampCount, intQuery, rejectBadRole, sinceMsQuery, untilMsQuery } from "./gui-args.js";
-import { badRequest, sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./gui-http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import { gotSuffix, splitCommaList, splitCommaListUnique } from "../text/text.js";
 import { newestRunRow, runNotFoundLastMessage, runNotFoundMessage } from "../run/run-detail.js";

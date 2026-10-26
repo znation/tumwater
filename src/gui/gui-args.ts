@@ -16,7 +16,7 @@ import { queueFileNameProblem } from "../inbox/inbox-cancel.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { gotSuffix, parseNonNegativeInt, parsePositiveInt, splitCommaListUnique } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
-import { badRequest, sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./gui-http-body.js";
 import type http from "node:http";
 
 /** The role ids a role-targeting endpoint accepts: when tumwater.json parses, catalog +

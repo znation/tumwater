@@ -10,7 +10,7 @@ import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js
 import { enqueueRolePrompt, inboxSize, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
-import { MAX_BODY_BYTES } from "../src/gui/http-body.js";
+import { MAX_BODY_BYTES } from "../src/gui/gui-http-body.js";
 import { postJson, startLocalGui } from "./fixtures/gui-fixtures.js";
 import { piLogPath } from "../src/paths.js";
 import { makeRepo, sh } from "./fixtures/repo-fixtures.js";

@@ -11,7 +11,7 @@ import { answeredQuestionEntries, entryMatches, donePlanEntries, fixedBugEntries
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, normalizeDiffPath } from "../change/change-data.js";
 import { listWideScope, queuedListRows } from "../inbox/inbox.js";
 import { intQuery, rejectBadRole, roleListQuery } from "./gui-args.js";
-import { badRequest, sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./gui-http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import type http from "node:http";
 /** The /api/backlog `file` values and the open-section reader each addresses — one table so

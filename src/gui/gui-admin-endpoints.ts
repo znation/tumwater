@@ -15,7 +15,7 @@ import { readBrief } from "../brief/brief.js";
 import { readQueuedPromptBody } from "../inbox/inbox-edit.js";
 import { rejectBadQueueFileName, rejectBadRole } from "./gui-args.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { okGone, sendJson } from "./http-body.js";
+import { okGone, sendJson } from "./gui-http-body.js";
 import type http from "node:http";
 /** Handle GET /api/prompt-text?file=<name>[&role=<id>]: one queued prompt's editable body —
  * the text an edit replaces, for the dashboard's per-row edit affordance (PLANS.md

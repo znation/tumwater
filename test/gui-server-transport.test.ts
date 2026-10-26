@@ -6,7 +6,7 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { dequeuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
-import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/gui/http-body.js";
+import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/gui/gui-http-body.js";
 import { loopbackHostAllowed } from "../src/gui/gui-server.js";
 import { postJson, startLocalGui } from "./fixtures/gui-fixtures.js";
 import { makeRepo, runningAsRoot } from "./fixtures/repo-fixtures.js";

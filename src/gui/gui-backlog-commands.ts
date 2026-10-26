@@ -18,7 +18,7 @@ import { tryMoveEntryToTop, tryReleaseEntry, type MoveEntryOutcome, type Release
 import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../backlog/question-answer.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { requestWake, submitRolePromptAndWake, wakeQuestionAsker } from "../operator/operator-intent.js";
-import { badRequest, okGone, sendJson } from "./http-body.js";
+import { badRequest, okGone, sendJson } from "./gui-http-body.js";
 import { collapseWhitespace, errorMessage, gotSuffix } from "../text/text.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import type http from "node:http";

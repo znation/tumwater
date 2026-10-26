@@ -17,7 +17,7 @@ import { parseDurationMs } from "../cli/cli-args.js";
 import { PAUSE_FOR_MAX_MS, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadQueueFileName, rejectBadRole, requirePromptText } from "./gui-args.js";
-import { badRequest, OK_GONE, sendJson } from "./http-body.js";
+import { badRequest, OK_GONE, sendJson } from "./gui-http-body.js";
 import { errorMessage, gotSuffix, joinParts } from "../text/text.js";
 import { readPostBody, readRoleBody } from "./gui-endpoint-common.js";
 import type http from "node:http";

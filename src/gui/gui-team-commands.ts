@@ -9,7 +9,7 @@ import { baseRoleOf, INSTANCE_ROLES } from "../roles/runner-ids.js";
 import { normalizePauseReason, pauseTeam, pauseRole, resumeTeam, resumeRole } from "../team/team-state.js";
 import { cancelWakes, PAUSE_FOR_MAX_MS, requestWake } from "../operator/operator-intent.js";
 import { requirePausedFlag, validRoleIds } from "./gui-args.js";
-import { badRequest, sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./gui-http-body.js";
 import { gotSuffix } from "../text/text.js";
 import { readPostBody, readRoleBody } from "./gui-endpoint-common.js";
 import type http from "node:http";

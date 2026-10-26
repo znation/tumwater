@@ -7,9 +7,9 @@ import {
   readJsonObject,
   MAX_BODY_BYTES,
   bufferedBodyBytes,
-} from "../src/gui/http-body.js";
+} from "../src/gui/gui-http-body.js";
 
-// http-body.ts is the dashboard's shared request/response plumbing: every /api endpoint
+// gui-http-body.ts is the dashboard's shared request/response plumbing: every /api endpoint
 // answers through sendJson and every /api POST handler reads its body through
 // readJsonObject. The server-level tests (gui-server-transport.test.ts, gui-operator.test.ts)
 // exercise these through a real socket, which cannot control chunk framing — so the

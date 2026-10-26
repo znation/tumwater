@@ -32,7 +32,7 @@ import { orchestratorAlive } from "../team/orchestrator-info.js";
 import { shortSha } from "../text/format.js";
 import { editBriefText } from "../brief/brief-edit.js";
 import { requireStringField, validRoleIds } from "./gui-args.js";
-import { badRequest, sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./gui-http-body.js";
 import { errorMessage, gotSuffix } from "../text/text.js";
 import { readPostBody, readRoleBody, sendRequestResult } from "./gui-endpoint-common.js";
 import { wakeInSecondsMs } from "./gui-team-commands.js";
