@@ -300,12 +300,35 @@ interface PromptFlags {
   atClaim: number[];
 }
 
-/** `tumwater prompt`'s flag scan and the checks it owns — everything shared by two or more
- * modes, so a new mode or queue-only flag is added here: the unknown-double-dash gate, the
- * index collection, the once-check, the six mutual exclusions, the --role pair, the
- * --json/--grep list-only refusals, the queue-only-flag refusals, the --attach pairs and the
- * --at parse and cap. Returns a struct the mode branches read. */
-function parsePromptFlags(args: string[]): PromptFlags {
+/** The raw index bundle the prompt checks read, gathered once by scanPromptFlags so each
+ * check helper reads indices without re-scanning args. */
+interface PromptScan {
+  jsonFlags: number[];
+  listFlag: number;
+  cancelFlag: number;
+  editFlag: number;
+  topFlag: number;
+  fileFlag: number;
+  atFlag: number;
+  grepFlag: number;
+  attachFlags: number[];
+  roleFlag: number;
+}
+
+/** The six `--list`/`--cancel`/`--edit`/`--top` mode pairs that may not combine, in today's
+ * exact order. */
+const PROMPT_MODE_EXCLUSIONS: readonly (readonly [string, string])[] = [
+  ["--list", "--cancel"],
+  ["--list", "--edit"],
+  ["--cancel", "--edit"],
+  ["--list", "--top"],
+  ["--cancel", "--top"],
+  ["--edit", "--top"],
+];
+
+/** The flag-vocabulary gate and the once-check: the unknown-double-dash gate, the ten index
+ * collections and rejectDuplicateFlags's once-check all ride here, one scan, one home. */
+function scanPromptFlags(args: string[]): PromptScan {
   // The unknown-double-dash gate reads PROMPT_FLAG_SPECS, so the list its error names admits
   // exactly what the duplicate-flag check below accepts — one vocabulary, one message renderer.
   rejectUnknownDoubleDash("prompt", args, PROMPT_FLAG_SPECS);
@@ -322,33 +345,62 @@ function parsePromptFlags(args: string[]): PromptFlags {
   // --attach is repeatable: every occurrence claims itself and its value token, like --role's
   // single pair, so the pairs ride out of the prompt text in every mode.
   const attachFlags = args.flatMap((a, i) => (a === "--attach" ? [i] : []));
+  const roleFlag = args.indexOf("--role");
   const known = PROMPT_FLAG_SPECS.flatMap((s) => s.names).filter((f) => f !== "--attach"); // repeatable: the once-check skips it
   rejectDuplicateFlags(args, known);
-  if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
-  if (listFlag >= 0 && editFlag >= 0) fail("--list and --edit are mutually exclusive");
-  if (cancelFlag >= 0 && editFlag >= 0) fail("--cancel and --edit are mutually exclusive");
-  if (listFlag >= 0 && topFlag >= 0) fail("--list and --top are mutually exclusive");
-  if (cancelFlag >= 0 && topFlag >= 0) fail("--cancel and --top are mutually exclusive");
-  if (editFlag >= 0 && topFlag >= 0) fail("--edit and --top are mutually exclusive");
+  return { jsonFlags, listFlag, cancelFlag, editFlag, topFlag, fileFlag, atFlag, grepFlag, attachFlags, roleFlag };
+}
 
-  const roleFlag = args.indexOf("--role");
+/** The six mode mutual exclusions: the mutually-exclusive `--list`/`--cancel`/`--edit`/
+ * `--top` pairs, in the table's order, so the first failing pair reports as it did before. */
+function assertPromptModesDisjoint(scan: PromptScan): void {
+  const index: Readonly<Record<string, number>> = {
+    "--list": scan.listFlag,
+    "--cancel": scan.cancelFlag,
+    "--edit": scan.editFlag,
+    "--top": scan.topFlag,
+  };
+  for (const [a, b] of PROMPT_MODE_EXCLUSIONS) {
+    // All four keys are always present in the object; ?? -1 just satisfies the strict
+    // indexed-access typing without changing the (never-undefined) compare.
+    if ((index[a] ?? -1) >= 0 && (index[b] ?? -1) >= 0) fail(`${a} and ${b} are mutually exclusive`);
+  }
+}
+
+/** The `--role <id>` value pair: its raw value, its missing-value refusal and the pair it
+ * claims, verbatim. */
+function parsePromptRole(args: string[], roleFlag: number): { role: string | null; roleClaim: number[] } {
   const roleRaw = roleFlag >= 0 ? args[roleFlag + 1] : undefined;
   if (roleFlag >= 0 && (!roleRaw || roleRaw.startsWith("--"))) fail(ROLE_VALUE_ERROR);
   const role = roleRaw ?? null;
   // The flag and its value are never prompt content: --role is a scope, not text. Only claimed
   // when actually present — negative indexes would over-claim real tokens.
   const roleClaim = roleFlag >= 0 ? [roleFlag, roleFlag + 1] : [];
+  return { role, roleClaim };
+}
 
+/** The `--json` list-only refusal: in enqueue or cancel mode it must never silently ride
+ * along as prompt text (or beside a state change). */
+function assertPromptJsonListOnly(scan: PromptScan): void {
   // --json is list-only: in enqueue or cancel mode it must never silently ride along as
   // prompt text (or beside a state change), so it is refused before either branch runs.
-  if (jsonFlags.length > 0 && listFlag < 0) fail("--json only applies to --list");
-  if (grepFlag >= 0 && listFlag < 0) fail("--grep only applies to --list");
-  const grepRaw = grepFlag >= 0 ? args[grepFlag + 1] : undefined;
-  if (grepFlag >= 0 && (!grepRaw || grepRaw.startsWith("--"))) {
+  if (scan.jsonFlags.length > 0 && scan.listFlag < 0) fail("--json only applies to --list");
+}
+
+/** The `--grep <text>` value pair and its list-only refusal, verbatim. */
+function parsePromptGrep(args: string[], scan: PromptScan): { grepRaw: string | undefined; grepClaim: number[] } {
+  if (scan.grepFlag >= 0 && scan.listFlag < 0) fail("--grep only applies to --list");
+  const grepRaw = scan.grepFlag >= 0 ? args[scan.grepFlag + 1] : undefined;
+  if (scan.grepFlag >= 0 && (!grepRaw || grepRaw.startsWith("--"))) {
     fail("--grep needs text (usage: tumwater prompt --list --grep <text>)");
   }
-  const grepClaim = grepFlag >= 0 ? [grepFlag, grepFlag + 1] : [];
+  const grepClaim = scan.grepFlag >= 0 ? [scan.grepFlag, scan.grepFlag + 1] : [];
+  return { grepRaw, grepClaim };
+}
 
+/** The queue-only-mode refusals: --file and --at have nothing to mean except in the enqueue
+ * mode, and --attach is refused by --list and --cancel (--edit accepts it). */
+function assertPromptQueueOnlyFlags(scan: PromptScan): void {
   // The queue-only flags --file and --at have nothing to mean in the read-only and destructive
   // modes (--list and --cancel): --file is the file-shaped twin of free-form text (--edit
   // accepts it as its replacement text, so the editFlag test below exempts that one mode), and
@@ -358,15 +410,16 @@ function parsePromptFlags(args: string[]): PromptFlags {
   // predicate and the `<flag> only queues a prompt` wording, so a new mode or queue-only flag
   // is added here.
   const refuseQueueOnlyFlag = (flag: string, present: boolean): void => {
-    if (present && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0 || topFlag >= 0)) fail(`${flag} only queues a prompt`);
+    if (present && (scan.listFlag >= 0 || scan.cancelFlag >= 0 || scan.editFlag >= 0 || scan.topFlag >= 0)) fail(`${flag} only queues a prompt`);
   };
-  refuseQueueOnlyFlag("--file", fileFlag >= 0 && editFlag < 0);
-  refuseQueueOnlyFlag("--at", atFlag >= 0);
-  refuseQueueOnlyFlag("--attach", attachFlags.length > 0 && editFlag < 0);
-  // An edit keeps the target prompt's existing deferral exactly as it was (the marker is
-  // plumbing the edit carries over), so a --at alongside it has nothing to mean.
-  // The pair is claimed like --role's: the flag and its value are never prompt content.
-  const atClaim = atFlag >= 0 ? [atFlag, atFlag + 1] : [];
+  refuseQueueOnlyFlag("--file", scan.fileFlag >= 0 && scan.editFlag < 0);
+  refuseQueueOnlyFlag("--at", scan.atFlag >= 0);
+  refuseQueueOnlyFlag("--attach", scan.attachFlags.length > 0 && scan.editFlag < 0);
+}
+
+/** The `--attach <path>` value pair(s): every occurrence claims itself and its value token,
+ * with the missing-value refusal, verbatim. */
+function parsePromptAttachments(args: string[], attachFlags: number[]): { attachPaths: string[]; attachClaims: number[] } {
   // Each --attach pair claims the flag and its value; a trailing flag with no value names the
   // flag here, like --cancel's missing-value wording, before any queue write.
   const attachPaths = attachFlags.map((i) => args[i + 1] as string);
@@ -374,6 +427,15 @@ function parsePromptFlags(args: string[]): PromptFlags {
   for (const i of attachFlags) {
     if (args[i + 1] === undefined) fail(`--attach needs a path (e.g. \`--attach shot.png\`)`);
   }
+  return { attachPaths, attachClaims };
+}
+
+/** The `--at <duration>` parse and its 90-day cap, verbatim. */
+function parsePromptDeferral(args: string[], atFlag: number): { atDelayMs: number | null; atClaim: number[] } {
+  // An edit keeps the target prompt's existing deferral exactly as it was (the marker is
+  // plumbing the edit carries over), so a --at alongside it has nothing to mean.
+  // The pair is claimed like --role's: the flag and its value are never prompt content.
+  const atClaim = atFlag >= 0 ? [atFlag, atFlag + 1] : [];
   let atDelayMs: number | null = null;
   if (atFlag >= 0) {
     atDelayMs = parseDurationFlag("--at", args[atFlag + 1]);
@@ -382,15 +444,35 @@ function parsePromptFlags(args: string[]): PromptFlags {
     // (about 106751991d from now) made notBeforeMarker's toISOString throw a raw RangeError.
     failOverDurationCap("--at", atDelayMs, PAUSE_FOR_MAX_MS);
   }
+  return { atDelayMs, atClaim };
+}
+
+/** `tumwater prompt`'s flag scan and the checks it owns — everything shared by two or more
+ * modes, so a new mode or queue-only flag is added here: the unknown-double-dash gate, the
+ * index collection, the once-check, the six mutual exclusions, the --role pair, the
+ * --json/--grep list-only refusals, the queue-only-flag refusals, the --attach pairs and the
+ * --at parse and cap. Each job lives in one helper — scanPromptFlags, assertPromptModesDisjoint,
+ * parsePromptRole, assertPromptJsonListOnly, parsePromptGrep, assertPromptQueueOnlyFlags,
+ * parsePromptAttachments and parsePromptDeferral — so a check is found by name. Returns a
+ * struct the mode branches read. */
+function parsePromptFlags(args: string[]): PromptFlags {
+  const scan = scanPromptFlags(args);
+  assertPromptModesDisjoint(scan);
+  const { role, roleClaim } = parsePromptRole(args, scan.roleFlag);
+  assertPromptJsonListOnly(scan);
+  const { grepRaw, grepClaim } = parsePromptGrep(args, scan);
+  assertPromptQueueOnlyFlags(scan);
+  const { attachPaths, attachClaims } = parsePromptAttachments(args, scan.attachFlags);
+  const { atDelayMs, atClaim } = parsePromptDeferral(args, scan.atFlag);
 
   return {
     role,
-    jsonFlags,
-    listFlag,
-    cancelFlag,
-    editFlag,
-    topFlag,
-    fileFlag,
+    jsonFlags: scan.jsonFlags,
+    listFlag: scan.listFlag,
+    cancelFlag: scan.cancelFlag,
+    editFlag: scan.editFlag,
+    topFlag: scan.topFlag,
+    fileFlag: scan.fileFlag,
     grepRaw,
     grepClaim,
     roleClaim,
