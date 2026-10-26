@@ -226,6 +226,22 @@ export function regressedFixesAlert(root: string, now = Date.now()): RegressedFi
   const detail = regressedFixesPhrase(rows);
   return detail === null ? null : { count: rows.length, detail };
 }
+/** A window summary of the `warning` events whose `message` contains `marker`: the count and
+ * the most recent hit (its stamp and squashed wording). The one home of the
+ * filter-warnings-by-substring-then-take-latest shape the three marker feeds
+ * (primaryOverwriteBlocks, droppedPostReviewsAlert, mainRuleFailures) share. null when the
+ * window holds no such warning. eventsSince degrades an unreadable log, so a single bounded
+ * event scan needs no try/catch. */
+function warningMarkerHit(
+  root: string,
+  windowMs: number,
+  marker: string,
+  now: number,
+): { count: number; latestTs: number; latestMessage: string } | null {
+  const hits = eventsSince(root, windowMs, now, (e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(marker));
+  const latest = hits[hits.length - 1];
+  return latest ? { count: hits.length, latestTs: latest.ts, latestMessage: String(latest.message) } : null;
+}
 /** The exact substring merge-git.ts's overwrite blocker logs in its `warning` event, so this
  * feed matches the refusal and nothing the merge path does not say (see merge-git.ts
  * `overwriteBlockedReason`). */
@@ -238,9 +254,8 @@ const PRIMARY_OVERWRITE_MARKER = "would overwrite files in the primary checkout"
  * cannot drift from
  * the refusals. null when the window holds no such warning. */
 export function primaryOverwriteBlocks(root: string, now = Date.now()): PrimaryOverwriteBlock | null {
-  const hits = eventsSince(root, PRIMARY_OVERWRITE_WINDOW_MS, now, (e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(PRIMARY_OVERWRITE_MARKER));
-  const latest = hits[hits.length - 1];
-  return latest ? { count: hits.length, latestTs: latest.ts, message: String(latest.message) } : null;
+  const hit = warningMarkerHit(root, PRIMARY_OVERWRITE_WINDOW_MS, PRIMARY_OVERWRITE_MARKER, now);
+  return hit ? { count: hit.count, latestTs: hit.latestTs, message: hit.latestMessage } : null;
 }
 
 /** Re-export so the always-on alert's threshold and window stay in their one home
@@ -364,9 +379,7 @@ export interface DroppedPostReviews {
  * holds no such warning. eventsSince degrades an unreadable log, so one bounded event scan
  * needs no try/catch (the primaryOverwriteBlocks precedent). */
 export function droppedPostReviewsAlert(root: string, now = Date.now()): DroppedPostReviews | null {
-  const hits = eventsSince(root, DROPPED_POST_REVIEW_WINDOW_MS, now, (e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(DROPPED_POST_REVIEW_MARKER));
-  const latest = hits[hits.length - 1];
-  return latest ? { count: hits.length, latestTs: latest.ts, latestMessage: String(latest.message) } : null;
+  return warningMarkerHit(root, DROPPED_POST_REVIEW_WINDOW_MS, DROPPED_POST_REVIEW_MARKER, now);
 }
 /** A main watch tip failing the review gate's five diff rules can sit on main for a day — this
  * is how far back the main-diff-rules alert looks, the same trailing-day convention every
@@ -389,7 +402,5 @@ export interface MainRuleFailure {
  * wording. null when the day holds no such warning. eventsSince degrades an unreadable log, so
  * one bounded event scan needs no try/catch (the primaryOverwriteBlocks precedent). */
 export function mainRuleFailures(root: string, now = Date.now()): MainRuleFailure | null {
-  const hits = eventsSince(root, MAIN_RULE_FAILURE_WINDOW_MS, now, (e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(MAIN_RULE_FAILURE_MARKER));
-  const latest = hits[hits.length - 1];
-  return latest ? { count: hits.length, latestTs: latest.ts, latestMessage: String(latest.message) } : null;
+  return warningMarkerHit(root, MAIN_RULE_FAILURE_WINDOW_MS, MAIN_RULE_FAILURE_MARKER, now);
 }
