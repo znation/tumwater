@@ -70,6 +70,30 @@ export function mainRedMinutesByDay(
   return map;
 }
 
+/** Count named items into per-calendar-day maps (`YYYY-MM-DD` → key → count) over the window
+ * `[fromMs, toMs)`: walk the events `inWindowEvents` admits and, for each one `keysOf` turns
+ * into a non-empty list, add each key once into that event's day (`dayKey`). The two byDay
+ * count walks (`mainRedFailingTestsByDay`, `mainRedCulpritsByDay`) share this shape so they
+ * cannot disagree about which events fall in the window (`inWindowEvents`) or which day an
+ * event lands on (`dayKey`); `keysOf` returns `undefined` (or an empty list) for the events a
+ * walk ignores, keeping their loose-event-log guards (a non-`failingTests` red, a
+ * commit-less `main_culprit`) in the walk where its own rule reads clearest. */
+function countByDayInWindow(
+  events: readonly HarnessEvent[],
+  fromMs: number,
+  toMs: number,
+  keysOf: (e: HarnessEvent) => readonly string[] | undefined,
+): Map<string, Record<string, number>> {
+  const map = new Map<string, Record<string, number>>();
+  for (const e of inWindowEvents(events, fromMs, toMs)) {
+    const keys = keysOf(e);
+    if (keys === undefined || keys.length === 0) continue;
+    const record = getOrCreate(map, dayKey(e.ts), () => ({}));
+    for (const key of keys) addTo(record, key, 1);
+  }
+  return map;
+}
+
 /** Main's red failing tests per local calendar day (`YYYY-MM-DD` → test → count), over the
  * window `[fromMs, toMs)`: for each event `inWindowEvents` admits (numeric `ts` in `[fromMs,
  * toMs)`) that G1 accepts as red (`isRedMain`) — a `main_check` that ran the full
@@ -86,16 +110,11 @@ export function mainRedFailingTestsByDay(
   fromMs: number,
   toMs: number,
 ): Map<string, Record<string, number>> {
-  const map = new Map<string, Record<string, number>>();
-  for (const e of inWindowEvents(events, fromMs, toMs)) {
-    if (!isRedMain(e)) continue;
-    if (!Array.isArray(e.failingTests)) continue;
-    const record = getOrCreate(map, dayKey(e.ts), () => ({}));
-    for (const t of e.failingTests) {
-      if (typeof t === "string") addTo(record, t, 1);
-    }
-  }
-  return map;
+  return countByDayInWindow(events, fromMs, toMs, (e) =>
+    isRedMain(e) && Array.isArray(e.failingTests)
+      ? e.failingTests.filter((t): t is string => typeof t === "string")
+      : undefined,
+  );
 }
 
 /** Main's red culprits per local calendar day (`YYYY-MM-DD` → label → count), over the window
@@ -115,16 +134,15 @@ export function mainRedCulpritsByDay(
   fromMs: number,
   toMs: number,
 ): Map<string, Record<string, number>> {
-  const map = new Map<string, Record<string, number>>();
-  for (const e of inWindowEvents(events, fromMs, toMs)) {
-    if (e.type !== "main_culprit") continue;
-    if (typeof e.commit !== "string" || e.commit.length === 0) continue;
-    const label =
-      typeof e.runner === "string" && e.runner.length > 0
-        ? `${roleLabel(e.runner)} ${shortSha(e.commit)}`
-        : `merge ${shortSha(e.commit)}`;
-    const record = getOrCreate(map, dayKey(e.ts), () => ({}));
-    addTo(record, label, 1);
-  }
-  return map;
+  return countByDayInWindow(events, fromMs, toMs, (e) =>
+    e.type === "main_culprit" &&
+    typeof e.commit === "string" &&
+    e.commit.length > 0
+      ? [
+          typeof e.runner === "string" && e.runner.length > 0
+            ? `${roleLabel(e.runner)} ${shortSha(e.commit)}`
+            : `merge ${shortSha(e.commit)}`,
+        ]
+      : undefined,
+  );
 }
