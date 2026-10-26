@@ -333,6 +333,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Every commit is verified on main, part 3w/3: the pre-merge reviewer's orchestrator-mixed and director cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3o/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/orchestrator-mixed.e2e.test.ts test/orchestrator-director.test.ts)
 
+**Needs review 2026-10-25 by feature: too large for one run (held 8)**
+
 **Previously held 7**
 
 **Goal.** The orchestrator-mixed and director twin of part 3v/3: part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-mixed.e2e.test.ts`'s `review_start` assertion and `test/orchestrator-director.test.ts`'s reject/idle-reviewer cases and its `review.afterMerge: []` hold case fail. Move those cases first so the source switch lands against a suite that no longer depends on the reviewer.
