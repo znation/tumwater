@@ -174,28 +174,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 **Needs review 2026-10-26 by bugfix: the failure message names the exact assertion, so the next flake reads which line broke — if it is the `.durations.json` byte-identity assert, check whether an outer run's final `recordDurations` overlapped a nested writer (`before` vs `after` diff in the output); if it is a coverage-table line, the `**/test/**` exclude or the `all files` row under peak process contention; if it is `status`, the nested spawn itself.**
 
-### `a run timeout that fires on a run still making progress is resumed like a quiet kill (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
-
-- **Progress 2026-10-26 (bugfix):** root cause analysed, not reproduced (no-repro). The test's one failure was `assert.equal(outcome.result, "quiet_killed")` seeing `'error'` — the plain-timeout discard branch, meaning `pi.timedOutProgressing` read false. It is computed in `src/pi/pi-watchdogs.ts`'s `fireDeadline` as `progressCount() > 0 && progressCount() > checkpointProgress`, where `checkpointProgress` is snapshotted by a `setTimeout` armed `progressWindowMs` (here `min(quietMs, runTimeout/2)` = 1s) before the deadline, and `progressCount` only rises as node drains the child's stdout. If an event-loop stall makes the checkpoint timer and the deadline timer fire in the same drain before the pipe is polled, the checkpoint snapshots the (already-final) count and the deadline reads the same value — a genuine stall or a burst that lands exactly when the overdue timers run both look "not progressing", and a slow run is discarded instead of resumed. The test races real `sleep 0.1` output against a real 2s deadline, so a ≥1s main-thread stall on a loaded host flips it. Could not reproduce: the single test passed under 6 runs (one hatch run plus five in a loop), so the entry stays open and the test now carries `lastError` in its result assertion so the next failure names its branch (discard "timed out after 2s" vs resumable "…while still making progress" vs a spawn/parse error).
-- **Needs review 2026-10-26 by bugfix: the next failure's assertion message will show `runner.state.lastError` (plain "timed out after 2s" confirms the discard branch over the resumable one), and a candidate fix is to classify "still making progress" by wall-clock recency of progress (a poll tracking `lastProgressAt`) instead of the single checkpoint counter comparison, which the same-drain ordering defeats.**
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-✖ a run timeout that fires on a run still making progress is resumed like a quiet kill (regression) (5820.799625ms)
-AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-at file:///Users/zach/tumwater/.tumwater/worktrees/_slot-2/dist/test/runner-5.test.js:252:16
-at async withPi (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-2/dist/test/fakes/fake-pi.js:96:16)
-at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-2/dist/test/runner-5.test.js:242:5)
-generatedMessage: true,
-code: 'ERR_ASSERTION',
-actual: 'error',
-expected: 'quiet_killed',
-operator: 'strictEqual',
-diff: 'simple'
-}
-~~~~
-
 ### `a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { runPi } from "../src/pi/pi.js";
+import { startPiWatchdogs } from "../src/pi/pi-watchdogs.js";
 import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
@@ -234,5 +235,49 @@ test("an authoring run is not extended even while it is progressing", async (t) 
       assert.match(result.errorMessage ?? "", /timed out after 2s/);
       assert.doesNotMatch(result.errorMessage ?? "", /after 4s/);
     },
+  );
+});
+
+// BUGS.md 2026-10-26: the deadline's "still making progress" classification compared the live
+// progress count against a single checkpoint snapshot. When an event-loop stall makes the
+// checkpoint and the deadline fire in the same drain — a firing timers phase precedes the
+// poll phase that delivers stdout — both read the same already-final count, so a run still
+// emitting progress was mis-classified as stalled and its work discarded (the runner-5
+// quarantine). The deadline now gives a run that has begun producing progress one short grace
+// to drain queued output and re-prove itself before discarding. Pinned directly on
+// startPiWatchdogs so the ordering is exact: the count is flat at the deadline, then the run's
+// output lands in the grace, and the run is classified as still progressing — the discard
+// keeps only a run the grace finds still flat.
+test("a deadline whose checkpoint read the same drained count resumes a run that proves progress in the grace (regression)", (t) => {
+  const clock = watchdogClock(t, { timeouts: true }); // the deadline and the grace share the logical clock
+  let progress = 0;
+  let killed = false;
+  let killedProgressing: boolean | undefined = undefined;
+  const wd = startPiWatchdogs({
+    progressCount: () => progress,
+    openToolCalls: () => [],
+    runTimeoutMs: 2000,
+    quietMs: 0,
+    stallMs: 0,
+    extendOnProgress: false, // an authoring run: no extension, only the classification
+    kill: () => {
+      killed = true;
+      killedProgressing = wd.timedOutProgressing; // read live, as the run's close handler would
+    },
+  });
+  progress = 1; // one structured progress event landed long before the checkpoint
+  clock.advance(1000); // the checkpoint fires and snapshots count 1
+  assert.equal(killed, false, "the deadline has not yet fired");
+  // The stall: the checkpoint and the deadline both fire in the same drain, so the deadline
+  // reads the same flat count (1) — and yet the run is still emitting.
+  clock.advance(1000); // the base deadline fires with the count still flat
+  assert.equal(killed, false, "a begun run is not discarded before its grace can prove it");
+  progress = 2; // the run's queued output lands within the grace
+  clock.advance(250); // the grace elapses
+  assert.equal(killed, true, "the deadline finally kills the run");
+  assert.equal(
+    killedProgressing,
+    true,
+    "a run that proved progress in the grace is resumed, not discarded",
   );
 });

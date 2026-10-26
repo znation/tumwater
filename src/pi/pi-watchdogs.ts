@@ -107,7 +107,13 @@ function startDeadlineWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   };
   armCheckpoint(deps.runTimeoutMs);
 
+  // One short beat the deadline gives a run that has begun producing progress but whose
+  // count was flat at fire time: time for a drain-delayed run's output to land before the
+  // discard (BUGS.md 2026-10-26).
+  const progressGraceMs = 250;
+
   let extended = false;
+  let graceArmed = false; // one grace per deadline, so a genuinely stalled run is never granted two
   state.timeoutBudgetMs = deps.runTimeoutMs;
   const fireDeadline = () => {
     if (deps.extendOnProgress && !extended && deps.progressCount() > checkpointProgress) {
@@ -117,7 +123,6 @@ function startDeadlineWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
       state.timeout = setTimeout(fireDeadline, deps.runTimeoutMs); // one more slice; the next firing is final
       return;
     }
-    state.timedOut = true;
     // A deadline that fires on a run still making progress killed a slow run, not a hung
     // one: "recent progress" is progress since the checkpoint `progressWindowMs` before this
     // deadline — the same window the extension test uses, so the kill's classification
@@ -125,6 +130,21 @@ function startDeadlineWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
     // budget (BUGS.md 2026-09-29, 2026-10-09). A run with no progress event at all — never
     // emitted a byte, or bytes without one structured event — keeps today's discard path: it
     // has not demonstrably begun.
+    //
+    // The checkpoint comparison can mis-classify a run that IS still emitting: the checkpoint
+    // and this deadline can fire in the same drain (a firing timers phase precedes the poll
+    // phase that delivers stdout), so on a main-thread stall both read the same already-final
+    // count and a progressing run looks stalled (BUGS.md 2026-10-26). A run that has begun
+    // producing structured progress therefore gets ONE short grace to drain queued output and
+    // re-prove itself; only a run still flat after the grace — or one that never progressed —
+    // keeps the discard path. The grace is one-shot, so a genuinely stalled run is not
+    // granted a second chance.
+    if (!graceArmed && deps.progressCount() > 0) {
+      graceArmed = true;
+      state.timeout = setTimeout(fireDeadline, progressGraceMs);
+      return;
+    }
+    state.timedOut = true;
     state.timedOutProgressing = deps.progressCount() > 0 && deps.progressCount() > checkpointProgress;
     deps.kill();
   };

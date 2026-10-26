@@ -73,7 +73,9 @@ test("a transient timeout that also hits the harness timeout is not retried", as
       let settled = false;
       const runDone = runner.run().finally(() => (settled = true));
       const log = piLogPath(repo, "clean");
-      for (let k = 1; await waitForLogLines(log, "predict stream timed out", k, () => settled); k++) clock.advance(3_000);
+      // 3500, not 3000: the deadline at 3000 arms the one-shot progress grace (BUGS.md
+      // 2026-10-26) whose re-check the run must pass before it settles as a discard.
+      for (let k = 1; await waitForLogLines(log, "predict stream timed out", k, () => settled); k++) clock.advance(3_500);
       const outcome = await runDone;
       // The shim's error line is one real progress event, but none lands within the final
       // `progressWindowMs` before the deadline, so the timeout discards instead of resuming
