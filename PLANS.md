@@ -323,34 +323,13 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Every case that remains keeps its original subject (rebase, check or batch/stack bookkeeping) and asserts the same outcome through a deterministic rejection.
 - No edit outside test/merger.test.ts.
 
-### Subtract, part 2/6: One hold vocabulary — Refused and Needs review (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-cli.ts src/backlog/backlog-cli-view.ts src/backlog/backlog-index.ts src/runner/revision.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts src/doctor/doctor-backlog-bugs.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/gui/gui-client-backlog.ts src/ui/tui/tui-pane-backlog.ts docs/glossary.md docs/how-it-works.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts)
-**Needs review 2026-10-26 by feature: too large for one run (held 1)**
-
-**Goal.** A backlog entry can be parked exactly two ways: `**Refused …**` (the system declined and wants a decision) and `**Needs review …**` (the work is not done, and the note says why). The other three kinds and the held counters go. An entry a work role reports too large for one run is one such `**Needs review …**` entry: the plan role always refines and splits it, automatically, and it never escalates to the operator to release (user request 2026-10-26).
-
-**Approach.**
-- Delete `NEEDS_REPLAN_PREFIX` and `NEEDS_REPLAN_NOTE` (src/roles/role-guidance.ts:189, :198) and `WAITING_FOR_FAILURE_PREFIX`/`WAITING_FOR_FAILURE_NOTE` (:203, :209): a rejected plan is a `**Needs review …**` note carrying the reviewer's objections, and a bug nobody can reproduce is a `**Needs review …**` note naming what would make it fail.
-- Delete the held counters — `HELD_TAG_PREFIX` (:144), `PRIOR_HELD_PREFIX` (:169), `PRIOR_HELD_NOTE` (:175) — and `CONVERGENCE_HOLD_MARKER` (:163) as a separate kind: `holdEntryAfterExhaustion` (src/runner/revision.ts) writes a plain `**Needs review <date> by <role>: could not converge — <objections>**`. The count's only readers were the split ordering and the operator-held alert; the note's text carries what the plan role needs, and age is already the doctor's signal.
-- `EntryHold` (src/backlog/backlog-eligibility.ts:25) becomes `"refused" | "needs-review" | { blockedBy } | null`; the held-for-operator derivation (:248) and `operatorHeldEntries` (:375) go with the alert that read them, and the doctor's `stalled entries` row reports `needs-review` only. With `entryHold` no longer deriving `held-for-operator`, a too-large `**Needs review …**` note keeps the plan role running (`planBacklogFull`, src/scheduling/claims.ts, tests `needs-review`) and routes it to the plan role's split step (src/roles/role-catalog.ts), with no operator release in the path.
-- One release verb: `src/backlog/backlog-release.ts` lifts Refused, else Needs review; `tumwater plan|bug --release <n>`, the TUI's Ctrl+R and the dashboard's Release all call it, and `LiftableHold` (backlog-release.ts:17) has one member.
-- The prompts say two holds: src/prompt/prompt.ts's refusal bullet, the plan/feature/bugfix steps in src/roles/role-catalog.ts, docs/glossary.md's hold rows.
-
-**Files touched.** src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-cli.ts src/backlog/backlog-cli-view.ts src/backlog/backlog-index.ts src/runner/revision.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts src/doctor/doctor-backlog-bugs.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/gui/gui-client-backlog.ts src/ui/tui/tui-pane-backlog.ts docs/glossary.md docs/how-it-works.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts
-
-**Acceptance criteria.**
-- After the change, no live reader or writer of `Needs replan`, `Waiting for the next failure`, `(held ` or `**Previously held ` remains in `src/` (grep is empty apart from the archived PLANS-DONE.md and BUGS-FIXED.md records).
-- A `**Needs review 2026-10-26 by feature: could not converge — <objections>**` note classifies as the needs-review hold and `--release` lifts it; a Refused note is lifted first when an entry carries both.
-- The plan role's split flow still sees why an entry is held (the note's text), with no count to carry.
-- A `**Needs review … too large for one run**` plan or bug keeps the plan role scheduled (`planBacklogFull` false) and is split by it, with no held count and no operator `--release` in the path.
-- `npm run test:gate` passes.
-
 ### Subtract, part 3/6: The merge queue becomes a lock and a fast-forward (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 3; requires Every commit is verified on main part 3f/3 landed; touches src/merge src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts src/orchestrator/scheduling-scope.ts src/runner/runner-run.ts src/status/status-data.ts src/doctor/doctor-contention-checks.ts src/concurrency/check-permit.ts docs/how-it-works.md docs/invariants.md test/merger-restack.test.ts test/merge-backlog-conflicts.test.ts test/worktree-pool.test.ts)
 
 **Goal.** A change lands as `pin → rebase onto main → fast-forward under the merge lock`. The queue, its stage machine, the coalesced batch check with its prefix bisect, the re-queue, the entry drop limits and the scheduling interlock are gone, because nothing about landing can fail any more: verification moved after the merge (part 3f/3), and a break is an ordinary open bug owned by the author.
 
 **Approach.**
 - Delete the queue and its stages: src/merge/merge-queue.ts, merge-queue-render.ts, merge-requeue.ts, merge-cancel.ts, merge-pipeline.ts, merge-slot.ts, merge-drain.ts, merge-batch.ts, merge-stack.ts, and the `.tumwater/merge-queue/` directory with its `uncommitted backlog`-style checks.
-- `merge-core.ts` and `merge-to-main.ts` keep the pin read, the rebase, the merge lock and the fast-forward; the conflict-resolution pi run stays as the one non-deterministic step. `MERGE_CONFLICT_LIMIT` and the entry attempt/drop limits go: a conflict whose resolution fails comes back as a `**Needs review …**` note naming the conflict (part 2/6's vocabulary).
+- `merge-core.ts` and `merge-to-main.ts` keep the pin read, the rebase, the merge lock and the fast-forward; the conflict-resolution pi run stays as the one non-deterministic step. `MERGE_CONFLICT_LIMIT` and the entry attempt/drop limits go: a conflict whose resolution fails comes back as a `**Needs review …**` note naming the conflict (the two surviving holds' vocabulary).
 - Delete the scheduling interlock: `queuedRoles` (orchestrator-scheduling.ts), its legs in scheduling-skip.ts and scheduling-scope.ts, and `mergeStartHeld`'s merge half (orchestrator-poll.ts). A role whose change is merging authors its next run, as plans/interlock-relief.md's per-role tiering intended for the low-blast-radius roles only.
 - Delete the check permit with the in-lock and batch checks it served (src/concurrency/check-permit.ts) and the three contention rows and the `capacity bottleneck` alert (part 1d/6 removes the alert; doctor-contention-checks.ts keeps `slot_wait`/`provider_wait` only if part 4/6 has not yet removed the pool).
 - docs/how-it-works.md's merge-pipeline section and docs/invariants.md's cross-process invariants (INV-CT1 and the merge-slot guarantees) say what replaces the queue: one lock, linear history, and the post-landing check.
@@ -444,7 +423,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/gui-client-team.test.ts covers the control's action and the empty-feed case.
 - `npm run test:gate` passes.
 
-### Subtract, part 1b/6: The staleness, notify and queue banners go — their doctor rows keep the detail (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1a/6 and Subtract part 2/6 landed; touches src/ui/team-alert-backlog-feed.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
+### Subtract, part 1b/6: The staleness, notify and queue banners go — their doctor rows keep the detail (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract parts 1a/6, 2a/6, 2b/6 and 2c/6 landed; touches src/ui/team-alert-backlog-feed.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
 
 **Previously held 1**
 
@@ -509,7 +488,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Previously held 1**
 
-**Goal.** src/ui/team-alert-backlog.ts keeps its two decision-queue builders — `pushQuestionsAlert` (open questions need your answer) and `pushRefusedAlert` — and loses the rest: stale questions, stalled entries, plan dependencies, stranded plans, duplicated headings, finished history under a live `## Done`/`## Fixed`, validation gaps and false fixes. Each maps to a doctor row: `stale questions`, `stalled entries`, `plan dependencies`, `plans stuck in Planned`, `backlog headings`, `backlog archive`, `validation gaps`, `regressed fixes`. (`pushOperatorHeldAlert` is already gone after part 2/6.)
+**Goal.** src/ui/team-alert-backlog.ts keeps its two decision-queue builders — `pushQuestionsAlert` (open questions need your answer) and `pushRefusedAlert` — and loses the rest: stale questions, stalled entries, plan dependencies, stranded plans, duplicated headings, finished history under a live `## Done`/`## Fixed`, validation gaps and false fixes. Each maps to a doctor row: `stale questions`, `stalled entries`, `plan dependencies`, `plans stuck in Planned`, `backlog headings`, `backlog archive`, `validation gaps`, `regressed fixes`. (`pushOperatorHeldAlert` is already gone after Subtract parts 2a–2c/6.)
 
 **Approach.**
 - Delete from src/ui/team-alert-backlog.ts: `pushStaleQuestionsAlert`, `pushStalledEntriesAlert`, `pushPlanDependencyAlert`, `pushStrandedPlansAlert`, `pushBacklogHeadingsAlert`, `pushBacklogArchiveAlert`, `pushValidationGapsAlert`, `pushFalseFixesAlert` and their calls in `buildBacklogAlerts`; keep `pushQuestionsAlert` and `pushRefusedAlert`.
@@ -524,6 +503,77 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `buildBacklogAlerts` emits only the question and refused alerts; no other builder remains in the module.
 - Each deleted condition prints its `tumwater doctor` row (listed above).
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
+- `npm run test:gate` passes.
+
+### Subtract, part 2a/6: The `Needs replan` kind folds into `Needs review` — a rejected plan becomes one note carrying the reviewer's objections (planned 2026-10-26 by the plan role, split from the too-large part 2/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; the first of three finer parts replacing part 2/6, holding no prerequisite and independent in files of the two finer parts it serialises ahead of (2b/6 and 2c/6); touches src/roles/role-guidance.ts src/prompt/gate-notes.ts src/backlog/backlog-eligibility.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts docs/glossary.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts)
+
+**Previously held 1**
+
+**Goal.** A plan whose change is rejected after its final revision round is parked with one `**Needs review …**` note that quotes the reviewer's surviving objections; `**Needs replan …**` stops existing as a note kind, a hold, an index mark and a doctor wording.
+
+**Approach.**
+- src/roles/role-guidance.ts: delete `NEEDS_REPLAN_PREFIX` and `NEEDS_REPLAN_NOTE`. `NEEDS_REVIEW_PREFIX`/`NEEDS_REVIEW_NOTE` keep the `(held <N>)` tag until part 2c/6.
+- src/prompt/gate-notes.ts: its final-revision-round clause (the `This was the change's final revision round` text) tells the author to append the Needs-review note form carrying the numbered objections, not `NEEDS_REPLAN_NOTE`.
+- src/backlog/backlog-eligibility.ts: drop the `NEEDS_REPLAN_PREFIX` import; `heldCount` and `lineHeldCount` recognise only `NEEDS_REVIEW_PREFIX`; `EntryHold` drops `"needs-replan"`; `entryHoldAgainst` names only the refused, needs-review, held-for-operator (until 2c/6) and blockedBy holds; `holdMark` drops the ` [blocked: needs replan]` mark; `StalledEntry`'s `hold` drops the member.
+- src/roles/role-catalog.ts and src/prompt/prompt.ts: the feature/plan bullets that name a `NEEDS_REPLAN_NOTE` say a Needs-review note instead; drop the import.
+- src/doctor/doctor-backlog-plans.ts: `checkStalledEntries` collects `needs-review` and (until 2c/6) `held-for-operator` only; its wording no longer says "Needs-replan".
+- docs/glossary.md: the hold rows drop `Needs replan`.
+- tests: test/backlog-eligibility.test.ts and test/doctor-checks.test.ts lose their needs-replan cases and gain one asserting a final-round rejection classifies `needs-review`.
+
+**Files touched.** src/roles/role-guidance.ts src/prompt/gate-notes.ts src/backlog/backlog-eligibility.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts docs/glossary.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts
+
+**Acceptance criteria.**
+- `grep -rn 'NEEDS_REPLAN\|Needs replan\|needs-replan' src/ docs/` is empty.
+- A plan rejected after its final revision round is written as one `**Needs review …**` note quoting the reviewer's objections, and `entryHold` classifies it `needs-review`.
+- No edit outside the files listed.
+- `npm run test:gate` passes.
+
+### Subtract, part 2b/6: The `Waiting for the next failure` kind folds into `Needs review` — an unreproducible bug becomes one note naming what would make it fail (planned 2026-10-26 by the plan role, split from the too-large part 2/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; requires Subtract part 2a/6 landed, since both edit the same guidance constants and eligibility classifier; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-index.ts src/roles/role-catalog.ts src/run/stage-backlog-checks.ts src/run/stage-check.ts src/prompt/notes-backlog.ts src/doctor/doctor-backlog-bugs.ts src/doctor/doctor-backlog.ts src/ui/alert-feeds.ts src/gui/gui-backlog-endpoints.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/cli/help.ts docs/glossary.md docs/how-it-works.md BUGS.md test/backlog-eligibility.test.ts test/backlog-release-holds.test.ts test/doctor-backlog.test.ts test/stage-check.test.ts test/notes-backlog.test.ts test/gui-endpoints.test.ts test/gui-client-drawer.test.ts test/tui-keys.test.ts test/team-alerts.test.ts)
+
+**Previously held 1**
+
+**Goal.** A bug the bugfix role cannot reproduce is parked as one `**Needs review …**` note naming what the next failure's message will show; `**Waiting for the next failure …**` stops existing as a note kind, an index mark, a doctor row, a release verb branch and a stage-check finding.
+
+**Approach.**
+- src/roles/role-guidance.ts: delete `WAITING_FOR_FAILURE_PREFIX` and `WAITING_FOR_FAILURE_NOTE`.
+- src/backlog/backlog-eligibility.ts: drop the `WAITING_FOR_FAILURE_PREFIX` import; delete `waitingNote` and `withoutWaitingNotes`; `EntryHold` drops `"waiting-for-failure"`; `entryHoldAgainst` drops its branch; `holdMark` drops the ` [blocked: waiting for the next failure]` mark; the module doc comment names two note kinds.
+- src/backlog/backlog-release.ts: `LiftableHold` drops the member; `liftedNotePhrase` and `liftRefusal` drop the `withoutWaitingNotes` step and the wording.
+- src/roles/role-catalog.ts and src/run/stage-backlog-checks.ts: the bugfix guidance and the `waitingNoteFinding` message tell the role to write a `**Needs review …**` note naming what would make it fail, not `WAITING_FOR_FAILURE_NOTE`; drop the imports.
+- src/doctor/doctor-backlog-bugs.ts: delete `checkWaitingBugs`, `waitingNoteDate` and the `waitingNote` uses (its row is deleted, per subtract.md stroke 6); src/doctor/doctor-backlog.ts drops the waiting-note hold-days constant. src/run/stage-check.ts drops `waitingNoteFinding` from the stage check.
+- Surfaces: src/ui/alert-feeds.ts and src/gui/gui-backlog-endpoints.ts drop the waiting-note exclusion/field; src/prompt/notes-backlog.ts drops the state wording; gui-client-boot.ts, gui-client-drawer.ts, tui-pane-backlog.ts, tui-keys.ts, tui-pane-session.ts and src/cli/help.ts drop the waiting note from the release wording and hold checks.
+- BUGS.md: rewrite every open entry whose body carries `**Waiting for the next failure …**` (the entries the index marks `[blocked: waiting for the next failure]`) to the Needs-review form naming what would make it fail, so none is left unrecognised and eligible.
+- docs/glossary.md and docs/how-it-works.md: drop the `Waiting for the next failure` row and prose.
+
+**Files touched.** src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-index.ts src/roles/role-catalog.ts src/run/stage-backlog-checks.ts src/run/stage-check.ts src/prompt/notes-backlog.ts src/doctor/doctor-backlog-bugs.ts src/doctor/doctor-backlog.ts src/ui/alert-feeds.ts src/gui/gui-backlog-endpoints.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/cli/help.ts docs/glossary.md docs/how-it-works.md BUGS.md test/backlog-eligibility.test.ts test/backlog-release-holds.test.ts test/doctor-backlog.test.ts test/stage-check.test.ts test/notes-backlog.test.ts test/gui-endpoints.test.ts test/gui-client-drawer.test.ts test/tui-keys.test.ts test/team-alerts.test.ts
+
+**Acceptance criteria.**
+- `grep -rn 'WAITING_FOR_FAILURE\|Waiting for the next failure\|waiting-for-failure' src/ docs/` is empty.
+- No open BUGS.md entry carries a `**Waiting for the next failure …**` line, and every migrated entry classifies `needs-review` and is liftable by `tumwater bug --release`.
+- The doctor's waiting-bug row and the stage check's waiting-note finding are gone, not orphaned.
+- `npm run test:gate` passes.
+
+### Subtract, part 2c/6: The held counters and the operator hold go — a too-large note keeps the plan role running (planned 2026-10-26 by the plan role, split from the too-large part 2/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; requires Subtract part 2b/6 landed, since all three edit the same guidance constants, classifier and release surfaces; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-index.ts src/backlog/backlog-cli.ts src/backlog/backlog-cli-view.ts src/runner/revision.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-backlog.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts docs/glossary.md docs/how-it-works.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts test/team-alerts.test.ts test/status-payload.test.ts test/tui-keys.test.ts)
+
+**Previously held 1**
+
+**Goal.** No `(held N)`/`**Previously held N**` count is written or read, no Needs-review note escalates to a derived *held-for-operator* hold, and one release verb lifts Refused then Needs review; a `**Needs review … too large for one run**` note always routes to the plan role (`planBacklogFull` false), never to the operator.
+
+**Approach.**
+- src/roles/role-guidance.ts: delete `HELD_TAG_PREFIX`, `PRIOR_HELD_PREFIX` and `PRIOR_HELD_NOTE`; `NEEDS_REVIEW_NOTE` loses its trailing `(held <N>)` tag. Keep `CONVERGENCE_HOLD_MARKER`: the convergence note is a plain `**Needs review …**` note the plan role recognises by its text.
+- src/backlog/backlog-eligibility.ts: delete `OPERATOR_HOLD_THRESHOLD`, `heldCount`, `lineHeldCount` and `withoutHeldForOperatorNotes`; delete `operatorHeldEntries`; `EntryHold` becomes `"refused" | "needs-review" | { blockedBy } | null`; `entryHoldAgainst` returns `needs-review` for any Needs-review line with no escalation; `holdMark` drops the operator mark.
+- src/runner/revision.ts: `holdEntryAfterExhaustion` keeps writing the plain `**Needs review <date> by <role>: could not converge — <objections>**` note; drop any count wording.
+- src/backlog/backlog-release.ts: `LiftableHold` shrinks to the surviving notes; `liftRefusal` lifts Refused first, else any Needs-review note (drop `withoutHeldForOperatorNotes` and the `(held N)`/`Previously held` cleanup). `tumwater plan|bug --release <n>`, the TUI's Ctrl+R and the dashboard's Release all call it.
+- src/roles/role-catalog.ts and src/prompt/prompt.ts: the feature step stops appending `(held N)`; the plan role's split stops writing `**Previously held N**`; the prompts say two holds.
+- src/doctor/doctor-backlog-plans.ts: `checkStalledEntries` collects `needs-review` only; the `stalled entries` row says a Needs-review note parks it and the plan role splits it.
+- Alerts and status: src/ui/team-alert-backlog.ts deletes `pushOperatorHeldAlert` and its input; src/ui/team-alert-backlog-feed.ts drops the operator-held feed; src/ui/team-alerts.ts drops the `operatorHeld` parameter; src/ui/status-payload.ts, src/ui/status-render.ts and src/ui/tui/tui.tsx drop `operatorHeldEntries()`. The TUI/GUI release surfaces drop their `held-for-operator` state and wording.
+- docs/glossary.md and docs/how-it-works.md: drop the held-counter and held-for-operator rows.
+
+**Files touched.** src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-index.ts src/backlog/backlog-cli.ts src/backlog/backlog-cli-view.ts src/runner/revision.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-backlog.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts docs/glossary.md docs/how-it-works.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts test/team-alerts.test.ts test/status-payload.test.ts test/tui-keys.test.ts
+
+**Acceptance criteria.**
+- `grep -rnE 'HELD_TAG_PREFIX|PRIOR_HELD|operatorHeld|held-for-operator|heldCount|OPERATOR_HOLD_THRESHOLD' src/ docs/` is empty, and no `(held N)`/`**Previously held N**` writer remains.
+- A `**Needs review … too large for one run**` plan or bug keeps the plan role scheduled (`planBacklogFull` false) and is split by it, with no held count and no operator `--release` in the path.
+- The `stalled entries` doctor row reports Needs-review entries only, and the operator-held alert is gone from `teamAlerts` and its three call sites.
 - `npm run test:gate` passes.
 
 ## Done

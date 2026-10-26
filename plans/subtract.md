@@ -175,8 +175,8 @@ the check cheaper or land less often, both of which this plan's strokes push tow
 
 | Part | What it deletes | Requires |
 | --- | --- | --- |
-| 1a–1e/6 Only a stopped team asks for a person | the amber/blue/gray alert builders, split into five sub-plans: 1a the dashboard's doctor link, 1b the staleness/notify/queue banners, 1c the review/check banners, 1d the status/tail banners, 1e the backlog staleness/structure banners | 1b: Subtract part 1a and 2/6; 1d: Subtract part 1c and 5/6; the rest chain part-by-part |
-| 2/6 One hold vocabulary | Needs replan, Waiting for the next failure, the held counters, the operator-held threshold | — |
+| 1a–1e/6 Only a stopped team asks for a person | the amber/blue/gray alert builders, split into five sub-plans: 1a the dashboard's doctor link, 1b the staleness/notify/queue banners, 1c the review/check banners, 1d the status/tail banners, 1e the backlog staleness/structure banners | 1b: Subtract parts 1a/6 and 2a/6–2c/6; 1d: Subtract part 1c and 5/6; the rest chain part-by-part |
+| 2a–2c/6 One hold vocabulary | 2a: Needs replan; 2b: Waiting for the next failure; 2c: the held counters and the operator-held threshold | 2b requires 2a; 2c requires 2b |
 | 3/6 The queue becomes a lock and a fast-forward | the queue stages, the batch check and bisect, the requeue, the drop limits, the interlock | Every commit is verified on main part 3f/3 |
 | 4/6 One runner per role | instance claims, the worktree pool, `instances` | Subtract part 3/6 |
 | 5/6 One model per role | tiers, fallback chains, provider caps, subscription windows, the image probe | — |
