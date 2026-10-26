@@ -530,6 +530,13 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Subtract, part 2e/6: The release surfaces stop offering the operator hold (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2; the third of four finer parts replacing part 2c/6, independent in files of the other three (2c/6, 2d/6, 2f/6) and holding no prerequisite, since the CLI release still lifts a held note until 2f/6; touches src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts src/gui/gui-backlog-endpoints.ts src/gui/gui-backlog-commands.ts test/tui-keys.test.ts test/gui-client-drawer.test.ts test/gui.test.ts)
 
+**Needs review 2026-10-26 by feature: rejected after 5 review rounds**
+
+This entry's implementation was rejected on the final revision round (the same objection survived two revisions), so the plan role should rewrite it. Objections from the reviewing run:
+
+1. (prior 1) The changed drawer test still does not exercise the behavior it was changed for. In the final `test/gui-client-drawer.test.ts` the `HeldForOperator` fixture and the index‑3 assertion were removed outright, leaving only fixtures that behave identically under the old `d.refused || d.heldFor…`.
+2. The archived PLANS-DONE.md entry contradicts the code it describes: its Tests bullet says `test/gui-client-drawer.test.ts` "inverts the held-for-operator fixture" so the drawer shows Release "on no held-for-operator one", but that fixture no longer exists in the test at all, leaving the record stal….
+
 **Previously held 2**
 
 **Goal.** The release surfaces that offer the operator hold name only the Refused note: the TUI Backlog pane's Ctrl+R guard admits `hold === "refused"`, the dashboard drawer's Release button renders only for `d.refused`, and `GET /api/backlog` drops its `heldForOperator` field. The release core is deliberately untouched until part 2f/6: `liftRefusal` in src/backlog/backlog-release.ts still lifts a held-for-operator note, so `tumwater plan|bug --release` and the `handleBacklogRelease` endpoint keep their behavior and their existing tests.
