@@ -1,4 +1,5 @@
 import type { TestCounts } from "../build/build-check-counts.js";
+import { sortEntriesByKey } from "../collections.js";
 import { utilizationPct, windowLabel, type SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
@@ -406,9 +407,9 @@ export function diskBadge(disk: StatusSnapshot["disk"]): string {
  * with a bare in-use that would read like a cap. */
 export function permitsBadge(permits: StatusSnapshot["permits"]): string {
   if (!permits) return "";
-  const providers = Object.entries(permits.byKey)
-    .filter(([, e]) => e.limit !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b))
+  const providers = sortEntriesByKey(
+    Object.entries(permits.byKey).filter(([, e]) => e.limit !== undefined),
+  )
     .map(([k, e]) => `${k} ${e.inUse}/${e.limit}`)
     .join(" · ");
   if (providers.length === 0) return "";

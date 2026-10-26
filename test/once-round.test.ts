@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { OnceRound } from "../src/scheduling/once-round.js";
+import { sortEntriesByKey } from "../src/collections.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
@@ -42,7 +43,7 @@ test("settleSkipped classifies disabled, backoff, and idle roles", () => {
   round.settleSkipped(backing);
   round.settleSkipped(idle);
   assert.deepEqual(
-    [...round.reasons].sort(([a], [b]) => a.localeCompare(b)),
+    sortEntriesByKey([...round.reasons]),
     [
       ["clean", "idle"],
       ["improve", "disabled"],
@@ -72,7 +73,7 @@ test("settleSkipped reports a pending resume as pending work, not idle or backof
   round.settleSkipped(waiting);
   round.settleSkipped(afterError);
   assert.deepEqual(
-    [...round.reasons].sort(([a], [b]) => a.localeCompare(b)),
+    sortEntriesByKey([...round.reasons]),
     [
       ["clean", "resume pending"],
       ["improve", "resume pending"],

@@ -1,4 +1,5 @@
 import { roleLabel } from "../roles/role-labels.js";
+import { sortEntriesByKey } from "../collections.js";
 import { pausedRoles, pausedRolesUntil, standingTeamPause } from "../team/team-state.js";
 import { MODEL_TIERS, type ModelTier, type TumwaterConfig } from "../config/config-schema.js";
 import { withModelOverrides } from "../config/config-views.js";
@@ -117,10 +118,9 @@ export function checkBudget(
   const states = loadRunnerStates(root, config);
   const spent = published?.spentUsd ?? teamDailyCost(states, now);
   const caps = config.maxDailyCostUsdPerRole;
-  const capped = [...roleCapVerdicts(states.map((s) => ({ role: s.role, state: s })), caps, now)]
-    .filter(([, v]) => v.over)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([base, v]) => `${base} (${budgetPhrase(v.spentUsd, caps?.[base])})`);
+  const capped = sortEntriesByKey(
+    [...roleCapVerdicts(states.map((s) => ({ role: s.role, state: s })), caps, now)].filter(([, v]) => v.over),
+  ).map(([base, v]) => `${base} (${budgetPhrase(v.spentUsd, caps?.[base])})`);
   const cappedPhrase = capped.length > 0 ? `; capped roles: ${capped.join(", ")}` : "";
   const cap = config.maxDailyCostUsd;
   if (!(cap > 0)) return okOutcome(`no daily cap; ${usd(spent)} spent today${cappedPhrase}`);
@@ -240,9 +240,7 @@ export function checkProviderHolds(root: string, now: number = Date.now()): Chec
       standing.delete(typeof ev.provider === "string" ? ev.provider : undefined);
     }
   }
-  const held = [...standing.entries()]
-    .filter(([, h]) => h.end > now)
-    .sort(([a], [b]) => (a ?? "").localeCompare(b ?? ""));
+  const held = sortEntriesByKey([...standing.entries()].filter(([, h]) => h.end > now));
   if (held.length === 0) return okOutcome("no provider holds");
   const lines = held.map(([provider, h]) => {
     const name = provider ?? "pi's default backend";

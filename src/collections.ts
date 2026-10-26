@@ -205,6 +205,23 @@ export function sortByValueDesc<K extends string, Rest extends unknown[]>(
   return entries.sort((a, b) => b[1] - a[1] || compareCodeUnits(a[0], b[0]));
 }
 
+/** Sort `[key, …]` entry pairs by their string key ascending — the single home of the
+ * `entries.sort(([a], [b]) => a.localeCompare(b))` step, shared by the budget check's
+ * capped-role rows (doctor-holds.ts's checkBudget), the permit pool's provider fragment
+ * (ui/badges.ts's permitsBadge), and the doctor's rate-limit standing-holds rows
+ * (doctor-holds.ts's checkRateLimitHolds), so those sites cannot drift on how a possibly
+ * `undefined` key (a rate-limit hold recorded with no provider) orders. A missing key sorts
+ * first, matching the `(a ?? "")` guard the hold site alone needed; on a defined string the
+ * guard is a no-op, so the comparator is identical for the other two. Returns a fresh sorted
+ * array; the input is never mutated. (Deliberately unlike the value-descending `sortByValueDesc`
+ * and the count-then-key `rankCountEntries` above, which sort by a different axis. Also used to
+ * stabilize a Map's insertion order before an assertion in test/once-round.test.ts.) */
+export function sortEntriesByKey<K extends string | undefined, T>(
+  entries: Array<[K, T]>,
+): Array<[K, T]> {
+  return [...entries].sort(([a], [b]) => (a ?? "").localeCompare(b ?? ""));
+}
+
 /** rankByCount for `[key, count]` entry pairs (count first): src/report/report-render.ts's
  * rankedRoleMap, src/team/failure-spread.ts's strongest-kind pick, and
  * src/doctor/doctor-contention-checks.ts's check-wait and provider-wait rankings. */
