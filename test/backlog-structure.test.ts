@@ -307,6 +307,35 @@ test("backlogStructureReason passes an unchanged BUGS.md with sections this repo
   assert.equal(await backlogStructureReason(wt, "main", ["BUGS.md"]), undefined);
 });
 
+test("backlogStructureReason never follows a symlinked backlog file out of the worktree", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n### Base entry\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "base backlog");
+  const wt = await ensureWorktree(root, "improve", "main");
+  // A host file OUTSIDE the worktree carrying a heading-set fault (a doubled ## Open) the base
+  // lacks: if the gate followed the symlink it would read this outside file and quote its
+  // headings in a rejection. It must instead treat the symlink as holding no headings of its own.
+  const hostDir = tmpdir();
+  const outside = path.join(hostDir, "host.txt");
+  fs.writeFileSync(outside, "## Open\n\n### Outside\n\n## Open\n\n### Invalid\n");
+  const wtBugs = path.join(wt, "BUGS.md");
+  fs.rmSync(wtBugs);
+  fs.symlinkSync(outside, wtBugs);
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "replace BUGS.md with a symlink");
+  const reason = (await backlogStructureReason(wt, "main", ["BUGS.md"])) ?? "";
+  // The gate must never follow the symlink out of the worktree: had it read the outside file
+  // it would surface that file's doubled "## Open" as an "adds another" finding. It instead
+  // treats the symlink as holding no headings of its own, so the head reads as empty against
+  // the committed base — and the gate fails closed with the safe dropped-section rejection it
+  // gives an empty head, never the outside file's content.
+  assert.equal(reason.includes('adds another "## Open"'), false);
+  assert.equal(reason.includes("Invalid"), false);
+  assert.equal(reason, 'BUGS.md drops the "## Open" section the base had — entries filed under it would ' +
+    'be invisible to every section reader; restore "## Open"');
+});
+
 // ── doubleBlockFixedEntries — a headingless Fixed record cannot hide in its neighbor ─────
 // (BUGS.md 2026-10-08) parseEntryDetails opens an entry only at a `### ` line, so a record
 // that lost its heading is absorbed into the entry above it; the false-fix guard then reads

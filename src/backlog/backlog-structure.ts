@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { increment } from "../collections.js";
 import { readTextOrNull } from "../files/files.js";
@@ -287,7 +288,17 @@ export async function backlogStructureReason(
   const baseRev = await changeBaseRev(wt, mainBranch);
   for (const file of touched) {
     // A deleted file reads as empty: every heading the base had is gone — rule (b).
-    const head = readTextOrNull(path.join(wt, file)) ?? "";
+    const full = path.join(wt, file);
+    // A symlink is never followed out of the worktree (it holds no heading of its own — the
+    // same lstat policy the backlog-conflict resolver and the false-fix guard pin, INV-G3), so
+    // it too reads as empty rather than bringing an arbitrary host file's headings into this
+    // gate's verdict.
+    let head = "";
+    try {
+      if (fs.lstatSync(full).isFile()) head = readTextOrNull(full) ?? "";
+    } catch {
+      head = "";
+    }
     const base = await fileContentAt(wt, baseRev, file);
     const headCounts = sectionTitleCounts(head);
     const baseCounts = sectionTitleCounts(base);

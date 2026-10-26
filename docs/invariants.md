@@ -483,13 +483,17 @@ INV-G4 pins for the secret-leak check). The review gate rejects it before review
 included, the stage check flags it, and the merge resolver's resolution is not accepted. The
 deterministic backlog-conflict resolver (merge-backlog-conflicts.ts) reads a conflicted root backlog
 file only when lstat shows it is a regular file; a symlink (or directory/gitlink, or an
-unreadable path) is left to the pi resolver, never followed out of the worktree.
+unreadable path) is left to the pi resolver, never followed out of the worktree. The backlog-
+structure heading gate (backlog-structure.ts) and the false-fix heading guard (fix-claim.ts) read
+a changed backlog file's head only when lstat shows it is a regular file, so a symlinked
+BUGS.md/PLANS.md/BUGS-FIXED.md cannot pull an outside file's headings into either verdict.
 
 **Binds.** `src/merge/merge-git.ts`, `src/merge/merge-backlog-conflicts.ts`,
+`src/backlog/backlog-structure.ts`, `src/verdict/fix-claim.ts`,
 `src/review/review.ts`, `src/run/stage-check.ts`,
 `src/merge/merge-to-main.ts`.
 
-**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run".
+**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — `test/backlog-structure.test.ts` — "backlogStructureReason never follows a symlinked backlog file out of the worktree" — `test/fix-claim.test.ts` — "falseFixReason never follows a symlinked BUGS.md out of the worktree" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run".
 
 ### INV-G4: a changed file that exists but cannot be read is a secret-leak finding; only a path with no file is skipped
 

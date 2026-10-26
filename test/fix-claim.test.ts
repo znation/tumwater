@@ -19,7 +19,7 @@ import { fixClaimProblems } from "../src/doctor/doctor-backlog-plans.js";
 import { aheadOfMain } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { makeRepo, runningAsRoot, sh } from "./fixtures/repo-fixtures.js";
+import { makeRepo, runningAsRoot, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 import { piRanMarker, withPi } from "./fakes/fake-pi.js";
 
@@ -499,6 +499,29 @@ test("falseFixReason tolerates a deleted BUGS.md instead of throwing out of the 
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "seed bugs");
   fs.rmSync(path.join(root, "BUGS.md"));
+  assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+});
+
+test("falseFixReason never follows a symlinked BUGS.md out of the worktree", async () => {
+  // An md-only diff may replace BUGS.md with a symlink to a file outside the worktree. The
+  // head must read as "no Fixed transition to check" — never the host file's `## Fixed` —
+  // or an outside file could steer this gate's verdict (the same lstat policy the backlog-
+  // conflict resolver and the backlog-structure gate pin, INV-G3).
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n### A bug (found 2026-09-27)\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  // A host file OUTSIDE the worktree carrying a false-fix shape the gate would reject had it
+  // followed the symlink: a Fixed entry naming a symbol that exists nowhere on the tree.
+  const outside = path.join(tmpdir(), "host-bugs.md");
+  fs.writeFileSync(
+    outside,
+    "## Fixed\n\n### Phantom (found 2026-09-20, fixed 2026-09-21)\n\n**Fix:** `ghostPhantom` now does it.\n",
+  );
+  fs.rmSync(path.join(root, "BUGS.md"));
+  fs.symlinkSync(outside, path.join(root, "BUGS.md"));
+  // The symlink is never followed: BUGS.md reads as empty, so no Fixed transition and the
+  // guard passes — it does not pull the outside file's `## Fixed` in as a false-fix finding.
   assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
 });
 

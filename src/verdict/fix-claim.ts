@@ -44,7 +44,7 @@
  *   that. A location now claims its file, a bare line reference (`:368`) claims nothing, and a
  *   bare file name is backed by a file of that name anywhere in the walked source dirs. */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 import { readTextOrNull, statOrNull, walkFiles } from "../files/files.js";
 import {
@@ -335,11 +335,21 @@ export async function falseFixReason(
   // fix claim reaches the gate as an archive edit, and an archived entry whose body is intact
   // is no claim at all. Both sides of the comparison read both files.
   if (!files.includes("BUGS.md") && !files.includes(BUGS_ARCHIVE)) return undefined;
-  // A deleted or unreadable file reads as empty: there is no Fixed transition to verify,
-  // so this check passes and lets the gate's sibling structural check (backlog-structure.ts)
-  // report the dropped section. Reading it raw would throw ENOENT out of the gate instead —
-  // and a file the change deletes is exactly the input the sibling check already handles.
-  const heads = ["BUGS.md", BUGS_ARCHIVE].map((f) => readTextOrNull(join(wt, f)) ?? "");
+  // A deleted, unreadable, or non-regular (symlinked) file reads as empty: there is no Fixed
+  // transition to verify, so this check passes and lets the gate's sibling structural check
+  // (backlog-structure.ts) report the dropped section. Reading a symlink raw would pull an
+  // outside host file's `## Fixed` heading into this gate's verdict (the same lstat policy the
+  // backlog-conflict resolver and backlogStructureReason pin under INV-G3), so a head is read
+  // only when lstat shows a regular file; ENOENT and symlinks both read as empty.
+  const heads = ["BUGS.md", BUGS_ARCHIVE].map((f) => {
+    const full = join(wt, f);
+    try {
+      if (!lstatSync(full).isFile()) return "";
+    } catch {
+      return "";
+    }
+    return readTextOrNull(full) ?? "";
+  });
   if (!heads.some((head) => head.includes("## Fixed"))) return undefined;
   // The diff's own base, not main's tip: the gate diffs `mainBranch...HEAD` against the
   // merge-base, and the entry's Open/Fixed state lives in the tree the change builds on —
