@@ -5,6 +5,23 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 3/3: budget_resumed's handback wait observes the orchestrator's own budget_handback event and the resume run's marker, not runner-state polling (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 1/3 and part 2/3 and editing only test/orchestrator-budget.e2e.test.ts, so it holds no prerequisite and merges independently; touches test/orchestrator-budget.e2e.test.ts) — done 2026-10-26 by the feature role
+
+**Previously held 1**
+
+**Goal.** Harden `budget_resumed hands the in-flight fallback runs back to the primary` in test/orchestrator-budget.e2e.test.ts: its handback step polled `loadRunnerState` after the reopen, so load a loaded host can push past. Re-point that one step onto the orchestrator's own `budget_handback` event and the resume run's own start marker. The entry's other named cases were reviewed and deliberately left as they are: the two resize grow-waits keep their robust `readSamples(runDir).some((n) => n >= 2)` retry with the 150 s/60 s budgets (BUGS.md:70, the class entry dated 2026-10-23, pins both — the count-based replacement reviewed here was less robust and dropped the budget, so it was reverted), and `a reached cap switches roles` / `a free fallback whose runs keep failing` already await events/run markers — their `sleep(400)` are "no run starts while paused" absence checks, not grow/handback waits.
+
+**Approach.**
+- `budget_resumed`: after the `budget_handback` event confirms the reopen handed the in-flight run back, swap the shim to the primary pair and wait on the resume run's own start marker (the flags file gaining a line) instead of the fixed-sleep runner-state poll; the resume only spawns after the handback abort completes, so the swap is safe before it.
+- Leave the two resize grow-waits and the two sibling budget cases untouched: their gating step already retries on the real overlap or awaits an event/run marker.
+
+**Files touched.** test/orchestrator-budget.e2e.test.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes.
+- In test/orchestrator-budget.e2e.test.ts's `budget_resumed` case, the handback step no longer polls runner state after a fixed sleep; it waits on the `budget_handback` event and the resume's own start marker.
+- The resize grow-waits keep their peak-overlap `waitFor` on the concurrency fake with the original budgets, and the two sibling budget cases are unchanged.
+
 ### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 2/3: the concurrency tests' reap checks use a process-identity handle, not a bare pid (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 1/3 and part 3/3 and editing only src/process/process.ts, test/codex-hook-trust.test.ts and test/supervisor.test.ts, so it holds no prerequisite and merges independently; touches src/process/process.ts test/codex-hook-trust.test.ts test/supervisor.test.ts) — done 2026-10-26 by the feature role
 
 **Previously held 1**

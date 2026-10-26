@@ -339,25 +339,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Every case that remains keeps its original subject (rebase, check or batch/stack bookkeeping) and asserts the same outcome through a deterministic rejection.
 - No edit outside test/merger.test.ts.
 
-### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 3/3: the e2e grow-waits observe the orchestrator's own events and run markers, not live process samples (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 1/3 and part 2/3 and editing only test/orchestrator-budget.e2e.test.ts, test/orchestrator-resize.e2e.test.ts and test/fixtures/orchestrator-fixtures.ts, so it holds no prerequisite and merges independently; touches test/orchestrator-budget.e2e.test.ts test/orchestrator-resize.e2e.test.ts test/fixtures/orchestrator-fixtures.ts)
-
-**Previously held 1**
-
-**Goal.** Retire the class plan's e2e grow-waits. `test/orchestrator-resize.e2e.test.ts`'s `a live maxConcurrent edit resizes the cap without a restart` and `a live maxConcurrentPerProvider edit admits a parked omlx run and logs its own event` wait on the concurrency fake's `samples.log` (`readSamples(runDir).some((n) => n >= 2)`) with a 150 s/60 s budget; `test/orchestrator-budget.e2e.test.ts`'s `a reached cap switches roles to the free fallback model instead of stopping them`, `a free fallback whose runs keep failing is demoted to a pause, then probed back once it serves`, and `budget_resumed hands the in-flight fallback runs back to the primary` wait on live-run counts and, after a fixed sleep, on runner state. A loaded host can push the sampled state past the budget with no code change.
-
-**Approach.**
-- The orchestrator already emits the deterministic transitions these cases assert: `provider_concurrency_changed` (the resize case reads it today), and `budget_paused` / `budget_resumed` / `budget_fallback` / `budget_handback` (the budget cases already use `readEvents` for some steps). Re-point each grow-wait's "a slot opened / a run started" step onto the emitted event or an admitted-run count taken from the run markers the fake writes.
-- Keep `readSamples` for the assertions whose real subject is overlap (peak stays 1) and read those only after the event confirms the transition; do not delete a peak assertion to make a grow-wait pass.
-- `budget_resumed`'s post-sleep runner-state wait in test/orchestrator-budget.e2e.test.ts waits on the handed-back run's own terminal/next-start marker instead of the fixed sleep plus state poll.
-
-**Files touched.** test/orchestrator-budget.e2e.test.ts test/orchestrator-resize.e2e.test.ts test/fixtures/orchestrator-fixtures.ts (only if `readSamples` needs an event-based sibling)
-
-**Acceptance criteria.**
-- `npm run test:gate` passes.
-- In test/orchestrator-resize.e2e.test.ts, neither grow-wait uses `readSamples(...).some((n) => n >= 2)` with a 150 s/60 s budget; each grow assertion reads an emitted event or an admitted-run count.
-- In test/orchestrator-budget.e2e.test.ts, the three named cases no longer decide the grow/handback step on a fixed `sleep` followed by a `waitFor` over live-run counts; each waits on an emitted event or a run marker.
-- Every peak-overlap assertion keeps its subject and still reads the concurrency fake's samples.
-
 ### Subtract, part 1/6: Only a stopped team asks for a person — the banner feed keeps the seven alerts that mean the team is stopped or a decision is the operator's (planned 2026-10-26 by the operator, from the "simplicity over being heavily optimized" request; design in plans/subtract.md "The six strokes", stroke 6; touches src/ui/team-alerts.ts src/ui/team-alert-shared.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/team-alert-merge.ts src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
 
 **Needs review 2026-10-26 by feature: too large for one run (held 1)**

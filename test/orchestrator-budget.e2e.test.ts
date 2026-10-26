@@ -509,14 +509,12 @@ test("budget_resumed hands the in-flight fallback runs back to the primary", asy
     assert.deepEqual(hb[0]?.roles, ["clean"]);
     assert.equal(hb[0]?.provider, "local");
     assert.equal(hb[0]?.model, "local-free");
-    await waitFor(() => {
-      const s = loadRunnerState(repo, "clean");
-      return !s.running && s.resumePending === true && s.resumeCause === "budget-resumed";
-    }, "the handed-back run to end resumably");
-
-    // The resume continues the SAME session (--continue) on the budgeted pair. A resumed
-    // run passes no -n, so its recorded session field is empty — wait on the flags file,
-    // which gains one line per run.
+    // The handback is observed instead of polled: the budget_handback event confirms the
+    // reopen handed the in-flight run back, and the resume's OWN start marker below (the flags
+    // file gaining a line) is the deterministic next-start witness that the run ended resumably
+    // — with no fixed sleep or live-run-state wait for a loaded host to blow past. A resumed
+    // run uses the primary pair, so the shim must be swapped in BEFORE the resume spawns; the
+    // resume only starts after the handback abort completes, so swapping here is safe.
     restore();
     restore = fakePi([logFlagsTo(flagsFile), rec, idle].join("\n"));
     await waitFor(() => {
