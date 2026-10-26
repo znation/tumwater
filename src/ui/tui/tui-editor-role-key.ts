@@ -60,56 +60,63 @@ export function createRoleKeyEditor(
     lockedRole = null;
   };
 
+  // The Ctrl+<key> arm: while open it toggles the editor out. Otherwise it opens only on a
+  // role's Transcript view; elsewhere it keeps its own meaning and falls through to the pane
+  // arms.
+  const openRoleKeyEdit = (ctx: TuiEditorCtx): boolean => {
+    if (mode) {
+      exit();
+      return true;
+    }
+    if (!(ctx.view >= 1 && ctx.view <= ctx.roleIds.length) || spec.yieldsOn?.(ctx)) return false;
+    const role = viewedRole(ctx);
+    if (session.editorEntryDenied(spec.mode)) return true;
+    // Pin the role first so the write below is safe against a mid-edit roster shift, then
+    // pre-fill from the file's own entry — one fresh read per open is the smallest honest
+    // source; a broken config degrades to no pre-fill and the write reports the error.
+    lockedRole = role;
+    const existing = spec.prefill(session, baseRoleOf(role));
+    restoreDraft = session.takeDraft();
+    mode = true;
+    session.held[spec.mode] = true;
+    session.input = existing;
+    session.cursor = session.input.length;
+    session.flashMessage(spec.openFlash(role));
+    return true;
+  };
+
+  // Esc cancels the editor, restoring the previous prompt text.
+  const cancelRoleKeyEdit = (): boolean => {
+    exit();
+    return true;
+  };
+
+  // Enter commits the whitespace-trimmed line through the spec's shared setter. A rejected
+  // value flashes and STAYS in edit mode so the operator can fix it; success restores the
+  // saved prompt text.
+  const submitRoleKeyEdit = (): boolean => {
+    const role = lockedRole!;
+    const text = session.input.trim();
+    const result = spec.commit(session, baseRoleOf(role), text);
+    if (result.ok) {
+      exit();
+      session.flashMessage(
+        result.noop && spec.noopFlash ? spec.noopFlash(role, text) : spec.savedFlash(role, text),
+      );
+    } else {
+      session.flashMessage(result.error); // broken config or write failure — stay in edit mode
+    }
+    return true;
+  };
+
   const handleKey = (
     _str: string | undefined,
     key: { ctrl?: boolean; name?: string },
     ctx: TuiEditorCtx,
   ): boolean => {
-    if (key.ctrl && key.name === spec.openCtrl) {
-      // While open the key toggles the editor out. Otherwise it opens only on a role's
-      // Transcript view; elsewhere it keeps its own meaning and falls through to the pane arms.
-      if (mode) {
-        exit();
-        return true;
-      }
-      if (!(ctx.view >= 1 && ctx.view <= ctx.roleIds.length) || spec.yieldsOn?.(ctx)) return false;
-      const role = viewedRole(ctx);
-      if (session.editorEntryDenied(spec.mode)) return true;
-      // Pin the role first so the write below is safe against a mid-edit roster shift, then
-      // pre-fill from the file's own entry — one fresh read per open is the smallest honest
-      // source; a broken config degrades to no pre-fill and the write reports the error.
-      lockedRole = role;
-      const existing = spec.prefill(session, baseRoleOf(role));
-      restoreDraft = session.takeDraft();
-      mode = true;
-      session.held[spec.mode] = true;
-      session.input = existing;
-      session.cursor = session.input.length;
-      session.flashMessage(spec.openFlash(role));
-      return true;
-    }
-    if (key.name === "escape" && mode) {
-      // Esc cancels the editor, restoring the previous prompt text.
-      exit();
-      return true;
-    }
-    if (key.name === "return" && mode) {
-      // Enter commits the whitespace-trimmed line through the spec's shared setter. A rejected
-      // value flashes and STAYS in edit mode so the operator can fix it; success restores the
-      // saved prompt text.
-      const role = lockedRole!;
-      const text = session.input.trim();
-      const result = spec.commit(session, baseRoleOf(role), text);
-      if (result.ok) {
-        exit();
-        session.flashMessage(
-          result.noop && spec.noopFlash ? spec.noopFlash(role, text) : spec.savedFlash(role, text),
-        );
-      } else {
-        session.flashMessage(result.error); // broken config or write failure — stay in edit mode
-      }
-      return true;
-    }
+    if (key.ctrl && key.name === spec.openCtrl) return openRoleKeyEdit(ctx);
+    if (key.name === "escape" && mode) return cancelRoleKeyEdit();
+    if (key.name === "return" && mode) return submitRoleKeyEdit();
     return false;
   };
 
