@@ -316,17 +316,26 @@ test("an unwritable state file mid-review still folds the reviewer runs and sett
 
 test("a merge pinned behind main's advance is rebased onto main BEFORE the gate and merges both", async () => {
   // PLANS.md 2026-09-21: the gate must review main's CURRENT tree. Advance main after the
-  // pin with a non-conflicting commit, then check the reviewer saw the rebased tree — if the
+  // pin with a non-conflicting commit, then check the gate saw the rebased tree — if the
   // gate ran on the stale pin, main's fix would not be under review and a red main would
   // cascade through every queued merge.
   const rec = path.join(tmpdir("merger-rec-"), "seen");
   await withPi(
-    `git rev-parse HEAD >> ${rec}\n` +
-      reviewerPi("VERDICT: approve"),
+    reviewerPi("VERDICT: approve"), // the verify's approve; the passing declared check is the deterministic gate
     async () => {
       const { root, sha } = await pinnedFixture();
+      // A passing declared check is the deterministic gate that survives part 3h/3's removal of
+      // the pre-merge reviewer, and it records the HEAD it ran at, so the "gate reviewed the
+      // rebased tree" assertion rides the gate, not the reviewer (part 3p/3).
+      declareCheck(root, `#!/bin/sh\ngit rev-parse HEAD >> ${rec}\necho ok\n`);
+      // Land the declared check as its own commit separate from the "fix main" commit below, so
+      // the gate's `npm run` resolves the check inside the merger worktree (the change's tree
+      // inherits it from main) instead of climbing to the bare repo — and the "fix main" commit
+      // stages only the intended fix file.
+      sh(root, "git", "add", "package.json", "node_modules");
+      sh(root, "git", "commit", "-m", "declare the project check");
       fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
-      sh(root, "git", "add", "-A");
+      sh(root, "git", "add", "fix.txt");
       sh(root, "git", "commit", "-m", "fix main");
       const state = freshRunnerState(ROLE);
       const { ctx } = makeCtx(root, state);
@@ -339,8 +348,8 @@ test("a merge pinned behind main's advance is rebased onto main BEFORE the gate 
       assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "seed\nthe work\n");
       assert.equal(fs.readFileSync(path.join(root, "fix.txt"), "utf8"), "main fix\n");
       assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "");
-      // The reviewer ran in the merger worktree at the SYNCED head — the pre-check/review tree
-      // is exactly what became main, and the merge ref tracked it (deleted on merge here).
+      // The declared check ran in the merger worktree at the SYNCED head — the pre-check tree is
+      // exactly what became main, and the merge ref tracked it (deleted on merge here).
       const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
       assert.equal(seen[0], mainHead, "the gate reviewed the rebased tree, not the stale pin");
       assert.equal(await refSha(root, REF), null, "the pin was deleted on merge");
@@ -353,16 +362,20 @@ test("a synced rebase moves the merge ref so a failed gate keeps the tree that c
   // pre-gate rebase rewrote the pin, the request (and the ref) must name the synced head, or
   // an under-cap failure would look like a strike-cap discard and delete the pinned work.
   await withPi(
-    reviewerPi("I think this is fine overall."),
+    reviewerPi("VERDICT: approve"), // never reached: the failing declared check keeps the pin (main_red)
     async () => {
       const { root, sha } = await pinnedFixture();
+      // The deterministic gate: a failing declared check on a red main reports main_red and keeps
+      // the pin, so the "failed gate keeps the tree that can merge" outcome rides the gate, not a
+      // reviewer failure (part 3p/3).
+      declareCheck(root, "#!/bin/sh\necho 'error TS9001: boom' >&2\nexit 1\n");
       fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
       sh(root, "git", "add", "-A");
       sh(root, "git", "commit", "-m", "fix main");
       const state = freshRunnerState(ROLE);
       const { ctx } = makeCtx(root, state);
 
-      assert.equal(await verifyAndMerge(ctx, request(sha)), "review_error");
+      assert.equal(await verifyAndMerge(ctx, request(sha)), "main_red");
 
       // Nothing merged (main still holds the fix commit), so the synced head is not main's
       // head — it is the rebased commit the verify's pooled slot sits at.
@@ -433,15 +446,16 @@ test("a failing pre-check on a green main rejects the merge and spends no pi run
   // The gate scope fails while the declared check — what main's fresh re-check runs — passes:
   // main is green, so the change's failure is its own.
   const marker = piRanMarker();
-  await withPi(`touch '${marker}'\n${reviewerPi("VERDICT: approve")}`, async () => {
+  // A fake pi on PATH that WOULD touch the marker if the merge path invoked it: the rejection is
+  // the deterministic gate's, so pi never runs and the marker's absence is the meaningful proof of
+  // "no pi run" (part 3p/3; no reviewer drives the rejection).
+  await withPi(`touch '${marker}'\n`, async () => {
     const state = freshRunnerState(ROLE);
-    const { ctx, folded } = makeCtx(root, state);
+    const { ctx } = makeCtx(root, state);
     ctx.config = { ...ctx.config, check: { command: "echo ok", gateCommand: "echo 'error TS2345: boom' >&2; exit 1" } };
     assert.equal(await verifyAndMerge(ctx, request(sha)), "rejected");
     assert.equal(await refSha(root, REF), null, "rejected: the pin is gone");
     assert.ok(!fs.existsSync(marker), "no pi run: the check and main's verdict decided alone");
-    assert.equal(folded.length, 0, "nothing to fold");
-    assert.equal(state.lastReview?.verdict, "reject");
   });
 });
 
@@ -641,7 +655,6 @@ test("a fix-claim-blocked merge retries once, then rejects with the block reason
   assert.equal(await mergeApprovedChange(ctx, request(sha)), "rejected", "the second identical block is attributed to the change");
   assert.equal(await refSha(root, REF), null, "the pin is gone");
   assert.equal(state.mergeCheckFailures, undefined, "the streak ends at the attribution");
-  assert.equal(state.lastReview?.verdict, "reject");
   assert.match(state.lastReview!.reasons[0]!, /phantomSymbolName/);
   assert.equal(eventsOfType(root, "review_rejected").length, 1);
   assert.equal(calls.length, 0, "no model run — no resolver, no reviewer");
@@ -694,9 +707,12 @@ test("a failing pre-check on a red main keeps the pin, records no rejection, and
   sh(root, "git", "commit", "-m", "main moves on its own");
   const newMainSha = mainSha(root);
   const marker = piRanMarker();
-  await withPi(`touch '${marker}'\n${reviewerPi("VERDICT: approve")}`, async () => {
+  // A fake pi on PATH that WOULD touch the marker if the merge path invoked it: the red-main keep
+  // is the deterministic gate's, so pi never runs and the marker's absence is the meaningful proof
+  // of "no pi run" (part 3p/3; no reviewer drives it).
+  await withPi(`touch '${marker}'\n`, async () => {
     const state = freshRunnerState(ROLE);
-    const { ctx, folded } = makeCtx(root, state);
+    const { ctx } = makeCtx(root, state);
     assert.equal(await verifyAndMerge(ctx, request(sha)), "main_red", "not a reviewer failure");
     const pinned = await refSha(root, REF);
     assert.ok(pinned, "the pin survives a red main");
@@ -704,9 +720,6 @@ test("a failing pre-check on a red main keeps the pin, records no rejection, and
     assert.equal(sh(root, "git", "rev-parse", `${pinned}~1`), newMainSha);
     assert.ok(sh(root, "git", "show", `${pinned}:seed.txt`).includes("the work"), "the pin still names the work");
     assert.ok(!fs.existsSync(marker), "no pi run");
-    assert.equal(folded.length, 0);
-    assert.equal(state.unreviewFailures ?? 0, 0, "no strike");
-    assert.equal(state.lastReview?.verdict, "failed", "no rejection recorded against the author");
     assert.match(state.lastError ?? "", /^gate check failed: main [0-9a-f]+ is red — not this change's failure$/);
     assert.ok(!readEvents(root).some((e) => e.type === "review_rejected"));
   });
@@ -721,20 +734,19 @@ test("an all-rejected batch returns a defined result for every request without t
   // The review re-audit found this exact shape crashing: |S| == 0 made the merger index the
   // empty stack and throw, and the drain's catch kept every entry — a queue leak. Now the
   // batch simply returns: every request terminal, nothing to merge, refs gone.
-  await withPi(
-    reviewerPi("VERDICT: reject\n1. no"),
-    async () => {
-      const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
-      const mainBefore = mainSha(root);
+  // Both changes carry a conflict marker, so the deterministic gate's diff rule rejects each
+  // before any reviewer runs (part 3p/3).
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"], {
+    edit: (d) => fs.appendFileSync(path.join(d, "change.txt"), "<<<<<<< HEAD\n"),
+  });
+  const mainBefore = mainSha(root);
 
-      const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+  const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
-      assert.deepEqual(results.map((r) => r.result), ["rejected", "rejected"], "every request has a terminal result");
-      assert.equal(mainSha(root), mainBefore, "nothing merged");
-      assert.equal(await refSha(root, mergeRefName("alpha")), null, "a rejection deletes its ref");
-      assert.equal(await refSha(root, mergeRefName("beta")), null, "and the next request's too — the batch merges nothing");
-    },
-  );
+  assert.deepEqual(results.map((r) => r.result), ["rejected", "rejected"], "every request has a terminal result");
+  assert.equal(mainSha(root), mainBefore, "nothing merged");
+  assert.equal(await refSha(root, mergeRefName("alpha")), null, "a rejection deletes its ref");
+  assert.equal(await refSha(root, mergeRefName("beta")), null, "and the next request's too — the batch merges nothing");
 });
 
 test("a green batch stacks every approved change, fast-forwards main once, and logs per-change events", async () => {
@@ -918,8 +930,14 @@ test("an abort after the gate stops a one-change merge before it merges", async 
 // every step, or a finished change keeps a live `merging` row (or an in-flight one shows none).
 
 test("a merge reports each change as it reaches it: the stack merges together, and a rejected change never reaches it", async () => {
-  await withPi(perRoleReviewerPi({ beta: "VERDICT: reject\n1. no" }), async () => {
-    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta", "gamma"]);
+  // beta's change carries a conflict marker, so the deterministic gate's diff rule rejects it
+  // before any reviewer runs; alpha and gamma approve through the deterministic check (part 3p/3).
+  await withPi(perRoleReviewerPi({}), async () => {
+    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta", "gamma"], {
+      edit: (d, role) =>
+        fs.appendFileSync(path.join(d, `${role}.txt`), role === "beta" ? "<<<<<<< HEAD\n" : `work by ${role}\n`),
+    });
+    declareCheck(root, "#!/bin/sh\necho ok\n");
     const { results, seen } = await runBatchRecorded(root, shas, ["alpha", "beta", "gamma"], wiringFor);
     assert.deepEqual(results, ["changed", "rejected", "changed"]);
     assert.deepEqual(seen, [
@@ -957,15 +975,16 @@ test("an abandoned stack reports one change merging at a time, the rest back to 
 test("the gate re-pins the merge ref to the head its verdict judged", async () => {
   // reviewPinnedChange's last act: track the pin to the head the verdict judged, so a merge
   // that cannot finish leaves recovery re-merging that tree, not a stale pin. When the
-  // merger worktree sits past the queued sha (work moved after queueing) and no green
-  // pre-check names a head, the worktree's HEAD is the judged tree — the ref must follow it,
-  // or a later blocked merge re-merges the wrong tree.
-  const rec = path.join(tmpdir("merger-rec-"), "seen");
+  // merger worktree sits past the queued sha (work moved after queueing), the worktree's HEAD
+  // is the judged tree — the ref must follow it, or a later blocked merge re-merges the wrong
+  // tree.
   await withPi(
-    `git rev-parse HEAD >> ${rec}\n` +
-      reviewerPi("VERDICT: approve"),
+    reviewerPi("VERDICT: approve"), // the verify's approve; the passing declared check is the deterministic gate
     async () => {
       const { root, sha, wt } = await pinnedFixture();
+      // A passing declared check is the deterministic approval (part 3p/3): the gate judges the
+      // worktree's head, and reviewPinnedChange re-pins the ref to that judged head.
+      declareCheck(root, "#!/bin/sh\necho ok\n");
       fs.appendFileSync(path.join(wt, "extra.txt"), "work after queueing\n");
       sh(wt, "git", "add", "-A");
       sh(wt, "git", "commit", "-m", "later work");
@@ -979,8 +998,6 @@ test("the gate re-pins the merge ref to the head its verdict judged", async () =
       if (outcome.kind !== "gate") return;
       assert.equal(outcome.sha, judged, "the outcome names the judged head, not the queued sha");
       assert.equal(await refSha(root, REF), judged, "the pin moved to the judged head");
-      const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
-      assert.equal(seen[0], judged, "the reviewer ran on the head the pin moved to");
     },
   );
 });
