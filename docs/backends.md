@@ -108,9 +108,8 @@ at) only when its model job can. Capability has one source of truth — `seamIma
 
 A claimed pi model job is only as good as the **live probe** confirms: `tumwater doctor` shows each
 claimed model a real generated PNG and checks the answer, caching the verdict in
-`.tumwater/state/image-probes.json` for 7 days. A failed probe makes the job read `false`
-everywhere — a claim the doctor contradicted must not let a blind read through. The TUI Health
-tab and the dashboard never probe on a refresh (it must not spend a model call); `--reprobe`
+`.tumwater/state/image-probes.json` for 7 days. The TUI Health tab and the dashboard never probe
+on a refresh (it must not spend a model call); `--reprobe`
 forces terminal runs to probe again, and the dashboard Health card's Re-probe models button
 and the TUI Health tab's Ctrl+P force every probe, as `--reprobe` does.
 
@@ -118,8 +117,7 @@ When a run does read an image on a text-only model job, it is stopped and the ro
 onto a peer tier that reads images (small → default → strong from the role's own tier; a strong
 job never drops to small). The surfaces say so without running doctor: `tumwater role <id>` and
 `status --json` show the role's `imageInput` and its reroute target, and the images team alert
-is blue when every text-only role has a target ("reruns on …") or amber when some role has none
-or a claimed model failed the probe.
+is blue when every text-only role has a target ("reruns on …") or amber when some role has none.
 
 The same capability gates **submission**: `tumwater prompt --attach` and the dashboard refuse an
 image when the target role reads none and no tier can, naming the fix before anything is queued;

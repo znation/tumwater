@@ -17,11 +17,10 @@ import { formatModelSelector } from "../config/model-selector.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { isJsonObject } from "../files/json-object.js";
 import { runnerStateForPoll } from "./status-polls.js";
-import { roleImageInfo, seamImageLabel } from "../agent/image-input.js";
+import { roleImageInfo } from "../agent/image-input.js";
 import { backendDefaultLabel } from "../agent/backend-traits.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { seamContextWindowForRole } from "../pi/pi-models.js";
-import { imageProbeEntryFresh, readImageProbeCache } from "../doctor/image-probe.js";
 
 /** One status-table row: the persisted runner state plus the display-only fields the dashboard
  * computes at the source (`custom`, the resolved selector, the active fallback, the pooled
@@ -92,9 +91,6 @@ export function collectRoleRows(
     );
   });
   const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), root);
-  // One probe-cache read per poll serves every row's image-input surface (same no-data policy
-  // as every other degraded read: a missing cache is an empty one).
-  const probes = readImageProbeCache(root);
   const listed = readPiListedModels(root);
   return roles.map((r) => {
     const base = { ...runnerStateForPoll(root, r), custom: isCustomRole(cfg, r) };
@@ -111,7 +107,7 @@ export function collectRoleRows(
     // capability and its reroute target, one shared resolver so the status rows, the role
     // page, and the submit gate cannot disagree about who reads images or where a blind
     // prompt would run.
-    const image = roleImageInfo(cfg, r, modelsPath, probes, listed);
+    const image = roleImageInfo(cfg, r, modelsPath, undefined, listed);
     // The peak-ctx share denominator (the role's context window, part 3c): resolved once per
     // poll here, beside `eff` (the same seam the role page resolves and names) — the same seam
     // `seamContextWindow` run against, so row, page and drawer cannot disagree.
@@ -164,30 +160,3 @@ export function collectRoleRows(
   });
 }
 
-/** The doctor's live-probe failures (plans/image-input.md "Surfaces", part 5/5): every cached
- * probe verdict of `fail` that is still fresh (the claim is unchanged and within the 7-day
- * TTL), labelled as `<provider>/<model>`. A claimed model that failed the probe reads `false`
- * everywhere (seamImageInput honors a fresh failure), but the observability value is naming
- * it — a claim the doctor contradicted is exactly what the amber probe alert and the role/status
- * rows should surface, not just "this role is text-only". A torn or missing cache answers
- * empty (the same no-data policy as the per-role read). */
-export function collectImageProbeFailures(root: string, now: number = Date.now()): string[] {
-  const probes = readImageProbeCache(root);
-  const out: string[] = [];
-  for (const [key, entry] of Object.entries(probes)) {
-    if (entry.verdict !== "fail" || !imageProbeEntryFresh(entry, now)) continue;
-    // The cache key is agent/provider/model, and a pi model id is itself fully qualified (the
-    // key's third segment can carry embedded '/' — parseModelSelector keeps the id whole), so
-    // split only the first two separators and keep the rest as the model. A naive split("/")
-    // destructured to three parts would truncate a qualified id to its org, mislabelling the
-    // model the doctor flagged.
-    const first = key.indexOf("/");
-    const second = key.indexOf("/", first + 1);
-    if (first === -1 || second === -1) continue;
-    const agent = key.slice(0, first) || undefined;
-    const provider = key.slice(first + 1, second) || undefined;
-    const model = key.slice(second + 1) || undefined;
-    out.push(seamImageLabel(agent, provider, model));
-  }
-  return out.sort();
-}

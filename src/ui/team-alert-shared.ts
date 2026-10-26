@@ -237,7 +237,7 @@ export function openRoleActions(roles: ReadonlyArray<{ role: string }>): Array<{
 
 /** The dashboard's "See failures" button: opens the failures view. Shared by every alert
  * whose remedy is inspecting the failing runs/checks (main-red, quarantine, flapped checks,
- * post-merge churn and risk, regressed fixes, image-probe), so the button's label
+ * post-merge churn and risk, regressed fixes), so the button's label
  * and action cannot drift between them. */
 export function seeFailures(): Array<{ label: string; act: string; arg: string }> {
   return [{ label: "See failures", act: "view", arg: "failures" }];

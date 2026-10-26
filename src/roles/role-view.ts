@@ -28,7 +28,6 @@ import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { formatModelSelector } from "../config/model-selector.js";
 import { roleImageInfo } from "../agent/image-input.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
-import { readImageProbeCache } from "../doctor/image-probe.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
 import { readAccount, windowEntries } from "../agent/subscription-account.js";
@@ -482,7 +481,7 @@ export function rolePayload(
     ...(account !== null ? { billing: account.billing, billingBackend } : {}),
     ...(billingWindow !== undefined ? { billingWindow } : {}),
     chainStep,
-    ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root), readPiListedModels(root)),
+    ...roleImageInfo(cfg, role, modelsPath, undefined, readPiListedModels(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,
     ...(minRunIntervalOverride !== undefined ? { minRunIntervalOverride } : {}),
     ...(providerOverride !== undefined ? { providerOverride } : {}),

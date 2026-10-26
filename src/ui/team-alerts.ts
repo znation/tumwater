@@ -74,7 +74,6 @@ export function teamAlerts(
     | "briefTruncated"
     | "roleNotesOverCap"
     | "principlesTruncated"
-    | "imageProbeFailures"
     | "chain"
     | "capPaused"
     | "budgetPausedRoles"

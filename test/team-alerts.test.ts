@@ -35,7 +35,6 @@ const base: Snap = {
   build: null,
   paused: false,
   inQuietHours: false,
-  imageProbeFailures: [],
   capPaused: [],
   budgetPausedRoles: [],
   maintenanceQuota: { allowance: 0, used: 0, held: [] },
@@ -445,7 +444,7 @@ test("a waiting: low disk raises one amber alert naming the free space and the f
 // every enabled role reads images (or capability is unknown — an unknown seam is not counted
 // as text-only). Blue when every text-only role has a reroute target (a blind read reruns — an
 // inform, not an ask); amber when some text-only role has none (a blind read fails and image
-// submissions are refused). A separate amber when a claimed model failed doctor's live probe.
+// submissions are refused).
 test("images alert: parity needs no alert; a text-only team with targets is blue", () => {
   const vision: AlertRole[] = [
     { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: true, imageReroute: null },
@@ -480,15 +479,6 @@ test("images alert: a text-only role with no target is amber and asks", () => {
   assert.match(images?.detail ?? "", /image attachments to these roles are refused/);
   assert.equal(images?.actions[0]?.arg, "feature");
   assert.equal(alertNeedsYou(images!), true, "a blind read fails — it asks");
-});
-
-test("images alert: a cached probe failure is amber, whatever the roles resolved to", () => {
-  const over = teamAlerts({ ...base, imageProbeFailures: ["local/vision"] }, [], [], Date.now());
-  const [probe] = over.filter((a) => a.key === "images-probe");
-  assert.equal(probe?.tone, "amber");
-  assert.match(probe?.title ?? "", /failed doctor's probe/);
-  assert.match(probe?.detail ?? "", /local\/vision declare image input but failed/);
-  assert.equal(alertNeedsYou(probe!), true);
 });
 
 test("refused entries raise a standing amber alert right after the questions alert", () => {

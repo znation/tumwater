@@ -2802,15 +2802,14 @@ prompt is capped on its composed text, not its body alone".
 ### INV-AS2: an image no configured model can read, or a malformed image, is refused at submit
 
 **Guarantee.** An image no configured model can read is refused at submit. A reroute tier accepts
-it, with a notice, and a probe-failed pi claim reads as text-only. A malformed image is refused
+it, with a notice. A malformed image is refused
 before the role's inbox directory is created.
 
 **Binds.** `src/inbox/inbox-submit.ts` (`imagePromptGuidance`, `submitRolePrompt`).
 
 **Pinned by.** `test/inbox-submit.test.ts` — "image prompts are refused when no configured model
 reads images, accepted when a tier reroutes", "imagePromptGuidance returns a refusal or a reroute
-notice, and nothing when the role reads images" and "imagePromptGuidance treats a probe-failed pi
-claim as text-only, matching the surfaces"; `test/inbox-submit-guards.test.ts` — "a malformed image
+notice, and nothing when the role reads images"; `test/inbox-submit-guards.test.ts` — "a malformed image
 is refused before the role's inbox is touched".
 
 ### INV-AS3: the queue write is the durable effect, and notBeforeMs defers a prompt on both paths
@@ -4258,15 +4257,14 @@ so neither accept variant can throw out of its command.
 ### INV-BU1: the probe cache reader returns only well-formed entries
 
 **Guarantee.** `readImageProbeCache` returns only well-formed entries, so a missing, torn or foreign
-cache file or entry never throws out of `snapshot`, `collectImageProbeFailures` or the doctor's probe
+cache file or entry never throws out of `snapshot` or the doctor's probe
 check, and a dropped entry reads as unprobed.
 
 **Binds.** `src/doctor/image-probe.ts` (`readImageProbeCache`, `isImageProbeCacheEntry`).
 
 **Pinned by.** `test/image-probe.test.ts` — "the probe cache drops a foreign entry and keeps the valid
 ones" and "the probe cache round-trips and a verdict expires after the 7-day TTL" (a valid entry still
-survives); `test/status-data-models.test.ts` — "a foreign entry in the probe cache leaves
-collectImageProbeFailures and snapshot standing".
+survives).
 
 ## Observer run ledgers: a failed ledger write never fails a run
 

@@ -21,7 +21,7 @@ import {
 import type { MergeInFlight } from "../merge/merge-slot.js";
 import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
-import { collectImageProbeFailures, collectRoleRows } from "./status-roles.js";
+import { collectRoleRows } from "./status-roles.js";
 import { collectInboxes } from "./status-inbox.js";
 import { collectRoleNotesOverCap, type RoleNoteOverCap } from "./status-role-notes.js";
 import { collectBudget } from "./status-budget.js";
@@ -63,10 +63,6 @@ export interface StatusSnapshot {
   inboxNotBefore: Array<number | null>;
   /** Open questions awaiting a human answer (QUESTIONS.md's ## Open) — the header badge. */
   questions: number;
-  /** The doctor's live image-probe failures (plans/image-input.md "Surfaces", part 5/5):
-   * every claimed model whose probe failed (fresh verdict), labelled as `<provider>/<model>`.
-   * Empty when nothing failed or no probe ran — the amber probe alert keys on this. */
-  imageProbeFailures: string[];
   /** One row per enabled role. `custom` marks user-defined roles (tumwater.json's
    * customRoles) for the dashboards' asterisk — display-only metadata computed here at the
    * source, from the same last-known-good config that produced the role list, so a transiently
@@ -456,7 +452,6 @@ function snapshotRunFields(
 function snapshotInboxFields(
   root: string,
   inboxes: ReturnType<typeof collectInboxes>,
-  imageProbeFailures: ReturnType<typeof collectImageProbeFailures>,
 ): Partial<StatusSnapshot> {
   return {
     inbox: inboxes.inbox,
@@ -467,7 +462,6 @@ function snapshotInboxFields(
     roleInbox: inboxes.roleInbox,
     roleInboxPrompts: inboxes.roleInboxPrompts,
     questions: openQuestions(root).length,
-    imageProbeFailures,
   };
 }
 
@@ -637,9 +631,6 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // `disk` and the rows agree.
   const slots = readSlotsState(root).slots;
   const roleRows = collectRoleRows(root, cfg, now, slots, modelsPath, markerSet);
-  // The doctor's cached image-probe failures (part 5/5): one read per snapshot, labelled, so
-  // the amber probe alert and `status --json` both answer from the same collector.
-  const imageProbeFailures = collectImageProbeFailures(root, now);
   // Every role whose notes file runs past the read bound (status-role-notes.ts): the standing
   // twin of the doctor `role notes` row, raised as the amber role-notes-truncated alert.
   const roleNotesOverCap = collectRoleNotesOverCap(root);
@@ -718,7 +709,6 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     ...snapshotInboxFields(
       root,
       { inbox, inboxPrompts, inboxFiles, inboxQueuedAt, inboxNotBefore, roleInbox, roleInboxPrompts },
-      imageProbeFailures,
     ),
     roles: roleRows,
     ...snapshotBudgetFields(budget, subscriptionWindows, subscriptionOnly, claudeBlock, running, info),

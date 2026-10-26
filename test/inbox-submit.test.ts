@@ -6,7 +6,6 @@ import { DIRECTOR_PROMPT_MAX_CHARS, imagePromptGuidance, submitPrompt, submitRol
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
-import { imageProbeKey, writeImageProbeCache } from "../src/doctor/image-probe.js";
 import { setEnv } from "./helpers/env.js";
 
 // The submission pipeline (src/inbox/inbox-submit.ts): the shared length cap and the submit
@@ -178,39 +177,6 @@ test("imagePromptGuidance returns a refusal or a reroute notice, and nothing whe
     // A vision role says nothing.
     writeConfig(dir, { model: { default: "local/vision", strong: "local/vision" } });
     assert.deepEqual(imagePromptGuidance(dir, "feature"), {});
-  } finally {
-    restoreAgentDir();
-  }
-});
-
-// The gate reads the same probe cache the status rows and role page read (part 5/5): a claimed
-// pi model whose doctor probe failed is text-only to the submit gate too, so the gate never
-// grants image capability the surfaces report as absent (the review objection that the gate
-// dropped readImageProbeCache).
-test("imagePromptGuidance treats a probe-failed pi claim as text-only, matching the surfaces", async () => {
-  const dir = tmpdir();
-  const modelsDir = tmpdir("inbox-guidance-probe-");
-  writeModelsFile(
-    modelsDir,
-    JSON.stringify({
-      providers: {
-        local: {
-          models: [{ id: "vision", input: ["text", "image"] }],
-        },
-      },
-    }),
-  );
-  const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
-  try {
-    writeConfig(dir, { model: { default: "local/vision", strong: "local/vision" } });
-    // No probe verdict yet: the claim stands on the catalog, so the role reads images.
-    assert.deepEqual(imagePromptGuidance(dir, "feature"), {});
-    // A fresh failing probe overrides the claim: the role is text-only, and with no other tier
-    // able to read images (its strong also probe-fails) the gate refuses instead of granting.
-    writeImageProbeCache(dir, {
-      [imageProbeKey("pi", "local", "vision")]: { verdict: "fail", detail: "answered 429", at: Date.now(), claim: true },
-    });
-    assert.match(imagePromptGuidance(dir, "feature").refusal ?? "", /can't read images/);
   } finally {
     restoreAgentDir();
   }

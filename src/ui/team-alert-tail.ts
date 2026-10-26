@@ -26,7 +26,6 @@ interface TailAlertsInput {
     | "pausedUntil"
     | "pauseReason"
     | "running"
-    | "imageProbeFailures"
   >;
   now: number;
   contention: readonly CapacityBottleneck[];
@@ -248,18 +247,6 @@ function pushImagesAlert(out: TeamAlert[], roles: readonly AlertRole[]): void {
   }
 }
 
-function pushImageProbeAlert(out: TeamAlert[], snap: TailAlertsInput["snap"]): void {
-  if (snap.imageProbeFailures.length > 0) {
-    out.push({
-      key: "images-probe",
-      tone: "amber",
-      title: `A claimed image-capable model failed doctor's probe`,
-      detail: `${snap.imageProbeFailures.join(", ")} declare image input but failed the live probe — run \`tumwater doctor --reprobe\` to re-check.`,
-      actions: seeFailures(),
-    });
-  }
-}
-
 /** The quiet-hours, maintenance, provider-hold, pause, capacity-contention, provider-cap,
  * instance-pool, stale-workspace-pin, regressed-fix, stopped and image-input alerts, in
  * emission order: a run of quiet hours
@@ -287,6 +274,5 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
   pushRegressedFixesAlert(out, regressedFixes);
   pushStoppedAlert(out, snap);
   pushImagesAlert(out, roles);
-  pushImageProbeAlert(out, snap);
   return out;
 }

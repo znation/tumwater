@@ -139,10 +139,9 @@ export function imageRerouteTarget(
 }
 
 /** A seam's model as one readable token, the same label the doctor's `image input` check uses
- * (`claude/<id>` for a claude seam, `provider/model` for pi). The one home of the label, so
- * the surface strings (the images alert, the role page, the status rows) and the doctor report
- * cannot drift, and delegates to backend-traits' modelLabel. */
-export function seamImageLabel(
+ * (`claude/<id>` for a claude seam, `provider/model` for pi), delegated to backend-traits'
+ * modelLabel. Used by roleImageInfo alone. */
+function seamImageLabel(
   backend: string | undefined,
   provider: string | undefined,
   model: string | undefined,
