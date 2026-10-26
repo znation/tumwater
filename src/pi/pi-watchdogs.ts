@@ -57,19 +57,26 @@ interface PiWatchdogs {
   stop(): void;
 }
 
-/** Start one pi run's two watchdog clocks: the run deadline (kills the process tree when it
- * fires, recording whether the run was still progressing) and the quiet/stall interval
- * (quiet-kills a run that stopped making progress and warns on stalled tool calls). Returns
- * the live flags the run's close handler reads and the note/stop calls its data handlers and
- * settle path make. */
-export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
-  let lastProgressAt = Date.now();
-  let lastProgressCount = 0;
-  let sawOutput = false;
-  let timedOut = false;
-  let timedOutProgressing = false;
-  let quietKilled = false;
+/** The live mutable state the two watchdog helpers and the returned facade share: the
+ * deadline's outcome flags and budget, the quiet watchdog's progress/silence bookkeeping,
+ * and the three timer handles `stop` clears. */
+interface WatchdogState {
+  lastProgressAt: number;
+  lastProgressCount: number;
+  sawOutput: boolean;
+  timedOut: boolean;
+  timedOutProgressing: boolean;
+  quietKilled: boolean;
+  timeoutBudgetMs: number;
+  checkpoint?: ReturnType<typeof setTimeout>;
+  timeout?: ReturnType<typeof setTimeout>;
+  quietCheck?: ReturnType<typeof setInterval>;
+}
 
+/** The run-deadline clock: kills the process tree when it fires, after giving a
+ * progressing gate run one extension, and records whether the run was still progressing
+ * (BUGS.md 2026-09-29, 2026-10-09, 2026-10-07). */
+function startDeadlineWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   // A gate run earns one deadline extension while it is still making progress, so a large
   // diff's review can finish instead of timing out mid-verification and being re-read from
   // scratch on the next attempt (BUGS.md 2026-10-07). "Still making progress" means a
@@ -89,10 +96,9 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   // checkpoint covers the extension test and the kill's classification, so the two cannot
   // disagree, and re-arming it for the extended deadline keeps the bar at `progressWindowMs`
   // before whichever deadline finally fires.
-  let checkpoint: ReturnType<typeof setTimeout>;
   const armCheckpoint = (deadlineMs: number) => {
-    clearTimeout(checkpoint);
-    checkpoint = setTimeout(
+    clearTimeout(state.checkpoint);
+    state.checkpoint = setTimeout(
       () => {
         checkpointProgress = deps.progressCount();
       },
@@ -102,17 +108,16 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   armCheckpoint(deps.runTimeoutMs);
 
   let extended = false;
-  let timeoutBudgetMs = deps.runTimeoutMs;
-  let timeout: ReturnType<typeof setTimeout>;
+  state.timeoutBudgetMs = deps.runTimeoutMs;
   const fireDeadline = () => {
     if (deps.extendOnProgress && !extended && deps.progressCount() > checkpointProgress) {
       extended = true;
-      timeoutBudgetMs = deps.runTimeoutMs * 2;
+      state.timeoutBudgetMs = deps.runTimeoutMs * 2;
       armCheckpoint(deps.runTimeoutMs); // the extended deadline gets its own progress window
-      timeout = setTimeout(fireDeadline, deps.runTimeoutMs); // one more slice; the next firing is final
+      state.timeout = setTimeout(fireDeadline, deps.runTimeoutMs); // one more slice; the next firing is final
       return;
     }
-    timedOut = true;
+    state.timedOut = true;
     // A deadline that fires on a run still making progress killed a slow run, not a hung
     // one: "recent progress" is progress since the checkpoint `progressWindowMs` before this
     // deadline — the same window the extension test uses, so the kill's classification
@@ -120,11 +125,16 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
     // budget (BUGS.md 2026-09-29, 2026-10-09). A run with no progress event at all — never
     // emitted a byte, or bytes without one structured event — keeps today's discard path: it
     // has not demonstrably begun.
-    timedOutProgressing = deps.progressCount() > 0 && deps.progressCount() > checkpointProgress;
+    state.timedOutProgressing = deps.progressCount() > 0 && deps.progressCount() > checkpointProgress;
     deps.kill();
   };
-  timeout = setTimeout(fireDeadline, deps.runTimeoutMs);
+  state.timeout = setTimeout(fireDeadline, deps.runTimeoutMs);
+}
 
+/** The quiet/stall clock: quiet-kills a run that stopped making progress and warns on
+ * stalled tool calls, on one interval against the wall clock (BUGS.md 2026-09-23,
+ * 2026-09-28, 2026-09-29, 2026-10-06). */
+function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   // Quiet watchdog: a healthy run makes PROGRESS continuously even when slow — messages
   // start and end, turns and tool calls complete. Prolonged lack of progress means a hung
   // tool (an interactive command waiting for input) or a zombie stream (a dead generation
@@ -158,7 +168,7 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   // once real progress has landed quietTimeoutSeconds applies unchanged.
   const zeroByteSilenceMs = Math.max(deps.quietMs * 2, 30 * 60_000);
   const allowedSilenceMs = () =>
-    deps.progressCount() > 0 ? deps.quietMs : sawOutput ? deps.quietMs * 2 : zeroByteSilenceMs;
+    deps.progressCount() > 0 ? deps.quietMs : state.sawOutput ? deps.quietMs * 2 : zeroByteSilenceMs;
   // The stall warning's threshold (distinct from the kill above): one hung tool call is
   // surfaced by name even while sibling calls keep streaming, so total silence is not
   // required. One warning per stalled call — the interval keeps firing until the kill or
@@ -209,15 +219,15 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
     }
   };
   const checkEveryMs = deps.quietMs > 0 ? deps.quietMs : deps.stallMs;
-  const quietCheck =
+  state.quietCheck =
     checkEveryMs > 0
       ? setInterval(
           () => {
-            if (deps.progressCount() > lastProgressCount) {
-              lastProgressCount = deps.progressCount();
-              lastProgressAt = Date.now();
-            } else if (deps.quietMs > 0 && Date.now() - lastProgressAt > allowedSilenceMs()) {
-              quietKilled = true;
+            if (deps.progressCount() > state.lastProgressCount) {
+              state.lastProgressCount = deps.progressCount();
+              state.lastProgressAt = Date.now();
+            } else if (deps.quietMs > 0 && Date.now() - state.lastProgressAt > allowedSilenceMs()) {
+              state.quietKilled = true;
               deps.kill();
             }
             if (deps.stallMs > 0) warnStalledToolCalls();
@@ -225,34 +235,56 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
           Math.min(Math.max(checkEveryMs / 2, 250), 30_000),
         )
       : undefined;
+}
+
+/** Start one pi run's two watchdog clocks: the run deadline (kills the process tree when it
+ * fires, recording whether the run was still progressing) and the quiet/stall interval
+ * (quiet-kills a run that stopped making progress and warns on stalled tool calls). Returns
+ * the live flags the run's close handler reads and the note/stop calls its data handlers and
+ * settle path make. */
+export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
+  const state: WatchdogState = {
+    lastProgressAt: Date.now(),
+    lastProgressCount: 0,
+    sawOutput: false,
+    timedOut: false,
+    timedOutProgressing: false,
+    quietKilled: false,
+    timeoutBudgetMs: deps.runTimeoutMs,
+  };
+
+  // Each watchdog owns its own timer and the rule it enforces: the deadline/extension rule
+  // and the quiet/stall rule are each found by name here, and `stop` clears all three below.
+  startDeadlineWatch(state, deps);
+  startQuietWatch(state, deps);
 
   return {
     get timedOut() {
-      return timedOut;
+      return state.timedOut;
     },
     get timeoutBudgetMs() {
-      return timeoutBudgetMs;
+      return state.timeoutBudgetMs;
     },
     get timedOutProgressing() {
-      return timedOutProgressing;
+      return state.timedOutProgressing;
     },
     get quietKilled() {
-      return quietKilled;
+      return state.quietKilled;
     },
     get sawOutput() {
-      return sawOutput;
+      return state.sawOutput;
     },
     noteByte() {
-      sawOutput = true; // any byte ends the starting phase, progress or not
+      state.sawOutput = true; // any byte ends the starting phase, progress or not
     },
     noteStderr() {
-      sawOutput = true;
-      lastProgressAt = Date.now();
+      state.sawOutput = true;
+      state.lastProgressAt = Date.now();
     },
     stop() {
-      clearTimeout(timeout);
-      clearTimeout(checkpoint);
-      if (quietCheck) clearInterval(quietCheck);
+      clearTimeout(state.timeout);
+      clearTimeout(state.checkpoint);
+      if (state.quietCheck) clearInterval(state.quietCheck);
     },
   };
 }
