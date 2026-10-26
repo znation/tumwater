@@ -49,15 +49,21 @@ export interface RolloutLines {
   switchedTo?: string;
 }
 
-/** Read the records of ONE turn out of a rollout's text. A rollout is one file per thread that
- * appends a new `task_started` block per run, so the adapter's `afterRun` read (which knows
- * only the thread id that names the file, never a turn id) reads the LAST block — everything
- * after the last `task_started`. `sinceTurnStart` (optional) selects a specific turn's block
- * instead, which pins per-turn isolation: the thread total hides a resume's own figures
- * (finding 4). `requestedModel` is the `-m` tumwater passed; a turn whose `turn_context.model`
- * differs reports the switch. */
-export function rolloutLines(text: string, opts: { sinceTurnStart?: string; requestedModel: string }): RolloutLines {
-  const { sinceTurnStart, requestedModel } = opts;
+/** The scanner's state for one turn: which event set the read turn's usage (`lastUsage`),
+ * its rate limits and model, and whether any matching `task_started` was seen (`sawTurn`). */
+interface TurnRecords {
+  sawTurn: boolean;
+  lastUsage: Json | undefined;
+  lastRateLimits: Json | undefined;
+  model: string | undefined;
+  planType: string | undefined;
+}
+
+/** Scan ONE turn's records out of a rollout's text, tracking `task_started` blocks and
+ * collecting the read turn's `turn_context.model`, `token_usage_record` usage, `token_count`
+ * rate limits and `plan_type`. `rolloutLines` decides emptiness from `sawTurn`/`lastUsage`;
+ * this scanner never decides it. */
+function scanTurnRecords(text: string, sinceTurnStart: string | undefined): TurnRecords {
   let currentTurn: string | undefined;
   let sawTurn = false;
   let lastUsage: Json | undefined;
@@ -112,13 +118,16 @@ export function rolloutLines(text: string, opts: { sinceTurnStart?: string; requ
         break;
     }
   }
-  // No matching task_started, or the turn's usage record is missing or malformed (a truncated
-  // or torn file): there is no reading. (currentTurn will have moved on to a later run's
-  // task_started in a resume-shared file; sawTurn — not currentTurn — is the real signal.)
-  if (!sawTurn || !isJsonObject(lastUsage)) {
-    return { lines: [] };
-  }
+  return { sawTurn, lastUsage, lastRateLimits, model, planType };
+}
 
+/** Assemble the reading's canonical `run_usage`, `billing` and up-to-two `rate_limit` lines
+ * (in that order), plus the `switchedTo` model comparison, from scanned records. */
+function buildRolloutLines(records: TurnRecords, requestedModel: string): RolloutLines {
+  // `rolloutLines` guarantees `lastUsage` is a Json object before calling (its presence check
+  // stays there, so this builder never reads `sawTurn`); narrow the shared interface here.
+  const lastUsage = records.lastUsage as Json;
+  const { lastRateLimits, model, planType } = records;
   const lines: string[] = [];
   const input = finite(lastUsage.input_tokens) ?? 0;
   const cacheRead = finite(lastUsage.cached_input_tokens) ?? 0;
@@ -165,6 +174,25 @@ export function rolloutLines(text: string, opts: { sinceTurnStart?: string; requ
   const switchedTo =
     model !== undefined && requestedModel !== undefined && model !== requestedModel ? model : undefined;
   return { lines, ...(switchedTo !== undefined ? { switchedTo } : {}) };
+}
+
+/** Read the records of ONE turn out of a rollout's text. A rollout is one file per thread that
+ * appends a new `task_started` block per run, so the adapter's `afterRun` read (which knows
+ * only the thread id that names the file, never a turn id) reads the LAST block — everything
+ * after the last `task_started`. `sinceTurnStart` (optional) selects a specific turn's block
+ * instead, which pins per-turn isolation: the thread total hides a resume's own figures
+ * (finding 4). `requestedModel` is the `-m` tumwater passed; a turn whose `turn_context.model`
+ * differs reports the switch. */
+export function rolloutLines(text: string, opts: { sinceTurnStart?: string; requestedModel: string }): RolloutLines {
+  const { sinceTurnStart, requestedModel } = opts;
+  const records = scanTurnRecords(text, sinceTurnStart);
+  // No matching task_started, or the turn's usage record is missing or malformed (a truncated
+  // or torn file): there is no reading. (currentTurn will have moved on to a later run's
+  // task_started in a resume-shared file; sawTurn — not currentTurn — is the real signal.)
+  if (!records.sawTurn || !isJsonObject(records.lastUsage)) {
+    return { lines: [] };
+  }
+  return buildRolloutLines(records, requestedModel);
 }
 
 /** Locate the rollout file of `$CODEX_HOME` that names the session `id`: the first
