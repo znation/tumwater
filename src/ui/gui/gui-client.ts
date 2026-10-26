@@ -264,6 +264,11 @@ const FORMAT_JS = String.raw`  // format:start
   // Server text sometimes carries ISO instants (a restart cooldown's deadline); show them in
   // the viewer's local time.
   const localizeInstants = (s) => String(s).replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (iso) => fmtClock(Date.parse(iso)));
+  // Collapse runs of whitespace to a single space and trim — text.ts's squash, kept as this
+  // browser twin because the page cannot import the server module. The one shared home of the
+  // squash the drawer-config verbatim value's single-line clamp and the pending view's status
+  // suffix+clamp each spelled inline, so the two cannot drift on the collapse rule.
+  const squash = (s) => String(s).replace(/\s+/g, " ").trim();
   // format:end
 `;
 

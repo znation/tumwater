@@ -36,10 +36,10 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
       if (fb.provider !== undefined) return fb.provider;
       return fbDefault;
     };
-    const singleLine = (s) => String(s).replace(/\s+/g, " ").trim();
     // A verbatim value's single-line clamped rendering (80 chars + ellipsis) with the full
     // text riding the title tooltip — the same clamp+tooltip idiom the run summaries use.
-    const clamp = (t) => { const one = singleLine(t); return one.length > 80 ? one.slice(0, 80) + "…" : one; };
+    // The single-line squash rides the shared format-region squash (text.ts's browser twin).
+    const clamp = (t) => { const one = squash(t); return one.length > 80 ? one.slice(0, 80) + "…" : one; };
     const rows = [];
     // A role that runs on pi's own saved default carries no provider/model but a piDefault
     // selector (rolePayload's resolvedModelFields leaves both undefined), and the CLI's

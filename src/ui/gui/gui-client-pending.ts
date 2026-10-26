@@ -238,7 +238,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // verdict-less failed-review-run count when positive, else "". Hand-kept copy because the
   // script cannot import the server renderer; pinned by the client test against the CLI wording.
   const squashText = (s, max) => {
-    const t = String(s).replace(/\s+/g, " ").trim();
+    const t = squash(s);
     if (t.length <= max) return t;
     return t.slice(0, max - 1).trimEnd() + "…";
   };
