@@ -3,7 +3,6 @@ import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   isTeamPaused,
@@ -112,26 +111,35 @@ test("pauseRole and resumeRole maintain the marker set idempotently", () => {
   assert.deepEqual(pausedRoles(root), ["my-custom-role"]);
 });
 
-/** Spawn a child node process that spins on a start file, then pauses one role once — the way
- * two real writers (the CLI and the GUI server) each run in their own process. The barrier
- * aligns every child's read-modify-write window, which is exactly the instant the race fires.
- * Resolves with the child's exit status; the exit listener attaches at spawn time, so a child
- * that fails fast rejects this promise instead of leaving it pending forever. */
-function pauseOnceProcess(root: string, role: string, startFile: string): Promise<void> {
+/** Spawn a child node process that writes its own `ready` file and then pauses one role once —
+ * the way two real writers (the CLI and the GUI server) each run in their own process. Each
+ * child writes its `ready` file immediately before calling `pauseRole`, so the test can wait on
+ * every child's `ready` (a readiness handshake, no CPU spin) before the pauseRole calls land,
+ * which is exactly the instant the race fires. Returns `{ exited, ready }`: `ready` resolves
+ * once the child has written its file and is about to call pauseRole; `exited` resolves when
+ * the child has exited (resolving on an exit, so a child that fails fast still surfaces the
+ * missing role through the caller's assertion rather than hanging forever). */
+function pauseOnceProcess(
+  root: string,
+  role: string,
+  readyFile: string,
+): { exited: Promise<void>; ready: Promise<void> } {
   const module = fileURLToPath(new URL("../src/team/team-state.js", import.meta.url));
   const script = `const fs = require("node:fs");
     import(${JSON.stringify(module)}).then((m) => {
-      while (!fs.existsSync(${JSON.stringify(startFile)})) {}
+      fs.writeFileSync(${JSON.stringify(readyFile)}, "1");
       return m.pauseRole(${JSON.stringify(root)}, ${JSON.stringify(role)});
     })`;
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["-e", script]);
-    let stderr = "";
-    child.stderr?.on("data", (chunk) => (stderr += chunk));
-    child.on("exit", (code) =>
-      code === 0 ? resolve() : reject(new Error(`the ${role} pause process failed: ${stderr}`)),
-    );
-  });
+  const handle = spawnReadyChild(
+    script,
+    () => fs.existsSync(readyFile),
+    `the ${role} pause process never reached pauseRole`,
+  );
+  const exited = (async () => {
+    await handle.ready;
+    await handle.exited;
+  })();
+  return { exited, ready: handle.ready };
 }
 
 test("a sibling pause or resume keeps the paused-roles marker's standing shared deadline", () => {
@@ -181,10 +189,13 @@ test("simultaneous cross-process pauseRole calls all survive in the marker", asy
     JSON.stringify({ roles: seeded, at: 1 }),
   );
   const roles = Array.from({ length: 8 }, (_, i) => `r${i + 1}`);
-  const startFile = path.join(root, "start-when-aligned");
-  const children = roles.map((role) => pauseOnceProcess(root, role, startFile));
-  fs.writeFileSync(startFile, "go"); // release all eight writers at once
-  await Promise.all(children);
+  const readyFile = (role: string) => path.join(root, `pause-ready-${role}`);
+  const children = roles.map((role) => pauseOnceProcess(root, role, readyFile(role)));
+  // Release no writer until every child has written its ready file and is about to call
+  // pauseRole — a readiness handshake that aligns the read-modify-write windows without the
+  // CPU spin of the old start-file barrier (which starved writers on a loaded host).
+  await Promise.all(children.map((c) => c.ready));
+  await Promise.all(children.map((c) => c.exited));
   const expected = [...seeded, ...roles].sort();
   const actual = [...pausedRoles(root)].sort();
   assert.deepEqual(

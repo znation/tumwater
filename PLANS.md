@@ -355,24 +355,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Every case that remains keeps its original subject (rebase, check or batch/stack bookkeeping) and asserts the same outcome through a deterministic rejection.
 - No edit outside test/merger.test.ts.
 
-### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 1/3: the pause-role lost-update test drives contention through the lock, not a spin barrier (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 2/3 and part 3/3 and editing only test/team-state.test.ts, so it holds no prerequisite and merges independently; the class plan's "isolation" option is dropped because the existing e2e step already runs the tier apart from the full suite and it still went red at host load ≈ 146, so only a deterministic signal fixes the verdict; touches test/team-state.test.ts)
-
-**Previously held 1**
-
-**Goal.** Retire the class plan's pause-role member: `test/team-state.test.ts`'s `simultaneous cross-process pauseRole calls all survive in the marker` fails on a loaded host (its child surfaces `withSyncLock`'s "timed out after 10s waiting for lock") even though `pauseRole`/`resumeRole` are fully wrapped in the paused-roles lock. Its eight writers are released by `pauseOnceProcess`'s CPU busy-wait on a start file (`while (!fs.existsSync(startFile)) {}`), so under load a writer can burn the lock's whole acquire bound before it even reaches `pauseRole`; the verdict then hinges on host scheduling, not on the marker's serialization.
-
-**Approach.**
-- Replace the spin barrier with the readiness handshake the file already uses in `a paused-roles lock held by another process is waited for, not stolen`: spawn each writer through `spawnReadyChild` (test/helpers/child-process.ts) so it writes its `ready` file immediately before calling `pauseRole`, and have the test release no writer until every `ready` file exists. This removes the CPU spin that starves the writers under load.
-- Keep the 2000-role seed and the eight simultaneous writers, and the same `deepEqual` assertion; do not weaken the seed or the assertion to make the case pass.
-- If serialization itself (not the barrier) is what starves past the acquire bound, add a test-only seam in src/concurrency/lock.ts for that bound — do not change the production bound and do not change `pauseRole`/`resumeRole`.
-
-**Files touched.** test/team-state.test.ts (src/concurrency/lock.ts only if the acquire bound needs the test seam)
-
-**Acceptance criteria.**
-- `npm run test:gate` passes.
-- `pauseOnceProcess` no longer busy-waits on the start file; the writers are released by a readiness handshake.
-- After all eight writers exit, the marker holds the 2000 seeded roles plus all eight simultaneous pauses.
-
 ### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 2/3: the concurrency tests' reap checks use a process-identity handle, not a bare pid (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 1/3 and part 3/3 and editing only src/process/process.ts, test/codex-hook-trust.test.ts and test/supervisor.test.ts, so it holds no prerequisite and merges independently; touches src/process/process.ts test/codex-hook-trust.test.ts test/supervisor.test.ts)
 
 **Previously held 1**
