@@ -119,6 +119,16 @@ export async function handleRefusal(
   pi: PiRunResult,
 ): Promise<RunOutcome> {
   const reason = (pi.refusedReason ?? "").trim() || "no reason given";
+  const plansUnstripped = await stripBlockedPlanRefusalNotes(ctx, wt);
+  const notes = await collectRefusalNotes(wt, plansUnstripped);
+  const entries = await collectRefusedEntryTitles(ctx, wt, notes);
+  return mergeRefusalNotes(ctx, state, wt, reason, notes, entries);
+}
+
+/** Strip this run's newly added Refused notes from any `## Planned` entry main still holds as
+ * blocked by a planned prerequisite. Returns whether the strip write failed: a throw leaves the
+ * flag set and PLANS.md out of the commit, so the other notes still merge. */
+async function stripBlockedPlanRefusalNotes(ctx: RefusalContext, wt: string): Promise<boolean> {
   const plansFile = path.join(wt, "PLANS.md");
   let plansUnstripped = false;
   if (fs.existsSync(plansFile)) {
@@ -151,11 +161,25 @@ export async function handleRefusal(
       }
     }
   }
-  const notes = (await changedFiles(wt)).filter(
+  return plansUnstripped;
+}
+
+/** The markdown notes this refusal may commit: changed `.md` files, PLANS.md dropped only when
+ * the blocked-plan strip write failed. */
+async function collectRefusalNotes(wt: string, plansUnstripped: boolean): Promise<string[]> {
+  return (await changedFiles(wt)).filter(
     (f) => f.toLowerCase().endsWith(".md") && !(plansUnstripped && f === "PLANS.md"),
   );
+}
+
+/** Best-effort names for the entry_refused event, per changed file's section — it must never
+ * fail the refusal, so a read error swallows and leaves that file unnamed. */
+async function collectRefusedEntryTitles(
+  ctx: RefusalContext,
+  wt: string,
+  notes: string[],
+): Promise<string[]> {
   const entries: string[] = [];
-  // Best-effort naming for the entry_refused event; it must never fail the refusal.
   for (const { file, section } of [{ file: "PLANS.md", section: "Planned" }, { file: "BUGS.md", section: "Open" }]) {
     if (!notes.includes(file)) continue;
     try {
@@ -168,10 +192,27 @@ export async function handleRefusal(
       // Unnamed is fine: the event still carries reason and files.
     }
   }
+  return entries;
+}
+
+/** Merge this refusal's notes onto main: commit only the markdown notes (subject + trailer only —
+ * a refusal carries no WHY/RISK/VERIFIED body; the reason is the subject, and the trailer's turn
+ * count is the same field the friction flag reads), then merge directly. A failed note merge (a
+ * throw such as a lock timeout, or a non-"changed" result) is recorded in `state.lastError` and
+ * reported through the "refused" result like any other non-merge. A merged refusal note supersedes
+ * a stale rejection exactly as applyMergeOutcome's merged branch does (this path merges directly,
+ * bypassing that fold), then pages the operator: the entry stays held until a human or the
+ * director lifts it. */
+async function mergeRefusalNotes(
+  ctx: RefusalContext,
+  state: RunnerState,
+  wt: string,
+  reason: string,
+  notes: string[],
+  entries: string[],
+): Promise<RunOutcome> {
   let commit: string | undefined;
   if (notes.length > 0) {
-    // Subject + trailer only — a refusal carries no WHY/RISK/VERIFIED body; the reason is
-    // the subject, and the trailer's turn count is the same field the friction flag reads.
     const message = buildCommitMessage(
       stampedSubject(baseRoleOf(ctx.role), `refuse — ${reason}`),
       null,
@@ -203,8 +244,6 @@ export async function handleRefusal(
     return { result: "refused", summary: reason, commit };
   }
   if (result !== "changed") state.lastError = `refusal note merge failed: ${result}`;
-  // A merged refusal note is a merged change too: it supersedes a stale rejection exactly as
-  // applyMergeOutcome's merged branch does (this path merges directly, bypassing that fold).
   else {
     clearSupersededRejection(state);
     // Page the operator: the entry stays held until a human or the director lifts it. Best-effort —
