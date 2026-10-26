@@ -5,7 +5,7 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
-### Subtract, part 2d/6: The operator-held alert and the notes view stop naming the operator hold (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2; the second of four finer parts replacing part 2c/6, independent in files of the other three (2c/6, 2e/6, 2f/6) and holding no prerequisite, since the hold still parks entries until 2f/6; touches src/ui/team-alert-backlog.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/prompt/notes-backlog.ts test/team-alerts.test.ts test/status-payload.test.ts test/notes-backlog.test.ts) — done 2026-10-26 by the feature role
+### Subtract, part 2d/6: The operator-held alert and the notes view stop naming the operator hold (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2; the second of four finer parts replacing part 2c/6, independent in files of the other three (2c/6, 2e/6, 2f/6) and holding no prerequisite, since the hold still parks entries until 2f/6; touches src/ui/team-alert-backlog.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/prompt/notes-backlog.ts test/team-alerts.test.ts test/notes-backlog.test.ts) — done 2026-10-26 by the feature role
 
 **Previously held 2**
 
@@ -16,9 +16,9 @@ only grows: search it with grep, or read one entry by its line range. Never read
 - `src/ui/team-alerts.ts`: drop the `operatorHeld` parameter of `teamAlerts` and the `operatorHeld` key of its `buildBacklogAlerts` call.
 - `src/ui/status-payload.ts`, `src/ui/status-render.ts` and `src/ui/tui/tui.tsx`: drop the `operatorHeldEntries` import and its positional argument in the `teamAlerts(...)` call.
 - `src/prompt/notes-backlog.ts`: `collectSeriesNotes` counts a `needs-review` hold only; `holdWording` drops the `held-for-operator` branch and its release sentence, with any import it alone used.
-- Tests: `test/team-alerts.test.ts` and `test/status-payload.test.ts` drop the `operator-held`/`operatorHeld` cases; `test/notes-backlog.test.ts` drops "a held-for-operator bug names tumwater bug --release, a plan names plan --release" or re-points it to the `needs review` wording.
+- Tests: `test/team-alerts.test.ts` drops the `operator-held`/`operatorHeld` cases (including the `statusPayload` path, which no longer carries the alert); `test/notes-backlog.test.ts` drops "a held-for-operator bug names tumwater bug --release, a plan names plan --release" or re-points it to the `needs review` wording.
 
-**Files touched.** src/ui/team-alert-backlog.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/prompt/notes-backlog.ts test/team-alerts.test.ts test/status-payload.test.ts test/notes-backlog.test.ts
+**Files touched.** src/ui/team-alert-backlog.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/prompt/notes-backlog.ts test/team-alerts.test.ts test/notes-backlog.test.ts
 
 **Acceptance criteria.**
 - `grep -rn 'pushOperatorHeldAlert\|operatorHeldEntries' src/ui src/prompt` is empty.
