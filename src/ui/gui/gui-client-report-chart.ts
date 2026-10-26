@@ -14,6 +14,12 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   const REPORT_PALETTE = ["#6366f1", "#f59e0b", "#10b981", "#ef4444", "#0ea5e9", "#a855f7", "#f97316", "#14b8a6",
     "#ec4899", "#84cc16", "#06b6d4", "#eab308", "#64748b", "#d946ef"];
 
+  // A [key, number][] ordering by total desc then key asc — the shared shape of every
+  // role/provider/model ordering (tallyAcross's role/provider/model rows and costPerCommitParts's
+  // mergeDone and idle pairs each spelled the b[1]-a[1] || a[0].localeCompare(b[0]) comparator
+  // inline), so none of them can drift on the count-then-name rule.
+  const byTotalThenName = (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]);
+
   // One [key, total][] for a day series, ordered by total desc then name asc — the shared
   // shape of the role/provider/model orderings. sumFields are the fields that contribute a
   // running total (runsByRole, costByProvider, runsByModel); seedFields are fields whose
@@ -33,7 +39,7 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
         for (const k of Object.keys(d[field] || {})) if (!Object.hasOwn(by, k)) by[k] = 0;
       }
     }
-    return Object.entries(by).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return Object.entries(by).sort(byTotalThenName);
   }
 
   // Window totals per role — runs desc, then name — so the legend and the stack order match
@@ -494,8 +500,8 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
       if (n > 0) mergeDone.push([role, c / n, n]);
       else idle.push([role, c]);
     }
-    mergeDone.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-    idle.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    mergeDone.sort(byTotalThenName);
+    idle.sort(byTotalThenName);
     return { mergeDone, idle };
   }
 
