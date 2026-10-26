@@ -391,31 +391,24 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 2c/6: The held counters and the operator hold go — a too-large note keeps the plan role running (planned 2026-10-26 by the plan role, split from the too-large part 2/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; requires Subtract part 2b/6 landed, since all three edit the same guidance constants, classifier and release surfaces; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-index.ts src/backlog/backlog-cli.ts src/backlog/backlog-cli-view.ts src/runner/revision.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-backlog.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts docs/glossary.md docs/how-it-works.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts test/team-alerts.test.ts test/status-payload.test.ts test/tui-keys.test.ts)
+### Subtract, part 2c/6: The held-count writers and the prompt wording go (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; the first of four finer parts replacing part 2c/6, holding no prerequisite; touches src/roles/role-guidance.ts src/roles/role-catalog.ts src/prompt/prompt.ts test/role-guidance.test.ts test/prompt-roles.test.ts)
 
-**Needs review 2026-10-26 by feature: too large for one run (held 2)**
+**Previously held 2**
 
-**Previously held 1**
-
-**Goal.** No `(held N)`/`**Previously held N**` count is written or read, no Needs-review note escalates to a derived *held-for-operator* hold, and one release verb lifts Refused then Needs review; a `**Needs review … too large for one run**` note always routes to the plan role (`planBacklogFull` false), never to the operator.
+**Goal.** No role writes a held count: a too-large note carries no `(held <N>)` tag and the plan role's split writes no `**Previously held N**` line, so a new hold never escalates to the operator's desk. The readers (`heldCount`, the operator-hold threshold, `operatorHeldEntries`) stay until part 2f/6, so notes already on disk still classify.
 
 **Approach.**
-- src/roles/role-guidance.ts: delete `HELD_TAG_PREFIX`, `PRIOR_HELD_PREFIX` and `PRIOR_HELD_NOTE`; `NEEDS_REVIEW_NOTE` loses its trailing `(held <N>)` tag. Keep `CONVERGENCE_HOLD_MARKER`: the convergence note is a plain `**Needs review …**` note the plan role recognises by its text.
-- src/backlog/backlog-eligibility.ts: delete `OPERATOR_HOLD_THRESHOLD`, `heldCount`, `lineHeldCount` and `withoutHeldForOperatorNotes`; delete `operatorHeldEntries`; `EntryHold` becomes `"refused" | "needs-review" | { blockedBy } | null`; `entryHoldAgainst` returns `needs-review` for any Needs-review line with no escalation; `holdMark` drops the operator mark.
-- src/runner/revision.ts: `holdEntryAfterExhaustion` keeps writing the plain `**Needs review <date> by <role>: could not converge — <objections>**` note; drop any count wording.
-- src/backlog/backlog-release.ts: `LiftableHold` shrinks to the surviving notes; `liftRefusal` lifts Refused first, else any Needs-review note (drop `withoutHeldForOperatorNotes` and the `(held N)`/`Previously held` cleanup). `tumwater plan|bug --release <n>`, the TUI's Ctrl+R and the dashboard's Release all call it.
-- src/roles/role-catalog.ts and src/prompt/prompt.ts: the feature step stops appending `(held N)`; the plan role's split stops writing `**Previously held N**`; the prompts say two holds.
-- src/doctor/doctor-backlog-plans.ts: `checkStalledEntries` collects `needs-review` only; the `stalled entries` row says a Needs-review note parks it and the plan role splits it.
-- Alerts and status: src/ui/team-alert-backlog.ts deletes `pushOperatorHeldAlert` and its input; src/ui/team-alert-backlog-feed.ts drops the operator-held feed; src/ui/team-alerts.ts drops the `operatorHeld` parameter; src/ui/status-payload.ts, src/ui/status-render.ts and src/ui/tui/tui.tsx drop `operatorHeldEntries()`. The TUI/GUI release surfaces drop their `held-for-operator` state and wording.
-- docs/glossary.md and docs/how-it-works.md: drop the held-counter and held-for-operator rows.
+- `src/roles/role-guidance.ts`: `NEEDS_REVIEW_NOTE` becomes `**Needs review <YYYY-MM-DD> by feature: too large for one run**` — its trailing ` (held <N>)` goes. Delete `PRIOR_HELD_NOTE` (only `test/role-guidance.test.ts` imports it). Keep `HELD_TAG_PREFIX` and `PRIOR_HELD_PREFIX` exported: the backlog readers still parse them until part 2f/6.
+- `src/roles/role-catalog.ts`: the feature `find` text drops the held-tag increment paragraph ("The held tag you write … three holds without a merge reach `(held 3)`") and its `HELD_TAG_PREFIX`/`PRIOR_HELD_PREFIX` interpolations; the plan `find` text drops the "keep the held count … copy it to each child" bullet and its `heldCount` mention. Drop the now-unused imports.
+- `src/prompt/prompt.ts`: the director's marked-plan bullet stops naming the `(held <N>)` tag (it interpolates `NEEDS_REVIEW_NOTE`, so the tag goes with the constant); trim the surrounding comment.
+- Tests: `test/role-guidance.test.ts` ("the held-count tag is pinned by the note template…", "the feature text names the (held N) tag…") now assert the tag's absence; `test/prompt-roles.test.ts` drops the `(held N)`/`Previously held` assertions and the director's tag assertion.
 
-**Files touched.** src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/backlog/backlog-index.ts src/backlog/backlog-cli.ts src/backlog/backlog-cli-view.ts src/runner/revision.ts src/roles/role-catalog.ts src/prompt/prompt.ts src/doctor/doctor-backlog-plans.ts src/ui/team-alert-backlog.ts src/ui/team-alert-backlog-feed.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-backlog.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts docs/glossary.md docs/how-it-works.md test/backlog-eligibility.test.ts test/doctor-checks.test.ts test/team-alerts.test.ts test/status-payload.test.ts test/tui-keys.test.ts
+**Files touched.** src/roles/role-guidance.ts src/roles/role-catalog.ts src/prompt/prompt.ts test/role-guidance.test.ts test/prompt-roles.test.ts
 
 **Acceptance criteria.**
-- `grep -rnE 'HELD_TAG_PREFIX|PRIOR_HELD|operatorHeld|held-for-operator|heldCount|OPERATOR_HOLD_THRESHOLD' src/ docs/` is empty, and no `(held N)`/`**Previously held N**` writer remains.
-- A `**Needs review … too large for one run**` plan or bug keeps the plan role scheduled (`planBacklogFull` false) and is split by it, with no held count and no operator `--release` in the path.
-- The `stalled entries` doctor row reports Needs-review entries only, and the operator-held alert is gone from `teamAlerts` and its three call sites.
-- `npm run test:gate` passes.
+- `grep -rn 'PRIOR_HELD_NOTE' src/ test/` is empty, and `NEEDS_REVIEW_NOTE` plus the feature/plan/director texts carry no `(held ` or `Previously held` writing instruction.
+- `grep -n 'HELD_TAG_PREFIX\|PRIOR_HELD_PREFIX' src/roles/role-catalog.ts src/prompt/prompt.ts` is empty while `src/backlog/backlog-eligibility.ts` still imports both.
+- A newly appended too-large note carries no count and classifies as `[blocked: needs review]` (heldCount reads 0 with no tag), and `npm run test:gate` passes.
 
 ### Subtract, part 5a/6: The image probe's cache readers and its failed-probe alert go (planned 2026-10-26 by the plan role, split from the too-large part 5a/6 after feature held it twice (held 2); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the first of four finer parts replacing part 5a/6, holding no prerequisite; touches src/status/status-data.ts src/status/status-roles.ts src/inbox/inbox-submit.ts src/roles/role-view.ts src/agent/image-input.ts src/ui/team-alert-tail.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts docs/backends.md docs/invariants.md test/inbox-submit.test.ts test/role-view.test.ts test/status-data-models.test.ts test/team-alerts.test.ts test/fixtures/status-fixtures.ts)
 
@@ -600,5 +593,71 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `npm run test:gate` passes.
 
 **Tests.** No new test module: a behavior-preserving move guarded by test/backlog-archive.test.ts — "the commit-time sweep moves only the entries the change added, newest first, into a new archive", "the sweep prepends to an existing archive and leaves entries the base already had", "the sweep moves nothing while legacy entries sit in the live section and no archive exists", "the sweep keeps a placeholder in the live section and a following section's heading intact", "the bulk archive moves the whole body, one-line records included, or all but the newest kept entries", "the sweep drops an added entry the archive holds verbatim and leaves an edited copy in the live section", "a sweep that only finds re-pasted entries empties the live section and leaves the archive as it was" and "the bulk archive skips entries the archive already holds, whatever it keeps". Run test/backlog-archive.test.ts whole, then the project's gate, and confirm green.
+
+### Subtract, part 2d/6: The operator-held alert and the notes view stop naming the operator hold (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2; the second of four finer parts replacing part 2c/6, independent in files of the other three (2c/6, 2e/6, 2f/6) and holding no prerequisite, since the hold still parks entries until 2f/6; touches src/ui/team-alert-backlog.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/prompt/notes-backlog.ts test/team-alerts.test.ts test/status-payload.test.ts test/notes-backlog.test.ts)
+
+**Previously held 2**
+
+**Goal.** `teamAlerts` emits no `operator-held` alert and the surfaces it feeds no longer count or phrase a held-for-operator entry. Eligibility is unchanged until part 2f/6, so an at-threshold entry still parks; only its banner and digest line go.
+
+**Approach.**
+- `src/ui/team-alert-backlog.ts`: delete `pushOperatorHeldAlert`, the `operatorHeld` field of `BacklogAlertsInput`, its destructure and its call; trim the comments that name it.
+- `src/ui/team-alerts.ts`: drop the `operatorHeld` parameter of `teamAlerts` and the `operatorHeld` key of its `buildBacklogAlerts` call.
+- `src/ui/status-payload.ts`, `src/ui/status-render.ts` and `src/ui/tui/tui.tsx`: drop the `operatorHeldEntries` import and its positional argument in the `teamAlerts(...)` call.
+- `src/prompt/notes-backlog.ts`: `collectSeriesNotes` counts a `needs-review` hold only; `holdWording` drops the `held-for-operator` branch and its release sentence, with any import it alone used.
+- Tests: `test/team-alerts.test.ts` and `test/status-payload.test.ts` drop the `operator-held`/`operatorHeld` cases; `test/notes-backlog.test.ts` drops "a held-for-operator bug names tumwater bug --release, a plan names plan --release" or re-points it to the `needs review` wording.
+
+**Files touched.** src/ui/team-alert-backlog.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/prompt/notes-backlog.ts test/team-alerts.test.ts test/status-payload.test.ts test/notes-backlog.test.ts
+
+**Acceptance criteria.**
+- `grep -rn 'pushOperatorHeldAlert\|operatorHeldEntries' src/ui src/prompt` is empty.
+- `teamAlerts` emits no `operator-held` alert for a backlog holding an at-threshold note, and the status payload and TUI frame render the same alert list without it.
+- `npm run test:gate` passes.
+
+### Subtract, part 2e/6: The release surfaces stop offering the operator hold (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2; the third of four finer parts replacing part 2c/6, independent in files of the other three (2c/6, 2d/6, 2f/6) and holding no prerequisite, since the CLI release still lifts a held note until 2f/6; touches src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts src/gui/gui-backlog-endpoints.ts src/gui/gui-backlog-commands.ts test/tui-keys.test.ts test/gui-client-drawer.test.ts test/gui-endpoints.test.ts)
+
+**Previously held 2**
+
+**Goal.** The TUI's Ctrl+R, the dashboard drawer's Release button and the dashboard release endpoint name and handle only the Refused note: `heldForOperator` leaves the backlog payload and no release surface offers a held-for-operator entry. `tumwater plan|bug --release` on the CLI still lifts one until part 2f/6 changes the core.
+
+**Approach.**
+- `src/ui/tui/tui-pane-backlog.ts`: the Ctrl+R guard takes only `hold === "refused"`; the "carries no Refused …" flash and the comment drop the held-for-operator half.
+- `src/ui/tui/tui-pane-session.ts` and `src/ui/tui/tui-keys.ts`: the `armedRelease` comments drop the held-for-operator release.
+- `src/ui/gui/gui-client-boot.ts`: the release result no longer distinguishes "the held-for-operator note"; the not_refused copy names the Refused note.
+- `src/ui/gui/gui-client-drawer.ts`: the Release button condition drops `d.heldForOperator`.
+- `src/gui/gui-backlog-endpoints.ts`: the backlog payload drops the `heldForOperator` key and the `operatorHeldEntries` import and lookup.
+- `src/gui/gui-backlog-commands.ts`: the `handleBacklogRelease` comment drops the held-for-operator sentence.
+- Tests: `test/tui-keys.test.ts` ("backlog Ctrl+R twice releases a held-for-operator plan and wakes the plan role") drops the held-for-operator release case; `test/gui-client-drawer.test.ts` ("the entry drawer offers Release this entry only on a refused or held-for-operator entry") narrows to a refused entry; `test/gui-endpoints.test.ts` ("handleBacklogRelease lifts a held-for-operator note from a bug") drops or re-points to a Refused note.
+
+**Files touched.** src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts src/gui/gui-backlog-endpoints.ts src/gui/gui-backlog-commands.ts test/tui-keys.test.ts test/gui-client-drawer.test.ts test/gui-endpoints.test.ts
+
+**Acceptance criteria.**
+- `grep -rn 'heldForOperator' src/ test/` is empty; `grep -rn 'held-for-operator' src/ui src/gui` is empty.
+- The GUI backlog payload carries no `heldForOperator` field, and the drawer offers Release only on a refused entry.
+- The TUI release guard accepts a `refused` hold only, and `npm run test:gate` passes.
+
+### Subtract, part 2f/6: The held counters, the derived operator hold and the release verb collapse to one Needs review hold (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2, and plans/refusal-and-thrash.md; the fourth of four finer parts replacing part 2c/6, requires Subtract parts 2c/6, 2d/6 and 2e/6 landed, since 2c/6 drops the count writers and 2d/6 and 2e/6 drop every reader outside the core; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/doctor/doctor-backlog-plans.ts src/runner/revision.ts docs/invariants.md docs/cli.md test/backlog-eligibility.test.ts test/backlog-release-holds.test.ts test/backlog-write-cancel.test.ts test/doctor-backlog.test.ts)
+
+**Previously held 2**
+
+**Goal.** The held count and the derived operator hold are gone from the data layer: `heldCount`, `OPERATOR_HOLD_THRESHOLD`, `withoutHeldForOperatorNotes` and `operatorHeldEntries` are deleted, `EntryHold` loses `"held-for-operator"`, and a `**Needs review …**` note parks an entry for the plan role at any count. One `tumwater plan|bug --release` lifts the Refused note first, else the Needs-review note, so the operator never has to release a too-large plan.
+
+**Approach.**
+- `src/roles/role-guidance.ts`: delete `HELD_TAG_PREFIX`, `PRIOR_HELD_PREFIX` and their comments (2c/6 removed the writers; this removes the last readers).
+- `src/backlog/backlog-eligibility.ts`: delete `heldCount`, `lineHeldCount`, `OPERATOR_HOLD_THRESHOLD`, `withoutHeldForOperatorNotes` and `operatorHeldEntries`; `EntryHold` becomes `"refused" | "needs-review" | { blockedBy } | null`; `entryHoldAgainst` returns `"needs-review"` for any Needs-review line; `holdMark` drops the operator branch; update the module and function comments.
+- `src/backlog/backlog-release.ts`: `LiftableHold` becomes `"refused" | "needs-review"`; `liftRefusal` filters the Refused lines, else the Needs-review note line via a `withoutNeedsReviewNotes` helper built on `withoutNoteLines`; `liftedNotePhrase`, the doc comments and the `carries no … note` failure say "the Needs review note".
+- `src/doctor/doctor-backlog-plans.ts`: `checkStalledEntries` collects hold `"needs-review"` only; the row's operator-release branch and its `heldCount` interpolation go.
+- `src/runner/revision.ts`: the `holdEntryAfterExhaustion` comment stops naming `operatorHeldEntries`.
+- `docs/invariants.md`: re-scope INV-AT1 to one liftable Needs-review hold (the guarantee, binds and pinned-by names) and drop the held-for-operator wording from the exhaustion-note paragraph.
+- `docs/cli.md`: the `--release` clause and the `Ctrl+R` row name a Refused or Needs review note.
+- Tests: `test/backlog-eligibility.test.ts` drops the `heldCount`/threshold/held-for-operator cases; `test/backlog-release-holds.test.ts` re-points its held-note cases to the second (Needs-review) lift; `test/backlog-write-cancel.test.ts` re-points its held release; `test/doctor-backlog.test.ts` folds the held-for-operator cases into the Needs-review row.
+
+**Files touched.** src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/doctor/doctor-backlog-plans.ts src/runner/revision.ts docs/invariants.md docs/cli.md test/backlog-eligibility.test.ts test/backlog-release-holds.test.ts test/backlog-write-cancel.test.ts test/doctor-backlog.test.ts
+
+**Acceptance criteria.**
+- `grep -rnE 'OPERATOR_HOLD_THRESHOLD|withoutHeldForOperatorNotes|operatorHeldEntries|HELD_TAG_PREFIX|PRIOR_HELD|held-for-operator' src/ docs/` is empty; `backlog-eligibility.ts` exports no `heldCount`.
+- A Needs-review note at any count parks the entry as `[blocked: needs review]`, and one `tumwater plan --release` lifts it (the Refused note first when both are present).
+- `checkStalledEntries` reports the entry without an operator-release branch, and INV-AT1's pinned-by names only surviving tests.
+- `npm run test:gate` passes.
 
 ## Done
