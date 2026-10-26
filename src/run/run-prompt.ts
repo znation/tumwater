@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunnerState } from "../runner/runner-state.js";
-import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
+import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage, type Role } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { planBacklogTarget } from "../scheduling/claims.js";
 import { configForRole } from "../config/config-views.js";
@@ -136,7 +136,8 @@ function buildDirectorRunPrompt(
  * resolution and unknown-role throw, the role-prompt dequeue and marker strip, the
  * observer evidence blocks, the notes and their backlog state, the plan target, and the
  * flaky/no-check notes, feeding the single buildRunPrompt call. Never null — a role always
- * has a prompt to run on. */
+ * has a prompt to run on. Each stage is read by one named helper below, so the body is the
+ * ordered calls and the single buildRunPrompt call. */
 function buildRoleRunPrompt(
   root: string,
   config: TumwaterConfig,
@@ -150,128 +151,15 @@ function buildRoleRunPrompt(
   backlogIndex: string | undefined,
   rejectedReview: string | undefined,
 ): { prompt: string; userPrompt: string | null; userPromptFile: string | null } {
-  // The role id keys its inbox and notes; every lookup ABOUT the role — catalog charter,
-  // instructions, the qa/selfcheck/clean blocks — resolves through the base role, so
-  // `feature-2` runs the feature charter and `roles.feature.instructions` while keeping its
-  // own queue and notes (plans/parallel-work-instances.md).
-  const base = baseRoleOf(role);
-  // Catalog first, then user-defined roles (plans/user-defined-loops.md): a custom's task
-  // is its entire find-something-to-do text and the title identifies it in the prompt.
-  const custom = config.customRoles.find((c) => c.name === role);
-  const resolved = roleById(role) ?? (custom ? customRole(custom.name, custom.task) : undefined);
-  if (!resolved) {
-    // The shared unknownRoleMessage (parseRoleFlag, the operator commands) names the valid
-    // ids; this defensive path — a runner asked to run a role no catalog entry or
-    // customRoles task can answer — says the same, so if it ever fires it reads as the
-    // harness bug it is instead of a bare dead end.
-    const validIds = [...allRoleIds(), ...config.customRoles.map((c) => c.name)];
-    throw new Error(unknownRoleMessage(role, validIds));
-  }
-  // A queued per-role prompt is dequeued here, before the prompt is built, so its text rides
-  // in the run's prompt; PendingPrompt records it as pending and re-queues it on every
-  // unfulfilled outcome — including a merge-side `main_red` pin, which returns before any run.
-  // A deferred prompt's `tumwater:not-before` marker line is plumbing
-  // (src/inbox/prompt-not-before.ts), not
-  // content: it is stripped at delivery, so the role sees the operator's text alone and the
-  // runner's re-queue writes clean text.
-  const entry = preview ? null : dequeueRolePromptEntry(root, role);
-  const dequeued = preview ? peekRolePrompt(root, role) : entry?.text ?? null;
-  const request = dequeued === null ? null : stripNotBeforeMarker(dequeued);
-  // The selfcheck and feedback observers' evidence is the harness's own event log, one level
-  // outside this worktree, so its evidence module renders it (selfcheckDigest) and the run
-  // injects it.
-  const digest = base === "selfcheck" || base === "feedback" ? selfcheckDigest(root) : undefined;
-  // The `qa` observer's flow rotation needs a memory of what it last exercised; every run
-  // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
-  // runtime state, and a missing or unreadable one degrades to no block
-  // (plans/observer-roles.md 2/2).
-  let coverage: string | undefined;
-  if (base === "qa") {
-    try {
-      coverage = renderCoverageBlock(readQaCoverage(root));
-    } catch {
-      coverage = undefined;
-    }
-  }
-  // The `ci` observer's parity block: what the last run covered (tip and lock hash) so a
-  // fresh session can decide nothing-to-do without re-running the whole suite (part 3/3).
-  // Runtime state, and a missing/unreadable record degrades to no block, exactly like qa's.
-  let ciParity: string | undefined;
-  if (base === "ci") {
-    try {
-      ciParity = parityBlockFor(root, config);
-    } catch {
-      ciParity = undefined;
-    }
-  }
-  // The `feedback` observer's per-install filing ledger: what this install already filed as
-  // GitHub issues on znation/tumwater, so the fresh session's charter dedupes against a
-  // "previously filed" block instead of the network alone. Runtime state, and a missing or
-  // unreadable ledger degrades to no block (plans/feedback-role.md 2/2).
-  // The render returns undefined for an empty ledger, so the prompt is unchanged in the common
-  // first-run case.
-  let filings: string | undefined;
-  if (base === "feedback") {
-    try {
-      filings = renderFilingsBlock(readFeedbackFilings(root));
-    } catch {
-      filings = undefined;
-    }
-  }
-  // The clean role's deterministic backlog repair: stranded plan headings in the primary
-  // checkout's PLANS.md (plans, part 3/4), rendered like the digest and coverage blocks.
-  // An unreadable or clean file gives no block, so the prompt is unchanged in the common case.
-  const backlogStructure = base === "clean" ? renderBacklogStructureBlock(root) : undefined;
-  // The role's notes (PLANS.md "Role notebook"): its own earlier runs' note. A missing,
-  // empty, or unreadable file yields undefined, so the block is omitted; the write
-  // instruction in buildRunPrompt is present either way. The director branch above never
-  // reads this path, so it carries no notes.
-  const notes = readRoleNote(root, role);
-  // The note file's mtime is when the notes were last saved (writes replace the file), so the
-  // run can weigh how stale they are.
-  const savedStat = notes === undefined ? null : statOrNull(roleNotesPath(root, role));
-  const notesSavedDay = savedStat ? dayKey(savedStat.mtimeMs) : undefined;
-  // The live state of each entry and series the notes name, so a stale note cannot keep a hold
-  // the backlog has lifted (notes-backlog.ts). The three readers are already stat-cached. A
-  // note naming nothing live yields undefined and no block — the common case, since most notes
-  // are about the code, not the backlog.
-  const notesBacklog =
-    notes === undefined || notes.trim() === ""
-      ? undefined
-      : notesBacklogBlock(notes, {
-          planned: plannedPlanEntries(root),
-          openBugs: openBugEntries(root),
-          donePlanTitles: donePlans(root),
-        });
-  // The plan charter's stop threshold is derived from config (plans/parallel-work-
-  // instances.md "…keeping the plan role ahead", part 5c/7). The catalog text stays a
-  // config-free description of the rule; this note supplies the concrete eligible-plan count
-  // so the plan role stops only once every configured feature instance has a plan waiting.
-  const planTargetNote =
-    base === "plan"
-      ? `This run's stop target: when PLANS.md \`## Planned\` already holds ` +
-        `${planBacklogTarget(config)} or more eligible plans, end with ${NOTHING_TO_DO}. ` +
-        `It holds ${eligibleEntries(root, "feature").length} now (tumwater's count of entries ` +
-        `feature could take, the same count that decides whether a plan run is deferred).`
-      : undefined;
-  const flakyChecks = base === "bugfix" ? flakyChecksNote(root) : undefined;
-  // The no-check note: when the project declares no deterministic check and the team is
-  // closing the gap itself, the plan note tells the plan role to write the declaration entry
-  // (no marker entry waits yet) and the feature note tells the feature role to implement the
-  // marker entry that does wait. Decided by CHECK_DECLARATION_MARKER (declarationPlanEntry)
-  // rather than prose, so a feature run never invents a declaration the plan role never wrote
-  // and a plan run cannot stack a second declaration on one already waiting. Any other role,
-  // or a declared check, gets neither note — byte-unchanged prompts.
-  const declaration = (base === "plan" || base === "feature") && check === undefined ? declarationPlanEntry(root) : undefined;
-  // Whole declaration drives the decision: `declarationPlanEntry` returns null (not
-  // undefined) when no marker entry waits, so a truthy test selects the feature note and a
-  // falsy one the plan note.
-  const noCheck =
-    check === undefined && (base === "plan" || base === "feature")
-      ? (declaration
-          ? (base === "feature" ? buildNoCheckNote(base) : undefined)
-          : (base === "plan" ? buildNoCheckNote(base) : undefined))
-      : undefined;
+  const { base, resolved } = resolveRoleForPrompt(config, role);
+  const { request, promptFile } = collectRoleRequest(root, role, preview);
+  const digest = collectSelfcheckDigest(root, base);
+  const coverage = collectQaCoverageBlock(root, base);
+  const ciParity = collectCiParityBlock(root, config, base);
+  const filings = collectFeedbackFilingsBlock(root, base);
+  const backlogStructure = collectBacklogStructureBlock(root, base);
+  const { notes, notesSavedDay, notesBacklog } = readPromptNotes(root, role);
+  const { planTargetNote, flakyChecks, noCheck } = collectRoleDirectives(root, config, base, check);
   // A run holding a claim with no queued request is assigned its one entry (the assignment
   // note below). Such a run reads that entry first, so the backlog index — what an unassigned
   // run chooses its task from — stays out.
@@ -308,9 +196,174 @@ function buildRoleRunPrompt(
   });
   if (request) {
     userPrompt = request;
-    userPromptFile = entry?.file ?? null;
+    userPromptFile = promptFile;
   }
   return { prompt, userPrompt, userPromptFile };
+}
+
+/** Resolve the run's role: the base role that keys the observer evidence, and the catalog or
+ * user-defined charter. Throws the shared unknown-role message when neither answers. */
+function resolveRoleForPrompt(config: TumwaterConfig, role: string): { base: string; resolved: Role } {
+  // The role id keys its inbox and notes; every lookup ABOUT the role — catalog charter,
+  // instructions, the qa/selfcheck/clean blocks — resolves through the base role, so
+  // `feature-2` runs the feature charter and `roles.feature.instructions` while keeping its
+  // own queue and notes (plans/parallel-work-instances.md).
+  const base = baseRoleOf(role);
+  // Catalog first, then user-defined roles (plans/user-defined-loops.md): a custom's task
+  // is its entire find-something-to-do text and the title identifies it in the prompt.
+  const custom = config.customRoles.find((c) => c.name === role);
+  const resolved = roleById(role) ?? (custom ? customRole(custom.name, custom.task) : undefined);
+  if (!resolved) {
+    // The shared unknownRoleMessage (parseRoleFlag, the operator commands) names the valid
+    // ids; this defensive path — a runner asked to run a role no catalog entry or
+    // customRoles task can answer — says the same, so if it ever fires it reads as the
+    // harness bug it is instead of a bare dead end.
+    const validIds = [...allRoleIds(), ...config.customRoles.map((c) => c.name)];
+    throw new Error(unknownRoleMessage(role, validIds));
+  }
+  return { base, resolved };
+}
+
+/** Dequeue (or, in preview, peek) the role's queued request and strip its not-before marker,
+ * returning the delivered text and the queue file it came from. */
+function collectRoleRequest(root: string, role: string, preview: boolean): { request: string | null; promptFile: string | null } {
+  // A queued per-role prompt is dequeued here, before the prompt is built, so its text rides
+  // in the run's prompt; PendingPrompt records it as pending and re-queues it on every
+  // unfulfilled outcome — including a merge-side `main_red` pin, which returns before any run.
+  // A deferred prompt's `tumwater:not-before` marker line is plumbing
+  // (src/inbox/prompt-not-before.ts), not
+  // content: it is stripped at delivery, so the role sees the operator's text alone and the
+  // runner's re-queue writes clean text.
+  const entry = preview ? null : dequeueRolePromptEntry(root, role);
+  const dequeued = preview ? peekRolePrompt(root, role) : entry?.text ?? null;
+  const request = dequeued === null ? null : stripNotBeforeMarker(dequeued);
+  return { request, promptFile: entry?.file ?? null };
+}
+
+/** The selfcheck and feedback observers' evidence is the harness's own event log, one level
+ * outside this worktree, so its evidence module renders it (selfcheckDigest) and the run
+ * injects it. */
+function collectSelfcheckDigest(root: string, base: string): string | undefined {
+  return base === "selfcheck" || base === "feedback" ? selfcheckDigest(root) : undefined;
+}
+
+/** The `qa` observer's flow-coverage ledger: rerendered from disk each run, degrading to no
+ * block on a missing or unreadable ledger (plans/observer-roles.md 2/2). */
+function collectQaCoverageBlock(root: string, base: string): string | undefined {
+  // The `qa` observer's flow rotation needs a memory of what it last exercised; every run
+  // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
+  // runtime state, and a missing or unreadable one degrades to no block.
+  let coverage: string | undefined;
+  if (base === "qa") {
+    try {
+      coverage = renderCoverageBlock(readQaCoverage(root));
+    } catch {
+      coverage = undefined;
+    }
+  }
+  return coverage;
+}
+
+/** The `ci` observer's parity block: what the last run covered (tip and lock hash) so a
+ * fresh session can decide nothing-to-do without re-running the whole suite (part 3/3).
+ * Runtime state, and a missing/unreadable record degrades to no block, exactly like qa's. */
+function collectCiParityBlock(root: string, config: TumwaterConfig, base: string): string | undefined {
+  let ciParity: string | undefined;
+  if (base === "ci") {
+    try {
+      ciParity = parityBlockFor(root, config);
+    } catch {
+      ciParity = undefined;
+    }
+  }
+  return ciParity;
+}
+
+/** The `feedback` observer's per-install filing ledger: what this install already filed as
+ * GitHub issues on znation/tumwater, so the fresh session's charter dedupes against a
+ * "previously filed" block instead of the network alone. Runtime state, and a missing or
+ * unreadable ledger degrades to no block (plans/feedback-role.md 2/2). */
+function collectFeedbackFilingsBlock(root: string, base: string): string | undefined {
+  // The render returns undefined for an empty ledger, so the prompt is unchanged in the common
+  // first-run case.
+  let filings: string | undefined;
+  if (base === "feedback") {
+    try {
+      filings = renderFilingsBlock(readFeedbackFilings(root));
+    } catch {
+      filings = undefined;
+    }
+  }
+  return filings;
+}
+
+/** The clean role's deterministic backlog repair: stranded plan headings in the primary
+ * checkout's PLANS.md (plans, part 3/4), rendered like the digest and coverage blocks. */
+function collectBacklogStructureBlock(root: string, base: string): string | undefined {
+  // An unreadable or clean file gives no block, so the prompt is unchanged in the common case.
+  return base === "clean" ? renderBacklogStructureBlock(root) : undefined;
+}
+
+/** Read the role's own notes plus their saved day and live backlog state (notes-backlog.ts),
+ * returning all three in one place. */
+function readPromptNotes(root: string, role: string): { notes: string | undefined; notesSavedDay: string | undefined; notesBacklog: string | undefined } {
+  // The role's notes (PLANS.md "Role notebook"): its own earlier runs' note. A missing,
+  // empty, or unreadable file yields undefined, so the block is omitted; the write
+  // instruction in buildRunPrompt is present either way. The director branch above never
+  // reads this path, so it carries no notes.
+  const notes = readRoleNote(root, role);
+  // The note file's mtime is when the notes were last saved (writes replace the file), so the
+  // run can weigh how stale they are.
+  const savedStat = notes === undefined ? null : statOrNull(roleNotesPath(root, role));
+  const notesSavedDay = savedStat ? dayKey(savedStat.mtimeMs) : undefined;
+  // The live state of each entry and series the notes name, so a stale note cannot keep a hold
+  // the backlog has lifted (notes-backlog.ts). The three readers are already stat-cached. A
+  // note naming nothing live yields undefined and no block — the common case, since most notes
+  // are about the code, not the backlog.
+  const notesBacklog =
+    notes === undefined || notes.trim() === ""
+      ? undefined
+      : notesBacklogBlock(notes, {
+          planned: plannedPlanEntries(root),
+          openBugs: openBugEntries(root),
+          donePlanTitles: donePlans(root),
+        });
+  return { notes, notesSavedDay, notesBacklog };
+}
+
+/** The directive notes a run may carry: the plan charter's stop target, the bugfix flake
+ * tally, and the plan/feature no-check note — each exactly as it stood inline. */
+function collectRoleDirectives(root: string, config: TumwaterConfig, base: string, check: BuildCheck | undefined): { planTargetNote: string | undefined; flakyChecks: string | undefined; noCheck: string | undefined } {
+  // The plan charter's stop threshold is derived from config (plans/parallel-work-
+  // instances.md "…keeping the plan role ahead", part 5c/7). The catalog text stays a
+  // config-free description of the rule; this note supplies the concrete eligible-plan count
+  // so the plan role stops only once every configured feature instance has a plan waiting.
+  const planTargetNote =
+    base === "plan"
+      ? `This run's stop target: when PLANS.md \`## Planned\` already holds ` +
+        `${planBacklogTarget(config)} or more eligible plans, end with ${NOTHING_TO_DO}. ` +
+        `It holds ${eligibleEntries(root, "feature").length} now (tumwater's count of entries ` +
+        `feature could take, the same count that decides whether a plan run is deferred).`
+      : undefined;
+  const flakyChecks = base === "bugfix" ? flakyChecksNote(root) : undefined;
+  // The no-check note: when the project declares no deterministic check and the team is
+  // closing the gap itself, the plan note tells the plan role to write the declaration entry
+  // (no marker entry waits yet) and the feature note tells the feature role to implement the
+  // marker entry that does wait. Decided by CHECK_DECLARATION_MARKER (declarationPlanEntry)
+  // rather than prose, so a feature run never invents a declaration the plan role never wrote
+  // and a plan run cannot stack a second declaration on one already waiting. Any other role,
+  // or a declared check, gets neither note — byte-unchanged prompts.
+  const declaration = (base === "plan" || base === "feature") && check === undefined ? declarationPlanEntry(root) : undefined;
+  // Whole declaration drives the decision: `declarationPlanEntry` returns null (not
+  // undefined) when no marker entry waits, so a truthy test selects the feature note and a
+  // falsy one the plan note.
+  const noCheck =
+    check === undefined && (base === "plan" || base === "feature")
+      ? (declaration
+          ? (base === "feature" ? buildNoCheckNote(base) : undefined)
+          : (base === "plan" ? buildNoCheckNote(base) : undefined))
+      : undefined;
+  return { planTargetNote, flakyChecks, noCheck };
 }
 
 /** Append the shared claim/held/discard/cut-off tail — identical for a director and a role —
