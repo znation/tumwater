@@ -263,7 +263,7 @@ function runEventMessage(e: HarnessEvent): string {
       // Priority headroom (part 7/7): a reserve appearing or vanishing is the scheduler working
       // as designed; it names the permits withheld for the work tier so an operator can see why
       // maintenance concurrency dipped.
-      return `${finiteNumber(e.reserve, 0)} permit(s) reserved for work roles that have work to take`;
+      return `${plural(finiteNumber(e.reserve, 0), "permit")} reserved for work roles that have work to take`;
     default: return textOr(e.type);
   }
 }
@@ -659,7 +659,7 @@ function imageRestartEventMessage(e: HarnessEvent): string {
     case "restart": {
       const aborted = finiteNumber(e.abortedRuns, 0);
       return `restarting onto update ${shortSha(e.to)} (finished current work in ${minutes(e.finishedMs)}m${
-          aborted > 0 ? `, ${aborted} run(s) resume after the restart` : ""
+          aborted > 0 ? `, ${plural(aborted, "run")} resume after the restart` : ""
         })`;
     }
     case "restart_refused":

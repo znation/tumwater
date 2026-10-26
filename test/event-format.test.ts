@@ -650,7 +650,7 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   const restart = formatEvent({
     ts: 0, source: "tumwater", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: 5 * 60_000, abortedRuns: 2,
   } as never);
-  assert.match(restart, /restarting onto update bbbbbbbb \(finished current work in 5m, 2 run\(s\) resume after the restart\)/);
+  assert.match(restart, /restarting onto update bbbbbbbb \(finished current work in 5m, 2 runs resume after the restart\)/);
   const clean = formatEvent({
     ts: 0, source: "tumwater", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: 0, abortedRuns: 0,
   } as never);
