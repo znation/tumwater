@@ -32,73 +32,79 @@ export function createBackendsEditor(session: TuiEditorSession): TuiEditorModule
     restoreDraft();
   };
 
+  // Ctrl+X edits the team's agent backends on the Activity view (view 0) — the terminal
+  // twin of the dashboard Settings `Agent backends (JSON)` field and `tumwater config set
+  // backends`, so an operator can point the team at a backend executable without leaving
+  // the terminal. On every non-Activity view Ctrl+X keeps its other meaning — the guard
+  // lets the key fall through to the retire editor (a role's Transcript and the Health
+  // view), the Backlog cancel arm and the Inbox cancel arm, which run after this arm.
+  // While open, Ctrl+X toggles the editor out. Entering pre-fills the line from the
+  // FILE's top-level `backends` (compact JSON when set, empty when unset — empty means
+  // "cleared" on save) and saves the prompt text; leaving restores it. The team key owns
+  // no role, so no role is pinned.
+  const toggleBackendsEdit = (ctx: TuiEditorCtx): boolean => {
+    if (backendsMode) {
+      exitBackendsMode();
+      return true;
+    }
+    if (ctx.view !== 0) return false;
+    if (session.editorEntryDenied("backends")) return true;
+    const existing = rawBackends(session.root);
+    restoreDraft = session.takeDraft();
+    backendsMode = true;
+    session.held.backends = true;
+    session.input = existing !== undefined ? JSON.stringify(existing) : "";
+    session.cursor = session.input.length;
+    session.flashMessage(
+      "edit the team's agent backends (backends, a JSON object like {\"pi\":{\"bin\":\"/path/to/pi\"}}; empty clears): Enter to save, Esc to cancel",
+    );
+    return true;
+  };
+
+  // Esc cancels backends mode, restoring the previous prompt text.
+  const cancelBackendsEdit = (): boolean => {
+    exitBackendsMode();
+    return true;
+  };
+
+  // Enter commits the section through the shared setter family the CLI and the dashboard
+  // Settings field use: an empty or whitespace-only line clears the key
+  // (`unsetConfigKey`), otherwise `setConfigKey` writes the top-level `backends` as the
+  // typed text — setConfigKey JSON-parses it, so `{"pi":{"bin":"…"}}` becomes the object
+  // while `pi` collapses to the literal string, and validateConfig's section block owns
+  // the value's truth (a non-object or a non-object entry is rejected with nothing
+  // written). Because the key is the whole section, the setter's top-level arm runs
+  // collapseBackendAliases so a legacy `agentBin`/`piArgs` can never sit beside the new
+  // `backends.pi` spelling. Both write tumwater.json atomically and the running
+  // orchestrator picks the change up on its next poll. An invalid value flashes and STAYS
+  // in edit mode so the operator can fix it; success restores the saved prompt text.
+  const submitBackendsEdit = (): boolean => {
+    const text = session.input.trim();
+    const result =
+      text === ""
+        ? unsetConfigKey(session.root, "backends")
+        : setConfigKey(session.root, "backends", text);
+    if (result.ok) {
+      exitBackendsMode();
+      session.flashMessage(
+        text === ""
+          ? "agent backends cleared"
+          : `agent backends set to ${text}`,
+      );
+    } else {
+      session.flashMessage(result.error); // broken config or write failure — stay in edit mode
+    }
+    return true;
+  };
+
   const handleKey = (
     _str: string | undefined,
     key: { ctrl?: boolean; name?: string },
     ctx: TuiEditorCtx,
   ): boolean => {
-    if (key.ctrl && key.name === "x") {
-      // Ctrl+X edits the team's agent backends on the Activity view (view 0) — the terminal
-      // twin of the dashboard Settings `Agent backends (JSON)` field and `tumwater config set
-      // backends`, so an operator can point the team at a backend executable without leaving
-      // the terminal. On every non-Activity view Ctrl+X keeps its other meaning — the guard
-      // lets the key fall through to the retire editor (a role's Transcript and the Health
-      // view), the Backlog cancel arm and the Inbox cancel arm, which run after this arm.
-      // While open, Ctrl+X toggles the editor out. Entering pre-fills the line from the
-      // FILE's top-level `backends` (compact JSON when set, empty when unset — empty means
-      // "cleared" on save) and saves the prompt text; leaving restores it. The team key owns
-      // no role, so no role is pinned.
-      if (backendsMode) {
-        exitBackendsMode();
-        return true;
-      }
-      if (ctx.view !== 0) return false;
-      if (session.editorEntryDenied("backends")) return true;
-      const existing = rawBackends(session.root);
-      restoreDraft = session.takeDraft();
-      backendsMode = true;
-      session.held.backends = true;
-      session.input = existing !== undefined ? JSON.stringify(existing) : "";
-      session.cursor = session.input.length;
-      session.flashMessage(
-        "edit the team's agent backends (backends, a JSON object like {\"pi\":{\"bin\":\"/path/to/pi\"}}; empty clears): Enter to save, Esc to cancel",
-      );
-      return true;
-    }
-    if (key.name === "escape" && backendsMode) {
-      // Esc cancels backends mode, restoring the previous prompt text.
-      exitBackendsMode();
-      return true;
-    }
-    if (key.name === "return" && backendsMode) {
-      // Enter commits the section through the shared setter family the CLI and the dashboard
-      // Settings field use: an empty or whitespace-only line clears the key
-      // (`unsetConfigKey`), otherwise `setConfigKey` writes the top-level `backends` as the
-      // typed text — setConfigKey JSON-parses it, so `{"pi":{"bin":"…"}}` becomes the object
-      // while `pi` collapses to the literal string, and validateConfig's section block owns
-      // the value's truth (a non-object or a non-object entry is rejected with nothing
-      // written). Because the key is the whole section, the setter's top-level arm runs
-      // collapseBackendAliases so a legacy `agentBin`/`piArgs` can never sit beside the new
-      // `backends.pi` spelling. Both write tumwater.json atomically and the running
-      // orchestrator picks the change up on its next poll. An invalid value flashes and STAYS
-      // in edit mode so the operator can fix it; success restores the saved prompt text.
-      const text = session.input.trim();
-      const result =
-        text === ""
-          ? unsetConfigKey(session.root, "backends")
-          : setConfigKey(session.root, "backends", text);
-      if (result.ok) {
-        exitBackendsMode();
-        session.flashMessage(
-          text === ""
-            ? "agent backends cleared"
-            : `agent backends set to ${text}`,
-        );
-      } else {
-        session.flashMessage(result.error); // broken config or write failure — stay in edit mode
-      }
-      return true;
-    }
+    if (key.ctrl && key.name === "x") return toggleBackendsEdit(ctx);
+    if (key.name === "escape" && backendsMode) return cancelBackendsEdit();
+    if (key.name === "return" && backendsMode) return submitBackendsEdit();
     return false;
   };
 
