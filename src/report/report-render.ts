@@ -213,6 +213,21 @@ function pushReportSummary(lines: string[], t: ReportTotals, tail = "", scoped =
  * collector's captured cutoff, so the printed window matches the aggregated one). */
 export function renderSinceReportMarkdown(data: SinceReport): string {
   const lines: string[] = [];
+  pushSinceWindowHeader(lines, data);
+  pushSinceSummary(lines, data);
+  pushSinceRoleLines(lines, data);
+  pushSinceProviderModelLines(lines, data);
+  pushSinceMainRedLines(lines, data);
+  pushSinceFrictionLines(lines, data);
+  pushSinceDeferralLines(lines, data);
+  pushSinceCommitLines(lines, data);
+  pushSinceCostLines(lines, data);
+  pushSinceCoverageLines(lines, data);
+  return lines.join("\n");
+}
+
+/** The window header: the title, the bounded-or-since window line and the role scope line. */
+function pushSinceWindowHeader(lines: string[], data: SinceReport): void {
   lines.push("# tumwater usage report");
   lines.push("");
   lines.push(
@@ -222,12 +237,21 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   );
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
   lines.push("");
+}
+
+/** The shared totals voice (minus features/bugs/filing cells, stated at the tail), gated
+ * to the team report like the day sibling's. */
+function pushSinceSummary(lines: string[], data: SinceReport): void {
   const t = data.totals;
   // Same totals voice as the day report, minus the features/bugs and filing cells: those tallies
   // come from day-granular backlog-file dates that cannot subdivide a sub-day window, so the
   // final line below states the omission instead of showing a day-rounded number.
   pushReportSummary(lines, t, "", data.role !== undefined);
   lines.push("");
+}
+
+/** Runs / tokens / prompt-tokens / cost breakdowns by role. */
+function pushSinceRoleLines(lines: string[], data: SinceReport): void {
   lines.push(rankedRoleLine("Runs by role", rankedRoleMap(data.runsByRole), String));
   // Same breakdown for token spend: ranked by tokens desc then name asc, zero-token roles
   // omitted — an all-zero window renders "-" like the other lines. Output tokens are the
@@ -247,6 +271,10 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // Same breakdown for spend: ranked by spend desc then name asc, zero-spend roles omitted —
   // an all-zero window renders "-" like the runs line.
   pushRankedRoleLine(lines, "Cost by role", rankedRoleMap(data.costByRole), usd);
+}
+
+/** The provider cost lines and the per-model line, gated to the team report. */
+function pushSinceProviderModelLines(lines: string[], data: SinceReport): void {
   // The same breakdown per PROVIDER (plans: per-provider spend), gated to the team report
   // like its day sibling. SinceReport.costByProvider is always present (empty when none), so
   // the zero-means-absent gate prints no line for a window with no provider spend.
@@ -261,6 +289,10 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
     const modelPairs = rankedRoleMap(data.runsByModel).filter(([, n]) => n > 0);
     if (modelPairs.length > 0) lines.push(rankedRoleLine("Runs by model", modelPairs, String));
   }
+}
+
+/** Main's red time and the test/merge culprits behind it, gated like the day sibling. */
+function pushSinceMainRedLines(lines: string[], data: SinceReport): void {
   // Main's red wall-clock over the window (main's own, not any role's — a role-scoped
   // collector carries 0, so this never prints for a scoped window). Zero-absent: no line for
   // a window main was never red.
@@ -277,6 +309,10 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
     const mainRedByCulprit = rankedRoleMap(data.mainRedByCulprit ?? {}).filter(([, n]) => n > 0);
     if (mainRedByCulprit.length > 0) lines.push(rankedRoleLine("Main red by merge", mainRedByCulprit, String));
   }
+}
+
+/** The review-friction and failed-run breakdowns by role. */
+function pushSinceFrictionLines(lines: string[], data: SinceReport): void {
   // The same breakdown for review friction: rejections per role from review_rejected events;
   // a window with none renders "-" like the other lines. The post-merge line is the
   // afterMerge: true subset — rejections that reached an already-merged commit.
@@ -291,6 +327,10 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   pushRankedRoleLine(lines, "Failed runs by role", rankedRoleMap(data.failedRunsByRole));
   pushRankedRoleLine(lines, "Fallbacks by role", rankedRoleMap(data.fallbacksByRole));
   pushRankedRoleLine(lines, "Image reroutes by role", rankedRoleMap(data.imageReroutesByRole));
+}
+
+/** Deferred maintenance runs by reason code, gated to the team report. */
+function pushSinceDeferralLines(lines: string[], data: SinceReport): void {
   // Deferred maintenance runs per reason code, the --since twin of the day render's line:
   // how many due maintenance runs stood down and why (backlog / no-work / plans-full).
   // Gated to the team report — a reason is not a role, so a role-scoped window omits it.
@@ -299,6 +339,10 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
     const deferred = rankedRoleMap(data.deferredByReason ?? {}).filter(([, n]) => n > 0);
     if (deferred.length > 0) lines.push(rankedRoleLine("Deferred runs by reason", deferred, String));
   }
+}
+
+/** Commits by role and the merged/merge-failure split, gated to the team report. */
+function pushSinceCommitLines(lines: string[], data: SinceReport): void {
   // The merged-commits split by base role, matching the day render's unfiltered line: the
   // window's totals.commits carries the count; this line says which role's commits it was.
   lines.push(rankedRoleLine("Commits by role", rankedRoleMap(data.commitsByRole), String));
@@ -320,6 +364,10 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
     if (mergeFailureReasons.length > 0)
       lines.push(rankedRoleLine("Merge failures by reason", mergeFailureReasons, String));
   }
+}
+
+/** Cost/estimated per commit and the notional Estimated by role lines. */
+function pushSinceCostLines(lines: string[], data: SinceReport): void {
   // Spend per merged commit, the --since twin of the day render's `Cost per commit:` line:
   // costByRole is keyed by role id (instances not folded, so `feature-2` joins `feature`),
   // commitsByRole is already base-role keyed. Prints for a spend-free window as `-` and for a
@@ -333,6 +381,10 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
     // notionalByRole source folded to base roles and the base-keyed commitsByRole.
     lines.push(costPerCommitLine("Estimated per commit", costPerCommitPairsFrom(foldBaseRoles(data.notionalByRole), data.commitsByRole)));
   }
+}
+
+/** The trailing blank and the exactly-one coverage/backlog-omission note. */
+function pushSinceCoverageLines(lines: string[], data: SinceReport): void {
   lines.push("");
   // Exactly one final line, chosen by the collector's coverage proof: either a hedged note
   // that stays true whenever it prints (the oldest retained event lies inside the window —
@@ -344,7 +396,6 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   if (!data.coversFullWindow) lines.push(SPARSE_WINDOW_NOTE);
   else if (data.role === undefined)
     lines.push("backlog tallies (features done / bugs fixed / plans added / bugs filed) need the day report (--days)");
-  return lines.join("\n");
 }
 
 /** Fold every key of a per-role-id map through its base role, so `feature-2` joins `feature`.
