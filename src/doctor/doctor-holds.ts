@@ -37,6 +37,13 @@ export function loadRunnerStates(root: string, config: TumwaterConfig): RunnerSt
     .sort((a, b) => a.role.localeCompare(b.role));
 }
 
+/** A doctor row's `not checked` outcome when tumwater.json is unreadable: the row blanks its
+ * verdict rather than claim a state it cannot see (checkInit owns that error). Every check that
+ * reads the config returns this same outcome when the file is unreadable. */
+function uncheckedConfigOutcome(): CheckOutcome {
+  return okOutcome("not checked — tumwater.json unreadable");
+}
+
 /** The `pause` check: names a standing operator pause so doctor does not print "ready to run"
  * over a team that starts no run. Read-only: it reads the same team and per-role pause
  * markers the scheduler reads (standingTeamPause, pausedRoles, pausedRolesUntil — all treat
@@ -106,7 +113,7 @@ export function checkBudget(
   published: { spentUsd: number; capUsd: number } | null,
   now: number = Date.now(),
 ): CheckOutcome {
-  if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
+  if (config === undefined) return uncheckedConfigOutcome();
   const states = loadRunnerStates(root, config);
   const spent = published?.spentUsd ?? teamDailyCost(states, now);
   const caps = config.maxDailyCostUsdPerRole;
@@ -140,7 +147,7 @@ export function checkMaintenanceQuota(
   aliveTeam: boolean,
   now: number = Date.now(),
 ): CheckOutcome {
-  if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
+  if (config === undefined) return uncheckedConfigOutcome();
   const runners = loadRunnerStates(root, config).map((s) => ({ role: s.role, running: aliveTeam && s.running === true }));
   const queued = aliveTeam ? new Set(readMergeQueue(root).entries.map((e) => e.role)) : new Set<string>();
   const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkMerge, runners, queued, now);
@@ -252,7 +259,7 @@ export function checkProviderHolds(root: string, now: number = Date.now()): Chec
  * role at ERROR_STREAK_BREAKER's bar is described, not attributed to the breaker. A warn, not a
  * fail: a failing role does not stop the team from running. */
 export function checkErrorStreaks(root: string, config: TumwaterConfig | undefined): CheckOutcome {
-  if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
+  if (config === undefined) return uncheckedConfigOutcome();
   const failing = loadRunnerStates(root, config)
     .filter((s) => errorStreakAtWarn(s));
   if (failing.length === 0) return okOutcome("no role failing repeatedly");
@@ -285,7 +292,7 @@ export function checkMainRed(
   config: TumwaterConfig | undefined,
   now: number = Date.now(),
 ): CheckOutcome {
-  if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
+  if (config === undefined) return uncheckedConfigOutcome();
   const mainCheck = mainCheckForPoll(root, config);
   const ids = runnerIds(config);
   const held = loadRunnerStates(root, config)
