@@ -105,9 +105,9 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   // ---- global actions: alert and tile buttons, role names anywhere, questions ----
   // run-act:start
   // The backlog drawer rows, the refused-banner card action and the mention action all receive
-  // their target as a "file:index" string (a data-act arg or a .backloglink); one place parses
-  // that shape into the file name and the 0-based row number every consumer dereferences, so
-  // the Number() coercion and split cannot drift across the seven call sites.
+  // their target as a "file:index" string in a button's data-act arg; one place parses that
+  // shape into the file name and the 0-based row number every consumer dereferences, so the
+  // Number() coercion and split cannot drift across the seven call sites.
   function entryRef(arg) {
     const [file, index] = arg.split(":");
     return { file, index: Number(index) };
