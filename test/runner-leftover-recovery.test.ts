@@ -16,11 +16,9 @@ import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import { setRef } from "../src/git/git.js";
-import { ERROR_STREAK_WARN } from "../src/run/run-apply.js";
 import { mergeRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { enqueueMerge, headMerge, queueDepth } from "../src/merge/merge-queue.js";
-import { rolePhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeRoleRunner, roleWt, runAbortedDirectorMerge } from "./fixtures/runner-fixtures.js";
 import { mergeHead, mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
@@ -41,7 +39,7 @@ async function pinLeftover(
   await setRef(repo, mergeRefName(role), sha);
   return sha;
 }
-import { conflictingMainEdit, firstRunThenIdle, seedBranchEdit, withPi } from "./fakes/fake-pi.js";
+import { conflictingMainEdit, seedBranchEdit, withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./fixtures/pi-events.js";
 
 // A failed review retries in place (src/review/review.ts); the pause between tries is not tested.
@@ -225,52 +223,6 @@ test("a hand-back whose diff no longer applies is dropped and the author starts 
         "the failure is logged with the hand-back's sha",
       );
       assert.equal(headMerge(repo)?.entry.sha, outcome.commit, "only the fresh change is queued");
-    },
-  );
-});
-
-// BUGS.md 2026-09-19: recovery re-merged a high-friction commit without its flag (and its body),
-// so the reviewer skipped the extra scrutiny the flag exists to trigger. Both are already stamped
-// into the pinned commit's message; recovery must read them back and present them to the same
-// gate a fresh run uses.
-test("a recovered high-friction commit reaches the reviewer with its flag and body", async () => {
-  const repo = await initializedRepo();
-  // Simulate the crash: a pinned commit whose message carries the harness's Friction trailer and
-  // the author's WHY/RISK/VERIFIED, with the role branch back at main.
-  const sha = await pinLeftover(
-    repo,
-    "recovered.txt",
-    "work\n",
-    [
-      "tumwater(improve): slow but worthwhile",
-      "",
-      "WHY: the fix was fiddly",
-      "RISK: touches the merge path",
-      "VERIFIED: npm test, all pass",
-      "",
-      "Run: improve #3 · turns 44 · ctx 20.0k",
-      "Friction: high (44 turns / 4m)",
-    ].join("\n"),
-  );
-
-  const reviewArgs = path.join(tmpdir(), "recovery-review-args");
-  await withPi(
-    [
-      reviewerPi("VERDICT: approve", reviewArgs),
-      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-    ].join("\n"),
-    async () => {
-      const runner = makeRoleRunner(repo, "improve");
-      const outcome = await runner.run();
-      assert.equal(outcome.result, "queued", "recovery queued the pin");
-      assert.equal(outcome.highFriction, true, "the queued outcome keeps the recovered flag");
-      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
-
-      // The re-review carried both the flag and the author's reasoning, reconstructed from the pin.
-      const prompt = fs.readFileSync(reviewArgs, "utf8");
-      assert.match(prompt, /HIGH-FRICTION/, "the recovered commit is flagged for extra scrutiny");
-      assert.match(prompt, /WHY: the fix was fiddly/, "the recovered body rides into the gate");
-      assert.equal(mainSha(repo), sha, "the recovered commit merged");
     },
   );
 });
@@ -468,54 +420,52 @@ test("an unmergeable leftover is retried on the next run and keeps its merge pin
   );
 });
 
-test("a failed recovery review keeps its pinned commit for re-review", async () => {
+// A failed gate on a re-queued leftover keeps its pinned commit for the next run's retry — the
+// keep, not discard, a pre-merge review failure used to leave. Re-pointed to a deterministic gate
+// rejection (a conflicting re-apply leaves unresolved conflict markers, so the merge ends
+// `merge_conflict` and the pin survives) so the case no longer drives the pre-merge reviewer. The
+// reviewer-run fake below only approves so the merge can reach the conflict; part 3h/3 removes
+// that run and the approve goes unused.
+test("a failed gate keeps the recovered pinned commit for the next run's retry", async () => {
   const repo = await initializedRepo();
   const m1 = path.join(tmpdir(), "phase1");
-  // Phase 0 (any run whose prompt asks for a VERDICT — the review gate): reply without a
-  // VERDICT line, failing closed under the strike cap both times. The FIRST review run only
-  // leaves an untracked stray file in the pooled slot it runs in — guarded so the recovery
-  // review does not recreate it and mask the cleanup assertion below. Phase 1 (run
-  // 1): edit seed.txt on the branch — its commit is pinned when the run's own review fails.
-  const strayOnce = path.join(tmpdir(), "stray-once");
+  // Phase 0 (any run whose prompt asks for a VERDICT — the review gate, which recovery
+  // routes through): approve, so recovery reaches the merge and can fail there. Phase
+  // 1 (run 1): branch edit + conflicting main advance. Every conflict-resolution run
+  // (detected by markers in seed.txt) leaves the markers: unresolvable, both runs.
   await withPi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
-      `  [ -f "${strayOnce}" ] || touch "${strayOnce}" stray.txt`,
-      `  printf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
-      `  exit 0;; esac; done`,
-      ...firstRunThenIdle(m1, seedBranchEdit()),
+      reviewerPi(`VERDICT: approve\n1. checked the diff; it holds`),
+      `if [ ! -f "${m1}" ]; then`,
+      `  touch "${m1}"`,
+      ...seedBranchEdit(),
+      ...conflictingMainEdit(repo),
+      `elif grep -q '<<<<<<<' seed.txt 2>/dev/null; then`,
+      `  : # leave the markers in place (unresolvable)`,
+      `else`,
+      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `fi`,
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
       assert.equal((await runner.run()).result, "queued");
-      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
-      // The merge's commit is pinned for recovery; the role worktree is clean at main.
+      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
+      // The failed merge's commit is pinned for the next run's retry; the worktree is clean.
       assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
       const pinned = sh(repo, "git", "rev-parse", "--verify", mergeRefName("improve")).trim();
-      assert.ok(pinned.length === 40, "the failed review's commit is pinned for re-review");
+      assert.ok(pinned.length === 40, "the failed merge's commit is pinned for the next run's retry");
 
       assert.equal((await runner.run()).result, "queued", "run 2 re-queued the pin");
-      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
+      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
 
-      // The failed recovery review (under the strike cap) deliberately kept its pin for
-      // re-review — a plain ref deletion would have discarded it. The role worktree stays
-      // clean at main whatever recovery does, and the reviewer's stray file in the pooled slot
-      // is cleaned by the next merge's lease (the slot's ensureDetachedWorktree reset).
+      // The pin survives the second failure too, just as a failed review's pin did, and the role
+      // worktree stays clean at main whatever recovery does.
       assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
       const wt = roleWt(repo, "improve");
-      assert.ok(!fs.existsSync(path.join(wt, "stray.txt")), "no stray file in the role worktree");
       assertClean(wt, "no uncommitted edits remain");
-      const mergeWt = path.join(repo, ".tumwater/worktrees/_slot-1");
-      assert.ok(!fs.existsSync(path.join(mergeWt, "stray.txt")), "the reviewer's stray file is cleaned on re-merge");
-      const failed = eventsOfType(repo, "review_failed");
-      assert.equal(failed.length, 6, "both the run's review and its recovery review failed, each on its 3 in-place attempts");
-      assert.ok(
-        failed.some((e) => String(e.message).includes('no parseable VERDICT')),
-        `expected a verdict-less review failure, got: ${JSON.stringify(failed)}`,
-      );
-      // Run 2's own result was `queued`; the first merge's review failure (still in the shared
+      // Run 2's own result was `queued`; the first merge's failure (still in the shared
       // `lastError` when run 2 started) must not latch onto its `run_end` as the run's error
-      // (BUGS.md 2026-09-21). The review_failed events above are where the merge failures live.
+      // (BUGS.md 2026-09-21). The merge_conflict events above are where the merge failures live.
       const runEnds = eventsOfType(repo, "run_end");
       const run2End = runEnds[runEnds.length - 1]!;
       assert.equal(run2End.result, "queued");
@@ -524,108 +474,12 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
   );
 });
 
-test("a persistent recovery review failure feeds the error streak and reads failing", async () => {
-  const repo = await initializedRepo();
-  const m1 = path.join(tmpdir(), "streak-phase1");
-  // Phase 0 (a run whose prompt asks for a VERDICT — the review gate): the backend is down, so
-  // pi exits nonzero with no reply. That is a FAILED run, not a strike against the HEAD, so the
-  // pin is kept indefinitely (src/review/review.ts) — the "dead reviewer backend" of the bug.
-  // Phase 1
-  // (run 1): commit and pin. Every later run ends on leftover recovery, which re-queues the
-  // pin. Before the fix the streak reset on each recovery run and nothing ever named the
-  // wedged pin (BUGS.md 2026-09-21).
-  await withPi(
-    [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) echo "reviewer backend down" >&2; exit 1;; esac; done`,
-      ...firstRunThenIdle(m1, seedBranchEdit()),
-    ].join("\n"),
-    async () => {
-      const runner = makeRoleRunner(repo, "improve");
-      assert.equal((await runner.run()).result, "queued");
-      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
-
-      // Each following run re-queues the still-pinned commit, and its merge's review fails
-      // again. The runs themselves end `queued` — healthy on their face — so only the re-queued
-      // merge failure they carry can grow the streak.
-      for (let i = 0; i < ERROR_STREAK_WARN; i++) {
-        assert.equal((await runner.run()).result, "queued", "the run re-queued the leftover");
-        assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
-      }
-      assert.equal(runner.state.consecutiveErrors, ERROR_STREAK_WARN, "the merge failures fed the error streak");
-
-      // One warning names the stuck gate, carrying the review failure's own reason (the detail
-      // is not in lastError, which the sibling mislabel fix clears before run_end).
-      const warnings = eventsOfType(repo, "warning");
-      assert.ok(
-        warnings.some(
-          (e) =>
-            String(e.message).includes('3 runs failed in a row') &&
-            String(e.message).includes('review failed: reviewer backend down'),
-        ),
-        `expected one warning naming the review failure, got: ${JSON.stringify(warnings)}`,
-      );
-      // Both dashboards read their phase from rolePhase.
-      assert.equal(rolePhase(runner.state, true), "failing", "the dashboards read failing, not sleeping");
-      // The failure kept the pin for another attempt.
-      assert.equal(
-        sh(repo, "git", "rev-parse", "--verify", mergeRefName("improve")).trim().length,
-        40,
-        "the pinned leftover survives the persistent review failure",
-      );
-    },
-  );
-});
-
-test("a permanent reviewer config error holds the pin instead of re-queuing it", async () => {
-  const repo = await initializedRepo();
-  const m1 = path.join(tmpdir(), "config-error-phase1");
-  // Phase 0 (a run whose prompt asks for a VERDICT — the review gate): the provider rejects
-  // the request with a permanent 4xx config error and pi exits nonzero. Every later authoring
-  // run idles. Phase 1 (run 1): edit seed.txt and pin the commit when its review fails.
-  await withPi(
-    [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
-      `  printf '%s\\n' '400 the provider or policy you attempted to specify is not valid: model_not_supported' >&2`,
-      `  exit 1;; esac; done`,
-      ...firstRunThenIdle(m1, seedBranchEdit()),
-    ].join("\n"),
-    async () => {
-      const config = defaultConfig();
-      config.review.model = "bad/model";
-      const runner = makeRoleRunner(repo, "improve", config);
-      assert.equal((await runner.run()).result, "queued");
-      assert.equal(await mergeHead(repo, runner, config, "improve"), "review_error");
-      assert.equal(runner.state.mergeReviewError?.selector, "bad/model", "the hold names the failed reviewer selector");
-
-      // The next run holds the pin: no re-queue and no second merge (which would pay another
-      // full gate check for a request that can never succeed), and an error outcome so the runner
-      // backs off on the error ladder instead of re-queuing at suite speed.
-      assert.equal((await runner.run()).result, "error", "the held run backs off instead of re-queuing");
-      assert.equal(queueDepth(repo), 0, "nothing was re-queued while the config stayed bad");
-      assert.equal(mergeRefExists(repo, "improve"), true, "the pin survives the hold");
-      assert.equal(eventsOfType(repo, "review_failed").length, 1, "no second reviewer run while held");
-      assert.ok(
-        eventsOfType(repo, "warning").some(
-          (e) =>
-            String(e.message).includes('permanent provider configuration error') &&
-            String(e.message).includes('model_not_supported'),
-        ),
-        "one warning names the permanent config error",
-      );
-
-      // A changed reviewer selector clears the hold and re-queues the pin.
-      runner.config.review.model = "good/model";
-      assert.equal((await runner.run()).result, "queued", "a changed reviewer selector recovers the pin");
-      assert.equal(mergeRefExists(repo, "improve"), true, "the recovered pin is still there");
-    },
-  );
-});
-
 test("a shutdown mid-merge fails closed: the pinned commit survives for next-start recovery", async () => {
   const repo = await initializedRepo();
-  // Author run (the run prompt): make a change and finish. Review run (its prompt contains
-  // VERDICT): hang until the abort kills it — simulating Ctrl+C while the MERGE is under
-  // review. Since merge queue 3/5 the gate runs in the merge, not the run, so the
-  // shutdown hits the merge's signal — the same wiring the orchestrator's pipeline uses.
+  // Author run (the run prompt): make a change and finish. The director's merge then runs its
+  // gate (the declared check parks until released), and the shutdown aborts it — simulating
+  // Ctrl+C while the MERGE is under its gate. Since merge queue 3/5 the gate runs in the
+  // merge, not the run, so the shutdown hits the merge's signal — the same wiring the
+  // orchestrator's pipeline uses. The park is the deterministic gate check, not the reviewer.
   await runAbortedDirectorMerge(repo);
 });

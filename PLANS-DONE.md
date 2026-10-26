@@ -5,6 +5,22 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3u/3: the pre-merge reviewer's leftover-recovery cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3o/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/runner-leftover-recovery.test.ts) — done 2026-10-25 by the feature role
+
+**Previously held 7**
+
+**Goal.** The recovery-path twin of part 3s/3: part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/runner-leftover-recovery.test.ts`'s `review_error`/`review_failed`/strike-cap recovery cases fail — the reviewer failure is the pin the recovery path re-queues. Move those cases first so the source switch lands against a suite that no longer depends on the reviewer.
+
+**Approach.** In `test/runner-leftover-recovery.test.ts`, retire or re-point the reviewer-recovery cases: re-point the `mergeHead` `review_error` and `review_failed` expectations (and the "no second reviewer run while held" strike-cap case) to a deterministic gate rejection that leaves the same recovery bookkeeping — a conflict-marker diff, a leaked credential or a failing declared check — or delete a case that exists only to pin the reviewer. Leave the reviewer-run helpers in place; part 3e/3 deletes them. Implemented: the keep-pin-on-failed-gate case (`a failed recovery review keeps its pinned commit for re-review`) was re-pointed to a conflict-marker diff (`a failed gate keeps the recovered pinned commit for the next run's retry`) — the merge ends `merge_conflict`, the pin survives, and the next run's `run_end` still carries no stale merge error; the high-friction recovery case (`a recovered high-friction commit reaches the reviewer with its flag and body`) was deleted (it existed only to pin reviewer presentation, and recovery's high-friction read-back is already unit-pinned in leftover.test.ts); the persistent-streak case was deleted (its streak/warning/run_end bookkeeping is already unit-pinned in run-finalize.test.ts, BUGS.md 2026-09-21) and the permanent-reviewer-config hold case was deleted (that hold is removed by part 3j/3). The shutdown case (`a shutdown mid-merge fails closed`) aborts the shared `runAbortedDirectorMerge` fixture (test/fixtures/runner-fixtures.ts), which was re-pointed from hanging the reviewer's `sleep 30` to parking the merge gate's deterministic build check (the same `declareCheck`/`parkUntil` idiom the merge-series abort tests use), so it survives part 3h/3.
+
+**Files touched.** test/runner-leftover-recovery.test.ts, test/fixtures/runner-fixtures.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with the pre-merge reviewer still running.
+- A grep over the file for `VERDICT: reject`, `review_error`, `reviewRetries`, `review_failed`, `unreviewFailures`, `folded.length` and `lastReview?.verdict` returns no case that drives the pre-merge reviewer.
+- Every case that remains keeps its original subject (leftover recovery and re-queue bookkeeping) and asserts the same outcome through a deterministic rejection.
+- The only edit outside test/runner-leftover-recovery.test.ts re-points the shared `runAbortedDirectorMerge` fixture (test/fixtures/runner-fixtures.ts) to abort the gate's deterministic build check, so the shutdown case survives the reviewer's removal.
+
 ### The e2e/concurrency tier's wall-clock waits and pid probes become deterministic, part 3/3: budget_resumed's handback wait observes the orchestrator's own budget_handback event and the resume run's marker, not runner-state polling (planned 2026-10-26 by the plan role, split from the too-large class plan after feature held it (held 1); one of three finer parts replacing the class plan, sibling to part 1/3 and part 2/3 and editing only test/orchestrator-budget.e2e.test.ts, so it holds no prerequisite and merges independently; touches test/orchestrator-budget.e2e.test.ts) — done 2026-10-26 by the feature role
 
 **Previously held 1**

@@ -271,22 +271,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Its `review_start` assertions name only post-landing (`afterMerge: true`) reviewer runs, or survive as flow assertions that do not count a pre-merge run.
 - No edit outside test/merge-pipeline.test.ts.
 
-### Every commit is verified on main, part 3u/3: the pre-merge reviewer's leftover-recovery cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3o/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/runner-leftover-recovery.test.ts)
-
-**Previously held 7**
-
-**Goal.** The recovery-path twin of part 3s/3: part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/runner-leftover-recovery.test.ts`'s `review_error`/`review_failed`/strike-cap recovery cases fail — the reviewer failure is the pin the recovery path re-queues. Move those cases first so the source switch lands against a suite that no longer depends on the reviewer.
-
-**Approach.** In `test/runner-leftover-recovery.test.ts`, retire or re-point the reviewer-recovery cases: re-point the `mergeHead` `review_error` and `review_failed` expectations (and the "no second reviewer run while held" strike-cap case) to a deterministic gate rejection that leaves the same recovery bookkeeping — a conflict-marker diff, a leaked credential or a failing declared check — or delete a case that exists only to pin the reviewer. Leave the reviewer-run helpers in place; part 3e/3 deletes them.
-
-**Files touched.** test/runner-leftover-recovery.test.ts
-
-**Acceptance criteria.**
-- `npm run test:gate` passes with the pre-merge reviewer still running.
-- A grep over the file for `VERDICT: reject`, `review_error`, `reviewRetries`, `review_failed`, `unreviewFailures`, `folded.length` and `lastReview?.verdict` returns no case that drives the pre-merge reviewer.
-- Every case that remains keeps its original subject (leftover recovery and re-queue bookkeeping) and asserts the same outcome through a deterministic rejection.
-- No edit outside test/runner-leftover-recovery.test.ts.
-
 ### Every commit is verified on main, part 3v/3: the pre-merge reviewer's orchestrator e2e cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3o/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/orchestrator-3.e2e.test.ts)
 
 **Previously held 7**
