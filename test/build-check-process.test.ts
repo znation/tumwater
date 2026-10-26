@@ -185,9 +185,14 @@ test("a timed-out check whose tree ignores SIGTERM and holds its pipes settles a
     const ran = outcome.run!.settledAt - outcome.run!.spawnedAt;
     assert.ok(ran >= 1_700, `the tree outlived the SIGTERM, so the check waited for the SIGKILL (ran ${ran}ms)`);
     assert.ok(ran <= 1_800 + 250, `bounded at deadline + grace (settled ${ran}ms after the spawn)`);
-    // SIGKILLed before the check settled; launchd reaps the orphan a moment later. Pre-fix
-    // the SIGKILL was still ~800 ms away here, so this window cannot hide the leak.
-    await waitFor(() => !groupAlive(pgid), "the check's process group to die", 300);
+    // The tree was SIGKILLed by the grace before the check settled, and the ran bounds above
+    // already prove the settle waited out the grace: on logical time that bound is what pins the
+    // pre-fix 'settle at the deadline with the SIGKILL still pending' regression — never this
+    // window. Here node and launchd reap the dead group asynchronously, and how long that takes
+    // is the host's business, not the check's: a tight budget would turn a loaded host into a
+    // flake (BUGS.md 2026-10-26 quarantine) while a tree that genuinely survives never goes
+    // away no matter how generous the budget.
+    await waitFor(() => !groupAlive(pgid), "the check's process group to die", 5_000);
     assert.equal(groupAlive(pgid), false, "nothing in the check's process group survives it");
     assert.equal(pidAlive(sleepPid), false, "the SIGTERM-ignoring pipe holder is dead");
   } finally {

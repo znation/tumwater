@@ -174,14 +174,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 **Needs review 2026-10-26 by bugfix: the failure message names the exact assertion, so the next flake reads which line broke — if it is the `.durations.json` byte-identity assert, check whether an outer run's final `recordDurations` overlapped a nested writer (`before` vs `after` diff in the output); if it is a coverage-table line, the `**/test/**` exclude or the `all files` row under peak process contention; if it is `status`, the nested spawn itself.**
 
-### `a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)
-~~~~
-
 ### `a timed-out check does not settle on its leader's close while a grandchild survives` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
