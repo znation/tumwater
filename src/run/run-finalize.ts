@@ -79,73 +79,13 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
   // Record the outcome on state and schedule the next run (see src/run/run-apply.ts for the
   // per-result policy: prompt retry, backoff, bounded cut-off resumes).
   applyRunOutcome(s, config, role, outcome);
-  // A run that ends without producing or keeping work releases this instance's backlog claim
-  // (plans/parallel-work-instances.md "Claims", part 4/7): the next run may take a different
-  // entry. Every other result — queued, changed, rejected with a revision, an error, an abort
-  // that resumes — keeps the claim so the same instance retries it; an outstanding revision or
-  // a pending resume also holds it, because the entry is still this instance's task.
-  if (
-    s.claim &&
-    CLAIM_RELEASING.has(outcome.result) &&
-    !hasOutstandingWork(s)
-  ) {
-    const title = s.claim.title;
-    s.claim = undefined;
-    logEventBestEffort(root, { source: role, type: "claim", action: "released", title, reason: outcome.result });
-  }
-  // A wake consumed while this run ran stamped the shared state in place, but the outcome
-  // schedule above overwrites it (lastRunEndedAt past wokenAt, nextRunAt a fresh gap or
-  // backoff out), so a plain `tumwater wake --role` with an empty queue would silently wait
-  // out the whole interval (BUGS.md 2026-09-25). Re-apply it here — exactly like a wake
-  // arriving one poll after the run ended.
+  releaseFinishedClaim(root, role, s, outcome);
   restoreMidRunWake(s);
   // A failed save warns and the run still ends: the in-memory state already holds the fold and
   // the runner's next save writes it, while a throw here would skip run_end and the launch
   // task's breaker fold.
   saveRunnerStateBestEffort(root, s);
-  // One warning per error episode (BUGS.md 2026-09-15: every role failing identically
-  // looked like a quiet team). applyRunOutcome increments the streak on error-class
-  // outcomes, preserves it across a plain `queued` run (the run's merge resolves it),
-  // and resets it on any other completed result — so warn only when THIS outcome incremented
-  // the streak up to the threshold: a preserved streak already sitting at the bar must not
-  // re-warn on the queued run's end. A rejection's crossing warns from the merge side
-  // instead (writeMergeOutcome, src/merge/merge-slot.ts), which is where rejections resolve.
-  if (
-    (outcome.result === "error" || outcome.recoveryFailure !== undefined) &&
-    (s.consecutiveErrors ?? 0) === ERROR_STREAK_WARN
-  ) {
-    warnEventBestEffort(
-      root,
-      role,
-      consecutiveFailuresWarning(
-        s.consecutiveErrors ?? 0,
-        s.lastError ?? outcome.recoveryFailure ?? "unknown error",
-      ),
-    );
-  }
-  // One warning per quiet-kill episode (BUGS.md 2026-09-18): a role burning an hour per
-  // run with no output must not look like a sleeping role. applyRunOutcome grows the
-  // streak on each kill and resets it on any other result, so the crossing fires once;
-  // the give-up (fresh session + backoff) follows on the next kill.
-  if ((s.quietKillStreak ?? 0) === QUIET_KILL_RESUME_LIMIT) {
-    warnEventBestEffort(root, role, `${s.quietKillStreak} consecutive stalls (no progress): ${s.lastError ?? "unknown hang"}`);
-  }
-  // One warning per cut-off episode, mirroring quiet-kill above: a role cycling cut-off →
-  // resume burns an hour-plus per cycle (run-apply.ts CUT_OFF_RESUME_LIMIT) with no other
-  // operator signal, so the crossing must not look like a benign idle role. The `outcome.cutOff`
-  // guard makes it fire only on the run that increments the streak to the limit — every
-  // non-cut-off run resets the streak to 0 and a later cut-off sits above the limit — so
-  // exactly one warning per episode. No role guard, matching quiet-kill (a cut-off director
-  // prompt is re-queued but its streak still counts).
-  if (outcome.cutOff === true && (s.cutOffStreak ?? 0) === CUT_OFF_RESUME_LIMIT) {
-    warnEventBestEffort(root, role, `${s.cutOffStreak} consecutive runs cut off at the context ceiling; give the role a smaller task or a longer context window`);
-  }
-  // Per-run usage: the event feed is where operators see
-  // spend — this run's tokens and cost ride on run_end so a budget pause or a money-burning
-  // no_change/error/rejected/refused run shows what it spent without diffing status-table
-  // snapshots. Both fields are per-run windows (reset at run start, folded in over every
-  // pi run of the run); they ride on HarnessEvent's index signature like other payloads and
-  // are omitted when zero so skipped runs render byte-identical to a pre-feature line.
+  warnOnStreakCrossings(root, role, s, outcome);
   // The run's wall-clock span rides on run_end too: the
   // failure digest prices a run by its own durationMs first (src/failure/failure-data.ts
   // runDurationMs), so the field is ALWAYS present — a run that ends within the same
@@ -155,12 +95,80 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
   // 2026-09-29). Unlike the usage fields, run_end's renderer never prints the span, so an
   // always-present 0 changes no rendered line.
   const runDurationMs = Math.max(0, Date.now() - deps.runStartedAt);
-  // The account state (plans/agent-backends.md part 6a): fold this run's billing answer and
-  // rate-window readings into the reporting backend's .tumwater/state/<backend>-account.json
-  // for the sibling parts that throttle or display the subscription window. Best-effort — the
-  // file is a cache, and an unwritable state dir must not fail a run whose real work is
-  // already done. A pi run never reports either, so in practice claude owns the file until a
-  // second subscription backend lands (plans/codex-backend.md).
+  observeRunAccount(root, usage);
+  logRunEnd(root, role, runNumber, s, outcome, usage, runDurationMs);
+  return outcome;
+}
+
+/** A run that ends without producing or keeping work releases this instance's backlog claim
+ * (plans/parallel-work-instances.md "Claims", part 4/7): the next run may take a different
+ * entry. Every other result — queued, changed, rejected with a revision, an error, an abort
+ * that resumes — keeps the claim so the same instance retries it; an outstanding revision or
+ * a pending resume also holds it, because the entry is still this instance's task. */
+function releaseFinishedClaim(root: string, role: string, state: RunnerState, outcome: RunOutcome): void {
+  if (
+    state.claim &&
+    CLAIM_RELEASING.has(outcome.result) &&
+    !hasOutstandingWork(state)
+  ) {
+    const title = state.claim.title;
+    state.claim = undefined;
+    logEventBestEffort(root, { source: role, type: "claim", action: "released", title, reason: outcome.result });
+  }
+}
+
+/** One warning per error episode (BUGS.md 2026-09-15: every role failing identically
+ * looked like a quiet team), quiet-kill episode (BUGS.md 2026-09-18: a role burning an hour
+ * per run with no output must not look like a sleeping role) and cut-off episode (mirroring
+ * quiet-kill: a role cycling cut-off → resume burns an hour-plus per cycle with no other
+ * operator signal) — each fired exactly once at the streak's crossing, after the schedule. */
+function warnOnStreakCrossings(root: string, role: string, state: RunnerState, outcome: RunOutcome): void {
+  // One warning per error episode (BUGS.md 2026-09-15: every role failing identically
+  // looked like a quiet team). applyRunOutcome increments the streak on error-class
+  // outcomes, preserves it across a plain `queued` run (the run's merge resolves it),
+  // and resets it on any other completed result — so warn only when THIS outcome incremented
+  // the streak up to the threshold: a preserved streak already sitting at the bar must not
+  // re-warn on the queued run's end. A rejection's crossing warns from the merge side
+  // instead (writeMergeOutcome, src/merge/merge-slot.ts), which is where rejections resolve.
+  if (
+    (outcome.result === "error" || outcome.recoveryFailure !== undefined) &&
+    (state.consecutiveErrors ?? 0) === ERROR_STREAK_WARN
+  ) {
+    warnEventBestEffort(
+      root,
+      role,
+      consecutiveFailuresWarning(
+        state.consecutiveErrors ?? 0,
+        state.lastError ?? outcome.recoveryFailure ?? "unknown error",
+      ),
+    );
+  }
+  // One warning per quiet-kill episode (BUGS.md 2026-09-18): a role burning an hour per
+  // run with no output must not look like a sleeping role. applyRunOutcome grows the
+  // streak on each kill and resets it on any other result, so the crossing fires once;
+  // the give-up (fresh session + backoff) follows on the next kill.
+  if ((state.quietKillStreak ?? 0) === QUIET_KILL_RESUME_LIMIT) {
+    warnEventBestEffort(root, role, `${state.quietKillStreak} consecutive stalls (no progress): ${state.lastError ?? "unknown hang"}`);
+  }
+  // One warning per cut-off episode, mirroring quiet-kill above: a role cycling cut-off →
+  // resume burns an hour-plus per cycle (run-apply.ts CUT_OFF_RESUME_LIMIT) with no other
+  // operator signal, so the crossing must not look like a benign idle role. The `outcome.cutOff`
+  // guard makes it fire only on the run that increments the streak to the limit — every
+  // non-cut-off run resets the streak to 0 and a later cut-off sits above the limit — so
+  // exactly one warning per episode. No role guard, matching quiet-kill (a cut-off director
+  // prompt is re-queued but its streak still counts).
+  if (outcome.cutOff === true && (state.cutOffStreak ?? 0) === CUT_OFF_RESUME_LIMIT) {
+    warnEventBestEffort(root, role, `${state.cutOffStreak} consecutive runs cut off at the context ceiling; give the role a smaller task or a longer context window`);
+  }
+}
+
+/** The account state (plans/agent-backends.md part 6a): fold this run's billing answer and
+ * rate-window readings into the reporting backend's .tumwater/state/<backend>-account.json
+ * for the sibling parts that throttle or display the subscription window. Best-effort — the
+ * file is a cache, and an unwritable state dir must not fail a run whose real work is
+ * already done. A pi run never reports either, so in practice claude owns the file until a
+ * second subscription backend lands (plans/codex-backend.md). */
+function observeRunAccount(root: string, usage: RunUsage): void {
   if (usage.billing !== undefined || usage.rateWindows !== undefined) {
     try {
       observeAccount(root, usage.agent ?? "pi", {
@@ -171,6 +179,21 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
       // The next reporting run rewrites it; nothing this run depends on is lost.
     }
   }
+}
+
+/** Assemble and log the run_end event: the per-run usage fields (tokens and cost), the run's
+ * wall-clock span, and every conditional payload spread. Omitted-when-zero fields ride the
+ * event feed only when nonzero so skipped runs render byte-identically to a pre-feature line;
+ * `durationMs` is ALWAYS present to keep the "every run_end carries a span" contract. */
+function logRunEnd(
+  root: string,
+  role: string,
+  runNumber: number,
+  state: RunnerState,
+  outcome: RunOutcome,
+  usage: RunUsage,
+  runDurationMs: number,
+): void {
   // The per-provider split of this run's usage (plans: per-provider spend in the day
   // report): a Record<provider, {costUsd, notionalCostUsd}> for the report's `Cost by
   // provider` line. Omitted when empty like the prompt-token fields, so a run whose runs
@@ -182,14 +205,14 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
     run: runNumber,
     result: outcome.result,
     summary: outcome.summary,
-    error: s.lastError,
+    error: state.lastError,
     durationMs: runDurationMs,
     ...(outcome.heldOnBranch ? { heldOnBranch: true } : {}),
     // The context-ceiling truncation flag: set when the run burned its whole window and
     // the harness resumes its pinned session (slotPinnedForResume). Omitted when false, so
     // a normal run — and every run_end written by an older build — renders byte-identically.
     ...(outcome.cutOff === true ? { cutOff: true } : {}),
-    ...usageFragment(s.generatedTokens, usage.costUsd, usage.notionalCostUsd),
+    ...usageFragment(state.generatedTokens, usage.costUsd, usage.notionalCostUsd),
     ...(Object.keys(providerCost).length > 0 ? { providerCost } : {}),
     // The billing answer the run's runs reported, so the report can tell notional spend from
     // real spend without re-deriving it from the file (plans/agent-backends.md part 6a).
@@ -209,7 +232,6 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
     // against the model's declared window (runner-state.ts's peakContextTokens, reset at
     // run start). Omitted when zero like the prompt-token fields, so a run that reported
     // no context — and every run_end written by an older build — renders byte-identically.
-    ...(s.peakContextTokens > 0 ? { peakContextTokens: s.peakContextTokens } : {}),
+    ...(state.peakContextTokens > 0 ? { peakContextTokens: state.peakContextTokens } : {}),
   });
-  return outcome;
 }
