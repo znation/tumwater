@@ -1,6 +1,6 @@
 import path from "node:path";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { entryDates, entryLags, finishedArchiveOf, lastDate, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
+import { entryDates, entryLags, finishedArchiveOf, firstDate, lastDate, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
 import { CHECK_DECLARATION_MARKER } from "../roles/role-guidance.js";
 
 export type { BacklogEntry } from "./backlog-md.js";
@@ -136,11 +136,12 @@ export function sectionCompletionLags(
  * bugs with `(found by …)` or `(reported …)`), parsed so `plan|bug --list` shows how long an entry
  * has waited, without opening the file. Read only the title — the whole heading, never the body,
  * because the stamp is the entry's own and the body may name other dates.
- * null when the heading carries no such clause. */
+ * null when the heading carries no such clause. Routed through backlog-md.ts's firstDate -
+ * the one first-match mechanism - with this module's own stamp regex.
+ * questionFilingDate (question-answer.ts) is the same recipe for the `asked by` verb. */
 const STAMP_DATE_RE = /(?:planned|reported|found by)\b[^)]*?\b(\d{4}-\d{2}-\d{2})/;
 export function filingDate(title: string): string | null {
-  const m = STAMP_DATE_RE.exec(title);
-  return m ? (m[1] as string) : null;
+  return firstDate(title, STAMP_DATE_RE);
 }
 
 /** The completion stamp of a `## Done` plan heading. */

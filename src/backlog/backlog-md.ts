@@ -449,10 +449,12 @@ export function lastDate(text: string, dateRe: RegExp): string | null {
  * the filing onto a later day. This is the same first-match the canonical `filingDate`
  * (backlog.ts) applies to a heading line, so the filing read and `plan|bug --list`'s age agree
  * about when an entry opened. dateRe is cloned with the g flag so matchAll sees every date; a
- * text with no date yields null. Module-local: entryDates (its only caller) selects it with
- * `first`, so the walker stays single-homed like lastDate's completion rule (entryLags reads
- * it directly for an entry's filing stamp). */
-function firstDate(text: string, dateRe: RegExp): string | null {
+ * text with no date yields null. Exported so the heading stamp parsers that apply the same
+ * filing rule to a single title line — `filingDate` (backlog.ts) and `questionFilingDate`
+ * (question-answer.ts) — share the one first-match mechanism instead of re-stating it;
+ * entryDates selects it with `first`, so the walker stays single-homed like lastDate's
+ * completion rule. */
+export function firstDate(text: string, dateRe: RegExp): string | null {
   const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
   const match = global.exec(text);
   return match?.[1] ?? null;

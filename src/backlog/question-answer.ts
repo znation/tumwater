@@ -14,7 +14,7 @@
  * CLI command package for domain logic.
  */
 import path from "node:path";
-import { fencedHeadingTitle, fenceTracker, nextSectionHeading } from "./backlog-md.js";
+import { fencedHeadingTitle, fenceTracker, firstDate, nextSectionHeading } from "./backlog-md.js";
 import { answeredQuestionEntries, entryMatches, openQuestionEntries, ageInDays, ageSuffix } from "./backlog.js";
 import type { BacklogEntry } from "./backlog.js";
 import { normalizeEntryBody } from "./backlog-write.js";
@@ -45,10 +45,11 @@ function firstBodySuffix(body: string): string {
 /** The open question's filing stamp, `YYYY-MM-DD`, read from the heading's `(asked by <who>
  * YYYY-MM-DD)` clause — the first `YYYY-MM-DD` after an `asked by` word in the title text — or
  * null when the heading carries no such clause. Taken from the title text only, not the body:
- * the stamp is the entry's own, and the body may name other dates. */
+ * the stamp is the entry's own, and the body may name other dates. Routed through
+ * backlog-md.ts's firstDate - the one first-match mechanism filingDate (backlog.ts) uses too -
+ * with the `asked by` verb in place of the plans/bugs stamp verbs. */
 export function questionFilingDate(title: string): string | null {
-  const m = /(?:asked by)\b[^)]*?\b(\d{4}-\d{2}-\d{2})/.exec(title);
-  return m === null ? null : (m[1] as string);
+  return firstDate(title, /(?:asked by)\b[^)]*?\b(\d{4}-\d{2}-\d{2})/);
 }
 
 /** The role id named in the heading's `(asked by <role> …)` clause — the first word after
