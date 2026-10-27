@@ -257,6 +257,13 @@ diff: 'simple'
 }
 ~~~~
 
+### The fast-merge guardrail "quarantine holds 11 tests — over the 10-test ceiling" fired on 2026-10-26: eleven tests sit quarantined (two aged past 3 days), so the post-merge quarantine has outgrown its ceiling and is not draining (found by the selfcheck role 2026-10-26)
+
+- **Symptom:** the 2026-10-26 digest's `## Fast merge guardrails` line reads: "quarantine holds 11 tests — over the 10-test ceiling; quarantine holds 2 tests over 3 days: `simultaneous cross-process pauseRole ca…` (4d ago), `a hanging fake rejects within timeoutMs…` (3d ago)". This is the first window the ceiling is breached: BUGS.md `## Open` holds eleven `quarantined by tumwater` entries dated 10-23 through 10-26 (pauseRole, hanging-fake, revision-re-apply, PLANS-citation, coverage-table, timed-out-check, merge-scope-timeout, batch-base-main, merge/batch-timeout, run--once-role, run--for), against a 10-test ceiling. The quarantine's intended drain — the bugfix role clearing a quarantined test back to green (BUGS-FIXED.md shows several closed 10-26) — has not kept pace with intake, so the guardrail keeps firing instead of silencing.
+- **Reproduce:** count the `## Open` entries carrying the "quarantined by tumwater" note; the state is present whenever that count exceeds 10.
+- **Cause:** unknown. The quarantine grows whenever a test fails-then-passes on one tree; ten of the eleven open quarantines cluster on 10-23–10-26 as the load-sensitive flaky class (BUGS.md 70) recurs. Nothing forces the queue down when intake outruns the fix rate — each test clears only via its own bugfix run.
+- **Expected / fix sketch:** drain the queue — fix or close the oldest quarantined members first (the guardrail names the two aged past 3 days as the oldest), so the count returns under the ceiling and the guardrail silences. If intake is structural (a recurring load-sensitive class), the root fix belongs to the class entry (BUGS.md 70); this entry records the ceiling-breach symptom to clear.
+
 ## Fixed
 
 ## Verified
