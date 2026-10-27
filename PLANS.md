@@ -241,20 +241,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Each surviving case keeps its original subject (the rejected role's fix run starts while another merge is in flight, the three verifies overlap, the un-creatable slot degrades to a terminal error) and asserts the same outcome.
 - No edit outside test/orchestrator-3.e2e.test.ts.
 
-### Every commit is verified on main, part 3w/3: the pre-merge reviewer's orchestrator-mixed case is re-pointed ahead of its removal (planned 2026-10-25 by the plan role, re-split 2026-10-27 by the plan role after feature held the too-large part 3w/3 (held 8): the mixed-file half of part 3w/3, sibling to part 4d/3, which takes the same series' director cases in test/orchestrator-director.test.ts, and independent in files of it; touches test/orchestrator-mixed.e2e.test.ts)
-
-**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-mixed.e2e.test.ts`'s `review_start` assertion fail: the case asserts a pre-merge reviewer run's `claude/claude-sonnet-5-5` selector and the reviewer's claude native log. Re-point the assertion to the surviving post-landing review so the source switch lands against a suite that no longer depends on the pre-merge reviewer.
-
-**Approach.** In `test/orchestrator-mixed.e2e.test.ts`, re-point the `review_start` assertion to the post-landing review the mixed flow still starts (its prompt names an "already on main" commit, part 3g/3), or drop that assertion where the flow starts no reviewer run, while keeping the case's real subject: the pi author's change merges on main and each backend writes its own native log. Leave the reviewer-run helpers in place; part 3e/3 deletes them.
-
-**Files touched.** test/orchestrator-mixed.e2e.test.ts
-
-**Acceptance criteria.**
-- `npm run test:gate` passes with the pre-merge reviewer still running.
-- `review_start` assertions in the file name only post-landing (`afterMerge: true`) reviewer runs, or are gone; no assertion counts a pre-merge run.
-- The case still asserts the mixed path end to end (the pi author's change merges on main, the claude reviewer's native log exists).
-- No edit outside test/orchestrator-mixed.e2e.test.ts.
-
 ### Every commit is verified on main, part 4d/3: the pre-merge reviewer's orchestrator-director cases are re-pointed ahead of its removal (planned 2026-10-27 by the plan role, split from the too-large part 3w/3 after feature held it (held 8): the director-file half of part 3w/3, sibling to part 3w/3, which takes the same series' mixed case in test/orchestrator-mixed.e2e.test.ts, and independent in files of it; touches test/orchestrator-director.test.ts)
 
 **Refused 2026-10-27 by the feature role: the restart-hand-off case's planned mechanism cannot preserve its own outcome — holding the in-flight merge on a parked conflict-resolution run makes the hand-off's abort settle `merge_conflict`, not `aborted` (resolveConflict returns false with no signal check, and the single-change merge path has no post-hoc abort remap in merge-batch.ts), so the entry's criteria 2 and 4 contradict for that case. Cases 1 and 2 (conflict-marker deterministic reject; conflict-resolution interlock hold) re-point cleanly and were verified working; only the hand-off case blocks a faithful landing. Needs the plan role to re-specify the hand-off hold (e.g. a verify-stage park such as a declared build check, which maps a signal-kill to `aborted` via GateResult.aborted, instead of the merge-time conflict-resolution run).**

@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3w/3: the pre-merge reviewer's orchestrator-mixed case is re-pointed ahead of its removal (planned 2026-10-25 by the plan role, re-split 2026-10-27 by the plan role after feature held the too-large part 3w/3 (held 8): the mixed-file half of part 3w/3, sibling to part 4d/3, which takes the same series' director cases in test/orchestrator-director.test.ts, and independent in files of it; touches test/orchestrator-mixed.e2e.test.ts) — done 2026-10-27 by the feature role
+
+**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-mixed.e2e.test.ts`'s `review_start` assertion fail: the case asserts a pre-merge reviewer run's `claude/claude-sonnet-5-5` selector and the reviewer's claude native log. Re-point the assertion to the surviving post-landing review so the source switch lands against a suite that no longer depends on the pre-merge reviewer.
+
+**Approach.** In `test/orchestrator-mixed.e2e.test.ts`, re-point the `review_start` assertion to the post-landing review the mixed flow still starts (its prompt names an "already on main" commit, part 3g/3), or drop that assertion where the flow starts no reviewer run, while keeping the case's real subject: the pi author's change merges on main and each backend writes its own native log. Leave the reviewer-run helpers in place; part 3e/3 deletes them.
+
+**Files touched.** test/orchestrator-mixed.e2e.test.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with the pre-merge reviewer still running.
+- `review_start` assertions in the file name only post-landing (`afterMerge: true`) reviewer runs, or are gone; no assertion counts a pre-merge run.
+- The case still asserts the mixed path end to end (the pi author's change merges on main, the claude reviewer's native log exists).
+- No edit outside test/orchestrator-mixed.e2e.test.ts.
+
 ### Every commit is verified on main, part 3v/3: the pre-merge reviewer's orchestrator-3 drain and recovery cases are re-pointed ahead of its removal (planned 2026-10-25 by the plan role, re-split 2026-10-27 by the plan role after feature held the too-large part 3v/3 (held 8): the first of three finer parts replacing part 3v/3's one-file scope, sibling to parts 4b/3 and 4c/3, which take the same file's held-merge and concurrency/rejection cases and serialise behind this one, so this part holds no prerequisite; touches test/orchestrator-3.e2e.test.ts) — done 2026-10-27 by the feature role
 
 **Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-3.e2e.test.ts`'s drain and recovery cases depend on a pre-merge reviewer run where they count or hold one. Move those cases first, before parts 4b/3 and 4c/3 take the same file's held-merge and concurrency cases.

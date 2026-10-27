@@ -59,8 +59,12 @@ test("a pi author and a claude reviewer run in one team and the change merges on
       const orch = startLiveOrchestrator(repo, 100);
       try {
         await waitFor(
-          () => readEvents(repo).some((e) => e.type === "merge_done" && e.source === "feature"),
-          "the claude-approved change merged on main",
+          () =>
+            readEvents(repo).some((e) => e.type === "merge_done" && e.source === "feature") &&
+            readEvents(repo).some(
+              (e) => e.type === "review_verdict" && (e as { afterMerge?: boolean }).afterMerge === true,
+            ),
+          "the claude-approved change merged on main and its post-landing review approved it",
         );
         // The author's run is in fake pi's argv log, the reviewer's in fake claude's.
         const piRuns = readRunBlocks(piArgs);
@@ -68,14 +72,18 @@ test("a pi author and a claude reviewer run in one team and the change merges on
         const claudeRuns = readRunBlocks(fake.argvFile);
         assert.ok(claudeRuns.length >= 1, `reviewer argv: ${claudeRuns.join("|")}`);
         // Each native log sits at its own role.agent path: pi for the author, claude for the
-        // verify.
+        // post-landing review of the merged commit.
         assert.ok(fs.existsSync(nativeLogPath(repo, "feature", "pi")), "the author's pi native log");
         assert.ok(fs.existsSync(nativeLogPath(repo, "feature", "claude")), "the reviewer's claude native log");
-        // The run-start events name each seam's own selector.
+        // The author's run-start event names its own selector; the reviewer's surviving run is the
+        // post-landing review, which judges the already-on-main commit (afterMerge: true). No
+        // assertion counts a pre-merge reviewer run — part 3h/3 removes it.
         const run = readEvents(repo).find((e) => e.type === "run_start");
-        const review = readEvents(repo).find((e) => e.type === "review_start");
+        const postReview = readEvents(repo).find(
+          (e) => e.type === "review_start" && (e as { afterMerge?: boolean }).afterMerge === true,
+        );
         assert.match(String((run as { model?: string } | undefined)?.model ?? ""), /omlx\/qwen-mlx/);
-        assert.match(String((review as { model?: string } | undefined)?.model ?? ""), /claude\/claude-sonnet-5-5/);
+        assert.ok(postReview, "the post-landing review of the merged change starts");
         // The change is on main.
         const summary = sh(repo, "git", "log", "-1", "--format=%s").trim();
         assert.match(summary, /add mixed change/, `main head: ${summary}`);
