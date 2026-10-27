@@ -358,58 +358,88 @@ function noChangeArm(ctx: RunVerdictContext, changed: boolean): RunOutcome | und
     // diagnoseNoChange (src/verdict/no-change.ts) tells which, so the warning event below is
     // diagnosable on its own.
     const diagnosis = diagnoseNoChange(pi);
-    if (!pi.nothingToDo) {
-      ctx.warn(
-        `the agent finished without changes and without declaring nothing-to-do` +
-          (diagnosis.notes.length ? ` (${diagnosis.notes.join(", ")})` : ""),
-      );
-    }
+    warnUndeclaredNoChange(ctx, pi, diagnosis.notes);
     // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
     // to the inbox to rerun fresh; a role runner resumes the just-compacted session
     // next run (see the cutOff handling in run()).
     if (diagnosis.cutOff) ctx.pending.requeueForResume(s, ctx.userPrompt);
-    // A cut-off run did real work but was truncated before declaring its outcome: the FLOW
-    // line it left mid-stream is not a finished verdict, so recording it would advance the
-    // rotation past a check that did not complete. Only a run that was not cut off records.
-    if (ctx.flow && !diagnosis.cutOff) {
-      // The ledger only orders the qa menu, so a failed write warns rather than failing the run.
-      recordDismissedFlow(
-        ctx,
-        ctx.root,
-        ctx.flow.flow,
-        ctx.flow.result,
-        ctx.flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
-      );
-    }
-    // A fulfilled feedback run that filed records its per-install ledger entry and logs the
-    // issue_filed event so the filing is visible in the operator's activity feed. Recording is
-    // bookkeeping that never fails the run: a failed ledger write warns and the no_change
-    // outcome stands. A cut-off run records nothing — truncation is not a filing the run
-    // declared (the same guard the FLOW line carries).
-    if (ctx.filed && !diagnosis.cutOff) {
-      recordDismissedFiling(ctx, ctx.root, ctx.filed);
-    }
-    // A fulfilled ci run that declared its coverage records it in the parity ledger so the
-    // next fresh session's block knows what the last run covered (part 3/3). The ledger is
-    // bookkeeping that never fails the run: a failed write warns and the no_change outcome
-    // stands. A cut-off run records nothing — truncation is not a coverage the run declared.
-    if (ctx.ci && !diagnosis.cutOff) {
-      try {
-        recordParity(ctx.root, ctx.ci.sha, ctx.ci.result);
-      } catch (err) {
-        ctx.warn(`ci parity not recorded: ${errorMessage(err)}`);
-      }
-    }
-    // A prompt-driven (director) run that answers a question in prose ends `no_change` with
-    // no SUMMARY block, so its reply would be lost — the dashboard reads a bare "No change"
-    // and the feed carries nothing (BUGS.md 2026-10-14). Keep the prose above the sentinel as
-    // the run's summary so `lastSummary` and the run_end event show the answer where the
-    // operator asked the question. A role runner's bare nothing-to-do stays summary-less.
-    const summary =
-      ctx.userPrompt !== null && !diagnosis.cutOff
-        ? (extractNoChangeAnswer(pi.finalText) ?? undefined)
-        : undefined;
-    return { result: "no_change", cutOff: diagnosis.cutOff || undefined, summary };
+    recordNoChangeBookkeeping(ctx, pi, diagnosis.cutOff);
+    return {
+      result: "no_change",
+      cutOff: diagnosis.cutOff || undefined,
+      summary: noChangeSummary(ctx, pi, diagnosis.cutOff),
+    };
   }
   return undefined;
+}
+
+/** Warn when a no-change run declared neither a sentinel nor nothing-to-do, so the non-
+ * compliance or truncation the diagnosis saw is diagnosable on its own. */
+function warnUndeclaredNoChange(
+  ctx: RunVerdictContext,
+  pi: PiRunResult,
+  notes: readonly string[],
+): void {
+  if (!pi.nothingToDo) {
+    ctx.warn(
+      `the agent finished without changes and without declaring nothing-to-do` +
+        (notes.length ? ` (${notes.join(", ")})` : ""),
+    );
+  }
+}
+
+/** A no-change run's bookkeeping: the qa flow, the filed feedback ledger entry and the ci
+ * parity coverage, each recorded only when its observer saw it and the run was not cut off. */
+function recordNoChangeBookkeeping(
+  ctx: RunVerdictContext,
+  pi: PiRunResult,
+  cutOff: boolean,
+): void {
+  // A cut-off run did real work but was truncated before declaring its outcome: the FLOW
+  // line it left mid-stream is not a finished verdict, so recording it would advance the
+  // rotation past a check that did not complete. Only a run that was not cut off records.
+  if (ctx.flow && !cutOff) {
+    // The ledger only orders the qa menu, so a failed write warns rather than failing the run.
+    recordDismissedFlow(
+      ctx,
+      ctx.root,
+      ctx.flow.flow,
+      ctx.flow.result,
+      ctx.flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
+    );
+  }
+  // A fulfilled feedback run that filed records its per-install ledger entry and logs the
+  // issue_filed event so the filing is visible in the operator's activity feed. Recording is
+  // bookkeeping that never fails the run: a failed ledger write warns and the no_change
+  // outcome stands. A cut-off run records nothing — truncation is not a filing the run
+  // declared (the same guard the FLOW line carries).
+  if (ctx.filed && !cutOff) {
+    recordDismissedFiling(ctx, ctx.root, ctx.filed);
+  }
+  // A fulfilled ci run that declared its coverage records it in the parity ledger so the
+  // next fresh session's block knows what the last run covered (part 3/3). The ledger is
+  // bookkeeping that never fails the run: a failed write warns and the no_change outcome
+  // stands. A cut-off run records nothing — truncation is not a coverage the run declared.
+  if (ctx.ci && !cutOff) {
+    try {
+      recordParity(ctx.root, ctx.ci.sha, ctx.ci.result);
+    } catch (err) {
+      ctx.warn(`ci parity not recorded: ${errorMessage(err)}`);
+    }
+  }
+}
+
+/** A prompt-driven (director) run that answers a question in prose ends `no_change` with
+ * no SUMMARY block, so its reply would be lost — the dashboard reads a bare "No change"
+ * and the feed carries nothing (BUGS.md 2026-10-14). Keep the prose above the sentinel as
+ * the run's summary so `lastSummary` and the run_end event show the answer where the
+ * operator asked the question. A role runner's bare nothing-to-do stays summary-less. */
+function noChangeSummary(
+  ctx: RunVerdictContext,
+  pi: PiRunResult,
+  cutOff: boolean,
+): string | undefined {
+  return ctx.userPrompt !== null && !cutOff
+    ? (extractNoChangeAnswer(pi.finalText) ?? undefined)
+    : undefined;
 }
