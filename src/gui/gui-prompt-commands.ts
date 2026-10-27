@@ -114,7 +114,7 @@ function promptImageGate(
     badRequest(res, guidance.refusal);
     return null;
   }
-  return guidance.notice ?? "";
+  return "";
 }
 
 /** Handle POST /api/prompt-role: queue a prompt for one role — the dashboard's per-row

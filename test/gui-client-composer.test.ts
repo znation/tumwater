@@ -503,30 +503,12 @@ test("switching target mid-recall keeps the unsent draft, not the recalled entry
   assert.equal(input.value, "my real draft", "the old target's slot kept the unsent draft, not the recalled entry");
 });
 
-// Image input, part 5/5 (plans/image-input.md "Surfaces"): the composer shows, under the image
-// chips, where an image prompt to a text-only role will run (read from the status payload's
-// per-role imageInput/imageReroute), and hides it for a vision role.
-test("the image note under the chips names where a text-only role's image prompt runs", () => {
+// Image input, part 5/5 (plans/image-input.md "Surfaces"): the composer's reroute notice was
+// subtracted, so the composer no longer renders an image note under the chips — the submit
+// gate refuses a blind role's attachment on the server, which the flash reports.
+test("the composer renders per-target drafts with no image reroute note", () => {
   const s = composerScope();
-  const status = {
-    roles: [
-      { role: "qa", imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
-      { role: "bugfix", imageInput: true, imageReroute: null },
-    ],
-    inbox: 0,
-    roleInbox: {},
-  };
-  s.scope.renderComposer(status);
+  s.scope.renderComposer({ roles: [{ role: "qa" }, { role: "bugfix" }], inbox: 0, roleInbox: {} });
   s.scope.setTarget("qa");
-  const note = s.el("promptimagenote");
-  assert.equal(note.hidden, false);
-  assert.match(note.textContent, /qa's model can't read images; image prompts run on strong \(claude-opus-5-5\)/);
-
-  // A vision role shows no note; a text-only role with no target shows none either (the
-  // submit gate will refuse on the server, which the flash reports).
-  s.scope.setTarget("bugfix");
-  assert.equal(s.el("promptimagenote").hidden, true);
-  s.scope.renderComposer({ roles: [{ role: "qa", imageInput: false, imageReroute: null }, { role: "bugfix", imageInput: true, imageReroute: null }], inbox: 0, roleInbox: {} });
-  s.scope.setTarget("qa");
-  assert.equal(s.el("promptimagenote").hidden, true);
+  assert.equal(s.el("prompttarget").value, "qa", "the target switch still works");
 });

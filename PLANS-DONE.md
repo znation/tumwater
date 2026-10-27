@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract, part 5h/6: The image reroute's display surfaces go (planned 2026-10-26 by the plan role, split from the too-large part 5a/6 after feature held it twice (held 2); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the fourth of four finer parts replacing part 5a/6, requires Subtract part 5g/6 landed, since it removes the field that part leaves null; touches src/agent/image-input.ts src/status/status-roles.ts src/status/status-data.ts src/roles/role-view.ts src/roles/role-render.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/team-alert-shared.ts src/ui/team-alert-tail.ts src/ui/gui/gui-client-composer.ts src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/status-payload.test.ts test/role-view.test.ts test/status-render.test.ts test/team-alerts.test.ts test/status-data-models.test.ts) — done 2026-10-26 by the feature role
+
+**Previously held 2**
+
+**Goal.** No status payload, role page, role view, alert or GUI composer notice names an image reroute. A role's image input is reported as the declaration alone.
+
+**Approach.**
+- `src/agent/image-input.ts` drops the `imageReroute` field from `RoleImageInfo` so `roleImageInfo` returns `{ imageInput }`; `src/status/status-roles.ts` and `src/status/status-data.ts` drop `imageRerouteLabel`; `src/roles/role-view.ts` drops `imageReroute` from the view type; `src/roles/role-render.ts` drops the `no - reruns on ...` arm.
+- `src/ui/status-payload.ts`/`status-render.ts` drop the `imageReroute` field; `src/ui/team-alert-shared.ts` drops `imageReroute` from `AlertRole`; `src/ui/team-alert-tail.ts` drops the reroute (blue rerun) arm, leaving the amber alert for every text-only role.
+- `src/ui/gui/gui-client-composer.ts`, `gui-page.ts` and `gui-styles.ts` drop the reroute notice under the chips; `gui-client-drawer-config.ts` drops the "reruns on" arm.
+- The submit surfaces' notice goes too — `src/inbox/inbox-submit.ts` (`imagePromptGuidance` returns only `refusal` for a blind role), `src/inbox/prompt-commands.ts`, `src/gui/gui-prompt-commands.ts` and `src/ui/tui/tui-editor-attach.ts` stop reading a `notice`.
+- `docs/invariants.md`'s INV-AS2 sentence drops the reroute note. Tests: update `test/role-view.test.ts`, `test/team-alerts.test.ts`, `test/status-data-models.test.ts`, `test/inbox-submit.test.ts`, `test/gui-client-drawer.test.ts`, `test/gui-client-composer.test.ts`, `test/tui-frame.test.ts` and `test/fixtures/status-fixtures.ts`.
+
+**Files touched.** src/agent/image-input.ts src/status/status-roles.ts src/status/status-data.ts src/roles/role-view.ts src/roles/role-render.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/team-alert-shared.ts src/ui/team-alert-tail.ts src/ui/gui/gui-client-composer.ts src/ui/gui/gui-client-drawer-config.ts src/ui/gui/gui-page.ts src/ui/gui/gui-styles.ts src/inbox/inbox-submit.ts src/inbox/prompt-commands.ts src/gui/gui-prompt-commands.ts src/ui/tui/tui-editor-attach.ts docs/invariants.md test/role-view.test.ts test/team-alerts.test.ts test/status-data-models.test.ts test/inbox-submit.test.ts test/gui-client-drawer.test.ts test/gui-client-composer.test.ts test/tui-frame.test.ts test/fixtures/status-fixtures.ts
+
+**Acceptance criteria.**
+- `grep -rnE 'imageReroute|image-reroute|image_reroute' src/ docs/` is empty.
+- The role page, status payload and dashboard composer show the role's declared image input with no reroute text.
+- `npm run test:gate` passes.
+
 ### Subtract, part 1c/6: The review and check banners go — quarantine, flapped checks, churn, post-merge risk, dropped reviews, main-diff rules and stale QA move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1b/6 landed; touches src/ui/team-alert-merge.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/doctor/doctor-check-names.ts src/doctor/doctor-project-checks.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts test/doctor-checks.test.ts) — done 2026-10-26 by the feature role
 
 **Previously held 1**

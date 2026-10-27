@@ -433,38 +433,37 @@ test("a waiting: low disk raises one amber alert naming the free space and the f
 
 // Image input, part 5/5 (plans/image-input.md "Surfaces"): the images alert. No alert when
 // every enabled role reads images (or capability is unknown — an unknown seam is not counted
-// as text-only). Blue when every text-only role has a reroute target (a blind read reruns — an
-// inform, not an ask); amber when some text-only role has none (a blind read fails and image
-// submissions are refused).
-test("images alert: parity needs no alert; a text-only team with targets is blue", () => {
+// as text-only). The peer-tier reroute was subtracted, so every text-only role is amber: a
+// blind read fails and image submissions to it are refused — an ask.
+test("images alert: parity needs no alert; a text-only team is amber and asks", () => {
   const vision: AlertRole[] = [
-    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: true, imageReroute: null },
-    { role: "plan", phase: "idle", errorStreak: false, inFlight: false, imageInput: true, imageReroute: null },
+    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: true },
+    { role: "plan", phase: "idle", errorStreak: false, inFlight: false, imageInput: true },
   ];
   assert.deepEqual(teamAlerts(base, [], vision, Date.now()).filter((a) => a.key === "images"), []);
   // Unknown capability is not counted as text-only — no alert, matching the doctor's stance.
   const unknown: AlertRole[] = [
-    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: null, imageReroute: null },
+    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: null },
   ];
   assert.deepEqual(teamAlerts(base, [], unknown, Date.now()).filter((a) => a.key === "images"), []);
 
-  const rerouting: AlertRole[] = [
-    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
-    { role: "organize", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
+  const textOnly: AlertRole[] = [
+    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: false },
+    { role: "organize", phase: "idle", errorStreak: false, inFlight: false, imageInput: false },
   ];
-  const [images] = teamAlerts(base, [], rerouting, Date.now()).filter((a) => a.key === "images");
-  assert.equal(images?.tone, "blue");
-  assert.equal(images?.title, "feature and organize run on models that can't read images");
-  assert.match(images?.detail ?? "", /stops and reruns on strong \(claude-opus-5-5\)\./);
-  assert.equal(alertNeedsYou(images!), false, "a rerun means nothing fails — it informs");
+  const [images] = teamAlerts(base, [], textOnly, Date.now()).filter((a) => a.key === "images");
+  assert.equal(images?.tone, "amber");
+  assert.equal(images?.title, "No configured model can read images for feature and organize");
+  assert.match(images?.detail ?? "", /image attachments to these roles are refused/);
+  assert.equal(alertNeedsYou(images!), true, "a blind read fails — it asks");
 });
 
-test("images alert: a text-only role with no target is amber and asks", () => {
-  const noTarget: AlertRole[] = [
-    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: null },
-    { role: "bugfix", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
+test("images alert: a text-only role is named and its row opens from the action", () => {
+  const textOnly: AlertRole[] = [
+    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: false },
+    { role: "bugfix", phase: "idle", errorStreak: false, inFlight: false, imageInput: true },
   ];
-  const [images] = teamAlerts(base, [], noTarget, Date.now()).filter((a) => a.key === "images");
+  const [images] = teamAlerts(base, [], textOnly, Date.now()).filter((a) => a.key === "images");
   assert.equal(images?.tone, "amber");
   assert.equal(images?.title, "No configured model can read images for feature");
   assert.match(images?.detail ?? "", /image attachments to these roles are refused/);

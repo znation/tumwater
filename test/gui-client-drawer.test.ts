@@ -838,7 +838,6 @@ test("the role drawer renders the Configuration section from the role payload", 
       providerKey: "deepinfra",
       providerCap: 2,
       imageInput: false,
-      imageReroute: "strong (claude-opus-5-5)",
       modelFallback: { provider: "omlx", model: "Qwen3.8", since: now - 120_000, reason: "http 429" },
       fallback: { provider: "omlx", model: "Qwen3.8" },
       fallbackFree: true,
@@ -857,7 +856,7 @@ test("the role drawer renders the Configuration section from the role payload", 
   assert.match(role, /<h3>Configuration<\/h3>/);
   assert.match(role, /<dt>Model<\/dt><dd[^>]*>deepseek\/deepseek-v4 \(strong tier\)<\/dd>/);
   assert.match(role, /<dt>Provider<\/dt><dd[^>]*>deepinfra \(cap 2\)<\/dd>/);
-  assert.match(role, /<dt>Images<\/dt><dd[^>]*>no — reruns on strong \(claude-opus-5-5\)<\/dd>/);
+  assert.match(role, /<dt>Images<\/dt><dd[^>]*>no<\/dd>/);
   assert.match(role, /<dt>Model fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 — on fallback since 2m ago \(primary failing: http 429\)<\/dd>/);
   assert.match(role, /<dt>Budget fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 \(free\)<\/dd>/);
   assert.match(role, /<dt>Billing<\/dt><dd[^>]*>subscription \(five_hour window\)<\/dd>/);

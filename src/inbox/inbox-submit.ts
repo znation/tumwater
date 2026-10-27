@@ -47,26 +47,20 @@ export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE):
 
 /** The image-input submit guidance for one role (plans/image-input.md "Surfaces" and
  * "Attachments", part 5/5): what an image-carrying prompt to `role` means. `refusal` is the
- * throw-and-submit-nothing message when the role's seam reads no images and no peer tier can
- * (an attachment no configured model can read is refused at submit, not discovered at run
- * time); `notice` is what a surface prints/shows when the prompt will instead rerun on another
- * tier. Both null when the role's own model reads images (or capability is unknown — an
- * unknown seam is never assumed incapable, mirroring the doctor's `tier models` stance), so
- * the common text-only or vision path says nothing. One resolver (roleImageInfo), shared with
- * the status rows and role page, so the gate cannot disagree with what `tumwater role` or the
- * images alert claim. */
-export function imagePromptGuidance(root: string, role: string): { refusal?: string; notice?: string } {
+ * throw-and-submit-nothing message when the role's seam reads no images (an attachment no
+ * configured model can read is refused at submit, not discovered at run time — the peer-tier
+ * reroute was subtracted, so a text-only role never hands a blind prompt elsewhere). Empty when
+ * the role's own model reads images (or capability is unknown — an unknown seam is never
+ * assumed incapable, mirroring the doctor's `tier models` stance), so the common text-only or
+ * vision path says nothing. One resolver (roleImageInfo), shared with the status rows and role
+ * page, so the gate cannot disagree with what `tumwater role` or the images alert claim. */
+export function imagePromptGuidance(root: string, role: string): { refusal?: string } {
   const { config } = loadConfigSafe(root);
   const cfg = config ?? defaultConfig();
-  const { imageInput, imageReroute } = roleImageInfo(
+  const { imageInput } = roleImageInfo(
     cfg, role, undefined, readPiListedModels(root),
   );
   if (imageInput !== false) return {};
-  if (imageReroute) {
-    return {
-      notice: `${role}'s model can't read images; this prompt runs on ${imageReroute}`,
-    };
-  }
   return {
     refusal: `${role}'s model can't read images and no configured model reads images for it — declare image input on a vision model in pi's models.json, or point a tier at one`,
   };
@@ -102,8 +96,8 @@ export function submitRolePrompt(
     if (imageProblem) throw new Error(imageProblem);
     // Image input gate (plans/image-input.md "Attachments", part 5/5): an attachment no
     // configured model can read is refused here, before anything is queued or written — the
-    // run would only fail discovering it. A role that reroutes a blind read is not refused;
-    // the surface prints/shows the notice instead (imagePromptGuidance is called again there).
+    // run would only fail discovering it. The peer-tier reroute was subtracted, so there is
+    // no other tier a blind read could ride to.
     const guidance = imagePromptGuidance(root, role);
     if (guidance.refusal) throw new Error(guidance.refusal);
     return submitPromptWithImages(root, role, text, images, notBeforeMs);

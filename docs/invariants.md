@@ -2791,9 +2791,9 @@ prompt is capped on its composed text, not its body alone".
 
 ### INV-AS2: an image no configured model can read, or a malformed image, is refused at submit
 
-**Guarantee.** An image a role's seam cannot read is refused at submit (the peer-tier reroute
-was subtracted in part 5g/6, so no tier accepts a blind role's image). A malformed image is
-refused before the role's inbox directory is created.
+**Guarantee.** An image a role's seam cannot read is refused at submit (the peer-tier image
+reroute was subtracted, so no surface names a reroute target and no tier accepts a blind role's
+image). A malformed image is refused before the role's inbox directory is created.
 
 **Binds.** `src/inbox/inbox-submit.ts` (`imagePromptGuidance`, `submitRolePrompt`).
 

@@ -199,12 +199,11 @@ function runPromptCancel(root: string, position: number, role: string | null): v
 
 /** Run the CLI's image-input gate for one `prompt` surface. Shared by the submit and
  * --edit forms so the refusal promise holds across every CLI attach surface: an image no
- * configured model can read is refused (fail) before a byte is written, and a role that
- * reroutes a blind read is told (say) where the prompt will run. */
+ * configured model can read is refused (fail) before a byte is written — the peer-tier
+ * reroute was subtracted, so there is no notice to say. */
 function runPromptImageGate(root: string, target: string): void {
   const guidance = imagePromptGuidance(root, target);
   if (guidance.refusal) fail(guidance.refusal);
-  if (guidance.notice) say(guidance.notice);
 }
 
 /** `--edit <n>` mode — replace a queued prompt's body by position: the attachment gate, then

@@ -805,9 +805,9 @@ test("a pi model job naming no model shows pi's own saved default", () => {
 });
 
 // Image input (plans/image-input.md "Surfaces"): the role page carries an `Images:` line —
-// the role's own capability. The peer-tier reroute was subtracted (part 5g/6), so `imageReroute`
-// is always null and a text-only role reads just `no`; a vision role says yes; an unknown seam
-// (no models file) says unknown rather than guessing.
+// the role's own capability. The peer-tier reroute was subtracted, so a text-only role reads
+// just `no`; a vision role says yes; an unknown seam (no models file) says unknown rather than
+// guessing.
 test("role payload reports image input and the renderer's Images line", () => {
   const dir = root();
   const dirModels = tmpdir("role-image-");
@@ -827,14 +827,12 @@ test("role payload reports image input and the renderer's Images line", () => {
   writeConfig(dir, { model: { default: "local/text", strong: "local/vision" } });
   const feature = rolePayload(dir, "feature", models); // rides default → text-only
   assert.equal(feature.imageInput, false);
-  assert.equal(feature.imageReroute, null, "no peer-tier reroute remains (part 5g/6)");
   const md = renderRoleMarkdown(feature);
   assert.match(md, /- Images: no/);
   assert.doesNotMatch(md, /reruns on/, "no reroute text remains");
 
   const plan = rolePayload(dir, "plan", models); // rides strong → reads images
   assert.equal(plan.imageInput, true);
-  assert.equal(plan.imageReroute, null);
   assert.match(renderRoleMarkdown(plan), /- Images: yes/);
 
   // An unknown seam (no models) reads unknown — never assumed capable.

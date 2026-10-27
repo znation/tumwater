@@ -103,9 +103,6 @@ export interface RoleViewPayload {
    * true / false / null (unknown), always present so the role page and the status rows share
    * one capability answer. */
   imageInput: boolean | null;
-  /** The role's image reroute target as `<tier> (<model>)`, or null when no other tier reads
-   * images — the role page's `Images: no — reruns on …` line. */
-  imageReroute: string | null;
   /** The resolved primary seam's declared context window in tokens, or null when it cannot
    * be known (a non-pi seam, an unresolvable provider/model pair, or a model pi's
    * definitions declare no window). The seam `- Next run:` previews, not the fallback. */
@@ -145,7 +142,7 @@ export interface RoleViewPayload {
    * `already_queued` recovery arm and this view share). Present only while review is enabled
    * (`review.enabled !== false`) and `review.afterMerge` lists the role's base id — absent
    * for a pre-merge-reviewed role or when the gate is off, matching the absent-when-default
-   * pattern of `imageReroute`/`instances`. */
+   * pattern of `instances`. */
   reviewedAfterMerge?: true;
   /** Whether the review gate is on at all (`review.enabled !== false`) — the browser twin of
    * `tumwater role <id> --review-after-merge`'s gate check, told apart from `reviewedAfterMerge`

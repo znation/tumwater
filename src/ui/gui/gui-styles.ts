@@ -264,7 +264,6 @@ export const GUI_STYLES = String.raw`
   .composer .btn-primary { height: 34px; }
   .composer.dragover { border-color: var(--primary); background: var(--accent-bg); }
   #promptimages { padding: 6px 4px 0; }
-  #promptimagenote { padding: 0 4px 6px; font-size: 12px; color: var(--text-3); }
   #promptimages .chip { font-size: 12px; }
   #promptimages .chip .dim { color: var(--text-3); }
   #promptimages .chip button { border: 0; background: none; color: var(--text-3); cursor: pointer; font-size: 14px;

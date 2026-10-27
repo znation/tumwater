@@ -256,10 +256,10 @@ test("statusPayload ships modelFromPi beside the model it names", async () => {
 });
 
 // Image input, part 5/5 (plans/image-input.md "Surfaces"): every snapshot row carries the
-// role's image-input capability and its reroute target as a display label, computed by the
-// same resolver the role page and submit gate use — so `status --json` and the images alert
-// answer without running doctor. A default-tier text-only role reroutes to the vision strong
-// tier; a strong-tier role reads images itself.
+// role's image-input capability, computed by the same resolver the role page and submit gate
+// use — so `status --json` and the images alert answer without running doctor. The peer-tier
+// reroute was subtracted, so a role reports its declared image input alone. A default-tier
+// text-only role reads false; a strong-tier role reads images itself.
 test("snapshot rows carry the image-input surface from the models catalog", async () => {
   const repo = makeRepo();
   await initProject(repo, "image surface");
@@ -277,24 +277,20 @@ test("snapshot rows carry the image-input surface from the models catalog", asyn
       },
     }),
   );
-  // plan rides the strong tier; feature rides default. Default is text-only, strong reads images,
-  // but the peer-tier reroute was subtracted (part 5g/6), so no role names a reroute label.
+  // plan rides the strong tier; feature rides default. Default is text-only, strong reads images.
   writeConfig(repo, { model: { default: "local/text", strong: "local/vision" } });
   const snap = snapshot(repo, models);
   const feature = snap.roles.find((l) => l.role === "feature")!;
   assert.equal(feature.imageInput, false);
-  assert.equal(feature.imageRerouteLabel, null, "no peer-tier reroute label remains (part 5g/6)");
   const plan = snap.roles.find((l) => l.role === "plan")!;
   assert.equal(plan.imageInput, true);
-  assert.equal(plan.imageRerouteLabel, null);
-  // The payload ships the same surface for the dashboard's images alert and composer notice.
+  // The payload ships the same surface for the dashboard's images alert.
   // statusPayload reads the default models path, so point it at the temp dir the snapshot used.
   const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", dir);
   try {
-    const payload = statusPayload(repo) as { roles: Array<{ role: string; imageInput?: boolean | null; imageReroute?: string | null }> };
+    const payload = statusPayload(repo) as { roles: Array<{ role: string; imageInput?: boolean | null }> };
     const featureRow = payload.roles.find((l) => l.role === "feature")!;
     assert.equal(featureRow.imageInput, false);
-    assert.equal(featureRow.imageReroute, null);
   } finally {
     restoreAgentDir();
   }

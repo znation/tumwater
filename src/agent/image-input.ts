@@ -48,21 +48,18 @@ export function seamImageInput(
 }
 
 /** The per-role image-input surface (plans/image-input.md "Surfaces"): one call gives a caller
- * the role's own capability (`imageInput`, seamImageInput's true/false/null) and (still, until
- * 5h removes it) a reroute target that is now always null. Shared by the status rows, the role
- * page, and the submit gate so the three surfaces can never disagree about what one role can
- * read. */
+ * the role's own capability (`imageInput`, seamImageInput's true/false/null). Shared by the
+ * status rows, the role page, and the submit gate so the three surfaces can never disagree
+ * about what one role can read. */
 interface RoleImageInfo {
   /** Whether the role's own model reads images (`true`), is text-only (`false`), or the team
    * cannot tell (null — an unknown pair the `tier models` check already flags). */
   imageInput: boolean | null;
-  /** The reroute target as `<tier> (<model>)`, or null when no other tier reads images. */
-  imageReroute: string | null;
 }
 
 /** Compute RoleImageInfo for one role. `modelsPath` and `listed` are injectable; the providers
- * catalog is read (stat-cached) here. The reroute field is a literal null — the peer-tier image
- * reroute was subtracted (part 5g/6), so no role names a reroute target; 5h removes the field. */
+ * catalog is read (stat-cached) here. The peer-tier image reroute was subtracted (part 5g/6),
+ * so a role reports its declared image input alone. */
 export function roleImageInfo(
   config: TumwaterConfig,
   role: string,
@@ -72,5 +69,5 @@ export function roleImageInfo(
   const providers = readPiProviders(modelsPath);
   const rc = configForRole(config, role);
   const imageInput = seamImageInput(rc, providers, listed);
-  return { imageInput, imageReroute: null };
+  return { imageInput };
 }

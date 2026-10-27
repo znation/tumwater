@@ -59,7 +59,6 @@ export function snapshotWith(
       /** The role's image-input surface (plans/image-input.md "Surfaces", part 5/5), which
        * a literal RunnerState does not carry — a test passes it to exercise the images alert. */
       imageInput?: boolean | null;
-      imageRerouteLabel?: string | null;
       /** The role's declared context window (part 3c/…), which a literal RunnerState does
        * not carry — a test passes it to exercise the `peak ctx` share cell. */
       contextWindow?: number;
@@ -108,10 +107,9 @@ export function snapshotWith(
       ...partial,
       custom: partial.custom ?? false,
       // The image-input surface (plans/image-input.md "Surfaces", part 5/5) is always
-      // present; the fixture defaults a row that does not name one to `unknown`/no target so
-      // existing tables stay byte-identical (no images alert, no Images line change).
+      // present; the fixture defaults a row that does not name one to `unknown` so existing
+      // tables stay byte-identical (no images alert, no Images line change).
       imageInput: partial.imageInput ?? null,
-      imageRerouteLabel: partial.imageRerouteLabel ?? null,
     })),
     budget,
     paused,

@@ -81,11 +81,9 @@ function roleRows(snap: ReturnType<typeof snapshot>, root: string) {
       ...(s.claim ? { claim: s.claim.title } : {}),
       ...(s.instanceOf ? { instanceOf: s.instanceOf } : {}),
       // The role's image-input surface (plans/image-input.md "Surfaces", part 5/5), always
-      // present: whether its own model reads images and where a blind prompt reroutes — the
-      // GUI's images alert and composer notice read them (the JSON field is `imageReroute`, the
-      // display label, not the persisted handoff state).
+      // present: whether its own model reads images — the GUI's images alert reads it (the
+      // display label, not persisted state).
       ...(s.imageInput !== undefined ? { imageInput: s.imageInput } : {}),
-      ...(s.imageRerouteLabel !== undefined ? { imageReroute: s.imageRerouteLabel } : {}),
       phase,
       // In-flight flag derived from the same rendered phase (isActivePhase's
       // permit-holder prefixes: working/reviewing/merge). The running director is excluded

@@ -350,25 +350,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 5h/6: The image reroute's display surfaces go (planned 2026-10-26 by the plan role, split from the too-large part 5a/6 after feature held it twice (held 2); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the fourth of four finer parts replacing part 5a/6, requires Subtract part 5g/6 landed, since it removes the field that part leaves null; touches src/agent/image-input.ts src/status/status-roles.ts src/status/status-data.ts src/roles/role-view.ts src/roles/role-render.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/team-alert-shared.ts src/ui/team-alert-tail.ts src/ui/gui/gui-client-composer.ts src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/status-payload.test.ts test/role-view.test.ts test/status-render.test.ts test/team-alerts.test.ts test/status-data-models.test.ts)
-
-**Previously held 2**
-
-**Goal.** No status payload, role page, role view, alert or GUI composer notice names an image reroute. A role's image input is reported as the declaration alone.
-
-**Approach.**
-- `src/agent/image-input.ts`: drop the `imageReroute` field from `RoleImageInfo` and its doc comment; `roleImageInfo` returns `{ imageInput }`.
-- `src/status/status-roles.ts` drops `imageRerouteLabel`; `src/status/status-data.ts` drops the field and its comment; `src/roles/role-view.ts` drops `imageReroute` from the view type; `src/roles/role-render.ts` drops the `no - reruns on ...` arm.
-- `src/ui/status-payload.ts`/`status-render.ts` drop the `imageReroute` field; `src/ui/team-alert-shared.ts` drops the `imageReroute` field and the text-only grouping that read it; `src/ui/team-alert-tail.ts` drops the reroute grouping.
-- `src/ui/gui/gui-client-composer.ts` and `gui-client-drawer-config.ts` drop the reroute notice and its "reruns on" arm.
-- `docs/invariants.md` drops the remaining image-surface sentences. Tests: update `test/status-payload.test.ts`, `test/role-view.test.ts`, `test/status-render.test.ts`, `test/team-alerts.test.ts` and `test/status-data-models.test.ts`.
-
-**Files touched.** src/agent/image-input.ts src/status/status-roles.ts src/status/status-data.ts src/roles/role-view.ts src/roles/role-render.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/team-alert-shared.ts src/ui/team-alert-tail.ts src/ui/gui/gui-client-composer.ts src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/status-payload.test.ts test/role-view.test.ts test/status-render.test.ts test/team-alerts.test.ts test/status-data-models.test.ts
-
-**Acceptance criteria.**
-- `grep -rnE 'imageReroute|image-reroute|image_reroute' src/ docs/` is empty.
-- The role page, status payload and dashboard composer show the role's declared image input with no reroute text.
-- `npm run test:gate` passes.
 
 ### Subtract, part 5b/6: The per-provider concurrency caps go — `maxConcurrent` is the one bound (planned 2026-10-26 by the plan role, split from the too-large part 5/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 5; requires Subtract part 5h/6 landed, since both edit the doctor row list and the alert builders; touches src/config/config-schema.ts src/config/config-validation-roles.ts src/config/config-keys.ts src/config/config-editable-keys.ts src/config/config-example.ts src/concurrency/provider-lease.ts src/concurrency/semaphore.ts src/merge/merge-verify.ts src/merge/merge-slot.ts src/orchestrator/orchestrator.ts src/orchestrator/orchestrator-launch.ts src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/report/report-types.ts src/report/report-fold.ts src/report/report-render.ts src/doctor/doctor-contention-checks.ts src/doctor/doctor-check-names.ts src/ui/alert-feeds.ts src/ui/team-alert-tail.ts src/ui/team-alerts.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-provider-caps.ts src/ui/tui/tui-editor-session.ts src/ui/tui/tui-editors.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-editor-config.ts src/ui/tui/tui-frame.ts src/ui/tui/tui-pane-ctx.ts docs/config.md docs/how-it-works.md docs/invariants.md test/provider-lease.test.ts test/tui-provider-caps.test.ts test/doctor-checks.test.ts test/event-format.test.ts test/config.test.ts)
 

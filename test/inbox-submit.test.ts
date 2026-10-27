@@ -176,7 +176,6 @@ test("imagePromptGuidance returns a refusal for a blind role and nothing when th
     writeConfig(dir, { model: { default: "local/text", strong: "local/vision" } });
     const guidance = imagePromptGuidance(dir, "feature");
     assert.match(guidance.refusal ?? "", /no configured model reads images for it/);
-    assert.equal(guidance.notice, undefined, "no reroute notice remains");
     // A vision role says nothing.
     writeConfig(dir, { model: { default: "local/vision", strong: "local/vision" } });
     assert.deepEqual(imagePromptGuidance(dir, "feature"), {});

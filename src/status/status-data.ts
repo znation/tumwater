@@ -110,11 +110,6 @@ export interface StatusSnapshot {
      * tell (an unknown pair). Always present, so both observer surfaces answer without running
      * doctor. */
     imageInput: boolean | null;
-    /** The role's image reroute target as `<tier> (<model>)`, or null when no other tier reads
-     * images — the `reruns on …` the images alert and role page name. Named `imageRerouteLabel`
-     * for the `imageReroute` it renders; a literal null until part 5h drops the field. Always
-     * present. */
-    imageRerouteLabel: string | null;
     /** The resolved primary seam's declared context window (part 3c/…), from the same
      * `seamContextWindow` the role page prints — present only when the seam declares one, so
      * the table/drawer peak-ctx share can divide a run's peak against it. */
