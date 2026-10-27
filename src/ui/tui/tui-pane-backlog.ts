@@ -43,10 +43,13 @@ export function selectedEditableEntry(
 }
 
 /** The project-status pane (view roleIds.length + 1) of the TUI (src/ui/tui/tui.tsx): the
- * entry browser's selection/scroll state, the up/down and PgUp/PgDn entry arms, and the
- * three entry-action arms (Ctrl+X cancel, Ctrl+V move-to-top and Ctrl+R release) — each
- * two-step arming except the one-press move — plus the answer/title-edit selection clear the
- * editors call back.
+ * entry browser's selection/scroll state, and its six key arms — the Ctrl+O Ready-only
+ * toggle, the two-press Ctrl+X cancel, the one-press Ctrl+V move-to-top, the two-press
+ * Ctrl+R release, the arrow up/down entry selection and the PgUp/PgDn body page — each
+ * one inner named helper owning its whole guard, flash wording and repaint, dispatched in
+ * order by `handleKey`. The entry-action arms are each two-step except the one-press move;
+ * the answer/title-edit selection clear the editors call back through
+ * clearBacklogSelection.
  * Split out of the pane-navigation monolith; it owns the pane's selection/scroll state and
  * the arms that touch them. */
 export function createBacklogPane(
@@ -162,15 +165,13 @@ export function createBacklogPane(
     }
   };
 
-  const handleKey = (
-    key: { ctrl?: boolean; name?: string },
-    ctx: TuiPaneCtx,
-  ): boolean => {
-    if (
-      key.ctrl && key.name === "o" &&
-      promptLineFree(ctx.es) &&
-      session.view === session.roleIds.length + 1
-    ) {
+  // The Ctrl+O arm: flips the Ready-only filter to keep only the open plans and bugs no hold
+  // keeps from being picked, the terminal twin of `tumwater backlog --ready` and the dashboard
+  // Backlog card's Ready only toggle. A second press restores the full list. Returns false
+  // when the prompt is busy or the Backlog view is not showing, so the key falls through the
+  // dispatch as today.
+  const backlogToggleReady = (ctx: TuiPaneCtx): boolean => {
+    if (promptLineFree(ctx.es) && session.view === session.roleIds.length + 1) {
       // Ctrl+O flips the Ready-only filter: keep only the open plans and bugs no hold keeps
       // from being picked (questions and the answered/done/fixed rows stay), the terminal twin
       // of `tumwater backlog --ready` and the dashboard Backlog card's Ready only toggle. A
@@ -183,11 +184,13 @@ export function createBacklogPane(
       session.requestRender();
       return true;
     }
-    if (
-      key.ctrl && key.name === "x" &&
-      promptLineFree(ctx.es) &&
-      session.view === session.roleIds.length + 1
-    ) {
+    return false;
+  };
+  // The two-press Ctrl+X arm: cancels the selected plan or bug through the non-exiting core
+  // the dashboard drawer uses. Returns false when the prompt is busy or the Backlog view is
+  // not showing, so the key falls through the dispatch as today.
+  const backlogCancel = (ctx: TuiPaneCtx): boolean => {
+    if (promptLineFree(ctx.es) && session.view === session.roleIds.length + 1) {
       // Ctrl+X twice cancels the selected plan or bug through the non-exiting core the
       // dashboard drawer uses; the title check inside tryCancelEntry refuses a stale selection.
       const selected = selectedEditableEntry(session, selectedEntry, "cancelled");
@@ -207,11 +210,13 @@ export function createBacklogPane(
       session.requestRender();
       return true;
     }
-    if (
-      key.ctrl && key.name === "v" &&
-      promptLineFree(ctx.es) &&
-      session.view === session.roleIds.length + 1
-    ) {
+    return false;
+  };
+  // The one-press Ctrl+V arm: moves the selected plan or bug to the head of its section
+  // through the non-exiting core the dashboard drawer uses. Returns false when the prompt is
+  // busy or the Backlog view is not showing, so the key falls through the dispatch as today.
+  const backlogMoveToTop = (ctx: TuiPaneCtx): boolean => {
+    if (promptLineFree(ctx.es) && session.view === session.roleIds.length + 1) {
       // Ctrl+V moves the selected plan or bug to the head of its section through the
       // non-exiting core the dashboard drawer uses; the title check inside tryMoveEntryToTop
       // refuses a stale selection. It is the terminal twin of `tumwater plan|bug --top <n>`
@@ -225,11 +230,13 @@ export function createBacklogPane(
       session.requestRender();
       return true;
     }
-    if (
-      key.ctrl && key.name === "r" &&
-      promptLineFree(ctx.es) &&
-      session.view === session.roleIds.length + 1
-    ) {
+    return false;
+  };
+  // The two-press Ctrl+R arm: releases the Refused note on the selected plan or bug through
+  // the non-exiting core the dashboard drawer uses. Returns false when the prompt is busy or
+  // the Backlog view is not showing, so the key falls through the dispatch as today.
+  const backlogRelease = (ctx: TuiPaneCtx): boolean => {
+    if (promptLineFree(ctx.es) && session.view === session.roleIds.length + 1) {
       // Ctrl+R twice releases the Refused
       // note on the selected plan or bug through the non-exiting core the dashboard drawer
       // uses; the title check inside tryReleaseEntry refuses a stale selection. Releasing is the
@@ -254,9 +261,12 @@ export function createBacklogPane(
       session.requestRender();
       return true;
     }
-    const arrow = arrowDir(key.name);
-    const page = pageDir(key.name);
-    if (session.view === session.roleIds.length + 1 && arrow !== null) {
+    return false;
+  };
+  // The up/down arm: browses entries in full instead of editing the prompt, stepping only
+  // through the search/Ready-only kept entries when either filter is applied.
+  const backlogSelect = (ctx: TuiPaneCtx, arrow: "up" | "down"): boolean => {
+    if (session.view === session.roleIds.length + 1) {
       // In the project-status pane, up/down browse entries in full instead of editing the
       // prompt; every other view keeps today's behavior (arrows are ignored by applyKey).
       // An open answer editor pins the selection (its position was taken from it).
@@ -279,7 +289,11 @@ export function createBacklogPane(
       session.requestRender();
       return true;
     }
-    if (session.view === session.roleIds.length + 1 && page !== null) {
+    return false;
+  };
+  // The PgUp/PgDn arm: scrolls the selected entry's body within the Backlog view's entry mode.
+  const backlogPage = (ctx: TuiPaneCtx, page: "up" | "down"): boolean => {
+    if (session.view === session.roleIds.length + 1) {
       // Within-body scroll in project-status ENTRY mode: PgDn/PgUp page the selected entry's
       // body, clamped at both ends. No-op in list mode and for bodies that fit — every other
       // view ignores these keys as today (applyKey drops them).
@@ -292,6 +306,25 @@ export function createBacklogPane(
       session.requestRender();
       return true;
     }
+    return false;
+  };
+
+  const handleKey = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+  ): boolean => {
+    // The Backlog view's six key arms live in the named helpers above, each owning its whole
+    // guard, flash wording and repaint; this body is only the flat ordered dispatch in today's
+    // arm order (Ctrl+O, Ctrl+X, Ctrl+V, Ctrl+R, up/down, PgUp/PgDn), so each key's behavior
+    // is found by name.
+    if (key.ctrl && key.name === "o") return backlogToggleReady(ctx);
+    if (key.ctrl && key.name === "x") return backlogCancel(ctx);
+    if (key.ctrl && key.name === "v") return backlogMoveToTop(ctx);
+    if (key.ctrl && key.name === "r") return backlogRelease(ctx);
+    const arrow = arrowDir(key.name);
+    if (arrow !== null) return backlogSelect(ctx, arrow);
+    const page = pageDir(key.name);
+    if (page !== null) return backlogPage(ctx, page);
     return false;
   };
 
