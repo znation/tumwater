@@ -135,6 +135,126 @@ function buildCandidate(
   return { candidate: candidate as unknown as TumwaterConfig, changed: !unchanged };
 }
 
+/** Parse the request JSON into its customRoles entries and raw `check` value: the isJsonObject
+ * throw, the old-key normalization and the top-level disallowed-key scan into `ignored`; the
+ * `check` value is returned untouched for checkCommandFrom. */
+function parseConfigRequest(
+  raw: string,
+  ignored: string[],
+): { entries: unknown[] | undefined; check: unknown } {
+  const unnormalized: unknown = JSON.parse(raw);
+  if (!isJsonObject(unnormalized))
+    throw new Error(`config request must be a JSON object (got ${show(unnormalized)})`);
+  // Old key spellings read as the new ones; a request setting both fails with the pair named.
+  const normalized = normalizeConfigKeys(unnormalized);
+  if (normalized.problems.length > 0) throw new Error(normalized.problems.join("; "));
+  const parsed = normalized.raw as Record<string, unknown>;
+  for (const key of Object.keys(parsed)) {
+    if (key !== "customRoles" && key !== "check") ignored.push(key);
+  }
+  return { entries: parsed.customRoles as unknown[] | undefined, check: parsed.check };
+}
+
+/** Extract the declared check command from a request's `check` object: the isJsonObject throw,
+ * the sub-key scan that pushes the dropped `check.<key>` names into `ignored`, and the
+ * non-blank `command` (or its collected drop). */
+function checkCommandFrom(check: unknown, ignored: string[]): string | undefined {
+  // A check request is read only for its `command` (a non-blank string). Every other
+  // sub-key — and a blank `command` — is dropped into `ignored`, so it can never turn the
+  // safety gates off; a blank/absent command simply declares nothing.
+  if (check !== undefined) {
+    const checkReq = check;
+    if (!isJsonObject(checkReq))
+      throw new Error(`config request's check must be an object (got ${show(checkReq)})`);
+    for (const key of Object.keys(checkReq)) {
+      if (key !== "command") ignored.push(`check.${key}`);
+    }
+    if (isNonBlankString(checkReq.command)) return checkReq.command;
+    else if (checkReq.command !== undefined) ignored.push("check.command");
+  }
+  return undefined;
+}
+
+/** Verify a declared check.command before it is written (part 1/2): a declared check is
+ * fail-closed — the gate's pre-check rejects a red run and a failure that reproduces on main
+ * parks every queued pin behind a red main no role can repair by code — so the declared
+ * command must be observed green in the requesting worktree BEFORE it is written. Only a
+ * `passed` outcome writes; failed, timed-out, or skipped writes nothing and returns an error
+ * naming what was observed. Each candidate is run at `check.cwd` resolved against the
+ * worktree (default `.`) under the config-resolved timeout, and when a `check.gateCommand` is
+ * set and differs the gate command is verified first too — the declared command is the
+ * fail-closed promise, the gate command is what the gate scope will actually run — so a green
+ * here is a green at the gate for every command the write leaves live. */
+async function verifyDeclaredCheck(
+  root: string,
+  wt: string,
+  entries: unknown[] | undefined,
+  checkCommand: string,
+  runCheck: CheckGuard,
+): Promise<void> {
+  // Read the current config only for the guard — the write reloads fresh under the lock.
+  const currentForGuard = loadConfig(root);
+  // Pre-validate what the request would write BEFORE the declared check runs: a request
+  // that pairs a valid check.command with an invalid customRoles entry must be rejected
+  // without ever spawning the check (it would fail validation anyway). The locked write
+  // re-loads fresh and re-validates, so a config change between here and the write is
+  // still caught.
+  const { candidate: preCandidate } = buildCandidate(root, currentForGuard, entries, checkCommand);
+  validateConfig(collapseBackendAliases(preCandidate));
+  for (const check of guardChecks(currentForGuard, wt, checkCommand)) {
+    const outcome = await runCheck(wt, check, currentForGuard);
+    if (outcome.status !== "passed") {
+      throw new Error(
+        `check.command not declared: \`${outcome.script}\` ${describeGuardFailure(outcome)} in the worktree`,
+      );
+    }
+  }
+}
+
+/** The locked whole-config write of a config request: the load-to-write sequence is one
+ * critical section under withConfigLock — a concurrent `config set`/dashboard write between
+ * the load and this write must not be dropped by the whole-file overwrite (see
+ * writeConfigMutation). Returns whether the request changed nothing and the now-live custom
+ * role names. */
+function writeConfigRequest(
+  root: string,
+  entries: unknown[] | undefined,
+  checkCommand: string | undefined,
+): { unchanged: boolean; applied: string[] } {
+  let applied: string[] = [];
+  let unchanged = false;
+  withConfigLock(root, () => {
+    const current = loadConfig(root); // fresh — bypasses the stat cache: a writer sees the latest file
+    const { candidate, changed } = buildCandidate(root, current, entries, checkCommand);
+    // Nothing the request would change: write nothing, like writeConfigMutation's no-op skip.
+    if (!changed) {
+      unchanged = true;
+      return;
+    }
+    // Collapse legacy/new pi spellings before writing so a merged config (which always
+    // carries the default piArgs) never lands both forms in the file — the next load's raw
+    // pass rejects a file holding both `piArgs` and `backends.pi.args`.
+    const collapsed = collapseBackendAliases(candidate);
+    validateConfig(collapsed); // throws listing every problem — nothing is written on failure
+    writeJsonAtomic(configPath(root), collapsed, true);
+    applied = collapsed.customRoles.map((c) => c.name);
+  });
+  return { unchanged, applied };
+}
+
+/** Delete the request on EVERY path — success, rejection, malformed JSON — so it can never be
+ * staged by commitAll, reach a review gate, or retry forever. A failed unlink is surfaced as
+ * an error so the caller logs it (the file would otherwise survive into the diff); a passed-in
+ * error outranks the failed-deletion message. Returns the error to surface. */
+function discardConfigRequest(requestFile: string, error: string | undefined): string | undefined {
+  try {
+    fs.unlinkSync(requestFile);
+  } catch (err) {
+    return error ?? `config request file could not be deleted: ${errorMessage(err)}`;
+  }
+  return error;
+}
+
 /** Consume the role's config-write request file (plans/portability.md §3/7). After its pi
  * run the director may leave `.tumwater-config-request.json` at its worktree root:
  * `{ "customRoles": [ { "name", "task" }, … ] }` — the whole array, replacing the current one;
@@ -179,7 +299,9 @@ function buildCandidate(
  * unless the write happened); `ignored` lists the discarded keys (top-level keys and, named
  * `check.<key>`, the check sub-keys that were dropped); `error`, when set, names why nothing
  * (or only part of the work) was done — the caller turns it and `ignored` into warning events.
- * `unchanged` is set when the request changes nothing; nothing is written. */
+ * `unchanged` is set when the request changes nothing; nothing is written. The body delegates
+ * each phase to a named helper — parseConfigRequest, checkCommandFrom, verifyDeclaredCheck,
+ * writeConfigRequest and discardConfigRequest. */
 export async function applyConfigRequest(
   root: string,
   wt: string,
@@ -194,99 +316,23 @@ export async function applyConfigRequest(
   let error: string | undefined;
   let unchanged: true | undefined;
   try {
-    const unnormalized: unknown = JSON.parse(raw);
-    if (!isJsonObject(unnormalized))
-      throw new Error(`config request must be a JSON object (got ${show(unnormalized)})`);
-    // Old key spellings read as the new ones; a request setting both fails with the pair named.
-    const normalized = normalizeConfigKeys(unnormalized);
-    if (normalized.problems.length > 0) throw new Error(normalized.problems.join("; "));
-    const parsed = normalized.raw as Record<string, unknown>;
-    for (const key of Object.keys(parsed)) {
-      if (key !== "customRoles" && key !== "check") ignored.push(key);
-    }
-    // A check request is read only for its `command` (a non-blank string). Every other
-    // sub-key — and a blank `command` — is dropped into `ignored`, so it can never turn the
-    // safety gates off; a blank/absent command simply declares nothing.
-    let checkCommand: string | undefined;
-    if (parsed.check !== undefined) {
-      const checkReq = parsed.check;
-      if (!isJsonObject(checkReq))
-        throw new Error(`config request's check must be an object (got ${show(checkReq)})`);
-      for (const key of Object.keys(checkReq)) {
-        if (key !== "command") ignored.push(`check.${key}`);
-      }
-      if (isNonBlankString(checkReq.command)) checkCommand = checkReq.command;
-      else if (checkReq.command !== undefined) ignored.push("check.command");
-    }
-    const entriesRaw = parsed.customRoles;
-    if (entriesRaw !== undefined && !Array.isArray(entriesRaw))
-      throw new Error(`config request's customRoles must be an array (got ${show(entriesRaw)})`);
-    const entries = entriesRaw as unknown[] | undefined;
-    // Verified declaration (part 1/2): a declared check is fail-closed — the gate's pre-check
-    // rejects a red run and a failure that reproduces on main parks every queued pin behind a
-    // red main no role can repair by code — so the declared command must be observed green in
-    // the requesting worktree BEFORE it is written. Only a `passed` outcome writes; failed,
-    // timed-out, or skipped writes nothing and returns an error naming what was observed. Each
-    // candidate is run at `check.cwd` resolved against the worktree (default `.`) under the
-    // config-resolved timeout, and when a `check.gateCommand` is set and differs the gate
-    // command is verified first too — the declared command is the fail-closed promise, the
-    // gate command is what the gate scope will actually run — so a green here is a green at
-    // the gate for every command the write leaves live.
+    const { entries, check } = parseConfigRequest(raw, ignored);
+    const checkCommand = checkCommandFrom(check, ignored);
+    // The array-shape check runs after the check-subkey scan in checkCommandFrom, preserving the
+    // original ordering so a doubly-malformed request still reports its dropped `check.<key>`
+    // warnings before the malformed-customRoles error.
+    if (entries !== undefined && !Array.isArray(entries))
+      throw new Error(`config request's customRoles must be an array (got ${show(entries)})`);
     if (checkCommand !== undefined) {
-      // Read the current config only for the guard — the write reloads fresh under the lock.
-      const currentForGuard = loadConfig(root);
-      // Pre-validate what the request would write BEFORE the declared check runs: a request
-      // that pairs a valid check.command with an invalid customRoles entry must be rejected
-      // without ever spawning the check (it would fail validation anyway). The locked write
-      // re-loads fresh and re-validates, so a config change between here and the write is
-      // still caught.
-      const { candidate: preCandidate } = buildCandidate(
-        root,
-        currentForGuard,
-        entries,
-        checkCommand,
-      );
-      validateConfig(collapseBackendAliases(preCandidate));
-      for (const check of guardChecks(currentForGuard, wt, checkCommand)) {
-        const outcome = await runCheck(wt, check, currentForGuard);
-        if (outcome.status !== "passed") {
-          throw new Error(
-            `check.command not declared: \`${outcome.script}\` ${describeGuardFailure(outcome)} in the worktree`,
-          );
-        }
-      }
+      await verifyDeclaredCheck(root, wt, entries, checkCommand, runCheck);
     }
-    // The load-to-write sequence is one critical section under withConfigLock: a concurrent
-    // `config set`/dashboard write between the load and this write must not be dropped by the
-    // whole-file overwrite (see writeConfigMutation).
-    withConfigLock(root, () => {
-      const current = loadConfig(root); // fresh — bypasses the stat cache: a writer sees the latest file
-      const { candidate, changed } = buildCandidate(root, current, entries, checkCommand);
-      // Nothing the request would change: write nothing, like writeConfigMutation's no-op skip.
-      if (!changed) {
-        unchanged = true;
-        return;
-      }
-      // Collapse legacy/new pi spellings before writing so a merged config (which always
-      // carries the default piArgs) never lands both forms in the file — the next load's raw
-      // pass rejects a file holding both `piArgs` and `backends.pi.args`.
-      const collapsed = collapseBackendAliases(candidate);
-      validateConfig(collapsed); // throws listing every problem — nothing is written on failure
-      writeJsonAtomic(configPath(root), collapsed, true);
-      applied = collapsed.customRoles.map((c) => c.name);
-    });
+    const written = writeConfigRequest(root, entries, checkCommand);
+    applied = written.applied;
+    unchanged = written.unchanged ? true : undefined;
   } catch (err) {
     applied = []; // no write happened, or it must not be reported as applied
     error = errorMessage(err);
   }
-
-  // Delete the request on EVERY path — success, rejection, malformed JSON — so it can never be
-  // staged by commitAll, reach a review gate, or retry forever. A failed unlink is surfaced as
-  // an error so the caller logs it (the file would otherwise survive into the diff).
-  try {
-    fs.unlinkSync(requestFile);
-  } catch (err) {
-    error ??= `config request file could not be deleted: ${errorMessage(err)}`;
-  }
+  error = discardConfigRequest(requestFile, error);
   return unchanged ? { applied, ignored, error, unchanged } : { applied, ignored, error };
 }
