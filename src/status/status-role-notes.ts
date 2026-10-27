@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { readTextOrNull } from "../files/files.js";
+import { readRegularTextOrNull } from "../files/files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { roleNotesPath } from "../paths.js";
 import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
@@ -46,7 +46,7 @@ export function readRoleNotesOverCap(root: string): RoleNoteOverCap[] | null {
       file,
       file,
       () => {
-        const text = readTextOrNull(file);
+        const text = readRegularTextOrNull(file);
         return text === null ? null : text.length;
       },
       (n) => n,

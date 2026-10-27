@@ -487,13 +487,22 @@ unreadable path) is left to the pi resolver, never followed out of the worktree.
 structure heading gate (backlog-structure.ts) and the false-fix heading guard (fix-claim.ts) read
 a changed backlog file's head only when lstat shows it is a regular file, so a symlinked
 BUGS.md/PLANS.md/BUGS-FIXED.md cannot pull an outside file's headings into either verdict.
+The prompt readers for PRINCIPLES.md (prompt/principles.ts) and a role's notes
+(run/run-prompt.ts) hold the same line, and so do their operator readers
+(doctor/doctor-principles.ts, status/status-role-notes.ts, roles/role-view.ts): each reads
+only when lstat shows a regular file, so a symlink dropped at those paths cannot inject an
+arbitrary host file's text into a model's run prompt, and the operator surfaces cannot
+disagree with the prompt. (The separate backlog index/eligibility/structure prompt readers,
+via stat-cache.ts's readTextOrNull, remain unguarded and unclaimed here.)
 
 **Binds.** `src/merge/merge-git.ts`, `src/merge/merge-backlog-conflicts.ts`,
 `src/backlog/backlog-structure.ts`, `src/verdict/fix-claim.ts`,
 `src/review/review.ts`, `src/run/stage-check.ts`,
-`src/merge/merge-to-main.ts`.
+`src/merge/merge-to-main.ts`, `src/prompt/principles.ts`, `src/run/run-prompt.ts`,
+`src/doctor/doctor-principles.ts`, `src/status/status-role-notes.ts`,
+`src/roles/role-view.ts`.
 
-**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — `test/backlog-structure.test.ts` — "backlogStructureReason never follows a symlinked backlog file out of the worktree" — `test/fix-claim.test.ts` — "falseFixReason never follows a symlinked BUGS.md out of the worktree" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run".
+**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — `test/backlog-structure.test.ts` — "backlogStructureReason never follows a symlinked backlog file out of the worktree" — `test/fix-claim.test.ts` — "falseFixReason never follows a symlinked BUGS.md out of the worktree" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run" — `test/run-prompt.test.ts` — "a symlinked role notes file never injects the outside file's text into the run prompt" and "a symlinked PRINCIPLES.md never injects the outside file's text into the run prompt".
 
 ### INV-G4: a changed file that exists but cannot be read is a secret-leak finding; only a path with no file is skipped
 

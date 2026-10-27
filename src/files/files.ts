@@ -122,6 +122,24 @@ export function readTextOrNull(file: string): string | null {
   }
 }
 
+/** Read a text file whole, but only when it is a regular file: a symlink (or directory,
+ * gitlink, FIFO) is never followed, so a hostile entry that points out of the worktree cannot
+ * pull an arbitrary host file's text into whatever reads it (the same lstat policy INV-G3 and
+ * INV-G4 pin for the merge gates). A symlink holds no text of its own and its target could
+ * name a sensitive host path, so it reads as absent. Null when the file is missing/unreadable,
+ * or not a regular file. This is the reader for the two prompt-input files whose text is
+ * injected into every model run — PRINCIPLES.md and a role's notes — and their operator
+ * readers, so the prompt and the surfaces reporting on those files cannot disagree;
+ * readTextOrNull stays for paths where following a symlink is acceptable or impossible. */
+export function readRegularTextOrNull(file: string): string | null {
+  try {
+    if (!fs.lstatSync(file).isFile()) return null; // not a regular file: never followed
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return null; // Missing or unreadable — no data.
+  }
+}
+
 /** Read a text file whole, or null only when it does not exist (ENOENT) — for the paths that
  * must never mistake an unreadable file for an absent one. A permission or I/O failure (EACCES,
  * EISDIR, EMFILE) is rethrown so the caller fails loudly instead of treating the file as gone:

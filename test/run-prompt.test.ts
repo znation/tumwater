@@ -939,3 +939,34 @@ test("a declared check gets neither no-check note, even with a declaration plan 
   assert.ok(!plan2.prompt.includes(PLAN_NOTE), "a declared check keeps the plan prompt note-free");
   assert.ok(!feature2.prompt.includes(FEATURE_NOTE), "a declared check keeps the feature prompt note-free");
 });
+
+// The prompt-input readers never follow a symlink out of the worktree (INV-G3/G4's lstat
+// policy): a hostile note or principles file that is a symlink to an arbitrary host path must
+// not pull that file's text into the model's prompt. The reader treats the symlink as absent,
+// so the matching block is omitted rather than reflecting the outside file.
+test("a symlinked role notes file never injects the outside file's text into the run prompt", () => {
+  const dir = root();
+  const notes = roleNotesPath(dir, "coverage");
+  // Create the parent directory so the symlink has somewhere to live.
+  fs.mkdirSync(path.dirname(notes), { recursive: true });
+  const outside = path.join(dir, "..", "host-secret.txt"); // resolves outside the worktree
+  fs.writeFileSync(outside, "PRIVATE HOST CONTENTS\n");
+  fs.symlinkSync(outside, notes);
+
+  const result = promptFor(dir, "coverage");
+  assert.ok(result);
+  assert.ok(!result.prompt.includes("PRIVATE HOST CONTENTS"), "the outside file's text must not reach the prompt");
+  assert.ok(!result.prompt.includes("<role-notes>"), "a symlinked note reads as absent: no notes block");
+});
+
+test("a symlinked PRINCIPLES.md never injects the outside file's text into the run prompt", () => {
+  const dir = root();
+  const outside = path.join(dir, "..", "host-key.txt");
+  fs.writeFileSync(outside, "SECRET HOST KEY MATERIAL\n");
+  fs.symlinkSync(outside, path.join(dir, "PRINCIPLES.md"));
+
+  const result = promptFor(dir, "coverage");
+  assert.ok(result);
+  assert.ok(!result.prompt.includes("SECRET HOST KEY MATERIAL"), "the outside file's text must not reach the prompt");
+  assert.ok(!result.prompt.includes("<principles>"), "a symlinked principles file reads as empty: no principles block");
+});

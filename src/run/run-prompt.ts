@@ -25,7 +25,7 @@ import { readFeedbackFilings, renderFilingsBlock } from "./feedback-filings.js";
 import { roleNotesPath } from "../paths.js";
 import * as path from "node:path";
 import { pathTokens } from "../text/text.js";
-import { isDirectory, readTextOrNull, statOrNull } from "../files/files.js";
+import { isDirectory, readRegularTextOrNull, readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
 import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
@@ -76,9 +76,11 @@ function missingEntryPaths(root: string, file: string, range: { start: number; e
  * brief text reader apply to their hand-editable files. A UTF-8 character is never
  * fewer than one byte, so a note the tool accepted (≤ 4096 bytes) is always ≤ 4096 chars
  * and never trips this bound; only an over-cap file is cut, with truncateWithNote's visible
- * marker naming the loss. */
+ * marker naming the loss. A symlinked note file reads as absent (readRegularTextOrNull never
+ * follows a symlink out of the worktree, INV-G3/G4's lstat policy): a hostile note that is a
+ * symlink cannot pull an arbitrary host file's text into this role's prompt. */
 function readRoleNote(root: string, role: string): string | undefined {
-  const text = readTextOrNull(roleNotesPath(root, role));
+  const text = readRegularTextOrNull(roleNotesPath(root, role));
   return text === null ? undefined : truncateWithNote(text, ROLE_NOTES_MAX_BYTES, "role notes");
 }
 

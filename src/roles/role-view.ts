@@ -34,7 +34,7 @@ import { readAccount, windowEntries } from "../agent/subscription-account.js";
 import { CONFIG_BASENAME, configPath, roleNotesPath } from "../paths.js";
 import { coverageRows, readQaCoverage, type CoverageRow } from "../run/qa-coverage.js";
 import { filingRows, readFeedbackFilings, type FilingRow } from "../run/feedback-filings.js";
-import { readTextOrNull, statOrNull } from "../files/files.js";
+import { readRegularTextOrNull, statOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
 import { finiteNumber, objectOrEmpty } from "../files/json-object.js";
 import { canonicalRoleId } from "./legacy-role-ids.js";
@@ -436,7 +436,7 @@ export function rolePayload(
   let noteSavedAt: number | null = null;
   if (role !== DIRECTOR_ROLE) {
     const notesPath = roleNotesPath(root, role);
-    const text = readTextOrNull(notesPath);
+    const text = readRegularTextOrNull(notesPath);
     note = text !== null && text.trim() !== "" ? text : null;
     if (note !== null) noteSavedAt = statOrNull(notesPath)?.mtimeMs ?? null;
   }

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { readTextOrNull } from "../files/files.js";
+import { readRegularTextOrNull } from "../files/files.js";
 import { PRINCIPLES_MAX_CHARS } from "../prompt/principles.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
@@ -10,7 +10,7 @@ import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
  * truncate, naming the trimmed count, the cap, the marker, and the fix. Read-only, like every
  * doctor check — it never edits PRINCIPLES.md. */
 export function checkPrinciples(root: string): CheckOutcome {
-  const raw = readTextOrNull(path.join(root, "PRINCIPLES.md"));
+  const raw = readRegularTextOrNull(path.join(root, "PRINCIPLES.md"));
   if (raw === null) return okOutcome("no PRINCIPLES.md");
   const length = raw.trim().length;
   if (length <= PRINCIPLES_MAX_CHARS) {
