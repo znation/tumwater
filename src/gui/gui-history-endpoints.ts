@@ -260,47 +260,61 @@ function transcriptText(root: string, role: string, run: number, detail: RunDeta
  * payload's `role` is that run's; `result`/`model` narrow it the same way, and a miss is a 404
  * worded for any role. */
 export async function handleRun(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
-  let role = q.get("role");
-  const bareLast = role === null && q.get("last") !== null;
-  if (!bareLast && rejectBadRole(root, res, role)) return;
-  let run: number | null;
-  if (q.get("last") === null) {
-    if (q.get("result") !== null) return badRequest(res, "result needs last");
-    if (q.get("model") !== null) return badRequest(res, "model needs last");
-    run = intQuery(q, res, "run", "positive");
-    if (run === null) return;
-  } else {
-    if (q.get("run") !== null) return badRequest(res, "last cannot be combined with run (a number and the newest run are rival selectors)");
-    const classes = resultClassesQuery(q, res);
-    if (classes === null) return;
-    const models = splitCommaListUnique(q.get("model") ?? "");
-    const classFilter = classes.length ? classes : null;
-    const modelFilter = models.length ? models : null;
-    const row = newestRunRow(root, role, classFilter, modelFilter);
-    if (row !== null) role = row.role;
-    run = row?.run ?? null;
-    if (run === null) {
-      sendJson(res, 404, { error: runNotFoundLastMessage(role, classFilter, modelFilter) });
-      return;
-    }
-  }
-  const detail = readRunDetail(root, role as string, run);
+  const target = runSelector(q, res, root);
+  if (target === null) return;
+  const detail = readRunDetail(root, target.role, target.run);
   if (detail === null) {
-    sendJson(res, 404, { error: runNotFoundMessage(role as string, run) });
+    sendJson(res, 404, { error: runNotFoundMessage(target.role, target.run) });
     return;
   }
+  sendJson(res, 200, await runPayload(root, target.role, target.run, detail, q));
+}
+/** The run a request names — the validated role and the resolved run number. */
+interface RunSelector { role: string; run: number }
+/** Resolve which run the request names — validating the role, then the numbered or `last` form. */
+function runSelector(q: URLSearchParams, res: http.ServerResponse, root: string): RunSelector | null {
+  const role = q.get("role");
+  const bareLast = role === null && q.get("last") !== null;
+  if (!bareLast && rejectBadRole(root, res, role)) return null;
+  return q.get("last") !== null ? lastRunSelector(q, res, root, role) : numberedRunSelector(q, res, role);
+}
+/** Resolve the explicit `run=N` selector of /api/run (three 400s, the miss worded by intQuery). */
+function numberedRunSelector(q: URLSearchParams, res: http.ServerResponse, role: string | null): RunSelector | null {
+  if (q.get("result") !== null) { badRequest(res, "result needs last"); return null; }
+  if (q.get("model") !== null) { badRequest(res, "model needs last"); return null; }
+  const run = intQuery(q, res, "run", "positive");
+  if (run === null) return null;
+  return { role: role as string, run };
+}
+/** Resolve the `last` selector, narrowed by `result`/`model`, to the role's newest run. */
+function lastRunSelector(q: URLSearchParams, res: http.ServerResponse, root: string, role: string | null): RunSelector | null {
+  if (q.get("run") !== null) { badRequest(res, "last cannot be combined with run (a number and the newest run are rival selectors)"); return null; }
+  const classes = resultClassesQuery(q, res);
+  if (classes === null) return null;
+  const models = splitCommaListUnique(q.get("model") ?? "");
+  const classFilter = classes.length ? classes : null;
+  const modelFilter = models.length ? models : null;
+  const row = newestRunRow(root, role, classFilter, modelFilter);
+  if (row === null) {
+    sendJson(res, 404, { error: runNotFoundLastMessage(role, classFilter, modelFilter) });
+    return null;
+  }
+  return { role: row.role, run: row.run };
+}
+/** Assemble the 200 payload — the collector plus its rendered, stat and flag-gated fields. */
+async function runPayload(root: string, role: string, run: number, detail: RunDetail, q: URLSearchParams): Promise<Record<string, unknown>> {
   const grep = (q.get("grep") ?? "").trim();
   const mergedAs = runMergedSha(detail);
   const target = mergedAs === null ? null : await resolveRevertTarget(root, mergedAs);
-  sendJson(res, 200, {
+  return {
     ...detail,
     text: renderRunDetail(detail),
     stat: await runDetailStat(root, detail),
     revertSha: target?.ok ? target.full : null,
     hasCommit: runCommitSha(detail) !== null,
     ...(q.get("patch") !== null ? { patch: await runDetailPatch(root, detail) } : {}),
-    ...(q.get("transcript") !== null ? { transcript: transcriptText(root, role as string, run, detail, q.get("prompt") !== null, grep === "" ? undefined : grep) } : {}),
-  });
+    ...(q.get("transcript") !== null ? { transcript: transcriptText(root, role, run, detail, q.get("prompt") !== null, grep === "" ? undefined : grep) } : {}),
+  };
 }
 /** Handle GET /api/role?role=<id>: one role's inspection payload — rolePayload's object,
  * the same collection behind `tumwater role <id>` — so the drawer's Notes and Next run
