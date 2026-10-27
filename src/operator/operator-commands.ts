@@ -428,6 +428,16 @@ async function retireTargetRole(root: string, args: string[]): Promise<string> {
   fail(unknownRoleMessage(role, ids));
 }
 
+/** Render one line per artifact an inventory holds and one per skipped artifact — the same
+ * wording both the `--dry-run` preview and the committed run go through, so the two cannot
+ * drift on the removed / `nothing to remove` phrasing. `verb` distinguishes the preview's
+ * `would remove` from the committed `removed`. The `nothing to remove for role` no-ops line
+ * stays in the caller (only the committed run carries it). */
+function sayRemoveInventory(removed: readonly string[], skipped: readonly string[], verb: string, role: string): void {
+  for (const name of removed) say(`${verb} ${artifactPhrase(name, role)}`);
+  for (const name of skipped) say(`nothing to remove: ${artifactPhrase(name, role)}`);
+}
+
 /** `tumwater retire --role <id> [--force] [--json]`: remove a disabled role's leftover worktree,
  * branch, merge ref, and paused-state marker. The collection, safety rails, and removal live in
  * src/operator/retire.ts; this is the render layer — one line per removed artifact, the skip lines
@@ -449,8 +459,7 @@ export async function cmdRetire(root: string, args: string[]): Promise<void> {
       });
       return;
     }
-    for (const name of preview.wouldRemove) say(`would remove ${artifactPhrase(name, role)}`);
-    for (const name of preview.skipped) say(`nothing to remove: ${artifactPhrase(name, role)}`);
+    sayRemoveInventory(preview.wouldRemove, preview.skipped, "would remove", role);
     for (const reason of preview.objections)
       say(force ? `--force overrides: ${reason}` : `would refuse: ${reason}`);
     say("dry run — nothing removed");
@@ -461,8 +470,7 @@ export async function cmdRetire(root: string, args: string[]): Promise<void> {
     sayJson({ role, removed: result.removed, skipped: result.skipped });
     return;
   }
-  for (const name of result.removed) say(`removed ${artifactPhrase(name, role)}`);
-  for (const name of result.skipped) say(`nothing to remove: ${artifactPhrase(name, role)}`);
+  sayRemoveInventory(result.removed, result.skipped, "removed", role);
   if (result.removed.length === 0 && result.skipped.length === 0)
     say(`nothing to remove for role ${role}`);
 }
