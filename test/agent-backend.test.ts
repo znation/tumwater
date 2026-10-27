@@ -10,6 +10,7 @@ import {
 import { runAgent, MAX_NATIVE_LINE_CHARS } from "../src/agent/run-agent.js";
 import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { patchFsMethod } from "./helpers/fs-faults.js";
 
 // The agent seam (plans/agent-backends.md "The seam"): a registry keyed by id, and a runner
 // that lets a backend deliver the prompt on stdin. src/agent/run-agent.ts registers the pi and
@@ -226,4 +227,63 @@ test("a synchronous backend invocation throw does not leak the run's private tem
   }
   const leftovers = fs.readdirSync(sandbox).filter((n) => n.startsWith("tumwater-run-"));
   assert.deepEqual(leftovers, [], "the failed run must remove its private temp dir");
+});
+
+test("a synchronous backend invocation throw ends the append-log streams (no descriptor leak)", async () => {
+  // runAgent opens a raw and a native append-log WriteStream before it builds the spawn, and
+  // only a settle/finish path ends them. A backend whose invocation() throws synchronously
+  // (claude rejecting a run with no model) throws before any child exists, so no finish() runs
+  // and nothing else would ever end the two streams — each rejected run must not leave their
+  // descriptors to the transcript files open and accumulate in the long-lived orchestrator.
+  //
+  // The assertion is synchronous and deterministic: capture the two streams runAgent opened
+  // through the createWriteStream seam and check the `writableEnded` flag, which `.end()` flips
+  // the moment it is called. Reading an fd table from outside is not a reliable proxy — a lazy
+  // WriteStream's fd opens on its own schedule (or, un-referenced after the rejection, may never
+  // open), so an un-ended stream can look closed just because its fd has not opened yet, and the
+  // test would pass with the leak present. `writableEnded` is true only when the cleanup ran, so
+  // this test fails before the fix and passes after it.
+  const dir = tmpdir();
+  const raw = path.join(dir, "raw.jsonl");
+  const native = path.join(dir, "native.jsonl");
+  const streams: fs.WriteStream[] = [];
+  const restoreStream = patchFsMethod("createWriteStream", (orig) => (file, flags) => {
+    const stream = orig(file, flags) as fs.WriteStream;
+    if (String(file) === raw || String(file) === native) streams.push(stream);
+    return stream;
+  });
+  const fake: AgentBackend = {
+    id: "fake-invocation-throw-fd",
+    label: "fake",
+    defaultBin: "fake",
+    binEnv: "TUMWATER_FAKE_BIN",
+    resolveBin: () => ({ bin: "/bin/sh", source: "config" }),
+    invocation: () => {
+      throw new Error("no model configured");
+    },
+    translator: () => ({ translate: (line) => [line] }),
+    classifyExit: () => ({}),
+  };
+  registerAgentBackend(fake);
+  try {
+    await assert.rejects(
+      runAgent({
+        cwd: dir,
+        prompt: "p",
+        config: { ...defaultConfig(), agent: "fake-invocation-throw-fd" },
+        sessionDir: path.join(dir, "sessions"),
+        sessionName: "t",
+        rawLogFile: raw,
+        nativeLogFile: native,
+        kind: "author",
+      }),
+      /no model configured/,
+    );
+    assert.equal(streams.length, 2, "the raw and native append-log streams both opened before the throw");
+    for (const stream of streams) {
+      assert.equal(stream.writableEnded, true, "a stream opened before the synchronous throw is ended by the cleanup");
+    }
+  } finally {
+    restoreStream();
+  }
 });

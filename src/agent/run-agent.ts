@@ -338,6 +338,18 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       } catch {
         /* left for the OS temp sweep */
       }
+      // The two append-log streams opened before the build-and-spawn stage (the raw and
+      // backend-native transcripts) are never handed to a stream-settlement path on this throw
+      // — there is no child and no finish(), so nothing else would ever end them — end them
+      // here best-effort (the same cleanup the outer setup-failure catch makes) or every
+      // rejected run leaks two open transcript descriptors that accumulate in the
+      // long-lived orchestrator process.
+      try {
+        rawLog?.stream.end();
+        nativeLog?.stream.end();
+      } catch {
+        /* best-effort */
+      }
       reject(err instanceof Error ? err : new Error(`runAgent: ${String(err)}`));
     }
   });
