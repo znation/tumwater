@@ -376,6 +376,17 @@ export function removeQuiet(file: string): void {
   }
 }
 
+/** Delete `file` when it exists, reporting whether one was there to lift — the toggle-marker
+ * half of the exists-then-remove dance `resumeTeam` and `cancelScheduledStop` both repeat for
+ * their markers. Returns true when the file existed and was removed, false when it was already
+ * absent; the delete is removeQuiet's, so a file vanishing between the check and the unlink is
+ * success, not a failure worth surfacing from a toggle. */
+export function removeIfPresent(file: string): boolean {
+  if (!fs.existsSync(file)) return false;
+  removeQuiet(file);
+  return true;
+}
+
 /** Delete a directory tree, retrying the transient filesystem races (`ENOTEMPTY`/`EBUSY`/
  * `EPERM`) that recursive `rmSync` otherwise turns into a hard failure. Node defaults
  * `maxRetries` to 0, and on macOS an entry appearing between `rmSync`'s walk and its `rmdir`

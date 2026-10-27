@@ -1,7 +1,6 @@
-import fs from "node:fs";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
-import { removeQuiet } from "../files/files.js";
+import { removeIfPresent, removeQuiet } from "../files/files.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 import { pausedPath, pausedRolesLockPath, pausedRolesPath, scheduledStopPath } from "../paths.js";
@@ -148,14 +147,11 @@ export function pauseTeam(root: string, untilMs?: number, reason?: string): bool
 }
 
 /** Resume the team by removing its marker (a no-op if absent); returns whether a marker was
- * there to lift, mirroring pauseTeam's changed-state contract. Uses removeQuiet's
- * never-throws delete: a marker vanishing between the check and the unlink is success, not a
- * failure worth surfacing from a toggle. */
+ * there to lift, mirroring pauseTeam's changed-state contract. Uses removeIfPresent's
+ * never-throws delete, so a marker vanishing between the check and the unlink is success, not
+ * a failure worth surfacing from a toggle. */
 export function resumeTeam(root: string): boolean {
-  const marker = pausedPath(root);
-  if (!fs.existsSync(marker)) return false;
-  removeQuiet(marker);
-  return true;
+  return removeIfPresent(pausedPath(root));
 }
 
 /** Schedule a graceful team stop at `untilMs` (epoch ms): `tumwater stop --in`. Overwrites the
@@ -177,10 +173,7 @@ export function scheduledStopAt(root: string): number | undefined {
 
 /** Drop the scheduled stop; returns whether a marker was there (resumeTeam's contract). */
 export function cancelScheduledStop(root: string): boolean {
-  const marker = scheduledStopPath(root);
-  if (!fs.existsSync(marker)) return false;
-  removeQuiet(marker);
-  return true;
+  return removeIfPresent(scheduledStopPath(root));
 }
 
 /** The roles the operator has individually paused (`tumwater pause --role <id>`): a role in
