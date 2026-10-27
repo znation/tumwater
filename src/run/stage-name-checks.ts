@@ -118,29 +118,68 @@ export async function staleNameFindings(wt: string, diff: string): Promise<strin
  * old file's name (full path or basename), with no `,` or `;` between them. An old file that
  * still names the moved name (a re-export or import) and record prose are skipped. */
 export async function movedNameFindings(wt: string, diff: string): Promise<string[]> {
+  const { removedIn, addedIn } = declaredNameDeltas(diff);
+  const picked = movedNames(removedIn, addedIn);
+  if (picked.length === 0) return [];
+  const out = await gitTry(wt, "grep", "-n", "-w", "-I", "--cached", ...picked.flatMap((m) => ["-e", m.name]));
+  if (!out) return [];
+  const lines = gitGrepHits(out);
+  const findings: string[] = [];
+  for (const move of picked) {
+    if (findings.length >= MAX_STALE_PATHS) break;
+    const hits = movedNameHits(move, lines);
+    if (hits.length === 0) continue;
+    findings.push(
+      `\`${move.name}\` moved from ${move.from} to ${cappedList(move.to, MAX_STALE_PATHS)}, but ${hits.join(", ")} ` +
+        `still place it in ${path.basename(move.from)} — point each at its new file`,
+    );
+  }
+  return findings;
+}
+
+/** A compound name the change moved out of one JS/TS file into another. */
+interface MovedName { name: string; from: string; to: string[] }
+
+/** One `git grep` hit line: file path, line number and text. */
+interface GrepHit { file: string; no: string; text: string }
+
+/** Record that `file` declares `name` into the per-name file set of `map`. */
+function noteDeclaredName(map: Map<string, Set<string>>, name: string, f: string): void {
+  const set = map.get(name) ?? new Set<string>();
+  set.add(f);
+  map.set(name, set);
+}
+
+/** Split a `-U0` diff into the compound names each JS/TS file removed and added. */
+function declaredNameDeltas(diff: string): { removedIn: Map<string, Set<string>>; addedIn: Map<string, Set<string>> } {
   const removedIn = new Map<string, Set<string>>();
   const addedIn = new Map<string, Set<string>>();
   let file: string | null = null;
-  const note = (map: Map<string, Set<string>>, name: string, f: string): void => {
-    const set = map.get(name) ?? new Set<string>();
-    set.add(f);
-    map.set(name, set);
-  };
   for (const line of diff.split("\n")) {
     const header = /^diff --git a\/.* b\/(.*)$/.exec(line);
     if (header) {
       file = JS_FILE.test(header[1]!) ? header[1]! : null;
       continue;
     }
+    // The `---`/`+++` old/new path lines carry no declaration, and no keyword or leading-field
+    // match begins with `-` or `+`, so no guard against them is needed here.
     if (file === null) continue;
-    const isRemoved = line.startsWith("-") && !line.startsWith("---");
-    const isAdded = line.startsWith("+") && !line.startsWith("+++");
-    if (!isRemoved && !isAdded) continue;
-    for (const n of declaredNames(line.slice(1)).filter(isCompoundName)) {
-      note(isRemoved ? removedIn : addedIn, n, file);
+    if (line.startsWith("-")) {
+      for (const n of declaredNames(line.slice(1)).filter(isCompoundName)) {
+        noteDeclaredName(removedIn, n, file);
+      }
+    } else if (line.startsWith("+")) {
+      for (const n of declaredNames(line.slice(1)).filter(isCompoundName)) {
+        noteDeclaredName(addedIn, n, file);
+      }
     }
   }
-  const moves: { name: string; from: string; to: string[] }[] = [];
+  return { removedIn, addedIn };
+}
+
+/** The names removed from one JS/TS file that the change moved into another, capped. */
+function movedNames(removedIn: Map<string, Set<string>>, addedIn: Map<string, Set<string>>): MovedName[] {
+  const moves: MovedName[] = [];
   for (const [name, froms] of removedIn) {
     const added = addedIn.get(name);
     if (!added) continue;
@@ -150,40 +189,35 @@ export async function movedNameFindings(wt: string, diff: string): Promise<strin
       break;
     }
   }
-  const picked = moves.slice(0, MAX_STALE_NAMES);
-  if (picked.length === 0) return [];
-  const out = await gitTry(wt, "grep", "-n", "-w", "-I", "--cached", ...picked.flatMap((m) => ["-e", m.name]));
-  if (!out) return [];
-  const lines = gitGrepHits(out);
-  const findings: string[] = [];
-  for (const { name, from, to } of picked) {
-    if (findings.length >= MAX_STALE_PATHS) break;
-    const word = new RegExp(`(?<![\\w$])${name.replace(/\$/g, "\\$")}(?![\\w$])`, "g");
-    const mine = lines.filter((l) => l.text.search(word) !== -1);
-    if (mine.some((l) => l.file === from)) continue;
-    const base = path.basename(from);
-    const hits: string[] = [];
-    for (const l of mine) {
-      if (isRecordProse(l.file)) continue;
-      const text = l.text.split(from).join(base);
-      const names = [...text.matchAll(word)].map((m) => m.index);
-      const bases = standalonePathIndexes(text, base);
-      const near = names.some((i) =>
-        bases.some((j) => {
-          const gap = j >= i + name.length ? text.slice(i + name.length, j) : text.slice(j + base.length, i);
-          const overlaps = j < i + name.length && i < j + base.length;
-          return !overlaps && gap.length <= MOVED_NAME_GAP_MAX && !/[,;]/.test(gap);
-        }),
-      );
-      if (!near) continue;
-      hits.push(`${l.file}:${l.no}`);
-      if (hits.length >= MAX_STALE_HITS) break;
-    }
-    if (hits.length === 0) continue;
-    findings.push(
-      `\`${name}\` moved from ${from} to ${cappedList(to, MAX_STALE_PATHS)}, but ${hits.join(", ")} ` +
-        `still place it in ${base} — point each at its new file`,
-    );
+  return moves.slice(0, MAX_STALE_NAMES);
+}
+
+/** True when `text` sits near a standalone occurrence of the old file's basename `base`. */
+function placesMovedNameInOldFile(text: string, word: RegExp, name: string, base: string): boolean {
+  const names = [...text.matchAll(word)].map((m) => m.index);
+  const bases = standalonePathIndexes(text, base);
+  return names.some((i) =>
+    bases.some((j) => {
+      const gap = j >= i + name.length ? text.slice(i + name.length, j) : text.slice(j + base.length, i);
+      const overlaps = j < i + name.length && i < j + base.length;
+      return !overlaps && gap.length <= MOVED_NAME_GAP_MAX && !/[,;]/.test(gap);
+    }),
+  );
+}
+
+/** The staged-index hits that still place `move.name` in its old file, capped. */
+function movedNameHits(move: MovedName, lines: GrepHit[]): string[] {
+  const word = new RegExp(`(?<![\\w$])${move.name.replace(/\$/g, "\\$")}(?![\\w$])`, "g");
+  const mine = lines.filter((l) => l.text.search(word) !== -1);
+  if (mine.some((l) => l.file === move.from)) return [];
+  const base = path.basename(move.from);
+  const hits: string[] = [];
+  for (const l of mine) {
+    if (isRecordProse(l.file)) continue;
+    const text = l.text.split(move.from).join(base);
+    if (!placesMovedNameInOldFile(text, word, move.name, base)) continue;
+    hits.push(`${l.file}:${l.no}`);
+    if (hits.length >= MAX_STALE_HITS) break;
   }
-  return findings;
+  return hits;
 }
