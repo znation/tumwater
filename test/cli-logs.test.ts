@@ -41,6 +41,18 @@ test("logs -n validates its value instead of misbehaving", async () => {
   assert.equal(ok.code, 0);
 });
 
+test("logs -n refuses a count above the cap instead of scanning the whole log", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs -n cap");
+
+  const over = await cli(repo, "logs", "-n", "100001");
+  assert.equal(over.code, 1);
+  assert.match(over.stderr, /-n must be between 1 and 100000/);
+
+  const ok = await cli(repo, "logs", "-n", "100000");
+  assert.equal(ok.code, 0);
+});
+
 // --- logs --json (the event feed as machine-readable NDJSON) ---
 
 // Seed a chronological run of run_start events directly (the -n view is newest-first).

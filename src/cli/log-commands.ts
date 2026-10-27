@@ -126,6 +126,12 @@ export function followUntilParentGone(
 }
 
 
+/** The `-n` ceiling for the event-log dump (`tumwater logs -n <count>`): a terminal tail has
+ * no use for more than this many scanned events, and bounding it keeps an accidental
+ * `-n 999999999` from traversing the whole event file. Sister counts are bounded the same way
+ * (history's HISTORY_MAX_RUNS, report's REPORT_MAX_DAYS); the GUI clamps its logs counts too. */
+const LOGS_MAX_EVENTS = 100_000;
+
 /** `tumwater logs [-f] [-n <count>] [--since <duration>] [--until <duration>]
  * [--role <id>[,<id>...]] [--transcript <id>] [--prompt]
  * [--grep <text>]`: follow or dump the harness event log, with `--since` a bounded
@@ -149,7 +155,7 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
     return;
   }
   const nRaw = flagValue(feed.rest, "-n");
-  const limit = nRaw !== null ? parseCountFlag("-n", nRaw) : 50;
+  const limit = nRaw !== null ? parseCountFlag("-n", nRaw, LOGS_MAX_EVENTS) : 50;
   // The event feed (no --transcript) never needs the config at all: parseRoleScope reads it only
   // when the flag is present.
   const role = parseRoleScope(root, feed.rest, "--transcript", LOGS_TRANSCRIPT_VALUE_ERROR);
