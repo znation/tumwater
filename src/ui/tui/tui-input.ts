@@ -27,6 +27,17 @@ function snapCursor(text: string, cursor: number): number {
   return cutSplitsSurrogatePair(text, clamp) ? clamp - 1 : clamp;
 }
 
+/** Move the cursor one whole code point in `dir` (`-1` left, `+1` right), clamped to the
+ * text's ends — the one home of the surrogate-step rule applyKey's left and right arms
+ * shared, so neither direction can ever land between a surrogate pair's halves (a cursor
+ * there would let a later backspace/delete cut the pair in half). The step backs off one
+ * unit past the clamp when the landed index would split a pair, crossing the whole astral
+ * character instead. */
+function stepCursor(text: string, cursor: number, dir: -1 | 1): number {
+  const n = dir === -1 ? Math.max(0, cursor - 1) : Math.min(text.length, cursor + 1);
+  return cutSplitsSurrogatePair(text, n) ? n + dir : n;
+}
+
 /** The character immediately before index `i`, as its whole [start, i) span: a surrogate
  * pair is never split, so the backward word-scan killWordBefore runs on always steps a
  * whole character and its boundary lands where a cut is safe. Null at the text's start. */
@@ -76,15 +87,10 @@ export function applyKey(
 ): { text: string; cursor: number } {
   const c = snapCursor(text, cursor);
   switch (key.name) {
-    case "left": {
-      const n = Math.max(0, c - 1);
-      // A cut at n would land inside a pair: step over the whole astral character instead.
-      return { text, cursor: cutSplitsSurrogatePair(text, n) ? n - 1 : n };
-    }
-    case "right": {
-      const n = Math.min(text.length, c + 1);
-      return { text, cursor: cutSplitsSurrogatePair(text, n) ? n + 1 : n };
-    }
+    case "left":
+      return { text, cursor: stepCursor(text, c, -1) };
+    case "right":
+      return { text, cursor: stepCursor(text, c, 1) };
     case "backspace":
       if (key.meta) return killWordBefore(text, c); // Alt+Backspace: kill the previous word
       if (c === 0) return { text, cursor: 0 };
