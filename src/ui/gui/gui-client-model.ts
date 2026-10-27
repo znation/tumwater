@@ -30,18 +30,6 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p.startsWith("merging")) return { key: "landing", label: "Merging", tone: "orange", live: true, detail: after(7) }; // vocabulary-ok: internal key the row classes and filters match
     if (p.startsWith("approved")) return { key: "vetted", label: "Approved", tone: "indigo", live: false, detail: "waiting to merge" }; // vocabulary-ok: internal key the row classes and filters match
     if (p.startsWith("waiting to start")) return { key: "awaiting", label: "Waiting to start", tone: "gray", live: false, detail: after(16) ? "for " + after(16) : "" };
-    // A waiter parked on a full provider key (provider-concurrency part 5/5): the phase reads
-    // waiting for <key> 2m, and this chip names the provider alongside the wait, so the
-    // operator sees which cap is full — the same chip and tone as a team-total waiter.
-    if (p.startsWith("waiting for ")) {
-      const m = after(12).match(/^(\S+)(?:\s+(.*))?$/);
-      const prov = m ? m[1] : "";
-      const dur = m && m[2] ? m[2].trim() : "";
-      return {
-        key: "awaiting", label: "Waiting to start", tone: "gray", live: false,
-        detail: (prov ? "on " + prov : "") + (dur ? " for " + dur : ""),
-      };
-    }
     if (p === "failing") return { key: "failing", label: "Failing", tone: "red", live: false, detail: "failed runs in a row" };
     if (p === "main's check is failing") return { key: "mainred", label: "Main's check failing", tone: "red", live: false, detail: "change pinned until main goes green" };
     if (p.startsWith("paused")) return { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new runs" };

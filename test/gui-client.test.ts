@@ -47,13 +47,11 @@ test("every phase label rolePhase renders maps to a known status on the page", (
     [rolePhase(at({ running: true, parkedSince: now - 5_000 }), true), "awaiting", false],
     [rolePhase(at({}, "director"), true), "waiting", false],
     [rolePhase(at({}), true, undefined, false, null, true), "paused", false],
-    [rolePhase(at({}), true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined, now + 120_000), "paused", false],
+    [rolePhase(at({}), true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, now + 120_000), "paused", false],
     [rolePhase(at({}), true, undefined, true), "budget", false],
     [rolePhase(at({}), true, undefined, true, null, false, undefined, undefined, true), "cap", false],
     [rolePhase(at({}), true, undefined, false, null, false, undefined, undefined, true), "cap", false],
     [rolePhase(at({}), true, undefined, false, null, false, undefined, undefined, false, undefined, false, true), "bootstrap", false],
-    [rolePhase(at({ running: true, parkedSince: now - 120_000, parkedOn: "omlx" }), true, undefined, false, null, false, undefined, undefined, false, undefined, false, false, undefined,
-      { inUse: 3, limit: 8, reserve: 0, byKey: { omlx: { inUse: 3, limit: 3, waiting: 1 } } }), "awaiting", false],
     [rolePhase(at({ lastResult: "main_red" }), true), "mainred", false],
     [rolePhase(at({ consecutiveErrors: 9 }), true), "failing", false],
     [rolePhase(at({ nextRunAt: now + 600_000 }), true), "sleeping", false],
@@ -73,7 +71,6 @@ test("every phase label rolePhase renders maps to a known status on the page", (
     assert.equal(model.roleRank(phase), roleRank(phase), `"${phase}" ranks as the server ranks it`);
     assert.ok(info.label && info.label !== phase || key === "other", `"${phase}" gets a status word`);
   }
-  assert.equal(model.phaseInfo("waiting for omlx 2m").detail, "on omlx for 2m", "provider waiter names its key");
   // A queued role is not necessarily waiting for a slot; the detail must not claim it is.
   assert.ok(!model.phaseInfo("due").detail.includes("free slot"), "due detail does not blame slots");
   assert.doesNotMatch(model.phaseInfo("due").detail, /slot|deferred/);

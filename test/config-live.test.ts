@@ -207,16 +207,14 @@ test("a maxConcurrent edit live-resizes the semaphore and logs its own event", (
 
 test("a config carrying maxConcurrentPerProvider is refused on reload and the previous config holds", () => {
   const config = defaultConfig();
-  const { root, live, sem } = liveReload(config);
+  const { root, live } = liveReload(config);
   live.poll();
 
   // The removed key is written raw (writeConfig's value is unknown): the reload fails
-  // validation, keeps the last-known-good config, and the keyed semaphore stays uncapped
-  // (never seeded) — no provider_concurrency_changed event.
+  // validation, keeps the last-known-good config — no provider_concurrency_changed event.
   writeConfig(root, { ...config, maxConcurrentPerProvider: { omlx: 2 } });
 
   assert.deepEqual(live.poll(), config);
-  assert.equal(sem.snapshot().byKey.omlx, undefined);
   assert.equal(readEvents(root).filter((e) => (e.type as string) === "provider_concurrency_changed").length, 0);
 });
 

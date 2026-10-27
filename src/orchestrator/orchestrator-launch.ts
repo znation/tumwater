@@ -164,12 +164,11 @@ export function launchDueRuns(ctx: LaunchContext): void {
           ? async () => {
               // The run is admitted by the one team total (maxConcurrent) alone — there is no
               // per-provider key or cap any more. Which cap holds the run is always the team
-              // total, read once at park time.
+              // total.
               const admittedAt = Date.now();
-              const pool = semaphore.snapshot();
               lease = await semaphore.acquireLease(roleTier(runner.role));
               // A wait of PROVIDER_WAIT_EVENT_MS or more for the team slot is
-              // provider contention worth surfacing: name it so `tumwater doctor`'s provider
+              // contention worth surfacing: name it so `tumwater doctor`'s provider
               // contention row can sum it and the operator can size maxConcurrent from real
               // waits. Best-effort like the launch pass's other
               // events, so an unwritable log never blocks a start; a run admitted at once
@@ -180,8 +179,6 @@ export function launchDueRuns(ctx: LaunchContext): void {
                   type: "provider_wait",
                   role: runner.role,
                   waitedMs: Date.now() - admittedAt,
-                  cap: "team" as const,
-                  limit: pool.limit,
                 });
               }
               // Permit granted: the run is now an active, permit-holding state until the

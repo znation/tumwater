@@ -31,31 +31,14 @@ export interface ChainTierInfo {
  * module itself. The operator pause markers are the other team-state domain and live beside
  * this one in team-state.ts; this module owns the info file alone. */
 
-/** The disk floor's published state (plans/disk-floor.md, part 4/4): what the orchestrator
- * measured on its most recent poll, so observers (status, TUI, GUI) show the same facts
- * without calling statfs themselves. `freeGB` is rounded to one decimal; `held` is the hold's
- * verdict; `lastReclaim` names the most recent pressure pass that cleaned anything, absent
- * until one has. Published only when it changes; absent when statfs cannot measure the volume
- * or on an older orchestrator. */
-/** One keyed provider's live permits in the pool's snapshot (plans/provider-concurrency.md
- * §8): `inUse` is the slots that key currently holds, `limit` its configured cap
- * (absent when the key is uncapped — bounded only by the team total), `waiting` the
- * acquirers parked on that key. */
-interface PermitKeyState {
-  inUse: number;
-  limit?: number;
-  waiting: number;
-}
-
 /** The permit pool's published state (plans/provider-concurrency.md §8): the team total's
- * in-use/cap, the maintenance reserve, and each referenced provider key's own state. The
- * orchestrator publishes it through the info file so observers (status, TUI, GUI) render the
- * same facts without coupling to the scheduler's Semaphore. */
+ * in-use/cap and the maintenance reserve. The orchestrator publishes it through the info
+ * file so observers (status, TUI, GUI) render the same facts without coupling to the
+ * scheduler's Semaphore. */
 export interface PermitSnapshot {
   inUse: number;
   limit: number;
   reserve: number;
-  byKey: Record<string, PermitKeyState>;
 }
 
 /** The check-permit pool's published state (src/concurrency/check-permit.ts checkPermitSnapshot):
@@ -231,9 +214,7 @@ function parseBuild(v: unknown): BuildStatus | undefined {
   return build;
 }
 
-/** The published permit snapshot, or undefined for any foreign shape. Each `byKey` entry must
- * carry its two numbers; `limit` is kept only when it is a number, so a malformed provider
- * map is dropped to `undefined` rather than reaching a render that reads it as a valid cap. */
+/** The published permit snapshot, or undefined for any foreign shape. */
 /** One entry of the published provider-holds list, or undefined for any foreign shape: a
  * well-formed entry is an object with a finite `until` and a string `kind`; a `provider` that
  * is present but not a string drops the entry, so a guarded list keeps its well-formed
@@ -251,15 +232,7 @@ function parseCheckPermits(v: unknown): CheckPermitSnapshot | undefined {
 
 function parsePermits(v: unknown): PermitSnapshot | undefined {
   if (!isJsonObject(v) || !isFiniteNumber(v.inUse) || !isFiniteNumber(v.limit) || !isFiniteNumber(v.reserve)) return undefined;
-  if (!isJsonObject(v.byKey)) return undefined;
-  const byKey: Record<string, PermitKeyState> = {};
-  for (const [key, value] of Object.entries(v.byKey)) {
-    if (!isJsonObject(value) || !isFiniteNumber(value.inUse) || !isFiniteNumber(value.waiting)) continue;
-    const entry: PermitKeyState = { inUse: value.inUse, waiting: value.waiting };
-    if (isFiniteNumber(value.limit)) entry.limit = value.limit;
-    byKey[key] = entry;
-  }
-  return { inUse: v.inUse, limit: v.limit, reserve: v.reserve, byKey };
+  return { inUse: v.inUse, limit: v.limit, reserve: v.reserve };
 }
 
 function parseSlotPool(v: unknown): SlotPoolSnapshot | undefined {

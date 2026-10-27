@@ -27,28 +27,14 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { GATE_SESSION, SESSION, snapshotWith, toolStart, writePiLog } from "./fixtures/status-fixtures.js";
 
-test("a parked waiter names its provider key when that key is the binding limit", () => {
+test("a parked waiter renders plain waiting-to-start wording", () => {
   const root = tmpdir();
   const s = freshRunnerState("clean");
   s.running = true;
   s.parkedSince = Date.now() - 120_000;
-  s.parkedOn = "omlx";
-  const permits = {
-    inUse: 5,
-    limit: 8,
-    reserve: 0,
-    byKey: { omlx: { inUse: 3, limit: 3, waiting: 1 }, claude: { inUse: 1, limit: 6, waiting: 0 } },
-  };
   const phase = (s2: typeof s) =>
-    rolePhase(s2, true, root, false, null, false, null, undefined, false, undefined, false, false, undefined, permits);
-  // omlx is at its cap (inUse 3 == limit 3): the parked waiter is queued on it.
-  assert.match(phase(s), /^waiting for omlx 2m/);
-  // Parked on a key under its cap (claude 1/6) is a team-total wait: bare `waiting to start`.
-  s.parkedOn = "claude";
+    rolePhase(s2, true, root, false, null, false, null, undefined, false, undefined, false, false, undefined);
   assert.match(phase(s), /^waiting to start 2m/);
-  // No permit snapshot published: bare `waiting to start` regardless of parkedOn.
-  s.parkedOn = "omlx";
-  assert.match(rolePhase(s, true), /^waiting to start 2m/);
 });
 
 test("workingDetail without a pi log shows only the elapsed time", () => {
@@ -536,19 +522,19 @@ test("rolePhase appends the per-role pause resume countdown only for a live dead
   // A future deadline renders the countdown in the team-header wording family.
   const future = now + 120_000; // ~120s → humanSeconds → "2m" (mid-bucket, deterministic)
   assert.equal(
-    rolePhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined, future),
+    rolePhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, future),
     "paused · resumes in 2m",
   );
 
   // An indefinite per-role pause (no deadline) keeps the bare `paused`.
   assert.equal(
-    rolePhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined, undefined),
+    rolePhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined),
     "paused",
   );
 
   // An expired marker never renders a stale `resumes in 0s` — the guard drops it.
   assert.equal(
-    rolePhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined, now - 1_000),
+    rolePhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, now - 1_000),
     "paused",
   );
 

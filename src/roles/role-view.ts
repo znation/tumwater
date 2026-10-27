@@ -21,7 +21,7 @@ import { projectCapHit } from "../budget/budget.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { quietHoursStatus } from "../scheduling/quiet-hours.js";
 import { assembleRunPrompt } from "../run/run-prompt.js";
-import { configForRole, resolvedModelFields, reviewedAfterMerge, reviewRunConfig, roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
+import { configForRole, resolvedModelFields, reviewedAfterMerge, reviewRunConfig, roleSeamTier } from "../config/config-views.js";
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath, seamContextWindowForRole } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
@@ -68,11 +68,6 @@ export interface RoleViewPayload {
    * `pi` unless a selector's provider names another agent or the top-level `agent` does.
    * Drives the renderer's `<agent> default` label and the agent-qualified selector string. */
   backend: string;
-  /** The provider key this role's admission lease acquires (seamConcurrencyKey, the same
-   * pure call the orchestrator's admission uses) — the key whose cap bounds the role's
-   * concurrent runs (plans/provider-concurrency.md §8). Absent for a seam whose key
-   * cannot be resolved (a cap-less default team). */
-  providerKey?: string;
   /** pi's own saved default model (readPiDefaultModel) as a formatted selector, present only
    * for a pi seam that resolves neither a provider nor a model — the name the role runs when
    * tumwater.json names none. The effective `thinking` wins over the default's, matching
@@ -302,11 +297,6 @@ export function rolePayload(
     effective.provider === undefined &&
     effective.model === undefined;
   const piDefault = runsPiWithoutAModel ? readPiDefaultModel(piSettingsPath(modelsPath), root) : null;
-  // The role's provider key (plans/provider-concurrency.md §8): the same pure key the
-  // orchestrator's admission resolves for this role, answered from the same piDefault seam
-  // the orchestrator carries, so `tumwater role <id>` names the exact key that bounds the
-  // role's runs.
-  const providerKey = seamConcurrencyKey(effective, piDefault);
   // The fallback story the operator sees: the declared pair, but the price-resolved pair when
   // one exists (a map with no `default` entry borrows another tier's free pair) and the
   // freeness verdict from the same read. `fallbackFree` false keeps the declared pair visible
@@ -463,7 +453,6 @@ export function rolePayload(
         }
       : {}),
     backend: effective.agent ?? "pi",
-    ...(providerKey !== undefined ? { providerKey } : {}),
     fallback,
     fallbackFree: freeFallback !== null,
     modelFallback: modelFallbackView(episode, cfg, role),

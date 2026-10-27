@@ -95,7 +95,7 @@ test("a due role run parks, holds a permit, releases it, and folds its duration 
   assert.equal(c.roleRunDurationsMs.length, 1, "one work-bearing run duration was sampled");
 });
 
-test("a role run that waits for the team slot logs a provider_wait event with cap team; an at-once admission and a director do not", async () => {
+test("a role run that waits for the team slot logs a provider_wait event; an at-once admission and a director do not", async () => {
   // The only permit is held by another lease, so the role's admission waits on the one team
   // total (maxConcurrent). providerWaitMs: 0 is the test seam forcing even a sub-second wait to
   // be named.
@@ -109,9 +109,9 @@ test("a role run that waits for the team slot logs a provider_wait event with ca
   const waits = eventsOfType(c.root, "provider_wait");
   assert.equal(waits.length, 1, "one provider_wait event for the waiting admission");
   assert.equal(waits[0]!.role, "feature");
-  assert.equal(waits[0]!.cap, "team");
-  assert.equal(waits[0]!.limit, 1);
   assert.ok(!("key" in waits[0]!), "the wait names no provider key");
+  assert.ok(!("cap" in waits[0]!), "the wait carries no cap field");
+  assert.ok(!("limit" in waits[0]!), "the wait carries no limit field");
   assert.ok(Number(waits[0]!.waitedMs) >= 0, "the wait is measured, never NaN");
 
   // An unheld semaphore admits at once: at the default threshold nothing is logged.

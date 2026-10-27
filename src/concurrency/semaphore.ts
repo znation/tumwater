@@ -213,14 +213,12 @@ export class Semaphore {
     this.drive();
   }
 
-  /** The pool's live state for observability: the team in-use/cap and the reserve. `byKey`
-   * stays an empty map until part 5j/6 removes the provider-key displays that read it. */
+  /** The pool's live state for observability: the team in-use/cap and the reserve. */
   snapshot(): {
     inUse: number;
     limit: number;
     reserve: number;
-    byKey: Record<string, never>;
   } {
-    return { inUse: this.inUse, limit: this.capacity, reserve: this.reserve, byKey: {} };
+    return { inUse: this.inUse, limit: this.capacity, reserve: this.reserve };
   }
 }

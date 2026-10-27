@@ -1,7 +1,6 @@
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import type { RunnerState } from "../runner/runner-state.js";
-import type { PermitSnapshot } from "../team/orchestrator-info.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { heldByMainRed } from "../status/status-polls.js";
 import { errorStreakAtWarn, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
@@ -125,7 +124,6 @@ export function rolePhase(
   diskHeld = false,
   bootstrapHeld = false,
   maintenanceQuotaHold?: string,
-  permits?: PermitSnapshot,
   pausedUntilMs?: number,
 ): string {
   if (!orchestratorRunning) return "stopped";
@@ -153,18 +151,6 @@ export function rolePhase(
     // parked waiter visibly does not (BUGS.md 2026-09-24).
     if (s.parkedSince) {
       const parkedTime = duration(Date.now() - s.parkedSince);
-      // The parked waiter's provider key, named only while that key is the binding limit in
-      // the published permit snapshot (plans/provider-concurrency.md §8): the key is at its
-      // cap, so THIS waiter is queued on its provider, not on the team total — `awaiting
-      // omlx slot` tells the operator exactly which cap is full. A role parked on the total
-      // (no key, or an uncapped one) reads today's `awaiting slot` as before.
-      if (
-        s.parkedOn !== undefined &&
-        permits !== undefined &&
-        isBindingLimit(permits, s.parkedOn)
-      ) {
-        return `waiting for ${s.parkedOn} ${parkedTime}`;
-      }
       return `waiting to start ${parkedTime}`;
     }
     // The director bypasses maxConcurrent (`usesSlot` is false for it), so its in-flight run
@@ -370,9 +356,6 @@ export function roleRowCells(
     snap.maintenanceQuota.held.includes(s.role)
       ? `waiting: maintenance allowance used ${snap.maintenanceQuota.used}/${snap.maintenanceQuota.allowance}`
       : undefined,
-    // The permit pool's live state (plans/provider-concurrency.md §8): names the parked
-    // waiter's provider key in `awaiting <key> slot` when that key is at its cap.
-    snap.permits,
     // A timed per-role pause's deadline — only when the role itself is individually paused
     // (in `pausedRoles`) and not under a team-wide pause, matching the GUI's phaseDetail
     // guard, so the team pause (whose countdown rides the header badge) never double-appends.
@@ -386,16 +369,6 @@ export function roleRowCells(
  * gui-client-model.ts interpolates ROLE_RANK_RULES, so the two dashboards cannot disagree
  * about which phases are in flight. */
 export const ACTIVE_PHASE_PREFIXES = ["working", "reviewing", "merging"] as const;
-
-/** Whether `key` is the binding limit in the published permit snapshot: its cap is set and
- * its in-use already meets or exceeds it, so the pool is granting nothing more on that key and
- * a waiter carrying it is queued on the key, not on the team total. A key without a cap in
- * the snapshot (uncapped) is never binding. One home for the rule, shared by status-model's
- * `awaiting <key> slot` and the GUI chip's provider detail. */
-function isBindingLimit(permits: PermitSnapshot, key: string): boolean {
-  const entry = permits.byKey[key];
-  return entry?.limit !== undefined && entry.inUse >= entry.limit;
-}
 
 /** Is this phase one of the PERMIT-HOLDER in-flight states — the rows an operator counts
  * against maxConcurrent? The three labels come from rolePhase: `working …`, `reviewing …`,
@@ -433,7 +406,7 @@ export const ROLE_RANK_RULES: ReadonlyArray<{
 }> = [
   { rank: -1, prefixes: ["director working"] },
   { rank: 0, active: true },
-  { rank: 1, prefixes: ["approved", "waiting to start", "waiting for "] },
+  { rank: 1, prefixes: ["approved", "waiting to start"] },
   { rank: 2, phases: ["failing", "main's check is failing"] },
   { rank: 3, phases: ["paused"] },
   { rank: 3, prefixes: ["paused", "waiting:"] },

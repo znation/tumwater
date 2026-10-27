@@ -701,22 +701,11 @@ function checkWaitEventMessage(e: HarnessEvent): string {
       return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} to start (${textOr(e.role)} ${purpose}; ${textOr(e.slots)} workspaces, ${textOr(e.pinned)} pinned)`;
     }
     case "provider_wait": {
-      // Routine-with-explanation, like slot_wait: waiting for a provider/team slot is the cap
-      // working as designed, so no warning prefix. Names the wait and the key (or the run cap
-      // when the seam has none), so the operator can size the cap with the numbers in hand. An
-      // event carrying `cap` names the cap that held the run and its limit (a team-cap wait
-      // names no key); one without `cap` (logged before it existed) renders the key-or-run-slot
-      // line alone.
+      // Routine-with-explanation, like slot_wait: waiting for the team slot is the cap
+      // working as designed, so no warning prefix. Names the wait, so the operator can size
+      // maxConcurrent with the number in hand.
       const span = shortSpanPhrase(finiteNumber(e.waitedMs, 0));
-      const limit = finiteNumber(e.limit, Number.NaN);
-      const hasKey = typeof e.key === "string" && e.key.length > 0;
-      if (e.cap === "provider" && hasKey) {
-        return `waited ${span} for a ${e.key} slot (${textOr(e.role)}${Number.isFinite(limit) ? `; capped at ${limit}` : ""})`;
-      }
-      if (e.cap === "team") {
-        return `waited ${span} for a run slot (${textOr(e.role)}${Number.isFinite(limit) ? `; maxConcurrent is ${limit}` : ""})`;
-      }
-      return `waited ${span} for a ${hasKey ? `${e.key} slot` : "run slot"} (${textOr(e.role)})`;
+      return `waited ${span} for a run slot (${textOr(e.role)})`;
     }
     case "check_wait":
       // Routine-with-explanation, like slot_wait: waiting for a check permit is the cap working

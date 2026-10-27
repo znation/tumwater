@@ -7,11 +7,11 @@
 export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
   // A Configuration section built from the same /api/role payload the CLI's tumwater role
   // <id> renders (rolePayload), so the drawer's and the terminal's rows read one document and
-  // cannot drift: what the role RUNS ON (model/tier, provider cap, image reading, the
+  // cannot drift: what the role RUNS ON (model/tier, image reading, the
   // fallback pairs, billing, min run interval) and CARRIES (queued prompts, the instructions
   // override, find text). Each row is guarded by a present/own check so an absent field
-  // renders no row — a cap-less team shows no Provider row, no fallback shows no fallback
-  // rows, and a notes-only payload adds an empty (omitted) section. Labels and wording mirror
+  // renders no row — no fallback shows no fallback rows, and a notes-only payload adds an
+  // empty (omitted) section. Labels and wording mirror
   // role-render.ts's family; no backticks allowed here (this whole script is one big
   // String.raw template).
   function drawerConfigHtml(view, role) {
@@ -91,9 +91,6 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     // previews. Guard optional to keep an older payload that lacks the field rendering as before.
     if (view.contextWindow !== undefined) {
       rows.push(kvRow("Context window", view.contextWindow === null ? "unknown" : fmtTokens(view.contextWindow) + " tokens"));
-    }
-    if (view.providerKey !== undefined) {
-      rows.push(kvRow("Provider", view.providerKey));
     }
     if (view.imageInput !== undefined) {
       const images = view.imageInput === true ? "yes"

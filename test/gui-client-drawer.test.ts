@@ -835,7 +835,6 @@ test("the role drawer renders the Configuration section from the role payload", 
       nextPrompt: null,
       model: "deepseek/deepseek-v4",
       modelTier: "strong",
-      providerKey: "deepinfra",
       imageInput: false,
       modelFallback: { provider: "omlx", model: "Qwen3.8", since: now - 120_000, reason: "http 429" },
       fallback: { provider: "omlx", model: "Qwen3.8" },
@@ -854,7 +853,6 @@ test("the role drawer renders the Configuration section from the role payload", 
   const role = t.paintedFor("drawerrole");
   assert.match(role, /<h3>Configuration<\/h3>/);
   assert.match(role, /<dt>Model<\/dt><dd[^>]*>deepseek\/deepseek-v4 \(strong tier\)<\/dd>/);
-  assert.match(role, /<dt>Provider<\/dt><dd[^>]*>deepinfra<\/dd>/);
   assert.match(role, /<dt>Images<\/dt><dd[^>]*>no<\/dd>/);
   assert.match(role, /<dt>Model fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 — on fallback since 2m ago \(primary failing: http 429\)<\/dd>/);
   assert.match(role, /<dt>Budget fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 \(free\)<\/dd>/);

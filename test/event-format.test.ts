@@ -1141,16 +1141,15 @@ test("formatEvent renders check_wait with the wait and the role", () => {
   assert.doesNotMatch(formatEvent({ ...base, heldBy: "x" } as never), /held by/);
 });
 
-test("formatEvent renders provider_wait naming the key and the run cap when none", () => {
+test("formatEvent renders provider_wait as a team-slot wait", () => {
   const keyed = formatEvent({
     ts: 0,
     source: "feature",
     type: "provider_wait",
     role: "feature",
     waitedMs: 120_000,
-    key: "omlx",
   } as never);
-  assert.match(keyed, /waited 2m for a omlx slot \(feature\)/);
+  assert.match(keyed, /waited 2m for a run slot \(feature\)/);
   const keyless = formatEvent({
     ts: 0,
     source: "feature",
@@ -1159,15 +1158,21 @@ test("formatEvent renders provider_wait naming the key and the run cap when none
     waitedMs: 30_000,
   } as never);
   assert.match(keyless, /waited 30s for a run slot \(feature\)/);
-  const base = { ts: 0, source: "feature", type: "provider_wait", role: "feature", waitedMs: 120_000 };
-  assert.match(
-    formatEvent({ ...base, cap: "provider", limit: 2, key: "omlx" } as never),
-    /waited 2m for a omlx slot \(feature; capped at 2\)/,
-  );
-  const team = formatEvent({ ...base, cap: "team", limit: 3, key: "omlx" } as never);
-  assert.match(team, /waited 2m for a run slot \(feature; maxConcurrent is 3\)/);
-  assert.doesNotMatch(team, /omlx/);
-  assert.match(formatEvent({ ...base, cap: "team", limit: "x" } as never), /for a run slot \(feature\)/);
+  // A stale keyed/capped wait (the removed fields) now renders the plain team-slot line: the
+  // key and cap wording are gone, so an old event regresses to the same reading as a new one.
+  const stale = formatEvent({
+    ts: 0,
+    source: "feature",
+    type: "provider_wait",
+    role: "feature",
+    waitedMs: 120_000,
+    key: "omlx",
+    cap: "provider",
+    limit: 2,
+  } as never);
+  assert.match(stale, /waited 2m for a run slot \(feature\)/);
+  assert.doesNotMatch(stale, /omlx/);
+  assert.doesNotMatch(stale, /capped at 2/);
 });
 
 test("formatEvent renders claim assignment and release lines", () => {

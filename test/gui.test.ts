@@ -904,13 +904,6 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
     // "backoff 1h") while it is actually queued behind a slot and may run at any moment.
     { state: { nextRunAt: now + 3_600_000, backoffSeconds: 0, running: true, parkedSince: now - 5_000 }, phase: "waiting to start 5s", team: true, want: "-" },
     { state: { nextRunAt: now + 3_600_000, backoffSeconds: 900, running: true, parkedSince: now - 5_000 }, phase: "waiting to start 5s", team: true, want: "-" },
-    // A provider-key waiter ("waiting for <provider> 5s") is active too.
-    {
-      state: { nextRunAt: now + 3_600_000, backoffSeconds: 0, running: true, parkedSince: now - 5_000 },
-      phase: "waiting for anthropic 5s",
-      team: true,
-      want: "-",
-    },
     { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "queued", team: false, want: "-" },
     // Yield-scaled clocks: the payload's yieldMultiplier rides the cell as ×N, the same
     // rule nextRunCell applies — a quiet role's effective gap is longer than the countdown.

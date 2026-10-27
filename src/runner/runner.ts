@@ -132,7 +132,6 @@ export class RoleRunner {
     if (this.state.running && role !== DIRECTOR_ROLE) this.state.resumePending = true;
     this.state.running = false;
     this.state.parkedSince = undefined;
-    this.state.parkedOn = undefined;
   }
 
   private save(): void {

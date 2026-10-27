@@ -238,9 +238,8 @@ export function pollGatesAndHolds(
   state.diskHeld = gates.diskHeld;
   // Publish the permit pool's live state (plans/provider-concurrency.md §8): observers
   // (status, TUI, GUI) read one file instead of coupling to this Semaphore, and the team
-  // line shows per-provider counts only while a cap map is configured. Written only when
-  // it changes, like budget and disk; a map-less team publishes `byKey` empty, which
-  // renders exactly as before. The check-permit pool rides along, so status can show checks
+  // line shows the team total. Written only when it changes, like budget and disk. The
+  // check-permit pool rides along, so status can show checks
   // running and waiting while merges stall. The workspace pool's live state rides along too:
   // one small slots.json read per poll, and publishInfoFields rewrites the info file only
   // when a value changed.

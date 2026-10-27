@@ -16,7 +16,6 @@ import {
   resolverConfig,
   reviewConfig,
   reviewRunConfig,
-  seamConcurrencyKey,
   seamHoldKey,
   tierModel,
   topTierBackend,
@@ -673,30 +672,6 @@ test("seamHoldKey keys a claude seam by its agent and a pi seam by its provider"
   assert.equal(seamHoldKey({ agent: "claude", provider: undefined }), "claude");
   assert.equal(seamHoldKey({ agent: "pi", provider: "omlx" }), "omlx");
   assert.equal(seamHoldKey({ agent: "pi", provider: undefined }), undefined);
-});
-
-test("seamConcurrencyKey reuses the hold key, and a no-model pi seam takes pi's default provider", () => {
-  // A claude seam carries no pi provider, so its hold key is the backend id.
-  assert.equal(seamConcurrencyKey({ agent: "claude", provider: undefined, model: "claude-opus-5-5" }, null), "claude");
-  // A pi seam keeps its provider — the omlx and huggingface sub-provider-pin cases alike.
-  assert.equal(seamConcurrencyKey({ agent: "pi", provider: "omlx", model: "Qwen" }, null), "omlx");
-  assert.equal(
-    seamConcurrencyKey({ agent: "pi", provider: "huggingface", model: "deepseek-ai/DeepSeek:deepinfra" }, null),
-    "huggingface",
-  );
-  // A pi seam that names no model runs pi's saved default, so it takes the default provider.
-  assert.equal(seamConcurrencyKey({ agent: "pi", provider: undefined, model: undefined }, { provider: "omlx", model: "d" }), "omlx");
-  assert.equal(
-    seamConcurrencyKey({ agent: "pi", provider: undefined, model: undefined }, { provider: "lm-studio", model: "d" }),
-    "lm-studio",
-  );
-  // No pi default either: no key.
-  assert.equal(seamConcurrencyKey({ agent: "pi", provider: undefined, model: undefined }, null), undefined);
-  // A bare id with no provider is left keyless regardless of pi's default.
-  assert.equal(
-    seamConcurrencyKey({ agent: "pi", provider: undefined, model: "sonnet" }, { provider: "omlx", model: "d" }),
-    undefined,
-  );
 });
 
 test("backendQualifiedSelector names a non-pi backend as the selector namespace", () => {

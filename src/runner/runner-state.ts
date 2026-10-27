@@ -66,13 +66,6 @@ export interface RunnerState {
    * parked waiter as `awaiting slot` and keep the active-state rows equal to the real
    * permit holders (BUGS.md 2026-09-24). */
   parkedSince?: number;
-  /** The provider key a parked waiter is queued on (plans/provider-concurrency.md §8), set
-   * alongside `parkedSince` by the orchestrator and cleared the moment the permit is
-   * granted — the key the admission lease will acquire. It lets the dashboards render
-   * `awaiting omlx slot` instead of the bare `awaiting slot` when that key is at its cap.
-   * Transient like `parkedSince` — never persisted — and absent for a team-total waiter
-   * (no key) or the director (which never queues), so both render exactly as before. */
-  parkedOn?: string;
   /** True when the last run was interrupted mid-task — aborted by a harness shutdown, or
    * truncated at the model's context ceiling — with its pi session (and any uncommitted
    * worktree edits, for shutdowns) left in place: the next run resumes that session

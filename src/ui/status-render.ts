@@ -292,8 +292,8 @@ function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): Stat
     // comfortable or unmeasured state, so an unaffected header stays byte-identical.
     ...badgeSpans(diskBadge(snap.disk), snap.disk?.held ? "yellow" : "blue"),
     // The permit pool's live state (plans/provider-concurrency.md §8): the team line reads
-    // `slots 5/8 · omlx 3/3` only while the per-provider cap map is set (permitsBadge already
-    // omits the providers on a map-less team, so the header stays byte-identical).
+    // `running 5 of 8` — the team total's in-use/cap — for any team with a published permit
+    // snapshot; empty until one has been published.
     ...badgeSpans(permitsBadge(snap.permits), "blue"),
     // Checks running/waiting for a check permit; empty while the check pool is idle.
     ...badgeSpans(checksBadge(snap.checkPermits), snap.checkPermits && snap.checkPermits.waiting > 0 ? "yellow" : "blue"),

@@ -95,13 +95,13 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
               : "");
       }
       // The permit pool (plans/provider-concurrency.md §8): the payload's preformatted
-      // permitsBadge — running 5 of 8 · omlx 3/3 · claude 2/6 — upcased for the row's label
-      // style, the same reading the TUI/status header carries, so the two surfaces cannot
-      // drift. Empty on a map-less team, so the sidebar stays unchanged.
+      // permitsBadge — running 5 of 8 — upcased for the row's label style, the same reading
+      // the TUI/status header carries, so the two surfaces cannot drift. Present for any
+      // team with a published permit snapshot.
       if (d.permitsBadge) {
         const tok = String(d.permitsBadge).replace(/^ · /, "");
         rows += row("blue", icon("gauge"), esc(tok),
-          "Roles running at once out of the team limit, then each capped provider's own running/cap; a role waits to start when its provider is at its cap.");
+          "Roles running at once out of the team limit (maxConcurrent); a role waits to start when the team is at its limit.");
       }
       // The check-permit pool: the payload's checksBadge, present only while a check runs or waits.
       if (d.checksBadge) {

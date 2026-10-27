@@ -1,5 +1,4 @@
 import type { TestCounts } from "../build/build-check-counts.js";
-import { sortEntriesByKey } from "../collections.js";
 import { utilizationPct, windowLabel, type SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
@@ -399,20 +398,11 @@ export function diskBadge(disk: StatusSnapshot["disk"]): string {
       : "";
 }
 
-/** The permit pool's header fragment (plans/provider-concurrency.md §8): `slots 5/8 · omlx
- * 3/3 · claude 2/6` — the team total's in-use/cap followed by each capped provider key's own
- * in-use/cap. The WHOLE fragment appears only while at least one key carries a cap, so a team
- * without one renders the header exactly as before; uncapped keys that happen to be in the
- * snapshot are dropped rather than shown with a bare in-use that would read like a cap. */
+/** The permit pool's header fragment (plans/provider-concurrency.md §8): `slots 5/8` — the
+ * team total's in-use/cap. Empty when no snapshot was published. */
 export function permitsBadge(permits: StatusSnapshot["permits"]): string {
   if (!permits) return "";
-  const providers = sortEntriesByKey(
-    Object.entries(permits.byKey).filter(([, e]) => e.limit !== undefined),
-  )
-    .map(([k, e]) => `${k} ${e.inUse}/${e.limit}`)
-    .join(" · ");
-  if (providers.length === 0) return "";
-  return ` · running ${permits.inUse} of ${permits.limit} · ${providers}`;
+  return ` · running ${permits.inUse} of ${permits.limit}`;
 }
 
 /** The check-permit pool's reading, ` · checks 1/2` plus `, 3 waiting` while checks queue. Empty

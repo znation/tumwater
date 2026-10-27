@@ -198,9 +198,9 @@ discards a role's in-flight merge.
   blocks it.
 - **One bound.** `maxConcurrent` is the only concurrency bound: a run whose admission waits
   30 s or more because the team is busy logs a `provider_wait` event, and `tumwater doctor`'s
-  "provider contention" row sums the last 24 h and warns at 10 minutes, naming every key that
-  waited, busiest first. The event's `cap` names `maxConcurrent` and `limit` its value; the row
-  files a team-cap wait under "the run cap" whatever its key.
+  "provider contention" row sums the last 24 h and warns at 10 minutes. Every wait is a
+  team-cap one (the event carries no provider key), and the row files each under "the run
+  cap" — `maxConcurrent`, the one knob to raise.
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
   once: pipeline, merge, batch, and main-baseline checks share it, the rest queue, and merges go
   first. A scoped check whose permit wait reaches 30 s logs a `check_wait` event (role, scope,

@@ -208,19 +208,8 @@ test("ciParityTone is the one state-to-tone map", () => {
 
 test("permitsBadge shows the team line slots and stays byte-identical without a pool", () => {
   assert.equal(permitsBadge(undefined), "", "no permit snapshot: header unchanged");
-  // A map-less team publishes an empty byKey (no caps), so the whole badge stays empty and
-  // the header is unchanged.
-  assert.equal(permitsBadge({ inUse: 5, limit: 8, reserve: 0, byKey: {} }), "");
-  // With a per-provider cap map set, the team total and each capped key ride the badge;
-  // uncapped keys that happen to be in the snapshot are dropped.
-  assert.equal(
-    permitsBadge({ inUse: 5, limit: 8, reserve: 0, byKey: {
-      omlx: { inUse: 3, limit: 3, waiting: 1 },
-      claude: { inUse: 2, limit: 6, waiting: 0 },
-      huggingface: { inUse: 1, waiting: 0 },
-    } }),
-    " · running 5 of 8 · claude 2/6 · omlx 3/3",
-  );
+  // The published snapshot carries the team total alone; the per-provider caps are gone.
+  assert.equal(permitsBadge({ inUse: 5, limit: 8, reserve: 0 }), " · running 5 of 8", "team total rides the badge");
 });
 
 test("diskBadge shows the hold or low space and stays empty otherwise", () => {

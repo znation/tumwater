@@ -321,24 +321,6 @@ test("renderRoleMarkdown renders the payload's sections, with verbatim text fenc
   assert.match(md, /## Next run's prompt/);
 });
 
-test("the role view names the per-provider concurrency key", () => {
-  const dir = root();
-  writeConfig(dir, {
-    provider: "prov-a",
-    model: "model-a",
-  });
-  const p = rolePayload(dir, "feature", NO_MODELS);
-  assert.equal(p.providerKey, "prov-a");
-  assert.match(renderRoleMarkdown(p), /- Provider: prov-a/m);
-});
-
-test("a key-less team's role view renders no Provider line, byte-identical to before", () => {
-  const dir = root();
-  const p = rolePayload(dir, "feature", NO_MODELS);
-  assert.equal(p.providerKey, undefined); // no provider/model: the seam key cannot resolve
-  assert.doesNotMatch(renderRoleMarkdown(p), /- Provider:/m);
-});
-
 test("with several prompts queued, the next-run block discloses that only the oldest rides", () => {
   const dir = root();
   enqueueRolePrompt(dir, "feature", "cover the empty-input case");
