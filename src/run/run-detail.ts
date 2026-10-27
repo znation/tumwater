@@ -86,26 +86,15 @@ interface ParsedRunDetailInvocation {
   models: string[] | null;
 }
 
-/** The invocation half of cmdRunDetail: rule out the arity and flag mistakes before any run is
- * resolved, so the shared unknown-role wording and the usage string are the whole validation
- * surface, found by this one name. Succeeds only for a well-formed call; returns the parsed
- * bare/role/classes/models for the resolver. The role is checked first, so a typo is named
- * whatever the count (knownRoleIdsCached: the built-ins plus user-defined roles, read through
- * the never-throwing cached loader so a transiently broken tumwater.json cannot take a
- * read-only view down). The arity, unknown-role and flag-dependency failures all `fail` with
- * the usage. */
-function parseRunDetailInvocation(
+/** The positional and role half of parseRunDetailInvocation's validation: the bare/last arity,
+ * the canonical role id, the unknown-role guard (knownRoleIdsCached) and the three arity
+ * `fail`s — one name so the whole positional surface is found by this helper. Returns whether
+ * the call is bare (`--last` with no role) and the resolved role. */
+function runDetailPositionals(
   root: string,
   positionals: string[],
-  { last, transcript, prompt, grep, result, model }: {
-    last: boolean;
-    transcript: boolean;
-    prompt: boolean;
-    grep: string | null;
-    result: string | null;
-    model: string | null;
-  },
-): ParsedRunDetailInvocation {
+  last: boolean,
+): { bare: boolean; role: string } {
   // Positional arity by form: cli.ts has already peeled the flags off and gated them (only
   // --json and --last are admitted), so anything left over that does not fit the chosen form
   // is a mistake. The role is checked first, so a typo is named whatever the count; then
@@ -132,13 +121,101 @@ function parseRunDetailInvocation(
     }
     fail(`usage: ${RUN_DETAIL_USAGE}`);
   }
+  return { bare, role };
+}
+
+/** The flag-dependency half of parseRunDetailInvocation's validation: the four `fail` guards —
+ * `--prompt`/`--grep` need `--transcript`, `--result`/`--model` need `--last` — one name so the
+ * whole dependency surface is found by this helper. */
+function checkRunDetailFlagDeps(flags: {
+  last: boolean;
+  transcript: boolean;
+  prompt: boolean;
+  grep: string | null;
+  result: string | null;
+  model: string | null;
+}): void {
+  const { last, transcript, prompt, grep, result, model } = flags;
   if (prompt && !transcript) fail(`history --prompt needs --transcript (usage: ${RUN_DETAIL_USAGE})`);
   if (grep !== null && !transcript) fail(`history --grep needs --transcript on a one-run trail (usage: ${RUN_DETAIL_USAGE})`);
   if (result !== null && !last) fail(`history --result needs --last on a one-run trail (usage: ${RUN_DETAIL_USAGE})`);
   if (model !== null && !last) fail(`history --model needs --last on a one-run trail (usage: ${RUN_DETAIL_USAGE})`);
+}
+
+/** The invocation half of cmdRunDetail: rule out the arity and flag mistakes before any run is
+ * resolved, so the shared unknown-role wording and the usage string are the whole validation
+ * surface, found by this one name. Succeeds only for a well-formed call; returns the parsed
+ * bare/role/classes/models for the resolver. Delegates the positional/role arity to
+ * runDetailPositionals and the flag-dependency guards to checkRunDetailFlagDeps, then parses
+ * the --result class and --model selector lists. */
+function parseRunDetailInvocation(
+  root: string,
+  positionals: string[],
+  { last, transcript, prompt, grep, result, model }: {
+    last: boolean;
+    transcript: boolean;
+    prompt: boolean;
+    grep: string | null;
+    result: string | null;
+    model: string | null;
+  },
+): ParsedRunDetailInvocation {
+  const { bare, role } = runDetailPositionals(root, positionals, last);
+  checkRunDetailFlagDeps({ last, transcript, prompt, grep, result, model });
   const classes = result !== null ? parseHistoryResultList(result) : null;
   const models = model !== null ? parseHistoryModelList(model) : null;
   return { bare, role, classes, models };
+}
+
+/** The not-found branch of cmdRunDetail for the --last form: the scan came up empty, not found
+ * by construction, the last-form wording — `sayJson(null)` under --json, else
+ * runNotFoundLastMessage. */
+function runDetailLastMiss(parsed: ParsedRunDetailInvocation, role: string, json: boolean): void {
+  // The --last scan came up empty: not found by construction, the last-form wording.
+  if (json) sayJson(null);
+  else say(runNotFoundLastMessage(parsed.bare ? null : role, parsed.classes, parsed.models));
+}
+
+/** The not-found branch of cmdRunDetail for the numbered form: not found stays exit 0 in both
+ * renderings, but --json still owes a parseable document in every exit-0 case (`null`), else
+ * the runNotFoundMessage prose line. */
+function runDetailNumberMiss(role: string, runNumber: number, json: boolean): void {
+  // Not found stays exit 0 in both renderings, but --json still owes a parseable document in
+  // every exit-0 case (the report --json precedent, the invariant this command's own doc
+  // comment claims): `null` is the JSON answer for a single-record lookup that missed — the
+  // prose line would end a jq pipe mid-team-incident.
+  if (json) sayJson(null);
+  else say(runNotFoundMessage(role, runNumber));
+}
+
+/** The render half of cmdRunDetail: build the --stat/--patch footer and the --transcript lines,
+ * then emit the --json payload or the human-rendered trail (renderRunDetail plus the footer and
+ * transcript text). */
+async function emitRunDetail(
+  root: string,
+  role: string,
+  runNumber: number,
+  detail: RunDetail,
+  json: boolean,
+  opts: { stat: boolean; patch: boolean; transcript: boolean; prompt: boolean; grep: string | null },
+): Promise<void> {
+  // --json swaps the renderer for the collector's own payload, exactly as history --json: a
+  // JSON document in every exit-0 case, never prose.
+  const footer: { stat?: string; patch?: string } = {};
+  if (opts.stat) footer.stat = await runDetailStat(root, detail);
+  if (opts.patch) footer.patch = await runDetailPatch(root, detail);
+  const transcriptLines = opts.transcript
+    ? runTranscriptLines(root, role, runNumber, detail, { includePrompts: opts.prompt, grep: opts.grep ?? undefined })
+    : null;
+  if (json) {
+    sayJson({ ...detail, ...footer, ...(transcriptLines === null ? {} : { transcript: transcriptLines.found }) });
+  } else {
+    const transcriptText =
+      transcriptLines === null
+        ? []
+        : [transcriptLines.found.length > 0 ? transcriptLines.found.join("\n") : transcriptLines.note];
+    say([renderRunDetail(detail), ...Object.values(footer), ...transcriptText].join("\n\n"));
+  }
 }
 
 /** The resolution half of cmdRunDetail: pick the run to open and read its detail. Bare `--last`
@@ -206,35 +283,12 @@ export async function cmdRunDetail(
   const parsed = parseRunDetailInvocation(root, positionals, { last, transcript, prompt, grep, result, model });
   const { role, runNumber, detail } = resolveRunDetailTarget(root, parsed, positionals, last);
   if (runNumber === null) {
-    // The --last scan came up empty: not found by construction, the last-form wording.
-    if (json) sayJson(null);
-    else say(runNotFoundLastMessage(parsed.bare ? null : role, parsed.classes, parsed.models));
+    runDetailLastMiss(parsed, role, json);
     return;
   }
   if (detail === null) {
-    // Not found stays exit 0 in both renderings, but --json still owes a parseable document in
-    // every exit-0 case (the report --json precedent, the invariant this command's own doc
-    // comment claims): `null` is the JSON answer for a single-record lookup that missed — the
-    // prose line would end a jq pipe mid-team-incident.
-    if (json) sayJson(null);
-    else say(runNotFoundMessage(role, runNumber));
+    runDetailNumberMiss(role, runNumber, json);
     return;
   }
-  // --json swaps the renderer for the collector's own payload, exactly as history --json: a
-  // JSON document in every exit-0 case, never prose.
-  const footer: { stat?: string; patch?: string } = {};
-  if (stat) footer.stat = await runDetailStat(root, detail);
-  if (patch) footer.patch = await runDetailPatch(root, detail);
-  const transcriptLines = transcript
-    ? runTranscriptLines(root, role, runNumber, detail, { includePrompts: prompt, grep: grep ?? undefined })
-    : null;
-  if (json) {
-    sayJson({ ...detail, ...footer, ...(transcriptLines === null ? {} : { transcript: transcriptLines.found }) });
-  } else {
-    const transcriptText =
-      transcriptLines === null
-        ? []
-        : [transcriptLines.found.length > 0 ? transcriptLines.found.join("\n") : transcriptLines.note];
-    say([renderRunDetail(detail), ...Object.values(footer), ...transcriptText].join("\n\n"));
-  }
+  await emitRunDetail(root, role, runNumber, detail, json, { stat, patch, transcript, prompt, grep });
 }
