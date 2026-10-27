@@ -133,6 +133,24 @@ function unverifiedOutcomeFor(
   load: ReturnType<LoadSampler>,
   durationMs: number,
 ): { outcome: BuildCheckOutcome; unverifiedReason: string | null } {
+  const sleepFailed = sleptThroughRun(raw);
+  if (!unverifiedSkipFor(scope, raw, sleepFailed)) return { outcome: raw, unverifiedReason: null };
+  const unverifiedReason = unverifiedReasonFor(scope, raw, effectiveMs, load, durationMs, sleepFailed);
+  return { outcome: unverifiedFailOutcome(check, raw, unverifiedReason), unverifiedReason };
+}
+
+/** True when the failed run slept past the tolerance — the slept-through rule. */
+function sleptThroughRun(raw: BuildCheckOutcome): boolean {
+  // A retry that ALSO slept made no clean verdict either: it is recorded as unverified — not
+  // attributed to the change, not cached as a red baseline — rather than read as a second
+  // deterministic failure (BUGS.md 2026-09-30). A retry that passed stands: the tree went green
+  // under the project's own check, even if the host napped through parts of it.
+  return raw.status === "failed" && (raw.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
+}
+
+/** Whether a merge scope classifies this raw outcome as a deterministic unverified reject — the
+ * merge-scope skip rule. */
+function unverifiedSkipFor(scope: BuildCheckScope, raw: BuildCheckOutcome, sleepFailed: boolean): boolean {
   // A signal kill at a merge scope, or a timeout whose deadline fired on time (real slowness, a
   // genuinely hung or oversized suite), made no verdict about the tree — and this is the check
   // whose whole job is to catch a semantic conflict before it merges, so it rejects
@@ -141,23 +159,31 @@ function unverifiedOutcomeFor(
   // slept, so a second verdict-less attempt is recorded as unverified rather than read again as
   // weather (BUGS.md 2026-09-28). no-npm and a broken toolchain still say nothing about the tree,
   // and the gate scope still proceeds to the model reviewer, which the merge path's own check backs
-  // up. A retry that ALSO slept made no clean verdict either: it is recorded as unverified — not
-  // attributed to the change, not cached as a red baseline — rather than read as a second
-  // deterministic failure (BUGS.md 2026-09-30). A retry that passed stands: the tree went green
-  // under the project's own check, even if the host napped through parts of it.
-  const sleepFailed = raw.status === "failed" && (raw.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
+  // up.
   // A failed dependency install is the same at a merge scope: nothing ran against the tree as its
   // lockfile pins it, so it must not merge (BUGS.md 2026-10-01).
-  const unverifiedSkip =
+  return (
     MERGE_SCOPES.has(scope) &&
-    (((raw.status === "skipped" &&
+    ((raw.status === "skipped" &&
       (raw.skipReason === "timeout" || raw.skipReason === "killed" || raw.skipReason === "install")) ||
-      sleepFailed));
-  if (!unverifiedSkip) return { outcome: raw, unverifiedReason: null };
-  const unverifiedReason =
-    raw.skipReason === "install"
-      ? installFailedPhrase(SCOPE_WORDS[scope].label, raw.install, UNVERIFIED_TREE)
-      : raw.skipReason === "killed"
+      sleepFailed)
+  );
+}
+
+/** The unverified reason phrase for the rule's four arms — the reason chain, with the optional
+ * starved-host tail. The reason names the starved host only when the load says the team was the
+ * check's competition (a late-deadline wording already names its own cause). */
+function unverifiedReasonFor(
+  scope: BuildCheckScope,
+  raw: BuildCheckOutcome,
+  effectiveMs: number,
+  load: ReturnType<LoadSampler>,
+  durationMs: number,
+  sleepFailed: boolean,
+): string {
+  return raw.skipReason === "install"
+    ? installFailedPhrase(SCOPE_WORDS[scope].label, raw.install, UNVERIFIED_TREE)
+    : raw.skipReason === "killed"
       ? killedPhrase(
           SCOPE_WORDS[scope].label,
           raw.killedBy ? { signal: raw.killedBy, durationMs } : undefined,
@@ -170,7 +196,12 @@ function unverifiedOutcomeFor(
             // starved host when the load average says the team was the check's competition.
             (raw.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS ? "" : loadedHostPhrase(load)
           }`;
-  const outcome: BuildCheckOutcome = {
+}
+
+/** Assemble the deterministic `failed` outcome that carries the unverified reason — the
+ * failed-outcome assembly. */
+function unverifiedFailOutcome(check: BuildCheck, raw: BuildCheckOutcome, unverifiedReason: string): BuildCheckOutcome {
+  return {
     status: "failed",
     script: checkScriptName(check),
     outputTail: [unverifiedReason],
@@ -178,7 +209,6 @@ function unverifiedOutcomeFor(
     unverified: true,
     ...(raw.install ? { install: raw.install } : {}),
   };
-  return { outcome, unverifiedReason };
 }
 
 /** Warn for the two verdict-less roads: a skipped check (buildCheckSkipWarning) or an unverified
