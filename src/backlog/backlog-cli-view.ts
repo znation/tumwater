@@ -24,6 +24,13 @@ import { rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { refuseTeamWorkspace } from "../cli/cli-repo-gate.js";
 import { sectionNoun, showEntry } from "./backlog-write.js";
 
+/** `bug --list --done -n` / `plan --list --done -n` ceiling: bounds how many finished
+ * entries one list shows, so a typo'd huge count fails fast with the shared `must be between
+ * 1 and <max>` wording (the logs/history/report pattern) instead of silently meaning
+ * "everything". The finished lists are small (PLANS.md/BUGS.md), so the cap never meaningfully
+ * binds — it exists for the uniform count-flag contract and the clear over-range rebuke. */
+const BACKLOG_MAX_LISTED = 100_000;
+
 /** Ascending positions as runs: consecutive ones join with an en dash (`13–17`), runs separate
  * with commas (`13–15, 18`). */
 function positionRuns(positions: readonly number[]): string {
@@ -80,7 +87,7 @@ function parseListArgs(args: string[], command: string): {
     }
     if (arg === "-n") {
       rejectRepeatFlag(count !== null, "-n");
-      count = parseCountFlag("-n", args[++i]);
+      count = parseCountFlag("-n", args[++i], BACKLOG_MAX_LISTED);
       continue;
     }
     if (arg === "--list") {

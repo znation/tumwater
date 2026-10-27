@@ -370,6 +370,19 @@ test("--list -n needs --done, and --done refuses repeats and stands only with --
   assert.equal(r.code, 1);
 });
 
+test("plan --list --done -n refuses a count above the cap like the sibling count flags", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    ["# Plans", "", "## Planned", "", "### Still planned", "", "## Done", "", "### Done 1 (done 2026-10-01)", "", ""].join("\n"),
+  );
+  const over = await cli(repo, "plan", "--list", "--done", "-n", "100001");
+  assert.equal(over.code, 1);
+  assert.match(over.stderr, /-n must be between 1 and 100000 \(got \"100001\"\)/);
+  const ok = await cli(repo, "plan", "--list", "--done", "-n", "100000");
+  assert.equal(ok.code, 0);
+});
+
 
 test("plan --list marks the entry a role is working on, and --json carries inProgress", async () => {
   const repo = makeRepo();

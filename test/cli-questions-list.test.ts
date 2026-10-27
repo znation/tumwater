@@ -98,6 +98,20 @@ test("questions --answered lists the newest answers and refuses misuse", async (
   assert.match(bogus.stderr, /--answered/);
 });
 
+test("questions --answered -n refuses a count above the cap like the sibling count flags", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions answered cap");
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    "# q\n\n## Open\n\n### Open one\n\nbody\n\n## Answered\n\n### New\n\n**Answered 2026-10-02 by operator:** b\n",
+  );
+  const over = await cli(repo, "questions", "--answered", "-n", "100001");
+  assert.equal(over.code, 1);
+  assert.match(over.stderr, /-n must be between 1 and 100000 \(got \"100001\"\)/);
+  const ok = await cli(repo, "questions", "--answered", "-n", "100000");
+  assert.equal(ok.code, 0);
+});
+
 test("questions --answered --grep lists matches under their unfiltered numbers", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli questions grep");

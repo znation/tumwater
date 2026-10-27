@@ -19,6 +19,14 @@ import { stampedSubject } from "../git/commit-message.js";
 import { wakeQuestionAsker } from "../operator/operator-intent.js";
 import { answeredQuestionAt, answeredQuestionCount, answeredQuestionList, answeredQuestionPayload, openQuestionAt, openQuestionList, questionListPayload, renderShownQuestion, type AnswerOutcome, UNCLOSED_FENCE_MESSAGE, tryAnswerQuestion } from "../backlog/question-answer.js";
 import { bodyStructureProblem, normalizeEntryBody } from "../backlog/backlog-write.js";
+
+/** `questions --answered -n`'s ceiling: bounds how many answered questions one list shows,
+ * so a typo'd huge count fails fast with the shared `must be between 1 and <max>` wording
+ * (the logs/history/report pattern) instead of silently meaning "everything". The list data
+ * is small (QUESTIONS.md), so the cap never meaningfully binds — it exists for the uniform
+ * count-flag contract and the clear over-range rebuke, not for memory. */
+const QUESTIONS_MAX_LISTED = 100_000;
+
 /** The `tumwater questions answer` entry point: `tryAnswerQuestion` without a title check, its
  * refusals mapped to `fail` (exit 1) with the CLI's wording. Returns the answered question's
  * title plus the collapsed decision that landed in the file. */
@@ -135,7 +143,7 @@ function parseQuestionsInvocation(args: string[]): QuestionsInvocation {
     }
     if (!numbered && arg === "-n") {
       rejectRepeatFlag(limit !== undefined, "-n");
-      limit = parseCountFlag("-n", args[++i]);
+      limit = parseCountFlag("-n", args[++i], QUESTIONS_MAX_LISTED);
       continue;
     }
     if (!numbered && arg === "--grep") {
