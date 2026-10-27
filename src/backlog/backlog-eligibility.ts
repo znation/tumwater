@@ -96,29 +96,24 @@ export function withoutRefusalNotes(lines: string[]): string[] {
   return withoutNoteLines(lines, REFUSED_PREFIX);
 }
 
-/** `lines` without its Needs-review note lines, the release's lift when the entry has no
+/** `lines` without its Needs-review note lines and the legacy `**Previously held N**`
+ * markers the old increment rule left beside them, the release's lift when the entry has no
  * Refused note: a `--release` that finds no Refused note drops every Needs-review note line so
- * the entry becomes eligible. A Needs-review note that still carries the legacy `(held N)` tag
- * also drops its `**Previously held N−1**` marker (the old increment rule's prior count), so the
- * lift leaves no surviving marker orphaned behind it. Every other line, Refused notes included,
- * is kept, so the Needs-review lift never lifts a refusal. */
+ * the entry becomes eligible, and takes each `**Previously held N**` marker in the slice with
+ * it, so the lift leaves no orphan whether or not the note still carries a `(held N)` tag.
+ * Nothing changes when the slice carries no Needs-review note, so a marker that sits on an
+ * eligible entry stays put. Every other line, Refused notes included, is kept, so the
+ * Needs-review lift never lifts a refusal. */
 export function withoutNeedsReviewNotes(lines: string[]): string[] {
-  // The count the old increment rule recorded for a note's prior hold, keyed from the `(held N)`
-  // tags still surviving on live Needs-review notes; the marker at N−1 goes only with its note.
-  const priorHeld = new Set<number>();
-  lines.forEach((raw) => {
-    const tag = /\(held\s+(\d+)\)/.exec(raw.trimStart());
-    if (tag !== null) priorHeld.add(Number(tag[1]) - 1);
-  });
-  if (priorHeld.size === 0) return withoutNoteLines(lines, NEEDS_REVIEW_PREFIX);
+  // A lift only happens when the slice carries a Needs-review note; without one, the slice
+  // (and any legacy prior-held marker on it) is left byte for byte.
+  if (!lines.some((raw) => raw.trimStart().startsWith(NEEDS_REVIEW_PREFIX))) return lines;
   const drop = new Set<number>();
   lines.forEach((raw, i) => {
     const trimmed = raw.trimStart();
-    if (trimmed.startsWith(NEEDS_REVIEW_PREFIX)) drop.add(i);
-    else if (trimmed.startsWith(PRIOR_HELD_PREFIX)) {
-      const n = /\d+/.exec(trimmed.slice(PRIOR_HELD_PREFIX.length));
-      if (n !== null && priorHeld.has(Number(n[0]))) drop.add(i);
-    }
+    // Every Needs-review note goes, and so does each `**Previously held N**` marker the old
+    // increment rule wrote with it.
+    if (trimmed.startsWith(NEEDS_REVIEW_PREFIX) || trimmed.startsWith(PRIOR_HELD_PREFIX)) drop.add(i);
   });
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {

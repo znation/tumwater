@@ -668,6 +668,22 @@ test("withoutNeedsReviewNotes drops every Needs-review note line and keeps the r
     "",
     "**Goal.** g",
   ]);
+  // A flat note (the current writer emits no `(held N)` tag) drops the legacy marker beside
+  // it too, so a release leaves no orphan even without a tag to pair them by.
+  const flat = [
+    "### Plan (planned 2026-10-03)",
+    "",
+    "**Needs review 2026-10-08 by feature: too large for one run**",
+    "",
+    "**Previously held 1**",
+    "",
+    "**Goal.** g",
+  ];
+  assert.deepEqual(withoutNeedsReviewNotes(flat), [
+    "### Plan (planned 2026-10-03)",
+    "",
+    "**Goal.** g",
+  ]);
   const untagged = ["### Plan (planned 2026-10-03)", "body"];
   assert.deepEqual(withoutNeedsReviewNotes(untagged), untagged);
 });
