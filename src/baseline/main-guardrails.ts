@@ -59,30 +59,54 @@ export const QUARANTINE_WARN_COUNT = 10;
  * remainder count. */
 const QUARANTINE_DETAIL_MAX = 3;
 
-/** G1 over `events`: warns when main has been red for more than RED_MAIN_WARN_MS, over the
- * trailing 24 h of `events` from `now`. Only `main_check` events with `durationMs` > 0 and
- * `main_red_hold` events count; a `main_check` with `durationMs` 0 (cached or inherited) is
- * ignored; a pass (including one naming only quarantined tests, recorded passed) ends the red.
- * The phrase names how long main has had no passing full check, the sha it has been red since,
- * its clock time, the newest red's first failing test when one is named, and — when the newest
- * `main_culprit` in the window blames the same sha the phrase names — the merge the main watch
- * blamed (`; the main watch blames <role>'s merge <sha>`, or `; the main watch blames merge
- * <sha>` when no runner is named), the one rule the dashboard alert and this phrase share.
- * Returns null when main is green, or red for RED_MAIN_WARN_MS or less. */
-export function redMainWarning(events: readonly HarnessEvent[], now: number): string | null {
-  const cutoff = now - DAY_MS;
+/** The trailing-window scan's result: `relevant` holds the in-window events that open, extend
+ * or end a red (the isRedMain / isPassingMainCheck set, in `events` order), and `culprit` is
+ * the newest in-window `main_culprit` carrying a non-empty string `commit`. */
+interface RedWindow {
+  relevant: HarnessEvent[];
+  culprit: HarnessEvent | undefined;
+}
+
+/** True when `e` is the newest `main_culprit` seen so far: no contender yet, or a later `ts`.
+ * The newest-in-window pick that `scanRedWindow` folds into its loop. */
+function isNewerCulprit(c: HarnessEvent | undefined, e: HarnessEvent): boolean {
+  return c === undefined || e.ts > c.ts;
+}
+
+/** Scans the trailing 24 h of `events` (cutoff `now - DAY_MS`), collecting the events that open,
+ * extend or end a red and picking the newest in-window `main_culprit` with a non-empty string
+ * `commit`. Owns the window scan and the newest-culprit pick. */
+function scanRedWindow(events: readonly HarnessEvent[], cutoff: number): RedWindow {
   const relevant: HarnessEvent[] = [];
   let culprit: HarnessEvent | undefined;
   for (const e of events) {
     if (typeof e.ts !== "number" || e.ts < cutoff) continue;
     if (e.type === "main_culprit") {
-      if (typeof e.commit === "string" && e.commit.length > 0 && (culprit === undefined || e.ts > culprit.ts)) {
+      if (typeof e.commit === "string" && e.commit.length > 0 && isNewerCulprit(culprit, e)) {
         culprit = e;
       }
       continue;
     }
     if (isRedMain(e) || isPassingMainCheck(e)) relevant.push(e);
   }
+  return { relevant, culprit };
+}
+
+/** The red spell `redSpell` derives: the event the duration is counted from (`startEv`), the
+ * newest red (`newest`), the duration in ms, and whether the spell is unbroken by a pass. Each
+ * field is named as the local it replaces. */
+interface RedSpell {
+  startEv: HarnessEvent;
+  newest: HarnessEvent;
+  durationMs: number;
+  unbroken: boolean;
+}
+
+/** Derives the red spell over `window`'s `relevant` events: the start event and duration from
+ * `now`, whether the spell is unbroken, and the 30-minute threshold (null when main is green,
+ * or red for RED_MAIN_WARN_MS or less). Owns the red-spell derivation and the 30-minute bail. */
+function redSpell(window: RedWindow, now: number): RedSpell | null {
+  const relevant = window.relevant;
   if (relevant.length === 0) return null;
   let newest = relevant[0]!;
   for (const e of relevant) if (e.ts > newest.ts) newest = e;
@@ -102,20 +126,55 @@ export function redMainWarning(events: readonly HarnessEvent[], now: number): st
   const durationMs = now - startEv.ts;
   if (durationMs <= RED_MAIN_WARN_MS) return null;
   const unbroken = lastPass === undefined && reds.length > 1;
-  const duration = unbroken || durationMs >= DAY_MS ? "more than 24 h" : redDurationPhrase(durationMs);
-  const failing =
-    Array.isArray(newest.failingTests) && typeof newest.failingTests[0] === "string" ? newest.failingTests[0] : undefined;
-  const head = `main has had no passing full check for ${duration}: red since ${shortSha(startEv.sha)} at ${clockHm(startEv.ts)}`;
+  return { startEv, newest, durationMs, unbroken };
+}
+
+/** "more than 24 h" for an unbroken or full-window red, else the short duration phrase. Owns
+ * the duration wording. */
+function redSpellDuration(spell: RedSpell): string {
+  return spell.unbroken || spell.durationMs >= DAY_MS ? "more than 24 h" : redDurationPhrase(spell.durationMs);
+}
+
+/** The newest red's first failing test, when one is named. Owns the first-failing-test read. */
+function redFailingTest(newest: HarnessEvent): string | undefined {
+  return Array.isArray(newest.failingTests) && typeof newest.failingTests[0] === "string" ? newest.failingTests[0] : undefined;
+}
+
+/** The blame clause naming the merge the main watch blamed, when the newest `culprit` in the
+ * window blames the same sha the phrase names. Owns the blame clause. */
+function redBlameClause(culprit: HarnessEvent | undefined, newest: HarnessEvent): string {
   // The blame names the merge the main watch blamed for the red — the same `main_culprit`
   // commit-equals-tip rule the dashboard alert uses (status-polls only publishes a blame whose
   // commit is the derived tip sha), so a red the watch did not blame never borrows another
   // head's culprit. A culprit naming another commit, or none, leaves the phrase as today.
   const shouldBlame = culprit !== undefined && culprit.commit === newest.sha;
-  const blame = shouldBlame
-    ? typeof culprit!.runner === "string" && culprit!.runner.length > 0
-      ? `; the main watch blames ${roleLabel(culprit!.runner)}'s merge ${shortSha(culprit!.commit)}`
-      : `; the main watch blames merge ${shortSha(culprit!.commit)}`
+  return shouldBlame
+    ? typeof culprit.runner === "string" && culprit.runner.length > 0
+      ? `; the main watch blames ${roleLabel(culprit.runner)}'s merge ${shortSha(culprit.commit)}`
+      : `; the main watch blames merge ${shortSha(culprit.commit)}`
     : "";
+}
+
+/** G1 over `events`: warns when main has been red for more than RED_MAIN_WARN_MS, over the
+ * trailing 24 h of `events` from `now`. Only `main_check` events with `durationMs` > 0 and
+ * `main_red_hold` events count; a `main_check` with `durationMs` 0 (cached or inherited) is
+ * ignored; a pass (including one naming only quarantined tests, recorded passed) ends the red.
+ * The phrase names how long main has had no passing full check, the sha it has been red since,
+ * its clock time, the newest red's first failing test when one is named, and — when the newest
+ * `main_culprit` in the window blames the same sha the phrase names — the merge the main watch
+ * blamed (`; the main watch blames <role>'s merge <sha>`, or `; the main watch blames merge
+ * <sha>` when no runner is named), the one rule the dashboard alert and this phrase share.
+ * Returns null when main is green, or red for RED_MAIN_WARN_MS or less. The per-job work is
+ * split into the module-private helpers `scanRedWindow`, `redSpell`, `redSpellDuration`,
+ * `redFailingTest` and `redBlameClause`, one per job, so each is found by name. */
+export function redMainWarning(events: readonly HarnessEvent[], now: number): string | null {
+  const window = scanRedWindow(events, now - DAY_MS);
+  const spell = redSpell(window, now);
+  if (spell === null) return null;
+  const duration = redSpellDuration(spell);
+  const head = `main has had no passing full check for ${duration}: red since ${shortSha(spell.startEv.sha)} at ${clockHm(spell.startEv.ts)}`;
+  const failing = redFailingTest(spell.newest);
+  const blame = redBlameClause(window.culprit, spell.newest);
   return failing ? `${head} — ${squash(failing, 120)}${blame}` : `${head}${blame}`;
 }
 
