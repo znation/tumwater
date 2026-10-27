@@ -76,22 +76,41 @@ export function windowTypeName(windowMinutes: number): string {
 /** One codex `error` item's distinct message → a run warning; repeated identical messages are
  * warned once (finding 11). */
 
-/** How a `turn.failed` error message classifies into the canonical `tumwaterKind` (and, for a
- * transient backend, its kind), trusted by `PiStreamParser` before its text regexes. The inner
- * `message` is a JSON string carrying `status` and `error.type` / `error.code` (finding 11).
- * Returns the canonical lines to emit beside the closing `message_end`: a rejected rate-limit
- * reading when the error names a used-up window. */
-function classifyTurnFailed(
-  parsed: Json,
-): { kind?: TumwaterKind; backendKind?: BackendFailureKind; errorMessage?: string; rateLimit?: Json } {
-  const kind: { kind?: TumwaterKind; backendKind?: BackendFailureKind; errorMessage?: string; rateLimit?: Json } = {};
-  const error = objectOrEmpty(parsed.error);
-  const code = typeof error.code === "string" ? error.code : undefined;
-  const errType = typeof error.type === "string" ? error.type : undefined;
-  const message = typeof error.message === "string" ? error.message : typeof parsed.message === "string" ? parsed.message : undefined;
-  kind.errorMessage = message;
-  const status = nonNegativeNumber(parsed.status, undefined);
+/** The four fields `classifyTurnFailed` reads from a `turn.failed` inner JSON, each named by
+ * source: `error.code`, `error.type`, `error.message` (falling back to `parsed.message`), and
+ * `parsed.status`. */
+interface TurnFailedFields {
+  code: string | undefined;
+  errType: string | undefined;
+  message: string | undefined;
+  status: number | undefined;
+}
 
+/** The classification `classifyTurnFailed` returns: the canonical `tumwaterKind`, the
+ * `backendKind` for a transient backend, the inner error `message`, and (for the transient
+ * rate-limit arm) the rejected rate-limit reading. */
+interface TurnFailedClass {
+  kind?: TumwaterKind;
+  backendKind?: BackendFailureKind;
+  errorMessage?: string;
+  rateLimit?: Json;
+}
+
+/** Read the `turn.failed` inner JSON's four deciding fields. The inner `message` is a JSON
+ * string carrying `status` and `error.type` / `error.code` (finding 11). */
+function readTurnFailedFields(parsed: Json): TurnFailedFields {
+  const error = objectOrEmpty(parsed.error);
+  return {
+    code: typeof error.code === "string" ? error.code : undefined,
+    errType: typeof error.type === "string" ? error.type : undefined,
+    message: typeof error.message === "string" ? error.message : typeof parsed.message === "string" ? parsed.message : undefined,
+    status: nonNegativeNumber(parsed.status, undefined),
+  };
+}
+
+/** Owns the context-window arm: a `context_window_exceeded` code, or a 400 whose message names
+ * the context window, classifies as `contextExceeded`. */
+function isContextExceeded({ code, errType, message, status }: TurnFailedFields): boolean {
   // The context-window signal is tested BEFORE the generic 400 `invalid_request_error`
   // branch (as claude's classifyResult tests "prompt is too long" before CONFIG_STATUS): a
   // `context_window_exceeded` code, or a 400 whose message names the context window, is
@@ -99,11 +118,12 @@ function classifyTurnFailed(
   const namesContextWindow = (t: string | undefined): boolean =>
     t !== undefined &&
     /context window|context length|too long|exceeds? (the )?(model'?s )?context|prompt is too long/i.test(t);
-  if (code === "context_window_exceeded" || (status === 400 && errType === "invalid_request_error" && namesContextWindow(message))) {
-    kind.kind = "contextExceeded";
-    return kind;
-  }
+  return code === "context_window_exceeded" || (status === 400 && errType === "invalid_request_error" && namesContextWindow(message));
+}
 
+/** Owns the transient rate-limit arm: a `usage_limit_reached` / `rate_limit_exceeded` code or a
+ * 429 returns the rejected reading naming the used-up window, else undefined. */
+function rateLimitReading(parsed: Json, { code, status }: TurnFailedFields): Json | undefined {
   if (code === "usage_limit_reached" || code === "rate_limit_exceeded" || status === 429) {
     // Which window the account hit, from the error's own `rate_limit_reached_type` (else the
     // five-hour window, the one Plus exhausts first). The rejected reading's wait comes from
@@ -111,43 +131,77 @@ function classifyTurnFailed(
     const minutes = nonNegativeNumber(parsed.rate_limit_reached_type as number, undefined);
     const named = typeof parsed.rate_limit_reached_type === "string" ? parsed.rate_limit_reached_type : undefined;
     const resetsAt = nonNegativeNumber(parsed.resets_at, undefined);
-    // secondsUntilUnixStamp folds the unix-seconds resets stamp to epoch-ms, clamped at 0.
-    const retryAfter = resetsAt === undefined ? undefined : secondsUntilUnixStamp(resetsAt, Date.now());
-    kind.kind = "transientRateLimit";
-    kind.rateLimit = {
+    return {
       type: "rate_limit",
       rateLimitType: typeof named === "string" && /_minute$|_hour$|_day$/.test(named)
         ? named
         : windowTypeName(minutes ?? 300),
       status: "rejected",
       utilization: 1,
-      ...(resetsAt !== undefined ? { resetsAt } : {}),
-      ...(retryAfter !== undefined ? { retryAfterSeconds: retryAfter } : {}),
+      // secondsUntilUnixStamp folds the unix-seconds resets stamp to epoch-ms, clamped at 0.
+      ...(resetsAt === undefined
+        ? {}
+        : { resetsAt, retryAfterSeconds: secondsUntilUnixStamp(resetsAt, Date.now()) }),
     };
+  }
+  return undefined;
+}
+
+/** Owns the used-up-account arm: `usage_not_included` is a permanent config error, never a
+ * transient retry. */
+function isUsageNotIncluded({ code }: TurnFailedFields): boolean {
+  return code === "usage_not_included";
+}
+
+/** Owns the server-status arm: any `SERVER_TRANSIENT_STATUS` is a transient backend. */
+function isTransientServer({ status }: TurnFailedFields): boolean {
+  return status !== undefined && SERVER_TRANSIENT_STATUS.has(status);
+}
+
+/** Owns the permanent-login arms: a reused/invalidated refresh token, a 401, and a 400
+ * `invalid_request_error` are permanent config errors. */
+function isPermanentLogin({ message, status, errType }: TurnFailedFields): boolean {
+  // A refresh-token failure and an absent/invalid login are permanent config errors, which
+  // the doctor names with the login command (design §5).
+  if (/refresh_token_reused|invalidated refresh token/i.test(message ?? "")) return true;
+  if (status === 401) return true;
+  if (status === 400 && errType === "invalid_request_error") {
+    // A 400 `invalid_request_error` names the model as unsupported on a ChatGPT account.
+    return true;
+  }
+  return false;
+}
+
+/** How a `turn.failed` error message classifies into the canonical `tumwaterKind` (and, for a
+ * transient backend, its kind), trusted by `PiStreamParser` before its text regexes. The inner
+ * `message` is a JSON string carrying `status` and `error.type` / `error.code` (finding 11).
+ * Returns the canonical lines to emit beside the closing `message_end`: a rejected rate-limit
+ * reading when the error names a used-up window. The body is an ordered composition; each arm
+ * lives in its named helper: `readTurnFailedFields` (the field reads), `isContextExceeded`,
+ * `rateLimitReading`, `isUsageNotIncluded`, `isTransientServer` and `isPermanentLogin`. */
+function classifyTurnFailed(parsed: Json): TurnFailedClass {
+  const fields = readTurnFailedFields(parsed);
+  const kind: TurnFailedClass = { errorMessage: fields.message };
+  if (isContextExceeded(fields)) {
+    kind.kind = "contextExceeded";
     return kind;
   }
-
-  if (code === "usage_not_included") {
+  const rateLimit = rateLimitReading(parsed, fields);
+  if (rateLimit !== undefined) {
+    kind.kind = "transientRateLimit";
+    kind.rateLimit = rateLimit;
+    return kind;
+  }
+  if (isUsageNotIncluded(fields)) {
     kind.kind = "configError";
     return kind;
   }
-  if (status !== undefined && SERVER_TRANSIENT_STATUS.has(status)) {
+  if (isTransientServer(fields)) {
     kind.kind = "transientBackend";
     kind.backendKind = "server";
     return kind;
   }
-  // A refresh-token failure and an absent/invalid login are permanent config errors, which
-  // the doctor names with the login command (design §5).
-  if (/refresh_token_reused|invalidated refresh token/i.test(message ?? "")) {
-    kind.kind = "configError";
-    return kind;
-  }
-  if (status === 401) {
-    kind.kind = "configError";
-    return kind;
-  }
-  if (status === 400 && errType === "invalid_request_error") {
-    // A 400 `invalid_request_error` names the model as unsupported on a ChatGPT account.
+  if (isPermanentLogin(fields)) {
     kind.kind = "configError";
     return kind;
   }
