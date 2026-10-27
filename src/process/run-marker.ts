@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { PiRunKind } from "../pi/pi-event-line.js";
-import { plural } from "../text/phrases.js";
+import { agree, plural } from "../text/phrases.js";
 import { execFileAsync, withoutLaunchServicesCheckIn } from "./process.js";
 
 /** Every lookup normally finishes in well under a second; a wedged one must not hang
@@ -209,8 +209,7 @@ async function findMarkedPids(marker: string): Promise<number[]> {
  * a false leak. */
 export function leftoversSweptMessage(kind: PiRunKind, count: number, killed: boolean): string | undefined {
   if (count === 0 || killed) return undefined;
-  const verb = count === 1 ? "was" : "were";
-  return `run sweep: ${plural(count, "process", "processes")} the ${kind} run started ${verb} still running after pi exited; sent SIGTERM`;
+  return `run sweep: ${plural(count, "process", "processes")} the ${kind} run started ${agree(count, "was", "were")} still running after pi exited; sent SIGTERM`;
 }
 
 /** SIGTERM every same-user process whose environment names `marker`, escalating to SIGKILL
