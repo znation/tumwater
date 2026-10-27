@@ -6,18 +6,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### `dist/test/git-resolve.test.js` "a wedged xcrun cannot freeze git resolution: the probe is bounded and git falls back to its PATH name" failed once under load, then passed on the re-run (ci run 2026-10-26, main tip ae264d2)
-
-Failed in ONE full `npm test` run against main tip ae264d2: the test's `assert.ok(elapsed < 1_500)` bound read 1540 ms (with `resolvedGitBin(300)`), then passed on the full re-run of the same tree (478 ms in isolation, 7750 tests / 0 fail on the full re-run). Same load-sensitive wall-clock class as the sibling suiteEnv probe test (below) — both pin the shared `withWedgedXcrun` fixture's `xcrun --find git` probe bound through the synchronous `spawnSync`, so the 1500 ms assertion stretches under host load far past the 300 ms timeout. The existing quarantined entry names only the sibling `test-runner.test.js` test, so this one records this distinct test and the shared cause.
-
-~~~~
-test at dist/test/git-resolve.test.js:10:1
-✖ a wedged xcrun cannot freeze git resolution: the probe is bounded and git falls back to its PATH name (1541.935417ms)
-  AssertionError [ERR_ASSERTION]: resolution took 1540ms; the probe was not bounded
-      at file:///Users/zach/tumwater/.tumwater/worktrees/_slot-19/dist/test/git-resolve.test.js:16:16
-      at withWedgedXcrun (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-19/dist/test/helpers/wedged-xcrun.js:28:16)
-~~~~
-
 ### `test/supervisor.test.ts` "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" flaked again on 2026-10-16, after its 10-01 and 10-09 Fixed entries and the 10-11 rewrite to a SIGUSR2-driven poll (found by operator session 2026-10-16 from improve's red merge check)
 
 - **Symptom:** at 07:29:28 PDT, improve's in-lock merge check for `d4b62873` failed one test: `✖ startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it — AssertionError [ERR_ASSERTION]: the orphaned grandchild's watch fired and ran its stop path`. The check ran 145 s. Recovery re-landed it green at 07:40, and it merged. That is the same assertion as the Fixed entry "The SIGKILL-grandchild supervisor test flaked twice in one 2026-10-09 window". Since then 4ec5d729 (10-11) replaced the real poll with one driven by SIGUSR2 from the test, and its comment says a loaded host "cannot stretch" the verdict. It still fails.

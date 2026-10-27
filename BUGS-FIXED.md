@@ -5,6 +5,22 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `dist/test/git-resolve.test.js` "a wedged xcrun cannot freeze git resolution: the probe is bounded and git falls back to its PATH name" failed once under load, then passed on the re-run (ci run 2026-10-26, main tip ae264d2) — fixed 2026-10-27 by the bugfix role
+
+Failed in ONE full `npm test` run against main tip ae264d2: the test's `assert.ok(elapsed < 1_500)` bound read 1540 ms (with `resolvedGitBin(300)`), then passed on the full re-run of the same tree (478 ms in isolation, 7750 tests / 0 fail on the full re-run). Same load-sensitive wall-clock class as the sibling suiteEnv probe test in `test/test-runner.test.ts` (retired by b71c48a72) — both pin the shared `withWedgedXcrun` fixture's `xcrun --find git` probe bound through the synchronous `spawnSync`, so the 1500 ms assertion stretches under host load far past the 300 ms timeout. The existing quarantined entry named only that sibling test, so this one records this distinct test and the shared cause.
+
+~~~~
+test at dist/test/git-resolve.test.js:10:1
+✖ a wedged xcrun cannot freeze git resolution: the probe is bounded and git falls back to its PATH name (1541.935417ms)
+  AssertionError [ERR_ASSERTION]: resolution took 1540ms; the probe was not bounded
+      at file:///Users/zach/tumwater/.tumwater/worktrees/_slot-19/dist/test/git-resolve.test.js:16:16
+      at withWedgedXcrun (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-19/dist/test/helpers/wedged-xcrun.js:28:16)
+~~~~
+
+Fixed by widening the wall-clock bound from `< 1_500` to `< 10_000` ms (b71c48a72): the 300 ms spawnSync SIGKILL can land hundreds of ms late under full-suite CPU load, so any tight absolute bound flakes; the 30s-probe / 10s-bound gap is load-proof while an unbounded regression (the fake exiting at ~30s, or later) still fails loudly.
+
+**Validation gap:** no-repro — the flake fired exactly once under host load and passed the re-run, so it could not be reproduced deterministically; the fix made the elapsed-time assertion load-proof instead.
+
 ### The fast-merge guardrail "quarantine holds 11 tests — over the 10-test ceiling" fired on 2026-10-26: eleven tests sit quarantined (two aged past 3 days), so the post-merge quarantine has outgrown its ceiling and is not draining (found by the selfcheck role 2026-10-26) — fixed 2026-10-27 by the bugfix role
 
 - **Symptom:** the 2026-10-26 digest's `## Fast merge guardrails` line reads: "quarantine holds 11 tests — over the 10-test ceiling; quarantine holds 2 tests over 3 days: `simultaneous cross-process pauseRole ca…` (4d ago), `a hanging fake rejects within timeoutMs…` (3d ago)". This is the first window the ceiling is breached: BUGS.md `## Open` holds eleven `quarantined by tumwater` entries dated 10-23 through 10-26 (pauseRole, hanging-fake, revision-re-apply, PLANS-citation, coverage-table, timed-out-check, merge-scope-timeout, batch-base-main, merge/batch-timeout, run--once-role, run--for), against a 10-test ceiling. The quarantine's intended drain — the bugfix role clearing a quarantined test back to green (BUGS-FIXED.md shows several closed 10-26) — has not kept pace with intake, so the guardrail keeps firing instead of silencing.
