@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `run --once --role with a comma list runs exactly the listed roles and exits 0` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ run --for boots, stops itself at the deadline, and prints the summary (22860.726625ms)
+AssertionError [ERR_ASSERTION]: expected clean exit at the deadline; output so far:
+total     1        0     0        0         1       0         —  $0.00  6.745s  —
+null !== 0
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/cli-start-window.test.js:117:16)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: null,
+expected: 0,
+operator: 'strictEqual',
+diff: 'simple'
+}
+~~~~
+
+**Validation gap:** no-repro — the run --for windowed exit flakes only under full-suite load, which no offline run reproduces; the failure (exitCode's 15s default elapsed, code null) pointed at a too-tight exit wait, so the two windowed tests now wait with a load-tolerant 60s budget and the message names a hang-vs-wrong-code cause next time.
+
 ### `a timed-out check does not settle on its leader's close while a grandchild survives` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 Load-sensitive flake, not a check defect: the test's `waitFor(() => !pidAlive(sleepPid), …)` gave the host only 300 ms to reap the SIGKILLed grandchild, while its twin (the "group to die" wait above) gives 5 s and the file's own comment warns a tight budget turns a loaded host into a flake (the run already settles only after the whole group is gone; how fast the host reaps a dead pid is its business, not the check's). Raised the budget to 5 s, matching the twin.

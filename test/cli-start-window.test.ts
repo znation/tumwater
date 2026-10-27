@@ -26,6 +26,22 @@ import { readJson } from "./helpers/json-read.js";
  * a second binder would fail to bind and prove nothing about `run --gui`. */
 const DASHBOARD_PORT = 7180;
 
+// The windowed run's exit wait budget (started once the info file publishes stopsAt, i.e. right
+// at boot). The deadline itself is 3s later and the graceful drain then finishes the in-flight
+// round against the fake shim before the supervisor hands the exit back; under full-suite load
+// that boot+drain can run well past exitCode's 15s default, and a clean-but-slow exit must not
+// read as a crash — the same load tolerance the harness's waitFor budget already gives
+// (BUGS.md 2026-09-30's cold-start bumps).
+const EXIT_BUDGET_MS = 60_000;
+
+// Name whether a non-0 windowed-exit wait was a wrong exit code or a budget-elapsed no-exit, so
+// a flake's message carries the cause instead of a bare "expected clean exit".
+function exitWaitMessage(what: string, code: number | null, out: string): string {
+  return code === null
+    ? `${what} did not exit within ${EXIT_BUDGET_MS / 1000}s of the deadline (a hang or an over-long drain); output so far:\n${out}`
+    : `${what} exited ${code} instead of 0; output so far:\n${out}`;
+}
+
 /** True when nothing is listening on `port` on loopback — the live test can then let `run --gui`
  * bind it and can confirm it is free again after teardown. */
 function portFree(port: number): Promise<boolean> {
@@ -117,8 +133,8 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
     }
     assert.equal(typeof stopsAt, "number", "the info file publishes the window's deadline");
     assert.ok((stopsAt as number) >= spawnedAt + 3000 - 100 && (stopsAt as number) < spawnedAt + 3000 + bootAllowance, `stopsAt ${String(stopsAt)} near spawn + 3s`);
-    const code = await exitCode(s.child);
-    assert.equal(code, 0, `expected clean exit at the deadline; output so far:\n${s.out()}`);
+    const code = await exitCode(s.child, EXIT_BUDGET_MS);
+    assert.equal(code, 0, exitWaitMessage("run --for", code, s.out()));
     assert.match(s.out(), /tumwater running on branch main · for 3s ·/);
     assert.match(s.out(), /deadline reached — stopping/);
     assert.match(s.out(), /stopping — finishing current runs/);
@@ -158,8 +174,8 @@ test("run --for --json prints one JSON object and no banner or event stream", as
       if (stopsAt === undefined) await sleep(50);
     }
     assert.equal(typeof stopsAt, "number", "the info file publishes the window's deadline");
-    const code = await exitCode(s.child);
-    assert.equal(code, 0, `expected clean exit at the deadline; output so far:\n${s.out()}`);
+    const code = await exitCode(s.child, EXIT_BUDGET_MS);
+    assert.equal(code, 0, exitWaitMessage("run --for --json", code, s.out()));
     const parsed = JSON.parse(s.out().trim()) as { window: string; covered: boolean; roles: unknown[]; total: { runs: number } };
     assert.equal(parsed.window, "3s");
     assert.equal(typeof parsed.total.runs, "number");
