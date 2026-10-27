@@ -489,13 +489,23 @@ function listPromptArgs(args: string[], f: PromptFlags): PromptArgs {
   return { mode: "list", role: f.role, json: f.jsonFlags.length > 0, grep: f.grepRaw ?? null };
 }
 
+/** The one home of the position-only prompt modes' argument shape — `--cancel <n>` and
+ * `--top <n>`, which carry exactly the position pair and an optional `--role` pair and
+ * nothing else: parse the position, refuse any other token (which would be prompt text in
+ * a mode that has none), and return the mode's shape. `mode` derives the flag wording
+ * (`--<mode> 2`, `with --<mode> there is no prompt text`) and the returned `mode`, and
+ * `flag` the claimed flag index, so a mode's message and its flags cannot drift apart. */
+function positionOnlyPromptArgs(args: string[], f: PromptFlags, mode: "cancel" | "top", flag: number): PromptArgs {
+  const n = parsePositionFlag(`--${mode}`, args[flag + 1], `--${mode} 2`);
+  // The position is the only token the mode may carry; anything else alongside it would be
+  // prompt text, and this mode has none.
+  failStrayArg(args, `with --${mode} there is no prompt text`, flag, flag + 1, ...f.roleClaim);
+  return { mode, role: f.role, position: n };
+}
+
 /** `--cancel <n>`: remove one entry by its 1-based queue position. */
 function cancelPromptArgs(args: string[], f: PromptFlags): PromptArgs {
-  const n = parsePositionFlag("--cancel", args[f.cancelFlag + 1], "--cancel 2");
-  // The position is the only token --cancel may carry; anything else alongside it would be
-  // prompt text, and this mode has none.
-  failStrayArg(args, "with --cancel there is no prompt text", f.cancelFlag, f.cancelFlag + 1, ...f.roleClaim);
-  return { mode: "cancel", role: f.role, position: n };
+  return positionOnlyPromptArgs(args, f, "cancel", f.cancelFlag);
 }
 
 /** `--edit <n>`: rewrite one entry's text in place — the replacement is the --file contents,
@@ -531,11 +541,7 @@ function editPromptArgs(args: string[], f: PromptFlags): PromptArgs {
 
 /** `--top <n>`: move one entry to the head of its role's queue. */
 function topPromptArgs(args: string[], f: PromptFlags): PromptArgs {
-  const n = parsePositionFlag("--top", args[f.topFlag + 1], "--top 2");
-  // The position is the only token --top may carry; anything else alongside it would be
-  // prompt text, and this mode has none.
-  failStrayArg(args, "with --top there is no prompt text", f.topFlag, f.topFlag + 1, ...f.roleClaim);
-  return { mode: "top", role: f.role, position: n };
+  return positionOnlyPromptArgs(args, f, "top", f.topFlag);
 }
 
 /** `--file <path>`: enqueue the file's (or stdin's) whole contents as the prompt. */
