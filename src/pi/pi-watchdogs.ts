@@ -113,7 +113,9 @@ function startDeadlineWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   const progressGraceMs = 250;
 
   let extended = false;
-  let graceArmed = false; // one grace per deadline, so a genuinely stalled run is never granted two
+  let graceArmed = false; // one grace for the whole run, so a genuinely stalled run is never granted two
+  // (see the deadline comment below: a run reaches this branch at most once, so per-run and
+  // per-deadline scope grant the same single short re-check)
   state.timeoutBudgetMs = deps.runTimeoutMs;
   const fireDeadline = () => {
     if (deps.extendOnProgress && !extended && deps.progressCount() > checkpointProgress) {
@@ -137,8 +139,13 @@ function startDeadlineWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
     // count and a progressing run looks stalled (BUGS.md 2026-10-26). A run that has begun
     // producing structured progress therefore gets ONE short grace to drain queued output and
     // re-prove itself; only a run still flat after the grace — or one that never progressed —
-    // keeps the discard path. The grace is one-shot, so a genuinely stalled run is not
-    // granted a second chance.
+    // keeps the discard path. The grace is one short beat, armed once for the whole run:
+    // graceArmed is a closure local of startDeadlineWatch, one per run, and the branch is
+    // reached at most once because a gate run's earlier base deadline is handled by its
+    // one-time extension (the block above) while an authoring run has a single deadline — so
+    // "once per run" and "once per deadline" grant the very same single re-check, and a
+    // progressing gate run is never left without one while a genuinely stalled run is never
+    // granted two.
     if (!graceArmed && deps.progressCount() > 0) {
       graceArmed = true;
       state.timeout = setTimeout(fireDeadline, progressGraceMs);

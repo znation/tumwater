@@ -4652,3 +4652,13 @@ instead of skipping its re-review".
 **Binds.** `src/agent/codex/codex-args.ts` (`codexArgs`, `CodexArgOptions.guardArgs`), `src/agent/codex/codex-backend.ts` (`invocation`).
 
 **Pinned by.** `test/codex-args.test.ts` — "codexArgs places guardArgs after the harness -c keys and before -m on fresh and resumed runs (part 6/9)" and "codexArgs omits guardArgs when unset"; `test/codex-run.test.ts` — "a fresh and a resumed run carry the write guard's hook and trust, and never bypass hook trust (part 6/9)" and "a codex run whose trust lookup fails carries neither guard -c value (part 6/9)".
+
+## Run deadline progress grace: a fired deadline grants at most one short grace, and a run reaches that branch at most once
+
+### INV-CX1: the run deadline arms the 250 ms progress grace once, and "once per run" equals "once per deadline"
+
+**Guarantee.** `startDeadlineWatch`'s grace is armed once per run, not once per deadline moment: `graceArmed` is a closure local reached once per `startPiWatchdogs` call, so a run whose count was flat at a deadline gets at most one short (250 ms) re-check before the discard. That is the same grant a per-deadline reading would give, because a run reaches the grace branch at most once — an authoring run has a single deadline firing, and a gate run's earlier base deadline is handled by its one-time extension (the `extended` guard), never by the grace, so only the final deadline firing can arm it. A run still flat after its single grace — or one that never produced a progress event — keeps the discard path; a run that proves progress in the grace is classified `timedOutProgressing` (resumed like a quiet kill, not re-read from scratch). A genuinely stalled run is never granted two graces, and a progressing gate run is never left without one.
+
+**Binds.** `src/pi/pi-watchdogs.ts` (`startDeadlineWatch`, `fireDeadline`, `graceArmed`, `extended`).
+
+**Pinned by.** `test/pi-watchdogs.test.ts` — "a deadline whose checkpoint read the same drained count resumes a run that proves progress in the grace (regression)", "a gate run's extension is one-shot: the second deadline kills it at twice the budget" and "an authoring run is not extended even while it is progressing"; `test/runner-4.test.ts` — the 3500-vs-3000 deadline pin.
