@@ -10,6 +10,7 @@ import type { RunDetail } from "../../run/run-detail-data.js";
 import { HISTORY_RESULT_CLASSES, HISTORY_RESULT_FLAG_NAMES } from "../../history/history-data.js";
 import type { HistoryResultClass } from "../../history/history-data.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
+import { distinctOrdered } from "../../collections.js";
 import type { labeledBacklogEntries } from "./tui-backlog.js";
 
 /** A backlog-entry cancel or release target (plan or bug position + title), shared by the
@@ -90,12 +91,7 @@ export const HISTORY_WINDOWS: ReadonlyArray<[number | null, string]> = [
  * names that collect it identically. `feature`/`feature-2` therefore offer one slot, and the
  * name the tab strip and hint show is the name the collector honors. */
 export function scopeCycle(roleIds: readonly string[]): Array<string | null> {
-  const bases: string[] = [];
-  for (const id of roleIds) {
-    const base = baseRoleOf(id);
-    if (!bases.includes(base)) bases.push(base);
-  }
-  return [null, ...bases];
+  return [null, ...distinctOrdered(roleIds.map((id) => baseRoleOf(id)))];
 }
 
 /** The History pane's session outcome cycle, Ctrl+O: all runs, then the canonical classes

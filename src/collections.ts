@@ -17,6 +17,20 @@ export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T
   return groups;
 }
 
+/** The distinct items of an iterable, in first-seen order — the single home of the
+ * `seen.includes -> push` dedupe, shared by the pending pane's three scope lists
+ * (mergeQueueRoles, postReviewRoles, overlapHolders in ui/tui/tui-pane-pending.ts), the
+ * session pane's scope cycle (ui/tui/tui-pane-session.ts's scopeCycle), and the report
+ * scope fold (report/report-fold.ts's scopeBases), so those sites cannot drift on how a
+ * repeat is skipped. Returns a fresh array; the input is never mutated. (The dashboard's
+ * role-scope builder in ui/gui/gui-client-report.ts keeps its own copy by design: it runs
+ * in the browser, where harness modules cannot be imported.) */
+export function distinctOrdered<T>(items: Iterable<T>): T[] {
+  const seen: T[] = [];
+  for (const item of items) if (!seen.includes(item)) seen.push(item);
+  return seen;
+}
+
 /** Return `map`'s value for `key`, creating and storing `make()`'s result first when the key is
  * absent — the single home of the `map.get(key) ?? fresh; …; map.set(key, value)` step, shared
  * by the failure digest's per-role stats, outcome, and prompt-token accumulators (failure-data.ts),

@@ -15,7 +15,7 @@ import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
 import { isPassingMainCheck, isRedMain } from "../baseline/main-guardrails.js";
-import { addTo, memoSetLru } from "../collections.js";
+import { addTo, distinctOrdered, memoSetLru } from "../collections.js";
 import { asList } from "../text/text.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { foldUsageEvent } from "./report-usage-fold.js";
@@ -155,12 +155,7 @@ export function scopeBases(role: string | readonly string[] | undefined): string
   if (role === undefined) return undefined;
   const ids = asList(role);
   if (ids.length === 0) return undefined;
-  const out: string[] = [];
-  for (const id of ids) {
-    const base = baseRoleOf(id);
-    if (!out.includes(base)) out.push(base);
-  }
-  return out;
+  return distinctOrdered(ids.map((id) => baseRoleOf(id)));
 }
 
 /** Fold every key of a per-role-id count/cost map through its base role, so `feature-2` joins

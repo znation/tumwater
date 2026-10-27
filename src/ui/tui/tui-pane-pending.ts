@@ -17,6 +17,7 @@ import { squash } from "../../text/text.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 import { arrowDir } from "./tui-keymap.js";
+import { distinctOrdered } from "../../collections.js";
 import { moveEntrySelection } from "./tui-backlog.js";
 
 /** The overlapping-files block under the roster: empty for a no-base view (the roster above
@@ -36,27 +37,21 @@ export function pendingOverlapsText(view: ChangeOverlapsView, scope?: string): s
 /** The distinct roles named across the overlaps, in first-seen order; empty for a no-base view. */
 export function overlapHolders(view: ChangeOverlapsView): string[] {
   if (view.state === "no-base") return [];
-  const seen: string[] = [];
-  for (const o of view.overlaps) for (const r of o.roles) if (!seen.includes(r)) seen.push(r);
-  return seen;
+  return distinctOrdered(view.overlaps.flatMap((o) => o.roles));
 }
 
 /** The distinct roles named across the merge queue, in first-seen (queue) order; empty for an
  * empty queue. The queue's own roles lead the pane's Ctrl+G scope cycle, before the overlap
  * holders — the queue scope is the `tumwater queue --role <id>` twin. */
 export function mergeQueueRoles(view: MergeQueueView): string[] {
-  const seen: string[] = [];
-  for (const e of view.entries) if (!seen.includes(e.role)) seen.push(e.role);
-  return seen;
+  return distinctOrdered(view.entries.map((e) => e.role));
 }
 
 /** The distinct roles named across the post-merge review queue, in first-seen (FIFO) order;
  * empty for an empty queue. The review block's contribution to the pane's Ctrl+G scope cycle,
  * after the queue's roles — the review scope is the `tumwater reviews --role <id>` twin. */
 export function postReviewRoles(entries: readonly PostReview[]): string[] {
-  const seen: string[] = [];
-  for (const e of entries) if (!seen.includes(e.role)) seen.push(e.role);
-  return seen;
+  return distinctOrdered(entries.map((e) => e.role));
 }
 
 /** The heading over one overlap's drill-down: its place in the list and the path. */
