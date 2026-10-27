@@ -20,6 +20,15 @@ interface CliResult {
   stderr: string;
 }
 
+/** How long a `cli()`/`cliWithEnv()` run may take before it is killed as hung. Must be at least
+ * the cold-CLI-start readiness budget (waitFor's 60 s default, BUGS.md 2026-09-30): a command that
+ * defers all output until late — doctor renders its whole report only after every check finishes —
+ * would otherwise be killed mid-start under full-suite load with an empty captured stdout, which a
+ * JSON.parse/regex assertion then reads as a failure (BUGS.md 2026-10-26). The readiness waitFor
+ * already uses 60 s for the same cold-start-under-load cause; this completion timeout must not be
+ * tighter than it. Exported so a test pins the invariant. */
+export const CLI_COMPLETION_TIMEOUT_MS = 60_000;
+
 /** Run the CLI with an explicit env override (merged over process.env). The timeout
  * bounds tests that would otherwise hang if a command regresses to not exiting. */
 export function cliWithEnv(cwd: string, env: NodeJS.ProcessEnv, args: string[]): Promise<CliResult> {
@@ -30,7 +39,7 @@ export function cliWithEnv(cwd: string, env: NodeJS.ProcessEnv, args: string[]):
   // Likewise a developer's own editor must never open inside the suite: `--edit <n>` launches it.
   for (const name of ["VISUAL", "EDITOR"]) if (!(name in env)) delete merged[name];
   return new Promise((resolve) => {
-    execFile(process.execPath, [CLI, ...args], { cwd, env: merged, timeout: 20_000 }, (err, stdout, stderr) => {
+    execFile(process.execPath, [CLI, ...args], { cwd, env: merged, timeout: CLI_COMPLETION_TIMEOUT_MS }, (err, stdout, stderr) => {
       resolve({ code: err ? Number(err.code ?? 1) : 0, stdout, stderr });
     });
   });

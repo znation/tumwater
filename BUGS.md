@@ -198,24 +198,6 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 an on-time merge-scope timeout names a starved host, and stays silent on an idle one
 ~~~~
 
-### `doctor --commit-backlog …` and `roles.dry.enabled: false …` both returned empty child stdout (ci run 2026-10-26, main tip de048f2)
-
-Two unrelated `doctor` tests failed in ONE full `npm test` run against main tip de048f2, each reading an empty (or runt) `cli` subprocess stdout under host load, and both passed in a file-isolated re-run (42/42 across `dist/test/doctor.test.js` and `dist/test/legacy-role-ids.test.js`). Same root class, so one entry: the spawned CLI's captured stdout came back empty, so a `JSON.parse`/regex match on it fails. Not the e2e wall-clock class; this is the doctor child-process capture path flaking.
-
-~~~~
-test at dist/test/doctor.test.js:473:1
-✖ doctor --commit-backlog commits a dirty backlog file before the report; with --json it is the report's backlogCommit field (51993.890417ms)
-  SyntaxError [Error]: Unexpected end of JSON input
-      at JSON.parse (<anonymous>)
-      at TestContext.<anonymous> (file:///…/dist/test/doctor.test.js:485:24)
-
-test at dist/test/legacy-role-ids.test.js:87:1
-✖ roles.dry.enabled: false disables dedupe, and doctor names the rename (21730.873291ms)
-  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /roles\.dry → roles\.dedupe/. Input:
-  ''
-      at TestContext.<anonymous> (file:///…/dist/test/legacy-role-ids.test.js:95:12)
-~~~~
-
 ### `doctor --commit-backlog commits a dirty backlog file before the report; with --json it is the report's backlogCommit field` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `doctor --commit-backlog …` and `roles.dry.enabled: false …` both returned empty child stdout (ci run 2026-10-26, main tip de048f2) — fixed 2026-10-26 by the bugfix role
+
+Two unrelated `doctor` tests failed in ONE full `npm test` run against main tip de048f2, each reading an empty (or runt) `cli` subprocess stdout under host load, and both passed in a file-isolated re-run (42/42 across `dist/test/doctor.test.js` and `dist/test/legacy-role-ids.test.js`). Same root class, so one entry: the spawned CLI's captured stdout came back empty, so a `JSON.parse`/regex match on it fails. Not the e2e wall-clock class; this is the doctor child-process capture path flaking. Causes: doctor defers its whole report until every check finishes, and the run-to-completion harness (`cli()`/`cliWithEnv`) killed the child at a 20 s timeout; under full-suite load the heavy doctor run produced no stdout before the kill, leaving an empty buffer for `JSON.parse`/a regex. Fixed by raising that completion timeout to 60 s — the same cold-CLI-start budget `waitFor` already uses (BUGS.md 2026-09-30) — and pinning the invariant with a regression test.
+
+**Validation gap:** no-repro — both tests pass in a file-isolated re-run and need full-suite load to fire, so the empty-stdout symptom was confirmed only by matching the observed durations (21.7 s and 51.9 s) to the 20 s child-kill timeout rather than by a deterministic reproduction.
+
+~~~~
+test at dist/test/doctor.test.js:473:1
+✖ doctor --commit-backlog commits a dirty backlog file before the report; with --json it is the report's backlogCommit field (51993.890417ms)
+  SyntaxError [Error]: Unexpected end of JSON input
+      at JSON.parse (<anonymous>)
+      at TestContext.<anonymous> (file:///…/dist/test/doctor.test.js:485:24)
+
+test at dist/test/legacy-role-ids.test.js:87:1
+✖ roles.dry.enabled: false disables dedupe, and doctor names the rename (21730.873291ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /roles\.dry → roles\.dedupe/. Input:
+  ''
+      at TestContext.<anonymous> (file:///…/dist/test/legacy-role-ids.test.js:95:12)
+~~~~
+
 ### `a batch whose base main moves mid-check through a run-path merge re-stacks and merges` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. It is the same load-sensitive wall-clock class as the sibling abort test fixed in the same commit (BUGS.md 2026-10-26): the test waits on `.batch-started`, which the shared batch check touches only after the two verifies' gate pre-checks and a real `git commit` on main (`commitOnMain`) — real git work a saturated full-suite run can stretch past the 30 s default of `waitForFile`, so the deadline expired even though the check completed. Fix: widened the `waitForFile(started)` call for this re-stack test to the suite's generous 60 s norm; the poll returns the instant the file appears, so a healthy run reads it immediately, and a genuine hang (a check never reaching the batch run) still exhausts the bound and fails. (Found by the ci role 2026-10-26; the failing output follows.)

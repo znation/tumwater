@@ -13,7 +13,7 @@ import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeMalformedJson, writeConfig } 
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { pathPrepend } from "./fakes/fake-commands.js";
-import { cli, cliWithEnv } from "./helpers/cli-harness.js";
+import { cli, cliWithEnv, CLI_COMPLETION_TIMEOUT_MS } from "./helpers/cli-harness.js";
 import { diskHermeticRepo, fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./fixtures/doctor-fixtures.js";
 import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
 
@@ -578,6 +578,14 @@ test("doctor --commit-backlog commits a dirty backlog file before the report; wi
   assert.ok(r.stdout.indexOf("committed PLANS.md on main") < r.stdout.indexOf("uncommitted backlog"));
   const plain = JSON.parse((await cli(repo, "doctor", "--json")).stdout);
   assert.ok(!("backlogCommit" in plain));
+});
+
+test("the cli() completion timeout is not tighter than the 60 s cold-start readiness budget", () => {
+  // doctor defers its whole report until every check finishes, so on a loaded host it can
+  // produce no stdout for a long stretch; when the readiness waitFor already allows 60 s for
+  // a cold CLI start under team load (BUGS.md 2026-09-30), the run-to-completion deadline must
+  // not kill the child earlier or it returns an empty captured stdout (BUGS.md 2026-10-26).
+  assert.ok(CLI_COMPLETION_TIMEOUT_MS >= 60_000, `completion timeout ${CLI_COMPLETION_TIMEOUT_MS} < 60000`);
 });
 
 test("doctor --resync-install is accepted and reports nothing to do without a lockfile", async () => {
