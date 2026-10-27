@@ -159,7 +159,7 @@ diff: 'simple'
 }
 ~~~~
 
-Fixed by making the `--for` live tests' exit budget load-insensitive: they waited on `exitCode`'s 15s default, but the whole boot + deadline drain + supervisor close of a real cluster under a loaded parallel suite exceeded that bound on the flake (the window summary was already in the buffer when the 15s cap fired; re-running the same tree passed, so the flake was slowness, not a hang). The two `--for` tests now pass `WINDOW_EXIT_BUDGET_MS` (60s), so a run that genuinely never stops at its deadline is still rejected deterministically instead of being excused as an environmental skip (mirrors the load-insensitive reap budgets in `build-check-process.test.ts`).
+Fixed by making the `--for` live tests' exit budget load-insensitive: they waited on `exitCode`'s 15s default, but the whole boot + deadline drain + supervisor close of a real cluster under a loaded parallel suite exceeded that bound on the flake (the window summary was already in the buffer when the 15s cap fired; re-running the same tree passed, so the flake was slowness, not a hang). The two `--for` tests now pass `EXIT_BUDGET_MS` (60s), so a run that genuinely never stops at its deadline is still rejected deterministically instead of being excused as an environmental skip (mirrors the load-insensitive reap budgets in `build-check-process.test.ts`).
 
 **Validation gap:** no-repro — could not reproduce under standalone, 4×-concurrent, or CPU-loaded runs (all passed in 8–12s); the flake's own message names `exitCode`'s 15s real-time budget as the tight bound, and the same tree passed on its re-run.
 
