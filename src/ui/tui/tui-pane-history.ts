@@ -103,6 +103,21 @@ export function createHistoryPane(
   let reverting = false; // a revert preview or commit is in flight; a held Ctrl+V starts no second
   let trailGen = 0; // bumped at every trail read or reset; a stat resolution applies only to its own gen
 
+  /** Drop the on-screen run trail and its snapshot: the shared teardown the pane's three
+   * History-only exits run — the Ctrl+N toggle-off arm, the Ctrl+L newest-failure jump, and
+   * the pane's reset on a view cycle. It bumps trailGen so an in-flight stat resolution from
+   * the closed trail cannot repaint the pane. */
+  const dropTrail = (): void => {
+    trailGen++;
+    trailMode = false;
+    trailCache = null;
+    trailIndex = 0;
+    trailTranscript = "off";
+    trailPatch = false;
+    trailPatchText = null;
+    trailGrep = null;
+  };
+
   /** The pane's row selection: scope, then window, then search, then outcome class — the order
    * `tumwater history` applies them. Returns the raw read's coverage flag, the count after the
    * search (so an empty body can blame the filter that emptied the set: `afterGrep > 0` means
@@ -414,14 +429,7 @@ export function createHistoryPane(
     if (trailMode) {
       // Toggle the trail off (Ctrl+N on the trail view): drop the trail snapshot. The
       // trailGen bump keeps an in-flight stat from the old trail from repainting.
-      trailGen++;
-      trailMode = false;
-      trailCache = null;
-      trailIndex = 0;
-      trailTranscript = "off";
-      trailPatch = false;
-      trailPatchText = null;
-      trailGrep = null;
+      dropTrail();
     } else {
       // Toggle the trail on: read the pane-scoped newest completed run. A scope holding
       // none flashes (loadTrail's onEmpty) and leaves the rows; one holding a run turns
@@ -460,14 +468,7 @@ export function createHistoryPane(
     historySummary = null;
     // Drop any on-screen trail the way Ctrl+N's toggle-off arm does (the gen bump keeps an
     // in-flight stat from the old trail from repainting).
-    trailGen++;
-    trailMode = false;
-    trailCache = null;
-    trailIndex = 0;
-    trailTranscript = "off";
-    trailPatch = false;
-    trailPatchText = null;
-    trailGrep = null;
+    dropTrail();
     recompute();
     // historyWindow null + historyResult "problems": loadTrail reads
     // readRunRows(root, HISTORY_MAX_RUNS, null) and takes .filtered[0] — the newest failing
@@ -704,14 +705,7 @@ export function createHistoryPane(
     enter: recompute,
     reset() {
       // A cycle away leaves the run trail (which is History-only) and drops its snapshot too.
-      trailGen++;
-      trailMode = false;
-      trailCache = null;
-      trailIndex = 0;
-      trailTranscript = "off";
-      trailPatch = false;
-      trailPatchText = null;
-      trailGrep = null;
+      dropTrail();
       session.revertArmed = null;
       session.armedRevert = null;
     },
