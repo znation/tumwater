@@ -128,6 +128,14 @@ export function backendLabel(e: HarnessEvent): string {
   return typeof e.backend === "string" && e.backend !== "" ? e.backend : "claude";
 }
 
+/** A subscription-window event's window, as "<backend> subscription window <type>" — the head
+ * every `subscription_window_*` line names (windowType is a torn/older event's only nullable
+ * half, so `reset` and the shaped lines differ only in what follows this prefix). One home so
+ * the four lines cannot drift on the backend's label or the window-type word. */
+function subscriptionWindowPhrase(e: HarnessEvent): string {
+  return `${backendLabel(e)} subscription window ${textOr(e.windowType)}`;
+}
+
 /** The provider/model pair a fallback-ish line names, as "provider/model", defaulting each
  * half when the event omits it (a bare pi run carries neither). Shared by the budget_fallback
  * and model_fallback lines so the pair's shape and defaults cannot drift between them. */
@@ -561,13 +569,13 @@ function resourceEventMessage(e: HarnessEvent): string {
       // telling us the window is filling, not failing. It names the window and when it resets.
       const used = finiteNumber(e.utilization, null);
       const fill = used === null ? "" : ` (at ${claudeUtilizationPct(used)}% used)`;
-      return `${backendLabel(e)} subscription window ${textOr(e.windowType)} near its limit${fill}${windowResetPhrase(e)} — subscription ${backendLabel(e)} model jobs keep running`;
+      return `${subscriptionWindowPhrase(e)} near its limit${fill}${windowResetPhrase(e)} — subscription ${backendLabel(e)} model jobs keep running`;
     }
     case "subscription_window_reserved": {
       const used = finiteNumber(e.utilization, null);
       const line = finiteNumber(e.reserve, null);
       const pct = (f: number | null) => (f === null ? "?" : `${claudeUtilizationPct(f)}%`);
-      return `${backendLabel(e)} subscription window ${textOr(e.windowType)} at ${pct(used)}, past its ${pct(line)} reserve${windowResetPhrase(e)} — the team leaves it to you (director keeps running)`;
+      return `${subscriptionWindowPhrase(e)} at ${pct(used)}, past its ${pct(line)} reserve${windowResetPhrase(e)} — the team leaves it to you (director keeps running)`;
     }
     case "subscription_window_limited":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the
@@ -579,9 +587,9 @@ function resourceEventMessage(e: HarnessEvent): string {
       {
         const moved = fallbackTierEntries(isJsonObject(e.tiers) ? e.tiers : undefined);
         if (moved.length > 0)
-          return `${backendLabel(e)} subscription window ${textOr(e.windowType)} rejected — ${backendLabel(e)} model jobs move to ${moved.join(", ")}${windowResetPhrase(e)} (director keeps waiting)`;
+          return `${subscriptionWindowPhrase(e)} rejected — ${backendLabel(e)} model jobs move to ${moved.join(", ")}${windowResetPhrase(e)} (director keeps waiting)`;
       }
-      return `waiting: ${backendLabel(e)} subscription window ${textOr(e.windowType)} rejected — ${backendLabel(e)} model jobs wait${windowResetPhrase(e)} (director keeps running)`;
+      return `waiting: ${subscriptionWindowPhrase(e)} rejected — ${backendLabel(e)} model jobs wait${windowResetPhrase(e)} (director keeps running)`;
     case "subscription_window_reset":
       return `${backendLabel(e)} subscription window reset — ${backendLabel(e)} model jobs run again`;
     default: return textOr(e.type);
