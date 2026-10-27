@@ -42,25 +42,41 @@ export function runDetailPatch(root: string, d: RunDetail): Promise<string> {
   return runCommitShow(root, runCommitSha(d), "--patch");
 }
 
-/** The human view of a RunDetail: one summary line — result (or the in-flight/unpaired
- * marker), duration, usage, and the model the run started on when its `run_start` carried one
- * (after the usage, before the pinned-commit sha), plus the pinned commit sha when the block's
- * `merge_queued`/`merge_done` event carries one — then each event through formatEvent, the
- * shared renderer `logs` and the
- * TUI use, so the trail reads exactly like the feed it came from. A queued run whose merge
- * has finished shows that verdict in the header and ends with the merge's outcome line; a
- * leftover-recovery run's verdict is the failed attempt it re-queued (resolveQueuedResult),
- * logged before the run began, so that outcome line leads the trail instead — the trail stays
- * in time order. */
-export function renderRunDetail(d: RunDetail): string {
-  const summary: string[] = [];
-  if (d.endTs === null) summary.push(d.startTs === null ? "unpaired" : "in flight");
-  else summary.push(d.result ? eventTypeLabel(d.result) : "?");
+/** The run's result cell, always present: the outcome label when the run finished, the
+ * in-flight/unpaired marker when it has not. Owns the first summary cell. */
+function runResultCell(d: RunDetail): string {
+  if (d.endTs === null) return d.startTs === null ? "unpaired" : "in flight";
+  return d.result ? eventTypeLabel(d.result) : "?";
+}
+
+/** The run's cut-off cell, the ceiling-truncation marker straight after the result cell. It
+ * only rides a completed end (cutOff is set from the run_end), so it can never follow in
+ * flight/unpaired. */
+function runCutOffCell(d: RunDetail): string | null {
   // The ceiling-truncation marker, straight after the result cell. It only rides a
   // completed end (cutOff is set from the run_end), so it can never follow in flight/unpaired.
-  if (d.cutOff === true) summary.push("cut off at the context ceiling");
-  if (d.durationMs !== null) summary.push(shortSpanPhrase(d.durationMs));
-  if (d.usage !== "") summary.push(d.usage);
+  if (d.cutOff !== true) return null;
+  return "cut off at the context ceiling";
+}
+
+/** The run's duration cell. */
+function runDurationCell(d: RunDetail): string | null {
+  if (d.durationMs === null) return null;
+  return shortSpanPhrase(d.durationMs);
+}
+
+/** The run's usage cell. */
+function runUsageCell(d: RunDetail): string | null {
+  if (d.usage === "") return null;
+  return d.usage;
+}
+
+/** The run's prompt cell: the prompt-token total and the share the backend served from cache,
+ * the input side a cost-only header hides. The `${n}% cached` wording and rounding are the
+ * usage report's `Prompt tokens by role` share; a run with prompt tokens but no cache reads
+ * shows no parenthetical, and a run that reported neither keeps today's header byte-identical
+ * (the omit-when-zero convention). */
+function runPromptCell(d: RunDetail): string | null {
   // The run's prompt-token total and the share the backend served from cache, the input
   // side a cost-only header hides. The `${n}% cached` wording and rounding are the usage
   // report's `Prompt tokens by role` share; a run with prompt tokens but no cache reads
@@ -68,37 +84,90 @@ export function renderRunDetail(d: RunDetail): string {
   // byte-identical (the omit-when-zero convention).
   const prompt = d.promptTokens ?? 0;
   const cached = Math.min(d.cacheReadTokens ?? 0, prompt);
-  if (prompt > 0) summary.push(cached > 0 ? `prompt ${compactTokens(prompt)} tok (${Math.round((100 * cached) / prompt)}% cached)` : `prompt ${compactTokens(prompt)} tok`);
+  if (prompt <= 0) return null;
+  return cached > 0 ? `prompt ${compactTokens(prompt)} tok (${Math.round((100 * cached) / prompt)}% cached)` : `prompt ${compactTokens(prompt)} tok`;
+}
+
+/** The run's pre-edit prompt-token share, the `… before first edit` signal a cost-only header
+ * hides: how much of the prompt budget went out before the run made its first edit. Clamped
+ * to the total (run-detail-data.ts), written after the prompt cell and before the
+ * peak-context cell; a run that reported no pre-edit reading — and an in-flight run — keeps
+ * today's header byte-identical. */
+function runPreEditCell(d: RunDetail): string | null {
   // The run's pre-edit prompt-token share, the `… before first edit` signal a cost-only
   // header hides: how much of the prompt budget went out before the run made its first
   // edit. Clamped to the total (run-detail-data.ts), written after the prompt cell and
   // before the peak-context cell; a run that reported no pre-edit reading — and an
   // in-flight run — keeps today's header byte-identical.
+  const prompt = d.promptTokens ?? 0;
   const preEdit = Math.min(d.preEditPromptTokens ?? 0, prompt);
-  if (preEdit > 0) summary.push(`pre-edit ${compactTokens(preEdit)} tok`);
+  if (preEdit <= 0) return null;
+  return `pre-edit ${compactTokens(preEdit)} tok`;
+}
+
+/** The run's peak-context cell against the seam's declared window, the one header every surface
+ * renders. Omitted when the run reported no peak (byte-identical to today's header). */
+function runPeakContextCell(d: RunDetail): string | null {
   // The run's peak context against the seam's declared window, the one header every surface
   // renders. Omitted when the run reported no peak (byte-identical to today's header).
-  if ((d.peakContextTokens ?? 0) > 0) summary.push(`peak ctx ${contextShareLabel(d.peakContextTokens ?? 0, d.contextWindow)}`);
-  if (d.model !== null) summary.push(d.model);
+  if ((d.peakContextTokens ?? 0) <= 0) return null;
+  return `peak ctx ${contextShareLabel(d.peakContextTokens ?? 0, d.contextWindow)}`;
+}
+
+/** The run's model cell, the model the run started on. */
+function runModelCell(d: RunDetail): string | null {
+  if (d.model === null) return null;
+  return d.model;
+}
+
+/** The summary cells in today's push order — result, cut-off, duration, usage, prompt,
+ * pre-edit, peak-context, model — each present only when its guard omits nothing. */
+function runSummaryCells(d: RunDetail): string[] {
+  return [runResultCell(d), runCutOffCell(d), runDurationCell(d), runUsageCell(d), runPromptCell(d), runPreEditCell(d), runPeakContextCell(d), runModelCell(d)].filter((cell): cell is string => cell !== null);
+}
+
+/** The header's ` · `-separated suffix cells after the summary: the pinned commit, `merged
+ * as`, end-of-run landing latency, and the deliberate-revert verdict. */
+function runHeaderSuffixCells(d: RunDetail): string[] {
   const sha = runCommitSha(d);
-  let header = `${roleLabel(d.role)} run #${d.run} — ${summary.join(" · ")}`;
-  if (sha !== null) header += ` · commit ${shortSha(sha)}`;
-  if (d.mergedSha !== null && d.mergedSha !== sha) header += ` · merged as ${shortSha(d.mergedSha)}`;
+  const cells: string[] = [];
+  if (sha !== null) cells.push(`commit ${shortSha(sha)}`);
+  if (d.mergedSha !== null && d.mergedSha !== sha) cells.push(`merged as ${shortSha(d.mergedSha)}`);
   // The end-of-run → on-main landing latency, the per-change twin of the day report's `Merge
   // wait median`. shortSpanPhrase is the duration cell's renderer, so both spans read alike; a
   // run without the field (rejected/failed merge, in flight, landing rotated out, no-op
   // fast-forward) keeps today's header byte-identical.
-  if (d.mergeAfterRunMs !== undefined) header += ` · merged ${shortSpanPhrase(d.mergeAfterRunMs)} after the run`;
+  if (d.mergeAfterRunMs !== undefined) cells.push(`merged ${shortSpanPhrase(d.mergeAfterRunMs)} after the run`);
   if (d.reverted !== null) {
-    header += ` · reverted ${shortSha(d.reverted.sha)} (by operator)`; // vocabulary-ok: the deliberate-revert writer this header names
+    cells.push(`reverted ${shortSha(d.reverted.sha)} (by operator)`); // vocabulary-ok: the deliberate-revert writer this header names
   }
+  return cells;
+}
+
+/** The trail lines: the run's events through the shared formatEvent, with the merge outcome
+ * line placed before the first event when it predates it (a leftover-recovery run) and after
+ * the last otherwise, keeping the trail in time order. */
+function runTrailLines(d: RunDetail): string[] {
   const trail = d.events.map(formatEvent);
   if (d.merge !== null) {
     const first = d.events[0];
     if (first !== undefined && d.merge.ts < first.ts) trail.unshift(formatEvent(d.merge));
     else trail.push(formatEvent(d.merge));
   }
-  return [header, ...trail].join("\n");
+  return trail;
+}
+
+/** The human view of a RunDetail: one summary line assembled from the per-cell and
+ * per-trail-step helpers — the result (or in-flight/unpaired marker), cut-off, duration,
+ * usage, prompt, pre-edit, peak-context and model cells, then the committed sha, `merged as`,
+ * merge-latency and reverted suffix cells — and each event through formatEvent. A queued run
+ * whose merge has finished shows that verdict in the header and ends with the merge's outcome
+ * line; a leftover-recovery run's verdict is the failed attempt it re-queued
+ * (resolveQueuedResult), logged before the run began, so that outcome line leads the trail
+ * instead — the trail stays in time order. */
+export function renderRunDetail(d: RunDetail): string {
+  const header = [`${roleLabel(d.role)} run #${d.run} — ${runSummaryCells(d).join(" · ")}`, ...runHeaderSuffixCells(d)].join(" · ");
+  return [header, ...runTrailLines(d)].join("\n");
 }
 
 /** The transcript block of `--transcript`: the rendered lines of the agent runs that started in the
