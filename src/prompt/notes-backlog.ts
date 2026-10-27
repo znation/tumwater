@@ -128,8 +128,8 @@ function holdWording(state: PartState): string {
 /** The one summary line of a named series' planned-part state. */
 function seriesSummary(info: SeriesInfo): string {
   const counts: string[] = [];
-  if (info.review > 0) counts.push(`${info.review} ${info.review === 1 ? "needs review" : "need review"}`);
-  if (info.waiting > 0) counts.push(`${info.waiting} ${info.waiting === 1 ? "waits" : "wait"} on an earlier part`);
+  if (info.review > 0) counts.push(plural(info.review, "needs review", "need review"));
+  if (info.waiting > 0) counts.push(`${plural(info.waiting, "waits", "wait")} on an earlier part`);
   counts.push(info.refused === 0 ? "none refused" : `${info.refused} refused`);
   return `${plural(info.plannedCount, "part")} planned: ${counts.join(", ")}`;
 }
