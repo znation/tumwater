@@ -6,7 +6,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Every commit is verified on main, part 3h/3: the pre-merge gate runs no model reviewer (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; split 2026-10-25 by the plan role — the gate-scope narrowing moved to part 3m/3, then split again the same day after feature held it too large (held 6): the migration of the pre-merge reviewer's merge-verify and pipeline/runner/e2e cases moved to parts 3p/3–3w/3, so this part now requires parts 3g/3, 3l/3, 3p/3, 3z/3, 4a/3, 3q/3, 3r/3, 3s/3, 3t/3, 3u/3, 3v/3, 3w/3, 3x/3 and 3y/3 landed — 3g/3's universal post-landing review and 3l/3's review-suite retirement are on main, and 3p/3–3y/3 must retire the remaining reviewer-run cases before the run they assert goes; touches src/review/review.ts docs/how-it-works.md test/review.test.ts test/review-precheck.test.ts)
+### Every commit is verified on main, part 3h/3: the pre-merge gate runs no model reviewer (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; split 2026-10-25 by the plan role — the gate-scope narrowing moved to part 3m/3, then split again the same day after feature held it too large (held 6): the migration of the pre-merge reviewer's merge-verify and pipeline/runner/e2e cases moved to parts 3p/3–3w/3, so this part now requires parts 3g/3, 3l/3, 3p/3, 3z/3, 4a/3, 3q/3, 3r/3, 3s/3, 3t/3, 3u/3, 3v/3, 4b/3, 4c/3, 3w/3, 4d/3, 3x/3 and 3y/3 landed — 3g/3's universal post-landing review and 3l/3's review-suite retirement are on main, and 3p/3–3y/3 must retire the remaining reviewer-run cases before the run they assert goes; touches src/review/review.ts docs/how-it-works.md test/review.test.ts test/review-precheck.test.ts)
 
 **Previously held 6**
 
@@ -213,41 +213,76 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/review.test.ts: re-point `gate rejects a change that still holds conflict markers, with no pi run` and `gate rejects an md-only diff that files a new plan directly under ## Done, with no pi run` to assert the gate now approves or exempts them and the main watch reports them (its conflict-marker cases live in test/main-watch.test.ts). The protected-edit, secret-leak, exempt and already-approved cases pass unchanged.
 - The fail-closed read-error guarantee stays covered by test/merge-git.test.ts's `conflictMarkerReason` read-error case and the stage check (`test/stage-check.test.ts`).
 
-### Every commit is verified on main, part 3v/3: the pre-merge reviewer's orchestrator e2e cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3o/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/orchestrator-3.e2e.test.ts)
+### Every commit is verified on main, part 3v/3: the pre-merge reviewer's orchestrator-3 drain and recovery cases are re-pointed ahead of its removal (planned 2026-10-25 by the plan role, re-split 2026-10-27 by the plan role after feature held the too-large part 3v/3 (held 8): the first of three finer parts replacing part 3v/3's one-file scope, sibling to parts 4b/3 and 4c/3, which take the same file's held-merge and concurrency/rejection cases and serialise behind this one, so this part holds no prerequisite; touches test/orchestrator-3.e2e.test.ts)
 
-**Previously held 7**
+**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-3.e2e.test.ts`'s drain and recovery cases depend on a pre-merge reviewer run where they count or hold one. Move those cases first, before parts 4b/3 and 4c/3 take the same file's held-merge and concurrency cases.
 
-**Needs review 2026-10-25 by feature: too large for one run (held 8)**
-
-**Goal.** The orchestrator-e2e twin of part 3s/3: part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-3.e2e.test.ts`'s held/hanging reviewer runs, its reject-driven merge outcomes and its per-seam reviewer-model assertions fail. Move those cases first so the source switch lands against a suite that no longer depends on the reviewer.
-
-**Approach.** In `test/orchestrator-3.e2e.test.ts`, retire or re-point the pre-merge reviewer cases: re-point a case that holds a merge on a hanging reviewer run to a deterministic gate rejection (a conflict-marker diff or a failing declared check) when its real subject is the orchestrator's scheduling handoff, or delete a case that exists only to pin the reviewer's hold; drop the reviewer-model per-seam assertion where the surviving post-landing review does not carry it. Leave the reviewer-run helpers in place; part 3e/3 deletes them.
+**Approach.** In `test/orchestrator-3.e2e.test.ts`, re-point the drain/recovery cases `a queue entry surviving a restart drains through the gate on next start`, `an entry whose sha main already holds is dropped at the drain without a merge run` and `a torn queue-head file is dropped at the drain so the queue drains`. The only reviewer dependency among them is the pre-merge reviewer count in `an entry whose sha main already holds...`: drop the `rev` counter file and its `"1"` assertion and assert the dedup through the `merge_done` count alone, since no pre-merge reviewer run remains to be deduped. Keep each shim's `VERDICT: approve` arm (the reviewer run still exists on this build) and keep each case's real subject: the queued pin drains to main and the entry is consumed.
 
 **Files touched.** test/orchestrator-3.e2e.test.ts
 
 **Acceptance criteria.**
 - `npm run test:gate` passes with the pre-merge reviewer still running.
-- A grep over the file for `VERDICT: reject`, `review_error`, `reviewRetries`, `review_failed`, `unreviewFailures`, `folded.length` and `lastReview?.verdict` returns no case that drives the pre-merge reviewer.
-- Every case that remains keeps its original subject (orchestrator scheduling and redeploy handoff) and asserts the same outcome through a deterministic rejection.
+- The three named cases assert the drain through the deterministic gate's outcome (`merge_done`, no `merge_failed`, the file on main), and `an entry whose sha main already holds...` no longer reads or asserts a pre-merge reviewer run count.
+- Each named case keeps its original subject (the surviving/torn/duplicate entry drains and the queue empties) and asserts the same outcome.
 - No edit outside test/orchestrator-3.e2e.test.ts.
 
-### Every commit is verified on main, part 3w/3: the pre-merge reviewer's orchestrator-mixed and director cases are re-pointed to the deterministic gate ahead of its removal (planned 2026-10-25 by the plan role, split from the too-large part 3o/3 after feature held it (held 7); one of eight finer parts replacing the held parts 3n/3 and 3o/3, independent in files of the other seven (3p/3–3w/3), which take disjoint test files, and holding no prerequisite, since every case it retires or re-points is green while the pre-merge reviewer still runs; touches test/orchestrator-mixed.e2e.test.ts test/orchestrator-director.test.ts)
+### Every commit is verified on main, part 4b/3: the pre-merge reviewer's orchestrator-3 held-merge abort, interlock and hand-off cases are re-pointed ahead of its removal (planned 2026-10-27 by the plan role, split from the too-large part 3v/3 after feature held it (held 8): the second of three finer parts replacing part 3v/3's one-file scope, sibling to parts 3v/3 and 4c/3, requires part 3v/3 landed since all three edit test/orchestrator-3.e2e.test.ts and 3v/3's drain edits there must settle first; touches test/orchestrator-3.e2e.test.ts)
 
-**Needs review 2026-10-25 by feature: too large for one run (held 8)**
+**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, so `test/orchestrator-3.e2e.test.ts`'s cases that hold a merge in flight on a hanging reviewer run lose the hold they assert against: `a user abort during a merge kills it and discards the pinned ref`, `a role with a queued or in-flight merge never starts a new run (interlock)`, `an abort for one queued role stops only that role's verify and discards its pin; the other verify runs on`, `a restart's hand-off aborts the merges that outlive its deadline instead of waiting them out` and `a restart's drain aborts only its permit-holding role runs — the in-flight merge keeps its hand-off window, and a role enabled mid-run is cut off with the startup ones`. Re-point the hold to a deterministic in-flight merge step first.
 
-**Previously held 7**
+**Approach.** In `test/orchestrator-3.e2e.test.ts`, for the five named cases replace the hanging pre-merge reviewer with a hold that survives part 3h/3: advance main with a conflicting edit after the pin so the rebase conflicts, and make the fake pi park on the merge's conflict-resolution run (match its `tumwater-<role>-<run>-conflict` session or the conflict prompt's markers) instead of on `VERDICT:`. Delete a case instead when it exists only to pin the reviewer's hold — none of the five does; each keeps its subject (the abort kills the in-flight merge, the interlock holds the role, the deadline lapses and aborts), which the conflict hold preserves. Leave the reviewer-run helpers in place; part 3e/3 deletes them.
 
-**Goal.** The orchestrator-mixed and director twin of part 3v/3: part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-mixed.e2e.test.ts`'s `review_start` assertion and `test/orchestrator-director.test.ts`'s reject/idle-reviewer cases and its `review.afterMerge: []` hold case fail. Move those cases first so the source switch lands against a suite that no longer depends on the reviewer.
-
-**Approach.** In `test/orchestrator-mixed.e2e.test.ts`, re-point the `review_start` assertion to the surviving post-landing review, or drop it where the mixed flow no longer starts a pre-merge run. In `test/orchestrator-director.test.ts`, retire or re-point the reject-reviewer case ("an idle reply is a review_error") and the case that sets `review.afterMerge: []` to hold a merge on a pre-merge review: re-point each to a deterministic gate rejection (a conflict-marker diff or a failing declared check) when its real subject is the director's abort/handoff bookkeeping, or delete it when it exists only to pin the reviewer. Leave the reviewer-run helpers in place; part 3e/3 deletes them.
-
-**Files touched.** test/orchestrator-mixed.e2e.test.ts test/orchestrator-director.test.ts
+**Files touched.** test/orchestrator-3.e2e.test.ts
 
 **Acceptance criteria.**
 - `npm run test:gate` passes with the pre-merge reviewer still running.
-- A grep over the two files for `VERDICT: reject`, `review_error`, `reviewRetries`, `review_failed`, `unreviewFailures`, `folded.length` and `lastReview?.verdict` returns no case that drives the pre-merge reviewer.
-- `review_start` assertions name only post-landing (`afterMerge: true`) reviewer runs, or survive as flow assertions that do not count a pre-merge run.
-- No edit outside test/orchestrator-mixed.e2e.test.ts and test/orchestrator-director.test.ts.
+- No case among the five hangs a `VERDICT:` run to hold a merge; each in-flight merge is held by a parked conflict-resolution run.
+- Each surviving case keeps its original subject (the abort, interlock or hand-off) and asserts the same outcome against the parked conflict-resolution run.
+- No edit outside test/orchestrator-3.e2e.test.ts.
+
+### Every commit is verified on main, part 4c/3: the pre-merge reviewer's orchestrator-3 concurrency and rejection cases are re-pointed ahead of its removal (planned 2026-10-27 by the plan role, split from the too-large part 3v/3 after feature held it (held 8): the third of three finer parts replacing part 3v/3's one-file scope, sibling to parts 3v/3 and 4b/3, requires part 4b/3 landed since all three edit test/orchestrator-3.e2e.test.ts and 4b/3's held-merge edits there must settle first; touches test/orchestrator-3.e2e.test.ts)
+
+**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-3.e2e.test.ts`'s cases that overlap pre-merge reviewer runs or drive a merge through a reviewer rejection fail: `a role rejected in its verify runs again while another queued change is still in review`, `maxConcurrent 4 verifies three queued changes at once on the live orchestrator, then merges them all` and `a verify slot that can no longer be created is contained: the healthy change merges, the other drops as an error`. Re-point them to the deterministic gate.
+
+**Approach.** In `test/orchestrator-3.e2e.test.ts`, re-point the rejection in `a role rejected in its verify...` to a deterministic pre-merge rejection (a conflict-marker diff or a failing declared check) when its subject is the rejected author's fix run starting mid-merge, and re-point the parked/overlapping runs in `maxConcurrent 4 verifies...` and `a verify slot that can no longer be created...` to conflict-resolution runs that park, so the verify-overlap sampling and the terminal-error containment keep their subjects. Leave the reviewer-run helpers in place; part 3e/3 deletes them.
+
+**Files touched.** test/orchestrator-3.e2e.test.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with the pre-merge reviewer still running.
+- No case among the three drives a pre-merge reviewer verdict; the rejection is the gate's own finding and the parked runs are conflict-resolution runs.
+- Each surviving case keeps its original subject (the rejected role's fix run starts while another merge is in flight, the three verifies overlap, the un-creatable slot degrades to a terminal error) and asserts the same outcome.
+- No edit outside test/orchestrator-3.e2e.test.ts.
+
+### Every commit is verified on main, part 3w/3: the pre-merge reviewer's orchestrator-mixed case is re-pointed ahead of its removal (planned 2026-10-25 by the plan role, re-split 2026-10-27 by the plan role after feature held the too-large part 3w/3 (held 8): the mixed-file half of part 3w/3, sibling to part 4d/3, which takes the same series' director cases in test/orchestrator-director.test.ts, and independent in files of it; touches test/orchestrator-mixed.e2e.test.ts)
+
+**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-mixed.e2e.test.ts`'s `review_start` assertion fail: the case asserts a pre-merge reviewer run's `claude/claude-sonnet-5-5` selector and the reviewer's claude native log. Re-point the assertion to the surviving post-landing review so the source switch lands against a suite that no longer depends on the pre-merge reviewer.
+
+**Approach.** In `test/orchestrator-mixed.e2e.test.ts`, re-point the `review_start` assertion to the post-landing review the mixed flow still starts (its prompt names an "already on main" commit, part 3g/3), or drop that assertion where the flow starts no reviewer run, while keeping the case's real subject: the pi author's change merges on main and each backend writes its own native log. Leave the reviewer-run helpers in place; part 3e/3 deletes them.
+
+**Files touched.** test/orchestrator-mixed.e2e.test.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with the pre-merge reviewer still running.
+- `review_start` assertions in the file name only post-landing (`afterMerge: true`) reviewer runs, or are gone; no assertion counts a pre-merge run.
+- The case still asserts the mixed path end to end (the pi author's change merges on main, the claude reviewer's native log exists).
+- No edit outside test/orchestrator-mixed.e2e.test.ts.
+
+### Every commit is verified on main, part 4d/3: the pre-merge reviewer's orchestrator-director cases are re-pointed ahead of its removal (planned 2026-10-27 by the plan role, split from the too-large part 3w/3 after feature held it (held 8): the director-file half of part 3w/3, sibling to part 3w/3, which takes the same series' mixed case in test/orchestrator-mixed.e2e.test.ts, and independent in files of it; touches test/orchestrator-director.test.ts)
+
+**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-director.test.ts`'s reviewer-driven cases fail: `director: once recovers a kept merge pin and drains the queue before exit` (its idle reply is a `review_error`), `merge queue interlock: a role with a queued merge starts no run until the merge ends` (a real pre-merge review run precedes the role's run) and `restart hand-off: an in-flight merge outliving its deadline is aborted, not waited out` (it sets `review.afterMerge: []` to hold the merge on a pre-merge review). Re-point each to a deterministic hold or rejection.
+
+**Approach.** In `test/orchestrator-director.test.ts`, re-point the reject-reviewer arm in `director: once recovers...` to a deterministic gate rejection (a conflict-marker diff or a failing declared check) and keep its subject (the pin is re-queued and the queue drains before exit). In `merge queue interlock...`, replace the pre-merge review run with a parked conflict-resolution run on a conflicting rebase so the same ordering (the merge's own run finishes before the role's run starts) is asserted. In `restart hand-off...`, stop relying on `review.afterMerge: []` for the hold and hold the merge in flight on a parked conflict-resolution run instead, keeping the abort/lapse assertions. Leave the reviewer-run helpers in place; part 3e/3 deletes them.
+
+**Files touched.** test/orchestrator-director.test.ts
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with the pre-merge reviewer still running.
+- No case in the file drives a pre-merge reviewer verdict; the reject is the gate's own finding, and each in-flight merge is held by a parked conflict-resolution run.
+- `restart hand-off` no longer relies on `review.afterMerge: []` for its hold.
+- Each case keeps its original subject (recovery drain, the interlock ordering, the hand-off abort) and asserts the same outcome.
+- No edit outside test/orchestrator-director.test.ts.
 
 ### Subtract, part 3/6: The merge queue becomes a lock and a fast-forward (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 3; requires Every commit is verified on main part 3f/3 landed; touches src/merge src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts src/orchestrator/scheduling-scope.ts src/runner/runner-run.ts src/status/status-data.ts src/doctor/doctor-contention-checks.ts src/concurrency/check-permit.ts docs/how-it-works.md docs/invariants.md test/merger-restack.test.ts test/merge-backlog-conflicts.test.ts test/worktree-pool.test.ts)
 
