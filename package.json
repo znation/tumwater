@@ -1,6 +1,6 @@
 {
   "name": "tumwater",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Opinionated autonomous development harness built on pi. You write the initial prompt; role-driven loops build the project.",
   "type": "module",
   "license": "MIT",
