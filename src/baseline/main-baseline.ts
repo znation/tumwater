@@ -1,4 +1,5 @@
 import {
+  type BuildCheckOutcome,
   type BuildCheckRun,
   type BuildSkipReason,
   runBuildCheck,
@@ -429,79 +430,20 @@ export async function checkMainBaseline(
 ): Promise<MainBaselineCheck> {
   const sha = await refSha(wt, "HEAD");
   if (!sha) return { baseline: null }; // No HEAD (unborn branch) — nothing to key on.
-  const stored = baselineCache.get(sha);
-  const cached = observedOnly && stored?.inheritedFrom !== undefined ? undefined : stored;
-  if (cached && !forceFresh && !shouldRerunRed(cached, wt, reverifyRed)) return { baseline: cached };
-  if (!cached && !forceFresh && !observedOnly) {
+  const { cached, key } = cachedBaselineFor(sha, wt, { reverifyRed, observedOnly, forceFresh });
+  if (cached) return { baseline: cached };
+  // A re-run of a red keys the in-flight map by worktree (key !== sha): joining another
+  // worktree's run would observe the environment this run exists to re-test, and it is not a
+  // carry-over candidate either — only a SHA with no cached verdict may inherit a green.
+  if (!forceFresh && !observedOnly && key === sha) {
     // Outside the in-flight dedup below on purpose: a forceFresh or observedOnly caller joining
     // a pending promise must get a run, never a carried-over verdict.
-    const exempt = exemptPathsOf(config);
-    const inherited = exempt.length > 0 ? await inheritedGreen(wt, sha, exempt) : null;
-    if (inherited) {
-      // Re-read after the await: a run that settled meanwhile knows more than the carry-over.
-      const settled = baselineCache.get(sha);
-      if (settled) return { baseline: settled };
-      rememberBaseline(sha, inherited);
-      return { baseline: inherited };
-    }
+    const inherited = await inheritedBaselineFor(wt, sha, config);
+    if (inherited) return { baseline: inherited };
   }
-  // A re-run of a red keys the in-flight map by worktree: joining another worktree's run would
-  // observe the environment this run exists to re-test.
-  const key = cached?.status === "red" ? `${sha}\u0000${wt}` : sha;
   let pending = baselineInFlight.get(key);
   if (!pending) {
-    pending = (async () => {
-      const check = detectBuildCheck(wt, config);
-      if (!check) return { baseline: null }; // No declared check — nothing to verify, nothing to block on.
-      // The same process-wide check permit the scoped checks take (build/build-check.ts's
-      // withCheckPermit): this runs the suite directly, so it must count against the cap too.
-      // Only the one run per key holds a permit; deduped waiters above await `pending` holding
-      // none.
-      const { outcome, durationMs } = await withCheckPermit(config, tier, () =>
-        runWithCleanRetry(
-          () => runBuildCheck(wt, check, undefined, undefined, sampleSleep),
-          // Weather (a late deadline, a foreign kill, a host sleep) made no verdict about the
-          // tree: the first attempt is priced as its own run, and the retry's outcome stands —
-          // the same rule runScopedBuildCheck applies at every other scope.
-          (first, dur) => onRun?.({ outcome: first, durationMs: dur }),
-        ),
-        undefined,
-        "main baseline",
-      );
-      onRun?.({ outcome, durationMs });
-      if (outcome.status === "skipped") {
-        // Environmental (timeout/no-npm), after the clean retry above for weather shapes:
-        // warn-and-proceed semantics like the gate's pre-check; never cache red for a skip.
-        return { baseline: null, skipReason: outcome.skipReason, run: outcome.run };
-      }
-      if (outcome.status === "failed" && (outcome.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS) {
-        // A failure the host slept through made no verdict about the tree either (BUGS.md
-        // 2026-09-30): the sleep expired a test's own wall-clock wait at the wake and the suite
-        // exited 1 inside the deadline. Caching it red would make sleep weather the team's
-        // authoritative red main, so nothing is cached — the next consult re-runs, and a clean
-        // verdict then settles the SHA exactly as before.
-        return { baseline: null, run: outcome.run, unverified: true };
-      }
-      const prior = baselineCache.get(sha);
-      const priorRedFrom = prior?.status === "red" ? (prior.redFrom ?? []) : [];
-      const baseline: MainBaseline =
-        outcome.status === "passed"
-          ? { status: "green", sha }
-          : {
-              status: "red",
-              sha,
-              script: outcome.script,
-              outputTail: outcome.outputTail,
-              failingTests: outcome.failingTests ?? [],
-              redFrom: priorRedFrom.includes(wt) ? priorRedFrom : [...priorRedFrom, wt],
-            };
-      // A green is always recorded (promoting a provisional red); a red never overwrites an
-      // observed green — a concurrent run may have promoted this SHA while this one was still
-      // going. An inherited green is no observation, so this run's verdict replaces it either way.
-      const current = baselineCache.get(sha);
-      if (current?.status !== "green" || current.inheritedFrom !== undefined) rememberBaseline(sha, baseline);
-      return { baseline };
-    })();
+    pending = runBaselineOnce(sha, wt, config, onRun, sampleSleep, tier);
     baselineInFlight.set(key, pending);
   }
   try {
@@ -509,6 +451,142 @@ export async function checkMainBaseline(
   } finally {
     if (baselineInFlight.get(key) === pending) baselineInFlight.delete(key);
   }
+}
+
+/** The usable cached verdict for `sha` — or null when the suite must run — together with the
+ * in-flight key its run dedups on. Applies the observedOnly inherited-green filter, the
+ * forceFresh / red re-run short-circuit, and the worktree-qualified key a red re-run keys by.
+ * `key === sha` tells the caller the SHA had no verdict to re-run (a possible carry-over
+ * candidate); a worktree-qualified key is a pending red re-run, which never inherits. */
+function cachedBaselineFor(
+  sha: string,
+  wt: string,
+  opts: { reverifyRed: boolean; observedOnly: boolean; forceFresh: boolean },
+): { cached: MainBaseline | null; key: string } {
+  const stored = baselineCache.get(sha);
+  const cached = opts.observedOnly && stored?.inheritedFrom !== undefined ? undefined : stored;
+  const usable =
+    cached && !opts.forceFresh && !shouldRerunRed(cached, wt, opts.reverifyRed) ? cached : null;
+  const key = cached?.status === "red" ? `${sha}\u0000${wt}` : sha;
+  return { cached: usable, key };
+}
+
+/** The inherited green for `sha` across review-exempt ancestors, or null when there is none to
+ * carry over. The exemptPathsOf(config) + inheritedGreen(wt, sha, exempt) walk, the post-await
+ * cache re-read (a run that settled meanwhile knows more than the carry-over), and the
+ * rememberBaseline re-seed of the carried-over verdict. */
+async function inheritedBaselineFor(
+  wt: string,
+  sha: string,
+  config: CheckConfigSlice,
+): Promise<MainBaseline | null> {
+  const exempt = exemptPathsOf(config);
+  const inherited = exempt.length > 0 ? await inheritedGreen(wt, sha, exempt) : null;
+  if (inherited) {
+    // Re-read after the await: a run that settled meanwhile knows more than the carry-over.
+    const settled = baselineCache.get(sha);
+    if (settled) return settled;
+    rememberBaseline(sha, inherited);
+    return inherited;
+  }
+  return null;
+}
+
+/** Run the declared check once under the same process-wide check permit the scoped checks take,
+ * retrying once when the first attempt made no verdict about the tree (a late deadline, a
+ * foreign kill, a host sleep). Returns the outcome and its duration, or null when no check is
+ * declared (nothing to verify, nothing to block on). */
+async function detectedBaselineOutcome(
+  wt: string,
+  config: CheckConfigSlice,
+  onRun: ((run: BaselineCheckRun) => void) | undefined,
+  sampleSleep: SleepSampler,
+  tier: number,
+): Promise<{ outcome: BuildCheckOutcome; durationMs: number } | null> {
+  const check = detectBuildCheck(wt, config);
+  if (!check) return null; // No declared check — nothing to verify, nothing to block on.
+  // The same process-wide check permit the scoped checks take (build/build-check.ts's
+  // withCheckPermit): this runs the suite directly, so it must count against the cap too.
+  // Only the one run per key holds a permit; deduped waiters above await `pending` holding
+  // none.
+  return withCheckPermit(
+    config,
+    tier,
+    () =>
+      runWithCleanRetry(
+        () => runBuildCheck(wt, check, undefined, undefined, sampleSleep),
+        // Weather (a late deadline, a foreign kill, a host sleep) made no verdict about the
+        // tree: the first attempt is priced as its own run, and the retry's outcome stands —
+        // the same rule runScopedBuildCheck applies at every other scope.
+        (first, dur) => onRun?.({ outcome: first, durationMs: dur }),
+      ),
+    undefined,
+    "main baseline",
+  );
+}
+
+/** Build the green/red verdict from a run's outcome, folding the prior red's observed worktrees
+ * (redFrom) into a fresh red. Does not write the cache — the caller decides whether to promote. */
+function baselineFromOutcome(sha: string, wt: string, outcome: BuildCheckOutcome): MainBaseline {
+  const prior = baselineCache.get(sha);
+  const priorRedFrom = prior?.status === "red" ? (prior.redFrom ?? []) : [];
+  return outcome.status === "passed"
+    ? { status: "green", sha }
+    : {
+        status: "red",
+        sha,
+        script: outcome.script,
+        outputTail: outcome.outputTail,
+        failingTests: outcome.failingTests ?? [],
+        redFrom: priorRedFrom.includes(wt) ? priorRedFrom : [...priorRedFrom, wt],
+      };
+}
+
+/** Persist a freshly-run verdict unless a concurrent run already promoted the SHA with an
+ * observed green. A green is always recorded (promoting a provisional red); a red never
+ * overwrites an observed green — a concurrent run may have promoted this SHA while this one was
+ * still going. An inherited green is no observation, so this run's verdict replaces it either
+ * way. */
+function rememberPromotableBaseline(sha: string, baseline: MainBaseline): void {
+  // A green is always recorded (promoting a provisional red); a red never overwrites an
+  // observed green — a concurrent run may have promoted this SHA while this one was still
+  // going. An inherited green is no observation, so this run's verdict replaces it either way.
+  const current = baselineCache.get(sha);
+  if (current?.status !== "green" || current.inheritedFrom !== undefined) rememberBaseline(sha, baseline);
+}
+
+/** Run the suite once for `sha` at `wt`: detect the check, run it under the permit with a clean
+ * retry and its two onRun calls, fold the outcome into a verdict — skips and slept-through
+ * failures return no verdict and write nothing — and promote it unless an observed green
+ * outranks it. This replaces the old `(async () => …)()` closure stored in the in-flight map. */
+async function runBaselineOnce(
+  sha: string,
+  wt: string,
+  config: CheckConfigSlice,
+  onRun: ((run: BaselineCheckRun) => void) | undefined,
+  sampleSleep: SleepSampler,
+  tier: number,
+): Promise<MainBaselineCheck> {
+  const detected = await detectedBaselineOutcome(wt, config, onRun, sampleSleep, tier);
+  if (!detected) return { baseline: null };
+  const { outcome, durationMs } = detected;
+  onRun?.({ outcome, durationMs });
+  if (outcome.status === "skipped") {
+    // Environmental (timeout/no-npm), after the clean retry above for weather shapes:
+    // warn-and-proceed semantics like the gate's pre-check; never cache red for a skip.
+    return { baseline: null, skipReason: outcome.skipReason, run: outcome.run };
+  }
+  if (outcome.status === "failed" && (outcome.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS) {
+    // A failure the host slept through made no verdict about the tree either (BUGS.md
+    // 2026-09-30): the sleep expired a test's own wall-clock wait at the wake and the suite
+    // exited 1 inside the deadline. Caching it red would make sleep weather the team's
+    // authoritative red main, so nothing is cached — the next consult re-runs, and a clean
+    // verdict then settles the SHA exactly as before.
+    return { baseline: null, run: outcome.run, unverified: true };
+  }
+  const baseline = baselineFromOutcome(sha, wt, outcome);
+  rememberPromotableBaseline(sha, baseline);
+  return { baseline };
 }
 
 /** Is main green at the mirror worktree's HEAD? The merge path seeds a green verdict for every
