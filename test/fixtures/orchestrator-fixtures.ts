@@ -64,6 +64,61 @@ export function readSamples(runDir: string): number[] {
   }
 }
 
+/** Shell fragment for a concurrency fake's census: leaves `$n` (this run's per-provider
+ * in-flight count) and `$t` (the whole-team count) on the shell for the caller's
+ * `printf >> samples.log`. In the default start mode the counts are AT START, never mid-run,
+ * so a cap-2-era run records its overlap at launch
+ * (before the shrink boundary) and a post-shrink cap-1 run always records only itself, keeping
+ * the negative "no new concurrent run" assertions deterministic. The hold is what makes the
+ * positive overlap deterministic: a joining run's start sample reads `2` the moment it files
+ * beside a still-holding first run, rather than depending on real scheduling to line the two
+ * shims' wall-clock windows up at the instant either spawns (PLANS.md 2026-10-26). `steps`
+ * bounds the hold for a run no partner ever joins (each step sleeps 0.1s). With `ongoing`
+ * false (the resize tests, whose post-shrink negative needs the sample to be the count at
+ * launch) the exposed `$n`/`$t` stay the START counts and the hold only keeps the run's file
+ * alive so a later-joining run's start sample reads it; with `ongoing` true (the permits
+ * tests, which have no shrink boundary and need a cross-provider partner observed) `$n`/`$t`
+ * become the max in-flight counts seen during the hold. `providerGlob` is the
+ * `run.<provider>.*` suffix under `${runDir}/runs` to count as this run's own provider
+ * (empty to count all files, when the census has no per-provider dimension). */
+export function censusHoldFragment(runDir: string, providerGlob: string, steps = 15, ongoing = false): string {
+  const all = `"${runDir}/runs"/run.*`;
+  const own = providerGlob ? `"${runDir}/runs"/run.${providerGlob}.*` : all;
+  // The hold loop is identical; the two modes differ in whether the hold updates n/t (ongoing
+  // true: the max observed during the hold) or leaves them as the launch-time counts (ongoing
+  // false: the hold only persists the file so a joining run's start can read it).
+  const hold = [
+    `i=0`,
+    `while [ $i -lt ${steps} ]; do`,
+    `  sleep 0.1`,
+    `  c=0; for x in ${all}; do c=$((c+1)); done`,
+    `  if [ $c -ge 2 ]; then break; fi`,
+    `  i=$((i+1))`,
+    `done`,
+  ];
+  const init = [
+    `c=0; for x in ${all}; do c=$((c+1)); done; t=$c`,
+    `c=0; for x in ${own}; do c=$((c+1)); done; n=$c`,
+  ];
+  const ongoingUpdate = [
+    `  if [ $c -gt $t ]; then t=$c; fi`,
+    `  p=0; for x in ${own}; do p=$((p+1)); done`,
+    `  if [ $p -gt $n ]; then n=$p; fi`,
+  ];
+  if (!ongoing) return [...init, ...hold].join("\n");
+  const holdWithUpdate = [
+    `i=0`,
+    `while [ $i -lt ${steps} ]; do`,
+    `  sleep 0.1`,
+    `  c=0; for x in ${all}; do c=$((c+1)); done`,
+    ...ongoingUpdate,
+    `  if [ $c -ge 2 ]; then break; fi`,
+    `  i=$((i+1))`,
+    `done`,
+  ];
+  return [...init, ...holdWithUpdate].join("\n");
+}
+
 /** A config where only the given roles run quickly (no min gap, 1s backoff) so several
  * runs merge within a few poll cycles. The per-role clocks defaultConfig seeds (organize
  * 3600s, plan 3600s, readme 1800s, steward/qa/selfcheck) are zeroed too: a role entry

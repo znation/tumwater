@@ -229,7 +229,11 @@ test("a reached cap switches roles to the free fallback model instead of stoppin
     // role override dropped. (clean is deferrable and did nothing last run, so work supplies
     // the wake — the same as every other budget test.)
     mergeWork(repo);
-    await awaitSettledRun(repo, "clean", 2, "a role run after the cap was reached");
+    // A run-start marker (the shim's argv line), not a settled-run count: the flake here was
+    // showing that clean's own paid run after the switch had even STARTED, which a settle
+    // wait on a loaded host could miss (PLANS.md 2026-10-26). The marker appears the moment
+    // the orchestrator spawns the run, on whatever schedule the host can manage.
+    await waitFor(() => runs().some((l) => l.includes("session=tumwater-clean-2")), "a role run after the cap was reached");
     assert.match(
       runs().find((l) => l.includes("session=tumwater-clean-2")) ?? "",
       /model=local-free provider=local/,
@@ -339,9 +343,14 @@ test("a free fallback whose runs keep failing is demoted to a pause, then probed
     // Two fallback runs, both rejected. Main-moved wakes supply them: an errored role backs off
     // 30 s, and a main move wakes it early.
     mergeWork(repo);
-    await waitFor(() => clean().runs >= 2 && !clean().running, "the first fallback run");
-    assert.equal(clean().lastResult, "error");
+    // The positive "a role actually ran" witness is the shim's run-start marker, not a
+    // settled-run count: the flake was `runs >= 2 && !running` timing out under load before
+    // run 2's outcome was recorded, even though the run had started (PLANS.md 2026-10-26).
+    // The marker appears the moment the orchestrator spawns the fallback run, and the
+    // fallback's reject is immediate, so the error outcome lands a fast poll after it.
+    await waitFor(() => Boolean(runFor(2)), "the first fallback run");
     assert.match(runFor(2), /model=local-free/);
+    await waitFor(() => clean().lastResult === "error", "the first fallback run to error");
     mergeWork(repo);
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "the demotion to a pause");
     assert.equal(clean().runs, 3);

@@ -13,7 +13,7 @@ import { saveConfig } from "../src/config/config.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
-import { awaitSettledRun, FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
+import { awaitSettledRun, censusHoldFragment, FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { makeRepo, seedOpenBug, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { waitFor } from "./helpers/wait.js";
@@ -236,12 +236,10 @@ test("maxConcurrentPerProvider caps role-run admission per provider while others
       `prov=""; prev=""; for a in "$@"; do if [ "$prev" = "--provider" ]; then prov="$a"; fi; prev="$a"; done`,
       `[ -n "$prov" ] || prov=unknown`,
       `f=$(mktemp "$d/run.\${prov}.XXXXXX")`,
-      `n=0; for x in "$d"/run.\${prov}.*; do n=$((n+1)); done`,
-      `t=0; for x in "$d"/run.*; do t=$((t+1)); done`,
+      censusHoldFragment(runDir, "$prov", 30, true),
       `printf '%s %s %s\\n' "$prov" "$n" "$t" >> "${runDir}/samples.log"`,
       leasedRoleShell(),
       `echo change >> change.txt`,
-      `sleep 1.5`,
       `rm -f "$f"`,
       `printf '%s\\n' '${assistantLine("do the work\\nSUMMARY: add a change")}'`,
     ].join("\n"),
@@ -301,17 +299,18 @@ test("a verify's reviewer and a role run on the same capped provider never overl
       `prov=""; prev=""; for a in "$@"; do if [ "$prev" = "--provider" ]; then prov="$a"; fi; prev="$a"; done`,
       `[ -n "$prov" ] || prov=unknown`,
       `f=$(mktemp "$d/run.\${prov}.XXXXXX")`,
-      `n=0; for x in "$d"/run.\${prov}.*; do n=$((n+1)); done`,
-      `t=0; for x in "$d"/run.*; do t=$((t+1)); done`,
-      `printf '%s %s %s\\n' "$prov" "$n" "$t" >> "${runDir}/samples.log"`,
       leasedRoleShell(),
       `verify=0`,
       `for a in "$@"; do case "$a" in *"VERDICT:"*) verify=1; break;; esac; done`,
       `if [ "$verify" = 1 ]; then`,
+      `  c=0; for x in "${runDir}/runs"/run.*; do c=$((c+1)); done; t=$c`,
+      `  p=0; for x in "${runDir}/runs"/run.\${prov}.*; do p=$((p+1)); done; n=$p`,
+      `  printf '%s %s %s\\n' "$prov" "$n" "$t" >> "${runDir}/samples.log"`,
       `  printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
       `else`,
+      censusHoldFragment(runDir, "$prov", 30, true),
+      `  printf '%s %s %s\\n' "$prov" "$n" "$t" >> "${runDir}/samples.log"`,
       `  echo change >> change.txt`,
-      `  sleep 1.5`,
       `  printf '%s\\n' '${assistantLine("do the work\\nSUMMARY: add a change")}'`,
       `fi`,
       `rm -f "$f"`,

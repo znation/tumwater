@@ -11,23 +11,23 @@ import { saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
+import { censusHoldFragment, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { mergeWork, makeRepo, seedOpenBug, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
-/** A fake pi that records how many runs were in flight when it started (one sample line per
- * run), holds its slot for ~1.5s so overlapping runs are observable, and declares
- * nothing-to-do (so no commit happens). */
+/** A fake pi that records how many runs were in flight during its run, holds its census slot
+ * until it observes a second run in flight (a deterministic overlap witness — see
+ * censusHoldFragment) and declares nothing-to-do (so no commit happens). The hold, not a
+ * wall-clock sample, is what makes `n >= 2` observable the moment two runs are admitted. */
 function concurrencyRecordingFakePi(runDir: string): () => void {
   const script = [
     `d="${runDir}/runs"`,
     `mkdir -p "$d"`,
     `f=$(mktemp "$d/run.XXXXXX")`,
-    `n=0; for x in "$d"/run.*; do n=$((n+1)); done`,
+    censusHoldFragment(runDir, "", 30),
     `printf '%s\\n' "$n" >> "${runDir}/samples.log"`,
-    `sleep 1.5`,
     `rm -f "$f"`,
     `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
   ].join("\n");
@@ -40,7 +40,8 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   // THREE fast-running roles and ONE slot: with three roles competing for one permit, steady
   // state always has at least one run queued on the semaphore (a two-role team settles into
   // a strict alternation where every poll schedules exactly one role, so there would be no
-  // queued run for the grow to wake). The shim's ~1.5s hold makes overlapping runs visible.
+  // queued run for the grow to wake). The shim's census hold keeps each run alive until a
+  // partner joins, so an overlapping pair records it the moment the second is admitted.
   const base = fastConfig(["clean", "dedupe", "bugfix"]);
   base.maxConcurrent = 1;
   saveConfig(repo, base);
@@ -50,10 +51,11 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   seedOpenBug(repo);
   const runDir = tmpdir();
   const restore = concurrencyRecordingFakePi(runDir);
-  // Keeps the DEFAULT poll interval on purpose: phase 3's "no overlap after shrink" assertion
-  // relies on the shim's ~1.5s hold being shorter than one poll, so every cap-2-era run file is
-  // gone by the time the shrink event is observed. A fast poll would let an in-flight file cross
-  // the boundary and false-fail the test.
+  // Default poll interval (not FAST_POLL_MS): the census hold waits up to 3s for a partner,
+  // a span the number of concurrent rolls a fast poll could blur. Phase 3's "no overlap after
+  // shrink" assertion needs the start-sample semantics — a cap-2-era run records its overlap
+  // at launch, before the shrink boundary, and under cap 1 the next run cannot start until
+  // the earlier run's permit is released, so a post-shrink run never observes a partner.
   const orch = startLiveOrchestrator(repo);
   try {
     // Phase 1 (cap 1): all three roles run — but never overlap. Wait until each has run at
