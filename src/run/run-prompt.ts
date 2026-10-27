@@ -368,41 +368,64 @@ function collectRoleDirectives(root: string, config: TumwaterConfig, base: strin
   return { planTargetNote, flakyChecks, noCheck };
 }
 
-/** Append the shared claim/held/discard/cut-off tail — identical for a director and a role —
- * in its current order, and return the finished prompt. */
-function appendRunEpilogue(
+function appendAssignmentNotes(
+  prompt: string,
   root: string,
   role: string,
-  state: RunnerState,
-  prompt: string,
+  claim: RunnerState["claim"],
   userPrompt: string | null,
-  rejectedReview: string | undefined,
 ): string {
   // A work instance holding a claim is told which entry is its one task (plans/parallel-work-
   // instances.md "Claims", part 4/7) — the harness picked it, so the charter's choosing step
   // is replaced. A run that dequeued a user request runs that request instead and keeps the
   // claim for the next non-request run. The range is looked up by key in the current checkout,
   // so it survives a moved section boundary.
-  const claim = role === DIRECTOR_ROLE ? undefined : state.claim;
   if (claim && userPrompt === null) {
     const range = eligibleEntries(root, role).find((e) => e.key === claim.key);
     prompt = appendPromptNote(prompt, buildAssignmentNote(claim, range, range ? missingEntryPaths(root, claim.file, range) : []));
     const merged = claim.file === "PLANS.md" ? mergedPrerequisiteRanges(root, claim.title) : [];
     if (merged.length > 0) prompt = appendPromptNote(prompt, buildMergedPrerequisitesNote(merged));
   }
+  return prompt;
+}
+
+function appendWaitingPartsNote(
+  prompt: string,
+  root: string,
+  claim: RunnerState["claim"],
+  userPrompt: string | null,
+): string {
   if (claim && userPrompt === null && claim.file === "PLANS.md") {
     const waiting = waitingPartRanges(root, claim.title);
     if (waiting.length > 0) prompt = appendPromptNote(prompt, buildWaitingPartsNote(waiting));
   }
+  return prompt;
+}
+
+function appendHeldElsewhereNote(
+  prompt: string,
+  role: string,
+  claim: RunnerState["claim"],
+  userPrompt: string | null,
+  state: RunnerState,
+): string {
   if (!claim && userPrompt === null && role !== DIRECTOR_ROLE && state.heldElsewhere?.length) {
     prompt = appendPromptNote(prompt, buildHeldEntriesNote(state.heldElsewhere));
   }
+  return prompt;
+}
+
+function prependRejectedReviewNote(prompt: string, role: string, rejectedReview: string | undefined): string {
   // The director builds its prompt through buildDirectorPrompt, which does not take the rejected
   // note, so the standing rejection leads its prompt here instead (a director-authored change can
   // be rejected too). Kept uniform with the authoring roles: the reasons open the run.
   if (rejectedReview !== undefined && role === DIRECTOR_ROLE) {
     prompt = prependPromptNote(prompt, rejectedReview);
   }
+  return prompt;
+}
+
+function appendRunMemoryNotes(prompt: string, state: RunnerState): string {
   // Likewise a change leftover recovery discarded as unmergeable: named until the role queues
   // its next change (the discarding run itself appends it after recovery — see runOnce).
   const discard = state.conflictDiscard;
@@ -413,6 +436,31 @@ function appendRunEpilogue(
   if ((state.cutOffStreak ?? 0) > 0) {
     prompt = appendPromptNote(prompt, buildCutOffNote(state.cutOffStreak ?? 0));
   }
+  return prompt;
+}
+
+/** Append the shared claim/held/discard/cut-off tail — identical for a director and a role —
+ * in its current order, and return the finished prompt. It delegates each note group to a
+ * named module-private helper: appendAssignmentNotes (which folds in the merged-prerequisite
+ * follow-up), appendWaitingPartsNote, appendHeldElsewhereNote, prependRejectedReviewNote and
+ * appendRunMemoryNotes. */
+function appendRunEpilogue(
+  root: string,
+  role: string,
+  state: RunnerState,
+  prompt: string,
+  userPrompt: string | null,
+  rejectedReview: string | undefined,
+): string {
+  // The shared cross-run tail every role prompt carries, ordinally: the claim assignment (with
+  // its merged-prerequisite and waiting-part follow-ups), the held-elsewhere note, the
+  // director's leading rejection, and the discard and cut-off run memory.
+  const claim = role === DIRECTOR_ROLE ? undefined : state.claim;
+  prompt = appendAssignmentNotes(prompt, root, role, claim, userPrompt);
+  prompt = appendWaitingPartsNote(prompt, root, claim, userPrompt);
+  prompt = appendHeldElsewhereNote(prompt, role, claim, userPrompt, state);
+  prompt = prependRejectedReviewNote(prompt, role, rejectedReview);
+  prompt = appendRunMemoryNotes(prompt, state);
   return prompt;
 }
 
