@@ -5,6 +5,16 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `an on-time merge-scope timeout names a starved host, and stays silent on an idle one` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-27 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+an on-time merge-scope timeout names a starved host, and stays silent on an idle one
+~~~~
+
+**Validation gap:** none — the existing suite reproduced and confirmed the flake (the quarantine that opened this entry); freezing the Date clock makes the unchanged regression test assert the on-time wording deterministically.
+
 ### `an on-time merge-scope timeout names a starved host, and stays silent on an idle one` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
