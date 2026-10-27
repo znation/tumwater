@@ -47,6 +47,17 @@ function prevChar(text: string, i: number): { start: number; ch: string } | null
   return { start, ch: text.slice(start, i) };
 }
 
+/** Delete the whole character (surrogate pair or single unit) that starts at code-unit index
+ * `start` and land the cursor on the deleted range's start — the shared shape of applyKey's
+ * backspace and delete arms, which differ only in where the removed character sits relative
+ * to the cursor. A surrogate pair is deleted as both units so no lone surrogate — which
+ * terminals render as a U+FFFD box — is ever left behind (the surrogate-safe rule snapCursor
+ * and prevChar enforce elsewhere). */
+function removeCharAt(text: string, start: number): { text: string; cursor: number } {
+  const width = cutSplitsSurrogatePair(text, start + 1) ? 2 : 1;
+  return { text: text.slice(0, start) + text.slice(start + width), cursor: start };
+}
+
 /** Backward word kill (readline's unix-word-rubout, Alt+Backspace): whitespace immediately
  * before the cursor goes first, then the non-whitespace token that precedes it — on
  * "configure the  loop" it kills "  loop", leaving "configure the". The whitespace-first
@@ -95,10 +106,7 @@ export function applyKey(
       if (key.meta) return killWordBefore(text, c); // Alt+Backspace: kill the previous word
       if (c === 0) return { text, cursor: 0 };
       // The character before the cursor is a surrogate pair [c-2, c-1]: delete both units.
-      if (cutSplitsSurrogatePair(text, c - 1)) {
-        return { text: text.slice(0, c - 2) + text.slice(c), cursor: c - 2 };
-      }
-      return { text: text.slice(0, c - 1) + text.slice(c), cursor: c - 1 };
+      return removeCharAt(text, cutSplitsSurrogatePair(text, c - 1) ? c - 2 : c - 1);
     case "home":
       return { text, cursor: 0 };
     case "end":
@@ -116,10 +124,7 @@ export function applyKey(
     case "delete":
       if (c >= text.length) return { text, cursor: c };
       // The character at the cursor is a surrogate pair [c, c+1]: delete both units.
-      if (cutSplitsSurrogatePair(text, c + 1)) {
-        return { text: text.slice(0, c) + text.slice(c + 2), cursor: c };
-      }
-      return { text: text.slice(0, c) + text.slice(c + 1), cursor: c };
+      return removeCharAt(text, c);
   }
   if (str && !key.ctrl && !key.meta && str >= " ") {
     // str can hold a whole composed string (IME input arrives as one keypress); the cursor
