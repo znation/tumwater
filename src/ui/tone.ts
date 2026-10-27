@@ -1,4 +1,7 @@
 import { roleRank } from "./status-model.js";
+import type { HarnessEvent } from "../events/events.js";
+import type { RunResult } from "../run/run-outcome.js";
+import type { BuildCheckOutcome } from "../build/build-check.js";
 
 /** The shared COLOR/EVENT-CLASSIFICATION vocabulary of the observer surfaces, split out of
  * status-model.ts (which keeps only the status display model: role phases, badges, row cells):
@@ -58,27 +61,27 @@ type EventKind = "landing" | "problem" | "attention" | "info" | "routine";
  * dashboard's browser twin (gui-client-model.ts interpolates it into its script, both for
  * eventKind and for resultWhy's "does this result carry an error" check), so a newly problem
  * result cannot be classified on one surface and not the other. */
-export const PROBLEM_RESULTS = ["refused", "rejected", "review_error", "merge_conflict", "merge_blocked", "error", "aborted", "quiet_killed", "main_red"];
+export const PROBLEM_RESULTS: readonly RunResult[] = ["refused", "rejected", "review_error", "merge_conflict", "merge_blocked", "error", "aborted", "quiet_killed", "main_red"];
 
 /** The named event types that are routine bookkeeping — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
-export const ROUTINE_EVENTS = ["run_start", "wake", "run_deferred", "review_start", "review_verdict", "merge_queued", "merge_done", "resume", "counters_reset", "state_migrated"];
+export const ROUTINE_EVENTS: readonly HarnessEvent["type"][] = ["run_start", "wake", "run_deferred", "review_start", "review_verdict", "merge_queued", "merge_done", "resume", "counters_reset", "state_migrated"];
 
 /** The named event types that are problems — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
-export const PROBLEM_EVENTS = ["merge_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_warning", "role_cap_paused", "disk_low", "main_red_hold", "supervisor_exit", "warning"];
+export const PROBLEM_EVENTS: readonly HarnessEvent["type"][] = ["merge_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_warning", "role_cap_paused", "disk_low", "main_red_hold", "supervisor_exit", "warning"];
 
 /** The build-check results that read as routine rather than problem in `eventKind` — one home
  * of the list, interpolated into gui-client-model.ts's browser eventKind exactly as
  * PROBLEM_RESULTS is. */
-export const ROUTINE_BUILD_RESULTS = ["passed", "skipped"];
+export const ROUTINE_BUILD_RESULTS: readonly BuildCheckOutcome["status"][] = ["passed", "skipped"];
 
 // The set forms for the server-side matcher; the lists above stay the exported source the
 // browser twin is generated from.
-const PROBLEM_RESULT_SET = new Set(PROBLEM_RESULTS);
-const ROUTINE_EVENT_SET = new Set(ROUTINE_EVENTS);
-const PROBLEM_EVENT_SET = new Set(PROBLEM_EVENTS);
-const ROUTINE_BUILD_RESULT_SET = new Set(ROUTINE_BUILD_RESULTS);
+const PROBLEM_RESULT_SET = new Set<string>(PROBLEM_RESULTS);
+const ROUTINE_EVENT_SET = new Set<string>(ROUTINE_EVENTS);
+const PROBLEM_EVENT_SET = new Set<string>(PROBLEM_EVENTS);
+const ROUTINE_BUILD_RESULT_SET = new Set<string>(ROUTINE_BUILD_RESULTS);
 
 /** Which EventKind one event is, checked in precedence order: the two hard-coded news types
  * first (merged, question_posted), then the result-carrying types by their result — a run_end
