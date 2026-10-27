@@ -169,6 +169,81 @@ export function checkStringField(
   });
 }
 
+function checkModelSiblingFields(
+  problems: string[],
+  obj: Record<string, unknown>,
+  prefix: string,
+): void {
+  for (const key of MODEL_TRIPLE_KEYS)
+    if (key !== "model") checkStringField(problems, obj, prefix, key, false);
+  const t = obj.thinking;
+  if (isNonBlankString(t) && !THINKING_LEVELS.has(t))
+    problems.push(
+      `${prefix}thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})${typoSuffix(t, [...THINKING_LEVELS])}`,
+    );
+}
+
+function checkTierMapModel(
+  problems: string[],
+  obj: Record<string, unknown>,
+  prefix: string,
+  m: Record<string, unknown>,
+): void {
+  checkKnownKeys(m, TIER_MAP_KEYS, `${prefix}model`, problems);
+  if (obj.provider !== undefined)
+    problems.push(
+      `${prefix}model as a map by tier cannot coexist with ${prefix ? prefix : "the legacy top-level "}provider — move the provider into each tier's model id (got provider ${show(obj.provider)})`,
+    );
+  for (const [tier, v] of Object.entries(m))
+    // An object entry (`{ backend?, model?, thinking? }`) is validated by validateConfig.
+    if (!isNonBlankString(v) && !isJsonObject(v))
+      problems.push(
+        `${prefix}model.${tier} must be a non-empty model id (got ${show(v)})`,
+      );
+}
+
+function whatModelMustBe(modelShape: "selector" | "tier-map" | "tier-name"): string {
+  return modelShape === "tier-map"
+    ? "a model id or a map by tier (small, default, strong)"
+    : modelShape === "tier-name"
+      ? "a model id or a tier name (small, default, strong)"
+      : "a string";
+}
+
+function checkStringModel(
+  problems: string[],
+  obj: Record<string, unknown>,
+  prefix: string,
+  m: unknown,
+  modelShape: "selector" | "tier-map" | "tier-name",
+): void {
+  if (typeof m !== "string") {
+    problems.push(`${prefix}model must be ${whatModelMustBe(modelShape)} (got ${show(m)})`);
+    return;
+  }
+  if (m.trim() === "") {
+    problems.push(`${prefix}model must not be empty (got ${show(m)})`);
+    return;
+  }
+  if ((MODEL_TIERS as readonly string[]).includes(m)) {
+    if (modelShape === "tier-name") return; // A valid tier reference.
+    problems.push(
+      `${prefix}model must name a model id — tier names are valid only as roles.<id>.model or review.model values (got ${show(m)})`,
+    );
+    return;
+  }
+  if (modelShape === "tier-name" && !m.includes("/") && obj.provider === undefined)
+    suggestTierFix(problems, prefix, m);
+}
+
+function suggestTierFix(problems: string[], prefix: string, m: string): void {
+  const tier = suggestClosest(m, MODEL_TIERS);
+  if (tier !== null)
+    problems.push(
+      `${prefix}model ${show(m)} is not a tier name or a model id pi can resolve${didYouMean(tier)}`,
+    );
+}
+
 /** Every model-override section validates the same provider/model/thinking triple the same
  * way: empty strings are rejected (see checkStringField) and thinking is value-checked —
  * pi only recognizes THINKING_LEVELS and silently drops anything else, so a typo would run
@@ -191,57 +266,14 @@ export function checkModelTripleField(
   prefix: string,
   modelShape: "selector" | "tier-map" | "tier-name" = "selector",
 ): void {
-  for (const key of MODEL_TRIPLE_KEYS)
-    if (key !== "model") checkStringField(problems, obj, prefix, key, false);
-  const t = obj.thinking;
-  if (isNonBlankString(t) && !THINKING_LEVELS.has(t))
-    problems.push(
-      `${prefix}thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})${typoSuffix(t, [...THINKING_LEVELS])}`,
-    );
+  checkModelSiblingFields(problems, obj, prefix);
   const m = obj.model;
   if (m === undefined) return;
   if (modelShape === "tier-map" && isJsonObject(m)) {
-    checkKnownKeys(m, TIER_MAP_KEYS, `${prefix}model`, problems);
-    if (obj.provider !== undefined)
-      problems.push(
-        `${prefix}model as a map by tier cannot coexist with ${prefix ? prefix : "the legacy top-level "}provider — move the provider into each tier's model id (got provider ${show(obj.provider)})`,
-      );
-    for (const [tier, v] of Object.entries(m))
-      // An object entry (`{ backend?, model?, thinking? }`) is validated by validateConfig.
-      if (!isNonBlankString(v) && !isJsonObject(v))
-        problems.push(
-          `${prefix}model.${tier} must be a non-empty model id (got ${show(v)})`,
-        );
+    checkTierMapModel(problems, obj, prefix, m);
     return;
   }
-  if (typeof m !== "string") {
-    const what =
-      modelShape === "tier-map"
-        ? "a model id or a map by tier (small, default, strong)"
-        : modelShape === "tier-name"
-          ? "a model id or a tier name (small, default, strong)"
-          : "a string";
-    problems.push(`${prefix}model must be ${what} (got ${show(m)})`);
-    return;
-  }
-  if (m.trim() === "") {
-    problems.push(`${prefix}model must not be empty (got ${show(m)})`);
-    return;
-  }
-  if ((MODEL_TIERS as readonly string[]).includes(m)) {
-    if (modelShape === "tier-name") return; // A valid tier reference.
-    problems.push(
-      `${prefix}model must name a model id — tier names are valid only as roles.<id>.model or review.model values (got ${show(m)})`,
-    );
-    return;
-  }
-  if (modelShape === "tier-name" && !m.includes("/") && obj.provider === undefined) {
-    const tier = suggestClosest(m, MODEL_TIERS);
-    if (tier !== null)
-      problems.push(
-        `${prefix}model ${show(m)} is not a tier name or a model id pi can resolve${didYouMean(tier)}`,
-      );
-  }
+  checkStringModel(problems, obj, prefix, m, modelShape);
 }
 
 /** Validate one numeric field against a NumberRule when present. */
