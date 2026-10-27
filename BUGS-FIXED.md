@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `a wedged xcrun cannot freeze the suite environment probe: the probe is bounded` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ a wedged xcrun cannot freeze the suite environment probe: the probe is bounded (1590.138958ms)
+AssertionError [ERR_ASSERTION]: probe took 1583ms; it was not bounded
+at withWedgedXcrun (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wedged-xcrun.js:28:16)
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/test-runner.test.js:387:5)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: false,
+expected: true,
+operator: '==',
+diff: 'simple'
+}
+~~~~
+
+**Validation gap:** no-repro — the 1583ms stall did not reproduce in ~90s of probe runs under heavy fork load (ties ~300-500ms, a no-timeout probe shows ~3.1s); the fix widens the elapsed assert to 2500ms, which still fails a probe that waits the wedged xcrun out.
+
 ### `doctor --commit-backlog …` and `roles.dry.enabled: false …` both returned empty child stdout (ci run 2026-10-26, main tip de048f2) — fixed 2026-10-26 by the bugfix role
 
 Two unrelated `doctor` tests failed in ONE full `npm test` run against main tip de048f2, each reading an empty (or runt) `cli` subprocess stdout under host load, and both passed in a file-isolated re-run (42/42 across `dist/test/doctor.test.js` and `dist/test/legacy-role-ids.test.js`). Same root class, so one entry: the spawned CLI's captured stdout came back empty, so a `JSON.parse`/regex match on it fails. Not the e2e wall-clock class; this is the doctor child-process capture path flaking. Causes: doctor defers its whole report until every check finishes, and the run-to-completion harness (`cli()`/`cliWithEnv`) killed the child at a 20 s timeout; under full-suite load the heavy doctor run produced no stdout before the kill, leaving an empty buffer for `JSON.parse`/a regex. Fixed by raising that completion timeout to 60 s — the same cold-CLI-start budget `waitFor` already uses (BUGS.md 2026-09-30) — and pinning the invariant with a regression test.
