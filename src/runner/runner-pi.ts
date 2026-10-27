@@ -443,7 +443,7 @@ export class RunnerPi {
 
   /** Run pi for this runner's authoring run in worktree `wt`: the shared per-runner wiring and
    * the transient-failure retry, with usage folded into the run's counters. It is the ONE
-   * entry point that carries the role notes (PLANS.md "Role notebook": TUMWATER_NOTES_PATH,
+   * entry point that carries the role notes (TUMWATER_NOTES_PATH,
    * read by the `tumwater-notes` command): every other agent run (runRolePi's merge/conflict path,
    * runMergePi, runGatePi) leaves it unset, and the director is excluded because its work is
    * the operator's prompt, not a recurring search.

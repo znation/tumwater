@@ -74,7 +74,7 @@ test("runRolePi with resume passes --continue so a shutdown-interrupted run resu
   }
 });
 
-// The role notes (PLANS.md "Role notebook"): runAuthoringPi is the ONE path that exports
+// The role notes: runAuthoringPi is the ONE path that exports
 // TUMWATER_NOTES_PATH to the child. Every other agent run must leave it unset — a review, merge, or
 // conflict-resolution run is not the role's recurring search and must not rewrite the note —
 // and the director has no notes at all.

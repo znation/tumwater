@@ -49,7 +49,7 @@ test("every catalog role produces a prompt mentioning its id", () => {
   }
 });
 
-// The role notes (PLANS.md "Role notebook"): the run prompt shows the role's earlier note
+// The role notes: the run prompt shows the role's earlier note
 // when there is one, and ALWAYS carries the instruction to write one — the first run has no
 // note yet, so an instruction that lived only in the content block would never seed it.
 test("a role's run prompt carries the role-notes block only when a note exists", () => {

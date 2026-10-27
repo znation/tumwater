@@ -8,8 +8,8 @@ import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Ctrl+N notes mode: on a role's transcript, the pane swaps the live transcript for the
-// role's notes and next run's prompt (PLANS.md "Inspect a loop's notebook and next tick
-// prompt in the TUI"), and swaps back — the terminal view of what the dashboard drawer shows.
+// role's notes and next run's prompt, and swaps back — the terminal view of what the
+// dashboard drawer shows.
 
 /** Seed a role's notes file. */
 function seedNote(repo: string, role: string, text: string): void {

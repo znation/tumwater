@@ -154,7 +154,7 @@ export interface RoleViewPayload {
   /** The role's own find-something-to-do text verbatim (a custom role's `task`), or null
    * for the director — it has no find text; its queued prompts ARE its work. */
   find: string | null;
-  /** The role's notes (PLANS.md "Role notebook"): the note its own earlier runs wrote, or
+  /** The role's notes: the note its own earlier runs wrote, or
    * null when there is none (missing, empty, or unreadable). Always null for the director. */
   notes: string | null;
   /** The epoch-ms instant the note file was last modified (`fs.statSync(...).mtimeMs`) — the

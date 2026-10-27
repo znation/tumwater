@@ -87,9 +87,8 @@ export function createTranscriptPane(session: TuiPaneSession) {
   // because routeCtrlN in tui-panes.ts routes it last and relies on this pane consuming
   // Ctrl+N as the fallback.
   const transcriptCycle = (ctx: TuiPaneCtx): boolean => {
-    // Ctrl+N cycles the viewed role's pane live transcript → notes → change → transcript
-    // (PLANS.md "Inspect a loop's notebook and next tick prompt in the TUI" and "Show a
-    // loop's pending change in the TUI transcript pane"). The change step renders the same
+    // Ctrl+N cycles the viewed role's pane live transcript → notes → change → transcript.
+    // The change step renders the same
     // collectRoleChange/renderRoleChange view the CLI's `tumwater diff --role <id>` and the
     // dashboard drawer use. Guarded to a transcript view and out of budget-edit and
     // role-prompt modes, the same way the per-role controls below are; the History view's

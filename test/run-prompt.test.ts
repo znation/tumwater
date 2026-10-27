@@ -231,7 +231,7 @@ test("the plan prompt reports zero eligible plans and other roles omit the count
   assert.doesNotMatch(feature.prompt, /It holds/);
 });
 
-// The role notes (PLANS.md "Role notebook"): the run reads the role's note file from disk.
+// The role notes: the run reads the role's note file from disk.
 // A missing file omits the block; the standing write instruction rides either way. The
 // director's branch never reads the path, so its prompt carries neither.
 test("a role run prompt reads the note from roleNotesPath, and omits the block when there is none", () => {

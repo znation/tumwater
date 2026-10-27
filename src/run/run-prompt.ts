@@ -309,7 +309,7 @@ function collectBacklogStructureBlock(root: string, base: string): string | unde
 /** Read the role's own notes plus their saved day and live backlog state (notes-backlog.ts),
  * returning all three in one place. */
 function readPromptNotes(root: string, role: string): { notes: string | undefined; notesSavedDay: string | undefined; notesBacklog: string | undefined } {
-  // The role's notes (PLANS.md "Role notebook"): its own earlier runs' note. A missing,
+  // The role's own notes (readRoleNote): its earlier runs' note. A missing,
   // empty, or unreadable file yields undefined, so the block is omitted; the write
   // instruction in buildRunPrompt is present either way. The director branch above never
   // reads this path, so it carries no notes.
