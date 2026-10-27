@@ -140,13 +140,22 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   sendJson(res, 200, { ok: true, message });
 }
 
-/** The file-addressed prompt handlers' shared role prologue: validate the optional role
- * (400 sent on a present-but-invalid one and null returned, so the caller stops) and default
- * an absent role to the director's queue. The same optional-role rule handlePromptCancel,
- * handlePromptEdit and handlePromptTop state once instead of a guard-plus-default pair. */
-function promptFileRole(body: Record<string, unknown>, res: http.ServerResponse, root: string): string | null {
+/** The file-addressed prompt handlers' shared role+file prologue: the optional role (400 on
+ * a present-but-invalid one, absent defaulting to the director's queue) and the queue-file
+ * name (400 on a bad one) validate exactly like /api/transcript and /api/prompt-cancel,
+ * with nothing read on disk, and return the resolved role and file — or null when a 400 was
+ * sent (the caller stops). handlePromptCancel, handlePromptEdit and handlePromptTop state the
+ * guard-plus-default pair once here instead of at each call site, so the three endpoints
+ * cannot drift on which role or file they accept. */
+function promptFileTarget(
+  body: Record<string, unknown>,
+  res: http.ServerResponse,
+  root: string,
+): { role: string; file: string } | null {
   if (body.role !== undefined && rejectBadRole(root, res, body.role)) return null;
-  return body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
+  const role = body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
+  if (rejectBadQueueFileName(res, body.file)) return null;
+  return { role, file: body.file as string };
 }
 
 /** Handle POST /api/prompt-cancel: retract one queued prompt addressed by its queue file —
@@ -160,10 +169,9 @@ function promptFileRole(body: Record<string, unknown>, res: http.ServerResponse,
 export async function handlePromptCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "file": "<stamp>-<seq>-<pid>.md"}');
   if (!body) return;
-  const role = promptFileRole(body, res, root);
-  if (role === null) return;
-  if (rejectBadQueueFileName(res, body.file)) return;
-  const outcome = cancelQueuedFile(root, role, body.file as string);
+  const target = promptFileTarget(body, res, root);
+  if (target === null) return;
+  const outcome = cancelQueuedFile(root, target.role, target.file);
   sendJson(
     res,
     200,
@@ -188,18 +196,17 @@ export async function handlePromptCancel(req: http.IncomingMessage, res: http.Se
 export async function handlePromptEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "qa", "file": "<stamp>.md", "text": "..."}');
   if (!body) return;
-  const role = promptFileRole(body, res, root);
-  if (role === null) return;
-  if (rejectBadQueueFileName(res, body.file)) return;
-  const fields = checkedPromptFields(res, body, role);
+  const target = promptFileTarget(body, res, root);
+  if (target === null) return;
+  const fields = checkedPromptFields(res, body, target.role);
   if (!fields) return;
   // Image-input gate (plans/image-input.md "Attachments", part 5/5): an image edited into
   // the queued prompt answers 400 naming the fix when the target role cannot read it — the
   // same gate submitRolePrompt enforces — before anything is written.
-  if (!promptImageGate(res, root, role, (fields.images?.length ?? 0) > 0)) return;
+  if (!promptImageGate(res, root, target.role, (fields.images?.length ?? 0) > 0)) return;
   let outcome: EditOutcome;
   try {
-    outcome = editQueuedFile(root, role, body.file as string, fields.text, fields.images);
+    outcome = editQueuedFile(root, target.role, target.file, fields.text, fields.images);
   } catch (err) {
     badRequest(res, errorMessage(err));
     return;
@@ -225,12 +232,11 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
 export async function handlePromptTop(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "qa", "file": "<stamp>.md"}');
   if (!body) return;
-  const role = promptFileRole(body, res, root);
-  if (role === null) return;
-  if (rejectBadQueueFileName(res, body.file)) return;
+  const target = promptFileTarget(body, res, root);
+  if (target === null) return;
   let outcome: FileTopOutcome;
   try {
-    outcome = topQueuedFile(root, role, body.file as string);
+    outcome = topQueuedFile(root, target.role, target.file);
   } catch (err) {
     badRequest(res, errorMessage(err));
     return;
