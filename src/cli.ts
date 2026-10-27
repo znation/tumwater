@@ -170,13 +170,15 @@ async function cmdReportCase(root: string, args: string[]): Promise<void> {
   await (await import("./report/report.js")).cmdReport(root, args);
 }
 
-async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
-  // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
-  // so it must run outside a git repo and print fail lines rather than throwing.
-  const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
-  rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG, RETIRE_LEFTOVERS_FLAG]);
-  const only = parseDoctorChecks(checkNames);
-  const { runDoctor } = await import("./doctor/doctor.js");
+interface DoctorOptionalParts {
+  orphanKill: OrphanKillReport | undefined;
+  backlogCommit: BacklogCommitReport | undefined;
+  resyncInstall: RootInstallResync | undefined;
+  brokenPinDrop: BrokenPinDrop | undefined;
+  leftoverRetire: LeftoverRetireReport | undefined;
+}
+
+async function doctorKillOrphans(root: string, args: string[]): Promise<OrphanKillReport | undefined> {
   let orphanKill: OrphanKillReport | undefined;
   if (args.includes("--kill-orphans")) {
     const { killOrphans, orphanKillLines } = await import("./doctor/doctor-orphans.js");
@@ -187,6 +189,10 @@ async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
       say("");
     }
   }
+  return orphanKill;
+}
+
+async function doctorCommitBacklog(root: string, args: string[]): Promise<BacklogCommitReport | undefined> {
   let backlogCommit: BacklogCommitReport | undefined;
   if (args.includes("--commit-backlog")) {
     const { commitUncommittedBacklog, backlogCommitLines } = await import("./doctor/doctor-backlog.js");
@@ -198,6 +204,10 @@ async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
       say("");
     }
   }
+  return backlogCommit;
+}
+
+async function doctorResyncInstall(root: string, args: string[]): Promise<RootInstallResync | undefined> {
   let resyncInstall: RootInstallResync | undefined;
   if (args.includes("--resync-install")) {
     const { resyncRootInstall, rootInstallResyncLines } = await import("./build/dep-install.js");
@@ -209,6 +219,10 @@ async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
       say("");
     }
   }
+  return resyncInstall;
+}
+
+async function doctorDropBrokenPins(root: string, args: string[]): Promise<BrokenPinDrop | undefined> {
   let brokenPinDrop: BrokenPinDrop | undefined;
   if (args.includes("--drop-broken-pins")) {
     const { dropBrokenPins, brokenPinDropLines } = await import("./doctor/doctor-contention-checks.js");
@@ -221,6 +235,10 @@ async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
       if (lines.length > 0) say("");
     }
   }
+  return brokenPinDrop;
+}
+
+async function doctorRetireLeftovers(root: string, args: string[]): Promise<LeftoverRetireReport | undefined> {
   let leftoverRetire: LeftoverRetireReport | undefined;
   if (args.includes("--retire-leftovers")) {
     const { retireLeftovers, leftoverRetireLines } = await import("./doctor/doctor-contention-checks.js");
@@ -234,6 +252,33 @@ async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
       if (lines.length > 0) say("");
     }
   }
+  return leftoverRetire;
+}
+
+function doctorPayload<T extends object>(payload: T, parts: DoctorOptionalParts): T {
+  const out = { ...payload } as Record<string, unknown>;
+  if (parts.leftoverRetire !== undefined) out.leftoverRetire = parts.leftoverRetire;
+  if (parts.brokenPinDrop !== undefined) out.brokenPinDrop = parts.brokenPinDrop;
+  if (parts.resyncInstall !== undefined) out.resyncInstall = parts.resyncInstall;
+  if (parts.backlogCommit !== undefined) out.backlogCommit = parts.backlogCommit;
+  if (parts.orphanKill !== undefined) out.orphanKill = parts.orphanKill;
+  return out as T;
+}
+
+async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
+  // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
+  // so it must run outside a git repo and print fail lines rather than throwing.
+  const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
+  rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG, RETIRE_LEFTOVERS_FLAG]);
+  const only = parseDoctorChecks(checkNames);
+  const { runDoctor } = await import("./doctor/doctor.js");
+  const parts: DoctorOptionalParts = {
+    orphanKill: await doctorKillOrphans(root, args),
+    backlogCommit: await doctorCommitBacklog(root, args),
+    resyncInstall: await doctorResyncInstall(root, args),
+    brokenPinDrop: await doctorDropBrokenPins(root, args),
+    leftoverRetire: await doctorRetireLeftovers(root, args),
+  };
   const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(
     "./doctor/doctor-render.js"
   );
@@ -244,18 +289,9 @@ async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
   // --problems keeps the full report for the render (it counts the hidden ok rows) and
   // hands --json the filtered one; the exit code below reads the full report either way.
   // --kill-orphans adds the kill result to the JSON object as `orphanKill`.
-  const withKill = <T extends object>(payload: T) => (orphanKill === undefined ? payload : { ...payload, orphanKill });
-  const withBacklogCommit = <T extends object>(payload: T) =>
-    backlogCommit === undefined ? withKill(payload) : withKill({ ...payload, backlogCommit });
-  const withResyncInstall = <T extends object>(payload: T) =>
-    resyncInstall === undefined ? withBacklogCommit(payload) : withBacklogCommit({ ...payload, resyncInstall });
-  const withBrokenPinDrop = <T extends object>(payload: T) =>
-    brokenPinDrop === undefined ? withResyncInstall(payload) : withResyncInstall({ ...payload, brokenPinDrop });
-  const withLeftoverRetire = <T extends object>(payload: T) =>
-    leftoverRetire === undefined ? withBrokenPinDrop(payload) : withBrokenPinDrop({ ...payload, leftoverRetire });
   if (args.includes("--problems"))
-    sayJsonOrRender(args, args.includes("--json") ? withLeftoverRetire(problemsOnly(report)) : report, renderDoctorProblems);
-  else sayJsonOrRender(args, args.includes("--json") ? withLeftoverRetire(report) : report, renderDoctor);
+    sayJsonOrRender(args, args.includes("--json") ? doctorPayload(problemsOnly(report), parts) : report, renderDoctorProblems);
+  else sayJsonOrRender(args, args.includes("--json") ? doctorPayload(report, parts) : report, renderDoctor);
   if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
 }
 

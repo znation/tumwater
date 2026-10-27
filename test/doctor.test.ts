@@ -580,6 +580,27 @@ test("doctor --commit-backlog commits a dirty backlog file before the report; wi
   assert.ok(!("backlogCommit" in plain));
 });
 
+test("doctor combines two reap flags under --json in payload order (resyncInstall before backlogCommit)", async () => {
+  // doctorPayload appends the optional keys in the closure chain's original order — leftoverRetire,
+  // brokenPinDrop, resyncInstall, backlogCommit, orphanKill — so a combined --json run must keep
+  // resyncInstall ahead of backlogCommit even though the other keys are absent. This pins the byte
+  // order that a payload-level diff (or a consumer that reads keys) would otherwise depend on.
+  const repo = await diskHermeticRepo("cli doctor combined reap");
+  fs.appendFileSync(path.join(repo, "PLANS.md"), "edit\n");
+  const json = await cli(repo, "doctor", "--resync-install", "--commit-backlog", "--json");
+  const doc = JSON.parse(json.stdout);
+  assert.equal(doc.resyncInstall.attempted, false);
+  assert.equal(doc.resyncInstall.ok, true);
+  assert.deepEqual(doc.resyncInstall.packages, []);
+  assert.deepEqual(doc.backlogCommit.committed, ["PLANS.md"]);
+  const keys = Object.keys(doc);
+  assert.ok(keys.includes("resyncInstall") && keys.includes("backlogCommit"));
+  assert.ok(
+    keys.indexOf("resyncInstall") < keys.indexOf("backlogCommit"),
+    `resyncInstall must precede backlogCommit in the --json payload (key order: ${keys.join(",")})`,
+  );
+});
+
 test("the run-to-completion CLI capture grants doctor a cold-start completion budget", () => {
   // Doctor defers its whole report until every check completes, so its run-to-completion
   // capture can see a long stdout-less stretch under full-suite load; a tight execFile timeout
