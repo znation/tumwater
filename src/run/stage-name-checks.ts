@@ -68,25 +68,8 @@ function insideStringLiteral(line: string, index: number): boolean {
 /** (d) Compound identifiers the change removed from JS/TS source that a comment or doc still
  * names. Candidates come from removed `-U0` lines; one `git grep -w --cached` covers them all. */
 export async function staleNameFindings(wt: string, diff: string): Promise<string[]> {
-  const removed: string[] = [];
-  const added = new Set<string>();
-  let jsFile = false;
-  for (const line of diff.split("\n")) {
-    const header = /^diff --git a\/.* b\/(.*)$/.exec(line);
-    if (header) {
-      jsFile = JS_FILE.test(header[1]!);
-      continue;
-    }
-    if (!jsFile) continue;
-    if (line.startsWith("-") && !line.startsWith("---")) {
-      removed.push(...declaredNames(line.slice(1)));
-    } else if (line.startsWith("+") && !line.startsWith("+++")) {
-      for (const n of declaredNames(line.slice(1))) added.add(n);
-    }
-  }
-  const candidates = [...new Set(removed)]
-    .filter((n) => isCompoundName(n) && !added.has(n))
-    .slice(0, MAX_STALE_NAMES);
+  const { removedIn, addedIn } = declaredNameDeltas(diff);
+  const candidates = staleNameCandidates(removedIn, addedIn);
   if (candidates.length === 0) return [];
   const out = await gitTry(wt, "grep", "-n", "-w", "-I", "--cached", ...candidates.flatMap((n) => ["-e", n]));
   if (!out) return [];
@@ -94,23 +77,52 @@ export async function staleNameFindings(wt: string, diff: string): Promise<strin
   const findings: string[] = [];
   for (const name of candidates) {
     if (findings.length >= MAX_STALE_PATHS) break;
-    const word = new RegExp(`(?<![\\w$])${name.replace(/\$/g, "\\$")}(?![\\w$])`, "g");
-    const mine = lines.filter((l) => [...l.text.matchAll(word)].length > 0);
+    const word = staleNameWord(name);
+    const mine = staleNameMatches(word, lines);
     // Another module may still own the name.
-    if (mine.some((l) => JS_FILE.test(l.file) && declaredNames(l.text).includes(name))) continue;
-    const hits: string[] = [];
-    for (const l of mine) {
-      if (isRecordProse(l.file) || l.text.includes("retired-name-ok")) continue;
-      if ([...l.text.matchAll(word)].some((m) => !insideStringLiteral(l.text, m.index))) {
-        hits.push(`${l.file}:${l.no}`);
-      }
-    }
+    if (ownedElsewhere(name, mine)) continue;
+    const hits = staleNameHits(word, mine);
     if (hits.length === 0) continue;
     findings.push(
       `\`${name}\` was removed by this change but is still named at: ${cappedList(hits, MAX_STALE_HITS)}`,
     );
   }
   return findings;
+}
+
+/** The candidates this check looks up: compound names the change removed from JS/TS source that
+ * were not also added, capped. (`declaredNameDeltas` keeps only compound names, so every key is
+ * one.) */
+function staleNameCandidates(removedIn: Map<string, Set<string>>, addedIn: Map<string, Set<string>>): string[] {
+  return [...removedIn.keys()].filter((n) => !addedIn.has(n)).slice(0, MAX_STALE_NAMES);
+}
+
+/** A whole-word, case-sensitive matcher for `name`. */
+function staleNameWord(name: string): RegExp {
+  return new RegExp(`(?<![\\w$])${name.replace(/\$/g, "\\$")}(?![\\w$])`, "g");
+}
+
+/** The hits whose text has at least one whole-word occurrence of `word`. */
+function staleNameMatches(word: RegExp, lines: GrepHit[]): GrepHit[] {
+  return lines.filter((l) => [...l.text.matchAll(word)].length > 0);
+}
+
+/** True when a JS/TS hit still declares `name` — another module may still own it. */
+function ownedElsewhere(name: string, mine: GrepHit[]): boolean {
+  return mine.some((l) => JS_FILE.test(l.file) && declaredNames(l.text).includes(name));
+}
+
+/** The `file:line` hits that still name `word` outside a string literal, skipping record prose
+ * and retired-name-ok lines. */
+function staleNameHits(word: RegExp, mine: GrepHit[]): string[] {
+  const hits: string[] = [];
+  for (const l of mine) {
+    if (isRecordProse(l.file) || l.text.includes("retired-name-ok")) continue;
+    if ([...l.text.matchAll(word)].some((m) => !insideStringLiteral(l.text, m.index))) {
+      hits.push(`${l.file}:${l.no}`);
+    }
+  }
+  return hits;
 }
 
 /** (g) A compound name the change moved out of one JS/TS file into another that a comment or doc
@@ -161,14 +173,16 @@ function declaredNameDeltas(diff: string): { removedIn: Map<string, Set<string>>
       file = JS_FILE.test(header[1]!) ? header[1]! : null;
       continue;
     }
-    // The `---`/`+++` old/new path lines carry no declaration, and no keyword or leading-field
-    // match begins with `-` or `+`, so no guard against them is needed here.
+    // The `---`/`+++` old/new path lines carry no declaration, and their path text must not
+    // count: an unanchored keyword regex can match `type FooBar` inside a path (`src/type
+    // FooBar.ts` → `FooBar`) and wrongly record the name as added (or removed), so keep the
+    // same exclusion the pre-split `staleNameFindings` used.
     if (file === null) continue;
-    if (line.startsWith("-")) {
+    if (line.startsWith("-") && !line.startsWith("---")) {
       for (const n of declaredNames(line.slice(1)).filter(isCompoundName)) {
         noteDeclaredName(removedIn, n, file);
       }
-    } else if (line.startsWith("+")) {
+    } else if (line.startsWith("+") && !line.startsWith("+++")) {
       for (const n of declaredNames(line.slice(1)).filter(isCompoundName)) {
         noteDeclaredName(addedIn, n, file);
       }
