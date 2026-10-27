@@ -96,30 +96,36 @@ export function createQueuedPane(
     }
   };
 
+  // Ctrl+X cancels the selected queued prompt and Ctrl+V moves it to its role queue's head,
+  // each through the CLI's own per-role path (cancelRolePrompt / movePromptToTop). The two
+  // arms share one shape — a guarded ctrl-keypress that resolves the clamped selected row,
+  // runs cancel or move, and repaints — differing only in the key and the action, so one
+  // helper owns the guard, the clamp, and the render.
+  const handleQueuedRowAction = (
+    key: { ctrl?: boolean; name?: string },
+    ctx: TuiPaneCtx,
+    keyName: string,
+    action: (row: QueuedListRow) => void,
+  ): boolean => {
+    if (
+      key.ctrl && key.name === keyName &&
+      promptLineFree(ctx.es) &&
+      session.view === session.roleIds.length + 6 && selectedQueued !== null
+    ) {
+      const row = queuedRows[Math.min(selectedQueued, queuedRows.length - 1)];
+      if (row !== undefined) action(row);
+      session.requestRender();
+      return true;
+    }
+    return false;
+  };
+
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
-    if (
-      key.ctrl && key.name === "x" &&
-      promptLineFree(ctx.es) &&
-      session.view === session.roleIds.length + 6 && selectedQueued !== null
-    ) {
-      const row = queuedRows[Math.min(selectedQueued, queuedRows.length - 1)];
-      if (row !== undefined) cancelQueuedRow(row);
-      session.requestRender();
-      return true;
-    }
-    if (
-      key.ctrl && key.name === "v" &&
-      promptLineFree(ctx.es) &&
-      session.view === session.roleIds.length + 6 && selectedQueued !== null
-    ) {
-      const row = queuedRows[Math.min(selectedQueued, queuedRows.length - 1)];
-      if (row !== undefined) moveQueuedRow(row);
-      session.requestRender();
-      return true;
-    }
+    if (handleQueuedRowAction(key, ctx, "x", cancelQueuedRow)) return true;
+    if (handleQueuedRowAction(key, ctx, "v", moveQueuedRow)) return true;
     const arrow = arrowDir(key.name);
     if (session.view === session.roleIds.length + 6 && arrow !== null) {
       // In the Queued pane, up/down select a queued prompt row in full (wrapping, the backlog
