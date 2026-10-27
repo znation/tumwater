@@ -683,8 +683,8 @@ test("stalledEntries and the surfaces carry a stalled-entries alert from PLANS.m
   assert.equal(alert?.actions?.[0]?.arg, "plans:1");
   const status = renderStatus(root, snapshot(root, undefined, now));
   assert.match(status, /2 backlog entries are stalled in review/);
-  // A held-for-operator plan (a note at the held threshold) no longer raises the
-  // operator-held alert, and is excluded from the stalled-entries alert, so neither fires.
+  // An old (held N) note now reads as a Needs-review hold like any other: it raises the
+  // stalled-entries alert (the operator-held alert and its exclusion are gone).
   const held = makeRepo();
   writeBacklogFile(held, "PLANS.md", [
     {
@@ -697,9 +697,9 @@ test("stalledEntries and the surfaces carry a stalled-entries alert from PLANS.m
     },
     { heading: "## Done" },
   ]);
-  const heldPayload = statusPayload(held, now) as { alerts: Array<{ key: string }> };
+  const heldPayload = statusPayload(held, now) as { alerts: Array<{ key: string; title?: string }> };
   assert.equal(heldPayload.alerts.find((a) => a.key === "operator-held"), undefined);
-  assert.equal(heldPayload.alerts.find((a) => a.key === "stalled-entries"), undefined);
+  assert.equal(heldPayload.alerts.find((a) => a.key === "stalled-entries")?.title, "1 backlog entry is stalled in review");
   // A PLANS.md with only eligible plans produces neither alert.
   const clean = makeRepo();
   writeBacklogFile(clean, "PLANS.md", [

@@ -647,7 +647,7 @@ test("gui /api/backlog carries no heldForOperator key for a held-for-operator pl
   const repo = makeRepo();
   await initProject(repo, "backlog held-for-operator gui test");
   // A plain planned entry and one carrying a held-for-operator Needs-review note
-  // ((held 3) at/above the OPERATOR_HOLD_THRESHOLD) plus its **Previously held 2** line.
+  // ((held 3)) plus its **Previously held 2** line.
   writeBacklogFile(repo, "PLANS.md", [
     {
       heading: "## Planned",

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { withoutRefusalNotes, withoutHeldForOperatorNotes, backlogHolds, backlogInProgress, cancelledClaimNote, OPERATOR_HOLD_THRESHOLD, eligibleEntries, entryHold, heldCount, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, operatorHeldEntries, refusalNote, refusedEntries, stalledEntries, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { withoutNeedsReviewNotes, withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, eligibleEntries, entryHold, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, refusalNote, refusedEntries, stalledEntries, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
 import { entryKey, plannedPartKeys, prerequisitesMerged, planDependencyProblems, plansReleasedBy, plansWaitingOn, releasedPartsNote, requiredParts, seriesPart, type PartRef } from "../src/backlog/backlog-parts.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
@@ -183,20 +183,10 @@ test("a body mentioning 'requires' never blocks — only the heading's clause do
   assert.equal(entryHold(entry("Foo (planned 2026-10-01)", "This requires part 1/2 landed eventually."), []), null);
 });
 
-test("heldCount reads the (held N) tag from a note line, else 0 — surviving **Previously held N** markers are never read", () => {
-  assert.equal(heldCount(`**Needs review 2026-10-23 by feature: too large for one run (held 3)**`), 3);
-  assert.equal(heldCount(`**Needs review 2026-10-23 by feature: rejected after 2 review rounds (held 2)**`), 2);
-  assert.equal(heldCount(`**Previously held 2**`), 0);
-  assert.equal(heldCount(`body with no held tag`), 0);
-  assert.equal(heldCount(`**Needs review 2026-10-23 by feature: x (held x)**`), 0);
-});
-
-test("a note whose held count reaches the threshold becomes a held-for-operator hold; below it stays today's hold", () => {
-  assert.equal(OPERATOR_HOLD_THRESHOLD, 3);
-  assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: x (held 3)**`), []), "held-for-operator");
-  assert.equal(holdMark("held-for-operator"), " [blocked: held for operator]");
-  assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: x (held 2)**`), []), "needs-review");
-  assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: rejected after 3 review rounds (held 3)**`), []), "held-for-operator");
+test("a Needs-review note parks the entry as needs-review at any held count", () => {
+  assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: too large for one run**`), []), "needs-review");
+  assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: too large for one run (held 3)**`), []), "needs-review");
+  assert.equal(holdMark("needs-review"), " [blocked: needs review]");
 });
 
 test("eligibleEntries drops held entries, keeps file order, and attaches the index line ranges", () => {
@@ -615,44 +605,7 @@ test("refusedEntries lists the refused plans then the refused bugs, and [] with 
   ]);
 });
 
-test("operatorHeldEntries lists the plans whose note held count reached the threshold, and [] with none", () => {
-  assert.deepEqual(operatorHeldEntries(tmpdir()), []);
-  const dir = tmpdir();
-  fs.writeFileSync(
-    path.join(dir, "PLANS.md"),
-    [
-      "# Plans",
-      "## Planned",
-      "### Ready (planned 2026-10-04)",
-      "body",
-      "### Held up (planned 2026-10-03)",
-      "**Needs review 2026-10-07 by feature: too large for one run (held 3)**",
-      "### Below (planned 2026-10-03)",
-      "**Needs review 2026-10-07 by feature: too large for one run (held 2)**",
-      "## Done",
-      "_None._",
-    ].join("\n"),
-  );
-  fs.writeFileSync(
-    path.join(dir, "BUGS.md"),
-    [
-      "# Bugs",
-      "## Open",
-      "### A held bug",
-      "**Needs review 2026-10-07 by feature: too large for one run (held 3)**",
-      "### An open bug",
-      "body",
-      "## Fixed",
-      "_None._",
-    ].join("\n"),
-  );
-  assert.deepEqual(operatorHeldEntries(dir), [
-    { file: "plans", index: 1, title: "Held up (planned 2026-10-03)" },
-    { file: "bugs", index: 0, title: "A held bug" },
-  ]);
-});
-
-test("stalledEntries lists the needs-review plans and bugs, excluding eligible and held-for-operator ones", () => {
+test("stalledEntries lists the needs-review plans and bugs, keeping file order", () => {
   assert.deepEqual(stalledEntries(tmpdir()), []);
   const dir = tmpdir();
   fs.writeFileSync(
@@ -664,8 +617,6 @@ test("stalledEntries lists the needs-review plans and bugs, excluding eligible a
       "body",
       "### Needs review (planned 2026-10-03)",
       "**Needs review 2026-10-07 by feature: too large for one run**",
-      "### At threshold (planned 2026-10-03)",
-      "**Needs review 2026-10-07 by feature: too large for one run (held 3)**",
       "## Done",
       "_None._",
     ].join("\n"),
@@ -687,31 +638,38 @@ test("stalledEntries lists the needs-review plans and bugs, excluding eligible a
   ]);
 });
 
-test("withoutHeldForOperatorNotes drops an at-threshold note and its previously-held line, and nothing else", () => {
-  const held = [
+test("withoutNeedsReviewNotes drops every Needs-review note line and keeps the rest", () => {
+  const lines = [
     "### Plan (planned 2026-10-03)",
     "",
-    "**Needs review 2026-10-07 by feature: too large for one run (held 3)**",
-    "**Previously held 2**",
+    "**Needs review 2026-10-07 by feature: too large for one run**",
+    "",
+    "**Needs review 2026-10-08 by feature: too large for one run**",
     "",
     "**Goal.** g",
   ];
-  assert.deepEqual(withoutHeldForOperatorNotes(held), [
+  assert.deepEqual(withoutNeedsReviewNotes(lines), [
     "### Plan (planned 2026-10-03)",
     "",
     "**Goal.** g",
   ]);
-  // A below-threshold note and an untagged note survive untouched.
-  const below = [
+  // A note that still carries the legacy `(held N)` tag drops its `**Previously held N−1**`
+  // marker too, so a release leaves no surviving marker orphaned behind it.
+  const legacy = [
     "### Plan (planned 2026-10-03)",
-    "**Needs review 2026-10-07 by feature: x (held 2)**",
-    "**Previously held 2**",
     "",
-    "**Needs review 2026-10-07 by feature: rejected after 2 review rounds (held 2)**",
+    "**Needs review 2026-10-08 by feature: too large for one run (held 8)**",
+    "**Previously held 7**",
+    "",
+    "**Goal.** g",
   ];
-  assert.deepEqual(withoutHeldForOperatorNotes(below), below);
-  const untagged = ["### Plan (planned 2026-10-03)", "**Needs review 2026-10-07 by feature: x**"];
-  assert.deepEqual(withoutHeldForOperatorNotes(untagged), untagged);
+  assert.deepEqual(withoutNeedsReviewNotes(legacy), [
+    "### Plan (planned 2026-10-03)",
+    "",
+    "**Goal.** g",
+  ]);
+  const untagged = ["### Plan (planned 2026-10-03)", "body"];
+  assert.deepEqual(withoutNeedsReviewNotes(untagged), untagged);
 });
 
 test("plansReleasedBy lists only direct dependents of a cancelled part, by post-cancel position", () => {

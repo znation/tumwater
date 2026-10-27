@@ -300,8 +300,8 @@ test("planBacklogFull: eligible plans reach the target and no plan is marked", (
       ),
       cfg,
     ),
-    true,
-    "a held-for-operator mark does not keep the plan role running",
+    false,
+    "a Needs review mark keeps the plan role running",
   );
   assert.equal(
     planBacklogFull(

@@ -138,12 +138,6 @@ export const VALIDATION_GAP_QUERY = `grep -snE '\\*\\*Validation gap:\\*\\* (${V
  * note and is classified by entryHold accordingly. */
 export const NEEDS_REVIEW_PREFIX = `**Needs review `;
 
-/** The tag text before a held count, read by the backlog (backlog-eligibility's heldCount) so
- * the note form and the parser cannot drift. No writer emits `(held N)` anymore — the feature
- * note is flat — but heldCount still parses the tag from a Needs-review note line already on
- * disk until part 2f/6 removes the reader. */
-export const HELD_TAG_PREFIX = `(held `;
-
 /** The markdown note the feature role appends to a plan it cannot finish in one run, so the plan
  * role can split it. Mirrors the **Refused …** note convention: a note the next fresh run reads,
  * with no code parsing it. Defined once so the feature and plan texts and the director's routing
@@ -161,13 +155,6 @@ export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature:
  * each hold to its own action without matching on a second literal. Add no second spelling of
  * this text. */
 export const CONVERGENCE_HOLD_MARKER = "could not converge";
-
-/** The marker a lifted hold leaves behind, so a split or rewrite carried the count instead of
- * letting it reset: `**Previously held N**` on the note's line. No writer emits this anymore (the
- * plan role's split no longer carries a count) and heldCount no longer reads it, so it is inert;
- * withoutHeldForOperatorNotes still drops a surviving `**Previously held N−1**` line beside a
- * released at-threshold note until part 2f/6 retires the count machinery. */
-export const PRIOR_HELD_PREFIX = `**Previously held `;
 
 /** The literal marker the plan role writes as its own line under the PLANS.md `## Planned` entry
  * that declares this project's deterministic check, and the feature role reads as that entry's

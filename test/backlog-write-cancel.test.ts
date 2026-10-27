@@ -205,7 +205,7 @@ test("tryReleaseEntry leaves the bytes releaseEntry leaves and refuses without w
   assert.equal(fs.readFileSync(path.join(b, "BUGS.md"), "utf8"), md);
 });
 
-test("releaseEntry lifts a held-for-operator Needs review note", () => {
+test("releaseEntry lifts a Needs review note", () => {
   const md = "# Bugs\n\n## Open\n\n### one\n\n**Needs review 2026-10-16 by feature: too large for one run (held 3)**\n\nbody\n\n### two\n\nbody\n\n## Fixed\n";
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "BUGS.md"), md);

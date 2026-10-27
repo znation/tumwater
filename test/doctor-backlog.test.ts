@@ -456,8 +456,8 @@ test("checkRefusedEntries counts the planned parts that wait on a refused part",
 });
 
 // checkStalledEntries — plans or bugs parked by a Needs-review note until the
-// plan role splits or replans them, plus the held-for-operator entries until the operator
-// releases them: the doctor names them so the state is one-line visible, without the plan role
+// plan role splits or replans them: the doctor names them so the state is one-line visible,
+// without the plan role
 // or any listing changing. Mirrors the checkRefusedEntries setup — the two are the same shape
 // but a different hold, and refusal notes (a separate hold) never trip it.
 
@@ -489,17 +489,16 @@ test("checkStalledEntries warns once when both kinds are present, naming the res
   assert.match(out.detail, /"Second \(planned 2026-10-14\)"/);
 });
 
-test("checkStalledEntries warns on a held-for-operator plan, naming tumwater plan --release", () => {
+test("checkStalledEntries warns on a note carrying an old held tag like any Needs review plan", () => {
   const dir = tmpdir("doctor-stalled-held-");
   fs.writeFileSync(path.join(dir, "PLANS.md"),
     `## Planned\n\n### Parked plan (planned 2026-10-14)\n**Needs review 2026-10-14 by feature: too large for one run (held 3)**\n`);
   const out = checkStalledEntries(dir);
   assert.equal(out.level, "warn");
-  assert.match(out.detail, /is held for the operator 3 times/);
-  assert.match(out.detail, /tumwater plan --release/);
+  assert.match(out.detail, /PLANS\.md plan "Parked plan \(planned 2026-10-14\)" is held by a Needs review note \(Needs review 2026-10-14 by feature: /);
 });
 
-test("checkStalledEntries warns on a stalled bug and names tumwater bug --release for a held one", () => {
+test("checkStalledEntries warns on a stalled bug like any Needs review one", () => {
   const dir = tmpdir("doctor-stalled-bug-");
   fs.writeFileSync(path.join(dir, "BUGS.md"),
     `# Bugs\n\n## Open\n\n### Parked bug (reported 2026-10-14)\n**Needs review 2026-10-14 by feature: too large for one run**\n`);
@@ -511,12 +510,11 @@ test("checkStalledEntries warns on a stalled bug and names tumwater bug --releas
     `# Bugs\n\n## Open\n\n### Parked bug (reported 2026-10-14)\n**Needs review 2026-10-14 by feature: too large for one run (held 3)**\n`);
   const held = checkStalledEntries(heldDir);
   assert.equal(held.level, "warn");
-  assert.match(held.detail, /BUGS\.md bug "Parked bug \(reported 2026-10-14\)" is held for the operator 3 times/);
-  assert.match(held.detail, /tumwater bug --release/);
+  assert.match(held.detail, /BUGS\.md bug "Parked bug \(reported 2026-10-14\)" is held by a Needs review note/);
 });
 
 test("checkStalledEntries reads ok with no notes, and ignores Done, Refused, and bodyless headings", () => {
-  const ok = { level: "ok", detail: "no planned plan or open bug is held by a Needs-review or held-for-operator note" };
+  const ok = { level: "ok", detail: "no planned plan or open bug is held by a Needs-review note" };
   assert.deepEqual(checkStalledEntries(tmpdir("doctor-stalled-none-")), ok);
   const dir = tmpdir("doctor-stalled-closed-");
   const note = "**Needs review 2026-10-14 by feature: too large for one run**";

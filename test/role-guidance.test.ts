@@ -18,7 +18,6 @@ import {
   VALIDATION_GAP_TALLY,
   backlogMoveGuidance,
 } from "../src/roles/role-guidance.js";
-import { heldCount } from "../src/backlog/backlog-eligibility.js";
 import { oneLine } from "./helpers/oracles.js";
 import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -181,16 +180,10 @@ test("the Needs review marker is embedded in the feature, plan, and director pro
   assert.ok(oneLine(buildDirectorPrompt("split plan X")).includes(NEEDS_REVIEW_NOTE));
 });
 
-test("the Needs-review note template carries no held-count tag, while heldCount still reads notes on disk", () => {
+test("the Needs-review note template carries no held-count tag or prior-held marker", () => {
   assert.ok(!NEEDS_REVIEW_NOTE.includes("(held"), "note template no longer writes a held count");
   assert.ok(!NEEDS_REVIEW_NOTE.includes("Previously held"), "note template no longer writes a prior-held marker");
   assert.ok(NEEDS_REVIEW_NOTE.startsWith(NEEDS_REVIEW_PREFIX), "review prefix still recognizes the note");
-  // A (held N) note already on disk still classifies by its tag; a surviving **Previously held
-  // N** marker is never read, so a freshly written flat note reads zero (the never-escalates
-  // property: it cannot inherit a surviving marker's count).
-  assert.equal(heldCount("**Needs review 2026-10-23 by feature: too large for one run (held 3)**"), 3);
-  assert.equal(heldCount("**Previously held 2**"), 0);
-  assert.equal(heldCount(NEEDS_REVIEW_NOTE.replace("<YYYY-MM-DD>", "2026-10-26")), 0);
 });
 
 test("the feature and plan texts no longer instruct writing a held count", () => {

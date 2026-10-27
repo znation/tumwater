@@ -100,13 +100,13 @@ test("plan and bug --release lift the Refused note and commit it on main", async
   const head = sh(repo, "git", "rev-parse", "HEAD");
   const none = await cli(repo, "plan", "--release", "1");
   assert.notEqual(none.code, 0);
-  assert.match(none.stderr, /plan #1 "first" carries no Refused or held-for-operator note/);
+  assert.match(none.stderr, /plan #1 "first" carries no Refused or Needs review note/);
   assert.notEqual((await cli(repo, "plan", "--release", "9")).code, 0);
   assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
   assertClean(repo);
   const out = await cli(repo, "plan", "--release", "2");
   assert.equal(out.code, 0);
-  assert.match(out.stdout, /released plan in PLANS\.md: parked \(lifted the Refused note\)/);
+  assert.match(out.stdout, /released plan in PLANS\.md: parked \(lifted the Refused notes\)/);
   assertClean(repo);
   assert.equal(subject(repo), "tumwater(operator): Release plan: parked");
   assert.ok(!fs.readFileSync(path.join(repo, "PLANS.md"), "utf8").includes("**Refused"));

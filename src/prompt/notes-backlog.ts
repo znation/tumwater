@@ -121,7 +121,7 @@ function holdWording(state: PartState): string {
   if (state === "not-in-backlog") return "not in the backlog";
   if (state === null) return "eligible";
   if (state === "refused") return "refused (only the operator clears it)"; // vocabulary-ok: the plan-mandated refused hold wording refers to the tumwater operator
-  if (state === "needs-review" || state === "held-for-operator") return "needs review"; // vocabulary-ok: the deprecated held-for-operator hold name, kept only until part 2f/6 retires it
+  if (state === "needs-review") return "needs review";
   return `waits on ${state.blockedBy.join(", ")}`;
 }
 

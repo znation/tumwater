@@ -2830,22 +2830,23 @@ image-carrying prompt submitted with notBeforeMs is queued deferred" (image path
 `src/backlog/backlog-release.ts` holds the writers behind `tumwater plan|bug --release <n>` and
 `--top <n>`, and the non-exiting `try…` twins the TUI and dashboard call.
 
-### INV-AT1: a release lifts one note, Refused first, from the addressed entry only
+### INV-AT1: a release lifts every Refused or Needs-review note, Refused first, from the addressed entry only
 
-**Guarantee.** A release lifts the entry's Refused note or, when it has none, its
-held-for-operator Needs-review note: one note per release, so an entry carrying both needs two
-releases and loses the Refused note first. Only the addressed entry's lines are filtered, and its
-other Needs-review note stays. An entry with no released hold is refused and the file is left as it was.
+**Guarantee.** A release drops the addressed entry's Refused note lines or, when it has none, its
+Needs-review note lines: every line of the chosen kind goes in a single release, so an entry
+carrying both kinds needs two releases and loses the Refused notes first. Only the addressed
+entry's lines are filtered. An entry with no released hold is refused and the file is left as it was.
 
 **Binds.** `src/backlog/backlog-release.ts` (`liftRefusal`, `releaseEntry`, `tryReleaseEntry`),
-`src/backlog/backlog-eligibility.ts` (`withoutRefusalNotes`, `withoutHeldForOperatorNotes`).
+`src/backlog/backlog-eligibility.ts` (`withoutRefusalNotes`, `withoutNeedsReviewNotes`).
 
 **Pinned by.** `test/backlog-release-holds.test.ts` — "a release lifts the Refused note first and
-leaves a held-for-operator note for a second release", "a release touches only the addressed entry
-and keeps its Needs review note" and "a release lifts a held-for-operator Needs review note and its
-previously-held line"; `test/backlog-write-cancel.test.ts` — "releaseEntry lifts a held-for-operator
-Needs review note"; `test/backlog-eligibility.test.ts` — "withoutRefusalNotes drops
-Refused note lines and the blank line after one between blanks".
+leaves a Needs review note for a second release", "a release touches only the addressed entry
+and keeps its Needs review note", "a release lifts a Needs review note" and "a release lifts a
+Needs review note that carries an old held tag"; `test/backlog-write-cancel.test.ts` — "releaseEntry
+lifts a Needs review note"; `test/backlog-eligibility.test.ts` — "withoutRefusalNotes drops
+Refused note lines and the blank line after one between blanks" and "withoutNeedsReviewNotes
+drops every Needs-review note line and keeps the rest".
 
 ### INV-AT2: the try… twins write the CLI writers' bytes and refuse as data without writing
 

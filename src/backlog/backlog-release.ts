@@ -1,41 +1,41 @@
 /** The hold-lifting and reordering writes of `tumwater bug|plan --release <n>` and `--top <n>`:
- * lift an entry's Refused or held-for-operator note, or move
+ * lift an entry's Refused or Needs-review note, or move
  * it to the head of its open
  * section. Each comes as an exiting writer (the CLI) and a non-exiting `try…` core that refuses as
  * data (the TUI and dashboard); entry lookup and the section's file target are
  * backlog-write.ts's. */
 import { backlogTarget, findEntry, locateDashboardEntry, readEntryLines } from "./backlog-write.js";
 import type { ActionableEntryRange } from "./backlog-index-data.js";
-import { withoutHeldForOperatorNotes, withoutRefusalNotes } from "./backlog-eligibility.js";
+import { withoutNeedsReviewNotes, withoutRefusalNotes } from "./backlog-eligibility.js";
 import { writeTextAtomic } from "../files/files.js";
 import { fail } from "../cli/cli-output.js";
 import { trimTrailingBlankLines } from "../text/text.js";
 import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 
 /** The kind of note a release lifts, reported on every surface so the operator can tell a
- * refusal lifted from an operator-hold lifted. */
-export type LiftableHold = "refused" | "held-for-operator";
+ * refusal lifted from a Needs-review note lifted. */
+export type LiftableHold = "refused" | "needs-review";
 
-/** The prose naming the note `lifted` kind a release removed, shared by the CLI, TUI and the
- * exit-announcers so their released lines cannot drift. */
+/** The prose naming the note kind a release removed — plural, since a release lifts every line
+ * of the chosen kind — shared by the CLI, TUI and the exit-announcers so their released lines
+ * cannot drift. */
 export function liftedNotePhrase(lifted: LiftableHold): string {
   return lifted === "refused"
-    ? "the Refused note"
-    : "the held-for-operator note"; // vocabulary-ok: the held-for-operator note's release wording
+    ? "the Refused notes"
+    : "the Needs review notes";
 }
 
 /** Drop the Refused note from `entry`'s slice of `lines`, in place, and return its kind; an
- * entry with none loses its held-for-operator Needs-review note (the `(held N)` count at/above
- * threshold, plus its **Previously held N** line). Null (and `lines` untouched) when the entry
+ * entry with none loses its Needs-review note. Null (and `lines` untouched) when the entry
  * carries neither, shared by releaseEntry and tryReleaseEntry so they cannot drift. */
 function liftRefusal(lines: string[], entry: ActionableEntryRange): LiftableHold | null {
   const slice = lines.slice(entry.start - 1, entry.end);
   let kept = withoutRefusalNotes(slice);
   if (kept.length === slice.length) {
-    kept = withoutHeldForOperatorNotes(slice);
+    kept = withoutNeedsReviewNotes(slice);
     if (kept.length === slice.length) return null;
     lines.splice(entry.start - 1, slice.length, ...kept);
-    return "held-for-operator"; // vocabulary-ok: the held-for-operator note's release wording
+    return "needs-review";
   }
   lines.splice(entry.start - 1, slice.length, ...kept);
   return "refused";
@@ -70,7 +70,7 @@ export function tryReleaseEntry(
   });
 }
 
-/** Lift the Refused or held-for-operator note from the
+/** Lift the Refused or Needs-review note from the
  * `n`th entry (1-based, as `--list` numbers them) of the kind's open section and write the
  * file, under the same lock the cancel and edit writers hold, returning which hold it lifted.
  * An out-of-range position fails with locateEntry's wording; an entry with neither note
@@ -84,7 +84,7 @@ export function releaseEntry(
   return withPrimaryWorktreeLock(root, () => {
     const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
     const lifted = liftRefusal(lines, entry);
-    if (lifted === null) fail(`${kind} #${n} "${entry.title}" carries no Refused or held-for-operator note`); // vocabulary-ok: the held-for-operator note's release wording
+    if (lifted === null) fail(`${kind} #${n} "${entry.title}" carries no Refused or Needs review note`);
     writeTextAtomic(file, lines.join("\n"));
     return { file: fileName, title: entry.title, lifted };
   });
