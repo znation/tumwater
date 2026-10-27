@@ -125,7 +125,6 @@ function applyTeamDay(day: ReportDay, fold: DayFold): void {
   setLowerMedian(day, "reviewMedianMs", fold.reviewDurationsMs);
   // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
   setMapIfNonempty(day, "failedRunsByRole", fold.failedRunsByRole);
-  setMapIfNonempty(day, "fallbacksByRole", fold.fallbacksByRole);
   day.commits = fold.commits;
   day.commitsByRole = fold.commitsByRole;
   day.workCommits = fold.workCommits;
@@ -188,7 +187,6 @@ function applyRoleDay(day: ReportDay, fold: DayFold, bases: string[]): void {
   setMapIfNonempty(day, "revisionsByRole", narrowToRole(fold.revisionsByRole, bases));
   setMapIfNonempty(day, "refusalsByRole", narrowToRole(fold.refusalsByRole, bases));
   setMapIfNonempty(day, "failedRunsByRole", narrowToRole(fold.failedRunsByRole, bases));
-  setMapIfNonempty(day, "fallbacksByRole", narrowToRole(fold.fallbacksByRole, bases));
   day.commits = commits;
   day.commitsByRole = narrowToRole(fold.commitsByRole, bases);
   const tierCommits = (tier: string): number =>

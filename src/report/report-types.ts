@@ -79,9 +79,6 @@ export interface ReportDay {
   /** error-class run_end events per role id; absent when the day has none (zero means
    * absent, so a failure-free day keeps its exact pre-feature shape). */
   failedRunsByRole?: Record<string, number>;
-  /** model_fallback_started events per role id; absent when the day has none (zero means
-   * absent). */
-  fallbacksByRole?: Record<string, number>;
   commits: number;
   commitsByRole?: Record<string, number>; // merged commits by base role (Work ratio 4/4)
   workCommits?: number; // of those, feature/bugfix/director
@@ -223,8 +220,6 @@ export interface SinceReport {
   refusalsByRole: Record<string, number>;
   /** error-class run_end events per role id; empty when the window has none. */
   failedRunsByRole: Record<string, number>;
-  /** model_fallback_started events per role id; empty when the window has none. */
-  fallbacksByRole: Record<string, number>;
   /** Output tokens per role id, so the --since render can break the window's token spend
    * down by role the way the day report does. */
   tokensByRole: Record<string, number>;

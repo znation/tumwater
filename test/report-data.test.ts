@@ -1166,30 +1166,6 @@ test("collectReportSince scopes notional spend to the role, like cost", () => {
   assert.equal(scoped.totals.costUsd, 0);
 });
 
-test("collectReport and collectReportSince count model_fallback_started per role, zero meaning absent", () => {
-  const root = tmpdir();
-  const started = (ts: number, loop: string) => JSON.stringify({ ts, loop, type: "model_fallback_started" }); // retired-name-ok: legacy event field in a fixture
-  writeEvents(root, [
-    started(todayTs(), "feature"),
-    started(todayTs(), "feature"),
-    started(todayTs(), "qa"),
-    started(at(1), "feature-2"),
-    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "model_fallback_ended", durationMs: 5000 }), // retired-name-ok: legacy event field in a fixture
-    JSON.stringify({ ts: at(2), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 1 }), // retired-name-ok: legacy event field in a fixture
-  ]);
-  const data = collectReport(root, 3);
-  assert.ok(!("fallbacksByRole" in (data.series[0] ?? {})), "a day with none carries no key");
-  assert.deepEqual(data.series[1]?.fallbacksByRole, { "feature-2": 1 }, "yesterday");
-  assert.deepEqual(data.series[2]?.fallbacksByRole, { feature: 2, qa: 1 }, "today; model_fallback_ended adds nothing");
-  assert.match(renderReportMarkdown(data), /\*\*Fallbacks by role:\*\* feature — 2 · feature-2 — 1 · qa — 1/);
-
-  const since = collectReportSince(root, 3 * 24 * HOUR);
-  assert.deepEqual(since.fallbacksByRole, { feature: 2, "feature-2": 1, qa: 1 });
-  assert.match(renderSinceReportMarkdown(since), /\*\*Fallbacks by role:\*\* feature — 2 · feature-2 — 1 · qa — 1/);
-  assert.deepEqual(collectReportSince(root, 3 * 24 * HOUR, "feature").fallbacksByRole, { feature: 3 }, "feature-2 folds into feature");
-  assert.match(renderReportMarkdown(collectReport(tmpdir(), 2)), /\*\*Fallbacks by role:\*\* -/);
-});
-
 test("collectReport gives each day the lower median of its passing full-suite checks, team scope only", () => {
   const root = tmpdir();
   const check = (status: string, scope: string, durationMs: number) =>

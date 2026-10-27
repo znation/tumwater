@@ -361,28 +361,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 5c/6: The `fallbacksByRole` report series goes — neither the day report nor the `--since` window tallies a model-fallback episode (planned 2026-10-27 by the plan role; the first of the parts replacing part 5c/6 after feature held it too large (2026-10-27) because its report side under-listed this cascade; sibling to parts 5n/6, 5o/6 and 5p/6, independent in file of them; requires Subtract part 5j/6 landed; touches src/report/report-usage-fold.ts src/report/report-fold.ts src/report/report-types.ts src/report/report-data.ts src/report/report-render.ts src/report/report-since-data.ts src/report/report-since-render.ts src/ui/gui/gui-client-report-chart.ts src/ui/gui/gui-client-report.ts docs/cli.md test/report-data.test.ts test/report.test.ts test/gui-client-report.test.ts)
-
-**Goal.** The report's `Fallbacks by role` line and its whole `fallbacksByRole` cascade are gone: `model_fallback_started` events are still logged but no report folds or renders them. This is the report half of the held part 5c/6 the feature's note named.
-
-**Approach.**
-- `src/report/report-usage-fold.ts`: delete `foldFallbackStarted`, the `fallbacksByRole` field from the `UsageFold` shape, its `{}` initializer and the `else if (ev.type === "model_fallback_started")` arm in `foldUsageEvent` — the event then falls through unread.
-- `src/report/report-fold.ts`: delete the `fallbacksByRole` field from its fold shape and its `{}` initializer.
-- `src/report/report-types.ts`: delete the `fallbacksByRole` field from `DayReport` and from `SinceReport`.
-- `src/report/report-data.ts`: delete the two `setMapIfNonempty(day, "fallbacksByRole", fold.fallbacksByRole)` calls (the day collector and the role-scoped one).
-- `src/report/report-render.ts`: delete the `pushRankedRoleLine(lines, "Fallbacks by role", rankedRoleTotals(data.series, (d) => d.fallbacksByRole ?? {}))` call.
-- `src/report/report-since-data.ts`: delete the field from the fold shape, the `"fallbacksByRole"` member of the role-map key union, its `{}` initializer and the `fallbacksByRole: scopedByRole(acc.fallbacksByRole, bases)` line.
-- `src/report/report-since-render.ts`: delete its `pushRankedRoleLine(lines, "Fallbacks by role", …)` call.
-- `src/ui/gui/gui-client-report-chart.ts`: delete `chartFallbacksByRole` and remove `"fallbacksByRole"` from the `tallyAcross` key list; `src/ui/gui/gui-client-report.ts`: delete the `Fallbacks by role` block.
-- `docs/cli.md`: remove the `tumwater report` clause naming "fallbacks (model-fallback episodes started)".
-
-**Acceptance criteria.**
-- `grep -rn 'fallbacksByRole\|Fallbacks by role' src/` finds nothing, and `grep -n 'model-fallback episodes started' docs/cli.md` finds nothing.
-- `grep -c 'model_fallback_started' src/report/report-usage-fold.ts` prints 0, while the event type still exists in `src/events/events.ts`.
-- test/report-data.test.ts, test/report.test.ts and test/gui-client-report.test.ts pass with the `fallbacksByRole` fixture keys and the "count model_fallback_started per role, zero meaning absent" case removed; `npm run test:gate` passes.
-
-**Tests.** Update those three modules — remove the `fallbacksByRole` fixtures and the series assertions — then run them and the project's gate, and confirm green.
-
 ### Subtract, part 5n/6: The per-role model-fallback display goes — no role view, per-role status row or GUI drawer names an active episode (planned 2026-10-27 by the plan role; the second part replacing part 5c/6, sibling to parts 5c/6, 5o/6 and 5p/6; independent in file of part 5c/6, so the two can run side by side; touches src/roles/role-view.ts src/roles/role-render.ts src/status/status-roles.ts src/status/status-data.ts src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/role-view.test.ts test/status-data-models.test.ts test/gui-client-drawer.test.ts)
 
 **Goal.** The active model-fallback episode is no longer shown anywhere an operator reads a role: `RoleViewPayload.modelFallback`, the per-role status row's `fallback` field, `role-render.ts`'s `Model fallback:` line and the GUI drawer's row are gone. The episode machinery still runs until part 5o/6; only its displays go.

@@ -60,7 +60,6 @@ interface DayFold {
    * a `review_rejected` that carried a positive durationMs), unsorted. */
   reviewDurationsMs: number[];
   failedRunsByRole: Record<string, number>;
-  fallbacksByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   promptTokensByRole: Record<string, number>;
   cacheReadTokensByRole: Record<string, number>;
@@ -246,7 +245,6 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       checkWaitsMs: [],
       reviewDurationsMs: [],
       failedRunsByRole: {},
-      fallbacksByRole: {},
       tokensByRole: {},
       promptTokensByRole: {},
       cacheReadTokensByRole: {},

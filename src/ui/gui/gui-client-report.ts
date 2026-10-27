@@ -336,7 +336,6 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         (seriesHasAny(d, "postMergeRejectionsByRole") ? block("Post-merge rejections by role", chartPostMergeRejectionsByRole(d)) : "") +
         (seriesHasAny(d, "revisionsByRole") ? block("Revisions by role", chartRevisionsByRole(d)) : "") +
         (seriesHasAny(d, "refusalsByRole") ? block("Refusals by role", chartRefusalsByRole(d)) : "") +
-        (seriesHasAny(d, "fallbacksByRole") ? block("Fallbacks by role", chartFallbacksByRole(d)) : "") +
         (seriesHasAny(d, "failedRunsByRole") ? block("Failed runs by role", chartFailedRunsByRole(d)) : "") +
         (seriesHasAny(d, "mergedByRole") ? block("Merged by role", chartMergedByRole(d)) : "") +
         (!d.role && seriesHasAny(d, "runsByModel") ? block("Runs by model", chartRunsByModel(d)) : "") +

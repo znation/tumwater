@@ -77,9 +77,6 @@ export interface UsageFold {
    * runs that burned agent time and merged nothing without going through review. Split by role,
    * a parallel tally to runsByRole (never subtracted from it). */
   failedRunsByRole: Record<string, number>;
-  /** model_fallback_started events per role id, so a role whose primary keeps failing is
-   * visible beside its runs and cost. */
-  fallbacksByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   /** Prompt tokens per role id — the input side of the bill `tokensByRole` (output tokens)
    * hides, so the same report that says who burned output tokens also says whose prompts a
@@ -272,12 +269,6 @@ function foldRedCheck(target: UsageFold, _ev: HarnessEvent): void {
   target.checkFailures++;
 }
 
-/** Fold a model_fallback_started: one episode per start event, per role. */
-function foldFallbackStarted(target: UsageFold, ev: HarnessEvent): void {
-  // One episode per start event; durations are not summed (an episode can span the window edge).
-  addTo(target.fallbacksByRole, eventRole(ev), 1);
-}
-
 /** Fold a run_deferred: one deferral per event, bucketed by the raw reason code (team-only). */
 function foldDeferred(target: UsageFold, ev: HarnessEvent): void {
   // One deferral per event, a due maintenance run that stood down. Bucket by the raw
@@ -380,7 +371,7 @@ function foldMergeOutcome(target: UsageFold, ev: HarnessEvent): void {
 
 /** Fold one event into a usage accumulator by dispatching to a per-family builder —
  * foldRunEnd, foldReviewRejected, foldReviewVerdict, foldRevision, foldPassingCheck,
- * foldRedCheck, foldFallbackStarted, foldDeferred, foldMerged,
+ * foldRedCheck, foldDeferred, foldMerged,
  * foldRunStarted, foldProviderWait, foldSlotWait, foldCheckWait or foldMergeOutcome — each
  * named for the family it folds, so how a family folds is found by name. The dispatch holds
  * no accumulation of its own. All behavior lives in the builders: run_end events add a run
@@ -398,7 +389,6 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
   else if (ev.type === "revision") foldRevision(target, ev);
   else if (isPassingFullCheck(ev)) foldPassingCheck(target, ev);
   else if (isRedFullCheck(ev)) foldRedCheck(target, ev);
-  else if (ev.type === "model_fallback_started") foldFallbackStarted(target, ev);
   else if (ev.type === "run_deferred") foldDeferred(target, ev);
   else if (ev.type === "merged") foldMerged(target, ev);
   else if (ev.type === "run_start") foldRunStarted(target, ev);
