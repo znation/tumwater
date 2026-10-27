@@ -11,9 +11,11 @@ import { shortSha } from "../../text/format.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
-/** The Health pane (view roleIds.length + 7) of the TUI (src/ui/tui/tui.tsx): the problems-only
- * Ctrl+O toggle, the Ctrl+A commit-backlog, the Ctrl+B
- * backlog archive, and the runDoctor collector it re-reads on every entry. Split out of the
+/** The Health pane (view roleIds.length + 7) of the TUI (src/ui/tui/tui.tsx): the doctor
+ * re-run (Ctrl+R), reclaim (Ctrl+E), notify test (Ctrl+N), commit-backlog (Ctrl+A),
+ * kill-orphans (Ctrl+K), broken-pin drop (Ctrl+S), resync-install (Ctrl+U),
+ * retire-leftovers (Ctrl+L), backlog archive (Ctrl+B) and problems-only toggle (Ctrl+O),
+ * beside the runDoctor collector they re-read on every entry. Split out of the
  * pane-navigation monolith; it owns the problems flag and the last resolved report.
  * Each key arm lives in its own named inner const below so its guard, flash wording and
  * repaint are found by name; handleKey is only the ordered dispatch of those arms. */
