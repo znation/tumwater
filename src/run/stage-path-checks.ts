@@ -185,14 +185,11 @@ async function staleReferenceFindings(
   return findings;
 }
 
-/** (b) Nonexistent paths: every path-shaped token on an added diff line whose first segment is
- * a tracked top-level directory but which is absent from the staged tree. Rename origins and
- * deleted paths are excluded — "moved from X" prose names them legitimately. */
-async function missingPathFindings(
+/** The staged tree as the added-path check needs it: the set of every tracked path and the set
+ * of its top-level directories, from `git ls-files`. */
+async function readStagedIndex(
   wt: string,
-  diff: string,
-  entries: NameStatusEntry[],
-): Promise<string[]> {
+): Promise<{ staged: Set<string>; topDirs: Set<string> }> {
   const ls = await gitTry(wt, "ls-files");
   const staged = new Set<string>();
   const topDirs = new Set<string>();
@@ -202,11 +199,48 @@ async function missingPathFindings(
     const slash = p.indexOf("/");
     if (slash > 0) topDirs.add(p.slice(0, slash));
   }
+  return { staged, topDirs };
+}
+
+/** The paths a change moved code away from and must not flag: every rename origin and every
+ * deleted path in `entries`, which "moved from X" prose names legitimately. */
+function renameOriginPaths(entries: NameStatusEntry[]): Set<string> {
   const oldPaths = new Set<string>();
   for (const e of entries) {
     if (e.oldPath) oldPaths.add(e.oldPath);
     if (e.status === "D") oldPaths.add(e.path);
   }
+  return oldPaths;
+}
+
+/** The path-shaped tokens an added line names that are absent from the staged tree: a token whose
+ * first segment is a tracked top-level directory, not a rename origin or deleted path, not
+ * already staged, and not already seen. Each returned token is added to `seen` as it goes. */
+function missingPathTokens(
+  line: string,
+  staged: Set<string>,
+  topDirs: Set<string>,
+  oldPaths: Set<string>,
+  seen: Set<string>,
+): string[] {
+  const found: string[] = [];
+  for (const p of pathTokens(line.slice(1))) {
+    const top = p.slice(0, p.indexOf("/"));
+    if (!topDirs.has(top) || oldPaths.has(p) || staged.has(p) || seen.has(p)) continue;
+    seen.add(p);
+    found.push(p);
+  }
+  return found;
+}
+
+/** Every added diff line's missing-path tokens, tracking the current file to spare added lines in
+ * test/ and in record prose (isRecordProse). */
+function missingPathsInDiff(
+  diff: string,
+  staged: Set<string>,
+  topDirs: Set<string>,
+  oldPaths: Set<string>,
+): string[] {
   const seen = new Set<string>();
   const missing: string[] = [];
   let file: string | null = null;
@@ -221,13 +255,22 @@ async function missingPathFindings(
     // added-nonexistent-path heuristic targets real references, so it spares added lines in
     // test/ and in record prose (isRecordProse).
     if (file !== null && (file.startsWith("test/") || isRecordProse(file))) continue;
-    for (const p of pathTokens(line.slice(1))) {
-      const top = p.slice(0, p.indexOf("/"));
-      if (!topDirs.has(top) || oldPaths.has(p) || staged.has(p) || seen.has(p)) continue;
-      seen.add(p);
-      missing.push(p);
-    }
+    missing.push(...missingPathTokens(line, staged, topDirs, oldPaths, seen));
   }
+  return missing;
+}
+
+/** (b) Nonexistent paths: every path-shaped token on an added diff line whose first segment is
+ * a tracked top-level directory but which is absent from the staged tree. Rename origins and
+ * deleted paths are excluded — "moved from X" prose names them legitimately. */
+async function missingPathFindings(
+  wt: string,
+  diff: string,
+  entries: NameStatusEntry[],
+): Promise<string[]> {
+  const { staged, topDirs } = await readStagedIndex(wt);
+  const oldPaths = renameOriginPaths(entries);
+  const missing = missingPathsInDiff(diff, staged, topDirs, oldPaths);
   if (missing.length === 0) return [];
   return [
     `added lines name paths that do not exist in the tree: ${cappedList(missing, MAX_MISSING_PATHS)}`,
