@@ -56,12 +56,40 @@ export function createHealthPane(session: TuiPaneSession) {
     );
   };
 
-  // Each key arm below owns its whole guard unchanged: the five plain/commit arms test
-  // promptLineFree and the Health view, and the five two-press/action arms additionally test
-  // that the prompt line is empty. An arm whose guard fails returns false so the key falls
-  // through to the rest of the dispatch exactly as today.
+  // The Health key-arm guard every arm shares: the prompt line is free (an editor or typed
+  // text would keep the key for its own view's meaning) and the Health view is current; the
+  // armed arms (the five two-press/edit actions) additionally require a truly empty prompt
+  // line so a typed draft cannot arm on Ctrl+K/S/U/L/B. True means the arm may run.
+  const onHealthView = (ctx: TuiPaneCtx, armed: boolean): boolean =>
+    promptLineFree(ctx.es) &&
+    (!armed || (ctx.es.input ?? "") === "") &&
+    session.view === session.roleIds.length + 7;
+
+  // Run one Health-pane action: when the promise resolves its value is flashed through
+  // `done`, then — unless `rerun` is cleared (the notify test, whose outcome needs no doctor
+  // refresh) — the checks re-run in place and the pane re-enters at its head, the tail every
+  // action arm repeated; when it rejects, the failure flashes instead of killing the TUI. The
+  // starting notice and any pre-action render stay with each arm (some, like reclaim, show
+  // none), so the helper owns only the shared then/error plumbing. An arm whose guard fails
+  // returns false so the key falls through to the rest of the dispatch exactly as today.
+  const healthAction = <T>(promise: Promise<T>, done: (value: T) => void, rerun = true): void => {
+    void promise.then(
+      (value) => {
+        done(value);
+        if (rerun) {
+          void run();
+          session.paneScroll = 0;
+        }
+        session.requestRender();
+      },
+      (err: unknown) => {
+        session.flashError(err);
+        session.requestRender();
+      },
+    );
+  };
   const healthRefresh = (ctx: TuiPaneCtx): boolean => {
-    if (!(promptLineFree(ctx.es) && session.view === session.roleIds.length + 7)) return false;
+    if (!onHealthView(ctx, false)) return false;
     // Ctrl+R on the Health pane re-runs the same doctor checks in place — the terminal
     // twin of the dashboard Health card's Re-run button — repainting through the current
     // problems-only toggle, and re-enters at the head so the changed body starts at the
@@ -72,7 +100,7 @@ export function createHealthPane(session: TuiPaneSession) {
     return true;
   };
   const healthReclaim = (ctx: TuiPaneCtx): boolean => {
-    if (!(promptLineFree(ctx.es) && session.view === session.roleIds.length + 7)) return false;
+    if (!onHealthView(ctx, false)) return false;
     // Ctrl+E on the Health pane runs one manual reclaim pass now — the terminal twin of the
     // dashboard disk row's reclaim button and the core `tumwater reclaim`, both reached
     // through the same runManualReclaim. With a live team the pass is requested through the
@@ -80,22 +108,13 @@ export function createHealthPane(session: TuiPaneSession) {
     // in-process, since nothing is in use. The confirmation flashes verbatim; the doctor
     // re-runs so the free-disk row reflects what the pass freed, and a write failure flashes
     // instead of killing the TUI. Every other view keeps Ctrl+E's trailing-window cycle.
-    void runManualReclaim(session.root).then(
-      (message) => {
-        session.flashMessage(message);
-        void run();
-        session.paneScroll = 0;
-        session.requestRender();
-      },
-      (err: unknown) => {
-        session.flashError(err);
-        session.requestRender();
-      },
-    );
+    healthAction(runManualReclaim(session.root), (message) => {
+      session.flashMessage(message);
+    });
     return true;
   };
   const healthNotifyTest = (ctx: TuiPaneCtx): boolean => {
-    if (!(promptLineFree(ctx.es) && session.view === session.roleIds.length + 7)) return false;
+    if (!onHealthView(ctx, false)) return false;
     // Ctrl+N on the Health pane runs the saved notify hook once with the synthetic test event —
     // the terminal twin of `tumwater notify --test` and the dashboard Settings card's Send test,
     // both reached through the same testNotifyHook (src/cli/notify-command.ts) — so a terminal
@@ -107,24 +126,21 @@ export function createHealthPane(session: TuiPaneSession) {
     // transcript notes/change cycle, the History run trail, and the backlog new-entry form).
     session.flashMessage("running the notify hook …");
     session.requestRender();
-    void testNotifyHook(session.root, "ignore").then(
+    healthAction(
+      testNotifyHook(session.root, "ignore"),
       (outcome) => {
         session.flashMessage(
           outcome.status === "not_configured"
             ? "notify is not configured (set `notify` in tumwater.json)"
             : outcome.message,
         );
-        session.requestRender();
       },
-      (err: unknown) => {
-        session.flashError(err);
-        session.requestRender();
-      },
+      false,
     );
     return true;
   };
   const healthCommitBacklog = (ctx: TuiPaneCtx): boolean => {
-    if (!(promptLineFree(ctx.es) && session.view === session.roleIds.length + 7)) return false;
+    if (!onHealthView(ctx, false)) return false;
     // Ctrl+A on the Health pane commits each uncommitted tracked backlog or brief file in the
     // primary checkout — the terminal twin of `tumwater doctor --commit-backlog` and the
     // dashboard Health card's Commit backlog button, all reached through the same
@@ -136,22 +152,13 @@ export function createHealthPane(session: TuiPaneSession) {
     // before the pane router, so this arm never shadows it.
     session.flashMessage("committing the uncommitted backlog/brief files …");
     session.requestRender();
-    void session.commitBacklog(session.root).then(
-      (report) => {
-        session.flashMessage(backlogCommitMessage(report));
-        void run();
-        session.paneScroll = 0;
-        session.requestRender();
-      },
-      (err: unknown) => {
-        session.flashError(err);
-        session.requestRender();
-      },
-    );
+    healthAction(session.commitBacklog(session.root), (report) => {
+      session.flashMessage(backlogCommitMessage(report));
+    });
     return true;
   };
   const healthKillOrphans = (ctx: TuiPaneCtx): boolean => {
-    if (!(promptLineFree(ctx.es) && (ctx.es.input ?? "") === "" && session.view === session.roleIds.length + 7)) return false;
+    if (!onHealthView(ctx, true)) return false;
     // Ctrl+K on the Health pane, pressed twice, kills the orphaned processes the orphans check
     // lists, each with its descendants — the terminal twin of `tumwater doctor --kill-orphans`
     // and the dashboard Health card's Kill orphans, all reached through the same killOrphans.
@@ -170,22 +177,13 @@ export function createHealthPane(session: TuiPaneSession) {
     }
     session.flashMessage("killing orphaned processes …");
     session.requestRender();
-    void session.killOrphans(session.root).then(
-      (report) => {
-        session.flashMessage(orphanKillLines(report).join("; "));
-        void run();
-        session.paneScroll = 0;
-        session.requestRender();
-      },
-      (err: unknown) => {
-        session.flashError(err);
-        session.requestRender();
-      },
-    );
+    healthAction(session.killOrphans(session.root), (report) => {
+      session.flashMessage(orphanKillLines(report).join("; "));
+    });
     return true;
   };
   const healthDropBrokenPins = (ctx: TuiPaneCtx): boolean => {
-    if (!(promptLineFree(ctx.es) && (ctx.es.input ?? "") === "" && session.view === session.roleIds.length + 7)) return false;
+    if (!onHealthView(ctx, true)) return false;
     // Ctrl+S on the Health pane, pressed twice, drops each broken refs/tumwater/ pin (one
     // whose commit is gone) — the terminal twin of `tumwater doctor --drop-broken-pins` and
     // the dashboard Health card's Drop broken pins, all reached through the same
@@ -206,23 +204,14 @@ export function createHealthPane(session: TuiPaneSession) {
     }
     session.flashMessage("dropping broken pins …");
     session.requestRender();
-    void session.dropBrokenPins(session.root).then(
-      (report) => {
-        const lines = brokenPinDropLines(report);
-        session.flashMessage(lines.length > 0 ? lines.join("; ") : "no broken pins to drop");
-        void run();
-        session.paneScroll = 0;
-        session.requestRender();
-      },
-      (err: unknown) => {
-        session.flashError(err);
-        session.requestRender();
-      },
-    );
+    healthAction(session.dropBrokenPins(session.root), (report) => {
+      const lines = brokenPinDropLines(report);
+      session.flashMessage(lines.length > 0 ? lines.join("; ") : "no broken pins to drop");
+    });
     return true;
   };
   const healthResyncInstall = (ctx: TuiPaneCtx): boolean => {
-    if (!(promptLineFree(ctx.es) && (ctx.es.input ?? "") === "" && session.view === session.roleIds.length + 7)) return false;
+    if (!onHealthView(ctx, true)) return false;
     // Ctrl+U on the Health pane re-syncs the root checkout's install now — the terminal twin
     // of `tumwater doctor --resync-install` and the dashboard Health card's Re-sync install,
     // all reached through the same resyncRootInstall, so the `install` row/alert's advice is
@@ -233,22 +222,13 @@ export function createHealthPane(session: TuiPaneSession) {
     // is unbound on every other view.
     session.flashMessage("re-syncing the root install …");
     session.requestRender();
-    void resyncRootInstall(session.root).then(
-      (r) => {
-        session.flashMessage(rootInstallResyncLines(r).join("; "));
-        void run();
-        session.paneScroll = 0;
-        session.requestRender();
-      },
-      (err: unknown) => {
-        session.flashError(err);
-        session.requestRender();
-      },
-    );
+    healthAction(resyncRootInstall(session.root), (r) => {
+      session.flashMessage(rootInstallResyncLines(r).join("; "));
+    });
     return true;
   };
   const healthRetireLeftovers = (ctx: TuiPaneCtx): boolean => {
-    if (!(promptLineFree(ctx.es) && (ctx.es.input ?? "") === "" && session.view === session.roleIds.length + 7)) return false;
+    if (!onHealthView(ctx, true)) return false;
     // Ctrl+L on the Health pane, pressed twice, retires every disabled role's leftover
     // worktree, branch and merge ref in one pass — the terminal twin of `tumwater doctor
     // --retire-leftovers` and the dashboard Health card's Retire leftovers, all reached
@@ -269,23 +249,14 @@ export function createHealthPane(session: TuiPaneSession) {
     }
     session.flashMessage("retiring every disabled role's leftovers …");
     session.requestRender();
-    void session.retireLeftovers(session.root).then(
-      (report) => {
-        const lines = leftoverRetireLines(report);
-        session.flashMessage(lines.length > 0 ? lines.join("; ") : "no leftover roles to retire");
-        void run();
-        session.paneScroll = 0;
-        session.requestRender();
-      },
-      (err: unknown) => {
-        session.flashError(err);
-        session.requestRender();
-      },
-    );
+    healthAction(session.retireLeftovers(session.root), (report) => {
+      const lines = leftoverRetireLines(report);
+      session.flashMessage(lines.length > 0 ? lines.join("; ") : "no leftover roles to retire");
+    });
     return true;
   };
   const healthArchiveBacklog = (ctx: TuiPaneCtx): boolean => {
-    if (!(promptLineFree(ctx.es) && (ctx.es.input ?? "") === "" && session.view === session.roleIds.length + 7)) return false;
+    if (!onHealthView(ctx, true)) return false;
     // Ctrl+B on the Health pane, pressed twice, archives the finished entries still under
     // PLANS.md's ## Done and BUGS.md's ## Fixed into PLANS-DONE.md and BUGS-FIXED.md and
     // commits them on the base branch — the terminal twin of `tumwater archive` and the
@@ -306,28 +277,19 @@ export function createHealthPane(session: TuiPaneSession) {
     }
     session.flashMessage("archiving finished backlog entries …");
     session.requestRender();
-    void session.archiveBacklog(session.root).then(
-      (outcome) => {
-        if (outcome.status === "nothing") {
-          session.flashMessage("nothing to archive: PLANS.md ## Done and BUGS.md ## Fixed hold no finished entries");
-        } else if (outcome.status === "skipped") {
-          session.flashMessage(`nothing archived: ${outcome.reason}`);
-        } else {
-          session.flashMessage([...outcome.moved.map(describeArchivedFile), `committed ${shortSha(outcome.commit)}`].join("; "));
-        }
-        void run();
-        session.paneScroll = 0;
-        session.requestRender();
-      },
-      (err: unknown) => {
-        session.flashError(err);
-        session.requestRender();
-      },
-    );
+    healthAction(session.archiveBacklog(session.root), (outcome) => {
+      if (outcome.status === "nothing") {
+        session.flashMessage("nothing to archive: PLANS.md ## Done and BUGS.md ## Fixed hold no finished entries");
+      } else if (outcome.status === "skipped") {
+        session.flashMessage(`nothing archived: ${outcome.reason}`);
+      } else {
+        session.flashMessage([...outcome.moved.map(describeArchivedFile), `committed ${shortSha(outcome.commit)}`].join("; "));
+      }
+    });
     return true;
   };
   const healthToggleProblems = (ctx: TuiPaneCtx): boolean => {
-    if (!(promptLineFree(ctx.es) && session.view === session.roleIds.length + 7)) return false;
+    if (!onHealthView(ctx, false)) return false;
     // Ctrl+O on the Health pane toggles the problems-only view (mnemonic: **O**nly
     // problems) — the same warn/fail trim `tumwater doctor --problems` applies — so an
     // operator can hide the ok rows without leaving the surface. The pane repaints from the
