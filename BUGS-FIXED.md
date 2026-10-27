@@ -5,6 +5,12 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `a timed-out check does not settle on its leader's close while a grandchild survives` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+Load-sensitive flake, not a check defect: the test's `waitFor(() => !pidAlive(sleepPid), …)` gave the host only 300 ms to reap the SIGKILLed grandchild, while its twin (the "group to die" wait above) gives 5 s and the file's own comment warns a tight budget turns a loaded host into a flake (the run already settles only after the whole group is gone; how fast the host reaps a dead pid is its business, not the check's). Raised the budget to 5 s, matching the twin.
+
+**Validation gap:** no-repro — could not reproduce deterministically; the failure only fires under a saturated full-suite run, not in isolation.
+
 ### `a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

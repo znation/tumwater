@@ -214,7 +214,11 @@ test("a timed-out check does not settle on its leader's close while a grandchild
     const sleepPid = readPid(path.join(wt, "sleep.pid"));
     assert.equal(outcome.skipReason, "timeout");
     assert.ok(pgid > 0 && sleepPid > 0, "the fixture's tree started before the deadline");
-    await waitFor(() => !pidAlive(sleepPid), "the surviving grandchild to be reaped", 300);
+    // The SIGKILL is delivered by the grace before the check settles, but the host reaps the
+    // dead process asynchronously (node and launchd's business, not the check's — same as the
+    // "group to die" wait in the twin above): a 300 ms budget turned a loaded merge-gate run
+    // into a flake (BUGS.md 2026-10-26 quarantine). Match that twin's generous 5 s budget.
+    await waitFor(() => !pidAlive(sleepPid), "the surviving grandchild to be reaped", 5_000);
     assert.equal(pidAlive(sleepPid), false, "the surviving grandchild was SIGKILLed before the check settled");
   } finally {
     killGroupQuietly(pgid);

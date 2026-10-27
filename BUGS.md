@@ -174,23 +174,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 **Needs review 2026-10-26 by bugfix: the failure message names the exact assertion, so the next flake reads which line broke — if it is the `.durations.json` byte-identity assert, check whether an outer run's final `recordDurations` overlapped a nested writer (`before` vs `after` diff in the output); if it is a coverage-table line, the `**/test/**` exclude or the `all files` row under peak process contention; if it is `status`, the nested spawn itself.**
 
-### `a timed-out check does not settle on its leader's close while a grandchild survives` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 145474.570875
-✖ failing tests:
-test at dist/test/build-check-process.test.js:195:1
-✖ a timed-out check does not settle on its leader's close while a grandchild survives (3696.310917ms)
-Error: timed out waiting for the surviving grandchild to be reaped
-at waitFor (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-7/dist/test/helpers/wait.js:38:19)
-at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-7/dist/test/build-check-process.test.js:205:9)
-~~~~
-
 ### `an on-time merge-scope timeout names a starved host, and stays silent on an idle one` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
