@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `a batch whose base main moves mid-check through a run-path merge re-stacks and merges` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. It is the same load-sensitive wall-clock class as the sibling abort test fixed in the same commit (BUGS.md 2026-10-26): the test waits on `.batch-started`, which the shared batch check touches only after the two verifies' gate pre-checks and a real `git commit` on main (`commitOnMain`) — real git work a saturated full-suite run can stretch past the 30 s default of `waitForFile`, so the deadline expired even though the check completed. Fix: widened the `waitForFile(started)` call for this re-stack test to the suite's generous 60 s norm; the poll returns the instant the file appears, so a healthy run reads it immediately, and a genuine hang (a check never reaching the batch run) still exhausts the bound and fails. (Found by the ci role 2026-10-26; the failing output follows.)
+
+~~~~
+Error: timed out waiting for the surviving grandchild to be reaped
+at waitFor (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wait.js:38:19)
+at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/build-check-process.test.js:200:9)
+test at dist/test/merger-restack.test.js:23:1
+✖ a batch whose base main moves mid-check through a run-path merge re-stacks and merges (51599.223666ms)
+Error: timed out waiting for /var/folders/b9/k1g956z91ng501__892dp0sw0000gn/T/tumwater-test-run-F7rEdz/tumwater-test-I8HP4I/.batch-started
+at waitForFile (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wait.js:50:19)
+at async file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/merger-restack.test.js:35:13
+at async withPi (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/fakes/fake-pi.js:96:16)
+at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/merger-restack.test.js:33:9)
+~~~~
+
+**Validation gap:** no-repro — the isolated test passes and the timeout could not be reproduced on demand (the reported failure already names the exact wait), so the fix relaxes a real-time bound a saturated suite can exceed rather than proves a failing assertion.
+
 ### `a merge- or batch-scope timeout is a deterministic reject, not an environmental skip` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

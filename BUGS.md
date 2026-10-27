@@ -184,23 +184,6 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 an on-time merge-scope timeout names a starved host, and stays silent on an idle one
 ~~~~
 
-### `a batch whose base main moves mid-check through a run-path merge re-stacks and merges` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-Error: timed out waiting for the surviving grandchild to be reaped
-at waitFor (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wait.js:38:19)
-at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/build-check-process.test.js:200:9)
-test at dist/test/merger-restack.test.js:23:1
-✖ a batch whose base main moves mid-check through a run-path merge re-stacks and merges (51599.223666ms)
-Error: timed out waiting for /var/folders/b9/k1g956z91ng501__892dp0sw0000gn/T/tumwater-test-run-F7rEdz/tumwater-test-I8HP4I/.batch-started
-at waitForFile (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wait.js:50:19)
-at async file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/merger-restack.test.js:35:13
-at async withPi (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/fakes/fake-pi.js:96:16)
-at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/merger-restack.test.js:33:9)
-~~~~
-
 ### `doctor --commit-backlog …` and `roles.dry.enabled: false …` both returned empty child stdout (ci run 2026-10-26, main tip de048f2)
 
 Two unrelated `doctor` tests failed in ONE full `npm test` run against main tip de048f2, each reading an empty (or runt) `cli` subprocess stdout under host load, and both passed in a file-isolated re-run (42/42 across `dist/test/doctor.test.js` and `dist/test/legacy-role-ids.test.js`). Same root class, so one entry: the spawned CLI's captured stdout came back empty, so a `JSON.parse`/regex match on it fails. Not the e2e wall-clock class; this is the doctor child-process capture path flaking.
