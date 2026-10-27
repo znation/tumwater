@@ -274,34 +274,10 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
     const info = objectOrEmpty(event.rate_limit_info);
     const rateLimitType = optionalString(info.rateLimitType);
     const status = optionalString(info.status);
-    // claude 2.1.295 reports every window's utilization and reset under `unifiedWindows`,
-    // keyed by window type, and only the binding window's status at the top level.
-    const windows: string[] = [];
-    for (const [type, raw] of Object.entries(objectOrEmpty(info.unifiedWindows))) {
-      if (type === rateLimitType || !isJsonObject(raw)) continue;
-      const reading: Json = { type: "rate_limit", rateLimitType: type };
-      const windowResets = nonNegativeNumber(raw.resetsAt, undefined);
-      if (windowResets !== undefined) reading.resetsAt = windowResets;
-      const windowUtil = nonNegativeNumber(raw.utilization, undefined);
-      if (windowUtil !== undefined) reading.utilization = windowUtil;
-      windows.push(JSON.stringify(reading));
-    }
-    const own = rateLimitType === undefined ? undefined : objectOrEmpty(objectOrEmpty(info.unifiedWindows)[rateLimitType]);
-    const resetsAt = nonNegativeNumber(info.resetsAt, undefined) ?? nonNegativeNumber(own?.resetsAt, undefined);
-    const out: Json = { type: "rate_limit" };
-    if (rateLimitType !== undefined) out.rateLimitType = rateLimitType;
-    if (status !== undefined) out.status = status;
-    if (resetsAt !== undefined) out.resetsAt = resetsAt;
-    const utilization = nonNegativeNumber(info.utilization, undefined) ?? nonNegativeNumber(own?.utilization, undefined);
-    if (utilization !== undefined) out.utilization = utilization;
-    const overageStatus = optionalString(info.overageStatus);
-    if (overageStatus !== undefined) out.overageStatus = overageStatus;
-    if (info.isUsingOverage === true) out.isUsingOverage = true;
-    if (status === "rejected" && resetsAt !== undefined) {
-      // resetsAt is a unix-seconds stamp; secondsUntilUnixStamp folds it to whole seconds.
-      out.retryAfterSeconds = secondsUntilUnixStamp(resetsAt, Date.now());
-    }
-    return [JSON.stringify(out), ...windows];
+    return [
+      JSON.stringify(claudeRateLimitReading(info, rateLimitType, status)),
+      ...claudeRateLimitWindowReadings(info, rateLimitType),
+    ];
   };
 
   const handleResult = (event: Json): string[] => {
@@ -377,6 +353,59 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
       return [...warnings];
     },
   };
+}
+
+/** One reading per sibling `unifiedWindows` window other than the binding window. */
+function claudeRateLimitWindowReadings(info: Json, rateLimitType: string | undefined): string[] {
+  // claude 2.1.295 reports every window's utilization and reset under `unifiedWindows`,
+  // keyed by window type, and only the binding window's status at the top level.
+  const windows: string[] = [];
+  for (const [type, raw] of Object.entries(objectOrEmpty(info.unifiedWindows))) {
+    if (type === rateLimitType || !isJsonObject(raw)) continue;
+    const reading: Json = { type: "rate_limit", rateLimitType: type };
+    const windowResets = nonNegativeNumber(raw.resetsAt, undefined);
+    if (windowResets !== undefined) reading.resetsAt = windowResets;
+    const windowUtil = nonNegativeNumber(raw.utilization, undefined);
+    if (windowUtil !== undefined) reading.utilization = windowUtil;
+    windows.push(JSON.stringify(reading));
+  }
+  return windows;
+}
+
+/** The binding window's own `unifiedWindows` record, if a rate-limit type was named. */
+function claudeRateLimitOwnWindow(info: Json, rateLimitType: string | undefined): Json | undefined {
+  return rateLimitType === undefined ? undefined : objectOrEmpty(objectOrEmpty(info.unifiedWindows)[rateLimitType]);
+}
+
+/** The binding window's reset time: the top-level `resetsAt` falling back to its own record. */
+function claudeRateLimitResetsAt(info: Json, own: Json | undefined): number | undefined {
+  return nonNegativeNumber(info.resetsAt, undefined) ?? nonNegativeNumber(own?.resetsAt, undefined);
+}
+
+/** The binding window's utilization: the top-level `utilization` falling back to its own record. */
+function claudeRateLimitUtilization(info: Json, own: Json | undefined): number | undefined {
+  return nonNegativeNumber(info.utilization, undefined) ?? nonNegativeNumber(own?.utilization, undefined);
+}
+
+/** The binding window's canonical reading: its optional fields, plus a rejected window's
+ * retry-after. */
+function claudeRateLimitReading(info: Json, rateLimitType: string | undefined, status: string | undefined): Json {
+  const own = claudeRateLimitOwnWindow(info, rateLimitType);
+  const resetsAt = claudeRateLimitResetsAt(info, own);
+  const out: Json = { type: "rate_limit" };
+  if (rateLimitType !== undefined) out.rateLimitType = rateLimitType;
+  if (status !== undefined) out.status = status;
+  if (resetsAt !== undefined) out.resetsAt = resetsAt;
+  const utilization = claudeRateLimitUtilization(info, own);
+  if (utilization !== undefined) out.utilization = utilization;
+  const overageStatus = optionalString(info.overageStatus);
+  if (overageStatus !== undefined) out.overageStatus = overageStatus;
+  if (info.isUsingOverage === true) out.isUsingOverage = true;
+  if (status === "rejected" && resetsAt !== undefined) {
+    // resetsAt is a unix-seconds stamp; secondsUntilUnixStamp folds it to whole seconds.
+    out.retryAfterSeconds = secondsUntilUnixStamp(resetsAt, Date.now());
+  }
+  return out;
 }
 
 /** The run's billing, from `system/init.apiKeySource`: claude.ai OAuth reports `"none"`, an
