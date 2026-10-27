@@ -187,11 +187,16 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
     renderHistory();
     try {
       const d = await getJson("/api/run?last=1&result=problems");
-      // Name the endpoint and the run it answered for: a 200 without a text or role field is a
-      // server too old (or too new) for this dashboard's client, not a lost run.
+      // Name the endpoint, the run it answered for, and the actually missing field: a 200
+      // without either text or role is a server too old (or too new) for this dashboard's
+      // client, not a lost run. text is the usual miss (the card would render nothing) and
+      // role decides the card's cache key, so name role when text is present but the role
+      // is not rather than blaming text for a field the reply did carry.
       if (!d || typeof d.text !== "string" || typeof d.role !== "string")
         throw new Error(
-          "/api/run answered the newest failing run without a text field — the running tumwater may not match this dashboard",
+          "/api/run answered the newest failing run without a " +
+            (!d || typeof d.role !== "string" ? "role" : "text") +
+            " field — the running tumwater may not match this dashboard",
         );
       const key = histDetailKey(d.role, d.run);
       histDetails.set(key, histDetailOk(d));
