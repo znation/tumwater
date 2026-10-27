@@ -19,7 +19,7 @@ import os from "node:os";
 import path from "node:path";
 import type { StringDecoder } from "node:string_decoder";
 import type { ResolvedModelConfig } from "../config/config-views.js";
-import { ensureDir } from "../files/files.js";
+import { ensureDir, removeTree } from "../files/files.js";
 import type { ResolvedBackendBin } from "../pi/pi-bin.js";
 import { runOnAbort, terminateChild } from "../process/process.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
@@ -329,7 +329,15 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     } catch (err) {
       // A synchronous throw in the run's build-and-spawn stage (claude's invocation rejects a
       // run with no resolved model) rejects the run, preserving the contract a synchronous
-      // executor's throw used to get from the Promise constructor.
+      // executor's throw used to get from the Promise constructor. No child was spawned, so no
+      // `error`/`close` ever fires and the settle path that removes the private TMPDIR
+      // (run-stream.ts's finish) never runs — remove it here, best-effort like finish does, so
+      // a broken run does not leave a `tumwater-run-*` temp dir behind.
+      try {
+        removeTree(runTmp);
+      } catch {
+        /* left for the OS temp sweep */
+      }
       reject(err instanceof Error ? err : new Error(`runAgent: ${String(err)}`));
     }
   });

@@ -182,3 +182,48 @@ test("a failed spawn never calls a backend's afterRun", async () => {
   assert.equal(result.ok, false, "a failed spawn is a failure");
   assert.equal(afterCalls, 0, "a binary that never started spends no afterRun");
 });
+
+test("a synchronous backend invocation throw does not leak the run's private temp dir", async () => {
+  // runAgent creates a private TMPDIR (`tumwater-run-*` under os.tmpdir) before it builds the
+  // spawn, and only the stream's finish() removes it on the settle paths. A backend whose
+  // invocation() throws synchronously (claude rejecting a run with no model) throws inside
+  // buildAndSpawn before any child exists, so no `error`/`close` fires and finish() never runs;
+  // runAgent's catch rejects without cleaning the temp dir up. This pins that the catch removes
+  // it best-effort, so a broken run leaves no `tumwater-run-*` behind to accumulate.
+  const dir = tmpdir();
+  const sandbox = tmpdir(); // a per-run-root dir; TMPDIR is redirected onto it so runTmp lands inside
+  const oldTmp = process.env.TMPDIR;
+  process.env.TMPDIR = sandbox; // os.tmpdir() re-reads the env on each call, so runTmp lands here
+  const fake: AgentBackend = {
+    id: "fake-invocation-throw",
+    label: "fake",
+    defaultBin: "fake",
+    binEnv: "TUMWATER_FAKE_BIN",
+    resolveBin: () => ({ bin: "/bin/sh", source: "config" }),
+    invocation: () => {
+      throw new Error("no model configured");
+    },
+    translator: () => ({ translate: (line) => [line] }),
+    classifyExit: () => ({}),
+  };
+  registerAgentBackend(fake);
+  try {
+    await assert.rejects(
+      runAgent({
+        cwd: dir,
+        prompt: "p",
+        config: { ...defaultConfig(), agent: "fake-invocation-throw" },
+        sessionDir: path.join(dir, "sessions"),
+        sessionName: "t",
+        rawLogFile: path.join(dir, "raw.jsonl"),
+        nativeLogFile: path.join(dir, "native.jsonl"),
+        kind: "author",
+      }),
+      /no model configured/,
+    );
+  } finally {
+    process.env.TMPDIR = oldTmp;
+  }
+  const leftovers = fs.readdirSync(sandbox).filter((n) => n.startsWith("tumwater-run-"));
+  assert.deepEqual(leftovers, [], "the failed run must remove its private temp dir");
+});
