@@ -53,6 +53,21 @@ interface SeriesInfo {
 /** The per-part state a named part renders: its planned hold, `done`, or `not in the backlog`. */
 type PartState = EntryHold | "done" | "not-in-backlog";
 
+/** A part the notes name, with the live state it renders. */
+interface NamedPart {
+  seriesLower: string;
+  part: string;
+  of: number;
+  state: PartState;
+}
+
+/** A planned entry or bug the notes name, with the live state it renders. */
+interface NamedEntry {
+  title: string;
+  file: "plans" | "bugs";
+  state: PartState;
+}
+
 const MAX_BLOCK_LINES = 12;
 const HEADER =
   "What the backlog says now about entries your notes name (PLANS.md and BUGS.md as of this run; where your notes disagree, this is current):";
@@ -134,48 +149,75 @@ function seriesSummary(info: SeriesInfo): string {
   return `${plural(info.plannedCount, "part")} planned: ${counts.join(", ")}`;
 }
 
-/** The live backlog block for the notes, or undefined when they name nothing live. */
-export function notesBacklogBlock(notes: string, backlog: NotesBacklog): string | undefined {
-  const { planned, openBugs, donePlanTitles } = backlog;
-  const series = seriesInfos(planned, donePlanTitles);
-  const allParts = plannedPartKeys(planned);
+/** Index each live series' first word to its count, so a bare first word names a series only
+ * when no other live series shares it. */
+function firstWordCountsOf(series: Map<string, SeriesInfo>): Map<string, number> {
   const firstWordCounts = new Map<string, number>();
   for (const info of series.values()) {
     const w = firstWord(info.name);
     firstWordCounts.set(w, (firstWordCounts.get(w) ?? 0) + 1);
   }
-  const allEntries = [...planned, ...openBugs];
-  const namedSeries = new Set<string>();
-  const namedParts = new Map<string, { seriesLower: string; part: string; of: number; state: PartState }>();
-  const namedEntries = new Map<string, { title: string; file: "plans" | "bugs"; state: PartState }>();
+  return firstWordCounts;
+}
 
-  for (const rawLine of notes.split("\n")) {
-    const line = collapseWhitespace(rawLine).toLowerCase();
-    if (line === "") continue;
-    for (const [sLower, info] of series) {
-      const hasFull = lineHas(line, info.name.toLowerCase());
-      const fw = firstWord(info.name);
-      const hasFirst = firstWordCounts.get(fw) === 1 && lineHas(line, fw);
-      if (!hasFull && !hasFirst) continue;
-      const refs = partRefsInLine(line).filter((r) => r.of === info.of);
-      if (refs.length === 0) {
-        namedSeries.add(sLower);
-      } else {
-        for (const r of refs) {
-          const key = partKey(info.name, r.part);
-          const state: PartState = info.holds.has(key) ? info.holds.get(key)! : info.done.has(key) ? "done" : "not-in-backlog";
-          namedParts.set(`${sLower}\u0000${r.part}\u0000${r.of}`, { seriesLower: sLower, part: r.part, of: r.of, state });
-        }
-      }
-    }
-    for (const [i, entry] of allEntries.entries()) {
-      const phrase = firstSixWords(entryKey(entry.title));
-      if (phrase !== "" && line.includes(phrase)) {
-        namedEntries.set(entryKey(entry.title), { title: entry.title, file: i < planned.length ? "plans" : "bugs", state: entryHoldAgainst(entry, allParts) });
+/** The state a named part renders for one part key: its planned hold, `done`, or `not in the
+ * backlog`. */
+function partStateOf(info: SeriesInfo, key: string): PartState {
+  return info.holds.has(key) ? info.holds.get(key)! : info.done.has(key) ? "done" : "not-in-backlog";
+}
+
+/** Name the live series a line mentions: by full name, or by its sole-shared first word; the
+ * `i/n` part refs of that series fill `namedParts` (under a `\u0000`-joined key) and a line with
+ * a series token but no part ref names the series. */
+function nameSeriesInLine(
+  line: string,
+  series: Map<string, SeriesInfo>,
+  firstWordCounts: Map<string, number>,
+  namedSeries: Set<string>,
+  namedParts: Map<string, NamedPart>,
+): void {
+  for (const [sLower, info] of series) {
+    const hasFull = lineHas(line, info.name.toLowerCase());
+    const fw = firstWord(info.name);
+    const hasFirst = firstWordCounts.get(fw) === 1 && lineHas(line, fw);
+    if (!hasFull && !hasFirst) continue;
+    const refs = partRefsInLine(line).filter((r) => r.of === info.of);
+    if (refs.length === 0) {
+      namedSeries.add(sLower);
+    } else {
+      for (const r of refs) {
+        const state = partStateOf(info, partKey(info.name, r.part));
+        namedParts.set(`${sLower}\u0000${r.part}\u0000${r.of}`, { seriesLower: sLower, part: r.part, of: r.of, state });
       }
     }
   }
+}
 
+/** Name a planned entry or Open bug whose first six words (entryKey-normalized) appear in the
+ * line. */
+function nameEntriesInLine(
+  line: string,
+  allEntries: readonly BacklogEntry[],
+  allParts: ReadonlySet<string>,
+  plannedCount: number,
+  namedEntries: Map<string, NamedEntry>,
+): void {
+  for (const [i, entry] of allEntries.entries()) {
+    const phrase = firstSixWords(entryKey(entry.title));
+    if (phrase !== "" && line.includes(phrase)) {
+      namedEntries.set(entryKey(entry.title), { title: entry.title, file: i < plannedCount ? "plans" : "bugs", state: entryHoldAgainst(entry, allParts) });
+    }
+  }
+}
+
+/** Render the named series summaries, part lines and entry lines, truncating to `MAX_BLOCK_LINES`
+ * with a remainder line naming the dropped items; undefined when nothing live was named. */
+function renderNamedItems(
+  namedSeries: Set<string>,
+  namedParts: Map<string, NamedPart>,
+  namedEntries: Map<string, NamedEntry>,
+  series: Map<string, SeriesInfo>,
+): string | undefined {
   const lines: string[] = [];
   for (const sLower of namedSeries) {
     const info = series.get(sLower);
@@ -192,4 +234,27 @@ export function notesBacklogBlock(notes: string, backlog: NotesBacklog): string 
   if (lines.length <= cap) return [HEADER, ...lines].join("\n");
   const shown = lines.slice(0, cap - 1);
   return [HEADER, ...shown, `… and ${plural(lines.length - shown.length, "more named item")}`].join("\n");
+}
+
+/** Build the live backlog block: index each series' first word (`firstWordCountsOf`), read every
+ * notes line naming the series, parts and entries it mentions (`nameSeriesInLine`/
+ * `nameEntriesInLine`), then render and truncate the names (`renderNamedItems`). Returns undefined
+ * when the notes name nothing live. */
+export function notesBacklogBlock(notes: string, backlog: NotesBacklog): string | undefined {
+  const { planned, openBugs, donePlanTitles } = backlog;
+  const series = seriesInfos(planned, donePlanTitles);
+  const allParts = plannedPartKeys(planned);
+  const firstWordCounts = firstWordCountsOf(series);
+  const allEntries = [...planned, ...openBugs];
+  const namedSeries = new Set<string>();
+  const namedParts = new Map<string, NamedPart>();
+  const namedEntries = new Map<string, NamedEntry>();
+
+  for (const rawLine of notes.split("\n")) {
+    const line = collapseWhitespace(rawLine).toLowerCase();
+    if (line === "") continue;
+    nameSeriesInLine(line, series, firstWordCounts, namedSeries, namedParts);
+    nameEntriesInLine(line, allEntries, allParts, planned.length, namedEntries);
+  }
+  return renderNamedItems(namedSeries, namedParts, namedEntries, series);
 }
