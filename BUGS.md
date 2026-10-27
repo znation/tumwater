@@ -218,6 +218,44 @@ diff: 'simple'
 }
 ~~~~
 
+### `doctor --commit-backlog commits a dirty backlog file before the report; with --json it is the report's backlogCommit field` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ a wedged xcrun cannot freeze the suite environment probe: the probe is bounded (1590.138958ms)
+AssertionError [ERR_ASSERTION]: probe took 1583ms; it was not bounded
+at withWedgedXcrun (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wedged-xcrun.js:28:16)
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/test-runner.test.js:387:5)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: false,
+expected: true,
+operator: '==',
+diff: 'simple'
+}
+~~~~
+
+### `a wedged xcrun cannot freeze the suite environment probe: the probe is bounded` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ a wedged xcrun cannot freeze the suite environment probe: the probe is bounded (1590.138958ms)
+AssertionError [ERR_ASSERTION]: probe took 1583ms; it was not bounded
+at withWedgedXcrun (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wedged-xcrun.js:28:16)
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/test-runner.test.js:387:5)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: false,
+expected: true,
+operator: '==',
+diff: 'simple'
+}
+~~~~
+
 ## Fixed
 
 ## Verified
