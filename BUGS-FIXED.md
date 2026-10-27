@@ -99,6 +99,8 @@ Load-sensitive flake, not a check defect: the test's `waitFor(() => !pidAlive(sl
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
 
+The flake was the `waitFor(() => !groupAlive(pgid), …, 300)` budget in `test/build-check-process.test.ts`: after the grace SIGKILLs the group, node+launchd reap the dead tree asynchronously, and a load probe measured group-death up to ~1190 ms under 12-core load (~86 ms idle) — so a 300 ms real-time window died on loaded CI. The window only existed to catch the pre-fix "settle at the deadline with the SIGKILL ~800 ms pending" leak, which is already pinned deterministically by the `assert.ok(ran >= 1_700)` mock-clock guard above it, so the window was widened to 5 s (matching the file's other reap waits) and the comment rewritten to say so.
+
 **Validation gap:** no-repro — the flake is load-dependent and could not be reproduced deterministically; a load probe showed the SIGKILL'd process group can take over 300 ms to die and be reaped (worst ≈ 1.2 s under load), exceeding the old wait budget.
 
 ~~~~
