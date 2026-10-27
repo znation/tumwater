@@ -168,12 +168,25 @@ async function runStageSelfCheck(
   ctx: RunStageContext,
   desc: StagedCommitDescription,
 ): Promise<RunOutcome | undefined> {
-  const s = ctx.state;
   // The gate's deterministic backlog checks run here, before the commit, while the authoring
   // session can still be continued: a finding that reaches review costs a queue slot,
   // a verification, and a rejection that discards the work. One bounded follow-up turn on the
   // author's own session gets to fix them; the gate still has the final say, and the change commits
   // and queues either way.
+  const moved = await stagedBacklogMoves(ctx);
+  const movedFindings = recordStagedClaims(ctx, moved);
+  const findings = await ctx.stageCheck(ctx.wt);
+  findings.push(...movedFindings);
+  if (findings.length === 0) return undefined;
+  return applyStageFixUp(ctx, desc, findings);
+}
+
+/** Decide whether this is a claim-staging run and, if so, read the backlog entries its diff moved
+ * out of their actionable section (plans/parallel-work-instances.md "Claims", part 4/7). Returns
+ * `[]` for every non-claim-staging run and on any unreadable file or git hiccup. */
+async function stagedBacklogMoves(ctx: RunStageContext): Promise<
+  { file: "PLANS.md" | "BUGS.md"; key: string; title: string }[]
+> {
   // Claims made at staging (plans/parallel-work-instances.md "Claims", part 4/7): an
   // unassigned run of a MULTI-instance base whose diff moved a backlog entry out of its
   // actionable section records the claim so a sibling is not assigned it while this change
@@ -189,6 +202,17 @@ async function runStageSelfCheck(
     configuredInstances(ctx.config, ctx.role) > 1
       ? await stagedMovedEntries(ctx.wt, ctx.mainBranch, ctx.role).catch(() => [])
       : [];
+  return moved;
+}
+
+/** Record the run's staged claim for the first claimable moved entry (when it has none yet) and
+ * return the moved-entry findings in the order the inline body pushed them: `assignedMoved`
+ * first, then `heldMoved`. */
+function recordStagedClaims(
+  ctx: RunStageContext,
+  moved: readonly { file: "PLANS.md" | "BUGS.md"; key: string; title: string }[],
+): string[] {
+  const s = ctx.state;
   const heldBySiblings = new Set(s.claim === undefined ? (s.heldElsewhere ?? []).map(entryKey) : []);
   const heldMoved = heldMovedFinding(heldBySiblings, moved);
   const claimable = moved.filter((m) => !heldBySiblings.has(m.key));
@@ -207,51 +231,60 @@ async function runStageSelfCheck(
     });
   }
   const assignedMoved = s.claim ? assignedMovedFinding(s.claim.key, moved) : undefined;
-
-  const findings = await ctx.stageCheck(ctx.wt);
+  const findings: string[] = [];
   if (assignedMoved) findings.push(assignedMoved);
   if (heldMoved) findings.push(heldMoved);
-  if (findings.length > 0) {
-    const before = findings.length;
-    const fixBase = await headOf(ctx.wt, "HEAD");
-    const fixUp = await ctx.requestStageFix(ctx.wt, findings, {
-      summary: desc.summaryDerived ? null : desc.summary,
-      body: desc.body ? formatCommitBody(desc.body) : "",
-    });
-    await foldAgentCommitsSince(ctx, ctx.wt, fixBase);
-    if (fixUp?.aborted) return ctx.finishAbortedRun();
-    if (fixUp) {
-      // The fix-up reply answers the findings, not the change, so it never replaces the
-      // change's description (BUGS.md 2026-10-21): its SUMMARY is taken only over a subject
-      // derived from the paths, and its RISK/VERIFIED are appended as self-check notes.
-      const fixSummary = desc.summaryDerived ? extractSummary(fixUp.finalText) : null;
-      if (fixSummary !== null) desc.summary = fixSummary;
-      desc.body = appendSelfCheckNotes(desc.body, extractCommitBody(fixUp.finalText));
-    }
-    // A fix-up turn may resolve its findings by reverting the whole change. With nothing left
-    // in the worktree there is nothing to commit or queue: end the run no_change here instead
-    // of handing a clean tree to commitAll. The worktree is left clean and no pin is taken.
-    // isDirty, not changedFiles: a `git status` that fails must throw, not read as clean — on
-    // 2026-10-21 a spawn failure here ended bugfix-2's 17-minute run no_change and released
-    // its edits unpinned; thrown, the run ends unsettled and its next run gets them back.
-    if (!(await isDirty(ctx.wt))) {
-      logSelfCheckOutcome(
-        ctx,
-        "stage self-check: the follow-up turn left no change; nothing to land",
-        findings,
-      );
-      return { result: "no_change" };
-    }
-    const remaining = await ctx.stageCheck(ctx.wt);
+  return findings;
+}
+
+/** Run the author's one bounded fix-up turn over the stage findings, fold its commits, recover
+ * `desc.summary`/`desc.body` from the reply, and end the run `no_change` when the follow-up left
+ * the worktree clean; otherwise stage-check again and log the outcome warning. Returns an outcome
+ * only when it ends the run early, else `undefined`. */
+async function applyStageFixUp(
+  ctx: RunStageContext,
+  desc: StagedCommitDescription,
+  findings: string[],
+): Promise<RunOutcome | undefined> {
+  const before = findings.length;
+  const fixBase = await headOf(ctx.wt, "HEAD");
+  const fixUp = await ctx.requestStageFix(ctx.wt, findings, {
+    summary: desc.summaryDerived ? null : desc.summary,
+    body: desc.body ? formatCommitBody(desc.body) : "",
+  });
+  await foldAgentCommitsSince(ctx, ctx.wt, fixBase);
+  if (fixUp) {
+    if (fixUp.aborted) return ctx.finishAbortedRun();
+    // The fix-up reply answers the findings, not the change, so it never replaces the
+    // change's description (BUGS.md 2026-10-21): its SUMMARY is taken only over a subject
+    // derived from the paths, and its RISK/VERIFIED are appended as self-check notes.
+    const fixSummary = desc.summaryDerived ? extractSummary(fixUp.finalText) : null;
+    if (fixSummary !== null) desc.summary = fixSummary;
+    desc.body = appendSelfCheckNotes(desc.body, extractCommitBody(fixUp.finalText));
+  }
+  // A fix-up turn may resolve its findings by reverting the whole change. With nothing left
+  // in the worktree there is nothing to commit or queue: end the run no_change here instead
+  // of handing a clean tree to commitAll. The worktree is left clean and no pin is taken.
+  // isDirty, not changedFiles: a `git status` that fails must throw, not read as clean — on
+  // 2026-10-21 a spawn failure here ended bugfix-2's 17-minute run no_change and released
+  // its edits unpinned; thrown, the run ends unsettled and its next run gets them back.
+  if (!(await isDirty(ctx.wt))) {
     logSelfCheckOutcome(
       ctx,
-      remaining.length === 0
-        ? `stage self-check: ${plural(before, "finding")} — fixed by the follow-up turn`
-        : `stage self-check: ${plural(before, "finding")}; ${remaining.length} still open, queued for the gate`,
+      "stage self-check: the follow-up turn left no change; nothing to land",
       findings,
-      remaining,
     );
+    return { result: "no_change" };
   }
+  const remaining = await ctx.stageCheck(ctx.wt);
+  logSelfCheckOutcome(
+    ctx,
+    remaining.length === 0
+      ? `stage self-check: ${plural(before, "finding")} — fixed by the follow-up turn`
+      : `stage self-check: ${plural(before, "finding")}; ${remaining.length} still open, queued for the gate`,
+    findings,
+    remaining,
+  );
   return undefined;
 }
 
