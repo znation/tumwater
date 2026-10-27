@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile } from "../src/files/json-files.js";
-import { cachedByStat, type StatKeyedValue } from "../src/files/stat-cache.js";
+import { cachedByStat, cachedTextByStat, type StatKeyedValue } from "../src/files/stat-cache.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("cachedByStat drops a stale entry when the file vanishes and reloads fresh content", () => {
@@ -87,4 +87,27 @@ test("cachedByStat evicts to stay bounded once the cap is reached", () => {
   const first = files[0]!;
   assert.deepEqual(poll(first), { v: 0 });
   assert.equal(loads.get(first), 2);
+});
+
+test("cachedTextByStat reads a symlinked file as absent and never follows it out of the worktree", () => {
+  const dir = tmpdir();
+  // A hostile symlink at a backlog path (BUGS.md/PLANS.md/QUESTIONS.md) pointing at a
+  // sensitive host file: readRegularTextOrNull must refuse it, so the parsed headings of the
+  // outside file never reach the backlog-index block every run prompt carries (INV-G3).
+  const outside = path.join(dir, "outside.md");
+  fs.writeFileSync(outside, "## Open\n- 1-2: a secret the model must never see\n");
+  const backlog = path.join(dir, "BUGS.md");
+  fs.symlinkSync(outside, backlog);
+
+  const cache = new Map<string, StatKeyedValue<string[]>>();
+  const parsed = cachedTextByStat(
+    cache,
+    backlog,
+    backlog,
+    (md) => md.split(/\r?\n/).filter((l) => l.includes("secret")),
+    (v) => v.slice(),
+  );
+
+  assert.equal(parsed, null, "a symlinked backlog file reads as absent: no parseable text");
+  assert.equal(cache.size, 0, "nothing is cached for a file that read as absent");
 });

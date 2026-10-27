@@ -492,17 +492,20 @@ The prompt readers for PRINCIPLES.md (prompt/principles.ts) and a role's notes
 (doctor/doctor-principles.ts, status/status-role-notes.ts, roles/role-view.ts): each reads
 only when lstat shows a regular file, so a symlink dropped at those paths cannot inject an
 arbitrary host file's text into a model's run prompt, and the operator surfaces cannot
-disagree with the prompt. (The separate backlog index/eligibility/structure prompt readers,
-via stat-cache.ts's readTextOrNull, remain unguarded and unclaimed here.)
+disagree with the prompt. The backlog markdown readers (stat-cache.ts's cachedTextByStat,
+serving backlog.ts, backlog-structure.ts, backlog-index-data.ts, and backlog-index.ts's
+renderBacklogIndexBlock) hold the same line through readRegularTextOrNull: a symlink dropped at
+BUGS.md/PLANS.md/QUESTIONS.md reads as absent, so a hostile entry cannot pull an outside file's
+parseable headings into the backlog-index block every run prompt carries.
 
 **Binds.** `src/merge/merge-git.ts`, `src/merge/merge-backlog-conflicts.ts`,
 `src/backlog/backlog-structure.ts`, `src/verdict/fix-claim.ts`,
 `src/review/review.ts`, `src/run/stage-check.ts`,
 `src/merge/merge-to-main.ts`, `src/prompt/principles.ts`, `src/run/run-prompt.ts`,
 `src/doctor/doctor-principles.ts`, `src/status/status-role-notes.ts`,
-`src/roles/role-view.ts`.
+`src/roles/role-view.ts`, `src/files/stat-cache.ts`.
 
-**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — `test/backlog-structure.test.ts` — "backlogStructureReason never follows a symlinked backlog file out of the worktree" — `test/fix-claim.test.ts` — "falseFixReason never follows a symlinked BUGS.md out of the worktree" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run" — `test/run-prompt.test.ts` — "a symlinked role notes file never injects the outside file's text into the run prompt" and "a symlinked PRINCIPLES.md never injects the outside file's text into the run prompt".
+**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — `test/backlog-structure.test.ts` — "backlogStructureReason never follows a symlinked backlog file out of the worktree" — `test/fix-claim.test.ts` — "falseFixReason never follows a symlinked BUGS.md out of the worktree" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run" — `test/run-prompt.test.ts` — "a symlinked role notes file never injects the outside file's text into the run prompt" and "a symlinked PRINCIPLES.md never injects the outside file's text into the run prompt" — and `test/stat-cache.test.ts` — "cachedTextByStat reads a symlinked file as absent and never follows it out of the worktree".
 
 ### INV-G4: a changed file that exists but cannot be read is a secret-leak finding; only a path with no file is skipped
 

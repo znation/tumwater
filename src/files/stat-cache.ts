@@ -1,4 +1,4 @@
-import { readTextOrNull, sameStatIdentity, statOrNull } from "./files.js";
+import { readRegularTextOrNull, sameStatIdentity, statOrNull } from "./files.js";
 
 /** Stat-keyed caching of file-derived values polled on an interval. Split out of
  * src/files/files.ts — which keeps the generic file operations — because this is a
@@ -59,12 +59,16 @@ export function cachedByStat<T>(
 }
 
 /** One stat-cached read of a text file, or null when it is missing or unreadable — the shared
- * load half over `cachedByStat` for the readers that parse a markdown/text file: readTextOrNull
- * reads it, and a null (no data) propagates through so a render path never throws on the file's
- * state. `parse` runs only on a cache miss and receives the file's text (never null); `clone`
- * hands each caller its own copy. The callers: backlog.ts's sectionEntries and
- * sectionCompletionDates, and backlog-structure.ts's strandedPlanEntriesFor and
- * actionableEntryRangesFor, and backlog-index.ts's renderBacklogIndexBlock. */
+ * load half over `cachedByStat` for the readers that parse a markdown/text file: it reads the
+ * file through readRegularTextOrNull, so a symlink (or directory/gitlink) is never followed —
+ * a hostile entry dropped at a backlog file path cannot pull an arbitrary host file's text into
+ * the run prompts and surfaces these readers feed (the same lstat policy INV-G3/G4 pin for the
+ * prompt readers and merge gates) — and a null (no data) propagates through so a render path
+ * never throws on the file's state. `parse` runs only on a cache miss and receives the file's
+ * text (never null); `clone` hands each caller its own copy. The callers: backlog.ts's
+ * sectionEntries and sectionCompletionDates, backlog-structure.ts's strandedPlanEntriesFor and
+ * actionableEntryRangesFor, backlog-index-data.ts's actionableEntryRangesFor, and
+ * backlog-index.ts's renderBacklogIndexBlock. */
 export function cachedTextByStat<T>(
   cache: Map<string, StatKeyedValue<T>>,
   key: string,
@@ -77,7 +81,7 @@ export function cachedTextByStat<T>(
     key,
     file,
     () => {
-      const md = readTextOrNull(file); // Missing or unreadable — no data.
+      const md = readRegularTextOrNull(file); // Missing, unreadable, or not a regular file — no data.
       return md === null ? null : parse(md);
     },
     clone,
