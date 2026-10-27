@@ -906,3 +906,31 @@ test("a Newest failure miss renders the server's message instead of a stuck load
   assert.match(html, /the retained log may have rotated past it/, "the server's message is shown, escaped");
   assert.doesNotMatch(html, /Loading newest failure/);
 });
+
+test("a malformed Newest payload names the field the reply actually lacked", async () => {
+  // Same live-getter scope shape as the Newest success test above.
+  const code = [ESC_LINE, ...HISTORY_REGIONS.map(clientRegion), "\nreturn { histNewest: () => histNewest, openHistNewest, histNewestHtml };"].join("\n");
+  const run = new Function("icon", "getJson", "renderHistory", code) as (...a: unknown[]) => {
+    histNewest(): { state: string; message?: string } | null;
+    openHistNewest(): Promise<void>;
+    histNewestHtml(): string;
+  };
+  // A reply that carried text but not role must blame role; the usual miss (text absent, with
+  // or without role) still blames text, so a 200 `{}` never regresses to the role wording.
+  const cases: Array<[Record<string, unknown>, string]> = [
+    [{ text: "h\ne" }, "role"],
+    [{ role: "clean", run: 9 }, "text"],
+    [{}, "text"],
+  ];
+  for (const [answer, field] of cases) {
+    const scope = run(iconStub, () => Promise.resolve(answer), () => {});
+    const p = scope.openHistNewest();
+    await sleep(0);
+    await p;
+    assert.equal(scope.histNewest()?.state, "error");
+    assert.ok(
+      scope.histNewestHtml().includes("without a " + field + " field"),
+      "a reply lacking " + field + " names " + field,
+    );
+  }
+});

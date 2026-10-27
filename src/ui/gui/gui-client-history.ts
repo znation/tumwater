@@ -195,7 +195,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       if (!d || typeof d.text !== "string" || typeof d.role !== "string")
         throw new Error(
           "/api/run answered the newest failing run without a " +
-            (!d || typeof d.role !== "string" ? "role" : "text") +
+            (!d || typeof d.text !== "string" ? "text" : "role") +
             " field — the running tumwater may not match this dashboard",
         );
       const key = histDetailKey(d.role, d.run);
