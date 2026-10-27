@@ -608,24 +608,17 @@ test("backlog Ctrl+R on a still-held plan says so and wakes no role", () => {
   assert.ok(!fs.existsSync(wakeRequestPath(root)));
 });
 
-test("backlog Ctrl+R twice releases a held-for-operator plan and wakes the plan role", () => {
+test("backlog Ctrl+R on a held-for-operator plan refuses and writes nothing", () => {
   const { root, keys, down, ctrlR, read } = backlogReleaseRig(
     "## Planned\n\n### Held plan (planned 2026-10-01)\n\n**Needs review 2026-10-16 by feature: too large for one run (held 3)**\n\n**Previously held 2**\n",
   );
   down(1); // the held plan
   ctrlR();
-  assert.deepEqual(keys.state().releaseArmed, {
-    kind: "plan",
-    position: 1,
-    title: "Held plan (planned 2026-10-01)",
-  });
-  assert.match(keys.state().flash ?? "", /press Ctrl\+R again/);
-  ctrlR();
+  assert.equal(keys.state().releaseArmed, null);
+  assert.match(keys.state().flash ?? "", /carries no Refused note/);
   const after = read("PLANS.md");
-  assert.ok(!after.includes("Needs review") && !after.includes("Previously held 2"));
-  assert.match(keys.state().flash ?? "", /released plan #1/);
-  const marker = readJson(wakeRequestPath(root)) as { roles: string[] };
-  assert.deepEqual(marker.roles, ["feature"]);
+  assert.ok(after.includes("Needs review") && after.includes("Previously held 2"));
+  assert.ok(!fs.existsSync(wakeRequestPath(root)));
 });
 
 test("backlog Ctrl+R on a below-threshold Needs-review plan still says so and writes nothing", () => {
@@ -635,7 +628,7 @@ test("backlog Ctrl+R on a below-threshold Needs-review plan still says so and wr
   down(1); // the below-threshold plan
   ctrlR();
   assert.equal(keys.state().releaseArmed, null);
-  assert.match(keys.state().flash ?? "", /carries no Refused or held-for-operator note/);
+  assert.match(keys.state().flash ?? "", /carries no Refused note/);
   assert.ok(read("PLANS.md").includes("Needs review") && read("PLANS.md").includes("Previously held 1"));
   assert.ok(!fs.existsSync(wakeRequestPath(root)));
 });
@@ -652,7 +645,7 @@ test("backlog Ctrl+R on a note-less entry, question, or done row refuses, and bu
   down(3); // plan 1, plan 2, bug 1 — bug #1 carries no note
   ctrlR();
   assert.equal(keys.state().releaseArmed, null);
-  assert.match(keys.state().flash ?? "", /carries no Refused or held-for-operator note/);
+  assert.match(keys.state().flash ?? "", /carries no Refused note/);
   assert.equal(read("BUGS.md"), bugs);
   down(2); // → the open question
   ctrlR();

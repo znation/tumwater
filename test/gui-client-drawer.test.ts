@@ -442,7 +442,7 @@ test("a stale backlog response for a since-replaced entry is ignored", async () 
   assert.match(t.paintedFor("entrybody"), /data-act='entry-cancel' data-arg='plans:1'/);
 });
 
-test("the entry drawer offers Release this entry only on a refused or held-for-operator entry", async () => {
+test("the entry drawer offers Release this entry only on a refused entry", async () => {
   const t = openDrawer(["toggleEntry"], {
     status: { roles: [] },
     responses: {
@@ -460,7 +460,7 @@ test("the entry drawer offers Release this entry only on a refused or held-for-o
   assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
   t.scope.toggleEntry("plans", 3);
   await flush();
-  assert.match(t.paintedFor("entrybody"), /data-act='entry-release' data-arg='plans:3'/);
+  assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
   t.scope.toggleEntry("plans", 1);
   await flush();
   assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);

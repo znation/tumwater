@@ -222,10 +222,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       postAction("/api/backlog-release", { kind: kindOf(file), position: index + 1, title }, (d) => {
         closeDrawer();
         if (d && d.status === "released") {
-          return "Released “" + splitTitle(title).title + "” in " + entryFile(file) + " — lifted " + (d.lifted === "refused" ? "the Refused note" : "the held-for-operator note") + " — " + (d.heldNote || pickupRole(file) + " will pick it up") + uncommittedTail(d); // vocabulary-ok: the held-for-operator note's release wording
+          return "Released “" + splitTitle(title).title + "” in " + entryFile(file) + " — lifted the Refused note — " + (d.heldNote || pickupRole(file) + " will pick it up") + uncommittedTail(d);
         }
         return d && d.status === "not_refused"
-          ? "That entry carries no Refused or held-for-operator note — refreshed" // vocabulary-ok: the held-for-operator note's release wording
+          ? "That entry carries no Refused note — refreshed"
           : "That entry was removed or moved — refreshed";
       });
     } else if (act === "entry-top") {

@@ -5,7 +5,7 @@
  * inbox/inbox.ts, change/change-data.ts), so this module only adapts HTTP onto it. Barrelled
  * into gui/gui-endpoints.ts beside the other per-family GET endpoint modules.
  */
-import { operatorHeldEntries, refusalNote } from "../backlog/backlog-eligibility.js";
+import { refusalNote } from "../backlog/backlog-eligibility.js";
 import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { answeredQuestionEntries, entryMatches, donePlanEntries, fixedBugEntries, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, normalizeDiffPath } from "../change/change-data.js";
@@ -39,10 +39,6 @@ const BACKLOG_FILE_VALUES = BACKLOG_FILE_NAMES.join(", ");
  * order, unlike done/fixed) — zero-based.
  * Unknown/missing file, missing or bad index, and out-of-range index
  * → 400 JSON error via sendJson.
- * On a held-for-operator entry (the entry in
- * operatorHeldEntries' selection, file and index both matching), the 200 payload adds
- * `heldForOperator: true` so the drawer shows its Release button there too; every other
- * entry's payload carries no such key.
  * The query arrives pre-parsed (gui/gui-server.ts's parseRequestTarget), like every
  * GET-data handler here. */
 export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root: string): void {
@@ -68,7 +64,6 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
     title: entry.title,
     body: entry.body,
     refused: refusalNote(entry.body) !== null,
-    ...(operatorHeldEntries(root).some((e) => e.file === file && e.index === index) ? { heldForOperator: true } : {}),
   });
 }
 /** Handle GET /api/backlog-match?grep=<text>: for each /api/backlog `file`, the ascending

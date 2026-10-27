@@ -643,7 +643,7 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
   }
 });
 
-test("gui /api/backlog marks a held-for-operator plan for the drawer's Release button", async () => {
+test("gui /api/backlog carries no heldForOperator key for a held-for-operator plan", async () => {
   const repo = makeRepo();
   await initProject(repo, "backlog held-for-operator gui test");
   // A plain planned entry and one carrying a held-for-operator Needs-review note
@@ -656,7 +656,7 @@ test("gui /api/backlog marks a held-for-operator plan for the drawer's Release b
   ]);
   const { server, base } = await startLocalGui(repo);
   try {
-    // The held plan's payload gains heldForOperator: true beside refused.
+    // The held plan's payload carries no heldForOperator key at all.
     let res = await fetch(base + "/api/backlog?file=plans&index=1");
     assert.equal(res.status, 200);
     const held = (await res.json()) as {
@@ -666,7 +666,7 @@ test("gui /api/backlog marks a held-for-operator plan for the drawer's Release b
       heldForOperator?: boolean;
     };
     assert.match(held.body, /\*\*Needs review/);
-    assert.equal(held.heldForOperator, true);
+    assert.equal(("heldForOperator" in held), false);
     // The plain plan's payload carries no heldForOperator key at all.
     res = await fetch(base + "/api/backlog?file=plans&index=0");
     const plain = (await res.json()) as Record<string, unknown>;

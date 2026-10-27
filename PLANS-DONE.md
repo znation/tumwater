@@ -5,6 +5,60 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract, part 2e/6: The release surfaces stop offering the operator hold (planned 2026-10-26 by the plan role, split from the too-large part 2c/6 after feature held it (held 2); design in plans/subtract.md "The six strokes", stroke 2; the third of four finer parts replacing part 2c/6, independent in files of the other three (2c/6, 2d/6, 2f/6) and holding no prerequisite, since the CLI release still lifts a held note until 2f/6; touches src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts src/gui/gui-backlog-endpoints.ts test/tui-keys.test.ts test/gui-client-drawer.test.ts test/gui.test.ts) — done 2026-10-26 by the feature role
+
+**Previously held 2**
+
+**Goal.** The release surfaces that offer the operator hold name only the Refused note: the TUI Backlog pane's Ctrl+R guard admits `hold === "refused"`, the dashboard drawer's Release button renders only for `d.refused`, and `GET /api/backlog` drops its `heldForOperator` field. The release core is deliberately untouched until part 2f/6: `liftRefusal` in src/backlog/backlog-release.ts still lifts a held-for-operator note, so `tumwater plan|bug --release` and the `handleBacklogRelease` endpoint keep their behavior and their existing tests.
+
+**Approach.**
+- `src/ui/tui/tui-pane-backlog.ts`: the Ctrl+R guard takes only `hold === "refused"`; the "carries no Refused …" flash and the comment drop the held-for-operator half.
+- `src/ui/tui/tui-pane-session.ts` and `src/ui/tui/tui-keys.ts`: the `armedRelease` comments drop the held-for-operator release.
+- `src/ui/gui/gui-client-boot.ts`: the `entry-release` result copy and the `not_refused` copy name the Refused note (the drawer can no longer produce a held-for-operator release); leave the endpoint's own `lifted` value alone.
+- `src/ui/gui/gui-client-drawer.ts`: the Release button condition drops `d.heldForOperator`.
+- `src/gui/gui-backlog-endpoints.ts`: the backlog payload drops the `heldForOperator` key and the `operatorHeldEntries` import and lookup.
+- Tests: each flipped case must fail against today's source, so the flip is behavior-pinning.
+- `test/gui-client-drawer.test.ts`, "the entry drawer offers Release this entry only on a refused or held-for-operator entry": rename it to "the entry drawer offers Release this entry only on a refused entry", keep all four fixtures, and change ONLY the index-3 assertion to `assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);`. The final test is:
+  ```ts
+  test("the entry drawer offers Release this entry only on a refused entry", async () => {
+    const t = openDrawer(["toggleEntry"], {
+      status: { roles: [] },
+      responses: {
+        "/api/backlog?file=plans&index=0": { title: "Held", body: "**Refused 2026-10-16 by feature: x**", refused: true },
+        "/api/backlog?file=plans&index=1": { title: "Open", body: "body", refused: false },
+        "/api/backlog?file=plans&index=2": { title: "NeedsReview", body: "**Needs review 2026-10-16 by feature: x**", refused: false },
+        "/api/backlog?file=plans&index=3": { title: "HeldForOperator", body: "**Needs review 2026-10-16 by feature: x (held 3)**", refused: false, heldForOperator: true },
+      },
+    });
+    t.scope.toggleEntry("plans", 0);
+    await flush();
+    assert.match(t.paintedFor("entrybody"), /data-act='entry-release' data-arg='plans:0'/);
+    t.scope.toggleEntry("plans", 2);
+    await flush();
+    assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
+    t.scope.toggleEntry("plans", 3);
+    await flush();
+    assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
+    t.scope.toggleEntry("plans", 1);
+    await flush();
+    assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
+  });
+  ```
+  Do NOT delete the index-3 `HeldForOperator` fixture (and do not delete its `toggleEntry("plans", 3)` assertion): that fixture is what makes this case fail against today's source, where index 3 still paints `entry-release`, and pass only after `gui-client-drawer.ts` stops testing `d.heldForOperator`. Keeping the fixture also keeps the archived PLANS-DONE.md record for "A held-for-operator plan can be released from the TUI and the dashboard drawer" true about the fixture; only the `entry-release` assertion it recorded is superseded by this later part, which is ordinary history, so do not edit PLANS-DONE.md.
+- `test/tui-keys.test.ts`: re-point "backlog Ctrl+R twice releases a held-for-operator plan and wakes the plan role" to "backlog Ctrl+R on a held-for-operator plan refuses and writes nothing": one Ctrl+R on the `(held 3)` plan leaves `releaseArmed === null`, flashes `/carries no Refused note/`, leaves both the Needs-review and `Previously held 2` lines, and writes no wake marker. Update the flash assertions in "backlog Ctrl+R on a below-threshold Needs-review plan still says so and writes nothing" and "backlog Ctrl+R on a note-less entry, question, or done row refuses, and budget mode blocks it" to `/carries no Refused note/`.
+- `test/gui.test.ts`, "gui /api/backlog marks a held-for-operator plan for the drawer's Release button": rename it "…carries no heldForOperator key for a held-for-operator plan", keep its seeded PLANS.md, and invert its index-1 assertion to `assert.equal(("heldForOperator" in held), false)` (today it asserts `held.heldForOperator === true`); the plain plan's absent-key assertion stays.
+- `test/gui-endpoints.test.ts` is NOT edited: "handleBacklogRelease lifts a held-for-operator note from a bug" still passes because the core is unchanged, and it pins that this part leaves the core alone.
+
+**Files touched.** src/ui/tui/tui-pane-backlog.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-pane-session.ts src/ui/gui/gui-client-boot.ts src/ui/gui/gui-client-drawer.ts src/gui/gui-backlog-endpoints.ts test/tui-keys.test.ts test/gui-client-drawer.test.ts test/gui.test.ts
+
+**Acceptance criteria.**
+- `grep -rn 'heldForOperator' src/` is empty; `grep -rn 'held-for-operator' src/ui` is empty. (`src/gui/gui-backlog-commands.ts` is not edited: its doc comment keeps the held-for-operator clause because `handleBacklogRelease` still lifts that note (status `"released"`, `lifted: "held-for-operator"`) until 2f/6, so `held-for-operator` legitimately remains in src/gui.)
+- `test/gui-client-drawer.test.ts` still holds the `HeldForOperator` fixture (`grep -c 'HeldForOperator' test/gui-client-drawer.test.ts` prints 1) and its index-3 case asserts no `entry-release`; that case fails against the pre-change `gui-client-drawer.ts` and passes after it.
+- `GET /api/backlog` for a held-for-operator plan has no `heldForOperator` key and the drawer paints no `entry-release` button for it; the inverted drawer and payload cases fail if the old condition or key is restored.
+- The TUI release guard accepts a `refused` hold only: Ctrl+R on the held-for-operator plan writes nothing, wakes no role and flashes the no-Refused-note wording.
+- The release core is untouched: `test/gui-endpoints.test.ts`'s held-for-operator lift case passes unmodified, and no src/backlog file is edited.
+- `npm run test:gate` passes.
+
 ### `resolveInitPlan`'s complexity-27 validate-and-resolve body is split into one named helper per validation job — the template resolve, the brief cap, the missing-git check, the team-workspace refusal, the missing-brief refusal, the `--branch`-on-an-existing-repo refusal, the adoption resolve, the changed-brief refusal and the preferred-branch resolve — so each job is found by name (planned 2026-10-26 by the plan role; continues the landed split-large-function family — the 2026-10-25 `initProject` split (PLANS-DONE.md's `initProject`'s ~215-line validate-then-seed body) created `resolveInitPlan` as the validate-and-resolve home and left it at complexity 27, and this plan applies the same per-job extraction the `parsePromptFlags` and `parseStartInvocation` plans apply to their files; independent in files of every pickable `## Planned` entry — `awk '/^## Planned/{p=1} /^## Done/{p=0} p' PLANS.md | grep -c 'init/init'` and `... | grep -c 'init\.test'` both print 0, so no entry (eligible, held, blocked or refused) names src/init/init.ts or test/init.test.ts: the in-flight/eligible plans take src/cli/cli-command-args.ts, src/ui/transcript-tail.ts and the Subtract release, doctor-probe and banner surfaces (src/ui/tui, src/ui/gui, src/gui, src/doctor, src/cli.ts), none of them src/init or test/init.test.ts (the greps above); PLANS-DONE.md records no split of `resolveInitPlan` itself (`grep -cE '^### .*resolveInitPlan' PLANS-DONE.md` prints 0; its `init/init.ts` headings are the init behavior that created this function), and the 2026-10-25 `initProject` split is the sibling extraction, not a duplicate; docs/invariants.md's INV-Q1 binds `resolveInitPlan` (`src/init/init.ts`), and the symbol and its pre-side-effect guarantee both stay, so no invariant text changes; touches src/init/init.ts test/init.test.ts) — done 2026-10-26 by the feature role
 
 **Goal.** `resolveInitPlan` (src/init/init.ts) validates one `tumwater init` request and resolves everything `seedProject` needs before any side effect, but its whole body is one async function of complexity 27, so the template refusal, the brief cap, the missing-git refusal, the team-workspace refusal, the bare-init refusal, the `--branch` refusal, the adoption decision and its unmarked-`TUMWATER.md` refusal, the changed-brief refusal and the new-repo branch validation all read as one block. Split it into named helpers, one per validation job, so each refusal is found by name and the export's own body is only the ordered composition of them. Pure move: no behavior change for any input, no new capability, and INV-Q1 (every refusal before any side effect) still holds by construction because the helpers are the same guards in the same order.
