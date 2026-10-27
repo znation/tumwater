@@ -46,6 +46,80 @@ interface EligibilityOptions {
   leftoverPending?: boolean;
 }
 
+/** The decision one gate returns: run now, or hold with an optional reason/skip, or — for
+ * a gate that merely declines to claim the slot — undefined so a later gate may admit the
+ * runner. Module-private: isEligible's exported shape is the same fields. */
+interface Eligibility {
+  run: boolean;
+  reason?: string;
+  skip?: SkipReason;
+}
+
+/** Can the runner start at all right now? A role disabled in tumwater.json stops running
+ * immediately (live-reload; re-enabling resumes within one poll cycle because the runner and
+ * its persisted state survive), and an already-running role is never eligible. Either way the
+ * runner holds this poll — the single gate behind isEligible's two early returns. */
+function blockedFromRunning(runner: RoleRunner, s: RunnerState): boolean {
+  return !runnerEnabled(runner.config, runner.role) || s.running === true;
+}
+
+/** The director carries the user's own requests: no min-gap, no backoff — a queued prompt
+ * runs as soon as the previous one finishes. Reaches either arm and always resolves. */
+function directorGate(s: RunnerState, now: number, inboxCount: number, opts: EligibilityOptions): Eligibility {
+  if (inboxCount > 0) return { run: true, reason: "inbox" };
+  if (opts.leftoverPending) return now >= s.nextRunAt ? { run: true, reason: "leftover" } : { run: false };
+  return { run: false };
+}
+
+/** An interrupted run (graceful abort or crash) resumes promptly on restart; nextRunAt still
+ * gates cut-off resumes, which deliberately wait one interval. A queued prompt never preempts
+ * this gate. Resolves only when a resume is pending, else undefined. */
+function resumeGate(s: RunnerState, now: number): Eligibility | undefined {
+  if (s.resumePending) {
+    return now >= s.nextRunAt ? { run: true, reason: "resume" } : { run: false };
+  }
+  return undefined;
+}
+
+/** A queued per-role prompt is due on its own existence, exactly like the director's inbox: no
+ * min-gap, no backoff, no scheduled clock. The queue is the durable record of the demand. */
+function inboxGate(inboxCount: number): Eligibility | undefined {
+  if (inboxCount > 0) return { run: true, reason: "inbox" };
+  return undefined;
+}
+
+/** The per-role interval (a slow clock) gates scheduled runs and "main moved" early wakes.
+ * Yield scaling multiplies the gap; an operator wake overrides it. Resolves with the hold when
+ * the runner is inside the (possibly stretched) gap, else undefined. */
+function gapGate(runner: RoleRunner, s: RunnerState, now: number, opts: EligibilityOptions): Eligibility | undefined {
+  const mult = yieldMultiplierFor(runner.state);
+  const minGapSeconds = scheduleConfigForRole(
+    runner.config,
+    runner.role,
+    opts.planBacklogOpen === true,
+  ).minRunIntervalSeconds;
+  const minGap = opts.once ? 0 : minGapSeconds * 1000 * mult;
+  const sinceLast = now - (s.lastRunEndedAt ?? 0);
+  const woken = freshlyWoken(s);
+  if (sinceLast < minGap && !woken) {
+    return mult > 1 ? { run: false, skip: "yield-gap" } : { run: false };
+  }
+  return undefined;
+}
+
+/** The scheduled clock, then the "main moved" wake. Once mode overrides the clock when
+ * backoffSeconds is 0 (a productive run scheduled it); a raised backoff honors the deadline.
+ * Resolves only once a scheduled reason applies, else undefined. */
+function scheduledGate(s: RunnerState, now: number, mainHead: string, opts: EligibilityOptions): Eligibility | undefined {
+  if (now >= s.nextRunAt || (opts.once && s.backoffSeconds === 0)) {
+    return { run: true, reason: s.runs === 0 ? "startup" : "scheduled" };
+  }
+  if (s.lastMainHead && mainHead && mainHead !== s.lastMainHead) {
+    return { run: true, reason: "main moved" };
+  }
+  return undefined;
+}
+
 /** Should this role run now? `inboxCount` is the calling role's own queued-prompt count
  * (the director's queue for the director, the per-role queue for everyone else) — see the
  * inbox check below. Exported for tests. */
@@ -57,89 +131,15 @@ export function isEligible(
   opts: EligibilityOptions = {},
 ): { run: boolean; reason?: string; skip?: SkipReason } {
   const s = runner.state;
-  // A role disabled in tumwater.json stops running immediately (live-reload); re-enabling
-  // resumes within one poll cycle because the runner and its persisted state survive.
-  if (!runnerEnabled(runner.config, runner.role)) return { run: false };
-  if (s.running) return { run: false };
-
-  // The director carries the user's own requests: no min-gap, no backoff — a queued
-  // prompt runs as soon as the previous one finishes.
-  if (runner.role === DIRECTOR_ROLE) {
-    if (inboxCount > 0) return { run: true, reason: "inbox" };
-    if (opts.leftoverPending) return now >= s.nextRunAt ? { run: true, reason: "leftover" } : { run: false };
-    return { run: false };
-  }
-
-  // An interrupted run (graceful abort or crash) leaves half-finished work in its pi
-  // session and worktree: resume it promptly on restart instead of holding it for a full
-  // interval — the min gap below throttles scheduled runs, not recovery. nextRunAt still
-  // gates cut-off resumes, which deliberately wait one interval from their compacted context.
-  // A queued prompt never preempts this gate: a resuming run assembles buildResumePrompt
-  // and does not dequeue the per-role queue, so an early run would only resume sooner than
-  // its deliberate wait — the prompt is consumed by the fresh run the inbox check below
-  // makes due the moment the resume finishes.
-  if (s.resumePending) {
-    return now >= s.nextRunAt ? { run: true, reason: "resume" } : { run: false };
-  }
-
-  // A queued per-role prompt is due on its own existence, exactly like the director's inbox:
-  // no min-gap, no backoff, no scheduled clock. The queue is the durable record of the
-  // demand, so it survives every race a wake marker cannot — a wake consumed while a run
-  // is in flight is overwritten by that run's end-save (runner.ts's wake() contract), but the
-  // prompt file it enqueued is not, and this check picks the demand up on the first poll
-  // after the run ends.
-  if (inboxCount > 0) return { run: true, reason: "inbox" };
-
-  // The per-role interval (a slow clock, e.g. the steward's ~6 h) gates scheduled runs and
-  // "main moved" early wakes — resolved here so a live-reloaded config applies. An operator
-  // wake overrides it (the woken check below): it is an explicit demand, the same class of
-  // request the director's inbox runs without any gap.
-  //
-  // Yield scaling: for a scalable role the gap is
-  // multiplied by the multiplier its recent results earned — a search role that keeps
-  // finding nothing slows down, and the multiplication gates the "main moved" wake below
-  // too, which is where the cost actually comes from (the gap check above runs first, so a
-  // scaled role inside its stretched gap neither runs on schedule nor on a main move).
-  // One merge in the last ten counted runs restores the plain gap; error-class results
-  // never enter the ring (backoff.ts), so a failing backend does not stretch anything;
-  // `--once`, an operator wake, and a queued prompt all bypass the gap check entirely.
-  const mult = yieldMultiplierFor(runner.state);
-  // The same planBacklogOpen rule (scheduleConfigForRole) runner-run.ts schedules nextRunAt
-  // from: while PLANS.md has planning room, plan runs on a zero gap; once the target is met it
-  // drops to its 3600 s default (the plans-full deferral then holds the run). Yield scaling
-  // still applies to whatever gap is chosen.
-  const minGapSeconds = scheduleConfigForRole(
-    runner.config,
-    runner.role,
-    opts.planBacklogOpen === true,
-  ).minRunIntervalSeconds;
-  const minGap = opts.once ? 0 : minGapSeconds * 1000 * mult;
-  const sinceLast = now - (s.lastRunEndedAt ?? 0);
-  // An operator wake newer than the gap window's opening run overrides the interval
-  // (RunnerState.wokenAt): an explicit "try again now" with an empty queue must not silently
-  // wait out the remaining slow clock it ran inside — a queued prompt carries its own
-  // due-ness in the inbox check above, so it never depends on this stamp surviving.
-  const woken = freshlyWoken(s);
-  if (sinceLast < minGap && !woken) {
-    // Held inside the stretched gap: the runner is not due this poll (a schedule clock with
-    // the plain gap, or a main move under the multiplier, would otherwise admit it). Report
-    // the yield-scaled hold so the phase cell reads "waiting out its gap" instead of the
-    // bare "due — starts on the next poll" of the no-reason fallback (RunnerState.skipReason).
-    return mult > 1 ? { run: false, skip: "yield-gap" } : { run: false };
-  }
-  // Once mode's clock override, second half: a raised backoffSeconds means nextRunAt is a
-  // backoff deadline, not the scheduled clock, and is honored; at zero it is the clock a
-  // productive run scheduled, and the explicit round demand overrides it.
-  if (now >= s.nextRunAt || (opts.once && s.backoffSeconds === 0)) {
-    return { run: true, reason: s.runs === 0 ? "startup" : "scheduled" };
-  }
-  // The world changed under a sleeping role: main moved since its last run. The stretched
-  // gap above gates this wake too (the gap check runs first), so a role whose recent runs
-  // merged nothing does not re-check on every merge — the multiplier's whole point.
-  if (s.lastMainHead && mainHead && mainHead !== s.lastMainHead) {
-    return { run: true, reason: "main moved" };
-  }
-  return { run: false };
+  if (blockedFromRunning(runner, s)) return { run: false };
+  if (runner.role === DIRECTOR_ROLE) return directorGate(s, now, inboxCount, opts);
+  return (
+    resumeGate(s, now) ??
+    inboxGate(inboxCount) ??
+    gapGate(runner, s, now, opts) ??
+    scheduledGate(s, now, mainHead, opts) ??
+    { run: false }
+  );
 }
 
 /** Fair scheduling order for one poll's eligible roles: the director always leads (it runs
