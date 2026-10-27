@@ -361,25 +361,82 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 5c/6: The model-failure episode goes — a provider failure no longer swaps the run's model (planned 2026-10-27 by the plan role; the first of four finer parts replacing part 5c/6 after feature held it too large (2026-10-27); design in plans/subtract.md "The six strokes", stroke 5, and plans/fallback-model.md; requires Subtract part 5j/6 landed; touches src/runner/model-fallback.ts (deleted) src/runner/runner-fallback.ts (deleted) src/runner/runner.ts src/runner/runner-run.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/config/config-fallbacks.ts src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/report/report-types.ts src/report/report-usage-fold.ts src/roles/role-view.ts src/status/status-roles.ts src/status/status-data.ts docs/invariants.md test/model-fallback.test.ts (deleted) test/runner-fallback.test.ts (deleted) test/run-resume.test.ts test/gate-polls.test.ts test/event-format.test.ts test/report-usage-fold.test.ts test/role-view.test.ts test/status-data-models.test.ts)
-**Needs review 2026-10-27 by feature: too large for one run**
+### Subtract, part 5c/6: The `fallbacksByRole` report series goes — neither the day report nor the `--since` window tallies a model-fallback episode (planned 2026-10-27 by the plan role; the first of the parts replacing part 5c/6 after feature held it too large (2026-10-27) because its report side under-listed this cascade; sibling to parts 5n/6, 5o/6 and 5p/6, independent in file of them; requires Subtract part 5j/6 landed; touches src/report/report-usage-fold.ts src/report/report-fold.ts src/report/report-types.ts src/report/report-data.ts src/report/report-render.ts src/report/report-since-data.ts src/report/report-since-render.ts src/ui/gui/gui-client-report-chart.ts src/ui/gui/gui-client-report.ts docs/cli.md test/report-data.test.ts test/report.test.ts test/gui-client-report.test.ts)
 
-**Goal.** A failing provider never changes which model a run uses: the failure-triggered fallback episode is gone and a run always resolves its role's own config.
+**Goal.** The report's `Fallbacks by role` line and its whole `fallbacksByRole` cascade are gone: `model_fallback_started` events are still logged but no report folds or renders them. This is the report half of the held part 5c/6 the feature's note named.
 
 **Approach.**
-- Runner: delete `src/runner/model-fallback.ts` (the episode state machine) and `src/runner/runner-fallback.ts` (`foldModelFallbackPhase`); remove `FallbackRunContext`, the `foldModelFallback` delegate and the `modelFallbackProbe`/`modelFallbackActive` reads from `src/runner/runner.ts`/`runner-run.ts`, and the `modelFallback` field from `src/runner/runner-state.ts`/`runner-state-load.ts`.
-- Config: in `src/config/config-fallbacks.ts` delete `fallbackRoleConfig`, `ModelFallbackView` and `modelFallbackView` and the `../runner/model-fallback.js` import — the only readers of the episode.
-- Events/report: drop `model_fallback_started`/`model_fallback_ended` from the `HarnessEvent` union (`src/events/events.ts`), `EVENT_TYPE_LABELS` (`event-labels.ts`), `event-format.ts` and `failure-state-change.ts`; delete the episode fold in `src/report/report-usage-fold.ts` and its `report-types.ts` fields.
-- Surfaces: drop the `modelFallback` field and its render (`src/roles/role-view.ts`, `src/status/status-roles.ts`, `status-data.ts`). `docs/invariants.md` loses its model-failure sentences.
+- `src/report/report-usage-fold.ts`: delete `foldFallbackStarted`, the `fallbacksByRole` field from the `UsageFold` shape, its `{}` initializer and the `else if (ev.type === "model_fallback_started")` arm in `foldUsageEvent` — the event then falls through unread.
+- `src/report/report-fold.ts`: delete the `fallbacksByRole` field from its fold shape and its `{}` initializer.
+- `src/report/report-types.ts`: delete the `fallbacksByRole` field from `DayReport` and from `SinceReport`.
+- `src/report/report-data.ts`: delete the two `setMapIfNonempty(day, "fallbacksByRole", fold.fallbacksByRole)` calls (the day collector and the role-scoped one).
+- `src/report/report-render.ts`: delete the `pushRankedRoleLine(lines, "Fallbacks by role", rankedRoleTotals(data.series, (d) => d.fallbacksByRole ?? {}))` call.
+- `src/report/report-since-data.ts`: delete the field from the fold shape, the `"fallbacksByRole"` member of the role-map key union, its `{}` initializer and the `fallbacksByRole: scopedByRole(acc.fallbacksByRole, bases)` line.
+- `src/report/report-since-render.ts`: delete its `pushRankedRoleLine(lines, "Fallbacks by role", …)` call.
+- `src/ui/gui/gui-client-report-chart.ts`: delete `chartFallbacksByRole` and remove `"fallbacksByRole"` from the `tallyAcross` key list; `src/ui/gui/gui-client-report.ts`: delete the `Fallbacks by role` block.
+- `docs/cli.md`: remove the `tumwater report` clause naming "fallbacks (model-fallback episodes started)".
 
 **Acceptance criteria.**
-- `grep -rniE 'modelFallback|model_fallback|FallbackRunContext|fallbackRoleConfig|foldModelFallback' src/` finds no live reference.
-- A provider failure no longer changes a run's model; `RunnerState` carries no `modelFallback`.
-- `npm run test:gate` passes.
+- `grep -rn 'fallbacksByRole\|Fallbacks by role' src/` finds nothing, and `grep -n 'model-fallback episodes started' docs/cli.md` finds nothing.
+- `grep -c 'model_fallback_started' src/report/report-usage-fold.ts` prints 0, while the event type still exists in `src/events/events.ts`.
+- test/report-data.test.ts, test/report.test.ts and test/gui-client-report.test.ts pass with the `fallbacksByRole` fixture keys and the "count model_fallback_started per role, zero meaning absent" case removed; `npm run test:gate` passes.
 
-**Tests.** Delete `test/model-fallback.test.ts` and `test/runner-fallback.test.ts`; update `test/run-resume.test.ts`, `test/gate-polls.test.ts`, `test/event-format.test.ts`, `test/report-usage-fold.test.ts`, `test/role-view.test.ts` and `test/status-data-models.test.ts` to the field-free shapes. Run them, then the project's gate, and confirm green.
+**Tests.** Update those three modules — remove the `fallbacksByRole` fixtures and the series assertions — then run them and the project's gate, and confirm green.
 
-### Subtract, part 5k/6: The budget fallback's events, alerts, badges and doctor rows go (planned 2026-10-27 by the plan role; the second of four finer parts replacing part 5c/6; requires Subtract part 5c/6 landed, since both edit the role-view fallback display; touches src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/ui/team-alert-status.ts src/ui/badges.ts src/ui/status-render.ts src/ui/status-payload.ts src/roles/role-view.ts src/roles/role-render.ts src/ui/gui/gui-client-drawer-config.ts src/pi/pi-models.ts src/doctor/doctor-fallback-checks.ts (deleted) src/doctor/doctor.ts src/doctor/doctor-check-names.ts docs/how-it-works.md test/badges.test.ts test/status-payload.test.ts test/role-view.test.ts test/doctor-checks.test.ts test/doctor-model-checks.test.ts test/event-format.test.ts test/orchestrator-info.test.ts)
+### Subtract, part 5n/6: The per-role model-fallback display goes — no role view, per-role status row or GUI drawer names an active episode (planned 2026-10-27 by the plan role; the second part replacing part 5c/6, sibling to parts 5c/6, 5o/6 and 5p/6; independent in file of part 5c/6, so the two can run side by side; touches src/roles/role-view.ts src/roles/role-render.ts src/status/status-roles.ts src/status/status-data.ts src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/role-view.test.ts test/status-data-models.test.ts test/gui-client-drawer.test.ts)
+
+**Goal.** The active model-fallback episode is no longer shown anywhere an operator reads a role: `RoleViewPayload.modelFallback`, the per-role status row's `fallback` field, `role-render.ts`'s `Model fallback:` line and the GUI drawer's row are gone. The episode machinery still runs until part 5o/6; only its displays go.
+
+**Approach.**
+- `src/roles/role-view.ts`: delete `modelFallbackView`/`ModelFallbackView` from the `../config/config-fallbacks.js` import (keep `fallbackPair`), the `modelFallback` field and its doc comment from `RoleViewPayload`, the `const episode = state.modelFallback` read and the `modelFallback: modelFallbackView(episode, cfg, role)` initializer.
+- `src/roles/role-render.ts`: delete the `if (p.modelFallback)` block and its `Model fallback:` line; keep `fallbackPairLabel`, which the budget-fallback row still uses.
+- `src/status/status-roles.ts`: delete the `modelFallbackView`/`ModelFallbackView` import, the `fallback?: ModelFallbackView` field and the `const episode = modelFallbackView(...)` read; `src/status/status-data.ts`: delete the `ModelFallbackView` import and its `fallback?` field.
+- `src/ui/gui/gui-client-drawer-config.ts`: delete the `view.modelFallback` branch that builds the `Model fallback` drawer row.
+- `docs/invariants.md`: delete the `Model fallback`/`modelFallbackView` sentences from its rendering guarantees.
+- Leave `modelFallbackView`, `ModelFallbackView` and `fallbackRoleConfig` defined in `src/config/config-fallbacks.ts` — part 5o/6 deletes them once this part and part 5c/6 leave no reader.
+
+**Acceptance criteria.**
+- `grep -rn 'modelFallback\|Model fallback' src/roles/role-view.ts src/roles/role-render.ts src/status/status-roles.ts src/status/status-data.ts src/ui/gui/gui-client-drawer-config.ts` finds nothing.
+- `RoleViewPayload` and the per-role status row carry no model-fallback field, and `modelFallbackView` still exists in src/config/config-fallbacks.ts.
+- test/role-view.test.ts, test/status-data-models.test.ts and test/gui-client-drawer.test.ts pass with the episode fixtures and `Model fallback` assertions removed; `npm run test:gate` passes.
+
+**Tests.** Update those three modules, then run them and the project's gate, and confirm green.
+
+### Subtract, part 5o/6: The model-failure episode machinery goes — a run always resolves its role's own config (planned 2026-10-27 by the plan role; the third part replacing part 5c/6; requires Subtract part 5n/6 landed, since with the role view and status row no longer reading them this part deletes `modelFallbackView` and `fallbackRoleConfig`, whose last readers are there; touches src/runner/model-fallback.ts (deleted) src/runner/runner-fallback.ts (deleted) src/runner/runner.ts src/runner/runner-run.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/config/config-fallbacks.ts src/gates/gate-polls.ts src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-launch.ts docs/invariants.md test/model-fallback.test.ts (deleted) test/runner-fallback.test.ts (deleted) test/runner-state.test.ts test/run-resume.test.ts test/gate-polls.test.ts test/config-views.test.ts)
+
+**Goal.** A failing provider never changes which model a run uses: the episode state machine, its runner plumbing and the two config helpers only it reads are gone. The two event types it emitted stay defined until part 5p/6 removes them.
+
+**Approach.**
+- Delete `src/runner/model-fallback.ts` (the state machine) and `src/runner/runner-fallback.ts` (`foldModelFallbackPhase`, the last emitter of the episode events).
+- `src/runner/runner.ts`: remove the `fallbackRoleConfig` and `modelFallbackActive` imports and make `runConfig` return `configForRole(this.config, this.role)` unconditionally; drop the now-unused clock parameter from `runConfig`/`runProvider` and update their three call sites (`src/gates/gate-polls.ts`, `src/orchestrator/orchestrator-poll.ts`, `src/orchestrator/orchestrator-launch.ts`) — or keep the parameter if the implementing run finds that smaller.
+- `src/runner/runner-run.ts`: remove the `modelFallbackActive`/`modelFallbackProbe` imports and the fallback resolution (`fallback`, `probing`, `onFallback`, the `cfg` override), the `FallbackRunContext` interface and its `runOnce` parameter, the `foldModelFallback` member of the host interface and the `ctx.foldModelFallback(fallbackCtx, pi)` call; `cfg` becomes `primaryCfg`.
+- `src/runner/runner-state.ts`: delete the `modelFallback` field; `src/runner/runner-state-load.ts`: delete its heal block.
+- `src/config/config-fallbacks.ts`: delete `fallbackRoleConfig`, `ModelFallbackView`, `modelFallbackView` and the `../runner/model-fallback.js` import.
+- `docs/invariants.md`: delete the `modelFallbackVerdict` sentence and the model-fallback fold clause in INV-CN1.
+
+**Acceptance criteria.**
+- `grep -rniE 'modelFallback|FallbackRunContext|fallbackRoleConfig|foldModelFallback' src/` finds no live reference (the `model_fallback_started`/`model_fallback_ended` event names and their comments in src/events and src/failure belong to part 5p/6).
+- `RunnerState` carries no `modelFallback`; a provider failure no longer changes a run's model.
+- test/model-fallback.test.ts and test/runner-fallback.test.ts are deleted; test/runner-state.test.ts, test/run-resume.test.ts, test/gate-polls.test.ts and test/config-views.test.ts pass with their episode fixtures and `fallbackRoleConfig` cases removed; `npm run test:gate` passes.
+
+**Tests.** Delete the two modules' tests, update the four listed modules, then run them and the project's gate, and confirm green.
+
+### Subtract, part 5p/6: The `model_fallback_*` event vocabulary goes — no event type, label or failure line names the removed episode (planned 2026-10-27 by the plan role; the fourth part replacing part 5c/6; requires Subtract part 5c/6 and Subtract part 5o/6 landed, since the report-fold dispatcher and the runner emitter are gone; touches src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts test/event-format.test.ts test/failure-state-change.test.ts test/failure-render.test.ts)
+
+**Goal.** `model_fallback_started` and `model_fallback_ended` no longer exist as event types: the union, its labels, the formatter and the failure-state-change renderer drop them. The budget-fallback events remain for part 5k/6 to remove.
+
+**Approach.**
+- `src/events/events.ts`: delete the two members from the `HarnessEvent` union; `src/events/event-labels.ts`: delete their `EVENT_TYPE_LABELS` entries.
+- `src/events/event-format.ts`: delete their `formatEvent` cases and remove them from the `budgetEventMessage` case list and its shared comment.
+- `src/failure/failure-state-change.ts`: delete the two names from the tracked-event list and their `case` arms in both the reason and the rendering switches.
+
+**Acceptance criteria.**
+- `grep -rn 'model_fallback_started\|model_fallback_ended' src/` finds nothing.
+- test/event-format.test.ts, test/failure-state-change.test.ts and test/failure-render.test.ts pass with their model-fallback cases and fixtures removed; `npm run test:gate` passes.
+
+**Tests.** Update the three modules, then run them and the project's gate, and confirm green.
+
+### Subtract, part 5k/6: The budget fallback's events, alerts, badges and doctor rows go (planned 2026-10-27 by the plan role; the fifth part replacing part 5c/6; requires Subtract part 5p/6 landed, since the event files this part edits lost their model-fallback members in 5p/6 and its prerequisite chain (5o/6, 5n/6) already removed the role-view and drawer fallback displays; touches src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/ui/team-alert-status.ts src/ui/badges.ts src/ui/status-render.ts src/ui/status-payload.ts src/roles/role-view.ts src/roles/role-render.ts src/ui/gui/gui-client-drawer-config.ts src/pi/pi-models.ts src/doctor/doctor-fallback-checks.ts (deleted) src/doctor/doctor.ts src/doctor/doctor-check-names.ts docs/how-it-works.md test/badges.test.ts test/status-payload.test.ts test/role-view.test.ts test/doctor-checks.test.ts test/doctor-model-checks.test.ts test/event-format.test.ts test/orchestrator-info.test.ts)
 
 **Goal.** No surface shows a budget or over-cap fallback: the events, alerts, badges, status fields, role rows and doctor rows that named one are deleted.
 
@@ -396,7 +453,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Update `test/badges.test.ts`, `test/status-payload.test.ts`, `test/role-view.test.ts`, `test/doctor-checks.test.ts`, `test/doctor-model-checks.test.ts`, `test/event-format.test.ts` and `test/orchestrator-info.test.ts`. Run them, then the project's gate, and confirm green.
 
-### Subtract, part 5l/6: The fallback chain, its breaker and the budget gate's view go — a spent cap pauses the role (planned 2026-10-27 by the plan role; the third of four finer parts replacing part 5c/6; design in plans/subtract.md "The six strokes", stroke 5, and plans/fallback-chain.md; requires Subtract part 5k/6 landed, since the surfaces its view fed are gone; touches src/budget/fallback-breaker.ts (deleted) src/budget/budget-fallback-view.ts (deleted) src/budget/budget-wiring.ts src/budget/budget.ts src/gates/budget-gates.ts src/gates/gate-polls.ts src/gates/startup-gate.ts src/orchestrator/orchestrator.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/orchestrator-launch.ts src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-info.ts src/team/orchestrator-info.ts src/merge/merge-verify.ts src/config/config-fallbacks.ts docs/invariants.md test/fallback-breaker.test.ts (deleted) test/orchestrator-fallback.test.ts (deleted) test/budget-gates.test.ts test/budget-chain-info.test.ts test/budget-wiring.test.ts test/gate-polls.test.ts test/orchestrator-launch.test.ts test/orchestrator-budget.e2e.test.ts test/run-resume.test.ts test/config-views.test.ts)
+### Subtract, part 5l/6: The fallback chain, its breaker and the budget gate's view go — a spent cap pauses the role (planned 2026-10-27 by the plan role; the sixth part replacing part 5c/6; design in plans/subtract.md "The six strokes", stroke 5, and plans/fallback-chain.md; requires Subtract part 5k/6 landed, since the surfaces its view fed are gone; touches src/budget/fallback-breaker.ts (deleted) src/budget/budget-fallback-view.ts (deleted) src/budget/budget-wiring.ts src/budget/budget.ts src/gates/budget-gates.ts src/gates/gate-polls.ts src/gates/startup-gate.ts src/orchestrator/orchestrator.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/orchestrator-launch.ts src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-info.ts src/team/orchestrator-info.ts src/merge/merge-verify.ts src/config/config-fallbacks.ts docs/invariants.md test/fallback-breaker.test.ts (deleted) test/orchestrator-fallback.test.ts (deleted) test/budget-gates.test.ts test/budget-chain-info.test.ts test/budget-wiring.test.ts test/gate-polls.test.ts test/orchestrator-launch.test.ts test/orchestrator-budget.e2e.test.ts test/run-resume.test.ts test/config-views.test.ts)
 
 **Goal.** At `maxDailyCostUsd` a role is paused until local midnight — there is no derived fallback config, no circuit breaker and no probe. This is the behavior the whole 5c/6 entry exists for.
 
@@ -413,7 +470,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Delete `test/fallback-breaker.test.ts` and `test/orchestrator-fallback.test.ts`; update `test/budget-gates.test.ts`, `test/budget-chain-info.test.ts`, `test/budget-wiring.test.ts`, `test/gate-polls.test.ts`, `test/orchestrator-launch.test.ts`, `test/orchestrator-budget.e2e.test.ts`, `test/run-resume.test.ts` and `test/config-views.test.ts`. Run them, then the project's gate, and confirm green.
 
-### Subtract, part 5m/6: The fallback config keys, their editors and docs go (planned 2026-10-27 by the plan role; the fourth of four finer parts replacing part 5c/6; requires Subtract part 5l/6 landed, since nothing reads the keys once the chain is gone; touches src/config/config-schema.ts src/config/config-validation.ts src/config/config-validation-model.ts src/config/config-keys.ts src/config/config-editable-keys.ts src/config/config-write.ts src/config/config-example.ts src/config/config-views.ts src/config/config-fallbacks.ts src/cli/config-commands.ts src/cli/help.ts src/ui/tui/tui-editor-fallback.ts (deleted) src/ui/tui/tui-editors.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-frame.ts src/ui/tui/tui-pane-ctx.ts docs/config.md docs/backends.md docs/how-it-works.md docs/invariants.md tumwater.example.json test/config.test.ts test/config-validation.test.ts test/config-views.test.ts test/config-commands.test.ts test/config-write.test.ts test/tui-fallback.test.ts (deleted))
+### Subtract, part 5m/6: The fallback config keys, their editors and docs go (planned 2026-10-27 by the plan role; the seventh part replacing part 5c/6; requires Subtract part 5l/6 landed, since nothing reads the keys once the chain is gone; touches src/config/config-schema.ts src/config/config-validation.ts src/config/config-validation-model.ts src/config/config-keys.ts src/config/config-editable-keys.ts src/config/config-write.ts src/config/config-example.ts src/config/config-views.ts src/config/config-fallbacks.ts src/cli/config-commands.ts src/cli/help.ts src/ui/tui/tui-editor-fallback.ts (deleted) src/ui/tui/tui-editors.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-frame.ts src/ui/tui/tui-pane-ctx.ts docs/config.md docs/backends.md docs/how-it-works.md docs/invariants.md tumwater.example.json test/config.test.ts test/config-validation.test.ts test/config-views.test.ts test/config-commands.test.ts test/config-write.test.ts test/tui-fallback.test.ts (deleted))
 
 **Goal.** `tumwater.json` has no fallback keys and no editor offers one: `fallback`, `fallbackModel` and `fallbackStepCaps` are gone, and setting one is refused by name.
 
