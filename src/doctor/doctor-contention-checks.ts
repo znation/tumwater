@@ -582,12 +582,13 @@ export function providerConcurrencyProblems(config: TumwaterConfig | undefined, 
   const capEntries = enforcedKeyCaps(caps);
   if (capEntries.length === 0) return [];
   const seams = seamsInUse(config);
-  const keyed: string[] = [];
+  const keySet = new Set<string>();
+  const keyless: string[] = [];
   for (const s of seams) {
     const k = seamConcurrencyKey(s, piDefault);
-    if (k !== undefined && !keyed.includes(k)) keyed.push(k);
+    if (k !== undefined) keySet.add(k);
+    else keyless.push(s.label); // pi's default provider is unreadable, so this seam cannot be capped
   }
-  const keySet = new Set(keyed);
   const capKeys = capEntries.map(([k]) => k);
   const warnings: string[] = [];
   for (const key of capKeys) {
@@ -597,9 +598,8 @@ export function providerConcurrencyProblems(config: TumwaterConfig | undefined, 
     if (cap >= config.maxConcurrent) warnings.push(`cap "${key}" ${cap} is at or above maxConcurrent ${config.maxConcurrent} — it never binds`);
   }
   const capSet = new Set(capKeys);
-  const keyless = seams.filter((s) => seamConcurrencyKey(s, piDefault) === undefined);
   if (capSet.size > 0 && keyless.length > 0) {
-    warnings.push(`${plural(keyless.length, "model job")} ${agree(keyless.length, "resolves", "resolve")} to no provider key (pi's default provider is unreadable, so they cannot be capped): ${keyless.map((s) => s.label).join(", ")}`);
+    warnings.push(`${plural(keyless.length, "model job")} ${agree(keyless.length, "resolves", "resolve")} to no provider key (pi's default provider is unreadable, so they cannot be capped): ${keyless.join(", ")}`);
   }
   return warnings;
 }
