@@ -210,7 +210,8 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   command body, whose transcript it renders via `src/run/run-detail-render.ts`), and the dashboard transport in `src/gui/`; `test/layering.test.ts` pins that importer set.
 - `src/history/history.ts`, `src/run/run-detail.ts`, `src/report/report.ts`: the `history`,
   `tick`, and `report` CLI command bodies, beside the collector modules (`history-data.ts`,
-  `src/run/run-detail-data.ts`, `src/report/report-data.ts`) whose payloads they print,
+  `src/run/run-detail-data.ts`, `src/report/report-data.ts`, `src/report/report-since-data.ts`)
+  whose payloads they print,
   `src/cli/log-commands.ts` (the `logs` command body), and `src/cli/cli-query-commands.ts` (the
   other read-only command bodies; `src/cli/follow-view.ts` holds the repaint loop those
   `-f/--follow` views share).

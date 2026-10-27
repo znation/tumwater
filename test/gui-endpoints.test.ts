@@ -27,7 +27,7 @@ import { BRIEF_TEXT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/brie
 import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
-import { collectReportSince } from "../src/report/report-data.js";
+import { collectReportSince } from "../src/report/report-since-data.js";
 import { renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { entryKey } from "../src/backlog/backlog-parts.js";
 import { saveRunnerState } from "../src/runner/runner-state.js";

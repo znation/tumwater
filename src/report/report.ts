@@ -2,7 +2,8 @@
  * src/report/report-data.ts / src/failure/failure-data.ts, and print. The Markdown renderers
  * live in the pure-render modules they pair with: src/report/report-render.ts and
  * src/failure/failure-render.ts. */
-import { collectReport, collectReportSince } from "./report-data.js";
+import { collectReport } from "./report-data.js";
+import { collectReportSince } from "./report-since-data.js";
 import { collectFailureReport, collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render.js";

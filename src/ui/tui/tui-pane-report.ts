@@ -1,4 +1,5 @@
-import { collectReport, collectReportSince } from "../../report/report-data.js";
+import { collectReport } from "../../report/report-data.js";
+import { collectReportSince } from "../../report/report-since-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../../report/report-render.js";
 import { REPORT_DEFAULT_DAYS, REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
 import { collectFailureReport, collectFailureReportSince } from "../../failure/failure-data.js";

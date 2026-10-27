@@ -5,7 +5,8 @@
  * this module only adapts HTTP onto it. Barrelled into gui/gui-endpoints.ts beside the other
  * per-family GET endpoint modules.
  */
-import { collectReport, collectReportSince } from "../report/report-data.js";
+import { collectReport } from "../report/report-data.js";
+import { collectReportSince } from "../report/report-since-data.js";
 import { collectFailureReport, collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderSinceReportMarkdown } from "../report/report-render.js";

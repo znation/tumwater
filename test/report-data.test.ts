@@ -1,13 +1,15 @@
-// --- src/report/report-data.ts: the usage collectors (collectReport, collectReportSince) ---
-// The day-window collector buckets run_end/merged/merge events by LOCAL calendar day and
-// tallies the backlog trackers' completions; the trailing-window collector totals a --since
-// window with a coverage proof. The Markdown render of both lives one layer up in
-// src/report/report-render.ts (test/report.test.ts); these tests pin the collectors' data contract.
+// --- src/report/report-data.ts + src/report/report-since-data.ts: the usage collectors ---
+// The day-window collector (report-data.ts) buckets run_end/merged/merge events by LOCAL
+// calendar day and tallies the backlog trackers' completions; the trailing-window collector
+// (report-since-data.ts) totals a --since window with a coverage proof. The Markdown render
+// of both lives one layer up in src/report/report-render.ts (test/report.test.ts); these tests
+// pin the collectors' data contract.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { collectReport, collectReportSince } from "../src/report/report-data.js";
+import { collectReport } from "../src/report/report-data.js";
+import { collectReportSince } from "../src/report/report-since-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { REPORT_SINCE_MAX_MS } from "../src/events/event-window.js";
 import { eventsLogPath } from "../src/paths.js";

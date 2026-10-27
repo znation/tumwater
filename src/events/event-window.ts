@@ -417,7 +417,7 @@ export function eventsSince(
 }
 
 /** The `--since` / `?sinceMs=` trailing window's bounds and identity slice, shared by the two
- * trailing-window collectors (`collectReportSince` in report-data.ts and
+ * trailing-window collectors (`collectReportSince` in report-since-data.ts and
  * `collectFailureReportSince` in failure-data.ts): an open-ended window (cutoff = now − sinceMs,
  * end = now) when `untilMs` is absent, else the bounded [now − sinceMs, now − untilMs). Both
  * collectors budget events with the same open/closed comparisons against `cutoff`/`end` (and

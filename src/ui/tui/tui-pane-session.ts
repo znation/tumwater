@@ -84,8 +84,9 @@ export const HISTORY_WINDOWS: ReadonlyArray<[number | null, string]> = [
 
 /** The Ctrl+G scope cycle: team-wide (null), then each unique base role the roster names, in
  * roster order. An instance id (`feature-2`) folds into its base role because the scoped
- * collectors aggregate by base role — report-data.ts's role scope groups an instance's usage
- * with its siblings' — so cycling through the instance ids would relabel the same body with
+ * collectors aggregate by base role — the report's scope helper (report-fold.ts's scopeBases)
+ * groups an instance's usage with its siblings' — so cycling through the instance ids would
+ * relabel the same body with
  * names that collect it identically. `feature`/`feature-2` therefore offer one slot, and the
  * name the tab strip and hint show is the name the collector honors. */
 export function scopeCycle(roleIds: readonly string[]): Array<string | null> {

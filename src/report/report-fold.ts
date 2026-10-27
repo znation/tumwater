@@ -2,10 +2,12 @@
  * local-day window, memoize the day-keyed read per (root, fromKey) so a dashboard polling
  * /api/report only folds appended lines instead of re-reading the window, and group events
  * into per-day `DayFold` accumulators plus the base-role scoping helpers the day and failure
- * reports share. Each parsed event is folded through the shared single-event core in
- * src/report/report-usage-fold.ts (`foldUsageEvent`), so the --since and day windows present
- * cannot drift apart; it lives here matching its own test (test/report-fold-cache.test.ts).
- * Zero incidental runtime dependencies: node built-ins and the app's own modules only. */
+ * reports share. The two window collectors — collectReport (src/report/report-data.ts) and
+ * collectReportSince (src/report/report-since-data.ts) — fold through this layer, each parsed
+ * event through the shared single-event core in src/report/report-usage-fold.ts
+ * (`foldUsageEvent`), so the --since and day windows present cannot drift apart; it lives here
+ * matching its own test (test/report-fold-cache.test.ts). Zero incidental runtime
+ * dependencies: node built-ins and the app's own modules only. */
 import { sameStatIdentity, statIdentityOrZero, statOrNull } from "../files/files.js";
 import { readWindowEvents } from "../events/event-window.js";
 import { eventDayKey, parseEventLine } from "../events/event-read.js";
@@ -138,6 +140,14 @@ export function zeroMergeCounts(): {
   mergeCostUsd: number;
 } {
   return { mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+}
+
+/** Build one object-literal spread cell for a per-slice role/product map only when the map has
+ * entries (`map` non-empty), so an entry-free window omits the field instead of carrying an
+ * empty map. The single home of that guard for both window collectors — the day report's and
+ * the trailing-window totals object-literal spreads all followed it inline before. */
+export function nonemptyObj<K extends string>(key: K, map: Record<string, number>): Partial<Record<K, Record<string, number>>> {
+  return Object.keys(map).length > 0 ? ({ [key]: map } as Record<K, Record<string, number>>) : {};
 }
 
 /** The base roles a report scope names: undefined and an empty list mean no scope (the team

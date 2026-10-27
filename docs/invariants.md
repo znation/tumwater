@@ -1014,8 +1014,8 @@ carries code".
 
 ## The usage report fold: a warm read equals a cold one
 
-`collectReport` and `collectReportSince` (`src/report/report-data.ts`) both fold the event log
-through `foldWindowEvents`. It keeps a bounded memo (`reportFoldCache`, `REPORT_FOLD_CACHE_MAX`)
+`collectReport` (`src/report/report-data.ts`) and `collectReportSince`
+(`src/report/report-since-data.ts`) both fold the event log through `foldWindowEvents`. It keeps a bounded memo (`reportFoldCache`, `REPORT_FOLD_CACHE_MAX`)
 and either reuses it, folds the appended complete lines, or falls back to a full
 `readWindowEvents` pass. The memo is correct only if every warm answer equals the cold one.
 
@@ -1067,7 +1067,7 @@ misaligning the byte offset".
 covered, not truncated, and the proof updates when the first event is appended.
 
 **Binds.** `src/report/report-fold.ts` (`foldWindowEvents`), `src/report/report-data.ts`
-(`collectReport`, `collectReportSince`).
+(`collectReport`), `src/report/report-since-data.ts` (`collectReportSince`).
 
 **Pinned by.** `test/report-fold-cache.test.ts` — "the coverage proof follows the window, not the
 memo's seed: empty-log vacuous arm flips on first append"; `test/report-data.test.ts` —
@@ -1084,7 +1084,8 @@ each collector adds the merge share to its surfaced totals. A role-scoped window
 merge share.
 
 **Binds.** `src/report/report-usage-fold.ts` (`foldUsageEvent`, `UsageFold`),
-`src/report/report-data.ts` (`collectReport`, `collectReportSince`).
+`src/report/report-data.ts` (`collectReport`), `src/report/report-since-data.ts`
+(`collectReportSince`).
 
 **Pinned by.** `test/report-data.test.ts` — "collectReportSince aggregation matches a same-seed
 collectReport slice", "collectReport folds merge_done/merge_failed usage into the day and totals,
