@@ -20,13 +20,12 @@ interface CliResult {
   stderr: string;
 }
 
-/** How long a `cli()`/`cliWithEnv()` run may take before it is killed as hung. Must be at least
- * the cold-CLI-start readiness budget (waitFor's 60 s default, BUGS.md 2026-09-30): a command that
- * defers all output until late — doctor renders its whole report only after every check finishes —
- * would otherwise be killed mid-start under full-suite load with an empty captured stdout, which a
- * JSON.parse/regex assertion then reads as a failure (BUGS.md 2026-10-26). The readiness waitFor
- * already uses 60 s for the same cold-start-under-load cause; this completion timeout must not be
- * tighter than it. Exported so a test pins the invariant. */
+/** Completion budget for the run-to-completion CLI captures below. Doctor defers its whole
+ * report until every check has finished, so under full-suite load a cold CLI start plus its
+ * checks can emit no stdout for a long stretch; a tight execFile timeout then kills the child
+ * mid-start and hands the test an empty buffered stdout that a JSON.parse/regex reads as a
+ * failure (BUGS.md 2026-10-26). This matches the streaming spawnCli waitFor's 60 s cold-CLI-start
+ * budget (BUGS.md 2026-09-30) so both capture paths grant the same completion runway. */
 export const CLI_COMPLETION_TIMEOUT_MS = 60_000;
 
 /** Run the CLI with an explicit env override (merged over process.env). The timeout

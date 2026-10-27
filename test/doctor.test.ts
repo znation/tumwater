@@ -580,12 +580,17 @@ test("doctor --commit-backlog commits a dirty backlog file before the report; wi
   assert.ok(!("backlogCommit" in plain));
 });
 
-test("the cli() completion timeout is not tighter than the 60 s cold-start readiness budget", () => {
-  // doctor defers its whole report until every check finishes, so on a loaded host it can
-  // produce no stdout for a long stretch; when the readiness waitFor already allows 60 s for
-  // a cold CLI start under team load (BUGS.md 2026-09-30), the run-to-completion deadline must
-  // not kill the child earlier or it returns an empty captured stdout (BUGS.md 2026-10-26).
-  assert.ok(CLI_COMPLETION_TIMEOUT_MS >= 60_000, `completion timeout ${CLI_COMPLETION_TIMEOUT_MS} < 60000`);
+test("the run-to-completion CLI capture grants doctor a cold-start completion budget", () => {
+  // Doctor defers its whole report until every check completes, so its run-to-completion
+  // capture can see a long stdout-less stretch under full-suite load; a tight execFile timeout
+  // killed the child mid-start and handed the test empty buffered stdout that JSON.parse/regex
+  // read as a failure (BUGS.md 2026-10-26). The completion budget must be at least the streaming
+  // capture's 60 s cold-CLI-start runway, so a slow-but-progressing doctor run cannot read as a
+  // child that produced nothing.
+  assert.ok(
+    CLI_COMPLETION_TIMEOUT_MS >= 60_000,
+    `completion budget ${CLI_COMPLETION_TIMEOUT_MS}ms is under the 60s cold-CLI-start runway`,
+  );
 });
 
 test("doctor --resync-install is accepted and reports nothing to do without a lockfile", async () => {
