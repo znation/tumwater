@@ -340,7 +340,6 @@ function pushSinceFrictionLines(lines: string[], data: SinceReport): void {
   // none renders "-" like the other lines.
   pushRankedRoleLine(lines, "Failed runs by role", rankedRoleMap(data.failedRunsByRole));
   pushRankedRoleLine(lines, "Fallbacks by role", rankedRoleMap(data.fallbacksByRole));
-  pushRankedRoleLine(lines, "Image reroutes by role", rankedRoleMap(data.imageReroutesByRole));
 }
 
 /** Deferred maintenance runs by reason code, gated to the team report. */
@@ -566,7 +565,6 @@ function pushReportFrictionLines(lines: string[], data: ReportData): void {
   // failure-free window renders no line and an all-zero window renders "-" like the others.
   pushRankedRoleLine(lines, "Failed runs by role", rankedRoleTotals(data.series, (d) => d.failedRunsByRole ?? {}));
   pushRankedRoleLine(lines, "Fallbacks by role", rankedRoleTotals(data.series, (d) => d.fallbacksByRole ?? {}));
-  pushRankedRoleLine(lines, "Image reroutes by role", rankedRoleTotals(data.series, (d) => d.imageReroutesByRole ?? {}));
 }
 
 /** The team-only deferred-runs-by-reason line. */

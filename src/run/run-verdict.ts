@@ -7,8 +7,6 @@
  * tree reads next to its sibling outcome modules (run-outcome, run-apply, run-stage). */
 import type { RunnerState } from "../runner/runner-state.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { TumwaterConfig } from "../config/config-schema.js";
-import { imageReroute } from "../agent/image-input.js";
 import type { RunOutcome } from "./run-outcome.js";
 import type { CiResult, FlowResult, FiledResult } from "../verdict/reply-contract.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
@@ -23,7 +21,6 @@ import { errorMessage } from "../text/text.js";
 import { recordParity } from "./ci-parity.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { recordDismissedFiling, recordDismissedFlow } from "./run-dismiss.js";
-import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
 import { subscriptionWindowRejected } from "../agent/claude/claude-account.js";
@@ -43,17 +40,6 @@ interface RunVerdictContext {
   turns: number;
   /** The raw director prompt this run is executing (null for role runners). */
   userPrompt: string | null;
-  /** The team config, when the caller can provide it, used to resolve an image-reroute
-   * target (plans/image-input.md part 4/5). Absent in the unit harness, so those contexts
-   * keep the part-3 behavior (a blind read errors) rather than routing to a phantom tier. */
-  config?: TumwaterConfig;
-  /** Which pair set the image reroute may look among (plans/image-input.md "Reroute target"
-   * "Regime"): the primary tiers normally, the free fallback pairs while the budget gate is
-   * on fallback or the role is in a model-fallback episode. Defaults to the primary regime. */
-  rerouteRegime?: "primary" | "fallback";
-  /** The selector string of the model this run's runs started on — the `from` half of the
-   * image_reroute event and the handoff note (the model the blind run was on). */
-  runModel?: string;
   /** The revision round this run holds the rejected diff for (plans/revise-rejected.md), or
    * undefined when the run is not a revision. A per-role user-request or resume run leaves
    * `state.revision` set by design but passes undefined here, so the drop branch can never
@@ -242,65 +228,18 @@ function budgetCappedArm(ctx: RunVerdictContext): RunOutcome | undefined {
 }
 
 /** The image-blind decision: a run stopped the moment its agent read an image its model cannot
- * see. One hop to an image-capable reroute target is taken when one exists; otherwise the
- * run fails and the prompt re-queues (plans/image-input.md "Failing the run"). */
+ * see fails with `lastError` and the prompt re-queues. The peer-tier reroute was subtracted
+ * (part 5g/6), so a blind read is never handed to another tier (plans/image-input.md "Failing
+ * the run"). */
 function imageBlindArm(ctx: RunVerdictContext): RunOutcome | undefined {
   const { pi, state: s } = ctx;
   // A run the runner killed the moment its agent read an image its model cannot see
   // (plans/image-input.md "Failing the run"): pi strips such an image from the request, so
   // the agent was about to answer about a picture it never saw. The run was deliberately
   // stopped before it could work on, so its half-done edits are discarded exactly as a
-  // timed-out run's are — nothing to resume, and the prompt re-queues to run fresh on a
-  // model that CAN see (part 4 adds the reroute arm here). The error backoff and streak apply
-  // as for any error.
+  // timed-out run's are — nothing to resume, and the prompt re-queues to run fresh later.
+  // The error backoff and streak apply as for any error.
   if (pi.imageBlind) {
-    // One hop only (plans/image-input.md "Rerunning on a model that can read images"): a
-    // run that ALREADY started on the image-capable target and still read blind is not
-    // rerouted a second time — it fails, so a misreadable image cannot bounce the role
-    // between tiers forever. Set at run start by runPhase when it routes a run onto the
-    // target (blind-read handoff or attachment preflight).
-    if (s.imageRerouteActive) {
-      s.lastError = pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`;
-      // No work was done (the run was killed at the first read): nothing to resume, and the
-      // prompt re-queues to run fresh later like any other error. The error backoff/streak
-      // apply as usual.
-      ctx.pending.requeueUnfulfilled(ctx.userPrompt);
-      return { result: "error" };
-    }
-    // Otherwise, when the role's tier has an image-capable reroute target, the failed work
-    // is not discarded: the next run starts directly on that target over the kept worktree.
-    // The one-shot field carries the target seam plus the `from`/`path` facts the handoff
-    // note needs; the run ends `aborted` with the `image-reroute` resume cause, and
-    // applyRunOutcome schedules it promptly (nextRunAt = now) while planRunStart hands the
-    // kept worktree off to a FRESH session on the target.
-    const regime = ctx.rerouteRegime ?? "primary";
-    const target =
-      ctx.config !== undefined ? imageReroute(ctx.config, ctx.role, regime, undefined, null, null, readPiListedModels(ctx.root))
-        : null;
-    if (target) {
-      const from = ctx.runModel ?? target.config.model ?? "the model";
-      s.imageReroute = {
-        tier: target.tier,
-        backend: target.config.agent ?? "pi",
-        provider: target.config.provider,
-        model: target.config.model,
-        thinking: target.config.thinking,
-        from,
-        path: pi.imageBlind.path,
-      };
-      s.lastError = `read ${pi.imageBlind.path}, but ${from} cannot read images — rerouting to ${target.tier}`;
-      ctx.pending.requeueForResume(s, ctx.userPrompt);
-      logEventBestEffort(ctx.root, {
-        source: ctx.role,
-        type: "image_reroute",
-        run: s.runs,
-        from,
-        to: target.config.model,
-        tier: target.tier,
-        preflight: false,
-      });
-      return { result: "aborted", resumeCause: "image-reroute" };
-    }
     s.lastError = pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`;
     ctx.pending.requeueUnfulfilled(ctx.userPrompt);
     return { result: "error" };

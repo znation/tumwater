@@ -61,7 +61,6 @@ interface DayFold {
   reviewDurationsMs: number[];
   failedRunsByRole: Record<string, number>;
   fallbacksByRole: Record<string, number>;
-  imageReroutesByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   promptTokensByRole: Record<string, number>;
   cacheReadTokensByRole: Record<string, number>;
@@ -235,7 +234,6 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       reviewDurationsMs: [],
       failedRunsByRole: {},
       fallbacksByRole: {},
-      imageReroutesByRole: {},
       tokensByRole: {},
       promptTokensByRole: {},
       cacheReadTokensByRole: {},

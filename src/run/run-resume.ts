@@ -106,15 +106,12 @@ interface RunStartOptions {
 }
 
 /** The resolved run-start decision: the retriable merge failure read (and now cleared), whether
- * the run resumes or hands off to a fresh session, why it resumes/hands off, and whether the
- * interrupted run ended image-reroute (whose facts the prompt builder reads before their flag is
- * consumed). */
+ * the run resumes or hands off to a fresh session, and why it resumes/hands off. */
 interface RunStartDecision {
   priorMergeFailure: string | undefined;
   resuming: boolean;
   handoff: boolean;
   resumeCause: ResumeCause;
-  imageReroute: boolean;
 }
 
 /** Resolve how a run starts, consuming the resume flags as a side effect (a flag is consumed
@@ -177,12 +174,7 @@ function resolveRunStartDecision(opts: RunStartOptions): RunStartDecision {
   // survive, but the next run is a FRESH session — the fallback seam may be a different backend,
   // and claude keeps no flags across `--resume` (plans/agent-backends.md §7, part 7a/7).
   const budgetCapped = pendingResumeCause === "budget-capped";
-  // An image-blind run with an image-capable peer tier ends `aborted` with this cause
-  // (plans/image-input.md part 4/5): the next run runs a FRESH session on the TARGET seam
-  // over the kept worktree — never `--continue` — because the old session carries pi's
-  // "image omitted" note and the target may be a different backend.
-  const imageReroute = pendingResumeCause === "image-reroute";
-  const handoff = (latest !== null && !resumable) || budgetCapped || imageReroute;
+  const handoff = (latest !== null && !resumable) || budgetCapped;
   s.resumePending = false;
   s.resumeCause = undefined;
   s.resumeMissing = undefined;
@@ -194,7 +186,7 @@ function resolveRunStartDecision(opts: RunStartOptions): RunStartDecision {
   const resumeBlocked = s.phase === "review";
   // A budget-capped handback never resumes the session whose seam the cap moved off of, even
   // when its transcript is still resumable: it hands off instead.
-  const resuming = resumableSession && !resumeBlocked && !budgetCapped && !imageReroute;
+  const resuming = resumableSession && !resumeBlocked && !budgetCapped;
   const handingOff = handoff && !resumeBlocked;
   // Reclaim the prompt the interrupted run re-queued for its resume (src/inbox/pending-prompt.ts):
   // the resumed session still owns that request in its context, so this run's bookkeeping
@@ -212,40 +204,27 @@ function resolveRunStartDecision(opts: RunStartOptions): RunStartDecision {
   const resumeCause: ResumeCause = handingOff
     ? budgetCapped
       ? "budget-capped"
-      : imageReroute
-        ? "image-reroute"
-        : "handoff"
+      : "handoff"
     : pendingResumeCause ?? ((s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart");
-  return { priorMergeFailure, resuming, handoff: handingOff, resumeCause, imageReroute };
+  return { priorMergeFailure, resuming, handoff: handingOff, resumeCause };
 }
 
 /** Build the run's prompt from the resolved decision: the resume bridge on a resume, the
- * handoff bridge (with the image-reroute facts) on a handoff, the assembled prompt otherwise.
- * Reads the image-reroute facts before consuming their flag, and returns null only when a
+ * handoff bridge on a handoff, the assembled prompt otherwise. Returns null only when a
  * handoff/fresh assemble yields nothing. The raw user prompt is read by the caller only when a
  * prompt exists. */
 function buildRunStartPrompt(opts: RunStartOptions, d: RunStartDecision): string | null {
-  const s = opts.state;
   const agent = opts.agent ?? "pi";
   let prompt: string | null;
   if (d.resuming) {
     prompt = buildResumePrompt(opts.role, d.resumeCause, agent);
   } else {
     const assembled = opts.runPrompt(agent);
-    // The image-reroute handoff note names the model the blind run was on and the image it
-    // read; those facts ride the one-shot marker, which is consumed here. A handoff's fresh
-    // session also needs the to-be-run model named for its own side of the note, but the
-    // bridge already carries the facts that matter.
-    const rerouteFacts =
-      d.imageReroute && s.imageReroute
-        ? { from: s.imageReroute.from ?? "the prior model", path: s.imageReroute.path ?? "an image" }
-        : undefined;
-    if (d.imageReroute) s.imageReroute = undefined;
     prompt =
       assembled === null
         ? null
         : d.handoff
-          ? buildHandoffPrompt(opts.role, assembled, d.resumeCause, rerouteFacts)
+          ? buildHandoffPrompt(opts.role, assembled, d.resumeCause)
           : assembled;
   }
   return prompt;

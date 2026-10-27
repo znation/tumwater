@@ -565,34 +565,6 @@ that reads an image on a blind model is logged, not killed"; `test/run-verdict.t
 blind image read fails the run with an error naming the file and the model";
 `test/runner-2.test.ts` — "a run whose agent reads an image on a blind model stops and fails".
 
-### INV-J2: a blind read on a tier with an image-capable peer reroutes to it, and a rerouted run never hops twice
-
-**Guarantee.** A blind read on a role whose tier has an image-capable reroute target (a peer
-tier in the borrow order — the free fallback pairs only while the budget gate is on fallback
-or the role is in a model-fallback episode) ends the run `aborted` with the `image-reroute`
-resume cause and records a one-shot `RunnerState.imageReroute` marker naming the target model and backend
-and the image. The next run starts directly on the target in a FRESH session over the kept
-worktree — never `--continue` — carrying the handoff note that names the prior model and the
-image, and its `run_start` is stamped `reroute: "image"`. A run that already started on the
-target (`imageRerouteActive` true, the marker consumed at its start) does not reroute again: a
-second blind read fails it. The marker is one-shot for the director too: a rerouted director
-prompt runs fresh on the target and is delivered exactly once, then the director is back on its
-own tier (its marker clears in `runTickPhase`, since the director never resumes and so never
-reaches planTickStart's image-reroute branch). A queued prompt attaching an image hops straight
-to the target at model choice when the role's model reads no images (`image_reroute`,
-`preflight: true`); with no target the run errors without spawning pi.
-
-**Binds.** `src/run/run-verdict.ts` (the reroute arm), `src/runner/runner-run.ts` (model choice
-+ attachment preflight), `src/runner/runner.ts` (`runConfig`), `src/run/run-resume.ts` (the
-image-reroute handoff), `src/prompt/prompt-followup.ts` (`buildHandoffPrompt`'s image-reroute
-note), `src/events/event-format.ts` (the `image_reroute` and image-reroute resume lines).
-
-**Pinned by.** `test/run-verdict.test.ts` — the reroute verdict tests (target + one-hop);
-`test/runner-2.test.ts` — "a blind read on a text-only role reroutes to the vision target, then
-back to its own tier" and "a rerouted director prompt runs fresh on the vision target and is
-delivered once"; `test/prompt-followup.test.ts` — the handoff-note test;
-`test/event-format.test.ts` — the `image_reroute` and image-reroute resume rendering tests.
-
 ## Self-redeploy runs only verified code
 
 ### INV-K1: self-redeploy only runs a commit with a green full-check verdict
@@ -2819,15 +2791,15 @@ prompt is capped on its composed text, not its body alone".
 
 ### INV-AS2: an image no configured model can read, or a malformed image, is refused at submit
 
-**Guarantee.** An image no configured model can read is refused at submit. A reroute tier accepts
-it, with a notice. A malformed image is refused
-before the role's inbox directory is created.
+**Guarantee.** An image a role's seam cannot read is refused at submit (the peer-tier reroute
+was subtracted in part 5g/6, so no tier accepts a blind role's image). A malformed image is
+refused before the role's inbox directory is created.
 
 **Binds.** `src/inbox/inbox-submit.ts` (`imagePromptGuidance`, `submitRolePrompt`).
 
-**Pinned by.** `test/inbox-submit.test.ts` — "image prompts are refused when no configured model
-reads images, accepted when a tier reroutes", "imagePromptGuidance returns a refusal or a reroute
-notice, and nothing when the role reads images"; `test/inbox-submit-guards.test.ts` — "a malformed image
+**Pinned by.** `test/inbox-submit.test.ts` — "image prompts are refused when the role's model
+reads no images, even with a vision peer", "imagePromptGuidance returns a refusal for a blind
+role and nothing when the role reads images"; `test/inbox-submit-guards.test.ts` — "a malformed image
 is refused before the role's inbox is touched".
 
 ### INV-AS3: the queue write is the durable effect, and notBeforeMs defers a prompt on both paths

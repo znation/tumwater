@@ -570,11 +570,11 @@ test("prompt --edit --attach fails on a bad path by name with the queue untouche
   assert.deepEqual(queuedRolePrompts(root, "bugfix"), ["queued"], "the queue is untouched");
   assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
 });
-// Image input, part 5/5: `--edit --attach` runs through the same gate as a fresh `--attach`
-// (the review objection that the edit path bypassed it), so an image no configured model can
-// read is refused for an edited prompt too — before a byte is written — and a reroute prints
-// where the edited prompt runs.
-test("prompt --edit --attach refuses an image the target role cannot read, and names where a rerouted edit runs", async () => {
+// Image input: `--edit --attach` runs through the same gate as a fresh `--attach`
+// (the review objection that the edit path bypassed it), so an image a role's model cannot
+// read is refused for an edited prompt too — before a byte is written — and the peer-tier
+// reroute (part 5g/6) no longer accepts it even with a vision peer tier.
+test("prompt --edit --attach refuses an image the target role cannot read, even with a vision peer", async () => {
   const root = makeRoot();
   const modelsDir = tmpdir("cli-edit-img-");
   writeModelsFile(
@@ -596,14 +596,14 @@ test("prompt --edit --attach refuses an image the target role cannot read, and n
     assert.deepEqual(queuedRolePrompts(root, "feature"), ["first"], "the refused edit leaves the queue untouched");
     assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a refused edit");
 
-    // A vision strong tier reroutes a blind read → the edit lands and the notice names where.
+    // A vision strong tier no longer reroutes a blind read (part 5g/6): refused too.
     writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/vision" } });
-    const ok = await expectOk(() =>
+    const refused2 = await expectFailAsync(() =>
       cmdPrompt(root, ["--role", "feature", "--edit", "1", "--attach", img, "edited"]),
     );
-    assert.match(`${ok.stdout}${ok.stderr}`, /feature's model can't read images; this prompt runs on strong \(local\/vision\)/);
-    assert.match(`${ok.stdout}${ok.stderr}`, /edited: edited/);
-    assert.equal(eventsOfType(root, "prompt_edited").length, 1);
+    assert.match(refused2, /can't read images/);
+    assert.deepEqual(queuedRolePrompts(root, "feature"), ["first"], "the queue is untouched");
+    assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a refused edit");
   } finally {
     restoreAgentDir();
   }
@@ -620,14 +620,15 @@ test("prompt --edit --attach with no --role resolves the gate's target list-wide
   fs.writeFileSync(img, Buffer.from("not-a-real-png"));
   const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
   try {
-    writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/vision" } });
+    // Feature's default tier reads images, so the attach gate passes and the edit lands (no
+    // reroute notice remains, part 5g/6).
+    writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/vision", strong: "local/vision" } });
     // The director's inbox is empty and only `feature` holds a queue entry, so the no-`--role`
     // position 1 resolves list-wide to `feature` — a non-director, the resolution the gate's
     // `role ?? failQueueMiss(resolveListedQueue(...))` null-arm makes (not the DIRECTOR_ROLE
     // fallback every --role-scoped branch uses) — and the edit lands there.
     enqueueRolePrompt(root, "feature", "first");
     const { stdout } = await expectOk(() => cmdPrompt(root, ["--edit", "1", "--attach", img, "edited"]));
-    assert.match(stdout, /feature's model can't read images; this prompt runs on strong \(local\/vision\)/);
     assert.match(stdout, /^edited \(feature\): edited/m);
     assert.equal(eventsOfType(root, "prompt_edited").length, 1);
   } finally {
@@ -797,11 +798,10 @@ test("prompt --edit <n> with a buffer over the prompt cap fails with the length 
   assert.ok(before.equals(fs.readFileSync(file)), "no write landed when the edit was rejected");
 });
 
-// Image input, part 5/5 (plans/image-input.md "Attachments" + "Surfaces"): the CLI's
-// `--attach` gate. An image to a role whose seam reads none and that has no reroute target
-// fails non-zero naming the fix and queues nothing; with a reroute target it queues and
-// prints where the prompt will run.
-test("prompt --attach refuses an image the target role cannot read, and names where a rerouted one runs", async () => {
+// Image input (plans/image-input.md "Attachments"): the CLI's `--attach` gate. An image to a
+// role whose seam reads no images fails non-zero naming the fix and queues nothing — the
+// peer-tier reroute was subtracted (part 5g/6), so a vision peer tier no longer accepts it either.
+test("prompt --attach refuses an image the target role cannot read, even with a vision peer", async () => {
   const root = makeRoot();
   const modelsDir = tmpdir("cli-image-");
   writeModelsFile(
@@ -820,12 +820,11 @@ test("prompt --attach refuses an image the target role cannot read, and names wh
     assert.match(o, /models\.json/);
     assert.equal(queuedRolePrompts(root, "feature").length, 0, "the refused attachment queues nothing");
 
-    // A vision strong tier reroutes a blind read → accepted, and the notice names where it runs.
+    // A vision strong tier no longer reroutes a blind read (part 5g/6): refused too.
     writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/vision" } });
-    const ok = await expectOk(() => cmdPrompt(root, ["--role", "feature", "--attach", img, "look at this"]));
-    assert.match(`${ok.stdout}${ok.stderr}`, /feature's model can't read images; this prompt runs on strong \(local\/vision\)/);
-    assert.match(`${ok.stdout}${ok.stderr}`, /added to feature's inbox/);
-    assert.equal(queuedRolePrompts(root, "feature").length, 1);
+    const o2 = await expectFailAsync(() => cmdPrompt(root, ["--role", "feature", "--attach", img, "look at this"]));
+    assert.match(o2, /can't read images/);
+    assert.equal(queuedRolePrompts(root, "feature").length, 0, "nothing queued even with a vision peer");
   } finally {
     restoreAgentDir();
   }

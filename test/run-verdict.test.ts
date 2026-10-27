@@ -1,5 +1,4 @@
 import test from "node:test";
-import { writePiListedModels } from "../src/pi/pi-listed-models.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -13,11 +12,9 @@ import { readQaCoverage } from "../src/run/qa-coverage.js";
 import { readCiParity } from "../src/run/ci-parity.js";
 import { readFeedbackFilings } from "../src/run/feedback-filings.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
-import { writeConfig } from "./fixtures/repo-fixtures.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { initializedWorktree } from "./fixtures/repo-fixtures.js";
-import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 /** A RunVerdictContext for a finished, uneventful run: pi declared nothing-to-do on a clean
  * worktree, so the normal classification is a fulfilled no_change. Tests override only what
@@ -339,104 +336,4 @@ test("a blind image read fails the run with an error naming the file and the mod
   assert.match(state.lastError ?? "", /\/x\/shot\.png/, "lastError names the image file");
   assert.match(state.lastError ?? "", /cannot read images/, "lastError names the model gap");
   assert.equal(pending.get(), null, "an imageBlind run is not resume-armed (nothing to resume)");
-});
-
-// Image-input reroute (plans/image-input.md part 4/5): when the role's tier is text-only but
-// another configured tier (here strong) can read images, a blind read stops routing its work
-// to that tier instead of failing. The verdict ends `aborted` with the `image-reroute` resume
-// cause and records a one-shot marker the next run's model choice reads. These unit tests
-// exercise the pure verdict decision with a fake pi; the role e2e (test/runner-2.test.ts) covers
-// the next run actually running on the target.
-
-test("a blind read on a text-only tier with a vision reroute target aborts as image-reroute", async () => {
-  const { root, wt } = await initializedWorktree("feature");
-  // The feature role rides the default tier (text-only local/text); strong reads images
-  // (local/vision). The models.json sits in the suite's scratch pi-agent dir.
-  writeConfig(root, { model: { default: "local/text", strong: "local/vision" } });
-  const config = loadConfig(root);
-  const models = path.join(process.env.PI_CODING_AGENT_DIR ?? "", "models.json");
-  writeFileDeep(models,
-    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
-  );
-
-  const pi: PiRunResult = piRunResult({
-    ok: false,
-    imageBlind: { path: "/x/s.png" },
-    errorMessage: "read /x/s.png, but local/text cannot read images",
-  });
-  const { ctx, state } = makeCtx(root, wt, "feature", {
-    pi,
-    config,
-    runModel: "local/text",
-    rerouteRegime: "primary",
-  });
-  const outcome = await resolveRunVerdict(ctx);
-
-  assert.equal(outcome?.result, "aborted");
-  assert.equal(outcome?.resumeCause, "image-reroute");
-  assert.equal(state.imageReroute?.tier, "strong");
-  assert.equal(state.imageReroute?.model, "vision");
-  assert.equal(state.imageReroute?.from, "local/text");
-  assert.equal(state.imageReroute?.path, "/x/s.png");
-  assert.match(state.lastError ?? "", /rerouting to strong/);
-  // The verdict re-queues the prompt for a prompt-driven reroute; a bare role runner has none.
-  // (applyRunOutcome, exercised in the role e2e, arms the prompt resume + nextRunAt.)
-});
-
-test("a blind read during an already-rerouted run fails instead of rerouting a second time", async () => {
-  const { root, wt } = await initializedWorktree("feature");
-  writeConfig(root, { model: { default: "local/text", strong: "local/vision" } });
-  const config = loadConfig(root);
-  const models = path.join(process.env.PI_CODING_AGENT_DIR ?? "", "models.json");
-  writeFileDeep(models,
-    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
-  );
-
-  const pi: PiRunResult = piRunResult({
-    ok: false,
-    imageBlind: { path: "/x/s.png" },
-    errorMessage: "read /x/s.png, but local/vision cannot read images",
-  });
-  const { ctx, state } = makeCtx(root, wt, "feature", {
-    pi,
-    config,
-    runModel: "local/vision",
-  });
-  // The run already started on the target (runPhase set this when it routed the reroute).
-  state.imageRerouteActive = true;
-  const outcome = await resolveRunVerdict(ctx);
-
-  assert.equal(outcome?.result, "error", "a rerouted run's blind read fails, no second hop");
-  assert.equal(state.imageReroute, undefined, "no new reroute marker is set");
-  assert.match(state.lastError ?? "", /cannot read images/);
-});
-
-test("a blind read onto a built-in vision tier that pi lists as reading images aborts as image-reroute", async () => {
-  const { root, wt } = await initializedWorktree("feature");
-  // strong names a pair models.json does not define; only the saved `pi --list-models`
-  // listing says it reads images.
-  writeConfig(root, { model: { default: "local/text", strong: "builtin/vision-x" } });
-  const config = loadConfig(root);
-  const models = path.join(process.env.PI_CODING_AGENT_DIR ?? "", "models.json");
-  writeFileDeep(models, JSON.stringify({ providers: { local: { models: [{ id: "text" }] } } }));
-  const pi: PiRunResult = piRunResult({
-    ok: false,
-    imageBlind: { path: "/x/s.png" },
-    errorMessage: "read /x/s.png, but local/text cannot read images",
-  });
-  const run = async () => {
-    const { ctx, state } = makeCtx(root, wt, "feature", { pi, config, runModel: "local/text", rerouteRegime: "primary" });
-    return { outcome: await resolveRunVerdict(ctx), state };
-  };
-
-  const unlisted = await run();
-  assert.equal(unlisted.outcome?.result, "error", "no listing: no reroute target");
-  assert.equal(unlisted.state.imageReroute, undefined);
-
-  writePiListedModels(root, { "builtin/vision-x": true });
-  const listed = await run();
-  assert.equal(listed.outcome?.result, "aborted");
-  assert.equal(listed.outcome?.resumeCause, "image-reroute");
-  assert.equal(listed.state.imageReroute?.tier, "strong");
-  assert.equal(listed.state.imageReroute?.model, "vision-x");
 });

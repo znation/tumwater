@@ -88,7 +88,6 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   model_fallback_ended: "fallback model ended",
   opencode_free_model_billed: "free model billed",
   image_blind: "image not seen",
-  image_reroute: "image sent to another model",
   build_stale: "update available",
   restart_pending: "update waits for idle",
   restart: "restarted onto update",

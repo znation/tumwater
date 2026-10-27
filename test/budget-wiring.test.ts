@@ -37,7 +37,6 @@ function fakeRunner(
       handbacks.push(role);
     },
     config: {},
-    budgetFallbackActive: false,
   };
   return runner as unknown as RoleRunner;
 }

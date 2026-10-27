@@ -50,7 +50,7 @@ test("the reviewer and conflict resolver map the older names once", () => {
 });
 
 test("follow-ups carry no older names (the session already has the preamble)", () => {
-  const causes: ResumeCause[] = ["restart", "cut-off", "hung-tool", "timeout", "budget-resumed", "handoff", "rate-limit", "budget-capped", "image-reroute"];
+  const causes: ResumeCause[] = ["restart", "cut-off", "hung-tool", "timeout", "budget-resumed", "handoff", "rate-limit", "budget-capped"];
   for (const cause of causes) assertPlain(`resume ${cause}`, buildResumePrompt("feature", cause), false);
   assertPlain("cut-off note", buildCutOffNote(3), false);
   assertPlain("summary request", buildSummaryRequestPrompt(), false);

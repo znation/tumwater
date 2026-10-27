@@ -278,12 +278,12 @@ test("snapshot rows carry the image-input surface from the models catalog", asyn
     }),
   );
   // plan rides the strong tier; feature rides default. Default is text-only, strong reads images,
-  // so the default-tier role is text-only with a reroute target naming strong.
+  // but the peer-tier reroute was subtracted (part 5g/6), so no role names a reroute label.
   writeConfig(repo, { model: { default: "local/text", strong: "local/vision" } });
   const snap = snapshot(repo, models);
   const feature = snap.roles.find((l) => l.role === "feature")!;
   assert.equal(feature.imageInput, false);
-  assert.equal(feature.imageRerouteLabel, "strong (local/vision)");
+  assert.equal(feature.imageRerouteLabel, null, "no peer-tier reroute label remains (part 5g/6)");
   const plan = snap.roles.find((l) => l.role === "plan")!;
   assert.equal(plan.imageInput, true);
   assert.equal(plan.imageRerouteLabel, null);
@@ -294,7 +294,7 @@ test("snapshot rows carry the image-input surface from the models catalog", asyn
     const payload = statusPayload(repo) as { roles: Array<{ role: string; imageInput?: boolean | null; imageReroute?: string | null }> };
     const featureRow = payload.roles.find((l) => l.role === "feature")!;
     assert.equal(featureRow.imageInput, false);
-    assert.equal(featureRow.imageReroute, "strong (local/vision)");
+    assert.equal(featureRow.imageReroute, null);
   } finally {
     restoreAgentDir();
   }

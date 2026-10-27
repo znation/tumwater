@@ -96,12 +96,10 @@ export interface RunnerState {
    * (PLANS.md 2026-09-30); "rate-limit" when a subscription claude usage window rejected the
    * run, so the bridge names the held window rather than a restart (plans/agent-backends.md
    * part 6e); "budget-capped" when an API-billed claude run hit its per-run `--max-budget-usd`
-   * cap, so the next run hands the kept worktree off to the fallback seam (part 7a/7);
-   * "image-reroute" when an authoring run read an image its model cannot see and the next
-   * run hands the kept worktree off to an image-capable peer tier (plans/image-input.md
-   * part 4/5). Cleared with resumePending at run start; absent for restart/cut-off resumes,
+   * cap, so the next run hands the kept worktree off to the fallback seam (part 7a/7).
+   * Cleared with resumePending at run start; absent for restart/cut-off resumes,
    * whose causes are derived. */
-  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute";
+  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped";
   /** Queue file holding the user prompt a resume-owning run re-queued: the interrupted pi
    * session still owns that request in its context, so the resume must reclaim exactly this
    * file as its own user prompt — the resume's fulfillment consumes it, and only its failure
@@ -228,28 +226,6 @@ export interface RunnerState {
    * primary model, so existing state files read unchanged. Persisted: an episode must survive
    * a restart like the schedule does. */
   modelFallback?: ModelFallbackState;
-  /** The one-shot image-input reroute a blind-read run left for the next run
-   * (plans/image-input.md "Rerunning on a model that can read images"): the target tier and
-   * the resolved target seam (provider/model/thinking), plus `from` (the selector string of
-   * the model the blind run was on) and `path` (the image file it read). The next run starts
-   * directly on the target in a FRESH session over the kept worktree, never `--continue`;
-   * the field is cleared at that run's start. Persisted like modelFallback (healed); absent
-   * for a runner with no pending reroute, so older state files read unchanged. */
-  imageReroute?: {
-    tier: "small" | "default" | "strong";
-    /** The target's backend; absent in a state file older than the field. */
-    backend?: string;
-    provider?: string;
-    model?: string;
-    thinking?: string;
-    from?: string;
-    path?: string;
-  };
-  /** True while the CURRENT run is an image-input reroute — it started on the image-capable
-   * target (from a blind-read handoff or an attachment preflight) instead of the runner's own
-   * tier. Read by the verdict's one-hop guard, which fails a blind read during a rerouted
-   * run instead of rerouting it again. Transient: reset at every run start. */
-  imageRerouteActive?: boolean;
   /** The pinned change a merge failed to review on a permanent provider configuration error
    * (a 4xx other than 408/429): the request can never succeed until the model config changes,
    * so leftover recovery holds the pin instead of re-queuing it at suite speed (BUGS.md

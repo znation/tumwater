@@ -370,28 +370,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 5g/6: The peer-tier image reroute's runtime and state go (planned 2026-10-26 by the plan role, split from the too-large part 5a/6 after feature held it twice (held 2); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the third of four finer parts replacing part 5a/6, requires Subtract part 5f/6 landed, since both edit `src/agent/image-input.ts` and the config exports `imageRerouteTarget` alone reads; touches src/agent/image-input.ts src/runner/runner-run.ts src/runner/runner.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/run/run-verdict.ts src/run/run-resume.ts src/prompt/prompt-followup.ts src/config/config-fallbacks.ts src/config/config-views.ts src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/events/event-legacy.ts src/report/report-types.ts src/report/report-data.ts src/report/report-fold.ts src/report/report-render.ts docs/how-it-works.md docs/invariants.md test/image-input.test.ts test/run-verdict.test.ts test/runner-2.test.ts test/report-data.test.ts test/report-fold-cache.test.ts test/event-format.test.ts)
-
-**Previously held 2**
-
-**Goal.** A blind image read ends its run `error` with `lastError`; no run is handed to a peer tier. `imageReroute`/`imageRerouteTarget`, the `image-reroute` resume cause, the `RunnerState.imageReroute` marker, the `image_reroute` event and the `imageReroutesByRole` report field are deleted. `roleImageInfo.imageReroute` stays a literal null until 5h removes the field.
-
-**Approach.**
-- `src/agent/image-input.ts`: delete `imageReroute`, `imageRerouteTarget`, `RerouteRegime` and `ImageReroute`; `roleImageInfo` stops computing a reroute and returns `imageReroute: null`; prune the imports only the reroute used (`BORROW_ORDER`, `resolveTierFallbacks`, `ModelTier`, `FallbackModelConfig`, `piPairFree`, `ClaudeAccount`, `withModelOverrides`, `roleSeamTier` as they fall unused - keep any the fallback budget path still reads).
-- `src/runner/runner-run.ts` deletes its reroute block and the `reroute: "image"` stamp; `src/runner/runner.ts` deletes the `state.imageReroute` branch; `src/runner/runner-state.ts` drops `imageReroute`/`imageRerouteActive`; `src/runner/runner-state-load.ts` drops their healing.
-- `src/run/run-verdict.ts`: drop the `imageReroute` import and the reroute arm, keeping the `pi.imageBlind` error path (`lastError`, requeue). `src/run/run-resume.ts` drops the `image-reroute` resume cause and its flags; `src/prompt/prompt-followup.ts` drops the `imageReroute` handoff note.
-- `src/config/config-fallbacks.ts`/`config-views.ts`: drop the exports whose only caller was `imageRerouteTarget` (both files' comments name it).
-- Events/report: delete `image_reroute` from `src/events/events.ts`, `event-labels.ts`, `event-format.ts`, `event-legacy.ts`; delete `imageReroutesByRole` from `src/report/report-types.ts`, `report-data.ts`, `report-fold.ts`, `report-render.ts`.
-- Docs: `docs/how-it-works.md` and `docs/invariants.md`'s INV-J2 (reroute) go; `docs/cli.md`'s `report` row drops the image-reroute line. Tests: drop the reroute cases from `test/image-input.test.ts`, `test/run-verdict.test.ts`, `test/runner-2.test.ts`, `test/report-data.test.ts`, `test/report-fold-cache.test.ts` and `test/event-format.test.ts`.
-
-**Files touched.** src/agent/image-input.ts src/runner/runner-run.ts src/runner/runner.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/run/run-verdict.ts src/run/run-resume.ts src/prompt/prompt-followup.ts src/config/config-fallbacks.ts src/config/config-views.ts src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/events/event-legacy.ts src/report/report-types.ts src/report/report-data.ts src/report/report-fold.ts src/report/report-render.ts docs/how-it-works.md docs/invariants.md docs/cli.md test/image-input.test.ts test/run-verdict.test.ts test/runner-2.test.ts test/report-data.test.ts test/report-fold-cache.test.ts test/event-format.test.ts
-
-**Acceptance criteria.**
-- `grep -rnE 'imageRerouteTarget|imageReroute\(|RerouteRegime|image_reroute|imageReroutesByRole|image-reroute' src/` is empty.
-- A run whose agent reads an image its model cannot see fails with `lastError` and no handoff; the run log carries no `image_reroute` event and the report no Image-reroutes line.
-- `roleImageInfo` never names a reroute target.
-- `npm run test:gate` passes.
-
 ### Subtract, part 5h/6: The image reroute's display surfaces go (planned 2026-10-26 by the plan role, split from the too-large part 5a/6 after feature held it twice (held 2); design in plans/subtract.md "The six strokes", stroke 5, and plans/image-input.md; the fourth of four finer parts replacing part 5a/6, requires Subtract part 5g/6 landed, since it removes the field that part leaves null; touches src/agent/image-input.ts src/status/status-roles.ts src/status/status-data.ts src/roles/role-view.ts src/roles/role-render.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/team-alert-shared.ts src/ui/team-alert-tail.ts src/ui/gui/gui-client-composer.ts src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/status-payload.test.ts test/role-view.test.ts test/status-render.test.ts test/team-alerts.test.ts test/status-data-models.test.ts)
 
 **Previously held 2**

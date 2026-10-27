@@ -43,7 +43,7 @@ interface LegacyEventRewrite {
 /** The ordered field rewrites; later parts of the series append here, and they run in order. */
 const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
   {
-    // The run number rode `tick` on run_start, run_end, prompt_taken, image_blind, image_reroute.
+    // The run number rode `tick` on run_start, run_end, prompt_taken, image_blind.
     name: "tick-to-run", // retired-name-ok: legacy name
     apply(ev) {
       const e = ev as Record<string, unknown>;

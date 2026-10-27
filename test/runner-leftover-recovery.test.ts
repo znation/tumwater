@@ -247,19 +247,17 @@ test("a director run that ends on leftover recovery puts its user prompt back", 
   });
 });
 
-test("a promptless director with a kept pin re-queues it, runs no pi, and keeps a pending image reroute", async () => {
+test("a promptless director with a kept pin re-queues it and runs no pi", async () => {
   const repo = await initializedRepo();
   const sha = await pinLeftover(repo, "crash.txt", "interrupted work\n", "interrupted director commit", "director");
   const ran = path.join(tmpdir(), "ran");
   await withPi(`touch "${ran}"; printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
     const runner = makeRoleRunner(repo, "director");
-    runner.state.imageReroute = { tier: "default" };
     const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
     assert.equal(headMerge(repo)?.entry.sha, sha);
     assert.ok(!fs.existsSync(ran), "no pi run");
     assert.equal(eventsOfType(repo, "prompt_taken").length, 0);
-    assert.deepEqual(runner.state.imageReroute, { tier: "default" }, "the reroute waits for a prompt");
   });
 });
 

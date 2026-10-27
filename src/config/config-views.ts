@@ -138,12 +138,7 @@ export function tierModel(config: TumwaterConfig, tier: ModelTier): ModelSelecto
  * key it overrides would.
  *
  * `tier` is the seam's effective tier, already resolved by the caller from any tier-name
- * override — so `o.model` here is always a selector string, never a tier reference.
- *
- * Exported so imageRerouteTarget (src/agent/image-input.ts) can probe a peer tier's
- * top-level model (`withModelOverrides(config, tier, {})`, the same shape resolverConfig
- * builds strong with) and reshape a tier's fallback pair into a runnable config — the
- * tier-config builder the plan names. */
+ * override — so `o.model` here is always a selector string, never a tier reference. */
 export function withModelOverrides(
   config: TumwaterConfig,
   tier: ModelTier,

@@ -112,7 +112,8 @@ export interface StatusSnapshot {
     imageInput: boolean | null;
     /** The role's image reroute target as `<tier> (<model>)`, or null when no other tier reads
      * images — the `reruns on …` the images alert and role page name. Named `imageRerouteLabel`
-     * to avoid the persisted RunnerState.imageReroute handoff record. Always present. */
+     * for the `imageReroute` it renders; a literal null until part 5h drops the field. Always
+     * present. */
     imageRerouteLabel: string | null;
     /** The resolved primary seam's declared context window (part 3c/…), from the same
      * `seamContextWindow` the role page prints — present only when the seam declares one, so

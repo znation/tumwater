@@ -43,7 +43,7 @@ export type StatusRoleRow = RunnerState & {
   imageInput: boolean | null;
   /** The role's image reroute target as `<tier> (<model>)`, or null when no other tier reads
    * images — the `reruns on …` every surface names. Always present. (Named `imageRerouteLabel`
-   * to avoid the persisted RunnerState.imageReroute handoff record of the same name.) */
+   * for the `imageReroute` it renders; a literal null until part 5h drops the field.) */
   imageRerouteLabel: string | null;
   /** The resolved primary seam's declared context window, from the same `seamContextWindow`
    * the role page's `- Context window:` line prints — a table/drawer peak-ctx share divides a

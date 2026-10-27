@@ -42,44 +42,6 @@ test("formatEvent renders image_blind naming the file, the model, and the action
   assert.match(logged, /blind image read: \/x\/shot\.png on huggingface\/deepseek \(gate run logged\)/);
 });
 
-test("formatEvent renders image_reroute naming the hop and the preflight distinction", () => {
-  const followup = formatEvent({
-    ts: 0,
-    source: "feature",
-    type: "image_reroute",
-    run: 7,
-    from: "local/text",
-    to: "local/vision",
-    tier: "strong",
-    preflight: false,
-  } as never);
-  assert.match(followup, /image rerouted to local\/vision \(strong\)/);
-  assert.match(followup, /after a blind read on local\/text/);
-
-  const preflight = formatEvent({
-    ts: 0,
-    source: "feature",
-    type: "image_reroute",
-    run: 8,
-    to: "local/vision",
-    tier: "strong",
-    preflight: true,
-  } as never);
-  assert.match(preflight, /image attachment routed to local\/vision \(strong\)/);
-  assert.match(preflight, /no failed run/);
-});
-
-test("formatEvent renders the image-reroute resume cause as a fresh-session handoff", () => {
-  const line = formatEvent({
-    ts: 0,
-    source: "feature",
-    type: "resume",
-    cause: "image-reroute",
-  } as never);
-  assert.match(line, /handing the blind-read run off to a fresh session on an image-capable model/);
-  assert.match(line, /uncommitted edits kept/);
-});
-
 test("formatEvent renders each type as one line", () => {
   const cases = [
     { ts: 0, source: "clean", type: "run_start", run: 3 },

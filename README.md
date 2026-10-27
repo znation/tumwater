@@ -75,10 +75,9 @@ and `tumwater pause`, `resume`, `wake`, and `stop` control the roles. `tumwater 
 so pair it with `--token <secret>`.
 
 `tumwater prompt --attach <image>` gives a role an image to read at its next run. When a role's
-model cannot read images, the command refuses the attachment up front (naming the fix) unless
-the role reroutes a blind read to a vision model, in which case it says where the message will
-run; the dashboards and `tumwater role <id>` say which roles read images and where a blind
-run reroutes.
+model cannot read images, the command refuses the attachment up front (naming the fix); the
+dashboards and `tumwater role <id>` say which roles read images. Nothing reroutes a blind read
+to another tier — a run that reads an image its model cannot see fails with `lastError`.
 
 Every command, flag, and TUI key is in [docs/cli.md](docs/cli.md); `tumwater help` prints the
 same list, and `tumwater completion bash|zsh|fish` prints shell completion. Settings live in

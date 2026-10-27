@@ -578,7 +578,6 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
-    imageReroutesByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     mergedByRole: {},
@@ -612,7 +611,6 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
-    imageReroutesByRole: {},
     // clean carries the most tokens but $0 spend — it must appear on the tokens line (its
     // own ranked data) while the cost line omits it, proving the lines differ.
     tokensByRole: { clean: 12000, feature: 5000, bugfix: 800 },
@@ -650,7 +648,6 @@ test("renderSinceReportMarkdown prints the Prompt tokens by role line with the c
     refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
-    imageReroutesByRole: {},
     tokensByRole: {},
     promptTokensByRole: { feature: 12000, bugfix: 5000 },
     cacheReadTokensByRole: { feature: 9600 },
@@ -685,7 +682,6 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
-    imageReroutesByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     mergedByRole: {},
@@ -711,7 +707,6 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
-    imageReroutesByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
     mergedByRole: {},
@@ -739,7 +734,6 @@ test("renderSinceReportMarkdown shows (N failed) on the merge line when a merge 
     refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
-    imageReroutesByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
     mergedByRole: {},
@@ -767,7 +761,6 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
     refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
-    imageReroutesByRole: {},
     tokensByRole: { feature: 1500 },
     // The same ranking (count desc / spend desc, then name asc) and `usd` formatting the
     // day render applies to its Commits/Estimated by role lines — window and day speak one shape.
@@ -799,7 +792,6 @@ test("renderSinceReportMarkdown prints Cost per commit and Estimated per commit 
     refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
-    imageReroutesByRole: {},
     tokensByRole: {},
     // costByRole is keyed by role id, so feature-2 joins feature; commitsByRole already base-keyed.
     commitsByRole: { feature: 2, clean: 3 },
@@ -835,7 +827,6 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
-    imageReroutesByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     mergedByRole: {},
@@ -867,7 +858,6 @@ test("renderSinceReportMarkdown prints Main red wall-clock for a positive window
     refusalsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
-    imageReroutesByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     mergedByRole: {},
@@ -1517,21 +1507,6 @@ test("report --json carries fallbacksByRole on the day and --since report that h
   assert.deepEqual(day.series[day.series.length - 1].fallbacksByRole, { feature: 2, qa: 1 });
   const since = JSON.parse((await runCli(root, "report", "--json", "--since", "3h")).out);
   assert.deepEqual(since.fallbacksByRole, { feature: 2, qa: 1 });
-});
-
-test("report --json carries imageReroutesByRole on the day and --since report that have image reroutes", async () => {
-  const root = makeRepo();
-  writeEvents(root, [
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "image_reroute", preflight: true }), // retired-name-ok: legacy event field in a fixture
-    JSON.stringify({ ts: todayTs(), loop: "qa", type: "image_reroute", preflight: false }), // retired-name-ok: legacy event field in a fixture
-    JSON.stringify({ ts: todayTs(), loop: "feature", type: "image_reroute", preflight: false }), // retired-name-ok: legacy event field in a fixture
-  ]);
-  const md = await runCli(root, "report", "--days", "1");
-  assert.match(md.out, /\*\*Image reroutes by role:\*\* feature — 2 · qa — 1/);
-  const day = JSON.parse((await runCli(root, "report", "--json", "--days", "1")).out);
-  assert.deepEqual(day.series[day.series.length - 1].imageReroutesByRole, { feature: 2, qa: 1 });
-  const since = JSON.parse((await runCli(root, "report", "--json", "--since", "3h")).out);
-  assert.deepEqual(since.imageReroutesByRole, { feature: 2, qa: 1 });
 });
 
 test("renderReportMarkdown prints Merge check median for the days that carry one, team scope only", () => {

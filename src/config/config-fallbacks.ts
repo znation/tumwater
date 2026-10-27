@@ -137,10 +137,6 @@ const BORROW_ORDER: Record<ModelTier, readonly ModelTier[]> = {
   strong: ["strong", "default"],
 };
 
-/** Exported for imageRerouteTarget (src/agent/image-input.ts), which walks a rerouting role's
- * tier through the same borrow order the budget fallback uses (skipping the tier itself). */
-export { BORROW_ORDER };
-
 type FallbackChain = FallbackStep | FallbackStep[];
 
 /** A tier's OWN fallback chain, first step first — what the `fallback` key declares at that

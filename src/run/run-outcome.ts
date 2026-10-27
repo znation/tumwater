@@ -82,12 +82,10 @@ export interface RunOutcome {
    * bridge says the run moved back to the primary model; a subscription claude usage-window
    * rejection carries "rate-limit", whose bridge names the held window (part 6e); an
    * API-billed claude run cut off at its per-run budget cap ends `aborted` with
-   * "budget-capped", whose handoff carries the kept worktree to the fallback (part 7a/7);
-   * an image-blind run with an image-capable peer tier ends `aborted` with "image-reroute",
-   * whose handoff carries the kept worktree to that tier (plans/image-input.md part 4/5). Set
+   * "budget-capped", whose handoff carries the kept worktree to the fallback (part 7a/7). Set
    * only by those outcomes; every other resume cause is derived from state (cut-off streak,
    * restart). */
-  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute";
+  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped";
   /** The run ended on leftover recovery (src/runner/leftover.ts) — the leftover went on the merge
    * queue (or already was there, or could not be pinned) — without an authoring run. No model
    * ran, so the orchestrator's fallback breaker takes the run as no evidence about the backend. */
