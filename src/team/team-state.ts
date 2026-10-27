@@ -148,8 +148,8 @@ export function pauseTeam(root: string, untilMs?: number, reason?: string): bool
 
 /** Resume the team by removing its marker (a no-op if absent); returns whether a marker was
  * there to lift, mirroring pauseTeam's changed-state contract. Uses removeIfPresent's
- * never-throws delete, so a marker vanishing between the check and the unlink is success, not
- * a failure worth surfacing from a toggle. */
+ * never-throws delete: a marker vanishing between the check and the unlink is success, not a
+ * failure worth surfacing from a toggle. */
 export function resumeTeam(root: string): boolean {
   return removeIfPresent(pausedPath(root));
 }

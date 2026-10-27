@@ -376,11 +376,11 @@ export function removeQuiet(file: string): void {
   }
 }
 
-/** Delete `file` when it exists, reporting whether one was there to lift — the toggle-marker
- * half of the exists-then-remove dance `resumeTeam` and `cancelScheduledStop` both repeat for
- * their markers. Returns true when the file existed and was removed, false when it was already
- * absent; the delete is removeQuiet's, so a file vanishing between the check and the unlink is
- * success, not a failure worth surfacing from a toggle. */
+/** Delete `file` and return whether it was there to delete — the toggle-lift idiom shared by
+ * resumeTeam and cancelScheduledStop (the team's marker-lift functions): true when a marker
+ * was present and removed, false when it was already gone. Relies on removeQuiet's
+ * never-throws delete, so a marker vanishing between an existsSync check and the unlink reads
+ * as success rather than a failure to surface from a toggle. */
 export function removeIfPresent(file: string): boolean {
   if (!fs.existsSync(file)) return false;
   removeQuiet(file);
