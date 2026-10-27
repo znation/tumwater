@@ -210,15 +210,13 @@ test("a queue entry surviving a restart drains through the gate on next start", 
 
 test("an entry whose sha main already holds is dropped at the drain without a merge run", async () => {
   const repo = await makeFastRepo("dedup drain e2e test", ["clean"]);
-  // Every PRE-merge gate review increments its own counter — a deduped drain must burn none of
-  // them. Part 3g/3 also queues a post-merge review for the merge that lands here, so the fake
-  // settles that review (its prompt is the only one naming an "already on main" commit) without
-  // counting it: the counter stays scoped to the pre-merge gate this test is about.
-  const rev = path.join(tmpdir(), "interlock-review-count");
+  // No pre-merge reviewer run remains to be deduped (part 3h/3 stops reviewAttempt from running
+  // the model reviewer), so the dedup is asserted through the merge_done count alone. Part 3g/3
+  // still queues a post-merge review for the merge that lands here and the fake settles it.
   const did = path.join(tmpdir(), "dedup-did");
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"already on main"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; *"VERDICT:"*) n=$(cat '${rev}' 2>/dev/null || echo 0); echo $((n+1)) > '${rev}'; printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      APPROVE_PI,
       `if [ -f '${did}' ]; then printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'; else touch '${did}'; printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'; fi`,
       `echo hello > hello.txt`,
     ].join("\n"),
@@ -235,14 +233,9 @@ test("an entry whose sha main already holds is dropped at the drain without a me
     enqueueMerge(repo, { role: "clean", sha, run: 1, summary: "stale duplicate", enqueuedAt: Date.now() });
     await waitFor(() => queueDepth(repo) === 0, "the stale entry to be dropped");
     assert.equal(
-      fs.readFileSync(rev, "utf8").trim(),
-      "1",
-      "exactly one reviewer run: the stale entry was deduped, not re-merged",
-    );
-    assert.equal(
       eventsOfType(repo, "merge_done").length,
       1,
-      "no second merge_done event",
+      "no second merge_done event: the stale entry was deduped, not re-merged",
     );
     assert.equal(
       eventsOfType(repo, "merge_failed").length,
