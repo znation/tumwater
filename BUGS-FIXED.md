@@ -155,6 +155,19 @@ diff: 'simple'
 
 Load-sensitive flake, not a check defect: the test's `waitFor(() => !pidAlive(sleepPid), …)` gave the host only 300 ms to reap the SIGKILLed grandchild, while its twin (the "group to die" wait above) gives 5 s and the file's own comment warns a tight budget turns a loaded host into a flake (the run already settles only after the whole group is gone; how fast the host reaps a dead pid is its business, not the check's). Raised the budget to 5 s, matching the twin.
 
+~~~~
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 145474.570875
+✖ failing tests:
+test at dist/test/build-check-process.test.js:195:1
+✖ a timed-out check does not settle on its leader's close while a grandchild survives (3696.310917ms)
+Error: timed out waiting for the surviving grandchild to be reaped
+at waitFor (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-7/dist/test/helpers/wait.js:38:19)
+at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-7/dist/test/build-check-process.test.js:205:9)
+~~~~
+
 **Validation gap:** no-repro — could not reproduce deterministically; the failure only fires under a saturated full-suite run, not in isolation.
 
 ### `a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
