@@ -5,7 +5,7 @@
  * evidence wrapper (selfcheckDigest, SELFCHECK_DIGEST_MS) lives in run/selfcheck-digest.ts. */
 import type { RunResult } from "../run/run-outcome.js";
 import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-data.js";
-import type { SpendCell } from "./time-spend.js";
+import type { LossCause, SpendCell } from "./time-spend.js";
 import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
 import { boundedWindowLine, clockHm, dayKey, dayLabel, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
@@ -230,46 +230,60 @@ function pushTimeAndSpend(lines: string[], data: FailureReportData): void {
   lines.push("## Time and spend by outcome");
   if (data.timeSpend.length === 0) {
     lines.push("_no finished runs in the window_");
-  } else {
-    lines.push(
-      ...markdownTable(
-        ["role", "merged", "no change", "error or blocked"],
-        data.timeSpend.map((row) => [
-          roleCell(row.role),
-          spendCell(row.classes.merged),
-          spendCell(row.classes.no_change),
-          spendCell(row.classes.error),
-        ]),
-      ),
-    );
-    lines.push("");
-    lines.push("**Top loss causes by time:**");
-    if (data.lossCauses.length === 0) {
-      lines.push("_no loss to rank_");
-    } else {
-      for (const c of data.lossCauses) {
-        const cause =
-          c.kind === "no_change"
-            ? `no change on ${roleCell(c.roles[0] ?? "?")}`
-            : c.kind === "review-rejected"
-              ? `review-rejected authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
-              : c.kind === "refused"
-                ? `refused on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
-                : c.kind === "merge-conflict" || c.kind === "merge-blocked"
-                  ? `${c.kind} authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
-                  : c.kind === "cutoff"
-                    ? `context cut-off on ${roleCell(c.roles[0] ?? "?")}`
-                    : `${c.example} (${roleList(c.roles)})`;
-        lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${plural(c.runs, "run")}: ${cause}`);
-      }
-      // Mark the top-5 cut the way the cluster sections mark theirs: a capped ranking that
-      // stays silent reads as a complete itemization of the window's loss (BUGS.md 2026-10-01).
-      if (data.lossCausesHidden > 0) {
-        const noun = agree(data.lossCausesHidden, "cause", "causes");
-        lines.push(`_+${data.lossCausesHidden} more loss ${noun} by time not listed_`);
-      }
-    }
+    return;
   }
+  pushTimeSpendRows(lines, data);
+  pushLossCauses(lines, data);
+}
+
+/** The role × class table of hours and dollars. */
+function pushTimeSpendRows(lines: string[], data: FailureReportData): void {
+  lines.push(
+    ...markdownTable(
+      ["role", "merged", "no change", "error or blocked"],
+      data.timeSpend.map((row) => [
+        roleCell(row.role),
+        spendCell(row.classes.merged),
+        spendCell(row.classes.no_change),
+        spendCell(row.classes.error),
+      ]),
+    ),
+  );
+}
+
+/** The top loss causes by time, capped at the LOSS_TOP cut; a refused cause's text (and the
+ * empty ranking's placeholder) lives in `lossCauseText`/`pushLossCauses` here. */
+function pushLossCauses(lines: string[], data: FailureReportData): void {
+  lines.push("");
+  lines.push("**Top loss causes by time:**");
+  if (data.lossCauses.length === 0) {
+    lines.push("_no loss to rank_");
+    return;
+  }
+  for (const c of data.lossCauses) {
+    lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${plural(c.runs, "run")}: ${lossCauseText(c)}`);
+  }
+  // Mark the top-5 cut the way the cluster sections mark theirs: a capped ranking that
+  // stays silent reads as a complete itemization of the window's loss (BUGS.md 2026-10-01).
+  if (data.lossCausesHidden > 0) {
+    const noun = agree(data.lossCausesHidden, "cause", "causes");
+    lines.push(`_+${data.lossCausesHidden} more loss ${noun} by time not listed_`);
+  }
+}
+
+/** One loss cause's bullet text. */
+function lossCauseText(c: LossCause): string {
+  return c.kind === "no_change"
+    ? `no change on ${roleCell(c.roles[0] ?? "?")}`
+    : c.kind === "review-rejected"
+      ? `review-rejected authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
+      : c.kind === "refused"
+        ? `refused on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
+        : c.kind === "merge-conflict" || c.kind === "merge-blocked"
+          ? `${c.kind} authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
+          : c.kind === "cutoff"
+            ? `context cut-off on ${roleCell(c.roles[0] ?? "?")}`
+            : `${c.example} (${roleList(c.roles)})`;
 }
 
 /** Prompt-token telemetry: the per-role median prompt
