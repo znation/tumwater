@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `run --for boots, stops itself at the deadline, and prints the summary` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+**Validation gap:** no-repro — the summary was already printed (the window's drain had fully completed) yet the supervised windowed child stayed alive long past `exitCode`'s 15 s wait only under full-suite load, so the leaked handle that pinned its event loop open could not be reproduced deterministically; the fix makes the windowed child exit explicitly (process.exit 0) right after its summary, so no residual ref'd handle can hold the child's process open and stall the supervisor's exit.
+
+~~~~
+✖ run --for boots, stops itself at the deadline, and prints the summary (22860.726625ms)
+AssertionError [ERR_ASSERTION]: expected clean exit at the deadline; output so far:
+total     1        0     0        0         1       0         —  $0.00  6.745s  —
+null !== 0
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/cli-start-window.test.js:117:16)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: null,
+expected: 0,
+operator: 'strictEqual',
+diff: 'simple'
+}
+~~~~
+
 ### `run --once --role with a comma list runs exactly the listed roles and exits 0` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
