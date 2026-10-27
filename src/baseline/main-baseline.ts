@@ -253,6 +253,16 @@ export function noteInheritedGreen(sha: string, from: string): void {
  * cache. */
 const INHERIT_WALK_MAX = 64;
 
+/** The body of a `git rev-list --first-parent --max-count=<max> <ref>` read — the walk the three
+ * first-parent scans in this module share, spelled the same on purpose so a change to the walk
+ * shape (the bound, the `--first-parent` flag) lands once. `inheritedGreen` and `watchedBaseline`
+ * walk a commit's ancestors (`${sha}^` / `${tip}^`, the commit itself excluded);
+ * `newestGreenAboveBuild` walks `tip` itself and down. Never throws: a git failure is an empty
+ * list, and every caller already treats that as a no-inheritance / no-verdict answer. */
+async function firstParentWalk(wt: string, ref: string, max: number): Promise<string[]> {
+  return gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${max}`, ref));
+}
+
 /** A green for `sha` carried over from its nearest verdict-bearing first-parent ancestor, or null
  * when there is none to carry. The nearest ancestor with a cached verdict must be GREEN, and the
  * tree diff from it to `sha` must touch only `exemptPaths` (config.review.exemptPaths, the same
@@ -264,7 +274,7 @@ const INHERIT_WALK_MAX = 64;
  * past. An uncached ancestor is walked through, since the single diff from the green covers it.
  * Never throws: any git failure means no inheritance, and the caller runs the suite as before. */
 async function inheritedGreen(wt: string, sha: string, exemptPaths: readonly string[]): Promise<MainBaseline | null> {
-  const ancestors = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${INHERIT_WALK_MAX}`, `${sha}^`));
+  const ancestors = await firstParentWalk(wt, `${sha}^`, INHERIT_WALK_MAX);
   for (const ancestor of ancestors) {
     const verdict = baselineCache.get(ancestor);
     if (verdict === undefined) continue;
@@ -306,7 +316,7 @@ export async function watchedBaseline(wt: string, sha?: string): Promise<MainBas
   if (!tip) return null;
   const own = baselineCache.get(tip);
   if (own) return own;
-  const ancestors = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${INHERIT_WALK_MAX}`, `${tip}^`));
+  const ancestors = await firstParentWalk(wt, `${tip}^`, INHERIT_WALK_MAX);
   for (const ancestor of ancestors) {
     const verdict = baselineCache.get(ancestor);
     if (verdict) return verdict;
@@ -335,7 +345,7 @@ export function watchVerifiesMain(root: string, config?: CheckConfigSlice): bool
  * green (watched keeps the build; un-watched keeps `tip`). Never throws: a git failure leaves
  * the walk empty, so the fallback answers. */
 async function newestGreenAboveBuild(wt: string, tip: string, buildSha: string, notOnHistory: string, onHistoryNone: string): Promise<string> {
-  const walk = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${REDEPLOY_WALK_MAX}`, tip));
+  const walk = await firstParentWalk(wt, tip, REDEPLOY_WALK_MAX);
   const buildAt = walk.indexOf(buildSha);
   if (buildAt === -1) return notOnHistory;
   for (const sha of walk.slice(0, buildAt)) {
