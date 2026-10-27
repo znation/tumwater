@@ -38,13 +38,14 @@ export function historyWindowBounds(
 }
 
 /** The History pane (view roleIds.length + 4) of the TUI (src/ui/tui/tui.tsx): the session
- * window (Ctrl+S), outcome filter (Ctrl+O), exact-role scope (Ctrl+G), free-text search (`/`),
- * and the Ctrl+N completed-run trail (Ctrl+P steps it to older runs, Ctrl+W shows its commit
- * patch, Ctrl+V twice reverts the shown run's merged change), each with its cache and
- * body window. With the trail off, Ctrl+P steps the window back by its own length (the
- * `history --since --until` window) and Ctrl+S returns to the trailing window. Split out of the
- * pane-navigation monolith; it owns the pane's window/result/scope/search/trail state and the
- * arms that touch them. */
+ * window (Ctrl+S), outcome filter (Ctrl+O), model filter (Ctrl+X), summary toggle (Ctrl+Y),
+ * exact-role scope (Ctrl+G), free-text search (`/`), the one-press newest-failure jump
+ * (Ctrl+L), and the Ctrl+N completed-run trail (Ctrl+P steps it to older runs, Ctrl+R cycles
+ * its agent transcript, Ctrl+W shows its commit patch, Ctrl+V twice reverts the shown run's
+ * merged change), each with its cache and body window. With the trail off, Ctrl+P steps the
+ * window back by its own length (the `history --since --until` window) and Ctrl+S returns to
+ * the trailing window. Split out of the pane-navigation monolith; it owns the pane's
+ * window/result/model/summary/scope/search/trail state and the arms that touch them. */
 export function createHistoryPane(
   session: TuiPaneSession,
 ) {
