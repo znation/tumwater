@@ -12,10 +12,10 @@ import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
 /** The per-role transcript panes (views 1..roleIds.length) of the TUI: the Ctrl+N
- * transcript→notes→change cycle and its two-step Ctrl+X notes-clear arm, plus the
- * notes/change PgUp/PgDn body window, and the `/` search over the live transcript step. Split
- * out of the pane-navigation monolith; it owns the notes/change mode state and the arms that
- * touch them. */
+ * transcript→notes→change cycle and its two-step Ctrl+X notes-clear arm, the Ctrl+Y
+ * change-diff toggle, plus the notes/change PgUp/PgDn body window, and the `/` search over
+ * the live transcript step. Split out of the pane-navigation monolith; it owns the
+ * notes/change mode state and the arms that touch them. */
 export function createTranscriptPane(session: TuiPaneSession) {
   // Ctrl+N toggles the viewed role's pane between its live transcript and a read-only
   // notes view (its note and next run's prompt). Like paneCache, noteCache is computed

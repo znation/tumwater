@@ -69,9 +69,9 @@ export function overlapDrillHeading(index: number, total: number, path: string):
  * when it resolves, and the post-merge review queue (`tumwater reviews`) painted between them
  * from the same `readPostReviews`/`renderPostReviews` pair the CLI prints. Split out of the
  * pane-navigation monolith; its key arms are the Ctrl+R
- * in-place refresh, the Ctrl+N overlap drill-down, and the Ctrl+G role scope (narrowing the
- * merge queue, the post-merge reviews and the overlapping files), and it has no render
- * state of its own —
+ * in-place refresh, the Ctrl+N overlap drill-down, the Ctrl+O review-state filter, and the
+ * Ctrl+G role scope (narrowing the merge queue, the post-merge reviews and the overlapping
+ * files), and it has no render state of its own —
  * aside from the enter half of the Ctrl+T cycle. Its queue arms: Ctrl+X twice cancels a
  * selected merge, Ctrl+V moves it to the front, and the post-merge review rows it appends
  * after the merges are selectable too, so Ctrl+A twice accepts the selected review — the

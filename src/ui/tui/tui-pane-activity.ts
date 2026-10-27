@@ -5,9 +5,9 @@ import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
 /** The Activity pane (view 0) of the TUI (src/ui/tui/tui.tsx): the session live-tail scope
- * (Ctrl+G), the free-text search (`/`), and the PgUp/PgDn tail-paging arm. Split out of the
- * pane-navigation monolith; it owns the pane's own scroll/scope/search state and the arms
- * that touch them. */
+ * (Ctrl+G), the event type/notable cull cycle (Ctrl+O), the free-text search (`/`), and the
+ * PgUp/PgDn tail-paging arm. Split out of the pane-navigation monolith; it owns the pane's
+ * own scroll/scope/search state and the arms that touch them. */
 export function createActivityPane(
   session: TuiPaneSession,
 ) {
