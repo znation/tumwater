@@ -25,22 +25,34 @@ function parseRef(chunk: string, fallbackSeries: string | null): { refs: PartRef
   if (text === "") return { refs: [], named: null };
   const m = /^(?:([\s\S]+?)\s+)?([0-9]+[a-z]?)\/(\d+)(?:\s*[–-]\s*(\d+)\/(\d+))?$/i.exec(text);
   if (m === null) return { refs: [], named: null };
-  let named = (m[1]?.trim() ?? "").replace(/\s+parts?$/i, "");
-  const series = named || fallbackSeries;
-  if (series === null || series === "") return { refs: [], named: named || null };
+  const { named, series } = resolveRefSeries(m[1], fallbackSeries);
   const of = Number(m[3]);
-  const start = m[2]!.toLowerCase();
-  if (!Number.isInteger(of) || of < 1) return { refs: [], named: named || null };
-  if (m[4] === undefined)
-    return { refs: [{ series, part: start, of }], named: named || null };
+  if (series === null || !Number.isInteger(of) || of < 1) return { refs: [], named };
+  return { refs: refsFromMatch(series, of, m[2]!, m[4] ?? null), named };
+}
+
+/** Whichever series a ref chunk resolves to: a captured name with any trailing `parts`/`part`
+ * keyword dropped, or — for a bare `parts a/n` — the clause's last-named series (null when it
+ * named none, so a bare ref there resolves to nothing). */
+function resolveRefSeries(matchName: string | undefined, fallbackSeries: string | null): { named: string | null; series: string | null } {
+  const named = (matchName?.trim() ?? "").replace(/\s+parts?$/i, "");
+  if (named !== "") return { named, series: named };
+  return { named: null, series: fallbackSeries === "" ? null : fallbackSeries };
+}
+
+/** Build the resolved refs for a chunk whose regex matched: the one part, or an inclusive
+ * numeric range. The part token arrives verbatim (so `2a` survives); a range is numeric on
+ * both ends (the lettered parts never range) and expands to that many single refs. */
+function refsFromMatch(series: string, of: number, startText: string, toText: string | null): PartRef[] {
+  const start = startText.toLowerCase();
+  if (toText === null) return [{ series, part: start, of }];
   // A range is numeric on both ends (the lettered parts never range); expand it inclusively.
   const from = Number(start);
-  const to = Number(m[4]);
-  if (!Number.isInteger(from) || !Number.isInteger(to) || to < from)
-    return { refs: [], named: named || null };
+  const to = Number(toText);
+  if (!Number.isInteger(from) || !Number.isInteger(to) || to < from) return [];
   const parts: PartRef[] = [];
   for (let p = from; p <= to; p++) parts.push({ series, part: String(p), of });
-  return { refs: parts, named: named || null };
+  return parts;
 }
 
 /** The stable identity of an entry heading: its `(planned …)`/`(done …)` stamp suffix
