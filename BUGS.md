@@ -219,25 +219,6 @@ test at dist/test/legacy-role-ids.test.js:87:1
       at TestContext.<anonymous> (file:///…/dist/test/legacy-role-ids.test.js:95:12)
 ~~~~
 
-### `a merge- or batch-scope timeout is a deterministic reject, not an environmental skip` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-✖ run --for boots, stops itself at the deadline, and prints the summary (22860.726625ms)
-AssertionError [ERR_ASSERTION]: expected clean exit at the deadline; output so far:
-total     1        0     0        0         1       0         —  $0.00  6.745s  —
-null !== 0
-at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/cli-start-window.test.js:117:16)
-generatedMessage: false,
-code: 'ERR_ASSERTION',
-actual: null,
-expected: 0,
-operator: 'strictEqual',
-diff: 'simple'
-}
-~~~~
-
 ### `doctor --commit-backlog commits a dirty backlog file before the report; with --json it is the report's backlogCommit field` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

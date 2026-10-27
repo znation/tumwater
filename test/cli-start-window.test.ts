@@ -41,7 +41,6 @@ function exitWaitMessage(what: string, code: number | null, out: string): string
     ? `${what} did not exit within ${EXIT_BUDGET_MS / 1000}s of the deadline (a hang or an over-long drain); output so far:\n${out}`
     : `${what} exited ${code} instead of 0; output so far:\n${out}`;
 }
-
 /** True when nothing is listening on `port` on loopback — the live test can then let `run --gui`
  * bind it and can confirm it is free again after teardown. */
 function portFree(port: number): Promise<boolean> {
