@@ -28,28 +28,47 @@ export async function cmdReport(root: string, args: string[], seams: FollowViewS
   // digest, whose day and --since collectors take the same optional list of base roles.
   const role = parseRoleListScope(root, args);
   const follow = hasFollowFlag(args);
-  if (follow && args.includes("--json")) fail("report --json prints one document; -f/--follow repaints a live view — drop one of them");
+  failOnFollowJson(follow, args);
   if (ms !== null) {
-    // --days is still a rival shape: it counts whole local days, while --since totals a trailing
-    // window. --failures is not a rival anymore — the digest has a windowed-since collector that
-    // reuses the day digest's own sections, so `report --failures --since <d>` dispatches it
-    // through the existing --json / render choice; --until bounds its window's end.
-    if (follow)
-      failRivalShapes("report --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
-    if (args.includes("--days"))
-      failRivalShapes("report --since", "--days", "--days counts whole local days; --since totals a trailing window");
-    if (args.includes("--failures")) {
-      const digest = collectFailureReportSince(root, ms, role ?? undefined, untilMs ?? undefined);
-      if (args.includes("--json")) sayJson(digest);
-      else say(renderFailureMarkdown(digest));
-      return;
-    }
-    // --json swaps the renderer for the collector's own payload, exactly as status --json
-    // does: bounds and cap checks above are shared, only the printing differs.
-    const since = collectReportSince(root, ms, role ?? undefined, untilMs ?? undefined);
-    sayJsonOrRender(args, since, renderSinceReportMarkdown);
+    sinceReportShape(root, args, ms, role, untilMs, follow);
     return;
   }
+  await dayReportShape(root, args, reportDays(args), role, follow, seams);
+}
+
+/** `-f/--follow` with `--json` is refused before either shape dispatches: the live view
+ * repaints a document, `--json` prints one — drop one of them. */
+function failOnFollowJson(follow: boolean, args: string[]): void {
+  if (follow && args.includes("--json")) fail("report --json prints one document; -f/--follow repaints a live view — drop one of them");
+}
+
+/** The `--since`/`--until` trailing-window shape: its rival-shape guards against
+ * `-f/--follow` and `--days`, then the `--failures` digest or the plain totals, both through
+ * the `--json` / render choice. Fatal on any rival flag; returns only after printing. */
+function sinceReportShape(root: string, args: string[], ms: number, role: string[] | null, untilMs: number | null, follow: boolean): void {
+  // --days is still a rival shape: it counts whole local days, while --since totals a trailing
+  // window. --failures is not a rival anymore — the digest has a windowed-since collector that
+  // reuses the day digest's own sections, so `report --failures --since <d>` dispatches it
+  // through the existing --json / render choice; --until bounds its window's end.
+  if (follow)
+    failRivalShapes("report --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
+  if (args.includes("--days"))
+    failRivalShapes("report --since", "--days", "--days counts whole local days; --since totals a trailing window");
+  if (args.includes("--failures")) {
+    const digest = collectFailureReportSince(root, ms, role ?? undefined, untilMs ?? undefined);
+    if (args.includes("--json")) sayJson(digest);
+    else say(renderFailureMarkdown(digest));
+    return;
+  }
+  // --json swaps the renderer for the collector's own payload, exactly as status --json
+  // does: bounds and cap checks above are shared, only the printing differs.
+  const since = collectReportSince(root, ms, role ?? undefined, untilMs ?? undefined);
+  sayJsonOrRender(args, since, renderSinceReportMarkdown);
+}
+
+/** The `--days` parse: the explicit flag's value checked against REPORT_MAX_DAYS, or the
+ * default series length when absent. Fatal on a value past the shared bound. */
+function reportDays(args: string[]): number {
   const daysRaw = flagValue(args, "--days");
   let days = REPORT_DEFAULT_DAYS;
   if (daysRaw !== null) {
@@ -60,6 +79,14 @@ export async function cmdReport(root: string, args: string[], seams: FollowViewS
     // rejected 0, non-decimals, and a missing value.
     days = parseCountFlag("--days", daysRaw, REPORT_MAX_DAYS);
   }
+  return days;
+}
+
+/** The whole-day report shape: the `-f/--follow` live repaint, the `--failures --json`
+ * digest, the plain `--json` payload, or the day Markdown/failure-digest render. Fatal on a
+ * `follow && --json` clash (already refused by cmdReport's failOnFollowJson); returns only
+ * after printing. */
+async function dayReportShape(root: string, args: string[], days: number, role: string[] | null, follow: boolean, seams: FollowViewSeams): Promise<void> {
   // --failures --json prints the collector's own payload (the FailureReportData object), the
   // report --json and doctor --json precedent: the time-and-spend fold gave the digest a
   // stable data shape, so the machine-readable form is the data itself, not a re-parse of the
