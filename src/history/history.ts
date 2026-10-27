@@ -185,11 +185,20 @@ function applyHistoryModelFilter(rows: RunRow[], rest: string[]): { rows: RunRow
   return { rows, models };
 }
 
-/** Render the collected-and-filtered rows: the `--by`/`--summary` summary grouping, the `--json`
- * document, the empty-state wording (blaming the filter that emptied the set, else the log or
- * window), the aligned table, and the sparse-window note. A bad `--by` value fails here, after
- * row collection and filtering and before `--json`. */
-function sayHistory(rows: RunRow[], q: HistoryQuery, covered: boolean, filtered: { afterGrep: number; afterResult: number; classes: HistoryResultClass[] | null; models: string[] | null }): void {
+/** The post-collection filter state a narrowed row set carries into rendering: how many rows a
+ * `--grep` and a `--result` pass admitted (0 when the flag is absent), plus the filter values
+ * themselves when present. Shared by `sayHistory` and `sayHistoryEmpty` so the empty-state
+ * wording can blame whichever filter emptied the set. */
+interface HistoryFiltering {
+  afterGrep: number;
+  afterResult: number;
+  classes: HistoryResultClass[] | null;
+  models: string[] | null;
+}
+
+/** Validate `--by`'s value and its `--summary` requirement; return whether the grouping is by
+ * model (false for `role`). One home for "can this `--by` proceed, and does it group by model?" */
+function historySummaryGroup(q: HistoryQuery): boolean {
   // `--by role|model` picks how --summary groups its lines (role by default).
   const byRaw = flagValue(q.rest, "--by");
   let byModel = false;
@@ -201,6 +210,56 @@ function sayHistory(rows: RunRow[], q: HistoryQuery, covered: boolean, filtered:
     if (!q.rest.includes("--summary")) fail("history --by needs --summary (it picks how the summary groups runs)");
     byModel = byRaw === "model";
   }
+  return byModel;
+}
+
+/** The empty-set prose: blame the filter that emptied the set (model, then result, then grep),
+ * else the log or window. Never the `no runs yet`/`no runs in <window>` prose when rows were
+ * scanned and filtered out — the runs are there, none match. */
+function sayHistoryEmpty(q: HistoryQuery, filtered: HistoryFiltering): void {
+  // A grep that matched nothing must not borrow the empty-log prose: `no runs yet` and
+  // `no runs in 2h` are statements about the LOG and the WINDOW, and both are false when
+  // rows were scanned and filtered out — the operator would read a quiet team where the
+  // truth is `the runs are there, none match`. The logs --grep rule (its `no events
+  // matching "<pattern>"`, src/cli/log-commands.ts) names the pattern instead; --json stays
+  // a bare {"rows":[]} document above, never prose in either form.
+  //
+  // The result class is named only when it emptied a non-empty set (`afterGrep > 0`): an
+  // empty log or window scanned no rows, so the result filter removed nothing and the
+  // empty-log/window prose is the true one — the dashboard's History view draws the same
+  // line. A grep that admitted nothing keeps its own wording regardless of --result.
+  say(
+    filtered.models !== null && filtered.afterResult > 0
+      ? `no runs on model "${filtered.models.join(",")}"`
+      : filtered.classes !== null && filtered.afterGrep > 0
+      ? `no runs with result "${filtered.classes.join(",")}"`
+      : q.grepPattern !== null
+        ? `no runs matching "${q.grepPattern}"`
+        : q.sinceMs === null
+          ? "no runs yet"
+          : q.untilMs === null
+            ? `no runs in ${durationLabel(q.sinceMs)}`
+            : `no runs ${betweenWindow(q.sinceMs, q.untilMs)}`,
+  );
+}
+
+/** Render the non-empty rows: the summary (model or role) when `--summary`, else the aligned
+ * table. Called only with `rows.length > 0`.
+ */
+function sayHistoryRows(rows: RunRow[], summary: boolean, byModel: boolean): void {
+  if (summary) say(byModel ? renderModelSummary(summarizeRunRowsByModel(rows)) : renderSummary(summarizeRunRows(rows)));
+  else {
+    const widths = widestWidths(rows);
+    say(rows.map((r) => renderRow(r, widths)).join("\n"));
+  }
+}
+
+/** Render the collected-and-filtered rows: the `--by`/`--summary` summary grouping, the `--json`
+ * document, the empty-state wording (blaming the filter that emptied the set, else the log or
+ * window), the aligned table, and the sparse-window note. A bad `--by` value fails here, after
+ * row collection and filtering and before `--json`. */
+function sayHistory(rows: RunRow[], q: HistoryQuery, covered: boolean, filtered: HistoryFiltering): void {
+  const byModel = historySummaryGroup(q);
   const summary = q.rest.includes("--summary") && rows.length > 0;
   // --json swaps the renderer for the collector's own payload, exactly as status --json and
   // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
@@ -211,37 +270,10 @@ function sayHistory(rows: RunRow[], q: HistoryQuery, covered: boolean, filtered:
     return;
   }
   if (rows.length === 0) {
-    // A grep that matched nothing must not borrow the empty-log prose: `no runs yet` and
-    // `no runs in 2h` are statements about the LOG and the WINDOW, and both are false when
-    // rows were scanned and filtered out — the operator would read a quiet team where the
-    // truth is `the runs are there, none match`. The logs --grep rule (its `no events
-    // matching "<pattern>"`, src/cli/log-commands.ts) names the pattern instead; --json stays
-    // a bare {"rows":[]} document above, never prose in either form.
-    //
-    // The result class is named only when it emptied a non-empty set (`afterGrep > 0`): an
-    // empty log or window scanned no rows, so the result filter removed nothing and the
-    // empty-log/window prose is the true one — the dashboard's History view draws the same
-    // line. A grep that admitted nothing keeps its own wording regardless of --result.
-    say(
-      filtered.models !== null && filtered.afterResult > 0
-        ? `no runs on model "${filtered.models.join(",")}"`
-        : filtered.classes !== null && filtered.afterGrep > 0
-        ? `no runs with result "${filtered.classes.join(",")}"`
-        : q.grepPattern !== null
-          ? `no runs matching "${q.grepPattern}"`
-          : q.sinceMs === null
-            ? "no runs yet"
-            : q.untilMs === null
-              ? `no runs in ${durationLabel(q.sinceMs)}`
-              : `no runs ${betweenWindow(q.sinceMs, q.untilMs)}`,
-    );
+    sayHistoryEmpty(q, filtered);
     return;
   }
-  if (summary) say(byModel ? renderModelSummary(summarizeRunRowsByModel(rows)) : renderSummary(summarizeRunRows(rows)));
-  else {
-    const widths = widestWidths(rows);
-    say(rows.map((r) => renderRow(r, widths)).join("\n"));
-  }
+  sayHistoryRows(rows, summary, byModel);
   // A sparse window is never mistaken for a quiet team — but the note only ever rides rows
   // (an empty window returned above), it never touches --json output, and it is the shared
   // SPARSE_WINDOW_NOTE wording: the oldest retained event being inside the window is exactly
