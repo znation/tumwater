@@ -28,7 +28,7 @@ import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBack
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
 import { collectReportSince } from "../src/report/report-since-data.js";
-import { renderSinceReportMarkdown } from "../src/report/report-render.js";
+import { renderSinceReportMarkdown } from "../src/report/report-since-render.js";
 import { entryKey } from "../src/backlog/backlog-parts.js";
 import { saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";

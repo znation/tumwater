@@ -7,7 +7,8 @@
  * for different reasons. The event-log folding both collectors share lives in
  * src/report/report-usage-fold.ts (foldUsageEvent) and src/report/report-fold.ts (the windowed
  * cache and scope helpers), the shapes they produce in src/report/report-types.ts, and the
- * Markdown rendering in src/report/report-render.ts. */
+ * Markdown rendering in src/report/report-since-render.ts (which imports the shared formatting
+ * voice from src/report/report-render.ts). */
 import { assertReportSinceMs, eventWindowCovers, readWindowEvents, sinceWindowTiming } from "../events/event-window.js";
 import { dayKey } from "../text/datetime.js";
 import { addTo } from "../collections.js";

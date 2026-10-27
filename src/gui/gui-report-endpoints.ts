@@ -9,7 +9,7 @@ import { collectReport } from "../report/report-data.js";
 import { collectReportSince } from "../report/report-since-data.js";
 import { collectFailureReport, collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
-import { renderSinceReportMarkdown } from "../report/report-render.js";
+import { renderSinceReportMarkdown } from "../report/report-since-render.js";
 import { loadQuarantine } from "../review/known-flakes.js";
 import { quarantineRows, quarantineViewRows, type QuarantineViewRow } from "../review/quarantine-render.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
