@@ -153,6 +153,12 @@ const FORMAT_JS = String.raw`  // format:start
   // section had the byte-identical map; a missing or non-array list paints nothing.
   const commitRowsHtml = (commits) =>
     (Array.isArray(commits) ? commits : []).map((c) => "<div class='mono clamp1'>" + esc(c.sha) + " " + esc(c.subject || "—") + "</div>").join("");
+  // The empty state for a missing main branch, shared by the Pending roster, its
+  // overlapping-files card, and the role drawer's Pending change section so the esced branch
+  // name and the wording cannot drift between them — change-render.ts's mainMissingPhrase,
+  // whose terminal spelling is lowercase/unescaped. The browser client cannot import that TS
+  // module, so this is its own copy, capitalized and esced for the HTML sentence it leads.
+  const mainBranchMissingPhrase = (mainBranch) => "Main branch " + esc(mainBranch) + " does not exist";
   // Title-case a phrase's first character and keep the rest — backend-traits.ts's
   // backendDisplayName rule, the one home of the upcasing gui-client-model.ts's result labels
   // and gui-client-history.ts's window options each inlined, so a label cannot drift between

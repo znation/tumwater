@@ -58,7 +58,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     if (!team || !Array.isArray(team.roles) || team.roles.length === 0)
       return "<div class='empty'><strong>No roles yet</strong>Roles appear here once the team is configured.</div>";
     if (team.roles.every((r) => r.state === "no-base"))
-      return "<div class='empty'><strong>Main branch " + esc(team.mainBranch) + " does not exist</strong>There is no base to compare unmerged work against.</div>";
+      return "<div class='empty'><strong>" + mainBranchMissingPhrase(team.mainBranch) + "</strong>There is no base to compare unmerged work against.</div>";
     const rows = team.roles.map((r) =>
       "<tr class='clickable' data-open='" + esc(r.role) + "'>" +
       "<td class='mono'>" + esc(roleLabel(r.role)) + "</td>" +
@@ -202,7 +202,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     let body;
     let head = "<div class='card-head'><h2>Overlapping files</h2></div>";
     if (ok && view.state === "no-base") {
-      body = "<div class='empty'>Main branch " + esc(view.mainBranch) + " does not exist</div>";
+      body = "<div class='empty'>" + mainBranchMissingPhrase(view.mainBranch) + "</div>";
     } else if (!ok || !Array.isArray(view.overlaps) || view.overlaps.length === 0) {
       body = "<div class='empty'>No file is touched by two pending changes</div>";
     } else {

@@ -208,7 +208,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const commits = Array.isArray(view.commits) ? view.commits : [];
     const dirty = Array.isArray(view.dirtyFiles) ? view.dirtyFiles : [];
     if (view.state === "absent") return "<p class='muted'>No workspace yet — this role has not run.</p>";
-    if (view.state === "no-base") return "<p class='muted'>Main branch " + esc(view.mainBranch) + " does not exist.</p>";
+    if (view.state === "no-base") return "<p class='muted'>" + mainBranchMissingPhrase(view.mainBranch) + ".</p>";
     const scoped = typeof view.path === "string";
     if (scoped && view.state === "ready" && commits.length === 0 && dirty.length === 0) {
       return "<p class='muted'>No pending change to " + esc(view.path) + ".</p>";
