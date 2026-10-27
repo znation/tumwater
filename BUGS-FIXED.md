@@ -5,6 +5,16 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `an on-time merge-scope timeout names a starved host, and stays silent on an idle one` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+an on-time merge-scope timeout names a starved host, and stays silent on an idle one
+~~~~
+
+**Validation gap:** none — the existing suite reproduced the flake's failure mode, and the frozen-Date regression test confirms the fix deterministically.
+
 ### `doctor --commit-backlog commits a dirty backlog file before the report; with --json it is the report's backlogCommit field` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it. The entry's title is mismatched — the pasted failure is the wedged-xcrun probe bound test, not `doctor --commit-backlog`; the root cause below is that probe test.

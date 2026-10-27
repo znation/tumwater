@@ -192,14 +192,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 **Needs review 2026-10-26 by bugfix: the failure message names the exact assertion, so the next flake reads which line broke — if it is the `.durations.json` byte-identity assert, check whether an outer run's final `recordDurations` overlapped a nested writer (`before` vs `after` diff in the output); if it is a coverage-table line, the `**/test/**` exclude or the `all files` row under peak process contention; if it is `status`, the nested spawn itself.**
 
-### `an on-time merge-scope timeout names a starved host, and stays silent on an idle one` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-an on-time merge-scope timeout names a starved host, and stays silent on an idle one
-~~~~
-
 ### The fast-merge guardrail "quarantine holds 11 tests — over the 10-test ceiling" fired on 2026-10-26: eleven tests sit quarantined (two aged past 3 days), so the post-merge quarantine has outgrown its ceiling and is not draining (found by the selfcheck role 2026-10-26)
 
 - **Symptom:** the 2026-10-26 digest's `## Fast merge guardrails` line reads: "quarantine holds 11 tests — over the 10-test ceiling; quarantine holds 2 tests over 3 days: `simultaneous cross-process pauseRole ca…` (4d ago), `a hanging fake rejects within timeoutMs…` (3d ago)". This is the first window the ceiling is breached: BUGS.md `## Open` holds eleven `quarantined by tumwater` entries dated 10-23 through 10-26 (pauseRole, hanging-fake, revision-re-apply, PLANS-citation, coverage-table, timed-out-check, merge-scope-timeout, batch-base-main, merge/batch-timeout, run--once-role, run--for), against a 10-test ceiling. The quarantine's intended drain — the bugfix role clearing a quarantined test back to green (BUGS-FIXED.md shows several closed 10-26) — has not kept pace with intake, so the guardrail keeps firing instead of silencing.

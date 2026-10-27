@@ -211,9 +211,17 @@ test("an idle host leaves the merge-scope deadline alone; load stretches it by t
   assert.equal(starvedDeadlineMs(300_000, { load1: 90, cpus: 18 }), 600_000);
 });
 
-test("an on-time merge-scope timeout names a starved host, and stays silent on an idle one", async () => {
+test("an on-time merge-scope timeout names a starved host, and stays silent on an idle one", async (t) => {
   // BUGS.md 2026-10-12: 28 of 29 merge build-check failures in a window were the 300 s deadline
   // firing on time under the team's own load; the reason must carry that evidence.
+  // The deadline is read as "on time" only when it fired within DEADLINE_LATE_TOLERANCE_MS of its
+  // bound. A 0.8 s deadline fires more than 5 s late whenever the host sleeps or the event loop
+  // stalls mid-check — the very starved-host machine this test exercises — and then the reason
+  // rewrites to the late-deadline wording without the host-load clause, breaking the strict
+  // assertion (BUGS.md 2026-10-26). Freeze the Date clock (the same mock the host-slept-through
+  // deadline test above uses) so the deadline's lateness is measured as 0 no matter how the real
+  // event loop schedules the short bound: the test asserts the on-time wording deterministically.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
   const { root, wt } = buildCheckFixture();
   fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "sleep 5" }));
   const run = (load1: number) =>
