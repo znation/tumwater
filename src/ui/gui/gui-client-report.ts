@@ -369,7 +369,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
 
   // report-quarantine:start
   // The Failures view's flake-quarantine list, painted as its own card below the digest: the
-  // interactive twin of the amber quarantine alert (whose See-failures action lands here). An
+  // interactive twin of the doctor's flaky-checks row (whose Release buttons land here). An
   // empty or absent section (a clean quarantine) renders nothing, so a window with a digest
   // but no quarantine is unchanged. The card is structured ({ warning, rows } from
   // /api/failures) rather than Markdown, so each entry carries a Release button that runs the

@@ -19,13 +19,11 @@ import { staleClaimEntries } from "../scheduling/claim-entries.js";
 import { teamAlerts } from "./team-alerts.js";
 import { duplicatedBacklogHeadings, liveFinishedEntriesFor } from "../doctor/doctor-backlog-plans.js";
 import { readPostReviews } from "../review/post-merge-review.js";
-import { capacityContention, droppedPostReviewsAlert, flappedChecksAlert, instancePoolProblems, mainRuleFailures, planDependencyAlert, postMergeChurnAlert, postReviewRiskAlert, providerCapProblems, qaCoverageAlert, quarantineAlert, regressedFixesAlert, staleOpenQuestions, staleWorkspacePins } from "./alert-feeds.js";
+import { capacityContention, instancePoolProblems, planDependencyAlert, providerCapProblems, regressedFixesAlert, staleOpenQuestions, staleWorkspacePins } from "./alert-feeds.js";
 
 // The alert feeds' result types live with their functions in alert-feeds.ts, but team-alerts.ts
-// and the tests keep importing them through this module (the re-export pattern the feeds
-// themselves used for POST_MERGE_REJECT_WINDOW_MS and staleWorkspacePins, which now live in
-// alert-feeds.ts and are imported from there).
-export type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert, QaCoverageStale } from "./alert-feeds.js";
+// and the tests keep importing them through this module — one import edge into alert-feeds.ts.
+export type { CapacityBottleneck, RegressedFixAlert } from "./alert-feeds.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
  * still show a screenful of notable events (merges, failures, questions) after it filters
@@ -446,7 +444,7 @@ function alertFields(root: string, snap: ReturnType<typeof snapshot>, questions:
   return {
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), planDependencyAlert(root), stalledEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), qaCoverageAlert(root, now), staleWorkspacePins(root, now), liveFinishedEntriesFor(root), instancePoolProblems(root), providerCapProblems(root)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), planDependencyAlert(root), stalledEntries(root), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), capacityContention(root, now), regressedFixesAlert(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), staleWorkspacePins(root, now), liveFinishedEntriesFor(root), instancePoolProblems(root), providerCapProblems(root)),
   };
 }
 

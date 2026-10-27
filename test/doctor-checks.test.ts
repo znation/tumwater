@@ -27,6 +27,8 @@ import {
   diskReclaimPhrase,
   checkEventLog,
   checkFlakyChecks,
+  checkDroppedPostMergeReviews,
+  checkMainDiffRules,
   checkPostMergeChurn,
   checkQaCoverage,
   checkStateDir,
@@ -1613,6 +1615,50 @@ test("checkPostMergeChurn warns on a day's post-merge rejection burst and stays 
   const single = readyRepo();
   writeEvents(single, [{ ts: Date.now() - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true }]);
   assert.deepEqual(checkPostMergeChurn(single), { level: "ok", detail: "no post-merge rejection burst in the last day" });
+});
+
+test("checkDroppedPostMergeReviews warns on a day's dropped post-merge reviews and names the commit", () => {
+  const root = readyRepo();
+  const now = Date.now();
+  writeEvents(root, [
+    { ts: now - 120_000, source: "review", type: "warning", message: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" },
+    { ts: now - 60_000, source: "review", type: "warning", message: "could not file the dropped post-merge review of ab12cd3e in BUGS.md (dirty working tree)" },
+    { ts: now - 30_000, source: "main", type: "main_check", message: "main's tip ab12cd3e passes" },
+    { ts: now - 10_000, source: "review", type: "warning", message: "dropping the post-merge review of ef5678ab after 3 failed fix merges; the fix stays unreviewed" },
+    { ts: now - 25 * 3_600_000, source: "review", type: "warning", message: "dropping the post-merge review of 99999999 after 3 failed runs; it stays on main unreviewed" },
+  ]);
+  const out = checkDroppedPostMergeReviews(root);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /post-merge reviews were dropped/);
+  assert.match(out.detail, /ef5678ab/, "the fix-merge drop's different wording is still caught");
+  assert.match(out.detail, /stays unreviewed/);
+  assert.doesNotMatch(out.detail, /99999999/, "the 25h-old drop is outside the day window");
+
+  // A clean day reads ok.
+  const clean = readyRepo();
+  assert.deepEqual(checkDroppedPostMergeReviews(clean), { level: "ok", detail: "no post-merge review was dropped in the last day" });
+});
+
+test("checkMainDiffRules warns on a day's diff-rule warnings and names the tip and rule", () => {
+  const root = readyRepo();
+  const now = Date.now();
+  writeEvents(root, [
+    { ts: now - 120_000, source: "main", type: "warning", message: "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts" },
+    { ts: now - 60_000, source: "main", type: "main_check", message: "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts" },
+    { ts: now - 30_000, source: "main", type: "warning", message: "main watch could not check main" },
+    { ts: now - 25 * 3_600_000, source: "main", type: "warning", message: "main's tip 99999999 fails the diff rules: conflict markers in src/b.ts" },
+  ]);
+  const out = checkMainDiffRules(root);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /diff-rule failure on main/);
+  assert.match(out.detail, /ab12cd3e/);
+  assert.match(out.detail, /conflict markers in src\/a\.ts/);
+  assert.doesNotMatch(out.detail, /99999999/, "the 25h-old match is outside the day window");
+  assert.match(out.detail, /tumwater revert/);
+
+  // A clean day reads ok.
+  const clean = readyRepo();
+  assert.deepEqual(checkMainDiffRules(clean), { level: "ok", detail: "no diff-rule failure on main in the last day" });
 });
 
 test("checkCiParity reads current, stale and failed parities", () => {

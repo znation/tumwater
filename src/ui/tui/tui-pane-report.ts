@@ -43,8 +43,8 @@ export function createReportPane(session: TuiPaneSession) {
 
   /** The Failures pane's body for one window and role scope, the digest sibling of
    * usagePaneCache; renderFailureMarkdown renders both the day and --since shapes, and the
-   * current flake quarantine (renderQuarantineSection over loadQuarantine, the read twin of
-   * the amber quarantine alert) is appended below the digest when it is non-empty. */
+   * current flake quarantine (renderQuarantineSection over loadQuarantine, the read twin of the
+   * doctor's flaky-checks row) is appended below the digest when it is non-empty. */
   const failuresPaneCache = (sinceMs: number | null, scope: string | undefined, step: number): string => {
     const quarantine = renderQuarantineSection(quarantineRows(loadQuarantine(session.root)), Date.now());
     const tail = quarantine ? "\n\n" + quarantine : "";

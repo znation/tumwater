@@ -218,9 +218,8 @@ export const POST_REVIEW_AT_RISK_FAILURES = POST_REVIEW_FAILURE_LIMIT - 1;
  * is not waiting on a verdict and must not read as one failed run from being dropped.
  * A review that has already landed its fix (`fixed` set) is left out too — it is a settled
  * record naming both shas, not a verdict-less entry the next run could drop.
- * One traversal shared by the doctor's `post-merge reviews` row (checkPostReviews) and the
- * always-on `post-merge-risk` team alert (src/ui/alert-feeds.ts postReviewRiskAlert), so the
- * two surfaces select the same entries and cannot drift. Reads .tumwater/state/post-review.json
+ * One traversal used by the doctor's `post-merge reviews` row (checkPostReviews), so the row's
+ * selection lives in one place. Reads .tumwater/state/post-review.json
  * through readPostReviews, which degrades a missing or torn file to the well-formed subset or
  * `[]` and never throws. */
 export function atRiskPostReviews(root: string): AtRiskPostReview[] {
@@ -231,8 +230,8 @@ export function atRiskPostReviews(root: string): AtRiskPostReview[] {
 
 /** The doctor's one sentence naming the post-merge reviews one failed run from being dropped
  * (the checkStaleQueuedMerges phrase precedent): the first in full — role, short commit, summary
- * and the failures count — the rest folded through andMore, and the one sentence every surface
- * shows, so the doctor row and the alert cannot drift on the wording. null for an empty list. */
+ * and the failures count — the rest folded through andMore, the one sentence the row shows, so
+ * the wording lives in one place. null for an empty list. */
 export function atRiskPostReviewsPhrase(rows: readonly AtRiskPostReview[]): string | null {
   const [first, ...rest] = rows;
   if (!first) return null;
@@ -245,8 +244,8 @@ export function atRiskPostReviewsPhrase(rows: readonly AtRiskPostReview[]): stri
  * drain drops an entry at POST_REVIEW_FAILURE_LIMIT failed runs) — the last moment an operator
  * can fix the reviewer backend or deliberately accept the commit unreviewed before the drain
  * drops it from the queue and it stays on main unreviewed. Reads .tumwater/state/post-review.json
- * through the shared atRiskPostReviews traversal the always-on post-merge-risk team alert
- * (src/ui/alert-feeds.ts postReviewRiskAlert) uses, so the two surfaces cannot drift. A warn,
+ * through the shared atRiskPostReviews traversal, so the selection and wording live in one
+ * place. A warn,
  * never a fail — the checkStaleQueuedMerges precedent: a failing reviewer is operator signal,
  * not a broken environment; readPostReviews never throws (a missing or torn file degrades to the
  * well-formed subset or `[]`), so the check needs no read-error arm. */

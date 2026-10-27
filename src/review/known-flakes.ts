@@ -68,12 +68,12 @@ export function flakeCounts(events: readonly HarnessEvent[]): [string, number][]
 /** The bar at which a normalized check counts as flapping: one warning in the window is a
  * routine one-off the gate's single re-run already absorbed, while two means the check flapped
  * again and pays that re-run on every merge it touches — the one threshold the doctor's `flaky
- * checks` row and the always-on flapped-checks alert share, folded through
+ * checks` row reads, folded through
  * repeatedFlakeCounts. */
 const FLAKE_REPEAT_WARN = 2;
 
 /** The normalized checks in `events` that flapped at least FLAKE_REPEAT_WARN times, most
- * frequent first — the filter flakeCounts feeds both the doctor and the status alert, so the
+ * frequent first — the filter flakeCounts feeds the doctor's `flaky checks` row, so the
  * threshold lives in the one home. Pure. */
 export function repeatedFlakeCounts(events: readonly HarnessEvent[]): [string, number][] {
   return flakeCounts(events).filter(([, n]) => n >= FLAKE_REPEAT_WARN);
@@ -179,7 +179,7 @@ export function quarantineTests(root: string, tests: readonly string[] | undefin
  * whether the entry was present and the write succeeded, so the caller can answer a concurrent
  * removal: `false` with no warning and no write for a name not quarantined, or when a write
  * faulted (the quarantineTests write contract: a failed write warns and changes nothing). Logs
- * one `warning` under TUMWATER_SOURCE so the alert and the doctor's `flaky checks` row stop
+ * one `warning` under TUMWATER_SOURCE so the doctor's `flaky checks` row stops
  * excusing the name. */
 export function releaseQuarantinedTest(root: string, test: string): boolean {
   const entries = loadQuarantine(root);

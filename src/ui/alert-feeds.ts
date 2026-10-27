@@ -4,23 +4,18 @@ import { questionFilingDate } from "../backlog/question-answer.js";
 import { byDaysThenIndex } from "../collections.js";
 import { eventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
-import { atRiskPostReviews, atRiskPostReviewsPhrase, STALE_QUESTION_DAYS } from "../doctor/doctor-backlog.js";
+import { STALE_QUESTION_DAYS } from "../doctor/doctor-backlog.js";
 import { regressedFixCandidates, matchedRegressedFixes, regressedFixesPhrase, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
 import { planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { checkWaitContention, providerConcurrencyProblems, providerWaitContention, slotWaitContention, smallPoolProblems, staleWorkspacePins, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
-import { flappedChecksPhrase } from "../doctor/doctor-project-checks.js";
 import { readSlotsState } from "../git/slots-state.js";
-import { readQaCoverage, qaCoverageStalled } from "../run/qa-coverage.js";
-import { postMergeChurn, POST_MERGE_REJECT_WINDOW_MS, type PostMergeRejection } from "../review/post-merge-review.js";
-import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
-import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { configForStatus } from "../status/status-polls.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
-import type { FlappedChecks, PlanDependencyProblem, QuarantinedTests, StaleQuestion } from "./team-alerts.js";
+import type { PlanDependencyProblem, StaleQuestion } from "./team-alerts.js";
 
 /** This module is the alert-feed half of src/ui/status-payload.ts: each always-on team alert's
- * data-sourcing function (capacityContention, quarantineAlert, …) lives here, a
+ * data-sourcing function (capacityContention, …) lives here, a
  * sibling of the src/ui/team-alert-*.ts builders that turn them into banners. status-payload.ts
  * stays the one status-document builder, importing these feeds and folding each feed's result
  * into the `alerts` field; status-render.ts reads the feeds directly for the TUI. */
@@ -125,10 +120,6 @@ export function instancePoolProblems(root: string): string[] {
   return smallPoolProblems(configForStatus(root));
 }
 
-/** How far back the dropped-post-review alert looks — one day, the 24 h event-window convention
- * every event-reading alert uses, so a review the
- * drain dropped stays a standing amber notice until a day passes. */
-export const DROPPED_POST_REVIEW_WINDOW_MS = 24 * 60 * 60_000;
 /** How far back the regressed-fixes alert looks — one day, so a recently Fixed test that failed
  * again is a standing amber alert until a day passes (or the failure is filed). The doctor's
  * own `regressed fixes` row keeps its since-the-fix read; this is the alert's daily trigger, the
@@ -153,165 +144,8 @@ export function regressedFixesAlert(root: string, now = Date.now()): RegressedFi
   const detail = regressedFixesPhrase(rows);
   return detail === null ? null : { count: rows.length, detail };
 }
-/** A window summary of the `warning` events whose `message` contains `marker`: the count and
- * the most recent hit (its stamp and squashed wording). The one home of the
- * filter-warnings-by-substring-then-take-latest shape the two marker feeds
- * (droppedPostReviewsAlert, mainRuleFailures) share. null when the window holds no such
- * warning. eventsSince degrades an unreadable log, so a single bounded event scan needs no
- * try/catch. */
-function warningMarkerHit(
-  root: string,
-  windowMs: number,
-  marker: string,
-  now: number,
-): { count: number; latestTs: number; latestMessage: string } | null {
-  const hits = eventsSince(root, windowMs, now, (e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(marker));
-  const latest = hits[hits.length - 1];
-  return latest ? { count: hits.length, latestTs: latest.ts, latestMessage: String(latest.message) } : null;
-}
-/** Re-export so the always-on alert's threshold and window stay in their one home
- * (src/review/post-merge-review.ts) while status-payload.ts and test/status-payload.test.ts keep
- * reading it from this module. */
-export { POST_MERGE_REJECT_WINDOW_MS };
 /** Re-export so the always-on alert's stale-pin selector stays in its one home
  * (src/doctor/doctor-contention-checks.ts) while tui.tsx keeps importing every alert feed from
  * this one module. */
 export { staleWorkspacePins };
-/** A trailing day of at least `POST_MERGE_REJECT_WARN` post-merge `review_rejected` events:
- * which already-landed commits were turned back, and by how many per role. count is the total
- * rejections in the window, roles each role's per-role total (count-desc, role-asc). */
-export interface PostMergeChurn {
-  count: number;
-  roles: readonly PostMergeRejection[];
-}
-/** The always-on feed for the `post-merge-churn` team alert (src/ui/team-alert-merge.ts): a day in
- * which at least `POST_MERGE_REJECT_WARN` already-merged commits were turned back by post-merge
- * review, each rejection written by reviewMergedCommit as a `review_rejected` event with
- * `afterMerge: true`. Post-merge is the costly kind — the commit already reached main, so a
- * rejection is answered only by the reviewer's own fix — and it is the reviewer-fix signal for
- * the `review.afterMerge` tiering. Reads the same
- * events the report's `postMergeRejectionsByRole` fills, so the two cannot disagree; null when
- * the window holds fewer than `POST_MERGE_REJECT_WARN` post-merge rejections, or none. A read
- * error skips the row (the capacityContention precedent). */
-export function postMergeChurnAlert(root: string, now = Date.now()): PostMergeChurn | null {
-  try {
-    const events = eventsSince(root, POST_MERGE_REJECT_WINDOW_MS, now, (e) => e.type === "review_rejected");
-    return postMergeChurn(events);
-  } catch {
-    // A read error skips the row, so the alert never cries wolf on an unreadable log.
-    return null;
-  }
-}
 
-/** A stale or oversized flake quarantine, the always-on twin of the doctor's `flaky checks` row
- * (src/doctor/doctor-project-checks.ts checkFlakyChecks): the same quarantineWarning the doctor
- * calls over the same loadQuarantine list, so the alert and the doctor cannot drift on when the
- * list is a problem. null when the list is fresh and small (or absent) — the rule fires only
- * over QUARANTINE_WARN_COUNT tests or one first seen more than QUARANTINE_AGE_MS ago. */
-export function quarantineAlert(root: string, now = Date.now()): QuarantinedTests | null {
-  const entries = loadQuarantine(root);
-  const warning = quarantineWarning(entries, now);
-  if (warning === null) return null;
-  const oldest = entries.reduce((a, b) => (b.firstSeen < a.firstSeen ? b : a));
-  return { count: entries.length, oldestTest: oldest.test, oldestFirstSeen: oldest.firstSeen, warning };
-}
-/** Checks that flapped more than once in the doctor's window, the always-on twin of the doctor's
- * `flaky checks` row (src/doctor/doctor-project-checks.ts checkFlakyChecks): the same
- * repeatedFlakeCounts over the same KNOWN_FLAKE_WINDOW_MS event window and the same
- * flappedChecksPhrase the doctor shows, so the alert and the doctor cannot drift on the count or
- * the wording. null when no check flapped twice in the window (or the log is unreadable). */
-export function flappedChecksAlert(root: string, now = Date.now()): FlappedChecks | null {
-  const events = eventsSince(root, KNOWN_FLAKE_WINDOW_MS, now, (e) => e.type === "warning");
-  const flapped = repeatedFlakeCounts(events);
-  const detail = flappedChecksPhrase(flapped);
-  return detail === null ? null : { count: flapped.length, detail };
-}
-/** A qa flow-coverage ledger whose newest exercise is over `QA_COVERAGE_STALE_MS` old — the
- * always-on twin of the doctor's `qa coverage` row (doctor-project-checks.ts checkQaCoverage):
- * read over the same qaCoverageStalled predicate, so the alert and the doctor cannot drift on
- * when a quiet qa is a problem. null when the ledger is fresh or empty — no record yet (a
- * missing file, or a project that never ran qa) is not a stall. `newestAt` is the newest
- * entry's `lastRunAt`, `count` the number of well-formed entries (the `quarantineAlert` shape). */
-export interface QaCoverageStale {
-  newestFlow: string;
-  newestAt: number;
-  count: number;
-}
-
-export function qaCoverageAlert(root: string, now = Date.now()): QaCoverageStale | null {
-  const coverage = readQaCoverage(root);
-  if (!qaCoverageStalled(coverage, now)) return null;
-  const entries = Object.entries(coverage);
-  let newestFlow = entries[0]![0];
-  let newestAt = entries[0]![1].lastRunAt;
-  for (const [name, entry] of entries) {
-    if (entry.lastRunAt > newestAt) {
-      newestAt = entry.lastRunAt;
-      newestFlow = name;
-    }
-  }
-  return { newestFlow, newestAt, count: entries.length };
-}
-/** A post-merge review one failed run from being dropped, the always-on twin of the doctor's
- * `post-merge reviews` row (src/doctor/doctor-backlog.ts checkPostReviews): the same
- * atRiskPostReviews traversal and atRiskPostReviewsPhrase the doctor shows, so the alert and the
- * doctor cannot drift on the selection or the wording. count is the at-risk reviews, detail the
- * doctor's sentence. null when no queued review is at risk (or the file is missing or torn —
- * readPostReviews never throws and the read is one small JSON file, so it is poll-cheap). */
-export interface PostReviewRisk {
-  count: number;
-  detail: string;
-}
-/** @see PostReviewRisk */
-export function postReviewRiskAlert(root: string): PostReviewRisk | null {
-  const rows = atRiskPostReviews(root);
-  const detail = atRiskPostReviewsPhrase(rows);
-  return detail === null ? null : { count: rows.length, detail };
-}
-/** The exact substring the drain's drop branch logs in its `warning` event (src/merge/
- * merge-post-review-drain.ts at POST_REVIEW_FAILURE_LIMIT), so this feed matches a real drop
- * and not the per-run `the post-merge review of <sha> failed (…)` warning the at-risk alert
- * already covers — alert-feeds.ts's DROPPED_POST_REVIEW_MARKER is the same string, so the feed
- * and the drain cannot drift on what a drop is. */
-const DROPPED_POST_REVIEW_MARKER = "dropping the post-merge review of";
-/** A post-merge review the drain dropped in the trailing day (src/merge/merge-post-review-drain.ts
- * `startPostReview` at POST_REVIEW_FAILURE_LIMIT, src/review/post-merge-review.ts) — the commit
- * is permanently on main beyond the review gate with only this `warning` event to say so. count
- * is the drops in the window, latestTs the most recent one's event stamp, latestMessage its
- * squashed wording. */
-export interface DroppedPostReviews {
-  count: number;
-  latestTs: number;
-  latestMessage: string;
-}
-/** The always-on feed for the `dropped-post-reviews` team alert (src/ui/team-alert-merge.ts): reads
- * only the `warning` event the drain's drop branch already writes, so it reaches the status
- * poll without touching the review state and cannot drift from the drop. null when the day
- * holds no such warning. eventsSince degrades an unreadable log, so one bounded event scan
- * needs no try/catch (the mainRuleFailures precedent). */
-export function droppedPostReviewsAlert(root: string, now = Date.now()): DroppedPostReviews | null {
-  return warningMarkerHit(root, DROPPED_POST_REVIEW_WINDOW_MS, DROPPED_POST_REVIEW_MARKER, now);
-}
-/** A main watch tip failing the review gate's five diff rules can sit on main for a day — this
- * is how far back the main-diff-rules alert looks, the same trailing-day convention every
- * event-reading alert uses. */
-export const MAIN_RULE_FAILURE_WINDOW_MS = 24 * 60 * 60_000;
-/** The exact substring main-watch.ts's `watchRules` logs in its warning, so this feed matches a
- * real rule failure and cannot drift from the wording the watch writes. */
-const MAIN_RULE_FAILURE_MARKER = "fails the diff rules";
-/** A main tip the watch's diff rules rejected in the trailing day. count is the distinct failing
- * tips in the window (the watch logs one warning per tip, not per poll), latestTs the most
- * recent one's event stamp, latestMessage its squashed wording. */
-export interface MainRuleFailure {
-  count: number;
-  latestTs: number;
-  latestMessage: string;
-}
-/** The always-on feed for the `main-diff-rules` team alert (src/ui/team-alert-merge.ts): reads only
- * the `warning` event the main watch already writes, so it reaches the status poll without a
- * git read or a rule re-run (the watch paid for the check) and cannot drift from the watch's
- * wording. null when the day holds no such warning. eventsSince degrades an unreadable log, so
- * one bounded event scan needs no try/catch (the droppedPostReviewsAlert precedent). */
-export function mainRuleFailures(root: string, now = Date.now()): MainRuleFailure | null {
-  return warningMarkerHit(root, MAIN_RULE_FAILURE_WINDOW_MS, MAIN_RULE_FAILURE_MARKER, now);
-}

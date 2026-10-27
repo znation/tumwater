@@ -309,26 +309,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The before/after row and key counts, and the deletions' measurement premise, are in the part's PLANS-DONE entry.
 - `npm run test:gate` passes.
 
-### Subtract, part 1c/6: The review and check banners go — quarantine, flapped checks, churn, post-merge risk, dropped reviews, main-diff rules and stale QA move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1b/6 landed; touches src/ui/team-alert-merge.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/doctor/doctor-check-names.ts src/doctor/doctor-project-checks.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts test/doctor-checks.test.ts)
-
-**Previously held 1**
-
-**Goal.** The review/check banners leave the feed: a stale flake quarantine, flapping checks, post-merge churn, a post-merge review one run from being dropped, a review dropped after repeated failures, a main tip the watch's diff rules reject, a stalled CI parity, and stale QA coverage. Their doctor rows (`flaky checks`, `post-merge churn`, `post-merge reviews`, `ci parity`, `qa coverage`) keep the detail. `main-diff-rules` is the one condition `DOCTOR_CHECK_NAMES` does not carry, so this part adds its row.
-
-**Approach.**
-- Delete src/ui/team-alert-merge.ts (`pushQuarantineAlert`, `pushFlappedChecksAlert`, `pushPostMergeChurnAlert`, `pushPostMergeRiskAlert`, `pushDroppedPostReviewsAlert`, `pushMainDiffRulesAlert`, `pushCiStaleAlert`, `pushQaStaleAlert`, `buildMergeAlerts`), its call/parameters in `teamAlerts` (`quarantined`, `flappedChecks`, `postMergeChurn`, `postReviewRisk`, `droppedPostReviews`, `mainRuleFailure`, `qaCoverage`), and its re-exports.
-- Delete `quarantineAlert`, `flappedChecksAlert`, `postMergeChurnAlert`, `postReviewRiskAlert`, `droppedPostReviewsAlert`, `mainRuleFailures`, `qaCoverageAlert` and their result types (`QuarantinedTests`, `FlappedChecks`, `PostMergeChurn`, `PostReviewRisk`, `DroppedPostReviews`, `MainRuleFailure`, `QaCoverageStale`) from src/ui/alert-feeds.ts / team-alert-shared.ts. Keep `snap.ciParity`: it is the snapshot field the doctor's `ci parity` row still reads; only `pushCiStaleAlert` goes.
-- Add the missing doctor row: a `main diff rules` check reading the `warning` events whose message contains `fails the diff rules` (src/baseline/main-watch.ts) within the deleted feed's 24 h window, with the marker/window constant moved to the check that now owns it; register the name in src/doctor/doctor-check-names.ts and cover it in test/doctor-checks.test.ts.
-- Update the three `teamAlerts(...)` call sites and the team-alerts.test.ts / status-payload.test.ts cases; sweep docs/how-it-works.md's sentences naming these banners.
-- Do not touch the surviving doctor checks (`checkFlakyChecks`, `checkPostReviews`, `checkPostMergeChurn`, `checkCiParity`, `checkQaCoverage`): they are the detail.
-
-**Files touched.** src/ui/team-alert-merge.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx src/doctor/doctor-check-names.ts src/doctor/doctor-project-checks.ts docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts test/doctor-checks.test.ts
-
-**Acceptance criteria.**
-- `teamAlerts` produces none of the eight deleted keys; `grep -rn 'buildMergeAlerts\|quarantineAlert\|flappedChecksAlert\|postMergeChurnAlert\|postReviewRiskAlert\|droppedPostReviewsAlert\|qaCoverageAlert' src/` finds no live reference outside the doctor checks.
-- Each deleted condition prints a `tumwater doctor` row: `flaky checks`, `post-merge churn`, `post-merge reviews`, `ci parity`, `qa coverage`, and the new `main diff rules`; a main tip failing a diff rule names the tip and the rule in that row.
-- `npm run test:gate` passes.
-
 ### Subtract, part 1d/6: The status and tail banners that are not a stopped team go — chain, role cap, no-check, brief, truncation, build, stale claims, quiet, maintenance, provider holds/caps, pause, contention, pins, pool, regressed fixes and image probes move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1c/6 and Subtract part 5e/6 landed; touches src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
 
 **Previously held 1**

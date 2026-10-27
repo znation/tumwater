@@ -36,38 +36,6 @@ export interface PlanDependencyProblem {
   message: string;
 }
 
-/** A stale or oversized flake quarantine the doctor's G3 rule warns about
- * (src/baseline/main-guardrails.ts `quarantineWarning`, QUARANTINE_WARN_COUNT, QUARANTINE_AGE_MS):
- * more than 10 quarantined tests, or any test first seen more than 3 days ago — an old entry is
- * a failure the team has stopped seeing, and an unfiled one never leaves quarantine. Computed in
- * src/ui/alert-feeds.ts's quarantineAlert from the same function the doctor's `flaky checks`
- * row calls, so the alert and the doctor cannot drift on the trigger or the thresholds. `warning`
- * is the doctor's exact phrase; `oldestFirstSeen` is the age the alert names. */
-export interface QuarantinedTests {
-  count: number;
-  oldestTest: string;
-  oldestFirstSeen: number;
-  warning: string;
-}
-/** Checks that flapped more than once in the last day — the always-on twin of the doctor's
- * `flaky checks` row (src/doctor/doctor-project-checks.ts checkFlakyChecks): `count` is the
- * number of distinct flapping checks and `detail` is the doctor's own flapped phrase. Computed
- * in src/ui/alert-feeds.ts's flappedChecksAlert from the same repeatedFlakeCounts and
- * flappedChecksPhrase the doctor calls, so the alert and the doctor cannot drift on the count
- * or the wording. */
-export interface FlappedChecks {
-  count: number;
-  detail: string;
-}
-/** A post-merge review one failed run from being dropped, the always-on twin of the doctor's
- * `post-merge reviews` row (src/doctor/doctor-backlog.ts checkPostReviews): fed from
- * alert-feeds.ts's postReviewRiskAlert, which reads the same atRiskPostReviews traversal and
- * atRiskPostReviewsPhrase the doctor shows, so the alert and the doctor cannot drift on the
- * selection or the wording. count is the at-risk reviews, detail the doctor's sentence. */
-export interface PostReviewRisk {
-  count: number;
-  detail: string;
-}
 /** One `## ` section heading that appears more than once in a backlog file — the always-on twin
  * of the doctor's `backlog headings` rule (src/doctor/doctor-backlog-plans.ts, computed by the
  * shared duplicatedBacklogHeadings, which itself shares scanBacklogHeadings with the doctor's
@@ -179,9 +147,8 @@ export function openRoleActions(roles: ReadonlyArray<{ role: string }>): Array<{
 }
 
 /** The dashboard's "See failures" button: opens the failures view. Shared by every alert
- * whose remedy is inspecting the failing runs/checks (main-red, quarantine, flapped checks,
- * post-merge churn and risk, regressed fixes), so the button's label
- * and action cannot drift between them. */
+ * whose remedy is inspecting the failing runs/checks (main-red, regressed fixes), so the
+ * button's label and action cannot drift between them. */
 export function seeFailures(): Array<{ label: string; act: string; arg: string }> {
   return [{ label: "See failures", act: "view", arg: "failures" }];
 }

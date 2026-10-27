@@ -440,7 +440,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     say(`${base}: ${state}`);
     return;
   }
-  // The review-after-merge write: the one command the post-merge churn alert's remedy
+  // The review-after-merge write: the one command the post-merge churn row's remedy
   // needs — add the role to, or remove it from, review.afterMerge for the base id, the
   // membership test reviewedAfterMerge shares. The whole-list value lands through the same
   // setConfigKey core `config set review.afterMerge <json>` uses, so validateConfig owns the

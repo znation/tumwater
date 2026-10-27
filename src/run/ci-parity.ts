@@ -8,8 +8,8 @@
  * under .tumwater/state/ and degrades to "no data" on any missing or malformed file: an
  * observer must never fail a run on bookkeeping (the same policy as qa-coverage.ts). A stale
  * verdict that stays stale past `CI_PARITY_STALE_MS` is a stall — the full suite has silently
- * stopped covering new tips — surfaced as a doctor warn and a standing `ci-stale` alert through
- * the one `ciParityStalled` predicate. */
+ * stopped covering new tips — surfaced as the doctor `ci parity` warn through the one
+ * `ciParityStalled` predicate. */
 
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { ciParityPath } from "../paths.js";
@@ -22,15 +22,14 @@ import path from "node:path";
 
 /** A stale verdict that stays stale past this window is a stall: the `ci` role — now the
  * full suite's own runner — has silently stopped covering new tips (disabled, paused, wedged,
- * or failing before it records). The doctor `ci parity` warn and the standing `ci-stale` alert
- * share this one threshold, so the surfaces cannot disagree on when stale is a problem. */
+ * or failing before it records). The doctor `ci parity` warn reads this one threshold, so the
+ * row and the ledger cannot disagree on when stale is a problem. */
 export const CI_PARITY_STALE_MS = 3 * DAY_MS;
 
 /** True only when a parity record exists, reads `stale` (a `failed` record already warns and
  * a `current` one is verified for the tip), and has not covered a tip within the stall
  * window. Parameter is structural — not `CiParityStatus` — so the status-polls → ci-parity
- * import edge stays one-way. This is the single stall predicate shared by the doctor row and
- * the alert. */
+ * import edge stays one-way. This is the single stall predicate the doctor row reads. */
 export function ciParityStalled(
   parity: { state: "current" | "stale" | "failed"; lastRunAt: number } | undefined,
   now: number,

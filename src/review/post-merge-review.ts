@@ -51,15 +51,15 @@ export interface PostReview {
 export const POST_REVIEW_FAILURE_LIMIT = 3;
 
 /** A role's trailing-day total of post-merge `review_rejected` events, one entry per role with
- * at least one, sorted by count descending then role id ascending so the churn alert's phrase is
+ * at least one, sorted by count descending then role id ascending so the churn row's phrase is
  * deterministic. count is how many already-landed commits the role had turned back. */
-export interface PostMergeRejection {
+interface PostMergeRejection {
   role: string;
   count: number;
 }
 
-/** The bar a day's post-merge rejections must reach before the `post-merge-churn` amber alert
- * (src/ui/team-alert-merge.ts) fires: one post-merge rejection is the tiering's ordinary cost,
+/** The bar a day's post-merge rejections must reach before the doctor's `post-merge churn` row
+ * fires: one post-merge rejection is the tiering's ordinary cost,
  * two in a day is a role whose already-landed changes keep being turned back — the
  * reviewer-fix signal for an operator to narrow `review.afterMerge` or raise the
  * authoring bar. */
@@ -67,15 +67,15 @@ export interface PostMergeRejection {
 export const POST_MERGE_REJECT_WARN = 2;
 
 /** How far back the post-merge-churn rule looks — one day, the 24 h event-window convention
- * every event-reading alert uses. */
+ * every event-reading doctor row uses. */
 export const POST_MERGE_REJECT_WINDOW_MS = 24 * 60 * 60_000;
 
 /** Group the `afterMerge: true` `review_rejected` events of `events` by base role — the same
  * `e.type === "review_rejected" && e.afterMerge === true` test the report fold
- * (src/report/report-fold.ts `postMergeRejectionsByRole`) applies, so the churn alert and the
+ * (src/report/report-fold.ts `postMergeRejectionsByRole`) applies, so the churn row and the
  * report cannot disagree on which rejections are post-merge. The key is the event's base role
  * (`baseRoleOf(eventRole(ev))`), not the raw source: an event's `source` is the runner id
- * (`bugfix-2`), and both the alert's remedy ("narrow `review.afterMerge`") and the scoped
+ * (`bugfix-2`), and both the row's remedy ("narrow `review.afterMerge`") and the scoped
  * report are keyed by base role, so one base role's churn must read as one row. Pre-merge
  * rejections and other event types contribute nothing. */
 export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostMergeRejection[] {
@@ -91,9 +91,8 @@ export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostM
     .sort((a, b) => b.count - a.count || compareCodeUnits(a.role, b.role));
 }
 
-/** The one home of the trigger and selection the `post-merge-churn` alert
- * (src/ui/team-alert-merge.ts) and the doctor's `post-merge churn` row
- * (src/doctor/doctor-project-checks.ts) share: whether
+/** The one home of the trigger and selection the doctor's `post-merge churn` row
+ * (src/doctor/doctor-project-checks.ts) reads: whether
  * the trailing `POST_MERGE_REJECT_WINDOW_MS` holds at least `POST_MERGE_REJECT_WARN` post-merge
  * `review_rejected` events, and, when it does, which roles and how many each. null when the
  * window holds fewer than the bar, or none — so the two surfaces cannot disagree on when churn

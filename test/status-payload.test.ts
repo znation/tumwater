@@ -10,10 +10,9 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-index-data.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { staleOpenQuestions, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS, mainRuleFailures, MAIN_RULE_FAILURE_WINDOW_MS, qaCoverageAlert } from "../src/ui/alert-feeds.js";
+import { staleOpenQuestions, capacityContention, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS } from "../src/ui/alert-feeds.js";
 import { PROMPT_END, PROMPT_START, BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
-import { checkPostReviews } from "../src/doctor/doctor-backlog.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool, staleWorkspacePins } from "../src/doctor/doctor-contention-checks.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { initProject } from "../src/init/init.js";
@@ -34,11 +33,7 @@ import { writeEvents, writeLogLines, writeOrchestratorMarker, writeMarker } from
 import { makeRepo, tmpdir, writeBacklogFile, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
-import { warnEvent } from "../src/events/events.js";
-import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
-import { checkFlakyChecks } from "../src/doctor/doctor-project-checks.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
-import { QA_COVERAGE_STALE_MS, recordFlow } from "../src/run/qa-coverage.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
@@ -948,24 +943,6 @@ test("the status payload carries the doctor's stale workspace pin as the workspa
   assert.equal(fresh.alerts.find((a) => a.key === "workspace-pins"), undefined);
 });
 
-test("flappedChecksAlert carries the doctor's phrase and nothing under the bar", () => {
-  const root = makeRepo();
-  warnEvent(root, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 3s");
-  warnEvent(root, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 9s");
-  const out = flappedChecksAlert(root);
-  assert.equal(out?.count, 1);
-  assert.equal(out?.detail, checkFlakyChecks(root).detail);
-  // A root with a single warning — a routine one-off flake — raises none.
-  const one = makeRepo();
-  warnEvent(one, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 3s");
-  assert.equal(flappedChecksAlert(one), null);
-  // A warning 25 h old, under the now seam, raises none.
-  const old = makeRepo();
-  warnEvent(old, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 3s");
-  warnEvent(old, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 9s");
-  assert.equal(flappedChecksAlert(old, Date.now() + 25 * 3600_000), null);
-});
-
 // A whole calendar day `n` days before `now`, as a `YYYY-MM-DD` stamp — the same relative
 // fixture trick the doctor-backlog tests use, so the fix date and the failure's age never
 // collide with the real wall clock.
@@ -1003,112 +980,7 @@ test("regressedFixesAlert carries the doctor's sentence for a fix whose test fai
   assert.equal(regressedFixesAlert(old, now), null);
 });
 
-test("postMergeChurnAlert fires on a day's post-merge rejection burst", () => {
-  const now = Date.now();
-  const root = makeRepo();
-  writeEvents(root, [
-    { ts: now - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true },
-    { ts: now - 60_000, source: "clean", type: "review_rejected", afterMerge: true },
-    { ts: now - 60_000, source: "coverage", type: "review_rejected" }, // pre-merge: absent afterMerge
-  ]);
-  const burst = postMergeChurnAlert(root, now);
-  assert.ok(burst !== null, "two post-merge rejections cross the warn bar");
-  assert.equal(burst!.count, 2, "only the afterMerge rejections count");
-  assert.deepEqual(burst!.roles, [
-    { role: "bugfix", count: 1 },
-    { role: "clean", count: 1 },
-  ]);
-  // One post-merge rejection stays under POST_MERGE_REJECT_WARN.
-  const single = makeRepo();
-  writeEvents(single, [{ ts: now - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true }]);
-  assert.equal(postMergeChurnAlert(single, now), null);
-  // A post-merge rejection 25 h old sits outside the window under the pinned `now`.
-  const old = makeRepo();
-  writeEvents(old, [
-    { ts: now - 25 * 3600_000, source: "bugfix", type: "review_rejected", afterMerge: true },
-    { ts: now - 25 * 3600_000, source: "clean", type: "review_rejected", afterMerge: true },
-  ]);
-  assert.equal(postMergeChurnAlert(old, now), null);
-  // Instance runner ids fold into their base role, so one base role's churn is one row matching
-  // the alert's base-role remedy rather than `bugfix`/`bugfix #2`/`bugfix #5` sibling rows.
-  const instanced = makeRepo();
-  writeEvents(instanced, [
-    { ts: now - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true },
-    { ts: now - 60_000, source: "bugfix-2", type: "review_rejected", afterMerge: true },
-    { ts: now - 60_000, source: "bugfix-5", type: "review_rejected", afterMerge: true },
-    { ts: now - 60_000, source: "clean", type: "review_rejected", afterMerge: true },
-  ]);
-  const instancedBurst = postMergeChurnAlert(instanced, now);
-  assert.ok(instancedBurst !== null);
-  assert.deepEqual(instancedBurst!.roles, [
-    { role: "bugfix", count: 3 },
-    { role: "clean", count: 1 },
-  ]);
-  // The window constant is the day the alert actually reads under.
-  assert.equal(POST_MERGE_REJECT_WINDOW_MS, 24 * 60 * 60_000);
-});
 
-test("postReviewRiskAlert carries the doctor's sentence for an at-risk review", () => {
-  const commit = "ab12cd3e".padEnd(40, "f");
-  const root = makeRepo();
-  writeJsonFile(postReviewPath(root), { pending: [{ commit, role: "improve", summary: "add x", failures: 2 }] });
-  const out = postReviewRiskAlert(root);
-  assert.equal(out?.count, 1);
-  assert.equal(out?.detail, checkPostReviews(root).detail);
-  // A review below the bar and a missing file each raise none.
-  writeJsonFile(postReviewPath(root), { pending: [{ commit, role: "improve", summary: "add x", failures: 1 }] });
-  assert.equal(postReviewRiskAlert(root), null);
-  assert.equal(postReviewRiskAlert(makeRepo()), null);
-});
-
-test("droppedPostReviewsAlert fires on a day's dropped post-merge reviews", () => {
-  const now = Date.now();
-  const root = makeRepo();
-  writeEvents(root, [
-    { ts: now - 120_000, source: "bugfix", type: "warning", message: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" },
-    { ts: now - 60_000, source: "clean", type: "warning", message: "the post-merge review of fedcba98 failed (no parseable VERDICT line)" },
-    { ts: now - 30_000, source: "readme", type: "warning", message: "dropping the post-merge review of 0123456a after 3 failed runs; it stays on main unreviewed" },
-  ]);
-  const alert = droppedPostReviewsAlert(root, now);
-  assert.notEqual(alert, null);
-  assert.equal(alert!.count, 2, "the failed-run line is excluded");
-  assert.equal(alert!.latestMessage, "dropping the post-merge review of 0123456a after 3 failed runs; it stays on main unreviewed");
-  assert.equal(alert!.latestTs, now - 30_000);
-  // A pre-merge rejection and a non-warning event each read null — only the drop warning fires.
-  const rejected = makeRepo();
-  writeEvents(rejected, [{ ts: now - 60_000, source: "bugfix", type: "review_rejected", message: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" }]);
-  assert.equal(droppedPostReviewsAlert(rejected, now), null);
-  const nonWarning = makeRepo();
-  writeEvents(nonWarning, [{ ts: now - 60_000, source: "readme", type: "merge", message: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" }]);
-  assert.equal(droppedPostReviewsAlert(nonWarning, now), null);
-  // A drop 25 h old, outside the day's window under the pinned `now`, raises none.
-  const old = makeRepo();
-  writeEvents(old, [{ ts: now - 25 * 3600_000, source: "bugfix", type: "warning", message: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" }]);
-  assert.ok(25 * 3600_000 > DROPPED_POST_REVIEW_WINDOW_MS, "the 25h-old drop predates the alert's daily window");
-  assert.equal(droppedPostReviewsAlert(old, now), null);
-  assert.equal(DROPPED_POST_REVIEW_WINDOW_MS, 24 * 60 * 60_000);
-});
-
-test("mainRuleFailures fires on a day's diff-rule warnings", () => {
-  const now = Date.now();
-  const root = makeRepo();
-  writeEvents(root, [
-    { ts: now - 120_000, source: "main", type: "warning", message: "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts" },
-    { ts: now - 60_000, source: "main", type: "main_check", message: "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts" },
-    { ts: now - 30_000, source: "main", type: "warning", message: "main watch could not check main" },
-  ]);
-  const alert = mainRuleFailures(root, now);
-  assert.notEqual(alert, null);
-  assert.equal(alert!.count, 1, "the main_check and marker-less warnings are excluded");
-  assert.equal(alert!.latestMessage, "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts");
-  assert.equal(alert!.latestTs, now - 120_000);
-  // A 25h-old match, outside the day's window under the pinned `now`, raises none.
-  const old = makeRepo();
-  writeEvents(old, [{ ts: now - 25 * 3600_000, source: "main", type: "warning", message: "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts" }]);
-  assert.ok(25 * 3600_000 > MAIN_RULE_FAILURE_WINDOW_MS, "the 25h-old match predates the alert's daily window");
-  assert.equal(mainRuleFailures(old, now), null);
-  assert.equal(MAIN_RULE_FAILURE_WINDOW_MS, 24 * 60 * 60_000);
-});
 
 test("the payload carries the stale-claims alert", () => {
   const now = Date.now();
@@ -1267,28 +1139,7 @@ test("the payload's roleNotesOverCap follows the notes read bound and clears und
   assert.equal(payload().alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert once both notes are at the cap");
 });
 
-test("qaCoverageAlert is null for a missing or fresh ledger and names the newest flow for a stalled one", () => {
-  const now = Date.now();
-  const root = tmpdir("status-qa-coverage-");
-  // No ledger is not a stall.
-  assert.equal(qaCoverageAlert(root, now), null);
-  // A fresh exercise is not a stall.
-  recordFlow(root, "status", "passed", undefined, now - 3600_000);
-  assert.equal(qaCoverageAlert(root, now), null);
-  // A stale entry alongside the fresh one keeps it not-stalled.
-  recordFlow(root, "logs", "passed", undefined, now - 5 * 24 * 3600_000);
-  assert.equal(qaCoverageAlert(root, now), null);
-  // Once every entry is past the window, it names the newest flow, its time and the count.
-  const stalledNow = now;
-  const root2 = tmpdir("status-qa-coverage-stalled-");
-  recordFlow(root2, "status", "passed", undefined, stalledNow - QA_COVERAGE_STALE_MS - 60_000);
-  recordFlow(root2, "logs", "passed", undefined, stalledNow - QA_COVERAGE_STALE_MS - 3600_000);
-  assert.deepEqual(qaCoverageAlert(root2, stalledNow), {
-    newestFlow: "status",
-    newestAt: stalledNow - QA_COVERAGE_STALE_MS - 60_000,
-    count: 2,
-  });
-});
+
 
 test("the payload's principlesTruncated follows principlesBlockOverCap and clears under the cap", () => {
   const now = Date.now();

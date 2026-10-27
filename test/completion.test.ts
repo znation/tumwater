@@ -390,7 +390,7 @@ test("the fish script parses under fish when fish is installed", { skip: !fishIn
 test("the bash script completes doctor check names, escaping spaces and apostrophes", async () => {
   const script = completionScript("bash");
   assert.deepEqual(await complete(script, ["tumwater", "doctor", "disk"], 2), ["disk\\ space"]);
-  assert.deepEqual(await complete(script, ["tumwater", "doctor", "mai"], 2), ["maintenance\\ allowance", "main\\'s\\ check"]);
+  assert.deepEqual(await complete(script, ["tumwater", "doctor", "mai"], 2), ["maintenance\\ allowance", "main\\'s\\ check", "main\\ diff\\ rules"]);
   assert.deepEqual(await complete(script, ["tumwater", "doctor", "disk\\ s"], 2), ["disk\\ space"]);
   assert.equal((await complete(script, ["tumwater", "doctor", ""], 2)).length, DOCTOR_CHECK_NAMES.length);
   assert.deepEqual(await complete(script, ["tumwater", "doctor", "repo", "or"], 3), ["orphans"]);

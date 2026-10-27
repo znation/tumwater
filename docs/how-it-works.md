@@ -252,11 +252,11 @@ discards a role's in-flight merge.
   CI?" — `current` when the last green run covered the current tip and lock, `stale` while main has since
   moved (still ok, since the ci role runs on its own clock), a `warn` when the last run failed, and a
   `warn` when a `stale` verdict has stayed stale past the stall window — the full suite has silently
-  stopped covering new tips, twin of the standing `ci-stale` alert; both read the same `parityIsCurrent`
+  stopped covering new tips, reading the same `parityIsCurrent`
   rule for `current`/`stale` and the shared `ciParityStalled` predicate for the stall, so a `current`
   badge and a `current` prompt block cannot disagree. The `qa` observer keeps its own flow-coverage
   ledger the same way, and a coverage ledger whose newest exercise is over three days old raises the
-  doctor `qa coverage` warn and the standing `qa-stale` alert through the one `qaCoverageStalled`
+  doctor `qa coverage` warn through the one `qaCoverageStalled`
   predicate. The `feedback` observer's per-install filing ledger gets the same operator read: the
   issues it filed are visible in `tumwater role feedback` and the dashboards' role detail.
 - A main watch runs the full check on main's tip in the background whenever the head moves (one run
@@ -270,7 +270,7 @@ discards a role's in-flight merge.
   secret leaks, a false-fix claim on a doc-only tip, and backlog structure — against each first-parent
   commit's own diff in the watched range, attributed to that commit's own merging role; a violation is
   logged as a warning naming the rule and the head (the same reason text the
-  gate would reject with), deterministically within one poll, with no confirming re-run. That warning in the trailing day raises a standing amber alert naming the tip and the rule on `tumwater status`, the dashboard and the TUI, so a diff the gate let through cannot sit on main unremarked. No run or
+  gate would reject with), deterministically within one poll, with no confirming re-run. That warning in the trailing day raises `tumwater doctor`'s `main diff rules` row naming the tip and the rule, so a diff the gate let through cannot sit on main unremarked. No run or
   merge waits for the watch. On a red tip it names that head as the culprit and queues ci's
   heal prompt (Forward, never back, part 4/6): the same `mainRedHealPrompt` wording a red-main
   hold uses — `Main was reported red at commit <sha>; verify main is green now; if it is still
@@ -289,10 +289,9 @@ discards a role's in-flight merge.
   the reviewer's own minimal fix is landed on top of main in the same run, and where the review
   records a finding it cannot repair, the commit stays on main with the reviewer's reasons read as
   that recorded finding. A review that ends three times with no verdict is dropped with a warning.
-  Two or more post-merge rejections in a day raise one standing amber alert naming each role on
-  the dashboard, the TUI and `tumwater status` — the reviewer-fix signal to narrow
-  `review.afterMerge` for the noisy role or raise the authoring bar. The `tumwater doctor` audit
-  names the same roles in its `post-merge churn` row.
+  Two or more post-merge rejections in a day raise `tumwater doctor`'s `post-merge churn` row
+  naming each role — the reviewer-fix signal to narrow
+  `review.afterMerge` for the noisy role or raise the authoring bar.
   While the reviewer's provider stands under a failure hold, or its strong tier is unresolvable
   under the review gate, the roles a pre-merge review gates are held — but a role on
   `review.afterMerge` is not: it merges without a reviewer, so it keeps authoring and its
@@ -311,8 +310,7 @@ discards a role's in-flight merge.
   retries on a later poll when the checkout is dirty or off main). A test leaves quarantine when its
   entry is no longer under `## Open`; a later flake puts it back. The 24 h headline excuse
   (`known-flaky failure, merge kept`) remains for failures that name no test.
-  `tumwater doctor`'s `flaky checks` row (an always-on alert, not just a doctor row, when a
-  check flapped more than once in the last day) and the selfcheck digest warn when a quarantined test's
+  `tumwater doctor`'s `flaky checks` row and the selfcheck digest warn when a quarantined test's
   age passes 3 days (naming the oldest, with its BUGS.md heading or "not filed") or when the list
   holds more than 10 tests. A Fixed record whose quoted test fails again is likewise a standing
   always-on alert (the doctor's `regressed fixes` row) until a day passes or the failure is filed. `tumwater quarantine [--json]` lists the current list — every entry
@@ -532,14 +530,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   failing check on main, a spent budget, an available update, open questions, a question
   that has waited a week for an answer, refused entries,
   a broken plan dependency clause, a plan or bug stalled by a
-  Needs review note, checks that flapped more than once in the last day, a
-  stale or oversized flake quarantine,
-  a burst of post-merge review rejections, each an already-merged commit,
-  a post-merge review one failed run from being dropped,
-  a post-merge review dropped after repeated failures, leaving its commit on main unreviewed,
-  the `ci` role's full suite stalled over three days without covering a new tip (the `ci-stale`
-  alert, the always-on twin of the doctor's `ci parity` warn — the full suite has silently
-  stopped covering main's tip, so the ci role is disabled, paused, or unable to record),
+  Needs review note,
   the team waiting on capacity slots (workspace, provider or check) — the doctor's three
   contention rows read the same waits and name the knob, a plan filed under the wrong
   backlog section, a duplicated backlog section heading, finished history still under a live backlog file's `## Done` or `## Fixed` (the `backlog-archive` alert, the always-on twin of the doctor's `backlog archive` warn), a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose Fix paragraph names code that is not on the tree, a Fixed record whose quoted test failed again in the last day, a project with no declared check (the review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run; the alert says the plan role will plan the project's check and the feature role declare it, a `test`/`typecheck`/`build` npm script or `check.command`), a pause). The
@@ -581,11 +572,10 @@ validation, and atomic write, so you never have to hand-edit the file.
   commits `review.afterMerge` put aside for post-merge review, each row naming the wait since the
   commit was queued for review (`<age> ago`, omitted for an entry an older file wrote without a
   timestamp) matching `tumwater queue`'s age, each with its rejected (stays on main with the reviewer's reasons) or failed-review status, and each row a two-click Accept posting
-  `POST /api/post-review-accept`, the browser twin of `tumwater reviews --accept <n>` (which the
-  `post-merge-risk` alert's shared advice names as the deliberate accept-unreviewed action). A review one failed run from the
-  `POST_REVIEW_FAILURE_LIMIT` drop raises the standing amber post-merge-risk alert on every
-  surface and a `post-merge reviews` doctor row, and a review the drain actually drops
-  raises the standing amber `dropped-post-reviews` alert describing the unreviewed commit.
+  `POST /api/post-review-accept`, the browser twin of `tumwater reviews --accept <n>` (which names
+  the deliberate accept-unreviewed action). A review one failed run from the
+  `POST_REVIEW_FAILURE_LIMIT` drop is surfaced by the `post-merge reviews` doctor row, and a
+  review the drain actually drops leaves its commit on main unreviewed.
   Its Settings view shows the
   curated top-level config keys (provider, model, fallback, the daily spend cap, quiet hours, the
   notify hook) with inline Save and Clear buttons: Save writes through the same path `tumwater

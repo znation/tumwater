@@ -7,42 +7,35 @@
  * `actions` are the dashboard's buttons (`act` names a page action — open a role, a view,
  * the cap editor…).
  *
- * This module is the composition root: it imports the four per-domain builder modules
- * (team-alert-status, team-alert-backlog, team-alert-merge,
+ * This module is the composition root: it imports the three per-domain builder modules
+ * (team-alert-status, team-alert-backlog,
  * team-alert-tail) and runs them in emission order, and it re-exports the shared alert types
  * (defined in team-alert-shared.ts) so consumers keep importing them from this one path. */
 
 import type { StatusSnapshot } from "../status/status-data.js";
 import type { StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
-import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert, QaCoverageStale } from "./status-payload.js";
+import type { CapacityBottleneck, RegressedFixAlert } from "./status-payload.js";
 import type { RefusedEntry, StalledEntry } from "../backlog/backlog-eligibility.js";
 import type { ClaimState } from "../scheduling/claim-entries.js";
 import type { StaleWorkspacePin } from "../doctor/doctor-contention-checks.js";
 import type {
   AlertRole, TeamAlert, StaleQuestion,
-  PlanDependencyProblem, QuarantinedTests,
-  FlappedChecks, PostReviewRisk, BacklogHeadingDuplicate, LiveFinishedEntry,
+  PlanDependencyProblem, BacklogHeadingDuplicate, LiveFinishedEntry,
 } from "./team-alert-shared.js";
 import { buildStatusAlerts } from "./team-alert-status.js";
 import { buildBacklogAlerts } from "./team-alert-backlog.js";
-import { buildMergeAlerts } from "./team-alert-merge.js";
 import { buildTailAlerts } from "./team-alert-tail.js";
 
 export type {
   StaleQuestion,
-  PlanDependencyProblem, QuarantinedTests, FlappedChecks, PostReviewRisk,
-  BacklogHeadingDuplicate, LiveFinishedEntry, TeamAlert, AlertRole,
+  PlanDependencyProblem, BacklogHeadingDuplicate, LiveFinishedEntry, TeamAlert, AlertRole,
 } from "./team-alert-shared.js";
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, a stale running build, open
  * questions, refused entries, a plan stalled by a Needs
- * review note, checks that flapped more than once in the last day, a stale or
- * oversized flake quarantine, a burst of post-merge review rejections, each a commit that
- * already reached main, a post-merge review one failed run from being dropped, a post-merge
- * review dropped after repeated failures, leaving its commit on main unreviewed, a main tip the
- * watch's five diff rules rejected, the team
+ * review note, the team
  * waiting on capacity slots (workspace, provider or
  * check), parallel instances sharing a workspace pool smaller than the run cap, a plan
  * filed under the wrong backlog section, a duplicated
@@ -74,7 +67,6 @@ export function teamAlerts(
     | "budgetPausedRoles"
     | "maintenanceQuota"
     | "providerHolds"
-    | "ciParity"
     | "mainCheck"
   >,
   questions: readonly string[],
@@ -83,21 +75,14 @@ export function teamAlerts(
   refused: readonly RefusedEntry[] = [],
   planDependency: PlanDependencyProblem | null = null,
   stalledEntries: readonly StalledEntry[] = [],
-  quarantined: QuarantinedTests | null = null,
   strandedPlans: readonly StrandedPlanEntry[] = [],
   duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
   validationGaps: readonly ValidationGapProblem[] = [],
   contention: readonly CapacityBottleneck[] = [],
-  flappedChecks: FlappedChecks | null = null,
   regressedFixes: RegressedFixAlert | null = null,
-  postMergeChurn: PostMergeChurn | null = null,
-  postReviewRisk: PostReviewRisk | null = null,
-  droppedPostReviews: DroppedPostReviews | null = null,
-  mainRuleFailure: MainRuleFailure | null = null,
   staleClaims: readonly ClaimState[] = [],
   staleQuestions: readonly StaleQuestion[] = [],
   fixClaims: readonly FixClaimProblem[] = [],
-  qaCoverage: QaCoverageStale | null = null,
   workspacePins: readonly StaleWorkspacePin[] = [],
   liveFinished: readonly LiveFinishedEntry[] = [],
   instancePool: readonly string[] = [],
@@ -106,7 +91,6 @@ export function teamAlerts(
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
-  out.push(...buildMergeAlerts({ quarantined, flappedChecks, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, qaCoverage, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, instancePool, providerCaps }));
 
   return out;

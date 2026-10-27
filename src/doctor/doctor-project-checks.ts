@@ -269,13 +269,10 @@ export function checkFlakyChecks(root: string, now: number = Date.now()): CheckO
 }
 
 /** A trailing day of at least `POST_MERGE_REJECT_WARN` post-merge `review_rejected` events — the
- * audit twin of the always-on `post-merge-churn` amber alert (src/ui/alert-feeds.ts
- * `postMergeChurnAlert`). Each rejection is an already-landed commit the reviewer turned back, so
- * it stays on main with the reviewer's reasons, so a churn day must not read as a clean
- * main. Shares the alert's
- * window, threshold and
- * event selection through `postMergeChurn`, so the doctor row and the alert cannot disagree on
- * when churn fires. ok/warn only — a churn burst does not stop the team. */
+ * audit of a day that must not read as a clean main: each rejection is an already-landed commit
+ * the reviewer turned back, so it stays on main with the reviewer's reasons. Reads the
+ * `POST_MERGE_REJECT_WINDOW_MS` window and
+ * threshold through `postMergeChurn`. ok/warn only — a churn burst does not stop the team. */
 export function checkPostMergeChurn(root: string): CheckOutcome {
   const { events } = readEventsSince(root, POST_MERGE_REJECT_WINDOW_MS);
   const churn = postMergeChurn(events);
@@ -288,10 +285,10 @@ export function checkPostMergeChurn(root: string): CheckOutcome {
 }
 
 /** The one home of the doctor's `flaky checks` sentence: names each check that flapped more than
- * once, most frequent first, with how many times it flapped — the same wording the always-on
- * flapped-checks alert carries, so the doctor row and the alert cannot drift. null when `flapped`
+ * once, most frequent first, with how many times it flapped — the one sentence the doctor's
+ * `flaky checks` row shows. null when `flapped`
  * is empty (nothing crossed the bar). */
-export function flappedChecksPhrase(flapped: readonly [string, number][]): string | null {
+function flappedChecksPhrase(flapped: readonly [string, number][]): string | null {
   if (flapped.length === 0) return null;
   const render = ([k, n]: [string, number]) => `"${k}" ×${n}`;
   const [first, ...rest] = flapped;
@@ -351,7 +348,7 @@ function currentHead(root: string): Promise<string | null> {
  * on every merge and the ci role runs on its own clock, so a post-merge gap is normal and must
  * not turn the Health card or the exit code red. A stale verdict that stays stale past
  * `CI_PARITY_STALE_MS` (ciParityStalled) is a stall — the full suite has silently stopped
- * covering new tips — and warns, alongside the standing `ci-stale` alert. Read-only against
+ * covering new tips — and warns. Read-only against
  * .tumwater/. */
 export function checkCiParity(
   root: string,
@@ -377,9 +374,9 @@ export function checkCiParity(
   }
   // A stale verdict is normal right after a merge (main moves and the ci role runs on its own
   // clock), but one that stays stale past CI_PARITY_STALE_MS is a stall: the full suite has
-  // silently stopped covering new tips. The doctor warn and the standing `ci-stale` alert share
-  // this one predicate (ciParityStalled), so the row and the alert cannot disagree on when a
-  // gap is a problem. Inside the window the existing friendly stale wording stands.
+  // silently stopped covering new tips. This warn is the one place ciParityStalled is applied —
+  // the row is the standing signal. Inside the window the existing friendly stale wording
+  // stands.
   if (ciParityStalled({ state: "stale", lastRunAt: entry.lastRunAt }, now)) {
     return warnOutcome(
       `stale and stalled — the last run covered ${shortSha(entry.tip)} @ lock ${shortSha(
@@ -405,8 +402,8 @@ export function checkCiParity(
  * is not a stall); a fresh ledger reads ok naming the newest exercised flow and its age. A
  * ledger whose newest exercise is older than `QA_COVERAGE_STALE_MS` (qaCoverageStalled) is a
  * `warn` naming that flow and its age — the role is disabled, paused, or unable to record —
- * alongside the standing `qa-stale` alert, both through the one `qaCoverageStalled` predicate
- * so the row and the alert cannot disagree. Read-only against .tumwater/. */
+ * via the one `qaCoverageStalled` predicate, this row the standing signal. Read-only against
+ * .tumwater/. */
 export function checkQaCoverage(root: string, now: number = Date.now()): CheckOutcome {
   const coverage = readQaCoverage(root);
   const entries = Object.entries(coverage);
@@ -427,4 +424,62 @@ export function checkQaCoverage(root: string, now: number = Date.now()): CheckOu
     );
   }
   return okOutcome(`newest flow coverage: ${newestFlow} exercised ${age} ago`);
+}
+
+/** How far back the `main diff rules` row looks — one day, the same 24 h trailing-day convention
+ * every event-reading doctor row uses, so a diff-rule failure the main watch logged stays a
+ * standing warn until a day passes. Owned here (the check that reads it). */
+const MAIN_RULE_FAILURE_WINDOW_MS = 24 * 60 * 60_000;
+/** The exact substring src/baseline/main-watch.ts's `watchRules` logs in its warning, so this
+ * check matches a real rule failure and cannot drift from the wording the watch writes. */
+const MAIN_RULE_FAILURE_MARKER = "fails the diff rules";
+/** The doctor's `main diff rules` row: a `warning` the main watch logged when the review gate's
+ * diff rules rejected main's tip in the trailing day. The gate judges one change; the watch
+ * judges each first-parent commit's own diff, so a conflict marker, a protected edit, a leaked
+ * secret, a phantom fix claim or a broken backlog structure that reached main through a gate
+ * blind spot sits on main with only this event log to say so. Reads only the `warning` event
+ * the watch already writes, so the row cannot drift from the watch's wording; the most recent
+ * hit names the tip and the rule. ok/warn only — it never fails a scripted pre-flight. */
+export function checkMainDiffRules(root: string): CheckOutcome {
+  const { events } = readEventsSince(root, MAIN_RULE_FAILURE_WINDOW_MS);
+  const hits = events.filter((e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(MAIN_RULE_FAILURE_MARKER));
+  if (hits.length === 0) return okOutcome("no diff-rule failure on main in the last day");
+  const latest = hits[hits.length - 1]!;
+  return warnOutcome(
+    `${plural(hits.length, "diff-rule failure on main", "diff-rule failures on main")} in the last day — most recently ${String(
+      latest.message,
+    )} — the gate approved a diff the watch's rules reject; repair the tip or revert it with \`tumwater revert <sha>\``,
+  );
+}
+
+/** The exact prefix src/merge/merge-post-review-drain.ts logs when it drops a post-merge
+ * review at POST_REVIEW_FAILURE_LIMIT. The drain drops in two ways and logs each with its own
+ * tail — "it stays on main unreviewed" after failed runs (the commit never got a review) and
+ * "the fix stays unreviewed" after failed fix merges (the fix ref is deleted, main unmoved) —
+ * so this check matches the shared "dropping the post-merge review of" prefix both share, not
+ * either tail. The drain also files the drop in BUGS.md as best-effort ordinary backlog work
+ * (fileDroppedReview), but a skipped filing (off-base checkout or a dirty BUGS.md) leaves only
+ * this event log standing, so this check matches the drain's own wording. */
+const DROPPED_REVIEW_MARKER = "dropping the post-merge review of";
+/** How far back the `dropped post-merge reviews` row looks — one day, the same 24 h trailing-day
+ * convention every event-reading doctor row uses. Owned here (the check that reads it). */
+const DROPPED_REVIEW_WINDOW_MS = 24 * 60 * 60_000;
+/** The doctor's `dropped post-merge reviews` row: a `warning` the post-merge-review drain
+ * (src/merge/merge-post-review-drain.ts) wrote when it dropped a review at
+ * POST_REVIEW_FAILURE_LIMIT — after failed runs its commit stays on main unreviewed, and
+ * after failed fix merges the fix ref is deleted (main unmoved) so the commit stays
+ * unreviewed; either way the review is gone and no longer in the queue the `post-merge
+ * reviews` row reads. The drain files the dropped review in BUGS.md as best-effort ordinary
+ * backlog work, so when that filing is skipped this row is the standing signal naming the
+ * dropped review. Reads only the `warning` event the drain already writes, so it cannot drift
+ * from the drain's wording; the most recent hit names the commit. ok/warn only — an
+ * unreviewed commit is operator signal, not a broken environment. */
+export function checkDroppedPostMergeReviews(root: string): CheckOutcome {
+  const { events } = readEventsSince(root, DROPPED_REVIEW_WINDOW_MS);
+  const hits = events.filter((e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(DROPPED_REVIEW_MARKER));
+  if (hits.length === 0) return okOutcome("no post-merge review was dropped in the last day");
+  const latest = hits[hits.length - 1]!;
+  return warnOutcome(
+    `${plural(hits.length, "post-merge review was dropped", "post-merge reviews were dropped")} in the last day — the dropped review is gone and its commit stays unreviewed; most recently ${String(latest.message)}`,
+  );
 }

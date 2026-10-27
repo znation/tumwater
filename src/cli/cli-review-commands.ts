@@ -4,7 +4,8 @@
  * `readPostReviews` reads a missing, torn or hand-edited file as the well-formed subset (or `[]`),
  * so the command prints the empty line in any directory. Read-only except the one destructive
  * `--accept <n>` mode, which removes the Nth entry the operator deliberately accepts unreviewed
- * (the action the at-risk alert's advice names); that mode adds no new ready-repo requirement to
+ * (the action the doctor's at-risk post-review row's advice names); that mode adds no new
+ * ready-repo requirement to
  * the read path and gates the write with `requireReadyRepo`. Unlike `cmdQueue`'s `--cancel`, the
  * read case still writes no file. */
 

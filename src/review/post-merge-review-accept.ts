@@ -2,8 +2,9 @@
  * (src/cli/cli-review-commands.ts `tumwater reviews --accept <n>`), split out of the CLI so
  * the review queue stays a pure reader/editor and this module owns the destructive half —
  * removing an unattempted entry on purpose. It is the sibling of `tumwater queue --cancel
- * <n>` (src/merge/merge-cancel.ts): the queue's no-third-path gap that the at-risk alert's
- * shared sentence names ("…or accept the commit unreviewed deliberately"). It reads the same
+ * <n>` (src/merge/merge-cancel.ts): the queue's no-third-path gap that the doctor's at-risk
+ * post-review row's shared sentence names (“…or accept the commit unreviewed deliberately”).
+ * It reads the same
  * FIFO list `readPostReviews` numbers 1..N and settles the entry by its commit, so the removed
  * entry is the very one the printed position named. */
 import { readPostReviews, settlePostReview, type PostReview } from "./post-merge-review.js";
