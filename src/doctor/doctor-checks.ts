@@ -42,7 +42,7 @@ import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
 import { childEnv } from "../process/process.js";
 import { opencodeBackend, OPENCODE_MIN_VERSION } from "../agent/opencode/opencode-backend.js";
-import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { failOutcome, noConfigOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import { spawnSync } from "node:child_process";
 
 /** The environment/tooling and repo-setup pre-flight checks, split out of
@@ -307,7 +307,7 @@ export async function checkOpencodeVersion(
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<CheckOutcome> {
   const { config } = loadConfigSafe(root);
-  if (config === undefined) return okOutcome("no readable tumwater.json — nothing to verify");
+  if (config === undefined) return noConfigOutcome();
   if (!opencodeSeamsInUse(config)) return okOutcome("no model jobs run on opencode");
   const resolved = opencodeBackend.resolveBin(config);
   const result = await boundedProbe(
@@ -333,7 +333,7 @@ export function checkClaudeTranscripts(
   homeDir: string = os.homedir(),
   env: NodeJS.ProcessEnv = process.env,
 ): CheckOutcome {
-  if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
+  if (!config) return noConfigOutcome();
   if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
   const configDir = resolvedBackendConfig(config, "claude").configDir;
   const dir = path.join(claudeConfigDir(env, homeDir, configDir), "projects");

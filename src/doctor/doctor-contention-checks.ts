@@ -31,7 +31,7 @@ import { branchName, mergeLockDir, worktreesDir } from "../paths.js";
 import { artifactPhrase, retireRole } from "../operator/retire.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
-import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { failOutcome, noConfigOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** Merge lock — read-only classification via classifyLock (the same three cases the breaker
  * uses). A stale lock is a warning, not a failure: it self-heals on the next merge. */
@@ -358,7 +358,7 @@ export async function retirableLeftoverRoles(
  * full branch name with a manual-delete hint. Read-only, like every check: it only lists refs;
  * an unreadable tumwater.json skips it. */
 export async function checkLeftoverRoleBranches(root: string, config?: TumwaterConfig | null): Promise<CheckOutcome> {
-  if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
+  if (!config) return noConfigOutcome();
   const { retirable, unknown } = await retirableLeftoverRoles(root, config);
   const parts: string[] = [];
   if (retirable.length > 0) {
@@ -514,7 +514,7 @@ export function checkWorkInstances(
   config?: TumwaterConfig | null,
   now = Date.now(),
 ): CheckOutcome {
-  if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
+  if (!config) return noConfigOutcome();
   const claims = runnerIds(config).map((id) => loadRunnerState(root, id).claim).filter((c) => c !== undefined);
   const entries = staleClaimEntries(root, runnerIds(config), now);
   const gone = entries.filter((e) => e.kind === "gone");
