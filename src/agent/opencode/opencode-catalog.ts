@@ -75,6 +75,61 @@ export async function fetchOpencodeCatalog(fetchFn: CatalogFetch = defaultFetch)
   return fetchFn(CATALOG_URL, CATALOG_FETCH_TIMEOUT_MS);
 }
 
+/** The catalog root `parseOpencodeCatalog` iterates: models.dev's live api.json puts the provider
+ * map at the top level, OpenCode's cached copy wraps that same map under a `body` key. */
+function catalogRoot(body: unknown): Record<string, unknown> {
+  const root = isJsonObject(body) ? body : {};
+  // models.dev's api.json IS the provider map; OpenCode's cached copy wraps that map under `body`.
+  const wrapped = root.body;
+  return isJsonObject(wrapped) ? wrapped : root;
+}
+
+/** The free/priced reads from a per-model cost block: whether it is present and yields two zero
+ * per-M prices. A missing cost block is unknown price data, and treating it as $0 is the unsafe
+ * direction for a budget gate. */
+function modelPricing(m: Record<string, unknown>): {
+  costed: boolean;
+  free: boolean;
+  inputPerM: unknown;
+  outputPerM: unknown;
+} {
+  const cost = isJsonObject(m.cost) ? m.cost : undefined;
+  const input = cost?.input ?? 0;
+  const output = cost?.output ?? 0;
+  return {
+    costed: cost !== undefined,
+    free: cost !== undefined && input === 0 && output === 0,
+    inputPerM: input,
+    outputPerM: output,
+  };
+}
+
+/** The effort levels from a per-model object: the `values` of the `reasoning_options` entries
+ * whose `type` is `"effort"`. */
+function modelEfforts(m: Record<string, unknown>): unknown[] {
+  if (!Array.isArray(m.reasoning_options)) return [];
+  return m.reasoning_options.flatMap((r: unknown) =>
+    isJsonObject(r) && r.type === "effort" && Array.isArray(r.values) ? (r.values as unknown[]) : [],
+  );
+}
+
+/** Build one catalog model from an untrusted per-model object, null when it is malformed. */
+function catalogModelFrom(m: Record<string, unknown>): OpencodeCatalogModel | null {
+  const pricing = modelPricing(m);
+  const model: Record<string, unknown> = { free: pricing.free };
+  if (pricing.costed) {
+    model.inputPerM = pricing.inputPerM;
+    model.outputPerM = pricing.outputPerM;
+  }
+  if (isJsonObject(m.limit) && m.limit.context !== undefined) model.context = m.limit.context;
+  if (isJsonObject(m.modalities) && Array.isArray(m.modalities.input)) {
+    model.images = m.modalities.input.includes("image");
+  }
+  const efforts = modelEfforts(m);
+  if (efforts.length > 0) model.efforts = efforts;
+  return isOpencodeCatalogModel(model) ? model : null;
+}
+
 /** Parse models.dev's `api.json` into the models the config routes through OpenCode: always the
  * `opencode` provider, plus every provider named in `providers` (the config's
  * `opencode/<provider>/…` routes — `opencode-go` and so on). The live `GET /api.json` returns
@@ -85,37 +140,13 @@ export async function fetchOpencodeCatalog(fetchFn: CatalogFetch = defaultFetch)
  * provider or model is skipped, never thrown on. */
 export function parseOpencodeCatalog(body: unknown, providers: readonly string[]): Record<string, OpencodeCatalogModel> {
   const out: Record<string, OpencodeCatalogModel> = {};
-  const root = isJsonObject(body) ? body : {};
-  // models.dev's api.json IS the provider map; OpenCode's cached copy wraps that map under `body`.
-  const wrapped = root.body;
-  const catalog = isJsonObject(wrapped) ? wrapped : root;
-  for (const [provider, providerInfo] of Object.entries(catalog)) {
+  for (const [provider, providerInfo] of Object.entries(catalogRoot(body))) {
     if (provider !== "opencode" && !providers.includes(provider)) continue;
     if (!isJsonObject(providerInfo) || !isJsonObject(providerInfo.models)) continue;
     for (const [id, m] of Object.entries(providerInfo.models)) {
       if (!isJsonObject(m)) continue;
-      // Only a present cost block marks a model free: a missing cost block is unknown price data,
-      // and treating it as $0 is the unsafe direction for a budget gate.
-      const cost = isJsonObject(m.cost) ? m.cost : undefined;
-      const input = cost?.input ?? 0;
-      const output = cost?.output ?? 0;
-      const model: Record<string, unknown> = { free: cost !== undefined && input === 0 && output === 0 };
-      if (cost !== undefined) {
-        model.inputPerM = input;
-        model.outputPerM = output;
-      }
-      if (isJsonObject(m.limit) && m.limit.context !== undefined) model.context = m.limit.context;
-      if (isJsonObject(m.modalities) && Array.isArray(m.modalities.input)) {
-        model.images = m.modalities.input.includes("image");
-      }
-      if (Array.isArray(m.reasoning_options)) {
-        const efforts = m.reasoning_options
-          .flatMap((r: unknown) =>
-            isJsonObject(r) && r.type === "effort" && Array.isArray(r.values) ? (r.values as unknown[]) : [],
-          );
-        if (efforts.length > 0) model.efforts = efforts;
-      }
-      if (isOpencodeCatalogModel(model)) out[`${provider}/${id}`] = model;
+      const model = catalogModelFrom(m);
+      if (model !== null) out[`${provider}/${id}`] = model;
     }
   }
   return out;
