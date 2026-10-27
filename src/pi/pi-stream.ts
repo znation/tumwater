@@ -612,6 +612,13 @@ export class PiStreamParser {
 
   private applyAssistantMessage(msg: PiMessage): void {
     const text = messageText(msg);
+    this.applyAssistantReply(msg, text);
+    this.applyAssistantRefusal(text);
+    this.applyAssistantUsage(msg);
+    this.applyAssistantStop(msg);
+  }
+
+  private applyAssistantReply(msg: PiMessage, text: string): void {
     this.finalMessageContentless = !messageContent(msg).some(
       (c) =>
         c.type === "toolCall" ||
@@ -620,6 +627,9 @@ export class PiStreamParser {
     if (!this.finalMessageContentless) this.producedAssistantContent = true;
     if (text.trim()) this.finalText = text;
     if (isNothingToDo(text)) this.declaredNothingToDo = true;
+  }
+
+  private applyAssistantRefusal(text: string): void {
     // The refusal comes only from an anchored `TUMWATER_REFUSED: <reason>` line: a bare
     // sentinel and a mid-sentence mention are not refusals, and a negating reason ("none",
     // "(n/a …)") clears one — BUGS.md 2026-09-23, four runs ended ordinary replies with
@@ -637,6 +647,9 @@ export class PiStreamParser {
       }
     }
     if (hasVerdictLine(text)) this.verdictText = text;
+  }
+
+  private applyAssistantUsage(msg: PiMessage): void {
     this.turns += 1;
     this.outputTokens += usageNumber(msg.usage?.output);
     const promptTokens = usageNumber(msg.usage?.input) + usageNumber(msg.usage?.cacheRead) + usageNumber(msg.usage?.cacheWrite);
@@ -652,6 +665,9 @@ export class PiStreamParser {
     }
     this.peakContextTokens = Math.max(this.peakContextTokens, usageNumber(msg.usage?.totalTokens));
     this.costUsd += usageNumber(msg.usage?.cost?.total);
+  }
+
+  private applyAssistantStop(msg: PiMessage): void {
     this.stopReason = msg.stopReason;
     if (msg.errorMessage) this.errorMessage = msg.errorMessage;
     else if (msg.stopReason !== "error") this.errorMessage = undefined;
