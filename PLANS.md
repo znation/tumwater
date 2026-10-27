@@ -615,4 +615,42 @@ type SummaryFollowUp = { aborted: RunOutcome } | { followUp: PiRunResult | null 
 
 **Tests.** No new test module: a behavior-preserving move behind four private methods, guarded by the existing test/pi-parser.test.ts cases named above plus the refusal-contract cases in test/reply-contract.test.ts. Run test/pi-parser.test.ts whole, then the project's gate, and confirm green. docs/invariants.md is not edited: its only pi-stream binding is `PiStreamParser.detectBlindRead`, and the move leaves that method and `applyAssistantMessage`'s name, signature and behavior unchanged.
 
+### `handleRateLimitEvent`'s complexity-19 rate-limit fold is split into one named helper per concern — the sibling `unifiedWindows` readings, the binding window's record, the top-level-else-window `resetsAt`/`utilization` fallback, and the reading's optional fields including the rejected-window retry-after — so "which windows get their own reading?" and "how is the binding window's reset time resolved?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the 2026-10-25 `translate` split created `handleRateLimitEvent` as one named event handler and left it a single body at complexity 19, exactly as the 2026-10-25 `resolveRunVerdict`/`feedLine` splits created `noChangeArm`/`applyAssistantMessage` as one body and the 2026-10-27 `noChangeArm`/`resolveCommitDescription`/`applyAssistantMessage` plans split such bodies one helper per concern the same way; independent in files of every Planned entry — `grep -c 'handleRateLimitEvent' PLANS.md` and `grep -c 'src/agent/claude/claude-stream.ts' PLANS.md` both print 0, so no `## Planned` entry's heading or touches list names the symbol or the file (the in-flight splits edit src/run/run-stage.ts, src/run/run-verdict.ts, src/run/stage-name-checks.ts, src/pi/pi-stream.ts and the Subtract part 5n/6 files; the blocked `Every commit is verified on main` and `Subtract` parts edit src/review, src/orchestrator, src/runner, src/merge, src/baseline, src/status, src/doctor, src/config, src/cli, src/roles, src/ui, src/gui, src/events, src/backlog plus src/run/run-apply.ts and — in Subtract part 5d/6 — src/agent/claude/claude-account.ts, the account sibling of this stream file, not claude-stream.ts); PLANS-DONE.md records no split of `handleRateLimitEvent` (`grep -cE '^### .*handleRateLimit' PLANS-DONE.md` prints 0; its one mention is the bullet in the landed `translate`-split entry describing the handler this plan now splits); docs/invariants.md names no symbol of it (`grep -c 'handleRateLimitEvent' docs/invariants.md` prints 0; its only claude-stream binding is INV-AF5's `canonicalUsageBlock`, a module-level function this private move does not touch), so it stays unchanged; touches src/agent/claude/claude-stream.ts)
+
+**Goal.** `claudeTranslator`'s nested `handleRateLimitEvent` (src/agent/claude/claude-stream.ts, complexity 19) folds a claude `rate_limit_event`: it builds one canonical `rate_limit` reading per entry of `rate_limit_info.unifiedWindows` other than the binding window, looks up the binding window's own record, resolves `resetsAt` and `utilization` from the top-level field falling back to that record, assembles the top-level reading's optional fields (`rateLimitType`, `status`, `overageStatus`, `isUsingOverage`) and derives `retryAfterSeconds` for a rejected window. It is one body whose concerns interleave; a reader asking which windows get their own reading, or how the binding window's reset time is resolved, has only the whole fold to scan. Extract one named module-private function per concern so `handleRateLimitEvent` becomes the three reads and the two calls, with no behavior change.
+
+**Approach.** All edits in src/agent/claude/claude-stream.ts; move code, do not rewrite it, and keep every `//` comment with the block it annotates. The handler is a closure but reads no `claudeTranslator` state (only `event` and module-level helpers), so the helpers are module-level functions beside `billingOf`:
+
+- `function claudeRateLimitWindowReadings(info: Json, rateLimitType: string | undefined): string[]` — the `unifiedWindows` loop with its `// claude 2.1.295 reports every window's ...` comment, the `type === rateLimitType || !isJsonObject(raw)` skip, and the per-window `rate_limit` reading with its optional `resetsAt`/`utilization`.
+- `function claudeRateLimitOwnWindow(info: Json, rateLimitType: string | undefined): Json | undefined` — the `own` lookup (`rateLimitType === undefined ? undefined : objectOrEmpty(objectOrEmpty(info.unifiedWindows)[rateLimitType])`).
+- `function claudeRateLimitResetsAt(info: Json, own: Json | undefined): number | undefined` — `nonNegativeNumber(info.resetsAt, undefined) ?? nonNegativeNumber(own?.resetsAt, undefined)`.
+- `function claudeRateLimitUtilization(info: Json, own: Json | undefined): number | undefined` — the same read for `utilization`.
+- `function claudeRateLimitReading(info: Json, rateLimitType: string | undefined, status: string | undefined): Json` — calls `claudeRateLimitOwnWindow`, `claudeRateLimitResetsAt` and `claudeRateLimitUtilization`, then assembles the `out` object's optional fields and, for a rejected window, `out.retryAfterSeconds = secondsUntilUnixStamp(resetsAt, Date.now())` with its `// resetsAt is a unix-seconds stamp ...` comment.
+
+`handleRateLimitEvent` keeps its signature and becomes:
+
+```
+const info = objectOrEmpty(event.rate_limit_info);
+const rateLimitType = optionalString(info.rateLimitType);
+const status = optionalString(info.status);
+return [
+  JSON.stringify(claudeRateLimitReading(info, rateLimitType, status)),
+  ...claudeRateLimitWindowReadings(info, rateLimitType),
+];
+```
+
+The `translate` dispatch site (`case "rate_limit_event": return handleRateLimitEvent(event);`) is untouched, and the reading-then-siblings output order is unchanged.
+
+**Files touched.** src/agent/claude/claude-stream.ts
+
+**Acceptance criteria.**
+- `handleRateLimitEvent`'s body holds only the `objectOrEmpty`/`optionalString` reads and the `claudeRateLimitReading` and `claudeRateLimitWindowReadings` calls; no `unifiedWindows`, `nonNegativeNumber`, `overageStatus`, `isUsingOverage` or `secondsUntilUnixStamp` occurrence remains in it.
+- `claudeRateLimitWindowReadings`, `claudeRateLimitOwnWindow`, `claudeRateLimitResetsAt`, `claudeRateLimitUtilization` and `claudeRateLimitReading` are module-private (no `export`), each holds its one concern moved verbatim with its comments, and each is called only from within src/agent/claude/claude-stream.ts (`claudeRateLimitReading` from `handleRateLimitEvent`; `claudeRateLimitOwnWindow`/`claudeRateLimitResetsAt`/`claudeRateLimitUtilization` from `claudeRateLimitReading`).
+- The complexity falls: `../../../node_modules/.bin/eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs 'src/agent/claude/claude-stream.ts'` no longer reports the `handleRateLimitEvent` arrow at 19, and each new helper reports a small value (`claudeRateLimitReading` carries the optional-field assembly, so it is the largest); `canonicalUsage`, `canonicalBlock`, `classifyResult`, `claudeTranslator`, `flush`, `startToolCall`, `record`, `handleSystem`, `handleAssistant`, `handleUser`, `handleResult`, `translate` and `billingOf` keep the counts they report today.
+- The exported surface is unchanged: `grep -nE '^export ' src/agent/claude/claude-stream.ts` still matches exactly the `ClaudeStreamTranslator` interface and `claudeTranslator` function.
+- Behavior is preserved: test/claude-stream.test.ts passes with no edits — including "init reports billing and the rate-limit window, newest per type" (a rejected window yields `retryAfterSeconds` from `resetsAt`) and "a 2.1.295 rate_limit_event yields one reading per unifiedWindows entry" (one reading per entry, the top-level status on the binding window).
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind five module-private functions, guarded by the existing test/claude-stream.test.ts rate-limit cases named above. Run test/claude-stream.test.ts whole, then the project's gate, and confirm green. docs/invariants.md is not edited: its only claude-stream binding is INV-AF5's module-level `canonicalUsageBlock`, and the move leaves `handleRateLimitEvent`'s output and the translator's returned surface unchanged.
+
 ## Done
