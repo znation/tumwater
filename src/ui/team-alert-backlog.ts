@@ -10,7 +10,7 @@ import type { StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import { missingSymbolNames } from "../verdict/fix-claim.js";
 import { joinWithMore } from "../text/text.js";
-import { plural } from "../text/phrases.js";
+import { agree, plural } from "../text/phrases.js";
 import { liveFinishedRowList } from "../backlog/backlog-archive.js";
 
 interface BacklogAlertsInput {
@@ -139,7 +139,7 @@ function pushStrandedPlansAlert(out: TeamAlert[], strandedPlans: readonly Strand
     out.push({
       key: "stranded-plans",
       tone: "amber",
-      title: `${strandedPlans.length === 1 ? "A plan sits" : "Plans sit"} under the wrong backlog section`,
+      title: `${agree(strandedPlans.length, "A plan sits", "Plans sit")} under the wrong backlog section`,
       detail:
         `${first.file ?? "PLANS.md"} has a plan stranded under ## ${first.section}: "${first.title}"${more} — move it under ## ${first.section === "Done" ? "Planned" : "Done"}${first.file === undefined || first.file === "PLANS.md" ? "" : " in PLANS.md"} (the clean role repairs these)`,
       // The fix is editing a backlog file, and a PLANS-DONE.md entry has no PLANS.md drawer index.
