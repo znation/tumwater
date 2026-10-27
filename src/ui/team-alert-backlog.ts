@@ -175,10 +175,10 @@ function pushBacklogHeadingsAlert(out: TeamAlert[], duplicatedHeadings: readonly
 
 // Finished history still in the live backlog files (the doctor's `backlog archive` rule,
 // checkLiveFinished, src/doctor/doctor-backlog-plans.ts, via the shared liveFinishedEntriesFor)
-// is the one backlog-hygiene rule the doctor warned but no always-on alert surfaced — every
-// other rule (stranded plans, duplicated headings, validation gaps, plan dependencies, stale
-// bugs and questions) has one, so an operator watching `tumwater status` or the dashboard never
-// sees the growing finished sections until they run `tumwater doctor`. It asks (amber) the way
+// is a backlog-hygiene rule the doctor warned but no always-on alert surfaced — stranded
+// plans, duplicated headings, validation gaps, plan dependencies and questions each have one,
+// so an operator watching `tumwater status` or the dashboard never sees the growing finished
+// sections until they run `tumwater doctor`. It asks (amber) the way
 // the duplicated-heading alert does, naming each live file, its finished section, its entry
 // count, and its size in KB; the fix is the `tumwater archive` command, so there are no actions.
 function pushBacklogArchiveAlert(out: TeamAlert[], liveFinished: readonly LiveFinishedEntry[]): void {
