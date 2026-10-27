@@ -187,26 +187,13 @@ export function readRunDetail(root: string, role: string, runNumber: number): Ru
   return detailFrom(root, role, runNumber, all, events, block, end, start);
 }
 
-/** Fill the payload around a collected block: usage from the run_end via eventUsage/usageText,
- * duration via runSpanMs against the role's own start map (the shared pairing helper, so this
- * view and the history rows cannot drift on what a span is), events oldest-first. */
-function detailFrom(
-  root: string,
-  role: string,
-  runNumber: number,
-  all: HarnessEvent[],
-  scoped: HarnessEvent[],
-  block: HarnessEvent[],
+/** The verdict a run reports: the `run_end`'s outcome text, resolved through its merge for a
+ * run that ended `queued` (its result becomes the merge's result and `merge` the merge_done/
+ * merge_failed event carrying it) — the same fresh claim cursor walk the history rows use. */
+function runResultOf(
   end: HarnessEvent | null,
-  start: HarnessEvent | null,
-): RunDetail {
-  const usageNums = end === null ? { tokens: 0, costUsd: 0 } : eventUsage(end);
-  // The run_end's prompt-token total and its cache-read subset, corrupt-field-guarded reads
-  // (nonNegativeNumber, the same guard peakContextTokens applies) with the cache subset
-  // clamped to the total so the rendered share never exceeds 100%; 0 on an in-flight run.
-  const promptTokens = end === null ? 0 : nonNegativeNumber(end.promptTokens, 0);
-  const cacheReadTokens = end === null ? 0 : Math.min(nonNegativeNumber(end.cacheReadTokens, 0), promptTokens);
-  const preEditPromptTokens = end === null ? 0 : Math.min(nonNegativeNumber(end.preEditPromptTokens, 0), promptTokens);
+  scoped: HarnessEvent[],
+): { result: string | null; merge: HarnessEvent | null } {
   let result = end === null ? null : outcomeText(end);
   let merge: HarnessEvent | null = null;
   if (end !== null && result === "queued") {
@@ -219,42 +206,114 @@ function detailFrom(
       merge = resolved.outcome;
     }
   }
+  return { result, merge };
+}
+
+/** The token and cost totals from the run_end; both zero on an in-flight run. */
+function runUsageOf(end: HarnessEvent | null): Pick<RunDetail, "tokens" | "costUsd"> {
+  if (end === null) return { tokens: 0, costUsd: 0 };
+  const { tokens, costUsd } = eventUsage(end);
+  return { tokens, costUsd };
+}
+
+/** The run's start/end timestamps and its span: `startTs`/`endTs` null when rotation cut that
+ * side, `durationMs` null whenever the pair is incomplete (no fabricated span). */
+function runTimesOf(
+  start: HarnessEvent | null,
+  end: HarnessEvent | null,
+  scoped: HarnessEvent[],
+): Pick<RunDetail, "startTs" | "endTs" | "durationMs"> {
+  return {
+    startTs: start === null ? null : start.ts,
+    endTs: end === null ? null : end.ts,
+    durationMs: end === null ? null : runSpanMs(end, runStartMap(scoped)),
+  };
+}
+
+/** The model the run's `run_start` named, or null when it carried none or sits outside the scan. */
+function runModelOf(start: HarnessEvent | null): string | null {
+  return typeof start?.model === "string" && start.model.length > 0 ? start.model : null;
+}
+
+/** The run's usage as its header line; empty when the run carries neither total. */
+function runUsageTextOf(end: HarnessEvent | null): string {
+  return end === null ? "" : usageText(end);
+}
+
+/** The run_end's prompt-token total and its cache-read and pre-edit subsets, corrupt-field-
+ * guarded reads (nonNegativeNumber) with the subsets clamped to the total so the rendered share
+ * never exceeds 100%; all three keys absent on a prompt-free or in-flight run. */
+function runPromptFields(
+  end: HarnessEvent | null,
+): Pick<RunDetail, "promptTokens" | "cacheReadTokens" | "preEditPromptTokens"> {
+  const promptTokens = end === null ? 0 : nonNegativeNumber(end.promptTokens, 0);
+  const cacheReadTokens = end === null ? 0 : Math.min(nonNegativeNumber(end.cacheReadTokens, 0), promptTokens);
+  const preEditPromptTokens = end === null ? 0 : Math.min(nonNegativeNumber(end.preEditPromptTokens, 0), promptTokens);
+  return {
+    ...(promptTokens > 0 ? { promptTokens } : {}),
+    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
+    ...(preEditPromptTokens > 0 ? { preEditPromptTokens } : {}),
+  };
+}
+
+/** The run_end's ceiling-truncation flag, absent when the run did not cut off. */
+function runCutOffField(end: HarnessEvent | null): Pick<RunDetail, "cutOff"> {
+  return end !== null && end.cutOff === true ? { cutOff: true } : {};
+}
+
+/** The run's peak context, a corrupt-field-guarded read of the run_end; 0 when in flight. */
+function runPeakContextOf(end: HarnessEvent | null): number {
+  return end === null ? 0 : nonNegativeNumber(end.peakContextTokens, 0);
+}
+
+/** The end-of-run → on-main landing latency (the landing `merged` event's ts minus the run
+ * end's), absent without both an end and a landing event — or a landing before the end, or a
+ * negative difference. */
+function runMergeLatencyField(
+  end: HarnessEvent | null,
+  mergedEvent: HarnessEvent | null,
+): Pick<RunDetail, "mergeAfterRunMs"> {
+  return end !== null && mergedEvent !== null && mergedEvent.ts - end.ts >= 0
+    ? { mergeAfterRunMs: mergedEvent.ts - end.ts }
+    : {};
+}
+
+/** Fill the payload around a collected block: each concern resolves in its own named helper
+ * (runResultOf, runUsageOf, runTimesOf, runModelOf, runUsageTextOf, runPromptFields,
+ * runCutOffField, runPeakContextOf, runMergeLatencyField), and this assembles their results.
+ * Events stay oldest-first; usage/duration pair through the shared event-read helpers so this
+ * view and the history rows cannot drift on what a span is. */
+function detailFrom(
+  root: string,
+  role: string,
+  runNumber: number,
+  all: HarnessEvent[],
+  scoped: HarnessEvent[],
+  block: HarnessEvent[],
+  end: HarnessEvent | null,
+  start: HarnessEvent | null,
+): RunDetail {
+  const { result, merge } = runResultOf(end, scoped);
   const mergedEvent = mergedEventOf(result, merge, scoped, block);
   const detail: RunDetail = {
     role,
     run: runNumber,
-    startTs: start === null ? null : start.ts,
-    model: typeof start?.model === "string" && start.model.length > 0 ? start.model : null,
-    endTs: end === null ? null : end.ts,
-    durationMs: end === null ? null : runSpanMs(end, runStartMap(scoped)),
+    ...runTimesOf(start, end, scoped),
+    model: runModelOf(start),
+    ...runUsageOf(end),
+    usage: runUsageTextOf(end),
     result,
-    tokens: usageNums.tokens,
-    costUsd: usageNums.costUsd,
-    usage: end === null ? "" : usageText(end),
-    // The peak is a corrupt-field-guarded read of the run_end (nonNegativeNumber, the same
-    // guard promptStatsFor applies); the window comes from the shared seamContextWindowForRole —
-    // same seam the role view and status table print — with loadConfigSafe falling back to
-    // defaults, so a broken tumwater.json yields a null window rather than failing this read-only
-    // view.
-    peakContextTokens: end === null ? 0 : nonNegativeNumber(end.peakContextTokens, 0),
-    // The run's prompt-token total and its cache-read subset, spread so a prompt-free or
-    // in-flight run keeps today's exact payload (no prompt/cache keys) and a cache subset > 0.
-    ...(promptTokens > 0 ? { promptTokens } : {}),
-    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
-    ...(preEditPromptTokens > 0 ? { preEditPromptTokens } : {}),
-    // The run_end's ceiling-truncation flag, spread so an in-flight, older, or normal run
-    // keeps today's exact payload (no cutOff key).
-    ...(end !== null && end.cutOff === true ? { cutOff: true } : {}),
+    // The window comes from the shared seamContextWindowForRole — same seam the role view and
+    // status table print — with loadConfigSafe falling back to defaults, so a broken
+    // tumwater.json yields a null window rather than failing this read-only view.
+    peakContextTokens: runPeakContextOf(end),
+    ...runPromptFields(end),
+    ...runCutOffField(end),
     contextWindow: seamContextWindowForRole(loadConfigSafe(root).config ?? defaultConfig(), role, root),
     events: block,
     merge,
     mergedSha: mergedShaOf(result, merge, scoped, block),
-    // The end-of-run → on-main landing latency (the landing `merged` event's ts minus the run
-    // end's), spread so a run without both an end and a landing event — or a landing before its
-    // end, or a negative difference — keeps today's exact payload (no key).
-    ...(end !== null && mergedEvent !== null && mergedEvent.ts - end.ts >= 0
-      ? { mergeAfterRunMs: mergedEvent.ts - end.ts }
-      : {}),
+    ...runMergeLatencyField(end, mergedEvent),
     reverted: null,
   };
   detail.reverted = revertedOf(detail, all);
