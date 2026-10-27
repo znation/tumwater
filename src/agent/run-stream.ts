@@ -15,7 +15,7 @@ import type { startPiWatchdogs } from "../pi/pi-watchdogs.js";
 import type { AgentBackend } from "./agent-backend.js";
 import type { PiRunOptions } from "./run-agent.js";
 import type { AppendLog, SpawnedRun } from "./run-spawn.js";
-import { recordSession } from "./session-ledger.js";
+import { recordSession, sessionRecordFor } from "./session-ledger.js";
 
 /** How many trailing stderr characters are carried into the next chunk's warning match, so a
  * warning split across two `data` events is still seen. The warnings are short lines, so a few
@@ -93,15 +93,7 @@ export function createAgentStream(input: {
     const sid = translator.sessionId?.();
     if (sid !== undefined && sid !== preSpawnSessionId && !streamMintedSession) {
       streamMintedSession = true;
-      recordSession(opts.sessionDir, {
-        agent: backend.id,
-        id: sid,
-        kind: opts.kind,
-        name: opts.sessionName,
-        cwd: opts.cwd,
-        ...(opts.config.model !== undefined ? { model: opts.config.model } : {}),
-        at: Date.now(),
-      });
+      recordSession(opts.sessionDir, sessionRecordFor(backend.id, sid, opts));
     }
   };
   // Split native stdout into complete lines, translate each, and feed the canonical lines to

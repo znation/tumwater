@@ -61,6 +61,27 @@ export function recordSession(dir: string, record: SessionRecord): void {
   }
 }
 
+/** The one run's ledger record, minus the id the two recording sites mint differently — the
+ * pre-spawn id in run-spawn.ts, or the stream-minted session id in run-stream.ts. One place
+ * for the record's non-id shape (agent, kind, name, cwd, the optional model and the stamp), so
+ * the two appends cannot drift on the model spread or the required fields. `agent` is the
+ * owning backend's id; the run options supply the rest. */
+export function sessionRecordFor(
+  agent: string,
+  id: string,
+  opts: { kind: string; sessionName: string; cwd: string; config: { model?: string } },
+): SessionRecord {
+  return {
+    agent,
+    id,
+    kind: opts.kind,
+    name: opts.sessionName,
+    cwd: opts.cwd,
+    ...(opts.config.model !== undefined ? { model: opts.config.model } : {}),
+    at: Date.now(),
+  };
+}
+
 /** True when `dir` holds at least one session file a backend could resume by directory. This is
  * the backend-neutral filesystem check behind pi's `--continue` and the fallback for an
  * unregistered backend. The ledger file shares the dir and is a `.jsonl` too, so it is

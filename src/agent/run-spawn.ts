@@ -19,7 +19,7 @@ import { makeRunMarker } from "../process/run-marker.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
 import { PiStreamParser } from "../pi/pi-stream.js";
 import type { AgentBackend, AgentInvocation, AgentRunSpec, StreamTranslator } from "./agent-backend.js";
-import { recordSession } from "./session-ledger.js";
+import { recordSession, sessionRecordFor } from "./session-ledger.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { seamImageInput } from "./image-input.js";
@@ -90,15 +90,7 @@ function buildAndSpawn(backend: AgentBackend, opts: PiRunOptions, pre: SpawnInpu
   // session of its own kind instead of whatever file is newest in the dir. The id is the backend's
   // own when it mints one ahead of the run (claude's UUID, or the resumed record's id); pi mints
   // none and keeps the session name.
-  recordSession(opts.sessionDir, {
-    agent: backend.id,
-    id: preSpawnSessionId,
-    kind: opts.kind,
-    name: opts.sessionName,
-    cwd: opts.cwd,
-    ...(opts.config.model !== undefined ? { model: opts.config.model } : {}),
-    at: Date.now(),
-  });
+  recordSession(opts.sessionDir, sessionRecordFor(backend.id, preSpawnSessionId, opts));
   const translator = backend.translator();
   // Decode stdout incrementally instead of per chunk: a raw Buffer.toString("utf8") replaces any
   // multi-byte character whose bytes straddle two 'data' events with U+FFFD, corrupting that
