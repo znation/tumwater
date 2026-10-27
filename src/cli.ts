@@ -15,6 +15,8 @@
 import { parseCountFlag, parseGrepFlag, parseModelFlag, parseResultFlag } from "./cli/cli-args.js";
 import type { OrphanKillReport } from "./doctor/doctor-orphans.js";
 import type { BacklogCommitReport } from "./doctor/doctor-backlog.js";
+import type { LiftableHold } from "./backlog/backlog-release.js";
+import type { FiledEntry } from "./backlog/backlog-write.js";
 import type { RootInstallResync } from "./build/dep-install.js";
 import type { BrokenPinDrop, LeftoverRetireReport } from "./doctor/doctor-contention-checks.js";
 import {
@@ -312,97 +314,110 @@ async function cmdArchiveCase(root: string, args: string[]): Promise<void> {
   await (await import("./backlog/backlog-cli.js")).cmdArchive(root, args);
 }
 
+/** The `bug` and `plan` argument shells are identical — the same --show/--list/--edit/
+ * --cancel/--top/--release/default dispatch, each branch delegating to the shared *AndAnnounce
+ * shell (backlog-cli.ts) with only the per-kind callbacks and file/section names differing. One
+ * spec groups those differences so a kind never spells the dispatch out again, and a flag added
+ * to both cannot drift between the two cases. The dispatch's AndAnnounce shells are imported
+ * lazily here (not at cli.ts top level), preserving the per-command lazy loading every case
+ * follows. */
+interface BacklogCommandSpec {
+  command: "bug" | "plan";
+  usage: string;
+  file: string;
+  section: string;
+  edit: (n: number, positionals: string[]) => { file: string; title: string; unchanged?: true };
+  editText: (n: number, text: string) => { file: string; title: string; unchanged?: true };
+  cancel: (n: number) => { file: string; title: string };
+  top: (n: number) => { file: string; title: string };
+  release: (n: number) => { file: string; title: string; lifted: LiftableHold };
+  releaseRole: string;
+  fileOp: (positionals: string[]) => FiledEntry;
+  fileText: (text: string) => FiledEntry;
+  wakeText: (title: string) => string;
+  titleOf: (positionals: string[]) => string;
+}
+
+/** The one dispatch `bug` and `plan` both run through (see BacklogCommandSpec): route on the
+ * leading flag token and hand off to the matching shared AndAnnounce shell, or file a text
+ * entry by default. */
+async function runBacklogCommand(root: string, args: string[], s: BacklogCommandSpec): Promise<void> {
+  const { cancelAndAnnounce, editAndAnnounce, fileAndAnnounce, releaseAndAnnounce, topAndAnnounce } =
+    await import("./backlog/backlog-cli.js");
+  const { listAndAnnounce, showAndAnnounce } = await import("./backlog/backlog-cli-view.js");
+  if (args.includes("--show")) {
+    showAndAnnounce(root, args, s.command);
+    return;
+  }
+  if (args.includes("--list")) {
+    listAndAnnounce(root, args, s.command, s.file, s.section);
+    return;
+  }
+  if (args.includes("--edit")) {
+    await editAndAnnounce(root, args, s.command, s.edit, s.editText);
+    return;
+  }
+  if (args.includes("--cancel")) {
+    await cancelAndAnnounce(root, args, s.command, s.cancel);
+    return;
+  }
+  if (args.includes("--top")) {
+    await topAndAnnounce(root, args, s.command, s.top);
+    return;
+  }
+  if (args.includes("--release")) {
+    await releaseAndAnnounce(root, args, s.command, s.release, s.releaseRole);
+    return;
+  }
+  await fileAndAnnounce(root, args, s.command, s.fileOp, s.releaseRole, s.wakeText, s.titleOf, s.fileText);
+}
+
 async function cmdBugCase(root: string, args: string[]): Promise<void> {
   const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, editBug, editBugFromText, fileBug, fileBugFromText } =
     await import("./backlog/backlog-write.js");
   const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-  const { bugTitleOf, cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce } =
-    await import("./backlog/backlog-cli.js");
-  const { listAndAnnounce, showAndAnnounce } = await import("./backlog/backlog-cli-view.js");
+  const { bugTitleOf } = await import("./backlog/backlog-cli.js");
   const usage = 'tumwater bug "<symptom>"';
-  if (args.includes("--show")) {
-    showAndAnnounce(root, args, "bug");
-    return;
-  }
-  if (args.includes("--list")) {
-    listAndAnnounce(root, args, "bug", "BUGS.md", "Open");
-    return;
-  }
-  if (args.includes("--edit")) {
-    await editAndAnnounce(root, args, "bug", (n, positionals) => editBug(root, n, positionals.join(" "), usage), (n, text) =>
-      editBugFromText(root, n, text, usage),
-    );
-    return;
-  }
-  if (args.includes("--cancel")) {
-    await cancelAndAnnounce(root, args, "bug", (n) => cancelBug(root, n));
-    return;
-  }
-  if (args.includes("--top")) {
-    await topAndAnnounce(root, args, "bug", (n) => moveEntryToTop(root, "bug", n));
-    return;
-  }
-  if (args.includes("--release")) {
-    await releaseAndAnnounce(root, args, "bug", (n) => releaseEntry(root, "bug", n), OPERATOR_FILE_KINDS.bug.role);
-    return;
-  }
-  await fileAndAnnounce(
-    root,
-    args,
-    "bug",
-    (positionals) => fileBug(root, positionals.join(" "), usage),
-    OPERATOR_FILE_KINDS.bug.role,
-    bugWakeText,
-    bugTitleOf,
-    (text) => fileBugFromText(root, text, usage),
-  );
+  await runBacklogCommand(root, args, {
+    command: "bug",
+    usage,
+    file: "BUGS.md",
+    section: "Open",
+    edit: (n, positionals) => editBug(root, n, positionals.join(" "), usage),
+    editText: (n, text) => editBugFromText(root, n, text, usage),
+    cancel: (n) => cancelBug(root, n),
+    top: (n) => moveEntryToTop(root, "bug", n),
+    release: (n) => releaseEntry(root, "bug", n),
+    releaseRole: OPERATOR_FILE_KINDS.bug.role,
+    fileOp: (positionals) => fileBug(root, positionals.join(" "), usage),
+    fileText: (text) => fileBugFromText(root, text, usage),
+    wakeText: bugWakeText,
+    titleOf: bugTitleOf,
+  });
 }
 
 async function cmdPlanCase(root: string, args: string[]): Promise<void> {
   const { OPERATOR_FILE_KINDS, cancelPlan, editPlan, editPlanFromText, filePlan, filePlanFromText, planWakeText } =
     await import("./backlog/backlog-write.js");
   const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-  const { cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce, planTitleOf } =
-    await import("./backlog/backlog-cli.js");
-  const { listAndAnnounce, showAndAnnounce } = await import("./backlog/backlog-cli-view.js");
+  const { planTitleOf } = await import("./backlog/backlog-cli.js");
   const usage = 'tumwater plan "<title>" [body...]';
-  if (args.includes("--show")) {
-    showAndAnnounce(root, args, "plan");
-    return;
-  }
-  if (args.includes("--list")) {
-    listAndAnnounce(root, args, "plan", "PLANS.md", "Planned");
-    return;
-  }
-  if (args.includes("--edit")) {
-    await editAndAnnounce(root, args, "plan", (n, positionals) =>
-      editPlan(root, n, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
-    (n, text) => editPlanFromText(root, n, text, usage),
-    );
-    return;
-  }
-  if (args.includes("--cancel")) {
-    await cancelAndAnnounce(root, args, "plan", (n) => cancelPlan(root, n));
-    return;
-  }
-  if (args.includes("--top")) {
-    await topAndAnnounce(root, args, "plan", (n) => moveEntryToTop(root, "plan", n));
-    return;
-  }
-  if (args.includes("--release")) {
-    await releaseAndAnnounce(root, args, "plan", (n) => releaseEntry(root, "plan", n), OPERATOR_FILE_KINDS.plan.role);
-    return;
-  }
-  await fileAndAnnounce(
-    root,
-    args,
-    "plan",
-    (positionals) => filePlan(root, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
-    OPERATOR_FILE_KINDS.plan.role,
-    planWakeText,
-    planTitleOf,
-    (text) => filePlanFromText(root, text, usage),
-  );
+  await runBacklogCommand(root, args, {
+    command: "plan",
+    usage,
+    file: "PLANS.md",
+    section: "Planned",
+    edit: (n, positionals) => editPlan(root, n, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
+    editText: (n, text) => editPlanFromText(root, n, text, usage),
+    cancel: (n) => cancelPlan(root, n),
+    top: (n) => moveEntryToTop(root, "plan", n),
+    release: (n) => releaseEntry(root, "plan", n),
+    releaseRole: OPERATOR_FILE_KINDS.plan.role,
+    fileOp: (positionals) => filePlan(root, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
+    fileText: (text) => filePlanFromText(root, text, usage),
+    wakeText: planWakeText,
+    titleOf: planTitleOf,
+  });
 }
 
 async function cmdPromptCase(root: string, args: string[]): Promise<void> {
