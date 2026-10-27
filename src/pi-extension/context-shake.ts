@@ -297,36 +297,62 @@ interface ShakeContextEditDraft {
   replacement: { content: string };
 }
 
+/** Records the tool-call parts of an assistant message by id, so a later tool result can find
+ * its matching call. */
+function recordToolCalls(msg: MessageLike, calls: Map<string, ToolCallBlock>): void {
+  if (msg.role !== "assistant" || !Array.isArray(msg.content)) return;
+  for (const part of msg.content as ToolCallBlock[]) {
+    if (part?.type === "toolCall" && typeof part.id === "string") calls.set(part.id, part);
+  }
+}
+
+/** Resolves the read-input pointer (file:range) from a matching tool call, when it was a read. */
+function readInputFor(call: ToolCallBlock | undefined): { path?: string; offset?: number; limit?: number } | undefined {
+  if (call?.name === "read") {
+    return {
+      path: call.arguments?.path,
+      offset: call.arguments?.offset,
+      limit: call.arguments?.limit,
+    };
+  }
+  return undefined;
+}
+
+/** Copies a tool result's fields (toolName, toolCallId, isError, fullOutputPath, readInput) onto
+ * the message from the recorded calls. */
+function applyToolResultFields(message: ShakeMessage, msg: MessageLike, calls: Map<string, ToolCallBlock>): void {
+  if (msg.role === "toolResult") {
+    if (msg.toolName) message.toolName = msg.toolName;
+    if (msg.toolCallId) message.toolCallId = msg.toolCallId;
+    if (msg.isError !== undefined) message.isError = msg.isError;
+    if (msg.details?.fullOutputPath) message.fullOutputPath = msg.details.fullOutputPath;
+    const call = msg.toolCallId ? calls.get(msg.toolCallId) : undefined;
+    const readInput = readInputFor(call);
+    if (readInput) message.readInput = readInput;
+  }
+}
+
+/** Assembles one message's fields (text, entry id, role, then its tool-result fields). */
+function buildShakeMessage(msg: MessageLike, entryId: string | undefined, calls: Map<string, ToolCallBlock>): ShakeMessage {
+  const message: ShakeMessage = { text: textOf(msg) };
+  if (entryId) message.entryId = entryId;
+  if (msg.role) message.role = msg.role;
+  applyToolResultFields(message, msg, calls);
+  return message;
+}
+
 /** Flatten a turn_end event's projected context into the ordered messages the planner reads,
- * mapping each assistant tool call's input onto the tool result it produced. */
+ * mapping each assistant tool call's input onto the tool result it produced. The per-job work
+ * lives in the named helpers `recordToolCalls`, `readInputFor`, `applyToolResultFields` and
+ * `buildShakeMessage`; this function is their composition. */
 export function shakeMessages(event: TurnEndLikeEvent): ShakeMessage[] {
   const calls = new Map<string, ToolCallBlock>();
   const out: ShakeMessage[] = [];
   for (const entry of event.context?.contextEntries ?? []) {
+    const entryId = entry.sourceEntry?.id;
     for (const msg of entry.messages ?? []) {
-      if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        for (const part of msg.content as ToolCallBlock[]) {
-          if (part?.type === "toolCall" && typeof part.id === "string") calls.set(part.id, part);
-        }
-      }
-      const message: ShakeMessage = { text: textOf(msg) };
-      if (entry.sourceEntry?.id) message.entryId = entry.sourceEntry.id;
-      if (msg.role) message.role = msg.role;
-      if (msg.role === "toolResult") {
-        if (msg.toolName) message.toolName = msg.toolName;
-        if (msg.toolCallId) message.toolCallId = msg.toolCallId;
-        if (msg.isError !== undefined) message.isError = msg.isError;
-        if (msg.details?.fullOutputPath) message.fullOutputPath = msg.details.fullOutputPath;
-        const call = msg.toolCallId ? calls.get(msg.toolCallId) : undefined;
-        if (call?.name === "read") {
-          message.readInput = {
-            path: call.arguments?.path,
-            offset: call.arguments?.offset,
-            limit: call.arguments?.limit,
-          };
-        }
-      }
-      out.push(message);
+      recordToolCalls(msg, calls);
+      out.push(buildShakeMessage(msg, entryId, calls));
     }
   }
   return out;
