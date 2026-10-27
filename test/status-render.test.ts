@@ -81,21 +81,6 @@ test("status table marks custom roles with an asterisk and a footnote", () => {
   assert.match((plain.split("\n") as string[]).at(-1) ?? "", /^total\b/);
 });
 
-// Model failure fallback, part 2/2: a role whose episode is active is tagged on its name
-// cell, and only that role — the common table stays byte-identical.
-
-test("status table tags the roles running on a model-fallback episode", () => {
-  const snap = snapshotWith([
-    { role: "feature", fallback: { provider: "prov-fb", model: "model-fb", since: 1, reason: "Request timed out." } },
-    { role: "clean" },
-  ]);
-  const text = renderStatus(tmpdir(), snap);
-  assert.match(text, /feature \(over-cap model\)/);
-  assert.doesNotMatch(text, /clean \(over-cap model\)/);
-  // No episode: the suffix is absent everywhere, so the table is unchanged.
-  assert.doesNotMatch(renderStatus(tmpdir(), snapshotWith([{ role: "feature" }])), /\(over-cap model\)/);
-});
-
 // Parallel work instances, part 6/7: an idle instance's state cell leads with the entry it
 // claimed, and only that row.
 test("status table leads an idle instance row with its claimed entry", () => {
@@ -782,12 +767,3 @@ test("a mixed-model table keeps each row's suffix and prints no shared-model lin
   assert.doesNotMatch(renderStatus(tmpdir(), oneBare), /model \(every role\)/);
 });
 
-test("a shared model still leaves the over-cap marker on its row", () => {
-  const snap = snapshotWith([
-    { role: "feature", model: "prov/a", fallback: { provider: "p", model: "m", since: 1, reason: "x" } } as never,
-    { role: "clean", model: "prov/a" } as never,
-  ]);
-  const text = renderStatus(tmpdir(), snap);
-  assert.match(text, /feature \(over-cap model\)/);
-  assert.match(text, /model \(every role\): prov\/a/);
-});

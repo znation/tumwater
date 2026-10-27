@@ -361,25 +361,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 5n/6: The per-role model-fallback display goes — no role view, per-role status row or GUI drawer names an active episode (planned 2026-10-27 by the plan role; the second part replacing part 5c/6, sibling to parts 5c/6, 5o/6 and 5p/6; independent in file of part 5c/6, so the two can run side by side; touches src/roles/role-view.ts src/roles/role-render.ts src/status/status-roles.ts src/status/status-data.ts src/ui/gui/gui-client-drawer-config.ts docs/invariants.md test/role-view.test.ts test/status-data-models.test.ts test/gui-client-drawer.test.ts)
-
-**Goal.** The active model-fallback episode is no longer shown anywhere an operator reads a role: `RoleViewPayload.modelFallback`, the per-role status row's `fallback` field, `role-render.ts`'s `Model fallback:` line and the GUI drawer's row are gone. The episode machinery still runs until part 5o/6; only its displays go.
-
-**Approach.**
-- `src/roles/role-view.ts`: delete `modelFallbackView`/`ModelFallbackView` from the `../config/config-fallbacks.js` import (keep `fallbackPair`), the `modelFallback` field and its doc comment from `RoleViewPayload`, the `const episode = state.modelFallback` read and the `modelFallback: modelFallbackView(episode, cfg, role)` initializer.
-- `src/roles/role-render.ts`: delete the `if (p.modelFallback)` block and its `Model fallback:` line; keep `fallbackPairLabel`, which the budget-fallback row still uses.
-- `src/status/status-roles.ts`: delete the `modelFallbackView`/`ModelFallbackView` import, the `fallback?: ModelFallbackView` field and the `const episode = modelFallbackView(...)` read; `src/status/status-data.ts`: delete the `ModelFallbackView` import and its `fallback?` field.
-- `src/ui/gui/gui-client-drawer-config.ts`: delete the `view.modelFallback` branch that builds the `Model fallback` drawer row.
-- `docs/invariants.md`: delete the `Model fallback`/`modelFallbackView` sentences from its rendering guarantees.
-- Leave `modelFallbackView`, `ModelFallbackView` and `fallbackRoleConfig` defined in `src/config/config-fallbacks.ts` — part 5o/6 deletes them once this part and part 5c/6 leave no reader.
-
-**Acceptance criteria.**
-- `grep -rn 'modelFallback\|Model fallback' src/roles/role-view.ts src/roles/role-render.ts src/status/status-roles.ts src/status/status-data.ts src/ui/gui/gui-client-drawer-config.ts` finds nothing.
-- `RoleViewPayload` and the per-role status row carry no model-fallback field, and `modelFallbackView` still exists in src/config/config-fallbacks.ts.
-- test/role-view.test.ts, test/status-data-models.test.ts and test/gui-client-drawer.test.ts pass with the episode fixtures and `Model fallback` assertions removed; `npm run test:gate` passes.
-
-**Tests.** Update those three modules, then run them and the project's gate, and confirm green.
-
 ### Subtract, part 5o/6: The model-failure episode machinery goes — a run always resolves its role's own config (planned 2026-10-27 by the plan role; the third part replacing part 5c/6; requires Subtract part 5n/6 landed, since with the role view and status row no longer reading them this part deletes `modelFallbackView` and `fallbackRoleConfig`, whose last readers are there; touches src/runner/model-fallback.ts (deleted) src/runner/runner-fallback.ts (deleted) src/runner/runner.ts src/runner/runner-run.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/config/config-fallbacks.ts src/gates/gate-polls.ts src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-launch.ts docs/invariants.md test/model-fallback.test.ts (deleted) test/runner-fallback.test.ts (deleted) test/runner-state.test.ts test/run-resume.test.ts test/gate-polls.test.ts test/config-views.test.ts)
 
 **Goal.** A failing provider never changes which model a run uses: the episode state machine, its runner plumbing and the two config helpers only it reads are gone. The two event types it emitted stay defined until part 5p/6 removes them.

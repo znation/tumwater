@@ -69,9 +69,6 @@ function roleRows(snap: ReturnType<typeof snapshot>, root: string) {
       // the dashboard can mark a row whose model tumwater.json did not name. Same conditional
       // spread as `model`, present on exactly the rows that carry the flag.
       ...(s.modelFromPi ? { modelFromPi: true } : {}),
-      // Model failure fallback (PLANS.md "Model failure fallback, part 2/2"): present only
-      // while the role's runs use another model, so the common row shape is unchanged.
-      ...(s.fallback ? { fallback: s.fallback } : {}),
       ...(s.slot ? { slot: s.slot, slotPinned: s.slotPinned === true } : {}),
       // Parallel work instances (plans/parallel-work-instances.md "Observability", part
       // 6/7): the backlog entry this instance claimed, shown by the dashboards while it is

@@ -332,11 +332,13 @@ export function reviewRunConfig(config: TumwaterConfig): ResolvedModelConfig {
 /** The optional provider/model/thinking fields of a resolved model seam, with each unset
  * (empty) field left out so the result carries only what was resolved — the one home of that
  * assembly. The fallback layer (config-fallbacks.ts's fallbackSelectorFields and
- * fallbackPair/tierOwnFallback/modelFallbackView) and role-view's RoleViewPayload (its
- * model fields) all build a triple this way and follow the same rule — an absent or empty
+ * fallbackPair/tierOwnFallback) and role-view's RoleViewPayload (its model fields) all
+ * build a triple this way and follow the same rule — an absent or empty
  * value is
  * omitted rather than written as undefined/"" (an empty selector field would read as
- * "override present," so it must not appear). */
+ * "override present," so it must not appear). config-fallbacks.ts's modelFallbackView
+ * assembles its episode triple through this function too; its readers were removed by
+ * Subtract part 5n/6, so it is kept only until part 5o/6 deletes it. */
 export function resolvedModelFields(
   provider: string | undefined,
   model: string | undefined,

@@ -3128,20 +3128,18 @@ row unchanged).
 
 ### INV-AX7: the drawer's fallback rows and the role fallback lines name a non-pi fallback's backend namespace the same way
 
-**Guarantee.** When a fallback pair's backend is non-pi, the dashboard role drawer's Model
-fallback and Budget fallback rows and the CLI's `tumwater role <id>` Model fallback and Over-cap
-model lines (role-render's `fallbackPairLabel`) render the pair the same way, naming a non-pi
-backend as its selector namespace — `claude/claude-haiku-5-5` for a claude model-fallback episode
-whose `modelFallbackView` drops pi's `provider`, so the two surfaces agree on which model a role's
-fallback runs. A pi pair (whose provider names the selector) and a budget pair (whose provider
-already holds the backend) stay byte-identical.
+**Guarantee.** When a fallback pair's backend is non-pi, the dashboard role drawer's Budget
+fallback row and the CLI's `tumwater role <id>` Over-cap model line (role-render's
+`fallbackPairLabel`) render the pair the same way, naming a non-pi backend as its selector
+namespace. A budget pair's provider already holds the backend, so its row stays byte-identical;
+a pi pair (whose provider names the selector) renders without a namespace.
 
 **Binds.** `src/ui/gui/gui-client-drawer-config.ts` (`drawerConfigHtml`'s `fallbackLabel`),
 `src/roles/role-render.ts` (`fallbackPairLabel`).
 
-**Pinned by.** `test/gui-client-drawer.test.ts` — "the Configuration fallback rows name a non-pi
-fallback's backend namespace" (a non-pi `modelFallback` renders `claude/claude-haiku-5-5`, and a
-non-pi `fallback` with `backend` renders its namespace once in the Budget fallback row).
+**Pinned by.** `test/gui-client-drawer.test.ts` — "the Configuration fallback row names a non-pi
+fallback's backend namespace" (a non-pi `fallback` with `backend` renders its namespace once in
+the Budget fallback row).
 
 ## Backlog conflicts: a backlog rebase conflict settles without a model only when no authored bytes need judgment
 

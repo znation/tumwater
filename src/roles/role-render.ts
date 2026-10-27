@@ -153,7 +153,7 @@ function modelLine(p: RoleViewPayload): string {
 /** A fallback pair as one readable token, agent-qualified exactly like modelLine — a non-pi
  * backend (its `agent`, or a provider that names one, `claude`) is named as the selector's
  * namespace; a pi pair keeps `provider/model`; neither half present falls back to the
- * backend-default label. One home for the Model fallback and Budget fallback lines, so a
+ * backend-default label. One home for the Budget fallback line, so a
  * claude fallback reads `claude/claude-sonnet-5-5`, not a bare id (PLANS.md "Mixed claude +
  * pi fleets, part 3/4" gap 7). */
 function fallbackPairLabel(
@@ -300,14 +300,6 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   // the role's base id — a pre-merge-reviewed role or a gate-off config omits the line.
   if (p.reviewedAfterMerge) {
     lines.push(`- Review: after merge (a rejected change stays on main with the reviewer's recorded reasons)`);
-  }
-  // Model failure fallback, part 2/2: name the off-model pair, when the episode began, and
-  // the provider-class failure that tripped it, so `tumwater role <id>` explains the state.
-  if (p.modelFallback) {
-    const pair = fallbackPairLabel(p.modelFallback, backendDefault(p));
-    lines.push(
-      `- Model fallback: ${pair} — on fallback since ${formatTimestamp(p.modelFallback.since)} (primary failing: ${p.modelFallback.reason})`,
-    );
   }
   if (p.fallback) {
     const pair = fallbackPairLabel(p.fallback, backendDefault(p));

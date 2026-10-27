@@ -52,10 +52,6 @@ export function snapshotWith(
     Partial<ReturnType<typeof freshRunnerState>> & {
       role: string;
       custom?: boolean;
-      /** The model-fallback episode tag (status-data's active-episode row field), which a
-       * literal RunnerState does not carry — a test passes it to exercise the `on fallback`
-       * name-cell suffix. */
-      fallback?: StatusSnapshot["roles"][number]["fallback"];
       /** The role's image-input surface (plans/image-input.md "Surfaces", part 5/5), which
        * a literal RunnerState does not carry — a test passes it to exercise the images alert. */
       imageInput?: boolean | null;

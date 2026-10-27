@@ -222,7 +222,7 @@ interface StatusRoleRow {
 }
 
 /** The per-role snapshot row one render reads — RunnerState plus the display extras the
- * snapshot layer adds (model/tier/fallback/custom/image fields, status-data.ts). */
+ * snapshot layer adds (model/tier/custom/image fields, status-data.ts). */
 type SnapshotRole = StatusSnapshot["roles"][number];
 
 /** One role's metric inputs for its status row, captured once per render so the header
@@ -369,14 +369,11 @@ function statusRoleRows(
     // today's.
     const inner = roleModelLabel(s);
     const modelSuffix = inner && !sharedModel ? ` (${inner})` : "";
-    // Model failure fallback, part 2/2: while the role runs off-model its name cell says so,
-    // so the operator can see which roles the fallback pair is carrying without reading logs.
-    const fallbackSuffix = s.fallback ? " (over-cap model)" : "";
     // User-defined roles (snapshot's `custom` flag) get an asterisk beside their name — the
     // dashboards' at-a-glance marker. The name column (index 0) is not in FLEXIBLE_COLUMNS;
     // its width derives from row content and it shrinks only after those,
     // so the extra character widens it.
-    const name = (s.custom ? `${roleLabel(s.role)}*` : roleLabel(s.role)) + modelSuffix + fallbackSuffix;
+    const name = (s.custom ? `${roleLabel(s.role)}*` : roleLabel(s.role)) + modelSuffix;
     const state = stateCell(root, s, phase, live);
     const tone = phaseTone(phase);
     // The whole state cell carries the phase's tone: a work item leads the cell (so it

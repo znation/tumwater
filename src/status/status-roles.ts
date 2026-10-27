@@ -7,7 +7,6 @@ import {
   modelSelectorField,
   roleSeamTier,
 } from "../config/config-views.js";
-import { modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { isCustomRole } from "../config/config.js";
 import { baseRoleOf, configuredInstances, instanceIndex, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import { errorStreakAtWarn, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
@@ -32,7 +31,6 @@ export type StatusRoleRow = RunnerState & {
   modelTier?: ModelTier;
   model?: string;
   modelFromPi?: true;
-  fallback?: ModelFallbackView;
   slot?: string;
   slotPinned?: boolean;
   instanceOf?: string;
@@ -44,21 +42,20 @@ export type StatusRoleRow = RunnerState & {
   /** The resolved primary seam's declared context window, from the same `seamContextWindow`
    * the role page's `- Context window:` line prints — a table/drawer peak-ctx share divides a
    * run's peak against this. Present only when the seam declares a window (the omit-when-unknown
-   * convention `fallback` and `modelFromPi` use), so a row without a window is byte-identical. */
+   * the `modelFromPi` convention uses), so a row without a window is byte-identical. */
   contextWindow?: number;
 };
 
-/** One row per enabled role id (part 5b/7). `configForRole`, `modelFallbackView`, the leased /
+/** One row per enabled role id (part 5b/7). `configForRole`, the leased /
  * pinned slot and the pi-default seam all resolve against the values `snapshot()` already
  * read once for the poll — the info and slots pins (threaded as `slots`) keep rows, `running`
- * and `disk` on the same shared reads, and `now` is the snapshot's pinned clock so every row
- * agrees on what "active" means. One read of pi's own saved default per poll (docs/backends.md)
- * serves the rows whose seam runs pi and resolves no model — its settings.json sits beside the
- * models catalog this snapshot reads (piSettingsPath), so one seam serves both. */
+ * and `disk` on the same shared reads. One read of pi's own saved default per poll
+ * (docs/backends.md) serves the rows whose seam runs pi and resolves no model — its
+ * settings.json sits beside the models catalog this snapshot reads (piSettingsPath), so one
+ * seam serves both. */
 export function collectRoleRows(
   root: string,
   cfg: TumwaterConfig,
-  now: number,
   slots: ReturnType<typeof readSlotsState>["slots"],
   modelsPath: string,
   paused: ReadonlySet<string>,
@@ -107,11 +104,6 @@ export function collectRoleRows(
     // poll here, beside `eff` (the same seam the role page resolves and names) — the same seam
     // `seamContextWindow` run against, so row, page and drawer cannot disagree.
     const contextWindow = seamContextWindowForRole(cfg, r, root, modelsPath);
-    // Model failure fallback, part 2/2: while the role's episode is active its agent runs use
-    // the tier-resolved fallback pair, so the row names that pair, the episode's start, and
-    // the failure that tripped it. `now` is the poll's own clock (the snapshot seam), so
-    // every row agrees on what "active" means.
-    const episode = modelFallbackView(base.modelFallback, cfg, r, now);
     // A seam that runs pi and resolves neither a provider nor a model starts on pi's own
     // saved default — name it in the row (modelFromPi) so the operator sees which model the
     // role runs. The config's `thinking` wins over the default's because tumwater passes it
@@ -146,7 +138,6 @@ export function collectRoleRows(
         ? {}
         : { model: backendDefaultLabel(eff.agent) }),
       ...(isJsonObject(cfg.model) ? { modelTier: roleSeamTier(cfg, r) } : {}),
-      ...(episode !== null ? { fallback: episode } : {}),
       ...(contextWindow !== null ? { contextWindow } : {}),
       ...(slot ? { slot: path.basename(slot.dir), slotPinned: pinned !== undefined } : {}),
       ...(baseRoleOf(r) === r ? {} : { instanceOf: baseRoleOf(r) }),

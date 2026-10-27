@@ -3,7 +3,7 @@
 // reads that serve them. Split by facet from one status-data test file; the
 // budget/cap fields live in status-data-budget.test.ts, the team/pause/health fields in
 // status-data-team.test.ts, the queue fields in status-data-inbox.test.ts, and the model
-// selector/fallback/seam rows in status-data-models.test.ts.
+// selector/seam rows in status-data-models.test.ts.
 
 import fs from "node:fs";
 import path from "node:path";

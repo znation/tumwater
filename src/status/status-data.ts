@@ -5,7 +5,6 @@ import type { CheckPermitSnapshot, OrchestratorInfo, PermitSnapshot, SlotPoolSna
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { baseRoleOf, roleInScope, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
-import type { ModelFallbackView } from "../config/config-fallbacks.js";
 import type { ClaudeWindowEntry } from "../agent/claude/claude-account.js";
 import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import { piModelsPath } from "../pi/pi-models.js";
@@ -90,12 +89,6 @@ export interface StatusSnapshot {
      * A tier-map row never carries either the flag or its default, since a tier map always
      * resolves a model. */
     modelFromPi?: true;
-    /** While a model-fallback episode is active (PLANS.md "Model failure fallback"): the
-     * tier-resolved fallback pair this role's agent runs use, when the episode began, and the
-     * provider-class failure that tripped it. Absent while the episode is not running the
-     * fallback (no episode, or a due probe on the primary), so the common row shape is
-     * unchanged. */
-    fallback?: ModelFallbackView;
     /** The pooled worktree slot this role holds (a live run or verification lease) or is
      * pinned to, named by basename; absent when the role has no slot. `slotPinned` marks a pin
      * (a pending resume waiting on the same checkout) rather than the slot's live lease. */
@@ -626,7 +619,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // run or verification) or is pinned to — threaded into the roles collector so `running`,
   // `disk` and the rows agree.
   const slots = readSlotsState(root).slots;
-  const roleRows = collectRoleRows(root, cfg, now, slots, modelsPath, markerSet);
+  const roleRows = collectRoleRows(root, cfg, slots, modelsPath, markerSet);
   // Every role whose notes file runs past the read bound (status-role-notes.ts): the standing
   // twin of the doctor `role notes` row, raised as the amber role-notes-truncated alert.
   const roleNotesOverCap = collectRoleNotesOverCap(root);

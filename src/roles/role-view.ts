@@ -22,7 +22,7 @@ import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { quietHoursStatus } from "../scheduling/quiet-hours.js";
 import { assembleRunPrompt } from "../run/run-prompt.js";
 import { configForRole, resolvedModelFields, reviewedAfterMerge, reviewRunConfig, roleSeamTier } from "../config/config-views.js";
-import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
+import { fallbackPair } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath, seamContextWindowForRole } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { formatModelSelector } from "../config/model-selector.js";
@@ -78,9 +78,6 @@ export interface RoleViewPayload {
   /** Whether that fallback is actually free in pi's definitions — what makes the gate
    * willing to engage it. Meaningful only when `fallback` is non-null. */
   fallbackFree: boolean;
-  /** The active model-fallback episode (PLANS.md "Model failure fallback"), or null when
-   * the role's runs are not running off-model. */
-  modelFallback: ModelFallbackView | null;
   /** The subscription backend whose billing this answer reads (the role's own non-pi seam,
    * else the review gate's non-pi backend — today's claude precedence generalized, so a
    * codex role or a pi author on a codex reviewer names codex here): `"claude"`, `"codex"`, …
@@ -321,9 +318,8 @@ export function rolePayload(
   const accounts = (b: string) => (b === "claude" ? claudeFallbackAccount : null);
   const freeFallback = declaredFallback ? fallbackModelPair(cfg, modelsPath, accounts, opencodeCatalog) : null;
   const fallback = freeFallback ?? declaredFallback;
-  // One state read serves both the model-fallback episode and the next-run preview below.
+  // One state read serves the next-run preview below.
   const state = loadRunnerState(root, role);
-  const episode = state.modelFallback;
   // The role's recent run outcomes, read from the event log (readEvents) so the command
   // answers with the team stopped and never touches live state. readEvents returns the log's
   // newest events in file (chronological) order, so filtering to this role's run_end events
@@ -455,7 +451,6 @@ export function rolePayload(
     backend: effective.agent ?? "pi",
     fallback,
     fallbackFree: freeFallback !== null,
-    modelFallback: modelFallbackView(episode, cfg, role),
     ...(account !== null ? { billing: account.billing, billingBackend } : {}),
     ...(billingWindow !== undefined ? { billingWindow } : {}),
     chainStep,
@@ -516,8 +511,8 @@ export function rolePayload(
         preview: true,
       })?.prompt ?? null,
     // The role's schedule — surfaced read-only from the same persisted state rolePayload
-    // already loaded for the model-fallback episode and the next-run preview, so no new
-    // read path exists and the collector stays one loadRunnerState per role. `lastRunEndedAt`
+    // already loaded for the next-run preview, so no new read path exists and the collector
+    // stays one loadRunnerState per role. `lastRunEndedAt`
     // is omitted (JSON unchanged) until the role has actually run.
     nextRunAt: state.nextRunAt,
     backoffSeconds: state.backoffSeconds,

@@ -17,7 +17,7 @@ test("collectRoleRows builds one row per role id with the custom flag", async ()
   writeConfig(repo, {});
   const cfg = loadConfig(repo);
   const modelsFile = writeModelsFile(tmpdir("status-roles-"), LOCAL_FREE_MODELS_JSON);
-  const rows = collectRoleRows(repo, cfg, Date.now(), readSlotsState(repo).slots, modelsFile, new Set());
+  const rows = collectRoleRows(repo, cfg, readSlotsState(repo).slots, modelsFile, new Set());
   assert.ok(rows.length >= 3, "one row per enabled role");
   assert.ok(rows.every((r) => !r.custom), "built-in roles are not custom");
   assert.ok(rows.some((r) => r.role === "feature"));
@@ -45,17 +45,17 @@ test("collectRoleRows keeps a surplus runner's row while paused or on an error s
   const empty = new Set<string>();
   // feature-3 sits above the configured 2 instances, with a clean state file.
   saveRunnerState(repo, freshRunnerState("feature-3"));
-  let rows = collectRoleRows(repo, cfg, Date.now(), slots, modelsFile, empty);
+  let rows = collectRoleRows(repo, cfg, slots, modelsFile, empty);
   assert.ok(
     !rows.some((r) => r.role === "feature-3"),
     "an idle surplus runner with no streak still gets no row",
   );
   // The pause marker alone keeps the row (no streak needed): resume it from the dashboard.
-  rows = collectRoleRows(repo, cfg, Date.now(), slots, modelsFile, new Set(["feature-3"]));
+  rows = collectRoleRows(repo, cfg, slots, modelsFile, new Set(["feature-3"]));
   assert.ok(rows.some((r) => r.role === "feature-3"), "a paused surplus runner keeps its row");
   // An error streak at the warning threshold keeps the row even while not paused.
   saveRunnerState(repo, { ...freshRunnerState("feature-3"), consecutiveErrors: 10 });
-  rows = collectRoleRows(repo, cfg, Date.now(), slots, modelsFile, empty);
+  rows = collectRoleRows(repo, cfg, slots, modelsFile, empty);
   assert.ok(rows.some((r) => r.role === "feature-3"), "an error-streak surplus runner keeps its row");
   // A quiet-kill streak at the give-up threshold keeps the row too — the other half of
   // onErrorStreak, the exact condition the failing-run alert keys on (status-model.ts).
@@ -64,7 +64,7 @@ test("collectRoleRows keeps a surplus runner's row while paused or on an error s
     lastResult: "quiet_killed",
     quietKillStreak: 3,
   });
-  rows = collectRoleRows(repo, cfg, Date.now(), slots, modelsFile, empty);
+  rows = collectRoleRows(repo, cfg, slots, modelsFile, empty);
   assert.ok(rows.some((r) => r.role === "feature-3"), "a quiet-kill surplus runner keeps its row");
 });
 
@@ -82,7 +82,7 @@ test("collectRoleRows carries a declared window and omits an unknown one", async
   await initProject(repo, "roles collector window");
   writeConfig(repo, { provider: "local", model: "big" });
   const cfg = loadConfig(repo);
-  const rows = collectRoleRows(repo, cfg, Date.now(), readSlotsState(repo).slots, windowed, new Set());
+  const rows = collectRoleRows(repo, cfg, readSlotsState(repo).slots, windowed, new Set());
   assert.equal(rows.find((r) => r.role === "feature")?.contextWindow, 262144);
 
   // A claude seam has no catalog of windows here — the row must omit the key entirely.
@@ -90,7 +90,7 @@ test("collectRoleRows carries a declared window and omits an unknown one", async
   await initProject(repo2, "roles collector windowless");
   writeConfig(repo2, { backend: "claude", model: "claude-sonnet-5-5" });
   const cfg2 = loadConfig(repo2);
-  const rows2 = collectRoleRows(repo2, cfg2, Date.now(), readSlotsState(repo2).slots, windowed, new Set());
+  const rows2 = collectRoleRows(repo2, cfg2, readSlotsState(repo2).slots, windowed, new Set());
   const feature = rows2.find((r) => r.role === "feature");
   assert.equal("contextWindow" in feature!, false, "a claude seam row carries no contextWindow");
   assert.equal(feature?.contextWindow, undefined);

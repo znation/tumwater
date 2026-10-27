@@ -239,16 +239,6 @@ test("a role row marks a model pi's own saved default", () => {
   assert.doesNotMatch(cells({ role: "feature", phase: "sleeping", runs: 2, commits: 1, model: "prov-a/model-a" }), /\(pi default\)/);
 });
 
-// Model failure fallback, part 2/2: a role row carries a fallback tag only while the
-// payload's active-episode field is present.
-test("a role row tags an active model-fallback episode", () => {
-  const cells = (l: object): string => roleCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
-  const tagged = cells({ role: "feature", phase: "working 3m", fallback: { provider: "p", model: "m", since: 1, reason: "boom" } });
-  assert.match(tagged, /<span class='tag t-amber' title='[^']*'>fallback<\/span>/);
-  // No episode: no fallback tag.
-  assert.doesNotMatch(cells({ role: "clean", phase: "sleeping" }), /fallback<\/span>/);
-});
-
 // PLANS.md "Stop showing leased worktree slots in the TUI and GUI": the payload keeps
 // slot/slotPinned, but a role row renders no leased/pinned worktree tag.
 test("a row hides the pooled worktree slot and its pin", () => {

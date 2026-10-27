@@ -527,59 +527,6 @@ test("the plan payload resolves the stop target without leaking a template", () 
   assert.match(p.nextPrompt ?? "", /2 or more eligible plans/);
 });
 
-// Model failure fallback, part 2/2: the inspector names the off-model pair, the episode's
-// start, and the failure that tripped it, and says nothing while the role runs its primary.
-test("an active model-fallback episode is reported with its pair and reason", () => {
-  const dir = root();
-  writeConfig(dir, { model: "prov-a/model-a", fallbackModel: { provider: "fp", model: "fm" } });
-  const state = freshRunnerState("feature");
-  const since = Date.now() - 120_000;
-  state.modelFallback = {
-    failures: 0,
-    since,
-    probeAt: Date.now() + 600_000,
-    cooldownMs: 300_000,
-    reason: "Request timed out.",
-  };
-  saveRunnerState(dir, state);
-  const p = rolePayload(dir, "feature", NO_MODELS);
-  assert.deepEqual(p.modelFallback, { provider: "fp", model: "fm", since, reason: "Request timed out." });
-  assert.match(
-    renderRoleMarkdown(p),
-    /- Model fallback: fp\/fm — on fallback since .* \(primary failing: Request timed out\.\)/,
-  );
-
-  // A probe is due: the next run uses the primary, so the episode line is gone.
-  state.modelFallback.probeAt = Date.now() - 1;
-  saveRunnerState(dir, state);
-  assert.equal(rolePayload(dir, "feature", NO_MODELS).modelFallback, null);
-  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Model fallback:/);
-});
-
-// A claude model-fallback episode (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7) renders
-// agent-qualified in `tumwater role` and carries the backend on the payload.
-test("a claude model-fallback episode renders as claude/model", () => {
-  const dir = root();
-  writeConfig(dir, { backend: "claude", fallbackModel: { model: "claude-haiku-5-5" } });
-  const state = freshRunnerState("feature");
-  const since = Date.now() - 60_000;
-  state.modelFallback = {
-    failures: 0,
-    since,
-    probeAt: Date.now() + 600_000,
-    cooldownMs: 300_000,
-    reason: "Request timed out.",
-  };
-  saveRunnerState(dir, state);
-  const p = rolePayload(dir, "feature", NO_MODELS);
-  assert.equal(p.modelFallback?.backend, "claude");
-  assert.equal(p.modelFallback?.model, "claude-haiku-5-5");
-  assert.match(
-    renderRoleMarkdown(p),
-    /- Model fallback: claude\/claude-haiku-5-5 — on fallback since .* \(primary failing: Request timed out\.\)/,
-  );
-});
-
 test("agent labels: a claude model job names the backend, pi stays byte-identical", () => {
   // Part 4f/7: with agent claude and no model, configForRole fills the tier default and the
   // renderer names it agent-qualified; a seam with no model at all falls back to `<agent>

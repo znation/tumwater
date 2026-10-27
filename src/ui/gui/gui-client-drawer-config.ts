@@ -17,12 +17,10 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
   function drawerConfigHtml(view, role) {
     const pair = (p, m) => [p, m].filter(Boolean).join("/");
     // A fallback pair's label, mirroring role-render.ts's fallbackPairLabel so the drawer's
-    // Model fallback and Budget fallback rows name a non-pi backend's namespace the same way
-    // the CLI's fallback lines do: a non-pi backend with a model reads <backend>/<model>, else
-    // <provider>/<model>, else the model, else the provider, else the pair-less default. The
-    // pi provider/model cases and a budget pair (whose provider already holds the backend) stay
-    // byte-identical; only a model-fallback non-pi pair (modelFallbackView drops pi's provider
-    // for a non-pi backend) gains the namespace the CLI already shows.
+    // Budget fallback row names a non-pi backend's namespace the same way the CLI's fallback
+    // lines do: a non-pi backend with a model reads <backend>/<model>, else <provider>/<model>,
+    // else the model, else the provider, else the pair-less default. A budget pair's provider
+    // already holds the backend, so its row stays byte-identical.
     // Local wall-clock HH:MM for the role-cap forecast's ~cap at stamp — the drawer is browser
     // code and cannot import ../text/datetime.js (the quietWindowEnd precedent's own note), so
     // it routes through the bundle's shared clockHm in FORMAT_JS, the same helper the operator
@@ -111,11 +109,6 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
       const revBody = revAfter ? "after merge" : "before merge";
       const revControl = "<button type='button' class='btn btn-sm' data-act='review-toggle' data-arg='" + esc(role) + "'>" + (revAfter ? "Review before merge" : "Review after merge") + "</button>";
       rows.push("<div><dt>Review</dt><dd title='" + esc(revBody) + "'>" + esc(revBody) + revControl + "</dd></div>");
-    }
-    if (view.modelFallback && typeof view.modelFallback === "object" && view.modelFallback.model !== undefined) {
-      const fb = view.modelFallback;
-      const when = typeof fb.since === "number" ? " since " + fmtAgo(fb.since) : "";
-      rows.push(kvRow("Model fallback", fallbackLabel(fb, "") + " — on fallback" + when + " (primary failing: " + (fb.reason ?? "") + ")"));
     }
     if (view.fallback && typeof view.fallback === "object" && view.fallback.model !== undefined) {
       rows.push(kvRow("Budget fallback", fallbackLabel(view.fallback, "") + " (" + (view.fallbackFree ? "free" : "priced") + ")"));

@@ -293,7 +293,7 @@ export function seamsInUse(config: TumwaterConfig): SeamInUse[] {
 /** The active model-fallback episode (RunnerState.modelFallback) resolved for display: the
  * pair the role's runs use, when the episode began, and the provider-class failure that
  * tripped it. */
-export interface ModelFallbackView {
+interface ModelFallbackView {
   provider?: string;
   model?: string;
   thinking?: string;
@@ -306,11 +306,10 @@ export interface ModelFallbackView {
 }
 
 /** Build a ModelFallbackView for an episode, or null while the episode is not running the
- * fallback (no episode, or a due probe on the primary). role-view.ts's
- * RoleViewPayload.modelFallback and status/status-data.ts's per-role row both build this
- * shape, so one function keeps the two surfaces from disagreeing about the pair, its start,
- * and its reason. `now` is the caller's clock (the status snapshot passes its own poll
- * clock), so a row and its poll agree on what "active" means. */
+ * fallback (no episode, or a due probe on the primary): the pair the role's runs use, when
+ * the episode began, and the provider-class failure that tripped it. `now` is the caller's clock,
+ * so the caller and the episode agree on what "active" means. Its surface readers were removed
+ * by Subtract part 5n/6; kept only until part 5o/6 deletes the episode machinery. */
 export function modelFallbackView(
   episode: ModelFallbackState | undefined,
   config: TumwaterConfig,

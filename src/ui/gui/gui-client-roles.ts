@@ -163,7 +163,6 @@ export const GUI_CLIENT_ROLES_JS = String.raw`
     const name = "<div class='role-name'><button type='button' class='linkish role' data-open='" + esc(l.role) + "' title='Open " + esc(roleLabel(l.role)) + "'>" + esc(roleLabel(l.role)) + "</button>" +
       (l.custom ? "<span class='tag' title='A custom role from tumwater.json'>custom</span>" : "") +
       (l.modelTier ? "<span class='tag' title='The model tier this role resolves at'>" + esc(l.modelTier) + "</span>" : "") +
-      (l.fallback ? "<span class='tag t-amber' title='Running on the model fallback while its primary keeps failing provider-class errors'>fallback</span>" : "") +
       (queued ? "<span class='tag t-indigo' title='" + esc(plural(queued, "message") + " in this role's inbox") + "'>" + icon("chat") + queued + "</span>" : "") +
       "</div><div class='sub'>" + esc(plural(l.commits, "commit") + " · " + plural(l.runs, "run") + " · merged " + (l.lastMergedAt ? fmtAgo(l.lastMergedAt) : "never")) + (l.model ? " · " + esc(l.model) : "") +
       (l.modelFromPi ? " <span class='tag' title='pi&#39;s own default model, from its settings.json: tumwater.json names no model'>(pi default)</span>" : "") + "</div>";

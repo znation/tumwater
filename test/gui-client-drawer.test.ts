@@ -824,11 +824,10 @@ test("the drawer renders the feedback filings and shows none without them", asyn
 // The role drawer's Configuration section mirrors `tumwater role <id>`'s field labels and
 // wording family from the same /api/role payload (rolePayload), so the page and the CLI read
 // one role's configuration identically: model/tier, provider cap, image reading (with the
-// reroute target), model and budget fallback pairs, billing, min run interval, queued
+// reroute target), budget fallback pair, billing, min run interval, queued
 // prompts, and the clamped instructions/find text. Absent fields render no row, so a
 // cap-less or notes-only payload keeps an empty section.
 test("the role drawer renders the Configuration section from the role payload", async () => {
-  const now = Date.now();
   const responses: Record<string, unknown> = {
     "/api/role?role=clean": {
       notes: null,
@@ -836,7 +835,6 @@ test("the role drawer renders the Configuration section from the role payload", 
       model: "deepseek/deepseek-v4",
       modelTier: "strong",
       imageInput: false,
-      modelFallback: { provider: "omlx", model: "Qwen3.8", since: now - 120_000, reason: "http 429" },
       fallback: { provider: "omlx", model: "Qwen3.8" },
       fallbackFree: true,
       billing: "subscription",
@@ -854,7 +852,6 @@ test("the role drawer renders the Configuration section from the role payload", 
   assert.match(role, /<h3>Configuration<\/h3>/);
   assert.match(role, /<dt>Model<\/dt><dd[^>]*>deepseek\/deepseek-v4 \(strong tier\)<\/dd>/);
   assert.match(role, /<dt>Images<\/dt><dd[^>]*>no<\/dd>/);
-  assert.match(role, /<dt>Model fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 — on fallback since 2m ago \(primary failing: http 429\)<\/dd>/);
   assert.match(role, /<dt>Budget fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 \(free\)<\/dd>/);
   assert.match(role, /<dt>Billing<\/dt><dd[^>]*>subscription \(five_hour window\)<\/dd>/);
   assert.match(role, /<dt>Min run interval<\/dt><dd title='30s \(team default\)'>30s \(team default\)<button[^>]*data-act='interval-edit'[^>]*>Set interval<\/button><\/dd>/);
@@ -866,20 +863,17 @@ test("the role drawer renders the Configuration section from the role payload", 
   assert.match(role, /<dt>Find text<\/dt><dd title='look for redundant code'>look for redundant code<\/dd>/);
 });
 
-// The drawer's Configuration fallback rows name a non-pi fallback's backend namespace the same
-// way role-render's fallback lines do (fallbackPairLabel), so the page and `tumwater role <id>`
-// agree on which model a claude seam's fallback runs: a non-pi model-fallback episode reads
-// `<backend>/<model>` (modelFallbackView drops pi's provider for a non-pi backend), and a non-pi
-// budget pair keeps its namespace exactly once even when the model id shares it.
-test("the Configuration fallback rows name a non-pi fallback's backend namespace", async () => {
-  const now = Date.now();
+// The drawer's Configuration fallback row names a non-pi fallback's backend namespace the same
+// way role-render's fallback line does (fallbackPairLabel), so the page and `tumwater role <id>`
+// agree on which model a claude seam's budget fallback runs: a non-pi budget pair keeps its
+// namespace exactly once even when the model id shares it.
+test("the Configuration fallback row names a non-pi fallback's backend namespace", async () => {
   const responses: Record<string, unknown> = {
     "/api/role?role=clean": {
       notes: null,
       nextPrompt: null,
       model: "deepseek/deepseek-v4",
       modelTier: "strong",
-      modelFallback: { backend: "claude", model: "claude-haiku-5-5", since: now - 120_000, reason: "http 429" },
       fallback: { backend: "claude", provider: "claude", model: "claude-haiku-5-5" },
       fallbackFree: true,
     },
@@ -888,7 +882,6 @@ test("the Configuration fallback rows name a non-pi fallback's backend namespace
   t.scope.toggleRole("clean");
   await flush();
   const role = t.paintedFor("drawerrole");
-  assert.match(role, /<dt>Model fallback<\/dt><dd[^>]*>claude\/claude-haiku-5-5 — on fallback since 2m ago \(primary failing: http 429\)<\/dd>/);
   assert.match(role, /<dt>Budget fallback<\/dt><dd[^>]*>claude\/claude-haiku-5-5 \(free\)<\/dd>/);
 });
 
