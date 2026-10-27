@@ -98,6 +98,15 @@ interface TuiPaneBody {
   emptyNote: string;
 }
 
+/** The pane's cached body windowed to its clipped lines, or no lines while the cache is still
+ * null (the async collector has not resolved yet) — so the frame prints the pane's own
+ * loading/empty note rather than entryBodyWindow's "(no details for this entry)" placeholder.
+ * Shared by the history, pending, health, brief, and queued panes, whose bodies differ only in
+ * that note, so the null-cache shape cannot drift between them. */
+function paneCacheLines(state: TuiPaneState, budget: number, width: number): string[] {
+  return state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, budget, width).lines : [];
+}
+
 /** Compose the body lines for one pane at this frame's width and budgets. Same rules
  * tui.tsx's inline builder followed: transcripts keep the tail, the backlog list keeps
  * the head with the selected entry's full body in entry mode, usage/failures re-window
@@ -256,9 +265,8 @@ function historyBody(pane: Extract<TuiView, { kind: "history" }>, opts: PaneBody
   // historyPaneText returns "" when the log holds no completed runs; return no lines
   // (rather than windowing an empty string, which entryBodyWindow replaces with its
   // "no details" placeholder) so the frame prints the pane's own empty note instead.
-  const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
   return {
-    body: win.lines.map((l) => toneLine(l, width)),
+    body: paneCacheLines(state, eventBudget, width).map((l) => toneLine(l, width)),
     emptyNote: "(no runs yet)",
   };
 }
@@ -277,27 +285,24 @@ function pendingBody(_pane: Extract<TuiView, { kind: "pending" }>, opts: PaneBod
       emptyNote: "(loading pending changes…)",
     };
   }
-  const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
   return {
-    body: win.lines.map((l) => toneLine(l, width)),
+    body: paneCacheLines(state, eventBudget, width).map((l) => toneLine(l, width)),
     emptyNote: "(loading pending changes…)",
   };
 }
 
 function healthBody(_pane: Extract<TuiView, { kind: "health" }>, opts: PaneBodyOpts): TuiPaneBody {
   const { width, eventBudget, state } = opts;
-  const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
   return {
-    body: win.lines.map((l) => toneLine(l, width)),
+    body: paneCacheLines(state, eventBudget, width).map((l) => toneLine(l, width)),
     emptyNote: "(running health checks…)",
   };
 }
 
 function briefBody(_pane: Extract<TuiView, { kind: "brief" }>, opts: PaneBodyOpts): TuiPaneBody {
   const { width, eventBudget, state } = opts;
-  const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
   return {
-    body: win.lines.map((l) => toneLine(l, width)),
+    body: paneCacheLines(state, eventBudget, width).map((l) => toneLine(l, width)),
     emptyNote: "(no project brief with a prompt block — run `tumwater init` first)",
   };
 }
@@ -330,9 +335,8 @@ function queuedBody(pane: Extract<TuiView, { kind: "queued" }>, opts: PaneBodyOp
     return { body: [...searchLine, toneLine(`(no queued prompt matches "${pane.grep}")`, width)], emptyNote: "(inbox empty)" };
   }
   const listBudget = Math.max(1, eventBudget - searchLine.length);
-  const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, listBudget, width) : { lines: [] };
   return {
-    body: [...searchLine, ...win.lines.map((l) => toneLine(l, width))],
+    body: [...searchLine, ...paneCacheLines(state, listBudget, width).map((l) => toneLine(l, width))],
     emptyNote: "(inbox empty)",
   };
 }
