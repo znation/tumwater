@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `doctor --commit-backlog commits a dirty backlog file before the report; with --json it is the report's backlogCommit field` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it. The entry's title is mismatched — the pasted failure is the wedged-xcrun probe bound test, not `doctor --commit-backlog`; the root cause below is that probe test.
+
+**Validation gap:** slow-check — the flake was a timing-bound assertion (`< 1.5s`) on a genuinely bounded probe: under full-suite CPU load the 300ms SIGKILL landed late (1583ms observed), so only a full check under load exposed it. The fix lengthened the fake xcrun's sleep to 30s and widened the bound to 10s, so a bounded probe now clears by a wide margin while an unbounded regression (~30s) still fails loudly.
+
+~~~~
+✖ a wedged xcrun cannot freeze the suite environment probe: the probe is bounded (1590.138958ms)
+AssertionError [ERR_ASSERTION]: probe took 1583ms; it was not bounded
+at withWedgedXcrun (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wedged-xcrun.js:28:16)
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/test-runner.test.js:387:5)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: false,
+expected: true,
+operator: '==',
+diff: 'simple'
+}
+~~~~
+
 ### `a wedged xcrun cannot freeze the suite environment probe: the probe is bounded` failed, then passed on the same tree (quarantined by tumwater 2026-10-26) — fixed 2026-10-26 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

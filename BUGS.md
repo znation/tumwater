@@ -198,25 +198,6 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 an on-time merge-scope timeout names a starved host, and stays silent on an idle one
 ~~~~
 
-### `doctor --commit-backlog commits a dirty backlog file before the report; with --json it is the report's backlogCommit field` failed, then passed on the same tree (quarantined by tumwater 2026-10-26)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-✖ a wedged xcrun cannot freeze the suite environment probe: the probe is bounded (1590.138958ms)
-AssertionError [ERR_ASSERTION]: probe took 1583ms; it was not bounded
-at withWedgedXcrun (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wedged-xcrun.js:28:16)
-at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/test-runner.test.js:387:5)
-at Test.runInAsyncScope (node:async_hooks:226:14)
-generatedMessage: false,
-code: 'ERR_ASSERTION',
-actual: false,
-expected: true,
-operator: '==',
-diff: 'simple'
-}
-~~~~
-
 ### The fast-merge guardrail "quarantine holds 11 tests — over the 10-test ceiling" fired on 2026-10-26: eleven tests sit quarantined (two aged past 3 days), so the post-merge quarantine has outgrown its ceiling and is not draining (found by the selfcheck role 2026-10-26)
 
 - **Symptom:** the 2026-10-26 digest's `## Fast merge guardrails` line reads: "quarantine holds 11 tests — over the 10-test ceiling; quarantine holds 2 tests over 3 days: `simultaneous cross-process pauseRole ca…` (4d ago), `a hanging fake rejects within timeoutMs…` (3d ago)". This is the first window the ceiling is breached: BUGS.md `## Open` holds eleven `quarantined by tumwater` entries dated 10-23 through 10-26 (pauseRole, hanging-fake, revision-re-apply, PLANS-citation, coverage-table, timed-out-check, merge-scope-timeout, batch-base-main, merge/batch-timeout, run--once-role, run--for), against a 10-test ceiling. The quarantine's intended drain — the bugfix role clearing a quarantined test back to green (BUGS-FIXED.md shows several closed 10-26) — has not kept pace with intake, so the guardrail keeps firing instead of silencing.

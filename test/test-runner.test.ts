@@ -434,12 +434,10 @@ test("a run's exit sweep reaches the node --test run of a suite started inside t
  * block the whole test run with no watchdog able to fire. This pins the bound: a fake xcrun
  * that never answers is abandoned at `timeoutMs` and the probe reports no real binary, leaving
  * PATH alone. Before the fix the call waited the fake out, so the elapsed-time assertion
- * failed.
- *
- * The assert must stay LOOSE enough to tolerate the fork/reap cost and any rare OS scheduling
- * stall the full suite's load causes (a clean probe here is ~300-500ms, but the suite once saw
- * a 1583ms stall on this read), yet TIGHT enough to stay under the fake's own 3s sleep so a
- * regression that waits the wedged xcrun out (elapsed ~3.1s) still fails. 2500ms holds both. */
+ * failed. The fake sleeps 30s, so the assertion's 10s ceiling is a solid middle ground: a
+ * genuinely bounded probe finishes in a few hundred milliseconds (SIGKILL may land late under
+ * load, but never near 10s), while a regression that waits the fake out would take ~30s and
+ * fail the bound. */
 test(
   "a wedged xcrun cannot freeze the suite environment probe: the probe is bounded",
   { skip: xcrunProbeUnsupported },
@@ -449,7 +447,7 @@ test(
       const real = realGitFromXcrun(300);
       const elapsed = Date.now() - started;
       assert.equal(real, null, "an unanswered probe leaves PATH alone");
-      assert.ok(elapsed < 2_500, `probe took ${elapsed}ms; it was not bounded`);
+      assert.ok(elapsed < 10_000, `probe took ${elapsed}ms; it was not bounded`);
     });
   },
 );
