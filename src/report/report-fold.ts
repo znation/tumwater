@@ -15,7 +15,7 @@ import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
 import { isPassingMainCheck, isRedMain } from "../baseline/main-guardrails.js";
-import { memoSetLru } from "../collections.js";
+import { addTo, memoSetLru } from "../collections.js";
 import { asList } from "../text/text.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { foldUsageEvent } from "./report-usage-fold.js";
@@ -162,6 +162,19 @@ export function scopeBases(role: string | readonly string[] | undefined): string
     if (!out.includes(base)) out.push(base);
   }
   return out;
+}
+
+/** Fold every key of a per-role-id count/cost map through its base role, so `feature-2` joins
+ * `feature` and the map is keyed by base role. The single home of the fold — the day
+ * renderer's cost-per-commit path folds each day's raw map and then folds it once (previously
+ * inline per entry), and the --since renderer folds an already-aggregated window map — so the
+ * two cannot drift on what an instance key joins into. Addition is associative and
+ * `baseRoleOf` is deterministic, so accumulating per-id then folding once (or per entry) is
+ * identical; the helper takes an already-aggregated map either way. */
+export function foldBaseRoles(map: Record<string, number>): Record<string, number> {
+  const folded: Record<string, number> = {};
+  for (const [id, c] of Object.entries(map)) addTo(folded, baseRoleOf(id), c);
+  return folded;
 }
 
 /** Sum a per-role-id count/cost map over the scoped base roles: instance keys (`feature-2`)

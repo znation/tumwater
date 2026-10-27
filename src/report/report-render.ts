@@ -11,6 +11,7 @@
  * voice and cannot drift. */
 import type { ReportData, ReportDay, ReportTotals } from "./report-types.js";
 import { addTo, rankCountEntries, sortByValueDesc } from "../collections.js";
+import { foldBaseRoles } from "./report-fold.js";
 import { compactTokens, usd } from "../text/format.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { monthDay, reportWindow } from "../text/datetime.js";
@@ -18,7 +19,6 @@ import { eventsRotationLabel } from "../events/events.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { markdownTable } from "../text/markdown.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
 import { backendDisplayName } from "../agent/backend-traits.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
@@ -250,11 +250,13 @@ export function costPerCommitPairsFrom(
   return { mergeDone, idle: rankCountEntries(idleCost) };
 }
 
-/** The day caller of the cost-per-commit core: fold each day's role-id-keyed spend map through
- * its base role (so `feature-2` joins `feature`) and aggregate the base-keyed commitsByRole,
- * then hand both to `costPerCommitPairsFrom`. `pick` selects the per-role-id spend map; merge
- * spend (the reviewer's) and notional subscription spend stay out by default, matching
- * `**Cost by role:**`. */
+/** The day caller of the cost-per-commit core: aggregate each day's role-id-keyed spend map
+ * under its raw role id, then fold the whole map through its base role (so `feature-2` joins
+ * `feature`) once via the shared foldBaseRoles — addition is associative and the fold is
+ * deterministic, so this is the same total the --since caller's single fold reaches — and
+ * aggregate the base-keyed commitsByRole, then hand both to `costPerCommitPairsFrom`. `pick`
+ * selects the per-role-id spend map; merge spend (the reviewer's) and notional subscription
+ * spend stay out by default, matching `**Cost by role:**`. */
 function costPerCommitPairs(
   series: ReportDay[],
   pick: (d: ReportDay) => Record<string, number> = (d) => d.costByRole,
@@ -262,10 +264,10 @@ function costPerCommitPairs(
   const cost: Record<string, number> = {};
   const commits: Record<string, number> = {};
   for (const d of series) {
-    for (const [id, c] of Object.entries(pick(d))) addTo(cost, baseRoleOf(id), c);
+    for (const [id, c] of Object.entries(pick(d))) addTo(cost, id, c);
     for (const [role, n] of Object.entries(d.commitsByRole ?? {})) addTo(commits, role, n);
   }
-  return costPerCommitPairsFrom(cost, commits);
+  return costPerCommitPairsFrom(foldBaseRoles(cost), commits);
 }
 
 /** One `**<label>:** …` line from costPerCommitPairs output; `-` when there is nothing. */

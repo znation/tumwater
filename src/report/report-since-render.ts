@@ -9,12 +9,11 @@
  * reads (the window line's local time is rendered from the collector's captured cutoff, so the
  * printed window matches the aggregated one). */
 import type { SinceReport } from "./report-types.js";
-import { addTo } from "../collections.js";
 import { compactTokens, usd } from "../text/format.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { boundedWindowLine, sinceWindowLine } from "../text/datetime.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
+import { foldBaseRoles } from "./report-fold.js";
 import {
   rankedRoleMap,
   rankedRoleLine,
@@ -207,12 +206,4 @@ function pushSinceCoverageLines(lines: string[], data: SinceReport): void {
   if (!data.coversFullWindow) lines.push(SPARSE_WINDOW_NOTE);
   else if (data.role === undefined)
     lines.push("backlog tallies (features done / bugs fixed / plans added / bugs filed) need the day report (--days)");
-}
-
-/** Fold every key of a per-role-id map through its base role, so `feature-2` joins `feature`.
- * The same fold the day caller does per day, applied to an already-aggregated window map. */
-function foldBaseRoles(map: Record<string, number>): Record<string, number> {
-  const folded: Record<string, number> = {};
-  for (const [id, c] of Object.entries(map)) addTo(folded, baseRoleOf(id), c);
-  return folded;
 }
