@@ -18,7 +18,7 @@ import { PAUSE_FOR_MAX_MS, submitRolePromptAndWake } from "../operator/operator-
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadQueueFileName, rejectBadRole, requirePromptText } from "./gui-args.js";
 import { badRequest, OK_GONE, sendJson } from "./gui-http-body.js";
-import { errorMessage, gotSuffix, joinParts } from "../text/text.js";
+import { errorMessage, gotSuffix } from "../text/text.js";
 import { readPostBody, readRoleBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 
@@ -97,24 +97,24 @@ function checkedPromptFields(
 
 /** The GUI prompt handlers' shared image-input gate (plans/image-input.md "Attachments",
  * part 5/5): when the body carries images, refuse (400) an attachment the target role
- * cannot read and that no tier reroutes — the same gate submitRolePrompt enforces, surfaced
- * as a user-input error rather than the server's 500 — and return the notice a blinder's
- * reroute should flash, or "" when there is nothing to say (image-less, or a rerouted role).
- * Callers answer 400 and stop when it returns null. The role-queue submit and file-edit
+ * cannot read — the same gate submitRolePrompt enforces, surfaced as a user-input error
+ * rather than the server's 500. Returns false when a 400 was sent (callers stop), true when
+ * there is nothing to refuse (image-less, or the role reads images). The peer-tier reroute
+ * was subtracted, so there is no notice to return. The role-queue submit and file-edit
  * handlers share this one gate so their refusal text cannot drift from each other's. */
 function promptImageGate(
   res: http.ServerResponse,
   root: string,
   role: string,
   hasImages: boolean,
-): string | null {
-  if (!hasImages) return "";
+): boolean {
+  if (!hasImages) return true;
   const guidance = imagePromptGuidance(root, role);
   if (guidance.refusal) {
     badRequest(res, guidance.refusal);
-    return null;
+    return false;
   }
-  return "";
+  return true;
 }
 
 /** Handle POST /api/prompt-role: queue a prompt for one role — the dashboard's per-row
@@ -132,19 +132,11 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   const fields = checkedPromptFields(res, body, role);
   if (!fields) return;
   // Image-input submit gate (plans/image-input.md "Attachments", part 5/5): an attachment the
-  // target role cannot read (and that no tier reroutes) answers 400 naming the fix before
-  // anything is queued — the same gate submitRolePrompt enforces, surfaced as a user-input
-  // error rather than the server's 500. A role that reroutes a blind read is not refused; its
-  // notice rides in the confirmation the composer flashes.
-  const notice = promptImageGate(res, root, role, (fields.images?.length ?? 0) > 0);
-  if (notice === null) return;
-  const message = joinParts(
-    [
-      submitRolePromptAndWake(root, role, fields.text, fields.images, fields.notBeforeMs),
-      notice,
-    ],
-    "\n",
-  );
+  // target role cannot read answers 400 naming the fix before anything is queued — the same
+  // gate submitRolePrompt enforces, surfaced as a user-input error rather than the server's
+  // 500.
+  if (!promptImageGate(res, root, role, (fields.images?.length ?? 0) > 0)) return;
+  const message = submitRolePromptAndWake(root, role, fields.text, fields.images, fields.notBeforeMs);
   sendJson(res, 200, { ok: true, message });
 }
 
@@ -202,10 +194,9 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
   const fields = checkedPromptFields(res, body, role);
   if (!fields) return;
   // Image-input gate (plans/image-input.md "Attachments", part 5/5): an image edited into
-  // the queued prompt answers 400 naming the fix when the target role cannot read it (and no
-  // tier reroutes it) — the same gate submitRolePrompt enforces — before anything is written.
-  // The edit handler does not flash a reroute notice, so it ignores the helper's return.
-  if (promptImageGate(res, root, role, (fields.images?.length ?? 0) > 0) === null) return;
+  // the queued prompt answers 400 naming the fix when the target role cannot read it — the
+  // same gate submitRolePrompt enforces — before anything is written.
+  if (!promptImageGate(res, root, role, (fields.images?.length ?? 0) > 0)) return;
   let outcome: EditOutcome;
   try {
     outcome = editQueuedFile(root, role, body.file as string, fields.text, fields.images);

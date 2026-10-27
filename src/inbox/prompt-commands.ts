@@ -220,9 +220,8 @@ function runPromptEdit(root: string, position: number, text: string | null, atta
   // "Attachments", part 5/5): editing an attachment into a queued prompt is the same
   // run-time discovery the submit gate prevents, so the refusal promise holds across every
   // CLI attach surface — an image no configured model can read is refused before a byte is
-  // written, and a role that reroutes a blind read is told where the prompt will run. The
-  // target role is resolved first (the same resolution the verb below makes) so the gate can
-  // name it.
+  // written; the peer-tier reroute was subtracted, so there is no notice to say. The target
+  // role is resolved first (the same resolution the verb below makes) so the gate can name it.
   if (images !== undefined && images.length > 0) {
     const targetRole = role ?? resolveListedRole(root, position);
     runPromptImageGate(root, targetRole);
@@ -312,8 +311,7 @@ function runPromptSubmit(root: string, text: string, atDelayMs: number | null, a
   // `--attach <path>`: read and validate through the shared helper (a bad path fails by name
   // before anything is queued). An attachment the target role cannot read is refused here by
   // name — the same gate submitRolePrompt enforces, surfaced early so the CLI exits non-zero
-  // with the fix before anything is written or queued; a role that reroutes a blind read is
-  // not refused, but the operator is told where the prompt will actually run.
+  // with the fix before anything is written or queued.
   const images = attachPaths.length > 0 ? readPromptImages(attachPaths) : undefined;
   if (images && images.length > 0) {
     runPromptImageGate(root, target);

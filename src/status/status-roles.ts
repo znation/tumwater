@@ -100,9 +100,8 @@ export function collectRoleRows(
     // only with a tier map declared, where it names the tier a role rides.
     const eff = configForRole(cfg, r);
     // The image-input surface (plans/image-input.md "Surfaces", part 5/5): the role's own
-    // capability and its reroute target, one shared resolver so the status rows, the role
-    // page, and the submit gate cannot disagree about who reads images or where a blind
-    // prompt would run.
+    // capability, one shared resolver so the status rows, the role page, and the submit gate
+    // cannot disagree about who reads images.
     const image = roleImageInfo(cfg, r, modelsPath, listed);
     // The peak-ctx share denominator (the role's context window, part 3c): resolved once per
     // poll here, beside `eff` (the same seam the role page resolves and names) — the same seam
