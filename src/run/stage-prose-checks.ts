@@ -207,62 +207,89 @@ function spanningGarbled(joined: string, joinAt: number, patterns: readonly RegE
   return null;
 }
 
-/** (e) Added lines, outside record prose, that match GARBLED_WORDING: at most one hit per line,
- * reported as `file:line "matched text"` in a single finding. A phrase split across two
- * consecutive added lines is reported as `file:N-M`. */
-export function garbledWordingFindings(diff: string): string[] {
-  const hits: string[] = [];
+/** One added line's file, its 1-based line number, its text after the `+`, and the immediately
+ * preceding added line (for the across-lines join; null after a `diff --git` header, a `@@`
+ * hunk header or any non-added line). */
+interface AddedDiffLine {
+  file: string;
+  lineNo: number;
+  text: string;
+  prev: string | null;
+}
+
+/** The added lines of a diff, in order, each with the added line that precedes it. */
+function addedDiffLines(diff: string): AddedDiffLine[] {
+  const out: AddedDiffLine[] = [];
   let file: string | null = null;
   let lineNo = 0;
-  let prevAdded: string | null = null;
+  let prev: string | null = null;
   for (const line of diff.split("\n")) {
     const header = /^diff --git a\/.* b\/(.*)$/.exec(line);
     if (header) {
       file = header[1]!;
-      prevAdded = null;
+      prev = null;
       continue;
     }
     const hunk = /^@@ .*\+(\d+)(?:,\d+)? @@/.exec(line);
     if (hunk) {
       lineNo = Number(hunk[1]);
-      prevAdded = null;
+      prev = null;
       continue;
     }
     if (!line.startsWith("+") || line.startsWith("+++ ")) {
-      prevAdded = null;
+      prev = null;
       continue;
     }
-    const cur = line.slice(1);
-    if (file !== null && !isRecordProse(file)) {
-      let hit = false;
-      for (const re of GARBLED_WORDING) {
-        const m = re.exec(cur);
-        if (m) {
-          hits.push(`${file}:${lineNo} "${m[0]}"`);
-          hit = true;
-          break;
-        }
-      }
-      const prose = proseOf(file, cur);
-      if (!hit && prose !== null) {
-        const m = DOUBLED_WORD.exec(prose);
-        if (m) {
-          hits.push(`${file}:${lineNo} "${m[0]}"`);
-          hit = true;
-        }
-      }
-      if (!hit && prevAdded !== null) {
-        const head = prevAdded.trimEnd();
-        const joined = head + " " + cur.replace(/^\s*(?:\/\/+|\*|#)\s*/, "");
-        let split = spanningGarbled(joined, head.length, GARBLED_WORDING);
-        if (!split && prose !== null && proseOf(file, prevAdded) !== null) {
-          split = spanningGarbled(joined, head.length, [DOUBLED_WORD]);
-        }
-        if (split) hits.push(`${file}:${lineNo - 1}-${lineNo} "${split}"`);
-      }
-    }
-    prevAdded = cur;
+    const text = line.slice(1);
+    if (file !== null) out.push({ file, lineNo, text, prev });
+    prev = text;
     lineNo++;
+  }
+  return out;
+}
+
+/** The first GARBLED_WORDING hit on a single added line, or the DOUBLED_WORD hit in its prose. */
+function singleLineGarbledHit(file: string, lineNo: number, cur: string): string | null {
+  for (const re of GARBLED_WORDING) {
+    const m = re.exec(cur);
+    if (m) return `${file}:${lineNo} "${m[0]}"`;
+  }
+  const prose = proseOf(file, cur);
+  if (prose !== null) {
+    const m = DOUBLED_WORD.exec(prose);
+    if (m) return `${file}:${lineNo} "${m[0]}"`;
+  }
+  return null;
+}
+
+/** A garbled or doubled phrase split across two consecutive added lines, joined at their seam. */
+function spanningGarbledHit(
+  file: string,
+  lineNo: number,
+  cur: string,
+  prevAdded: string | null,
+): string | null {
+  if (prevAdded === null) return null;
+  const head = prevAdded.trimEnd();
+  const joined = head + " " + cur.replace(/^\s*(?:\/\/+|\*|#)\s*/, "");
+  let split = spanningGarbled(joined, head.length, GARBLED_WORDING);
+  const prose = proseOf(file, cur);
+  if (!split && prose !== null && proseOf(file, prevAdded) !== null) {
+    split = spanningGarbled(joined, head.length, [DOUBLED_WORD]);
+  }
+  if (split) return `${file}:${lineNo - 1}-${lineNo} "${split}"`;
+  return null;
+}
+
+/** (e) Added lines, outside record prose, that match GARBLED_WORDING: at most one hit per line,
+ * reported as `file:line "matched text"` in a single finding. A phrase split across two
+ * consecutive added lines is reported as `file:N-M`. */
+export function garbledWordingFindings(diff: string): string[] {
+  const hits: string[] = [];
+  for (const { file, lineNo, text, prev } of addedDiffLines(diff)) {
+    if (isRecordProse(file)) continue;
+    const hit = singleLineGarbledHit(file, lineNo, text) ?? spanningGarbledHit(file, lineNo, text, prev);
+    if (hit !== null) hits.push(hit);
   }
   if (hits.length === 0) return [];
   const lead = 'added lines carry garbled rename wording (reword them; a rote word swap such as "tick" → "run" reads wrong here or leaves a word doubled): '; // vocabulary-ok: quotes the retired word
