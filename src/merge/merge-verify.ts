@@ -1,9 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { gateRoleConfig } from "../gates/budget-gates.js";
-import { reviewRunConfig, seamConcurrencyKey } from "../config/config-views.js";
-import { providerWaitStage } from "./merge-slot.js";
-import { withProviderLease } from "../concurrency/provider-lease.js";
+import { withRunPermit } from "../concurrency/run-permit.js";
 import { RoleRunner } from "../runner/runner.js";
 import { branchHead, commitMessage, isMergedInto, refSha } from "../git/git.js";
 import { commitRunOf } from "../git/commit-message.js";
@@ -200,14 +198,6 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
   const { root, mainBranch, signal, semaphore } = ctx;
   const { role } = entry;
   const author = resolveAuthor(ctx, role);
-  // The verification's provider key: the review seam's key for the author's role, so its reviewer
-  // run counts toward the same provider cap as the roles that share it
-  // (plans/provider-concurrency.md §4). The gate off runs no model, so then there is no key — the
-  // verification is bounded by the team total alone.
-  const reviewKey =
-    ctx.liveConfig.review.enabled
-      ? seamConcurrencyKey(reviewRunConfig(author.config), ctx.piDefault)
-      : undefined;
   const verify: InFlightMerge = {
     promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
     controller: new AbortController(),
@@ -219,7 +209,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
   p.verifying.set(role, verify);
   const task = (async () => {
     try {
-      const lease = await acquireUnlessAborted(semaphore, VERIFY_TIER, verify.controller.signal, reviewKey);
+      const lease = await acquireUnlessAborted(semaphore, VERIFY_TIER, verify.controller.signal);
       verify.parked = false;
       if (lease === null) return; // a shutdown while parked
       if (verify.controller.signal.aborted || ctx.startHeld(role)) {
@@ -231,13 +221,11 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
       const startedAt = Date.now();
       try {
         addMergeChange(root, entry, liveRoles(p));
-        // The verification's lease rides in the provider-lease store for the verification's body,
-        // so a review run that lands on a different provider than the verification's review seam
-        // re-keys it there, and a re-key park is shown by providerWaitStage; its slot wait drops
-        // the key (pool-slot rule).
-        verdict = await withProviderLease(
+        // The verification's lease rides in the run-permit store for the verification's body,
+        // so an idle pause inside it (a failed review's in-place retry) re-takes the same
+        // team permit; its slot wait hands the permit back too.
+        verdict = await withRunPermit(
           lease,
-          semaphore,
           () =>
             verifyRequest(
               { root, mainBranch, config: author.config, signal: () => verify.controller.signal, runGatePi: (opts) => author.runGatePi(opts), reviewHeld: () => ctx.startHeld() },
@@ -252,7 +240,6 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
               },
               { state: author.state, foldUsage, runPi: (w, prompt, s, cfg) => author.runMergePi(w, prompt, s, cfg), runGatePi: (opts) => author.runGatePi(opts) },
             ),
-          { piDefault: ctx.piDefault, hooks: providerWaitStage(root, role) },
         );
       } catch (err) {
         verdict = { kind: "result", result: "error" };

@@ -292,15 +292,6 @@ export function resolveWaitStage(root: string, role: string): PermitWaitHooks {
   return waitStageHooks(root, [role], "resolve-wait", "resolving");
 }
 
-/** The verification's hooks around a re-key onto a full provider (plans/provider-concurrency.md §5,
- * "A re-key wait is visible"): `provider-wait` while the verification's lease parks on the target
- * provider's full cap, `reviewing` once the key frees and the review proceeds. resolveWaitStage's
- * shape for the re-key path — a verification that normally shares its review seam never
- * re-keys, so the stage fires only when a run actually moves to a different, full provider. */
-export function providerWaitStage(root: string, role: string): PermitWaitHooks {
-  return waitStageHooks(root, [role], "provider-wait", "reviewing");
-}
-
 /** The marker's per-change records, whichever shape it has: `changes` as written, or — for a
  * marker an older generation wrote with one top-level change — that change, `merging` since the
  * marker's start at the marker's stage. Reads both shapes into records, so addMergeChange's

@@ -67,7 +67,6 @@ function ctx(overrides: Partial<Parameters<typeof launchDueRuns>[0]>) {
     budgetActive: false,
     windowMovedRoles: new Set<string>(),
     semaphore: new Semaphore(4),
-    piDefault: null,
     rolePermitHolders: new Set<RoleRunner>(),
     roleInFlight: new Set<Promise<void>>(),
     directorInFlight: new Set<Promise<void>>(),
@@ -96,37 +95,12 @@ test("a due role run parks, holds a permit, releases it, and folds its duration 
   assert.equal(c.roleRunDurationsMs.length, 1, "one work-bearing run duration was sampled");
 });
 
-test("a role run's semaphore lease is keyed by its authoring seam's provider", async () => {
-  // Part 2/5 (plans/provider-concurrency.md §4): the launch pass replaces the bare acquire
-  // with acquireLease(roleTier, seamConcurrencyKey(runConfig, piDefault)), so a run counts
-  // against its provider while it holds the permit. While the run is in flight the pool's
-  // per-key view shows the provider's slot consumed; on release it drains.
-  let releaseRun!: () => void;
-  const gate = new Promise<void>((resolve) => {
-    releaseRun = resolve;
-  });
-  const runner = fakeRunner("organize", async () => {
-    await gate;
-    return { result: "changed" };
-  }, { provider: "omlx", model: "m", agent: "pi" });
-  const c = ctx({ reasons: new Map([[runner, "scheduled"]]) });
-  c.semaphore.setKeyCaps({ omlx: 1 });
-  launchDueRuns(c);
-  await waitFor(() => c.rolePermitHolders.size === 1, "the run to hold the permit");
-  const snap = c.semaphore.snapshot().byKey;
-  assert.equal(snap.omlx?.inUse, 1, "the in-flight run consumes the omlx slot");
-  assert.equal(snap.omlx?.limit, 1);
-  releaseRun();
-  await settle(c);
-  assert.equal(c.semaphore.snapshot().byKey.omlx?.inUse, 0, "the omlx slot drains on release");
-});
-
-test("a role run that waits for its provider slot logs a provider_wait event; an at-once admission and a director do not", async () => {
-  // The team's only omlx permit is held by another lease, so the role's admission waits.
-  // providerWaitMs: 0 is the test seam forcing even a sub-second wait to be named.
+test("a role run that waits for the team slot logs a provider_wait event with cap team; an at-once admission and a director do not", async () => {
+  // The only permit is held by another lease, so the role's admission waits on the one team
+  // total (maxConcurrent). providerWaitMs: 0 is the test seam forcing even a sub-second wait to
+  // be named.
   const semaphore = new Semaphore(1);
-  semaphore.setKeyCaps({ omlx: 1 });
-  const held = await semaphore.acquireLease(0, "omlx");
+  const held = await semaphore.acquireLease(0);
   const runner = fakeRunner("feature", undefined, { provider: "omlx", model: "m", agent: "pi" });
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]), semaphore, providerWaitMs: 0 });
   launchDueRuns(c);
@@ -135,9 +109,9 @@ test("a role run that waits for its provider slot logs a provider_wait event; an
   const waits = eventsOfType(c.root, "provider_wait");
   assert.equal(waits.length, 1, "one provider_wait event for the waiting admission");
   assert.equal(waits[0]!.role, "feature");
-  assert.equal(waits[0]!.key, "omlx");
-  assert.equal(waits[0]!.cap, "provider");
+  assert.equal(waits[0]!.cap, "team");
   assert.equal(waits[0]!.limit, 1);
+  assert.ok(!("key" in waits[0]!), "the wait names no provider key");
   assert.ok(Number(waits[0]!.waitedMs) >= 0, "the wait is measured, never NaN");
 
   // An unheld semaphore admits at once: at the default threshold nothing is logged.
@@ -154,21 +128,6 @@ test("a role run that waits for its provider slot logs a provider_wait event; an
   launchDueRuns(dc);
   await settle(dc);
   assert.equal(eventsOfType(dc.root, "provider_wait").length, 0);
-});
-
-test("a provider_wait names the team cap when maxConcurrent, not the provider, held the run", async () => {
-  const semaphore = new Semaphore(1);
-  const held = await semaphore.acquireLease(0, "other");
-  const runner = fakeRunner("feature", undefined, { provider: "omlx", model: "m", agent: "pi" });
-  const c = ctx({ reasons: new Map([[runner, "scheduled"]]), semaphore, providerWaitMs: 0 });
-  launchDueRuns(c);
-  held.release();
-  await settle(c);
-  const waits = eventsOfType(c.root, "provider_wait");
-  assert.equal(waits.length, 1);
-  assert.equal(waits[0]!.key, "omlx");
-  assert.equal(waits[0]!.cap, "team");
-  assert.equal(waits[0]!.limit, 1);
 });
 
 test("the director never queues behind the semaphore and never samples the role drain window", async () => {

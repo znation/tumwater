@@ -5,7 +5,6 @@ import { backendSessionResumable } from "../agent/agent-backend.js";
 import { HOLD_BASE_MS } from "../team/team-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, resolvedBackendConfig, seamHoldKey, seamPairName, type ResolvedModelConfig } from "../config/config-views.js";
-import { ensureProviderLease } from "../concurrency/provider-lease.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
 import { readClaudeAccount, subscriptionWindowRejected } from "../agent/claude/claude-account.js";
 import { observeOpencodeRun, opencodeModelKey } from "../agent/opencode/opencode-catalog.js";
@@ -290,12 +289,6 @@ export class RunnerPi {
     const on = opts.config.model !== undefined ? ` on ${pair}` : "";
     const fold = (run: PiRunResult): void =>
       authoring ? this.host.foldUsage(run, provider, pair) : this.host.foldMergeUsage(run, provider, pair);
-    // The agent run re-keys the calling run's provider lease to the provider THIS agent run uses,
-    // if it is not already there (plans/provider-concurrency.md §5): a budget handback or a
-    // model-failure switch that moved this agent run onto another seam moves the run's lease with
-    // it, so a claude-authored run whose gate agent run lands on omlx is counted there. No-op when
-    // the run carries no lease (a bare RunnerPi unit test, `tumwater history`).
-    await ensureProviderLease(opts.config);
     const pi = await runPi(opts);
     this.warnFallbackClone(pi);
     this.observeFreeModelCost(pi, opts.config);

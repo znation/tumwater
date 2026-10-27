@@ -1,5 +1,4 @@
-import { withProviderLease } from "../concurrency/provider-lease.js";
-import { reviewRunConfig, seamConcurrencyKey } from "../config/config-views.js";
+import { withRunPermit } from "../concurrency/run-permit.js";
 import { subscribeEvents, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { deleteRef, headOf, subjectOfCommit } from "../git/git.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
@@ -42,11 +41,10 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
   const task: InFlightMerge = { promise: Promise.resolve(), controller: new AbortController(), roles: [], userAborted: false, parked: true };
   const detach = abortOnShutdown(ctx.signal, task.controller);
   const author = resolveAuthor(ctx, entry.role);
-  const key = seamConcurrencyKey(reviewRunConfig(ctx.liveConfig), ctx.piDefault);
   const run = (async () => {
     try {
-      if (!semaphore.canLeaseAtOnce(VERIFY_TIER, key)) return; // permits are busy; try again next poll
-      const lease = await acquireUnlessAborted(semaphore, VERIFY_TIER, task.controller.signal, key);
+      if (!semaphore.canLeaseAtOnce(VERIFY_TIER)) return; // permits are busy; try again next poll
+      const lease = await acquireUnlessAborted(semaphore, VERIFY_TIER, task.controller.signal);
       task.parked = false;
       if (lease === null) return;
       let outcome;
@@ -125,22 +123,19 @@ async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, f
  * is never a throw. */
 async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string): Promise<void> {
   const author = resolveAuthor(ctx, entry.role);
-  // The fix merge's conflict resolver rides the same provider lease the merge slot's resolver
-  // does (merge-drain.ts startMerge): the MERGE_TIER lease is keyed on the resolver config's
-  // provider and rides in the provider-lease store, so a conflict resolution counts against the
-  // strong tier's cap like any other strong-tier run instead of acquiring a provider unchecked.
+  // The fix merge's conflict resolver rides the same team permit the merge slot's resolver
+  // does (merge-drain.ts startMerge): the MERGE_TIER lease is acquired on the one team total
+  // and rides in the run-permit store, so a conflict resolution counts against maxConcurrent
+  // like any other strong-tier run.
   const runPi = async (wt: string, prompt: string, sessionName: string, config?: Parameters<typeof author.runMergePi>[3]) => {
-    const key = config ? seamConcurrencyKey(config, ctx.piDefault) : undefined;
     const hooks = resolveWaitStage(ctx.root, entry.role);
-    if (!ctx.semaphore.canLeaseAtOnce(MERGE_TIER, key)) hooks.waiting();
-    const lease = await ctx.semaphore.acquireLease(MERGE_TIER, key);
+    if (!ctx.semaphore.canLeaseAtOnce(MERGE_TIER)) hooks.waiting();
+    const lease = await ctx.semaphore.acquireLease(MERGE_TIER);
     hooks.granted();
     try {
-      return await withProviderLease(
+      return await withRunPermit(
         lease,
-        ctx.semaphore,
         () => author.runMergePi(wt, prompt, sessionName, config),
-        { piDefault: ctx.piDefault },
       );
     } finally {
       lease.release();

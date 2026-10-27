@@ -799,39 +799,39 @@ creates the archive from `archiveTemplate`.
 the live section and no archive exists" and "the bulk archive moves the whole body, one-line records
 included, or all but the newest kept entries".
 
-## Provider concurrency: every run holds one team permit and at most one provider slot
+## Provider concurrency: every run holds one team permit
 
-The counting semaphore (`maxConcurrent`) bounds how many runs the team has in flight. A run's
-lease moves with it: it is re-keyed to the provider the run actually uses, and it is released once.
-The build-check cap (`check-permit.ts`) and the cross-process mutex (`lock.ts`) are separate
-subsystems and not covered here.
+The counting semaphore (`maxConcurrent`) bounds how many runs the team has in flight — the one
+place a run is admitted. There is no per-provider cap or key any more: a role run, a verify, a
+conflict resolver and a review all wait on the one team total. A run's lease rides in the
+run-permit store (`src/concurrency/run-permit.ts`) so an idle stretch inside it can hand the
+permit back and re-take it. The build-check cap (`check-permit.ts`) and the cross-process mutex
+(`lock.ts`) are separate subsystems and not covered here.
 
-### INV-P1: admission needs both a team permit and the provider key's headroom, and a full key never delays another
+### INV-P1: admission needs a free team permit, and runs wait FIFO within a tier
 
-**Guarantee.** `acquireLease(tier, key)` is granted only while the team total has a free permit and
-the key, when it has a cap (`enforcedKeyCaps`), has headroom. A parked waiter whose key is full does
-not hold back a waiter for another key, and waiters for one key are granted in FIFO order.
+**Guarantee.** `acquireLease(tier)` — the lease form of `acquire` — is granted only while the team
+total has a free permit for the tier (after the reserve). A run admitted at once never logs, and a
+run that waits queues FIFO within its tier.
 
-**Binds.** `src/concurrency/semaphore.ts` (`Semaphore.acquireLease`, `enforcedKeyCaps`),
-`src/merge/merge-pipeline.ts`.
+**Binds.** `src/concurrency/semaphore.ts` (`Semaphore.acquire`, `Semaphore.acquireLease`),
+`src/merge/merge-pipeline.ts`, `src/orchestrator/orchestrator-launch.ts`.
 
-**Pinned by.** `test/semaphore.test.ts` — "semaphore bounds concurrency" and "two keys fill
-independently: a full key never delays a free key, FIFO within a key".
+**Pinned by.** `test/semaphore.test.ts` — "semaphore bounds concurrency" and "release wakes waiters
+in FIFO order".
 
 ### INV-P2: a cap change never preempts, and permits never leak
 
-**Guarantee.** Growing a cap wakes parked waiters up to the new headroom and no further. Shrinking
+**Guarantee.** Growing the cap wakes parked waiters up to the new headroom and no further. Shrinking
 below the in-use count stops nothing already in flight and grants nothing until releases drain under
 the cap. Repeated resizes leave the counts whole, and capacity is fully restored after a burst.
 
-**Binds.** `src/concurrency/semaphore.ts` (`setCapacity`, `setKeyCaps`),
-`src/config/config-live.ts`.
+**Binds.** `src/concurrency/semaphore.ts` (`setCapacity`), `src/config/config-live.ts`.
 
 **Pinned by.** `test/semaphore.test.ts` — "growing capacity wakes queued acquirers up to the new
 headroom, never beyond it", "shrinking below current in-use admits no new work until releases drain
-under the cap", "shrinking a key below its in-use preempts nothing and grants nothing until releases
-drain", "repeated grow/shrink cycles leak no permits and starve no waiter" and "capacity fully
-restores after a burst: no slot leak".
+under the cap", "repeated grow/shrink cycles leak no permits and starve no waiter" and "capacity
+fully restores after a burst: no slot leak".
 
 ### INV-P3: wait order is by tier, FIFO within a tier, and the reserve holds a permit for work roles
 
@@ -849,57 +849,23 @@ sits at its cap" and "the verify and merge tiers ignore the reserve";
 `test/orchestrator-permits.e2e.test.ts` — "the director's run starts immediately while every
 maxConcurrent slot is busy".
 
-### INV-P4: a lease follows its run to the provider it actually uses, and a re-key cannot deadlock
+### INV-P4: a paused lease holds no permit, and a paused lease owes nothing
 
-**Guarantee.** A run on another key re-keys its lease, returning the old key first. A parked re-key
-holds only its team permit and is granted ahead of admission waiters for that key. Releasing a lease
-whose re-key is parked cancels the grant without taking the target slot. A forced lease may exceed
-a full key by one holder and blocks grants until the key drains under the cap. Without a lease in
-context, `ensureProviderLease` does nothing.
+**Guarantee.** A paused lease hands its team permit to parked waiters, and `resume` re-admits it at
+its own tier in queue order. Releasing a paused lease, or one whose resume is still queued, frees
+nothing twice and leaves no waiter behind. Once the caller is aborted, the pause takes nothing
+back. Without a lease in context, `idleWithoutPermit` only runs the wait. The failed review's
+in-place retry pause is the caller: with one team permit, a reviewer that keeps failing must not
+hold it through two 30 s pauses and starve the other roles.
 
-**Binds.** `src/concurrency/provider-lease.ts` (`withProviderLease`, `ensureProviderLease`),
-`src/concurrency/semaphore.ts` (`SemaphoreLease.rekey`, `forceLease`), `src/merge/merge-drain.ts`,
-`src/merge/merge-verify.ts`.
+**Binds.** `src/concurrency/semaphore.ts` (`SemaphoreLease.pause`, `SemaphoreLease.resume`) and
+`src/concurrency/run-permit.ts` (`idleWithoutPermit`, `withRunPermit`).
 
-**Pinned by.** `test/provider-lease.test.ts` — "ensureProviderLease is a no-op without a lease in
-context", "a run on a different key re-keys: it releases the old key and takes the new one" and "a
-re-key to a full provider parks (holding no key) and is granted when it drains";
-`test/semaphore.test.ts` — "rekey gives the old key back first, and a parked re-key beats a parked
-admission for the key", "releasing a lease while its re-key to a full key is parked cancels the
-grant and never steals the target", "a forced lease overshoots a full key by one holder, blocking
-grants until it drains under the cap" and "re-key waiters hold a team permit only, so the key always
-drains (no deadlock)".
-
-### INV-P5: no provider slot is held while waiting for a worktree pool slot
-
-**Guarantee.** Before it parks on a busy worktree pool, a lease is re-keyed to no key
-(`dropProviderLeaseKey`), so it keeps its team permit but gives the provider slot back. A run
-waiting for a pool slot therefore cannot block the drain of a key that a parked re-key is waiting
-on.
-
-**Binds.** `src/concurrency/provider-lease.ts` (`dropProviderLeaseKey`), `src/git/worktree-pool.ts`
-(its `acquire`).
-
-**Pinned by.** `test/provider-lease.test.ts` — "dropProviderLeaseKey returns the held key without
-giving up the team permit".
-
-### INV-P6: a paused verification lease holds no permit, and a paused lease owes nothing
-
-**Guarantee.** A paused verification lease hands its team permit and key slot to parked waiters, and
-`resume` re-admits it at its own tier and key. Releasing a paused lease, or one whose resume is still
-queued, frees nothing twice and leaves no waiter behind. Once the verification is aborted, the
-pause takes nothing back. A forced lease's pause and resume move only its key slot and never wait.
-Without a lease in context, `idleWithoutProviderLease` only runs the wait.
-
-**Binds.** `src/concurrency/semaphore.ts` (`SemaphoreLease.pause`, `SemaphoreLease.resume`,
-`forceLease`) and `src/concurrency/provider-lease.ts` (`idleWithoutProviderLease`).
-
-**Pinned by.** `test/semaphore.test.ts` — "a paused lease hands its permit and key slot to a parked
-waiter, and resume queues for the next free one", "releasing a paused lease, or one whose resume is
-still queued, owes nothing" and "a forced lease's pause gives its key slot back and resume takes it
-again without waiting"; `test/provider-lease.test.ts` — "idleWithoutProviderLease runs the wait
-without the lease's permit and key, then takes both back" and "idleWithoutProviderLease just waits
-without a lease in context, and takes nothing back once aborted".
+**Pinned by.** `test/semaphore.test.ts` — "a paused lease hands its permit to a parked waiter, and
+resume queues for the next free one" and "releasing a paused lease, or one whose resume is still
+queued, owes nothing"; `test/run-permit.test.ts` — "idleWithoutPermit runs the wait without the
+lease's permit, then takes it back" and "idleWithoutPermit just waits without a lease in context,
+and takes nothing back once aborted".
 
 ## Init: a user's repo loses nothing to tumwater init
 

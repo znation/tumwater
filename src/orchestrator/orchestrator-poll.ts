@@ -10,7 +10,6 @@ import type { newLiveConfigReload } from "../config/config-live.js";
 import type { FallbackBreakerPolicy } from "../budget/fallback-breaker.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { reviewHoldKey, pollDeferralInputs, pollRunnerReasons } from "./orchestrator-scheduling.js";
-import { seamConcurrencyKey } from "../config/config-views.js";
 import { launchDueRuns } from "./orchestrator-launch.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { branchHead, currentBranch } from "../git/git.js";
@@ -28,7 +27,6 @@ import {
   consumeResetRequest,
   consumeWakeRequest,
 } from "../operator/operator-requests.js";
-import type { readPiDefaultModel } from "../pi/pi-settings.js";
 import { checkPermitSnapshot } from "../concurrency/check-permit.js";
 import { slotPoolSnapshot } from "../git/worktree-pool.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
@@ -63,7 +61,6 @@ export interface PollContext {
   once: OnceRound;
   info: OrchestratorInfo;
   modelsPath: string;
-  piDefault: ReturnType<typeof readPiDefaultModel>;
   redeploy: Redeployer | null;
   launchServicesWatch: LaunchServicesWatch | null;
   reclaim: ReclaimController;
@@ -358,7 +355,6 @@ export async function pollMergeDrain(
       liveConfig,
       roleConfig: gates.roleConfig,
       directorConfig: gates.directorConfig,
-      piDefault: ctx.piDefault,
       startHeld: (role) => mergeStartHeld(runStartHeld(state), gates.reviewHeldNow(), afterMergeRoles, role),
     },
     ctx.merges,
@@ -425,7 +421,6 @@ export async function pollSchedule(
     budgetActive: gates.budgetActive,
     windowMovedRoles: gates.windowMovedRoles,
     semaphore: ctx.semaphore,
-    piDefault: ctx.piDefault,
     rolePermitHolders: ctx.rolePermitHolders,
     roleInFlight: ctx.roleInFlight,
     directorInFlight: ctx.directorInFlight,
@@ -441,34 +436,17 @@ export async function pollSchedule(
 
 /** Priority headroom, then once mode's exit; returns whether the loop should stop. Writes
  * state.lastReserve and, in once mode, fires internalStop. */
-export function pollReserveAndExit(ctx: PollContext, state: PollState, { liveConfig, now }: PollInputs): boolean {
+export function pollReserveAndExit(ctx: PollContext, state: PollState, { liveConfig }: PollInputs): boolean {
   const { root, runners, semaphore } = ctx;
   // Priority headroom (plans/parallel-work-instances.md part 7/7): withhold a few permits
   // from maintenance while a work role has work to take, so a due work run never waits out
   // a whole maintenance run. Sized after the launch pass, so a runner launched this poll
   // already reads as running and reserves nothing for itself.
-  const poolSnapshot = semaphore.snapshot();
-  // The provider-headroom predicate receives the structural ClaimRunner; the config that
-  // names the provider lives on the real RoleRunners, so look the runner up by role.
-  const runnerByRole = new Map(runners.map((r) => [r.role, r]));
   const reserve = workReserveCount(root, runners, {
     maxConcurrent: liveConfig.maxConcurrent,
     enabled: new Set(runners.filter((r) => runnerEnabled(r.config, r.role)).map((r) => r.role)),
     queuedMergeRoles: queuedMergeRoles(root),
     instancesOf: (base) => liveConfig.roles[base]?.instances ?? 1,
-    // Per-provider headroom (plans/provider-concurrency.md §6): an idle work role reserves a
-    // permit only when its own provider could use it — capped and full, it would only idle
-    // the slot another provider's maintenance run could take. Read from the pool's live
-    // snapshot; an uncapped key (or the team-total-only case) always has headroom.
-    providerHasHeadroom: (r) => {
-      const runner = runnerByRole.get(r.role);
-      const cfg = runner && runner.role !== DIRECTOR_ROLE ? runner.runConfig(now) : null;
-      const key = cfg ? seamConcurrencyKey(cfg, ctx.piDefault) : undefined;
-      if (key === undefined) return true;
-      const k = poolSnapshot.byKey[key];
-      if (k?.limit === undefined) return true;
-      return k.inUse < k.limit;
-    },
   });
   semaphore.setReserve(reserve);
   if ((state.lastReserve === 0) !== (reserve === 0)) {

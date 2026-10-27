@@ -1,7 +1,6 @@
 import { mergeApproved, type BatchRoleWiring } from "./merge-batch.js";
 import { removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
-import { seamConcurrencyKey } from "../config/config-views.js";
-import { withProviderLease } from "../concurrency/provider-lease.js";
+import { withRunPermit } from "../concurrency/run-permit.js";
 import { dropMerge, entryRevisionFields, queuedMergeFiles } from "./merge-queue.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -133,26 +132,19 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
         runPi: async (w, prompt, s, cfg) => {
           // A parked resolver names its wait (resolve-wait, then resolving once granted) the way
           // a parked check does (withCheckPermit): on 2026-10-12 one waited 2.5 min for a permit
-          // with the merge queue behind it, reading as "merging". The lease is keyed on the
-          // resolver config's provider (the `cfg` it is handed), so the conflict resolution
-          // counts against the strong tier's provider cap like any other strong-tier run
+          // with the merge queue behind it, reading as "merging". The resolution waits on the
+          // one team total (maxConcurrent) like any other MERGE_TIER run
           // (plans/provider-concurrency.md §4). canLeaseAtOnce is acquireLease's own fast path
           // decided synchronously, so a free permit shows no wait; MERGE_TIER ignores the
           // maintenance reserve.
-          const key = cfg ? seamConcurrencyKey(cfg, ctx.piDefault) : undefined;
           const hooks = resolveWaitStage(root, v.entry.role);
-          if (!semaphore.canLeaseAtOnce(MERGE_TIER, key)) hooks.waiting();
-          const lease = await semaphore.acquireLease(MERGE_TIER, key);
+          if (!semaphore.canLeaseAtOnce(MERGE_TIER)) hooks.waiting();
+          const lease = await semaphore.acquireLease(MERGE_TIER);
           hooks.granted();
           try {
-            // The resolver's lease rides in the provider-lease store for its run, so the run
-            // re-keys it to the provider it actually uses (plans/provider-concurrency.md §5).
-            return await withProviderLease(
-              lease,
-              semaphore,
-              () => v.author.runMergePi(w, prompt, s, cfg),
-              { piDefault: ctx.piDefault },
-            );
+            // The resolver's lease rides in the run-permit store for its run, so an idle
+            // pause inside it (a failed review's in-place retry) re-takes the same permit.
+            return await withRunPermit(lease, () => v.author.runMergePi(w, prompt, s, cfg));
           } finally {
             lease.release();
           }

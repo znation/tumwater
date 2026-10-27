@@ -20,7 +20,6 @@ import { beginWorktreeUse } from "./worktree-use.js";
 import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
 import { logEventBestEffort, warnEventBestEffort, tryOrWarn, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
-import { dropProviderLeaseKey } from "../concurrency/provider-lease.js";
 
 /** A live lease as callers see it: the slot directory, the one-shot release, and whether the
  * slot's existing checkout was kept as-is. */
@@ -275,11 +274,9 @@ async function acquire(
       logSlotWait(root, role, purpose, Date.now() - startedAt);
       return chosen;
     }
-    // The pool-slot wait rule (plans/provider-concurrency.md §5 "No deadlock"): a lease never holds
-    // a provider key while it waits for a pool slot. Drop the calling lease's key (which never
-    // waits) before parking here, so this run or verify holds no provider slot whose in-use a
-    // re-key waiter is waiting to drain; the next run re-takes the key as an ordinary re-key.
-    await dropProviderLeaseKey();
+    // The pool-slot wait needs no permit dropped: a run or verify holds only the one team
+    // permit (no provider key any more), so it parks on the busy pool like any other slot
+    // waiter.
     const waiter = registerWaiter(root);
     try {
       await raceAbort(waiter.promise, signal);

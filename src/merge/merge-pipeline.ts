@@ -5,7 +5,6 @@ import { runOnAbort } from "../process/process.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { ModelSelector } from "../config/model-selector.js";
 import { deleteRef } from "../git/git.js";
 import { removeMergeChange, writeMergeOutcome, type MergeUsage } from "./merge-slot.js";
 import { requeueKeptChange } from "./merge-requeue.js";
@@ -87,10 +86,6 @@ export interface MergePipelineContext {
   roleConfig: TumwaterConfig;
   /** The director's config (the live config unless a used-up window moved it to its fallback). */
   directorConfig: TumwaterConfig;
-  /** pi's saved default model (the caller's stat-cached readPiDefaultModel result): the
-   * fallback provider key for a pi seam that names no model (plans/provider-concurrency.md §2),
-   * read by a merge's review and resolver runs just as a role run reads it. */
-  piDefault?: ModelSelector | null;
   /** The scheduler's start gate for new work (a pending restart, a disk hold, or the reviewer
    * hold), re-checked the moment a parked verification is granted its permit — the one moment
    * it actually starts, exactly as a parked role run re-checks it (run-timing.ts's
@@ -167,19 +162,17 @@ export function guardMergeTask(root: string, role: string, promise: Promise<void
   });
 }
 
-/** Take a permit at `tier` (on `key` when given) unless `signal` fires first: resolves to its
- * release, or to null when the signal won — a grant that arrives after that is handed straight
- * back (a hop, never a leak), so a parked verification that a shutdown settles holds nothing. When
- * `key` is set the permit is a keyed lease, so the verification also counts against its provider's
- * cap (plans/provider-concurrency.md §4). */
+/** Take a permit at `tier` unless `signal` fires first: resolves to its release, or to null
+ * when the signal won — a grant that arrives after that is handed straight back (a hop, never a
+ * leak), so a parked verification that a shutdown settles holds nothing. A verification's
+ * permit is the one team total (`maxConcurrent`). */
 export async function acquireUnlessAborted(
   semaphore: Semaphore,
   tier: number,
   signal: AbortSignal,
-  key?: string,
 ): Promise<SemaphoreLease | null> {
   if (signal.aborted) return null;
-  const granted = semaphore.acquireLease(tier, key);
+  const granted = semaphore.acquireLease(tier);
   const stopped = new Promise<false>((resolve) => signal.addEventListener("abort", () => resolve(false), { once: true }));
   if (await Promise.race([granted, stopped])) {
     return granted;

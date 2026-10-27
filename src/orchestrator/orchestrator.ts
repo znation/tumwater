@@ -25,7 +25,6 @@ import { removeQuiet } from "../files/files.js";
 import { OnceRound } from "../scheduling/once-round.js";
 import { newNotifier } from "../events/notify.js";
 import { piModelsPath } from "../pi/pi-models.js";
-import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { Semaphore } from "../concurrency/semaphore.js";
 import { orchestratorStatePath } from "../paths.js";
 import { createMainWatch } from "../baseline/main-watch.js";
@@ -119,9 +118,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const { root, config, mainBranch, signal: externalSignal } = opts;
   const pollMs = opts.pollMs ?? POLL_MS;
   const modelsPath = opts.modelsPath ?? piModelsPath();
-  // pi's saved default model — the same stat-cached read status-roles.ts makes — used as the
-  // fallback provider key for a pi seam that names no model (plans/provider-concurrency.md §2).
-  const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), root);
   const breakerPolicy = opts.fallbackBreakerPolicy ?? FALLBACK_BREAKER_POLICY;
   const breakerNow = opts.breakerNow ?? Date.now;
   // Parallel work instances (part 5b/7): the runner list is every runner id the config enables
@@ -313,7 +309,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     once,
     info,
     modelsPath,
-    piDefault,
     redeploy,
     launchServicesWatch,
     reclaim,

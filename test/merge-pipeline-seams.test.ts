@@ -97,23 +97,3 @@ test("a permit granted before the abort keeps its normal release — the abort d
   await settle();
   assert.ok(await within(semaphore.acquire(0)), "exactly one release: the permit is free again");
 });
-
-test("acquireUnlessAborted with a key parks on a full provider and is granted on its drain", async () => {
-  // plans/provider-concurrency.md §4: a verification's keyed lease waits on its provider cap as
-  // well as the team total, while a free team slot on another provider is not held back by the full
-  // key.
-  const semaphore = new Semaphore(4);
-  semaphore.setKeyCaps({ omlx: 1 });
-  const holder = await semaphore.acquireLease(0, "omlx"); // the omlx slot an in-flight review holds
-  let granted = false;
-  void acquireUnlessAborted(semaphore, 0, new AbortController().signal, "omlx").then(() => (granted = true));
-  await settle();
-  assert.equal(granted, false, "a full omlx key withholds the keyed verification's lease");
-  let other = false;
-  void semaphore.acquireLease(0, "huggingface").then(() => (other = true));
-  await settle();
-  assert.equal(other, true, "another provider runs beside the full omlx");
-  holder.release();
-  await settle();
-  assert.equal(granted, true, "the omlx drain hands the keyed verification its lease");
-});

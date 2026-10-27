@@ -25,9 +25,7 @@ import type { RoleRunner } from "../runner/runner.js";
 import { fairOrder } from "../scheduling/scheduling.js";
 import { modelPairName } from "../budget/budget.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
-import { withProviderLease } from "../concurrency/provider-lease.js";
-import { seamConcurrencyKey } from "../config/config-views.js";
-import type { ModelSelector } from "../config/model-selector.js";
+import { withRunPermit } from "../concurrency/run-permit.js";
 import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
 import { runTimedRoleRun } from "../run/run-timing.js";
 
@@ -78,9 +76,6 @@ interface LaunchContext {
   windowMovedRoles: ReadonlySet<string>;
   /** The team's run semaphore; the director never queues behind it. */
   semaphore: Semaphore;
-  /** pi's saved default model (the caller's stat-cached readPiDefaultModel result): the
-   * fallback provider key for a pi seam that names no model (plans/provider-concurrency.md §2). */
-  piDefault: ModelSelector | null;
   /** Role runs actually holding a permit — the redeployer's in-flight count and the
    * restart abort's target. */
   rolePermitHolders: Set<RoleRunner>;
@@ -116,7 +111,6 @@ export function launchDueRuns(ctx: LaunchContext): void {
     budgetActive,
     windowMovedRoles,
     semaphore,
-    piDefault,
     rolePermitHolders,
     roleInFlight,
     directorInFlight,
@@ -151,13 +145,8 @@ export function launchDueRuns(ctx: LaunchContext): void {
     // Mark the parked waiter while it waits: it holds no permit yet, so the dashboards
     // render `awaiting slot` (an inactive state) and the active rows keep tracking
     // maxConcurrent (BUGS.md 2026-09-24). Cleared the moment the permit is granted. The
-    // director never queues, so it is never a parked waiter. Its provider key rides beside
-    // `parkedSince` (provider-concurrency part 5/5): the key the admission lease will
-    // acquire, computed from the same runConfig admission uses, so a waiter named by a
-    // full key renders `awaiting <key> slot` on the dashboards.
-    const parkKey = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(Date.now());
+    // director never queues, so it is never a parked waiter.
     runner.state.parkedSince = usesSlot ? Date.now() : undefined;
-    runner.state.parkedOn = usesSlot && parkKey ? seamConcurrencyKey(parkKey, piDefault) : undefined;
     // The run's own duration (null when it never started, was cut off, or ended without
     // work): the drain-window sample is taken only for a work-bearing run that finished
     // on its own (runTimedRoleRun; BUGS.md 2026-09-30).
@@ -165,35 +154,21 @@ export function launchDueRuns(ctx: LaunchContext): void {
     // Whether runner.run() was ever called — false when the start gate (or a shutdown)
     // turned the run away at its permit.
     let started = false;
-    // The run's keyed semaphore lease (plans/provider-concurrency.md §4): acquired on the
-    // authoring seam's provider key and released in place of the bare team release, so the
-    // cap is real for role runs from part 2/5 on. The director never queues, so its lease is
-    // never created here.
+    // The run's team semaphore lease, acquired at admission and released in place of the bare
+    // team release. The director never queues, so its lease is never created here.
     let lease: Awaited<ReturnType<Semaphore["acquireLease"]>> | null = null;
-    // The director's forced provider lease (plans/provider-concurrency.md §4): never queues and
-    // never counts toward maxConcurrent, but DOES count toward its provider key while its run
-    // runs — so a full provider admits no further grants until the director releases.
-    let directorLease: Awaited<ReturnType<Semaphore["forceLease"]>> | null = null;
     const task = (async () => {
       durationMs = await runTimedRoleRun(
         signal,
         usesSlot
           ? async () => {
-              // The key is the authoring seam's concurrency key, computed here at admission
-              // (runConfig applies any budget or model-failure fallback already in force).
-              const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(Date.now());
-              const key = cfg ? seamConcurrencyKey(cfg, piDefault) : undefined;
+              // The run is admitted by the one team total (maxConcurrent) alone — there is no
+              // per-provider key or cap any more. Which cap holds the run is always the team
+              // total, read once at park time.
               const admittedAt = Date.now();
-              // Which cap would hold the run, read once at park time (not revised if the caps
-              // change mid-wait): the run's own provider cap when full, else the team total.
               const pool = semaphore.snapshot();
-              const keyed = key !== undefined ? pool.byKey[key] : undefined;
-              const providerFull = keyed?.limit !== undefined && keyed.inUse >= keyed.limit;
-              const heldBy = providerFull
-                ? { cap: "provider" as const, limit: keyed.limit }
-                : { cap: "team" as const, limit: pool.limit };
-              lease = await semaphore.acquireLease(roleTier(runner.role), key);
-              // A wait of PROVIDER_WAIT_EVENT_MS or more for the provider/team slot is
+              lease = await semaphore.acquireLease(roleTier(runner.role));
+              // A wait of PROVIDER_WAIT_EVENT_MS or more for the team slot is
               // provider contention worth surfacing: name it so `tumwater doctor`'s provider
               // contention row can sum it and the operator can size maxConcurrent from real
               // waits. Best-effort like the launch pass's other
@@ -205,33 +180,26 @@ export function launchDueRuns(ctx: LaunchContext): void {
                   type: "provider_wait",
                   role: runner.role,
                   waitedMs: Date.now() - admittedAt,
-                  ...(key !== undefined ? { key } : {}),
-                  ...heldBy,
+                  cap: "team" as const,
+                  limit: pool.limit,
                 });
               }
               // Permit granted: the run is now an active, permit-holding state until the
               // release below. A run the start gate turns away releases within the same
               // microtask chain, so no poll ever counts it as a permit holder.
               runner.state.parkedSince = undefined;
-              runner.state.parkedOn = undefined;
               rolePermitHolders.add(runner);
             }
           : async () => {
-              // The director wraps its run in a forced lease on its provider key, never
-              // queuing behind roles: a user prompt starts at once even on a full provider,
-              // and the key's in-use rises by one — overshooting by one — so no further grant on
-              // that key happens until its release drains it back under the cap.
-              const cfg = runner.runConfig(Date.now());
-              directorLease = semaphore.forceLease(cfg ? seamConcurrencyKey(cfg, piDefault) : undefined);
+              // The director never queues behind roles: a user prompt starts at once, taking
+              // no semaphore permit (never counting toward maxConcurrent).
             },
         usesSlot
           ? () => {
               rolePermitHolders.delete(runner);
               lease!.release();
             }
-          : () => {
-              directorLease!.release();
-            },
+          : () => {},
         async () => {
           started = true;
           // A role run that starts while the budget holds uses the fallback pair its tier
@@ -252,17 +220,13 @@ export function launchDueRuns(ctx: LaunchContext): void {
               ? modelPairName({ provider: seamHoldKey(cfg), model: cfg.model })
               : null;
           const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;
-          // The run's lease rides in the provider-lease store for the length of the run, so
-          // every agent run it makes re-keys it to the provider that agent run actually uses
-          // (plans/provider-concurrency.md §5) — a budget or model-failure switch that moves an
-          // agent run to another provider mid-run moves the lease with it. The director's forced
-          // lease re-keys the same way, and its rekey never waits.
-          const outcome = await withProviderLease(
-            runner.role === DIRECTOR_ROLE ? directorLease! : lease!,
-            semaphore,
-            () => runner.run(),
-            { piDefault },
-          );
+          // The run's lease rides in the run-permit store for the length of the run, so an
+          // idle wait inside it (a failed review's in-place retry pause) can hand the team
+          // permit back and re-take it before the next attempt. The director holds no lease.
+          const outcome =
+            usesSlot
+              ? await withRunPermit(lease!, () => runner.run())
+              : await runner.run();
           if (ranPair !== null && ranOn !== undefined) {
             const at = breakerNow();
             const evidence = outcome.recoveredLeftover ? "skipped" : outcome.result;

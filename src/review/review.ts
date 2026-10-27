@@ -13,7 +13,7 @@ import { errorMessage, parseNonNegativeInt } from "../text/text.js";
 import { firstReason } from "../text/phrases.js";
 import type { SleepSampler } from "../build/host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";
-import { idleWithoutProviderLease } from "../concurrency/provider-lease.js";
+import { idleWithoutPermit } from "../concurrency/run-permit.js";
 import { setMergeStage } from "../merge/merge-slot.js";
 import type { SlotLeaseHandle } from "../git/worktree-pool.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
@@ -377,7 +377,7 @@ async function reviewAttempt(
  * the provider, or stated no VERDICT after its recovery turn. A resumable session is resumed,
  * otherwise the retry starts fresh (reviewAttempt). A configuration error and an abort are not
  * retried. While the reviewer's provider is held the retry waits for the hold to lift and
- * costs nothing. Each pause runs without the caller's team permit (idleWithoutProviderLease):
+ * costs nothing. Each pause runs without the caller's team permit (idleWithoutPermit):
  * a verification hands its lease back while it waits and takes it back before the next attempt.
  * See reviewAttempt for the rest of the gate's contract. */
 export async function reviewAheadOfMain(
@@ -401,7 +401,7 @@ export async function reviewAheadOfMain(
     );
     // The pause holds no team permit: a verification's lease is handed back while it waits and
     // re-taken before the next attempt, so a reviewer that keeps failing does not starve the roles.
-    await idleWithoutProviderLease(async () => {
+    await idleWithoutPermit(async () => {
       await sleepUnlessAborted(delayMs, ctx.signal);
       while (ctx.reviewHeld?.() && !ctx.signal?.aborted) await sleepUnlessAborted(Math.min(delayMs, 5000), ctx.signal);
     }, ctx.signal);

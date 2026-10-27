@@ -5,6 +5,24 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract, part 5i/6: The provider key leaves the semaphore and the lease — a run is admitted by `maxConcurrent` alone (planned 2026-10-27 by the plan role; the second of three finer parts replacing part 5b/6, requires Subtract part 5b/6 landed, since part 5b/6 removed every caller that set a cap; touches src/concurrency/semaphore.ts src/concurrency/provider-lease.ts src/concurrency/run-permit.ts src/orchestrator/orchestrator-launch.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-drain.ts src/merge/merge-verify.ts src/merge/merge-post-review-drain.ts src/merge/merge-pipeline.ts src/runner/runner-pi.ts src/review/review.ts src/git/worktree-pool.ts docs/invariants.md test/provider-lease.test.ts test/orchestrator-launch.test.ts test/orchestrator-permits.e2e.test.ts test/orchestrator-resize.e2e.test.ts test/review.test.ts) — done 2026-10-27 by the feature role
+
+**Goal.** `Semaphore` owns one team total and nothing else: no per-key cap, no re-key, no forced lease, no key on a `SemaphoreLease`. A role run, a merge verify and a resolver all wait only on `maxConcurrent`. `seamConcurrencyKey` and the role/parked displays that read the key stay until part 5j/6, so this part leaves `snapshot().byKey` as an empty map and never populates `runner.state.parkedOn`.
+
+**Approach.**
+- `src/concurrency/semaphore.ts`: delete `enforcedKeyCaps`, `keyCaps`, `keyInUse`, `rekeyWaiters`, `keyAtCap`, `bumpKeyInUse`, `setKeyCaps`, `forceLease`, the `key`/`rekey` members of `SemaphoreLease` and the re-key loop in `drive()`; `acquireLease(tier)` takes no key and only owns the team permit, `canLeaseAtOnce(tier)` drops its key argument, and `pause`/`resume` stay. `snapshot()` keeps `byKey: {}` for part 5j/6.
+- Replace `src/concurrency/provider-lease.ts` with `src/concurrency/run-permit.ts`: the same AsyncLocalStorage store carrying only the lease, with `withRunPermit(lease, run)` and `idleWithoutPermit(wait, signal)` (the pause/resume the reviewer retry needs); drop `ensureProviderLease`, `dropProviderLeaseKey`, `keyAtCap` and the piDefault/wait hooks.
+- Call sites: `src/orchestrator/orchestrator-launch.ts` stops computing the admission key, stops setting `runner.state.parkedOn`, drops the director's `forceLease`, wraps the run in `withRunPermit`, and emits `provider_wait` with `cap: "team"` and no `key`; `src/orchestrator/orchestrator-poll.ts`, `src/merge/merge-drain.ts`, `merge-verify.ts`, `merge-post-review-drain.ts`, `merge-pipeline.ts` drop their key arguments and `withProviderLease`; `src/runner/runner-pi.ts` drops `ensureProviderLease`; `src/review/review.ts` calls `idleWithoutPermit`; `src/git/worktree-pool.ts` drops the `dropProviderLeaseKey()` call.
+- `docs/invariants.md`: rewrite the Provider concurrency section and INV-P1–P3 to the one-team-permit rule; the review-retry pause keeps its guarantee under `idleWithoutPermit`.
+
+**Acceptance criteria.**
+- `src/concurrency/provider-lease.ts` is gone and `src/concurrency/run-permit.ts` exists; `grep -rnE 'provider-lease|ensureProviderLease|withProviderLease|dropProviderLeaseKey|idleWithoutProviderLease|setKeyCaps|forceLease|keyAtCap' src/` finds nothing.
+- No acquisition carries a provider key and no cap is ever set; a role run, a verify and a resolver wait on `maxConcurrent` alone.
+- A failed review's in-place retry still hands its team permit back before the wait and takes it back before the next attempt.
+- `npm run test:gate` passes.
+
+**Tests.** Delete `test/provider-lease.test.ts`; keep its `idleWithoutProviderLease` cases as `test/run-permit.test.ts` cases for `idleWithoutPermit`. Update `test/orchestrator-launch.test.ts`, `test/orchestrator-permits.e2e.test.ts` and `test/orchestrator-resize.e2e.test.ts` to the one-bound admission (drop the per-key cases); update `test/review.test.ts` for the renamed pause. Run them, then the project's gate, and confirm green.
+
 ### Every commit is verified on main, part 3w/3: the pre-merge reviewer's orchestrator-mixed case is re-pointed ahead of its removal (planned 2026-10-25 by the plan role, re-split 2026-10-27 by the plan role after feature held the too-large part 3w/3 (held 8): the mixed-file half of part 3w/3, sibling to part 4d/3, which takes the same series' director cases in test/orchestrator-director.test.ts, and independent in files of it; touches test/orchestrator-mixed.e2e.test.ts) — done 2026-10-27 by the feature role
 
 **Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-mixed.e2e.test.ts`'s `review_start` assertion fail: the case asserts a pre-merge reviewer run's `claude/claude-sonnet-5-5` selector and the reviewer's claude native log. Re-point the assertion to the surviving post-landing review so the source switch lands against a suite that no longer depends on the pre-merge reviewer.

@@ -1,62 +1,34 @@
 /** In-process counting semaphore bounding concurrent work (the orchestrator uses it to
  * cap simultaneous pi runs). The cross-PROCESS mutex lives in lock.ts; this one only
- * coordinates within a single harness process.
- *
- * Since 2026-10-15 it also bounds a model provider (a "key") independently, so a full
- * provider never blocks a waiter on another (plans/provider-concurrency.md §3). The keyless
- * entry points — acquire/tryAcquire/release — are unchanged; only acquireLease, forceLease
- * and setKeyCaps touch the keyed path. */
+ * coordinates within a single harness process. A run is admitted by the one team total
+ * (`maxConcurrent`) alone — there is no per-provider cap any more (the cap, its surfaces
+ * and its keyed machinery were subtracted in parts 5b/6 and 5i/6); a lease is a team
+ * permit that can pause and resume so an idle wait (a failed review's in-place retry)
+ * hands the slot back and re-takes it before the next attempt. */
 
-/** The entries of a per-provider cap map the semaphore enforces: positive integers
- * only, so a non-positive or non-integer cap is dropped rather than read as a limit. */
-function enforcedKeyCaps(caps: Record<string, number> | undefined): [string, number][] {
-  return Object.entries(caps ?? {}).filter(([, v]) => Number.isInteger(v) && v > 0);
-}
-
-/** The handle one keyed acquisition owns: the key it currently holds, a release that hands the
- * team permit and the key's slot back, and a rekey that moves the lease onto another key. */
+/** The handle one acquired lease owns: a release that hands the team permit back, and a
+ * pause/resume pair for an idle wait inside its work. */
 export interface SemaphoreLease {
-  /** The key the lease currently holds (undefined for an uncapped holder). */
-  key?: string;
-  /** Return the team permit and the key's in-use slot, then hand either to a parked waiter. */
+  /** Return the team permit, then hand it to a parked waiter. */
   release(): void;
-  /** Move the lease onto `to`: give the old key back first (waking its waiters), then wait
-   * only for the new key's headroom while keeping the team permit. A parked re-key queues
-   * ahead of every admission waiter, because it holds a team permit nobody else can use while
-   * it waits. A forced lease re-keys without waiting. */
-  rekey(to?: string): Promise<void>;
-  /** Hand the team permit and the key's slot back while the lease stays open, for an idle wait
-   * inside its work (a failed review's in-place retry pause), so a parked waiter can use them.
-   * A no-op on a released or already paused lease, or while a re-key is parked. */
+  /** Hand the team permit back while the lease stays open, for an idle wait inside its work
+   * (a failed review's in-place retry pause), so a parked waiter can use it. A no-op on a
+   * released or already paused lease. */
   pause(): void;
-  /** Take a paused lease's permit back, re-admitted at its own tier on its current key in queue
-   * order like any admission waiter. A no-op unless paused. A release() while it waits cancels it
-   * and owes nothing. */
+  /** Take a paused lease's permit back, re-admitted at its own tier in queue order like any
+   * admission waiter. A no-op unless paused. A release() while it waits cancels it and owes
+   * nothing. */
   resume(): Promise<void>;
 }
 
 export class Semaphore {
-  /** A parked WAITING (admission) waiter: its scheduling tier, optional provider key, and the
-   * resolver that hands it the permit. Keyless waiters (the legacy path) carry no key and are
-   * never held by a key cap. */
-  private readonly waiters: Array<{ tier: number; key?: string; resolve: () => void }> = [];
-  /** A parked re-key waiter: it already holds a team permit, so it waits only for its key's
-   * headroom, ahead of every admission waiter (which would otherwise queue a team permit uselessly
-   * behind another provider's runs). `granted` flips when drive() hands the waiter the target key's
-   * slot, so the lease's release can tell a delivered grant (give it back) from a still-parked one
-   * (cancel it) when the two interleave. */
-  private readonly rekeyWaiters: Array<{ key: string; resolve: () => void; granted: boolean }> = [];
+  /** A parked WAITING (admission) waiter: its scheduling tier and the resolver that hands
+   * it the permit. */
+  private readonly waiters: Array<{ tier: number; resolve: () => void }> = [];
   /** Permits currently held, tracked separately from capacity (rather than as an "available"
    * count): setCapacity can shrink below the current in-use, and a free-permit count cannot
    * represent that state — it would over-admit new work after a shrink. */
   private inUse = 0;
-  /** The per-key permits currently held: a lease or forced lease charges its key here, and a
-   * key at its cap withholds further grants on it. Grows and shrinks only through release and
-   * rekey — never preempted. */
-  private readonly keyInUse = new Map<string, number>();
-  /** The live per-key caps (plans/provider-concurrency.md
-   * §1). An absent key is uncapped — bounded by `capacity` alone. */
-  private keyCaps = new Map<string, number>();
   /** Permits withheld from tier ≥ 1 acquirers so a work role that has work to take can claim
    * one without waiting for a maintenance run to release (plans/parallel-work-instances.md
    * "Priority headroom", part 7/7). Tiers ≤ 0 (work, VERIFY_TIER, MERGE_TIER) ignore it. */
@@ -69,14 +41,13 @@ export class Semaphore {
     return this.capacity;
   }
 
-  /** How many acquirers are parked for a permit right now, admission and re-key waiters both.
-   * With no keys there are never re-key waiters, so this is exactly today's count. */
+  /** How many acquirers are parked for a permit right now. */
   get waiting(): number {
-    return this.waiters.length + this.rekeyWaiters.length;
+    return this.waiters.length;
   }
 
   /** Take a free permit without parking: true when one was granted (the same fast path
-   * acquire takes), false when acquire would have to wait. Unkeyed, as before. */
+   * acquire takes), false when acquire would have to wait. */
   tryAcquire(): boolean {
     if (this.inUse >= this.capacity) return false;
     this.inUse += 1;
@@ -87,7 +58,7 @@ export class Semaphore {
    * requests only: on arrival a waiter inserts ahead of every parked waiter with a strictly
    * greater tier (the orchestrator passes roleTier so work roles beat maintenance across
    * polls), keeping stable FIFO within a tier. In-flight holders are never preempted — they
-   * run to completion and their release is what hands out the permit. Unkeyed, as before. */
+   * run to completion and their release is what hands out the permit. */
   async acquire(tier: number): Promise<void> {
     if (this.inUse < this.capacity - this.reserveFor(tier)) {
       this.inUse += 1;
@@ -98,29 +69,20 @@ export class Semaphore {
     });
   }
 
-  /** Admit by both the team total and an optional provider key at once, waiting until both
-   * hold, and return a lease handle. `tier` orders the wait exactly as acquire does; `key`
-   * bounds the permit by its provider cap: granted when `inUse < capacity − reserveFor(tier)`
-   * and the key is under its cap (an absent or uncapped key always passes). FIFO holds within
-   * a key, and a full key never delays a waiter on another. */
-  async acquireLease(tier: number, key?: string): Promise<SemaphoreLease> {
-    let currentKey = key;
+  /** Admit by the team total alone and return a lease handle. `tier` orders the wait exactly
+   * as acquire does. FIFO holds within a tier. */
+  async acquireLease(tier: number): Promise<SemaphoreLease> {
     // True once release() has run: a released lease owns no slot and must not undo one again —
-    // a second release (or a parked rekey's late grant) must be a no-op, never a negative
-    // count. The orchestrator releases each lease exactly once, but the rekey cancel path
-    // relies on this guard so a cancelled lease never re-decrements its target key.
+    // a second release must be a no-op, never a negative count. The orchestrator releases each
+    // lease exactly once, but a cancelled parked resume relies on this guard so a cancelled
+    // lease never re-decrements what it took.
     let closed = false;
-    // The lease's parked re-key, while it waits on a full target key. At that point the lease
-    // holds NO key slot (the old one was returned at the rekey's start), so release() must
-    // CANCEL the pending grant rather than undo a slot this lease never took. Null when no
-    // rekey is parked.
-    let parkedRekey: { key: string; resolve: () => void; granted: boolean } | null = null;
-    // True while pause() has handed the team permit and the key's slot back: release() then owes
-    // nothing, and resume() re-admits at this lease's tier on its current key.
+    // True while pause() has handed the team permit back: release() then owes nothing, and
+    // resume() re-admits at this lease's tier in queue order.
     let paused = false;
     // resume()'s admission waiter while it is queued. release() cancels it if drive has not
     // granted it yet, and gives the grant back if it has.
-    let parkedResume: { tier: number; key?: string; resolve: () => void } | null = null;
+    let parkedResume: { tier: number; resolve: () => void } | null = null;
     const release = (): void => {
       if (closed) return;
       closed = true;
@@ -134,91 +96,43 @@ export class Semaphore {
           w.resolve();
           return;
         }
-        // drive granted it this microtask: its permit and key slot are taken, so give them back.
+        // drive granted it this microtask: its permit is taken, so give it back.
         paused = false;
       }
-      if (paused) return; // pause() already gave the permit and the key's slot back
-      if (parkedRekey !== null) {
-        // A re-key is parked waiting on its new key. Cancel it: pull it off the queue (so drive
-        // can't grant it) and, if the grant already arrived this microtask, give the new key's slot
-        // back. The lease holds no slot either way, so the team permit is the only thing to free.
-        const w = parkedRekey;
-        const idx = this.rekeyWaiters.indexOf(w);
-        if (idx >= 0) this.rekeyWaiters.splice(idx, 1);
-        if (w.granted) {
-          this.bumpKeyInUse(w.key, -1);
-        }
-        w.resolve();
-        parkedRekey = null;
-      } else if (currentKey !== undefined) {
-        this.bumpKeyInUse(currentKey, -1);
-      }
+      if (paused) return; // pause() already gave the permit back
       this.inUse -= 1;
       this.drive();
     };
-    const rekey = async (to?: string): Promise<void> => {
-      if (to === currentKey || closed) return;
-      if (paused) {
-        // Nothing is held while paused: the move only changes the key resume() admits on.
-        currentKey = to;
-        lease.key = to;
-        return;
-      }
-      // Give the old key back first, waking that key's waiters.
-      if (currentKey !== undefined) {
-        this.bumpKeyInUse(currentKey, -1);
-      }
-      currentKey = to;
-      lease.key = to;
-      this.drive();
-      if (to !== undefined && this.keyAtCap(to)) {
-        // The new key is full: wait only for its headroom, ahead of every admission waiter.
-        const w = { key: to, resolve: (): void => {}, granted: false };
-        parkedRekey = w;
-        this.rekeyWaiters.push(w);
-        await new Promise<void>((resolve) => {
-          w.resolve = resolve;
-        });
-        parkedRekey = null;
-        if (w.granted) this.drive();
-        return;
-      }
-      if (to !== undefined) this.bumpKeyInUse(to, 1);
-      this.drive();
-    };
     const pause = (): void => {
-      if (closed || paused || parkedRekey !== null) return;
+      if (closed || paused) return;
       paused = true;
-      if (currentKey !== undefined) this.bumpKeyInUse(currentKey, -1);
       this.inUse -= 1;
       this.drive();
     };
     const resume = async (): Promise<void> => {
       if (closed || !paused || parkedResume !== null) return;
-      if (this.canLeaseAtOnce(tier, currentKey)) {
+      if (this.canLeaseAtOnce(tier)) {
         this.inUse += 1;
-        if (currentKey !== undefined) this.bumpKeyInUse(currentKey, 1);
         paused = false;
         return;
       }
       await new Promise<void>((resolve) => {
-        const waiter = { tier, key: currentKey, resolve };
+        const waiter = { tier, resolve };
         parkedResume = waiter;
         this.enqueue(waiter);
       });
       parkedResume = null;
-      // drive granted it (the permit and key slot are taken), unless release() cancelled it.
+      // drive granted it (the permit is taken), unless release() cancelled it.
       if (!closed) paused = false;
     };
-    const lease: SemaphoreLease = { key: currentKey, release, rekey, pause, resume };
+    const lease: SemaphoreLease = { release, pause, resume };
 
-    if (this.inUse < this.capacity - this.reserveFor(tier) && (key === undefined || !this.keyAtCap(key))) {
+    if (this.inUse < this.capacity - this.reserveFor(tier)) {
       this.inUse += 1;
-      if (key !== undefined) this.bumpKeyInUse(key, 1);
       return lease;
     }
     await new Promise<void>((resolve) => {
-      this.enqueue({ tier, key, resolve });
+      this.enqueue({ tier, resolve });
     });
     return lease;
   }
@@ -226,7 +140,7 @@ export class Semaphore {
   /** Queue an admission waiter behind every waiter of its tier or a lower one, so it inserts
    * before strictly-greater tiers only (tier order, FIFO within a tier) — the one home of the
    * queue's ordering, shared by acquire, acquireLease and a paused lease's resume. */
-  private enqueue(waiter: { tier: number; key?: string; resolve: () => void }): void {
+  private enqueue(waiter: { tier: number; resolve: () => void }): void {
     let i = this.waiters.length;
     while (i > 0) {
       const prev = this.waiters[i - 1];
@@ -236,88 +150,29 @@ export class Semaphore {
     this.waiters.splice(i, 0, waiter);
   }
 
-  /** Synchronously report whether acquireLease(tier, key) would return at once — both the
-   * team total and the key (when set) have headroom right now, and the tier's reserve is
-   * satisfied. Mirrors the exact fast-path condition acquireLease's first branch uses, so a
-   * caller can decide whether to show a "waiting for a slot" state before awaiting a lease
-   * that would actually park (merge-drain.ts's resolver wrapper). */
-  canLeaseAtOnce(tier: number, key?: string): boolean {
-    return this.inUse < this.capacity - this.reserveFor(tier) && (key === undefined || !this.keyAtCap(key));
+  /** Synchronously report whether acquireLease(tier) would return at once — the team total
+   * has headroom right now and the tier's reserve is satisfied. Mirrors the exact fast-path
+   * condition acquireLease's first branch uses, so a caller can decide whether to show a
+   * "waiting for a slot" state before awaiting a lease that would actually park
+   * (merge-drain.ts's resolver wrapper). */
+  canLeaseAtOnce(tier: number): boolean {
+    return this.inUse < this.capacity - this.reserveFor(tier);
   }
 
-  /** The director's bypass: take a key's slot at once, never waiting, and never counting toward
-   * the team cap. It DOES count toward the key's in-use, so a forced lease can overshoot a
-   * full key by one holder; no grant on that key happens until a release drains it back under
-   * the cap. Its re-key also never waits. */
-  forceLease(key?: string): SemaphoreLease {
-    let currentKey = key;
-    if (currentKey !== undefined) {
-      this.bumpKeyInUse(currentKey, 1);
-    }
-    // True while pause() has given the key's slot back (a forced lease holds no team permit).
-    let paused = false;
-    const release = (): void => {
-      if (currentKey !== undefined && !paused) {
-        this.bumpKeyInUse(currentKey, -1);
-      }
-      this.drive();
-    };
-    const rekey = async (to?: string): Promise<void> => {
-      if (to === currentKey) return;
-      if (currentKey !== undefined && !paused) {
-        this.bumpKeyInUse(currentKey, -1);
-      }
-      currentKey = to;
-      lease.key = to;
-      if (to !== undefined && !paused) this.bumpKeyInUse(to, 1);
-      this.drive();
-    };
-    const pause = (): void => {
-      if (paused) return;
-      paused = true;
-      if (currentKey !== undefined) this.bumpKeyInUse(currentKey, -1);
-      this.drive();
-    };
-    // Like the forced lease itself, taking the slot back never waits.
-    const resume = async (): Promise<void> => {
-      if (!paused) return;
-      paused = false;
-      if (currentKey !== undefined) this.bumpKeyInUse(currentKey, 1);
-    };
-    const lease: SemaphoreLease = { key: currentKey, release, rekey, pause, resume };
-    return lease;
-  }
-
-  /** Hand every parked waiter a permit it can take — both team and key headroom — in one
-   * pass. The one home of the permit hand-off: release, setCapacity, setReserve and setKeyCaps
-   * all drive it, and growth loops it to fill new headroom. It never admits past the team cap
-   * or a key cap. Re-key waiters run first (they already hold a team permit, so they wait only
-   * on their key). Admission waiters are scanned in queue (tier, then FIFO) order: a waiter
-   * whose key is full is skipped and keeps its place, so a later waiter on a free key is never
-   * stuck behind it — but the reserve stops the scan at the first tier ≥ 1 waiter it withholds
-   * from, since the tier-ascending queue means everything behind is withheld too. */
+  /** Hand every parked waiter a permit it can take in one pass. The one home of the permit
+   * hand-off: release, setCapacity, setReserve and a pause/resume all drive it, and growth
+   * loops it to fill new headroom. It never admits past the team cap. Admission waiters are
+   * scanned in queue (tier, then FIFO) order; the reserve stops the scan at the first tier ≥ 1
+   * waiter it withholds from, since the tier-ascending queue means everything behind is
+   * withheld too. */
   private drive(): void {
     for (;;) {
-      // Re-key waiters first: no team check — they already hold a team permit.
       let granted = false;
-      for (let i = 0; i < this.rekeyWaiters.length; i++) {
-        const w = this.rekeyWaiters[i]!;
-        if (this.keyAtCap(w.key)) continue;
-        w.granted = true;
-        this.rekeyWaiters.splice(i, 1);
-        this.bumpKeyInUse(w.key, 1);
-        w.resolve();
-        granted = true;
-        break;
-      }
-      if (granted) continue;
       for (let i = 0; i < this.waiters.length; i++) {
         const w = this.waiters[i]!;
         if (this.inUse >= this.capacity - this.reserveFor(w.tier)) break; // reserve/full stops the scan
-        if (w.key !== undefined && this.keyAtCap(w.key)) continue; // skip a full key, keep its place
         this.waiters.splice(i, 1);
         this.inUse += 1;
-        if (w.key !== undefined) this.bumpKeyInUse(w.key, 1);
         w.resolve();
         granted = true;
         break;
@@ -326,24 +181,10 @@ export class Semaphore {
     }
   }
 
-  /** The permits withheld from `tier`: `reserve` for tier ≥ 1 (maintenance), 0 for every tier that
-   * ships work or merges a change (work, VERIFY_TIER, MERGE_TIER). */
+  /** The permits withheld from `tier`: `reserve` for tier ≥ 1 (maintenance), 0 for every tier
+   * that ships work or merges a change (work, VERIFY_TIER, MERGE_TIER). */
   private reserveFor(tier: number): number {
     return tier >= 1 ? this.reserve : 0;
-  }
-
-  /** True when `key` is at its cap — a configured cap the in-use already meets or exceeds. An
-   * uncapped key (no cap set) is never "full". */
-  private keyAtCap(key: string): boolean {
-    const cap = this.keyCaps.get(key);
-    return cap !== undefined && (this.keyInUse.get(key) ?? 0) >= cap;
-  }
-
-  /** Add `delta` to `key`'s held permits, initializing an absent key at zero first — the
-   * single home of the get-or-init bump that release, rekey, force and drive all repeated
-   * (an absent key implicitly holds zero, so the first bump must not read `undefined`). */
-  private bumpKeyInUse(key: string, delta: number): void {
-    this.keyInUse.set(key, (this.keyInUse.get(key) ?? 0) + delta);
   }
 
   /** Release a held permit. The finishing work gives back its permit first, and a queued waiter
@@ -372,47 +213,14 @@ export class Semaphore {
     this.drive();
   }
 
-  /** Live-resize the per-key caps. Growing admits
-   * parked waiters for that key up to the new headroom; shrinking never preempts an in-flight
-   * holder — it only withholds future grants on that key until releases drain it under the new
-   * cap, the same contract as setCapacity. Non-positive and non-integer entries are dropped. */
-  setKeyCaps(caps: Record<string, number>): void {
-    this.keyCaps = new Map(enforcedKeyCaps(caps));
-    this.drive();
-  }
-
-  /** The pool's live state for observability (plans/provider-concurrency.md §8): the team
-   * in-use/cap, the reserve, and each referenced key's in-use, cap (undefined when uncapped)
-   * and waiting count. */
+  /** The pool's live state for observability: the team in-use/cap and the reserve. `byKey`
+   * stays an empty map until part 5j/6 removes the provider-key displays that read it. */
   snapshot(): {
     inUse: number;
     limit: number;
     reserve: number;
-    byKey: Record<string, { inUse: number; limit?: number; waiting: number }>;
+    byKey: Record<string, never>;
   } {
-    const byKey: Record<string, { inUse: number; limit?: number; waiting: number }> = {};
-    const addKey = (key?: string): void => {
-      if (key === undefined) return;
-      if (byKey[key] === undefined) {
-        const cap = this.keyCaps.get(key);
-        const entry: { inUse: number; limit?: number; waiting: number } = {
-          inUse: this.keyInUse.get(key) ?? 0,
-          waiting: 0,
-        };
-        if (cap !== undefined) entry.limit = cap;
-        byKey[key] = entry;
-      }
-    };
-    for (const k of this.keyCaps.keys()) addKey(k);
-    for (const k of this.keyInUse.keys()) addKey(k);
-    for (const w of this.waiters) {
-      addKey(w.key);
-      if (w.key !== undefined) byKey[w.key]!.waiting += 1;
-    }
-    for (const w of this.rekeyWaiters) {
-      addKey(w.key);
-      byKey[w.key]!.waiting += 1;
-    }
-    return { inUse: this.inUse, limit: this.capacity, reserve: this.reserve, byKey };
+    return { inUse: this.inUse, limit: this.capacity, reserve: this.reserve, byKey: {} };
   }
 }

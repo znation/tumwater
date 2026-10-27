@@ -319,188 +319,14 @@ test("the verify and merge tiers ignore the reserve", async () => {
   assert.equal(verifyGranted, true, "a negative-tier (verify/merge) acquirer is never held by the reserve");
 });
 
-// --- Keyed permits (plans/provider-concurrency.md §3; 2026-10-15) ---
 
-test("two keys fill independently: a full key never delays a free key, FIFO within a key", async () => {
-  const sem = new Semaphore(4);
-  sem.setKeyCaps({ a: 1, b: 1 });
-  const aHold = await sem.acquireLease(0, "a"); // key a is now full (1/1)
-  const order: string[] = [];
-  const snap = () => [...order]; // node:assert/strict deepEqual narrows its operand; see siblings
-  const a2 = sem.acquireLease(0, "a").then((l) => {
-    order.push("a2");
-    return l;
-  }); // parks: a is full
-  await flushImmediate();
-  assert.deepEqual(snap(), [], "a second acquirer on the full key a parks");
+// --- Pause/resume (part 5i/6): a lease hands its team permit back for an idle wait ---
 
-  // A later waiter on the free key b gains at once, not held back by the parked a waiter.
-  const bHold = await sem.acquireLease(0, "b");
-  assert.equal(bHold.key, "b");
-  order.push("b-granted");
-  assert.deepEqual(snap(), ["b-granted"], "the free key's waiter is granted while a's is still parked");
-
-  // FIFO within a key: a third waiter on a parks behind a2, and releases wake them in order.
-  const a3 = sem.acquireLease(0, "a").then((l) => {
-    order.push("a3");
-    return l;
-  });
-  await flushImmediate();
-  bHold.release(); // freeing b wakes nothing on a
-  aHold.release(); // frees a's only permit -> the first a waiter
-  await flushImmediate();
-  assert.deepEqual(snap(), ["b-granted", "a2"], "releasing a's only permit wakes the first a waiter");
-  (await a2).release();
-  await flushImmediate();
-  assert.deepEqual(snap(), ["b-granted", "a2", "a3"], "waiters on one key drain FIFO");
-  void a3;
-});
-
-test("shrinking a key below its in-use preempts nothing and grants nothing until releases drain", async () => {
-  const sem = new Semaphore(4);
-  sem.setKeyCaps({ a: 2 });
-  const a1 = await sem.acquireLease(0, "a");
-  const a2 = await sem.acquireLease(0, "a"); // a at 2/2
-  let late = false;
-  void sem.acquireLease(0, "a").then(() => (late = true));
-  await flushImmediate();
-  sem.setKeyCaps({ a: 1 }); // shrink below the two in-use holders
-  assert.equal(late, false, "a pure shrink wakes nothing");
-  a1.release(); // a now 1/1 — still AT the cap, so no new grant
-  await flushImmediate();
-  assert.equal(late, false, "no new grant while a sits at its shrunken cap");
-  a2.release(); // a now 0/1 < 1 — the waiter is admitted
-  await flushImmediate();
-  assert.equal(late, true, "a release draining under the shrunken cap admits the waiter");
-});
-
-test("rekey gives the old key back first, and a parked re-key beats a parked admission for the key", async () => {
-  const sem = new Semaphore(4);
-  sem.setKeyCaps({ a: 1, b: 1 });
-  const aHold = await sem.acquireLease(0, "a"); // a 1/1
-  const bHold = await sem.acquireLease(0, "b"); // b 1/1
-  const order: string[] = [];
-  const snap = () => [...order]; // see the sibling test for why not a bare `order`
-  const rekeyTask = aHold.rekey("b").then(() => order.push("rekey")); // parks: b is full
-  await flushImmediate();
-  const admission = sem.acquireLease(0, "b").then(() => order.push("admission")); // parks: b full
-  await flushImmediate();
-  assert.deepEqual(snap(), [], "both re-key and admission wait");
-
-  // The old key a was given back before the re-key parked, so a is grantable again.
-  const poolSnap = sem.snapshot();
-  assert.equal(poolSnap.byKey["a"]?.inUse ?? 0, 0, "the old key is returned before the re-key parks");
-  const aLate = await sem.acquireLease(0, "a"); // a is free -> granted at once
-  aLate.release();
-
-  bHold.release(); // frees b's slot: the parked re-key wins it, not the admission
-  await flushImmediate();
-  assert.deepEqual(snap(), ["rekey"], "the parked re-key is granted ahead of the parked admission");
-  assert.equal(aHold.key, "b", "the re-key'd lease now holds b");
-  // The re-key'd lease (aHold) now holds b; releasing it frees b for the admission waiter.
-  aHold.release();
-  await flushImmediate();
-  assert.deepEqual(snap(), ["rekey", "admission"], "the admission waiter gets the key once the re-key releases");
-  void rekeyTask;
-  void admission;
-});
-
-test("releasing a lease while its re-key to a full key is parked cancels the grant and never steals the target", async () => {
-  const sem = new Semaphore(4);
-  sem.setKeyCaps({ a: 1, b: 1 });
-  const aHold = await sem.acquireLease(0, "a"); // a 1/1
-  const bHold = await sem.acquireLease(0, "b"); // b 1/1
-  let rekeySettled: string | null = null;
-  const rekeyTask = aHold.rekey("b").then(() => (rekeySettled = "rekey")).catch(() => (rekeySettled = "error"));
-  await flushImmediate(); // the re-key parks: b is full, a was returned
-  assert.equal(sem.snapshot().byKey["a"]?.inUse ?? 0, 0, "the old key is returned before the re-key parks");
-  assert.equal(sem.snapshot().byKey["b"]?.inUse ?? 0, 1, "b still belongs to bHold while the re-key parks");
-
-  // A waiter on b parks behind the re-key (b is full).
-  let admitted = false;
-  void sem.acquireLease(0, "b").then(() => (admitted = true));
-  await flushImmediate();
-  assert.equal(admitted, false, "b is full, so the admission waiter parks");
-
-  // Release the lease while its re-key is still parked: the grant must be cancelled, not
-  // handed to a dead lease, and b's slot must stay bHold's own.
-  aHold.release();
-  await rekeyTask;
-  assert.equal(rekeySettled, "rekey", "the re-key call resolves (cancelled) rather than hanging");
-  const after = sem.snapshot();
-  assert.equal(after.byKey["b"]?.inUse ?? 0, 1, "a cancelled re-key does not steal b from bHold");
-  assert.equal(after.inUse, 1, "only bHold's team permit remains");
-  assert.equal(admitted, false, "the admission waiter is still held by bHold's slot");
-
-  // A SECOND release of the already-released dead lease must be a no-op. Without the fix the
-  // released aHold is not idempotent: its phantom b slot (never really owned) is "freed" by
-  // the second release, which drains b below its cap and admits the parked waiter even though
-  // bHold still holds b. That early admission of the parked waiter is the bug's observable
-  // harm, so it must NOT happen.
-  aHold.release();
-  await flushImmediate();
-  assert.equal(admitted, false, "a second release of the dead lease must not free b while bHold still holds it");
-  const twice = sem.snapshot();
-  assert.equal(twice.byKey["b"]?.inUse ?? 0, 1, "b still belongs to bHold after the dead lease's second release");
-  assert.equal(twice.inUse, 1, "the dead lease's second release is a no-op on the team total");
-
-  // Only when the REAL holder releases does b free up for the parked waiter.
-  bHold.release();
-  await flushImmediate();
-  assert.equal(admitted, true, "releasing bHold hands b to the parked admission waiter");
-  assert.equal(sem.snapshot().inUse, 1, "the admitted waiter holds the single team permit");
-  void rekeyTask;
-});
-
-test("a forced lease overshoots a full key by one holder, blocking grants until it drains under the cap", async () => {
-  const sem = new Semaphore(4);
-  sem.setKeyCaps({ a: 1 });
-  const aHold = await sem.acquireLease(0, "a"); // a 1/1
-  let waiterGranted = false;
-  void sem.acquireLease(0, "a").then(() => (waiterGranted = true));
-  await flushImmediate();
-  const dir = sem.forceLease("a"); // overshoots to 2/1, never waits, no team permit
-  assert.equal(sem.snapshot().byKey["a"]?.inUse, 2, "the forced lease holds a key slot");
-  assert.equal(waiterGranted, false, "the forced overshoot still admits nobody");
-  aHold.release(); // drains to 1/1 — still AT the cap, so no new grant yet
-  await flushImmediate();
-  assert.equal(waiterGranted, false, "no grant while the key sits at (or over) its cap");
-  dir.release(); // drains to 0/1 < 1 — now the waiter is admitted
-  await flushImmediate();
-  assert.equal(waiterGranted, true, "draining under the cap admits the waiter");
-});
-
-test("re-key waiters hold a team permit only, so the key always drains (no deadlock)", async () => {
-  const sem = new Semaphore(2);
-  sem.setKeyCaps({ k: 1 });
-  const l1 = await sem.acquireLease(0, "x"); // uncapped key grants immediately, team 1/2
-  const l2 = await sem.acquireLease(0, "x"); // team 2/2
-  // Both re-key onto k: one takes k, the other parks as a re-key waiter.
-
-  const r1 = l1.rekey("k");
-  await flushImmediate();
-  const r2 = l2.rekey("k");
-  await flushImmediate();
-  const snap = sem.snapshot();
-  assert.equal(snap.byKey["k"]?.inUse, 1, "exactly one holds k");
-  assert.equal(sem.waiting, 1, "one re-key waiter is parked");
-  assert.equal(snap.inUse, 2, "the parked re-key waiter still holds its team permit");
-  // No circular wait: releasing k's only holder grants the parked re-key on that single release.
-  l1.release();
-  await Promise.all([r1, r2]);
-  await flushImmediate();
-  const after = sem.snapshot();
-  assert.equal(after.byKey["k"]?.inUse, 1, "the re-key waiter takes k on the one release");
-  assert.equal(after.inUse, 1, "and releases the team permit it no longer needs");
-  l2.release();
-});
-
-test("a paused lease hands its permit and key slot to a parked waiter, and resume queues for the next free one", async () => {
+test("a paused lease hands its permit to a parked waiter, and resume queues for the next free one", async () => {
   const sem = new Semaphore(1);
-  sem.setKeyCaps({ k: 1 });
-  const holder = await sem.acquireLease(0, "k");
+  const holder = await sem.acquireLease(0);
   let waiterGranted = false;
-  const waiter = sem.acquireLease(0, "k").then((l) => {
+  const waiter = sem.acquireLease(0).then((l) => {
     waiterGranted = true;
     return l;
   });
@@ -509,8 +335,8 @@ test("a paused lease hands its permit and key slot to a parked waiter, and resum
 
   holder.pause();
   const parked = await waiter;
-  assert.equal(waiterGranted, true, "pause hands the team permit and k's slot to the waiter");
-  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [1, 1]);
+  assert.equal(waiterGranted, true, "pause hands the team permit to the waiter");
+  assert.equal(sem.snapshot().inUse, 1, "the waiter now holds the permit");
 
   let resumed = false;
   const resume = holder.resume().then(() => (resumed = true));
@@ -518,23 +344,22 @@ test("a paused lease hands its permit and key slot to a parked waiter, and resum
   assert.equal(resumed, false, "resume waits like any admission waiter while the permit is taken");
   parked.release();
   await resume;
-  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [1, 1], "the holder has both back");
+  assert.equal(sem.snapshot().inUse, 1, "the holder has it back");
   holder.release();
-  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [0, 0]);
+  assert.equal(sem.snapshot().inUse, 0);
 });
 
 test("releasing a paused lease, or one whose resume is still queued, owes nothing", async () => {
   const sem = new Semaphore(1);
-  sem.setKeyCaps({ k: 1 });
-  const idle = await sem.acquireLease(0, "k");
+  const idle = await sem.acquireLease(0);
   idle.pause();
   idle.pause(); // a second pause is a no-op, never a second give-back
   idle.release();
-  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [0, 0], "a paused lease held nothing to free");
+  assert.equal(sem.snapshot().inUse, 0, "a paused lease held nothing to free");
 
-  const holder = await sem.acquireLease(0, "k");
+  const holder = await sem.acquireLease(0);
   holder.pause();
-  const other = await sem.acquireLease(0, "k");
+  const other = await sem.acquireLease(0);
   let resumed = false;
   const resume = holder.resume().then(() => (resumed = true));
   await flushImmediate();
@@ -543,115 +368,7 @@ test("releasing a paused lease, or one whose resume is still queued, owes nothin
   assert.equal(resumed, true, "the cancelled resume settles");
   assert.equal(sem.waiting, 0, "and leaves the queue");
   other.release();
-  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [0, 0], "no count goes negative or leaks");
+  assert.equal(sem.snapshot().inUse, 0, "no count goes negative or leaks");
   await holder.resume(); // a released lease never takes a permit back
   assert.equal(sem.snapshot().inUse, 0);
-});
-
-test("a forced lease's pause gives its key slot back and resume takes it again without waiting", async () => {
-  const sem = new Semaphore(1);
-  sem.setKeyCaps({ k: 1 });
-  const forced = sem.forceLease("k");
-  forced.pause();
-  assert.equal(sem.snapshot().byKey["k"]?.inUse, 0);
-  await forced.resume();
-  assert.equal(sem.snapshot().byKey["k"]?.inUse, 1);
-  assert.equal(sem.snapshot().inUse, 0, "a forced lease never counts toward the team total");
-  forced.release();
-  assert.equal(sem.snapshot().byKey["k"]?.inUse, 0);
-});
-
-test("snapshot reports team and per-key in-use, caps and waiters", async () => {
-  const sem = new Semaphore(4);
-  sem.setKeyCaps({ a: 1, b: 3 });
-  await sem.acquireLease(0, "a"); // a 1/1 (full)
-  const bHold = await sem.acquireLease(0, "b"); // b 1/3
-  void sem.acquireLease(0, "a"); // parks on a
-  await flushImmediate();
-  const snap = sem.snapshot();
-  assert.equal(snap.inUse, 2);
-  assert.equal(snap.limit, 4);
-  assert.equal(snap.reserve, 0);
-  assert.deepEqual(snap.byKey["a"], { inUse: 1, limit: 1, waiting: 1 });
-  assert.deepEqual(snap.byKey["b"], { inUse: 1, limit: 3, waiting: 0 });
-  bHold.release();
-});
-
-test("rekeying a paused lease moves its key without touching any accounting", async () => {
-  const sem = new Semaphore(2);
-  sem.setKeyCaps({ a: 1, b: 1 });
-  const l = await sem.acquireLease(0, "a"); // a 1/1, team 1/2
-  assert.equal(l.key, "a");
-  l.pause(); // paused: the lease holds no permit and no key slot
-  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["a"]?.inUse ?? 0], [0, 0]);
-
-  await l.rekey("b"); // while paused the move is a pure key change, never a double give-back
-  assert.equal(l.key, "b", "the re-key moves the paused lease onto b");
-
-  // Nothing is held on the new key either, because the lease is still paused.
-  const snap = sem.snapshot();
-  assert.equal(snap.byKey["b"]?.inUse ?? 0, 0, "a paused re-key holds no slot on its new key");
-  assert.equal(snap.inUse, 0, "a paused re-key holds no team permit");
-  l.release(); // releasing a still-paused lease is a no-op
-  assert.equal(sem.snapshot().inUse, 0);
-});
-
-test("releasing a lease the moment its resume is granted undoes exactly the permit the grant took", async () => {
-  // Covers release()'s branch where a paused lease's resume waiter was just handed the permit
-  // by drive (same microtask) but the resume() continuation has not run yet: the release must
-  // give that grant back rather than treat the lease as still paused or still queued. Doing it
-  // synchronously on the same tick as the granting release is the only way to land in that
-  // window, so the previous release and this one are adjacent calls with no await between them.
-  const sem = new Semaphore(1);
-  sem.setKeyCaps({ k: 1 });
-  const holder = await sem.acquireLease(0, "k"); // k 1/1, team 1/1
-  holder.pause(); // both back: the lease is idle, holding nothing
-  const other = await sem.acquireLease(0, "k"); // someone else takes the free permit
-  const resume = holder.resume();
-  await flushImmediate(); // the resume parks: the permit is taken, so it queues like any waiter
-  assert.equal(sem.waiting, 1, "the paused lease's resume is queued");
-
-  // The other holder releases, and drive hands the permit straight to the resume waiter
-  // (scheduling its continuation). Releasing the holder in the SAME synchronous tick means its
-  // release runs before the resume continuation, so it must take the just-granted permit back.
-  other.release();
-  holder.release();
-  await resume;
-  const snap = sem.snapshot();
-  assert.equal(snap.inUse, 0, "the release frees the team permit the grant had re-taken");
-  assert.equal(snap.byKey["k"]?.inUse ?? 0, 0, "the key slot the grant had re-taken is freed");
-  assert.equal(sem.waiting, 0, "no waiter is left queued");
-
-  // The ledger never went negative, so the semaphore still admits and drains a fresh lease.
-  const again = await sem.acquireLease(0, "k");
-  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [1, 1]);
-  again.release();
-  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [0, 0]);
-});
-
-test("releasing a lease the moment its re-key is granted returns the just-granted key slot", async () => {
-  // Covers release()'s branch where a parked re-key's grant was just handed to it by drive
-  // (same microtask) but the rekey() continuation has not run: the release must give the new
-  // key's slot back (the lease holds only a team permit at that point), never steal the target
-  // nor leave an orphaned slot. The granting release and this release are adjacent, same tick.
-  const sem = new Semaphore(2);
-  sem.setKeyCaps({ a: 1, b: 1 });
-  const h1 = await sem.acquireLease(0, "a"); // a 1/1, team 1/2
-  const h2 = await sem.acquireLease(0, "b"); // b 1/1, team 2/2
-  const rekey = h1.rekey("b");
-  await flushImmediate(); // b is full, so the re-key parks: a returned, nothing held on b
-  assert.equal(sem.snapshot().byKey["a"]?.inUse ?? 0, 0, "a was returned before the re-key parked");
-  assert.equal(sem.waiting, 1, "the re-key waiter is parked ahead of any admission waiter");
-
-  // h2 releases and drive grants the re-key its b slot (scheduling its continuation); h1's
-  // release in the SAME synchronous tick returns that just-granted slot before the rekey()
-  // continuation can take ownership of the accounting.
-  h2.release();
-  h1.release();
-  await rekey;
-  const snap = sem.snapshot();
-  assert.equal(snap.inUse, 0, "no team permit outlives the releases");
-  assert.equal(snap.byKey["b"]?.inUse ?? 0, 0, "the granted b slot is returned, not leaked");
-  assert.equal(snap.byKey["a"]?.inUse ?? 0, 0, "a stays where the re-key left it");
-  assert.equal(sem.waiting, 0, "no waiter is left queued");
 });
