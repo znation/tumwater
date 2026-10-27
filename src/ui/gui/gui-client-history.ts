@@ -299,7 +299,16 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   // drift apart: every one fetches runApiUrl, then insists the reply carries its field.
   async function fetchRunField(key, query, field) {
     const d = await getJson(runApiUrl(key, query));
-    if (!d || typeof d[field] !== "string") throw new Error("/api/run answered without a " + field + " field");
+    if (!d || typeof d[field] !== "string") {
+      // Name the endpoint, the run it answered for, and the likely cause — the same
+      // ownership fetchHistDetail and openHistNewest give their /api/run errors: a 200
+      // without the promised field is a server too old (or too new) for this dashboard's
+      // client, not a silently dropped patch or transcript.
+      const at = key.lastIndexOf("#");
+      throw new Error(
+        "/api/run answered " + key.slice(0, at) + " run " + key.slice(at + 1) + " without a " + field + " field — the running tumwater may not match this dashboard",
+      );
+    }
     return d;
   }
   // Fetch or toggle one card add-on field (the patch or the transcript) at key ("role#run").
