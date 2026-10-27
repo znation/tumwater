@@ -114,37 +114,25 @@ const pushReason = async (findings: string[], check: Promise<string | undefined>
   if (reason) findings.push(reason);
 };
 
-/** The findings likely to get this uncommitted change rejected at merge, or an empty list when
- * it is clean: the merge gate's own deterministic checks plus the staging-only heuristics (plan
- * dependencies, path drift). Checks the worktree at `wt` against
- * `mainBranch`'s merge-base; `exemptPaths` are the config's review-exemption globs that scope
- * the false-fix check.
- *
- * Never throws: a check that fails yields no finding, so a git hiccup at staging time defers to
- * the gate instead of failing the run. */
-export async function stageCheckFindings(
-  wt: string,
-  mainBranch: string,
-  exemptPaths: string[],
-  role: string,
-): Promise<string[]> {
-  const files = await changedFiles(wt).catch(() => null);
-  if (files === null || files.length === 0) return [];
-  const findings: string[] = [];
-  await pushReason(findings, backlogStructureReason(wt, mainBranch, files));
-  if (files.includes("PLANS.md")) {
-    const { head, base } = await headAndBase(wt, mainBranch, "PLANS.md");
-    // Finished plans are archived in PLANS-DONE.md (plans/backlog-archive.md): a requires clause
-    // naming a merged part resolves there, on both sides of the comparison alike.
-    const archived = parseEntryDetails(readTextOrNull(path.join(wt, PLANS_ARCHIVE)) ?? "", "Done").map((e) => e.title);
-    const dependency = base === undefined ? undefined : planDependencyFinding(head, base, archived);
-    if (dependency !== undefined) findings.push(dependency);
-    const refusal = base === undefined ? undefined : ungroundedRefusalFinding("PLANS.md", head, base);
-    if (refusal !== undefined) findings.push(refusal);
-  }
+/** The PLANS.md record findings: a requires clause naming a part the archive lacks, and an
+ * ungrounded refusal that cites another part. */
+async function plansFindings(wt: string, mainBranch: string): Promise<string[]> {
+  const { head, base } = await headAndBase(wt, mainBranch, "PLANS.md");
+  // Finished plans are archived in PLANS-DONE.md (plans/backlog-archive.md): a requires clause
+  // naming a merged part resolves there, on both sides of the comparison alike.
+  const archived = parseEntryDetails(readTextOrNull(path.join(wt, PLANS_ARCHIVE)) ?? "", "Done").map((e) => e.title);
+  const dependency = base === undefined ? undefined : planDependencyFinding(head, base, archived);
+  const refusal = base === undefined ? undefined : ungroundedRefusalFinding("PLANS.md", head, base);
+  return [dependency, refusal].filter((f): f is string => f !== undefined);
+}
+
+/** The finished-archive findings: duplicates of entries the archive already holds, plus the
+ * acceptance greps of the plan entries the change finished (for a PLANS.md change). */
+async function archiveFindings(wt: string, mainBranch: string, files: string[]): Promise<string[]> {
   const baseRev = FINISHED_ARCHIVES.some((s) => files.includes(s.file) || files.includes(s.archive))
     ? await changeBaseRev(wt, mainBranch).catch(() => undefined)
     : undefined;
+  const findings: string[] = [];
   for (const spec of FINISHED_ARCHIVES) {
     if (baseRev === undefined || !(files.includes(spec.file) || files.includes(spec.archive))) continue;
     const duplicates = await (async () => {
@@ -170,17 +158,51 @@ export async function stageCheckFindings(
     })().catch(() => []);
     findings.push(...greps);
   }
-  if (files.includes("BUGS.md")) {
-    const { head, base } = await headAndBase(wt, mainBranch, "BUGS.md");
-    const refusal = base === undefined ? undefined : ungroundedRefusalFinding("BUGS.md", head, base);
-    if (refusal !== undefined) findings.push(refusal);
-  }
+  return findings;
+}
+
+/** The BUGS.md record finding: an ungrounded refusal that cites another bug. */
+async function bugsFindings(wt: string, mainBranch: string): Promise<string[]> {
+  const { head, base } = await headAndBase(wt, mainBranch, "BUGS.md");
+  const refusal = base === undefined ? undefined : ungroundedRefusalFinding("BUGS.md", head, base);
+  return refusal === undefined ? [] : [refusal];
+}
+
+/** The stray-placeholder findings: a `_None yet._` line a changed record still leaves in a
+ * section that holds entries. */
+async function placeholderFindings(wt: string, mainBranch: string, files: string[]): Promise<string[]> {
+  const findings: string[] = [];
   for (const file of PLACEHOLDER_FILES) {
     if (!files.includes(file)) continue;
     const { head, base } = await headAndBase(wt, mainBranch, file);
     const stray = strayPlaceholderFinding(file, head, base ?? "");
     if (stray !== undefined) findings.push(stray);
   }
+  return findings;
+}
+
+/** The findings likely to get this uncommitted change rejected at merge, or an empty list when
+ * it is clean: the merge gate's own deterministic checks plus the staging-only heuristics (plan
+ * dependencies, path drift). Checks the worktree at `wt` against
+ * `mainBranch`'s merge-base; `exemptPaths` are the config's review-exemption globs that scope
+ * the false-fix check.
+ *
+ * Never throws: a check that fails yields no finding, so a git hiccup at staging time defers to
+ * the gate instead of failing the run. */
+export async function stageCheckFindings(
+  wt: string,
+  mainBranch: string,
+  exemptPaths: string[],
+  role: string,
+): Promise<string[]> {
+  const files = await changedFiles(wt).catch(() => null);
+  if (files === null || files.length === 0) return [];
+  const findings: string[] = [];
+  await pushReason(findings, backlogStructureReason(wt, mainBranch, files));
+  if (files.includes("PLANS.md")) findings.push(...(await plansFindings(wt, mainBranch)));
+  findings.push(...(await archiveFindings(wt, mainBranch, files)));
+  if (files.includes("BUGS.md")) findings.push(...(await bugsFindings(wt, mainBranch)));
+  findings.push(...(await placeholderFindings(wt, mainBranch, files)));
   await pushReason(findings, protectedEditReason(wt, mainBranch, files, role));
   await pushReason(findings, secretLeakReason(wt, mainBranch, files));
   if (isExemptDiff(files, exemptPaths)) await pushReason(findings, falseFixReason(wt, mainBranch, files));
