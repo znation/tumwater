@@ -248,6 +248,150 @@ export function doubleBlockFixedEntries(md: string): string[] {
   return found;
 }
 
+/** The duplicate-heading rule (a): the first `## ` title `head` carries more of than `base` did,
+ * or undefined when none. A base that already carries a duplicate never blocks unrelated edits —
+ * this fires only when the head's count EXCEEDS the base's, so a change that removes a duplicate
+ * always passes. */
+function duplicateSectionReason(
+  file: string,
+  headCounts: Map<string, number>,
+  baseCounts: Map<string, number>,
+): string | undefined {
+  for (const [title, count] of headCounts)
+    if (count > 1 && count > (baseCounts.get(title) ?? 0))
+      return (
+        `${file} adds another "## ${title}" heading — readers take the first section of a ` +
+        `name, so anything under the duplicate is invisible; keep one "## ${title}" per file`
+      );
+  return undefined;
+}
+
+/** The dropped-known-section rule (b): the first `## ` title the base carried but `head` dropped,
+ * restricted to this file's KNOWN_SECTIONS, or undefined when none. A `## ` title that is not one
+ * of this file's known sections is not load-bearing: ADDING one is a legitimate project extension
+ * (this repo grew `## Verified`, a doc-only stack can grow `## Notes`), so a new one passes — but
+ * DROPPING one is the repair for a misplaced heading, so this rule guards only known sections and
+ * leaves an unknown one free to be demoted to `### ` under a known section (BUGS.md 2026-10-23). */
+function droppedSectionReason(
+  file: string,
+  headCounts: Map<string, number>,
+  baseCounts: Map<string, number>,
+): string | undefined {
+  // A `## ` title that is not one of this file's known sections (KNOWN_SECTIONS) is not
+  // load-bearing: ADDING one is a legitimate project extension (this repo grew `## Verified`,
+  // a doc-only stack can grow `## Notes`), so a new one passes — but DROPPING one is the repair
+  // for a misplaced heading, so rule (b) guards only known sections and leaves an unknown one
+  // free to be demoted to `### ` under a known section (BUGS.md 2026-10-23).
+  const known = KNOWN_SECTIONS[file] ?? [];
+  for (const title of baseCounts.keys())
+    if (!headCounts.has(title) && known.includes(title))
+      return (
+        `${file} drops the "## ${title}" section the base had — entries filed under it would ` +
+        `be invisible to every section reader; restore "## ${title}"`
+      );
+  return undefined;
+}
+
+/** The re-added-archive-heading rule: for PLANS.md's and BUGS.md's archives only, rejects a head
+ * that adds a copy of a `### ` heading the base archive already carries (readdedHeadings) —
+ * finished history pasted back, never a new finished entry — or undefined for every other file.
+ * An archive only grows by new headings: a copy of one the base archive already carries is
+ * finished history pasted back (readdedHeadings), never a new finished entry.
+ */
+function readdedHeadingReason(
+  file: string,
+  base: string,
+  head: string,
+): string | undefined {
+  if (file === PLANS_ARCHIVE || file === BUGS_ARCHIVE) {
+    const readded = readdedHeadings(base, head);
+    if (readded.length > 0)
+      return (
+        `${file} adds ${plural(readded.length, '"### " heading', '"### " headings')} it already carries ` +
+        `(first: "${truncate(readded[0]!, 160)}") — the archive holds each finished entry once, so the ` +
+        `copies duplicate its history; remove them, and edit an archived entry in place instead`
+      );
+  }
+  return undefined;
+}
+
+/** The misplaced-plan rule (part 4/4), for PLANS.md and its archive only, else undefined: rejects
+ * a head that ADDS a `### ` entry directly under `## Done` whose joined heading metadata carries
+ * `(planned YYYY-MM-DD` but no `done YYYY-MM-DD`, and whose key the base's PLANS.md and archive
+ * never carried in ANY section — a plan filed into the wrong section. strandedPlanEntries already
+ * does the fence-aware, joined-metadata reading the first two conditions need; the base's key set
+ * — over both files, since tumwater moves a finished plan from one to the other
+ * (plans/backlog-archive.md) — supplies the third. Judged against the merge-base (the same base
+ * the heading rules use), so a Planned → Done move of an entry the base already had passes and a
+ * pre-existing stranded entry (whose key the base has) never blocks unrelated merges. */
+async function misplacedPlanReason(
+  file: string,
+  wt: string,
+  baseRev: string,
+  base: string,
+  head: string,
+): Promise<string | undefined> {
+  // Part 4/4's rule, PLANS.md and its archive (see this function's doc comment): a NEW plan
+  // filed directly under ## Done with no done date. strandedPlanEntries already does the
+  // fence-aware, joined-metadata reading the first two conditions need; the base's key set —
+  // over both files, since tumwater moves a finished plan from one to the other
+  // (plans/backlog-archive.md) — supplies the third.
+  if (file === "PLANS.md" || file === PLANS_ARCHIVE) {
+    const baseKeys = new Set([
+      ...planHeadingKeys(file === "PLANS.md" ? base : await fileContentAt(wt, baseRev, "PLANS.md")),
+      ...planHeadingKeys(file === PLANS_ARCHIVE ? base : await fileContentAt(wt, baseRev, PLANS_ARCHIVE)),
+    ]);
+    const newcomer = strandedPlanEntries(head).find(
+      (e) => e.section === "Done" && !baseKeys.has(planHeadingKey(e.title)),
+    );
+    if (newcomer)
+      // The fault and its fix differ by file: in PLANS.md a NEW plan (the base never carried
+      // it in any section) was pasted under ## Done unfinished and belongs under ## Planned;
+      // in the archive the same heading is a finished plan the commit-time sweep already moved
+      // here, whose only fault is a missing `done YYYY-MM-DD` token — telling its author to
+      // "file it under ## Planned" is the opposite of the fix and wastes a revision.
+      return file === PLANS_ARCHIVE
+        ? `${file} files "${newcomer.title}" directly under "## Done" with no done date — the ` +
+          `entry is finished and archived, so the only fix is to add \`done YYYY-MM-DD\` to its ` +
+          `"### " heading; do not move it back under "## Planned"`
+        : `${file} files "${newcomer.title}" directly under "## Done" with no done date — a plan ` +
+          `written into the done section is invisible to every Planned reader; file it under ` +
+          `"## Planned" instead`;
+  }
+  return undefined;
+}
+
+/** The hidden-fixed-record rule, for BUGS.md and its archive only, else undefined: rejects a head
+ * whose multi-block `## Fixed` entries (doubleBlockFixedEntries) the base did not carry — a new
+ * headingless record merged into a neighbor's body — or undefined when none. A new headingless
+ * record cannot hide in a Fixed entry's body: reject a head whose multi-block entries the base did
+ * not carry (an existing one never blocks unrelated edits, matching the heading-set rules above).
+ * The Fix paragraph is the guard's unit, so a merged second block would otherwise sit inside the
+ * neighbor it was symbol-checked against. BUGS-FIXED.md holds the same entries once archived.
+ */
+function hiddenFixedRecordReason(
+  file: string,
+  base: string,
+  head: string,
+): string | undefined {
+  // A new headingless record cannot hide in a Fixed entry's body: reject a head whose
+  // multi-block entries the base did not carry (an existing one never blocks unrelated
+  // edits, matching the heading-set rules above). The Fix paragraph is the guard's unit, so
+  // a merged second block would otherwise sit inside the neighbor it was symbol-checked
+  // against. BUGS-FIXED.md holds the same entries once archived.
+  if (file === "BUGS.md" || file === BUGS_ARCHIVE) {
+    const baseTitles = new Set(doubleBlockFixedEntries(base));
+    const newcomer = doubleBlockFixedEntries(head).find((title) => !baseTitles.has(title));
+    if (newcomer)
+      return (
+        `${file}'s Fixed entry "${newcomer}" holds more than one **Symptom:**/**Fix:** block — ` +
+        `a record with no "### " heading has merged into it, so the hidden record is invisible ` +
+        `to every section reader; give it its own "### " heading`
+      );
+  }
+  return undefined;
+}
+
 /** The first structural fault a diff merging into `mainBranch` leaves in a backlog file, or
  * undefined when none: for each touched backlog file it compares the `## ` heading set of the tree
  * being merged (`wt`) against the diff's merge-base — the same base falseFixReason measures
@@ -302,77 +446,13 @@ export async function backlogStructureReason(
     const base = await fileContentAt(wt, baseRev, file);
     const headCounts = sectionTitleCounts(head);
     const baseCounts = sectionTitleCounts(base);
-    for (const [title, count] of headCounts)
-      if (count > 1 && count > (baseCounts.get(title) ?? 0))
-        return (
-          `${file} adds another "## ${title}" heading — readers take the first section of a ` +
-          `name, so anything under the duplicate is invisible; keep one "## ${title}" per file`
-        );
-    // A `## ` title that is not one of this file's known sections (KNOWN_SECTIONS) is not
-    // load-bearing: ADDING one is a legitimate project extension (this repo grew `## Verified`,
-    // a doc-only stack can grow `## Notes`), so a new one passes — but DROPPING one is the repair
-    // for a misplaced heading, so rule (b) guards only known sections and leaves an unknown one
-    // free to be demoted to `### ` under a known section (BUGS.md 2026-10-23).
-    const known = KNOWN_SECTIONS[file] ?? [];
-    for (const title of baseCounts.keys())
-      if (!headCounts.has(title) && known.includes(title))
-        return (
-          `${file} drops the "## ${title}" section the base had — entries filed under it would ` +
-          `be invisible to every section reader; restore "## ${title}"`
-        );
-    // An archive only grows by new headings: a copy of one the base archive already carries is
-    // finished history pasted back (readdedHeadings), never a new finished entry.
-    if (file === PLANS_ARCHIVE || file === BUGS_ARCHIVE) {
-      const readded = readdedHeadings(base, head);
-      if (readded.length > 0)
-        return (
-          `${file} adds ${plural(readded.length, '"### " heading', '"### " headings')} it already carries ` +
-          `(first: "${truncate(readded[0]!, 160)}") — the archive holds each finished entry once, so the ` +
-          `copies duplicate its history; remove them, and edit an archived entry in place instead`
-        );
-    }
-    // Part 4/4's rule, PLANS.md and its archive (see this function's doc comment): a NEW plan
-    // filed directly under ## Done with no done date. strandedPlanEntries already does the
-    // fence-aware, joined-metadata reading the first two conditions need; the base's key set —
-    // over both files, since tumwater moves a finished plan from one to the other
-    // (plans/backlog-archive.md) — supplies the third.
-    if (file === "PLANS.md" || file === PLANS_ARCHIVE) {
-      const baseKeys = new Set([
-        ...planHeadingKeys(file === "PLANS.md" ? base : await fileContentAt(wt, baseRev, "PLANS.md")),
-        ...planHeadingKeys(file === PLANS_ARCHIVE ? base : await fileContentAt(wt, baseRev, PLANS_ARCHIVE)),
-      ]);
-      const newcomer = strandedPlanEntries(head).find(
-        (e) => e.section === "Done" && !baseKeys.has(planHeadingKey(e.title)),
-      );
-      if (newcomer)
-        // The fault and its fix differ by file: in PLANS.md a NEW plan (the base never carried
-        // it in any section) was pasted under ## Done unfinished and belongs under ## Planned;
-        // in the archive the same heading is a finished plan the commit-time sweep already moved
-        // here, whose only fault is a missing `done YYYY-MM-DD` token — telling its author to
-        // "file it under ## Planned" is the opposite of the fix and wastes a revision.
-        return file === PLANS_ARCHIVE
-          ? `${file} files "${newcomer.title}" directly under "## Done" with no done date — the ` +
-            `entry is finished and archived, so the only fix is to add \`done YYYY-MM-DD\` to its ` +
-            `"### " heading; do not move it back under "## Planned"`
-          : `${file} files "${newcomer.title}" directly under "## Done" with no done date — a plan ` +
-            `written into the done section is invisible to every Planned reader; file it under ` +
-            `"## Planned" instead`;
-    }
-    // A new headingless record cannot hide in a Fixed entry's body: reject a head whose
-    // multi-block entries the base did not carry (an existing one never blocks unrelated
-    // edits, matching the heading-set rules above). The Fix paragraph is the guard's unit, so
-    // a merged second block would otherwise sit inside the neighbor it was symbol-checked
-    // against. BUGS-FIXED.md holds the same entries once archived.
-    if (file === "BUGS.md" || file === BUGS_ARCHIVE) {
-      const baseTitles = new Set(doubleBlockFixedEntries(base));
-      const newcomer = doubleBlockFixedEntries(head).find((title) => !baseTitles.has(title));
-      if (newcomer)
-        return (
-          `${file}'s Fixed entry "${newcomer}" holds more than one **Symptom:**/**Fix:** block — ` +
-          `a record with no "### " heading has merged into it, so the hidden record is invisible ` +
-          `to every section reader; give it its own "### " heading`
-        );
-    }
+    const reason =
+      duplicateSectionReason(file, headCounts, baseCounts) ??
+      droppedSectionReason(file, headCounts, baseCounts) ??
+      readdedHeadingReason(file, base, head) ??
+      (await misplacedPlanReason(file, wt, baseRev, base, head)) ??
+      hiddenFixedRecordReason(file, base, head);
+    if (reason !== undefined) return reason;
   }
   return undefined;
 }
