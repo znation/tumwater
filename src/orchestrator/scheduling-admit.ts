@@ -29,10 +29,12 @@ export function admitRunner(
   return claimGroupAdmission(scope, runner, reason);
 }
 
-/** The stand-down predicate: true when a feature runner with no eligible entry, or a bugfix
- * runner whose open bugs are all held (no open bugs at all is search mode, which still runs),
- * is due a scheduled or main-moved run it cannot use. Startup, inbox and resume runs, a fresh
- * operator wake, and a runner with a claim or outstanding work still run. */
+/** The candidate half of the stand-down test: true when a feature runner, or a bugfix runner
+ * whose open bugs are non-empty (no open bugs at all is search mode, which still runs), is due
+ * a scheduled or main-moved run, is not freshly woken, and holds no claim or outstanding work —
+ * so startup, inbox and resume runs, a fresh operator wake, and a claimed or mid-entry runner
+ * all pass through. The caller stands the runner down only when this holds and no entry is
+ * eligible. */
 function noWorkScheduledRun(
   scope: SchedulingScope,
   runner: RoleRunner,
