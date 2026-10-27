@@ -362,6 +362,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `npm run test:gate` passes.
 
 ### Subtract, part 5c/6: The model-failure episode goes — a provider failure no longer swaps the run's model (planned 2026-10-27 by the plan role; the first of four finer parts replacing part 5c/6 after feature held it too large (2026-10-27); design in plans/subtract.md "The six strokes", stroke 5, and plans/fallback-model.md; requires Subtract part 5j/6 landed; touches src/runner/model-fallback.ts (deleted) src/runner/runner-fallback.ts (deleted) src/runner/runner.ts src/runner/runner-run.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/config/config-fallbacks.ts src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/report/report-types.ts src/report/report-usage-fold.ts src/roles/role-view.ts src/status/status-roles.ts src/status/status-data.ts docs/invariants.md test/model-fallback.test.ts (deleted) test/runner-fallback.test.ts (deleted) test/run-resume.test.ts test/gate-polls.test.ts test/event-format.test.ts test/report-usage-fold.test.ts test/role-view.test.ts test/status-data-models.test.ts)
+**Needs review 2026-10-27 by feature: too large for one run**
 
 **Goal.** A failing provider never changes which model a run uses: the failure-triggered fallback episode is gone and a run always resolves its role's own config.
 
