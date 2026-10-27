@@ -33,7 +33,6 @@ interface TailAlertsInput {
   roles: readonly AlertRole[];
   workspacePins: readonly StaleWorkspacePin[];
   instancePool: readonly string[];
-  providerCaps: readonly string[];
 }
 
 function pushQuietAlert(out: TeamAlert[], snap: TailAlertsInput["snap"]): void {
@@ -91,25 +90,6 @@ function pushProviderHoldAlert(out: TeamAlert[], snap: TailAlertsInput["snap"], 
       tone: "blue",
       title: agree(snap.providerHolds.length, "Provider limit is holding new runs", "Provider limits are holding new runs"),
       detail: `${phrased}. Runs in progress finish; roles on a held provider start no new runs until it re-opens.`,
-      actions: [],
-    });
-  }
-}
-
-function pushProviderCapsAlert(out: TeamAlert[], providerCaps: readonly string[]): void {
-  // A `maxConcurrentPerProvider` map that cannot do its job — the always-on twin of the doctor's
-  // `provider concurrency` row (doctor-contention-checks.ts checkProviderConcurrency): a cap key
-  // no seam resolves to, a cap at or above maxConcurrent, or a keyless seam in a capped team.
-  // The provider-hold and contention alerts cover a cap that is merely too small; this one
-  // names the static misconfiguration itself, which the doctor row is the only other surface
-  // that exposes. alert-feeds.ts's providerCapProblems feeds it the row's own warning strings,
-  // so the alert and the row cannot drift on the trigger or the wording.
-  if (providerCaps.length > 0) {
-    out.push({
-      key: "provider-caps",
-      tone: "amber",
-      title: "maxConcurrentPerProvider is misconfigured",
-      detail: `${providerCaps.join("; ")} — fix the map in tumwater.json (each key must name a provider the team runs on, and each cap must sit below maxConcurrent); the provider-hold and contention alerts cover a cap that is merely too small.`,
       actions: [],
     });
   }
@@ -249,12 +229,11 @@ function pushImagesAlert(out: TeamAlert[], roles: readonly AlertRole[]): void {
  * occupy, so the emitted key order is unchanged. */
 export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
-  const { snap, now, contention, regressedFixes, roles, workspacePins, instancePool, providerCaps } = input;
+  const { snap, now, contention, regressedFixes, roles, workspacePins, instancePool } = input;
 
   pushQuietAlert(out, snap);
   pushMaintenanceAlert(out, snap);
   pushProviderHoldAlert(out, snap, now);
-  pushProviderCapsAlert(out, providerCaps);
   pushPausedAlert(out, snap, now);
   pushContentionAlert(out, contention);
   pushWorkspacePinsAlert(out, workspacePins);

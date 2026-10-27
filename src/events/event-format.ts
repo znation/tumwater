@@ -593,10 +593,6 @@ function configEventMessage(e: HarnessEvent): string {
       // Routine state change, like counters_reset — no warning prefix.
       return `maxConcurrent changed: ${textOr(e.from)} → ${textOr(e.to)}`;
     }
-    case "provider_concurrency_changed": {
-      // Routine state change, its maxConcurrent sibling's per-provider form — no warning prefix.
-      return `concurrency for ${textOr(e.provider)} changed: ${textOr(e.from)} → ${textOr(e.to)}`;
-    }
     case "retention_changed": {
       // Routine state change, like its maxConcurrent sibling — no warning prefix.
       return `sessionRetentionDays changed: ${textOr(e.from)} → ${textOr(e.to)}`;
@@ -699,15 +695,15 @@ function checkWaitEventMessage(e: HarnessEvent): string {
     case "provider_wait": {
       // Routine-with-explanation, like slot_wait: waiting for a provider/team slot is the cap
       // working as designed, so no warning prefix. Names the wait and the key (or the run cap
-      // when the seam has none), so the operator can raise maxConcurrentPerProvider with the
-      // numbers in hand. An event carrying `cap` names the cap that held the run and its limit
-      // (a team-cap wait names no key); one without `cap` (logged before it existed) renders
-      // the key-or-run-slot line alone.
+      // when the seam has none), so the operator can size the cap with the numbers in hand. An
+      // event carrying `cap` names the cap that held the run and its limit (a team-cap wait
+      // names no key); one without `cap` (logged before it existed) renders the key-or-run-slot
+      // line alone.
       const span = shortSpanPhrase(finiteNumber(e.waitedMs, 0));
       const limit = finiteNumber(e.limit, Number.NaN);
       const hasKey = typeof e.key === "string" && e.key.length > 0;
       if (e.cap === "provider" && hasKey) {
-        return `waited ${span} for a ${e.key} slot (${textOr(e.role)}${Number.isFinite(limit) ? `; maxConcurrentPerProvider.${e.key} is ${limit}` : ""})`;
+        return `waited ${span} for a ${e.key} slot (${textOr(e.role)}${Number.isFinite(limit) ? `; capped at ${limit}` : ""})`;
       }
       if (e.cap === "team") {
         return `waited ${span} for a run slot (${textOr(e.role)}${Number.isFinite(limit) ? `; maxConcurrent is ${limit}` : ""})`;
@@ -752,7 +748,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "budget_warning": case "budget_paused": case "budget_fallback": case "budget_resumed": case "budget_handback": case "fallback_switched": case "model_fallback_started": case "model_fallback_ended": case "opencode_free_model_billed": return budgetEventMessage(e);
     case "team_paused": case "team_resumed": case "role_paused": case "role_resumed": case "role_streak_paused": case "role_cap_warning": case "role_cap_paused": case "role_cap_resumed": case "maintenance_quota_hold": case "maintenance_quota_resumed": case "bootstrap_complete": return holdEventMessage(e);
     case "disk_low": case "disk_ok": case "disk_reclaim": case "quiet_hours_started": case "quiet_hours_ended": case "rate_limit_hold": case "rate_limit_resumed": case "subscription_window_warning": case "subscription_window_reserved": case "subscription_window_limited": case "subscription_window_reset": return resourceEventMessage(e);
-    case "max_concurrent_changed": case "provider_concurrency_changed": case "retention_changed": case "config_changed": case "model_changed": case "backend_binary": case "state_migrated": case "orchestrator_start": case "orchestrator_stop": return configEventMessage(e);
+    case "max_concurrent_changed": case "retention_changed": case "config_changed": case "model_changed": case "backend_binary": case "state_migrated": case "orchestrator_start": case "orchestrator_stop": return configEventMessage(e);
     case "image_blind": case "build_stale": case "restart_pending": case "restart": case "restart_refused": case "restart_blocked": case "restart_forced": case "supervisor_exit": return imageRestartEventMessage(e);
     case "build_check": case "dep_install": case "slot_wait": case "provider_wait": case "check_wait": return checkWaitEventMessage(e);
     case "warning": return warningEventMessage(e);

@@ -8,10 +8,10 @@
  * This is config vocabulary, not HTTP vocabulary — it names which tumwater.json keys are
  * browser-editable — so it lives beside the other config-key lists (config-schema.ts's
  * TOP_LEVEL_KEYS, config-write.ts's per-key validators) rather than in the endpoint module
- * that first consumed it. The four run-concurrency knobs (maxConcurrent,
- * maxConcurrentPerProvider, maxConcurrentChecks, worktreeSlots) joined the set because
+ * that first consumed it. The run-concurrency knobs (maxConcurrent,
+ * maxConcurrentChecks, worktreeSlots) joined the set because
  * tumwater doctor's own contention checks name them for the operator to raise
- * (checkWorktreePool, checkProviderContention, checkCheckContention); the per-role maps and
+ * (checkWorktreePool, checkCheckContention); the per-role maps and
  * customRoles still stay CLI/director territory. The browser side mirrors the set for its labels
  * (ui/gui/gui-client-settings.ts's SETTINGS_KEYS), a manual copy; the GET /api/config test
  * pins the served key set to this list, and the settings test pins the browser copy's keys
@@ -23,10 +23,8 @@ export const EDITABLE_CONFIG_KEYS = [
   "fallback",
   "maxDailyCostUsd",
   // The run-concurrency knobs tumwater doctor's contention checks name for the operator to
-  // raise (checkWorktreePool, checkProviderContention) — grouped so the Settings card that
-  // shows the advice can apply it.
+  // raise (checkCheckContention) — grouped so the Settings card that shows the advice can apply it.
   "maxConcurrent",
-  "maxConcurrentPerProvider",
   "maxConcurrentChecks",
   "worktreeSlots",
   "claudeWindowReserve",

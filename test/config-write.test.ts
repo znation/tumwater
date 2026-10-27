@@ -160,33 +160,15 @@ test("setConfigKey merges one dotted map entry, preserving the other roles' entr
   assert.equal(fs.readFileSync(file, "utf8"), untouched);
 });
 
-test("maxConcurrentPerProvider.<provider> merges and round-trips through set and unset", () => {
+test("maxConcurrentPerProvider.<provider> is refused naming the key", () => {
   const dir = tmpdir();
-  const base = defaultConfig();
-  base.maxConcurrentPerProvider = { omlx: 3 };
-  saveConfig(dir, base);
+  saveConfig(dir, defaultConfig());
   const file = path.join(dir, "tumwater.json");
-
-  // A dotted provider-cap entry merges; a value that is not a positive integer fails naming
-  // the dotted key, and the file stays byte-identical.
-  let r = setConfigKey(dir, "maxConcurrentPerProvider.claude", "6");
-  assert.ok(r.ok && r.value === 6 && r.oldValue === undefined, JSON.stringify(r));
-  assert.deepEqual((readJson(file) as Record<string, unknown>).maxConcurrentPerProvider, { omlx: 3, claude: 6 });
   const untouched = fs.readFileSync(file, "utf8");
-  r = setConfigKey(dir, "maxConcurrentPerProvider.claude", "0");
+  const r = setConfigKey(dir, "maxConcurrentPerProvider.anthropic", "2");
   assert.equal(r.ok, false);
-  if (!r.ok) assert.match(r.error, /maxConcurrentPerProvider\.claude must be an integer of at least 1/);
-  assert.equal(fs.readFileSync(file, "utf8"), untouched, "a rejected dotted value changes nothing");
-
-  // Unset removes one entry, preserving its siblings; the map drops when it empties.
-  const u1 = unsetConfigKey(dir, "maxConcurrentPerProvider.claude");
-  assert.ok(u1.ok && u1.oldValue === 6, JSON.stringify(u1));
-  assert.deepEqual((readJson(file) as Record<string, unknown>).maxConcurrentPerProvider, { omlx: 3 });
-  const u = unsetConfigKey(dir, "maxConcurrentPerProvider.omlx");
-  assert.ok(u.ok);
-  if (u.ok) assert.equal(u.oldValue, 3);
-  const raw = readJson(file) as Record<string, unknown>;
-  assert.ok(!("maxConcurrentPerProvider" in raw), "the map is dropped when it empties");
+  if (!r.ok) assert.match(r.error, /maxConcurrentPerProvider\.anthropic/);
+  assert.equal(fs.readFileSync(file, "utf8"), untouched, "a refused key changes nothing");
 });
 
 test("setConfigKey merges one roles.<id>.<field> entry; bad fields and role ids fail", () => {

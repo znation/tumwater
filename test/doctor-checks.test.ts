@@ -37,8 +37,6 @@ import {
   checkCheckContention,
   checkLeftoverRoleBranches,
   checkMergeLock,
-  checkProviderConcurrency,
-  providerConcurrencyProblems,
   checkProviderContention,
   checkTumwaterPins,
   checkWorkInstances,
@@ -1107,118 +1105,6 @@ test("smallPoolProblems returns the row's pool-mismatch clause", () => {
   assert.deepEqual(smallPoolProblems(loadConfig(root)!), []);
 });
 
-// Provider concurrency caps, part 5/5 (plans/provider-concurrency.md §8): the doctor check
-// audits the maxConcurrentPerProvider map against the seams the config can actually spawn.
-// A well-formed map whose key a seam resolves to is fine; a cap key no seam resolves to (a
-// typo or an unused provider) and a cap at or above maxConcurrent (which never binds) both
-// warn. A map-less config is fine — per-provider caps are optional.
-test("checkProviderConcurrency passes a well-formed map whose key a seam resolves to", () => {
-  // Every seam (each role, the director, the review gate) rides the default tier's omlx
-  // provider, so the omlx cap names a provider the team actually runs on and no seam is
-  // key-less: nothing to warn about.
-  const cfg = {
-    ...defaultConfig(),
-    maxConcurrent: 4,
-    model: { default: "omlx/m" },
-    maxConcurrentPerProvider: { omlx: 3 },
-  };
-  const out = checkProviderConcurrency(cfg, readyRepo());
-  assert.equal(out.level, "ok");
-  assert.match(out.detail, /1 provider cap/);
-});
-
-test("checkProviderConcurrency warns on a cap key no seam resolves to", () => {
-  // Every seam resolves to claude (the default tier's provider), so the omlx cap names a
-  // provider nothing runs on: a typo or a provider not in use.
-  const cfg = {
-    ...defaultConfig(),
-    maxConcurrent: 4,
-    backend: "claude", model: { default: "m" },
-    maxConcurrentPerProvider: { omlx: 3 },
-  };
-  const out = checkProviderConcurrency(cfg, readyRepo());
-  assert.equal(out.level, "warn");
-  assert.match(out.detail, /cap key \"omlx\" resolves to no model job/);
-});
-
-test("checkProviderConcurrency warns on a cap at or above maxConcurrent", () => {
-  const cfg = {
-    ...defaultConfig(),
-    maxConcurrent: 3,
-    model: { default: "omlx/m" },
-    maxConcurrentPerProvider: { omlx: 3 },
-  };
-  const out = checkProviderConcurrency(cfg, readyRepo());
-  assert.equal(out.level, "warn");
-  assert.match(out.detail, /cap \"omlx\" 3 is at or above maxConcurrent 3/);
-});
-
-test("checkProviderConcurrency is fine without a per-provider map", () => {
-  const out = checkProviderConcurrency(defaultConfig(), readyRepo());
-  assert.equal(out.level, "ok");
-  assert.match(out.detail, /no per-provider caps configured/);
-});
-
-test("providerConcurrencyProblems returns the row's own warnings", () => {
-  // The pure predicate the doctor's `provider concurrency` row and the always-on `provider-caps`
-  // alert share: the well-formed and map-less configs yield nothing, and each broken config
-  // yields the exact warning string the row joins. piDefault backs the orchestrator's
-  // admission seam (a ModelSelector); none of these configs has a key-less seam, so null
-  // suffices.
-  const piDefault = null;
-  const wellFormed = {
-    ...defaultConfig(),
-    maxConcurrent: 4,
-    model: { default: "omlx/m" },
-    maxConcurrentPerProvider: { omlx: 3 },
-  };
-  assert.deepEqual(providerConcurrencyProblems(wellFormed, piDefault), []);
-  assert.deepEqual(providerConcurrencyProblems(defaultConfig(), piDefault), []);
-  assert.deepEqual(providerConcurrencyProblems(undefined, piDefault), []);
-  const claude = {
-    ...defaultConfig(),
-    maxConcurrent: 4,
-    backend: "claude", model: { default: "m" },
-    maxConcurrentPerProvider: { omlx: 3 },
-  };
-  assert.deepEqual(providerConcurrencyProblems(claude, piDefault), [
-    'cap key "omlx" resolves to no model job (a typo, or a provider not in use)',
-  ]);
-  const tooSmall = {
-    ...defaultConfig(),
-    maxConcurrent: 3,
-    model: { default: "omlx/m" },
-    maxConcurrentPerProvider: { omlx: 3 },
-  };
-  assert.deepEqual(providerConcurrencyProblems(tooSmall, piDefault), [
-    "cap \"omlx\" 3 is at or above maxConcurrent 3 — it never binds",
-  ]);
-});
-
-// The key-less seam warning (a capped team whose provider pi's settings cannot name) is
-// phrased through the shared plural()/agree() helpers, so the count and the verb agree: one
-// key-less seam reads "1 model job resolves", several read "N model jobs resolve". This pins
-// the exact wording so a regression in the singular/plural agreement is caught.
-test("providerConcurrencyProblems warns on key-less seams with agreeing count and verb", () => {
-  const piDefault = null;
-  // A role whose model override names a bare pi id (no provider slash) resolves no provider
-  // key while every other seam rides the default omlx tier, so exactly one seam is key-less.
-  const cfg = {
-    ...defaultConfig(),
-    maxConcurrent: 4,
-    model: { default: "omlx/m" },
-    maxConcurrentPerProvider: { omlx: 3 },
-  };
-  cfg.roles.feature = { enabled: true, model: "bare-model" };
-  assert.deepEqual(providerConcurrencyProblems(cfg, piDefault), [
-    "1 model job resolves to no provider key (pi's default provider is unreadable, so they cannot be capped): feature",
-  ]);
-  cfg.roles.bugfix = { enabled: true, model: "bare2" };
-  assert.deepEqual(providerConcurrencyProblems(cfg, piDefault), [
-    "2 model jobs resolve to no provider key (pi's default provider is unreadable, so they cannot be capped): feature, bugfix",
-  ]);
-});
-
 // claude transcript disk (plans/agent-backends.md "Sessions" retention, part 4e/7): doctor
 // reports the total size for a claude team and reads nothing for a pi-only one.
 test("checkClaudeTranscripts totals the transcript dirs for a claude team", () => {
@@ -1429,10 +1315,10 @@ test("checkProviderContention sums the last day of provider_wait events and warn
   assert.match(quiet.detail, /2 waits for a provider slot in the last 24h, 5m total, longest 4m \(the omlx slot 4m, also the run cap 60s\)/);
 
   wait("feature", "omlx", 600_000);
-  const cfg = { ...defaultConfig(), maxConcurrentPerProvider: { omlx: 2 } };
+  const cfg = defaultConfig();
   const busy = checkProviderContention(root, cfg);
   assert.equal(busy.level, "warn");
-  assert.match(busy.detail, /raise maxConcurrentPerProvider\.omlx above 2/);
+  assert.match(busy.detail, /raise maxConcurrent above 6/);
 
   const later = checkProviderContention(root, cfg, Date.now() + 48 * 3_600_000);
   assert.equal(later.level, "ok");
@@ -1492,41 +1378,49 @@ test("checkCheckContention names what the waits sat behind, busiest first", () =
   assert.match(busy.detail, /\(behind other checks 10m, .*\) — raise maxConcurrentChecks above 2$/);
 });
 
-test("checkProviderContention names every keyed provider that waited and its cap in rank order", () => {
+test("checkProviderContention ranks keyed providers busiest first", () => {
   const root = readyRepo();
   const wait = (role: string, key: string | undefined, waitedMs: number) =>
     logEvent(root, { source: TUMWATER_SOURCE, type: "provider_wait", role, key, waitedMs });
-  // omlx is busier but entered second; rank must still put it first and name both caps.
+  // omlx is busier but entered second; rank must still put it first.
   wait("clean", "acme", 400_000);
   wait("feature", "omlx", 800_000);
-  const cfg = { ...defaultConfig(), maxConcurrentPerProvider: { omlx: 2, acme: 1 } };
+  const cfg = defaultConfig();
   const out = checkProviderContention(root, cfg);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /\(the omlx slot 13m, also the acme slot 7m\)/);
-  assert.match(
-    out.detail,
-    /raise maxConcurrentPerProvider\.omlx above 2 and raise maxConcurrentPerProvider\.acme above 1/,
-  );
+  // Keyed-only waits (no team-cap wait) have no knob to name in the advice.
+  assert.doesNotMatch(out.detail, /raise/);
 });
 
-test("checkProviderContention keeps single-bucket wording and skips advice for an uncapped key", () => {
+test("checkProviderContention keeps single-bucket wording and names maxConcurrent only for a team-cap wait", () => {
   const root = readyRepo();
-  const wait = (role: string, key: string | undefined, waitedMs: number) =>
-    logEvent(root, { source: TUMWATER_SOURCE, type: "provider_wait", role, key, waitedMs });
-  wait("feature", "omlx", 700_000);
-  const single = checkProviderContention(root, { ...defaultConfig(), maxConcurrentPerProvider: { omlx: 2 } });
-  assert.equal(single.level, "warn");
-  assert.match(single.detail, /\(the omlx slot\)/);
-  assert.doesNotMatch(single.detail, /also/);
-  assert.match(single.detail, /raise maxConcurrentPerProvider\.omlx above 2/);
+  const wait = (role: string, key: string | undefined, cap: string | undefined, waitedMs: number) =>
+    logEvent(root, { source: TUMWATER_SOURCE, type: "provider_wait", role, key, cap, waitedMs });
+  wait("feature", "omlx", undefined, 700_000); // keyed wait, no team-cap bucket
+  const keyedOnly = checkProviderContention(root, defaultConfig());
+  assert.equal(keyedOnly.level, "warn");
+  assert.match(keyedOnly.detail, /\(the omlx slot\)/);
+  assert.doesNotMatch(keyedOnly.detail, /also/);
+  assert.doesNotMatch(keyedOnly.detail, /raise/);
 
+  // A team-cap wait files under "the run cap" and names maxConcurrent in the advice.
   const root2 = readyRepo();
-  const wait2 = (role: string, key: string, waitedMs: number) =>
-    logEvent(root2, { source: TUMWATER_SOURCE, type: "provider_wait", role, key, waitedMs });
-  wait2("feature", "omlx", 700_000); // wait whose key has no configured cap
-  const noCap = checkProviderContention(root2, { ...defaultConfig(), maxConcurrentPerProvider: {} });
+  const wait2 = (role: string, key: string | undefined, waitedMs: number) =>
+    logEvent(root2, { source: TUMWATER_SOURCE, type: "provider_wait", role, key, cap: "team", waitedMs });
+  wait2("feature", "omlx", 700_000);
+  const team = checkProviderContention(root2, defaultConfig());
+  assert.equal(team.level, "warn");
+  assert.match(team.detail, /\(the run cap\)/);
+  assert.match(team.detail, /raise maxConcurrent above 6/);
+
+  // With no config there is no knob name to advise.
+  const root3 = readyRepo();
+  const wait3 = (role: string, key: string | undefined, waitedMs: number) =>
+    logEvent(root3, { source: TUMWATER_SOURCE, type: "provider_wait", role, key, waitedMs });
+  wait3("feature", "omlx", 700_000);
+  const noCap = checkProviderContention(root3, undefined);
   assert.equal(noCap.level, "warn");
-  assert.match(noCap.detail, /\(the omlx slot\)/);
   assert.doesNotMatch(noCap.detail, /raise/);
 });
 

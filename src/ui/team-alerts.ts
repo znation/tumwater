@@ -86,12 +86,11 @@ export function teamAlerts(
   workspacePins: readonly StaleWorkspacePin[] = [],
   liveFinished: readonly LiveFinishedEntry[] = [],
   instancePool: readonly string[] = [],
-  providerCaps: readonly string[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
-  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, instancePool, providerCaps }));
+  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, instancePool }));
 
   return out;
 }

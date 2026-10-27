@@ -120,8 +120,6 @@ interface TuiKeysState {
   intervalMode: boolean;
   /** The Transcript view's Ctrl+X role-model mode holds the prompt line. */
   roleModelMode: boolean;
-  /** The Activity view's Ctrl+P provider-concurrency-caps mode holds the prompt line. */
-  providerCapsMode: boolean;
   /** The Activity view's Ctrl+W worktree-pool mode holds the prompt line. */
   slotsMode: boolean;
   /** The Activity view's Ctrl+E notify-hook mode holds the prompt line. */

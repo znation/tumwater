@@ -19,7 +19,7 @@ import { staleClaimEntries } from "../scheduling/claim-entries.js";
 import { teamAlerts } from "./team-alerts.js";
 import { duplicatedBacklogHeadings, liveFinishedEntriesFor } from "../doctor/doctor-backlog-plans.js";
 import { readPostReviews } from "../review/post-merge-review.js";
-import { capacityContention, instancePoolProblems, planDependencyAlert, providerCapProblems, regressedFixesAlert, staleOpenQuestions, staleWorkspacePins } from "./alert-feeds.js";
+import { capacityContention, instancePoolProblems, planDependencyAlert, regressedFixesAlert, staleOpenQuestions, staleWorkspacePins } from "./alert-feeds.js";
 
 // The alert feeds' result types live with their functions in alert-feeds.ts, but team-alerts.ts
 // and the tests keep importing them through this module — one import edge into alert-feeds.ts.
@@ -442,7 +442,7 @@ function alertFields(root: string, snap: ReturnType<typeof snapshot>, questions:
   return {
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), planDependencyAlert(root), stalledEntries(root), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), capacityContention(root, now), regressedFixesAlert(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), staleWorkspacePins(root, now), liveFinishedEntriesFor(root), instancePoolProblems(root), providerCapProblems(root)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), planDependencyAlert(root), stalledEntries(root), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), capacityContention(root, now), regressedFixesAlert(root, now), staleClaimEntries(root, roles.map((r) => r.role), now), staleOpenQuestions(root, now), fixClaimProblems(root), staleWorkspacePins(root, now), liveFinishedEntriesFor(root), instancePoolProblems(root)),
   };
 }
 

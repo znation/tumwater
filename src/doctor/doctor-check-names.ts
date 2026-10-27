@@ -21,7 +21,6 @@ export const DOCTOR_CHECK_NAMES = [
   "codex window",
   "provider waits",
   "maintenance allowance",
-  "provider concurrency",
   "provider contention",
   "check contention",
   "repeated failures",

@@ -801,8 +801,7 @@ included, or all but the newest kept entries".
 
 ## Provider concurrency: every run holds one team permit and at most one provider slot
 
-The counting semaphore (`maxConcurrent`) bounds how many runs the team has in flight, and its
-per-key caps (`maxConcurrentPerProvider`) bound how many of those sit on one provider. A run's
+The counting semaphore (`maxConcurrent`) bounds how many runs the team has in flight. A run's
 lease moves with it: it is re-keyed to the provider the run actually uses, and it is released once.
 The build-check cap (`check-permit.ts`) and the cross-process mutex (`lock.ts`) are separate
 subsystems and not covered here.
@@ -817,10 +816,7 @@ not hold back a waiter for another key, and waiters for one key are granted in F
 `src/merge/merge-pipeline.ts`.
 
 **Pinned by.** `test/semaphore.test.ts` — "semaphore bounds concurrency" and "two keys fill
-independently: a full key never delays a free key, FIFO within a key";
-`test/orchestrator-permits.e2e.test.ts` — "maxConcurrentPerProvider caps role-run admission per
-provider while others run beside (part 2/5)" and "a verify's reviewer and a role run on the same
-capped provider never overlap, while another provider runs beside (part 3/5)".
+independently: a full key never delays a free key, FIFO within a key".
 
 ### INV-P2: a cap change never preempts, and permits never leak
 
@@ -885,8 +881,7 @@ on.
 (its `acquire`).
 
 **Pinned by.** `test/provider-lease.test.ts` — "dropProviderLeaseKey returns the held key without
-giving up the team permit"; `test/orchestrator-permits.e2e.test.ts` — "two runs on one provider and
-a single worktree slot both finish (pool-slot wait rule, part 4/5)".
+giving up the team permit".
 
 ### INV-P6: a paused verification lease holds no permit, and a paused lease owes nothing
 

@@ -4,7 +4,6 @@ import { pushPromptHistory, recallPromptHistory } from "./tui-prompt-history.js"
 import { createTuiEditorSession } from "./tui-editor-session.js";
 import { createBudgetEditor } from "./tui-editor-budget.js";
 import { createFallbackEditor } from "./tui-editor-fallback.js";
-import { createProviderCapsEditor } from "./tui-editor-provider-caps.js";
 import { createClaudeReserveEditor } from "./tui-editor-claude-reserve.js";
 import { createNotifyEditor } from "./tui-editor-notify.js";
 import { createBackendsEditor } from "./tui-editor-backends.js";
@@ -129,9 +128,6 @@ interface TuiEditorState {
   releaseMode: boolean;
   /** The Health view's Ctrl+V enable/disable mode holds the prompt line, editing a role id. */
   roleEnabledMode: boolean;
-  /** Whether the prompt line is editing the team's per-provider run caps
-   * `maxConcurrentPerProvider` (Ctrl+P on the Activity view). */
-  providerCapsMode: boolean;
   /** Whether the prompt line is editing the team's claude subscription-window reserve
    * `claudeWindowReserve` (Ctrl+Y on the Activity view). */
   claudeReserveMode: boolean;
@@ -203,7 +199,6 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const editors: TuiEditorModule[] = [
     createBudgetEditor(session),
     createFallbackEditor(session),
-    createProviderCapsEditor(session),
     createClaudeReserveEditor(session),
     createNotifyEditor(session),
     createBackendsEditor(session),
@@ -281,7 +276,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     // above already returned), and budget, pause and search modes keep them out —
     // recalling a prompt into the cap/field text would be a paste, not a recall. No
     // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.concurrency && !session.held.checks && !session.held.check && !session.held.slots && !session.held.model && !session.held.quiet && !session.held.interval && !session.held.roleModel && !session.held.instances && !session.held.instructions && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.release && !session.held.roleEnabled && !session.held.providerCaps && !session.held.notify && !session.held.backends && !session.held.fallback && !session.held.claudeReserve) {
+    if (!session.held.budget && !session.held.concurrency && !session.held.checks && !session.held.check && !session.held.slots && !session.held.model && !session.held.quiet && !session.held.interval && !session.held.roleModel && !session.held.instances && !session.held.instructions && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.release && !session.held.roleEnabled && !session.held.notify && !session.held.backends && !session.held.fallback && !session.held.claudeReserve) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,
@@ -348,7 +343,6 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         roleEnabledMode: session.held.roleEnabled,
         quietMode: session.held.quiet,
         quietTeam: session.held.quietTeam,
-        providerCapsMode: session.held.providerCaps,
         claudeReserveMode: session.held.claudeReserve,
         notifyMode: session.held.notify,
         fallbackMode: session.held.fallback,

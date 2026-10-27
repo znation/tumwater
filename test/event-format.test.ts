@@ -6,19 +6,6 @@ import type { HarnessEvent } from "../src/events/events.js";
 import { formatTimestamp } from "../src/text/datetime.js";
 import { truncate } from "../src/text/text.js";
 import { displayWidth } from "../src/text/text-width.js";
-
-test("formatEvent renders provider_concurrency_changed like its maxConcurrent sibling", () => {
-  const line = formatEvent({
-    ts: 0,
-    source: "tumwater",
-    type: "provider_concurrency_changed",
-    provider: "omlx",
-    from: 1,
-    to: 2,
-  } as never);
-  assert.match(line, /concurrency for omlx changed: 1 → 2/);
-});
-
 test("formatEvent renders image_blind naming the file, the model, and the action", () => {
   const fail = formatEvent({
     ts: 0,
@@ -1175,7 +1162,7 @@ test("formatEvent renders provider_wait naming the key and the run cap when none
   const base = { ts: 0, source: "feature", type: "provider_wait", role: "feature", waitedMs: 120_000 };
   assert.match(
     formatEvent({ ...base, cap: "provider", limit: 2, key: "omlx" } as never),
-    /waited 2m for a omlx slot \(feature; maxConcurrentPerProvider\.omlx is 2\)/,
+    /waited 2m for a omlx slot \(feature; capped at 2\)/,
   );
   const team = formatEvent({ ...base, cap: "team", limit: 3, key: "omlx" } as never);
   assert.match(team, /waited 2m for a run slot \(feature; maxConcurrent is 3\)/);

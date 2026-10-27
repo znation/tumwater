@@ -196,16 +196,11 @@ discards a role's in-flight merge.
   admitted again once its change is approved and waiting for the merge slot or the merge is
   in flight: its branch is reset to main every run, so a queued approved change never
   blocks it.
-- `maxConcurrentPerProvider` (optional) caps how many of those runs each model provider serves
-  at once, beside the team total: a run starts only when BOTH its provider and the team
-  have headroom, and a full provider never holds back a run on another
-  (plans/provider-concurrency.md §1). A role run's key is the provider its model job resolves to
-  (a claude job's own id, else the pi provider, or pi's saved default for a job that names no
-  model). A run whose admission waits 30 s or more for its provider/team slot logs a
-  `provider_wait` event, and `tumwater doctor`'s "provider contention" row sums the last 24 h
-  and warns at 10 minutes, naming every key that waited, busiest first. The event's `cap` names
-  which cap held the run (its provider's, else `maxConcurrent`) and `limit` its value; the
-  doctor row files a team-cap wait under "the run cap" whatever its key.
+- **One bound.** `maxConcurrent` is the only concurrency bound: a run whose admission waits
+  30 s or more because the team is busy logs a `provider_wait` event, and `tumwater doctor`'s
+  "provider contention" row sums the last 24 h and warns at 10 minutes, naming every key that
+  waited, busiest first. The event's `cap` names `maxConcurrent` and `limit` its value; the row
+  files a team-cap wait under "the run cap" whatever its key.
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
   once: pipeline, merge, batch, and main-baseline checks share it, the rest queue, and merges go
   first. A scoped check whose permit wait reaches 30 s logs a `check_wait` event (role, scope,

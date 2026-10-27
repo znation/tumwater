@@ -60,7 +60,6 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
     "subscription_window_reserved",
     "subscription_window_limited",
     "subscription_window_reset",
-    "provider_concurrency_changed",
     "model_changed",
     "bootstrap_complete",
     "fallback_switched",
@@ -426,10 +425,6 @@ test("the digest names every gate hold and lift", () => {
   );
   const limited = describeStateChange(ev({ type: "subscription_window_limited", windowType: "five_hour" }));
   assert.ok(limited.startsWith("waiting: claude window five_hour rejected"), limited);
-  assert.equal(
-    describeStateChange(ev({ type: "provider_concurrency_changed", provider: "claude", from: 2, to: 3 })),
-    "claude concurrency 2 → 3",
-  );
   assert.equal(describeStateChange(ev({ type: "model_changed", to: "acme/m1" })), "model changed — now acme/m1");
   // A model cleared to pi's default arrives with `to: null`; it must render pi's default,
   // never the degenerate `model changed — now `.

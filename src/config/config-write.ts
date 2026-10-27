@@ -24,7 +24,6 @@ import {
 } from "./config.js";
 import {
   checkDailyBudgetUsd,
-  checkProviderConcurrencyCap,
   checkQuietHours,
   parseConfigKey,
   PER_KEY_VALIDATORS,
@@ -90,8 +89,7 @@ export function setDailyBudgetUsd(
  * that setConfigKey's JSON.parse would read past validateConfig's integer check and silently
  * write — the same silent misread the per-role instances/interval guards, the TUI team-key
  * editors, and the GUI Settings rows refuse — so setConfigKey refuses it, naming the key and
- * writing nothing. The per-provider map (maxConcurrentPerProvider.<provider>) has its own
- * checkProviderConcurrencyCap screen and is not in this set. */
+ * writing nothing. */
 const PLAIN_INTEGER_TOP_LEVEL_KEYS = new Set([
   "maxConcurrent",
   "mergeBatchMax",
@@ -139,7 +137,6 @@ export function setConfigKey(
   ): string | null => {
     const isPlainIntegerKey =
       (parsed.kind === "top" && PLAIN_INTEGER_TOP_LEVEL_KEYS.has(key)) ||
-      (parsed.kind === "map" && parsed.map === "maxConcurrentPerProvider") ||
       (parsed.kind === "role" && parsed.field === "instances") ||
       (parsed.kind === "section" && parsed.section === "bootstrap" && parsed.field === "untilPlansDone");
     if (isPlainIntegerKey && trimmed !== "" && isExponentSpelling(trimmed))
@@ -163,9 +160,7 @@ export function setConfigKey(
       const validator =
         parsed.map === "maxDailyCostUsdPerRole"
           ? checkDailyBudgetUsd
-          : parsed.map === "maxConcurrentPerProvider"
-            ? checkProviderConcurrencyCap
-            : checkQuietHours;
+          : checkQuietHours;
       const problem = validator(value, label);
       if (problem) return fail(problem);
     }
@@ -378,8 +373,8 @@ export function setConfigKey(
   if (parsed.kind === "error") return fail(parsed.error);
   // Shape, before the JSON.parse, for every plain-positive-integer key this verb can write —
   // the top-level run-concurrency knobs and legacy merge batch cap, plus the integer-bound
-  // team-scope keys that arrive as a dotted key (`maxConcurrentPerProvider.<provider>`,
-  // `roles.<id>.instances`, the `bootstrap.untilPlansDone` section field): refuse an exponent
+  // team-scope keys that arrive as a dotted key (`roles.<id>.instances`, the
+  // `bootstrap.untilPlansDone` section field): refuse an exponent
   // spelling ("4e1" → 40) that JSON.parse would read past validateConfig's integer check and
   // silently write, naming the key and writing nothing — the twin of the per-role guards, the
   // TUI team-key editors, and the GUI Settings rows. A non-exponent invalid falls through for

@@ -233,8 +233,7 @@ model, instead of pi:
   "fallback": [
     { "model": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra", "maxDailyCostUsd": 10 },
     "qwenrunner/qwen3.8-27b"
-  ],
-  "maxConcurrentPerProvider": { "opencode": 3 }
+  ]
 }
 ```
 
@@ -293,8 +292,7 @@ ChatGPT subscription (Plus today), instead of pi:
 ```json
 {
   "backend": "codex",
-  "backends": { "codex": { "configDir": "~/.codex-tumwater", "windowReserve": { "seven_day": 0.7 } } },
-  "maxConcurrentPerProvider": { "codex": 2 }
+  "backends": { "codex": { "configDir": "~/.codex-tumwater", "windowReserve": { "seven_day": 0.7 } } }
 }
 ```
 
@@ -476,10 +474,9 @@ longer describe what runs.
   nearly every turn re-prefills from scratch (minutes each), requests queue behind those
   prefills, and starved runs die as "no pi progress" watchdog kills even though the server is
   healthy. Symptom to look for: small-context requests timing out while the server log shows
-  continuous back-to-back prompt processing. With per-provider caps
-  (`maxConcurrentPerProvider`, plans/provider-concurrency.md) the rule is: cap the local
-  provider at its slots minus one for the director, then raise `maxConcurrent`
-  freely — the provider cap, not the team total, is what bounds that server.
+  continuous back-to-back prompt processing. The rule for a llama.cpp server is: cap
+  `maxConcurrent` at the server's slots minus one for the director, and raise it only as the
+  server grows — the team total is the bound that protects that server.
 - **A unified KV pool cannot exceed the model's training context; dedicated slots can grow per
   stream**: with unified KV on, llama.cpp treats the shared pool as the slot context and caps it at
   `n_ctx_train` — asking Qwen3.8-27B for 524288 logs "the slot context exceeds the training context

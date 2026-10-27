@@ -107,8 +107,7 @@ object with both, so one config can mix a Claude strong tier with pi providers:
 
 The default tier runs on pi through Hugging Face, the strong model jobs (the director, the plan
 role, the reviewer, and the conflict resolver) run on the claude CLI's included usage, and the fallback runs on pi through
-oMLX — all concurrently, under each provider's cap (set it with `maxConcurrentPerProvider`;
-`tumwater status` shows how many runs each key has going out of its cap). An OpenCode tier is
+oMLX — all concurrently, under the team's `maxConcurrent` cap. An OpenCode tier is
 `{ "backend": "opencode", "model": "deepseek-v4.1-flash-free" }`, so its free tier can sit beside pi
 and claude in one config; a codex tier is `{ "backend": "codex", "model": "gpt-6.1-sol" }`, so a ChatGPT
 subscription can cover the team's default tier beside pi and claude. A Claude model that should stay on pi (billed per token) is the plain

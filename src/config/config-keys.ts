@@ -11,7 +11,7 @@
  * writers and the read side show. */
 import { BACKEND_KEYS, BACKOFF_KEYS, BOOTSTRAP_KEYS, CHECK_KEYS, CLAUDE_AGENT_KEYS, CODEX_BACKEND_KEYS, REVIEW_KEYS, ROLE_ENTRY_KEYS, TIER_MAP_KEYS, TOP_LEVEL_KEYS, type ModelTier } from "./config-schema.js";
 import { typoSuffix } from "../text/suggest.js";
-import { MAX_DURATION_SECONDS, POSITIVE_INTEGER, show } from "./config-field-checks.js";
+import { MAX_DURATION_SECONDS, show } from "./config-field-checks.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 
 /** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
@@ -32,19 +32,6 @@ export function checkDailyBudgetUsd(value: unknown, key = "maxDailyCostUsd"): st
     value > Number.MAX_SAFE_INTEGER
   )
     return `${key} must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}, 0 disables (got ${show(value)})`;
-  return null;
-}
-
-/** One definition of "a valid per-provider concurrency cap" (plans/provider-concurrency.md
- * §1): a positive integer, accepted for any (possibly unknown) provider name — a fallback's
- * provider may only come into use later, so the key is not checked against a catalog. The one
- * validation both `config set maxConcurrentPerProvider.<provider>` and validateConfig show,
- * so they cannot drift apart on what a valid cap is. `key` names the config key in the error,
- * defaulting to the map name; the dotted map passes `maxConcurrentPerProvider.<provider>`
- * so a rejected entry names the key actually set. */
-export function checkProviderConcurrencyCap(value: unknown, key = "maxConcurrentPerProvider"): string | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value) || value < 1)
-    return `${key} must be ${POSITIVE_INTEGER.what} (got ${show(value)})`;
   return null;
 }
 
@@ -88,12 +75,9 @@ export const PER_KEY_VALIDATORS: Record<string, (value: unknown) => string | nul
 
 /** The per-role maps `config get/set` reaches with dotted keys: each names ONE entry
  * (`maxDailyCostUsdPerRole.<role>`, `quietHoursPerRole.<role>`) that merges into the
- * existing map, so raising one role's cap never requires re-typing another's. The
- * `maxConcurrentPerProvider` map is dotted the same way (`maxConcurrentPerProvider.<provider>`);
- * its keys are provider names, not role ids, so its per-key validation skips the role-catalog
- * check the per-role maps apply. The per-key value validator runs before the write, the same
- * screening a bare top-level key gets. */
-export const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole", "maxConcurrentPerProvider"] as const;
+ * existing map, so raising one role's cap never requires re-typing another's. The per-key
+ * value validator runs before the write, the same screening a bare top-level key gets. */
+export const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole"] as const;
 
 /** The fixed-shape top-level sections `config get/set/unset` reaches one field of with a
  * two-segment key (`review.model`, `bootstrap.untilPlansDone`), each with its field list. */

@@ -205,27 +205,19 @@ test("a maxConcurrent edit live-resizes the semaphore and logs its own event", (
   assert.deepEqual(changedKeys(root), []);
 });
 
-test("a maxConcurrentPerProvider edit re-applies key caps and logs one event per changed provider", () => {
-  const config = { ...defaultConfig(), maxConcurrentPerProvider: { omlx: 1 } };
-  const { root, sem, live } = liveReload(config);
+test("a config carrying maxConcurrentPerProvider is refused on reload and the previous config holds", () => {
+  const config = defaultConfig();
+  const { root, live, sem } = liveReload(config);
   live.poll();
-  // The startup config seeds the pool's caps.
-  assert.equal(sem.snapshot().byKey.omlx?.limit, 1);
 
-  const edited = cloneConfig(config);
-  edited.maxConcurrentPerProvider = { omlx: 2, claude: 3 };
-  writeConfig(root, edited);
+  // The removed key is written raw (writeConfig's value is unknown): the reload fails
+  // validation, keeps the last-known-good config, and the keyed semaphore stays uncapped
+  // (never seeded) — no provider_concurrency_changed event.
+  writeConfig(root, { ...config, maxConcurrentPerProvider: { omlx: 2 } });
 
-  assert.equal(live.poll().maxConcurrentPerProvider?.claude, 3);
-  const snap = sem.snapshot().byKey;
-  assert.equal(snap.omlx?.limit, 2);
-  assert.equal(snap.claude?.limit, 3);
-  const caps = eventsOfType(root, "provider_concurrency_changed");
-  assert.equal(caps.length, 2);
-  const byProvider = Object.fromEntries(caps.map((e) => [e.provider as string, { from: e.from, to: e.to }]));
-  assert.deepEqual(byProvider, { omlx: { from: 1, to: 2 }, claude: { from: 0, to: 3 } });
-  // Each provider cap has its own event, so config_changed must not repeat the key.
-  assert.deepEqual(changedKeys(root), []);
+  assert.deepEqual(live.poll(), config);
+  assert.equal(sem.snapshot().byKey.omlx, undefined);
+  assert.equal(readEvents(root).filter((e) => (e.type as string) === "provider_concurrency_changed").length, 0);
 });
 
 test("a missing tumwater.json keeps the last-known-good config and warns once per vanish", () => {

@@ -92,8 +92,8 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     if (view.contextWindow !== undefined) {
       rows.push(kvRow("Context window", view.contextWindow === null ? "unknown" : fmtTokens(view.contextWindow) + " tokens"));
     }
-    if (view.providerKey !== undefined && view.providerCap !== undefined) {
-      rows.push(kvRow("Provider", view.providerKey + " (cap " + view.providerCap + ")"));
+    if (view.providerKey !== undefined) {
+      rows.push(kvRow("Provider", view.providerKey));
     }
     if (view.imageInput !== undefined) {
       const images = view.imageInput === true ? "yes"

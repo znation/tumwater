@@ -34,7 +34,6 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     ["fallback", "Fallback (free at the spend cap)"],
     ["maxDailyCostUsd", "Daily spend cap (USD)"],
     ["maxConcurrent", "Max concurrent runs"],
-    ["maxConcurrentPerProvider", "Provider concurrency caps (JSON)"],
     ["maxConcurrentChecks", "Max concurrent checks"],
     ["worktreeSlots", "Worktree slots"],
     ["claudeWindowReserve", "Claude window reserve (backends.claude.windowReserve)"],

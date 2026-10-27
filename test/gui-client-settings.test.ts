@@ -51,7 +51,7 @@ function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
 
 test("renderSettings renders one row per curated key, esc'd, with the key's config name shown", () => {
   const { renderSettings, SETTINGS_KEYS } = settingsScope();
-  const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, maxConcurrent: 6, maxConcurrentPerProvider: { anthropic: 4 }, worktreeSlots: 9, quietHours: null, notify: undefined, backends: { pi: { bin: "pi" } }, check: { command: "npm test" } });
+  const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, maxConcurrent: 6, worktreeSlots: 9, quietHours: null, notify: undefined, backends: { pi: { bin: "pi" } }, check: { command: "npm test" } });
   // The browser list is a hand copy of the server constant; pin key and order to it so the
   // two cannot drift — an added editable key must appear here too.
   assert.deepEqual(SETTINGS_KEYS.map(([key]) => key), [...EDITABLE_CONFIG_KEYS]);
@@ -75,7 +75,6 @@ test("renderSettings renders one row per curated key, esc'd, with the key's conf
   // the object key as compact JSON (esc'd), exactly as backends does.
   assert.match(html, /id='set-maxConcurrent' value='6'/);
   assert.match(html, /id='set-worktreeSlots' value='9'/);
-  assert.match(html, /id='set-maxConcurrentPerProvider' value='\{&quot;anthropic&quot;:4\}'/);
   assert.match(html, /id='set-quietHours' value=''/);
   assert.match(html, /id='set-notify' value=''/);
   // An object value renders as compact JSON (esc'd), so it can round-trip through the field.

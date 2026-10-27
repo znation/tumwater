@@ -73,9 +73,6 @@ export interface RoleViewPayload {
    * concurrent runs (plans/provider-concurrency.md §8). Absent for a seam whose key
    * cannot be resolved (a cap-less default team). */
   providerKey?: string;
-  /** The `maxConcurrentPerProvider` cap for `providerKey`, present only while such a map is
-   * configured and the key resolves. The number the team line shows as `<key> inUse/cap`. */
-  providerCap?: number;
   /** pi's own saved default model (readPiDefaultModel) as a formatted selector, present only
    * for a pi seam that resolves neither a provider nor a model — the name the role runs when
    * tumwater.json names none. The effective `thinking` wins over the default's, matching
@@ -305,15 +302,11 @@ export function rolePayload(
     effective.provider === undefined &&
     effective.model === undefined;
   const piDefault = runsPiWithoutAModel ? readPiDefaultModel(piSettingsPath(modelsPath), root) : null;
-  // The role's provider key and its cap (plans/provider-concurrency.md §8): the same pure
-  // key the orchestrator's admission resolves for this role, answered from the same
-  // piDefault seam the orchestrator carries, so `tumwater role <id>` names the exact key
-  // whose cap bounds the role. The cap is the map's entry for that key, absent when no
-  // `maxConcurrentPerProvider` map is set or the key has no entry (then the role is bounded
-  // only by the team total, and the cap is omitted).
+  // The role's provider key (plans/provider-concurrency.md §8): the same pure key the
+  // orchestrator's admission resolves for this role, answered from the same piDefault seam
+  // the orchestrator carries, so `tumwater role <id>` names the exact key that bounds the
+  // role's runs.
   const providerKey = seamConcurrencyKey(effective, piDefault);
-  const providerCap =
-    providerKey !== undefined ? cfg.maxConcurrentPerProvider?.[providerKey] : undefined;
   // The fallback story the operator sees: the declared pair, but the price-resolved pair when
   // one exists (a map with no `default` entry borrows another tier's free pair) and the
   // freeness verdict from the same read. `fallbackFree` false keeps the declared pair visible
@@ -471,7 +464,6 @@ export function rolePayload(
       : {}),
     backend: effective.agent ?? "pi",
     ...(providerKey !== undefined ? { providerKey } : {}),
-    ...(providerCap !== undefined ? { providerCap } : {}),
     fallback,
     fallbackFree: freeFallback !== null,
     modelFallback: modelFallbackView(episode, cfg, role),

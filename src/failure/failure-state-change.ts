@@ -64,7 +64,6 @@ export const STATE_CHANGE_TYPES = new Set<string>([
   "subscription_window_reserved",
   "subscription_window_limited",
   "subscription_window_reset",
-  "provider_concurrency_changed",
   "model_changed",
   "bootstrap_complete",
   "fallback_switched",
@@ -274,9 +273,6 @@ function modelStateChange(ev: HarnessEvent): string {
       // off-model episode ran.
       text = `model fallback ended — back on ${providerModel(ev)} after ${shortSpanPhrase(finiteNumber(ev.durationMs, 0))}`;
       break;
-    case "provider_concurrency_changed":
-      text = `${field(ev.provider)} concurrency ${field(ev.from)} → ${field(ev.to)}`;
-      break;
     case "model_changed":
       // A model_cleared (or a roles.<id>.model-only) live edit arrives with `to: null`;
       // name pi's default the way the feed does so the digest never renders a bare
@@ -478,7 +474,6 @@ export function describeStateChange(ev: HarnessEvent): string {
       return truncateExample(pauseStateChange(ev), STATE_CHANGE_MAX);
     case "model_fallback_started":
     case "model_fallback_ended":
-    case "provider_concurrency_changed":
     case "model_changed":
     case "fallback_switched":
     case "budget_handback":

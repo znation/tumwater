@@ -915,13 +915,13 @@ test("statusPayload and renderStatus carry a validation-gaps alert from BUGS.md,
 
 test("a capacity bottleneck raises one standing amber alert carrying the doctor's detail", () => {
   const now = Date.now();
-  const contention = [{ name: "provider slots", detail: "2 waits for a provider slot in the last 24h, 20m total, longest 10m (the omlx slot) — raise maxConcurrentPerProvider.omlx above 1" }];
+  const contention = [{ name: "provider slots", detail: "2 waits for a provider slot in the last 24h, 20m total, longest 10m (the omlx slot) — raise maxConcurrent above 6" }];
   // contention is the 12th positional argument.
   const alerts = teamAlerts(base, [], [], now, [], null, [], [], [], [], contention);
   assert.deepEqual(alerts.map((a) => [a.key, a.tone]), [["contention", "amber"]]);
   assert.match(alerts[0]!.title ?? "", /1 capacity bottleneck/);
   assert.match(alerts[0]!.detail ?? "", /provider slots:/);
-  assert.match(alerts[0]!.detail ?? "", /raise maxConcurrentPerProvider\.omlx/);
+  assert.match(alerts[0]!.detail ?? "", /raise maxConcurrent above 6/);
   assert.deepEqual(alerts[0]!.actions, []);
   // An empty last argument adds no alert.
   assert.deepEqual(teamAlerts(base, [], [], now, [], null, [], [], [], []), []);
@@ -970,8 +970,8 @@ function stampDaysAgo(n: number, now: number = Date.now()): string {
 test("a stale workspace pin raises the workspace-pins alert", () => {
   const now = Date.now();
   // workspacePins is the last argument passed here; the 11 preceding values (refused…fixClaims)
-  // are passed so the slot lands, pinning the position (liveFinished, instancePool and
-  // providerCaps follow as defaults).
+  // are passed so the slot lands, pinning the position (liveFinished and instancePool
+  // follow as defaults).
   const alerts = teamAlerts(base, [], [], now, [], null, [], [], [], [], [], null, [], [], [], [{ role: "feature", dir: "_slot-1", ageMs: 25 * 3_600_000 }]);
   const only = alerts.filter((a) => a.key === "workspace-pins");
   assert.equal(only.length, 1);
@@ -997,34 +997,17 @@ test("a stale workspace pin raises the workspace-pins alert", () => {
   assert.ok(two[0]!.detail.includes("bugfix"));
 });
 
-test("a maxConcurrentPerProvider misconfiguration raises one standing amber provider-caps alert", () => {
+test("no provider-caps alert fires after the subtract plan removed the per-provider map", () => {
   const now = Date.now();
-  const problem = 'cap key "omlx" resolves to no model job (a typo, or a provider not in use)';
-  // providerCaps is the trailing parameter, after liveFinished and instancePool ([]); the 21
-  // preceding values (refused…workspacePins, then liveFinished and instancePool, passed
-  // explicitly) are filled so the trailing slot lands, pinning the position.
-  const alerts = teamAlerts(base, [], [], now, [], null, [], [], [], [], [], null, [], [], [], [], [], [], [problem]);
-  const only = alerts.filter((a) => a.key === "provider-caps");
-  assert.equal(only.length, 1);
-  assert.equal(only[0]!.tone, "amber");
-  assert.match(only[0]!.title ?? "", /maxConcurrentPerProvider is misconfigured/);
-  assert.ok(only[0]!.detail.includes(problem));
-  assert.match(only[0]!.detail ?? "", /fix the map in tumwater.json/);
-  assert.deepEqual(only[0]!.actions, []);
-  // An empty (default) final argument adds no alert.
+  // The provider-caps builder is gone: teamAlerts never emits the key, whatever it is given.
   assert.equal(teamAlerts(base, [], [], now, [], null, [], [], [], [], [], null, [], [], [], []).filter((a) => a.key === "provider-caps").length, 0);
-  // The full pipeline carries the same alert through statusPayload over a seeded map, pinning
-  // the feed-to-builder wiring end to end.
+  // A config carrying the removed key is refused on load, so the status payload falls back to
+  // the defaults and names no provider-caps alert.
   const root = makeRepo();
-  writeJsonFile(configPath(root), { ...defaultConfig(), backend: "claude", model: { default: "m" }, maxConcurrent: 4, maxConcurrentPerProvider: { omlx: 3 } });
-  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; tone?: string; title?: string; detail?: string }> };
-  const capsAlert = payload.alerts.find((a) => a.key === "provider-caps");
-  assert.equal(capsAlert?.tone, "amber");
-  assert.match(capsAlert?.title ?? "", /maxConcurrentPerProvider is misconfigured/);
-  assert.ok((capsAlert?.detail ?? "").includes(problem));
-  // A well-formed map (or no map) yields no alert.
-  writeJsonFile(configPath(root), { ...defaultConfig(), backend: "pi", model: { default: "omlx/m" }, maxConcurrent: 4, maxConcurrentPerProvider: { omlx: 3 } });
-  assert.equal((statusPayload(root, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "provider-caps"), undefined);
+  writeJsonFile(configPath(root), { ...defaultConfig(), maxConcurrentPerProvider: { omlx: 3 } });
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string }> };
+  assert.equal(payload.alerts.find((a) => a.key === "provider-caps"), undefined);
+  // A well-formed (map-less) config also yields none.
   writeJsonFile(configPath(root), { ...defaultConfig(), backend: "claude", model: { default: "m" }, maxConcurrent: 4 });
   assert.equal((statusPayload(root, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "provider-caps"), undefined);
 });
@@ -1033,7 +1016,7 @@ test("a workspace pool below the run cap raises one standing amber instance-pool
   const now = Date.now();
   // instancePool is the last argument passed here; the 20 preceding values (refused…workspacePins
   // then liveFinished, passed explicitly) are passed so the slot lands, pinning the
-  // position after the workspace-pins slot (providerCaps follows as a default).
+  // position after the workspace-pins slot.
   const alerts = teamAlerts(base, [], [], now, [], null, [], [], [], [], [], null, [], [], [], [], [], ["feature run instances but worktreeSlots 1 is below maxConcurrent 6"]);
   const only = alerts.filter((a) => a.key === "instance-pool");
   assert.equal(only.length, 1);

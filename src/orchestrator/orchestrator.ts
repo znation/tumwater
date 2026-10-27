@@ -166,10 +166,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // resolver — merge-drain.ts) all hold a permit; see its MergePipelineContext for why a
   // merge is not exempt.
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
-  // Seed the pool's per-provider caps from the startup config (plans/provider-concurrency.md
-  // §7): a role run's lease is bounded by its provider key from the first launch onward, not
-  // just after a live edit. A config without the key passes an empty map, the no-change case.
-  semaphore.setKeyCaps(config.maxConcurrentPerProvider ?? {});
 
   const infoFile = orchestratorStatePath(root);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };

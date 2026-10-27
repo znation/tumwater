@@ -223,19 +223,13 @@ test("maxConcurrentChecks is validated like maxConcurrent: a positive integer", 
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), maxConcurrentChecks: 1 }));
 });
 
-test("maxConcurrentPerProvider is an optional map of positive integers under non-empty keys", () => {
-  // Absent passes (the default), and unknown provider names are NOT errors (doctor warns).
-  assert.doesNotThrow(() => validateConfig({ ...defaultConfig() }));
-  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), maxConcurrentPerProvider: { omlx: 3, claude: 6 } }));
-  // 0, -1, a fraction and a non-object each fail naming the dotted key.
-  for (const [bad, shown] of [[0, "0"], [-1, "-1"], [1.5, "1\\.5"]] as const) {
-    assert.match(
-      validationError({ maxConcurrentPerProvider: { omlx: bad } }),
-      new RegExp(`maxConcurrentPerProvider\\.omlx must be an integer of at least 1 \\(got ${shown}\\)`),
-    );
-  }
-  assert.match(validationError({ maxConcurrentPerProvider: [] }), /maxConcurrentPerProvider must be an object mapping provider names to concurrency caps/);
-  assert.match(validationError({ maxConcurrentPerProvider: { "": 2 } }), /maxConcurrentPerProvider\.<empty> — a provider key must not be empty/);
+test("maxConcurrentPerProvider is refused by name (removed; maxConcurrent is the only bound)", () => {
+  // The subtract plan removed the per-provider map: a config carrying the key is refused as
+  // an unknown top-level key, naming the key — not silently ignored.
+  assert.match(
+    validationError({ maxConcurrentPerProvider: { omlx: 3 } }),
+    /unknown key "maxConcurrentPerProvider" in tumwater\.json/,
+  );
 });
 
 test("claudeWindowReserve is an optional map of window types to fractions above 0 and at most 1", () => {

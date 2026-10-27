@@ -287,15 +287,6 @@ export interface TumwaterConfig {
    * permits for its length, and a merge's conflict resolver one for its run, ahead of any
    * waiting role run (land-queue speed 2c). Only the director's own runs sit outside it. */
   maxConcurrent: number;
-  /** Per-provider concurrency caps (plans/provider-concurrency.md §1): how many runs each
-   * model provider serves at once, beside the team-wide `maxConcurrent`. A map from provider
-   * key (§2: a backend's own id for claude, else the pi provider) to a positive integer. A
-   * role run, a merge verify run or a conflict resolver starts when BOTH its provider and the
-   * team have headroom; providers never wait on each other. An absent key is uncapped —
-   * bounded by `maxConcurrent` alone — and a config without the key behaves exactly as
-   * before. Unknown provider names are accepted (doctor warns in part 5/5); an entry at or
-   * above `maxConcurrent` is legal but inert. Optional and absent by default. */
-  maxConcurrentPerProvider?: Record<string, number>;
   /** The share of each subscription usage window the team leaves for you (plans/fallback-chain.md
    * "Reserve"): a map from window type (`five_hour`, `seven_day`) to a fraction 0 < f ≤ 1. At or
    * past that utilization the subscription counts as used up for every role but the director
@@ -462,7 +453,6 @@ export const TOP_LEVEL_KEYS = [
   "check",
   "piArgs",
   "maxConcurrent",
-  "maxConcurrentPerProvider",
   "claudeWindowReserve",
   "mergeBatchMax",
   "maxConcurrentChecks",

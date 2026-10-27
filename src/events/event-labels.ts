@@ -79,7 +79,6 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   subscription_window_limited: "waiting: usage window",
   subscription_window_reset: "usage window reset",
   max_concurrent_changed: "concurrency changed",
-  provider_concurrency_changed: "provider concurrency changed",
   retention_changed: "retention changed",
   config_changed: "settings changed",
   model_changed: "model changed",

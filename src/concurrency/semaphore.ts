@@ -7,9 +7,9 @@
  * entry points — acquire/tryAcquire/release — are unchanged; only acquireLease, forceLease
  * and setKeyCaps touch the keyed path. */
 
-/** The entries of a `maxConcurrentPerProvider` map the semaphore enforces: positive integers
+/** The entries of a per-provider cap map the semaphore enforces: positive integers
  * only, so a non-positive or non-integer cap is dropped rather than read as a limit. */
-export function enforcedKeyCaps(caps: Record<string, number> | undefined): [string, number][] {
+function enforcedKeyCaps(caps: Record<string, number> | undefined): [string, number][] {
   return Object.entries(caps ?? {}).filter(([, v]) => Number.isInteger(v) && v > 0);
 }
 
@@ -54,7 +54,7 @@ export class Semaphore {
    * key at its cap withholds further grants on it. Grows and shrinks only through release and
    * rekey — never preempted. */
   private readonly keyInUse = new Map<string, number>();
-  /** The live per-key caps, from `maxConcurrentPerProvider` (plans/provider-concurrency.md
+  /** The live per-key caps (plans/provider-concurrency.md
    * §1). An absent key is uncapped — bounded by `capacity` alone. */
   private keyCaps = new Map<string, number>();
   /** Permits withheld from tier ≥ 1 acquirers so a work role that has work to take can claim
@@ -372,7 +372,7 @@ export class Semaphore {
     this.drive();
   }
 
-  /** Live-resize the per-key caps (a mid-run `maxConcurrentPerProvider` edit). Growing admits
+  /** Live-resize the per-key caps. Growing admits
    * parked waiters for that key up to the new headroom; shrinking never preempts an in-flight
    * holder — it only withholds future grants on that key until releases drain it under the new
    * cap, the same contract as setCapacity. Non-positive and non-integer entries are dropped. */

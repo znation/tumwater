@@ -64,8 +64,6 @@ interface TuiHeld {
    * `roles.<base>.instructions` override the prompt line is replacing from a typed file path,
    * or null when closed. */
   instructions: string | null;
-  /** The Activity view's Ctrl+P provider-concurrency-caps editor holds the prompt line. */
-  providerCaps: boolean;
   /** The Activity view's Ctrl+N run-cap (`maxConcurrent`) editor holds the prompt line. */
   concurrency: boolean;
   /** The Activity view's Ctrl+W worktree-pool editor holds the prompt line. */
@@ -105,7 +103,6 @@ type EditorEnterKey =
   | "quiet"
   | "interval"
   | "instructions"
-  | "providerCaps"
   | "concurrency"
   | "slots"
   | "notify"
@@ -206,7 +203,6 @@ const HOLDER_SUBJECTS: ReadonlyArray<readonly [Exclude<NonNullable<Parameters<Tu
   ["model", "model edit"],
   ["interval", "min run interval"],
   ["instructions", "instructions edit"],
-  ["providerCaps", "provider caps"],
   ["concurrency", "run cap edit"],
   ["slots", "worktree slots"],
   ["notify", "notify hook"],
@@ -249,7 +245,6 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       quietTeam: false,
       interval: false,
       instructions: null,
-      providerCaps: false,
       concurrency: false,
       slots: false,
       notify: false,

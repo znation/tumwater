@@ -26,12 +26,6 @@ import { rankCountEntries } from "../collections.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
 import { staleClaimDetail, staleClaimEntries } from "../scheduling/claim-entries.js";
-import { piModelsPath } from "../pi/pi-models.js";
-import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
-import { seamConcurrencyKey } from "../config/config-views.js";
-import type { ModelSelector } from "../config/model-selector.js";
-import { seamsInUse } from "../config/config-fallbacks.js";
-import { enforcedKeyCaps } from "../concurrency/semaphore.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { branchName, mergeLockDir, worktreesDir } from "../paths.js";
 import { artifactPhrase, retireRole } from "../operator/retire.js";
@@ -172,10 +166,10 @@ export function slotWaitContention(waits: readonly HarnessEvent[], slotCount: nu
 /** Provider-slot contention's rule (the body of checkProviderContention from `sumWaits` on):
  * sums the waits, ranks the per-key buckets busiest first (the key-less bucket, which also
  * takes every team-cap wait whatever its key, reads "the run cap") and, on a warn past
- * PROVIDER_WAIT_WARN_TOTAL_MS, names each key's maxConcurrentPerProvider cap to raise plus
- * maxConcurrent for the run cap. Shared by the doctor's `provider contention` row and the
- * always-on contention alert, so the trigger and the advice cannot drift. The shared rule
- * leaves the count-zero and read-error arms to checkProviderContention. */
+ * PROVIDER_WAIT_WARN_TOTAL_MS, names `maxConcurrent` to raise. Shared by the doctor's
+ * `provider contention` row and the always-on contention alert, so the trigger and the advice
+ * cannot drift. The shared rule leaves the count-zero and read-error arms to
+ * checkProviderContention. */
 export function providerWaitContention(waits: readonly HarnessEvent[], config: TumwaterConfig | undefined): WaitContention {
   const perKey = new Map<string, number>();
   const { count, totalMs, longestMs } = sumWaits(waits);
@@ -198,15 +192,11 @@ export function providerWaitContention(waits: readonly HarnessEvent[], config: T
       : `(${cells[0]}, also ${cells.slice(1).join(", ")})`;
   let detail = `${plural(count, "wait")} for a provider slot in the last 24h, ${shortSpanPhrase(totalMs)} total, longest ${shortSpanPhrase(longestMs)} ${parenthetical}`;
   const contended = totalMs >= PROVIDER_WAIT_WARN_TOTAL_MS;
-  if (contended) {
-    const advice = ranked
-      .filter((b) => b.key !== "" && config?.maxConcurrentPerProvider?.[b.key] !== undefined)
-      .map((b) => `raise maxConcurrentPerProvider.${b.key} above ${config?.maxConcurrentPerProvider?.[b.key]}`)
-      .join(" and ");
-    const teamAdvice =
-      perKey.has("") && config !== undefined ? [`raise maxConcurrent above ${config.maxConcurrent}`] : [];
-    const all = [...(advice ? [advice] : []), ...teamAdvice].join(" and ");
-    if (all) detail += ` — ${all}`;
+  // The one configurable bound is the team total, so a warn names `maxConcurrent` to raise —
+  // but only for a team-cap wait, the only kind that bound can affect (a keyed-only wait from
+  // an old event shape has no knob to name).
+  if (contended && config !== undefined && perKey.has("")) {
+    detail += ` — raise maxConcurrent above ${config.maxConcurrent}`;
   }
   return { warn: contended, detail };
 }
@@ -309,7 +299,7 @@ function waitContentionRow(
  * orchestrator-launch.ts) and warns when the total reaches PROVIDER_WAIT_WARN_TOTAL_MS — the
  * provider cap is too small. Names every key that waited, busiest first (the key-less
  * bucket, which also takes every team-cap wait whatever its key, reads "the run cap") and, on
- * a warn, each key's maxConcurrentPerProvider cap to raise, plus maxConcurrent for the run cap.
+ * a warn, names `maxConcurrent` for the run cap.
  * A counterpoint to checkWorktreePool's slot-wait half; read-only, like every doctor check.
  * `now` is a test seam for the window. */
 export function checkProviderContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
@@ -554,66 +544,4 @@ export function smallPoolProblems(config: TumwaterConfig): string[] {
   const slots = slotCount(config);
   if (multi.length === 0 || slots >= config.maxConcurrent) return [];
   return [`${multi.join(", ")} run instances but worktreeSlots ${slots} is below maxConcurrent ${config.maxConcurrent}`];
-}
-
-/** Provider concurrency caps (plans/provider-concurrency.md §8): audit the
- * `maxConcurrentPerProvider` map against the seams the config can actually spawn — each role,
- * the review gate, the resolver, the director, and each tier's fallback — so the operator
- * sees whether every cap names a provider in use and whether any cap actually binds. Warns on
- * a cap key no seam resolves to (a typo, or a provider not in use), a cap at or above
- * `maxConcurrent` (which never binds — the team total is the real ceiling), and a capped
- * team whose seams include one with no key (pi's default provider is unreadable, so that
- * seam cannot be capped). A config with no per-provider map or no caps is fine, and so is a
- * well-formed map; a broken config is reported by the init check. Takes `root` to read pi's
- * own default model (piSettingsPath), the same seam the orchestrator's admission uses, so a
- * bare no-model pi seam keys exactly as the team would key it. */
-/** The warnings behind checkProviderConcurrency, as a pure function of the config and pi's
- * default model name: a cap key no seam resolves to (a typo, or a provider not in use), a cap
- * at or above `maxConcurrent` (which never binds), and a capped team whose seams include one
- * with no key (pi's default provider is unreadable, so that seam cannot be capped). The doctor's
- * `provider concurrency` row and the always-on `provider-caps` team alert both read this one
- * computation, so the row and the alert cannot drift on the trigger or the wording. `[]` for no
- * config, a map with no enforcedKeyCaps entries, or a map with no problem. `piDefault` is the
- * bare default model the orchestrator's admission seam carries, read once by the callers
- * through readPiDefaultModel(piSettingsPath(piModelsPath()), root). */
-export function providerConcurrencyProblems(config: TumwaterConfig | undefined, piDefault: ModelSelector | null): string[] {
-  if (!config) return [];
-  const caps = config.maxConcurrentPerProvider;
-  const capEntries = enforcedKeyCaps(caps);
-  if (capEntries.length === 0) return [];
-  const seams = seamsInUse(config);
-  const keySet = new Set<string>();
-  const keyless: string[] = [];
-  for (const s of seams) {
-    const k = seamConcurrencyKey(s, piDefault);
-    if (k !== undefined) keySet.add(k);
-    else keyless.push(s.label); // pi's default provider is unreadable, so this seam cannot be capped
-  }
-  const capKeys = capEntries.map(([k]) => k);
-  const warnings: string[] = [];
-  for (const key of capKeys) {
-    if (!keySet.has(key)) warnings.push(`cap key "${key}" resolves to no model job (a typo, or a provider not in use)`);
-  }
-  for (const [key, cap] of capEntries) {
-    if (cap >= config.maxConcurrent) warnings.push(`cap "${key}" ${cap} is at or above maxConcurrent ${config.maxConcurrent} — it never binds`);
-  }
-  const capSet = new Set(capKeys);
-  if (capSet.size > 0 && keyless.length > 0) {
-    warnings.push(`${plural(keyless.length, "model job")} ${agree(keyless.length, "resolves", "resolve")} to no provider key (pi's default provider is unreadable, so they cannot be capped): ${keyless.join(", ")}`);
-  }
-  return warnings;
-}
-
-export function checkProviderConcurrency(config: TumwaterConfig | undefined, root: string): CheckOutcome {
-  if (!config) return okOutcome("no config to audit");
-  const caps = config.maxConcurrentPerProvider;
-  const capEntries = enforcedKeyCaps(caps);
-  if (capEntries.length === 0) return okOutcome("no per-provider caps configured");
-  // The pi default model the orchestrator's admission seam carries: a bare no-model pi seam
-  // resolves its key only through it, so a team whose default is readable has keyed seams and
-  // only an unreadable default leaves a key-less seam to warn about.
-  const piDefault = readPiDefaultModel(piSettingsPath(piModelsPath()), root);
-  const problems = providerConcurrencyProblems(config, piDefault);
-  if (problems.length === 0) return okOutcome(`${plural(capEntries.length, "provider cap")} — all model jobs resolve`);
-  return warnOutcome(problems.join("; "));
 }

@@ -1036,9 +1036,8 @@ test("handleConfig returns exactly the curated keys, resolved values with null f
   const unsetServed = await serveConfig(unsetRoot);
   assert.equal((unsetServed.data as Record<string, unknown>).check, null);
   // The run-concurrency knobs: maxConcurrent resolves to loadConfig's default (6) when the
-  // file does not set it, and the two optional keys read null.
+  // file does not set it, and the optional worktreeSlots reads null.
   assert.equal(cfg.maxConcurrent, 6);
-  assert.equal(cfg.maxConcurrentPerProvider, null);
   assert.equal(cfg.worktreeSlots, null);
   // customRoles is deliberately not served: the panel's reach is the curated set.
   assert.equal("customRoles" in cfg, false);
@@ -1074,16 +1073,11 @@ test("handleConfigSet writes the run-concurrency knobs and refuses a type-invali
   assert.equal(slots.captured.status, 200);
   assert.deepEqual(slots.data, { ok: true, key: "worktreeSlots", value: 9 });
   assert.equal("oldValue" in (slots.data as Record<string, unknown>), false, "the file never held worktreeSlots, so JSON omits the undefined oldValue");
-  const caps = await serveConfigSet(root, { key: "maxConcurrentPerProvider", value: { anthropic: 4 } });
-  assert.equal(caps.captured.status, 200);
-  assert.deepEqual(caps.data, { ok: true, key: "maxConcurrentPerProvider", value: { anthropic: 4 } });
-  assert.equal("oldValue" in (caps.data as Record<string, unknown>), false, "the file never held maxConcurrentPerProvider, so JSON omits the undefined oldValue");
   // The file on disk holds each under its top-level key, polled live by the running team
-  // (max_concurrent_changed / provider_concurrency_changed / worktree_slots_changed).
+  // (max_concurrent_changed / worktree_slots_changed).
   const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal(onDisk.maxConcurrent, 8);
   assert.equal(onDisk.worktreeSlots, 9);
-  assert.deepEqual(onDisk.maxConcurrentPerProvider, { anthropic: 4 });
   // A type-invalid value and a negative worktreeSlots return the shared validator's 400 and
   // leave the file byte-identical to what the successful writes produced.
   const before = fs.readFileSync(configPath(root), "utf8");
@@ -1095,18 +1089,15 @@ test("handleConfigSet writes the run-concurrency knobs and refuses a type-invali
   assert.match((neg.data as { error: string }).error, /worktreeSlots/);
   assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "the refused writes leave the file byte-identical");
   // POST /api/config-unset clears each file override; unsetting maxConcurrent re-serializes
-  // the merged config with its default (6) filled in, while the two optional keys drop out.
+  // the merged config with its default (6) filled in, while the optional worktreeSlots drops out.
   await serveConfigUnset(root, { key: "maxConcurrent" });
   await serveConfigUnset(root, { key: "worktreeSlots" });
-  await serveConfigUnset(root, { key: "maxConcurrentPerProvider" });
   const after = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal(after.maxConcurrent, 6, "the file reverted maxConcurrent to the default");
   assert.equal("worktreeSlots" in after, false);
-  assert.equal("maxConcurrentPerProvider" in after, false);
   const served = await serveConfig(root);
   assert.equal((served.data as Record<string, unknown>).maxConcurrent, 6);
   assert.equal((served.data as Record<string, unknown>).worktreeSlots, null);
-  assert.equal((served.data as Record<string, unknown>).maxConcurrentPerProvider, null);
 });
 
 test("handleConfigSet writes the declared check and refuses an invalid one byte-identically", async () => {

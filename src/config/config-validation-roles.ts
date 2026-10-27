@@ -1,7 +1,7 @@
 /** The per-role and cross-field section rules of tumwater.json validation: the `customRoles`
  * collect-and-check block, the `roles.<id>` entry block, `review.afterMerge`'s name check,
- * the per-role daily cost caps and quiet hours, `maxConcurrentPerProvider`,
- * `claudeWindowReserve` and its mutually-exclusive spelling pair, and the `idleBackoff`
+ * the per-role daily cost caps and quiet hours, `claudeWindowReserve` and its
+ * mutually-exclusive spelling pair, and the `idleBackoff`
  * cross-field pair. Extracted from the single validateConfig gate (config-validation.ts) so a
  * per-role or cross-field edit lands as a per-theme diff instead of a whole-gate one; this
  * module runs once, at the gate's end, after every other section has appended its problems,
@@ -28,7 +28,6 @@ import { TUMWATER_SOURCE } from "../events/events.js";
 import {
   DOLLAR_CAP,
   MAX_DURATION_SECONDS,
-  POSITIVE_INTEGER,
   type NumberRule,
   checkKnownKeys,
   checkKnownRoleId,
@@ -98,7 +97,7 @@ interface RolesCrossFieldHelpers {
 
 /** Validate the per-role and cross-field sections that close the gate: `customRoles`, the
  * `roles.<id>` entries, `review.afterMerge`'s role names, the per-role caps and quiet hours,
- * `maxConcurrentPerProvider`, `claudeWindowReserve` and the `idleBackoff` cross-field pair,
+ * `claudeWindowReserve` and the `idleBackoff` cross-field pair,
  * each appended to `problems` in the order the gate produced. The single call site in
  * validateConfig is the point where these problems were appended, so the order across the
  * whole pass is unchanged. */
@@ -112,7 +111,6 @@ export function validateRolesAndCrossField(
   validateReviewAfterMerge(r, problems, customNames);
   validatePerRoleCostCaps(r, problems, customNames);
   validatePerRoleQuietHours(r, problems, customNames);
-  validateMaxConcurrentPerProvider(r, problems);
   validateClaudeWindowReserve(r, problems, helpers);
   validateIdleBackoff(r, problems);
 }
@@ -292,37 +290,6 @@ function validatePerRoleQuietHours(
     const parsed = parseQuietHours(value, `quietHoursPerRole.${id}`);
     if (!parsed.ok) problems.push(parsed.error);
   });
-}
-
-/** Validate per-provider concurrency caps (plans/provider-concurrency.md §1): a map from
- * provider key to a positive integer. Unlike the per-role maps, an unknown provider name is
- * NOT a validation error — providers live in pi's models.json, which validation does not
- * read, and a fallback's provider may only come into use later (doctor warns in part 5/5).
- * Each value must be a positive integer under a non-empty key. */
-function validateMaxConcurrentPerProvider(
-  r: Record<string, unknown>,
-  problems: string[],
-): void {
-  if (r.maxConcurrentPerProvider !== undefined) {
-    const map = r.maxConcurrentPerProvider;
-    if (!isJsonObject(map)) {
-      problems.push(
-        `maxConcurrentPerProvider must be an object mapping provider names to concurrency caps (got ${show(map)})`,
-      );
-    } else {
-      for (const [provider, value] of Object.entries(map)) {
-        if (provider.trim() === "") {
-          problems.push(`maxConcurrentPerProvider.<empty> — a provider key must not be empty`);
-          continue;
-        }
-        if (typeof value !== "number" || !Number.isFinite(value) || !POSITIVE_INTEGER.ok(value)) {
-          problems.push(
-            `maxConcurrentPerProvider.${provider} must be ${POSITIVE_INTEGER.what} (got ${show(value)})`,
-          );
-        }
-      }
-    }
-  }
 }
 
 /** Validate `claudeWindowReserve` (the subscription-window reserve: a map from window type to

@@ -284,12 +284,11 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   // fallback's own documented state). `unknown` when it cannot be known (a non-pi seam, an
   // unresolvable pair, a model with no declared window).
   lines.push(`- Context window: ${p.contextWindow === null ? "unknown" : `${compactTokens(p.contextWindow)} tokens`}`);
-  // Per-provider concurrency cap (plans/provider-concurrency.md §8): name the key whose cap
-  // bounds the role's concurrent runs, plus the cap itself. Present only while
-  // `maxConcurrentPerProvider` maps this seam's key — a cap-less default team has no
-  // resolvable key entry, so its role view renders no new line and stays byte-identical.
-  if (p.providerKey !== undefined && p.providerCap !== undefined) {
-    lines.push(`- Provider: ${p.providerKey} (cap ${p.providerCap})`);
+  // The provider key whose admission cap bounds the role's concurrent runs
+  // (plans/provider-concurrency.md §8): a cap-less default team has no resolvable key, so
+  // its role view renders no line and stays byte-identical.
+  if (p.providerKey !== undefined) {
+    lines.push(`- Provider: ${p.providerKey}`);
   }
   // Image input (plans/image-input.md "Surfaces", part 5/5): whether this role's own model
   // reads images. Not just `yes`/`no`: a text-only role reads `no`; unknown (null) renders

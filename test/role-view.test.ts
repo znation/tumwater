@@ -321,25 +321,21 @@ test("renderRoleMarkdown renders the payload's sections, with verbatim text fenc
   assert.match(md, /## Next run's prompt/);
 });
 
-test("the role view names the per-provider concurrency key and its cap when a cap map sets one", () => {
+test("the role view names the per-provider concurrency key", () => {
   const dir = root();
   writeConfig(dir, {
     provider: "prov-a",
     model: "model-a",
-    maxConcurrentPerProvider: { "prov-a": 3 },
   });
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.providerKey, "prov-a");
-  assert.equal(p.providerCap, 3);
-  assert.match(renderRoleMarkdown(p), /- Provider: prov-a \(cap 3\)/m);
+  assert.match(renderRoleMarkdown(p), /- Provider: prov-a/m);
 });
 
-test("a cap-less team's role view renders no Provider line, byte-identical to before", () => {
+test("a key-less team's role view renders no Provider line, byte-identical to before", () => {
   const dir = root();
-  writeConfig(dir, { provider: "prov-a", model: "model-a" });
   const p = rolePayload(dir, "feature", NO_MODELS);
-  assert.equal(p.providerKey, "prov-a"); // the key resolves...
-  assert.equal(p.providerCap, undefined); // ...but no map sets a cap entry for it
+  assert.equal(p.providerKey, undefined); // no provider/model: the seam key cannot resolve
   assert.doesNotMatch(renderRoleMarkdown(p), /- Provider:/m);
 });
 

@@ -5865,28 +5865,23 @@ test("Ctrl+L on a role's Transcript replaces that role's instructions from a fil
   assert.equal(instructionsOf("director"), "director instructions", "the director's override is written through the same core");
 });
 
-test("Ctrl+P opens the provider-caps editor on Activity and the pause editor on a role's Transcript", () => {
+test("Ctrl+P keeps its pause meaning on a role's Transcript and does nothing on Activity", () => {
   const root = makeRoot();
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
 
-  // Activity (view 0): Ctrl+P is the provider-caps editor, pre-filled empty when the key is
-  // unset; a second Ctrl+P cancels it (the pause editor's per-role arm is guarded off Activity).
+  // Activity (view 0): with the provider-caps editor gone, Ctrl+P falls through and opens no
+  // editor (the pause editor's per-role arm is guarded off Activity).
   keys.handleKey(undefined, { ctrl: true, name: "p" });
-  assert.equal(keys.state().providerCapsMode, true, "Ctrl+P on Activity opens the provider-caps editor");
   assert.equal(keys.state().pauseEditRole, null, "the pause editor does not open on Activity");
-  assert.equal(keys.state().input, "", "unset maxConcurrentPerProvider pre-fills empty");
-  assert.match(keys.state().flash!, /maxConcurrentPerProvider/);
-  keys.handleKey(undefined, { ctrl: true, name: "p" });
-  assert.equal(keys.state().providerCapsMode, false, "Ctrl+P again cancels the provider-caps editor");
+  assert.equal(keys.state().concurrencyMode, false, "no editor opens on Activity");
 
-  // On a role's Transcript (view 1), Ctrl+P keeps its pause meaning: the provider-caps arm
-  // falls through so the pause editor opens with the viewed role pinned.
+  // On a role's Transcript (view 1), Ctrl+P keeps its pause meaning: the per-role pause editor
+  // opens with the viewed role pinned.
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → clean's transcript
   assert.equal(keys.state().view, 1);
   keys.handleKey(undefined, { ctrl: true, name: "p" });
   assert.equal(keys.state().pauseEditRole, "clean", "Ctrl+P on a Transcript opens the pause editor");
-  assert.equal(keys.state().providerCapsMode, false, "the provider-caps editor does not open on a Transcript");
 });
 
 test("Ctrl+X opens the agent-backends editor on Activity and keeps its meaning off it", () => {

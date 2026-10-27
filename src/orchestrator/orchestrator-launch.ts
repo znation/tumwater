@@ -38,7 +38,7 @@ export const ROLE_RUN_DURATION_SAMPLES = 50;
 
 /** The admission wait threshold below which a role run's semaphore wait logs no event — a
  * run that starts at once stays silent. Mirrors SLOT_WAIT_EVENT_MS in src/git/worktree-pool.ts:
- * the wait that signals maxConcurrentPerProvider (or maxConcurrent) caps the team. */
+ * the wait that signals maxConcurrent caps the team. */
 export const PROVIDER_WAIT_EVENT_MS = 30_000;
 
 /** What the launch pass needs from the orchestrator: the poll's inputs and the team's
@@ -195,8 +195,8 @@ export function launchDueRuns(ctx: LaunchContext): void {
               lease = await semaphore.acquireLease(roleTier(runner.role), key);
               // A wait of PROVIDER_WAIT_EVENT_MS or more for the provider/team slot is
               // provider contention worth surfacing: name it so `tumwater doctor`'s provider
-              // contention row can sum it and the operator can size maxConcurrentPerProvider
-              // (or maxConcurrent) from real waits. Best-effort like the launch pass's other
+              // contention row can sum it and the operator can size maxConcurrent from real
+              // waits. Best-effort like the launch pass's other
               // events, so an unwritable log never blocks a start; a run admitted at once
               // stays silent.
               if (Date.now() - admittedAt >= (ctx.providerWaitMs ?? PROVIDER_WAIT_EVENT_MS)) {

@@ -93,14 +93,13 @@ test("set of an exponent spelling of a plain-integer key fails without writing",
   // "4e1" is itself the JSON number 40 — the silent misread the shape screen refuses — so
   // `config set maxConcurrent 4e1` must not write 40; the plain-integer team keys share the
   // guard (maxConcurrent, worktreeSlots, maxConcurrentChecks, plus the team-scope
-  // maxConcurrentPerProvider.<provider>, roles.<id>.instances, and the bootstrap.untilPlansDone
-  // section field) so a fingerprint non-numeric key (maxDailyCostUsd) is untouched.
+  // roles.<id>.instances and the bootstrap.untilPlansDone section field) so a fingerprint
+  // non-numeric key (maxDailyCostUsd) is untouched.
   const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
   for (const [key, val] of [
     ["maxConcurrent", "4e1"],
     ["worktreeSlots", "3e1"],
     ["maxConcurrentChecks", "1e2"],
-    ["maxConcurrentPerProvider.deepinfra", "4e1"],
     ["roles.feature.instances", "2e1"],
     ["bootstrap.untilPlansDone", "4e1"],
   ] as const) {
@@ -210,22 +209,24 @@ test("get of a dotted key naming an unknown role or role field fails, not null",
   assert.equal(badField.stdout, "", "a failed get prints no JSON");
 });
 
-test("get/unset of a provider-keyed maxConcurrentPerProvider value works while set accepts it", async () => {
-  // maxConcurrentPerProvider is keyed by provider, not role id; `config set` writes a provider
-  // without the role-catalog check, so get and unset must agree (the bug: set succeeded but
-  // get/unset refused the provider as an "unknown role").
+test("config set/get/unset of maxConcurrentPerProvider is refused naming the key", async () => {
+  // The subtract plan removed the per-provider map: `config set` refuses the dotted key as
+  // an unknown config key, naming it, and writes nothing.
   const root = makeRepo();
+  writeConfig(root, {});
+  const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
   const set = await attemptAsync(() => cmdConfig(root, ["set", "maxConcurrentPerProvider.deepinfra", "4"]));
-  assert.equal(set.stdout, "set maxConcurrentPerProvider.deepinfra to 4\n");
+  assert.ok(set.exited && set.code === 1);
+  assert.match(set.stderr, /maxConcurrentPerProvider/);
+  assert.equal(fs.readFileSync(path.join(root, "tumwater.json"), "utf8"), before, "nothing is written");
 
   const get = await attemptAsync(() => cmdConfig(root, ["get", "maxConcurrentPerProvider.deepinfra"]));
-  assert.equal(get.stdout, "4\n", "get reads the provider entry, not an unknown-role refusal");
+  assert.ok(get.exited && get.code === 1);
+  assert.match(get.stderr, /maxConcurrentPerProvider/);
 
   const unset = await attemptAsync(() => cmdConfig(root, ["unset", "maxConcurrentPerProvider.deepinfra"]));
-  assert.equal(unset.stdout, "unset maxConcurrentPerProvider.deepinfra (was 4)\n");
-
-  const after = await attemptAsync(() => cmdConfig(root, ["get", "maxConcurrentPerProvider.deepinfra"]));
-  assert.equal(after.stdout, "null\n", "unset removed the provider entry");
+  assert.ok(unset.exited && unset.code === 1);
+  assert.match(unset.stderr, /maxConcurrentPerProvider/);
 });
 
 test("get rejects a dotted key outside the supported shapes", async () => {

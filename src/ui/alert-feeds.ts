@@ -7,11 +7,9 @@ import type { HarnessEvent } from "../events/events.js";
 import { STALE_QUESTION_DAYS } from "../doctor/doctor-backlog.js";
 import { regressedFixCandidates, matchedRegressedFixes, regressedFixesPhrase, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
 import { planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
-import { checkWaitContention, providerConcurrencyProblems, providerWaitContention, slotWaitContention, smallPoolProblems, staleWorkspacePins, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
+import { checkWaitContention, providerWaitContention, slotWaitContention, smallPoolProblems, staleWorkspacePins, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { configForStatus } from "../status/status-polls.js";
-import { piModelsPath } from "../pi/pi-models.js";
-import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import type { PlanDependencyProblem, StaleQuestion } from "./team-alerts.js";
 
 /** This module is the alert-feed half of src/ui/status-payload.ts: each always-on team alert's
@@ -88,23 +86,6 @@ export function capacityContention(root: string, now = Date.now()): CapacityBott
   maybeWarn("provider slots", PROVIDER_WAIT_CHECK_WINDOW_MS, (ev) => ev.type === "provider_wait", (waits) => providerWaitContention(waits, configForStatus(root)));
   maybeWarn("check slots", CHECK_WAIT_CHECK_WINDOW_MS, (e) => e.type === "check_wait", (waits) => checkWaitContention(waits, configForStatus(root)));
   return out;
-}
-
-/** A `maxConcurrentPerProvider` map that cannot do its job — the always-on twin of the doctor's
- * `provider concurrency` row (src/doctor/doctor-contention-checks.ts checkProviderConcurrency):
- * a cap key no seam resolves to (a typo, or a provider the team never runs on), a cap at or
- * above `maxConcurrent` (it never binds), or a keyless seam in a capped team. The `contention`
- * and `provider-hold` alerts fire only once a too-small cap has already parked runs or a storm
- * has struck; this standing alert names the static misconfiguration itself, which the doctor
- * row is the only other surface that otherwise exposes. Reads the same last-known-good config
- * the snapshot uses (configForStatus) and audits it through the row's own
- * providerConcurrencyProblems, so the alert and the row cannot drift on the trigger or the
- * wording; `[]` when no cap is configured or the map is well-formed. */
-export function providerCapProblems(root: string): string[] {
-  return providerConcurrencyProblems(
-    configForStatus(root),
-    readPiDefaultModel(piSettingsPath(piModelsPath()), root),
-  );
 }
 
 /** The always-on twin of the doctor `parallel instances` row's pool-mismatch clause
