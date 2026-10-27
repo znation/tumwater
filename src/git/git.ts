@@ -146,30 +146,31 @@ function storedRef(commondir: string, ref: string): string | null | undefined {
   return shaFromPackedRefs(packed, ` ${ref}`);
 }
 
-/** The SHA `git rev-parse --verify <ref>` would print in `dir`, read from files, or undefined
- * when the files do not settle it (see the section comment): the caller then spawns git. `ref`
- * is HEAD (followed when it is a branch symref or a detached SHA), a full `refs/…` name, or a
- * short branch name, taken only when git's DWIM order could not resolve it to anything else
- * first (`<gitdir>/<name>`, `refs/<name>`, `refs/tags/<name>` all absent). */
-export function refShaFromFiles(dir: string, ref: string): string | undefined {
-  const repo = repoFiles(dir);
-  if (repo === undefined) return undefined;
-  if (ref === "HEAD") {
-    let head: string;
-    try {
-      head = fs.readFileSync(path.join(repo.gitdir, "HEAD"), "utf8").trim();
-    } catch {
-      return undefined;
-    }
-    if (isSha(head)) return head;
-    const target = head.startsWith("ref: ") ? head.slice("ref: ".length).trim() : "";
-    if (!target.startsWith("refs/heads/") || !isPlainRefName(target)) return undefined;
-    return storedRef(repo.commondir, target) ?? undefined;
+/** The HEAD read: the detached SHA held in `<repo.gitdir>/HEAD`, else the SHA its `ref: `
+ * branch symref (a plain `refs/heads/…` name) resolves to, or undefined when the files do not
+ * settle it. */
+function refShaFromHead(repo: RepoFiles): string | undefined {
+  let head: string;
+  try {
+    head = fs.readFileSync(path.join(repo.gitdir, "HEAD"), "utf8").trim();
+  } catch {
+    return undefined;
   }
-  if (ref.startsWith("refs/")) {
-    if (!isPlainRefName(ref) || PER_WORKTREE_REF.test(ref)) return undefined;
-    return storedRef(repo.commondir, ref) ?? undefined;
-  }
+  if (isSha(head)) return head;
+  const target = head.startsWith("ref: ") ? head.slice("ref: ".length).trim() : "";
+  if (!target.startsWith("refs/heads/") || !isPlainRefName(target)) return undefined;
+  return storedRef(repo.commondir, target) ?? undefined;
+}
+
+/** A full `refs/…` name: its plain-name and per-worktree guards, then the stored read. */
+function refShaFromFullRefName(repo: RepoFiles, ref: string): string | undefined {
+  if (!isPlainRefName(ref) || PER_WORKTREE_REF.test(ref)) return undefined;
+  return storedRef(repo.commondir, ref) ?? undefined;
+}
+
+/** A short branch name: the DWIM-order guards (`<gitdir>/<name>`, `refs/<name>` and
+ * `refs/tags/<name>` all outrank the branch), then `refs/heads/<name>`. */
+function refShaFromShortName(repo: RepoFiles, ref: string): string | undefined {
   // A full object name means the object to git, ahead of any same-named ref.
   if (isSha(ref) || !isPlainRefName(`refs/heads/${ref}`)) return undefined;
   for (const dirOfName of new Set([repo.gitdir, repo.commondir])) {
@@ -179,6 +180,19 @@ export function refShaFromFiles(dir: string, ref: string): string | undefined {
     if (storedRef(repo.commondir, outranking) !== null) return undefined;
   }
   return storedRef(repo.commondir, `refs/heads/${ref}`) ?? undefined;
+}
+
+/** The SHA `git rev-parse --verify <ref>` would print in `dir`, read from files, or undefined
+ * when the files do not settle it (see the section comment): the caller then spawns git. `ref`
+ * is HEAD (followed when it is a branch symref or a detached SHA), a full `refs/…` name, or a
+ * short branch name, taken only when git's DWIM order could not resolve it to anything else
+ * first (`<gitdir>/<name>`, `refs/<name>`, `refs/tags/<name>` all absent). */
+export function refShaFromFiles(dir: string, ref: string): string | undefined {
+  const repo = repoFiles(dir);
+  if (repo === undefined) return undefined;
+  if (ref === "HEAD") return refShaFromHead(repo);
+  if (ref.startsWith("refs/")) return refShaFromFullRefName(repo, ref);
+  return refShaFromShortName(repo, ref);
 }
 
 /** False when the files settle that `root`'s repository has no linked-worktree registrations
