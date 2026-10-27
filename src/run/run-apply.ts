@@ -84,6 +84,14 @@ export const CUT_OFF_RESUME_LIMIT = 3;
  * keeps counting (RunnerState.quietKillStreak) so one warning per episode can be raised. */
 export const QUIET_KILL_RESUME_LIMIT = 3;
 
+/** Bump a streak counter to `current + 1` when `hit`, and reset it to 0 otherwise — the one
+ * home of the cut-off, quiet-kill and no-change streaks' shared shape in applyRunOutcome, so
+ * the three count identically. (The consecutive-error streak does NOT share it: it resumes
+ * from a `queued`-ended run rather than resetting, so it keeps its own longer arm.) */
+function bumpOrResetStreak(current: number | undefined, hit: boolean | undefined): number {
+  return hit ? (current ?? 0) + 1 : 0;
+}
+
 /** Record a finished run on the role's state and schedule its next run from the outcome.
  * Split out of RoleRunner.run() (runner.ts) so the scheduling policy — which outcomes retry
  * promptly, which back off and on which ladder, how cut-off resumes are bounded — sits with
@@ -103,7 +111,7 @@ export function applyRunOutcome(
   // The cut-off streak counts EVERY consecutive run truncated at the context ceiling, past the
   // resume limit too: the next fresh run's prompt names how many attempts the window has eaten
   // (buildCutOffNote), so the count must not freeze at the limit. Any other outcome resets it.
-  s.cutOffStreak = outcome.cutOff ? (s.cutOffStreak ?? 0) + 1 : 0;
+  s.cutOffStreak = bumpOrResetStreak(s.cutOffStreak, outcome.cutOff);
   // The error streak counts consecutive failed runs; any other result resets it
   // (BUGS.md 2026-09-15: 44 identical failures raised no alarm). A run whose leftover
   // recovery re-queued a pin its last merge failed counts too, even though the run
@@ -125,7 +133,7 @@ export function applyRunOutcome(
   // The quiet-kill streak counts consecutive watchdog kills; any other result resets it.
   // run-finalize.ts warns once when it crosses QUIET_KILL_RESUME_LIMIT, and the branch below uses
   // it to bound how many times a starved session is resumed (BUGS.md 2026-09-18).
-  s.quietKillStreak = outcome.result === "quiet_killed" ? (s.quietKillStreak ?? 0) + 1 : 0;
+  s.quietKillStreak = bumpOrResetStreak(s.quietKillStreak, outcome.result === "quiet_killed");
   // The no-change streak counts consecutive completed runs that ended `no_change` (the
   // resting state cell's ` · no change ×N` suffix — status-model.ts rolePhase). Any other
   // completed result resets it, so a role that merges between no-ops never shows a stale
@@ -134,7 +142,7 @@ export function applyRunOutcome(
   // `quiet_killed`/`user_aborted` all reset it and only a `no_change` run grows it.
   // Observational only — never warns, unlike the error/quiet-kill streaks: a legitimately
   // idle maintenance role with an empty backlog can hold a long streak and that is expected.
-  s.noChangeStreak = outcome.result === "no_change" ? (s.noChangeStreak ?? 0) + 1 : 0;
+  s.noChangeStreak = bumpOrResetStreak(s.noChangeStreak, outcome.result === "no_change");
   // The yield ring records the result beside the streaks: a merge or a counted empty
   // stretches the role's min-run gap (yieldMultiplier, read by isEligible), an error-class
   // result is skipped entirely — no evidence either way (yield-scaled clocks, PLANS.md).
