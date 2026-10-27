@@ -29,7 +29,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
-import { readOrchestratorInfo } from "../src/team/orchestrator-info.js";
+import { readOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { STATE_DIR } from "../src/paths.js";
 import { FAST_POLL_MS, deadFallbackScenario, fastConfig, makeFastRepo, runRepoOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";

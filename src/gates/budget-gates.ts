@@ -37,7 +37,7 @@ import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { readAccount } from "../agent/subscription-account.js";
 import { claudeWindowUsedUp } from "../agent/claude/claude-account.js";
 import type { RunnerState } from "../runner/runner-state.js";
-import type { ChainTierInfo } from "../team/orchestrator-info.js";
+import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
 import {
   budgetFallbackView,
   chainInfo,

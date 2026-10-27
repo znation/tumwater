@@ -1,7 +1,7 @@
 /** The worktree-use registry (src/git/worktree-use.ts, plans/disk-floor.md part 2/4): the
  * in-process in-use count, the durable last-used record, and the claim/release handshake that
  * keeps a `useWorktree` from starting in a half-cleaned tree. Candidate ordering built on the
- * registry is pinned in test/reclaim.test.ts. */
+ * registry is pinned in test/team-reclaim.test.ts. */
 
 import test from "node:test";
 import assert from "node:assert/strict";

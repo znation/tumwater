@@ -4,7 +4,7 @@
  * in this order every poll — requests and watch, gates, redeploy, merge drain, scheduling,
  * reserve and exit — and moved here without reordering any of them. */
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-info.js";
+import { publishInfoFields, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { baseRoleOf, runnerEnabled } from "../roles/runner-ids.js";
 import type { newLiveConfigReload } from "../config/config-live.js";
 import type { FallbackBreakerPolicy } from "../budget/fallback-breaker.js";
@@ -39,7 +39,7 @@ import type { newOpencodeCatalogRefresh } from "../gates/startup-gate.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { p75RunDurationMs } from "../run/run-timing.js";
 import { pollTeamGates, type TeamGateStates } from "../gates/gate-polls.js";
-import type { ReclaimController } from "../team/reclaim.js";
+import type { ReclaimController } from "../team/team-reclaim.js";
 import { heldProviders, windowHeldProviders } from "../team/team-hold.js";
 import { workReserveCount } from "../scheduling/claims.js";
 

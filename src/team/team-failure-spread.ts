@@ -2,12 +2,12 @@
  * 2026-09-29 connection-storm entry): when many roles each fail a few times on one provider
  * failure kind, no existing bar trips — the per-role streak alarm needs one role DEEP
  * (ERROR_STREAK_WARN consecutive, src/run/run-apply.ts), the error-storm warning needs several
- * roles deep at once (src/team/error-storm.ts), and the team hold needs failures COALESCED within
- * a two-minute window (src/team/team-hold.ts). A degraded backend that fails the team widely and
- * shallowly — six runs across as many roles, each failure minutes apart — rides all three
- * gaps in silence. This alarm counts raw failures of one kind across roles in a rolling
+ * roles deep at once (src/team/team-error-storm.ts), and the team hold needs failures COALESCED
+ * within a two-minute window (src/team/team-hold.ts). A degraded backend that fails the team
+ * widely and shallowly — six runs across as many roles, each failure minutes apart — rides all
+ * three gaps in silence. This alarm counts raw failures of one kind across roles in a rolling
  * window, independent of any role's streak depth: the fourth bar, shaped for the spread the
- * other three cannot see. POLICY, on the shape of its siblings (src/team/error-storm.ts,
+ * other three cannot see. POLICY, on the shape of its siblings (src/team/team-error-storm.ts,
  * src/team/team-hold.ts): a pure reducer over the observations the orchestrator collects each
  * poll and the previous state, so the rule is unit-testable without a team and the
  * orchestrator owns only the wiring (the warning event). Like both siblings it has memory —

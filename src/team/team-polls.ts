@@ -1,10 +1,10 @@
-import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
+import { errorStorm, errorStormKnob, type ErrorStorm } from "./team-error-storm.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { teamHold, TEAM_OPEN, type TeamHold, type HoldObservation } from "./team-hold.js";
 import { claudeWindowUsedUp, windowReserved, type ClaudeAccount, type ClaudeWindow } from "../agent/claude/claude-account.js";
 import type { HarnessEventInput } from "../events/events.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
-import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
+import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./team-failure-spread.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import type { ModelTier } from "../config/config-schema.js";
 import type { BackendFailureKind } from "../pi/pi.js";
@@ -13,8 +13,8 @@ import { eventsSince } from "../events/event-window.js";
 import { DAY_MS } from "../text/datetime.js";
 
 /** The orchestrator's three team-health polls — the wiring half of the team-wide failure
- * alarms (src/team/team-hold.ts, src/team/error-storm.ts,
- * src/team/failure-spread.ts): each poll gathers
+ * alarms (src/team/team-hold.ts, src/team/team-error-storm.ts,
+ * src/team/team-failure-spread.ts): each poll gathers
  * the observations its alarm's pure reducer steps with, steps it, and logs exactly one event
  * per episode crossing, so the alarm modules stay unit-testable without a team and these
  * own the only event emission. Split out of run-timing.ts — which had grown from the
@@ -295,15 +295,15 @@ export function pollClaudeWindowWarning(
 }
 
 
-/** One poll of the team-wide error-storm warning (src/team/error-storm.ts): gather each runner's
- * current error streak (RunnerState.consecutiveErrors/lastError — the same fields the per-role
- * "consecutive run failures" warning reads, the director's included, since its failures are
- * the team's evidence too), step the pure reducer, and log exactly one warning per episode,
+/** One poll of the team-wide error-storm warning (src/team/team-error-storm.ts): gather each
+ * runner's current error streak (RunnerState.consecutiveErrors/lastError — the same fields the
+ * per-role "consecutive run failures" warning reads, the director's included, since its failures
+ * are the team's evidence too), step the pure reducer, and log exactly one warning per episode,
  * like the per-role warning's once-per-streak-crossing shape: on the quiet→storm crossing,
- * naming the roles, the shared normalized cause, and the config knob when the cause has one
- * (a team timing out together means runTimeoutSeconds does not fit the serving model).
- * Storms clear silently — the members' own recoveries already tell that story — and the
- * reducer's `prev` pass-through keeps a held storm event-free. Returns the new storm for the
+ * naming the roles, the shared normalized cause, and the config knob when the cause has one (a
+ * team timing out together means runTimeoutSeconds does not fit the serving model). Storms clear
+ * silently — the members' own recoveries already tell that story — and the reducer's `prev`
+ * pass-through keeps a held storm event-free. Returns the new storm for the
  * caller to keep. Exported as a unit-test seam, like pollTeamHold above. */
 export function pollErrorStorm(
   root: string,
@@ -333,15 +333,15 @@ export function pollErrorStorm(
   return next;
 }
 
-/** One poll of the team-wide wide-shallow storm alarm (src/team/failure-spread.ts): gather each
- * runner's latest provider-failure observations — the same two the team hold reads, the
- * director's included, since its failures are the team's evidence too — step the pure
- * reducer, and log exactly one warning per episode: on the quiet→active crossing (and again
- * when a DIFFERENT kind becomes the episode while one is sounding, the reducer's new-episode
- * rule), naming the failure count, the kind, the window, and the roles behind it. The wiring
- * keys its log off active/kind, not object identity — `recent` moves almost every poll, so
- * unlike the hold's poll there is no prev pass-through to compare. Exported as a unit-test
- * seam, like pollTeamHold above. */
+/** One poll of the team-wide wide-shallow storm alarm (src/team/team-failure-spread.ts): gather
+ * each runner's latest provider-failure observations — the same two the team hold reads, the
+ * director's included, since its failures are the team's evidence too — step the pure reducer,
+ * and log exactly one warning per episode: on the quiet→active crossing (and again when a
+ * DIFFERENT kind becomes the episode while one is sounding, the reducer's new-episode rule),
+ * naming the failure count, the kind, the window, and the roles behind it. The wiring keys its
+ * log off active/kind, not object identity — `recent` moves almost every poll, so unlike the
+ * hold's poll there is no prev pass-through to compare. Exported as a unit-test seam, like
+ * pollTeamHold above. */
 export function pollFailureSpread(
   root: string,
   prev: FailureSpread,

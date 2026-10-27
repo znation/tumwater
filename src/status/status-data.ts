@@ -1,7 +1,7 @@
 import type { RunnerState } from "../runner/runner-state.js";
 import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
-import type { CheckPermitSnapshot, OrchestratorInfo, PermitSnapshot, SlotPoolSnapshot } from "../team/orchestrator-info.js";
+import type { CheckPermitSnapshot, OrchestratorInfo, PermitSnapshot, SlotPoolSnapshot } from "../team/team-orchestrator-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { baseRoleOf, roleInScope, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
@@ -17,7 +17,7 @@ import {
   orchestratorAlive,
   readOrchestratorInfo,
   type DiskStatus,
-} from "../team/orchestrator-info.js";
+} from "../team/team-orchestrator-info.js";
 import type { MergeInFlight } from "../merge/merge-slot.js";
 import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { readMergeQueue } from "../merge/merge-queue.js";

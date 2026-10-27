@@ -26,7 +26,7 @@ import { renderMergeQueue, scopeMergeQueue } from "../merge/merge-queue-render.j
 import { mergeChanges, type MergeInFlight } from "../merge/merge-slot.js";
 import { shortSha } from "../text/format.js";
 import { roleLabel } from "../roles/role-labels.js";
-import { orchestratorAlive } from "../team/orchestrator-info.js";
+import { orchestratorAlive } from "../team/team-orchestrator-info.js";
 import { queueInFlight } from "../status/status-polls.js";
 import { roleInScope } from "../roles/runner-ids.js";
 

@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { readOrchestratorInfo, writeOrchestratorInfo, type OrchestratorInfo } from "../team/orchestrator-info.js";
+import { readOrchestratorInfo, writeOrchestratorInfo, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { runnerIds } from "../roles/runner-ids.js";
 import { newLiveConfigReload } from "../config/config-live.js";
 import {
@@ -41,7 +41,7 @@ import {
 } from "../run/run-timing.js";
 import { newTeamGateStates, type TeamGateStates } from "../gates/gate-polls.js";
 import { loggedWindowKeys } from "../team/team-polls.js";
-import { ReclaimController } from "../team/reclaim.js";
+import { ReclaimController } from "../team/team-reclaim.js";
 import { reapPreviousTeamOrphans } from "../doctor/doctor-orphans.js";
 import { runStartupMigrations } from "./startup-migration-steps.js";
 import { archiveAtTeamStart } from "../backlog/backlog-archive.js";

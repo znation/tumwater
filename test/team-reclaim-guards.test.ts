@@ -1,4 +1,4 @@
-/** Two reclaim rules test/reclaim.test.ts leaves unpinned: the freed-space figure a pass
+/** Two reclaim rules test/team-reclaim.test.ts leaves unpinned: the freed-space figure a pass
  * reports (clamped at zero) and the in-use refusal inside reclaimWorktree itself. */
 
 import test from "node:test";
@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-import { reclaimPass, reclaimWorktree } from "../src/team/reclaim.js";
+import { reclaimPass, reclaimWorktree } from "../src/team/team-reclaim.js";
 import { beginWorktreeUse } from "../src/git/worktree-use.js";
 import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
 import { readEvents } from "../src/events/event-read.js";

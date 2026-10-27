@@ -3,7 +3,7 @@ import { renderMergeQueue, revisionNote, retryNote, scopeMergeQueue } from "../.
 import { cancelQueuedMerge } from "../../merge/merge-cancel.js";
 import { moveQueuedMergeToTop } from "../../merge/merge-top.js";
 import { mergeChanges } from "../../merge/merge-slot.js";
-import { orchestratorAlive } from "../../team/orchestrator-info.js";
+import { orchestratorAlive } from "../../team/team-orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
 import { renderChangeOverlaps, renderRoleChanges, renderTeamChange } from "../../change/change-render.js";
 import { scopeChangeOverlaps, type ChangeOverlapsView } from "../../change/change-data.js";

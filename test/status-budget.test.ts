@@ -3,7 +3,7 @@ import fs from "node:fs";
 import assert from "node:assert/strict";
 import { collectBudget } from "../src/status/status-budget.js";
 import { snapshot } from "../src/status/status-data.js";
-import { readOrchestratorInfo, writeOrchestratorInfo } from "../src/team/orchestrator-info.js";
+import { readOrchestratorInfo, writeOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { initProject } from "../src/init/init.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { opencodeModelsPath } from "../src/paths.js";

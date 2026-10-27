@@ -1,4 +1,4 @@
-/** Pressure reclaim of gitignored build outputs (src/team/reclaim.ts, plans/disk-floor.md
+/** Pressure reclaim of gitignored build outputs (src/team/team-reclaim.ts, plans/disk-floor.md
  * part 2/4): candidate selection and ordering, the guard that keeps a clean off a
  * non-worktree, what a clean removes, the statfs-threshold stop, and the one `disk_reclaim`
  * event. The in-use handshake lives in test/worktree-use.test.ts. */
@@ -15,7 +15,7 @@ import {
   reclaimCandidates,
   reclaimPass,
   reclaimWorktree,
-} from "../src/team/reclaim.js";
+} from "../src/team/team-reclaim.js";
 import { beginWorktreeUse } from "../src/git/worktree-use.js";
 import { readEvents } from "../src/events/event-read.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";

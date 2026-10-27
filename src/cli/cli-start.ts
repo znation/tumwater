@@ -18,7 +18,7 @@ import {
   tokenValueProblem,
 } from "./cli-args.js";
 import { cancelScheduledStop, scheduledStopAt } from "../team/team-state.js";
-import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-info.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { runStartupCheck, runStartupProblem } from "../gates/startup-gate.js";
 import { repairInterruptedSwap } from "../build/build-stage.js";
 import { logEvent, subscribeEvents } from "../events/events.js";

@@ -141,7 +141,7 @@ export function worktreeUseLockPath(root: string): string {
 }
 
 /** The orchestrator's own info file (its pid, for liveness checks —
- * team/orchestrator-info.ts). */
+ * team/team-orchestrator-info.ts). */
 export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }

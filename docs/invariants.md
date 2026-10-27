@@ -2971,7 +2971,7 @@ deadline is dropped on a rewrite instead of becoming an expired marker".
 
 ## Worktree reclaim: a clean stays inside idle linked worktrees, removes only ignored files, and runs once per drop
 
-`src/team/reclaim.ts` deletes the gitignored files of idle harness worktrees (`git clean -fdX`)
+`src/team/team-reclaim.ts` deletes the gitignored files of idle harness worktrees (`git clean -fdX`)
 under disk pressure, when a worktree goes idle, and on `tumwater reclaim`.
 
 ### INV-AW1: a clean refuses what it must not touch and removes only ignored files
@@ -2981,13 +2981,13 @@ not a linked worktree. It returns false without cleaning a worktree in use by a 
 refusal leaves no claim behind. It removes only ignored files, keeping tracked edits, untracked
 files and nested repositories, and counts as a reclaim only when git removed something.
 
-**Binds.** `src/team/reclaim.ts` (`reclaimWorktree`, `isLinkedWorktree`, `cleanIgnored`).
+**Binds.** `src/team/team-reclaim.ts` (`reclaimWorktree`, `isLinkedWorktree`, `cleanIgnored`).
 
-**Pinned by.** `test/reclaim.test.ts` — "reclaimWorktree removes only gitignored files, keeping
+**Pinned by.** `test/team-reclaim.test.ts` — "reclaimWorktree removes only gitignored files, keeping
 edits and nested repos", "reclaimWorktree throws and deletes nothing outside worktreesDir",
 "reclaimWorktree throws for a plain repo inside worktreesDir (not a linked worktree)" and
 "reclaimWorktree reports false when a worktree has nothing ignored to clean";
-`test/reclaim-guards.test.ts` — "reclaimWorktree refuses a worktree in use, deleting nothing, and
+`test/team-reclaim-guards.test.ts` — "reclaimWorktree refuses a worktree in use, deleting nothing, and
 cleans it once the use ends".
 
 ### INV-AW2: candidates come least recently used first, and the unsafe ones are left out
@@ -2996,9 +2996,9 @@ cleans it once the use ends".
 Reserved mirrors and in-use worktrees are left out. A never-seen worktree is seeded as used now and
 skipped for this pass, and the dry-run listing never seeds.
 
-**Binds.** `src/team/reclaim.ts` (`reclaimCandidates`, `inspectReclaimCandidates`).
+**Binds.** `src/team/team-reclaim.ts` (`reclaimCandidates`, `inspectReclaimCandidates`).
 
-**Pinned by.** `test/reclaim.test.ts` — "reclaimCandidates seeds unknown worktrees as used and
+**Pinned by.** `test/team-reclaim.test.ts` — "reclaimCandidates seeds unknown worktrees as used and
 excludes them from the pass", "a non-finite registry timestamp reads as never seen, not as used
 forever", "reclaimCandidates orders least-recently-used first, resume-pending last, and skips
 reserved and in-use", "inspectReclaimCandidates lists idle age and ignored-path count without
@@ -3011,14 +3011,14 @@ expired candidates. A guard failure skips that one candidate. A pass logs one `d
 only when it cleaned something, with freed space as after minus before, clamped at zero. An
 unwritable event feed does not lose the result.
 
-**Binds.** `src/team/reclaim.ts` (`reclaimPass`, `isIdleExpired`).
+**Binds.** `src/team/team-reclaim.ts` (`reclaimPass`, `isIdleExpired`).
 
-**Pinned by.** `test/reclaim.test.ts` — "reclaimPass cleans least-recently-used first and stops
+**Pinned by.** `test/team-reclaim.test.ts` — "reclaimPass cleans least-recently-used first and stops
 once the sampler reaches diskReclaimGB", "reclaimPass returns null and logs nothing when there is
 nothing to clean", "reclaimPass still returns its result when the events feed is unwritable",
 "reclaimPass idle mode cleans only worktrees unused past the threshold", "reclaimPass idle mode
 with idleHours 0 cleans nothing" and "reclaimPass continues past a guard-failing candidate and one
-with nothing to clean"; `test/reclaim-guards.test.ts` — "reclaimPass reports freed space as after
+with nothing to clean"; `test/team-reclaim-guards.test.ts` — "reclaimPass reports freed space as after
 minus before, clamped at zero when another writer consumed it".
 
 ### INV-AW4: the controller starts one pressure pass per drop and arms idle passes at most hourly
@@ -3026,9 +3026,9 @@ minus before, clamped at zero when another writer consumed it".
 **Guarantee.** The controller starts one pressure pass per drop and then lets the disk hold
 engage, arms idle passes at most hourly, and runs a manual request over every candidate.
 
-**Binds.** `src/team/reclaim.ts` (`ReclaimController`).
+**Binds.** `src/team/team-reclaim.ts` (`ReclaimController`).
 
-**Pinned by.** `test/reclaim.test.ts` — "ReclaimController runs one pass per drop, then lets the
+**Pinned by.** `test/team-reclaim.test.ts` — "ReclaimController runs one pass per drop, then lets the
 disk hold engage", "ReclaimController.pollIdle cleans once, throttles the next arm, and honors
 reclaimedAt" and "ReclaimController.requestManual runs a manual pass over every candidate".
 
@@ -3991,9 +3991,9 @@ orchestrator info carries chain".
 **Guarantee.** A publish stages every field of the batch, compares each by JSON serialization, writes
 once when any changed and not at all otherwise, and a field published as `undefined` leaves the file.
 
-**Binds.** `src/team/orchestrator-info.ts` (`publishInfoFields`, `assignInfoFieldIfChanged`).
+**Binds.** `src/team/team-orchestrator-info.ts` (`publishInfoFields`, `assignInfoFieldIfChanged`).
 
-**Pinned by.** `test/orchestrator-info-publish.test.ts` — "publishInfoFields writes every field of a
+**Pinned by.** `test/team-orchestrator-info-publish.test.ts` — "publishInfoFields writes every field of a
 changed batch in one publish", "publishInfoFields leaves the file untouched when no field changed"
 and "publishInfoFields removes a field published as undefined".
 
@@ -4003,11 +4003,11 @@ and "publishInfoFields removes a field published as undefined".
 memory, and is not retried until the value changes again. Startup's `writeOrchestratorInfo` stays
 strict and atomic.
 
-**Binds.** `src/team/orchestrator-info.ts` (`publishInfoFields`, `writeOrchestratorInfoBestEffort`,
+**Binds.** `src/team/team-orchestrator-info.ts` (`publishInfoFields`, `writeOrchestratorInfoBestEffort`,
 `writeOrchestratorInfo`).
 
-**Pinned by.** `test/orchestrator-info-publish.test.ts` — "publishInfoFields warns instead of throwing
-when the info file cannot be written"; `test/orchestrator-info.test.ts` — "writeOrchestratorInfo
+**Pinned by.** `test/team-orchestrator-info-publish.test.ts` — "publishInfoFields warns instead of throwing
+when the info file cannot be written"; `test/team-orchestrator-info.test.ts` — "writeOrchestratorInfo
 leaves the previous file intact when a write is killed mid-flight".
 
 ### INV-BO3: a reader drops a foreign-shaped field and keeps the well-formed ones
@@ -4016,10 +4016,10 @@ leaves the previous file intact when a write is killed mid-flight".
 each nested field whose shape is foreign while it keeps well-formed ones; `orchestratorAlive` is
 false with no info.
 
-**Binds.** `src/team/orchestrator-info.ts` (`readOrchestratorInfo`, `normalizeInfoFields`,
+**Binds.** `src/team/team-orchestrator-info.ts` (`readOrchestratorInfo`, `normalizeInfoFields`,
 `orchestratorAlive`).
 
-**Pinned by.** `test/orchestrator-info.test.ts` — "readOrchestratorInfo returns null for missing,
+**Pinned by.** `test/team-orchestrator-info.test.ts` — "readOrchestratorInfo returns null for missing,
 torn, and non-object files", "readOrchestratorInfo drops nested fields with a foreign shape and keeps
 well-formed ones", "readOrchestratorInfo round-trips a well-formed providerHolds and drops foreign
 entries" and "orchestratorAlive is false with no info and reflects pid liveness otherwise";

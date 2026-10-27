@@ -1,9 +1,10 @@
 /** The error-streak circuit breaker (PLANS.md 2026-09-30): a role whose runs keep failing
  * consecutively is warned at ERROR_STREAK_WARN (src/run/run-apply.ts) and named by the team-wide
- * storm alarms (src/team/error-storm.ts, src/team/failure-spread.ts), but both only talk — the
- * role keeps running on the error ladder's 600 s max backoff forever, burning a model slot and
- * spend on a role that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed runs this gate
- * pauses the role through the same per-role pause marker the operator's `tumwater pause --role
+ * storm alarms (src/team/team-error-storm.ts, src/team/team-failure-spread.ts), but both
+ * only talk — the role keeps running on the error ladder's 600 s max backoff forever,
+ * burning a model slot and spend on a role that cannot succeed. Past ERROR_STREAK_BREAKER
+ * consecutive failed runs this gate pauses the role through the same per-role pause marker
+ * the operator's `tumwater pause --role
  * <id>` writes (src/team/team-state.ts's pauseRole — the marker, lock, and idempotence come
  * free), so the scheduler's existing pausedRolesSet skip blocks new runs with zero scheduler
  * changes. The director is NOT exempt: a failing director cannot process prompts anyway, and one

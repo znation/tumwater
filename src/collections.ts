@@ -21,7 +21,7 @@ export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T
  * absent — the single home of the `map.get(key) ?? fresh; …; map.set(key, value)` step, shared
  * by the failure digest's per-role stats, outcome, and prompt-token accumulators (failure-data.ts),
  * its time-and-spend per-role row (time-spend.ts), the team hold's provider+kind grouping
- * (team-hold.ts), the error-storm reducer's roles-by-key set (src/team/error-storm.ts), and
+ * (team-hold.ts), the error-storm reducer's roles-by-key set (src/team/team-error-storm.ts), and
  * `groupBy` above, so those sites cannot drift on how a missing key is seeded. `make` runs only
  * when the key is absent. A stored value of `undefined` reads as absent, matching the `??` idiom
  * this replaces; the callers above never store one. */
@@ -52,7 +52,7 @@ export function filterKeepPositions<T>(items: readonly T[], keep: (item: T) => b
 
 /** Increment a Map counter, seeding a missing key at 1 — the single home of the
  * `map.set(k, (map.get(k) ?? 0) + 1)` step, shared by the failure-spread kind tally
- * (src/team/failure-spread.ts), the diff multiset's line tally (merge/merge-diff.ts), the
+ * (src/team/team-failure-spread.ts), the diff multiset's line tally (merge/merge-diff.ts), the
  * section-title tally (backlog/backlog-structure.ts), the logs' per-type tally
  * (cli/log-commands.ts), the flaky-check tally
  * (doctor/doctor-project-checks.ts), and the multi-runner base tally
@@ -132,9 +132,9 @@ export function trimToLast<T>(arr: T[], max: number): void {
  * order the same way. These two helpers are the single home of that rule; every surface that
  * ranks counters by count calls one of them rather than re-implementing the comparator —
  * `rankCountEntries` serves the `[key, count]` entry shape (src/report/report-render.ts's
- * rankedRoleMap, src/team/failure-spread.ts's strongest-kind pick) and `rankByCount` serves
+ * rankedRoleMap, src/team/team-failure-spread.ts's strongest-kind pick) and `rankByCount` serves
  * callers whose counts are fields or computations on other shapes
- * (src/failure/failure-cluster.ts's clusters, src/team/error-storm.ts's strongest-cause pick,
+ * (src/failure/failure-cluster.ts's clusters, src/team/team-error-storm.ts's strongest-cause pick,
  * failure-data.ts's outcome table, and time-spend.ts's time-and-spend table). `sortByValueDesc`
  * is the deliberate sibling for the same value-descending shape that wants a code-unit tiebreak
  * instead of localeCompare, and unlike these two it sorts its input array in place. The one
@@ -222,7 +222,7 @@ export function sortEntriesByKey<K extends string | undefined, T>(
 }
 
 /** rankByCount for `[key, count]` entry pairs (count first): src/report/report-render.ts's
- * rankedRoleMap, src/team/failure-spread.ts's strongest-kind pick, and
+ * rankedRoleMap, src/team/team-failure-spread.ts's strongest-kind pick, and
  * src/doctor/doctor-contention-checks.ts's check-wait and provider-wait rankings. */
 export function rankCountEntries<K extends string>(
   entries: Iterable<[K, number]>,

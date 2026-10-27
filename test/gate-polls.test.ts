@@ -29,7 +29,7 @@ import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
-import type { OrchestratorInfo } from "../src/team/orchestrator-info.js";
+import type { OrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 
 test("pollTeamGates: a breaker trip logs role_streak_paused once — no duplicate role_paused on the next poll", () => {
   const root = tmpdir("gate-polls-");

@@ -40,15 +40,15 @@ import {
 } from "./disk-gate.js";
 import { pollErrorStorm, pollFailureSpread, pollTeamHold, pollClaudeWindowWarning, pollClaudeWindowReserve, windowObservation, type HoldInputs } from "../team/team-polls.js";
 import { readAccount } from "../agent/subscription-account.js";
-import type { ReclaimController } from "../team/reclaim.js";
+import type { ReclaimController } from "../team/team-reclaim.js";
 import { standingHolds, type TeamHold } from "../team/team-hold.js";
-import { ERROR_STORM_QUIET, type ErrorStorm } from "../team/error-storm.js";
-import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../team/failure-spread.js";
+import { ERROR_STORM_QUIET, type ErrorStorm } from "../team/team-error-storm.js";
+import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../team/team-failure-spread.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, instancePauseKey, runnerEnabled } from "../roles/runner-ids.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
-import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-info.js";
+import { publishInfoFields, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { windowReserveFor } from "../config/config-views.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
@@ -556,7 +556,7 @@ function pollTeamFailureAlarms(
     );
   }
 
-  // Team-wide error-storm warning (src/team/error-storm.ts): when several roles' run streaks
+  // Team-wide error-storm warning (src/team/team-error-storm.ts): when several roles' run streaks
   // fail consecutively on one shared cause, each role's own "consecutive run failures"
   // warning still fires alone — this adds the one team-level warning that names the
   // cause (and the config knob, when the cause has one) instead of leaving the operator
@@ -564,7 +564,7 @@ function pollTeamFailureAlarms(
   // hold above there is no re-open event — the members' own recoveries tell that story.
   states.errorStorm = pollErrorStorm(root, states.errorStorm, runners);
 
-  // Team-wide wide-shallow storm alarm (src/team/failure-spread.ts): when many roles each
+  // Team-wide wide-shallow storm alarm (src/team/team-failure-spread.ts): when many roles each
   // fail a few times on one provider failure kind, the streak bar needs one role deep,
   // the error storm needs several roles deep, and the hold needs the failures close
   // together — this counts raw failures of one kind across roles in a rolling window,

@@ -1,6 +1,6 @@
 /** The cluster-key rules shared by everything that groups failure messages into causes: the
  * failure digest's collection (failure-data.ts) and the error-storm reducer
- * (src/team/error-storm.ts) both count by these keys, so the normalization, the two
+ * (src/team/team-error-storm.ts) both count by these keys, so the normalization, the two
  * run-timeout shapes and their pooling, and the grouping engine live here rather than
  * inside either consumer. Pure string
  * and grouping logic — no event reads, no clock. */
@@ -52,7 +52,7 @@ export function truncateExample(message: string, max: number = EXAMPLE_MAX): str
  * array in ascending localeCompare order, so equal inputs always render identically no matter
  * the Set's insertion order. One home for the rule the failure digest's clusters
  * (clusterMessages) and loss causes (failure-data.ts) and the error-storm warning
- * (src/team/error-storm.ts) all share — an inline `.sort()` without the comparator would
+ * (src/team/team-error-storm.ts) all share — an inline `.sort()` without the comparator would
  * silently pick code-unit order instead and let the two rules drift. */
 export function sortedRoles(roles: Iterable<string>): string[] {
   return [...roles].sort((a, b) => a.localeCompare(b));
@@ -115,7 +115,7 @@ export const RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY =
  * wordings name one cause on one knob (review.timeoutSeconds): a still-making-progress kill
  * pools into the plain run-timeout row (a mixed team of plain and progressing kills is one
  * cause's agent-hours, not two half-size rows the top-N cut can drop — the same pooling the
- * error-storm reducer applies, src/team/error-storm.ts), and a resumed review's wording maps
+ * error-storm reducer applies, src/team/team-error-storm.ts), and a resumed review's wording maps
  * to itself, because continuing the timed-out session is a different cause from a from-scratch
  * re-review. Enumerated so a future wording edit lands in
  * this table rather than silently changing which row its timeouts count under. */

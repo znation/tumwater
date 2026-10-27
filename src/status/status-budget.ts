@@ -20,7 +20,7 @@ import {
 } from "../agent/subscription-account.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { OrchestratorInfo } from "../team/orchestrator-info.js";
+import type { OrchestratorInfo } from "../team/team-orchestrator-info.js";
 import type { StatusRoleRow } from "./status-roles.js";
 
 type PiProviders = ReturnType<typeof readPiProviders>;

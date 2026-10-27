@@ -3,7 +3,7 @@ import { sortEntriesByKey } from "../collections.js";
 import { pausedRoles, pausedRolesUntil, standingTeamPause } from "../team/team-state.js";
 import { MODEL_TIERS, type ModelTier, type TumwaterConfig } from "../config/config-schema.js";
 import { withModelOverrides } from "../config/config-views.js";
-import type { ChainTierInfo } from "../team/orchestrator-info.js";
+import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
 import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
 import { budgetReached, budgetWarning, teamDailyCost } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";

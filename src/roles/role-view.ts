@@ -38,7 +38,7 @@ import { readRegularTextOrNull, statOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
 import { finiteNumber, objectOrEmpty } from "../files/json-object.js";
 import { canonicalRoleId } from "./legacy-role-ids.js";
-import { orchestratorAlive, readOrchestratorInfo, type ChainTierInfo } from "../team/orchestrator-info.js";
+import { orchestratorAlive, readOrchestratorInfo, type ChainTierInfo } from "../team/team-orchestrator-info.js";
 
 /** What `tumwater role <id>` reports about one role — the payload both the `--json`
  * document and the Markdown renderer consume (one shape, two surfaces). */

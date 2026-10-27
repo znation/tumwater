@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { cancelScheduledStop, isTeamPaused, scheduleStop } from "../team/team-state.js";
-import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-info.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { formatDate, formatTime, humanUntil, DAY_MS } from "../text/datetime.js";
 import { submitRolePrompt } from "../inbox/inbox-submit.js";
@@ -15,7 +15,7 @@ import { loadRunnerState } from "../runner/runner-state-load.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { ensureDir } from "../files/files.js";
-import { reclaimPass } from "../team/reclaim.js";
+import { reclaimPass } from "../team/team-reclaim.js";
 import { formatGB } from "../text/format.js";
 import { plural } from "../text/phrases.js";
 import { numberedList } from "../text/markdown.js";

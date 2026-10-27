@@ -7,7 +7,7 @@ import path from "node:path";
 import { freshRunnerState, saveRunnerState, zeroCounters } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { isTeamPaused, pauseTeam, resumeTeam } from "../src/team/team-state.js";
-import { orchestratorAlive, readOrchestratorInfo } from "../src/team/orchestrator-info.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { dailyCost, todayStamp } from "../src/budget/budget.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
@@ -18,8 +18,8 @@ import { ensureParentDir } from "../src/files/files.js";
 /** The persisted-state file's own tests (src/runner/runner-state.ts): fresh defaults, the tolerant
  * load,
  * the atomic save, the counter reset — and the orchestrator info file, whose readers live in
- * team/orchestrator-info.ts but whose shape is pinned beside the state convention it mirrors. The
- * run-apply.ts scheduling policy's tests live in run-apply.test.ts. */
+ * team/team-orchestrator-info.ts but whose shape is pinned beside the state convention it mirrors.
+ * The run-apply.ts scheduling policy's tests live in run-apply.test.ts. */
 
 /** Every field a fresh state has must hold its default value (extra junk keys are allowed). */
 function assertFreshFields(s: RunnerState, role: string): void {

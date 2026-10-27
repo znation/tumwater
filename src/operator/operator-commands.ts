@@ -22,9 +22,9 @@ import {
   resumeTeam,
   resumeRole,
 } from "../team/team-state.js";
-import { readOrchestratorInfo } from "../team/orchestrator-info.js";
+import { readOrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { pidAlive } from "../process/process.js";
-import { inspectReclaimCandidates } from "../team/reclaim.js";
+import { inspectReclaimCandidates } from "../team/team-reclaim.js";
 import {
   markerApplyNote,
   NO_HARNESS_ERROR,

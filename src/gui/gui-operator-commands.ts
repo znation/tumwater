@@ -26,7 +26,7 @@ import { moveQueuedMergeToTopBySha, type TopQueuedByShaOutcome } from "../merge/
 import { readMergeQueue } from "../merge/merge-queue.js";
 import { mergeChanges } from "../merge/merge-slot.js";
 import { queueInFlight } from "../status/status-polls.js";
-import { orchestratorAlive } from "../team/orchestrator-info.js";
+import { orchestratorAlive } from "../team/team-orchestrator-info.js";
 import { shortSha } from "../text/format.js";
 import { editBriefText } from "../brief/brief-edit.js";
 import { requireStringField, validRoleIds } from "./gui-args.js";

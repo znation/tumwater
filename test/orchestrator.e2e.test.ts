@@ -23,7 +23,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { freshRunnerState, saveRunnerState, zeroCounters } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { nextBackoffSeconds } from "../src/scheduling/backoff.js";
-import { orchestratorAlive, readOrchestratorInfo } from "../src/team/orchestrator-info.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { resetRequestPath, worktreePath } from "../src/paths.js";
 import { eventTypes, eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import {

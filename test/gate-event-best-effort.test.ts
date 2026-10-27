@@ -25,8 +25,8 @@ import { pollStreakGate, newStreakGateState } from "../src/gates/streak-gate.js"
 import { pollRoleCapGate, newRoleCapGateState } from "../src/gates/role-cap-gates.js";
 import { newQuietHoursGateState, pollQuietHoursGate } from "../src/scheduling/quiet-hours.js";
 import type { TeamHold } from "../src/team/team-hold.js";
-import { ERROR_STORM_QUIET } from "../src/team/error-storm.js";
-import { FAILURE_SPREAD_QUIET } from "../src/team/failure-spread.js";
+import { ERROR_STORM_QUIET } from "../src/team/team-error-storm.js";
+import { FAILURE_SPREAD_QUIET } from "../src/team/team-failure-spread.js";
 import {
   pollErrorStorm,
   pollFailureSpread,

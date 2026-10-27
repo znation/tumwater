@@ -1,5 +1,5 @@
 import { logEvent, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
-import { orchestratorAlive } from "../team/orchestrator-info.js";
+import { orchestratorAlive } from "../team/team-orchestrator-info.js";
 import { errorMessage } from "../text/text.js";
 
 /** What one migration step did, as short notes. `moved` lists what it changed (moved, renamed or

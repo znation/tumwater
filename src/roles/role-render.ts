@@ -5,7 +5,7 @@ import { clockHm, formatAge, formatTimestamp, humanAgo, nextRunPhrase, secondsUn
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import { windowLabel } from "../agent/subscription-account.js";
 import { backendDefaultLabel, backendDisplayName } from "../agent/backend-traits.js";
-import type { ChainTierInfo } from "../team/orchestrator-info.js";
+import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import type { RoleViewPayload } from "./role-view.js";

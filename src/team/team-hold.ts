@@ -156,7 +156,7 @@ export function heldProviders(
 }
 
 /** One provider's standing hold as the info file and status surfaces publish it
- * (src/team/orchestrator-info.ts `providerHolds`, src/status/status-data.ts): the provider
+ * (src/team/team-orchestrator-info.ts `providerHolds`, src/status/status-data.ts): the provider
  * (omitted for pi's default backend — the same meaning `heldProviders` gives undefined), the
  * epoch ms it re-opens at, and the failure kind it is about. */
 interface StandingHold {

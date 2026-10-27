@@ -3,7 +3,7 @@ import { roleNotesPath } from "../../paths.js";
 import { renderRoleChange } from "../../change/change-render.js";
 import { readMergeQueue } from "../../merge/merge-queue.js";
 import { renderMergeQueue, scopeMergeQueue } from "../../merge/merge-queue-render.js";
-import { orchestratorAlive } from "../../team/orchestrator-info.js";
+import { orchestratorAlive } from "../../team/team-orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
 import { roleInspectMarkdown } from "./tui-pane.js";
 import { pageMarkdownBody } from "./tui-backlog.js";

@@ -6,12 +6,12 @@ import {
   readOrchestratorInfo,
   writeOrchestratorInfo,
   type OrchestratorInfo,
-} from "../src/team/orchestrator-info.js";
+} from "../src/team/team-orchestrator-info.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 
-/** The publish rules of src/team/orchestrator-info.ts's publishInfoFields: one write for a
+/** The publish rules of src/team/team-orchestrator-info.ts's publishInfoFields: one write for a
  * changed batch, none for an unchanged one, and a warning instead of a throw on a failed write. */
 
 function startInfo(root: string): OrchestratorInfo {
