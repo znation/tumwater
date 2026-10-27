@@ -350,12 +350,12 @@ async function runSupervisedGeneration(input: SupervisedGenerationInput): Promis
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
   // A windowed (--for) run that did not self-redeploy is done the moment its summary is out:
   // exit deterministically instead of trusting the event loop to drain. This supervised
-  // generation runs a whole team, and any ref'd handle a shutdown misses (a watcher, marker,
+  // generation runs a whole team, and any ref'd handle a shutdown missed (a watcher, marker,
   // or notifier handle a join missed) would otherwise pin this process's loop open, so the
   // supervisor — which waits on this child's exit — never exits and the run reads as a hang:
   // summary printed, exit code null (BUGS.md 2026-10-26). The summary above was the last
-  // output and nothing after depends on this loop, so an explicit exit is equivalent to a
-  // natural one with code 0, just guaranteed.
+  // output and nothing after depends on this loop, so an explicit exit is equivalent to the
+  // natural exit 0 this replaces, just guaranteed.
   if (forMs !== null) process.exit(0);
 }
 
