@@ -14,7 +14,7 @@
 
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { backendBinConfigKey, backendBinSourceLabel, type ResolvedBackendBin } from "../pi/pi-bin.js";
-import type { AgentBackend } from "./agent-backend.js";
+import type { AgentBackend, AgentExitClassification } from "./agent-backend.js";
 import { terminateChild } from "../process/process.js";
 import { leftoversSweptMessage, sweepRunMarker } from "../process/run-marker.js";
 import type { RunSettleState } from "./run-agent.js";
@@ -193,45 +193,75 @@ function settleErrorMessage(
   );
 }
 
-/** The run's `close` event: the process died and all its streams closed. Flush what the
- * decoders held back, reconcile the backend's post-run work, classify the exit cause, and
- * settle the run's result. */
-export function settleClose(state: RunSettleState, code: number | null): void {
-  const { backend, runSpec, invocation, translator, onLine } = state;
+/** Flush the tail the decoders and translator held back at stream end: the decoder's last
+ * bytes and unterminated final line, then a batching backend's unclosed final assistant
+ * message (which a killed run never closes with a later event). */
+function flushRunTail(state: RunSettleState): void {
   // Flush any bytes the decoder held back at stream end and any unterminated final line so the
   // tail is not lost, then let the translator flush its own pending canonical line(s) — a
   // batching backend's unclosed last assistant message, which a killed run never closes with a
   // later event.
   state.feedCanonical(state.decoder.end(), true);
-  for (const canonical of translator.finalize?.() ?? []) state.parser.feed(canonical + "\n", onLine);
-  // A blind image read on an authoring run deliberately killed it, so its exit is a kill like
-  // the watchdogs' — the half-done work is discarded.
-  const killed = state.wasKilled();
+  for (const canonical of state.translator.finalize?.() ?? []) state.parser.feed(canonical + "\n", state.onLine);
+}
+
+/** Reconcile the backend's post-run work (opencode's authoritative session export), only when
+ * the run is not already settled (a failed spawn settles in the 'error' handler before
+ * 'close') and was not killed — a killed run's session is half-done and no export should spend
+ * its 10 s on it. Its lines are written and parsed like streamed ones, so they reach the raw
+ * log and the parser's authoritative fold (run_cost/run_usage). */
+function reconcileBackendAfterRun(state: RunSettleState, killed: boolean): void {
   // The backend's post-run reconciliation (opencode's authoritative session export), only when
   // the run is not already settled (a failed spawn settles in the 'error' handler before
   // 'close') and was not killed — a killed run's session is half-done and no export should
   // spend its 10 s on it. Its lines are written and parsed like streamed ones, so they reach
   // the raw log and the parser's authoritative fold (run_cost/run_usage).
   if (!state.settled() && !killed) {
-    for (const canonical of backend.afterRun?.(runSpec, invocation, translator) ?? []) {
-      state.parser.feed(canonical + "\n", onLine);
+    for (const canonical of state.backend.afterRun?.(state.runSpec, state.invocation, state.translator) ?? []) {
+      state.parser.feed(canonical + "\n", state.onLine);
     }
   }
-  const failed =
+}
+
+/** Whether the exit reads as failed: killed, a parser error stop, or a non-zero code with no
+ * final text. */
+function closeFailed(state: RunSettleState, code: number | null, killed: boolean): boolean {
+  return (
     killed ||
     state.parser.stopReason === "error" ||
-    (code !== 0 && !state.parser.finalText.trim());
+    (code !== 0 && !state.parser.finalText.trim())
+  );
+}
+
+/** Whether the exit is a permanent config error — a non-killed exit with no transient pi crash
+ * and no backend kind, whose parser flag or backend classification say config error. */
+function closeConfigError(state: RunSettleState, cls: AgentExitClassification, killed: boolean): boolean {
+  return (
+    !killed &&
+    cls.transientPiCrash !== true &&
+    cls.backendKind === undefined &&
+    (state.parser.configError || cls.configError === true)
+  );
+}
+
+/** The run's `close` event: the process died and all its streams closed. Flush what the
+ * decoders held back, reconcile the backend's post-run work, classify the exit cause, and
+ * settle the run's result. */
+export function settleClose(state: RunSettleState, code: number | null): void {
+  const { backend } = state;
+  flushRunTail(state);
+  // A blind image read on an authoring run deliberately killed it, so its exit is a kill like
+  // the watchdogs' — the half-done work is discarded.
+  const killed = state.wasKilled();
+  reconcileBackendAfterRun(state, killed);
+  const failed = closeFailed(state, code, killed);
   // The backend classifies the exit's stderr (pi: the transient JSON-parse crash, a
   // provider-wide backend failure, a permanent config error). The runner merges that with the
   // parser's own event-derived flags — one exit has one cause.
   const stderr = state.stderr();
   const cls = backend.classifyExit({ code, stderr, killed });
   const stderrBackend = cls.backendKind;
-  const configError =
-    !killed &&
-    cls.transientPiCrash !== true &&
-    stderrBackend === undefined &&
-    (state.parser.configError || cls.configError === true);
+  const configError = closeConfigError(state, cls, killed);
   const blindRead = state.blindRead();
   const errorMessage = settleErrorMessage(state, blindRead, failed, stderr, code);
   state.finish(
