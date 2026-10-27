@@ -103,6 +103,79 @@ interface QuestionsInvocation {
   show: number | undefined;
 }
 
+/** The scanner's mutable state as one pass walks `args`: the seven returned fields (the
+ * exact shape `QuestionsInvocation` holds) plus `numbered` — the marker that the question's
+ * number positional has been seen, which is not a returned field. */
+interface QuestionsScan extends QuestionsInvocation {
+  numbered: boolean;
+}
+
+/** The `--show`/`--answered`/`-n`/`--grep` arms — the flags only valid before the question's
+ * number positional. Each performs its read and writes its `scan.<field>` exactly as the
+ * inline scan did; returns `i` (the index of the last token consumed, after any `args[++i]`);
+ * every other token returns `undefined`. */
+function readPreNumberFlag(scan: QuestionsScan, args: string[], i: number): number | undefined {
+  if (scan.numbered) return undefined;
+  const arg = args[i] as string;
+  if (arg === "--show") {
+    rejectRepeatFlag(scan.show !== undefined, "--show");
+    scan.show = parsePositionFlag("--show", args[++i], "--show 2");
+    return i;
+  }
+  if (arg === "--answered") {
+    rejectRepeatFlag(scan.answeredFlag, "--answered");
+    scan.answeredFlag = true;
+    return i;
+  }
+  if (arg === "-n") {
+    rejectRepeatFlag(scan.limit !== undefined, "-n");
+    scan.limit = parseCountFlag("-n", args[++i], QUESTIONS_MAX_LISTED);
+    return i;
+  }
+  if (arg === "--grep") {
+    rejectRepeatFlag(scan.grep !== undefined, "--grep");
+    const text = args[++i];
+    if (text === undefined || text === "") fail("--grep needs text (usage: tumwater questions [--answered] --grep <text>)");
+    scan.grep = text;
+    return i;
+  }
+  return undefined;
+}
+
+/** The `--file` arm (valid anywhere), the `!numbered && --json` arm, and the unknown
+ * `--`-flag gate — in that order. Returns `i` when `--file`/`--json` consumed the token; the
+ * unknown-flag arm never returns (it `fail`s). */
+function readAnywhereFlag(scan: QuestionsScan, args: string[], i: number): number | undefined {
+  const arg = args[i] as string;
+  if (arg === "--file") {
+    rejectRepeatFlag(scan.file !== undefined, "--file");
+    scan.file = promptFileValue(args[++i]);
+    return i;
+  }
+  if (!scan.numbered && arg === "--json") {
+    rejectRepeatFlag(scan.jsonFlag, "--json");
+    scan.jsonFlag = true;
+    return i;
+  }
+  if (arg.startsWith("--") && arg !== "--json") {
+    rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC, { names: ["--show"], value: true, valueName: "<n>" }, { names: ["--grep"], value: true, valueName: "<text>" }]);
+    // The complete flag set (this gate only sees `--`-flags, but `-n` is a real flag the
+    // list should not omit) plus the same did-you-mean hint the sibling commands'
+    // unknown-argument gate (cli-flag-specs's failUnknownArgument) attaches, so a mistyped
+    // `--ansered` names `--answered` instead of only printing the valid list — the missing
+    // treatment the questions gate was the one unknown-argument caller without.
+    const spellings = ["--json", "--file", "--answered", "--show", "--grep", "-n"];
+    fail(`unknown argument: ${arg} (valid flags for tumwater questions: ${spellings.join(", ")})${typoSuffix(arg, spellings)}`);
+  }
+  return undefined;
+}
+
+/** The trailing `-n needs --answered` guard: `-n` limits the answered list, so without
+ * `--answered` it means nothing. */
+function assertQuestionsFlags(scan: QuestionsScan): void {
+  if (scan.limit !== undefined && !scan.answeredFlag) fail("-n needs --answered (it limits the answered questions listed)");
+}
+
 /** No requireReadyRepo gate, like backlog: the reader degrades to an empty list on a
  * missing QUESTIONS.md, so the command inspects any directory instead of refusing (a team
  * workspace still refuses).
@@ -121,69 +194,24 @@ interface QuestionsInvocation {
  * into JSON mode. Unknown `--`-prefixed tokens stay refused even there, so a misspelled
  * flag is still an error rather than silent decision text. */
 function parseQuestionsInvocation(args: string[]): QuestionsInvocation {
-  const words: string[] = [];
-  let jsonFlag = false;
-  let numbered = false;
-  let file: string | undefined;
-  let answeredFlag = false;
-  let limit: number | undefined;
-  let grep: string | undefined;
-  let show: number | undefined;
+  const scan: QuestionsScan = { words: [], jsonFlag: false, numbered: false, file: undefined, answeredFlag: false, limit: undefined, grep: undefined, show: undefined };
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i] as string;
-    if (!numbered && arg === "--show") {
-      rejectRepeatFlag(show !== undefined, "--show");
-      show = parsePositionFlag("--show", args[++i], "--show 2");
+    const consumed = readPreNumberFlag(scan, args, i) ?? readAnywhereFlag(scan, args, i);
+    if (consumed !== undefined) {
+      i = consumed;
       continue;
     }
-    if (!numbered && arg === "--answered") {
-      rejectRepeatFlag(answeredFlag, "--answered");
-      answeredFlag = true;
-      continue;
-    }
-    if (!numbered && arg === "-n") {
-      rejectRepeatFlag(limit !== undefined, "-n");
-      limit = parseCountFlag("-n", args[++i], QUESTIONS_MAX_LISTED);
-      continue;
-    }
-    if (!numbered && arg === "--grep") {
-      rejectRepeatFlag(grep !== undefined, "--grep");
-      const text = args[++i];
-      if (text === undefined || text === "") fail("--grep needs text (usage: tumwater questions [--answered] --grep <text>)");
-      grep = text;
-      continue;
-    }
-    if (arg === "--file") {
-      rejectRepeatFlag(file !== undefined, "--file");
-      file = promptFileValue(args[++i]);
-      continue;
-    }
-    if (!numbered && arg === "--json") {
-      rejectRepeatFlag(jsonFlag, "--json");
-      jsonFlag = true;
-      continue;
-    }
-    if (arg.startsWith("--") && arg !== "--json") {
-      rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC, { names: ["--show"], value: true, valueName: "<n>" }, { names: ["--grep"], value: true, valueName: "<text>" }]);
-      // The complete flag set (this gate only sees `--`-flags, but `-n` is a real flag the
-      // list should not omit) plus the same did-you-mean hint the sibling commands'
-      // unknown-argument gate (cli-flag-specs's failUnknownArgument) attaches, so a mistyped
-      // `--ansered` names `--answered` instead of only printing the valid list — the missing
-      // treatment the questions gate was the one unknown-argument caller without.
-      const spellings = ["--json", "--file", "--answered", "--show", "--grep", "-n"];
-      fail(`unknown argument: ${arg} (valid flags for tumwater questions: ${spellings.join(", ")})${typoSuffix(arg, spellings)}`);
-    }
-    if (!numbered) {
+    if (!scan.numbered) {
       // The position is a plain-decimal positive integer (parsePositiveInt's rule, the same
       // one --cancel's position honors): bare Number() admitted hex ("0x2"), exponent
       // ("1e2"), and whitespace-padded spellings as a valid question number, answering a
       // question the operator never named.
-      if (parsePositiveInt(arg) !== null) numbered = true;
+      if (parsePositiveInt(args[i] as string) !== null) scan.numbered = true;
     }
-    words.push(arg);
+    scan.words.push(args[i] as string);
   }
-  if (limit !== undefined && !answeredFlag) fail("-n needs --answered (it limits the answered questions listed)");
-  return { words, jsonFlag, file, answeredFlag, limit, grep, show };
+  assertQuestionsFlags(scan);
+  return { words: scan.words, jsonFlag: scan.jsonFlag, file: scan.file, answeredFlag: scan.answeredFlag, limit: scan.limit, grep: scan.grep, show: scan.show };
 }
 
 /** The `--show` output branch: one open (or, with `--answered`, answered) question in full. */
