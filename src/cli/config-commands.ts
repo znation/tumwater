@@ -95,77 +95,94 @@ function resolvedConfigValue(
           : record[canonicalConfigKey(key)];
 }
 
-/** The `tumwater config` command body: bare prints the resolved config; `get` and `unset`
- * screen their key through screenOperableKey, while `set` writes through setConfigKey. */
-export async function cmdConfig(root: string, args: string[] = []): Promise<void> {
-  const [sub, key, ...rest] = args;
-  if (sub === "get") {
-    const { parsed, config } = screenOperableKey(root, key ?? "");
-    const value = resolvedConfigValue(config, parsed, key ?? "");
-    sayJsonLine(value === undefined ? null : value); // Absent optional key → JSON null.
+/** The `config get` verb: screen the key through screenOperableKey, then print its resolved
+ * value (defaults merged in) as JSON, or JSON null when nothing sets it. */
+async function configGet(root: string, key: string | undefined): Promise<void> {
+  const { parsed, config } = screenOperableKey(root, key ?? "");
+  const value = resolvedConfigValue(config, parsed, key ?? "");
+  sayJsonLine(value === undefined ? null : value); // Absent optional key → JSON null.
+}
+
+/** The `config unset` verb: screen the key, remove it, and confirm what, if anything, was
+ * removed (or what the key now resolves to). */
+async function configUnset(root: string, key: string | undefined): Promise<void> {
+  // cli.ts's arity gate requires exactly two args (`unset <key>`) before cmdConfig runs;
+  // this is the defensive tail for a direct caller, matching the bare-config tail below.
+  if (key === undefined) fail(CONFIG_USAGE);
+  const k = canonicalConfigKey(key);
+  // The same screens get runs first, so a typo'd top-level key, role id, or role field
+  // fails identically — unsetConfigKey's own parse/field checks are the mutation-side
+  // backstop, not the wording the operator sees.
+  const { parsed } = screenOperableKey(root, k);
+  const result = unsetConfigKey(root, k);
+  if (!result.ok) fail(result.error);
+  // The reload only feeds the message, so a failed one leaves `now` undefined.
+  const reloaded = loadConfigSafe(root).config;
+  const now = reloaded === undefined ? undefined : resolvedConfigValue(reloaded, parsed, k);
+  const resolves = now === undefined ? "" : JSON.stringify(now);
+  if (result.oldValue === undefined) {
+    say(
+      `${k} is not set in tumwater.json, so nothing was removed` +
+        (now === undefined ? "" : ` (it resolves to ${resolves})`),
+    );
+  } else {
+    const was = JSON.stringify(result.oldValue);
+    say(`unset ${k} (was ${was}${now === undefined ? "" : `; now resolves to ${resolves}`})`);
+  }
+}
+
+/** The `config set` verb: write one value through setConfigKey (refusing a flag-looking
+ * value first) and confirm the write or that it was already that value. */
+async function configSet(root: string, key: string | undefined, rest: string[]): Promise<void> {
+  // A flag-looking value is a dropped `--` in disguise: `config set model --json` would
+  // otherwise take the literal string "--json" as the value (the JSON-parse fallback
+  // swallows any token) and validateConfig's string keys accept it silently — the same
+  // shape gui/gui-command.ts's --token gate refuses, where the value the next flag holds is never
+  // what the operator meant. Refuse before setConfigKey reads it; a value that really
+  // does begin with `--` has no legitimate shape among the config keys' values
+  // (identifiers, durations, windows, JSON scalars and arrays), so nothing is lost.
+  const raw = rest[0] ?? "";
+  if (raw.startsWith("--"))
+    fail(
+      `config set got the flag-looking value ${JSON.stringify(raw)} instead of a value — is a flag missing its value, or did a token slip into the value's position? (e.g. \`tumwater config set model gpt-5\`)`,
+    );
+  const result = setConfigKey(root, key ?? "", raw);
+  if (!result.ok) fail(result.error);
+  if ((result as { unchanged?: true }).unchanged) {
+    say(`${canonicalConfigKey(key ?? "")} is already ${JSON.stringify((result as { value: unknown }).value)}, so tumwater.json was not written`);
     return;
   }
-  if (sub === "unset") {
-    // cli.ts's arity gate requires exactly two args (`unset <key>`) before cmdConfig runs;
-    // this is the defensive tail for a direct caller, matching the bare-config tail below.
-    if (key === undefined) fail(CONFIG_USAGE);
-    const k = canonicalConfigKey(key);
-    // The same screens get runs first, so a typo'd top-level key, role id, or role field
-    // fails identically — unsetConfigKey's own parse/field checks are the mutation-side
-    // backstop, not the wording the operator sees.
-    const { parsed } = screenOperableKey(root, k);
-    const result = unsetConfigKey(root, k);
-    if (!result.ok) fail(result.error);
-    // The reload only feeds the message, so a failed one leaves `now` undefined.
-    const reloaded = loadConfigSafe(root).config;
-    const now = reloaded === undefined ? undefined : resolvedConfigValue(reloaded, parsed, k);
-    const resolves = now === undefined ? "" : JSON.stringify(now);
-    if (result.oldValue === undefined) {
-      say(
-        `${k} is not set in tumwater.json, so nothing was removed` +
-          (now === undefined ? "" : ` (it resolves to ${resolves})`),
-      );
-    } else {
-      const was = JSON.stringify(result.oldValue);
-      say(`unset ${k} (was ${was}${now === undefined ? "" : `; now resolves to ${resolves}`})`);
-    }
-    return;
-  }
-  if (sub === "set") {
-    // A flag-looking value is a dropped `--` in disguise: `config set model --json` would
-    // otherwise take the literal string "--json" as the value (the JSON-parse fallback
-    // swallows any token) and validateConfig's string keys accept it silently — the same
-    // shape gui/gui-command.ts's --token gate refuses, where the value the next flag holds is never
-    // what the operator meant. Refuse before setConfigKey reads it; a value that really
-    // does begin with `--` has no legitimate shape among the config keys' values
-    // (identifiers, durations, windows, JSON scalars and arrays), so nothing is lost.
-    const raw = rest[0] ?? "";
-    if (raw.startsWith("--"))
-      fail(
-        `config set got the flag-looking value ${JSON.stringify(raw)} instead of a value — is a flag missing its value, or did a token slip into the value's position? (e.g. \`tumwater config set model gpt-5\`)`,
-      );
-    const result = setConfigKey(root, key ?? "", raw);
-    if (!result.ok) fail(result.error);
-    if ((result as { unchanged?: true }).unchanged) {
-      say(`${canonicalConfigKey(key ?? "")} is already ${JSON.stringify((result as { value: unknown }).value)}, so tumwater.json was not written`);
-      return;
-    }
-    say(`set ${canonicalConfigKey(key ?? "")} to ${JSON.stringify((result as { value: unknown }).value)}`);
-    const note = (result as { note?: string }).note;
-    if (note) say(`note: ${note}`);
-    // A bare `roles` set replaces the FILE's section, but the built-in catalog always merges
-    // per entry at load, so the replacement cannot disable a role by omission. Say so here
-    // rather than let the confirmation imply the role is gone.
-    if (key === "roles")
-      say(
-        "note: the built-in role catalog still merges per entry — disable a role with `tumwater config set roles.<id>.enabled false`, not by omitting it",
-      );
-    return;
-  }
+  say(`set ${canonicalConfigKey(key ?? "")} to ${JSON.stringify((result as { value: unknown }).value)}`);
+  const note = (result as { note?: string }).note;
+  if (note) say(`note: ${note}`);
+  // A bare `roles` set replaces the FILE's section, but the built-in catalog always merges
+  // per entry at load, so the replacement cannot disable a role by omission. Say so here
+  // rather than let the confirmation imply the role is gone.
+  if (key === "roles")
+    say(
+      "note: the built-in role catalog still merges per entry — disable a role with `tumwater config set roles.<id>.enabled false`, not by omitting it",
+    );
+}
+
+/** The bare-config tail: the whole resolved config as pretty JSON, refusing a surplus
+ * subcommand the arity gate somehow missed. */
+async function configDump(root: string, sub: string | undefined): Promise<void> {
   // Bare config, or anything else: the whole-config dump is the default, and cli.ts's arity
   // check has already rejected a malformed get/set — this usage line is the defensive tail.
   if (sub !== undefined) fail(CONFIG_USAGE);
   const { config, error } = loadConfigSafe(root);
   if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
   sayJson(config);
+}
+
+/** The `tumwater config` command body: bare prints the resolved config; `get` and `unset`
+ * screen their key through screenOperableKey, while `set` writes through setConfigKey. Each
+ * verb's guards and confirmation wording live in one named helper — configGet, configUnset,
+ * configSet, configDump — that this dispatcher delegates to. */
+export async function cmdConfig(root: string, args: string[] = []): Promise<void> {
+  const [sub, key, ...rest] = args;
+  if (sub === "get") return configGet(root, key);
+  if (sub === "unset") return configUnset(root, key);
+  if (sub === "set") return configSet(root, key, rest);
+  return configDump(root, sub);
 }
