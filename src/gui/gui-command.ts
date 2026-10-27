@@ -49,28 +49,25 @@ export interface GuiSeams {
   serve?: () => Promise<void>;
 }
 
-/** The `tumwater gui` command: parse the --port/--all-interfaces/--token flags, start the
- * server, print the banner, and serve until Ctrl+C. Lives beside startGui (gui/gui-server.ts) so
- * the CLI's gui-specific policy (token validation, the listen-failure messages, the LAN
- * announcement) cannot drift from the server it drives. Flag-vocabulary rejection stays in
- * cli.ts with the other cases; everything gui-specific after that gate is this function's job.
- * A failed listen throws (cli.ts's main catch renders it as the same `tumwater: …` line and
- * exit 1 fail() would) so the listen-failure wordings stay assertable in-process. */
-export async function cmdGui(root: string, args: string[], seams: GuiSeams = {}): Promise<void> {
-  const start = seams.startGui ?? startGui;
-  const lan = seams.lanAddresses ?? lanAddresses;
-  const print = seams.say ?? say;
-  const serve = seams.serve ?? (() => new Promise<void>(() => {}));
-  const portRaw = flagValue(args, "--port");
-  const port = portRaw !== null ? parsePortFlag(portRaw) : 7180;
-  const allInterfaces = args.includes("--all-interfaces");
-  // A valueless or empty --token is a CLI error, not an open server: an operator who
-  // asked for protection must never silently get none. The validation and its wording
-  // live in tokenValueProblem, shared with `start --gui` so the two callers cannot
-  // drift; its flag-looking-value case names `tumwater gui` here.
-  const problem = tokenValueProblem(args, "tumwater gui");
-  if (problem) fail(problem);
-  const flagToken = flagValue(args, "--token");
+/** Resolve cmdGui's four injectable seams to their runnable forms: the server it starts, the
+ * LAN address source the banner names, the printer for the banner and warnings, and the
+ * serve-until-Ctrl+C wait. Production callers omit every seam and get the real server,
+ * interfaces, stdout, and wait. */
+function resolveGuiSeams(seams: GuiSeams): {
+  start: typeof startGui;
+  lan: typeof lanAddresses;
+  print: typeof say;
+  serve: () => Promise<void>;
+} {
+  return {
+    start: seams.startGui ?? startGui,
+    lan: seams.lanAddresses ?? lanAddresses,
+    print: seams.say ?? say,
+    serve: seams.serve ?? (() => new Promise<void>(() => {})),
+  };
+}
+
+function adoptGuiToken(flagToken: string | null, print: typeof say): string {
   // A direct `tumwater gui --token` puts the secret on its own argv — readable by any local
   // user and re-run verbatim by reexecSelf onto every reloaded generation — so fold it into
   // the env and take it off the command line before a redeploy can re-expose it. A child
@@ -83,7 +80,17 @@ export async function cmdGui(root: string, args: string[], seams: GuiSeams = {})
       `--token is visible to every local user in this process's command line (\`ps\`, /proc/<pid>/cmdline) and is re-run onto each reloaded generation — prefer the ${GUI_TOKEN_ENV} env var`,
     );
   }
-  const token = flagToken ?? process.env[GUI_TOKEN_ENV] ?? "";
+  return flagToken ?? process.env[GUI_TOKEN_ENV] ?? "";
+}
+
+/** Start the server and translate the two common listen failures into hints naming their fix. */
+async function startGuiOrExplain(
+  start: typeof startGui,
+  root: string,
+  port: number,
+  allInterfaces: boolean,
+  token: string,
+): Promise<void> {
   try {
     await start(root, port, allInterfaces, token);
   } catch (err) {
@@ -103,6 +110,16 @@ export async function cmdGui(root: string, args: string[], seams: GuiSeams = {})
       );
     throw err;
   }
+}
+
+/** Print the localhost banner and, under --all-interfaces, the LAN URLs and exposure wording. */
+function printGuiBanner(
+  print: typeof say,
+  lan: typeof lanAddresses,
+  port: number,
+  allInterfaces: boolean,
+  token: string,
+): void {
   const tokenSuffix = token ? `/?token=${encodeURIComponent(token)}` : "";
   print(`tumwater gui at http://127.0.0.1:${port}${tokenSuffix} — Ctrl+C to stop`);
   if (allInterfaces) {
@@ -116,5 +133,28 @@ export async function cmdGui(root: string, args: string[], seams: GuiSeams = {})
         : "listening on ALL interfaces — no auth; anyone reaching it can prompt the director",
     );
   }
+}
+
+/** The `tumwater gui` command: parse the --port/--all-interfaces/--token flags, start the
+ * server, print the banner, and serve until Ctrl+C. Lives beside startGui (gui/gui-server.ts) so
+ * the CLI's gui-specific policy (token validation, the listen-failure messages, the LAN
+ * announcement) cannot drift from the server it drives. Flag-vocabulary rejection stays in
+ * cli.ts with the other cases; everything gui-specific after that gate is this function's job.
+ * A failed listen throws (cli.ts's main catch renders it as the same `tumwater: …` line and
+ * exit 1 fail() would) so the listen-failure wordings stay assertable in-process. */
+export async function cmdGui(root: string, args: string[], seams: GuiSeams = {}): Promise<void> {
+  const { start, lan, print, serve } = resolveGuiSeams(seams);
+  const portRaw = flagValue(args, "--port");
+  const port = portRaw !== null ? parsePortFlag(portRaw) : 7180;
+  const allInterfaces = args.includes("--all-interfaces");
+  // A valueless or empty --token is a CLI error, not an open server: an operator who
+  // asked for protection must never silently get none. The validation and its wording
+  // live in tokenValueProblem, shared with `start --gui` so the two callers cannot
+  // drift; its flag-looking-value case names `tumwater gui` here.
+  const problem = tokenValueProblem(args, "tumwater gui");
+  if (problem) fail(problem);
+  const token = adoptGuiToken(flagValue(args, "--token") ?? null, print);
+  await startGuiOrExplain(start, root, port, allInterfaces, token);
+  printGuiBanner(print, lan, port, allInterfaces, token);
   await serve(); // Serve until Ctrl+C.
 }
