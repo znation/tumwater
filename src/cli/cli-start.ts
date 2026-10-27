@@ -223,13 +223,15 @@ async function parseStartInvocation(root: string, args: string[]): Promise<Start
   return { once, json, forMs, branchArg, roleFilter, config, mainBranch };
 }
 
-/** Boot the supervised generation: the stop closure and SIGINT/SIGTERM handlers, the --for
- * deadline timer and scheduled-stop watch, the parent-death watch, the baseline/redeploy/
- * launch-services imports, the banner, the event subscription, runOrchestrator, and the
- * once/window summaries and exit codes. */
-async function runSupervisedGeneration(input: SupervisedGenerationInput): Promise<void> {
-  const { root, once, json, forMs, branchArg, roleFilter, config, mainBranch } = input;
-  const { RUN_WINDOW_START_ENV, ONCE_FAILED_EXIT_CODE, startParentDeathWatch, expectedSupervisorPid } = await import("../process/supervisor.js");
+/** Create the abort handle and the graceful-stop closure a supervised generation passes to
+ * every watchdog, and register the SIGINT/SIGTERM handlers that trigger it. Returns an
+ * `isStopping` query so the later once-exit check reads the live flag instead of a captured
+ * boolean. */
+function installStopHandlers(json: boolean): {
+  controller: AbortController;
+  stop: () => void;
+  isStopping: () => boolean;
+} {
   const controller = new AbortController();
   let stopping = false;
   const stop = () => {
@@ -243,6 +245,19 @@ async function runSupervisedGeneration(input: SupervisedGenerationInput): Promis
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
+  return { controller, stop, isStopping: () => stopping };
+}
+
+/** Arm the windowed run's deadline timer and the scheduled-stop watch, both of which run the
+ * same graceful `stop` a Ctrl+C runs. Returns the window start and the two clearable handles. */
+async function armRunWatchdogs(
+  root: string,
+  json: boolean,
+  forMs: number | null,
+  stop: () => void,
+  isStopping: () => boolean,
+): Promise<{ windowStart: number; deadlineTimer: { clear(): void } | null; scheduledStopWatch: { clear(): void } }> {
+  const { RUN_WINDOW_START_ENV } = await import("../process/supervisor.js");
   // A windowed run's deadline arms the same graceful stop a Ctrl+C runs — the identical `stop`
   // closure, so the drain path is one code path either way. clearTimeout in the finally below
   // retracts it when the run ends first (an early Ctrl+C), so no stray timer outlives the run.
@@ -254,21 +269,13 @@ async function runSupervisedGeneration(input: SupervisedGenerationInput): Promis
     stop();
   }) : null;
   const scheduledStopWatch = armScheduledStopWatch(root, () => {
-    if (!stopping) stop(); // A drain already under way must not be turned into a force-kill.
+    if (!isStopping()) stop(); // A drain already under way must not be turned into a force-kill.
   }, json);
-  // A supervisor that dies without forwarding — SIGKILL (the OOM killer, `kill -9`) cannot be
-  // trapped or forwarded, and an uncaught supervisor crash forwards nothing either — leaves this
-  // generation reparented and running the team unattended. The parent-death watch polls for the
-  // reparent and runs the same graceful stop a forwarded SIGTERM would have run, so a killed
-  // supervisor takes its team down with it (BUGS.md 2026-09-30). The spawner hands its pid
-  // down (SUPERVISOR_PID_ENV), so a supervisor killed during this child's startup — before the
-  // watch's first ppid read — still counts as gone. Everything below runs only in
-  // the supervised generation: an unsupervised `run` became the supervisor above and returned.
-  const expectedPpid = expectedSupervisorPid();
-  startParentDeathWatch(stop, expectedPpid !== undefined ? { expectedPpid } : {});
-  const enabled = runnerIds(config);
-  // A scoped round's role list is exactly the filter; otherwise every enabled role runs.
-  const roles = roleFilter ?? enabled;
+  return { windowStart, deadlineTimer, scheduledStopWatch };
+}
+
+/** Persist the baseline verdicts and boot the once-gated redeployer and launch-services watch. */
+async function bootGenerationParts(root: string, branchArg: string | null, once: boolean) {
   // Main's green verdicts outlive this generation: the redeployer and baseline's surviving readers
   // (`mainTipVerdict`, the ci hand-off's `mainRedHealNote`) start from the ones the previous
   // generation verified instead of re-running the suite.
@@ -278,10 +285,22 @@ async function runSupervisedGeneration(input: SupervisedGenerationInput): Promis
   const redeploy = once
     ? null
     : await (await import("../redeploy/redeploy.js")).createRedeployer(root, (e) => logEvent(root, e), () => runStartupProblem(root, branchArg));
-  const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
   // A long-running team watches launchservicesd's port count (a no-op off macOS); a once round
   // is over long before a leak could matter.
   const launchServicesWatch = once ? null : new (await import("../process/launch-services.js")).LaunchServicesWatch(root);
+  return { redeploy, launchServicesWatch };
+}
+
+/** Print the supervised generation's banner and subscribe to its event stream on non-json runs. */
+function announceGeneration(
+  roles: string[],
+  mainBranch: string,
+  once: boolean,
+  json: boolean,
+  forMs: number | null,
+  root: string,
+  build: string,
+): () => void {
   // Name the resolved root when it differs from the cwd: an operator who started the team
   // from a subdirectory must see where .tumwater/ actually lives.
   const rootNote = root !== process.cwd() ? ` · root ${root}` : "";
@@ -299,7 +318,85 @@ async function runSupervisedGeneration(input: SupervisedGenerationInput): Promis
     say(`roles: ${roles.join(", ")}`);
     say("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n");
   }
-  const unsubscribe = json ? () => {} : subscribeEvents((e) => say(formatEvent(e)));
+  return json ? () => {} : subscribeEvents((e) => say(formatEvent(e)));
+}
+
+/** Print the round summary: the once report/summary, or a windowed run's window report. */
+function printRoundSummary(
+  root: string,
+  roles: string[],
+  runsBefore: Map<string, number>,
+  once: boolean,
+  json: boolean,
+  forMs: number | null,
+  windowStart: number,
+  settled: ReadonlyMap<string, string> | undefined,
+  runsDone: ReadonlyMap<string, number> | undefined,
+  restart: boolean,
+): void {
+  if (once) {
+    if (json) sayJson(onceReport(root, roles, runsBefore, settled, runsDone));
+    else say(onceSummary(root, roles, runsBefore, settled, runsDone));
+  } else if (forMs !== null && !restart) {
+    const { rows, covered } = readRunRowsSince(root, Date.now() - windowStart, null);
+    const summary = summarizeRunRows(rows);
+    if (json) sayJson(windowReport(durationLabel(forMs), summary, covered));
+    else say(windowSummary(durationLabel(forMs), summary, covered));
+  }
+}
+
+/** Set the process exit code for a once round that failed or was cut short before completion. */
+async function applyOnceExitCode(
+  root: string,
+  roles: string[],
+  runsBefore: Map<string, number>,
+  runsDone: ReadonlyMap<string, number> | undefined,
+  once: boolean,
+  json: boolean,
+  isStopping: () => boolean,
+): Promise<void> {
+  const { ONCE_FAILED_EXIT_CODE } = await import("../process/supervisor.js");
+  if (once) {
+    const failures = onceFailures(root, roles, runsBefore, runsDone);
+    if (failures.length > 0) {
+      // In --json mode the failure facts already ride in the report's `failures`; the exit
+      // code is the contract a CI caller needs, so only the prose line is suppressed.
+      if (!json) say(`once: failed — ${failures.map((f) => `${f.role} ${f.result}`).join(", ")}`);
+      process.exitCode = ONCE_FAILED_EXIT_CODE;
+    }
+    // A round a signal, parent death, or scheduled stop cut short before it completed must
+    // not read as success (0) to the CI caller parsing the JSON: the document still carries
+    // the round's partial facts, but the truncated round exits non-zero. Non-json once keeps
+    // its historical behavior (prose + 0 unless a role failed).
+    if (json && isStopping()) process.exitCode = ONCE_FAILED_EXIT_CODE;
+  }
+}
+
+/** Boot the supervised generation: the stop closure and SIGINT/SIGTERM handlers, the --for
+ * deadline timer and scheduled-stop watch, the parent-death watch, the baseline/redeploy/
+ * launch-services imports, the banner, the event subscription, runOrchestrator, and the
+ * once/window summaries and exit codes. */
+async function runSupervisedGeneration(input: SupervisedGenerationInput): Promise<void> {
+  const { root, once, json, forMs, branchArg, roleFilter, config, mainBranch } = input;
+  const { startParentDeathWatch, expectedSupervisorPid } = await import("../process/supervisor.js");
+  const { controller, stop, isStopping } = installStopHandlers(json);
+  const { windowStart, deadlineTimer, scheduledStopWatch } = await armRunWatchdogs(root, json, forMs, stop, isStopping);
+  // A supervisor that dies without forwarding — SIGKILL (the OOM killer, `kill -9`) cannot be
+  // trapped or forwarded, and an uncaught supervisor crash forwards nothing either — leaves this
+  // generation reparented and running the team unattended. The parent-death watch polls for the
+  // reparent and runs the same graceful stop a forwarded SIGTERM would have run, so a killed
+  // supervisor takes its team down with it (BUGS.md 2026-09-30). The spawner hands its pid
+  // down (SUPERVISOR_PID_ENV), so a supervisor killed during this child's startup — before the
+  // watch's first ppid read — still counts as gone. Everything below runs only in
+  // the supervised generation: an unsupervised `run` became the supervisor above and returned.
+  const expectedPpid = expectedSupervisorPid();
+  startParentDeathWatch(stop, expectedPpid !== undefined ? { expectedPpid } : {});
+  const enabled = runnerIds(config);
+  // A scoped round's role list is exactly the filter; otherwise every enabled role runs.
+  const roles = roleFilter ?? enabled;
+  const { redeploy, launchServicesWatch } = await bootGenerationParts(root, branchArg, once);
+  const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
+  const unsubscribe = announceGeneration(roles, mainBranch, once, json, forMs, root, build);
   // Snapshot each role's run counter so the once summary can tell this round's runs from
   // the persisted history (the state file accumulates across rounds).
   await runStartupMigrations(root); // so the snapshot reads a migrated state/<new>.json
@@ -322,29 +419,8 @@ async function runSupervisedGeneration(input: SupervisedGenerationInput): Promis
     scheduledStopWatch.clear();
     unsubscribe();
   }
-  if (once) {
-    if (json) sayJson(onceReport(root, roles, runsBefore, exit.settled, exit.runsDone));
-    else say(onceSummary(root, roles, runsBefore, exit.settled, exit.runsDone));
-  } else if (forMs !== null && !exit.restart) {
-    const { rows, covered } = readRunRowsSince(root, Date.now() - windowStart, null);
-    const summary = summarizeRunRows(rows);
-    if (json) sayJson(windowReport(durationLabel(forMs), summary, covered));
-    else say(windowSummary(durationLabel(forMs), summary, covered));
-  }
-  if (once) {
-    const failures = onceFailures(root, roles, runsBefore, exit.runsDone);
-    if (failures.length > 0) {
-      // In --json mode the failure facts already ride in the report's `failures`; the exit
-      // code is the contract a CI caller needs, so only the prose line is suppressed.
-      if (!json) say(`once: failed — ${failures.map((f) => `${f.role} ${f.result}`).join(", ")}`);
-      process.exitCode = ONCE_FAILED_EXIT_CODE;
-    }
-    // A round a signal, parent death, or scheduled stop cut short before it completed must
-    // not read as success (0) to the CI caller parsing the JSON: the document still carries
-    // the round's partial facts, but the truncated round exits non-zero. Non-json once keeps
-    // its historical behavior (prose + 0 unless a role failed).
-    if (json && stopping) process.exitCode = ONCE_FAILED_EXIT_CODE;
-  }
+  printRoundSummary(root, roles, runsBefore, once, json, forMs, windowStart, exit.settled, exit.runsDone, exit.restart);
+  await applyOnceExitCode(root, roles, runsBefore, exit.runsDone, once, json, isStopping);
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
