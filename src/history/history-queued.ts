@@ -83,35 +83,58 @@ export function resolveQueuedResult(
   joinStarts: Map<string, number>,
   floorTs: number | null,
 ): QueuedVerdict | null {
-  // Interlock relief (plans/interlock-relief.md): a held run's commit stayed on the branch and
-  // enqueued nothing, so its queued label names the held commit, not a merge this run made.
-  // Returning null keeps that row's raw queued label and, crucially, leaves the earlier change's
-  // merge pins unclaimed, so the verdict that belongs to the queued entry is not credited to the
-  // held run. One guard covers all three call sites (history-data.ts, time-spend.ts,
-  // run-detail-data.ts).
-  if (end.heldOnBranch === true) return null;
-  if (floorTs !== null) {
-    const startTs = joinStarts.get(`${end.source}#${end.run}`);
-    if (startTs !== undefined && startTs < floorTs) return null;
-  }
+  if (!queuedRowEvidenceWhole(end, joinStarts, floorTs)) return null;
   const queuedList = mergeQueuedByRunner.get(end.source);
   if (!queuedList || queuedList.length === 0) return null;
-  let top = claimTop.get(end.source) ?? queuedList.length - 1;
-  while (top >= 0 && queuedList[top]!.ts > end.ts) top--;
+  const top = claimQueuedPin(end, queuedList, claimTop);
   if (top < 0) return null;
-  claimTop.set(end.source, top - 1);
   const outcomes = outcomeByRunner.get(end.source) ?? [];
-  // A recovery run's row: the attempt it re-enqueued, not the change's final verdict, so the
-  // final verdict shows once (on the authoring row) and each retriable failure once (here).
   const recovered = recoveredAttemptVerdict(queuedList, top, outcomes);
   if (recovered !== null) return recovered;
-  // The authoring row: walk forward while the next pin is a recovery re-enqueue and resolve to
-  // the last attempt's verdict. `findLast` picks the newest same-sha outcome so an un-rebased
-  // retry (recovery re-enqueues the identical sha, logged by both pins) does not re-match the
-  // first attempt's outcome inside the recovery pin's walk. The returned pin/outcome ride the
-  // result so a caller correlating sibling evidence (the failure digest's review-failure
-  // message) can key on THIS attempt's position, not a sha a pre-review rebase may have moved
-  // (BUGS.md 2026-10-10).
+  return authoringRowVerdict(queuedList, outcomes, top);
+}
+
+/** True when the row's join evidence is whole enough to resolve it: neither the interlock-relief
+ * held-run guard nor the since-window floor keeps the row's raw queued label. Interlock relief
+ * (plans/interlock-relief.md): a held run's commit stayed on the branch and enqueued nothing, so
+ * its queued label names the held commit, not a merge this run made. Returning false keeps that
+ * row's raw queued label and, crucially, leaves the earlier change's merge pins unclaimed, so the
+ * verdict that belongs to the queued entry is not credited to the held run. One guard covers all
+ * three call sites (history-data.ts, time-spend.ts, run-detail-data.ts). When `floorTs` (a
+ * since-window's cutoff, null in the count view) sits after the run_start's ts, the row's join
+ * evidence is not whole in the windowed read and the row keeps its raw queued label. A MISSING
+ * start needs no guard — it joins, because rotation drops a prefix, so every pin older than the
+ * lost start is lost with it and nothing can be mis-claimed (and a skipped run has no start at all
+ * but is never queued). */
+function queuedRowEvidenceWhole(end: HarnessEvent, joinStarts: Map<string, number>, floorTs: number | null): boolean {
+  if (end.heldOnBranch === true) return false;
+  if (floorTs !== null) {
+    const startTs = joinStarts.get(`${end.source}#${end.run}`);
+    if (startTs !== undefined && startTs < floorTs) return false;
+  }
+  return true;
+}
+
+/** Claim the newest unclaimed merge_queued pin at or before the row's end and consume it from the
+ * caller's `claimTop` cursor. The cursor (mutated in place) walks the pin list newest-first and
+ * hands each queued run the newest unclaimed pin at or before its end, so several queued runs
+ * cannot claim one pin. Returns the pin's index, or -1 when no pin is at or before the
+ * row's end. */
+function claimQueuedPin(end: HarnessEvent, queuedList: HarnessEvent[], claimTop: Map<string, number>): number {
+  let top = claimTop.get(end.source) ?? queuedList.length - 1;
+  while (top >= 0 && queuedList[top]!.ts > end.ts) top--;
+  if (top < 0) return -1;
+  claimTop.set(end.source, top - 1);
+  return top;
+}
+
+/** The authoring row: walk forward while the next pin is a recovery re-enqueue and resolve to the
+ * last attempt's verdict. `findLast` picks the newest same-sha outcome so an un-rebased retry
+ * (recovery re-enqueues the identical sha, logged by both pins) does not re-match the first
+ * attempt's outcome inside the recovery pin's walk. The returned pin/outcome ride the result so a
+ * caller correlating sibling evidence (the failure digest's review-failure message) can key on
+ * THIS attempt's position, not a sha a pre-review rebase may have moved (BUGS.md 2026-10-10). */
+function authoringRowVerdict(queuedList: HarnessEvent[], outcomes: HarnessEvent[], top: number): QueuedVerdict | null {
   let idx = top;
   let resolved: QueuedVerdict | null = null;
   for (;;) {
