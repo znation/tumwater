@@ -143,7 +143,7 @@ function sinceWindowMs(sinces: readonly number[]): number {
  * cannot drift on the selection. `since` is the day-after the fix date — the recurrence scan's
  * boundary (the heading carries only a date, so a same-day failure cannot be told from the one
  * the fix answered). Returns `[]` when no candidate has both a quoted test and a date. */
-export function regressedFixCandidates(root: string): RegressedFixCandidate[] {
+function regressedFixCandidates(root: string): RegressedFixCandidate[] {
   const candidates = fixedBugEntries(root).slice(0, FIX_CLAIMS_CHECKED).flatMap((entry) => {
     const name = quotedTestName(entry.title);
     const date = lastDate(entry.title, /(\d{4}-\d{2}-\d{2})/);
@@ -159,7 +159,7 @@ export function regressedFixCandidates(root: string): RegressedFixCandidate[] {
  * `failureMentions` per candidate over `events`, keeping the last mention (the doctor's exact
  * match). The caller supplies the event window — the doctor reads back to the oldest candidate's
  * day-after, the always-on alert the trailing day. */
-export function matchedRegressedFixes(
+function matchedRegressedFixes(
   candidates: readonly RegressedFixCandidate[],
   events: readonly HarnessEvent[],
 ): RegressedFix[] {
@@ -170,7 +170,7 @@ export function matchedRegressedFixes(
 }
 
 /** The doctor's `regressed fixes` warn sentence, verbatim, or null when nothing regressed. */
-export function regressedFixesPhrase(regressed: readonly RegressedFix[]): string | null {
+function regressedFixesPhrase(regressed: readonly RegressedFix[]): string | null {
   const [first, ...rest] = regressed;
   if (!first) return null;
   const more = andMore(rest, (c) => quoteHeading(c.title));
@@ -181,7 +181,7 @@ export function regressedFixesPhrase(regressed: readonly RegressedFix[]): string
 
 /** A Fixed record whose heading quotes a test name and carries a `YYYY-MM-DD` fix date — one
  * regressed-fix candidate that is not already filed as an Open bug. */
-export interface RegressedFixCandidate {
+interface RegressedFixCandidate {
   title: string;
   name: string;
   date: string;
@@ -190,7 +190,7 @@ export interface RegressedFixCandidate {
 
 /** A RegressedFixCandidate whose quoted test actually failed again: the candidate plus the last
  * matching failure event (its ts and text). */
-export interface RegressedFix extends RegressedFixCandidate {
+interface RegressedFix extends RegressedFixCandidate {
   newest: { ts: number; text: string };
 }
 

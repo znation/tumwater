@@ -255,26 +255,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The before/after row and key counts, and the deletions' measurement premise, are in the part's PLANS-DONE entry.
 - `npm run test:gate` passes.
 
-### Subtract, part 1d/6: The status and tail banners that are not a stopped team go — role cap, no-check, brief, truncation, build, stale claims, quiet, maintenance, provider holds/caps, pause, contention, pins, pool, regressed fixes and the images alert move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1c/6 landed — it waited on part 5e/6 too until the user withdrew that part 2026-10-28; touches src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts src/doctor/doctor-model-checks.ts src/doctor/doctor-check-names.ts src/doctor/doctor.ts test/doctor-model-checks.test.ts)
-
-**Previously held 1**
-
-**Goal.** Only the stopped-team and decision-queue banners remain. Kept in src/ui/team-alert-status.ts: `pushMainRedAlert`, `pushFailingStreakAlert`, `pushStuckRoleAlert`, `pushSpentBudgetAlert` (both arms: the red `budget` pause and the blue over-cap `fallback` switch), `pushChainAlert` (the blue `Running on fallback`), `pushDiskAlert` and `pushInstallDriftAlert` — the budget fallback and its surfaces stay (user, 2026-10-28; plans/subtract.md stroke 5's amendment); kept in src/ui/team-alert-tail.ts: `pushStoppedAlert` (`tumwater is not running`). Everything else becomes a doctor row: `repeated failures`, `budget` (role cap), `check`/`brief` (no-check, no-brief, brief-truncated), `role notes`, `principles`, `update` (stale build), `parallel instances` (stale claims and the instance pool), `quiet hours`, `maintenance allowance`, `provider waits`, `provider concurrency`, `pause`, `provider contention`/`check contention`/`workspaces` (contention and stale workspace pins), `regressed fixes`, and `image input` (the text-only roles and where each reroutes an image, or that none can — part 5f/6 deleted the old probe-backed row, so this part re-adds a probe-free one in src/doctor/doctor-model-checks.ts that reads `roleImageInfo`, src/agent/image-input.ts, the same resolver the alert reads; the reroute itself stays, plans/subtract.md stroke 5's 2026-10-28 amendment).
-
-**Approach.**
-- Delete from src/ui/team-alert-status.ts: `pushRoleCapAlert`, `pushNoCheckAlert`, `pushNoBriefAlert`, `pushBriefTruncatedAlert`, `pushRoleNotesTruncatedAlert`, `pushPrinciplesTruncatedAlert`, `pushBuildAlert`, `pushStaleClaimsAlert` and their calls in `buildStatusAlerts`; keep the seven kept builders.
-- Delete from src/ui/team-alert-tail.ts: `pushQuietAlert`, `pushMaintenanceAlert`, `pushProviderHoldAlert`, `pushProviderCapsAlert`, `pushPausedAlert`, `pushContentionAlert`, `pushWorkspacePinsAlert`, `pushInstancePoolAlert`, `pushRegressedFixesAlert`, `pushImagesAlert` and their calls in `buildTailAlerts`; keep `pushStoppedAlert`.
-- Delete `capacityContention`, `providerCapProblems`, `instancePoolProblems`, `regressedFixesAlert`, `staleWorkspacePins` and the `CapacityBottleneck`/`RegressedFixAlert` types from src/ui/alert-feeds.ts / team-alert-shared.ts; keep `staleClaimEntries` (src/scheduling/claim-entries.ts), which the doctor's `parallel instances` row still reads.
-- Update `teamAlerts`' parameters and the three call sites, and the team-alerts.test.ts / status-payload.test.ts cases; sweep docs/how-it-works.md's sentences naming these banners.
-- Do not touch src/doctor/doctor-contention-checks.ts or doctor-project-checks.ts: their rows are the detail. src/doctor/doctor.ts and doctor-check-names.ts change only to register the new `image input` row.
-
-**Files touched.** src/ui/team-alert-status.ts src/ui/team-alert-tail.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts
-
-**Acceptance criteria.**
-- `buildStatusAlerts` emits only main-red, failing-streak, stuck-role, spent-budget (paused or switched to the fallback), running-on-fallback, disk and install-drift; `buildTailAlerts` emits only `stopped`. No other builder remains in either module.
-- Each deleted condition prints its `tumwater doctor` row (listed above).
-- `npm run test:gate` passes.
-
 ### Subtract, part 1e/6: The backlog staleness and structure banners go — stale questions, stalled entries, plan dependencies, stranded plans, duplicated headings, live archive, validation gaps and false fixes move to the doctor (planned 2026-10-26 by the plan role, split from the too-large part 1/6 after feature held it (held 1); design in plans/subtract.md "The six strokes", stroke 6; requires Subtract part 1d/6 landed; touches src/ui/team-alert-backlog.ts src/ui/alert-feeds.ts src/ui/team-alert-shared.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts test/status-payload.test.ts)
 
 **Previously held 1**

@@ -56,7 +56,7 @@ const PIN_STALE_MS = DAY_MS;
 /** One stale pin the worktree-pool row (checkWorktreePool) and the standing `workspace-pins`
  * alert (alert-feeds.ts) share: a slot held out of the pool by a run that never resumed.
  * role is the slot's pinnedFor, dir the slot's directory name, ageMs the pin's whole-ms age. */
-export interface StaleWorkspacePin {
+interface StaleWorkspacePin {
   role: string;
   dir: string;
   ageMs: number;
@@ -87,7 +87,7 @@ export function staleWorkspacePins(root: string, now = Date.now()): StaleWorkspa
  * the pin's whole-ms age). `role` is a non-optional string on StaleWorkspacePin, but the
  * clause renders it through textOr like the row always did, so a malformed pin can never
  * print nothing where the phrase expects a role. */
-export function stalePinPhrase(pin: StaleWorkspacePin): string {
+function stalePinPhrase(pin: StaleWorkspacePin): string {
   return `${textOr(pin.role)} pinned on ${pin.dir} for ${Math.round(pin.ageMs / 3_600_000)}h`;
 }
 
@@ -103,13 +103,13 @@ function leftoverWorktreeDirs(root: string): string[] {
 }
 
 /** The window of `slot_wait` events the pool row sums, and the total wait inside it that warns. */
-export const SLOT_WAIT_CHECK_WINDOW_MS = DAY_MS;
+const SLOT_WAIT_CHECK_WINDOW_MS = DAY_MS;
 const SLOT_WAIT_WARN_TOTAL_MS = 10 * 60_000;
 
-export const PROVIDER_WAIT_CHECK_WINDOW_MS = DAY_MS;
+const PROVIDER_WAIT_CHECK_WINDOW_MS = DAY_MS;
 const PROVIDER_WAIT_WARN_TOTAL_MS = 10 * 60_000;
 
-export const CHECK_WAIT_CHECK_WINDOW_MS = DAY_MS;
+const CHECK_WAIT_CHECK_WINDOW_MS = DAY_MS;
 const CHECK_WAIT_WARN_TOTAL_MS = 10 * 60_000;
 
 /** Fold a window's `*_wait` events into the three numbers every contention check reads: how
@@ -138,12 +138,10 @@ function sumWaits(waits: readonly HarnessEvent[]): { count: number; totalMs: num
 }
 
 /** The verdict one `*_wait` contention row folds: whether the window's waits cross that row's
- * warn threshold, and the exact detail the doctor prints (the same rule the always-on
- * contention alert carries, so the two cannot drift — see alert-feeds.ts's
- * capacityContention). `warn` mirrors the total crossing the row's ten-minute threshold and
- * the appended knob-raising advice, so the doctor's level and the alert's presence are decided
- * by one rule. */
-export interface WaitContention {
+ * warn threshold, and the exact detail the doctor prints. `warn` mirrors the total crossing the
+ * ten-minute threshold, plus the appended knob-raising advice, so the row's warn and its detail
+ * are carried by one rule. */
+interface WaitContention {
   warn: boolean;
   detail: string;
 }
@@ -153,7 +151,7 @@ export interface WaitContention {
  * longest spans (naming the role and whether it was a check or a run), and, on a warn, the
  * knob to raise past `slotCount`. Shared by the doctor's `workspaces` row and the always-on
  * contention alert, so the trigger and the advice cannot drift. */
-export function slotWaitContention(waits: readonly HarnessEvent[], slotCount: number): WaitContention {
+function slotWaitContention(waits: readonly HarnessEvent[], slotCount: number): WaitContention {
   const { count, totalMs, longestMs, longest } = sumWaits(waits);
   const contended = totalMs >= SLOT_WAIT_WARN_TOTAL_MS;
   const purpose = longest.purpose === "verify" ? "check" : "run";
@@ -170,7 +168,7 @@ export function slotWaitContention(waits: readonly HarnessEvent[], slotCount: nu
  * `provider contention` row and the always-on contention alert, so the trigger and the advice
  * cannot drift. The shared rule leaves the count-zero and read-error arms to
  * checkProviderContention. */
-export function providerWaitContention(waits: readonly HarnessEvent[], config: TumwaterConfig | undefined): WaitContention {
+function providerWaitContention(waits: readonly HarnessEvent[], config: TumwaterConfig | undefined): WaitContention {
   const perKey = new Map<string, number>();
   const { count, totalMs, longestMs } = sumWaits(waits);
   for (const ev of waits) {
@@ -207,7 +205,7 @@ export function providerWaitContention(waits: readonly HarnessEvent[], config: T
  * busiest first. Shared by the doctor's `check contention` row and the always-on contention
  * alert, so the trigger and the advice cannot drift. The shared rule leaves the count-zero
  * and read-error arms to checkCheckContention. */
-export function checkWaitContention(waits: readonly HarnessEvent[], config: TumwaterConfig | undefined): WaitContention {
+function checkWaitContention(waits: readonly HarnessEvent[], config: TumwaterConfig | undefined): WaitContention {
   const perKind = new Map<string, number>();
   const { count, totalMs, longestMs } = sumWaits(waits);
   for (const ev of waits) {
@@ -229,8 +227,8 @@ export function checkWaitContention(waits: readonly HarnessEvent[], config: Tumw
 /** Worktree pool (plans/worktree-pool.md, part 5/5): report the pooled slots and warn on the
  * states an operator should act on — a legacy `<role>` or `_land-*` checkout the pool migration
  * left behind, a pin older than PIN_STALE_MS (a paused role holding a checkout), and the last
- * 24 h of `slot_wait` events totalling SLOT_WAIT_WARN_TOTAL_MS (the pool is too small). The stale
- * pin is also the standing `workspace-pins` alert's selection (staleWorkspacePins). Read-only,
+ * 24 h of `slot_wait` events totalling SLOT_WAIT_WARN_TOTAL_MS (the pool is too small). A stale
+ * pin is named by this row's stale-pins clause. Read-only,
  * like every doctor check; `now` is a test seam for the pin-age arithmetic. */
 export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome {
   const slots = readSlotsState(root).slots;
@@ -241,8 +239,8 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
   const parts = [`${plural(slots.length, "workspace")}, ${leased.length} leased, ${pins.length} pinned`];
   if (leftover.length > 0) parts.push(`legacy worktrees still present: ${leftover.join(", ")}`);
   if (stale.length > 0) {
-    // The stale-pin clause renders the shared staleWorkspacePins selection (the same list the
-    // standing `workspace-pins` alert carries), so the row's wording and the alert's selection
+    // The stale-pin clause renders the shared staleWorkspacePins selection (the same list this
+    // row's detail words), so the row's wording and the shared selection cannot drift.
     // cannot disagree on what a stale pin is or how old it is.
     parts.push(
       stale.map(stalePinPhrase).join("; "),
@@ -528,13 +526,11 @@ export function checkWorkInstances(
 }
 
 /** An enabled multi-instance role contending for a worktree pool smaller than the run cap —
- * the pool-mismatch clause of the doctor's `parallel instances` row (checkWorkInstances) and
- * the always-on `instance-pool` alert (alert-feeds.ts instancePoolProblems). Returns the
- * `INSTANCE_ROLES` ids with more than one configured instance while `slotCount(config)`
+ * the pool-mismatch clause of the doctor's `parallel instances` row (checkWorkInstances):
+ * the `INSTANCE_ROLES` ids with more than one configured instance while `slotCount(config)`
  * (worktreeSlots, else maxConcurrent + 1) is below `config.maxConcurrent`, phrased as the
  * row's one clause; `[]` when no such role or the pool is at least `maxConcurrent`. Shared by
- * the doctor row and the alert so they cannot drift on the trigger, the role list, or the
- * wording. */
+ * the row and its clause so they cannot drift on the trigger, the role list, or the wording. */
 export function smallPoolProblems(config: TumwaterConfig): string[] {
   const multi = Object.entries(config.roles)
     .filter(

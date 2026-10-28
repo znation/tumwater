@@ -15,10 +15,8 @@
 import type { StatusSnapshot } from "../status/status-data.js";
 import type { StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
-import type { CapacityBottleneck, OrphanAlert, RegressedFixAlert } from "./status-payload.js";
+import type { OrphanAlert } from "./status-payload.js";
 import type { RefusedEntry, StalledEntry } from "../backlog/backlog-eligibility.js";
-import type { ClaimState } from "../scheduling/claim-entries.js";
-import type { StaleWorkspacePin } from "../doctor/doctor-contention-checks.js";
 import type {
   AlertRole, TeamAlert, StaleQuestion,
   PlanDependencyProblem, BacklogHeadingDuplicate, LiveFinishedEntry,
@@ -33,65 +31,45 @@ export type {
 } from "./team-alert-shared.js";
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
- * main, roles failing run after run, roles that look stuck, a stale running build, open
+ * main, roles failing run after run, roles that look stuck, disk and install drift, open
  * questions, refused entries, a plan stalled by a Needs
  * review note, the team
  * waiting on capacity slots (workspace, provider or
- * check), parallel instances sharing a workspace pool smaller than the run cap, a plan
+ * check), a plan
  * filed under the wrong backlog section, a duplicated
  * backlog section heading, finished history still under a live backlog file's `## Done` or
- * `## Fixed`, a Fixed record with a bad Validation gap trace, a pause, a
+ * `## Fixed`, a Fixed record with a bad Validation gap trace, and a
  * stopped team.
- * `now` is passed so a timed
- * pause's countdown agrees with the rest of the frame. */
+ */
 export function teamAlerts(
   snap: Pick<
     StatusSnapshot,
     | "running"
     | "budget"
-    | "build"
-    | "paused"
-    | "pausedUntil"
-    | "pauseReason"
-    | "quietHours"
-    | "inQuietHours"
+    | "chain"
     | "disk"
     | "rootInstallDrift"
-    | "noDeclaredCheck"
-    | "noBrief"
-    | "briefTruncated"
-    | "roleNotesOverCap"
-    | "principlesTruncated"
-    | "chain"
-    | "capPaused"
     | "budgetPausedRoles"
-    | "maintenanceQuota"
-    | "providerHolds"
     | "mainCheck"
   >,
   questions: readonly string[],
   roles: readonly AlertRole[],
-  now: number,
+  _now: number,
   refused: readonly RefusedEntry[] = [],
   planDependency: PlanDependencyProblem | null = null,
   stalledEntries: readonly StalledEntry[] = [],
   strandedPlans: readonly StrandedPlanEntry[] = [],
   duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
   validationGaps: readonly ValidationGapProblem[] = [],
-  contention: readonly CapacityBottleneck[] = [],
-  regressedFixes: RegressedFixAlert | null = null,
-  staleClaims: readonly ClaimState[] = [],
   staleQuestions: readonly StaleQuestion[] = [],
   fixClaims: readonly FixClaimProblem[] = [],
-  workspacePins: readonly StaleWorkspacePin[] = [],
   liveFinished: readonly LiveFinishedEntry[] = [],
-  instancePool: readonly string[] = [],
   orphans: OrphanAlert | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
-  out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
+  out.push(...buildStatusAlerts({ snap, roles }));
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
-  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, instancePool, orphans }));
+  out.push(...buildTailAlerts({ snap, orphans }));
 
   return out;
 }

@@ -3,6 +3,9 @@ import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from
 import { defaultConfig, loadConfigSafe } from "../config/config.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { cacheReadUnpriced, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
+import { roleImageInfo } from "../agent/image-input.js";
+import { readPiListedModels, type PiListedModels } from "../pi/pi-listed-models.js";
+import { runnerIds } from "../roles/runner-ids.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { envPath } from "../files/files.js";
 import { piListedModels, piProviderAuth, type ProviderAuth } from "./doctor-pi-checks.js";
@@ -454,5 +457,40 @@ export async function checkFeedbackFiling(
     );
   return okOutcome(
     "gh present and authenticated — the feedback role can file issues on znation/tumwater",
+  );
+}
+
+
+/** The `image input` row (plans/image-input.md "Surfaces", part 5/5): which enabled roles run
+ * on a model that cannot read images, and where each reroutes an image prompt — or that no
+ * usable reroute exists. Re-added probe-free by Subtract part 1d/6 after part 5f/6 deleted the
+ * probe-backed row: it reads roleImageInfo (the same resolver the status rows, role page, and
+ * submit gate share) rather than spawning a backend, so doctor and the surfaces cannot drift on
+ * who is text-only. No alert when none is (imageInput true or null — an unknown pair is not
+ * counted as text-only, mirroring the submit gate and the `models for each tier` stance). */
+export function checkImageInput(
+  root: string,
+  modelsPath: string = piModelsPath(),
+  listed: PiListedModels | null = readPiListedModels(root),
+): CheckOutcome | null {
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
+  const textOnly = runnerIds(config).filter(
+    (role) => roleImageInfo(config, role, modelsPath, listed).imageInput === false,
+  );
+  if (textOnly.length === 0) return okOutcome("every enabled role reads images");
+  const noTarget = textOnly.filter((role) => {
+    const rr = roleImageInfo(config, role, modelsPath, listed).imageReroute;
+    return rr === null || rr === "";
+  });
+  if (noTarget.length > 0)
+    return warnOutcome(
+      `${noTarget.join(", ")} ${agree(noTarget.length, "runs", "run")} on models that can't read images and ${agree(noTarget.length, "has", "have")} no reroute target — a run that reads an image fails, and image attachments to these roles are refused. Declare image input on a vision model in pi's models.json, or point a tier at one.`,
+    );
+  const targets = new Set(
+    textOnly.map((role) => roleImageInfo(config, role, modelsPath, listed).imageReroute ?? ""),
+  );
+  return okOutcome(
+    `${textOnly.join(", ")} ${agree(textOnly.length, "runs", "run")} on models that can't read images — image prompts rerun on ${[...targets].join(", ")}.`,
   );
 }

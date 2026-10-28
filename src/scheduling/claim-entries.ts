@@ -16,7 +16,7 @@ import { CLAIM_IDLE_MAX_MS, listedKeys } from "./claims.js";
  * instance still holds it — or `idle` — the claim has sat past `CLAIM_IDLE_MAX_MS`, with
  * `hours` its whole-hour age). A `gone` claim carries `hours` 0: it wins over idle for the
  * same claim. */
-export interface ClaimState {
+interface ClaimState {
   id: string;
   file: "PLANS.md" | "BUGS.md";
   title: string;

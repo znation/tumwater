@@ -2,20 +2,14 @@ import { openQuestionEntries, ageInDays } from "../backlog/backlog.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { questionFilingDate } from "../backlog/backlog-question-answer.js";
 import { byDaysThenIndex } from "../collections.js";
-import { eventsSince } from "../events/event-window.js";
-import type { HarnessEvent } from "../events/events.js";
 import { STALE_QUESTION_DAYS } from "../doctor/doctor-backlog.js";
-import { regressedFixCandidates, matchedRegressedFixes, regressedFixesPhrase, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
 import { planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
-import { checkWaitContention, providerWaitContention, slotWaitContention, smallPoolProblems, staleWorkspacePins, CHECK_WAIT_CHECK_WINDOW_MS, PROVIDER_WAIT_CHECK_WINDOW_MS, SLOT_WAIT_CHECK_WINDOW_MS, type WaitContention } from "../doctor/doctor-contention-checks.js";
 import { findOrphans, orphanFailDetail, type OrphanScan } from "../doctor/doctor-orphans.js";
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
-import { readSlotsState } from "../git/slots-state.js";
-import { configForStatus } from "../status/status-polls.js";
 import type { PlanDependencyProblem, StaleQuestion } from "./team-alerts.js";
 
 /** This module is the alert-feed half of src/ui/status-payload.ts: each always-on team alert's
- * data-sourcing function (capacityContention, …) lives here, a
+ * data-sourcing function lives here, a
  * sibling of the src/ui/team-alert-*.ts builders that turn them into banners. status-payload.ts
  * stays the one status-document builder, importing these feeds and folding each feed's result
  * into the `alerts` field; status-render.ts reads the feeds directly for the TUI. */
@@ -49,88 +43,6 @@ export function staleOpenQuestions(root: string, now = Date.now()): StaleQuestio
 export function planDependencyAlert(root: string): PlanDependencyProblem | null {
   return planDependencyProblem(root);
 }
-
-/** The doctor's three `_wait` contention rows (src/doctor/doctor-contention-checks.ts
- * `slotWaitContention`/`providerWaitContention`/`checkWaitContention`) folded into one
- * always-on feed for the `contention` team alert (src/ui/team-alert-tail.ts): the standing twin of
- * the doctor's `workspaces`, `provider contention` and `check contention` rows, read off the
- * same `*_wait` events and the same ten-minute thresholds the doctor sums, so the alert and
- * the doctor cannot drift on the trigger or the knob-raising advice. Reads each window with
- * `eventsSince` (a read error skips that row, exactly like the doctor's own read-error arms),
- * sizing the slot row with readSlotsState's slot count and the provider/check rows with the
- * same last-known-good config the snapshot uses (configForStatus). One entry per row whose
- * window crosses its threshold, `[]` when none does. */
-export interface CapacityBottleneck {
-  name: string;
-  detail: string;
-}
-/** @see CapacityBottleneck */
-export function capacityContention(root: string, now = Date.now()): CapacityBottleneck[] {
-  const out: CapacityBottleneck[] = [];
-  /** Resolve one capacity verdict and push a "capacity bottleneck" row when it warns. Shared
-   * by the three capacity checks (workspace, provider, check slots) so the try/catch that keeps
-   * each one from crying wolf on an unreadable event log lives in one place, and the row's
-   * `name`/`detail` shape cannot drift between them. */
-  const maybeWarn = (
-    name: string,
-    windowMs: number,
-    keep: (ev: HarnessEvent) => boolean,
-    resolve: (waits: readonly HarnessEvent[]) => WaitContention,
-  ): void => {
-    try {
-      const verdict = resolve(eventsSince(root, windowMs, now, keep));
-      if (verdict.warn) out.push({ name, detail: verdict.detail });
-    } catch {
-      // A read error skips this row, so the alert never cries wolf on an unreadable log.
-    }
-  };
-  maybeWarn("workspace slots", SLOT_WAIT_CHECK_WINDOW_MS, (ev) => ev.type === "slot_wait", (waits) => slotWaitContention(waits, readSlotsState(root).slots.length));
-  maybeWarn("provider slots", PROVIDER_WAIT_CHECK_WINDOW_MS, (ev) => ev.type === "provider_wait", (waits) => providerWaitContention(waits, configForStatus(root)));
-  maybeWarn("check slots", CHECK_WAIT_CHECK_WINDOW_MS, (e) => e.type === "check_wait", (waits) => checkWaitContention(waits, configForStatus(root)));
-  return out;
-}
-
-/** The always-on twin of the doctor `parallel instances` row's pool-mismatch clause
- * (doctor-contention-checks.ts smallPoolProblems): an enabled `feature`/`bugfix` running
- * more than one instance while slotCount(config) sits below maxConcurrent — the shared pool
- * is smaller than the run cap, so those instances contend for the same checkouts. Built from
- * the same smallPoolProblems selector the doctor row uses, so the alert and the row cannot
- * drift on the trigger, the role list, or the wording. configForStatus never returns
- * undefined (an unreadable tumwater.json falls back to defaultConfig(), whose pool is the
- * default maxConcurrent + 1 — never below maxConcurrent), so the [] is the only silent
- * outcome. */
-export function instancePoolProblems(root: string): string[] {
-  return smallPoolProblems(configForStatus(root));
-}
-
-/** How far back the regressed-fixes alert looks — one day, so a recently Fixed test that failed
- * again is a standing amber alert until a day passes (or the failure is filed). The doctor's
- * own `regressed fixes` row keeps its since-the-fix read; this is the alert's daily trigger, the
- * same trailing day the regressed-fixes alert reads. */
-export const REGRESSED_FIX_WINDOW_MS = 24 * 60 * 60_000;
-/** A Fixed record whose quoted test failed again in the trailing day — the always-on feed for the
- * `regressed-fixes` team alert (src/ui/team-alert-tail.ts), carrying the doctor's own sentence
- * (regressedFixesPhrase) so the alert and the `regressed fixes` row cannot drift on the wording.
- * null when no Fixed record's quoted test failed in the window. */
-export interface RegressedFixAlert {
-  count: number;
-  detail: string;
-}
-/** The always-on twin of the doctor's `regressed fixes` row (src/doctor/doctor-backlog-bugs.ts
- * checkRegressedFixes): the same candidate selection (regressedFixCandidates) and the same
- * failureMentions match (matchedRegressedFixes) and sentence (regressedFixesPhrase), read off the
- * trailing REGRESSED_FIX_WINDOW_MS of events (the doctor, whose window is since each fix, still
- * warns on an older recurrence). An unreadable event log yields none. */
-export function regressedFixesAlert(root: string, now = Date.now()): RegressedFixAlert | null {
-  const candidates: RegressedFixCandidate[] = regressedFixCandidates(root);
-  const rows: RegressedFix[] = matchedRegressedFixes(candidates, eventsSince(root, REGRESSED_FIX_WINDOW_MS, now));
-  const detail = regressedFixesPhrase(rows);
-  return detail === null ? null : { count: rows.length, detail };
-}
-/** Re-export so the always-on alert's stale-pin selector stays in its one home
- * (src/doctor/doctor-contention-checks.ts) while tui.tsx keeps importing every alert feed from
- * this one module. */
-export { staleWorkspacePins };
 
 /** The standing orphan alert: how many orphaned processes the scan found, and the doctor row's
  * own sentence (orphanFailDetail) so the alert and the `orphans` row cannot drift on the count,
@@ -197,4 +109,3 @@ export function getOrphanAlert(
   }
   return orphanCache === null ? null : orphanCache.value;
 }
-

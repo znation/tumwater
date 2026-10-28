@@ -10,11 +10,9 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-index-data.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { staleOpenQuestions, capacityContention, regressedFixesAlert, refreshOrphanAlert, orphanAlertFromScan, REGRESSED_FIX_WINDOW_MS } from "../src/ui/alert-feeds.js";
+import { staleOpenQuestions, refreshOrphanAlert, orphanAlertFromScan } from "../src/ui/alert-feeds.js";
 import { PROMPT_END, PROMPT_START, BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
-import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkOrphans, findOrphans } from "../src/doctor/doctor-orphans.js";
-import { checkCheckContention, checkProviderContention, checkWorktreePool, staleWorkspacePins } from "../src/doctor/doctor-contention-checks.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { initProject } from "../src/init/init.js";
 import { dequeuePrompt } from "../src/inbox/inbox.js";
@@ -692,20 +690,6 @@ test("status payload ships the disk block and its preformatted badge", async () 
 // The pinned clock reaches the alerts too: teamAlerts' pause countdown must read the
 // payload's `now`, or a test pinning the clock cannot assert the countdown and the passed
 // instant and the displayed one disagree.
-test("status payload's paused alert countdown honors the pinned clock", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "payload pause clock test");
-  const at = Date.now();
-  const until = at + 30 * 60_000;
-  writeJsonFile(pausedPath(repo), { at, until });
-  // Pin the payload's clock 10 minutes in (20 minutes before the deadline): a wall-clock read
-  // would still report the full 30m remaining here.
-  const payload = statusPayload(repo, until - 20 * 60_000) as { alerts: Array<{ key: string; title: string }> };
-  const paused = payload.alerts.find((a) => a.key === "paused");
-  assert.ok(paused, "the team pause raises its alert");
-  assert.match(paused.title, /resumes in 20m/, "the countdown reads the payload's pinned now");
-});
-
 test("status payload and header show a pending scheduled wake only while one stands", async () => {
   const repo = makeRepo();
   await initProject(repo, "scheduled wake test");
@@ -861,174 +845,6 @@ test("statusPayload carries the post-merge review queue", () => {
   assert.deepEqual((statusPayload(empty) as { postReviews: unknown[] }).postReviews, []);
 });
 
-test("capacityContention carries the doctor's warnings and nothing under threshold", () => {
-  const now = Date.now();
-  const root = makeRepo();
-  writeEvents(root, [
-    { ts: now - 60_000, source: "tumwater", type: "slot_wait", message: "waited", role: "feature", purpose: "run", waitedMs: 600_000 },
-    { ts: now - 60_000, source: "tumwater", type: "provider_wait", role: "feature", key: "omlx", waitedMs: 600_000 },
-    { ts: now - 60_000, source: "tumwater", type: "check_wait", role: "feature", scope: "gate", heldBy: ["review merge"], waitedMs: 600_000 },
-  ]);
-  const feed = capacityContention(root, now);
-  const names = feed.map((c) => c.name);
-  assert.ok(names.includes("workspace slots"));
-  assert.ok(names.includes("provider slots"));
-  assert.ok(names.includes("check slots"));
-  const byName = Object.fromEntries(feed.map((c) => [c.name, c.detail])) as Record<string, string>;
-  // The alert detail is exactly the provider/check doctor rows' detail — the shared rule the
-  // doctor wraps — so the trigger and the advice cannot drift.
-  assert.equal(byName["provider slots"], checkProviderContention(root, undefined, now).detail);
-  assert.equal(byName["check slots"], checkCheckContention(root, undefined, now).detail);
-  // The workspace doctor row embeds the same wait clause the alert carries (its detail joins
-  // that clause onto the pool summary), so the two cannot drift on the wait or the knob.
-  const poolDetail = checkWorktreePool(root, now).detail ?? "";
-  const workspaceClause = feed.find((c) => c.name === "workspace slots")!.detail;
-  assert.ok(poolDetail.includes(workspaceClause));
-  // One minute of each wait stays under every row's ten-minute threshold.
-  const quiet = makeRepo();
-  writeEvents(quiet, [
-    { ts: now - 60_000, source: "tumwater", type: "slot_wait", message: "waited", role: "feature", purpose: "run", waitedMs: 60_000 },
-    { ts: now - 60_000, source: "tumwater", type: "provider_wait", role: "feature", key: "omlx", waitedMs: 60_000 },
-    { ts: now - 60_000, source: "tumwater", type: "check_wait", role: "feature", scope: "gate", waitedMs: 60_000 },
-  ]);
-  assert.deepEqual(capacityContention(quiet, now), []);
-});
-
-test("the status payload carries the doctor's stale workspace pin as the workspace-pins alert", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "stale pin alert test");
-  const now = Date.now();
-  // A single slot pinned for 25 h: the shared staleWorkspacePins predicate feeds both the
-  // doctor's `worktree pool` row and the standing amber workspace-pins alert, so their details
-  // cannot drift on the role, the slot or the age.
-  writeSlotsState(repo, {
-    slots: [
-      {
-        dir: slotWorktreePath(repo, 1),
-        lease: null,
-        pinnedFor: "feature",
-        pinnedAt: now - 25 * 3_600_000,
-        lastRole: null,
-        lastReleasedAt: null,
-      },
-    ],
-  });
-  const payload = statusPayload(repo, now) as { alerts: Array<{ key: string; tone: string; detail: string }> };
-  const alert = payload.alerts.find((a) => a.key === "workspace-pins");
-  assert.ok(alert, "a stale pin raises the workspace-pins alert");
-  assert.equal(alert.tone, "amber");
-  assert.ok(alert.detail.includes("feature"));
-  assert.ok(alert.detail.includes("_slot-1"));
-  assert.ok(alert.detail.includes("25h"));
-
-  // The alert's selection is the same staleWorkspacePins predicate the doctor row renders, and
-  // its role/dir/hour phrase matches the row's stale-pin clause for that predicate.
-  assert.deepEqual(staleWorkspacePins(repo, now), [{ role: "feature", dir: "_slot-1", ageMs: 25 * 3_600_000 }]);
-  const poolDetail = checkWorktreePool(repo, now).detail ?? "";
-  assert.ok(poolDetail.includes("feature pinned on _slot-1 for 25h"));
-  assert.ok(alert.detail.includes("feature pinned on _slot-1 for 25h"));
-
-  // A fresh pin raises no alert.
-  writeSlotsState(repo, {
-    slots: [
-      {
-        dir: slotWorktreePath(repo, 1),
-        lease: null,
-        pinnedFor: "feature",
-        pinnedAt: now - 1_000,
-        lastRole: null,
-        lastReleasedAt: null,
-      },
-    ],
-  });
-  const fresh = statusPayload(repo, now) as { alerts: Array<{ key: string }> };
-  assert.equal(fresh.alerts.find((a) => a.key === "workspace-pins"), undefined);
-});
-
-// A whole calendar day `n` days before `now`, as a `YYYY-MM-DD` stamp — the same relative
-// fixture trick the doctor-backlog tests use, so the fix date and the failure's age never
-// collide with the real wall clock.
-const stampDaysAgo = (n: number, now: number = Date.now()): string => {
-  const d = new Date(now - n * 86400000);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
-
-test("regressedFixesAlert carries the doctor's sentence for a fix whose test failed again", () => {
-  const now = Date.now();
-  const y = stampDaysAgo(1, now);
-  const root = tmpdir("status-regressed-fixes-");
-  fs.writeFileSync(path.join(root, "BUGS.md"),
-    `## Open\n\n## Fixed\n\n### \`test/x.test.ts\` "aQuotedTestNameThatIsLongEnough" flaked (found by bugfix ${stampDaysAgo(5, now)}) — fixed ${y}\n\nFix.\n\n`);
-  writeEvents(root, [{ ts: now, source: "review", type: "warning", message: "✖ aQuotedTestNameThatIsLongEnough failed again" }]);
-  const alert = regressedFixesAlert(root, now);
-  assert.notEqual(alert, null);
-  assert.equal(alert!.count, 1);
-  // The alert's detail is exactly the doctor's row sentence for the same fixture — the trigger
-  // and the wording cannot drift.
-  assert.equal(alert!.detail, checkRegressedFixes(root).detail);
-  // A record with no matching failure raises none.
-  const clean = tmpdir("status-regressed-fixes-clean-");
-  fs.writeFileSync(path.join(clean, "BUGS.md"),
-    `## Open\n\n## Fixed\n\n### \`test/x.test.ts\` "aQuotedTestNameThatIsLongEnough" flaked (found by bugfix ${stampDaysAgo(5, now)}) — fixed ${y}\n\nFix.\n\n`);
-  assert.equal(regressedFixesAlert(clean, now), null);
-  // A matching failure 25h old, under the `now` seam, is outside the alert's one-day window and
-  // raises none — the doctor, whose window is since the fix, still warns (the documented
-  // window difference).
-  const old = tmpdir("status-regressed-fixes-old-");
-  fs.writeFileSync(path.join(old, "BUGS.md"),
-    `## Open\n\n## Fixed\n\n### \`test/x.test.ts\` "aQuotedTestNameThatIsLongEnough" flaked (found by bugfix ${stampDaysAgo(5, now)}) — fixed ${y}\n\nFix.\n\n`);
-  writeEvents(old, [{ ts: now - 25 * 3600_000, source: "review", type: "warning", message: "✖ aQuotedTestNameThatIsLongEnough failed again" }]);
-  assert.ok(25 * 3600_000 > REGRESSED_FIX_WINDOW_MS, "the 25h-old failure predates the alert's daily window");
-  assert.equal(regressedFixesAlert(old, now), null);
-});
-
-test("refreshOrphanAlert mirrors the doctor's orphans row on a staged orphan scan", async () => {
-  const root = makeRepo();
-  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
-  // A leaked build-check runner whose cwd lies inside a worktree — the leak shape of the 2026-10-28
-  // incident — staged through the fake process table, never a real host process.
-  const { probe } = fakeProbe(
-    [
-      { pid: 88052, etime: "2-21:44:01", time: "0:03.12", command: "node dist/test/test-runner.js" },
-      { pid: 95649, ppid: 88052, etime: "01:00", time: "4:44.00", command: "node a.test.js" },
-    ],
-    { 88052: path.join(root, ".tumwater", "worktrees", "qa") },
-  );
-  const doctor = await checkOrphans(root, probe);
-  const alert = await refreshOrphanAlert(root, probe);
-  // The standing alert carries the exact doctor-row sentence and count, so the alert and the
-  // `orphans` row cannot drift on the count, the per-orphan cpu or the remediation.
-  assert.equal(alert?.count, 1);
-  assert.equal(alert?.detail, doctor.detail);
-  // The pure feed agrees with the probe-driven refresh — the same staged scan, the same message.
-  const staged = orphanAlertFromScan(await findOrphans(root, probe), root);
-  assert.deepEqual(staged, alert);
-});
-
-test("refreshOrphanAlert raises none on a clean host", async () => {
-  const root = makeRepo();
-  const { probe } = fakeProbe([]);
-  assert.equal(await refreshOrphanAlert(root, probe), null);
-  assert.equal(orphanAlertFromScan({ rows: [], orphans: [], marks: new Map<number, string[]>(), cwdProblem: null }), null);
-});
-
-
-
-test("the payload carries the stale-claims alert", () => {
-  const now = Date.now();
-  // A clean repo raises no stale-claims alert.
-  const clean = makeRepo();
-  assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "stale-claims"), undefined);
-  // A seeded gone claim on a configured role makes the payload's alerts carry it.
-  const root = makeRepo();
-  saveRunnerState(root, {
-    ...freshRunnerState("feature"),
-    claim: { file: "PLANS.md", key: "gone", title: "Gone", at: now, source: "assigned" },
-  });
-  const alerts = (statusPayload(root, now) as { alerts: Array<{ key: string }> }).alerts;
-  assert.ok(alerts.find((a) => a.key === "stale-claims"), "a gone claim raises the stale-claims alert");
-});
-
 test("the payload's noDeclaredCheck follows detectBuildCheck", () => {
   const now = Date.now();
   // A fresh makeRepo's fixture declares no build check (no check.command and no qualifying
@@ -1038,12 +854,8 @@ test("the payload's noDeclaredCheck follows detectBuildCheck", () => {
   assert.equal(snapshot(root, undefined, now).noDeclaredCheck, true, "no declared check is surfaced on the snapshot");
   const payload = statusPayload(root, now) as { noDeclaredCheck?: boolean; alerts: Array<{ key: string; tone: string }> };
   assert.equal(payload.noDeclaredCheck, true, "the machine-readable payload field is present");
-  const alert = payload.alerts.find((a) => a.key === "no-check");
-  assert.ok(alert, "no declared check raises the no-check alert");
-  assert.equal(alert!.tone, "amber");
-  assert.match(alert!.key, /no-check/);
 
-  // Declaring check.command for the same repo turns the field and the alert off.
+  // Declaring check.command for the same repo turns the field off.
   const cfg = loadConfig(root);
   cfg.check = { command: "npm test" };
   saveConfig(root, cfg);
@@ -1067,10 +879,6 @@ test("the payload's noBrief follows briefBlockMissing and clears when the brief 
   assert.equal(snapshot(root, undefined, now).noBrief, true, "marker-less brief is surfaced on the snapshot");
   payload = statusPayload(root, now) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.noBrief, true, "the machine-readable payload field is present");
-  const alert = payload.alerts.find((a) => a.key === "no-brief");
-  assert.ok(alert, "marker-less brief raises the no-brief alert");
-  assert.equal(alert!.tone, "amber");
-  assert.match(alert!.title, /prompt block/);
 
   // A marked block with no text between its markers is the same silent state: a hand edit
   // that leaves the two markers with nothing between them also means no project prompt.
@@ -1078,8 +886,6 @@ test("the payload's noBrief follows briefBlockMissing and clears when the brief 
   assert.equal(snapshot(root, undefined, now).noBrief, true, "an empty marked block is surfaced on the snapshot");
   payload = statusPayload(root, now) as { noBrief?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.noBrief, true, "the machine-readable payload field is present for an empty block");
-  const emptyAlert = payload.alerts.find((a) => a.key === "no-brief");
-  assert.ok(emptyAlert, "an empty marked block raises the no-brief alert");
 
   // Restoring the block turns the field and the alert back off.
   fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}\nBuild a thing.\n${PROMPT_END}\n`);
@@ -1103,10 +909,6 @@ test("the payload's briefTruncated follows briefBlockOverCap and clears under th
   assert.equal(snapshot(root, undefined, now).briefTruncated, true, "over-cap brief is surfaced on the snapshot");
   payload = statusPayload(root, now) as { briefTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.briefTruncated, true, "the machine-readable payload field is present");
-  const alert = payload.alerts.find((a) => a.key === "brief-truncated");
-  assert.ok(alert, "over-cap brief raises the brief-truncated alert");
-  assert.equal(alert!.tone, "amber");
-  assert.match(alert!.title, /over its prompt cap/);
 
   // Trimming the block to exactly the cap turns the field and the alert back off.
   fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}\n${("x").repeat(BRIEF_TEXT_MAX_CHARS)}\n${PROMPT_END}\n`);
@@ -1153,11 +955,6 @@ test("the payload's roleNotesOverCap follows the notes read bound and clears und
   ];
   assert.deepEqual(snapshot(root, undefined, now).roleNotesOverCap, expected, "two over-cap notes sort newest-char-count first");
   assert.deepEqual(payload().roleNotesOverCap, expected, "the payload carries the same array");
-  const alert = payload().alerts.find((a) => a.key === "role-notes-truncated");
-  assert.ok(alert, "over-cap notes raise the role-notes-truncated alert");
-  assert.equal(alert!.tone, "amber");
-  assert.match(alert!.detail, /feature/);
-  assert.match(alert!.detail, /clean/);
 
   // A non-.md file with an over-bound length is ignored (matching checkRoleNotes).
   fs.writeFileSync(path.join(notesDir, "stray.txt"), "z".repeat(ROLE_NOTES_MAX_BYTES + 100));
@@ -1187,10 +984,6 @@ test("the payload's principlesTruncated follows principlesBlockOverCap and clear
   assert.equal(snapshot(root, undefined, now).principlesTruncated, true, "over-cap PRINCIPLES.md is surfaced on the snapshot");
   payload = statusPayload(root, now) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.principlesTruncated, true, "the machine-readable payload field is present");
-  const alert = payload.alerts.find((a) => a.key === "principles-truncated");
-  assert.ok(alert, "over-cap PRINCIPLES.md raises the principles-truncated alert");
-  assert.equal(alert!.tone, "amber");
-  assert.match(alert!.title, /prompt cap/);
 
   // Rewriting the file to exactly the cap clears the field and the alert.
   fs.writeFileSync(path.join(root, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS));
@@ -1198,4 +991,34 @@ test("the payload's principlesTruncated follows principlesBlockOverCap and clear
   payload = statusPayload(root, now) as { principlesTruncated?: boolean; alerts: Array<{ key: string; tone: string; title: string }> };
   assert.equal(payload.principlesTruncated, undefined, "no principlesTruncated key under the cap");
   assert.equal(payload.alerts.find((a) => a.key === "principles-truncated"), undefined, "no principles-truncated alert under the cap");
+});
+
+test("refreshOrphanAlert mirrors the doctor's orphans row on a staged orphan scan", async () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
+  // A leaked build-check runner whose cwd lies inside a worktree — the leak shape of the 2026-10-28
+  // incident — staged through the fake process table, never a real host process.
+  const { probe } = fakeProbe(
+    [
+      { pid: 88052, etime: "2-21:44:01", time: "0:03.12", command: "node dist/test/test-runner.js" },
+      { pid: 95649, ppid: 88052, etime: "01:00", time: "4:44.00", command: "node a.test.js" },
+    ],
+    { 88052: path.join(root, ".tumwater", "worktrees", "qa") },
+  );
+  const doctor = await checkOrphans(root, probe);
+  const alert = await refreshOrphanAlert(root, probe);
+  // The standing alert carries the exact doctor-row sentence and count, so the alert and the
+  // `orphans` row cannot drift on the count, the per-orphan cpu or the remediation.
+  assert.equal(alert?.count, 1);
+  assert.equal(alert?.detail, doctor.detail);
+  // The pure feed agrees with the probe-driven refresh — the same staged scan, the same message.
+  const staged = orphanAlertFromScan(await findOrphans(root, probe), root);
+  assert.deepEqual(staged, alert);
+});
+
+test("refreshOrphanAlert raises none on a clean host", async () => {
+  const root = makeRepo();
+  const { probe } = fakeProbe([]);
+  assert.equal(await refreshOrphanAlert(root, probe), null);
+  assert.equal(orphanAlertFromScan({ rows: [], orphans: [], marks: new Map<number, string[]>(), cwdProblem: null }), null);
 });

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkTierModels } from "../src/doctor/doctor-model-checks.js";
+import { checkTierModels, checkImageInput } from "../src/doctor/doctor-model-checks.js";
 import { checkFallbackChain, checkFallbackModel } from "../src/doctor/doctor-fallback-checks.js";
 import {
   parsePiModelList,
@@ -381,6 +381,73 @@ test("checkTierModels notes codex-routed models and the codex backend, not claud
   assert.match(outcome.detail, /codex-routed .* resolved by the codex backend, not pi's definitions/);
   assert.ok(!outcome.detail.includes("claude-routed"), `a codex seam must not be labeled claude-routed: ${outcome.detail}`);
   assert.equal(probed, 0, "a codex-routed config probes no pi provider");
+});
+
+// --- checkImageInput (plans/image-input.md "Surfaces", part 5/5; Subtract part 1d/6) ---
+// The `image input` row: which enabled roles run on a model that cannot read images, and where
+// each reroutes an image — or that no usable reroute exists. Probe-free, reading roleImageInfo
+// (the same resolver the status rows and submit gate share).
+test("checkImageInput ok when every role reads images, reroute detail when some do not", () => {
+  const dirModels = tmpdir("doctor-image-");
+  const models = path.join(dirModels, "models.json");
+  fs.writeFileSync(
+    models,
+    JSON.stringify({
+      providers: {
+        local: {
+          models: [
+            { id: "text" },
+            { id: "vision", input: ["text", "image"] },
+          ],
+        },
+      },
+    }),
+  );
+  // All roles ride the vision strong tier — nothing is text-only.
+  const allVision = readyRepo();
+  writeConfig(allVision, { model: { default: "local/vision", strong: "local/vision" } });
+  const ok = checkImageInput(allVision, models);
+  assert.equal(ok?.level, "ok");
+  assert.match(ok?.detail ?? "", /every enabled role reads images/);
+
+  // The default tier is text-only with a reroute to the vision strong tier: ok, naming it.
+  const rerouting = readyRepo();
+  writeConfig(rerouting, { model: { default: "local/text", strong: "local/vision" } });
+  const reroute = checkImageInput(rerouting, models);
+  assert.equal(reroute?.level, "ok");
+  assert.match(reroute?.detail ?? "", /can't read images/);
+  assert.match(reroute?.detail ?? "", /rerun on strong \(local\/vision\)/);
+
+  // A text-only default with no vision pair anywhere: warn — a blind read fails and is refused.
+  const blind = readyRepo();
+  writeConfig(blind, { model: { default: "local/text", strong: "local/text" } });
+  const warn = checkImageInput(blind, models);
+  assert.equal(warn?.level, "warn");
+  assert.match(warn?.detail ?? "", /no reroute target/);
+  assert.match(warn?.detail ?? "", /image attachments to these roles are refused/);
+
+  // An unreadable models file reads unknown (null), not text-only — never a false blind.
+  const absent = readyRepo();
+  writeConfig(absent, { model: { default: "local/text", strong: "local/vision" } });
+  assert.equal(checkImageInput(absent, path.join(tmpdir(), "absent-models.json"))?.level, "ok");
+});
+
+test("checkImageInput honors the pi list-models catalog like the status surfaces do", () => {
+  // A model pi lists as text-only that models.json does not declare at all: without the saved
+  // listing the pair is unknown (null), so the doctor would say every role reads images while
+  // the status rows and submit gate treat it as text-only — the drift this row exists to
+  // prevent. checkImageInput takes the same catalog, so the answer lines up.
+  const models = path.join(tmpdir("doctor-img-list-"), "models.json");
+  fs.writeFileSync(models, JSON.stringify({ providers: { local: { models: [{ id: "vision", input: ["text", "image"] }] } } }));
+  const root = readyRepo();
+  writeConfig(root, { model: { default: "listed/text", strong: "listed/text" } });
+  const blind = checkImageInput(root, models);
+  assert.equal(blind?.level, "ok");
+  assert.match(blind?.detail ?? "", /every enabled role reads images/);
+  const aware = checkImageInput(root, models, { checkedAt: 1, images: { "listed/text": false } });
+  assert.equal(aware?.level, "warn");
+  assert.match(aware?.detail ?? "", /run on models that can't read images/);
+  assert.match(aware?.detail ?? "", /no reroute target/);
 });
 
 // The subscription-vs-API billing trap (plans/provider-concurrency.md §9 gap 6): with

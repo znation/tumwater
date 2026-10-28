@@ -6,13 +6,10 @@
 and a status section between managed markers), PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md,
 and tumwater.json, and commits them. A bare `tumwater init` reads the prompt from an existing
 README.md's `tumwater:prompt` markers instead. A `TUMWATER.md` with the same markers takes
-precedence over README.md, so an existing project's README can stay untouched. The always-on
-surfaces (status, dashboard, TUI) raise the amber `no-brief` alert when a brief file exists
-without a usable marker block (markers missing, or no text between them), so a hand edit
-that strips the prompt cannot run the team silently
-without its project brief; a block past the read cap raises a second standing amber
-`brief-truncated` alert (every run's prompt then carries only its head plus a truncation
-marker, the always-on twin of the doctor `brief` row's over-cap warn). Pointed at an
+precedence over README.md, so an existing project's README can stay untouched. A brief
+missing a usable marker block (markers missing, or no text between them), or one past the
+read cap, is surfaced by `tumwater doctor`'s `brief` row rather than a banner, so a hand edit
+that strips the prompt cannot run the team silently without its project brief. Pointed at an
 existing repo whose README.md has no markers, init adopts it: the brief goes in `TUMWATER.md`,
 README.md and any existing backlog files are left byte-identical, and only the missing files are
 created (`--adopt` asks for this path explicitly). `--dry-run` prints what init would create and
@@ -141,8 +138,7 @@ never has to wait a parked check out.
   logs a `slot_wait` event so `worktreeSlots` can be sized from real contention; `tumwater
   doctor`'s "worktree pool" row sums the last 24 h of those waits and warns once they total 10
   minutes, naming the number to raise `worktreeSlots` above. A workspace pinned longer than a
-  day by a run that never resumed raises the same standing amber `workspace-pins` alert on
-  `tumwater status`, the dashboard and the TUI that the doctor's `worktree pool` row warns about,
+  day by a run that never resumed is the doctor's `worktree pool` row's stale-pin clause,
   cleared by resuming the role or retiring its leftovers. While every workspace is leased,
   `tumwater status`, the TUI header and the dashboard's team panel show `workspaces
   <leased>/<worktreeSlots>`, plus `, <n> waiting` when runs queue for one. Outside the pool sit the director's
@@ -175,14 +171,14 @@ never has to wait a parked check out.
   When a project declares no check, the plan and feature roles close the gap themselves: the plan role
   writes a `## Planned` entry declaring one (marked `**Declares the project check**`) and the feature
   role implements it — a `test`/`typecheck`/`build` npm script, or `check.command` through the staged
-  config request — so a merely-planned declaration keeps the `no-check` alert, deliberately, until the
+  config request — so a merely-planned declaration keeps `tumwater doctor`'s `check` row
+  warning, deliberately, until the
   declaration is live.
   While a claim names an entry no longer listed, or has sat idle past `CLAIM_IDLE_MAX_MS`,
-  `tumwater status`, the dashboard and the TUI carry the same amber alert as `tumwater doctor`'s
-  `parallel instances` row; it clears when the scheduler's next poll releases the claim.
+  `tumwater doctor`'s `parallel instances` row warns on it; it clears when the scheduler's
+  next poll releases the claim.
   The row's third warn — an enabled instance role running more than one instance while
-  `worktreeSlots` sits below `maxConcurrent` — surfaces the standing amber `instance-pool`
-  alert on `tumwater status`, the dashboard and the TUI, the twin of the row's pool clause.
+  `worktreeSlots` sits below `maxConcurrent` — is the same row's pool clause.
   An idle instance that is paused on its own (by you, or by the repeated-failure pause) gives its
   entry back and a sibling takes it; pausing the whole role keeps every claim.
 - `maxConcurrent` caps parallel runs and approvals together. Merges go first, then
@@ -469,9 +465,7 @@ for a mid-sized model with a finite context window: tool-call budgets, ranged re
 files, and bundled pi extensions that trim oversized tool output to its head and tail and, on
 a model with a window of at most 256k, stop sending the model's earlier thinking back to it.
 The file is capped for injection, so an over-cap PRINCIPLES.md silently degrades every run's
-design guidance — that state surfaces as a standing amber `principles-truncated` alert on
-`tumwater status`, the dashboard and the TUI (the twin of the doctor `principles` row's over-cap
-warn).
+design guidance — `tumwater doctor`'s `principles` row warns on it.
 The status table's `peak ctx` column reads each run against the role's declared window
 (`110.0k (84%)`), so an operator can see how close a run came to where pi compacts it.
 
@@ -489,8 +483,7 @@ role's runs besides the repo itself. A run sees the note when one exists, along 
 by running `tumwater-notes write` on every backend; the director, whose work is your prompt rather
 than a recurring search, has no notes. When a note runs past the 4 KB bound (a hand edit or an old
 build), the next run sees only its head plus a truncation marker while every operator surface reads
-the file whole — `tumwater status`, the dashboard and the TUI surface that over-bound state as a
-standing amber `role-notes-truncated` alert (the twin of the doctor `role notes` row's warn), and
+the file whole — `tumwater doctor`'s `role notes` row warns on that over-bound state, and
 `tumwater status --json` carries the over-bound roles as a `roleNotesOverCap` array. You can clear or replace a note with
 `tumwater role <id> --clear-notes` or `--notes-file <path>`; a run in progress at that moment may
 still overwrite it through its own `tumwater-notes` call. When a note names an entry or series of
@@ -523,13 +516,12 @@ validation, and atomic write, so you never have to hand-edit the file.
 - `gui --all-interfaces` has no authentication unless you pass `--token <secret>`. Clients send the
   token as `Authorization: Bearer <token>` or `?token=`.
 - The web dashboard opens on Team: alerts for whatever needs you (a failing or stuck role, a
-  failing check on main, a spent budget, an available update, open questions, a question
+  failing check on main, a spent budget, open questions, a question
   that has waited a week for an answer, refused entries,
   a broken plan dependency clause, a plan or bug stalled by a
   Needs review note,
-  the team waiting on capacity slots (workspace, provider or check) — the doctor's three
-  contention rows read the same waits and name the knob, a plan filed under the wrong
-  backlog section, a duplicated backlog section heading, finished history still under a live backlog file's `## Done` or `## Fixed` (the `backlog-archive` alert, the always-on twin of the doctor's `backlog archive` warn), a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose Fix paragraph names code that is not on the tree, a Fixed record whose quoted test failed again in the last day, a project with no declared check (the review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run; the alert says the plan role will plan the project's check and the feature role declare it, a `test`/`typecheck`/`build` npm script or `check.command`), a pause). The
+  a plan filed under the wrong
+  backlog section, a duplicated backlog section heading, finished history still under a live backlog file's `## Done` or `## Fixed` (the `backlog-archive` alert, the always-on twin of the doctor's `backlog archive` warn), a Fixed record whose Validation gap trace is missing or unrecognized, and a Fixed record whose Fix paragraph names code that is not on the tree). Anything the team could warn about on its own — a stale build, capacity contention, a stale claim, a regressed fix, a missing or over-cap brief, the no-check, an over-cap role note or PRINCIPLES.md, a pause, quiet hours, maintenance, or a provider hold — lives in `tumwater doctor` instead, one row each. The
   band names the same `needsYou` count the tab's badge and the page title carry, and — while it
   has alerts — shows one `Open Health check` control next to it that routes through the existing
   view/hash path to the Settings view's Health check card (`#doctorcard`), which keeps each

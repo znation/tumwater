@@ -249,8 +249,6 @@ test("Ctrl+F toggles the team pause marker through pauseTeam/resumeTeam and flas
     tui.key(undefined, "return"); // empty line: pause until resumed
     assert.equal(isTeamPaused(repo), true);
     assert.match(tui.lastFrame(), /team paused — roles start no new runs/);
-    // The next frame's team alert reads the marker, so the resume action is visible too.
-    assert.match(tui.lastFrame(), /The team is paused/);
 
     tui.key(undefined, "f", { ctrl: true });
     assert.equal(isTeamPaused(repo), false);
