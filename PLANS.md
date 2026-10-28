@@ -578,4 +578,49 @@ export function teamHold(prev: TeamHold, observations: readonly HoldObservation[
 
 **Tests.** No new test module: a behavior-preserving move behind six module-private functions, guarded by the existing test/team-hold.test.ts and test/team-hold-edges.test.ts cases named above plus test/team-polls.test.ts, which drives the same policy through `pollTeamHold`. Run those three files whole, then the project's gate, and confirm green.
 
+### `reclaimPass`'s complexity-17 pass body is split into one named helper per concern — the pressure floor check, the per-candidate guard-and-clean, the collection loop, the freed/free result figures and the pass result, and the `disk_reclaim` log — so "when does pressure reclaim stop?", "which candidate gets cleaned?" and "what does the pass report?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — one named helper per concern, exactly as the 2026-10-27 `teamHold`/`buildRunPrompt`/`planDependencyProblems`/`runRows`/`resolveQueuedResult` plans split a body the same way; independent in file of every Planned entry — before this entry `grep -cE 'reclaimPass|team-reclaim' PLANS.md` prints 0, so no `## Planned` heading or touches list names the symbol or src/team/team-reclaim.ts, and the only `src/team/` matches in PLANS.md are src/team/team-hold.ts (the `teamHold` split) and src/team/team-orchestrator-info.ts (Subtract part 5l/6) and src/team/team-polls.ts (Subtract part 5d/6), none of them this file; `grep -nE '^### .*(reclaimPass|team-reclaim)' PLANS-DONE.md` prints 0, so no finished plan splits it either — the `reclaimPass` entries in PLANS-DONE.md are behavior additions and guard tests, never a split; docs/invariants.md binds this file's `reclaimPass` and `isIdleExpired` and the move keeps every name, signature and guarantee, so it stays unchanged; touches src/team/team-reclaim.ts)
+
+**Goal.** `reclaimPass` (src/team/team-reclaim.ts, exported) steps one reclaim pass at complexity 17: it resolves the free-space sampler and the candidate list, samples free space once before the pass, walks the candidates — idle mode keeps only those `isIdleExpired`, pressure and manual modes re-sample and stop once free space reaches `reclaimGB`, each kept candidate is cleaned through `reclaimWorktree` with a guard failure skipped — then samples after, builds a `ReclaimPassResult` whose `freedGB` is the clamped before/after difference, logs exactly one `disk_reclaim`, and returns null when nothing was cleaned. The stop rule and each figure are the module's contract (docs/invariants.md's `reclaimPass`/`isIdleExpired` block and its pins), but the body is one flat sequence, so a reader asking "does idle mode ever sample?" or "where is freed space clamped?" scans all of it.
+
+**Approach.** All edits in src/team/team-reclaim.ts; move code, do not rewrite it — every condition, arithmetic expression, object field and log field stays exactly as today. Add these six module-private functions beside `reclaimPass`:
+- `pressureFloorReached(free: number | null, reclaimGB: number): boolean` — the `free !== null && reclaimGB > 0 && free >= reclaimGB * BYTES_PER_GB` stop test.
+- `reclaimOneCandidate(root: string, candidate: ReclaimCandidate): Promise<boolean>` — `try { return await reclaimWorktree(root, candidate.dir); } catch { return false; }`, carrying the existing comment that a guard failure is not a reason to abort the pass.
+- `collectReclaimed(root: string, candidates: readonly ReclaimCandidate[], mode: "pressure" | "idle" | "manual", idleHours: number, reclaimGB: number, sample: (root: string) => number | null, startedAt: number): Promise<string[]>` — the `for` loop: `if (mode === "idle") { if (!isIdleExpired(candidate, idleHours, startedAt)) continue; } else if (pressureFloorReached(sample(root), reclaimGB)) { break; }`, then `if (await reclaimOneCandidate(root, candidate)) cleaned.push(candidate.name);`.
+- `reclaimFreedGB(before: number | null, after: number | null): number` — the `before !== null && after !== null ? Math.max(0, (after - before) / BYTES_PER_GB) : 0`.
+- `buildReclaimResult(cleaned: readonly string[], before: number | null, after: number | null, startedAt: number): ReclaimPassResult` — the `const freeBytes = after ?? before ?? 0;` and the object literal `{ worktrees: cleaned, freedGB: reclaimFreedGB(before, after), freeGB: freeBytes / BYTES_PER_GB, durationMs: Date.now() - startedAt }`.
+- `logReclaim(root: string, mode: "pressure" | "idle" | "manual", result: ReclaimPassResult): void` — the single `logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "disk_reclaim", mode, worktrees: result.worktrees, freedGB: result.freedGB, freeGB: result.freeGB, durationMs: result.durationMs })`.
+`reclaimPass` keeps its name, signature, parameter names and doc comment, and becomes the orchestration over them:
+```ts
+export async function reclaimPass(
+  root: string,
+  mode: "pressure" | "idle" | "manual",
+  opts: { reclaimGB: number; idleHours?: number; sample?: (root: string) => number | null; candidates?: readonly ReclaimCandidate[] },
+): Promise<ReclaimPassResult | null> {
+  const sample = opts.sample ?? sampleFreeBytes;
+  const candidates = opts.candidates ?? reclaimCandidates(root);
+  const startedAt = Date.now();
+  const before = sample(root);
+  const cleaned = await collectReclaimed(root, candidates, mode, opts.idleHours ?? 0, opts.reclaimGB, sample, startedAt);
+  if (cleaned.length === 0) return null;
+  const after = sample(root);
+  const result = buildReclaimResult(cleaned, before, after, startedAt);
+  logReclaim(root, mode, result);
+  return result;
+}
+```
+The inline `opts` type may stay on `reclaimPass` exactly as today; `isIdleExpired`, `reclaimWorktree`, `ReclaimPassResult`, `sampleFreeBytes`, `BYTES_PER_GB`, `TUMWATER_SOURCE` and `logEventBestEffort` keep their imports and definitions.
+
+**Files touched.** src/team/team-reclaim.ts
+
+**Acceptance criteria.**
+- `reclaimPass`'s body holds only the sampler and candidate resolution, `startedAt`/`before`, the `collectReclaimed` call, the empty `cleaned` early return, the `after` sample, `buildReclaimResult`, `logReclaim` and the return; it no longer inlines the `for` loop, the idle/pressure branch, the try/catch, the freed-space clamp or the log call.
+- The six helpers are module-private (no `export`) and each is called only from src/team/team-reclaim.ts.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/team/team-reclaim.ts'`) no longer reports `reclaimPass` at 17, and each of the six helpers reports a single-digit value while the file's other top-level functions keep the counts they report today (`reclaimCandidates` 11, `isIdleExpired` 5, `isLinkedWorktree` 3, `reclaimWorktree` 5, `cleanIgnored` 1, `inspectReclaimCandidates` 4, `ReclaimController.poll` 7, `ReclaimController.runPass` 4, `ReclaimController.pollIdle` 4, `ReclaimController.requestManual` 2).
+- The exported surface is unchanged: `grep -nE '^export ' src/team/team-reclaim.ts` still lists exactly `reclaimCandidates`, `isLinkedWorktree`, `reclaimWorktree`, `reclaimPass`, `inspectReclaimCandidates` and `ReclaimController`; no import line in src/ or test/ changes.
+- Behavior is preserved, including the idle-mode no-sample rule, the pressure stop, the guard-failure skip, the null-when-clean return and the clamped `freedGB`, verified by the existing cases passing unedited — test/team-reclaim.test.ts "reclaimPass cleans least-recently-used first and stops once the sampler reaches diskReclaimGB", "reclaimPass returns null and logs nothing when there is nothing to clean", "reclaimPass still returns its result when the events feed is unwritable", "reclaimPass idle mode cleans only worktrees unused past the threshold", "reclaimPass idle mode with idleHours 0 cleans nothing", "reclaimPass continues past a guard-failing candidate and one with nothing to clean", "ReclaimController runs one pass per drop, then lets the disk hold engage", "ReclaimController.pollIdle cleans once, throttles the next arm, and honors reclaimedAt" and "ReclaimController.requestManual runs a manual pass over every candidate"; test/team-reclaim-guards.test.ts "reclaimPass reports freed space as after minus before, clamped at zero when another writer consumed it".
+- docs/invariants.md is not edited: the move changes no bound symbol or guarantee (the `reclaimPass`/`isIdleExpired` block names both, preserved, and its pins name the tests above).
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind six module-private functions, guarded by the existing test/team-reclaim.test.ts and test/team-reclaim-guards.test.ts cases named above. Run those two files whole, then the project's gate, and confirm green.
+
 ## Done
