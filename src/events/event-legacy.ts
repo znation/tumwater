@@ -27,8 +27,6 @@ const LEGACY_EVENT_TYPES: Readonly<Record<string, HarnessEvent["type"]>> = {
   land_failed: "merge_failed", // vocabulary-ok: legacy event name read from old logs
   // retired-name-ok:end
   // retired-name-ok:start old subscription-window event names
-  claude_window_reserved: "subscription_window_reserved", // vocabulary-ok: legacy event name read from old logs
-  claude_window_warning: "subscription_window_warning", // vocabulary-ok: legacy event name read from old logs
   claude_window_limited: "subscription_window_limited", // vocabulary-ok: legacy event name read from old logs
   claude_window_reset: "subscription_window_reset", // vocabulary-ok: legacy event name read from old logs
   // retired-name-ok:end

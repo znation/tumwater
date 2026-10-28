@@ -15,8 +15,6 @@ import { RoleRunner } from "../src/runner/runner.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { newTeamGateStates, pollTeamGates } from "../src/gates/gate-polls.js";
 import { BYTES_PER_GB } from "../src/gates/disk-gates.js";
-import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
-import { writeAccount } from "../src/agent/subscription-account.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { spentRunnerState } from "./fixtures/runner-fixtures.js";
@@ -182,47 +180,6 @@ test("pollTeamGates: fallback_switched is logged once per chain change and orche
   assert.equal(back.to, null);
   assert.equal(back.reason, "available");
   assert.equal(info.chain, undefined, "chain is gone after the reopen");
-});
-
-test("pollTeamGates: a sub reserve logs subscription_window_reserved once per window without disturbing claude's reserve memory", () => {
-  const root = tmpdir("gate-polls-sub-reserve-");
-  const modelsPath = writeModelsFile(root, MODELS_JSON);
-  const now = Date.now();
-  const config = paidFallbackConfig(10);
-  config.model = {
-    strong: { backend: "sub", model: "sub-astra" },
-    default: { backend: "claude", model: "claude-sonnet-5-5" },
-  };
-  config.backends = { sub: { windowReserve: { five_hour: 0.9 } } };
-  config.claudeWindowReserve = { five_hour: 0.9 };
-  const states = newTeamGateStates(config);
-  const ctx = {
-    root,
-    runners: [],
-    liveConfig: config,
-    modelsPath,
-    now,
-    info: { pid: process.pid, startedAt: 0, roles: [] },
-  };
-  const reserved = () =>
-    readEvents(root, 100).filter((e) => e.type === "subscription_window_reserved");
-
-  writeAccount(root, "sub", {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "allowed_warning", utilization: 0.95, resetsAt: now + 3_600_000, observedAt: now } },
-  });
-  writeClaudeAccount(root, {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "allowed_warning", utilization: 0.95, resetsAt: now + 3_600_000, observedAt: now } },
-  });
-  pollTeamGates(states, ctx);
-  pollTeamGates(states, ctx); // a second poll must not re-log the same window
-  const byBackend = (b: string) => reserved().filter((e) => e.backend === b);
-  assert.equal(byBackend("sub").length, 1, "the sub reserve logs once per window");
-  assert.equal(byBackend("claude").length, 1, "claude's own reserve logs once too");
-  assert.equal(reserved().length, 2, "each backend's crossing keeps its own key");
 });
 
 test("pollTeamGates: capPaused reflects maxDailyCostUsdPerRole; an absent key yields the empty set", () => {

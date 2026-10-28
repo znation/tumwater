@@ -55,7 +55,6 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
     "quiet_hours_ended",
     "maintenance_quota_hold",
     "maintenance_quota_resumed",
-    "subscription_window_reserved",
     "subscription_window_limited",
     "subscription_window_reset",
     "model_changed",
@@ -397,10 +396,6 @@ test("the digest names every gate hold and lift", () => {
     describeStateChange(ev({ type: "maintenance_quota_hold", maint: 3, allowance: 4, work: 20 })),
     "waiting: maintenance allowance used — 3/4 in 24h (20 work)",
   );
-  assert.equal(
-    describeStateChange(ev({ type: "subscription_window_reserved", backend: "claude", windowType: "five_hour", utilization: 0.85, reserve: 0.8 })),
-    "waiting: claude window five_hour at 85% past its 80% reserve",
-  );
   const limited = describeStateChange(ev({ type: "subscription_window_limited", windowType: "five_hour" }));
   assert.ok(limited.startsWith("waiting: claude window five_hour rejected"), limited);
   assert.equal(describeStateChange(ev({ type: "model_changed", to: "acme/m1" })), "model changed — now acme/m1");
@@ -421,7 +416,6 @@ test("the digest names every gate hold and lift", () => {
   // Each line honors the section cap, as every other state-change line does.
   for (const line of [
     describeStateChange(ev({ type: "disk_low", freeGB: 3.2, holdGB: 2 })),
-    describeStateChange(ev({ type: "subscription_window_reserved", backend: "claude", windowType: "five_hour", utilization: 0.85, reserve: 0.8 })),
     describeStateChange(ev({ type: "subscription_window_limited", windowType: "five_hour" })),
   ]) {
     assert.ok(line.length <= 72, `under the cap: ${line}`);

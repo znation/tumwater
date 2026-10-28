@@ -1,15 +1,12 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./team-error-storm.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { teamHold, TEAM_OPEN, type TeamHold, type HoldObservation } from "./team-hold.js";
-import { claudeWindowUsedUp, windowReserved, type ClaudeAccount, type ClaudeWindow } from "../agent/claude/claude-account.js";
-import type { HarnessEventInput } from "../events/events.js";
+import { claudeWindowUsedUp, type ClaudeAccount } from "../agent/claude/claude-account.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./team-failure-spread.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";
-import { eventsSince } from "../events/event-window.js";
-import { DAY_MS } from "../text/datetime.js";
 
 /** The orchestrator's three team-health polls — the wiring half of the team-wide failure
  * alarms (src/team/team-hold.ts, src/team/team-error-storm.ts,
@@ -64,11 +61,10 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
  * keep blocking. Events carry the provider when one is configured (an undefined provider
  * — pi's default — omits it, so an unconfigured team's events render exactly as before).
  * `observations` is the per-subscription-backend hold
- * observations (one per backend in use; part 2e passes them), each stamped by the caller from
- * its account via windowObservation — the account's own `claudeWindowReserve`: crossings held
- * like a rejected window (but never the director) log pollClaudeWindowReserve's event instead
- * of the limited one. Returns the new map for the caller to keep. Exported as a unit-test
- * seam, like its sibling polls below. */
+ * observations (one per backend in use), each stamped by the caller from its account via
+ * windowObservation. The gate no longer passes them (Subtract part 5u/6), but the seam stays
+ * for the doctor's read and the unit tests. Returns the new map for the caller to keep.
+ * Exported as a unit-test seam, like its sibling polls below. */
 export function pollTeamHold(
   root: string,
   prev: ReadonlyMap<string | undefined, TeamHold>,
@@ -114,7 +110,7 @@ export function pollTeamHold(
       limitedEvent();
     } else if (pPrev.until === null && pNext.until !== null) {
       if (pNext.kind === "subscription-window" && pNext.reserve === true) {
-        // A reserve crossing logs subscription_window_reserved (pollClaudeWindowReserve), not this.
+        // A reserve crossing logs nothing here; the reserve event loop was removed (5u/6).
       } else if (pNext.kind === "subscription-window") {
         limitedEvent();
       } else {
@@ -173,121 +169,6 @@ export function windowObservation(
     ...(furthest.reserve === true ? { reserve: true as const } : {}),
   };
 }
-
-/** A claude usage window is open for at most `seven_day`, so any window still open was logged
- * within this span of the event log. */
-const CLAUDE_WINDOW_LOOKBACK_MS = 7 * DAY_MS;
-
-/** The `backend:windowType:resetsAt` keys of the still-open windows whose `type` event is already
- * in the event log, so a restart does not re-announce a window that is still open. Keyed by the
- * event's own `backend` (falling back to `"claude"` for an event written before the window
- * events carried one), so two backends' windows of the same type and reset instant keep their
- * own keys. Events without a numeric `resetsAt` cannot name their window and are skipped. */
-export function loggedWindowKeys(
-  root: string,
-  type: "subscription_window_warning" | "subscription_window_reserved",
-  now: number,
-): ReadonlySet<string> {
-  const keys = new Set<string>();
-  for (const e of eventsSince(root, CLAUDE_WINDOW_LOOKBACK_MS, now, (ev) => ev.type === type)) {
-    if (typeof e.windowType === "string" && typeof e.resetsAt === "number" && e.resetsAt > now) {
-      keys.add(`${typeof e.backend === "string" ? e.backend : "claude"}:${e.windowType}:${e.resetsAt}`);
-    }
-  }
-  return keys;
-}
-
-/** Log each subscription-window event once per window key. The reserve and the warning polls
- * (below) both walk every window of the account and log one event for each that crosses its mark
- * this poll, deduplicated by the `backend:type:resetsAt` key so many polls across one window log
- * once (a later window's crossing is its own key). They differ only in WHICH window marks (the
- * reserve fraction vs the `allowed_warning` status) and the event's payload, so the traversal, the
- * "reset instant already past" skip, the key build, the key dedup, and the returned-set contract
- * live here and each caller supplies the mark-and-payload predicate (`eventFor` returns the event
- * to log, or null to skip that window). The returned set drops keys whose reset instant has passed,
- * and is `logged` itself when nothing was added or dropped. */
-function logWindowEventOnce(
-  root: string,
-  logged: ReadonlySet<string>,
-  account: ClaudeAccount | null,
-  now: number,
-  backend: string,
-  eventFor: (type: string, w: ClaudeWindow) => HarnessEventInput | null,
-): ReadonlySet<string> {
-  if (account?.billing !== "subscription") return logged;
-  let next: Set<string> | null = null;
-  for (const key of logged) {
-    const suffix = key.slice(key.lastIndexOf(":") + 1);
-    if (suffix !== "" && Number(suffix) <= now) (next ??= new Set(logged)).delete(key);
-  }
-  for (const [type, w] of Object.entries(account.windows)) {
-    const ev = eventFor(type, w);
-    if (ev === null) continue;
-    // A window whose reset instant is in the past (or unreadable) no longer marks a crossing.
-    if (typeof w.resetsAt === "number" && w.resetsAt <= now) continue;
-    // Keyed by this poll's backend (the `backend:windowType:resetsAt` shape loggedWindowKeys
-    // seeds), so a different backend's identical window keeps its own key. The backend rides
-    // the event, stamped here so each caller's event needs no backend of its own.
-    const key = `${backend}:${type}:${w.resetsAt ?? ""}`;
-    if ((next ?? logged).has(key)) continue;
-    logEventBestEffort(root, { ...ev, backend });
-    (next ??= new Set(logged)).add(key);
-  }
-  return next ?? logged;
-}
-
-
-/** One poll of the reserve crossing: each window at or past its windowReserve fraction (read
- * through `windowReserveFor(config, "claude")`) logs `subscription_window_reserved` once per
- * window key (`backend:type:resetsAt`, kept in `logged`), so several windows crossing in one
- * poll each log their own event. Returns the keys to keep. */
-export function pollClaudeWindowReserve(
-  root: string,
-  logged: ReadonlySet<string>,
-  account: ClaudeAccount | null,
-  now: number,
-  backend: string,
-  reserve: Record<string, number> | undefined,
-): ReadonlySet<string> {
-  if (reserve === undefined) return logged;
-  return logWindowEventOnce(root, logged, account, now, backend, (type, w) => {
-    const fraction = reserve[type];
-    if (!windowReserved(w, fraction) || typeof w.resetsAt !== "number") return null;
-    return {
-      source: TUMWATER_SOURCE,
-      type: "subscription_window_reserved",
-      windowType: type,
-      utilization: w.utilization,
-      reserve: fraction,
-      resetsAt: w.resetsAt,
-    };
-  });
-}
-
-/** One poll of the subscription-window warning: each `allowed_warning` window logs
- * `subscription_window_warning` once per window key (`backend:type:resetsAt`, kept in `logged`;
- * carrying the window's utilization when the account reported one), so many polls across one
- * window warn once and several windows warning in one poll each log their own event. Returns
- * the keys to keep. */
-export function pollClaudeWindowWarning(
-  root: string,
-  logged: ReadonlySet<string>,
-  account: ClaudeAccount | null,
-  now: number,
-  backend: string,
-): ReadonlySet<string> {
-  return logWindowEventOnce(root, logged, account, now, backend, (type, w) => {
-    if (w.status !== "allowed_warning") return null;
-    return {
-      source: TUMWATER_SOURCE,
-      type: "subscription_window_warning",
-      windowType: type,
-      ...(typeof w.utilization === "number" ? { utilization: w.utilization } : {}),
-      ...(typeof w.resetsAt === "number" ? { resetsAt: w.resetsAt } : {}),
-    };
-  });
-}
-
 
 /** One poll of the team-wide error-storm warning (src/team/team-error-storm.ts): gather each
  * runner's current error streak (RunnerState.consecutiveErrors/lastError — the same fields the

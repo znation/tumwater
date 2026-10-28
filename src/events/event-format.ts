@@ -1,4 +1,3 @@
-import { claudeUtilizationPct } from "../agent/claude/claude-account.js";
 import { eventRole, eventRun, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
@@ -559,19 +558,6 @@ function resourceEventMessage(e: HarnessEvent): string {
         return `backend recovered (${backendKindPhrase(e.kind)})${providerAt(e)} — roles on ${providerScope(e)} run again`;
       return `provider limit lifted${providerAt(e)} — roles on ${providerScope(e)} run again`;
     }
-    case "subscription_window_warning": {
-      // Routine-with-explanation, like rate_limit_hold — no warning prefix: the account is
-      // telling us the window is filling, not failing. It names the window and when it resets.
-      const used = finiteNumber(e.utilization, null);
-      const fill = used === null ? "" : ` (at ${claudeUtilizationPct(used)}% used)`;
-      return `${subscriptionWindowPhrase(e)} near its limit${fill}${windowResetPhrase(e)} — subscription ${backendLabel(e)} model jobs keep running`;
-    }
-    case "subscription_window_reserved": {
-      const used = finiteNumber(e.utilization, null);
-      const line = finiteNumber(e.reserve, null);
-      const pct = (f: number | null) => (f === null ? "?" : `${claudeUtilizationPct(f)}%`);
-      return `${subscriptionWindowPhrase(e)} at ${pct(used)}, past its ${pct(line)} reserve${windowResetPhrase(e)} — the team leaves it to you (director keeps running)`;
-    }
     case "subscription_window_limited":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the
       // harness handling the account's own throttle. Names the window, the reset, and which
@@ -746,7 +732,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "prompt_enqueued": case "prompt_cancelled": case "prompt_edited": case "prompt_topped": case "prompt_taken": case "question_posted": case "entry_refused": case "issue_filed": return inboxEventMessage(e);
     case "budget_warning": case "budget_paused": case "budget_fallback": case "budget_resumed": case "budget_handback": case "fallback_switched": case "opencode_free_model_billed": return budgetEventMessage(e);
     case "team_paused": case "team_resumed": case "role_paused": case "role_resumed": case "role_streak_paused": case "role_cap_warning": case "role_cap_paused": case "role_cap_resumed": case "maintenance_quota_hold": case "maintenance_quota_resumed": case "bootstrap_complete": return holdEventMessage(e);
-    case "disk_low": case "disk_ok": case "disk_reclaim": case "quiet_hours_started": case "quiet_hours_ended": case "rate_limit_hold": case "rate_limit_resumed": case "subscription_window_warning": case "subscription_window_reserved": case "subscription_window_limited": case "subscription_window_reset": return resourceEventMessage(e);
+    case "disk_low": case "disk_ok": case "disk_reclaim": case "quiet_hours_started": case "quiet_hours_ended": case "rate_limit_hold": case "rate_limit_resumed": case "subscription_window_limited": case "subscription_window_reset": return resourceEventMessage(e);
     case "max_concurrent_changed": case "retention_changed": case "config_changed": case "model_changed": case "backend_binary": case "state_migrated": case "orchestrator_start": case "orchestrator_stop": return configEventMessage(e);
     case "image_blind": case "image_reroute": case "build_stale": case "restart_pending": case "restart": case "restart_refused": case "restart_blocked": case "restart_forced": case "supervisor_exit": return imageRestartEventMessage(e);
     case "build_check": case "dep_install": case "slot_wait": case "provider_wait": case "check_wait": return checkWaitEventMessage(e);

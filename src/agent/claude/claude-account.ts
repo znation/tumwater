@@ -23,7 +23,6 @@ import {
   observeAccount,
   readAccount,
   subscriptionWindowRejected,
-  utilizationPct,
   windowEntries,
   windowLabel,
   windowReserved,
@@ -108,14 +107,6 @@ export function claudeWindowLabel(type: string): string {
   return windowLabel(type);
 }
 
-/** The fraction of a subscription usage window consumed as a whole-number percent —
- * subscription-account.ts's utilizationPct, under its historical claude name. */
-export function claudeUtilizationPct(utilization: number): number {
-  return utilizationPct(utilization);
-}
-
-/** The account's windows as a list, most constrained first — subscription-account.ts's
- * windowEntries, under its historical claude name. */
 export function claudeWindowEntries(account: ClaudeAccount): ClaudeWindowEntry[] {
   return windowEntries(account);
 }

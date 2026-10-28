@@ -151,10 +151,11 @@ test("claude window events each spawn the notify command with the rendered line"
     assert.equal(line.type, "subscription_window_limited");
     assert.equal(line.source, "tumwater");
     assert.equal(line.message, formatEvent(event));
-    // A different type is not suppressed by the limited page's throttle slot.
-    logEvent(root, { source: TUMWATER_SOURCE, type: "subscription_window_warning", windowType: "five_hour", resetsAt, backend: "claude" });
+    // A different notifiable type is not suppressed by the limited page's throttle slot
+    // (the throttles are keyed per type).
+    logEvent(root, { source: TUMWATER_SOURCE, type: "role_streak_paused", role: "docs", reason: "streak" });
     await waitFor(() => recordedLines(out).length === 2, "a second recorded line");
-    assert.equal(parseLine(recordedLines(out)[1] ?? "").type, "subscription_window_warning");
+    assert.equal(parseLine(recordedLines(out)[1] ?? "").type, "role_streak_paused");
   } finally {
     notifier.dispose();
   }

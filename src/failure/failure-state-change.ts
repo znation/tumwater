@@ -13,7 +13,6 @@ import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhras
 
 import { shortSha } from "../text/format.js";
 import { deferredReasonText, untilClockSuffix, gigabytes, windowSuffix, windowResetPhrase, backendLabel } from "../events/event-format.js";
-import { claudeUtilizationPct } from "../agent/claude/claude-account.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
  * cap/team gates and the team hold, the error-streak breaker's pause, the role's own daily
@@ -59,7 +58,6 @@ export const STATE_CHANGE_TYPES = new Set<string>([
   "quiet_hours_ended",
   "maintenance_quota_hold",
   "maintenance_quota_resumed",
-  "subscription_window_reserved",
   "subscription_window_limited",
   "subscription_window_reset",
   "model_changed",
@@ -121,7 +119,6 @@ export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>([
   "check_wait",
   // Observations and actions.
   "disk_reclaim",
-  "subscription_window_warning",
   "image_blind",
   // State-adjacent but not self-decisions.
   "state_migrated",
@@ -184,13 +181,6 @@ function field(v: unknown): string {
  * budget_fallback line so the default and its slice rule stay in one place. */
 function providerModel(ev: HarnessEvent): string {
   return `${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")}`;
-}
-
-/** A utilization fraction as its whole-number percent, read through finiteNumber so a torn or
- * hand-edited subscription event renders 0% rather than NaN — the same corrupt-field rule the
- * feed's own subscription lines apply. */
-function pct(v: unknown): number {
-  return claudeUtilizationPct(finiteNumber(v, 0));
 }
 
 /** A per-family builder of one state-change line, one per event family, so the budget, pause,
@@ -406,9 +396,6 @@ function waitStateChange(ev: HarnessEvent): string {
     case "maintenance_quota_resumed":
       text = `maintenance allowance reopened — ${field(ev.maint)}/${field(ev.allowance)} in 24h`;
       break;
-    case "subscription_window_reserved":
-      text = `waiting: ${backendLabel(ev)} window ${field(ev.windowType)} at ${pct(ev.utilization)}% past its ${pct(ev.reserve)}% reserve`;
-      break;
     case "subscription_window_limited":
       text = `waiting: ${backendLabel(ev)} window ${field(ev.windowType)} rejected${windowResetPhrase(ev)}`;
       break;
@@ -486,7 +473,6 @@ export function describeStateChange(ev: HarnessEvent): string {
     case "quiet_hours_ended":
     case "maintenance_quota_hold":
     case "maintenance_quota_resumed":
-    case "subscription_window_reserved":
     case "subscription_window_limited":
     case "subscription_window_reset":
       return truncateExample(waitStateChange(ev), STATE_CHANGE_MAX);

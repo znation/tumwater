@@ -40,7 +40,6 @@ import {
   sleepInterruptible,
 } from "../run/run-timing.js";
 import { newTeamGateStates, type TeamGateStates } from "../gates/gate-polls.js";
-import { loggedWindowKeys } from "../team/team-polls.js";
 import { ReclaimController } from "../team/team-reclaim.js";
 import { reapPreviousTeamOrphans } from "../doctor/doctor-orphans.js";
 import { runStartupMigrations } from "./startup-migration-steps.js";
@@ -258,9 +257,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // the start gate reads gateStates.teamHold at permit time, so its closures always see
   // the latest poll's hold verdict rather than the poll that created them.
   const gateStates: TeamGateStates = newTeamGateStates(config);
-  // A restart must not re-announce a window that is still open.
-  gateStates.claudeWindowWarned = loggedWindowKeys(root, "subscription_window_warning", Date.now());
-  gateStates.claudeWindowReserved = loggedWindowKeys(root, "subscription_window_reserved", Date.now());
   // The live config the last successful reload produced (last-known-good while the file is
   // broken or missing). The reload bookkeeping itself lives in src/config/config-live.ts.
   const liveReload = newLiveConfigReload({ root, config, mainBranch, runnerSignal: roleSignal, runners, semaphore, roleFilter: opts.roleFilter });

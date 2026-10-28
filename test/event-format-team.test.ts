@@ -439,30 +439,9 @@ test("formatEvent renders the disk-floor events' GB fields one-decimal and never
 // account's own throttle lines, routine-with-explanation like the failure holds. The reset
 // stamp renders local HH:MM:SS through the shared formatTime; a torn line without resetsAt
 // omits the clause rather than printing NaN.
-test("formatEvent renders the subscription-window warning, limited, and reset lines", () => {
+test("formatEvent renders the subscription-window limited and reset lines", () => {
   const resetsAt = Date.UTC(2026, 9, 10, 14, 30, 0);
   const clock = formatTime(new Date(resetsAt));
-  const warning = formatEvent({
-    ts: 0, source: "tumwater", type: "subscription_window_warning", backend: "claude", windowType: "five_hour", resetsAt,
-  } as never);
-  assert.match(
-    warning,
-    new RegExp(`tumwater\\s+claude subscription window five_hour near its limit, resets ${clock} — subscription claude model jobs keep running`),
-    `warning line: ${warning}`,
-  );
-  const filled = formatEvent({
-    ts: 0, source: "tumwater", type: "subscription_window_warning", backend: "claude", windowType: "five_hour", resetsAt, utilization: 0.82,
-  } as never);
-  assert.match(
-    filled,
-    new RegExp(`near its limit \\(at 82% used\\), resets ${clock} — subscription claude model jobs keep running`),
-    `filled warning line: ${filled}`,
-  );
-  const bad = formatEvent({
-    ts: 0, source: "tumwater", type: "subscription_window_warning", backend: "claude", windowType: "five_hour", resetsAt, utilization: "x",
-  } as never);
-  assert.match(bad, /near its limit, resets/);
-  assert.ok(!bad.includes("NaN"), `bad line: ${bad}`);
   const limited = formatEvent({
     ts: 0, source: "tumwater", type: "subscription_window_limited", backend: "claude", windowType: "five_hour", resetsAt,
   } as never);
@@ -500,13 +479,4 @@ test("fallback_switched renders each changed tier's destination and reason", () 
     },
   } as never);
   assert.ok(line.endsWith("fallback: default → deepseek/DeepSeek-V4-Flash (window); strong → primary (available)"), line);
-});
-
-test("formatEvent renders the reserve crossing with utilization, reserve and reset", () => {
-  const resetsAt = Date.UTC(2026, 9, 10, 14, 30, 0);
-  const line = formatEvent({
-    ts: 0, source: "tumwater", type: "subscription_window_reserved", backend: "claude", windowType: "seven_day", utilization: 0.85, reserve: 0.8, resetsAt,
-  } as never);
-  assert.match(line, new RegExp(`seven_day at 85%, past its 80% reserve, resets ${formatTime(new Date(resetsAt))} — the team leaves it to you \\(director keeps running\\)`));
-  assert.match(formatEvent({ ts: 0, source: "tumwater", type: "subscription_window_reserved", backend: "claude" } as never), /at \?, past its \? reserve —/);
 });
