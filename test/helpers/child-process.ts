@@ -4,6 +4,13 @@
 // `ready` file it wrote, a lock it took). `spawnReadyChild` bundles those. Tests that only
 // need a process to be *alive* — a stand-in orchestrator — spawn one with `spawnLiveChild`
 // instead. `stopChild` bundles the SIGKILL-and-wait teardown both share.
+//
+// A child's readiness poll must yield between spins (`await`, `Atomics.wait`, or a timer): a
+// synchronous `while (!fs.existsSync(...)) {}` holds the event loop, the owner preload
+// (test/helpers/exit-with-owner.ts) can never fire, and the child outlives the test. The rule
+// is enforced deterministically by test/test-child-spin-guard.test.ts over `test/**/*.ts`; keep
+// any new poll here and in child sources text below yielding (see `spawnLockHolder`'s
+// `Atomics.wait` and the `sleep`-based readiness handshake).
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
