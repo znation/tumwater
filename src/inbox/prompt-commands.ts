@@ -206,10 +206,10 @@ function runPromptImageGate(root: string, target: string): void {
   if (guidance.refusal) fail(guidance.refusal);
 }
 
-/** `--edit <n>` mode — replace a queued prompt's body by position: the attachment gate, then
- * the editor for a bare position or the typed/`--file` text, list-wide or `--role`-scoped. One
- * helper so `--edit`'s rules are found by name. */
-function runPromptEdit(root: string, position: number, text: string | null, attachPaths: string[], role: string | null): void {
+/** The `--edit` attachment phase: read the `--attach` image list (undefined when there is
+ * none) and run the image-input gate under the role the edit targets — the position's
+ * resolved role when no `--role` narrows it. */
+function readEditAttachments(root: string, position: number, attachPaths: string[], role: string | null): PromptImageInput[] | undefined {
   // The same broken-config policy and list-wide resolution as cancel, one verb over: the
   // file's new content rides the same queue file (position, enqueue stamp, and a pending
   // --at deferral untouched), and a concurrent dequeue reports gone and exits clean. An
@@ -226,50 +226,71 @@ function runPromptEdit(root: string, position: number, text: string | null, atta
     const targetRole = role ?? resolveListedRole(root, position);
     runPromptImageGate(root, targetRole);
   }
-  const typed = text;
-  if (typed === null) {
-    // Bare `--edit <n>`: open the prompt's body in the editor. The role is resolved first
-    // and the write goes by file name, so a dequeue while the editor is open reports gone
-    // instead of editing the neighbour that shifted into the position.
-    const targetRole = role ?? resolveListedRole(root, position);
-    let name: string;
-    let body: string | null;
-    try {
-      name = path.basename(queuedFileAtPosition(root, targetRole, position));
-      body = readQueuedPromptBody(root, targetRole, name);
-    } catch (err) {
-      return fail(errorMessage(err));
-    }
-    if (body === null) {
-      sayPromptOutcome(position, targetRole, { status: "gone" }, role === null);
-      return;
-    }
-    const after = editInEditor(body, "prompt.md");
-    // An emptied buffer is an abort, not a blank prompt: the queue would otherwise hold a
-    // prompt with no text, which the enqueue forms refuse.
-    if (after.trim() === "" && body.trim() !== "") fail("the edited prompt is empty; nothing changed (use --cancel <n> to drop it)");
-    if (after.trim() === body.trim() && images === undefined) {
-      say(`prompt ${position} unchanged`);
-      return;
-    }
-    try {
-      sayPromptOutcome(position, targetRole, editQueuedFile(root, targetRole, name, after, images), role === null);
-    } catch (err) {
-      fail(errorMessage(err));
-    }
+  return images;
+}
+
+/** The bare `--edit <n>` arm: resolve the role, read the queued body by file name (so a
+ * concurrent dequeue reports gone), open it in the editor and write the result back —
+ * unchanged, emptied or edited — with the carried `images`. */
+function editBareQueuedPrompt(root: string, position: number, role: string | null, images: PromptImageInput[] | undefined): void {
+  // Bare `--edit <n>`: open the prompt's body in the editor. The role is resolved first
+  // and the write goes by file name, so a dequeue while the editor is open reports gone
+  // instead of editing the neighbour that shifted into the position.
+  const targetRole = role ?? resolveListedRole(root, position);
+  let name: string;
+  let body: string | null;
+  try {
+    name = path.basename(queuedFileAtPosition(root, targetRole, position));
+    body = readQueuedPromptBody(root, targetRole, name);
+  } catch (err) {
+    return fail(errorMessage(err));
+  }
+  if (body === null) {
+    sayPromptOutcome(position, targetRole, { status: "gone" }, role === null);
     return;
   }
+  const after = editInEditor(body, "prompt.md");
+  // An emptied buffer is an abort, not a blank prompt: the queue would otherwise hold a
+  // prompt with no text, which the enqueue forms refuse.
+  if (after.trim() === "" && body.trim() !== "") fail("the edited prompt is empty; nothing changed (use --cancel <n> to drop it)");
+  if (after.trim() === body.trim() && images === undefined) {
+    say(`prompt ${position} unchanged`);
+    return;
+  }
+  try {
+    sayPromptOutcome(position, targetRole, editQueuedFile(root, targetRole, name, after, images), role === null);
+  } catch (err) {
+    fail(errorMessage(err));
+  }
+}
+
+/** The typed `--edit <n> <text>` / `--file` arm: the list-wide `editListedPrompt` path when
+ * no `--role`, else the role-scoped `editRolePrompt` command, with the carried `images`. */
+function editTypedQueuedPrompt(root: string, position: number, text: string, role: string | null, images: PromptImageInput[] | undefined): void {
   if (role === null) {
-    sayListedOutcome(editListedPrompt(root, listWideScope(root), position, typed, images), position);
+    sayListedOutcome(editListedPrompt(root, listWideScope(root), position, text, images), position);
     return;
   }
   const target = role ?? DIRECTOR_ROLE;
   sayPromptOutcome(
     position,
     target,
-    runRolePromptCommand(root, target, position, (r, role, position) => editRolePrompt(r, role, position, typed, images)),
+    runRolePromptCommand(root, target, position, (r, role, position) => editRolePrompt(r, role, position, text, images)),
     false,
   );
+}
+
+/** `--edit <n>` mode — replace a queued prompt's body by position: read the `--attach` image
+ * list through the gate, then the editor for a bare position or the typed/`--file` text,
+ * list-wide or `--role`-scoped. The three phases live in `readEditAttachments`,
+ * `editBareQueuedPrompt` and `editTypedQueuedPrompt`, so each `--edit` job is found by name. */
+function runPromptEdit(root: string, position: number, text: string | null, attachPaths: string[], role: string | null): void {
+  const images = readEditAttachments(root, position, attachPaths, role);
+  if (text === null) {
+    editBareQueuedPrompt(root, position, role, images);
+    return;
+  }
+  editTypedQueuedPrompt(root, position, text, role, images);
 }
 
 /** `--top <n>` mode — move a queued prompt to the head of its queue by position, list-wide or
