@@ -189,6 +189,23 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     }
     await refetch();
   }
+  // POST one two-click Health-card action after its slot was armed by a prior click: the first
+  // click only arms the slot (the handler's button repaints to "Confirm …") and returns; a
+  // second click within the confirm window disarms, repaints, flashes the action line, posts,
+  // and re-runs the card's checks. Shared by the Kill-orphans / Drop-broken-pins /
+  // Retire-leftovers / Archive-backlog handlers, which differ only in their slot, key, button
+  // repaint, flash line, endpoint, and — for Retire-leftovers — the outcome-line override
+  // passed through to postSetting.
+  async function postConfirmedHealthAction(slot, key, paint, flash, path, news) {
+    if (!slot.armed(key)) {
+      slot.arm(key);
+      return;
+    }
+    slot.disarm();
+    paint();
+    showFlash(flash);
+    await postSetting(path, {}, fetchDoctor, news);
+  }
   // The Health card's Kill orphans button: a two-click confirm, then POST /api/kill-orphans runs
   // the same kill as "tumwater doctor --kill-orphans" and the card re-runs its checks.
   function paintKillButton() {
@@ -197,14 +214,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   }
   const killSlot = confirmSlot(paintKillButton);
   async function killOrphansClick() {
-    if (!killSlot.armed("orphans")) {
-      killSlot.arm("orphans");
-      return;
-    }
-    killSlot.disarm();
-    paintKillButton();
-    showFlash("Killing orphaned processes…");
-    await postSetting("/api/kill-orphans", {}, fetchDoctor);
+    await postConfirmedHealthAction(killSlot, "orphans", paintKillButton, "Killing orphaned processes…", "/api/kill-orphans");
   }
   // The Health card's Drop broken pins button: a two-click confirm, then POST
   // /api/doctor-drop-broken-pins runs the same drop as "tumwater doctor --drop-broken-pins" and
@@ -215,14 +225,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   }
   const dropSlot = confirmSlot(paintDropButton);
   async function dropBrokenPinsClick() {
-    if (!dropSlot.armed("broken-pins")) {
-      dropSlot.arm("broken-pins");
-      return;
-    }
-    dropSlot.disarm();
-    paintDropButton();
-    showFlash("Dropping broken pins…");
-    await postSetting("/api/doctor-drop-broken-pins", {}, fetchDoctor);
+    await postConfirmedHealthAction(dropSlot, "broken-pins", paintDropButton, "Dropping broken pins…", "/api/doctor-drop-broken-pins");
   }
   // The Health card's Retire leftovers button: a two-click confirm, then POST
   // /api/doctor-retire-leftovers runs the same reap as "tumwater doctor --retire-leftovers" and
@@ -234,16 +237,9 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   }
   const retireLeftoversSlot = confirmSlot(paintRetireLeftoversButton);
   async function retireLeftoversClick() {
-    if (!retireLeftoversSlot.armed("retire-leftovers")) {
-      retireLeftoversSlot.arm("retire-leftovers");
-      return;
-    }
-    retireLeftoversSlot.disarm();
-    paintRetireLeftoversButton();
-    showFlash("Retiring every disabled role's leftovers…");
-    // The shared leftoverRetireLines join is empty when nothing is retirable, so the button
-    // falls back to the same none-left sentence the TUI Health key flashes.
-    await postSetting("/api/doctor-retire-leftovers", {}, fetchDoctor,
+    // The outcome override's none-left fallback matches the none-left sentence the TUI Health
+    // key flashes when nothing is retirable.
+    await postConfirmedHealthAction(retireLeftoversSlot, "retire-leftovers", paintRetireLeftoversButton, "Retiring every disabled role's leftovers…", "/api/doctor-retire-leftovers",
       (d) => (d.ok ? "" : "error: ") + (d.message || "no leftover roles to retire"));
   }
   // The Health card's Archive backlog button: a two-click confirm, then POST
@@ -257,14 +253,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   }
   const archiveBacklogSlot = confirmSlot(paintArchiveBacklogButton);
   async function archiveBacklogClick() {
-    if (!archiveBacklogSlot.armed("archive-backlog")) {
-      archiveBacklogSlot.arm("archive-backlog");
-      return;
-    }
-    archiveBacklogSlot.disarm();
-    paintArchiveBacklogButton();
-    showFlash("Archiving the finished backlog entries…");
-    await postSetting("/api/doctor-archive-backlog", {}, fetchDoctor);
+    await postConfirmedHealthAction(archiveBacklogSlot, "archive-backlog", paintArchiveBacklogButton, "Archiving the finished backlog entries…", "/api/doctor-archive-backlog");
   }
   // The Health card's Commit backlog button: a single click, because the commit is the doctor's
   // own recommended repair and is reversible (unlike the two-click Kill orphans arm), POSTing
