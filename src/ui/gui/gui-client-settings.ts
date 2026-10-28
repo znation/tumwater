@@ -161,13 +161,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // The row's Enable button: re-enable the role through POST /api/role-enable (writing
   // roles.<base>.enabled), flash the server's message, and refetch so the card drops the row.
   async function enableRole(role) {
-    try {
-      const d = await postJson("/api/role-enable", { role: role });
-      showFlash(d.message);
-    } catch (err) {
-      showFlash("error: " + clientErrorMessage(err));
-    }
-    await fetchRetirable();
+    await postSetting("/api/role-enable", { role: role }, fetchRetirable, (d) => d.message);
   }
   // First click arms the role's button; a second within the confirm window posts the retire.
   async function confirmRetire(role) {
@@ -176,13 +170,24 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       return;
     }
     retireSlot.disarm();
+    await postSetting("/api/retire", { role: role }, fetchRetirable, (d) => d.message);
+  }
+  // POST one Settings action and flash its outcome, then refetch the card it changed — the
+  // try/catch tail every Enable/Retire/Health-button handler shares, so the thrown-error
+  // coercion and the success/error wording live in one place. news derives the success line
+  // from the endpoint's answer: the default is the team-wide "ok: / error: " prefix, Enable
+  // and Retire pass the server's message through verbatim, and Retire-leftovers overrides the
+  // none-left fallback. Deliberately not named postAction (gui-client.ts's core helper, which
+  // closes menus, refreshes the standing poll, and does not refetch on failure — this one
+  // refetches the card its action changed even when the post failed).
+  async function postSetting(path, body, refetch, news) {
     try {
-      const d = await postJson("/api/retire", { role: role });
-      showFlash(d.message);
+      const d = await postJson(path, body);
+      showFlash(news ? news(d) : (d.ok ? "" : "error: ") + d.message);
     } catch (err) {
       showFlash("error: " + clientErrorMessage(err));
     }
-    await fetchRetirable();
+    await refetch();
   }
   // The Health card's Kill orphans button: a two-click confirm, then POST /api/kill-orphans runs
   // the same kill as "tumwater doctor --kill-orphans" and the card re-runs its checks.
@@ -199,13 +204,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     killSlot.disarm();
     paintKillButton();
     showFlash("Killing orphaned processes…");
-    try {
-      const d = await postJson("/api/kill-orphans", {});
-      showFlash((d.ok ? "" : "error: ") + d.message);
-    } catch (err) {
-      showFlash("error: " + clientErrorMessage(err));
-    }
-    await fetchDoctor();
+    await postSetting("/api/kill-orphans", {}, fetchDoctor);
   }
   // The Health card's Drop broken pins button: a two-click confirm, then POST
   // /api/doctor-drop-broken-pins runs the same drop as "tumwater doctor --drop-broken-pins" and
@@ -223,13 +222,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     dropSlot.disarm();
     paintDropButton();
     showFlash("Dropping broken pins…");
-    try {
-      const d = await postJson("/api/doctor-drop-broken-pins", {});
-      showFlash((d.ok ? "" : "error: ") + d.message);
-    } catch (err) {
-      showFlash("error: " + clientErrorMessage(err));
-    }
-    await fetchDoctor();
+    await postSetting("/api/doctor-drop-broken-pins", {}, fetchDoctor);
   }
   // The Health card's Retire leftovers button: a two-click confirm, then POST
   // /api/doctor-retire-leftovers runs the same reap as "tumwater doctor --retire-leftovers" and
@@ -248,15 +241,10 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     retireLeftoversSlot.disarm();
     paintRetireLeftoversButton();
     showFlash("Retiring every disabled role's leftovers…");
-    try {
-      const d = await postJson("/api/doctor-retire-leftovers", {});
-      // The shared leftoverRetireLines join is empty when nothing is retirable, so the
-      // button falls back to the same none-left sentence the TUI Health key flashes.
-      showFlash((d.ok ? "" : "error: ") + (d.message || "no leftover roles to retire"));
-    } catch (err) {
-      showFlash("error: " + clientErrorMessage(err));
-    }
-    await fetchDoctor();
+    // The shared leftoverRetireLines join is empty when nothing is retirable, so the button
+    // falls back to the same none-left sentence the TUI Health key flashes.
+    await postSetting("/api/doctor-retire-leftovers", {}, fetchDoctor,
+      (d) => (d.ok ? "" : "error: ") + (d.message || "no leftover roles to retire"));
   }
   // The Health card's Archive backlog button: a two-click confirm, then POST
   // /api/doctor-archive-backlog runs the same archive as "tumwater archive" (holding the merge
@@ -276,13 +264,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     archiveBacklogSlot.disarm();
     paintArchiveBacklogButton();
     showFlash("Archiving the finished backlog entries…");
-    try {
-      const d = await postJson("/api/doctor-archive-backlog", {});
-      showFlash((d.ok ? "" : "error: ") + d.message);
-    } catch (err) {
-      showFlash("error: " + clientErrorMessage(err));
-    }
-    await fetchDoctor();
+    await postSetting("/api/doctor-archive-backlog", {}, fetchDoctor);
   }
   // The Health card's Commit backlog button: a single click, because the commit is the doctor's
   // own recommended repair and is reversible (unlike the two-click Kill orphans arm), POSTing
@@ -291,13 +273,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // clean), then re-running the checks so the uncommitted-backlog row repaints.
   async function commitBacklogClick() {
     showFlash("Committing the uncommitted backlog/brief files…");
-    try {
-      const d = await postJson("/api/doctor-commit-backlog", {});
-      showFlash((d.ok ? "" : "error: ") + d.message);
-    } catch (err) {
-      showFlash("error: " + clientErrorMessage(err));
-    }
-    await fetchDoctor();
+    await postSetting("/api/doctor-commit-backlog", {}, fetchDoctor);
   }
   // The Health card's Re-sync install button: a single click, because the re-sync is the doctor's
   // own recommended repair and is a no-op when the install already matches the lockfile, POSTing
@@ -306,13 +282,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // the checks so the root-install row and the install amber alert clear once the drift is gone.
   async function resyncInstallClick() {
     showFlash("Re-syncing the root install…");
-    try {
-      const d = await postJson("/api/doctor-resync-install", {});
-      showFlash((d.ok ? "" : "error: ") + d.message);
-    } catch (err) {
-      showFlash("error: " + clientErrorMessage(err));
-    }
-    await fetchDoctor();
+    await postSetting("/api/doctor-resync-install", {}, fetchDoctor);
   }
   async function fetchSettings() {
     buildSettingsView();
