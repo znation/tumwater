@@ -81,6 +81,19 @@ export function createBacklogPane(
     entryScroll = 0;
   };
 
+  // One home for turning a thrown backlog write (cancel/move/release) or a read of one into
+  // the flash it deserves: every entry-action arm below wraps its core call in this so a torn
+  // fs write flashes the reason instead of letting the throw escape the keypress handler and
+  // kill the TUI. The catch coerces the same way each arm's guard did, so the wording cannot
+  // drift.
+  const guardError = (fn: () => void): void => {
+    try {
+      fn();
+    } catch (err) {
+      session.flashError(err);
+    }
+  };
+
   // The pane's three entry actions (Ctrl+X cancel, Ctrl+V move-to-top, Ctrl+R release) live in
   // named helpers so each handler stays at two or three levels: the handler resolves the
   // selection, picks the armed/guard path, then delegates the try/commit/scroll-reset/flash to
@@ -91,7 +104,7 @@ export function createBacklogPane(
     armedTitle: string,
   ): void => {
     const { kind, position } = target;
-    try {
+    guardError(() => {
       const claims = allLiveClaims(session.root);
       const outcome = tryCancelEntry(session.root, kind, position, armedTitle);
       const claimNote = outcome.status === "cancelled" ? cancelledClaimNote(claims.get(entryKey(outcome.title)) ?? null) : "";
@@ -107,9 +120,7 @@ export function createBacklogPane(
           ? `cancelled ${kind} #${position}: ${target.title}${note === "" ? "" : ` — ${note}`}`
           : `that ${kind} was already removed or moved — nothing cancelled`,
       );
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
   };
   /** ` — still held [...]` for the entry now at a 1-based position, "" when it is eligible. */
   const heldTailAt = (kind: "plan" | "bug", position: number): string => {
@@ -118,7 +129,7 @@ export function createBacklogPane(
     return hold === null ? "" : ` — ${stillHeldNote(hold)}`;
   };
   const moveEntryToTop = (kind: "plan" | "bug", position: number, title: string): void => {
-    try {
+    guardError(() => {
       const outcome = tryMoveEntryToTop(session.root, kind, position, title);
       let heldTail = "";
       if (outcome.status === "moved_to_top") {
@@ -134,16 +145,14 @@ export function createBacklogPane(
             ? `that ${kind} is already at the top`
             : `that ${kind} was already removed or moved — nothing moved`,
       );
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
   };
   const releaseArmed = (
     target: { kind: "plan" | "bug"; position: number; title: string },
     armedTitle: string,
   ): void => {
     const { kind, position } = target;
-    try {
+    guardError(() => {
       const outcome = tryReleaseEntry(session.root, kind, position, armedTitle);
       let heldTail = "";
       if (outcome.status === "released") {
@@ -160,9 +169,7 @@ export function createBacklogPane(
             ? `that ${kind} carries no Refused note`
             : `that ${kind} was already removed or moved — nothing released`,
       );
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
   };
 
   // The Ctrl+O arm: flips the Ready-only filter to keep only the open plans and bugs no hold
