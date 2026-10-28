@@ -89,6 +89,55 @@ export function handleBacklogMatch(q: URLSearchParams, res: http.ServerResponse,
     .map((row) => ({ role: row.role, file: row.file }));
   sendJson(res, 200, out);
 }
+/** Normalise an optional `?path=` query arg to `{ path }` (absent → `{ path: undefined }`),
+ * answering the shared 400 when the raw value does not name a repo-relative path. Shared by
+ * the `?overlaps` and `?role` arms; `null` means the 400 was sent, so the caller returns. */
+function diffPathParam(res: http.ServerResponse, rawPath: string | null): { path: string | undefined } | null {
+  if (rawPath === null) return { path: undefined };
+  const path = normalizeDiffPath(rawPath);
+  if (path === null) {
+    badRequest(res, "path takes a repo-relative path such as src/cli.ts (as overlaps lists it)");
+    return null;
+  }
+  return { path };
+}
+/** The `?overlaps` view: refuse stat, normalise the path, resolve the comma-separated role
+ * list, collect the overlaps and scope them by roles then by path, then send. */
+async function handleDiffOverlaps(q: URLSearchParams, res: http.ServerResponse, root: string, rawPath: string | null, stat: boolean): Promise<void> {
+  if (stat) {
+    badRequest(res, "overlaps lists paths, not patches; drop stat");
+    return;
+  }
+  const opath = diffPathParam(res, rawPath);
+  if (opath === null) return;
+  const roles = roleListQuery(q, res, root);
+  if (roles === null) return;
+  let view = await collectChangeOverlaps(root);
+  if (roles !== undefined) view = scopeChangeOverlaps(view, roles);
+  if (opath.path !== undefined) view = scopeChangeOverlapsToPath(view, opath.path);
+  sendJson(res, 200, view);
+}
+/** The role-less team roster: refuse stat and path with their own 400s, then send
+ * collectTeamChanges's document. */
+async function handleDiffTeam(res: http.ServerResponse, root: string, rawPath: string | null, stat: boolean): Promise<void> {
+  if (stat) {
+    badRequest(res, "stat needs role (the team roster carries no patch)");
+    return;
+  }
+  if (rawPath !== null) {
+    badRequest(res, "path needs role (the team roster carries no patch)");
+    return;
+  }
+  sendJson(res, 200, await collectTeamChanges(root));
+}
+/** The `?role=<id>` per-role view: validate through rejectBadRole, normalise the shared path,
+ * then send collectRoleChange with its path and stat options. */
+async function handleDiffRole(res: http.ServerResponse, root: string, role: string, rawPath: string | null, stat: boolean): Promise<void> {
+  if (rejectBadRole(root, res, role)) return;
+  const path = diffPathParam(res, rawPath);
+  if (path === null) return;
+  sendJson(res, 200, await collectRoleChange(root, role, { ...(path.path === undefined ? {} : { path: path.path }), ...(stat ? { stat: true } : {}) }));
+}
 /** Handle GET /api/diff[?role=<id>]: the unmerged-change view the CLI prints from the same
  * collectors — no `role` → collectTeamChanges (exactly `tumwater diff --json`'s document:
  * `{ mainBranch, roles }`, no per-role patch halves); `?role=<id>` → collectRoleChange (the
@@ -107,42 +156,8 @@ export function handleBacklogMatch(q: URLSearchParams, res: http.ServerResponse,
 export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const rawPath = q.get("path");
   const stat = q.get("stat") !== null;
-  if (q.get("overlaps") !== null) {
-    if (stat) {
-      badRequest(res, "overlaps lists paths, not patches; drop stat");
-      return;
-    }
-    const opath = rawPath === null ? undefined : normalizeDiffPath(rawPath);
-    if (opath === null) {
-      badRequest(res, "path takes a repo-relative path such as src/cli.ts (as overlaps lists it)");
-      return;
-    }
-    const roles = roleListQuery(q, res, root);
-    if (roles === null) return;
-    let view = await collectChangeOverlaps(root);
-    if (roles !== undefined) view = scopeChangeOverlaps(view, roles);
-    if (opath !== undefined) view = scopeChangeOverlapsToPath(view, opath);
-    sendJson(res, 200, view);
-    return;
-  }
+  if (q.get("overlaps") !== null) return handleDiffOverlaps(q, res, root, rawPath, stat);
   const role = q.get("role");
-  if (role === null) {
-    if (stat) {
-      badRequest(res, "stat needs role (the team roster carries no patch)");
-      return;
-    }
-    if (rawPath !== null) {
-      badRequest(res, "path needs role (the team roster carries no patch)");
-      return;
-    }
-    sendJson(res, 200, await collectTeamChanges(root));
-    return;
-  }
-  if (rejectBadRole(root, res, role)) return;
-  const path = rawPath === null ? undefined : normalizeDiffPath(rawPath);
-  if (path === null) {
-    badRequest(res, "path takes a repo-relative path such as src/cli.ts (as overlaps lists it)");
-    return;
-  }
-  sendJson(res, 200, await collectRoleChange(root, role, { ...(path === undefined ? {} : { path }), ...(stat ? { stat: true } : {}) }));
+  if (role === null) return handleDiffTeam(res, root, rawPath, stat);
+  return handleDiffRole(res, root, role, rawPath, stat);
 }
