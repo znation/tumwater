@@ -25,6 +25,57 @@ interface InkKey {
   meta?: boolean;
 }
 
+/** The flag-named keys in their chain order, each an ink flag and the readline name it maps
+ * to — the ordered table the inkKeyToReadline chain used to hand-roll as a flat if-chain.
+ * Named keys win first (ink sets `ctrl` alongside arrows too). */
+const NAMED_KEYS: ReadonlyArray<readonly [keyof InkKey, string]> = [
+  ["delete", "delete"],
+  ["tab", "tab"],
+  ["upArrow", "up"],
+  ["downArrow", "down"],
+  ["leftArrow", "left"],
+  ["rightArrow", "right"],
+  ["pageUp", "pageup"],
+  ["pageDown", "pagedown"],
+  ["home", "home"],
+  ["end", "end"],
+];
+
+/** The name a flag-named key maps to — the backspace/backspace+meta pair first, then the
+ * NAMED_KEYS table scan (an arrow that also carries `ctrl` still returns the arrow name,
+ * because this runs before controlKey). undefined when no named-key flag matches. */
+function namedKeyName(
+  key: InkKey,
+): { name: string; meta?: boolean } | undefined {
+  if (key.backspace) {
+    return key.meta ? { name: "backspace", meta: true } : { name: "backspace" };
+  }
+  for (const [flag, name] of NAMED_KEYS) {
+    if (key[flag]) return { name };
+  }
+  return undefined;
+}
+
+/** The modifier-chord shape a Ctrl/Alt key maps to, or undefined when neither matches — the
+ * Ctrl branch (readline `ctrl: true` plus the bare lowercased letter from `input`), then the
+ * Alt single-char branch (`meta: true` plus the lowercased `input`). */
+function controlKey(
+  input: string,
+  key: InkKey,
+): { ctrl?: boolean; meta?: boolean; name?: string } | undefined {
+  if (key.ctrl) return { ctrl: true, name: input.toLowerCase() };
+  if (key.meta && input.length === 1) {
+    return { meta: true, name: input.toLowerCase() };
+  }
+  return undefined;
+}
+
+/** The printable/empty fallback: text with no key flags flows through as `str`, and an empty
+ * non-key input (ink suppresses text for unrecognized sequences) is inert (str undefined). */
+function printableKey(input: string): { str: string | undefined; key: {} } {
+  return { str: input || undefined, key: {} };
+}
+
 /** Map one ink `useInput` (input, key) pair to the shape handleKey consumes — ink's parsed
  * flags and input text become the readline (str, key) pair the 2a dispatch was extracted
  * with. Pure, so the mapping is unit-testable without ink mounted. Named keys win first
@@ -37,24 +88,11 @@ export function inkKeyToReadline(
 ): { str: string | undefined; key: { ctrl?: boolean; meta?: boolean; name?: string } } {
   if (key.escape) return { str: undefined, key: { name: "escape" } };
   if (key.return) return { str: undefined, key: { name: "return" } };
-  if (key.backspace) {
-    return { str: undefined, key: key.meta ? { name: "backspace", meta: true } : { name: "backspace" } };
-  }
-  if (key.delete) return { str: undefined, key: { name: "delete" } };
-  if (key.tab) return { str: undefined, key: { name: "tab" } };
-  if (key.upArrow) return { str: undefined, key: { name: "up" } };
-  if (key.downArrow) return { str: undefined, key: { name: "down" } };
-  if (key.leftArrow) return { str: undefined, key: { name: "left" } };
-  if (key.rightArrow) return { str: undefined, key: { name: "right" } };
-  if (key.pageUp) return { str: undefined, key: { name: "pageup" } };
-  if (key.pageDown) return { str: undefined, key: { name: "pagedown" } };
-  if (key.home) return { str: undefined, key: { name: "home" } };
-  if (key.end) return { str: undefined, key: { name: "end" } };
-  if (key.ctrl) return { str: undefined, key: { ctrl: true, name: input.toLowerCase() } };
-  if (key.meta && input.length === 1) {
-    return { str: undefined, key: { meta: true, name: input.toLowerCase() } };
-  }
-  return { str: input || undefined, key: {} };
+  const named = namedKeyName(key);
+  if (named) return { str: undefined, key: named };
+  const chord = controlKey(input, key);
+  if (chord) return { str: undefined, key: chord };
+  return printableKey(input);
 }
 
 /** The `"up" | "down"` direction an arrow key names — Up/Down only, so the branches that
