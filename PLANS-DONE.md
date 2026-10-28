@@ -5,6 +5,55 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `scanTurnRecords`'s complexity-18 rollout-line scan is split into one named helper per event concern — the line's carrier type, the `task_started` turn restart, the `turn_context` model, the `token_usage_record` usage and the `token_count` rate limits — so "which event sets the read turn's usage?" and "when does a line restart the collectors?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the 2026-10-25 `rolloutLines` split created `scanTurnRecords` as one named scanner and left it a single body, exactly as the 2026-10-25 `resolveRunVerdict`/`feedLine` splits created `noChangeArm`/`applyAssistantMessage` as one body and the 2026-10-27 `noChangeArm`/`resolveCommitDescription`/`applyAssistantMessage`/`handleRateLimitEvent`/`unverifiedOutcomeFor` plans split such bodies one helper per concern the same way; independent in file of every Planned entry — before this entry both `grep -c 'scanTurnRecords' PLANS.md` and `grep -c 'codex-rollout' PLANS.md` printed 0 (each prints 1 now, this entry's own heading), so before this entry no `## Planned` entry's heading or touches list named the symbol or the file, and the only other src/agent paths in PLANS.md are the in-flight `handleRateLimitEvent` split's src/agent/claude/claude-stream.ts and the blocked Subtract part 5d/6's src/agent/subscription-account.ts, src/agent/claude/claude-account.ts and src/agent/codex/codex-account.ts — none src/agent/codex/codex-rollout.ts; PLANS-DONE.md's one `^### .*scanTurnRecords` match is the 2026-10-25 `rolloutLines` split that created this scanner, not a split of its own body (`grep -cE '^### .*scanTurnRecords' PLANS-DONE.md` prints 1, for the parent split); docs/invariants.md names no symbol of the file (`grep -c 'codex-rollout' docs/invariants.md` prints 0), so it stays unchanged; touches src/agent/codex/codex-rollout.ts) — done 2026-10-27 by the feature role
+
+**Goal.** `scanTurnRecords` (src/agent/codex/codex-rollout.ts, module-private; called once from `rolloutLines`) scans one turn's records out of a rollout's text at complexity 18: it resolves each line's effective type (an `event_msg` wrapper's `payload.type`, else the outer `type`), handles `task_started` by moving `currentTurn` and restarting the five collectors when the line begins the read turn, then a `switch` over `turn_context` (first `payload.model`), `token_usage_record` (`payload.turn_token_usage` when it carries input or output tokens) and `token_count` (`payload.rate_limits` and its `plan_type`). The carrier resolution, the turn-restart and the two record-presence tests have no names, so a reader asking "which event sets `lastUsage`?", "which sets `lastRateLimits`/`planType`?" or "when do the collectors reset?" scans the whole loop. Extract each concern into a named module-private helper.
+
+**Approach.** All edits in src/agent/codex/codex-rollout.ts; move code verbatim and keep every `//` and `/** */` comment with the block it annotates. No import changes: every symbol the moved code reads (`objectOrEmpty`, `optionalString`, `parseJsonObject`, `isJsonObject` and the `Json` type) is already imported, and the `TurnRecords` interface stays. Add these module-private declarations beside `scanTurnRecords`:
+
+- `function lineCarrierType(parsed: Json, payload: Json): string | undefined` — `optionalString(parsed.type) === "event_msg" ? optionalString(payload.type) : optionalString(parsed.type)`, with the wrapper-discriminator comment.
+- `function turnStartReading(payload: Json, sinceTurnStart: string | undefined): { turnId: string | undefined; readsTurn: boolean }` — `const turnId = optionalString(payload.turn_id); return { turnId, readsTurn: sinceTurnStart === undefined || turnId === sinceTurnStart };`, with the "each new task_started begins a fresh turn" comment.
+- `function usageFromRecord(payload: Json): Json | undefined` — `const turnUsage = objectOrEmpty(payload.turn_token_usage); return isJsonObject(turnUsage) && (turnUsage.input_tokens !== undefined || turnUsage.output_tokens !== undefined) ? turnUsage : undefined;`.
+- `function rateLimitsFromCount(payload: Json): { rateLimits: Json; planType: string | undefined }` — `const rateLimits = objectOrEmpty(payload.rate_limits); return { rateLimits, planType: optionalString(rateLimits.plan_type) };`.
+
+`scanTurnRecords` keeps its signature, doc comment and module-private status; its loop body becomes:
+
+```
+const ptype = lineCarrierType(parsed, payload);
+if (ptype === "task_started") {
+  const start = turnStartReading(payload, sinceTurnStart);
+  currentTurn = start.turnId;
+  if (start.readsTurn) { sawTurn = true; lastUsage = undefined; lastRateLimits = undefined; model = undefined; planType = undefined; }
+  continue;
+}
+if (sinceTurnStart !== undefined && currentTurn !== sinceTurnStart) continue;
+switch (ptype) {
+  case "turn_context": if (model === undefined) model = optionalString(payload.model); break;
+  case "token_usage_record": lastUsage = usageFromRecord(payload) ?? lastUsage; break;
+  case "token_count": {
+    const reading = rateLimitsFromCount(payload);
+    lastRateLimits = reading.rateLimits;
+    if (reading.planType !== undefined) planType = reading.planType;
+    break;
+  }
+  default: break;
+}
+```
+
+`usageFromRecord(payload) ?? lastUsage` preserves the post-presence rule: a later malformed usage line leaves the earlier figure; `lastRateLimits = reading.rateLimits` stays unconditional (the original assigned even the empty object) while `planType` is assigned only when defined.
+
+**Files touched.** src/agent/codex/codex-rollout.ts
+
+**Acceptance criteria.**
+- `scanTurnRecords`'s body holds only the loop scaffolding and the `lineCarrierType`, `turnStartReading`, `usageFromRecord` and `rateLimitsFromCount` calls; the carrier ternary, the `input_tokens`/`output_tokens` presence test, the `plan_type` read and the `task_started` reset block no longer appear in it.
+- `lineCarrierType`, `turnStartReading`, `usageFromRecord` and `rateLimitsFromCount` are module-private (no `export`), each holds its one concern moved verbatim with its comment, and each is called only from within src/agent/codex/codex-rollout.ts.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/agent/codex/codex-rollout.ts'`) no longer reports `scanTurnRecords` at 18, the four helpers each report a small value, and `buildRolloutLines` keeps the count it reports today.
+- The exported surface is unchanged: `grep -nE '^export ' src/agent/codex/codex-rollout.ts` still matches only `RolloutLines`, `rolloutLines` and `findRollout`, and no import line changes.
+- Behavior is preserved: test/codex-rollout.test.ts passes with no edits — including "each turn's run_usage is its own last figure, not the thread total", "reading without a turn id takes the last block — the just-finished run", "a requested model other than the one that ran reports the switch, requested model matches reports none", "a turn with no token_count yields run_usage with no rate_limit (a killed run)", "a truncated file yields an empty reading" and "the reading never surfaces the account fields" — and the codex cases in test/codex-run.test.ts and test/agent-backend.test.ts pass unchanged.
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind four module-private functions, guarded by the existing test/codex-rollout.test.ts capture cases named above and the codex adapter cases in test/codex-run.test.ts and test/agent-backend.test.ts. Run test/codex-rollout.test.ts whole, then the project's gate, and confirm green. docs/invariants.md is not edited: `grep -c 'codex-rollout' docs/invariants.md` prints 0, and the move leaves every emitted line and the empty reading unchanged.
+
 ### `unverifiedOutcomeFor`'s complexity-18 merge-scope classify body is split into one named helper per classify concern — the slept-through rule, the merge-scope skip rule, the unverified reason phrase chain and the failed-outcome assembly — so "why is this skipped outcome a deterministic reject?" and "when does the reason name the starved host?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the 2026-10-25 `runScopedBuildCheck` split created `unverifiedOutcomeFor` as one named classifier and described it as a single body, exactly as the 2026-10-25 `translate`/`resolveRunVerdict`/`feedLine` splits created `handleRateLimitEvent`/`noChangeArm`/`applyAssistantMessage` as one body and the 2026-10-27 `noChangeArm`/`resolveCommitDescription`/`staleNameFindings`/`applyAssistantMessage`/`handleRateLimitEvent` plans split such bodies one helper per concern the same way; independent in files of every Planned entry — `grep -c 'unverifiedOutcomeFor' PLANS.md`, `grep -c 'build-check-scoped' PLANS.md` and `grep -c 'src/build' PLANS.md` all print 0, and `grep -c 'build-check.test' PLANS.md` also prints 0, so no `## Planned` entry's heading or touches list names the symbol, the file or its test (the in-flight splits edit src/run/run-verdict.ts, src/run/stage-name-checks.ts, src/pi/pi-stream.ts, src/agent/claude/claude-stream.ts and the Subtract part 5n/6 files; the blocked `Every commit is verified on main` and `Subtract` parts edit src/review, src/orchestrator, src/runner, src/merge, src/baseline, src/status, src/doctor, src/config, src/cli, src/roles, src/ui, src/gui, src/events and src/backlog plus src/run/run-apply.ts; none lists src/build/build-check-scoped.ts or test/build-check.test.ts); PLANS-DONE.md records the `runScopedBuildCheck` split whose bullet describes this helper's body, but no split of `unverifiedOutcomeFor` itself (`grep -nE '^### .*unverifiedOutcomeFor' PLANS-DONE.md` prints 0); docs/invariants.md names no symbol of the file (`grep -nE 'runScopedBuildCheck|build-check-scoped|unverifiedOutcomeFor' docs/invariants.md` prints nothing), so it stays unchanged; touches src/build/build-check-scoped.ts) — done 2026-10-27 by the feature role
 
 **Goal.** `unverifiedOutcomeFor` (src/build/build-check-scoped.ts, module-private; called once from `runScopedBuildCheck`) classifies a raw merge-scope check outcome at complexity 18: it computes whether a failed run slept past `SLEEP_SPAN_TOLERANCE_MS`, whether the merge-scope skip rule fires (`MERGE_SCOPES.has(scope)` and a `skipped` run with skipReason `timeout`/`killed`/`install`, or the slept-through case), then builds the unverified reason through a four-arm nested ternary (`installFailedPhrase`/`killedPhrase`/`sleptPhrase`/`timedOutPhrase` plus an optional `loadedHostPhrase(load)`) and remaps the outcome to a deterministic `failed`. The rules and the phrase choice have no names, so a reader asking "which skip becomes an unverified reject?" or "when does the reason name the starved host?" scans the whole body. Extract each concern into a named module-private helper.

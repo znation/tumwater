@@ -55,6 +55,37 @@ interface TurnRecords {
   planType: string | undefined;
 }
 
+/** The carrier type of one rollout line: an `event_msg` wrapper's `payload.type` when the
+ * outer `type` is `event_msg`, else the outer `type` itself. `task_started`, `task_complete`
+ * and `token_count` come wrapped in an `event_msg` whose `payload.type` discriminates;
+ * `turn_context` and `token_usage_record` name themselves in the outer `type`. Read either. */
+function lineCarrierType(parsed: Json, payload: Json): string | undefined {
+  return optionalString(parsed.type) === "event_msg" ? optionalString(payload.type) : optionalString(parsed.type);
+}
+
+/** Whether a `task_started` line begins the read turn and, when it does, its turn id. Each new
+ * task_started begins a fresh turn (a resume appends a second run to the same file), so the
+ * collectors restart at the block we are reading. With no turn id (the adapter's read) every
+ * task_started restarts them and the last block wins; with one, only the requested turn's does. */
+function turnStartReading(payload: Json, sinceTurnStart: string | undefined): { turnId: string | undefined; readsTurn: boolean } {
+  const turnId = optionalString(payload.turn_id);
+  return { turnId, readsTurn: sinceTurnStart === undefined || turnId === sinceTurnStart };
+}
+
+/** The usage figure a `token_usage_record` line contributes — its `turn_token_usage` when it
+ * carries input or output tokens, else undefined. */
+function usageFromRecord(payload: Json): Json | undefined {
+  const turnUsage = objectOrEmpty(payload.turn_token_usage);
+  return isJsonObject(turnUsage) && (turnUsage.input_tokens !== undefined || turnUsage.output_tokens !== undefined) ? turnUsage : undefined;
+}
+
+/** The rate limits and `plan_type` a `token_count` line contributes, from its `rate_limits`
+ * object (assigned even when empty). */
+function rateLimitsFromCount(payload: Json): { rateLimits: Json; planType: string | undefined } {
+  const rateLimits = objectOrEmpty(payload.rate_limits);
+  return { rateLimits, planType: optionalString(rateLimits.plan_type) };
+}
+
 /** Scan ONE turn's records out of a rollout's text, tracking `task_started` blocks and
  * collecting the read turn's `turn_context.model`, `token_usage_record` usage, `token_count`
  * rate limits and `plan_type`. `rolloutLines` decides emptiness from `sawTurn`/`lastUsage`;
@@ -72,17 +103,11 @@ function scanTurnRecords(text: string, sinceTurnStart: string | undefined): Turn
     const parsed = parseJsonObject(line);
     if (!parsed) continue; // a torn or foreign line belongs to no turn
     const payload = objectOrEmpty(parsed.payload);
-    // `task_started`, `task_complete` and `token_count` come wrapped in an `event_msg` whose
-    // `payload.type` discriminates; `turn_context` and `token_usage_record` name themselves in
-    // the outer `type`. Read either.
-    const ptype = optionalString(parsed.type) === "event_msg" ? optionalString(payload.type) : optionalString(parsed.type);
+    const ptype = lineCarrierType(parsed, payload);
     if (ptype === "task_started") {
-      currentTurn = optionalString(payload.turn_id);
-      // Each new task_started begins a fresh turn (a resume appends a second run to the same
-      // file), so the collectors restart at the block we are reading. With no turn id (the
-      // adapter's read) every task_started restarts them and the last block wins; with one,
-      // only the requested turn's does.
-      if (sinceTurnStart === undefined || currentTurn === sinceTurnStart) {
+      const start = turnStartReading(payload, sinceTurnStart);
+      currentTurn = start.turnId;
+      if (start.readsTurn) {
         sawTurn = true;
         lastUsage = undefined;
         lastRateLimits = undefined;
@@ -96,18 +121,13 @@ function scanTurnRecords(text: string, sinceTurnStart: string | undefined): Turn
       case "turn_context":
         if (model === undefined) model = optionalString(payload.model);
         break;
-      case "token_usage_record": {
-        const turnUsage = objectOrEmpty(payload.turn_token_usage);
-        if (isJsonObject(turnUsage) && (turnUsage.input_tokens !== undefined || turnUsage.output_tokens !== undefined)) {
-          lastUsage = turnUsage;
-        }
+      case "token_usage_record":
+        lastUsage = usageFromRecord(payload) ?? lastUsage;
         break;
-      }
       case "token_count": {
-        const rateLimits = objectOrEmpty(payload.rate_limits);
-        lastRateLimits = rateLimits;
-        const plan = optionalString(rateLimits.plan_type);
-        if (plan !== undefined) planType = plan;
+        const reading = rateLimitsFromCount(payload);
+        lastRateLimits = reading.rateLimits;
+        if (reading.planType !== undefined) planType = reading.planType;
         break;
       }
       default:
