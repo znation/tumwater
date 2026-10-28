@@ -4,7 +4,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
 import { isDirectory, statOrNull, walkUp } from "../files/files.js";
 import { isNonBlankString } from "../text/text.js";
-import type { CheckConfigSlice } from "../config/config-schema.js";
+import type { CheckConfig, CheckConfigSlice } from "../config/config-schema.js";
 
 /** Detection of a project's declared deterministic build check: where the check lives (the
  * installed root a walk-up from a bare worktree finds) and which npm script it names. Split
@@ -91,6 +91,49 @@ function isCheckScript(s: Record<string, unknown>, key: string): boolean {
   return isNonBlankString(v);
 }
 
+/** Resolve the configured check timeout to cap the run: `check.timeoutSeconds` × 1000 when it is a
+ * positive number, else undefined. check.timeoutSeconds bounds the npm walk-up's check too: it is
+ * how a repo whose suite outgrows 300 s under load says so (the team's own gate runs were timing
+ * out there). Same result as today for every config shape (absent config, absent `check`, a
+ * non-number, zero and a positive number). */
+function configuredCheckTimeoutMs(config?: CheckConfigSlice): number | undefined {
+  const seconds = config?.check?.timeoutSeconds;
+  return typeof seconds === "number" && seconds > 0 ? seconds * 1000 : undefined;
+}
+
+/** A configured `check.command` (plans/portability.md §6/7) wins over the walk-up: the right way to
+ * verify a repo is a property of the repo, and the walk cannot know it — a Python, Rust, or Go repo
+ * has no npm install for the walk to find, which silently turned every safety gate off there. Null
+ * when the command is blank (validation rejects one, but a degraded default config could still
+ * carry it), so a blank command falls through to the walk-up instead of disabling the check. */
+function configuredCommandCheck(
+  startDir: string,
+  check: CheckConfig,
+  timeoutMs: number | undefined,
+): BuildCheck | null {
+  if (!isNonBlankString(check.command)) return null;
+  return {
+    kind: "command",
+    command: check.command,
+    cwd: path.resolve(startDir, isNonBlankString(check.cwd) ? check.cwd : "."),
+    timeoutMs: timeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
+  };
+}
+
+/** The npm walk-up: climb to the nearest ancestor holding both package.json and node_modules (the
+ * FIRST qualifying directory is the project — if its package.json has neither script, there is no
+ * check, and an unrelated ancestor further up must never be used), prefer `test` then `typecheck`
+ * then `build`, and stamp the configured timeout onto the npm result. The walk is required:
+ * tumwater worktrees live under `<repo>/.tumwater/worktrees/<role>` with no install of their own
+ * (node_modules is gitignored — it exists only where someone ran npm install), so a literal
+ * startDir check would silently disable the pre-check forever in dogfood. Returns null when no
+ * ancestor within `maxLevels` qualifies or the file is missing/unreadable/malformed. */
+function detectNpmCheck(startDir: string, maxLevels: number, timeoutMs: number | undefined): BuildCheck | null {
+  const root = walkUp(startDir, maxLevels, (dir) => (hasInstall(dir) ? dir : null));
+  const found = root === null ? null : buildCheckFrom(root);
+  return found !== null && found.kind === "npm" && timeoutMs !== undefined ? { ...found, timeoutMs } : found;
+}
+
 /** Find the project's deterministic check from `startDir` — at most `maxLevels` ancestors
  * (default 5) — to the nearest directory containing BOTH a package.json and a node_modules/
  * directory, then preferring scripts.test over scripts.typecheck and scripts.build (npm convention:
@@ -112,21 +155,12 @@ export function detectBuildCheck(
   config?: CheckConfigSlice,
   maxLevels = WALK_UP_LEVELS,
 ): BuildCheck | null {
-  const c = config?.check;
-  // check.timeoutSeconds bounds the npm walk-up's check too: it is how a repo whose suite
-  // outgrows 300 s under load says so (the team's own gate runs were timing out there).
-  const configuredMs = typeof c?.timeoutSeconds === "number" && c.timeoutSeconds > 0 ? c.timeoutSeconds * 1000 : undefined;
-  if (c && isNonBlankString(c.command)) {
-    return {
-      kind: "command",
-      command: c.command,
-      cwd: path.resolve(startDir, isNonBlankString(c.cwd) ? c.cwd : "."),
-      timeoutMs: configuredMs ?? BUILD_CHECK_TIMEOUT_MS,
-    };
+  const timeoutMs = configuredCheckTimeoutMs(config);
+  if (config?.check) {
+    const command = configuredCommandCheck(startDir, config.check, timeoutMs);
+    if (command !== null) return command;
   }
-  const root = walkUp(startDir, maxLevels, (dir) => (hasInstall(dir) ? dir : null));
-  const found = root === null ? null : buildCheckFrom(root);
-  return found !== null && found.kind === "npm" && configuredMs !== undefined ? { ...found, timeoutMs: configuredMs } : found;
+  return detectNpmCheck(startDir, maxLevels, timeoutMs);
 }
 
 /** The configured per-change gate command (`check.gateCommand`, PLANS.md Land-queue speed 3e) when
