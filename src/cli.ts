@@ -493,27 +493,41 @@ async function cmdStopCase(root: string, args: string[]): Promise<void> {
   await (await import("./operator/operator-commands.js")).cmdStop(root, args);
 }
 
-async function cmdCompletionCase(root: string, args: string[]): Promise<void> {
-  // Works outside a repo: no requireReadyRepo.
-  if (args.length === 1 && args[0] === "--roles") {
-    for (const id of completionRoleIds(root)) say(id);
-    return;
-  }
-  if (args.length === 1 && args[0] === "--config-keys") {
-    for (const key of completionConfigKeys(root)) say(key);
-    return;
-  }
-  if (args.length === 2 && args[0] === "--config-value") {
-    // The vocabulary `config set <key> <value>` completes for a discrete-valued key
-    // (boolean/backend/model/thinking); free-form keys print nothing, so a `set` on one
-    // completes nothing instead of offering a wrong vocabulary.
-    for (const word of configValueWords(args[1]!)) say(word);
-    return;
-  }
-  if (args.length === 1 && args[0] === "--models") {
-    for (const m of completionModels(root)) say(m);
-    return;
-  }
+function printCompletionRoles(root: string): void {
+  for (const id of completionRoleIds(root)) say(id);
+}
+
+function printCompletionConfigKeys(root: string): void {
+  for (const key of completionConfigKeys(root)) say(key);
+}
+
+function printCompletionConfigValue(key: string): void {
+  // The vocabulary `config set <key> <value>` completes for a discrete-valued key
+  // (boolean/backend/model/thinking); free-form keys print nothing, so a `set` on one
+  // completes nothing instead of offering a wrong vocabulary.
+  for (const word of configValueWords(key)) say(word);
+}
+
+function printCompletionModels(root: string): void {
+  for (const m of completionModels(root)) say(m);
+}
+
+const COMPLETION_LISTING_SHAPES: Record<string, "roles" | "config-keys" | "models"> = {
+  "--roles": "roles",
+  "--config-keys": "config-keys",
+  "--models": "models",
+};
+
+function completionListShape(
+  args: string[],
+): "roles" | "config-keys" | "config-value" | "models" | null {
+  if (args.length === 1 && args[0]! in COMPLETION_LISTING_SHAPES)
+    return COMPLETION_LISTING_SHAPES[args[0]!]!;
+  if (args.length === 2 && args[0] === "--config-value") return "config-value";
+  return null;
+}
+
+function completionShell(args: string[]): CompletionShell {
   const shell = args[0];
   // A wrong word count names the count, not a bad shell. A single near-miss shell word gets
   // the same typoSuffix `logs --type`/`history --result` give, so `completion zs` reads
@@ -523,7 +537,29 @@ async function cmdCompletionCase(root: string, args: string[]): Promise<void> {
     fail(`completion takes one shell: bash, zsh, or fish (got ${args.length} words: ${args.join(" ")})`);
   if (!SUPPORTED_SHELLS.includes(shell as CompletionShell))
     fail(`completion takes one shell: bash, zsh, or fish${gotSuffix(shell)}${typoSuffix(shell ?? "", SUPPORTED_SHELLS)}`);
-  say(completionScript(shell as CompletionShell));
+  return shell as CompletionShell;
+}
+
+async function cmdCompletionCase(root: string, args: string[]): Promise<void> {
+  // Works outside a repo: no requireReadyRepo.
+  const shape = completionListShape(args);
+  if (shape === "roles") {
+    printCompletionRoles(root);
+    return;
+  }
+  if (shape === "config-keys") {
+    printCompletionConfigKeys(root);
+    return;
+  }
+  if (shape === "config-value") {
+    printCompletionConfigValue(args[1]!);
+    return;
+  }
+  if (shape === "models") {
+    printCompletionModels(root);
+    return;
+  }
+  say(completionScript(completionShell(args)));
 }
 
 async function cmdVersionCase(args: string[]): Promise<void> {
