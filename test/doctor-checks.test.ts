@@ -1339,24 +1339,40 @@ test("checkProviderContention files team-cap waits under the run cap and advises
 
 test("checkCheckContention sums the last day of check_wait events and warns at ten minutes", () => {
   const root = readyRepo();
-  assert.equal(checkCheckContention(root, undefined).detail, "no check waits");
+  const cool = () => ({ load1: 1, cpus: 8 });
+  assert.equal(checkCheckContention(root, undefined, Date.now(), cool).detail, "no check waits");
   const wait = (waitedMs: number) =>
     logEvent(root, { source: "feature", type: "check_wait", role: "feature", scope: "gate", waitedMs });
   wait(240_000);
   wait(60_000);
-  const quiet = checkCheckContention(root, undefined);
+  const quiet = checkCheckContention(root, undefined, Date.now(), cool);
   assert.equal(quiet.level, "ok");
   assert.match(quiet.detail, /2 waits for a check slot in the last 24h, 5m total, longest 4m$/);
 
   wait(600_000);
-  const busy = checkCheckContention(root, undefined);
+  const busy = checkCheckContention(root, undefined, Date.now(), cool);
   assert.equal(busy.level, "warn");
   assert.match(busy.detail, /15m total, longest 10m — raise maxConcurrentChecks above 2/);
-  const capped = checkCheckContention(root, { ...defaultConfig(), maxConcurrentChecks: 5 });
+  const capped = checkCheckContention(root, { ...defaultConfig(), maxConcurrentChecks: 5 }, Date.now(), cool);
   assert.match(capped.detail, /raise maxConcurrentChecks above 5/);
 
-  const later = checkCheckContention(root, undefined, Date.now() + 48 * 3_600_000);
+  const later = checkCheckContention(root, undefined, Date.now() + 48 * 3_600_000, cool);
   assert.equal(later.detail, "no check waits");
+});
+
+test("checkCheckContention suppresses the raise-cap advice on a saturated host instead", () => {
+  const root = readyRepo();
+  const hot = () => ({ load1: 16, cpus: 8 });
+  const wait = (waitedMs: number) =>
+    logEvent(root, { source: "feature", type: "check_wait", role: "feature", scope: "gate", waitedMs });
+  wait(600_000);
+  wait(240_000);
+  const out = checkCheckContention(root, undefined, Date.now(), hot);
+  assert.equal(out.level, "warn");
+  // The waits still cross the threshold (warn stays), but the saturated host names the load
+  // instead of telling an overloaded host to admit even more concurrent checks.
+  assert.match(out.detail, /host load average 16 on 8 cores: saturated, so raising maxConcurrentChecks is not the lever$/);
+  assert.doesNotMatch(out.detail, /raise maxConcurrentChecks above/);
 });
 
 test("checkCheckContention names what the waits sat behind, busiest first", () => {
@@ -1366,14 +1382,14 @@ test("checkCheckContention names what the waits sat behind, busiest first", () =
   wait(240_000, ["feature merge", "dedupe merge"]);
   wait(120_000, ["main baseline", "clean gate"]);
   wait(60_000);
-  const quiet = checkCheckContention(root, undefined);
+  const quiet = checkCheckContention(root, undefined, Date.now(), () => ({ load1: 1, cpus: 8 }));
   assert.equal(quiet.level, "ok");
   assert.equal(
     quiet.detail,
     "3 waits for a check slot in the last 24h, 7m total, longest 4m (behind merge checks 4m, gate checks 2m, the main baseline 2m)",
   );
   wait(600_000, ["a check"]);
-  const busy = checkCheckContention(root, undefined);
+  const busy = checkCheckContention(root, undefined, Date.now(), () => ({ load1: 1, cpus: 8 }));
   assert.equal(busy.level, "warn");
   assert.match(busy.detail, /\(behind other checks 10m, .*\) — raise maxConcurrentChecks above 2$/);
 });

@@ -24,6 +24,7 @@ import { shortSha } from "../text/format.js";
 import { errorMessage, joinParts, textOr } from "../text/text.js";
 import { rankCountEntries } from "../collections.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { sampleHostLoad, type LoadSampler } from "../build/host-sleep.js";
 import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
 import { staleClaimDetail, staleClaimEntries } from "../scheduling/claim-entries.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
@@ -205,7 +206,11 @@ function providerWaitContention(waits: readonly HarnessEvent[], config: Tumwater
  * busiest first. Shared by the doctor's `check contention` row and the always-on contention
  * alert, so the trigger and the advice cannot drift. The shared rule leaves the count-zero
  * and read-error arms to checkCheckContention. */
-function checkWaitContention(waits: readonly HarnessEvent[], config: TumwaterConfig | undefined): WaitContention {
+function checkWaitContention(
+  waits: readonly HarnessEvent[],
+  config: TumwaterConfig | undefined,
+  load: ReturnType<LoadSampler>,
+): WaitContention {
   const perKind = new Map<string, number>();
   const { count, totalMs, longestMs } = sumWaits(waits);
   for (const ev of waits) {
@@ -220,7 +225,16 @@ function checkWaitContention(waits: readonly HarnessEvent[], config: TumwaterCon
     detail += ` (behind ${ranked.map(([kind, ms]) => `${kind} ${shortSpanPhrase(ms)}`).join(", ")})`;
   }
   if (totalMs < CHECK_WAIT_WARN_TOTAL_MS) return { warn: false, detail };
-  detail += ` — raise maxConcurrentChecks above ${config?.maxConcurrentChecks ?? defaultConfig().maxConcurrentChecks}`;
+  // The cap is only the right lever while the host can actually run more work: once the
+  // one-minute load average exceeds the core count (the same "starved" bar build-check-events
+  // uses for an on-time deadline kill), the wait is the host's own load, not an under-sized
+  // pool — so name the load and suppress the raise advice rather than telling an overloaded
+  // host to admit still more concurrent checks. The check still warns: the waits are real.
+  if (load.load1 > load.cpus) {
+    detail += ` — host load average ${Math.round(load.load1)} on ${load.cpus} cores: saturated, so raising maxConcurrentChecks is not the lever`;
+  } else {
+    detail += ` — raise maxConcurrentChecks above ${config?.maxConcurrentChecks ?? defaultConfig().maxConcurrentChecks}`;
+  }
   return { warn: true, detail };
 }
 
@@ -273,16 +287,21 @@ function waitContentionRow(
   windowMs: number,
   type: string,
   noun: string,
-  rule: (waits: readonly HarnessEvent[], config: TumwaterConfig | undefined) => WaitContention,
+  rule: (
+    waits: readonly HarnessEvent[],
+    config: TumwaterConfig | undefined,
+    load: ReturnType<LoadSampler>,
+  ) => WaitContention,
   config: TumwaterConfig | undefined,
   now: number,
+  load: LoadSampler = sampleHostLoad,
 ): CheckOutcome {
   let count = 0;
   let verdict: WaitContention;
   try {
     const waits = eventsSince(root, windowMs, now, (ev) => ev.type === type);
     count = sumWaits(waits).count;
-    verdict = rule(waits, config);
+    verdict = rule(waits, config, load());
   } catch (err) {
     // A read error leaves the level ok, exactly like the slot-wait branch's own read: the
     // check cannot measure, so it says so rather than crying wolf.
@@ -319,8 +338,13 @@ function checkHolderKind(label: string): string {
  * detail gains `(behind <kind> <span>, …)` after the longest clause, kinds busiest first: a
  * wait counts once toward each distinct kind that held a slot. `now` is a test seam for the
  * window. */
-export function checkCheckContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
-  return waitContentionRow(root, CHECK_WAIT_CHECK_WINDOW_MS, "check_wait", "check waits", checkWaitContention, config, now);
+export function checkCheckContention(
+  root: string,
+  config: TumwaterConfig | undefined,
+  now = Date.now(),
+  load: LoadSampler = sampleHostLoad,
+): CheckOutcome {
+  return waitContentionRow(root, CHECK_WAIT_CHECK_WINDOW_MS, "check_wait", "check waits", checkWaitContention, config, now, load);
 }
 
 /** The ids `leftover role branches` calls retirable and the branches it leaves for manual

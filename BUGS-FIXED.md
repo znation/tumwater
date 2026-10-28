@@ -5,6 +5,13 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### The doctor's check-contention advice ignores host load, so it recommends raising `maxConcurrentChecks` even when the host is saturated (split 2026-10-28 by the plan role from "Agents' own test-suite runs bypass `maxConcurrentChecks`…"; sibling of the `--test-concurrency` sizing and permit entries above; the smallest of the four levers) — fixed 2026-10-28 by the bugfix role
+
+- **Symptom:** the `check contention` row's advice raised `maxConcurrentChecks` to 12 on 10-26 and 10-27. That removed about 500 minutes a day of `check_wait`, but in-flight checks still averaged about 2.2 and the gate medians kept rising (92 s on 10-20 to 313 s on 10-28) as agents' own suites loaded the host.
+- **Cause:** `checkWaitContention` (src/doctor/doctor-contention-checks.ts) decides and words the advice from the last 24 h of `check_wait` events alone; it never weighs host load (or the load-sensitive failures the queue waits correlate with), so a saturated host still gets a raise-the-cap recommendation.
+- **Expected / fix sketch:** have the shared contention rule (and the always-on alert twin it feeds, src/ui/alert-feeds.ts) weigh host load before recommending a higher cap — for example report load average/available cores beside the wait totals, and suppress or reword the "raise maxConcurrentChecks" advice while the host is saturated. Keep the doctor row and its alert on the same rule so they cannot drift.
+**Validation gap:** none — the existing suite confirmed the check-contention advice path; nothing was missing.
+
 ### An agent's own full-suite run starts about 17 node --test workers regardless of how many suites are already in flight (split 2026-10-28 by the plan role from "Agents' own test-suite runs bypass `maxConcurrentChecks` and every suite starts about 17 node --test workers…"; sibling of "An agent's own check does not take the team's check permit", "Decide whether agent runs keep verifying with the full `test:gate`", and "The doctor's check-contention advice ignores host load") — fixed 2026-10-28 by the bugfix role
 
 - **Symptom:** on 2026-10-28 at 04:30, 9 suites ran at once at a load average of 131–192 on the 18-core host; the gate check median went 92 s (10-20) to 313 s (10-28) and gate/baseline timeouts went from 0 (10-23) to 114–124 a day (the main baseline timed out at 600 s on 10-28 04:46).

@@ -247,12 +247,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 - **Symptom:** the run prompt's verify rule (`src/prompt/prompt.ts`) has every agent run execute `npm run test:gate`, and the team then runs the same gate check on the change, so each change's suite runs twice and agents add 1.3–1.7 suites in flight.
 - **Expected / fix sketch:** drop the agent-side `test:gate` run in favor of targeted tests. This is a policy call about the verification guarantee (the active "Every commit is verified on main" plan series), so a run must not change it unilaterally: record the decision here (or file it in QUESTIONS.md if no operator decision exists), then edit the prompt. Do not treat it as a routine cleanup.
 
-### The doctor's check-contention advice ignores host load, so it recommends raising `maxConcurrentChecks` even when the host is saturated (split 2026-10-28 by the plan role from "Agents' own test-suite runs bypass `maxConcurrentChecks`…"; sibling of the `--test-concurrency` sizing and permit entries above; the smallest of the four levers)
-
-- **Symptom:** the `check contention` row's advice raised `maxConcurrentChecks` to 12 on 10-26 and 10-27. That removed about 500 minutes a day of `check_wait`, but in-flight checks still averaged about 2.2 and the gate medians kept rising (92 s on 10-20 to 313 s on 10-28) as agents' own suites loaded the host.
-- **Cause:** `checkWaitContention` (src/doctor/doctor-contention-checks.ts) decides and words the advice from the last 24 h of `check_wait` events alone; it never weighs host load (or the load-sensitive failures the queue waits correlate with), so a saturated host still gets a raise-the-cap recommendation.
-- **Expected / fix sketch:** have the shared contention rule (and the always-on alert twin it feeds, src/ui/alert-feeds.ts) weigh host load before recommending a higher cap — for example report load average/available cores beside the wait totals, and suppress or reword the "raise maxConcurrentChecks" advice while the host is saturated. Keep the doctor row and its alert on the same rule so they cannot drift.
-
 ## Fixed
 
 ## Verified
