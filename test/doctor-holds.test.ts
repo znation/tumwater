@@ -1,13 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkBudget, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkProviderHolds, checkQuietHours, checkSubscriptionWindow } from "../src/doctor/doctor-holds.js";
+import { checkBudget, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkProviderHolds, checkQuietHours } from "../src/doctor/doctor-holds.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { pauseTeam, pauseRole } from "../src/team/team-state.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
-import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
-import { writeAccount } from "../src/agent/subscription-account.js";
 import { humanSeconds } from "../src/text/datetime.js";
 import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../src/run/run-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -210,98 +208,6 @@ test("checkMaintenanceQuota: unreadable config is not checked", () => {
   const r = checkMaintenanceQuota(tmpdir("tw-mq-"), undefined, true, MNOW);
   assert.equal(r.level, "ok");
   assert.match(r.detail, /not checked/);
-});
-
-const CW_NOW = 1_800_000_000_000;
-
-test("checkSubscriptionWindow: no account, or an API-billed account, omits the row", () => {
-  const root = tmpdir("tw-hold-");
-  // No claude or codex account: each conditional row is omitted (the pi-extensions pattern).
-  assert.equal(checkSubscriptionWindow("claude", root, CW_NOW), null);
-  assert.equal(checkSubscriptionWindow("codex", root, CW_NOW), null);
-  writeClaudeAccount(root, {
-    billing: "api",
-    observedAt: CW_NOW,
-    windows: { five_hour: { status: "rejected", resetsAt: CW_NOW + 7_200_000, observedAt: CW_NOW } },
-  });
-  assert.equal(checkSubscriptionWindow("claude", root, CW_NOW), null);
-});
-
-test("checkSubscriptionWindow: a rejected subscription window warns with the countdown", () => {
-  const root = tmpdir("tw-hold-");
-  writeClaudeAccount(root, {
-    billing: "subscription",
-    observedAt: CW_NOW,
-    windows: { five_hour: { status: "rejected", resetsAt: CW_NOW + 7_200_000, observedAt: CW_NOW } },
-  });
-  const out = checkSubscriptionWindow("claude", root, CW_NOW);
-  assert.equal(out!.level, "warn");
-  assert.match(out!.detail, /5h window rejected/);
-  assert.ok(out!.detail.includes(humanSeconds(7200)));
-});
-
-test("checkSubscriptionWindow: a codex account owns a codex row, claude's is omitted", () => {
-  const root = tmpdir("tw-hold-");
-  writeAccount(root, "codex", {
-    billing: "subscription",
-    observedAt: CW_NOW,
-    windows: { five_hour: { status: "rejected", resetsAt: CW_NOW + 7_200_000, observedAt: CW_NOW } },
-  });
-  // Only codex has a subscription account, so the claude row is omitted.
-  assert.equal(checkSubscriptionWindow("claude", root, CW_NOW), null);
-  const out = checkSubscriptionWindow("codex", root, CW_NOW);
-  assert.equal(out!.level, "warn");
-  assert.match(out!.detail, /5h window rejected/);
-  assert.ok(out!.detail.includes(humanSeconds(7200)));
-});
-
-test("checkSubscriptionWindow: a chain naming a moved tier says it moved to fallbacks", () => {
-  const root = tmpdir("tw-hold-");
-  writeClaudeAccount(root, {
-    billing: "subscription",
-    observedAt: CW_NOW,
-    windows: { five_hour: { status: "rejected", resetsAt: CW_NOW + 7_200_000, observedAt: CW_NOW } },
-  });
-  const chain = { default: { pair: "p/m", step: 2, of: 3, reason: "window" as const } };
-  const cfg = { backend: "claude", model: { default: "claude-sonnet-5-5", strong: "claude-opus-5-5" } } as unknown as TumwaterConfig;
-  const out = checkSubscriptionWindow("claude", root, CW_NOW, chain, cfg);
-  assert.equal(out!.level, "warn");
-  assert.match(out!.detail, /5h window rejected — default moved to fallbacks until it resets in/);
-  assert.match(out!.detail, /; small, strong wait$/);
-});
-
-test("checkSubscriptionWindow: a moved tier is scoped to the row's backend", () => {
-  // All tiers route to claude; the codex row must not list default as moved, and neither
-  // row lists a tier whose own seam is the other backend's.
-  const root = tmpdir("tw-hold-");
-  writeAccount(root, "codex", {
-    billing: "subscription",
-    observedAt: CW_NOW,
-    windows: { five_hour: { status: "rejected", resetsAt: CW_NOW + 7_200_000, observedAt: CW_NOW } },
-  });
-  const chain = { default: { pair: "p/m", step: 2, of: 3, reason: "window" as const } };
-  const cfg = { backend: "claude", model: { default: "claude-sonnet-5-5", strong: "claude-opus-5-5" } } as unknown as TumwaterConfig;
-  const out = checkSubscriptionWindow("codex", root, CW_NOW, chain, cfg);
-  assert.equal(out!.level, "warn");
-  assert.doesNotMatch(out!.detail, /moved to fallbacks/);
-  assert.match(out!.detail, /subscription Codex model jobs wait/);
-});
-
-test("checkSubscriptionWindow: overage, an elapsed reset, a warning, and no windows are all ok", () => {
-  const root = tmpdir("tw-hold-");
-  const seed = (w: Record<string, { status: string; resetsAt?: number; utilization?: number; isUsingOverage?: boolean; observedAt: number }>) =>
-    writeClaudeAccount(root, { billing: "subscription", observedAt: CW_NOW, windows: w });
-  seed({ five_hour: { status: "rejected", resetsAt: CW_NOW + 7_200_000, isUsingOverage: true, observedAt: CW_NOW } });
-  assert.equal(checkSubscriptionWindow("claude", root, CW_NOW)!.level, "ok");
-  seed({ five_hour: { status: "rejected", resetsAt: CW_NOW, observedAt: CW_NOW - 1000 } });
-  assert.equal(checkSubscriptionWindow("claude", root, CW_NOW)!.level, "ok");
-  seed({ five_hour: { status: "allowed_warning", utilization: 0.83, resetsAt: CW_NOW + 1000, observedAt: CW_NOW } });
-  const warning = checkSubscriptionWindow("claude", root, CW_NOW);
-  assert.equal(warning!.level, "ok");
-  assert.match(warning!.detail, /nearing its limit/);
-  assert.match(warning!.detail, /83% used/);
-  seed({});
-  assert.match(checkSubscriptionWindow("claude", root, CW_NOW)!.detail, /no window reported yet/);
 });
 
 function streakRoot(streaks: Record<string, number>, lastError = "boom"): string {

@@ -52,16 +52,13 @@ test("runDoctor composes the full report — fixed check order, not-running head
     report.checks.map((c) => c.name),
     ["node", "node binary", "git binary", "repo", "init", "config key names", "brief", "principles", "bootstrap", "pause", "quiet hours", "budget", "provider waits", "maintenance allowance", "provider contention", "check contention", "repeated failures", "main's check", "over-cap model", "fallback chain", "models for each tier", "image input", "claude auth", "claude api key", "claude version", "opencode version", "opencode", "backend binary", "claude transcripts", "pi extensions", "state dir", "event log", "notify", "merge lock", "workspaces", "parallel instances", "leftover role branches", "tumwater pins", "disk space", "check", "ci parity", "qa coverage", "role notes", "root install", "flaky checks", "post-merge churn", "claimed bugs", "validation gaps", "plans stuck in Planned", "backlog headings", "backlog archive", "refusals", "stalled entries", "plan dependencies", "stale questions", "stale bugs", "regressed fixes", "stale merge-queue entries", "merge-queue files", "post-merge reviews", "main diff rules", "dropped post-merge reviews", "stale prompts", "uncommitted backlog", "update", "orphans", "macOS port leak"],
   );
-  // funes is absent: the fake PATH has no funes; and the two subscription-window rows are
-  // conditional (a ready repo has no claude or codex subscription account, so both are omitted).
-  // The feedback filing row is conditional on `roles.feedback.enabled`, off by default; and the
-  // seven codex rows are conditional on a codex seam, absent here, so they are omitted too.
+  // funes is absent: the fake PATH has no funes. The feedback filing row is conditional
+  // on `roles.feedback.enabled`, off by default; and the seven codex rows are conditional on
+  // a codex seam, absent here, so they are omitted too.
   assert.deepEqual(
     DOCTOR_CHECK_NAMES.filter(
       (n) =>
         n !== "funes" &&
-        n !== "claude window" &&
-        n !== "codex window" &&
         n !== "feedback filing" &&
         n !== "codex version" &&
         n !== "codex login" &&

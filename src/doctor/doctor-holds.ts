@@ -1,9 +1,7 @@
 import { roleLabel } from "../roles/role-labels.js";
 import { sortEntriesByKey } from "../collections.js";
 import { pausedRoles, pausedRolesUntil, standingTeamPause } from "../team/team-state.js";
-import { MODEL_TIERS, type ModelTier, type TumwaterConfig } from "../config/config-schema.js";
-import { withModelOverrides } from "../config/config-views.js";
-import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
 import { budgetReached, budgetWarning, teamDailyCost } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
@@ -19,19 +17,15 @@ import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DAY_MS, HOUR_MS, humanUntil } from "../text/datetime.js";
 import { budgetPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
-import { readAccount, utilizationPct, windowEntries, windowLabel } from "../agent/subscription-account.js";
-import { backendDisplayName } from "../agent/backend-traits.js";
-import { windowObservation } from "../team/team-polls.js";
 import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 import { redMainWarning } from "../baseline/main-guardrails.js";
 
-/** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`
- * (checkBudget), the `claude window`/`codex window` rows (checkSubscriptionWindow),
- * `maintenance quota` (checkMaintenanceQuota), and `error streaks` (checkErrorStreaks), all
- * read-only reports of holds on running. */
+/** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), `budget`
+ * (checkBudget), `maintenance quota` (checkMaintenanceQuota), and `error streaks`
+ * (checkErrorStreaks), all read-only reports of holds on running. */
 export function loadRunnerStates(root: string, config: TumwaterConfig): RunnerState[] {
   return runnerIds(config)
     .map((id) => loadRunnerState(root, id))
@@ -161,53 +155,6 @@ export function checkMaintenanceQuota(
   return okOutcome(anyMaintenance ? base : `${base}; no maintenance role enabled`);
 }
 
-/** The `<backend> window` check, one row per subscription backend in use (claude and codex):
- * whether a rejected subscription window holds the subscription `<backend>` seams. Read-only and
- * built on windowObservation (the backend's own), the verdict the scheduler's team hold uses, so
- * it cannot disagree with the hold. A hold is a warn because it stops every subscription seam on
- * that backend until the window resets; otherwise the most constrained window's state is
- * reported as ok (a rejected window spending overage reads `rejected` here: overage spends, it
- * does not hold). Returns null (omitting the row from doctor) when the backend has no
- * subscription account — the same omit-a-row pattern as `pi extensions` — because an absent or
- * API-billed account never holds. */
-export function checkSubscriptionWindow(
-  backend: string,
-  root: string,
-  now: number = Date.now(),
-  chain?: Partial<Record<ModelTier, ChainTierInfo>>,
-  config?: TumwaterConfig,
-): CheckOutcome | null {
-  const account = readAccount(root, backend, now);
-  if (account?.billing !== "subscription") return null;
-  const held = windowObservation(backend, account, now);
-  if (held?.kind === "subscription-window" && held.windowType !== undefined && held.resetsAt !== undefined) {
-    const label = windowLabel(held.windowType);
-    const resets = humanUntil(held.resetsAt, now);
-    const moved = MODEL_TIERS.filter(
-      (t) =>
-        (chain?.[t]?.reason === "window" || chain?.[t]?.reason === "reserve") &&
-        config !== undefined &&
-        withModelOverrides(config, t, {}).agent === backend,
-    );
-    if (moved.length > 0) {
-      const waiting = MODEL_TIERS.filter((t) => !chain?.[t] && config !== undefined && withModelOverrides(config, t, {}).agent === backend);
-      return warnOutcome(
-        `${label} window rejected — ${moved.join(", ")} moved to fallbacks until it resets in ${resets}${waiting.length > 0 ? `; ${waiting.join(", ")} wait` : ""}`,
-      );
-    }
-    return warnOutcome(
-      `${label} window rejected — subscription ${backendDisplayName(backend)} model jobs wait until it resets in ${resets}`,
-    );
-  }
-  const top = windowEntries(account)[0];
-  if (top === undefined) return okOutcome("subscription; no window reported yet");
-  const pct = typeof top.utilization === "number" ? ` (${utilizationPct(top.utilization)}% used)` : "";
-  const label = windowLabel(top.type);
-  return okOutcome(
-    top.status === "allowed_warning" ? `${label} window nearing its limit${pct}` : `${label} window ${top.status}${pct}`,
-  );
-}
-
 /** How far back the `provider hold` check reads for hold/resume crossings. The longest a
  * hold can stay is HOLD_CAP_MS (team-hold's 15-minute cap that escalation doubles against),
  * so a window a comfortable multiple of that covers any standing hold's crossing event plus
@@ -219,8 +166,8 @@ const HOLD_CHECK_WINDOW_MS = 2 * HOUR_MS;
  * that stops the roles on that provider from starting new runs until it re-opens. Read-only:
  * it infers the standing set from the event log's own `rate_limit_hold`/`rate_limit_resumed`
  * crossings, the events pollTeamHold writes, so it cannot disagree with the hold. A standing
- * hold is a warn (as with the `claude window` row) because it stops every role on that
- * provider; `now` is injected so a test can pin a hold standing before its deadline and
+ * hold is a warn because it stops every role on that provider; `now` is injected so a test
+ * can pin a hold standing before its deadline and
  * re-opened after. The ended hold's kind rides the resumed event (see pollTeamHold), and any
  * resumed event ends that provider's current hold whatever its kind. */
 export function checkProviderHolds(root: string, now: number = Date.now()): CheckOutcome {

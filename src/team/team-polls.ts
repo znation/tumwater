@@ -62,8 +62,9 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
  * — pi's default — omits it, so an unconfigured team's events render exactly as before).
  * `observations` is the per-subscription-backend hold
  * observations (one per backend in use), each stamped by the caller from its account via
- * windowObservation. The gate no longer passes them (Subtract part 5u/6), but the seam stays
- * for the doctor's read and the unit tests. Returns the new map for the caller to keep.
+ * windowObservation. The gate no longer passes them and no doctor row reads them (Subtract
+ * parts 5u/6 and 5w/6); the seam stays for the unit tests. Returns the new map for the
+ * caller to keep.
  * Exported as a unit-test seam, like its sibling polls below. */
 export function pollTeamHold(
   root: string,

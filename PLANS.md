@@ -277,16 +277,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A config setting either reserve key is refused by name (test/config.test.ts); the GUI settings view and the TUI editor list no reserve row.
 - `npm run test:gate` passes.
 
-### Subtract, part 5w/6: The `claude window`/`codex window` doctor rows go (planned 2026-10-26 by the plan role, split 2026-10-28 by the plan role from the too-large part 5d/6 after feature held it (held 1): the fourth of four finer parts replacing it, sibling to parts 5d/6, 5u/6 and 5v/6 and to part 5x/6; requires part 5u/6 landed, since with the hold and event loops gone the doctor row is the last reader of `windowObservation`; independent in file of parts 5d/6, 5v/6 and 5x/6; touches src/doctor/doctor-holds.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts docs/backends.md docs/how-it-works.md test/doctor-holds.test.ts test/doctor-checks.test.ts)
-
-**Goal.** `checkSubscriptionWindow` and the `claude window`/`codex window` rows are deleted from `DOCTOR_CHECK_NAMES`; no doctor check reports a subscription usage window.
-
-**Approach.** Delete `checkSubscriptionWindow` (src/doctor/doctor-holds.ts) and its two registrations (src/doctor/doctor.ts); remove the two names and their row builders (src/doctor/doctor-check-names.ts). Remove the window cases from `test/doctor-holds.test.ts` and `test/doctor-checks.test.ts`.
-
-**Acceptance criteria.**
-- `grep -rnE 'checkSubscriptionWindow|claude window|codex window' src/` finds no live reference; the two names are gone from `DOCTOR_CHECK_NAMES`.
-- `npm run test:gate` passes.
-
 ### Subtract, part 5x/6: The subscription-window displays go and the account store loses only its window-hold helpers — its billing and overage reading stays (planned 2026-10-26 by the plan role, split 2026-10-28 by the plan role from the too-large part 5d/6 after feature held it (held 1): the display half of the held part, sibling to parts 5d/6, 5u/6, 5v/6 and 5w/6; requires part 5w/6 landed, since with the doctor row gone every display is the last reader of the window helpers; independent in file of parts 5d/6 and 5v/6; the per-backend account file and its `billing`/`windows` reading stay because the kept budget fallback's `seamFree`/`piPairFree`/`claudeOverageRefused` read them; touches src/ui/badges.ts src/ui/status-render.ts src/ui/status-payload.ts src/status/status-data.ts src/status/status-budget.ts src/status/status-roles.ts src/roles/role-render.ts src/roles/role-view.ts src/agent/subscription-account.ts src/agent/claude/claude-account.ts docs/backends.md docs/how-it-works.md docs/invariants.md test/badges.test.ts test/role-view.test.ts test/status-payload.test.ts test/subscription-account.test.ts test/doctor-holds.test.ts)
 
 **Goal.** No role view, status row, badge or status render names a subscription usage window. `windowUsedUp`, `claudeWindowUsedUp`, `windowReserved`, `windowObservation`, `windowEntries`, `windowLabel`, `utilizationPct` and the `SubscriptionWindowBlock`/`ClaudeWindowEntry` display types are deleted. The store keeps `SubscriptionAccount.billing`, `plan`, `observedAt` and `windows`, so `subscriptionBackendOf`, `accountUsesOverage`, `claudeOverageRefused` and `subscriptionWindowRejected` keep working and the budget fallback's free-ness is unchanged.
