@@ -625,4 +625,61 @@ function buildRolloutLines(records: TurnRecords, requestedModel: string): Rollou
 
 **Tests.** No new test module: a behavior-preserving move behind four module-private helpers, guarded by the existing `test/codex-rollout.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
 
+### `classifyError`'s complexity-16 guard-return classification body is split into one named helper per concern — the free-tier refusal, the rate limit (with its echoed Retry-After), the permanent config error, the context overflow and the transient server/connection/timeout tail — so "is this a free-tier refusal?", "is this a 429 and what Retry-After did it echo?", "is this an unknown model, bad credential or malformed session id?", "did context overflow?" and "is this a dropped connection or a timeout?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `movedSourceFindings`, `parseInitArgs`, `createTeamConfigKeyEditor`, `cmdLogs`, `sayLogsTail`, `usageWords`, `inputViewWindow`, `rejectUnknownArgs`, `findTrust` and `buildRolloutLines` plans each extract one named helper per job the same way; independent in file of every Planned entry — `grep -c 'classifyError' PLANS.md` prints 0 and `grep -c 'opencode-stream' PLANS.md` prints 0, so no `## Planned` heading, blocked part or touches list names the symbol or src/agent/opencode/opencode-stream.ts (`grep -c 'src/agent/opencode' PLANS.md` prints 0; the only planned `src/agent` touches are this family's src/agent/codex/codex-hook-trust.ts and src/agent/codex/codex-rollout.ts and Subtract part 5k/6's src/agent/subscription-account.ts, src/agent/claude/claude-account.ts and src/agent/codex/codex-account.ts — all different files); PLANS-DONE.md holds no split of this symbol (`grep -cE '^### .*(classifyError|classifyResult)' PLANS-DONE.md` prints 0) — its one opencode-stream split heading is the 2026-10-25 `translate`-dispatch split that extracted one handler per event arm, which calls `classifyError` from the error arm without moving its body; docs/invariants.md names the file only as an INV-AF5 consumer of `canonicalUsageBlock` (`grep -c 'opencode-stream' docs/invariants.md` prints 1), a module-level import this move does not touch, so it stays unedited; touches src/agent/opencode/opencode-stream.ts)
+
+**Goal.** `classifyError` (`src/agent/opencode/opencode-stream.ts`, module-private, complexity 16) is the classifier that turns one native `error` line into the canonical `tumwaterKind` (and, for a transient backend, its kind): the free-tier refusal (`provider.auth` + status 403, or free-tier text), the rate limit (status 429 or rate-limit text, carrying the echoed Retry-After), the permanent config error (`provider.no-route`/`unknown`/status 401 or the unknown-model text), the context overflow, and the transient server / dropped-connection / timeout tail. Today one body does five jobs, and the complexity sits at the top of the module (the next-highest function in the file is 9). A reader asking "is this a free-tier refusal?", "is this a 429 and what Retry-After did it echo?", "is this an unknown model, bad credential or malformed session id?", "did context overflow?" and "is this a dropped connection or a timeout?" has only the one body to scan.
+
+**Approach.** All edits in `src/agent/opencode/opencode-stream.ts`; move code, do not rewrite it — every condition, order and comment stays exactly as today. Add a module-private type alias for the current inline return shape:
+
+```ts
+type OpencodeErrorClassification = {
+  kind?: TumwaterKind;
+  backendKind?: BackendFailureKind;
+  freeTier?: boolean;
+  retryAfterSeconds?: number;
+};
+```
+
+and five module-private functions beside `classifyError`, each taking the reads it needs and returning `OpencodeErrorClassification | undefined` (`undefined` when its guard fails):
+
+- `function freeTierClassification(type: string, status: unknown, message: string): OpencodeErrorClassification | undefined` — the condition `(type === "provider.auth" && status === 403) || /free\s?tier|FreeTierError/i.test(message)`, returning `{ kind: "transientBackend", backendKind: "server", freeTier: true }`; carries today's comment about a `provider.auth` with any other status falling through to the config-error row.
+- `function rateLimitClassification(status: unknown, message: string): OpencodeErrorClassification | undefined` — the condition `status === 429 || /\b429\b|rate limit|too many requests/i.test(message)`, with the `const retry = RETRY_AFTER.exec(message)` and the `{ kind: "transientRateLimit", ...(retry ? { retryAfterSeconds: Number(retry[1]) } : {}) }` return; carries today's rate-limit comment.
+- `function configErrorClassification(type: string, status: unknown, message: string): OpencodeErrorClassification | undefined` — the `type === "provider.no-route" || type === "unknown" || status === 401 || /unknown model|unknown provider|model not found|provider not found|unauthorized|status\s*401|\b401\b/i.test(message)` condition, returning `{ kind: "configError" }`; carries today's comment about the permanent misconfiguration rows.
+- `function contextOverflowClassification(message: string): OpencodeErrorClassification | undefined` — the `/context (size|length|window)?\s*(has been |was )?exceeded|exceeds? (the )?context|too (long|large) for .*context/i.test(message)` condition, returning `{ kind: "contextExceeded" }`; carries today's strict-match comment.
+- `function transientClassification(message: string): OpencodeErrorClassification | undefined` — the `/\b(500|501|502|503|504|529)\b|internal server error|bad gateway|service unavailable|gateway timeout|overloaded/i.test(message)` condition returning `{ kind: "transientBackend", backendKind: "server" }`, else `transientProseKind(message)`.
+
+`classifyError` keeps its `(err: Json)` signature and its doc comment, and becomes the narrow-and-chain:
+
+```ts
+function classifyError(err: Json): OpencodeErrorClassification {
+  const message = typeof err.message === "string" ? err.message : "";
+  const type = typeof err.type === "string" ? err.type : "";
+  const status = err.status;
+  return (
+    freeTierClassification(type, status, message) ??
+    rateLimitClassification(status, message) ??
+    configErrorClassification(type, status, message) ??
+    contextOverflowClassification(message) ??
+    transientClassification(message) ??
+    {}
+  );
+}
+```
+
+The `??` chain preserves the body's exact predicate order — free-tier first, then rate-limit, then config-error, then context-overflow, then the transient server regex before the shared connection/timeout prose tail — because each helper returns `undefined` when its guard fails, so a later check can never pre-empt an earlier one and a matched classification is returned immediately. The order matters: `provider.auth` with status 403 is a free-tier refusal while the same type with status 401 is a config error, and the context-overflow text must be consulted before the transient server regex. `transientProseKind` (`src/agent/backend-traits.ts`) stays the single home of the connection/timeout vocabulary and is called only from `transientClassification`. No other function changes, and no export or import changes (the file's `export` lines stay `OpencodeStreamTranslator`, `opencodeTranslator` and `opencodeExportLines`).
+
+**Files touched.** `src/agent/opencode/opencode-stream.ts` only. No new module, no export change, no test file edited, no docs edited.
+
+**Acceptance criteria.**
+- `classifyError`'s body contains only the `message`/`type`/`status` narrowing, the five helper calls chained with `??` in the order above and the trailing `{}`: it contains no regex literal, no `RETRY_AFTER`, no `transientProseKind`, no `provider.no-route`/`free tier` text and no `status ===` comparison.
+- `freeTierClassification`, `rateLimitClassification`, `configErrorClassification`, `contextOverflowClassification` and `transientClassification` each exist exactly once at module scope, are not exported, and are called only from `classifyError`.
+- Each helper returns `undefined` exactly when its guard fails, and the five guards are the same conditions in the same order as the body's five checks today; the free-tier check precedes the rate-limit check, the rate-limit check precedes the config-error check, the config-error check precedes the context-overflow check, and the server regex precedes the `transientProseKind` prose tail.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/agent/opencode/opencode-stream.ts'`) no longer reports `classifyError` at 16, and no helper reports 16 or above; every other function's reported count is unchanged (`opencodeExportLines` stays at 6, `opencodeTranslator` at 2).
+- The exported surface is unchanged: `grep -nE '^export ' src/agent/opencode/opencode-stream.ts` still matches `OpencodeStreamTranslator`, `opencodeTranslator` and `opencodeExportLines` only, and no import line is added or removed.
+- Behaviour is preserved, verified by the existing `test/opencode-stream.test.ts` cases passing unedited — "both free-tier refusals fold to transientBackend and warn opencode_free_tier_refused once", "a provider.auth that is NOT a 403 folds to configError, not the free tier", "unknown-model, unavailable-variant and malformed-session-id fold to configError", "the synthetic 429 folds to transientRateLimit with the echoed Retry-After hint" and "synthetic 5xx folds to transientBackend/server and context overflow to contextExceeded".
+- docs/invariants.md is not edited: it names `src/agent/opencode/opencode-stream.ts` only as an INV-AF5 consumer of `canonicalUsageBlock` (`grep -c 'opencode-stream' docs/invariants.md` prints 1), an import this move does not touch.
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind five module-private helpers and one private type alias, guarded by the existing `test/opencode-stream.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
+
 ## Done
