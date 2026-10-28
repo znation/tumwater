@@ -307,57 +307,114 @@ export function runRows(
   role: RoleScope,
   join?: RunRowJoin,
 ): RunRow[] {
-  const wanted = role === null ? null : new Set(asList(role));
-  const scoped = wanted === null ? events : events.filter((e) => wanted.has(e.source));
-  // The start pairing is the shared helper (events.ts), so history's dash-on-unpaired rule
-  // and the digest's fold cannot drift into different notions of a run's span.
-  const starts = runStartMap(scoped);
-  const models = runStartModelMap(scoped);
-  // The merge bookkeeping resolveQueuedResult joins over: per role, the merge_queued pins
-  // (oldest first) and the merge_done/merge_failed outcomes (oldest first). Both ride the role
-  // filter with their run, so the scoped events hold them exactly when they hold the row.
-  // A since-shaped scan hands a WIDER join read instead (readRunRowsSince): its cutoff cut
-  // the pins of runs that span it, so the maps read the unfiltered-by-cutoff evidence and
-  // resolveQueuedResult guards each claim on the row's run_start being whole in that read.
-  const joinScoped = join
-    ? wanted === null
-      ? join.events
-      : join.events.filter((e) => wanted.has(e.source))
-    : scoped;
-  const joinStarts = join ? runStartMap(joinScoped) : starts;
-  const joinModels = join ? runStartModelMap(joinScoped) : models;
-  const floorTs = join ? join.floorTs : null;
-  const { mergeQueuedByRunner, outcomeByRunner } = bucketMergeEvents(joinScoped);
-  const claimTop = new Map<string, number>();
+  const wanted = roleWantSet(role);
+  const scoped = scopedEvents(events, wanted);
+  const evidence = runRowEvidence(scoped, join, wanted);
   const rows: RunRow[] = [];
   for (let i = scoped.length - 1; i >= 0 && rows.length < limit; i--) {
     const e = scoped[i];
     if (e?.type !== "run_end") continue;
-    const rawResult = outcomeText(e);
-    const result =
-      rawResult === "queued"
-        ? (resolveQueuedResult(e, mergeQueuedByRunner, outcomeByRunner, claimTop, joinStarts, floorTs)
-            ?.result ?? rawResult)
-        : rawResult;
-    const usage = eventUsage(e);
-    const peak = nonNegativeNumber(e.peakContextTokens, 0);
-    rows.push({
-      ts: e.ts,
-      time: formatTimestamp(e.ts),
-      tokens: usage.tokens,
-      costUsd: usage.costUsd,
-      ...(peak > 0 ? { peakContextTokens: peak } : {}),
-      ...(e.cutOff === true ? { cutOff: true } : {}),
-      role: eventRole(e),
-      run: eventRun(e),
-      result,
-      model: runStartModel(e, join ? joinModels : models),
-      durationMs: runSpanMs(e, starts),
-      usage: usageText(e),
-      detail: squash(textOr(e.summary, textOr(e.error, "")), DETAIL_MAX),
-    });
+    rows.push(runRowFromEnd(e, evidence));
   }
   return rows;
+}
+
+/** The role the scan is filtered to, as a direct set lookup: null means no filter (every
+ * event is wanted); otherwise the role list folded into a Set, so both the row scan and the
+ * merge-join read test membership in one `has`. */
+function roleWantSet(role: RoleScope): Set<string> | null {
+  return role === null ? null : new Set(asList(role));
+}
+
+/** The `events` held by the scan: all of them when `wanted` is null (no role filter), else
+ * those whose `source` the role set holds — the one role filter, used for both the row scan
+ * and the join read, so the two cannot drift. */
+function scopedEvents(events: HarnessEvent[], wanted: Set<string> | null): HarnessEvent[] {
+  return wanted === null ? events : events.filter((e) => wanted.has(e.source));
+}
+
+/** The evidence one row scan collects before walking `run_end` lines: the start pairing and
+ * model maps for the scoped rows, the wider merge-join read's maps and floor when a
+ * `--since` scan handed one (else the scoped maps and a null floor), the merge bookkeeping
+ * resolveQueuedResult joins over, and the per-call claim cursor. */
+interface RunRowEvidence {
+  starts: Map<string, number>;
+  joinStarts: Map<string, number>;
+  joinModels: Map<string, string>;
+  floorTs: number | null;
+  mergeQueuedByRunner: Map<string, HarnessEvent[]>;
+  outcomeByRunner: Map<string, HarnessEvent[]>;
+  claimTop: Map<string, number>;
+}
+
+/** Build the row scan's evidence from the scoped events and an optional wider join read. The
+ * start pairing is the shared helper (events.ts), so history's dash-on-unpaired rule and the
+ * digest's fold cannot drift into different notions of a run's span. The merge bookkeeping
+ * resolveQueuedResult joins over: per role, the merge_queued pins (oldest first) and the
+ * merge_done/merge_failed outcomes (oldest first). Both ride the role filter with their run,
+ * so the scoped events hold them exactly when they hold the row.
+ * A since-shaped scan hands a WIDER join read instead (readRunRowsSince): its cutoff cut the
+ * pins of runs that span it, so the maps read the unfiltered-by-cutoff evidence and
+ * resolveQueuedResult guards each claim on the row's run_start being whole in that read. */
+function runRowEvidence(
+  scoped: HarnessEvent[],
+  join: RunRowJoin | undefined,
+  wanted: Set<string> | null,
+): RunRowEvidence {
+  const starts = runStartMap(scoped);
+  const models = runStartModelMap(scoped);
+  const joinScoped = join ? scopedEvents(join.events, wanted) : scoped;
+  const { mergeQueuedByRunner, outcomeByRunner } = bucketMergeEvents(joinScoped);
+  return {
+    starts,
+    joinStarts: join ? runStartMap(joinScoped) : starts,
+    joinModels: join ? runStartModelMap(joinScoped) : models,
+    floorTs: join ? join.floorTs : null,
+    mergeQueuedByRunner,
+    outcomeByRunner,
+    claimTop: new Map<string, number>(),
+  };
+}
+
+/** One run_end's result label: the run's own unless it is `queued`, in which case the queued
+ * row is resolved through its change's merge evidence (resolveQueuedResult's conservative
+ * rule) and falls back to the raw `queued` label when the merge is still in the pipeline or
+ * the evidence is untrustworthy. */
+function queuedRowResult(e: HarnessEvent, rawResult: string, evidence: RunRowEvidence): string {
+  if (rawResult !== "queued") return rawResult;
+  return (
+    resolveQueuedResult(
+      e,
+      evidence.mergeQueuedByRunner,
+      evidence.outcomeByRunner,
+      evidence.claimTop,
+      evidence.joinStarts,
+      evidence.floorTs,
+    )?.result ?? rawResult
+  );
+}
+
+/** Assemble one row from its `run_end` and the shared evidence: the raw usage numbers folded
+ * into the payload, the positive-only peak and cut-off flags, the join-or-plain model map,
+ * the paired duration, and the detail squash. */
+function runRowFromEnd(e: HarnessEvent, evidence: RunRowEvidence): RunRow {
+  const usage = eventUsage(e);
+  const peak = nonNegativeNumber(e.peakContextTokens, 0);
+  return {
+    ts: e.ts,
+    time: formatTimestamp(e.ts),
+    tokens: usage.tokens,
+    costUsd: usage.costUsd,
+    ...(peak > 0 ? { peakContextTokens: peak } : {}),
+    ...(e.cutOff === true ? { cutOff: true } : {}),
+    role: eventRole(e),
+    run: eventRun(e),
+    result: queuedRowResult(e, outcomeText(e), evidence),
+    model: runStartModel(e, evidence.joinModels),
+    durationMs: runSpanMs(e, evidence.starts),
+    usage: usageText(e),
+    detail: squash(textOr(e.summary, textOr(e.error, "")), DETAIL_MAX),
+  };
 }
 
 /** The last `limit` completed runs read from root's event log, filtered to `role` when
