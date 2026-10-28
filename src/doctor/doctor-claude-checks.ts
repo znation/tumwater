@@ -122,6 +122,52 @@ export async function checkAnthroApiKey(
   );
 }
 
+/** The floor each configured model needs, keyed by model; a model the adapter does not gate
+ * contributes none. */
+function claudeVersionFloors(seams: ReadonlyArray<{ model: string | undefined }>): Map<string, string> {
+  const floors = new Map<string, string>();
+  for (const seam of seams) {
+    const min = claudeBackend.minVersion?.(seam.model!);
+    if (min !== undefined) floors.set(seam.model!, min);
+  }
+  return floors;
+}
+
+/** The clamp note when any claude seam clamps thinking, else empty. */
+function claudeVersionClampNote(seams: ReadonlyArray<{ thinking: string | undefined }>): string {
+  const clamped = seams.some((seam) => seam.thinking === "off" || seam.thinking === "minimal");
+  const clampNote = clamped
+    ? "; `off`/`minimal` thinking clamps to `--effort low` (claude has no lower setting)"
+    : "";
+  return clampNote;
+}
+
+/** The highest floor decides: whichever model needs the newest CLI. */
+function claudeVersionNeededBy(floors: Map<string, string>): { required: string; neededBy: string } {
+  let required = "";
+  let neededBy = "";
+  for (const [model, min] of floors) {
+    if (required === "" || belowNodeFloor(required, `>=${min}`)) {
+      required = min;
+      neededBy = model;
+    }
+  }
+  return { required, neededBy };
+}
+
+/** Verdict on the found version against the claude seams' floors, carrying the clamp note. */
+function claudeVersionOutcome(
+  found: string,
+  floors: Map<string, string>,
+  clampNote: string,
+): CheckOutcome {
+  if (floors.size === 0) return okOutcome(`claude ${found}${clampNote}`);
+  const { required, neededBy } = claudeVersionNeededBy(floors);
+  if (belowNodeFloor(found, `>=${required}`))
+    return failOutcome(`claude ${found} is older than ${required} required by ${neededBy} — run \`claude update\``);
+  return okOutcome(`claude ${found} (>= ${required} for ${neededBy})${clampNote}`);
+}
+
 /** claude CLI-version readiness (plans/agent-backends.md finding 9): an installed CLI below a
  * configured model's minimum fails or misprices that model, and team runs disable the
  * auto-updater, so the version an operator has is the version agent runs use. Fails below the
@@ -138,32 +184,10 @@ export async function checkClaudeVersion(
   if ("level" in config) return config;
   const seams = seamedModels(config, "claude");
   if (seams.length === 0) return okOutcome("no model jobs run on claude");
-  // The floor each configured model needs; a model the adapter does not gate contributes none.
-  const floors = new Map<string, string>();
-  for (const seam of seams) {
-    const min = claudeBackend.minVersion?.(seam.model!);
-    if (min !== undefined) floors.set(seam.model!, min);
-  }
+  const floors = claudeVersionFloors(seams);
   const result = await claudeProbe(config, ["--version"], pathEnv, timeoutMs);
   const found = versionFromProbe(result);
   if (found === undefined)
     return warnOutcome("could not check — `claude --version` did not run or its output was unreadable");
-  const clamped = seams.some((seam) => seam.thinking === "off" || seam.thinking === "minimal");
-  const clampNote = clamped
-    ? "; `off`/`minimal` thinking clamps to `--effort low` (claude has no lower setting)"
-    : "";
-  if (floors.size === 0) return okOutcome(`claude ${found}${clampNote}`);
-  // The highest floor decides: whichever model needs the newest CLI. Below it, fail and name
-  // that model; at or above, print the version against the floor.
-  let required = "";
-  let neededBy = "";
-  for (const [model, min] of floors) {
-    if (required === "" || belowNodeFloor(required, `>=${min}`)) {
-      required = min;
-      neededBy = model;
-    }
-  }
-  if (belowNodeFloor(found, `>=${required}`))
-    return failOutcome(`claude ${found} is older than ${required} required by ${neededBy} — run \`claude update\``);
-  return okOutcome(`claude ${found} (>= ${required} for ${neededBy})${clampNote}`);
+  return claudeVersionOutcome(found, floors, claudeVersionClampNote(seams));
 }
