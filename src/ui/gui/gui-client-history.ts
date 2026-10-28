@@ -71,13 +71,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       fetchHistory();
     });
     $("histfilter").addEventListener("click", (ev) => {
-      const b = ev.target.closest("button[data-hist]");
+      const b = clickClosest(ev, "button[data-hist]");
       if (!b) return;
       histFilter = b.dataset.hist;
       renderHistory();
     });
     $("histsum").addEventListener("click", (ev) => {
-      const b = ev.target.closest("button[data-histsum]");
+      const b = clickClosest(ev, "button[data-histsum]");
       if (!b) return;
       histMode = b.dataset.histsum;
       store("hist-mode", histMode);
