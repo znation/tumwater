@@ -114,10 +114,6 @@ interface RunStartDecision {
   resumeCause: ResumeCause;
 }
 
-/** Resolve how a run starts, consuming the resume flags as a side effect (a flag is consumed
- * here so a resume that fails falls back to a normal fresh run; another shutdown mid-resume
- * sets it again) and reclaiming the interrupted run's re-queued prompt. Owns every read and
- * write of the resume flags, so a new cause or handoff rule is added here. */
 /** A run-start's first phase: read the last merge's failure and clear it, so a merge that
  * failed non-terminally (kept its pin) still feeds the error streak when this run's recovery
  * re-queues that pin (finishRecoveryRun). */
