@@ -8,6 +8,7 @@ import { printCoverageTable } from "./coverage-table.js";
 import { buildDepGraph, selectAffected } from "./affected-tests.js";
 import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
 import { findOnPath } from "../src/files/files.js";
+import { systemProcessProbe, type ProcessRow } from "../src/process/process-table.js";
 import { readJsonFile, writeJsonAtomic } from "../src/files/json-files.js";
 import { finiteNumber } from "../src/files/json-object.js";
 import { realGitFromXcrun } from "../src/git/xcrun-git.js";
@@ -498,6 +499,39 @@ export function nodeSupportsTestConcurrency(version: string = process.versions.n
   return Number.isInteger(minor) && minor >= 10;
 }
 
+/** The project's suite runners currently in flight, read from a process table: rows whose argv
+ * names this project's test runner (`dist/test/test-runner.js`). A running suite's own runner is
+ * in the table, so the count is at least 1. Counting the runner processes on the host is the
+ * census behind the non-e2e concurrency sizing, so N suites running at once can each take a
+ * fair slice of the cores instead of every suite grabbing node's default `parallelism - 1`
+ * workers. Exported pure so test/test-runner.test.ts pins the match against fixture rows. */
+export function suitesInFlight(rows: readonly ProcessRow[]): number {
+  return rows.filter((r) => r.command.includes("test-runner.js")).length;
+}
+
+/** How many parallel node --test workers one suite should ask for when `inFlight` suites are
+ * contending for `parallelism` cores: the cores shared evenly, at least 1. With 18 cores and 9
+ * suites in flight each gets 2, rather than all 9 piling onto node's default 17. */
+export function sizeTestConcurrency(inFlight: number, parallelism: number): number {
+  return Math.max(1, Math.floor(parallelism / inFlight));
+}
+
+/** The concurrency this non-e2e suite should run under — the host's cores shared with the suites
+ * already in flight — or undefined (node's default) when node predates `--test-concurrency` or
+ * the process table cannot be read: a census failure must degrade a suite, never break it. The
+ * probe is a parameter so tests run it against a fake host; main() calls it with the real one. */
+export async function sharedSuiteConcurrency(
+  probe: { list(): Promise<ProcessRow[]> } = systemProcessProbe,
+): Promise<number | undefined> {
+  if (!nodeSupportsTestConcurrency()) return undefined;
+  try {
+    const rows = await probe.list();
+    return sizeTestConcurrency(suitesInFlight(rows), os.availableParallelism());
+  } catch {
+    return undefined;
+  }
+}
+
 /** The node --test argv main() spawns, built from a selection: node's default spec reporter to
  * stdout (named explicitly because a second reporter would otherwise replace it), the durations
  * reporter into `fresh`, the #name pattern and its TAP side-channel reporter when the selection
@@ -561,7 +595,7 @@ function affectedTestFiles(distDir: string, ref: string): TestFileSelection {
   return { names: keep.map((n) => n.name), files: keep.map((n) => n.file) };
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const { rest, ref } = splitAffectedArgv(process.argv.slice(2));
   const { filters: allFilters, coverage } = splitCoverageArgv(rest);
   const { rest: filters, repeat, error: repeatError } = splitRepeatArgv(allFilters);
@@ -613,7 +647,11 @@ function main(): void {
         fresh,
         tap,
         coverage,
-        concurrency: isE2eTier(sel.files) && nodeSupportsTestConcurrency() ? 1 : undefined,
+        concurrency: isE2eTier(sel.files)
+          ? nodeSupportsTestConcurrency()
+            ? 1
+            : undefined
+          : await sharedSuiteConcurrency(),
       },
     );
     const runOnce = (): number => {
@@ -658,4 +696,4 @@ function main(): void {
 // imports it (then argv[1] is the test file and spawning node --test here would recurse).
 const invokedDirectly =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) main();
+if (invokedDirectly) void main();

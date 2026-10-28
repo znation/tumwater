@@ -24,8 +24,11 @@ import {
   parseFilter,
   repeatRuns,
   selectTestFiles,
+  sharedSuiteConcurrency,
+  sizeTestConcurrency,
   splitCoverageArgv,
   splitRepeatArgv,
+  suitesInFlight,
   suiteEnv,
   suiteGitEnv,
   SUITE_TIMEOUT_MS,
@@ -269,6 +272,48 @@ test("an all-e2e selection runs its files one at a time", () => {
   // Without concurrency there is no --test-concurrency at all.
   const parallel = buildNodeTestArgs({ files: ["/d/a.e2e.test.js"] }, base);
   assert.ok(parallel.every((a) => !a.startsWith("--test-concurrency")));
+});
+
+test("suitesInFlight counts only this project's runner processes, self included", () => {
+  const rows: Array<{ pid: number; ppid: number; uid: number; etime: string; time: string; command: string }> = [
+    { pid: 1, ppid: 0, uid: 501, etime: "10:00", time: "0:05", command: "node dist/test/test-runner.js" },
+    { pid: 2, ppid: 1, uid: 501, etime: "9:00", time: "2:00", command: "node --test dist/test/test-runner.test.js" },
+    { pid: 3, ppid: 0, uid: 501, etime: "1:00", time: "0:01", command: "npm run test:gate" },
+    { pid: 4, ppid: 1, uid: 501, etime: "8:00", time: "1:00", command: "node dist/test/test-runner.js --affected" },
+    { pid: 5, ppid: 1, uid: 501, etime: "0:05", time: "0:00", command: "node --test dist/test/orchestrator.test.js" },
+  ];
+  // The two runner processes are in flight; the node --test workers and the npm wrapper are not.
+  assert.equal(suitesInFlight(rows), 2);
+});
+
+test("sizeTestConcurrency shares the cores across the suites in flight, never below 1", () => {
+  // 18 cores, 9 suites: 2 workers each — the whole point of sizing by in-flight count.
+  assert.equal(sizeTestConcurrency(9, 18), 2);
+  // More suites than cores still gets one worker, never zero.
+  assert.equal(sizeTestConcurrency(18, 18), 1);
+  assert.equal(sizeTestConcurrency(30, 18), 1);
+  // A lone suite keeps a healthy share (10 of 18), still under node's default 17.
+  assert.equal(sizeTestConcurrency(1, 18), 18);
+});
+
+test("sharedSuiteConcurrency sizes non-e2e concurrency from a fake table, degrading on census failure", async () => {
+  const fakeRows: Array<{ pid: number; ppid: number; uid: number; etime: string; time: string; command: string }> = [
+    { pid: 1, ppid: 0, uid: 501, etime: "1:00", time: "0:01", command: "node dist/test/test-runner.js" },
+    { pid: 2, ppid: 1, uid: 501, etime: "1:00", time: "0:01", command: "node --test dist/test/test-runner.test.js" },
+  ];
+  // One suite in flight on this host (parallelism not pinned): a number, at least one worker.
+  const sized = await sharedSuiteConcurrency({ list: async () => fakeRows });
+  assert.equal(typeof sized, "number");
+  assert.ok((sized as number) >= 1);
+  // A census that cannot read the table degrades to no concurrency (node's default).
+  assert.equal(
+    await sharedSuiteConcurrency({
+      list: async () => {
+        throw new Error("no ps");
+      },
+    }),
+    undefined,
+  );
 });
 
 test("timedOutFailure reads a real spawnSync timeout kill as the ceiling message and every other outcome as null", () => {

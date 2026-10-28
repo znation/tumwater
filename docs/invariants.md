@@ -2381,6 +2381,26 @@ the run's mark, and makes the runner the suite's owner", "a runner killed with S
 node --test run down with it" and "a run's exit sweep reaches the node --test run of a suite
 started inside the run".
 
+### INV-AL6: a non-e2e suite sizes its concurrency by the suites in flight and degrades to node's default on a failed census
+
+**Guarantee.** main() asks a non-e2e suite for `--test-concurrency=floor(parallelism / inFlight)`
+workers, where `inFlight` is the project's runner processes currently in the host's process table
+(each running suite, its own runner included) and `parallelism` is `os.availableParallelism()`,
+never below one worker. So N suites running at once each take a fair slice of the cores instead of
+every suite grabbing node's default `parallelism - 1` workers and overloading the host. The pure
+census and math (`suitesInFlight`, `sizeTestConcurrency`) run against a fake process table in
+tests. When node predates `--test-concurrency` (v20.10, `nodeSupportsTestConcurrency`) or the
+table cannot be read, the suite falls back to node's default concurrency — a census failure
+degrades a suite, never breaks it. The pure e2e tier is unaffected: it still runs one file at a
+time (`--test-concurrency=1`).
+
+**Binds.** `test/test-runner.ts` (`suitesInFlight`, `sizeTestConcurrency`, `sharedSuiteConcurrency`, main's non-e2e concurrency).
+
+**Pinned by.** `test/test-runner.test.ts` — "suitesInFlight counts only this project's runner
+processes, self included", "sizeTestConcurrency shares the cores across the suites in flight, never
+below 1" and "sharedSuiteConcurrency sizes non-e2e concurrency from a fake table, degrading on
+census failure".
+
 ## Process table: the parsers skip what does not fit, cwds fails loudly, and the marker and port reads never fail
 
 `src/process/process-table.ts` only reads the host's process table: it never spawns or signals a
