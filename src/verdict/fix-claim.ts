@@ -324,26 +324,15 @@ export function missingSymbolNames(missing: string[]): string {
   return missing.length <= 3 ? missing.join(", ") : `${missing.slice(0, 3).join(", ")}…`;
 }
 
-/** The first false-fix claim in an md-only diff that touches BUGS.md, or undefined when the
- * diff backs its Fixed transitions (or makes none). `files` is the ahead-of-main path list
- * of the diff merging on `mainBranch`; the worktree `wt` holds the tree being merged. */
-export async function falseFixReason(
-  wt: string,
-  mainBranch: string,
-  files: string[],
-): Promise<string | undefined> {
-  // Fixed entries live in BUGS.md's own section and in its archive, BUGS-FIXED.md
-  // (plans/backlog-archive.md): tumwater moves a fixed bug there right before the commit, so a
-  // fix claim reaches the gate as an archive edit, and an archived entry whose body is intact
-  // is no claim at all. Both sides of the comparison read both files.
-  if (!files.includes("BUGS.md") && !files.includes(BUGS_ARCHIVE)) return undefined;
-  // A deleted, unreadable, or non-regular (symlinked) file reads as empty: there is no Fixed
-  // transition to verify, so this check passes and lets the gate's sibling structural check
-  // (backlog-structure.ts) report the dropped section. Reading a symlink raw would pull an
-  // outside host file's `## Fixed` heading into this gate's verdict (the same lstat policy the
-  // backlog-conflict resolver and backlogStructureReason pin under INV-G3), so a head is read
-  // only when lstat shows a regular file; ENOENT and symlinks both read as empty.
-  const heads = ["BUGS.md", BUGS_ARCHIVE].map((f) => {
+/** The `## Fixed` heads of BUGS.md and its archive as read under the lstat policy: a deleted,
+ * unreadable, or non-regular (symlinked) file reads as empty — there is no Fixed transition to
+ * verify, so the gate's sibling structural check (backlog-structure.ts) reports the dropped
+ * section instead. Reading a symlink raw would pull an outside host file's `## Fixed` heading
+ * into the gate's verdict (the same lstat policy the backlog-conflict resolver and
+ * backlogStructureReason pin under INV-G3), so a head is read only when lstat shows a regular
+ * file; ENOENT and symlinks both read as empty. */
+function readFixedHeads(wt: string): string[] {
+  return ["BUGS.md", BUGS_ARCHIVE].map((f) => {
     const full = join(wt, f);
     try {
       if (!lstatSync(full).isFile()) return "";
@@ -352,38 +341,49 @@ export async function falseFixReason(
     }
     return readTextOrNull(full) ?? "";
   });
-  if (!heads.some((head) => head.includes("## Fixed"))) return undefined;
-  // The diff's own base, not main's tip: the gate diffs `mainBranch...HEAD` against the
-  // merge-base, and the entry's Open/Fixed state lives in the tree the change builds on —
-  // pre-batch main can still carry the record as (falsely) Fixed and make an Open→Fixed
-  // restoration in a stacked batch compare as already done (BUGS.md 2026-09-23).
+}
+
+/** The base Fixed section bodies the diff's own merge-base holds, keyed by normalized heading.
+ * The base is the diff's own merge-base, not main's tip: the gate diffs `mainBranch...HEAD`
+ * against the merge-base, and the entry's Open/Fixed state lives in the tree the change builds
+ * on — pre-batch main can still carry the record as (falsely) Fixed and make an Open→Fixed
+ * restoration in a stacked batch compare as already done (BUGS.md 2026-09-23). Every base body
+ * under a heading counts: two distinct entries can share one normalized heading, and keeping
+ * only the last made the other read as rewritten (BUGS.md 2026-10-23). */
+async function baseFixedBodies(
+  wt: string,
+  mainBranch: string,
+): Promise<{ bases: string[]; bodies: Map<string, Set<string>> }> {
   const baseRev = await changeBaseRev(wt, mainBranch);
   const bases = [await fileContentAt(wt, baseRev, "BUGS.md"), await fileContentAt(wt, baseRev, BUGS_ARCHIVE)];
-  // An already-Fixed entry is skipped only when its body is unchanged: an md-only edit that
-  // rewrites an existing Fixed record's narrative must face the symbol check too (BUGS.md
-  // 2026-09-23 — the in-place narrative rewrite is how a second phantom merge evaded it).
-  // Every base body under a heading counts: two distinct entries can share one normalized
-  // heading, and keeping only the last made the other read as rewritten (BUGS.md 2026-10-23).
-  const baseBodies = new Map<string, Set<string>>();
+  const bodies = new Map<string, Set<string>>();
   for (const e of bases.flatMap((base) => fixedEntries(base))) {
     const key = normalizeFixedHeading(e.title);
-    const bodies = baseBodies.get(key) ?? new Set<string>();
-    bodies.add(e.body);
-    baseBodies.set(key, bodies);
+    const known = bodies.get(key) ?? new Set<string>();
+    known.add(e.body);
+    bodies.set(key, known);
   }
-  // Built lazily, only once a Fixed record's body actually changed: the haystack walks and
-  // reads the entire source tree (~5 MB here), and the common BUGS.md edit moves nothing to
-  // Fixed — an Open bug added, a narrative touched elsewhere — so the gate and the in-lock
-  // recheck each paid that walk for a check that never reached a symbol.
-  let haystack: string | undefined;
-  const sections = heads.map((head) => fixedSection(head));
-  const entries = sections.flatMap((section) => section.entries);
-  const records = sections.flatMap((section) => section.records);
+  return { bases, bodies };
+}
+
+/** A changed full Fixed entry's rejection, or undefined when every changed entry backs its
+ * symbols. An already-Fixed entry is skipped only when its body is unchanged: an md-only edit
+ * that rewrites an existing Fixed record's narrative must face the symbol check too (BUGS.md
+ * 2026-09-23 — the in-place narrative rewrite is how a second phantom merge evaded it). The
+ * haystack is built lazily — only once a Fixed record's body actually changed — because it
+ * walks and reads the entire source tree (~5 MB here), and the common BUGS.md edit moves
+ * nothing to Fixed: an Open bug added, a narrative touched elsewhere, so the gate and the
+ * in-lock recheck each paid that walk for a check that never reached a symbol. */
+function movedEntryReason(
+  wt: string,
+  entries: { title: string; body: string }[],
+  bodies: Map<string, Set<string>>,
+  getHaystack: () => string,
+): string | undefined {
   for (const { title: heading, body } of entries) {
-    const knownBodies = baseBodies.get(normalizeFixedHeading(heading));
+    const knownBodies = bodies.get(normalizeFixedHeading(heading));
     if (knownBodies?.has(body)) continue;
-    haystack ??= sourceHaystack(wt);
-    const missing = unbackedSymbols(wt, fixSymbols(body), haystack);
+    const missing = unbackedSymbols(wt, fixSymbols(body), getHaystack());
     if (missing.length === 0) continue;
     const names = missingSymbolNames(missing);
     // The rejection says which shape it saw: the old message called every rewrite of an
@@ -397,10 +397,21 @@ export async function falseFixReason(
           `paragraph now names code that exists nowhere on this tree: ${names} — include that ` +
           `code in the same commit, or leave the entry's text as it was`;
   }
-  // One-line records are compressions of entries the base already holds as Fixed, and history
-  // keeps a renamed symbol's old name, so a record the diff adds or edits may carry forward any
-  // name the base's Fixed section already records. A name it introduces must exist on the tree:
-  // a bug moved straight from Open into a one-line record faces the same check as a full entry.
+  return undefined;
+}
+
+/** An added or edited one-line Fixed record's rejection, or undefined when each record either
+ * reproduces a base line or carries only names the base already holds. One-line records are
+ * compressions of entries the base already holds as Fixed, and history keeps a renamed symbol's
+ * old name, so a record the diff adds or edits may carry forward any name the base's Fixed
+ * section already records. A name it introduces must exist on the tree: a bug moved straight
+ * from Open into a one-line record faces the same check as a full entry. */
+function addedRecordReason(
+  wt: string,
+  records: string[],
+  bases: string[],
+  getHaystack: () => string,
+): string | undefined {
   const baseLines = bases.flatMap((base) => sectionLines(base, "Fixed")).map((line) => line.trim());
   const seen = new Set(baseLines);
   const baseText = baseLines.join("\n");
@@ -408,8 +419,7 @@ export async function falseFixReason(
     if (seen.has(record)) continue;
     const introduced = fixSymbols(record).filter((symbol) => !baseText.includes(symbol));
     if (introduced.length === 0) continue;
-    haystack ??= sourceHaystack(wt);
-    const missing = unbackedSymbols(wt, introduced, haystack);
+    const missing = unbackedSymbols(wt, introduced, getHaystack());
     if (missing.length === 0) continue;
     return (
       `md-only BUGS.md edit adds the one-line Fixed record "${truncate(record, RECORD_QUOTE_MAX)}", ` +
@@ -419,4 +429,32 @@ export async function falseFixReason(
     );
   }
   return undefined;
+}
+
+/** The first false-fix claim in an md-only diff that touches BUGS.md, or undefined when the
+ * diff backs its Fixed transitions (or makes none). `files` is the ahead-of-main path list
+ * of the diff merging on `mainBranch`; the worktree `wt` holds the tree being merged. */
+export async function falseFixReason(
+  wt: string,
+  mainBranch: string,
+  files: string[],
+): Promise<string | undefined> {
+  // Fixed entries live in BUGS.md's own section and in its archive, BUGS-FIXED.md
+  // (plans/backlog-archive.md): tumwater moves a fixed bug there right before the commit, so a
+  // fix claim reaches the gate as an archive edit, and an archived entry whose body is intact
+  // is no claim at all. Both sides of the comparison read both files.
+  if (!files.includes("BUGS.md") && !files.includes(BUGS_ARCHIVE)) return undefined;
+  const heads = readFixedHeads(wt);
+  if (!heads.some((head) => head.includes("## Fixed"))) return undefined;
+  const { bases, bodies } = await baseFixedBodies(wt, mainBranch);
+  const sections = heads.map((head) => fixedSection(head));
+  const entries = sections.flatMap((section) => section.entries);
+  const records = sections.flatMap((section) => section.records);
+  // Built lazily, shared by both checks, only once a Fixed record's body actually changed: the
+  // haystack walks and reads the entire source tree (~5 MB here), and the common BUGS.md edit
+  // moves nothing to Fixed — an Open bug added, a narrative touched elsewhere — so the gate and
+  // the in-lock recheck each paid that walk for a check that never reached a symbol.
+  let haystack: string | undefined;
+  const getHaystack = () => (haystack ??= sourceHaystack(wt));
+  return movedEntryReason(wt, entries, bodies, getHaystack) ?? addedRecordReason(wt, records, bases, getHaystack);
 }
