@@ -29,6 +29,12 @@ import { errnoError } from "./helpers/fs-faults.js";
 // probe only observes the victim fixture's marks.
 import { armVictimKill, exitWithOwnerEnv, spawnMarkedVictim, spawnVictim } from "./fixtures/victim-fixture.js";
 
+// A stable non-existent path is not needed — rootToken hashes the realpath of a scratch dir —
+// but the fixture must exist for the mint to resolve it. BUGS.md 2026-10-28 part 1/3 pins the
+// three-segment mark shape on a real scratch root.
+const rootTokenFixture = path.join(tmpdir(), "root-token-fixture");
+fs.mkdirSync(rootTokenFixture, { recursive: true });
+
 test("runMarkersInEnviron and runMarkersInPs extract a mark's comma-separated values, skipping the reader's own pid", () => {
   assert.deepEqual(runMarkersInEnviron(["PATH=/bin", "TUMWATER_RUN=100-aa,222-bb", ""]), ["100-aa", "222-bb"]);
   assert.deepEqual(runMarkersInEnviron(["TUMWATER_RUN=100-aa"]), ["100-aa"]);
@@ -48,6 +54,11 @@ test("runMarkerEnv appends to an inherited mark and makes fresh markers unique",
   const marker = makeRunMarker(4242);
   assert.match(marker, /^4242-[0-9a-f]{12}$/, "the mark names its harness pid plus random hex");
   assert.notEqual(makeRunMarker(4242), marker, "two runs of one harness never share a mark");
+  // The team-root token rides as a third segment when a root is given, and the two-segment
+  // form stays byte-for-byte when it is not (the pid and hex segments never move).
+  const rooted = makeRunMarker(4242, rootTokenFixture);
+  assert.match(rooted, /^4242-[0-9a-f]{12}-[0-9a-f]{8}$/, "a rooted run names its repo in the mark");
+  assert.equal(rooted.endsWith(rootToken(rootTokenFixture)), true, "the third segment is the root's token");
   const outer = "111-aaaaaaaaaaaa";
   const env = runMarkerEnv({ PATH: "/bin", TUMWATER_RUN: outer }, marker);
   assert.equal(env.TUMWATER_RUN, `${outer},${marker}`, "a nested run keeps the outer mark");

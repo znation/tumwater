@@ -147,6 +147,7 @@ test("checkOrphans still reports a dead-marked scratch-dir orphan whose run mark
   assert.match(r.detail, /^1 orphaned process \(PPID 1\): pid 3600 /, "a dead mark token-matching this root is still reported");
 });
 
+
 test("checkOrphans leaves a marked straggler whose harness is alive — that run's sweep will reap it", async () => {
   const root = readyRepo();
   const live = process.pid; // This test process is alive by definition.
