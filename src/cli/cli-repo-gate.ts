@@ -1,12 +1,12 @@
 /** The repo-readiness gate every repo-bound command runs before its body reads state: fail
- * fast on the first unmet precondition (startup-gate.ts's repoNotReady — the repo half of
+ * fast on the first unmet precondition (startup-gates.ts's repoNotReady — the repo half of
  * `tumwater start`'s startup gate). One named home beside the argument gate (cli-flag-specs.ts):
  * the dispatcher (cli.ts), the marker commands (cli-marker-commands.ts), the write commands
  * (backlog/backlog-cli.ts), and the read-only command bodies (cli-query-commands.ts) all
  * import it, so a command layer never reaches into a sibling command module for a gate. */
 import { fail } from "./cli-output.js";
 import { teamWorkspaceMessage } from "../gates/readiness.js";
-import { repoNotReady } from "../gates/startup-gate.js";
+import { repoNotReady } from "../gates/startup-gates.js";
 import { owningTeamRoot } from "../paths.js";
 
 /** Fail (exit 1) on the first unmet repo precondition, naming the fix; return once the repo is

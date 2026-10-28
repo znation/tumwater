@@ -123,7 +123,7 @@ export interface RedeployDeps {
   /** Move `mainHead`'s staged build into place as the live dist/. Throws on failure. */
   swap(mainHead: string): void;
   /** Would a new generation pass `tumwater start`'s startup gate in this repo right now? The
-   * problem it would exit on, or null when it would boot — production asks startup-gate.ts's
+   * problem it would exit on, or null when it would boot — production asks startup-gates.ts's
    * runStartupProblem, the same function the child's own cmdStart runs (BUGS.md 2026-09-23). */
   bootProblem(): Promise<string | null>;
   /** Does `buildSha` — the RUNNING build's own commit — carry a red baseline verdict? The

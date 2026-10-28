@@ -35,7 +35,7 @@ import { redeployTarget, watchVerifiesMain } from "../baseline/main-baseline.js"
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import type { RetentionPruner } from "./retention.js";
-import type { newOpencodeCatalogRefresh } from "../gates/startup-gate.js";
+import type { newOpencodeCatalogRefresh } from "../gates/startup-gates.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { p75RunDurationMs } from "../run/run-timing.js";
 import { pollTeamGates, type TeamGateStates } from "../gates/gate-polls.js";

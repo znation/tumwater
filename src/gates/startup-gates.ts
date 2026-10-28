@@ -254,7 +254,7 @@ export function opencodeProviders(config: TumwaterConfig): string[] {
 }
 
 /** Every agent backend an enabled seam resolves to — the distinct agents of the one
- * seamsInUse list (startup-gate's consumer of it), so a claude or pi clause that exists only
+ * seamsInUse list (startup-gates's consumer of it), so a claude or pi clause that exists only
  * as a fallback, the resolver, or the director is checked exactly like a primary seam.
  * One list the startup gate and doctor's binary check share, so a route the harness would
  * spawn is checked on both surfaces. */

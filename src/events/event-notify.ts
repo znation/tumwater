@@ -12,8 +12,8 @@ import { childEnv } from "../process/process.js";
  *
  * Scope, stated plainly: the notifier subscribes via subscribeEvents (src/events/events.ts), which
  * only sees events THIS process logs. Every allowlisted type but `supervisor_exit` is logged by
- * the orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts,
- * role-cap-gates.ts and disk-gate.ts, src/baseline/main-red.ts, src/team/team-polls.ts,
+ * the orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gates.ts,
+ * role-cap-gates.ts and disk-gates.ts, src/baseline/main-red.ts, src/team/team-polls.ts,
  * merge-slot.ts, merge-questions.ts,
  * src/redeploy/redeployer.ts). `supervisor_exit` is logged by the supervisor after the
  * orchestrator is gone, so src/cli/cli-start.ts pages it directly with notifyTeamDown; events

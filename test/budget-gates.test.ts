@@ -337,7 +337,7 @@ test("an unseeded claude fallback cannot engage — the startup seed is what fre
   // fallback-only claude, no claude-account.json existed, seamFree judged the claude pair
   // priced, and the gate refused `fallback: claude/...` at the cap unless a test (or operator)
   // wrote the file by hand. The startup gate now runs seedClaudeAccount for the fallback seam
-  // (test/startup-gate.test.ts), so a subscription claude fallback reads free — the sibling
+  // (test/startup-gates.test.ts), so a subscription claude fallback reads free — the sibling
   // test below — without any hand-written file.
   const root = tmpdir("budget-gates-");
   const models = writeModelsFile(root, MODELS_JSON);

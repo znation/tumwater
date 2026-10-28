@@ -14,7 +14,7 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { RoleRunner } from "../src/runner/runner.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { newTeamGateStates, pollTeamGates } from "../src/gates/gate-polls.js";
-import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
+import { BYTES_PER_GB } from "../src/gates/disk-gates.js";
 import { heldProviders } from "../src/team/team-hold.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeAccount } from "../src/agent/subscription-account.js";

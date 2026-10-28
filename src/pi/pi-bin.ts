@@ -7,7 +7,7 @@ import { envPath, findOnPath, isExecutableFile } from "../files/files.js";
  * backends' defaults (plans/agent-backends.md "Config"; plans/portability.md §5/7), the
  * executability rule the preflight askers share, and the missing-binary wording they quote.
  * The spawn (src/agent/agent-spawn.ts) resolves through each backend's resolveBin; the startup
- * gate (gates/startup-gate.ts) walks every enabled seam's backend through the same resolution and
+ * gate (gates/startup-gates.ts) walks every enabled seam's backend through the same resolution and
  * executability rule, and doctor (doctor/doctor-checks.ts) asks them for every backend in use
  * (backendsInUse, the startup gate's rule). Each surface quotes this module's wording, so the
  * executability verdict and the pi text cannot drift between them. Split out of

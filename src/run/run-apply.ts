@@ -59,7 +59,7 @@ export function errorStreakAtWarn(s: Pick<RunnerState, "consecutiveErrors">): bo
   return (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN;
 }
 
-/** Consecutive failed runs after which the error-streak circuit breaker (src/gates/streak-gate.ts)
+/** Consecutive failed runs after which the error-streak circuit breaker (src/gates/streak-gates.ts)
  * auto-pauses the role through the per-role pause marker — the same act-on-it escalation the
  * budget gate and the pause gates perform, applied to a role failing on its own cause. Ten,
  * not the warn bar: at 3 the failure is diagnosed but possibly transient, and by run 4 the
@@ -346,7 +346,7 @@ export function applyMergeOutcome(
     // leave the streak unchanged and keep the fast minimum-interval retry the queued run
     // scheduled. This merge outcome is the accumulation point (the authoring run ends
     // `queued`, which no longer resets the streak, see applyRunOutcome) — the same field the
-    // warn, the breaker (src/gates/streak-gate.ts), and the error-storm observation
+    // warn, the breaker (src/gates/streak-gates.ts), and the error-storm observation
     // (src/team/team-polls.ts) already read. No new machinery, no new constants: the warn
     // bar and the breaker bar are ERROR_STREAK_WARN and ERROR_STREAK_BREAKER themselves.
     if (s.revision === undefined) {

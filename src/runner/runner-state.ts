@@ -128,7 +128,7 @@ export interface RunnerState {
    * `queued`, which preserves the streak, and applyMergeOutcome's rejected branch is the
    * accumulation point; a merged change resets it. Reset by any other completed result. */
   consecutiveErrors?: number;
-  /** The error-streak breaker's excused streak level for this role (src/gates/streak-gate.ts):
+  /** The error-streak breaker's excused streak level for this role (src/gates/streak-gates.ts):
    * the streak already accounted for at its last trip or last ack-while-paused, persisted so a
    * harness restart keeps the grace an operator resume (or a standing frozen streak) relies on
    * instead of re-pausing the role on the first poll (BUGS.md 2026-10-23: a resume was undone

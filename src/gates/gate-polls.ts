@@ -6,9 +6,9 @@ import {
   pollBudgetGate,
   type BudgetGateState,
 } from "./budget-gates.js";
-import { backendsInUse } from "./startup-gate.js";
+import { backendsInUse } from "./startup-gates.js";
 import { newPauseGateState, pollPauseGates, type PauseGateState } from "./pause-gates.js";
-import { newStreakGateState, pollStreakGate, type StreakGateState } from "./streak-gate.js";
+import { newStreakGateState, pollStreakGate, type StreakGateState } from "./streak-gates.js";
 import {
   newRoleCapGateState,
   pollRoleCapGate,
@@ -37,7 +37,7 @@ import {
   pollDiskGate,
   sampleFreeBytes,
   type DiskGateState,
-} from "./disk-gate.js";
+} from "./disk-gates.js";
 import { pollErrorStorm, pollFailureSpread, pollTeamHold, pollClaudeWindowWarning, pollClaudeWindowReserve, windowObservation, type HoldInputs } from "../team/team-polls.js";
 import { readAccount } from "../agent/subscription-account.js";
 import type { ReclaimController } from "../team/team-reclaim.js";
@@ -56,8 +56,8 @@ import type { TierFallbackMap } from "../config/config-fallbacks.js";
  * gate, the operator and per-role pause gates, quiet hours, the disk floor's hold, the team-wide
  * failure hold, and the two observational storm alarms. Each gate's reads, edge-triggered events,
  * and cross-poll bookkeeping live in its own module (src/gates/budget-gates.ts,
- * src/gates/pause-gates.ts, src/gates/streak-gate.ts, src/gates/role-cap-gates.ts,
- * src/scheduling/quiet-hours.ts, src/gates/disk-gate.ts, and the team-health trio in
+ * src/gates/pause-gates.ts, src/gates/streak-gates.ts, src/gates/role-cap-gates.ts,
+ * src/scheduling/quiet-hours.ts, src/gates/disk-gates.ts, and the team-health trio in
  * src/team/team-polls.ts); this owns the wiring half — one poll advances every gate's state in
  * place. Split out of orchestrator.ts so the poll loop reads as phases (reload → requests → gates →
  * redeploy → merges → schedule → start) and the gate family's wiring sits in one place, the same
@@ -336,7 +336,7 @@ function pollHoldGates(states: TeamGateStates, ctx: TeamGatePollCtx) {
 
   const { userPaused, pausedRoles } = pollPauseGates(root, states.pause);
 
-  // The error-streak circuit breaker (src/gates/streak-gate.ts): a role past ERROR_STREAK_BREAKER
+  // The error-streak circuit breaker (src/gates/streak-gates.ts): a role past ERROR_STREAK_BREAKER
   // consecutive failed runs is paused through the same per-role marker the operator's
   // `pause --role` writes — act-on-it where the warn bar and the storm alarms only talk. The
   // director is not exempt; a failing director cannot process prompts anyway. Roles it just

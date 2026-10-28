@@ -283,7 +283,7 @@ test("formatEvent renders the per-role pause and resume events with the role nam
   assert.match(resumed, /tumwater\s+role docs resumed — it runs again$/, `resume line: ${resumed}`);
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
 
-  // role_streak_paused (src/gates/streak-gate.ts): the breaker's pause IS the harness handling the
+  // role_streak_paused (src/gates/streak-gates.ts): the breaker's pause IS the harness handling the
   // failure — routine with an explanation, like rate_limit_hold, never a warning. It names
   // the streak depth and how to lift it.
   const streakPaused = formatEvent({

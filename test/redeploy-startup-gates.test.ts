@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { NOT_INITIALIZED_MESSAGE } from "../src/gates/readiness.js";
-import { runStartupProblem } from "../src/gates/startup-gate.js";
+import { runStartupProblem } from "../src/gates/startup-gates.js";
 import { BUILD, HEAD_B, HEAD_C, IDLE, fakeDeps, harness, settle } from "./fixtures/redeploy-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";

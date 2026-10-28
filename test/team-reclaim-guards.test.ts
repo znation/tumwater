@@ -8,7 +8,7 @@ import path from "node:path";
 
 import { reclaimPass, reclaimWorktree } from "../src/team/team-reclaim.js";
 import { beginWorktreeUse } from "../src/git/worktree-use.js";
-import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
+import { BYTES_PER_GB } from "../src/gates/disk-gates.js";
 import { readEvents } from "../src/events/event-read.js";
 import { makeRepo, sh, worktreeAt } from "./fixtures/repo-fixtures.js";
 

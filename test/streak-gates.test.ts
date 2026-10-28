@@ -1,4 +1,4 @@
-/** pollStreakGate (src/gates/streak-gate.ts): the error-streak circuit breaker's trip rule and ack
+/** pollStreakGate (src/gates/streak-gates.ts): the error-streak circuit breaker's trip rule and ack
  * bookkeeping. Exercises the real pause marker — pauseRole/resumeRole write exactly what the
  * CLI and the breaker both write — so the contract under test is producer-and-consumer
  * together, not a mock of either side. */
@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { newStreakGateState, pollStreakGate } from "../src/gates/streak-gate.js";
+import { newStreakGateState, pollStreakGate } from "../src/gates/streak-gates.js";
 import {
   applyMergeOutcome,
   applyRunOutcome,
@@ -31,7 +31,7 @@ function streakEvents(root: string) {
 }
 
 test("pollStreakGate: streak at the breaker trips — marker written, one event with role, streak, lastError", () => {
-  const root = tmpdir("streak-gate-");
+  const root = tmpdir("streak-gates-");
   const state = newStreakGateState();
   const tripped = pollStreakGate(
     root,
@@ -50,7 +50,7 @@ test("pollStreakGate: streak at the breaker trips — marker written, one event 
 });
 
 test("pollStreakGate: repeated polls while paused log nothing more, even as the streak would climb", () => {
-  const root = tmpdir("streak-gate-");
+  const root = tmpdir("streak-gates-");
   const state = newStreakGateState();
   pollStreakGate(root, state, [runner("docs", 10, "boom")], new Set());
   // The role is now in the marker: further polls ack instead of tripping, whatever the
@@ -69,7 +69,7 @@ test("pollStreakGate: repeated polls while paused log nothing more, even as the 
 });
 
 test("pollStreakGate: streak of 9 does not trip; reset to 0 then a fresh climb to 10 trips", () => {
-  const root = tmpdir("streak-gate-");
+  const root = tmpdir("streak-gates-");
   const state = newStreakGateState();
   assert.deepEqual(pollStreakGate(root, state, [runner("docs", 9, "boom")], new Set()), []);
   assert.deepEqual(pausedRoles(root), []);
@@ -82,7 +82,7 @@ test("pollStreakGate: streak of 9 does not trip; reset to 0 then a fresh climb t
 });
 
 test("pollStreakGate: after a trip at S, a resume does not re-trip until S + 10", () => {
-  const root = tmpdir("streak-gate-");
+  const root = tmpdir("streak-gates-");
   const state = newStreakGateState();
   pollStreakGate(root, state, [runner("docs", 10, "boom")], new Set());
   resumeRole(root, "docs");
@@ -100,7 +100,7 @@ test("pollStreakGate: after a trip at S, a resume does not re-trip until S + 10"
 });
 
 test("pollStreakGate: an operator-paused failing role is acked while paused and does not re-trip on resume", () => {
-  const root = tmpdir("streak-gate-");
+  const root = tmpdir("streak-gates-");
   const state = newStreakGateState();
   pauseRole(root, "docs"); // the operator paused it mid-failure, streak already deep
   const paused = new Set(pausedRoles(root));
@@ -115,7 +115,7 @@ test("pollStreakGate: an operator-paused failing role is acked while paused and 
 });
 
 test("pollStreakGate: a restart mid-pause re-acks silently; the persisted ack survives it", () => {
-  const root = tmpdir("streak-gate-");
+  const root = tmpdir("streak-gates-");
   // The breaker paused the role, then the harness restarted: fresh gate state, standing marker.
   const state = newStreakGateState();
   const s = freshRunnerState("docs");
@@ -134,7 +134,7 @@ test("pollStreakGate: a resume survives a restart — the persisted ack keeps th
   // lived only in the in-memory gate state and the frozen streak never ran down while the role
   // was idle. The ack now persists in RunnerState.streakAcked, so a fresh gate seeded from the
   // reloaded state must NOT re-trip the resumed role.
-  const root = tmpdir("streak-gate-");
+  const root = tmpdir("streak-gates-");
   const state = newStreakGateState();
   const s = freshRunnerState("docs");
   s.consecutiveErrors = 14;
@@ -158,7 +158,7 @@ test("pollStreakGate: a failed pause leaves no durable ack behind it", () => {
   // confirmed, so a pauseRole that came back false/unchanged left a permanent excused streak on
   // a role the breaker never actually paused — silently defeating its bar. The durable write
   // must happen only once the marker records the pause.
-  const root = tmpdir("streak-gate-");
+  const root = tmpdir("streak-gates-");
   const state = newStreakGateState();
   const s = freshRunnerState("docs");
   s.consecutiveErrors = 14;
@@ -176,7 +176,7 @@ test("pollStreakGate: a failed pause leaves no durable ack behind it", () => {
 });
 
 test("pollStreakGate: the director trips like any role", () => {
-  const root = tmpdir("streak-gate-");
+  const root = tmpdir("streak-gates-");
   const state = newStreakGateState();
   assert.deepEqual(pollStreakGate(root, state, [runner("director", 10, "boom")], new Set()), [
     "director",
@@ -191,7 +191,7 @@ test("pollStreakGate: a rejection-fed streak trips the breaker through the real 
   // branch increments it — so ERROR_STREAK_BREAKER rejections must pause the role, with the
   // rejection's own text as the recorded lastError. This drives the real queued→rejected flow, not
   // a hand-set streak, so the gate cannot pass while the accumulation point leaks.
-  const root = tmpdir("streak-gate-reject-");
+  const root = tmpdir("streak-gates-reject-");
   const cfg = defaultConfig();
   const s = freshRunnerState("coverage");
   const change = { sha: "a".repeat(40), summary: "address the objections" };
@@ -221,7 +221,7 @@ test("pollStreakGate: a rejection-fed streak trips the breaker through the real 
 });
 
 test("pollStreakGate: instance 1 of a multi-instance role pauses under its own key", () => {
-  const root = tmpdir("streak-gate-");
+  const root = tmpdir("streak-gates-");
   const state = newStreakGateState();
   const key = (role: string) => (role === "feature" ? "feature-1" : role);
   const tripped = pollStreakGate(root, state, [runner("feature", ERROR_STREAK_BREAKER, "boom")], new Set(), key);

@@ -7,7 +7,7 @@
  * and nothing can get stuck"): the verdict is recomputed from the runner state every poll, no
  * marker is written, and local midnight lifts it by itself.
  *
- * Deliberate differences from the streak gate's shape (src/gates/streak-gate.ts), stated in
+ * Deliberate differences from the streak gate's shape (src/gates/streak-gates.ts), stated in
  * the plan so no implementer re-litigates them:
  * - This gate writes NOTHING to the shared per-role pause marker (src/team/team-state.ts's
  *   pauseRole). The marker is anonymous — after a restart across midnight the harness could
@@ -24,7 +24,7 @@
  * module owns the only event emission — the orchestrator's poll owns only the wiring. The
  * in-memory `prev` and `warned` sets are the whole cross-poll memory: a restart with a
  * still-over-cap role re-logs one `role_cap_paused` on the first poll, and a role already past
- * 80% re-logs one `role_cap_warning` (the durable-cause honest report the streak-gate doc
+ * 80% re-logs one `role_cap_warning` (the durable-cause honest report the streak-gates doc
  * accepts). */
 
 import type { RunnerState } from "../runner/runner-state.js";

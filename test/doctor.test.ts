@@ -15,7 +15,7 @@ import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { pathPrepend } from "./fakes/fake-commands.js";
 import { cli, cliWithEnv, CLI_COMPLETION_TIMEOUT_MS } from "./helpers/cli-harness.js";
 import { diskHermeticRepo, fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./fixtures/doctor-fixtures.js";
-import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
+import { BYTES_PER_GB } from "../src/gates/disk-gates.js";
 
 // Composition and CLI-wiring coverage for src/doctor/doctor.ts: runDoctor's fixed check order,
 // header,

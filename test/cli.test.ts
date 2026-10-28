@@ -237,7 +237,7 @@ test("run --branch fails at startup when the branch does not exist, listing what
   await cli(repo, "init", "Ready repo.");
   // fake pi on PATH so the run preflight passes and the branch validation itself is what
   // fails — in the supervisor, before any child spawns: the branch is part of the one startup
-  // gate (startup-gate.ts) every generation, and the supervisor itself, runs.
+  // gate (startup-gates.ts) every generation, and the supervisor itself, runs.
   await withPi("# never reached — the unknown branch fails first\n", async () => {
     const r = await cli(repo, "run", "--branch", "ghost");
     assert.equal(r.code, 1);

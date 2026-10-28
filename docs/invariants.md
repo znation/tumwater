@@ -34,7 +34,7 @@ other.
 `backendsInUse`, so doctor checks exactly the binaries the startup gate would require — neither a
 binary the team never runs nor a missing one it does.
 
-**Binds.** `src/gates/startup-gate.ts` (`backendsInUse`), `src/doctor/doctor-checks.ts`
+**Binds.** `src/gates/startup-gates.ts` (`backendsInUse`), `src/doctor/doctor-checks.ts`
 (`checkBackendBinary`), `src/pi/pi-bin.ts` (`resolveBackendBin`).
 
 **Pinned by.** `test/doctor-checks.test.ts` — "checkBackendBinary checks the enabled seams'
@@ -3400,7 +3400,7 @@ exactly two minute digits, and quietWindowEnd reads the end back as written".
 
 ## Disk hold: below the floor the team starts no new work, the hold lifts only clear of a 5 GB band, and an unmeasurable disk never holds
 
-`src/gates/disk-gate.ts` owns the disk floor's hold. The orchestrator polls it once per cycle
+`src/gates/disk-gates.ts` owns the disk floor's hold. The orchestrator polls it once per cycle
 through `pollTeamGates` in `src/gates/gate-polls.ts`.
 
 ### INV-BD1: free space is `bavail * bsize` on the worktrees volume, and null when statfs throws
@@ -3408,9 +3408,9 @@ through `pollTeamGates` in `src/gates/gate-polls.ts`.
 **Guarantee.** Free space is `bavail * bsize` measured on the worktrees dir once it exists, else on
 the root. It is null when statfs throws.
 
-**Binds.** `src/gates/disk-gate.ts` (`diskVolumePath`, `sampleFreeBytes`).
+**Binds.** `src/gates/disk-gates.ts` (`diskVolumePath`, `sampleFreeBytes`).
 
-**Pinned by.** `test/disk-gate.test.ts` — "sampleFreeBytes measures the worktrees volume once it
+**Pinned by.** `test/disk-gates.test.ts` — "sampleFreeBytes measures the worktrees volume once it
 exists, else the root", "sampleFreeBytes returns null when statfs throws" and "pollDiskGate:
 measured path detail is the worktrees dir when it exists".
 
@@ -3421,15 +3421,15 @@ reclaim pass is running. It lifts at `diskHoldGB + DISK_HOLD_HYSTERESIS_GB` or w
 edited to 0. Each crossing logs exactly one `disk_low` (with `freeGB`, `holdGB`) or `disk_ok` (with
 `freeGB`).
 
-**Binds.** `src/gates/disk-gate.ts` (`pollDiskGate`, `newDiskGateState`, `BYTES_PER_GB`,
+**Binds.** `src/gates/disk-gates.ts` (`pollDiskGate`, `newDiskGateState`, `BYTES_PER_GB`,
 `DISK_HOLD_HYSTERESIS_GB`).
 
-**Pinned by.** `test/disk-gate.test.ts` — "pollDiskGate holds below the floor and one disk_low logs
+**Pinned by.** `test/disk-gates.test.ts` — "pollDiskGate holds below the floor and one disk_low logs
 per crossing", "pollDiskGate hysteresis: stays held until floor + 5, lifts with one disk_ok",
 "pollDiskGate: diskHoldGB 0 disables the hold at any free space", "pollDiskGate: a live edit to
 diskHoldGB 0 lifts an active hold on the next poll", "pollDiskGate: waitForReclaim defers entering
 the hold until the pass settles" and "pollDiskGate: an unwritable events feed does not throw out of
-the poll"; `test/disk-gate-edges.test.ts` — "pollDiskGate: the floor itself does not hold, a null
+the poll"; `test/disk-gates-edges.test.ts` — "pollDiskGate: the floor itself does not hold, a null
 sample lifts an active hold, and the unmeasurable warning fires once per process";
 `test/gate-polls.test.ts` — "pollTeamGates: a low disk holds new work; recovery and a live floor
 edit lift it" and "pollTeamGates publishes the measured disk state for observers".
@@ -3439,10 +3439,10 @@ edit lift it" and "pollTeamGates publishes the measured disk state for observers
 **Guarantee.** A null sample never holds and lifts an active hold. It logs one `warning` per
 process, however the samples alternate with measurable ones.
 
-**Binds.** `src/gates/disk-gate.ts` (`pollDiskGate`).
+**Binds.** `src/gates/disk-gates.ts` (`pollDiskGate`).
 
-**Pinned by.** `test/disk-gate.test.ts` — "pollDiskGate: a null sample never holds and warns once
-per process"; `test/disk-gate-edges.test.ts` — "pollDiskGate: the floor itself does not hold, a
+**Pinned by.** `test/disk-gates.test.ts` — "pollDiskGate: a null sample never holds and warns once
+per process"; `test/disk-gates-edges.test.ts` — "pollDiskGate: the floor itself does not hold, a
 null sample lifts an active hold, and the unmeasurable warning fires once per process".
 
 ## Backlog index: every role's prompt lists the actionable entries and the newest closed ones by line range, marked with the same holds the claim gate reads
@@ -4358,10 +4358,10 @@ model instead of throwing", "a failed catalog write warns and still returns the 
 **Guarantee.** `seedClaudeAccount` returns null instead of throwing when the account write fails, so
 `runStartupCheck` keeps its never-throws contract on a claude team.
 
-**Binds.** `src/agent/claude/claude-account.ts` (`seedClaudeAccount`); `src/gates/startup-gate.ts`
+**Binds.** `src/agent/claude/claude-account.ts` (`seedClaudeAccount`); `src/gates/startup-gates.ts`
 (`runStartupCheck`).
 
-**Pinned by.** `test/claude-account.test.ts` — "seedClaudeAccount: a failed account write returns null instead of throwing"; `test/startup-gate.test.ts` — "an unwritable claude account file does not fail the startup gate".
+**Pinned by.** `test/claude-account.test.ts` — "seedClaudeAccount: a failed account write returns null instead of throwing"; `test/startup-gates.test.ts` — "an unwritable claude account file does not fail the startup gate".
 
 ## Live config reload: a newly routed opencode backend gets its catalog
 
@@ -4371,7 +4371,7 @@ model instead of throwing", "a failed catalog write warns and still returns the 
 did not, starts one catalog refresh per root per process. That refresh never blocks or throws out of
 `poll()`, and a failed fetch warns through the reload's event log.
 
-**Binds.** `src/config/config-live.ts` (`newLiveConfigReload`); `src/gates/startup-gate.ts`
+**Binds.** `src/config/config-live.ts` (`newLiveConfigReload`); `src/gates/startup-gates.ts`
 (`seedOpencodeCatalog`).
 
 **Pinned by.** `test/config-live.test.ts` — "a live edit routing a seam to opencode seeds the models
@@ -4393,9 +4393,9 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 **Guarantee.** While a team runs, each poll refetches the opencode models catalog when the cache is missing or older than its 24 h trust window, only when a seam routes to opencode, and at most once per `OPENCODE_CATALOG_RETRY_MS` (the throttle starts at construction and moves on every attempt, failed or not). The poll checks the cache's age only; it never throws, and a failed fetch warns once per interval.
 
-**Binds.** `src/gates/startup-gate.ts` (`newOpencodeCatalogRefresh`); `src/agent/opencode/opencode-catalog.ts` (`opencodeCatalogStale`).
+**Binds.** `src/gates/startup-gates.ts` (`newOpencodeCatalogRefresh`); `src/agent/opencode/opencode-catalog.ts` (`opencodeCatalogStale`).
 
-**Pinned by.** `test/startup-gate.test.ts` — "newOpencodeCatalogRefresh refetches a missing or stale catalog at most once per retry interval, only while opencode is routed"; "a failing periodic catalog refresh warns once per retry interval and never throws out of poll".
+**Pinned by.** `test/startup-gates.test.ts` — "newOpencodeCatalogRefresh refetches a missing or stale catalog at most once per retry interval, only while opencode is routed"; "a failing periodic catalog refresh warns once per retry interval and never throws out of poll".
 
 ## Doctor: one failing check never takes down the report
 
@@ -4423,9 +4423,9 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 **Guarantee.** `runStartupCheck` seeds the opencode models catalog once per root per process and passes the seed a `warn` that logs through `warnEventBestEffort`. A failed fetch or a failed cache save therefore logs one warning event (stderr when the events log is unwritable), a second startup check on the same root adds none, and the check still returns no `problem`.
 
-**Binds.** `src/gates/startup-gate.ts` (`runStartupCheck`, `seedOpencodeCatalog`).
+**Binds.** `src/gates/startup-gates.ts` (`runStartupCheck`, `seedOpencodeCatalog`).
 
-**Pinned by.** `test/startup-gate.test.ts` — "the startup seed logs a warning when the catalog fetch fails or the cache cannot be saved".
+**Pinned by.** `test/startup-gates.test.ts` — "the startup seed logs a warning when the catalog fetch fails or the cache cannot be saved".
 
 ## Backlog bulk archive: a failed move leaves the checkout as it was
 

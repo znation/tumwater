@@ -32,7 +32,7 @@ import { queueCulpritHeal } from "../baseline/main-red.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import { RetentionPruner } from "./retention.js";
-import { newOpencodeCatalogRefresh } from "../gates/startup-gate.js";
+import { newOpencodeCatalogRefresh } from "../gates/startup-gates.js";
 import { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import {
   drainInFlightWork,

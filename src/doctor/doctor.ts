@@ -43,7 +43,7 @@ import {
   checkQaCoverage,
   checkStateDir,
 } from "./doctor-project-checks.js";
-import { sampleFreeBytes } from "../gates/disk-gate.js";
+import { sampleFreeBytes } from "../gates/disk-gates.js";
 import {
   checkCheckContention,
   checkLeftoverRoleBranches,

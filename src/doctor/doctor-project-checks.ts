@@ -18,7 +18,7 @@ import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBui
 import { dirEntryNames, statOrNull } from "../files/files.js";
 import { refSha } from "../git/git.js";
 import { STATE_DIR, eventsArchivePath, eventsLogPath } from "../paths.js";
-import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
+import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gates.js";
 import { DAY_MS, dayKey } from "../text/datetime.js";
 import { errorMessage } from "../text/text.js";
 import { lowerMedian } from "../collections.js";

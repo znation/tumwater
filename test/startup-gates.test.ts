@@ -12,7 +12,7 @@ import {
   teamWorkspaceMessage,
   NO_COMMITS_MESSAGE,
 } from "../src/gates/readiness.js";
-import { newOpencodeCatalogRefresh, OPENCODE_CATALOG_RETRY_MS, opencodeProviders, repoNotReady, runStartupCheck, runStartupProblem, unregisteredBackendInUse, type OpenCodeSeedOptions } from "../src/gates/startup-gate.js";
+import { newOpencodeCatalogRefresh, OPENCODE_CATALOG_RETRY_MS, opencodeProviders, repoNotReady, runStartupCheck, runStartupProblem, unregisteredBackendInUse, type OpenCodeSeedOptions } from "../src/gates/startup-gates.js";
 import { registerAgentBackend, type AgentBackend } from "../src/agent/agent-backend.js";
 import { gitInit, makeRepo, sh, teamWorkspace, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
@@ -28,7 +28,7 @@ import { writeOpencodeCache } from "./fixtures/models-fixtures.js";
 import { readOpencodeCache, type CatalogFetch } from "../src/agent/opencode/opencode-catalog.js";
 import { readJson } from "./helpers/json-read.js";
 
-// `tumwater start`'s startup gate (src/gates/startup-gate.ts) in-process: the one answer cmdStart
+// `tumwater start`'s startup gate (src/gates/startup-gates.ts) in-process: the one answer cmdStart
 // fails fast on, the self-redeploy refuses a swap on, and the supervisor names a dead generation
 // with (BUGS.md 2026-09-23). test/cli.test.ts pins the same failures through the CLI.
 
@@ -91,7 +91,7 @@ test("each unmet repo precondition names its own fix: not a repo, no commits, no
 
   // With git absent from PATH entirely the verdict is the missing binary: the failed probe
   // must not be misread as "not a git repository", which would point at the wrong fix — the
-  // exact confusion the binary check exists to prevent (the comment on it in startup-gate.ts).
+  // exact confusion the binary check exists to prevent (the comment on it in startup-gates.ts).
   const restorePath = pathReplace("");
   try {
     assert.equal(await repoNotReady(unborn), GIT_MISSING_MESSAGE);
@@ -243,7 +243,7 @@ test("a named branch in a repo with no local branches reports an empty branch li
 // The no-registered-adapter guard (part 2/7): a backend an enabled seam routes to that this
 // build has no registered adapter for must refuse startup, naming the backend — a run would
 // otherwise fall through to pi with a model id pi cannot serve. The registry is read through
-// src/agent/agent-run.ts (startup-gate.ts imports it), which registers the built-in pi,
+// src/agent/agent-run.ts (startup-gates.ts imports it), which registers the built-in pi,
 // claude and opencode adapters; a fake under `opencode` stands in for a future adapter.
 // (Part 5/7 registered opencode, so the no-adapter guard now has no reachable trigger; this
 // test verifies opencode's new registered behavior instead — a missing configured binary

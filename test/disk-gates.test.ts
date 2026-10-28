@@ -1,4 +1,4 @@
-/** sampleFreeBytes / pollDiskGate (src/gates/disk-gate.ts): the disk floor's measurement, the
+/** sampleFreeBytes / pollDiskGate (src/gates/disk-gates.ts): the disk floor's measurement, the
  * hold's hysteresis, and the edge-triggered disk_low/disk_ok events the orchestrator's poll loop
  * depends on. The gate's live wiring — role runs, the director, verifies and merges blocked while
  * held, a live diskHoldGB edit lifting it — is pinned in test/gate-polls.test.ts (the sampler is
@@ -17,14 +17,14 @@ import {
   pollDiskGate,
   sampleFreeBytes,
   type StatfsLike,
-} from "../src/gates/disk-gate.js";
+} from "../src/gates/disk-gates.js";
 import { worktreesDir } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventTypes, warningEvents } from "./fixtures/log-fixtures.js";
 
 test("sampleFreeBytes measures the worktrees volume once it exists, else the root", () => {
-  const root = tmpdir("disk-gate-sample-");
+  const root = tmpdir("disk-gates-sample-");
   const seen: string[] = [];
   const probe: StatfsLike = (p) => {
     seen.push(String(p));
@@ -41,7 +41,7 @@ test("sampleFreeBytes measures the worktrees volume once it exists, else the roo
 });
 
 test("sampleFreeBytes returns null when statfs throws", () => {
-  const root = tmpdir("disk-gate-throw-");
+  const root = tmpdir("disk-gates-throw-");
   assert.equal(
     sampleFreeBytes(root, () => {
       throw new Error("ENOSYS");
@@ -51,7 +51,7 @@ test("sampleFreeBytes returns null when statfs throws", () => {
 });
 
 test("pollDiskGate holds below the floor and one disk_low logs per crossing", () => {
-  const root = tmpdir("disk-gate-hold-");
+  const root = tmpdir("disk-gates-hold-");
   const state = newDiskGateState();
   // 9 GB free against a 10 GB floor: held, one event.
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state), true);
@@ -65,7 +65,7 @@ test("pollDiskGate holds below the floor and one disk_low logs per crossing", ()
 });
 
 test("pollDiskGate hysteresis: stays held until floor + 5, lifts with one disk_ok", () => {
-  const root = tmpdir("disk-gate-hysteresis-");
+  const root = tmpdir("disk-gates-hysteresis-");
   const state = newDiskGateState();
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state), true);
   // Inside the band below floor + DISK_HOLD_HYSTERESIS_GB: the hold stands.
@@ -78,7 +78,7 @@ test("pollDiskGate hysteresis: stays held until floor + 5, lifts with one disk_o
 });
 
 test("pollDiskGate: diskHoldGB 0 disables the hold at any free space", () => {
-  const root = tmpdir("disk-gate-off-");
+  const root = tmpdir("disk-gates-off-");
   const state = newDiskGateState();
   assert.equal(pollDiskGate(root, 1 * BYTES_PER_GB, 0, state), false);
   assert.equal(pollDiskGate(root, 0, 0, state), false);
@@ -88,7 +88,7 @@ test("pollDiskGate: diskHoldGB 0 disables the hold at any free space", () => {
 test("pollDiskGate: a live edit to diskHoldGB 0 lifts an active hold on the next poll", () => {
   // The prevHeld===true branch: 0 must win over the hysteresis, or a team sitting inside
   // the old band would stay held after the operator disabled the hold.
-  const root = tmpdir("disk-gate-off-live-");
+  const root = tmpdir("disk-gates-off-live-");
   const state = newDiskGateState();
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state), true);
   assert.equal(pollDiskGate(root, 3 * BYTES_PER_GB, 0, state), false);
@@ -97,7 +97,7 @@ test("pollDiskGate: a live edit to diskHoldGB 0 lifts an active hold on the next
 });
 
 test("pollDiskGate: a null sample never holds and warns once per process", () => {
-  const root = tmpdir("disk-gate-null-");
+  const root = tmpdir("disk-gates-null-");
   const state = newDiskGateState();
   assert.equal(pollDiskGate(root, null, 10, state), false);
   assert.equal(pollDiskGate(root, null, 10, state), false);
@@ -114,7 +114,7 @@ test("pollDiskGate: a null sample never holds and warns once per process", () =>
 });
 
 test("pollDiskGate: measured path detail is the worktrees dir when it exists", () => {
-  const root = tmpdir("disk-gate-path-");
+  const root = tmpdir("disk-gates-path-");
   fs.mkdirSync(worktreesDir(root), { recursive: true });
   assert.equal(diskVolumePath(root), path.join(root, ".tumwater", "worktrees"));
 });
@@ -122,7 +122,7 @@ test("pollDiskGate: measured path detail is the worktrees dir when it exists", (
 test("pollDiskGate: waitForReclaim defers entering the hold until the pass settles", () => {
   // plans/disk-floor.md part 2/4: below the floor, reclaim gets its chance first; the hold
   // enters only once no pressure pass is running.
-  const root = tmpdir("disk-gate-wait-");
+  const root = tmpdir("disk-gates-wait-");
   const state = newDiskGateState();
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state, true), false);
   assert.deepEqual(eventTypes(root), [], "no hold while reclaim still runs");
@@ -138,7 +138,7 @@ test("pollDiskGate: an unwritable events feed does not throw out of the poll", (
   // must not be the thing that kills the orchestrator's catch-less poll loop — and the hold
   // must still engage. Root replaced by a regular file: .tumwater/log cannot exist under it,
   // so every logEvent under `root` throws ENOTDIR.
-  const root = tmpdir("disk-gate-unwritable-");
+  const root = tmpdir("disk-gates-unwritable-");
   fs.rmSync(root, { recursive: true, force: true });
   fs.writeFileSync(root, "");
   const state = newDiskGateState();

@@ -81,7 +81,7 @@ export interface HarnessEvent {
     | "team_resumed" // the pause was lifted (`tumwater resume`); roles run again; carries expired: true when the pause's `until` deadline lifted it (absent on older events and on a restarted orchestrator's first crossing)
     | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new runs (carries role, and `until` (ms epoch, the set's shared deadline, timed pause only) — events logged before carry no `until`)
     | "role_resumed" // the per-role pause was lifted (`tumwater resume --role <id>`); that role runs again (carries role; expired: true when the shared `until` deadline lifted it, absent as for team_resumed)
-    | "role_streak_paused" // the error-streak circuit breaker auto-paused a role after ERROR_STREAK_BREAKER consecutive failed runs (src/gates/streak-gate.ts); carries role, streak, lastError when one is recorded
+    | "role_streak_paused" // the error-streak circuit breaker auto-paused a role after ERROR_STREAK_BREAKER consecutive failed runs (src/gates/streak-gates.ts); carries role, streak, lastError when one is recorded
     | "role_cap_warning" // the role's local-day spend crossed 80% of its maxDailyCostUsdPerRole cap while it is still running (src/gates/role-cap-gates.ts); carries role, spentUsd, capUsd
     | "role_cap_paused" // the role's local-day spend reached its maxDailyCostUsdPerRole cap (src/gates/role-cap-gates.ts); it starts no new runs until local midnight or a live edit; carries role, spentUsd, capUsd
     | "role_cap_resumed" // the cap was raised/removed or a new local day started; that role runs again (carries role)

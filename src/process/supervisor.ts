@@ -254,7 +254,7 @@ export async function superviseStart(opts: SuperviseOptions, signal: AbortSignal
 }
 
 /** The `supervisor_exit` event for a team that went down (see onTeamDown). `diagnosis` is the
- * startup gate re-asked after the death (startup-gate.ts's runStartupProblem): the likeliest
+ * startup gate re-asked after the death (startup-gates.ts's runStartupProblem): the likeliest
  * reason a generation dies right after a respawn is an environment that no longer boots, and the
  * child's own message reached only the terminal. Null when every precondition passes — the event
  * then carries no reason rather than a guess. A crash loop's reason is the guard itself. */

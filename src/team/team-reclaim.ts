@@ -6,7 +6,7 @@
  * an interrupted run's uncommitted edits survive.
  *
  * The candidate list and the guard that keeps a clean off the primary checkout live here; the
- * in-use half lives in src/git/worktree-use.ts and the hold half in src/gates/disk-gate.ts. */
+ * in-use half lives in src/git/worktree-use.ts and the hold half in src/gates/disk-gates.ts. */
 
 import path from "node:path";
 import { HOUR_MS } from "../text/datetime.js";
@@ -14,7 +14,7 @@ import { worktreesDir } from "../paths.js";
 import { git, gitTry } from "../git/git-run.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
-import { BYTES_PER_GB, sampleFreeBytes } from "../gates/disk-gate.js";
+import { BYTES_PER_GB, sampleFreeBytes } from "../gates/disk-gates.js";
 import { subdirectoryNames } from "../files/files.js";
 import {
   claimForReclaim,

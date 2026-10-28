@@ -21,7 +21,7 @@ import { defaultConfig } from "../src/config/config.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { pollBudgetGate, newBudgetGateState } from "../src/gates/budget-gates.js";
 import { pollPauseGates, newPauseGateState } from "../src/gates/pause-gates.js";
-import { pollStreakGate, newStreakGateState } from "../src/gates/streak-gate.js";
+import { pollStreakGate, newStreakGateState } from "../src/gates/streak-gates.js";
 import { pollRoleCapGate, newRoleCapGateState } from "../src/gates/role-cap-gates.js";
 import { newQuietHoursGateState, pollQuietHoursGate } from "../src/scheduling/quiet-hours.js";
 import type { TeamHold } from "../src/team/team-hold.js";

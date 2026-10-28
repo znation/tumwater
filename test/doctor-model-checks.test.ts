@@ -510,7 +510,7 @@ test("checkTierModels checks a pi fallback's provider", async () => {
 
 // The claude checks' stand-down (without a claude seam) and the binary check's agent list
 // (backendsInUse) both derive from the one seamsInUse list, so a fallback-only claude can never
-// disagree: covered above for the checks, and by the startup-gate fallback test for the seed.
+// disagree: covered above for the checks, and by the startup-gates fallback test for the seed.
 test("a claude-only fallback is reported by the doctor's binary/credential/version checks together", async () => {
   const root = readyRepo();
   writeConfig(root, { model: "local/free-model", fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] });

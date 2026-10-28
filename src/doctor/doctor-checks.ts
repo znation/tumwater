@@ -36,7 +36,7 @@ import { errorMessage } from "../text/text.js";
 import { formatBytes } from "../text/format.js";
 import { BRIEF_TEXT_MAX_CHARS, briefFile, promptBlockOf, readBrief } from "../brief/brief.js";
 import { plural } from "../text/phrases.js";
-import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gate.js";
+import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gates.js";
 import { claudeSeamsInUse, minVersionOutcome, opencodeSeamsInUse, versionFromProbe, piSeamsInUse } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
