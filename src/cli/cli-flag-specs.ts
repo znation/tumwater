@@ -552,29 +552,52 @@ export const GUI_FLAG_SPECS: FlagSpec[] = [PORT_FLAG, ALL_INTERFACES_FLAG, TOKEN
  * repeat. */
 export function rejectUnknownArgs(command: string, args: string[], specs: FlagSpec[]): void {
   if (args.length === 0) return;
-  const claim = new Map<string, FlagSpec>();
-  for (const spec of specs) for (const name of spec.names) claim.set(name, spec);
+  const claim = flagClaims(specs);
   const seen = new Set<FlagSpec>();
   const consumed = new Array<boolean>(args.length).fill(false);
   for (let i = 0; i < args.length; i++) {
     if (consumed[i]) continue;
     const arg = args[i] ?? ""; // Unreachable fallback: the loop bound guarantees a token here.
-    const spec = claim.get(arg);
-    if (spec === undefined) {
-      // An equals-form token names a real flag; refuse it with its own message before the
-      // generic "unknown argument" misreports `--role=feature` as a misspelling.
-      rejectEqualsForm(arg, specs);
-      if (specs.length === 0) fail(`tumwater ${command} takes no arguments${gotSuffix(arg)}`);
-      failUnknownArgument(command, arg, specs);
-    }
+    const spec = claim.get(arg) ?? rejectUnknownFlag(command, arg, specs);
     rejectRepeatFlag(seen.has(spec), spec.names[0]!);
     seen.add(spec);
-    if (spec.value && i === args.length - 1)
-      fail(spec.missingValue ?? `${spec.names[0]} needs a value`);
-    // The value exists (the trailing-no-value case failed above): name a malformed one now,
-    // before the ready-repo gate or any environment check can mask it.
-    if (spec.value) spec.validate?.(args[i + 1] ?? "");
-    const n = spec.value ? 2 : 1;
-    for (let j = 0; j < n && i + j < args.length; j++) consumed[i + j] = true;
+    consumeFlagOccurrence(spec, args, i, consumed);
   }
+}
+
+/** The spelling-to-spec claim map rejectUnknownArgs keyed its loop on: every accepted flag
+ * spelling maps to the spec declaring it, alias spellings (-f and --follow) sharing one spec
+ * entry. Built once up front so a token look-up is a map get, not a scan. */
+function flagClaims(specs: readonly FlagSpec[]): Map<string, FlagSpec> {
+  const claim = new Map<string, FlagSpec>();
+  for (const spec of specs) for (const name of spec.names) claim.set(name, spec);
+  return claim;
+}
+
+/** The one refusal for a token naming no known flag: an equals-form token first reroutes
+ * through rejectEqualsForm, which names a REAL flag's offending `--flag=value` spelling
+ * before the generic "unknown argument" misreports `--role=feature` as a misspelling; then
+ * a command with no flags at all fails with the takes-no-arguments wording; otherwise the
+ * shared unknown-argument wording (with its did-you-mean hint) fires. Returns never, so the
+ * caller's `claim.get(arg) ?? rejectUnknownFlag(...)` narrows `spec` to a known FlagSpec. */
+function rejectUnknownFlag(command: string, arg: string, specs: FlagSpec[]): never {
+  // An equals-form token names a real flag; refuse it with its own message before the
+  // generic "unknown argument" misreports `--role=feature` as a misspelling.
+  rejectEqualsForm(arg, specs);
+  if (specs.length === 0) fail(`tumwater ${command} takes no arguments${gotSuffix(arg)}`);
+  failUnknownArgument(command, arg, specs);
+}
+
+/** Consume one recognised flag occurrence: fail a valued flag left without its value, name a
+ * malformed value via the spec's validate call, and mark the one or two tokens (the flag and,
+ * for a valued flag, its value) as consumed so a later loop iteration skips them. The value
+ * is marked only after the value checks pass, so a failed value is never silently swallowed. */
+function consumeFlagOccurrence(spec: FlagSpec, args: string[], i: number, consumed: boolean[]): void {
+  if (spec.value && i === args.length - 1)
+    fail(spec.missingValue ?? `${spec.names[0]} needs a value`);
+  // The value exists (the trailing-no-value case failed above): name a malformed one now,
+  // before the ready-repo gate or any environment check can mask it.
+  if (spec.value) spec.validate?.(args[i + 1] ?? "");
+  const n = spec.value ? 2 : 1;
+  for (let j = 0; j < n && i + j < args.length; j++) consumed[i + j] = true;
 }

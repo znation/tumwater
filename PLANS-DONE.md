@@ -5,6 +5,50 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `rejectUnknownArgs`'s complexity-18 flag-gate body is split into one named helper per concern — the flag-spelling claim map, the no-known-flag refusal and the valued-flag token consumption — so "which spec does this spelling name?", "what does a token naming no flag fail with?" and "which tokens does one flag occurrence consume?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `movedSourceFindings`, `parseInitArgs`, `createTeamConfigKeyEditor`, `cmdLogs`, `sayLogsTail`, `usageWords` and `inputViewWindow` plans each extract one named helper per job the same way; independent in file of every Planned entry — `grep -c 'rejectUnknownArgs' PLANS.md` prints 0 and `grep -c 'cli-flag-specs' PLANS.md` prints 0, so no `## Planned` heading, blocked part or touches list names the symbol or src/cli/cli-flag-specs.ts; PLANS-DONE.md holds no `^### .*rejectUnknownArgs` split — its one heading match is the 2026-10-19 `history <role> <n> --transcript --prompt` behavior entry, whose prose names `rejectUnknownArgs` as a shared edit site but never moves its body; docs/invariants.md names neither src/cli/cli-flag-specs.ts nor `rejectUnknownArgs` (`grep -c` prints 0 for each); touches src/cli/cli-flag-specs.ts) — done 2026-10-27 by the feature role
+
+**Goal.** `rejectUnknownArgs` (`src/cli/cli-flag-specs.ts`, exported, complexity 18) is the gate `src/cli.ts` runs before the ready-repo gate and every command body: it fails a misspelled, duplicated, missing-value, malformed-value or equals-form flag fast with an actionable message. Today one body does three jobs: it builds the spelling-to-spec claim map; it refuses a token naming no known flag (routing a `--flag=value` token through `rejectEqualsForm`, then the "takes no arguments" and generic `failUnknownArgument` messages); and it consumes a recognised flag occurrence (the trailing missing-value failure, the value-shape `validate` call, and marking the one or two claimed tokens). A reader asking "which spec is this spelling?", "what does an unknown token print?" and "which tokens does this flag claim?" has only the one loop to scan.
+
+**Approach.** All edits in `src/cli/cli-flag-specs.ts`; move code, do not rewrite it — every condition, message, order and comment stays exactly as today. Add three module-private functions beside `rejectUnknownArgs`:
+
+- `function flagClaims(specs: readonly FlagSpec[]): Map<string, FlagSpec>` — the spelling-to-spec map, moving the nested `for (const spec of specs) for (const name of spec.names) claim.set(name, spec)` build loop out unchanged and returning it.
+- `function rejectUnknownFlag(command: string, arg: string, specs: FlagSpec[]): never` — the refusal for a token naming no known flag: the `rejectEqualsForm(arg, specs)` reroute and its comment first, then the `specs.length === 0` "takes no arguments" `fail`, then `failUnknownArgument(command, arg, specs)`.
+- `function consumeFlagOccurrence(spec: FlagSpec, args: string[], i: number, consumed: boolean[]): void` — the recognised-flag consumption: the trailing `spec.value && i === args.length - 1` missing-value `fail`, the `spec.value` `spec.validate?.` call and its comment, and the `const n = spec.value ? 2 : 1` `for (let j …)` marking loop.
+
+`rejectUnknownArgs` keeps its name, its export, its signature, its parameter names and its doc comment, and becomes orchestration:
+
+```ts
+export function rejectUnknownArgs(command: string, args: string[], specs: FlagSpec[]): void {
+  if (args.length === 0) return;
+  const claim = flagClaims(specs);
+  const seen = new Set<FlagSpec>();
+  const consumed = new Array<boolean>(args.length).fill(false);
+  for (let i = 0; i < args.length; i++) {
+    if (consumed[i]) continue;
+    const arg = args[i] ?? ""; // Unreachable fallback: the loop bound guarantees a token here.
+    const spec = claim.get(arg) ?? rejectUnknownFlag(command, arg, specs);
+    rejectRepeatFlag(seen.has(spec), spec.names[0]!);
+    seen.add(spec);
+    consumeFlagOccurrence(spec, args, i, consumed);
+  }
+}
+```
+
+`rejectUnknownDoubleDash`, `rejectEqualsForm`, `failUnknownArgument` and every `FlagSpec` export are untouched; `claim.get(arg) ?? rejectUnknownFlag(...)` type-checks because `rejectUnknownFlag` returns `never`. No behaviour changes: the missing-value failure still precedes the `validate` call, the value's token is still marked only after the value checks pass, and the repeat check still follows the unknown-flag refusal.
+
+**Files touched.** `src/cli/cli-flag-specs.ts` only. No new module, no export change, no test file edited, no docs edited.
+
+**Acceptance criteria.**
+- `rejectUnknownArgs`'s body contains only the empty-args return, the `flagClaims(specs)` call, the `seen` and `consumed` initializers, the `for (let i …)` loop, the `consumed[i]` continue, the `claim.get(arg) ?? rejectUnknownFlag(...)` line, the `rejectRepeatFlag` call with `seen.add`, and the `consumeFlagOccurrence(...)` call: it contains no `fail(`, no `rejectEqualsForm(`, no `failUnknownArgument(`, no `.validate?.` and no inner `for (let j` loop.
+- `flagClaims`, `rejectUnknownFlag` and `consumeFlagOccurrence` each exist exactly once at module scope, are not exported, and are called only from `rejectUnknownArgs` in `src/cli/cli-flag-specs.ts`.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/cli/cli-flag-specs.ts'`) no longer reports `rejectUnknownArgs` at 18, and no new helper reports 16 or above; every other function's reported count is unchanged.
+- The exported surface is unchanged: no `export` line is added, removed or renamed, and the signatures of `rejectUnknownArgs`, `rejectUnknownDoubleDash` and `rejectEqualsForm` are unchanged.
+- Behaviour is preserved, verified by the existing `test/cli-args.test.ts` `rejectUnknownArgs` cases passing unedited — "rejectUnknownArgs accepts empty args and every known flag spelling", "run's flag vocabulary accepts --branch, --once, --role, --gui, and --tui and rejects everything else", "rejectUnknownArgs adds a did-you-mean hint for a near-miss flag", "rejectUnknownArgs rejects unknown tokens with the command's valid flags listed", "rejectUnknownArgs: valued flags claim their value token; duplicates and missing values fail" and "rejectUnknownArgs names the equals form of a known flag instead of 'unknown argument'" — plus `test/cli-arg-strictness.test.ts` "commands reject unknown arguments instead of silently ignoring them", "tick's dispatcher admits --last for tick alone, and still rejects it elsewhere" and "start and its hidden alias run reject unknown flags under the start name".
+- docs/invariants.md is not edited: it binds no guarantee on this file or `rejectUnknownArgs`.
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind three module-private helpers, guarded by the `test/cli-args.test.ts` and `test/cli-arg-strictness.test.ts` cases named above. Run those two modules whole, then the project's gate, and confirm green.
+
 ### `buildRolloutLines`'s complexity-16 line-assembly body is split into one named helper per concern — the `run_usage` line, the `billing` line, the up-to-two `rate_limit` lines and the `switchedTo` model comparison — so "where is this run's usage line built?", "what does a subscription reading bill as?", "how do the two windows map?" and "when is a model switch reported?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `movedSourceFindings`, `parseInitArgs`, `createTeamConfigKeyEditor`, `cmdLogs`, `sayLogsTail`, `usageWords`, `inputViewWindow`, `rejectUnknownArgs` and `findTrust` plans each extract one named helper per job the same way; the residual of the landed `rolloutLines` split that created this builder; independent in file of every Planned entry — `grep -c 'buildRolloutLines' PLANS.md` prints 0 and `grep -c 'codex-rollout' PLANS.md` prints 0, so no `## Planned` heading, blocked part or touches list names the symbol or src/agent/codex/codex-rollout.ts (the only other `src/agent` touch is the sibling `findTrust` plan's src/agent/codex/codex-hook-trust.ts, a different file); PLANS-DONE.md holds no `^### .*buildRolloutLines` split — its `buildRolloutLines` prose belongs to the 2026-10-25 `rolloutLines` split that first created the function and names it only as the count that must not rise, plus the later last-block fix, neither of which moves this body; docs/invariants.md names no symbol of this file (`grep -c 'codex-rollout' docs/invariants.md` prints 0), so it stays unedited; touches src/agent/codex/codex-rollout.ts) — done 2026-10-27 by the feature role
 
 **Goal.** `buildRolloutLines` (`src/agent/codex/codex-rollout.ts`, module-private, complexity 16) is the assembler that turns one turn's scanned `TurnRecords` into the canonical `RolloutLines`: the `run_usage` line (with its `Math.max(0, input - cacheRead)` math), the optional `billing` line, the up-to-two `rate_limit` lines for the primary (5 h) and secondary (weekly) windows, and the `switchedTo` comparison when the turn's `turn_context.model` differs from the requested one. Today one body does four jobs: it builds the usage line, it builds the billing line, it builds the rate-limit lines, and it compares models. A reader asking "where is this run's usage line built?", "what does a subscription reading bill as?", "how do the two windows map?" and "when is a model switch reported?" has only the one body to scan, and the complexity sits at the top of the module.
