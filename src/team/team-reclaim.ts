@@ -163,6 +163,84 @@ interface ReclaimPassResult {
   durationMs: number;
 }
 
+/** True when a pressure or manual pass should stop: the sampler reports free space at or
+ * above `reclaimGB`. A null sample (sampling failed) is not the floor, so it keeps reclaiming. */
+function pressureFloorReached(free: number | null, reclaimGB: number): boolean {
+  return free !== null && reclaimGB > 0 && free >= reclaimGB * BYTES_PER_GB;
+}
+
+/** Clean one candidate, treating a guard failure as a skip, not a reason to abort the pass. */
+async function reclaimOneCandidate(root: string, candidate: ReclaimCandidate): Promise<boolean> {
+  try {
+    return await reclaimWorktree(root, candidate.dir);
+  } catch {
+    // A guard failure (a directory that stopped being a linked worktree) is not a reason to
+    // abort the pass; the remaining candidates are still safe to clean.
+    return false;
+  }
+}
+
+/** Walk the candidates once, collecting the ones actually cleaned. Idle mode keeps only the
+ * `isIdleExpired` candidates and never re-samples; pressure and manual modes re-sample before
+ * each and stop once the pressure floor is reached. */
+async function collectReclaimed(
+  root: string,
+  candidates: readonly ReclaimCandidate[],
+  mode: "pressure" | "idle" | "manual",
+  idleHours: number,
+  reclaimGB: number,
+  sample: (root: string) => number | null,
+  startedAt: number,
+): Promise<string[]> {
+  const cleaned: string[] = [];
+  for (const candidate of candidates) {
+    if (mode === "idle") {
+      if (!isIdleExpired(candidate, idleHours, startedAt)) continue;
+    } else if (pressureFloorReached(sample(root), reclaimGB)) {
+      break;
+    }
+    if (await reclaimOneCandidate(root, candidate)) cleaned.push(candidate.name);
+  }
+  return cleaned;
+}
+
+/** Freed space as the before/after free-space difference, clamped at zero: another writer can
+ * consume space during the pass, and a negative "freed" would render as nonsense in the event
+ * and the digest. A null sample keeps the zero fallback. */
+function reclaimFreedGB(before: number | null, after: number | null): number {
+  return before !== null && after !== null ? Math.max(0, (after - before) / BYTES_PER_GB) : 0;
+}
+
+/** The pass result: the cleaned worktrees, the clamped freed and current free figures, and the
+ * pass duration. `freeGB` falls back to whichever sample we have when the other is null. */
+function buildReclaimResult(
+  cleaned: string[],
+  before: number | null,
+  after: number | null,
+  startedAt: number,
+): ReclaimPassResult {
+  const freeBytes = after ?? before ?? 0;
+  return {
+    worktrees: cleaned,
+    freedGB: reclaimFreedGB(before, after),
+    freeGB: freeBytes / BYTES_PER_GB,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+/** Log exactly one `disk_reclaim` event with the result's figures. */
+function logReclaim(root: string, mode: "pressure" | "idle" | "manual", result: ReclaimPassResult): void {
+  logEventBestEffort(root, {
+    source: TUMWATER_SOURCE,
+    type: "disk_reclaim",
+    mode,
+    worktrees: result.worktrees,
+    freedGB: result.freedGB,
+    freeGB: result.freeGB,
+    durationMs: result.durationMs,
+  });
+}
+
 /** Clean pressure candidates until free space reaches `reclaimGB`, re-sampling after each, and
  * log exactly one `disk_reclaim` when anything was cleaned. `idle` mode ignores the threshold
  * and walks every candidate once (part 3/4). Returns null when nothing was reclaimed. */
@@ -182,41 +260,14 @@ export async function reclaimPass(
   const candidates = opts.candidates ?? reclaimCandidates(root);
   const startedAt = Date.now();
   const before = sample(root);
-  const cleaned: string[] = [];
-  for (const candidate of candidates) {
-    if (mode === "idle") {
-      if (!isIdleExpired(candidate, opts.idleHours ?? 0, startedAt)) continue;
-    } else {
-      const free = sample(root);
-      if (free !== null && opts.reclaimGB > 0 && free >= opts.reclaimGB * BYTES_PER_GB) break;
-    }
-    try {
-      if (await reclaimWorktree(root, candidate.dir)) cleaned.push(candidate.name);
-    } catch {
-      // A guard failure (a directory that stopped being a linked worktree) is not a reason to
-      // abort the pass; the remaining candidates are still safe to clean.
-    }
-  }
+  // With no candidates the pass resolves synchronously (no re-sampling or cleaning to await),
+  // so a no-live-team Ctrl+E flashes "nothing to reclaim" within the caller's same turn.
+  const cleaned: string[] =
+    candidates.length === 0 ? [] : await collectReclaimed(root, candidates, mode, opts.idleHours ?? 0, opts.reclaimGB, sample, startedAt);
   if (cleaned.length === 0) return null;
   const after = sample(root);
-  const freeBytes = after ?? before ?? 0;
-  const result: ReclaimPassResult = {
-    worktrees: cleaned,
-    // Clamped: another writer can consume space during the pass, and a negative "freed"
-    // would render as nonsense in the event and the digest.
-    freedGB: before !== null && after !== null ? Math.max(0, (after - before) / BYTES_PER_GB) : 0,
-    freeGB: freeBytes / BYTES_PER_GB,
-    durationMs: Date.now() - startedAt,
-  };
-  logEventBestEffort(root, {
-    source: TUMWATER_SOURCE,
-    type: "disk_reclaim",
-    mode,
-    worktrees: cleaned,
-    freedGB: result.freedGB,
-    freeGB: result.freeGB,
-    durationMs: result.durationMs,
-  });
+  const result = buildReclaimResult(cleaned, before, after, startedAt);
+  logReclaim(root, mode, result);
   return result;
 }
 
