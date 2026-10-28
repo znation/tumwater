@@ -269,7 +269,8 @@ export async function topAndAnnounce(
  * $VISUAL/$EDITOR and the saved buffer goes through `editText`. A saved buffer, positional or
  * `--file` text that rebuilds the entry byte-for-byte writes and commits nothing (`unchanged
  * <command> <n>: <title>`), and an out-of-range position fails
- * before the editor launches. */
+ * before the editor launches. The flag vocabulary, editor round-trip, unchanged report and
+ * commit-plus-hold announcement each live in their own named helper below. */
 export async function editAndAnnounce(
   root: string,
   args: string[],
@@ -277,6 +278,34 @@ export async function editAndAnnounce(
   edit: (n: number, positionals: string[]) => { file: string; title: string; unchanged?: true },
   editText: (n: number, text: string) => { file: string; title: string; unchanged?: true },
 ): Promise<void> {
+  const { path, json, positionals, position } = parseEditArgs(args, command);
+  await requireReadyRepo(root);
+  let text: string | null = null;
+  if (path === null && positionals.length === 0) {
+    const opened = openEditInEditor(root, command, position);
+    if (!opened.changed) {
+      sayUnchangedEdit(command, position, json, opened.file, opened.title);
+      return;
+    }
+    text = opened.text;
+  } else if (path !== null) text = readPromptFileArg(path);
+  const edited = text === null ? edit(position, positionals) : editText(position, text);
+  if (edited.unchanged) {
+    sayUnchangedEdit(command, position, json, edited.file, edited.title);
+    return;
+  }
+  await announceEdited(root, command, position, json, edited);
+}
+
+/** The flag vocabulary of the `--edit` shell: `--file <path>` is extracted and the repeat
+ * of the flag refused; the remaining tokens go through scanProseFlags (the `--json` boolean
+ * at most once, an `--edit <n>` position required here through scanProseFlags' one valued
+ * flag), and a stray positional alongside `--file` is refused. `fail` returns never, so on
+ * return `position` is a `number`. */
+function parseEditArgs(
+  args: string[],
+  command: "bug" | "plan",
+): { path: string | null; json: boolean; positionals: string[]; position: number } {
   const fileFlag = args.indexOf("--file");
   const path = fileFlag >= 0 ? promptFileValue(args[fileFlag + 1]) : null;
   const rest = path === null ? args : args.filter((_, i) => i !== fileFlag && i !== fileFlag + 1);
@@ -287,28 +316,53 @@ export async function editAndAnnounce(
   });
   if (path !== null) rejectStrayWithFile(positionals[0]);
   if (position === null) fail(`--edit needs a position (usage: tumwater ${command} --edit <n>)`);
-  await requireReadyRepo(root);
-  const sayUnchanged = (file: string, title: string): void => {
-    if (json) sayJson({ file, title, changed: false });
-    else say(`unchanged ${command} ${position}: ${title}`);
-  };
-  let text: string | null = null;
-  if (path === null && positionals.length === 0) {
-    const shown = showEntry(root, command, position);
-    const before = renderShownEntry(shown);
-    const after = editInEditor(before, `${command}-${position}.md`);
-    if (after.trim() === before.trim()) {
-      const file = command === "bug" ? "BUGS.md" : "PLANS.md";
-      sayUnchanged(file, shown.title);
-      return;
-    }
-    text = after;
-  } else if (path !== null) text = readPromptFileArg(path);
-  const edited = text === null ? edit(position, positionals) : editText(position, text);
-  if (edited.unchanged) {
-    sayUnchanged(edited.file, edited.title);
-    return;
+  return { path, json, positionals, position };
+}
+
+/** The no-op wording when an edit changes nothing: a `--json` `{ file, title, changed: false }`
+ * payload, else a single `unchanged <command> <n>: <title>` line. */
+function sayUnchangedEdit(
+  command: "bug" | "plan",
+  position: number,
+  json: boolean,
+  file: string,
+  title: string,
+): void {
+  if (json) sayJson({ file, title, changed: false });
+  else say(`unchanged ${command} ${position}: ${title}`);
+}
+
+/** The editor round-trip taken when the `--edit` shell has neither `--file` nor positionals:
+ * the entry rendered as `--show` prints it (showEntry/renderShownEntry) opens in
+ * $VISUAL/$EDITOR, and a saved buffer that trims to the same text reports `{ changed: false }`
+ * with the backing file's name and the shown title; otherwise the saved text is returned as
+ * `{ changed: true, text }`. */
+function openEditInEditor(
+  root: string,
+  command: "bug" | "plan",
+  position: number,
+): { changed: false; file: string; title: string } | { changed: true; text: string } {
+  const shown = showEntry(root, command, position);
+  const before = renderShownEntry(shown);
+  const after = editInEditor(before, `${command}-${position}.md`);
+  if (after.trim() === before.trim()) {
+    return { changed: false, file: command === "bug" ? "BUGS.md" : "PLANS.md", title: shown.title };
   }
+  return { changed: true, text: after };
+}
+
+/** The commit-and-announce tail of the `--edit` shell: the changed entry is committed through
+ * commitOperatorBacklogEdit with the `Edit <command>: <title>` subject (warned on an
+ * uncommitted worktree), the still-held role from the one before `position` is picked for the
+ * hold report, and the `--json` payload (with `hold` when held) or the prose `edited …` line
+ * plus stillHeldNote is printed. */
+async function announceEdited(
+  root: string,
+  command: "bug" | "plan",
+  position: number,
+  json: boolean,
+  edited: { file: string; title: string },
+): Promise<void> {
   warnIfUncommitted(await commitOperatorBacklogEdit(root, edited.file, stampedSubject("operator", `Edit ${command}: ${edited.title}`)), edited.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
   const holds = backlogHolds(root);
   const hold = (command === "bug" ? holds.bugs : holds.plans)[position - 1] ?? null;
