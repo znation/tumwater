@@ -108,31 +108,65 @@ function buildCandidate(
   const checkChanged =
     checkCommand !== undefined && (current.check?.command ?? "") !== checkCommand;
   const unchanged = !checkChanged && isDeepStrictEqual(customRoles, current.customRoles);
-  // Strip roles.<id> entries for custom roles this request removes (see applyConfigRequest's
-  // docstring): structurally valid names only; anything else stays for validateConfig to
-  // reject — never dereference a request entry before validation.
+  const requestedNames = requestedRoleNames(customRoles);
+  const fileRoles = fileRolesAfterRemoval(root, current.customRoles, requestedNames);
+  const candidate: Record<string, unknown> = { ...current, customRoles };
+  withCheckCommand(candidate, current.check, checkCommand, checkChanged);
+  withRolesSection(candidate, fileRoles.raw, fileRoles.roles);
+  return { candidate: candidate as unknown as TumwaterConfig, changed: !unchanged };
+}
+
+/** The structurally valid role names a request's customRoles array carries (see
+ * applyConfigRequest's docstring): only names on structurally valid entries feed the roles
+ * strip; anything else stays for validateConfig to reject — never dereference a request
+ * entry before validation. */
+function requestedRoleNames(customRoles: TumwaterConfig["customRoles"]): Set<string> {
   const requestedNames = new Set<string>();
   for (const entry of customRoles) {
     if (isJsonObject(entry) && typeof entry.name === "string") requestedNames.add(entry.name);
   }
-  // Base the roles rewrite on the FILE's own section, not the loaded (catalog-merged) map:
-  // this whole-config write must not re-expand a partial section to every built-in
-  // (preserveFileRoles' rule). Only the removed custom roles' entries are stripped, and only
-  // from what the file actually holds.
-  const rawRolesCandidate = rawConfigObject(root).roles;
-  const roles = isJsonObject(rawRolesCandidate) ? { ...(rawRolesCandidate) } : {};
-  for (const c of current.customRoles) {
+  return requestedNames;
+}
+
+/** The FILE's own roles section (not the loaded, catalog-merged map — this whole-config
+ * write must not re-expand a partial section to every built-in, preserveFileRoles' rule)
+ * with the removed custom roles' entries stripped: only the requested names the caller
+ * passes are removed, and only from what the file actually holds. Returns both the raw value
+ * (for when the file had no roles section) and the stripped map. */
+function fileRolesAfterRemoval(
+  root: string,
+  currentRoles: TumwaterConfig["customRoles"],
+  requestedNames: Set<string>,
+): { raw: unknown; roles: Record<string, unknown> } {
+  const raw = rawConfigObject(root).roles;
+  const roles = isJsonObject(raw) ? { ...(raw) } : {};
+  for (const c of currentRoles) {
     if (!requestedNames.has(c.name)) delete roles[c.name];
   }
-  const candidate: Record<string, unknown> = { ...current, customRoles };
+  return { raw, roles };
+}
+
+/** Replace only `check.command` on the candidate when the request declares one, preserving
+ * the rest of the check section (gateCommand/mergeCommand/timeoutSeconds). */
+function withCheckCommand(
+  candidate: Record<string, unknown>,
+  currentCheck: TumwaterConfig["check"],
+  checkCommand: string | undefined,
+  checkChanged: boolean,
+): void {
   if (checkChanged && checkCommand !== undefined) {
-    // Preserve the rest of the check section (gateCommand/mergeCommand/timeoutSeconds);
-    // only `command` is declared by the request.
-    candidate.check = { ...current.check, command: checkCommand };
+    candidate.check = { ...currentCheck, command: checkCommand };
   }
+}
+
+/** Set the candidate's roles section to the stripped map, or drop it when the file had none. */
+function withRolesSection(
+  candidate: Record<string, unknown>,
+  rawRolesCandidate: unknown,
+  roles: Record<string, unknown>,
+): void {
   if (rawRolesCandidate === undefined) delete candidate.roles;
   else candidate.roles = roles;
-  return { candidate: candidate as unknown as TumwaterConfig, changed: !unchanged };
 }
 
 /** Parse the request JSON into its customRoles entries and raw `check` value: the isJsonObject
