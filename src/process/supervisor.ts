@@ -192,34 +192,55 @@ function exitCodeOf(exit: ChildExit): number {
   return exit.code ?? 1;
 }
 
+/** The code supervision must exit with when this generation ends it, or null when the
+ * generation asked for a restart and the loop should respawn it. A restart request while the
+ * operator is stopping is an asked-for ending, so it maps to the child's own code. */
+function terminalExitCode(exit: ChildExit, stopping: boolean): number | null {
+  if (exit.code === RESTART_EXIT_CODE && !stopping) return null;
+  return exitCodeOf(exit);
+}
+
+/** Whether a terminal exit is a failure the operator did not ask for and so must be recorded
+ * through onTeamDown: not a clean exit, not a `run --once` failed round, and not while stopping. */
+function isUnaskedFailure(code: number, stopping: boolean): boolean {
+  return code !== 0 && code !== ONCE_FAILED_EXIT_CODE && !stopping;
+}
+
+/** Record one respawn at `at`, drop the ones that aged out of RESPAWN_WINDOW_MS, and return
+ * whether the rapid-respawn guard is now tripped. Mutates `recentRespawns`, the loop's window. */
+function trackRespawn(recentRespawns: number[], at: number): boolean {
+  while (recentRespawns.length > 0 && at - (recentRespawns[0] ?? at) > RESPAWN_WINDOW_MS) recentRespawns.shift();
+  recentRespawns.push(at);
+  return recentRespawns.length > MAX_RAPID_RESPAWNS;
+}
+
+/** Run a best-effort hook: a throwing hook must not change the supervisor's exit, so its error
+ * is swallowed. Used for onTeamDown (the trace) and onDone (the build repair). */
+async function runBestEffort(hook: (() => Promise<void> | void) | undefined): Promise<void> {
+  try {
+    await hook?.();
+  } catch {
+    // Best-effort: the hook's own reporting is its responsibility.
+  }
+}
+
 /** Run child generations until one exits with something other than a restart request, and
  * return the code the supervisor should exit with. Pure apart from the injected effects. */
 export async function superviseStart(opts: SuperviseOptions, signal: AbortSignal): Promise<number> {
   const now = opts.now ?? Date.now;
   let generation = 1;
   const recentRespawns: number[] = [];
-  const teamDown = async (down: TeamDown): Promise<void> => {
-    try {
-      await opts.onTeamDown?.(down);
-    } catch {
-      // Best-effort (see onTeamDown): a trace that cannot be written must not change the exit.
-    }
-  };
+  const teamDown = (down: TeamDown): Promise<void> => runBestEffort(() => opts.onTeamDown?.(down));
   try {
     for (;;) {
       const exit = await opts.spawnChild(signal);
-      if (exit.code !== RESTART_EXIT_CODE || opts.stopping()) {
-        // A clean exit (a child stopped by its own SIGTERM logs orchestrator_stop) and anything
-        // while the operator is stopping are asked-for endings, and so is a once round that
-        // finished with failed runs; everything else is the team dying.
-        const code = exitCodeOf(exit);
-        if (code !== 0 && code !== ONCE_FAILED_EXIT_CODE && !opts.stopping()) await teamDown({ generation, exit, crashLoop: false });
-        return exitCodeOf(exit);
+      const stopping = opts.stopping();
+      const terminal = terminalExitCode(exit, stopping);
+      if (terminal !== null) {
+        if (isUnaskedFailure(terminal, stopping)) await teamDown({ generation, exit, crashLoop: false });
+        return terminal;
       }
-      const t = now();
-      while (recentRespawns.length > 0 && t - (recentRespawns[0] ?? t) > RESPAWN_WINDOW_MS) recentRespawns.shift();
-      recentRespawns.push(t);
-      if (recentRespawns.length > MAX_RAPID_RESPAWNS) {
+      if (trackRespawn(recentRespawns, now())) {
         opts.onCrashLoop?.();
         await teamDown({ generation, exit, crashLoop: true });
         return 1;
@@ -228,12 +249,7 @@ export async function superviseStart(opts: SuperviseOptions, signal: AbortSignal
       opts.onRespawn?.(generation);
     }
   } finally {
-    // The end-of-supervision repair (see onDone): a hook that throws must not change the exit.
-    try {
-      await opts.onDone?.();
-    } catch {
-      // Best-effort — see onDone.
-    }
+    await runBestEffort(() => opts.onDone?.());
   }
 }
 
