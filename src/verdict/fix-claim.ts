@@ -287,11 +287,13 @@ function sourceHaystackSignature(root: string): string {
   return sigs.join("|");
 }
 
-/** Every file under the source dirs the haystack reads (src/, test/, scripts/), node_modules and
- * dist trees skipped at any depth. */
+/** Every file under the tree the haystack reads — the whole root, so a project whose code lives
+ * outside src//test//scripts/ (tools/, tests/, lib/, …) backs its symbols like a src/ one — with
+ * build output, vendored code, VCS and harness state skipped at any depth: node_modules, dist,
+ * .git and .tumwater. */
 function walkSourceFiles(root: string, visit: Parameters<typeof walkFiles>[1]): void {
-  const skipDirs = new Set(["node_modules", "dist"]);
-  for (const dir of ["src", "test", "scripts"]) walkFiles(join(root, dir), visit, skipDirs);
+  const skipDirs = new Set(["node_modules", "dist", ".git", ".tumwater"]);
+  walkFiles(root, visit, skipDirs);
 }
 
 /** A slash-free name with a file extension: `status-roles.ts`, not `src/a.ts` or `signalTree`. */

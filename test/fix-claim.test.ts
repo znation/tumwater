@@ -288,6 +288,41 @@ test("sourceHaystack skips node_modules and dist trees at any depth but keeps ot
   assert.ok(haystack.includes("keptMarker"), "an ordinary subdirectory is still walked");
 });
 
+// Regression coverage for the 2026-10-28 record (BUGS.md): the haystack walked only src/, test/
+// and scripts/, so a project whose code lives in tools/ and tests/ (no src/ at all) read an
+// empty haystack, every newest Fixed record whose Fix paragraph named a bare identifier looked
+// unbacked, and the doctor's claimed-bugs row and the standing amber alert fired on that tree's
+// own live symbols. The walk is now layout-neutral — root-wide, build/vendored/VCS/harness
+// skipped — so a tools/+tests/ project backs its symbols like a src/ one.
+
+test("sourceHaystack is layout-neutral: a tree whose code lives in tools/ and tests/ backs its symbols", () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "tools"), { recursive: true });
+  fs.writeFileSync(path.join(root, "tools", "check_parallel.py"), "def _print_results():\n    pass\n");
+  fs.mkdirSync(path.join(root, "tests"), { recursive: true });
+  fs.writeFileSync(path.join(root, "tests", "test_x.py"), "from tools.check_parallel import _print_results\n");
+  const haystack = sourceHaystack(root);
+  assert.ok(haystack.includes("_print_results"), "a tools/ symbol is in the haystack");
+  assert.deepEqual(
+    unbackedSymbols(root, ["_print_results", "tools/check_parallel.py"], haystack),
+    [],
+    "both the symbol and the path are backed despite no src/ dir",
+  );
+});
+
+test("sourceHaystack skips .git and .tumwater trees at any depth", () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src", ".git", "objects"), { recursive: true });
+  fs.mkdirSync(path.join(root, "src", ".tumwater"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", ".git", "objects", "pack"), "const gitMarker = 1;\n");
+  fs.writeFileSync(path.join(root, "src", ".tumwater", "state.json"), "const tumMarker = 1;\n");
+  fs.writeFileSync(path.join(root, "src", "real.ts"), "const realMarker = 1;\n");
+  const haystack = sourceHaystack(root);
+  assert.ok(!haystack.includes("gitMarker"), "VCS internals are excluded");
+  assert.ok(!haystack.includes("tumMarker"), "harness state is excluded");
+  assert.ok(haystack.includes("realMarker"), "ordinary source is still walked");
+});
+
 test("sourceHaystack tolerates unreadable files and stays usable", () => {
   // Root reads anything, so the permission failure these branches exist for cannot fire.
   if (runningAsRoot()) return;

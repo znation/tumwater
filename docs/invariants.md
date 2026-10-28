@@ -3097,9 +3097,10 @@ new one-line record that introduces a name the tree lacks".
 
 ### INV-AX3: the code haystack covers source in any language and fails open
 
-**Guarantee.** The code haystack covers src/, test/ and scripts/ in any language, skips
-node_modules and dist trees, excludes Markdown, and tolerates unreadable files. A deleted BUGS.md
-passes this check and leaves the report to the structure check.
+**Guarantee.** The code haystack covers the whole tree in any language and any layout — a project
+whose code lives in tools/ and tests/ rather than src/ backs its symbols like a src/ one — skips
+node_modules, dist, .git and .tumwater trees, excludes Markdown, and tolerates unreadable files. A
+deleted BUGS.md passes this check and leaves the report to the structure check.
 
 **Binds.** `src/verdict/fix-claim.ts` (`sourceHaystack`).
 
@@ -3108,7 +3109,9 @@ entry names its own symbols)", "sourceHaystack walks nested subdirectories — a
 src/ui backs a claim", "sourceHaystack skips node_modules and dist trees at any depth but keeps
 other subdirs", "sourceHaystack tolerates unreadable files and stays usable", "sourceHaystack reads
 non-JS source, so a Rust symbol backs a claim", "sourceHaystack still excludes markdown living under
-the walked source dirs", "falseFixReason passes an md-only Fixed edit in a non-JS (Rust) project"
+the walked source dirs", "sourceHaystack is layout-neutral: a tree whose code lives in tools/ and
+tests/ backs its symbols", "sourceHaystack skips .git and .tumwater trees at any depth",
+"falseFixReason passes an md-only Fixed edit in a non-JS (Rust) project"
 and "falseFixReason tolerates a deleted BUGS.md instead of throwing out of the gate".
 
 ### INV-AX4: the doctor reads Fixed entries BUGS.md first, then BUGS-FIXED.md
