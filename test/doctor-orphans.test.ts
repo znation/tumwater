@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { checkOrphans, killOrphans, orphanKillLines, parseEtimeMs, reapAttributableOrphans, reapPreviousTeamOrphans, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
-import { dueForOrphanReap, ORPHAN_REAP_INTERVAL_MS } from "../src/orchestrator/orchestrator-poll.js";
+import { dueForOrphanReap, newPollState, ORPHAN_REAP_INTERVAL_MS } from "../src/orchestrator/orchestrator-poll.js";
 import { runDoctor } from "../src/doctor/doctor.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -469,4 +469,8 @@ test("dueForOrphanReap fires at and after the interval, never before, from liter
   // now (the very first poll) is always due.
   assert.equal(ORPHAN_REAP_INTERVAL_MS, 15 * 60 * 1000);
   assert.equal(dueForOrphanReap(0, Date.now()), true);
+});
+
+test("a fresh PollState has no reap stamp, so the first poll reaps immediately", () => {
+  assert.equal(newPollState().lastOrphanReapAt, 0);
 });

@@ -5,6 +5,14 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Reap the doctor's orphans, part 3/3: the orchestrator poll loop never calls the orphan reaper, so nothing reaps while the team runs (split 2026-10-28 by the plan role from "The orchestrator does not reap orphaned processes it can attribute beyond doubt"; the wiring half; requires part 2/3 landed) — fixed 2026-10-28 by the bugfix role
+
+- **Symptom:** `findOrphans` and `killTrees` exist and the doctor and its alert rows read them, but no running harness ever calls a reap: `reapPreviousTeamOrphans` fires once at team start (src/orchestrator/orchestrator.ts), so a leak that appears mid-run waits for the next restart or an operator.
+- **Fixed (2026-10-28 by the bugfix role):** `lastOrphanReapAt` in `PollState` (0 in `newPollState`), pure `dueForOrphanReap` (never due before the interval, due at and after it) with `ORPHAN_REAP_INTERVAL_MS` (15 min), and in `pollRequestsAndWatch` beside `ctx.retentionPruner.poll` `await reapAttributableOrphans(root)` when due, stamping `lastOrphanReapAt = now` before the await so a slow scan cannot overlap the next poll; the first poll reaps immediately. The startup `void reapPreviousTeamOrphans(...)` stays for its previous-pid case (a double kill is ESRCH and harmless). The reaper itself and `dueForOrphanReap` were landed with the part-2/3 work already on main.
+- **Pin:** in test/doctor-orphans.test.ts `dueForOrphanReap` is pinned from literal `last`/`now` numbers (never due before the interval, due at and after it) and `newPollState().lastOrphanReapAt === 0` is asserted.
+
+**Validation gap:** no-repro — the mid-run leak only appears on a live host's process table; the wiring is pinned from literal `dueForOrphanReap` times and the reaper against the fake probe/signals.
+
 ### The orchestrator does not reap orphaned processes it can attribute beyond doubt, so they outlive every run until an operator clicks (split 2026-10-28 by the plan role from "The team never reaps the orphans its own doctor lists"; sibling of "The team raises no standing alert while the doctor's `orphans` row is red" and "A test node child can lose the `exit-with-owner.js` preload guard and then busy-wait past it"; the 2026-10-19 `logs -f` entry records the same detector-without-reaper gap; re-scoped 2026-10-28 by the plan role after bugfix held it, so the reap reuses `findOrphans`' existing attribution rules rather than adding a `TUMWATER_TEST_OWNER_PID` evidence read, and hangs off the existing poll loop with a once-per-interval throttle) — fixed 2026-10-28 by the bugfix role
 
 - **Symptom:** the 2026-10-28 doctor's 50 orphans (40 dead-barrier `node -e` writers at ~16.4 CPU-hours each, 7 bash burners, 3 fake-pi shells) survived roughly a dozen orchestrator generations; nothing reaped them until a human clicked.
