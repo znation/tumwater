@@ -98,7 +98,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
     // data-rundetail button).
     // A By model row's label drills into that model's runs: the table, filtered to the selector.
     $("histbody").addEventListener("click", (ev) => {
-      const b = ev.target instanceof Element ? ev.target.closest("button[data-histmodel]") : null;
+      const b = clickClosest(ev, "button[data-histmodel]");
       if (!b) return;
       histModel = b.dataset.histmodel;
       histMode = "table";
@@ -106,43 +106,43 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       fetchHistory();
     });
     $("histbody").addEventListener("click", (ev) => {
-      const b = ev.target instanceof Element ? ev.target.closest("button[data-rundetail]") : null;
+      const b = clickClosest(ev, "button[data-rundetail]");
       if (!b) return;
       toggleHistDetail(b.dataset.role, b.dataset.run);
     });
     // The drill-down's revert buttons: the first click previews, the preview's own button commits.
     $("histbody").addEventListener("click", (ev) => {
-      const b = ev.target instanceof Element ? ev.target.closest("button[data-hist-revert], button[data-hist-revert-go]") : null;
+      const b = clickClosest(ev, "button[data-hist-revert], button[data-hist-revert-go]");
       if (!b) return;
       if (b.dataset.histRevertGo !== undefined) runHistRevert(b.dataset.histRevertGo);
       else previewHistRevert(b.dataset.histRevert);
     });
     // The drill-down's "Show patch" / "Hide patch" button.
     $("histbody").addEventListener("click", (ev) => {
-      const b = ev.target instanceof Element ? ev.target.closest("button[data-hist-patch]") : null;
+      const b = clickClosest(ev, "button[data-hist-patch]");
       if (!b) return;
       toggleHistPatch(b.dataset.histPatch);
     });
     // The drill-down's "Show transcript" / "Hide transcript" button.
     $("histbody").addEventListener("click", (ev) => {
-      const b = ev.target instanceof Element ? ev.target.closest("button[data-hist-transcript]") : null;
+      const b = clickClosest(ev, "button[data-hist-transcript]");
       if (!b) return;
       toggleHistTranscript(b.dataset.histTranscript);
     });
     // The open transcript's "Show prompts" / "Hide prompts" button.
     $("histbody").addEventListener("click", (ev) => {
-      const b = ev.target instanceof Element ? ev.target.closest("button[data-hist-transcript-prompts]") : null;
+      const b = clickClosest(ev, "button[data-hist-transcript-prompts]");
       if (!b) return;
       toggleHistTranscriptPrompts(b.dataset.histTranscriptPrompts);
     });
     // The open transcript's search box (applied on Enter or blur: the card re-renders each change).
     $("histbody").addEventListener("change", (ev) => {
-      const el = ev.target instanceof Element ? ev.target.closest("input[data-hist-transcript-grep]") : null;
+      const el = clickClosest(ev, "input[data-hist-transcript-grep]");
       if (el) searchHistTranscript(el.dataset.histTranscriptGrep, el.value);
     });
     // The pinned newest-failure card's × closes it.
     $("histbody").addEventListener("click", (ev) => {
-      const b = ev.target instanceof Element ? ev.target.closest("button[data-hist-newest-close]") : null;
+      const b = clickClosest(ev, "button[data-hist-newest-close]");
       if (!b) return;
       closeHistNewest();
     });

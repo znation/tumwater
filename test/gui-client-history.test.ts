@@ -561,7 +561,7 @@ test("clicking a By model button fetches that model's table; the chip clears it"
     constructor(private readonly b: unknown) {}
     closest(sel: string) { return sel.startsWith("button[data-histmodel") ? this.b : null; }
   }
-  const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson", "Element"];
+  const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson", "Element", "clickClosest"];
   const code = [ESC_LINE, CAPITALIZE_LINE, TIMESPAN_LINE, clientRegion("report-role"), GUI_CLIENT_HISTORY_JS, "return { fetchHistory, mode: () => histMode };"].join("\n");
   const scope = (new Function(...keys, code) as (...a: unknown[]) => { fetchHistory(): Promise<void>; mode(): string })(
     (k: string) => (k === "hist-mode" ? "models" : null),
@@ -574,6 +574,7 @@ test("clicking a By model button fetches that model's table; the chip clears it"
     (t: string) => t,
     async (p: string) => { paths.push(p); return { rows: [] }; },
     FakeElement,
+    (ev: { target?: unknown }, selector: string) => (ev.target instanceof FakeElement ? ev.target.closest(selector) : null),
   );
   await scope.fetchHistory();
   assert.equal(scope.mode(), "models");
