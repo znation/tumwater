@@ -71,6 +71,94 @@ function killWordBefore(text: string, c: number): { text: string; cursor: number
   return { text: text.slice(0, i) + text.slice(c), cursor: i };
 }
 
+/** The cursor-movement keys: left/right step one whole code point, home/end jump to the
+ * text's start/end. Returns undefined for any other key so the caller's chain falls
+ * through to the next helper. */
+function moveKey(
+  text: string,
+  c: number,
+  key: KeyLike,
+): { text: string; cursor: number } | undefined {
+  switch (key.name) {
+    case "left":
+      return { text, cursor: stepCursor(text, c, -1) };
+    case "right":
+      return { text, cursor: stepCursor(text, c, 1) };
+    case "home":
+      return { text, cursor: 0 };
+    case "end":
+      return { text, cursor: text.length };
+    default:
+      return undefined;
+  }
+}
+
+/** The character-deletion keys: backspace removes the character before the cursor (or, with
+ * Alt+Backspace, the whole word before it — readline's unix-word-rubout), delete removes the
+ * one at it. Each deletes a surrogate pair whole so no lone surrogate is left behind.
+ * Returns undefined for any other key so the caller's chain falls through. */
+function deleteKey(
+  text: string,
+  c: number,
+  key: KeyLike,
+): { text: string; cursor: number } | undefined {
+  switch (key.name) {
+    case "backspace":
+      if (key.meta) return killWordBefore(text, c); // Alt+Backspace: kill the previous word
+      if (c === 0) return { text, cursor: 0 };
+      // The character before the cursor is a surrogate pair [c-2, c-1]: delete both units.
+      return removeCharAt(text, cutSplitsSurrogatePair(text, c - 1) ? c - 2 : c - 1);
+    case "delete":
+      if (c >= text.length) return { text, cursor: c };
+      // The character at the cursor is a surrogate pair [c, c+1]: delete both units.
+      return removeCharAt(text, c);
+    default:
+      return undefined;
+  }
+}
+
+/** The line-kill keys, both gated on Ctrl so a plain "u"/"k" never kills: Ctrl+U discards
+ * from the line start to the cursor, Ctrl+K from the cursor to the line end (readline's
+ * two directions of half-line discard). Returns undefined when not Ctrl or not one of these
+ * keys so the caller's chain falls through. */
+function lineKillKey(
+  text: string,
+  c: number,
+  key: KeyLike,
+): { text: string; cursor: number } | undefined {
+  if (!key.ctrl) return undefined;
+  switch (key.name) {
+    case "u":
+      // Ctrl+U (readline's unix-line-discard) kills from the line start to the cursor; a
+      // plain "u" is not this key and reaches the printable insert in applyKey, unchanged.
+      return { text: text.slice(c), cursor: 0 };
+    case "k":
+      // Ctrl+K (readline's kill-line) kills from the cursor to the line end; a plain "k"
+      // is not this key and reaches the printable insert in applyKey, unchanged.
+      return { text: text.slice(0, c), cursor: c };
+    default:
+      return undefined;
+  }
+}
+
+/** Printable insertion: any plain printable string is inserted at the cursor (str can hold a
+ * whole composed string when IME input arrives as one keypress, advancing the cursor by its
+ * full length); every other — including control/meta and empty — key leaves text and the
+ * snapped cursor as they are. This is the chain's last member, so its return is total. */
+function insertKey(
+  text: string,
+  c: number,
+  str: string | undefined,
+  key: KeyLike,
+): { text: string; cursor: number } {
+  if (str && !key.ctrl && !key.meta && str >= " ") {
+    // str can hold a whole composed string (IME input arrives as one keypress); the cursor
+    // must land after ALL of it, not one unit in.
+    return { text: text.slice(0, c) + str + text.slice(c), cursor: c + str.length };
+  }
+  return { text, cursor: c };
+}
+
 /** Apply one keypress to the prompt text (pure, so it is unit-testable without a TTY).
  * Printable characters insert at the cursor — including multi-character strings readline
  * delivers for IME-composed input, which advance the cursor by their full length; backspace
@@ -97,41 +185,12 @@ export function applyKey(
   key: KeyLike,
 ): { text: string; cursor: number } {
   const c = snapCursor(text, cursor);
-  switch (key.name) {
-    case "left":
-      return { text, cursor: stepCursor(text, c, -1) };
-    case "right":
-      return { text, cursor: stepCursor(text, c, 1) };
-    case "backspace":
-      if (key.meta) return killWordBefore(text, c); // Alt+Backspace: kill the previous word
-      if (c === 0) return { text, cursor: 0 };
-      // The character before the cursor is a surrogate pair [c-2, c-1]: delete both units.
-      return removeCharAt(text, cutSplitsSurrogatePair(text, c - 1) ? c - 2 : c - 1);
-    case "home":
-      return { text, cursor: 0 };
-    case "end":
-      return { text, cursor: text.length };
-    case "u":
-      // Ctrl+U (readline's unix-line-discard) kills from the line start to the cursor; a
-      // plain "u" breaks here and reaches the printable insert branch below, unchanged.
-      if (key.ctrl) return { text: text.slice(c), cursor: 0 };
-      break;
-    case "k":
-      // Ctrl+K (readline's kill-line) kills from the cursor to the line end; a plain "k"
-      // breaks here and reaches the printable insert branch below, unchanged.
-      if (key.ctrl) return { text: text.slice(0, c), cursor: c };
-      break;
-    case "delete":
-      if (c >= text.length) return { text, cursor: c };
-      // The character at the cursor is a surrogate pair [c, c+1]: delete both units.
-      return removeCharAt(text, c);
-  }
-  if (str && !key.ctrl && !key.meta && str >= " ") {
-    // str can hold a whole composed string (IME input arrives as one keypress); the cursor
-    // must land after ALL of it, not one unit in.
-    return { text: text.slice(0, c) + str + text.slice(c), cursor: c + str.length };
-  }
-  return { text, cursor: c };
+  return (
+    moveKey(text, c, key) ??
+    deleteKey(text, c, key) ??
+    lineKillKey(text, c, key) ??
+    insertKey(text, c, str, key)
+  );
 }
 
 /** Five parsers below signal an invalid value through the same `{ ok: false, error }` arm
