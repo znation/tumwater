@@ -43,27 +43,47 @@ function isCommentStart(src: string, i: number): boolean {
   return src[i] === "/" && (src[i + 1] === "/" || src[i + 1] === "*");
 }
 
+/** True when `c` is a JSONC whitespace character. */
+function isWhitespace(c: string | undefined): boolean {
+  return c === " " || c === "\t" || c === "\n" || c === "\r";
+}
+
+/** Advance `j` past a `//` line comment (a caller-supplied position where `src[j] === "/"`
+ * and `src[j + 1] === "/"`), not past the terminating newline. */
+function skipLineComment(src: string, j: number): number {
+  while (j < src.length && src[j] !== "\n") j += 1;
+  return j;
+}
+
+/** Advance `j` past a `/*`-style block comment (a caller-supplied position where `src[j] ===
+ * "/"` and `src[j + 1] === "*"`), ending after its closing two characters. An unterminated
+ * comment leaves `j` at `src.length + 2`, overshooting past the end — today's behaviour, kept. */
+function skipBlockComment(src: string, j: number): number {
+  j += 2;
+  while (j < src.length && !(src[j] === "*" && src[j + 1] === "/")) j += 1;
+  j += 2;
+  return j;
+}
+
+/** Advance `j` past one comment, dispatching on the second character: `//` to the line-comment
+ * scan, `/*` to the block-comment scan (a caller-supplied position where `isCommentStart`
+ * holds). */
+function skipComment(src: string, j: number): number {
+  return src[j + 1] === "/" ? skipLineComment(src, j) : skipBlockComment(src, j);
+}
+
 /** Advance `j` past any whitespace and comments, for a position that is never inside a string.
  * Returns the index of the next significant (non-comment, non-whitespace) character, or
  * `src.length` when the input ends in comments/whitespace. */
 function skipWhitespaceAndComments(src: string, j: number): number {
   while (j < src.length) {
-    const c = src[j];
-    if (c === " " || c === "\t" || c === "\n" || c === "\r") {
+    if (isWhitespace(src[j])) {
       j += 1;
-      continue;
+    } else if (isCommentStart(src, j)) {
+      j = skipComment(src, j);
+    } else {
+      break;
     }
-    if (c === "/" && src[j + 1] === "/") {
-      while (j < src.length && src[j] !== "\n") j += 1;
-      continue;
-    }
-    if (c === "/" && src[j + 1] === "*") {
-      j += 2;
-      while (j < src.length && !(src[j] === "*" && src[j + 1] === "/")) j += 1;
-      j += 2;
-      continue;
-    }
-    break;
   }
   return j;
 }
