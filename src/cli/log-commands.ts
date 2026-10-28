@@ -318,35 +318,53 @@ function sayLogsWindowNoMatch(feed: LogsFeed, windowPhrase: string): void {
   else say(feed.roles !== null ? `${feed.roleEmpty} ${windowPhrase}` : `no events ${windowPhrase}`);
 }
 
-/** The `-n` tail view and its follow: `readEventsTailWithEnd`, the `shown` filter, the
- * `--count` branch and its empty-match prose, the per-event print, the `!follow` return, and
- * `followUntilParentGone` seeded from `tail.coveredEnd`. It owns the follow-loop locals. */
+/** The `-n` tail view and its `-f` follow: read the filtered tail, print the `--count`
+ * tally or the per-event rows, and seed the follow; each job lives in a named helper. */
 async function sayLogsTail(root: string, feed: LogsFeed, limit: number, seams: FollowSeams): Promise<void> {
-  // -n bounds the scan, not the print: the matched subset of the last `limit` events is what
-  // appears, so `-n 200 --grep merge_failed` may print 3 rows from 200 scanned. The read is
-  // the tail-with-end shape (not the per-poll cached readEvents) so the follow below can seed
-  // from the byte end this very read covered instead of a later stat of the file.
-  const tail = readEventsTailWithEnd(root, limit);
-  const shown = feed.grepLower !== null || feed.type !== null || feed.roles !== null || feed.notable ? tail.events.filter(feed.filter) : tail.events;
-  // `--count` over the -n view answers with the tally of exactly the filtered rows the plain
-  // view would print, and carries over the plain view's empty-match prose below (a `--type`
-  // or `--grep` that matches nothing names its value; an empty unfiltered -n view prints
-  // nothing, as the plain view does). In JSON mode the empty output is the answer.
+  const { shown, coveredEnd } = readTailShown(root, feed, limit);
   if (feed.count) {
+    // `--count` over the -n view answers with the tally of exactly the filtered rows the plain
+    // view would print, and carries over the plain view's empty-match prose (a `--type` or
+    // `--grep` that matches nothing names its value; an empty unfiltered -n view prints
+    // nothing, as the plain view does). In JSON mode the empty output is the answer.
     if (shown.length !== 0) sayTally(shown, feed.json);
-    else if (!feed.json && (feed.filtersGrepOrType || feed.roles !== null || feed.notable)) sayLogsTailNoMatch(feed);
+    else sayTailEmptyNote(shown, feed);
     return;
   }
   for (const e of shown) sayEventLine(e, feed.json);
   if (!feed.follow) {
-    // The empty-match line is prose: in JSON mode the empty output is the answer. It fires
-    // for either filter, naming the flag's value(s) whose match came up empty so the operator
-    // knows what to loosen.
-    if (shown.length === 0 && !feed.json && (feed.filtersGrepOrType || feed.roles !== null || feed.notable)) sayLogsTailNoMatch(feed);
+    sayTailEmptyNote(shown, feed);
     return;
   }
+  await followLogsTail(root, feed, coveredEnd, seams);
+}
+
+/** How `-n` scans versus prints: `limit` bounds the scan, not the print — the matched
+ * subset of the last `limit` events is what appears, so `-n 200 --grep merge_failed` may
+ * print 3 rows from 200 scanned. The read is the tail-with-end shape (not the per-poll
+ * cached readEvents) so the follow can seed from the byte end this very read covered
+ * instead of a later stat of the file. It also owns the share of output to print: the
+ * `shown` rows in read order. */
+function readTailShown(root: string, feed: LogsFeed, limit: number): { shown: HarnessEvent[]; coveredEnd: number } {
+  const tail = readEventsTailWithEnd(root, limit);
+  const shown = feed.grepLower !== null || feed.type !== null || feed.roles !== null || feed.notable ? tail.events.filter(feed.filter) : tail.events;
+  return { shown, coveredEnd: tail.coveredEnd };
+}
+
+/** The empty-match guard shared by the `--count` branch and the no-follow plain branch: the
+ * empty-match line is prose (in JSON mode the empty output is the answer) and fires for
+ * either filter, naming the flag's value(s) whose match came up empty so the operator knows
+ * what to loosen. */
+function sayTailEmptyNote(shown: HarnessEvent[], feed: LogsFeed): void {
+  if (shown.length === 0 && !feed.json && (feed.filtersGrepOrType || feed.roles !== null || feed.notable)) sayLogsTailNoMatch(feed);
+}
+
+/** The `-f` follow: resolve the event-log path and stream every newly landed event through
+ * the same `feed.filter` as the seeded window, seeded from `coveredEnd` (the byte end the
+ * initial read covered) and holding the filter across rotation. */
+async function followLogsTail(root: string, feed: LogsFeed, coveredEnd: number, seams: FollowSeams): Promise<void> {
   const file = eventsLogPath(root);
-  // Seed the follow from the byte end the initial read covered (tail.coveredEnd), mirroring
+  // Seed the follow from the byte end the initial read covered (coveredEnd), mirroring
   // cmdLogsTranscript's tail.end seed: an event appended between the read and the follow's
   // start lies past the printed window but at or above this offset, so the follow's first
   // poll delivers it — seeding from a fresh statOrNull(file).size instead would start past
@@ -354,7 +372,7 @@ async function sayLogsTail(root: string, feed: LogsFeed, limit: number, seams: F
   // log scans to coveredEnd 0, and followFile tolerates a missing file (its poll re-stats
   // every interval), so a read-only command never leaves a harness state file behind — the
   // module contract above promises writes to stdout only.
-  await followUntilParentGone(file, tail.coveredEnd, (lines) => {
+  await followUntilParentGone(file, coveredEnd, (lines) => {
     for (const line of lines.filter(Boolean)) {
       const e = parseEventLine(line);
       // The filter holds across rotation: every event the follow callback sees goes through
