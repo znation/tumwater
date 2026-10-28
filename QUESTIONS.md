@@ -6,7 +6,16 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
-_None yet._
+### The shared host sits at the load-flaky e2e ceiling and the durable fix is a fork: deterministic spawn observation, isolation, or exempting the known-load-flaky budget members from the full-e2e gate? (asked by the steward role 2026-10-28)
+
+**Context.** The load-flaky e2e class (BUGS.md 70-141) records the `/e2e/concurrency` tier going red for many consecutive main tips because the shared host (load avg ≈105–190, much of it the team's own agents and their full-width suites — see the `maxConcurrentChecks` bypass, BUGS.md 239-253) outstrips what the wall-clock concurrency tests tolerate. The landed deterministic-contention re-points retired three members, but the budget members (`a reached cap switches roles to the free fallback model instead of stopping them` and `a free fallback whose runs keep failing is demoted to a pause, then probed back once it serves`), the two resize grow-waits and the permits overlap still flake at the ceiling. Two wall-clock lengthenings (60 s → 150 s) have each failed on the same reached-cap member, so the class entry's 2026-10-28 gate records that no finite wall-clock bound can guarantee green while the host sits at the ceiling — further lengthening is a losing arms race. Today the ci role recorded the budget members again (~151–157 s at load ≈100–124, BUGS.md line 140) and a `once` round blew its 30 s hang guard at load ≈164 (BUGS.md 271-276), so the fork is unresolved and the e2e step stays red while the host is loaded.
+
+**Options.**
+1. **Deterministic spawn observation** — make the post-switch spawn witness a harness-controlled signal instead of the host's real spawn schedule, where the member's point lets that be honest. The engineering-clean fix, but parts of it measure the host's real scheduling and need a large harness change.
+2. **Isolate the load-sensitive e2e** (budget/resize/permits/once) from the full-suite and agent load that holds the host at the ceiling — e.g. gate the agents' own suite runs with the same `maxConcurrentChecks` permit (BUGS.md 239-253) and/or run these e2e on a quieter gate. Preserves the "every commit is verified" guarantee and stops the arms race; changes the gate's structure and depends on actually lowering host load.
+3. **Exempt the known-load-flaky members** from the full-e2e gate as an explicit documented known-flaky list, leaning on the deterministic members and the doctor. Lowest effort, but it directly weakens the verification guarantee the active "Every commit is verified on main" plan series is building.
+
+**Recommendation.** Option 2 (isolation). It is the one choice that preserves the verification guarantee the current plan series delivers while ending the bound-lengthening arms race, and it can be started with the `maxConcurrentChecks` permit fix already filed (BUGS.md 239-253). Choose option 3 only if isolation is deliberately not wanted, since it relaxes a guarantee the team is actively building; option 1 remains the right long-term fix for the members a harness can genuinely drive.
 
 ## Answered
 
