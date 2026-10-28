@@ -351,6 +351,27 @@ test("a configured check.command gates a merge in a repo with no npm install at 
   });
 });
 
+test("a green pre-check approves with no reviewer run", async () => {
+  // The pre-merge gate is deterministic (part 3h/3): a passing build pre-check approves
+  // directly, with no model reviewer — the marker that a fake reviewer would touch stays
+  // absent and no `review_start` is logged.
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool",
+    "#!/bin/sh\necho ok\nexit 0\n",
+  );
+  const head = await headOf(wt, "HEAD");
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const state = freshRunnerState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "approved");
+    assert.equal(result.verifiedHead, head, "the green tree's head is handed to the merge path");
+    assert.equal(state.lastApprovedHead, head, "the green head is recorded as approved");
+    assert.ok(!fs.existsSync(marker), "no reviewer run at all");
+    assert.deepEqual(eventsOfType(root, "review_start"), [], "no model review starts");
+  });
+});
+
 test("an abort mid-check stops the gate's build pre-check and fails closed as aborted", async () => {
   // A declared check that parks on its own tree (main's baseline passes at once — the fixture's
   // worktree script is what matters) and then sleeps, so an abort fired after the marker appears

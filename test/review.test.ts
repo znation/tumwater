@@ -180,17 +180,22 @@ test("gate skips the run when this exact HEAD was already approved", async () =>
   });
 });
 
-test("gate fails closed on an aborted run without bookkeeping", async () => {
+test("gate runs no reviewer on a shutdown, leaving the commit and no reject bookkeeping", async () => {
+  // The abort path itself (a pre-check stopped by the verify's signal fails closed as
+  // aborted) is covered in review-precheck.test.ts; this case holds the gate-orchestration
+  // invariants that survive a shutdown: no reviewer run starts, the commit stays, and no
+  // rejection bookkeeping is written.
   const { root, wt } = await gateFixture();
-  await withPi(`sleep 5`, async () => {
-      const controller = new AbortController();
-      controller.abort(); // harness shutdown already in progress
-      const { state, result } = await reviewGate(root, wt, { signal: controller.signal });
-      assert.equal(result.decision, "failed");
-      assert.ok(result.aborted);
-      assert.equal(await aheadOfMain(wt, "main"), 1); // commit stays; the resumed run re-reviews it
-      assert.equal(state.lastReview, undefined); // no bookkeeping on abort
-      assert.equal(state.unreviewFailures, undefined);
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const controller = new AbortController();
+    controller.abort(); // harness shutdown already in progress
+    const { state, result } = await reviewGate(root, wt, { signal: controller.signal });
+    assert.notEqual(result.decision, "rejected", "a shutdown is not judged against the author");
+    assert.ok(!fs.existsSync(marker), "no reviewer run at all on a shutdown");
+    assert.equal(await aheadOfMain(wt, "main"), 1); // the commit stays; the resumed run re-reviewes it
+    assert.equal(state.lastReview, undefined); // no reject bookkeeping on the shutdown
+    assert.equal(state.unreviewFailures, undefined);
   });
 });
 

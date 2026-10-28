@@ -5,6 +5,33 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3h/3: the pre-merge gate runs no model reviewer (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; split 2026-10-25 by the plan role — the gate-scope narrowing moved to part 3m/3, then split again the same day after feature held it too large (held 6): the migration of the pre-merge reviewer's merge-verify and pipeline/runner/e2e cases moved to parts 3p/3–4d/3, all landed; replanned 2026-10-28 by the plan role after a feature run implementing this part found the migration incomplete — ~12 cases across seven further test files still pin the pre-merge reviewer, so those move to parts 4f/3 and 4g/3, and this part requires part 4f/3 landed and part 4g/3 landed. 3g/3's universal post-landing review and 3l/3's review-suite retirement are on main; touches src/review/review.ts docs/how-it-works.md test/review.test.ts test/review-precheck.test.ts test/post-merge-review.test.ts) — done 2026-10-28 by the feature role
+
+**Previously held 6**
+
+**Goal.** `reviewAheadOfMain` (src/review/review.ts) stops running the pre-merge model reviewer: after the deterministic diff rules, the exempt check and the build pre-check it approves, so every merged change is judged once, by the post-landing review (part 3g/3). This part keeps the gate's five deterministic rules as they are and leaves the reviewer's retry/overlap seams in place; part 3m/3 narrows the gate's rule scope, and the reviewer's remaining plumbing goes with review-run.ts/review-followup.ts. After this part lands, no diff starts a pi reviewer run.
+
+**Approach.**
+- `reviewAttempt` (src/review/review.ts): once `gateBuildPrecheck` returns a passing pre-check, set `state.lastApprovedHead = head`, clear `state.reviewResume` and return `{ decision: "approved", verifiedHead: retry.pre.verifiedHead }` — today's `review.afterMerge` branch, now the only continuation. The `afterMerge` (`reviewedAfterMerge`) and `patchApproved` (`patchId`/`approvedPatchIds`) approvals, the overlap helpers (`leaseCheckSlot`, `startOverlappedCheck`, and the `SlotLeaseHandle` import), the `keep`/`settleFailedCheck` helpers, the `runReviewer` call and the `restoreReviewedHead`/`withRuns` import go. Keep `CheckOverlap` and `ReviewRetry` exported — review-run.ts still imports both. The build pre-check now always runs in the change's own slot. `review-run.ts` and `review-followup.ts` stay compiling and unreferenced.
+- Keep `reviewAheadOfMain`'s one-attempt-per-loop shape and `reviewAttempt`'s `retry` argument: `retryable` is never set, so the loop returns the first result. Leave the `GateResult.run`/`followUpRun`/`nudgeRun`/`retryable` fields and the `ReviewContext.leaseCheckSlot`/`reviewHeld`/`retries`/`retryDelayMs`/`foldUsage` members in place — this part removes only what `noUnusedLocals` rejects, and the remaining reviewer seams go with review-run.ts/review-followup.ts.
+- Keep the `reject` path's bookkeeping, the exempt path and `gateBuildPrecheck`'s behavior unchanged.
+- docs/how-it-works.md: the **Review.** paragraph says the pre-merge gate is deterministic (the diff rules, the exempt fast path and the build pre-check) and every merge is judged once after landing, by the post-landing review; the `review.afterMerge` bullet's "A role listed in `review.afterMerge` is reviewed after merging … then merges with no reviewer run" becomes true of every role pending part 3d/3's key deletion.
+
+**Files touched.** src/review/review.ts docs/how-it-works.md test/review.test.ts test/review-precheck.test.ts test/post-merge-review.test.ts
+
+**Acceptance criteria.**
+- `reviewAheadOfMain` starts no pi reviewer run: a healthy code change reaches `{ decision: "approved" }` with `state.lastApprovedHead === head` and the pi-run marker absent.
+- A diff with a secret leak, a brief-block edit, a protected edit or a conflict marker still rejects with that reason; an exempt (md-only) diff still returns `exempt`; the build pre-check still rejects as before.
+- `npm run test:gate` passes.
+
+**Tests.**
+- Part 3l/3 has retired the reviewer cases in both files; re-point only the kept cases the source change touches.
+- test/review.test.ts: re-point `gate fails closed on an aborted run without bookkeeping` off its fake reviewer run (`a shutdown during a failing pre-check fails closed` in test/review-precheck.test.ts already covers the abort path) while keeping its assertions that the commit stays and no bookkeeping is written. The deterministic-rule, exempt, already-approved and no-op cases pass unchanged; no case references `runReviewer`, and the `reviewRetryDelayMs` case stays until the reviewer seams go with review-run.ts.
+- test/review-precheck.test.ts: add `a green pre-check approves with no reviewer run` — a healthy build returns `{ decision: "approved" }`, `state.lastApprovedHead` is set, and the pi-run marker is absent.
+- test/post-merge-review.test.ts: re-point `a listed role's change passes the gate with no reviewer run; an unlisted role's is reviewed` — with the reviewer gone before the merge, both the listed and the unlisted role now pass the gate with the pi-run marker absent and no `review_start`; the second `reviewGate` call's `assert.ok(fs.existsSync(marker))` (the unlisted role was reviewed) is the only reviewer-run assertion and goes, while the listed-role half and the post-review queueing stay.
+- The existing `gateBuildPrecheck` and exempt-path cases still pass.
+- The seven test files whose reviewer-run cases parts 4f/3 and 4g/3 own are not touched here.
+
 ### Subtract, part 5v/6: The window-reserve config keys and their editors go (planned 2026-10-26 by the plan role, split 2026-10-28 by the plan role from the too-large part 5d/6 after feature held it (held 1): the third of four finer parts replacing it, sibling to parts 5d/6, 5u/6, 5w/6 and 5x/6; requires parts 5d/6 and 5u/6 landed, since with the window move and the reserve/warning loops gone no caller reads `windowReserveFor`; touches src/config/config-schema.ts src/config/config-validation.ts src/config/config-validation-roles.ts src/config/config-views.ts src/config/config-keys.ts src/config/config-editable-keys.ts src/config/config-write.ts tumwater.example.json docs/backends.md src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-claude-reserve.ts docs/config.md test/config.test.ts test/config-views.test.ts) — done 2026-10-28 by the feature role
 
 **Goal.** The top-level `claudeWindowReserve` and `backends.<id>.windowReserve` keys and every surface that sets them go. `windowReserveFor` and the nested-reserve collapse in `config-write.ts` are deleted; the GUI and TUI offer no reserve row.

@@ -45,7 +45,10 @@ test("the tracked tumwater.example.json carries the widened afterMerge default",
   assert.deepEqual(example.review?.afterMerge, defaultConfig().review.afterMerge);
 });
 
-test("a listed role's change passes the gate with no reviewer run; an unlisted role's is reviewed", async () => {
+test("all roles pass the gate with no reviewer run before the merge", async () => {
+  // The pre-merge gate is deterministic (part 3h/3): with the reviewer gone before the merge,
+  // both a listed and an unlisted role pass the gate with the pi-run marker absent and no
+  // `review_start`; the post-review queueing the afterMerge list feeds is covered below.
   const { root, wt } = await gateFixture();
   const config = { ...defaultConfig(), review: { ...defaultConfig().review, afterMerge: ["improve"] } };
   const marker = piRanMarker();
@@ -54,8 +57,10 @@ test("a listed role's change passes the gate with no reviewer run; an unlisted r
     assert.equal(result.decision, "approved");
     assert.ok(!fs.existsSync(marker), "the reviewer must not run before the merge");
     assert.equal(eventsOfType(root, "review_start").length, 0);
-    await reviewGate(root, wt);
-    assert.ok(fs.existsSync(marker));
+    const second = await reviewGate(root, wt); // an unlisted role, too
+    assert.equal(second.result.decision, "approved");
+    assert.ok(!fs.existsSync(marker), "an unlisted role's change also passes with no reviewer run");
+    assert.equal(eventsOfType(root, "review_start").length, 0);
   });
 });
 

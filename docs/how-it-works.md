@@ -88,18 +88,17 @@ gate's re-attribution of a repeated failure still runs main's check fresh, as it
 doctor's merge-check median leave them out. Unset, `check.mergeCommand` falls back to
 `check.gateCommand`; with neither key set, every merge runs the full check.
   `check.timeoutSeconds` (default 300) bounds every check, the detected `npm test` included.
-- **Review.** A fresh reviewer checks the diff against PRINCIPLES.md and replies
-  `VERDICT: approve|reject`. Markdown-only diffs skip review, but the pipeline first rejects,
-  md-only diffs included, an edit to the brief's prompt block or to PRINCIPLES.md from any role
-  but the director and steward, and a change that newly writes a secret environment variable's
-  value, or a credential pi stores in `auth.json`/`models.json`, into a file (INV-G2). Each
-  reviewer run is capped at `review.timeoutSeconds` (default 900, never above
+- **Review.** The pre-merge gate is deterministic — the diff rules, the exempt fast path and
+  the build pre-check: it rejects, md-only diffs included, an edit to the brief's prompt block
+  or to PRINCIPLES.md from any role but the director and steward, and a change that newly writes
+  a secret environment variable's value, or a credential pi stores in `auth.json`/`models.json`,
+  into a file (INV-G2); a markdown-only diff is exempt; and a healthy change approves with no
+  model reviewer. Every merged change is judged once, after it lands, by the post-landing review.
+  Each reviewer run is capped at `review.timeoutSeconds` (default 900, never above
   `runTimeoutSeconds`; at least 3600 while the over-cap model carries the team, since a slower
   free model needs as many turns); a reviewer still making progress at that deadline gets one
-  extension of the same length before it is killed. One that runs over fails without a strike
-  and the change goes back through the merge pipeline on the author's next run. An approval is
-  keyed by the diff's patch-id, so an approved change retried after a clean rebase is not
-  reviewed again; its check still runs.
+  extension of the same length before it is killed. One that runs over fails without a strike.
+  An already-approved change is not judged again; its check still runs.
 - **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear. If
   main moved since the approval's check, the rebased tree is checked again inside the lock,
   unless it differs from the checked one only in review-exempt paths: doc commits on main don't
@@ -273,8 +272,9 @@ never has to wait a parked check out.
   selfcheck and feedback observers' shared digest's `## Fast merge guardrails` section report
   how long main has had no passing full check, the sha it has been red since, and its newest
   failing test.
-- A role listed in `review.afterMerge` is reviewed after merging: its change still passes the
-  deterministic rejects and the gate check, then merges with no reviewer run. The `merged` commit
+- Every change now merges with no reviewer run before it — the gate is deterministic (see
+  **Review.**) — and a role listed in `review.afterMerge` is additionally reviewed after
+  merging: its change passes the deterministic rejects and the gate check, then merges. The `merged` commit
   is recorded in `.tumwater/state/post-review.json`, and the merge poll runs one review at a time
   over `git diff <commit>^ <commit>` when a permit is free (`review_start`, `review_verdict` and
   `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection never reverts:
