@@ -500,4 +500,69 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** Update `test/event-format.test.ts`, `test/event-format-team.test.ts`, `test/failure-state-change.test.ts` and `test/failure-render.test.ts`: remove the fallback-event fixtures and assertions, and the `budget_paused` `fallbackRejected`/`fallbackDemoted` cases. Run them, then the project's gate, and confirm green.
 
+### `announceActiveList`'s complexity-16 active-list body is split into one named helper per phase — the read-and-filter view, the `--json` body, the empty-list prose line and the bug/plan prose body — so "which entries survive `--grep` and `--ready`?", "what does `--json` emit?", "which `no …` line does an empty list print?" and "how is a plan's blocked series one line?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `superviseStart`, `seedProject`, `handleDiff`, `persistBaselineVerdicts` and `classifyResult` plans each extract one named helper per job the same way, and the 2026-10-25 `listAndAnnounce` split is this split's direct parent: it created `announceActiveList` as the active half and `announceFinishedList` as the done half, and this plan splits the active half in turn; independent in file of every Planned entry — `grep -c 'announceActiveList' PLANS.md` prints 0 and `grep -c 'backlog-cli-view' PLANS.md` prints 0, so no `## Planned` heading or touches list names the symbol or the file (the blocked `Every commit is verified on main` parts edit src/review, src/orchestrator, src/runner, src/merge, src/baseline, src/status, src/doctor, src/config, src/cli, src/roles, src/gui, src/prompt and src/request-timeouts.ts; the `Subtract` parts edit src/budget, src/gates, src/events, src/failure, src/ui, src/roles, src/doctor and src/config; and no entry names src/backlog); PLANS-DONE.md records no split of this body (`grep -cE '^### .*announceActiveList' PLANS-DONE.md` prints 0 — its two `announceActiveList` mentions are the parent split's own approach text); docs/invariants.md names neither the file nor the symbol (`grep -c 'announceActiveList\|backlog-cli-view' docs/invariants.md` prints 0), so it stays unchanged; touches src/backlog/backlog-cli-view.ts)
+
+**Goal.** `announceActiveList` (`src/backlog/backlog-cli-view.ts`, module-private, complexity 16 — the file's highest; the next is `parseListArgs` at 12) is the active half of `bug|plan --list`: it reads the section's entries and their holds/claims, numbers and filters them, prints either the `--json` array or one of three `no …` prose lines, then prints the bug list's numbered lines or the plan list's series-grouped lines. One body carries the read, the reduce, the JSON shape, the three guards and both prose shapes, so a reader asking any of the four questions above scans the whole function. The complexity is branch density, not one tangled algorithm.
+
+**Approach.** All edits in `src/backlog/backlog-cli-view.ts`; move code, do not rewrite it — every condition, order and `//` comment stays with the phase it annotates, and stdout/stderr/exit status are identical for every invocation. Add `type EntryHold` to the `./backlog-eligibility.js` import and `type BacklogEntry` to the `./backlog.js` import (the two types the new interfaces name), and add four module-private declarations beside `announceActiveList`:
+
+```ts
+/** One numbered entry as the active list prints it: `position` is the unfiltered 1-based
+ * position `--edit`/`--cancel`/`--show <n>` address, carried through `--grep` and `--ready`. */
+interface NumberedEntry { entry: BacklogEntry; position: number; }
+
+/** The active list's read-and-filter phase: the section's entries, each position's hold and
+ * live claimer, the `--grep` matches under their unfiltered positions, the `--ready`
+ * survivors, `hidden` (how many matches `--ready` dropped), and the section's noun. */
+interface ActiveListView {
+  entries: BacklogEntry[];
+  entryHolds: EntryHold[];
+  entryRunners: (string | null)[];
+  matches: NumberedEntry[];
+  kept: NumberedEntry[];
+  hidden: number;
+  noun: string;
+}
+
+function activeListView(root: string, bugSection: boolean, sectionTitle: string, grep: string | null, ready: boolean): ActiveListView;
+
+/** The `--json` body: each kept entry as its position, title, verbatim body, hold,
+ * in-progress claim and — only when the heading names a filing stamp — its `since`/`ageDays`. */
+function activeListJson(view: ActiveListView): { entries: Record<string, unknown>[] };
+
+/** The prose `no …` line for an empty list, a `--grep` with no match, or a `--ready` list
+ * whose every match is held; null when `view.kept` has rows to print. */
+function activeListEmptyLine(view: ActiveListView, command: string): string | null;
+
+/** The prose body of a non-empty active list: the bug list's numbered `line` rows, or the
+ * plan list's `groupBlockedSeries` rows, each with the hidden-held notice when `hidden > 0`. */
+function activeListProse(view: ActiveListView, fileName: string, command: string, bugSection: boolean): string;
+```
+
+`activeListView` reproduces today's reads and reduce verbatim: `openBugEntries`/`plannedPlanEntries`, `backlogHolds`/`backlogInProgress` and their `bugSection` picks, the `numbered` map, the `grep === null ? numbered : numbered.filter(entryMatches)` match, the `ready ? matches.filter((m) => (entryHolds[m.position - 1] ?? null) === null) : matches` keep, `hidden = matches.length - kept.length`, and `sectionNoun(sectionTitle)`. `activeListJson` reproduces the `sayJson` object exactly, including the `...(since === null ? {} : { since, ageDays: ageInDays(since) })` spread, and returns it. `activeListEmptyLine` reproduces the three guards in order (`grep === null && entries.length === 0`; `matches.length === 0`; `ready && kept.length === 0`) as `return` values. `activeListProse` reproduces the `hiddenNote`, the `line` closure, the `bugSection` numbered branch and the plan `rows`/`groupBlockedSeries`/`partsLabel`/`positionRuns` branch with the `grouped` footnote and the hidden note. `announceActiveList` keeps its signature, its module-private status and its doc comment (updated to name the four helpers), and becomes:
+
+```ts
+function announceActiveList(root, fileName, command, bugSection, sectionTitle, grep, ready, json): void {
+  const view = activeListView(root, bugSection, sectionTitle, grep, ready);
+  if (json) { sayJson(activeListJson(view)); return; }
+  const empty = activeListEmptyLine(view, command);
+  if (empty !== null) { say(empty); return; }
+  say(activeListProse(view, fileName, command, bugSection));
+}
+```
+
+**Files touched.** `src/backlog/backlog-cli-view.ts` only. No new module, no export change, no test file edited, no docs edited.
+
+**Acceptance criteria.**
+- `announceActiveList`'s body is only the `activeListView` call, the `json` branch that says `activeListJson(view)`, the `activeListEmptyLine` guard that says its line, and the final `say(activeListProse(...))`: it contains no `backlogHolds`, `backlogInProgress`, `entryMatches`, `sectionNoun`, `groupBlockedSeries`, `partsLabel`, `positionRuns`, `filingDate` or `ageInDays` call, and no `filter`.
+- `activeListView`, `activeListJson`, `activeListEmptyLine` and `activeListProse` each exist exactly once at module scope, are not exported, and are called only from `announceActiveList`.
+- The reduce is the body's today: a `--grep` match keeps its unfiltered `position`; `--ready` drops exactly the entries whose `(holds[position - 1] ?? null) !== null`; `hidden` counts matches dropped by `--ready`; the JSON carries `since`/`ageDays` only when `filingDate` is non-null.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json src/backlog/backlog-cli-view.ts`) no longer reports `announceActiveList` at 16, and no function in the file is reported above 12 (`parseListArgs` stays at 12, `announceFinishedList` and `showAndAnnounce` stay at 11).
+- The exported surface is unchanged: `grep -nE '^export ' src/backlog/backlog-cli-view.ts` still matches `listAndAnnounce`, `showAndAnnounce` and `renderShownEntry` only; the two additions are `import type`s, so no runtime import is added or removed.
+- `docs/invariants.md` is not edited: `grep -c 'announceActiveList\|backlog-cli-view' docs/invariants.md` prints 0.
+- Behaviour is preserved, verified by the existing `test/backlog-write-list.test.ts` cases passing unedited — "plan --list prints the Planned entries numbered with their eligibility marks and age", "bug --list prints the Open entries numbered with their eligibility marks and age", "plan/bug --list --json carries positions, verbatim bodies, and holds", "plan/bug --list prints the no-entries line for an empty or missing file", "plan|bug --list --grep searches the active entries under their unfiltered numbers", "plan --list --grep compresses a matching blocked series as one line", "plan|bug --list --ready keeps the claimable entries under their unfiltered numbers" and "plan --list shows a blocked series as one line with its positions".
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behaviour-preserving move behind four module-private helpers, guarded by the `test/backlog-write-list.test.ts` cases named above (and `test/backlog.test.ts`). Run those modules, then the project's gate, and confirm green.
+
 ## Done
