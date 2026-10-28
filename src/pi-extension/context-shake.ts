@@ -182,6 +182,48 @@ function isCandidate(msg: ShakeMessage, newerTokens: number, protectedTokens: nu
   return true;
 }
 
+/** Tokens newer than each message, so a candidate is one the model has already moved past. */
+function newerTokenCounts(messages: ShakeMessage[]): number[] {
+  const newerTokens: number[] = new Array<number>(messages.length).fill(0);
+  let running = 0;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    newerTokens[i] = running;
+    running += estimateTokens(messages[i]?.text ?? "");
+  }
+  return newerTokens;
+}
+
+/** The messages the model has already moved past and can reclaim space from. */
+function reclaimableCandidates(
+  messages: ShakeMessage[],
+  newerTokens: number[],
+  protectedTokens: number,
+): ShakeMessage[] {
+  return messages.filter((msg, i) => isCandidate(msg, newerTokens[i] ?? 0, protectedTokens));
+}
+
+/** The edits that reclaim space from one candidate list, and how much they reclaim together. */
+function shakeEdits(
+  candidates: ShakeMessage[],
+  writeFullOutput?: FullOutputWriter | null,
+): { edits: ShakeEdit[]; reclaimedTokens: number } {
+  const edits: ShakeEdit[] = [];
+  let reclaimedTokens = 0;
+  for (const msg of candidates) {
+    let fullOutputPath: string | null = null;
+    if (msg.toolName === "bash") {
+      fullOutputPath = msg.fullOutputPath ?? writeFullOutput?.(msg.text, msg.toolCallId) ?? null;
+      // No recoverable path means eliding would lose the output outright: keep the result.
+      if (!fullOutputPath) continue;
+    }
+    const replacement = replacementFor(msg, fullOutputPath);
+    const reclaimed = Math.max(0, estimateTokens(msg.text) - estimateTokens(replacement));
+    edits.push({ targetId: msg.entryId!, toolName: msg.toolName as "read" | "bash", replacement, reclaimedTokens: reclaimed });
+    reclaimedTokens += reclaimed;
+  }
+  return { edits, reclaimedTokens };
+}
+
 /**
  * Plan a shake pass: the `context_edit` replacements that reclaim the most space from old
  * bulky tool results. Empty unless the run is at or above the first pass's percent, something
@@ -199,34 +241,13 @@ export function shakePlan(
   const limits = shakeLimits(usage.contextWindow);
   if (percent === null || percent < limits.percent) return EMPTY_PLAN;
 
-  // Tokens newer than each message, so a candidate is one the model has already moved past.
-  const newerTokens: number[] = new Array<number>(messages.length).fill(0);
-  let running = 0;
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    newerTokens[i] = running;
-    running += estimateTokens(messages[i]?.text ?? "");
-  }
-
-  const candidates = messages.filter((msg, i) => isCandidate(msg, newerTokens[i] ?? 0, limits.protectedTokens));
+  const candidates = reclaimableCandidates(messages, newerTokenCounts(messages), limits.protectedTokens);
   // The pointer is far shorter than the result it replaces, so the full text's tokens are a
   // safe upper bound on the reclaim; bail before touching the writer when even that is short.
   const upperBound = candidates.reduce((sum, msg) => sum + estimateTokens(msg.text), 0);
   if (upperBound < limits.minReclaimTokens) return EMPTY_PLAN;
 
-  const edits: ShakeEdit[] = [];
-  let reclaimedTokens = 0;
-  for (const msg of candidates) {
-    let fullOutputPath: string | null = null;
-    if (msg.toolName === "bash") {
-      fullOutputPath = msg.fullOutputPath ?? writeFullOutput?.(msg.text, msg.toolCallId) ?? null;
-      // No recoverable path means eliding would lose the output outright: keep the result.
-      if (!fullOutputPath) continue;
-    }
-    const replacement = replacementFor(msg, fullOutputPath);
-    const reclaimed = Math.max(0, estimateTokens(msg.text) - estimateTokens(replacement));
-    edits.push({ targetId: msg.entryId!, toolName: msg.toolName as "read" | "bash", replacement, reclaimedTokens: reclaimed });
-    reclaimedTokens += reclaimed;
-  }
+  const { edits, reclaimedTokens } = shakeEdits(candidates, writeFullOutput);
   if (reclaimedTokens < limits.minReclaimTokens) return EMPTY_PLAN;
   return { edits, reclaimedTokens, elidedCount: edits.length };
 }
