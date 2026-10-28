@@ -76,30 +76,49 @@ interface RepoFiles {
   commondir: string;
 }
 
+/** Whether an environment variable makes git look somewhere other than the files `dir` holds. */
+function gitRedirectsSet(): boolean {
+  return GIT_REDIRECT_ENV.some((name) => process.env[name]);
+}
+
+/** The shared refs/objects dir a gitdir points at via its `commondir` file: the gitdir itself
+ * when there is no file (a primary checkout), the resolved pointer when there is, and
+ * undefined when the file is blank or unreadable for any reason but absence. */
+function resolveCommondir(gitdir: string): string | undefined {
+  try {
+    const pointer = fs.readFileSync(path.join(gitdir, "commondir"), "utf8").trim();
+    if (pointer === "") return undefined;
+    return path.resolve(gitdir, pointer);
+  } catch (err) {
+    if (errCode(err) !== "ENOENT") return undefined; // A primary checkout has none.
+    return gitdir;
+  }
+}
+
+/** Whether the files-backend trust checks hold: this process's user owns both dirs, the
+ * objects dir and HEAD are present, and no reftable store shadows them. */
+function filesBackendTrusted(dir: string, gitdir: string, commondir: string, uid: number): boolean {
+  try {
+    if (fs.statSync(dir).uid !== uid || fs.statSync(gitdir).uid !== uid) return false;
+    if (!fs.statSync(path.join(commondir, "objects")).isDirectory()) return false;
+    if (!fs.statSync(path.join(gitdir, "HEAD")).isFile()) return false;
+  } catch {
+    return false;
+  }
+  return !fs.existsSync(path.join(commondir, "reftable"));
+}
+
 /** `dir`'s git dirs when its `.git` resolves from files to a files-backend repository this
  * process's user owns, or undefined when git should decide. */
 function repoFiles(dir: string): RepoFiles | undefined {
-  if (GIT_REDIRECT_ENV.some((name) => process.env[name])) return undefined;
+  if (gitRedirectsSet()) return undefined;
   const uid = process.getuid?.();
   if (uid === undefined) return undefined;
   const gitdir = resolveGitDir(dir);
   if (gitdir === undefined) return undefined;
-  let commondir = gitdir;
-  try {
-    const pointer = fs.readFileSync(path.join(gitdir, "commondir"), "utf8").trim();
-    if (pointer === "") return undefined;
-    commondir = path.resolve(gitdir, pointer);
-  } catch (err) {
-    if (errCode(err) !== "ENOENT") return undefined; // A primary checkout has none.
-  }
-  try {
-    if (fs.statSync(dir).uid !== uid || fs.statSync(gitdir).uid !== uid) return undefined;
-    if (!fs.statSync(path.join(commondir, "objects")).isDirectory()) return undefined;
-    if (!fs.statSync(path.join(gitdir, "HEAD")).isFile()) return undefined;
-  } catch {
-    return undefined;
-  }
-  if (fs.existsSync(path.join(commondir, "reftable"))) return undefined;
+  const commondir = resolveCommondir(gitdir);
+  if (commondir === undefined) return undefined;
+  if (!filesBackendTrusted(dir, gitdir, commondir, uid)) return undefined;
   return { gitdir, commondir };
 }
 

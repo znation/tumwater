@@ -5,6 +5,75 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `repoFiles`'s complexity-14 files-backend trust probe is split into one named helper per concern — the redirect-env check, the commondir resolution and the ownership/shape check — so "when does the environment force a git spawn?", "where does a linked worktree's shared dir come from?" and "when are the files untrusted or reftable-backed?" are each found by name (planned 2026-10-28 by the plan role; continues the landed split-large-function family — the 2026-10-27 `refShaFromFiles` split in this same file extracted one named helper per ref shape the same way, as did `scanTurnRecords`, `teamHold`, `planDependencyProblems`, `buildRunPrompt` and `runRows`; independent in file of every `## Planned` entry — before this entry `grep -c 'repoFiles' PLANS.md` and `grep -c 'src/git/git.ts' PLANS.md` both print 0, and the only `src/git` paths named in `## Planned` are src/git/worktree-pool.ts, src/git/worktree.ts, src/git/worktree-pool-startup.ts, src/git/slot-salvage.ts, src/git/slots-state.ts and src/git/worktree-use.ts in the blocked Subtract part 4/6, none of them this file; PLANS-DONE.md records no split of `repoFiles` (`grep -cE '^### .*repoFiles' PLANS-DONE.md` prints 0; the landed `refShaFromFiles` split names `repoFiles` only as a count that must not rise); docs/invariants.md binds `src/git/git.ts` under INV-H1 only for agent-commit folding and names no `repoFiles` (`grep -c 'repoFiles' docs/invariants.md` prints 0), and this move keeps every name, signature and guarantee, so no invariants edit; touches src/git/git.ts) — done 2026-10-28 by the feature role
+
+**Goal.** `repoFiles` (src/git/git.ts, module-private, complexity 14) decides whether a directory's `.git` resolves from files to a files-backend repository this process's user owns — returning the `{ gitdir, commondir }` pair the ref probes read, or undefined so they fall back to git. Today one body does three jobs: it bails when an environment variable redirects git, it resolves the shared `commondir` (a primary checkout's is its own gitdir; a linked worktree's points at the common dir), and it confirms the directory, gitdir and objects are owned by this user, the HEAD is a file and no `reftable` store is present. A reader asking "when does the environment force a spawn?", "where does a linked worktree's shared dir come from?" and "when are the files untrusted or reftable-backed?" scans the whole body. Extract one named helper per concern and leave `repoFiles` the composition. No behavior change.
+
+**Approach.** All edits in src/git/git.ts; move code, do not rewrite it, and keep every existing `//` comment (`// A primary checkout has none.`) with the helper whose code it annotates. Keep `repoFiles`'s name, signature, `RepoFiles` return type and doc comment, and keep `GIT_REDIRECT_ENV`, `PER_WORKTREE_REF`, `RepoFiles`, `isPlainRefName`, `resolveGitDir`, `refAbsentFromFiles`, `toplevelFromFiles` and every export exactly as they are. Add three module-private declarations beside `repoFiles`, each with a one-line doc comment naming the single concern it owns:
+
+```ts
+/** Whether an environment variable makes git look somewhere other than the files `dir` holds. */
+function gitRedirectsSet(): boolean {
+  return GIT_REDIRECT_ENV.some((name) => process.env[name]);
+}
+
+/** The shared refs/objects dir a gitdir points at via its `commondir` file: the gitdir itself
+ * when there is no file (a primary checkout), the resolved pointer when there is, and
+ * undefined when the file is blank or unreadable for any reason but absence. */
+function resolveCommondir(gitdir: string): string | undefined {
+  try {
+    const pointer = fs.readFileSync(path.join(gitdir, "commondir"), "utf8").trim();
+    if (pointer === "") return undefined;
+    return path.resolve(gitdir, pointer);
+  } catch (err) {
+    if (errCode(err) !== "ENOENT") return undefined; // A primary checkout has none.
+    return gitdir;
+  }
+}
+
+/** Whether the files-backend trust checks hold: this process's user owns both dirs, the
+ * objects dir and HEAD are present, and no reftable store shadows them. */
+function filesBackendTrusted(dir: string, gitdir: string, commondir: string, uid: number): boolean {
+  try {
+    if (fs.statSync(dir).uid !== uid || fs.statSync(gitdir).uid !== uid) return false;
+    if (!fs.statSync(path.join(commondir, "objects")).isDirectory()) return false;
+    if (!fs.statSync(path.join(gitdir, "HEAD")).isFile()) return false;
+  } catch {
+    return false;
+  }
+  return !fs.existsSync(path.join(commondir, "reftable"));
+}
+```
+
+`repoFiles` keeps its doc comment and becomes the ordered calls:
+
+```ts
+function repoFiles(dir: string): RepoFiles | undefined {
+  if (gitRedirectsSet()) return undefined;
+  const uid = process.getuid?.();
+  if (uid === undefined) return undefined;
+  const gitdir = resolveGitDir(dir);
+  if (gitdir === undefined) return undefined;
+  const commondir = resolveCommondir(gitdir);
+  if (commondir === undefined) return undefined;
+  if (!filesBackendTrusted(dir, gitdir, commondir, uid)) return undefined;
+  return { gitdir, commondir };
+}
+```
+
+No new import: `fs`, `path` and `errCode` are already in scope, and no helper is exported.
+
+**Files touched.** src/git/git.ts
+
+**Acceptance criteria.**
+- The three helpers are each declared exactly once and none is exported: `grep -nE '^(export )?function (gitRedirectsSet|resolveCommondir|filesBackendTrusted)\(' src/git/git.ts` shows one declaration per name, each with no `export` prefix, and `repoFiles` keeps its bare `function` declaration and its doc comment.
+- The complexity falls: `npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json src/git/git.ts` reports `repoFiles` at no more than 7 (it reports 14 today), `gitRedirectsSet` at 1, `resolveCommondir` at 4 and `filesBackendTrusted` at 6 (a stdin run of the proposed bodies against the same config reported 1, 4, 6 and 7), and no function in the file reports above 8.
+- The file's other functions are untouched at their current counts (`refShaFromFiles` 4, `refShaFromShortName` 8, `refShaFromHead` 7, `toplevelFromFiles` 7, `readBranchHead` 6, `storedRef` 6, `currentBranchFromHeadFile` 6, `resolveGitDir` 5, and every exported probe at its current count; none is edited or renamed).
+- Behaviour is preserved: an environment redirect, a missing `process.getuid`, an unresolved gitdir, a blank `commondir` pointer, a non-ENOENT read error, an ownership mismatch on either dir, a missing/non-directory `objects`, a missing/non-file HEAD and an existing `commondir/reftable` each still return undefined; a primary checkout still returns `commondir === gitdir`; a linked worktree still returns its resolved common dir — so every existing test/git-ref-files.test.ts and test/git-resolve.test.ts case is green.
+- No edit lands outside src/git/git.ts; docs/invariants.md is not edited (`grep -c 'repoFiles' docs/invariants.md` printed 0 and INV-H1's `Binds` line still names `src/git/git.ts`); and no caller of `repoFiles` (the probes at src/git/git.ts) changes.
+
+**Tests.** No new test module: a behaviour-preserving private move guarded by the existing suite. Run test/git-ref-files.test.ts ("loose refs: every answer from files is git's, and the common reads need no spawn", "packed refs answer too, and a loose ref written after packing wins like it does in git", "a linked worktree reads its own HEAD and the shared refs", "a short name git could read as a tag or a top-level ref is left to git", "misses and unusual shapes are never answered from files", "an environment that redirects git keeps every read with git", "the probes answer from files and agree with git across hits and misses", "repoToplevel answers a checkout root from files exactly as git prints it", "repoToplevel leaves a moved work tree to git", "hasWorktreeRegistrations is false only when the files show no linked worktree at all") and test/git-resolve.test.ts ("a wedged xcrun cannot freeze git resolution: the probe is bounded and git falls back to its PATH name"), then the project's gate, and confirm green.
+
 ### Every commit is verified on main, part 4e/3: the gate's build pre-check stops when its verify is aborted, so `tumwater abort --role` and a restart hand-off end a merge mid-check as `aborted` (planned 2026-10-28 by the operator, from feature's 2026-10-27 refusals of parts 4b/3 and 4d/3: with the pre-merge reviewer gone in part 3h/3, the gate's build pre-check is the only long step left in a verify, and no abort reaches it; independent of every other part, and parts 4b/3, 4c/3 and 4d/3 park their held merges on this check; touches src/process/process-group.ts src/build/build-check.ts src/build/build-check-scoped.ts src/review/review-precheck.ts docs/how-it-works.md test/process-group.test.ts test/review-precheck.test.ts) — done 2026-10-28 by the feature role
 
 **Goal.** A verify's abort controller fires on `tumwater abort --role` (the abort-marker loop in src/operator/operator-requests.ts sets `merge.userAborted` and aborts `merge.controller`) and on shutdown (`abortOnShutdown` in `startVerify`, src/merge/merge-verify.ts), and `reviewPinnedChange` (src/merge/merge-core.ts) settles the verify `aborted` when the gate reports `aborted`. Today only the gate's pi runs hear that signal. `gateBuildPrecheck` (src/review/review-precheck.ts) calls `runScopedBuildCheck` with no signal, and `runBuildCheck` → `runScriptGroup` (src/process/process-group.ts) stop a check only on its own timeout. So an abort during the gate's build pre-check waits the check out (up to `check.timeoutSeconds`, 600 s on this project), and a restart hand-off whose window lapses returns `abandoned` for that merge instead of aborting it (`awaitMergeForHandoff`, src/run/run-timing.ts). Until now the pre-merge reviewer ran after the check and caught the abort there; once part 3h/3 removes it, nothing does. Make the gate's check stop on the verify's abort.
