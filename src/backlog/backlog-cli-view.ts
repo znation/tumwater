@@ -6,6 +6,7 @@
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "../cli/cli-args.js";
 import {
+  type BacklogEntry,
   DONE_DATE_RE,
   FIXED_DATE_RE,
   completionDate,
@@ -18,7 +19,7 @@ import {
   entryMatches,
   filingDate,
 } from "./backlog.js";
-import { backlogHolds, backlogInProgress, holdMark, inProgressMark } from "./backlog-eligibility.js";
+import { backlogHolds, backlogInProgress, holdMark, inProgressMark, type EntryHold } from "./backlog-eligibility.js";
 import { groupBlockedSeries, partsLabel } from "./backlog-index-data.js";
 import { rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { refuseTeamWorkspace } from "../cli/cli-repo-gate.js";
@@ -149,19 +150,39 @@ function announceFinishedList(
   say(`${header}\n${lines.join("\n")}`);
 }
 
-/** The active half of the list shell: the open entries with their holds, in-progress claim
- * marks and age suffixes, optionally reduced to the ready ones, as `--json` or prose, grouping
- * a plan's blocked parts into one line (groupBlockedSeries). */
-function announceActiveList(
+/** One numbered entry as the active list prints it: `position` is the unfiltered 1-based
+ * position `--edit`/`--cancel`/`--show <n>` address, carried through `--grep` and `--ready`. */
+interface NumberedEntry {
+  entry: BacklogEntry;
+  position: number;
+}
+
+/** The active list's read-and-filter phase: the section's entries, each position's hold and
+ * live claimer, the `--grep` matches under their unfiltered positions, the `--ready`
+ * survivors, `hidden` (how many matches `--ready` dropped), the section's noun, and the
+ * `--grep`/`--ready` flags the later phases re-check. */
+interface ActiveListView {
+  entries: BacklogEntry[];
+  entryHolds: EntryHold[];
+  entryRunners: (string | null)[];
+  matches: NumberedEntry[];
+  kept: NumberedEntry[];
+  hidden: number;
+  noun: string;
+  grep: string | null;
+  ready: boolean;
+}
+
+/** The active list's read-and-filter phase: reads the section's entries and each position's
+ * hold and live claimer, numbers them unfiltered, keeps the `--grep` matches under those
+ * positions, drops to the `--ready` survivors, counts what `--ready` hid, and names the noun. */
+function activeListView(
   root: string,
-  fileName: string,
-  command: string,
   bugSection: boolean,
   sectionTitle: string,
   grep: string | null,
   ready: boolean,
-  json: boolean,
-): void {
+): ActiveListView {
   const entries = bugSection ? openBugEntries(root) : plannedPlanEntries(root);
   const holds = backlogHolds(root);
   const entryHolds = bugSection ? holds.bugs : holds.plans;
@@ -172,47 +193,62 @@ function announceActiveList(
   const numbered = entries.map((entry, i) => ({ entry, position: i + 1 }));
   const matches = grep === null ? numbered : numbered.filter((m) => entryMatches(m.entry, grep));
   const kept = ready ? matches.filter((m) => (entryHolds[m.position - 1] ?? null) === null) : matches;
-  const hidden = matches.length - kept.length;
-  if (json) {
-    sayJson({
-      entries: kept.map(({ entry, position }) => {
-        const since = filingDate(entry.title);
-        return {
-          position,
-          title: entry.title,
-          body: entry.body,
-          hold: entryHolds[position - 1] ?? null,
-          inProgress: entryRunners[position - 1] ?? null,
-          // The filing stamp the entry's own heading carries, and how many days it has waited
-          // since then (both present only when the heading names a stamp — an undated entry
-          // keeps the pre-existing shape with neither key).
-          ...(since === null ? {} : { since, ageDays: ageInDays(since) }),
-        };
-      }),
-    });
-    return;
-  }
-  const noun = sectionNoun(sectionTitle);
-  if (grep === null && entries.length === 0) {
-    say(`no ${noun}s`);
-    return;
-  }
-  if (matches.length === 0) {
-    say(`no ${noun}s match "${grep}"`);
-    return;
-  }
-  if (ready && kept.length === 0) {
-    say(`no ${noun}s ready (${hidden} held; run \`tumwater ${command} --list\` to see them)`);
-    return;
-  }
+  return {
+    entries,
+    entryHolds,
+    entryRunners,
+    matches,
+    kept,
+    hidden: matches.length - kept.length,
+    noun: sectionNoun(sectionTitle),
+    grep,
+    ready,
+  };
+}
+
+/** The `--json` body: each kept entry as its position, title, verbatim body, hold,
+ * in-progress claim and — only when the heading names a filing stamp — its `since`/`ageDays`. */
+function activeListJson(view: ActiveListView): { entries: Record<string, unknown>[] } {
+  const { kept, entryHolds, entryRunners } = view;
+  return {
+    entries: kept.map(({ entry, position }) => {
+      const since = filingDate(entry.title);
+      return {
+        position,
+        title: entry.title,
+        body: entry.body,
+        hold: entryHolds[position - 1] ?? null,
+        inProgress: entryRunners[position - 1] ?? null,
+        // The filing stamp the entry's own heading carries, and how many days it has waited
+        // since then (both present only when the heading names a stamp — an undated entry
+        // keeps the pre-existing shape with neither key).
+        ...(since === null ? {} : { since, ageDays: ageInDays(since) }),
+      };
+    }),
+  };
+}
+
+/** The prose `no …` line for an empty list, a `--grep` with no match, or a `--ready` list
+ * whose every match is held; null when `view.kept` has rows to print. */
+function activeListEmptyLine(view: ActiveListView, command: string): string | null {
+  const { entries, matches, kept, hidden, noun, grep, ready } = view;
+  if (grep === null && entries.length === 0) return `no ${noun}s`;
+  if (matches.length === 0) return `no ${noun}s match "${grep}"`;
+  if (ready && kept.length === 0) return `no ${noun}s ready (${hidden} held; run \`tumwater ${command} --list\` to see them)`;
+  return null;
+}
+
+/** The prose body of a non-empty active list: the bug list's numbered `line` rows, or the
+ * plan list's `groupBlockedSeries` rows, each with the hidden-held notice when `hidden > 0`. */
+function activeListProse(view: ActiveListView, fileName: string, command: string, bugSection: boolean): string {
+  const { kept, entryHolds, entryRunners, hidden, noun } = view;
   const hiddenNote = `(${hidden} held entries hidden; run \`tumwater ${command} --list\` to see them)`;
   const line = (entry: { title: string }, i: number): string =>
     `${entry.title}${holdMark(entryHolds[i] ?? null)}${inProgressMark(entryRunners[i] ?? null)}${entryAgeSuffix(entry.title)}`;
   if (bugSection) {
     const bugLines = kept.map(({ entry, position }) => `${position}. ${line(entry, position - 1)}`);
     if (hidden > 0) bugLines.push(hiddenNote);
-    say(`${noun}s in ${fileName}:\n${bugLines.join("\n")}`);
-    return;
+    return `${noun}s in ${fileName}:\n${bugLines.join("\n")}`;
   }
   // Plans: a series' blocked parts show as one line naming their positions, as the prompt's
   // backlog index does; numbering is unchanged so --show/--edit/--cancel <n> reach every part.
@@ -230,7 +266,36 @@ function announceActiveList(
   });
   if (grouped) lines.push("(each blocked series is one line; --show <n> prints a part, --json lists every entry)");
   if (hidden > 0) lines.push(hiddenNote);
-  say(`${noun}s in ${fileName}:\n${lines.join("\n")}`);
+  return `${noun}s in ${fileName}:\n${lines.join("\n")}`;
+}
+
+/** The active half of the list shell: the open entries with their holds, in-progress claim
+ * marks and age suffixes, optionally reduced to the ready ones, as `--json` or prose, grouping
+ * a plan's blocked parts into one line (groupBlockedSeries). Orchestrates the four named
+ * phases below — the read-and-filter view (activeListView), the `--json` body (activeListJson),
+ * the empty-list prose line (activeListEmptyLine) and the bug/plan prose body
+ * (activeListProse). */
+function announceActiveList(
+  root: string,
+  fileName: string,
+  command: string,
+  bugSection: boolean,
+  sectionTitle: string,
+  grep: string | null,
+  ready: boolean,
+  json: boolean,
+): void {
+  const view = activeListView(root, bugSection, sectionTitle, grep, ready);
+  if (json) {
+    sayJson(activeListJson(view));
+    return;
+  }
+  const empty = activeListEmptyLine(view, command);
+  if (empty !== null) {
+    say(empty);
+    return;
+  }
+  say(activeListProse(view, fileName, command, bugSection));
 }
 
 /** The shared shell of the `bug --list` and `plan --list` CLI cases — the read half of the
