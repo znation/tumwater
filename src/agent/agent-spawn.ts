@@ -215,8 +215,12 @@ export function spawnPiRun(
     },
   });
   // The run's cross-group attribution mark, minted before the spawn so the environment can carry
-  // it and the exit sweep can name it.
-  const runMarker = makeRunMarker();
+  // it and the exit sweep can name it. When the session sits under a team root, the mark is
+  // stamped with that root's token so a dead-marked orphan can be attributed to this checkout
+  // and never reaped as another team's (BUGS.md, "Reap the doctor's orphans, part 1/3"); a
+  // session with no team root (a lab script, a smoke run, a prompt-lab replay) stays rootless.
+  const markerRoot = nearestTumwaterRoot(opts.sessionDir);
+  const runMarker = makeRunMarker(process.pid, markerRoot);
   const resolved = backend.resolveBin(opts.config);
   // Install the notes shim under the team root's `.tumwater/bin` so every backend's run finds
   // `tumwater-notes` first on PATH (notes-shim.ts). A failure to write it logs one warning and

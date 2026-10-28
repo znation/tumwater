@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkOrphans, killOrphans, orphanKillLines, parseEtimeMs, reapAttributableOrphans, reapPreviousTeamOrphans, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
+import { checkOrphans, killOrphans, markRootToken, orphanKillLines, parseEtimeMs, reapAttributableOrphans, reapPreviousTeamOrphans, rootToken, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
 import { dueForOrphanReap, newPollState, ORPHAN_REAP_INTERVAL_MS } from "../src/orchestrator/orchestrator-poll.js";
 import { runDoctor } from "../src/doctor/doctor.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
@@ -105,6 +105,46 @@ test("checkOrphans catches a marked leak outside the worktrees once its harness 
       `pid 3100 (age 11:22:33, cpu 1:02.30) node /tmp/twprobe/server.js (run ${dead}-deadbeef; tumwater ${dead} exited)` +
       " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice) kills each with its descendants",
   });
+});
+
+test("checkOrphans leaves a dead-marked scratch-dir orphan whose run mark names another root alone", async () => {
+  const root = readyRepo();
+  const foreign = tmpdir("doctor-foreign-root-");
+  fs.mkdirSync(path.join(foreign, ".tumwater"), { recursive: true });
+  const dead = 999_999_996;
+  const deadRootless = 999_999_995;
+  const { probe } = fakeProbe(
+    [
+      // Another checkout's dead-marked scratch-dir writer: its mark carries that root's token, so
+      // this repo's scan must not claim it (and the automatic reap, built on this set, must never
+      // signal it).
+      { pid: 3500, etime: "11:22:33", time: "1:02.30", command: "node /tmp/twforeign/server.js" },
+      // A rootless dead mark still reports as before (BUGS.md, part 1/3): whatever started it,
+      // nothing else will reap it.
+      { pid: 3501, etime: "11:22:33", time: "1:02.30", command: "node /tmp/twrootless/server.js" },
+    ],
+    {},
+    { 3500: `${dead}-beeff00d-${rootToken(foreign)}`, 3501: `${deadRootless}-cafe` },
+  );
+  const r = await checkOrphans(root, probe);
+  assert.equal(r.level, "fail");
+  assert.match(r.detail, /pid 3501 /, "the rootless dead mark is still this repo's orphan");
+  assert.doesNotMatch(r.detail, /pid 3500 /, "the foreign-root-token mark is not this repo's orphan");
+  assert.equal(markRootToken(`${dead}-beeff00d-${rootToken(foreign)}`), rootToken(foreign), "a rooted mark reads back its token");
+  assert.equal(markRootToken(`${deadRootless}-cafe`), null, "a two-segment mark is rootless");
+});
+
+test("checkOrphans still reports a dead-marked scratch-dir orphan whose run mark names this root", async () => {
+  const root = readyRepo();
+  const dead = 999_999_994;
+  const { probe } = fakeProbe(
+    [{ pid: 3600, etime: "11:22:33", time: "1:02.30", command: "node /tmp/twprobe/server.js" }],
+    {},
+    { 3600: `${dead}-beef-${rootToken(root)}` },
+  );
+  const r = await checkOrphans(root, probe);
+  assert.equal(r.level, "fail");
+  assert.match(r.detail, /^1 orphaned process \(PPID 1\): pid 3600 /, "a dead mark token-matching this root is still reported");
 });
 
 test("checkOrphans leaves a marked straggler whose harness is alive — that run's sweep will reap it", async () => {

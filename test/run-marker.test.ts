@@ -13,6 +13,7 @@ import {
   makeRunMarker,
   pidsMarkedInPs,
   procEnvironCarriesMarker,
+  rootToken,
   runMarkerEnv,
   runMarkersInEnviron,
   runMarkersInPs,
@@ -52,6 +53,22 @@ test("runMarkerEnv appends to an inherited mark and makes fresh markers unique",
   assert.equal(env.TUMWATER_RUN, `${outer},${marker}`, "a nested run keeps the outer mark");
   assert.equal(env.PATH, "/bin", "the rest of the environment rides along");
   assert.equal(runMarkerEnv({}, marker).TUMWATER_RUN, marker, "no inherited mark means just this one");
+});
+
+test("makeRunMarker tags a team root with a stable token and stays rootless without one", () => {
+  const dir = tmpdir("runmarker-token-");
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const marked = makeRunMarker(4242, dir);
+  assert.match(marked, /^4242-[0-9a-f]{12}-[0-9a-f]{8}$/, "a rooted mark carries pid, random hex and a root token");
+  // The third segment is the root's stable token: the same one every mint stamps as rootToken(dir),
+  // so a reader comparing against this root's token always matches a rooted mark of its own.
+  assert.equal(marked.slice(-8), rootToken(dir), "the third segment is this root's token");
+  assert.equal(makeRunMarker(4242, dir).slice(-8), marked.slice(-8), "one root always mints one token");
+  const dir2 = tmpdir("runmarker-token-b-");
+  fs.mkdirSync(path.join(dir2, ".tumwater"), { recursive: true });
+  assert.notEqual(rootToken(dir2), marked.slice(-8), "a different root mints a different token");
+  // Rootless: the two-segment mark exactly as before, so old rootless marks still read.
+  assert.match(makeRunMarker(4242), /^4242-[0-9a-f]{12}$/, "a rootless mark keeps the two-segment shape");
 });
 
 test("backendBaseEnv prepends a given binDir to PATH (the notes shim dir)", () => {

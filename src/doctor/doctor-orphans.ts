@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { worktreesDir } from "../paths.js";
 import { pidAlive } from "../process/process.js";
+import { rootToken } from "../process/run-marker.js";
 import { GROUP_POLL_MS, KILL_GRACE_MS } from "../process/process-group.js";
 import { type ProcessProbe, type ProcessRow, systemProcessProbe } from "../process/process-table.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -106,6 +107,20 @@ function harnessGone(marker: string): boolean | null {
   return m ? !pidAlive(Number(m[1])) : null;
 }
 
+/** The repo-identity token in a run marker's third dash segment — the team root tag
+ * `makeRunMarker` stamps when it knows one — or null for a rootless two-segment mark
+ * (`<pid>-<hex>`, or a torn or foreign value with no third segment): there is no evidence of
+ * which checkout's harness minted it. */
+export function markRootToken(mark: string): string | null {
+  const third = mark.split("-")[2];
+  return third === undefined ? null : third;
+}
+
+/** The repo-identity token `makeRunMarker` stamps into a team-rooted mark — the same `rootToken`
+ * run-marker.ts mints, re-exported here so the orphan scan can spell this root's side of the
+ * comparison without importing process/run-marker. */
+export { rootToken };
+
 /** ps's elapsed-time field (`[[D-]HH:]MM:SS`, the string the doctor line already prints) in
  * milliseconds, the minimum-age gate the automatic reap uses so a just-leaked — still
  * possibly owned — process is not killed. Any shape that does not parse, or that carries an
@@ -178,11 +193,26 @@ export async function findOrphans(root: string, probe: ProcessProbe): Promise<Or
       // Best-effort per the probe contract: argv and cwd still carry the check alone.
     }
   }
+  const ours = rootToken(root);
   const byMark = new Set<number>();
   for (const r of parentless) {
     if (byArgv.has(r.pid)) continue;
-    const verdicts = (marks.get(r.pid) ?? []).map(harnessGone);
-    if (verdicts.length > 0 && verdicts.every((v) => v === true)) byMark.add(r.pid);
+    const rMarks = marks.get(r.pid) ?? [];
+    const verdicts = rMarks.map(harnessGone);
+    // A dead-marked process is this checkout's only when no mark names a different root: a
+    // token that is present and not `ours` proves another checkout's harness stamped that
+    // process, and signalling it would break the "never signal a process not attributable"
+    // rule (BUGS.md, "Reap the doctor's orphans, part 1/3"). A rootless mark keeps today's
+    // report — whatever started it, nothing else will reap it.
+    if (
+      verdicts.length > 0 &&
+      verdicts.every((v) => v === true) &&
+      rMarks.every((m) => {
+        const t = markRootToken(m);
+        return t === null || t === ours;
+      })
+    )
+      byMark.add(r.pid);
   }
   const orphans = parentless.filter((r) => {
     if (byArgv.has(r.pid) || byMark.has(r.pid)) return true;

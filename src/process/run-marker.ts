@@ -28,14 +28,33 @@ const PS_ENVIRON_TIMEOUT_MS = 10_000;
  * a group whose leader is not pi and the group sweep's kill(-pi.pid) never reaches it. */
 const RUN_MARKER_VAR = "TUMWATER_RUN";
 
-/** A fresh marker for one pi run: `<harness pid>-<random hex>`. The pid prefix is what a
- * reader of a leaked process's environment needs to tell a live run's straggler (its own
- * sweep will reap it at exit) from a dead run's orphan (nothing will): a future doctor check
- * can report the latter wherever the leak's cwd is. The random half makes the marker unique
- * per run, so one run's sweep can never signal a concurrent sibling run's processes — a
- * machine running the team has several pi runs alive at once. */
-export function makeRunMarker(pid = process.pid): string {
-  return `${pid}-${crypto.randomBytes(6).toString("hex")}`;
+/** The first 8 hex of sha1 of `root`'s realpath — the short stable token that names a team
+ * root inside a run marker's third segment, so a dead-marked orphan can be attributed to the
+ * checkout that minted it (BUGS.md, "Reap the doctor's orphans, part 1/3"). Realpath-resolving
+ * first keeps two spellings of one root (e.g. macOS's /var vs /private/var) hashing identically;
+ * an unreadable root realpaths to its resolved given path. */
+export function rootToken(root: string): string {
+  const resolved = path.resolve(root);
+  let real: string;
+  try {
+    real = fs.realpathSync(resolved);
+  } catch {
+    real = resolved;
+  }
+  return crypto.createHash("sha1").update(real).digest("hex").slice(0, 8);
+}
+
+/** A fresh marker for one pi run: `<harness pid>-<random hex>` (`<rootToken>` appended when a
+ * team `root` is given). The pid prefix is what a reader of a leaked process's environment needs
+ * to tell a live run's straggler (its own sweep will reap it at exit) from a dead run's orphan
+ * (nothing will): a future doctor check can report the latter wherever the leak's cwd is. The
+ * random half makes the marker unique per run, so one run's sweep can never signal a concurrent
+ * sibling run's processes — a machine running the team has several pi runs alive at once. The
+ * optional root token stamps the team root the run belongs to, so a reader that sees a dead
+ * mark can tell this checkout's orphan from another checkout's and never signal the latter. */
+export function makeRunMarker(pid = process.pid, root?: string): string {
+  const base = `${pid}-${crypto.randomBytes(6).toString("hex")}`;
+  return root === undefined ? base : `${base}-${rootToken(root)}`;
 }
 
 /** `base` plus this run's marker APPENDED to any inherited one, comma-separated. A harness
