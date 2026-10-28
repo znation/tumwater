@@ -242,10 +242,15 @@ interface RoleStats {
   rejections: number;
 }
 
+/** A role with no counted outcomes — the zero baseline roleStats starts a role on (a fresh
+ * copy, since roleStats mutates it) and deltaRows hands a role missing from either window.
+ * One home for the zero shape so a future RoleStats field is added once. */
+const ZERO_ROLE_STATS: RoleStats = { runs: 0, errors: 0, quietKills: 0, rejections: 0 };
+
 function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
   const byRole = new Map<string, RoleStats>();
   const statsFor = (role: string): RoleStats =>
-    getOrCreate(byRole, role, () => ({ runs: 0, errors: 0, quietKills: 0, rejections: 0 }));
+    getOrCreate(byRole, role, () => ({ ...ZERO_ROLE_STATS }));
   for (const ev of events) {
     // Runs are run_end events; a rejection is now recorded by the merge slot, AFTER the
     // authoring run has already ended `queued` (plans/merge-queue.md 3/5). review_rejected is
@@ -488,8 +493,8 @@ function deltaRows(current: HarnessEvent[], prior: HarnessEvent[]): DeltaRow[] {
   const roles = [...new Set([...curStats.keys(), ...prevStats.keys()])];
   return roles
     .map((role) => {
-      const c = curStats.get(role) ?? { runs: 0, errors: 0, quietKills: 0, rejections: 0 };
-      const p = prevStats.get(role) ?? { runs: 0, errors: 0, quietKills: 0, rejections: 0 };
+      const c = curStats.get(role) ?? ZERO_ROLE_STATS;
+      const p = prevStats.get(role) ?? ZERO_ROLE_STATS;
       return {
         role,
         prevRuns: p.runs,
