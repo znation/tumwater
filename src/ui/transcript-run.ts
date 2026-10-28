@@ -11,6 +11,30 @@ import { parsePiEventLine } from "../pi/pi-event-line.js";
 const MARKER_ONLY = new Set(["tumwater_run"]);
 const MESSAGE_ONLY = new Set(["message_end"]);
 
+function segmentsInText(text: string): string[][] {
+  const segments: string[][] = [];
+  for (const line of text.split("\n")) {
+    if (line === "") continue;
+    if (line.includes('"tumwater_run"') && parsePiEventLine(line, MARKER_ONLY)) segments.push([line]);
+    else segments.at(-1)?.push(line);
+  }
+  return segments;
+}
+
+function keepInWindow(segments: string[][], fromTs: number, toTs: number | null): string[] {
+  const kept: string[] = [];
+  for (const seg of segments) {
+    const start = segmentStart(seg);
+    if (start !== null && start >= fromTs && start <= (toTs ?? Infinity)) kept.push(...seg);
+  }
+  return kept;
+}
+
+function applyTranscriptGrep(entries: string[][], grep: string): string[] {
+  const keep = createTranscriptFilter(grep);
+  return entries.flatMap((e) => keep(e) ?? []);
+}
+
 function segmentStart(lines: string[]): number | null {
   const marker = parsePiEventLine<{ ts?: unknown }>(lines[0] as string, MARKER_ONLY);
   if (typeof marker?.ts === "number") return marker.ts;
@@ -40,19 +64,9 @@ export function readRunTranscript(
     } catch {
       continue;
     }
-    const segments: string[][] = [];
-    for (const line of text.split("\n")) {
-      if (line === "") continue;
-      if (line.includes('"tumwater_run"') && parsePiEventLine(line, MARKER_ONLY)) segments.push([line]);
-      else segments.at(-1)?.push(line);
-    }
-    for (const seg of segments) {
-      const start = segmentStart(seg);
-      if (start !== null && start >= fromTs && start <= (toTs ?? Infinity)) kept.push(...seg);
-    }
+    kept.push(...keepInWindow(segmentsInText(text), fromTs, toTs));
   }
   const entries = formatTranscript(kept, opts);
   if (opts.grep === undefined) return entries.flat();
-  const keep = createTranscriptFilter(opts.grep);
-  return entries.flatMap((e) => keep(e) ?? []);
+  return applyTranscriptGrep(entries, opts.grep);
 }
