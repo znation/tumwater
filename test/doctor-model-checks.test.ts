@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { checkTierModels } from "../src/doctor/doctor-model-checks.js";
-import { checkFallbackChain, checkFallbackModel } from "../src/doctor/doctor-fallback-checks.js";
 import {
   parsePiModelList,
   piListedModels,
@@ -16,24 +15,20 @@ import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { readyRepo } from "./fixtures/doctor-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
 import { writeOpencodeCache } from "../src/agent/opencode/opencode-catalog.js";
-import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
-import { todayStamp } from "../src/budget/budget.js";
-import { saveRunnerState } from "../src/runner/runner-state.js";
-import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { piListedModelsPath } from "../src/paths.js";
 import { readPiListedModels } from "../src/pi/pi-listed-models.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts,
-// src/doctor/doctor-fallback-checks.ts, src/doctor/doctor-pi-checks.ts,
-// src/doctor/doctor-claude-checks.ts, src/doctor/doctor-opencode-checks.ts):
-// the cap fallback's price check, the declared-tier resolution check, and the agent binary's
-// credential probe. Every branch is exercised with an injected `modelsPath`/`auth` stub, and
+// src/doctor/doctor-pi-checks.ts, src/doctor/doctor-claude-checks.ts,
+// src/doctor/doctor-opencode-checks.ts):
+// the declared-tier resolution check, and the agent binary's credential probe. Every branch is
+// exercised with an injected `modelsPath`/`auth` stub, and
 // the probe with a fake pi on PATH — never a real model or network call. The environment and
 // repo checks' own coverage lives in test/doctor-checks.test.ts; the fixtures both files share
 // live in test/fixtures/doctor-fixtures.ts and test/fixtures/repo-fixtures.ts.
 
-/** A models.json with one unpriced (free) model and one paid model, for the fallback check. */
+/** A models.json with one unpriced (free) model and one paid model, for the tier checks. */
 function writeModels(): string {
   const dir = tmpdir("doctor-models-");
   const file = path.join(dir, "models.json");
@@ -48,71 +43,6 @@ function writeModels(): string {
   );
   return file;
 }
-
-test("checkFallbackModel reports the cap behavior and verifies a free fallback pair", () => {
-  const models = writeModels();
-
-  // No fallbackModel: informational — the team pauses at the cap by design. The definitions
-  // file is not even consulted, so an absent path is still ok.
-  const none = readyRepo();
-  assert.deepEqual(checkFallbackModel(none, path.join(tmpdir(), "absent.json")), {
-    level: "ok",
-    detail: "none configured — roles pause at the cap",
-  });
-
-  // A free local pair is the case the fallback exists for — but a price is not readiness: a
-  // backend that rejects every prompt is priced at zero too (BUGS.md 2026-09-20), so the line
-  // must not claim more than it checked.
-  const free = readyRepo();
-  writeConfig(free, { fallbackModel: { provider: "local", model: "free-model" } });
-  assert.deepEqual(checkFallbackModel(free, models), {
-    level: "ok",
-    detail: "local/free-model — priced at zero (cost n/a), serving not verified",
-  });
-  // The running team's breaker demoted it (runDoctor passes orchestrator.json's
-  // fallbackDemoted only while that orchestrator is alive): warn with the evidence and the retry.
-  const probeAt = new Date(2026, 8, 19, 23, 10, 56).getTime();
-  const demoted = checkFallbackModel(free, models, { pair: "local/free-model", failures: 3, probeAt });
-  assert.equal(demoted.level, "warn");
-  assert.match(demoted.detail, /^local\/free-model is priced at zero but not serving/);
-  assert.match(demoted.detail, /demoted it after 3 consecutive failed runs, so roles pause at the cap/);
-  assert.match(demoted.detail, /one probe run retries it from 23:10:56$/);
-
-  // A pair naming only one half falls through to pi's own default and can never be free —
-  // the warning names the half-resolved pair instead of rendering a bare "?/model".
-  const half = readyRepo();
-  writeConfig(half, { fallbackModel: { model: "solo-model" } });
-  const halfWarn = checkFallbackModel(half, models);
-  assert.equal(halfWarn.level, "warn");
-  assert.match(halfWarn.detail, /^a half-resolved pair is not priced at zero/);
-  assert.match(halfWarn.detail, /roles pause instead of switching/);
-
-  // A priced or unknown id would be refused by the gate, so roles would pause at the cap
-  // instead of switching — warn before the day's budget is spent on discovering it.
-  const paid = readyRepo();
-  writeConfig(paid, { fallbackModel: { provider: "paid", model: "gpt-x" } });
-  const warned = checkFallbackModel(paid, models);
-  assert.equal(warned.level, "warn");
-  assert.match(warned.detail, /paid\/gpt-x is not priced at zero/);
-  assert.match(warned.detail, /roles pause instead of switching/);
-
-  // A subscription claude fallback is free by the account's billing answer, not by
-  // models.json: the check reads the same account the budget gate does.
-  const claudeSub = readyRepo();
-  writeConfig(claudeSub, { fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] });
-  writeClaudeAccount(claudeSub, { billing: "subscription", observedAt: Date.now(), windows: {} });
-  const accepted = checkFallbackModel(claudeSub, path.join(tmpdir(), "absent.json"));
-  assert.equal(accepted.level, "ok");
-  assert.match(accepted.detail, /^claude\/claude-sonnet-5-5 — priced at zero/);
-});
-
-test("checkFallbackModel cannot run on an invalid config and says so without failing", () => {
-  const root = readyRepo();
-  writeConfig(root, { bogusKey: 1 });
-  const outcome = checkFallbackModel(root, path.join(tmpdir(), "absent.json"));
-  assert.equal(outcome.level, "warn");
-  assert.match(outcome.detail, /cannot check — invalid tumwater\.json/);
-});
 
 // --- checkTierModels (plans/model-tiers.md "Doctor", part 7c/8) ---
 
@@ -617,64 +547,6 @@ test("piProviderAuth settles at its deadline and caps runaway output", { timeout
   assert.ok(Date.now() - startedAt < 3000, "runaway output settles at the output cap, not the deadline");
 });
 
-
-/** A models.json whose `local` provider points at `baseUrl`, plus a priced `paid` one. */
-function writeChainModels(baseUrl: string): string {
-  const file = path.join(tmpdir("doctor-chain-"), "models.json");
-  fs.writeFileSync(
-    file,
-    JSON.stringify({
-      providers: {
-        local: { baseUrl, models: [{ id: "free-model" }] },
-        paid: { baseUrl: "https://api.example.com/v1", models: [{ id: "gpt-x", cost: { input: 1, output: 2 } }] },
-      },
-    }),
-  );
-  return file;
-}
-
-test("checkFallbackChain reads ok 'none configured' without a fallback", async () => {
-  const root = readyRepo();
-  assert.deepEqual(await checkFallbackChain(root, path.join(tmpdir(), "absent.json")), {
-    level: "ok",
-    detail: "none configured",
-  });
-});
-
-test("checkFallbackChain warns on a local server that does not answer and reads ok on one that does", async () => {
-  // An injected probe stands in for the server: the gating tier binds no real listener.
-  const models = writeChainModels("http://127.0.0.1:8090/v1");
-  const root = readyRepo();
-  writeConfig(root, { fallback: ["local/free-model"] });
-  const urls: string[] = [];
-  const up = await checkFallbackChain(root, models, async (u) => (urls.push(u), true));
-  assert.equal(up.level, "ok");
-  assert.match(up.detail, /default 1: local\/free-model — free · server up/);
-  assert.deepEqual(urls, ["http://127.0.0.1:8090/v1/models"]);
-  const down = await checkFallbackChain(root, models, async () => false);
-  assert.equal(down.level, "warn");
-  assert.match(down.detail, /not running \(GET http:\/\/127\.0\.0\.1:8090\/v1\/models failed\)/);
-});
-
-test("checkFallbackChain flags a spent step cap and never probes a non-local server", async () => {
-  const root = readyRepo();
-  writeConfig(root, { fallback: [{ model: "paid/gpt-x", maxDailyCostUsd: 5 }] });
-  const models = writeChainModels("http://127.0.0.1:1/v1");
-  const state = loadRunnerState(root, "feature");
-  state.dayStamp = todayStamp();
-  state.dayCostByPair = { "paid/gpt-x": 5 };
-  saveRunnerState(root, state);
-  let calls = 0;
-  const spent = await checkFallbackChain(root, models, async () => (calls++, true));
-  assert.match(spent.detail, /default 1: paid\/gpt-x — cap reached \(\$5\.00\/\$5\)/);
-
-  const remote = readyRepo();
-  writeConfig(remote, { fallback: ["paid/gpt-x"] });
-  calls = 0;
-  const priced = await checkFallbackChain(remote, models, async () => (calls++, true));
-  assert.equal(calls, 0);
-  assert.match(priced.detail, /priced, team cap only/);
-});
 
 // --- OpenCode readiness (part 7/7) ----------------------------------------------------------
 // checkOpencode runs only when a seam routes to opencode: each opencode model must be in the

@@ -361,23 +361,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 5t/6: The over-cap model and fallback-chain doctor rows go (planned 2026-10-27 by the plan role, split 2026-10-27 by the plan role from the held part 5k/6 after feature held it as too large for one run: the doctor surfaces are the third of three sibling parts, 5r/6 through 5t/6, that replace part 5k/6; requires Subtract part 5p/6 landed; independent in file of parts 5r/6 and 5s/6; this part's deletion of `src/doctor/doctor-fallback-checks.ts` must land before part 5l/6 deletes `src/budget/fallback-breaker.ts`, whose `FallbackDemotion` type the doctor module imports; touches src/doctor/doctor-fallback-checks.ts (deleted) src/doctor/doctor.ts src/doctor/doctor-check-names.ts test/doctor-model-checks.test.ts test/doctor.test.ts)
-
-**Goal.** `tumwater doctor` lists no `over-cap model` or `fallback chain` row: the check module that priced the fallback and walked each tier's chain is deleted.
-
-**Approach.**
-- Delete `src/doctor/doctor-fallback-checks.ts` (`checkFallbackModel` and `checkFallbackChain`).
-- `src/doctor/doctor.ts`: delete the `over-cap model` and `fallback chain` rows and the `checkFallbackChain`/`checkFallbackModel` import.
-- `src/doctor/doctor-check-names.ts`: delete `"over-cap model"` and `"fallback chain"` from `DOCTOR_CHECK_NAMES`.
-- Leave `models for each tier` (`checkTierModels`) and the seam/declared-model checks: parts 5e/6 and 5m/6 own them.
-
-**Acceptance criteria.**
-- `src/doctor/doctor-fallback-checks.ts` is gone and `grep -rn 'checkFallbackModel\|checkFallbackChain' src/` finds nothing.
-- `DOCTOR_CHECK_NAMES` lists neither `over-cap model` nor `fallback chain`, and `tumwater doctor`'s row list has neither.
-- `npm run test:gate` passes.
-
-**Tests.** Update `test/doctor-model-checks.test.ts` (delete the `checkFallbackModel` and `checkFallbackChain` cases and their imports) and `test/doctor.test.ts` (drop the two names from the expected row list). Run them, then the project's gate, and confirm green.
-
 ### Subtract, part 5l/6: The fallback chain, its breaker and the budget gate's view go — a spent cap pauses the role (planned 2026-10-27 by the plan role; the sixth part replacing part 5c/6; design in plans/subtract.md "The six strokes", stroke 5, and plans/fallback-chain.md; requires Subtract part 5r/6, Subtract part 5s/6 and Subtract part 5t/6 landed, since the surfaces its view fed are gone; touches src/budget/fallback-breaker.ts (deleted) src/budget/budget-fallback-view.ts (deleted) src/budget/budget-wiring.ts src/budget/budget.ts src/gates/budget-gates.ts src/gates/gate-polls.ts src/gates/startup-gate.ts src/orchestrator/orchestrator.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/orchestrator-launch.ts src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-info.ts src/team/team-orchestrator-info.ts src/merge/merge-verify.ts src/config/config-fallbacks.ts docs/invariants.md test/fallback-breaker.test.ts (deleted) test/orchestrator-fallback.test.ts (deleted) test/budget-gates.test.ts test/budget-chain-info.test.ts test/budget-wiring.test.ts test/gate-polls.test.ts test/orchestrator-launch.test.ts test/orchestrator-budget.e2e.test.ts test/run-resume.test.ts test/config-views.test.ts test/gate-event-best-effort.test.ts)
 
 **Goal.** At `maxDailyCostUsd` a role is paused until local midnight — there is no derived fallback config, no circuit breaker and no probe. This is the behavior the whole 5c/6 entry exists for.

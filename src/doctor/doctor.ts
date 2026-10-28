@@ -54,7 +54,6 @@ import {
   checkWorktreePool,
 } from "./doctor-contention-checks.js";
 import { checkFeedbackFiling, checkTierModels } from "./doctor-model-checks.js";
-import { checkFallbackChain, checkFallbackModel } from "./doctor-fallback-checks.js";
 import { checkAnthroApiKey, checkClaudeAuth, checkClaudeVersion } from "./doctor-claude-checks.js";
 import { checkOpencode } from "./doctor-opencode-checks.js";
 import {
@@ -160,8 +159,6 @@ export async function runDoctor(
     { name: "check contention", run: () => checkCheckContention(root, config) },
     { name: "repeated failures", run: () => checkErrorStreaks(root, config) },
     { name: "main's check", run: () => checkMainRed(root, config) },
-    { name: "over-cap model", run: () => checkFallbackModel(root, undefined, (orchestratorAlive(root, info) && info?.fallbackDemoted) || null) },
-    { name: "fallback chain", run: () => checkFallbackChain(root) },
     { name: "models for each tier", run: () => checkTierModels(root) },
     { name: "claude auth", run: () => checkClaudeAuth(root, pathEnv) },
     { name: "claude api key", run: () => checkAnthroApiKey(root, undefined, pathEnv) },

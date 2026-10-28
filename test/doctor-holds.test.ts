@@ -138,11 +138,11 @@ test("checkBudget: past 80% is ok and says so", () => {
   assert.match(r.detail, /past 80%/);
 });
 
-test("checkBudget: a reached cap warns and points at the fallback row", () => {
+test("checkBudget: a reached cap warns that roles run on the over-cap model or hold until midnight", () => {
   const r = checkBudget(budgetRoot({ feature: 10 }), bcfg({ maxDailyCostUsd: 10 }), null, BNOW);
   assert.equal(r.level, "warn");
   assert.match(r.detail, /daily cap reached/);
-  assert.match(r.detail, /over-cap model row/);
+  assert.match(r.detail, /over-cap model or hold until local midnight/);
 });
 
 test("checkBudget: a published figure overrides the persisted sum both ways", () => {
