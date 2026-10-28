@@ -79,12 +79,12 @@ const BACKEND_DEFAULT_MODELS: Record<BackendId, Partial<Record<ModelTier, string
   // belongs in tumwater.json, not in code.
   opencode: {},
   // codex's tier defaults (plans/codex-backend.md decision 4), from the catalog's own
-  // descriptions (design finding 14): strong is `gpt-6-astra`, default is `gpt-6.1-sol` (Codex's
-  // own default), small is `gpt-6-luna`. The director runs the strong tier, as on claude.
+  // descriptions (design finding 14): strong is `gpt-6.1-sol`, default and small are
+  // `gpt-6-luna`. The director runs the strong tier, as on claude.
   codex: {
     small: "gpt-6-luna",
-    default: "gpt-6.1-sol",
-    strong: "gpt-6-astra",
+    default: "gpt-6-luna",
+    strong: "gpt-6.1-sol",
   },
 };
 

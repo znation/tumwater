@@ -342,10 +342,10 @@ The groundwork makes the middle group per backend with **no behavior change for 
     backend — checkRetiredSelector rejects only the retired claude/opencode namespaces — so a
     whole `codex/<id>` parses to a provider `codex` that codex, like pi, drops, leaving the
     model half.
-- **Tier defaults** (decision 4), from the catalog's own descriptions:
-  - strong: `gpt-6-astra`;
-  - default: `gpt-6.1-sol`, Codex's own default;
-  - small: `gpt-6-luna`.
+- **Tier defaults** (decision 4), from the catalog's own descriptions, later turned down one
+  notch on the operator's instruction (2026-10-28):
+  - strong: `gpt-6.1-sol`;
+  - default and small: `gpt-6-luna`.
 
   The director runs the strong tier, as on claude.
 - **Thinking → `model_reasoning_effort`.**
@@ -664,7 +664,7 @@ Parts 1, 2a, 2b and 6 can start at once and run side by side.
    process marker.
 3. **A Codex home of the team's own** (`backends.codex.configDir` → `CODEX_HOME`), set in the
    rollout. Optional, like claude's `configDir`; doctor warns when it is unset.
-4. **Tier defaults on Codex:** `gpt-6-astra` strong, `gpt-6.1-sol` default, `gpt-6-luna` small.
+4. **Tier defaults on Codex:** `gpt-6.1-sol` strong, `gpt-6-luna` default and small.
    The alternative is OpenCode's rule: no defaults, and Codex's own default for every tier.
 5. **Subscription billing only.** API-key login is refused, and `OPENAI_API_KEY` / `CODEX_API_KEY`
    are scrubbed from runs.

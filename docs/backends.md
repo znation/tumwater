@@ -298,8 +298,8 @@ ChatGPT subscription (Plus today), instead of pi:
 }
 ```
 
-With no `model`, each tier runs Codex's model for that tier: `gpt-6-astra` strong,
-`gpt-6.1-sol` default, `gpt-6-luna` small. There is no `codex/<id>` spelling — write the bare
+With no `model`, each tier runs Codex's model for that tier: `gpt-6.1-sol` strong,
+`gpt-6-luna` default and small. There is no `codex/<id>` spelling — write the bare
 model id (`gpt-6.1-sol`): a whole `codex/<id>` parses to a `codex` provider that codex, like pi,
 drops, leaving the model half. A suspended run resumes on the same session (`codex exec
 resume <session id>`).
