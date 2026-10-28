@@ -158,32 +158,34 @@ function rejectDuplicateFlags(args: readonly string[], flags: readonly string[])
   for (const flag of flags) rejectRepeatFlag(args.filter((a) => a === flag).length > 1, flag);
 }
 
-/** `tumwater init` argument handling. Init's positionals are free-form prompt text, so
- * rejectUnknownArgs (which rejects ANY unconsumed token) can't be used wholesale. The rules
- * instead: a double-dash token must be a known flag from INIT_FLAG_SPECS (`--file`,
- * `--branch`, `--template`, `--adopt`, `--dry-run` or `--list-templates`), each given at most
- * once; with `--file` present nothing but the other flags may accompany it; a `--branch
- * <name>` pair and the valueless flags are never prompt content; single-dash positionals are
- * prompt content, not flags. Without these checks a misspelled --file would be baked into the
- * brief text — injected into every run of every role until someone edits the project
- * brief. */
-export function parseInitArgs(args: string[]): {
+/** The fields `parseInitArgs` resolves for `tumwater init`, returned to the caller as one
+ * object. */
+interface InitArgs {
   prompt: string;
   branch: string | null;
   template: string | null;
   listTemplates: boolean;
   adopt: boolean;
   dryRun: boolean;
-} {
+}
+
+/** The flag-vocabulary gate for `tumwater init`: every double-dash token must be a known
+ * INIT_FLAG_SPECS flag, each given at most once. Without it a misspelled --file would be baked
+ * into the brief text — injected into every run of every role until someone edits the project
+ * brief. */
+function assertInitFlags(args: string[]): void {
   const known = INIT_FLAG_SPECS.flatMap((s) => s.names);
   // The unknown-double-dash gate reads the specs, so the list its error names admits exactly
   // what the duplicate-flag check below accepts — one vocabulary, one message renderer.
   rejectUnknownDoubleDash("init", args, INIT_FLAG_SPECS);
   rejectDuplicateFlags(args, known);
-  const branch = parseBranchFlag(args);
-  const adopt = args.includes("--adopt");
-  const dryRun = args.includes("--dry-run");
-  const listTemplates = args.includes("--list-templates");
+}
+
+/** Resolve `--template <id>` from the argument list, refusing an empty id, an id unknown to
+ * the catalog, and a `--template` given alongside `--list-templates`. Validated here so an
+ * unknown id fails before initProject runs any side effect — before a half-seeded repo can
+ * result from a typo'd id. */
+function resolveInitTemplate(args: string[], listTemplates: boolean): string | null {
   // Validate the template id here, so an unknown one fails before initProject runs any side
   // effect — and before a half-seeded repo can result from a typo'd id.
   const templateFlag = args.indexOf("--template");
@@ -198,37 +200,66 @@ export function parseInitArgs(args: string[]): {
   if (listTemplates && templateFlag >= 0) {
     fail("--list-templates takes no --template — it lists the catalog, it does not use one");
   }
+  return template;
+}
+
+/** The `--file` branch of `parseInitArgs`: when the flag is present the prompt comes from the
+ * file, so every other positional is claimed (refused as stray) and the file's exact contents
+ * are read as the prompt — unless `--list-templates` conflicts, which takes no prompt at all.
+ * Returns null when no `--file` flag is present. */
+function resolveInitFileArg(args: string[], base: Omit<InitArgs, "prompt">): InitArgs | null {
   const fileFlag = args.indexOf("--file");
-  if (fileFlag >= 0) {
-    const file = promptFileValue(args[fileFlag + 1]);
-    const claimed = [fileFlag, fileFlag + 1];
-    const branchFlag = args.indexOf("--branch");
-    if (branchFlag >= 0) claimed.push(branchFlag, branchFlag + 1);
-    if (templateFlag >= 0) claimed.push(templateFlag, templateFlag + 1);
-    for (const flag of INIT_BOOLEAN_FLAGS) {
-      if (args.includes(flag)) claimed.push(args.indexOf(flag));
-    }
-    failStrayArg(args, "with --file the prompt comes from the file", ...claimed);
-    const contents = readPromptFileChecked(file);
-    if (listTemplates) {
-      fail(LIST_TEMPLATES_PROMPT_ERROR);
-    }
-    return { prompt: contents, branch, template, listTemplates, adopt, dryRun };
+  if (fileFlag < 0) return null;
+  const file = promptFileValue(args[fileFlag + 1]);
+  const claimed = [fileFlag, fileFlag + 1];
+  const branchFlag = args.indexOf("--branch");
+  if (branchFlag >= 0) claimed.push(branchFlag, branchFlag + 1);
+  const templateFlag = args.indexOf("--template");
+  if (templateFlag >= 0) claimed.push(templateFlag, templateFlag + 1);
+  for (const flag of INIT_BOOLEAN_FLAGS) {
+    if (args.includes(flag)) claimed.push(args.indexOf(flag));
   }
-  // Everything except the --branch/--template pairs and the booleans is prompt text; the join
-  // keeps single-dash tokens as content, exactly as before — with no flag present this is the
-  // old args.join(" ").
+  failStrayArg(args, "with --file the prompt comes from the file", ...claimed);
+  const contents = readPromptFileChecked(file);
+  if (base.listTemplates) {
+    fail(LIST_TEMPLATES_PROMPT_ERROR);
+  }
+  return { ...base, prompt: contents };
+}
+
+/** Reconstruct the positional prompt text for `tumwater init`: everything except the
+ * `--branch`/`--template` pairs and the valueless flags is prompt text. The join keeps
+ * single-dash tokens as content, exactly as before — with no flag present this is the old
+ * args.join(" "). */
+function joinInitPrompt(args: string[]): string {
   const promptTokens: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
     if (arg === "--branch" || arg === "--template") i++; // Skip the pair's value too.
     else if (!INIT_BOOLEAN_FLAGS.includes(arg)) promptTokens.push(arg);
   }
-  const prompt = promptTokens.join(" ");
-  if (listTemplates && prompt.trim() !== "") {
-    fail(LIST_TEMPLATES_PROMPT_ERROR);
-  }
-  return { prompt, branch, template, listTemplates, adopt, dryRun };
+  return promptTokens.join(" ");
+}
+
+/** `tumwater init` argument handling. Init's positionals are free-form prompt text, so
+ * rejectUnknownArgs (which rejects ANY unconsumed token) can't be used wholesale. The rules
+ * instead: a double-dash token must be a known flag from INIT_FLAG_SPECS, each given at most
+ * once; with `--file` present nothing but the other flags may accompany it; a `--branch
+ * <name>` pair and the valueless flags are never prompt content; single-dash positionals are
+ * prompt content, not flags. */
+export function parseInitArgs(args: string[]): InitArgs {
+  assertInitFlags(args);
+  const branch = parseBranchFlag(args);
+  const adopt = args.includes("--adopt");
+  const dryRun = args.includes("--dry-run");
+  const listTemplates = args.includes("--list-templates");
+  const template = resolveInitTemplate(args, listTemplates);
+  const base = { branch, template, listTemplates, adopt, dryRun };
+  const fromFile = resolveInitFileArg(args, base);
+  if (fromFile !== null) return fromFile;
+  const prompt = joinInitPrompt(args);
+  if (listTemplates && prompt.trim() !== "") fail(LIST_TEMPLATES_PROMPT_ERROR);
+  return { ...base, prompt };
 }
 
 /** The four modes of `tumwater prompt`: enqueue free-form text (the default), list the queue,
