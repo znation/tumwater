@@ -140,51 +140,74 @@ export function readRunDetail(root: string, role: string, runNumber: number): Ru
   // same bound.
   const all = readEvents(root, HISTORY_SCAN_MAX_EVENTS);
   const events = all.filter((e) => e.source === role);
-  // Newest run_start for this role+run: the block's lower bound.
-  let startIdx = -1;
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i]!;
-    if (e.type === "run_start" && e.run === runNumber) {
-      startIdx = i;
-      break;
-    }
-  }
+  const startIdx = newestRunStartIndex(events, runNumber);
   if (startIdx < 0) {
     // The start is gone (rotation) or the run never ran. A surviving run_end for the same
     // number still answers — unpaired, undated at the front — else there is no such run here.
-    for (let i = events.length - 1; i >= 0; i--) {
-      const e = events[i]!;
-      if (e.type === "run_end" && e.run === runNumber) return detailFrom(root, role, runNumber, all, events, [e], e, null);
-    }
+    const loneEnd = newestRunEnd(events, runNumber);
+    if (loneEnd !== null) return detailFrom(root, role, runNumber, all, events, [loneEnd], loneEnd, null);
     return null;
   }
   const start = events[startIdx]!;
-  // The block's upper bound: the first run_end for this run after the start ends it; a
-  // later run_start (this run's end lost to rotation) closes the block exclusive — the
-  // events after it belong to the next run, not this one. No end and no next start reads as
-  // in flight: everything since the start belongs to the open run.
-  let end: HarnessEvent | null = null;
-  let nextStart: HarnessEvent | null = null;
+  const { end, nextStart } = runBlockBounds(events, startIdx, runNumber);
+  const block = collectRunBlock(events, startIdx, end, nextStart);
+  return detailFrom(root, role, runNumber, all, events, block, end, start);
+}
+
+/** The newest run_start for this role+run — the block's lower bound — or -1 when none (the
+ * start rotated out or the run never ran). A backward scan: a counter reset can repeat a run
+ * number, and the operator asking by number means the most recent one. */
+function newestRunStartIndex(events: HarnessEvent[], runNumber: number): number {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!;
+    if (e.type === "run_start" && e.run === runNumber) return i;
+  }
+  return -1;
+}
+
+/** The newest surviving run_end for this role+run, or null. Read only on the no-start path:
+ * the start is gone (rotation) or the run never ran, but a surviving run_end still answers —
+ * unpaired, undated at the front — else there is no such run here. */
+function newestRunEnd(events: HarnessEvent[], runNumber: number): HarnessEvent | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!;
+    if (e.type === "run_end" && e.run === runNumber) return e;
+  }
+  return null;
+}
+
+/** The block's upper bound for the run opened by `startIdx`: the first run_end for this run
+ * after it ends the block; else a later run_start (this run's end lost to rotation) closes it
+ * exclusive — the events after belong to the next run, not this one. Neither afterwards reads
+ * as in flight: everything since the start belongs to the open run. */
+function runBlockBounds(
+  events: HarnessEvent[],
+  startIdx: number,
+  runNumber: number,
+): { end: HarnessEvent | null; nextStart: HarnessEvent | null } {
   for (let i = startIdx + 1; i < events.length; i++) {
     const e = events[i]!;
-    if (e.type === "run_end" && e.run === runNumber) {
-      end = e;
-      break;
-    }
-    if (e.type === "run_start") {
-      nextStart = e;
-      break;
-    }
+    if (e.type === "run_end" && e.run === runNumber) return { end: e, nextStart: null };
+    if (e.type === "run_start") return { end: null, nextStart: e };
   }
-  // The block itself: the start event plus everything this role logged up to the bound —
-  // inclusive at a paired end, exclusive at a next run's start.
+  return { end: null, nextStart: null };
+}
+
+/** The block itself: the start event plus everything this role logged up to the bound —
+ * inclusive at a paired end, exclusive at a next run's start. */
+function collectRunBlock(
+  events: HarnessEvent[],
+  startIdx: number,
+  end: HarnessEvent | null,
+  nextStart: HarnessEvent | null,
+): HarnessEvent[] {
   const block: HarnessEvent[] = [];
   for (let i = startIdx; i < events.length; i++) {
     const e = events[i]!;
     if (end !== null ? e.ts > end.ts : nextStart !== null && e.ts >= nextStart.ts) break;
     block.push(e);
   }
-  return detailFrom(root, role, runNumber, all, events, block, end, start);
+  return block;
 }
 
 /** The verdict a run reports: the `run_end`'s outcome text, resolved through its merge for a
