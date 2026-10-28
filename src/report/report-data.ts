@@ -338,56 +338,85 @@ function applyBacklogLags(
   }
 }
 
-/** Reduce the filled day series to the report's totals, plus the nonzero-only fields the
- * return literal folds into `ReportData.totals` (notional spend, merge failures, plans/bugs
- * filings, backend attribution). */
-function foldSeriesTotals(series: ReportDay[]): {
-  totals: ReportData["totals"];
+/** The per-window totals `foldSeriesTotals` accumulates: the `ReportData['totals']` literal,
+ * the nonzero-only scalars `collectReport` spreads into `totals`, and the backend notional map.
+ * The three commit-count fields stay definite (as the accumulator literal's spread always sets
+ * them), so `foldRunAndCommitCounts` can write them without narrowing. */
+interface SeriesTotals {
+  totals: ReportData["totals"] & {
+    commitsByRole: Record<string, number>;
+    workCommits: number;
+    maintenanceCommits: number;
+  };
   notionalCostUsd: number;
   mergeFailed: number;
   plansAdded: number;
   bugsFiled: number;
   notionalByBackend: Record<string, number>;
-} {
-  const totals = {
-    tokensOut: 0,
-    runs: 0,
-    ...zeroCommitCounts(),
-    costUsd: 0,
-    featuresDone: 0,
-    bugsFixed: 0,
-    ...zeroMergeCounts(),
+}
+
+/** Fold one day's run, token, commit, cost and per-role commit counts into `acc.totals`. */
+function foldRunAndCommitCounts(acc: SeriesTotals, d: ReportDay): void {
+  acc.totals.tokensOut += d.tokensOut;
+  for (const n of Object.values(d.runsByRole)) acc.totals.runs += n;
+  acc.totals.commits += d.commits;
+  for (const [role, n] of Object.entries(d.commitsByRole ?? {})) addTo(acc.totals.commitsByRole, role, n);
+  acc.totals.workCommits += d.workCommits ?? 0;
+  acc.totals.maintenanceCommits += d.maintenanceCommits ?? 0;
+  acc.totals.costUsd += d.costUsd;
+}
+
+/** Fold one day's notional spend and its per-backend attribution into `acc`. */
+function foldNotionalSpend(acc: SeriesTotals, d: ReportDay): void {
+  acc.notionalCostUsd += d.notionalCostUsd ?? 0;
+  for (const [backend, c] of Object.entries(d.notionalByBackend ?? {}))
+    addTo(acc.notionalByBackend, backend, c);
+}
+
+/** Fold one day's features-done, bugs-fixed, plan/bug filing and merge counts into `acc`. */
+function foldOutcomeCounts(acc: SeriesTotals, d: ReportDay): void {
+  acc.totals.featuresDone += d.featuresDone;
+  acc.totals.bugsFixed += d.bugsFixed;
+  acc.plansAdded += d.plansAdded ?? 0;
+  acc.bugsFiled += d.bugsFiled ?? 0;
+  acc.totals.mergeRuns += d.mergeRuns ?? 0;
+  acc.totals.mergeTokens += d.mergeTokens ?? 0;
+  acc.totals.mergeCostUsd += d.mergeCostUsd ?? 0;
+  acc.mergeFailed += d.mergeFailed ?? 0;
+}
+
+/** Reduce the filled day series to the report's totals, plus the nonzero-only fields the
+ * return literal folds into `ReportData.totals` (notional spend, merge failures, plans/bugs
+ * filings, backend attribution). One named helper per accumulator phase folds each day:
+ * `foldRunAndCommitCounts` for the run/commit counts, `foldNotionalSpend` for the notional
+ * spend and its backend attribution, and `foldOutcomeCounts` for the outcome/merge counts. */
+function foldSeriesTotals(series: ReportDay[]): SeriesTotals {
+  const acc: SeriesTotals = {
+    totals: {
+      tokensOut: 0,
+      runs: 0,
+      ...zeroCommitCounts(),
+      costUsd: 0,
+      featuresDone: 0,
+      bugsFixed: 0,
+      ...zeroMergeCounts(),
+    },
+    notionalCostUsd: 0,
+    mergeFailed: 0,
+    plansAdded: 0,
+    bugsFiled: 0,
+    notionalByBackend: {},
   };
   // Notional spend is kept out of the totals object until it is nonzero, so a pre-feature
   // window's totals keep their exact shape. Merge failures likewise: a failure-free window
   // carries no mergeFailed (zero means absent, like the merge-share line's other fields
   // are folded in below).
-  let notionalCostUsd = 0;
-  let mergeFailed = 0;
-  let plansAdded = 0;
-  let bugsFiled = 0;
-  const notionalByBackend: Record<string, number> = {};
   for (const d of series) {
-    totals.tokensOut += d.tokensOut;
-    for (const n of Object.values(d.runsByRole)) totals.runs += n;
-    totals.commits += d.commits;
-    for (const [role, n] of Object.entries(d.commitsByRole ?? {})) addTo(totals.commitsByRole, role, n);
-    totals.workCommits += d.workCommits ?? 0;
-    totals.maintenanceCommits += d.maintenanceCommits ?? 0;
-    totals.costUsd += d.costUsd;
-    notionalCostUsd += d.notionalCostUsd ?? 0;
-    for (const [backend, c] of Object.entries(d.notionalByBackend ?? {}))
-      addTo(notionalByBackend, backend, c);
-    totals.featuresDone += d.featuresDone;
-    totals.bugsFixed += d.bugsFixed;
-    plansAdded += d.plansAdded ?? 0;
-    bugsFiled += d.bugsFiled ?? 0;
-    totals.mergeRuns += d.mergeRuns ?? 0;
-    totals.mergeTokens += d.mergeTokens ?? 0;
-    totals.mergeCostUsd += d.mergeCostUsd ?? 0;
-    mergeFailed += d.mergeFailed ?? 0;
+    foldRunAndCommitCounts(acc, d);
+    foldNotionalSpend(acc, d);
+    foldOutcomeCounts(acc, d);
   }
-  return { totals, notionalCostUsd, mergeFailed, plansAdded, bugsFiled, notionalByBackend };
+  return acc;
 }
 
 /** The shared coverage proof (event-window.ts), rebuilt from the memoized read's pinned

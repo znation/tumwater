@@ -5,6 +5,83 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `foldSeriesTotals`'s complexity-16 single-loop totals body is split into one named helper per accumulator phase — the run/commit counts, the notional spend, and the outcome/merge counts — so "which fields does a day add to `totals`?", "how is notional spend attributed to a backend?" and "which day fields feed `mergeFailed`/`plansAdded`/`bugsFiled`?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `superviseStart`, `seedProject`, `handleDiff`, `persistBaselineVerdicts`, `classifyResult`, `announceActiveList` and `runPromptEdit` plans each extract one named helper per job the same way, and the 2026-10-25 `collectReport` split is this split's direct parent: it created `foldSeriesTotals` as the totals builder and left it one body, so this plan splits that residual body in turn, exactly as the `pushTimeAndSpend` residual of the `renderFailureMarkdown` split was split; independent in file of every Planned entry — `grep -c 'foldSeriesTotals' PLANS.md` prints 0 and `grep -c 'src/report' PLANS.md` prints 0, so no `## Planned` heading or touches list names the symbol or src/report/report-data.ts (the blocked `Every commit is verified on main` parts edit src/review, src/orchestrator, src/runner, src/merge, src/baseline, src/status, src/doctor, src/config, src/cli, src/roles, src/gui, src/prompt, src/request-timeouts.ts, src/events and src/failure; the `Subtract` parts edit src/merge, src/orchestrator, src/config, src/ui, src/roles, src/doctor, src/budget, src/gates, src/events, src/failure, src/team, src/run, src/agent, src/pi, src/scheduling and src/backlog/backlog-index.ts; the in-flight plans take src/backlog/backlog-cli-view.ts and src/inbox/prompt-commands.ts; none src/report); PLANS-DONE.md records no split of this body (`grep -cE '^### .*foldSeriesTotals' PLANS-DONE.md` prints 0 — its two `foldSeriesTotals` mentions are the parent `collectReport` split's own approach bullet and acceptance line); docs/invariants.md binds src/report/report-data.ts only through `collectReport` and `collectReportSince` (`grep -c 'foldSeriesTotals' docs/invariants.md` prints 0), and this private move keeps both unchanged; touches src/report/report-data.ts) — done 2026-10-27 by the feature role
+
+**Goal.** `foldSeriesTotals` (`src/report/report-data.ts`, module-private, complexity 16 — the file's highest; the next is `applyCompletionAndFilingCounts` at 12) reduces `collectReport`'s filled day series to the report's totals plus five nonzero-only fields. It is one flat `for (const d of series)` loop whose body accumulates eight `totals` fields, three scalar counters and one per-backend map, counting `d.x ?? 0` for each optional field; the complexity is that branch density, not a hard algorithm. A reader asking any of the three questions above scans all twenty-odd accumulation lines to find the one they want.
+
+**Approach.** All edits in `src/report/report-data.ts`; move code, do not rewrite it — every `?? 0`, every `Object.entries`/`Object.values` fold and every `addTo` call stays exactly as today, so each day's contribution is the same. `ReportDay` and `ReportData` are already imported under `import type`, so no import is added or removed. Add a module-private accumulator interface and three module-private helpers beside `foldSeriesTotals`:
+
+```ts
+/** The per-window totals `foldSeriesTotals` accumulates: the `ReportData['totals']` literal,
+ * the nonzero-only scalars `collectReport` spreads into `totals`, and the backend notional map. */
+interface SeriesTotals {
+  totals: ReportData["totals"] & {
+    commitsByRole: Record<string, number>;
+    workCommits: number;
+    maintenanceCommits: number;
+  };
+  notionalCostUsd: number;
+  mergeFailed: number;
+  plansAdded: number;
+  bugsFiled: number;
+  notionalByBackend: Record<string, number>;
+}
+
+/** Fold one day's run, token, commit, cost and per-role commit counts into `acc.totals`. */
+function foldRunAndCommitCounts(acc: SeriesTotals, d: ReportDay): void;
+
+/** Fold one day's notional spend and its per-backend attribution into `acc`. */
+function foldNotionalSpend(acc: SeriesTotals, d: ReportDay): void;
+
+/** Fold one day's features-done, bugs-fixed, plan/bug filing and merge counts into `acc`. */
+function foldOutcomeCounts(acc: SeriesTotals, d: ReportDay): void;
+```
+
+`foldRunAndCommitCounts` reproduces today's `tokensOut` line, the `Object.values(d.runsByRole)` loop that adds to `totals.runs`, the `commits` line, the `Object.entries(d.commitsByRole ?? {})` loop with `addTo`, and the `workCommits`/`maintenanceCommits`/`costUsd` lines. `foldNotionalSpend` reproduces the `notionalCostUsd ?? 0` line and the `Object.entries(d.notionalByBackend ?? {})` loop with `addTo`. `foldOutcomeCounts` reproduces `featuresDone`, `bugsFixed`, `plansAdded`, `bugsFiled`, `mergeRuns`, `mergeTokens`, `mergeCostUsd` and `mergeFailed`. `foldSeriesTotals` keeps its signature modulo the private named return type, keeps its doc comment (updated to name the three helpers), builds the `SeriesTotals` accumulator with today's `totals` literal and seeds, and becomes:
+
+```ts
+function foldSeriesTotals(series: ReportDay[]): SeriesTotals {
+  const acc: SeriesTotals = {
+    totals: {
+      tokensOut: 0,
+      runs: 0,
+      ...zeroCommitCounts(),
+      costUsd: 0,
+      featuresDone: 0,
+      bugsFixed: 0,
+      ...zeroMergeCounts(),
+    },
+    notionalCostUsd: 0,
+    mergeFailed: 0,
+    plansAdded: 0,
+    bugsFiled: 0,
+    notionalByBackend: {},
+  };
+  for (const d of series) {
+    foldRunAndCommitCounts(acc, d);
+    foldNotionalSpend(acc, d);
+    foldOutcomeCounts(acc, d);
+  }
+  return acc;
+}
+```
+
+`collectReport`'s destructure and every consumer stay byte-for-byte: the returned key set (`totals`, `notionalCostUsd`, `mergeFailed`, `plansAdded`, `bugsFiled`, `notionalByBackend`) and each value are what they are today.
+
+**Files touched.** `src/report/report-data.ts` only. No new module, no export change, no test file edited, no docs edited.
+
+**Acceptance criteria.**
+- `foldSeriesTotals`'s body is only the `SeriesTotals` accumulator literal, the `for (const d of series)` loop calling `foldRunAndCommitCounts`, `foldNotionalSpend` and `foldOutcomeCounts`, and `return acc`: it contains no `+=`, no `??`, no `addTo`, `Object.entries`, `Object.values`, `zeroCommitCounts` or `zeroMergeCounts` call outside the accumulator literal.
+- `foldRunAndCommitCounts`, `foldNotionalSpend` and `foldOutcomeCounts` each exist exactly once at module scope, are not exported, and are called only from `foldSeriesTotals`.
+- Behaviour is preserved: every per-day sum — tokens, runs, commits, per-role commits, work/maintenance commits, cost, notional spend, per-backend notional, features done, bugs fixed, plans added, bugs filed, merge runs/tokens/cost/failed — accumulates exactly as today, and the zero-means-absent fields (`notionalCostUsd`, `mergeFailed`, `plansAdded`, `bugsFiled`, `notionalByBackend`) are the same scalar/map values `collectReport` spreads.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json src/report/report-data.ts`) no longer reports `foldSeriesTotals` at 16, and no function in the file is reported above 12 (`applyCompletionAndFilingCounts` stays at 12, `collectReport` stays at 9, `applyValidationGaps` at 7).
+- The exported surface is unchanged: `grep -nE '^export ' src/report/report-data.ts` still matches `collectReport` only; the added interface and three functions are module-private, and `ReportDay`/`ReportData` were already type-only imports, so no runtime import is added or removed.
+- `docs/invariants.md` is not edited: `grep -c 'foldSeriesTotals' docs/invariants.md` prints 0 (its report-data bindings name `collectReport`/`collectReportSince`, whose signatures and behavior this move preserves).
+- Behaviour is preserved, verified by the existing `test/report-data.test.ts` cases passing unedited — "collectReport buckets run_end/merged events by local day and totals them", "collectReport folds merge_done/merge_failed usage into the day and totals, with the merge share named", "collectReport counts features done and bugs fixed from backlog history", "collectReport counts plans added and bugs filed from backlog filing stamps", "subscription runs total as notional spend, never in the cost totals", "collectReport carries notionalByBackend and names each backend on the notional line", "collectReport scopes the day series and totals to one role, leaving team cells off" and "collectReport degrades to zeros when every source is missing".
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behaviour-preserving move behind three module-private helpers, guarded by the `test/report-data.test.ts` cases named above (and `test/report.test.ts`). Run those modules, then the project's gate, and confirm green.
+
 ### Subtract, part 5s/6: The over-cap model and fallback-chain role rows go (planned 2026-10-27 by the plan role, split 2026-10-27 by the plan role from the held part 5k/6 after feature held it as too large for one run: the role-view, role-render and GUI drawer surfaces are the second of three sibling parts, 5r/6 through 5t/6, that replace part 5k/6; requires Subtract part 5p/6 landed; independent in file of parts 5r/6 and 5t/6, which take the alert/badge and doctor surfaces; this part also removes `role-render.ts`'s `chainStepLine` `Running on fallback` bullet and `RoleViewPayload.chainStep`, which is what makes the split's `grep 'Running on fallback' src/roles` criterion achievable and what part 5l/6's premise (`the surfaces its view fed are gone`) needs gone before it retires the chain; touches src/roles/role-view.ts src/roles/role-render.ts src/ui/gui/gui-client-drawer-config.ts test/role-view.test.ts test/gui-client-drawer.test.ts) — done 2026-10-27 by the feature role
 
 **Goal.** No role view, `tumwater role <id>` line or dashboard drawer names an over-cap model or a fallback-chain step: `RoleViewPayload` carries no `fallback`, `fallbackFree` or `chainStep`, and the renderer and drawer drop their rows.
