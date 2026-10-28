@@ -11,6 +11,19 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
   let queuedEditFor: { role: string; file: string } | null = null;
   const draft = savedPromptDraft(session);
 
+  // One home for turning a throw from the queued editor's file read or write into the flash it
+  // deserves: both the open arm (readQueuedPromptBody) and the commit arm (editQueuedFile)
+  // wrap their core call in this so a torn queue read/write flashes the reason instead of
+  // letting the throw escape the keypress handler and kill the TUI. Both arms stay in the
+  // editor on error (the mode flag is untouched), so the wording and settle cannot drift.
+  const guardError = (fn: () => void): void => {
+    try {
+      fn();
+    } catch (err) {
+      session.flashError(err);
+    }
+  };
+
   // Leave the Queued pane's in-place editor (Esc, a saved edit, or Ctrl+T): restore the saved
   // prompt text, and reset the recall state with it — the same settle contract the other
   // editors honor.
@@ -37,8 +50,9 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
     ) {
       return false;
     }
-    try {
-      const position = Math.min(ctx.selectedQueued, ctx.queuedRows.length - 1);
+    const selected = ctx.selectedQueued; // narrowed to number by the guard above
+    guardError(() => {
+      const position = Math.min(selected, ctx.queuedRows.length - 1);
       const row = ctx.queuedRows[position];
       if (row !== undefined) {
         const body = readQueuedPromptBody(session.root, row.role, row.file);
@@ -59,9 +73,7 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
           );
         }
       }
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
     return true;
   };
 
@@ -84,7 +96,7 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
     } else {
       // The dispatch guards on `queuedEditFor`, so it is never null when this arm runs.
       const target = queuedEditFor!;
-      try {
+      guardError(() => {
         const outcome = editQueuedFile(session.root, target.role, target.file, parsed.value);
         exitQueuedEdit();
         session.refreshQueued();
@@ -93,9 +105,7 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
             ? `edited inbox message for ${target.role}`
             : "the inbox message was already gone",
         );
-      } catch (err) {
-        session.flashError(err);
-      }
+      });
     }
     return true;
   };
