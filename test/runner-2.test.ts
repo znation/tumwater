@@ -455,7 +455,7 @@ test("a run whose agent reads an image on a blind model stops and fails", async 
 test("a blind read on a text-only role reroutes to the vision target, then back to its own tier", async () => {
   const repo = await initializedRepo();
   // A text-only default tier and a vision strong tier, via a models.json in the suite's
-  // scratch pi dir (the same file run-agent's seam check and imageReroute read).
+  // scratch pi dir (the same file agent-run's seam check and imageReroute read).
   const agentDir = process.env.PI_CODING_AGENT_DIR ?? "";
   fs.mkdirSync(agentDir, { recursive: true });
   fs.writeFileSync(
@@ -532,7 +532,7 @@ test("a blind read on a text-only role reroutes to the vision target, then back 
 test("a rerouted director prompt runs fresh on the vision target and is delivered once", async () => {
   const repo = await initializedRepo();
   // A text-only default tier and a vision strong tier, via a models.json in the suite's
-  // scratch pi dir (the same file run-agent's seam check and imageReroute read).
+  // scratch pi dir (the same file agent-run's seam check and imageReroute read).
   const agentDir = process.env.PI_CODING_AGENT_DIR ?? "";
   fs.mkdirSync(agentDir, { recursive: true });
   fs.writeFileSync(
