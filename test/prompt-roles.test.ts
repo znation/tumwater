@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildDirectorPrompt, buildRunPrompt } from "../src/prompt/prompt.js";
 import { NOTHING_TO_DO, SUMMARY_BLOCK } from "../src/verdict/reply-contract.js";
 import { ROLES, roleById } from "../src/roles/roles.js";
-import { CONVERGENCE_HOLD_MARKER, NEEDS_REVIEW_NOTE, VALIDATION_GAP_QUERY } from "../src/roles/role-guidance.js";
+import { CONVERGENCE_HOLD_MARKER, NEEDS_REVIEW_NOTE, PLAN_DEFECT_MARKER, VALIDATION_GAP_QUERY } from "../src/roles/role-guidance.js";
 import { oneLine } from "./helpers/oracles.js";
 
 // What each role's own prompt says: the per-role find text and content contracts (qa,
@@ -89,12 +89,13 @@ test("security and robustness sit between the observers and improve in catalog o
     "improve",
   ]);
 });
-test("the feature find text refuses rather than forces and skips refused plans", () => {
+test("the feature find text hands a defective plan back to the plan role and reserves Refused for the user", () => {
   const role = roleById("feature");
   assert.ok(role);
   const prompt = oneLine(buildRunPrompt({ role }));
-  assert.match(prompt, /A plan that resists implementation is a finding/);
-  assert.match(prompt, /refuse it with the objection recorded rather than forcing it/);
+  assert.match(prompt, /a finding the plan role owns, not a refusal/);
+  assert.ok(prompt.includes(PLAN_DEFECT_MARKER), "feature offers the replan note for a plan defect");
+  assert.match(prompt, /Reserve \*\*Refused …\*\* for a plan that should not be done at all/);
   assert.match(prompt, /Skip plans whose entry carries a Refused note/);
 });
 test("the bugfix find text refuses harmful fixes and skips refused bugs", () => {
@@ -475,6 +476,8 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   const find = oneLine(roleById("plan")!.find);
   assert.ok(find.includes(NEEDS_REVIEW_NOTE), "plan embeds the marker");
   assert.ok(find.includes(CONVERGENCE_HOLD_MARKER), "plan names the automatic convergence hold marker");
+  assert.ok(find.includes(PLAN_DEFECT_MARKER), "plan recognizes the plan-defect replan note");
+  assert.match(find, /read the objection after the marker and the code it names and rewrite the plan/);
   assert.match(find, /outranks adding another plan/);
   assert.match(find, /split it into independently mergeable sub-plans that cross-reference each other/);
   assert.match(find, /read the quoted objections and the code they name and rewrite the plan/);

@@ -156,6 +156,23 @@ export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature:
  * this text. */
 export const CONVERGENCE_HOLD_MARKER = "could not converge";
 
+/** The literal marker the feature role writes inside a Needs-review note when a planned entry's
+ * approach or acceptance criteria resists implementation, so the plan role re-specifies the plan
+ * instead of the refusal landing on the human user's desk. Mirrors the convergence hold: the note
+ * reads `**Needs review <YYYY-MM-DD> by feature: plan defect — <objection>**`, carrying this
+ * text only in the note body after the prefix, so entryHold classes it as a plain needs-review
+ * hold and the feature role (which reads a Needs-review note as a park) skips it. Exported so the
+ * feature charter (which tells the feature role to write it) and the plan charter (which reads it
+ * to replan) share one literal like the convergence marker does. Add no second spelling of this
+ * text. */
+export const PLAN_DEFECT_MARKER = "plan defect";
+
+/** The template for the replan hand-back note the feature role appends to a planned entry whose
+ * approach or criteria are wrong, routing it to the plan role instead of a Refused note. The
+ * objection the feature role recorded goes after the marker's dash, so the plan charter can name
+ * it (`the objection after the marker`) without parsing the note body itself. */
+export const PLAN_DEFECT_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: ${PLAN_DEFECT_MARKER} — <objection>**`;
+
 /** The literal marker the plan role writes as its own line under the PLANS.md `## Planned` entry
  * that declares this project's deterministic check, and the feature role reads as that entry's
  * identity. It is the one decision point between the two no-check notes (gate-notes.ts

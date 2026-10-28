@@ -9,6 +9,8 @@ import {
   DECOMPOSITION_GUIDANCE,
   NEEDS_REVIEW_NOTE,
   NEEDS_REVIEW_PREFIX,
+  PLAN_DEFECT_MARKER,
+  PLAN_DEFECT_NOTE,
   PLAN_QUEUE_GUIDANCE,
   PLAN_SIZING,
   searchGuidance,
@@ -172,6 +174,13 @@ test("the backlog-free roles carry the shared search guidance with a role-specif
 test("the convergence-hold marker is embedded in the plan charter and pinned to its literal", () => {
   assert.equal(CONVERGENCE_HOLD_MARKER, "could not converge");
   assert.ok(oneLine(roleById("plan")!.find).includes(CONVERGENCE_HOLD_MARKER));
+});
+
+test("the plan-defect marker is embedded in the feature and plan charters and pinned to its literal", () => {
+  assert.equal(PLAN_DEFECT_MARKER, "plan defect");
+  assert.ok(PLAN_DEFECT_NOTE.startsWith(NEEDS_REVIEW_PREFIX), "plan-defect note is a Needs-review note");
+  assert.ok(oneLine(roleById("feature")!.find).includes(PLAN_DEFECT_MARKER), "feature charter offers the replan note");
+  assert.ok(oneLine(roleById("plan")!.find).includes(PLAN_DEFECT_MARKER), "plan charter reads the replan note");
 });
 
 test("the Needs review marker is embedded in the feature, plan, and director prompts", () => {

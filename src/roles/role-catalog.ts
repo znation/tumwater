@@ -11,6 +11,8 @@ import {
   CONVERGENCE_HOLD_MARKER,
   DECOMPOSITION_GUIDANCE,
   NEEDS_REVIEW_NOTE,
+  PLAN_DEFECT_MARKER,
+  PLAN_DEFECT_NOTE,
   PLAN_QUEUE_GUIDANCE,
   PLAN_SIZING,
   searchGuidance,
@@ -90,8 +92,10 @@ export const ROLES: Role[] = [
    6. Mark the plan done in PLANS.md — ${backlogMoveGuidance("PLANS.md", "## Planned", "## Done", "PLANS-DONE.md", "done")}
    7. Verify last, after the PLANS.md edit, so one run of the project's check covers everything
       you changed (see "Leave the project working" below).
-A plan that resists implementation is a finding: refuse it with the objection recorded rather
-than forcing it.`,
+A plan whose approach or criteria are wrong is a finding the plan role owns, not a refusal:
+append ${PLAN_DEFECT_NOTE} under its heading with the objection recorded, skip it, and implement
+the next available plan that fits — do not force it. Reserve **Refused …** for a plan that
+should not be done at all, which is the user's call to decide.`,
   },
   {
     id: "bugfix",
@@ -153,6 +157,12 @@ within that budget, there is nothing to do.`,
         the quoted objections and the code they name and rewrite the plan so an implementation
         following it would answer each — correcting the approach or the anchors, tightening the
         acceptance criteria, or splitting it per PLAN_SIZING — then remove the note.
+      - A plan carrying a ${PLAN_DEFECT_MARKER} note (the feature implementer found the plan's
+        approach or criteria wrong) also outranks adding another plan: read the objection after the
+        marker and the code it names and rewrite the plan so an implementation following it would
+        answer it — correcting the approach or the anchors, tightening the acceptance criteria,
+        splitting it per PLAN_SIZING, or refusing it with the objection recorded when it should not
+        be done at all — then remove the note. That replan is this run's task.
       - A plan carrying a **Needs review …** note that quotes the reviewer's surviving objections
         (a final-round rejection — \`rejected after <N> review rounds\`) also outranks adding another
         plan: read the quoted objections and the code they name, then rewrite the plan so an
