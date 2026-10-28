@@ -167,24 +167,44 @@ export function persistBaselineVerdicts(root: string): void {
   const file = baselineVerdictsPath(root);
   greensFile = undefined; // the load below re-writes nothing it just read
   const stored = readJsonFile<{ greens?: unknown; reds?: unknown }>(file);
-  const entries: unknown[] = Array.isArray(stored?.greens) ? stored.greens : [];
-  for (const entry of entries) {
-    if (!isJsonObject(entry) || typeof entry.sha !== "string" || !/^[0-9a-f]{40,64}$/.test(entry.sha)) continue;
-    if (baselineCache.has(entry.sha)) continue;
-    const from = typeof entry.inheritedFrom === "string" ? { inheritedFrom: entry.inheritedFrom } : {};
-    rememberBaseline(entry.sha, { status: "green", sha: entry.sha, ...from });
-  }
-  const reds: unknown[] = Array.isArray(stored?.reds) ? stored.reds : [];
-  for (const entry of reds) {
-    if (!isJsonObject(entry) || typeof entry.sha !== "string" || !/^[0-9a-f]{40,64}$/.test(entry.sha)) continue;
-    if (baselineCache.has(entry.sha)) continue;
-    const failingTests = Array.isArray(entry.failingTests)
-      ? entry.failingTests.filter((t): t is string => typeof t === "string")
-      : [];
-    const script = typeof entry.script === "string" ? { script: entry.script } : {};
-    rememberBaseline(entry.sha, { status: "red", sha: entry.sha, ...script, failingTests });
-  }
+  for (const entry of storedVerdictList(stored, "greens")) restoreGreenVerdict(entry);
+  for (const entry of storedVerdictList(stored, "reds")) restoreRedVerdict(entry);
   greensFile = file;
+}
+
+/** A saved entry whose shape passed the well-formedness guard. */
+type StoredBaselineEntry = Record<string, unknown> & { sha: string };
+
+/** The saved array for one kind of verdict, or an empty list when absent or not an array. */
+function storedVerdictList(stored: { greens?: unknown; reds?: unknown } | null | undefined, key: "greens" | "reds"): unknown[] {
+  const value = stored?.[key];
+  return Array.isArray(value) ? value : [];
+}
+
+/** A saved entry that is an object with a 40-64 hex `sha`, or null when it is not. */
+function storedVerdictEntry(entry: unknown): StoredBaselineEntry | null {
+  if (!isJsonObject(entry)) return null;
+  if (typeof entry.sha !== "string" || !/^[0-9a-f]{40,64}$/.test(entry.sha)) return null;
+  return entry as StoredBaselineEntry;
+}
+
+/** Restore one saved green, carrying an optional `inheritedFrom`, unless the cache holds it. */
+function restoreGreenVerdict(entry: unknown): void {
+  const parsed = storedVerdictEntry(entry);
+  if (parsed === null || baselineCache.has(parsed.sha)) return;
+  const from = typeof parsed.inheritedFrom === "string" ? { inheritedFrom: parsed.inheritedFrom } : {};
+  rememberBaseline(parsed.sha, { status: "green", sha: parsed.sha, ...from });
+}
+
+/** Restore one saved red: optional `script` and failing tests, unless the cache holds it. */
+function restoreRedVerdict(entry: unknown): void {
+  const parsed = storedVerdictEntry(entry);
+  if (parsed === null || baselineCache.has(parsed.sha)) return;
+  const failingTests = Array.isArray(parsed.failingTests)
+    ? parsed.failingTests.filter((t): t is string => typeof t === "string")
+    : [];
+  const script = typeof parsed.script === "string" ? { script: parsed.script } : {};
+  rememberBaseline(parsed.sha, { status: "red", sha: parsed.sha, ...script, failingTests });
 }
 
 /** In-flight dedup: concurrent runs on the same not-yet-cached SHA (a fresh main move wakes
