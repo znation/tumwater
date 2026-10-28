@@ -13,6 +13,7 @@ import { RunnerPi } from "./runner-pi.js";
 import {
   configForRole,
   seamHoldKey,
+  withModelOverrides,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
@@ -83,6 +84,13 @@ export class RoleRunner {
    * resolve to, since different roles may run on different pairs.
    * Transient — never persisted — and captured fresh at every run start. */
   private runPair?: { provider?: string; model?: string };
+  /** Whether the budget gate currently has the team on its free fallback pairs (src/gates/
+   * budget-gates.ts onFallback, set alongside `config` by the orchestrator's poll): an
+   * image reroute may then look only among the free fallback pairs, never a priced primary
+   * (plans/image-input.md "Reroute target" "Regime"). Pure scheduler input, never whether
+   * the runner itself is mid-fallback; defaults false, so standalone-runner tests stay on the
+   * primary regime unless they set it. */
+  budgetFallbackActive = false;
   /** The merge failure this run's leftover recovery is retrying, if any (a retriable merger
    * outcome that kept the pin, which recovery re-queued): set in finishRecoveryRun and
    * attached to the returned RunOutcome so applyRunOutcome can feed it into the error streak
@@ -190,11 +198,32 @@ export class RoleRunner {
     return this.state.running ? (this.runPair ?? null) : null;
   }
 
-  /** The config this role's NEXT run will run on: the role's own resolved config
-   * (configForRole). The hold and start passes read this so a role is keyed by the provider
-   * it will use. The budget gate's fallback pair, when a cap episode is active, is installed
-   * into the live config itself, so this read already names the pair the run uses. */
+  /** Which pair set an image reroute may look among (plans/image-input.md "Reroute target"
+   * "Regime"): the free fallback pairs while the budget gate is on fallback; otherwise the
+   * primary tiers. One home for the rule, shared by the target-resolution sites (the verdict's
+   * reroute arm, the attachment preflight). */
+  rerouteRegime(): "primary" | "fallback" {
+    return this.budgetFallbackActive ? "fallback" : "primary";
+  }
+
+  /** The config this role's NEXT run will run on: a pending image reroute's target, else the
+   * role's own resolved config (configForRole). The hold and start passes read this so a role
+   * is keyed by the provider it will use. The budget gate's fallback pair, when a cap episode
+   * is active, is installed into the live config itself, so this read already names the pair
+   * the run uses. */
   runConfig(): ResolvedModelConfig {
+    // A pending image-input reroute (plans/image-input.md part 4/5) outranks the role's own
+    // tier: the next run starts on the image-capable target the blind-read run recorded,
+    // rebuilt from the stored seam over the live config.
+    if (this.state.imageReroute) {
+      const r = this.state.imageReroute;
+      return withModelOverrides(this.config, r.tier, {
+        backend: r.backend,
+        provider: r.provider,
+        model: r.model,
+        thinking: r.thinking,
+      });
+    }
     return configForRole(this.config, this.role);
   }
 
@@ -319,6 +348,7 @@ export class RoleRunner {
       warn: (message) => this.warn(message),
       runSignal: () => this.runSignal(),
       runPrompt: (backend) => this.runPrompt(backend),
+      rerouteRegime: () => this.rerouteRegime(),
       get recoveryFailure() {
         return self.recoveryFailure;
       },

@@ -5,7 +5,7 @@
  * subscription-window hand-back (part 5c/8, part 2e/9), and the per-tier budget pause subject
  * sets. Moved out of src/gates/gate-polls.ts
  * so the whole budget concern lives under src/budget and the orchestrator's poll keeps only
- * the call. Mutates the `RoleRunner`s in place (`config`,
+ * the call. Mutates the `RoleRunner`s in place (`config`, `budgetFallbackActive`,
  * `handBackRun`) and the budget state's `prevChain`; returns nothing, because the block
  * reassigns no `pollTeamGates` local. */
 import type {
@@ -49,7 +49,7 @@ interface BudgetGateWiringView {
 
 interface BudgetGateWiringInput {
   root: string;
-  /** Mutated in place: `config` every poll, `handBackRun` on a
+  /** Mutated in place: `config`, `budgetFallbackActive` every poll, `handBackRun` on a
    * reopen. */
   runners: readonly RoleRunner[];
   liveConfig: TumwaterConfig;
@@ -123,6 +123,11 @@ function assignRunnerBudgetConfig(
   // the reload, can never run on the wrong model.
   for (const r of runners) {
     r.config = gateRoleConfig(r.role, liveConfig, view.roleConfig, view.directorConfig);
+    // An image reroute must never spend past the daily cap: while the gate has the team on
+    // its free fallback pairs, a reroute looks only among those pairs (plans/image-input.md
+    // "Reroute target" "Regime"). Set beside the config assignment so the scheduler's regime
+    // and the roles' never disagree.
+    r.budgetFallbackActive = view.onFallback;
   }
 }
 

@@ -77,7 +77,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     }
     if (view.imageInput !== undefined) {
       const images = view.imageInput === true ? "yes"
-        : view.imageInput === false ? "no"
+        : view.imageInput === false ? (view.imageReroute ? "no — reruns on " + view.imageReroute : "no")
         : "unknown";
       rows.push(kvRow("Images", images));
     }

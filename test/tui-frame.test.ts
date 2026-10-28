@@ -63,7 +63,7 @@ test("a status render's spans read exactly as the plain text, clipped to width",
   // The failing role's state reads red, and the render reports its phase for the alerts.
   const { lines, roles } = renderStatusSpans(repo, snap, 160);
   assert.ok(lines.some((l) => l.some((sp) => sp.text.startsWith("failing") && sp.tone === "red")));
-  assert.deepEqual(roles.find((l) => l.role === "clean"), { role: "clean", phase: "failing", errorStreak: true, inFlight: false, lastError: "boom", imageInput: null });
+  assert.deepEqual(roles.find((l) => l.role === "clean"), { role: "clean", phase: "failing", errorStreak: true, inFlight: false, lastError: "boom", imageInput: null, imageReroute: null });
   assert.equal(lines[0]?.[0]?.tone, "brand", "the header opens with the name");
 });
 

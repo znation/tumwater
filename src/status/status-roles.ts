@@ -39,6 +39,10 @@ export type StatusRoleRow = RunnerState & {
    * tell. Always present, so `status --json` and the dashboards answer without running
    * doctor. */
   imageInput: boolean | null;
+  /** The role's image reroute target as `<tier> (<model>)`, or null when no other tier reads
+   * images — the `reruns on …` every surface names. Always present. (Named `imageRerouteLabel`
+   * to avoid the persisted RunnerState.imageReroute handoff record of the same name.) */
+  imageRerouteLabel: string | null;
   /** The resolved primary seam's declared context window, from the same `seamContextWindow`
    * the role page's `- Context window:` line prints — a table/drawer peak-ctx share divides a
    * run's peak against this. Present only when the seam declares a window (the omit-when-unknown
@@ -118,6 +122,7 @@ export function collectRoleRows(
       ...base,
       ...modelSelectorField(eff),
       imageInput: image.imageInput,
+      imageRerouteLabel: image.imageReroute,
       ...(modelFromPi
         ? {
             model: formatModelSelector({

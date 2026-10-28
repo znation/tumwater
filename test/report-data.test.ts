@@ -1166,6 +1166,31 @@ test("collectReportSince scopes notional spend to the role, like cost", () => {
   assert.equal(scoped.totals.costUsd, 0);
 });
 
+test("collectReport and collectReportSince count image_reroute per role, zero meaning absent", () => {
+  const root = tmpdir();
+  const reroute = (ts: number, loop: string, preflight: boolean) => // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts, loop, type: "image_reroute", preflight }); // retired-name-ok: legacy event field in a fixture
+  writeEvents(root, [
+    reroute(todayTs(), "feature", true),
+    reroute(todayTs(), "feature", false),
+    reroute(todayTs(), "qa", true),
+    reroute(at(1), "feature-2", false),
+    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "image_blind" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(2), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 1 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data = collectReport(root, 3);
+  assert.ok(!("imageReroutesByRole" in (data.series[0] ?? {})), "a day with none carries no key");
+  assert.deepEqual(data.series[1]?.imageReroutesByRole, { "feature-2": 1 }, "yesterday");
+  assert.deepEqual(data.series[2]?.imageReroutesByRole, { feature: 2, qa: 1 }, "today; image_blind adds nothing");
+  assert.match(renderReportMarkdown(data), /\*\*Image reroutes by role:\*\* feature — 2 · feature-2 — 1 · qa — 1/);
+
+  const since = collectReportSince(root, 3 * 24 * HOUR);
+  assert.deepEqual(since.imageReroutesByRole, { feature: 2, "feature-2": 1, qa: 1 });
+  assert.match(renderSinceReportMarkdown(since), /\*\*Image reroutes by role:\*\* feature — 2 · feature-2 — 1 · qa — 1/);
+  assert.deepEqual(collectReportSince(root, 3 * 24 * HOUR, "feature").imageReroutesByRole, { feature: 3 }, "feature-2 folds into feature");
+  assert.match(renderReportMarkdown(collectReport(tmpdir(), 2)), /\*\*Image reroutes by role:\*\* -/);
+});
+
 test("collectReport gives each day the lower median of its passing full-suite checks, team scope only", () => {
   const root = tmpdir();
   const check = (status: string, scope: string, durationMs: number) =>

@@ -106,10 +106,11 @@ test("an image-carrying prompt is capped on its composed text, not its body alon
   assert.equal(queuedRolePrompts(dir, "qa").length, 1);
 });
 
-// Image input (plans/image-input.md "Attachments"): the submit gate. An attachment
-// to a role whose seam reads no images is refused before anything is queued or written — the
-// peer-tier reroute was subtracted (part 5g/6), so no tier accepts a blind role's image.
-test("image prompts are refused when the role's model reads no images, even with a vision peer", async () => {
+// Image input, part 5/5 (plans/image-input.md "Attachments"): the submit gate. An attachment
+// to a role whose seam reads no images and that has no reroute target is refused before
+// anything is queued or written; with a reroute target the prompt is accepted (its run would
+// rerun on the vision tier, so nothing is refused).
+test("image prompts are refused when no configured model reads images, accepted when a tier reroutes", async () => {
   const dir = tmpdir();
   const modelsDir = tmpdir("inbox-image-");
   writeModelsFile(
@@ -142,22 +143,19 @@ test("image prompts are refused when the role's model reads no images, even with
     });
     assert.equal(queuedRolePrompts(dir, "feature").length, 0, "nothing was queued after the refusal");
 
-    // A vision strong tier no longer reroutes a blind read (part 5g/6): the same prompt is
-    // still refused, because the feature role's own model reads no images.
+    // A vision strong tier reroutes a blind read, so the same prompt is accepted and queued.
     writeConfig(dir, { model: { default: "local/text", strong: "local/vision" } });
-    assert.throws(() => submitRolePrompt(dir, "feature", "look at this", img), (err: unknown) => {
-      const message = String((err as Error).message);
-      return message.includes("can't read images");
-    });
-    assert.equal(queuedRolePrompts(dir, "feature").length, 0, "still nothing queued");
+    const queued = submitRolePrompt(dir, "feature", "look at this", img);
+    assert.ok(queued.includes("[image attached: "));
+    assert.equal(queuedRolePrompts(dir, "feature").length, 1);
   } finally {
     restoreAgentDir();
   }
 });
 
-// The same capability answers the CLI/GUI display: imagePromptGuidance refuses a blind prompt
-// with the fix, and says nothing when the role reads images.
-test("imagePromptGuidance returns a refusal for a blind role and nothing when the role reads images", async () => {
+// The same capability answers the CLI/GUI display: imagePromptGuidance names where a blind
+// prompt runs (the notice surfaces print), and refuses with the fix when nothing reads images.
+test("imagePromptGuidance returns a refusal or a reroute notice, and nothing when the role reads images", async () => {
   const dir = tmpdir();
   const modelsDir = tmpdir("inbox-guidance-");
   writeModelsFile(
@@ -172,10 +170,10 @@ test("imagePromptGuidance returns a refusal for a blind role and nothing when th
   );
   const restoreAgentDir = setEnv("PI_CODING_AGENT_DIR", modelsDir);
   try {
-    // A text-only role is refused even with a vision peer tier (no reroute, part 5g/6).
     writeConfig(dir, { model: { default: "local/text", strong: "local/vision" } });
     const guidance = imagePromptGuidance(dir, "feature");
-    assert.match(guidance.refusal ?? "", /no configured model reads images for it/);
+    assert.deepEqual(guidance.refusal, undefined);
+    assert.match(guidance.notice ?? "", /feature's model can't read images; this prompt runs on strong \(local\/vision\)/);
     // A vision role says nothing.
     writeConfig(dir, { model: { default: "local/vision", strong: "local/vision" } });
     assert.deepEqual(imagePromptGuidance(dir, "feature"), {});

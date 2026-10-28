@@ -1,8 +1,16 @@
 # Image input — know which models can read images, stop blind reads, rerun on one that can
 
-**Retired 2026-10-26** by [subtract.md](subtract.md) (Subtract part 5/6): the capability probe, the
-`image input` row and the three image alerts go with the model routing they existed to guide. A
-role whose model cannot read an image fails that run and reports it like any other run failure.
+**Partly retired 2026-10-26** by [subtract.md](subtract.md) (Subtract part 5/6): the doctor's live
+capability probe, its cache, `--reprobe` and the failed-probe alert are gone; a claim in
+models.json is trusted as written.
+
+**Reroute restored 2026-10-28** (user decision): Subtract parts 5g/6 and 5h/6 had also deleted
+the peer-tier reroute and its surfaces; the user saw the amber `images` alert with a vision
+`strong` tier configured and asked that text-only roles fall back to it. Both parts were reverted
+(blind-read reroute, attachment preflight, `image_reroute` event and report tallies, the
+blue/amber alert, the role-page line and the submit notice). The reroute outlives the tier map:
+Subtract part 5e/6 moves its target to an `images` model entry, and part 5v/6 removes its
+fallback regime together with the budget fallback.
 
 Planned 2026-10-15 · requested by user · decisions settled with the user the same day (end of file)
 

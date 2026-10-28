@@ -141,6 +141,7 @@ function pushSinceFrictionLines(lines: string[], data: SinceReport): void {
   // going through review, which rejections/revisions would miss entirely. A window with
   // none renders "-" like the other lines.
   pushRankedRoleLine(lines, "Failed runs by role", rankedRoleMap(data.failedRunsByRole));
+  pushRankedRoleLine(lines, "Image reroutes by role", rankedRoleMap(data.imageReroutesByRole));
 }
 
 /** Deferred maintenance runs by reason code, gated to the team report. */

@@ -953,12 +953,12 @@ test("the dashboard page is one self-contained document: sidebar, views, compose
   assert.doesNotMatch(GUI_PAGE, /setInterval\(/, "no stacked polls");
 });
 
-// Image input (plans/image-input.md "Attachments"): the GUI submit gate. An image to a role
-// whose seam reads no images answers 400 naming the fix and queues nothing — the peer-tier
-// reroute was subtracted (part 5g/6), so even a vision peer tier does not accept a blind role's
-// image. The server reads the config per request, so one running server serves both refusals as
-// the config changes.
-test("gui /api/prompt-role refuses an image for a blind role, even with a vision peer tier", async () => {
+// Image input, part 5/5 (plans/image-input.md "Attachments" + "Surfaces"): the GUI submit
+// gate. An image to a role whose seam reads none and that has no reroute target answers 400
+// naming the fix and queues nothing; with a reroute target it accepts and its confirmation
+// names where the prompt will run. The server reads the config per request, so one running
+// server serves both the refused and the accepted submission as the config changes.
+test("gui /api/prompt-role refuses images with no reroute target and names where a rerouted prompt runs", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui image gate");
   const modelsDir = tmpdir("gui-image-");
@@ -978,12 +978,12 @@ test("gui /api/prompt-role refuses an image for a blind role, even with a vision
     assert.match(((await refused.json()) as { error: string }).error, /no configured model reads images for it/);
     assert.equal(queuedRolePrompts(repo, "feature").length, 0);
 
-    // A vision strong tier no longer reroutes a blind read (part 5g/6): still refused.
+    // A vision strong tier reroutes a blind read → accepted, the confirmation names where.
     writeConfig(repo, { model: { default: "local/text", strong: "local/vision" } });
-    const refused2 = await postJson(base, "/api/prompt-role", { role: "feature", text: "look", images: [image] });
-    assert.equal(refused2.status, 400);
-    assert.match(((await refused2.json()) as { error: string }).error, /no configured model reads images for it/);
-    assert.equal(queuedRolePrompts(repo, "feature").length, 0, "nothing queued even with a vision peer");
+    const ok = await postJson(base, "/api/prompt-role", { role: "feature", text: "look", images: [image] });
+    assert.equal(ok.status, 200);
+    assert.match(((await ok.json()) as { message: string }).message, /runs on strong \(local\/vision\)/);
+    assert.equal(queuedRolePrompts(repo, "feature").length, 1);
   } finally {
     restoreAgentDir();
     server.close();
@@ -991,10 +991,10 @@ test("gui /api/prompt-role refuses an image for a blind role, even with a vision
 });
 
 // The same gate on the edit path (/api/prompt-edit): editing an image into a queued prompt
-// whose target role reads no images answers 400 naming the fix and leaves the file untouched —
-// the reroute (part 5g/6) no longer accepts it even with a vision peer tier. The queue file is
-// addressed by its name, so the refused edit must not rewrite it.
-test("gui /api/prompt-edit refuses an image for a blind role, even with a vision peer tier", async () => {
+// whose target role reads no images (and that has no reroute) answers 400 naming the fix and
+// leaves the file untouched; a vision strong tier reroutes it and the edit lands. The queue
+// file is addressed by its name, so the refused edit must not rewrite it.
+test("gui /api/prompt-edit refuses an image with no reroute target and edits with a reroute", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui edit image gate");
   const modelsDir = tmpdir("gui-edit-image-");
@@ -1017,11 +1017,16 @@ test("gui /api/prompt-edit refuses an image for a blind role, even with a vision
     assert.match(((await refused.json()) as { error: string }).error, /no configured model reads images for it/);
     assert.equal(fs.readFileSync(path.join(roleInboxDir(repo, "feature"), fileName), "utf8"), "first body", "the refused edit leaves the file untouched");
 
-    // A vision strong tier no longer reroutes (part 5g/6): still refused, the file untouched.
+    // A vision strong tier reroutes a blind read → the edit lands.
     writeConfig(repo, { model: { default: "local/text", strong: "local/vision" } });
-    const refused2 = await postJson(base, "/api/prompt-edit", { role: "feature", file: fileName, text: "edited", images: [image] });
-    assert.equal(refused2.status, 400);
-    assert.equal(fs.readFileSync(path.join(roleInboxDir(repo, "feature"), fileName), "utf8"), "first body", "still untouched after the reroute-free refusal");
+    const ok = await postJson(base, "/api/prompt-edit", { role: "feature", file: fileName, text: "edited", images: [image] });
+    assert.equal(ok.status, 200);
+    const edited = (await ok.json()) as { ok: boolean; status: string; oldText: string; newText: string };
+    assert.deepEqual(
+      { ok: edited.ok, status: edited.status, oldText: edited.oldText },
+      { ok: true, status: "edited", oldText: "first body" },
+    );
+    assert.match(edited.newText, /^edited\n\n\[image attached: .*\.png\]/);
   } finally {
     restoreAgentDir();
     server.close();

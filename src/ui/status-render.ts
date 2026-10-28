@@ -512,6 +512,7 @@ function statusRoleSummaries(withMetrics: readonly StatusRowMetric[]): StatusRol
     // The role's image-input surface (plans/image-input.md "Surfaces", part 5/5): always
     // present, so the TUI's images attention line keys on it like the dashboard's.
     imageInput: s.imageInput,
+    imageReroute: s.imageRerouteLabel,
   }));
 }
 

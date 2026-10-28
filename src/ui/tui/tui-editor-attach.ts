@@ -96,7 +96,7 @@ export function createAttachEditor(session: TuiEditorSession): TuiEditorModule {
     }
     session.images = next;
     exitAttachMode();
-    session.flashMessage(`attached ${path.basename(p)}`);
+    session.flashMessage(guidance.notice ?? `attached ${path.basename(p)}`);
     return true;
   };
 

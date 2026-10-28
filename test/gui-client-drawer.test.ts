@@ -835,6 +835,7 @@ test("the role drawer renders the Configuration section from the role payload", 
       model: "deepseek/deepseek-v4",
       modelTier: "strong",
       imageInput: false,
+      imageReroute: "strong (claude-opus-5-5)",
       billing: "subscription",
       billingWindow: "five_hour",
       minRunIntervalSeconds: 30,
@@ -849,7 +850,7 @@ test("the role drawer renders the Configuration section from the role payload", 
   const role = t.paintedFor("drawerrole");
   assert.match(role, /<h3>Configuration<\/h3>/);
   assert.match(role, /<dt>Model<\/dt><dd[^>]*>deepseek\/deepseek-v4 \(strong tier\)<\/dd>/);
-  assert.match(role, /<dt>Images<\/dt><dd[^>]*>no<\/dd>/);
+  assert.match(role, /<dt>Images<\/dt><dd[^>]*>no — reruns on strong \(claude-opus-5-5\)<\/dd>/);
   assert.match(role, /<dt>Billing<\/dt><dd[^>]*>subscription \(five_hour window\)<\/dd>/);
   assert.match(role, /<dt>Min run interval<\/dt><dd title='30s \(team default\)'>30s \(team default\)<button[^>]*data-act='interval-edit'[^>]*>Set interval<\/button><\/dd>/);
   assert.match(role, /<dt>Queued prompts<\/dt><dd[^>]*>4<\/dd>/);

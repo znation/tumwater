@@ -225,14 +225,17 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   // unresolvable pair, a model with no declared window).
   lines.push(`- Context window: ${p.contextWindow === null ? "unknown" : `${compactTokens(p.contextWindow)} tokens`}`);
   // Image input (plans/image-input.md "Surfaces", part 5/5): whether this role's own model
-  // reads images. Not just `yes`/`no`: a text-only role reads `no`; unknown (null) renders
-  // `unknown` rather than guessing. The peer-tier reroute was subtracted, so no reroute text
-  // names a target.
+  // reads images, and — when it cannot — where a run that reads an image reroutes. Not just
+  // `yes`/`no`: a text-only role that falls back names the target, so `tumwater role <id>`
+  // explains the team alert without running doctor. Unknown (null) renders `unknown` rather
+  // than guessing.
   const images =
     p.imageInput === true
       ? "yes"
       : p.imageInput === false
-        ? "no"
+        ? p.imageReroute
+          ? `no — reruns on ${p.imageReroute}`
+          : "no"
         : "unknown";
   lines.push(`- Images: ${images}`);
   // Whether the review gate reviews this role's commits after they merge (role-view.ts's

@@ -48,7 +48,7 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // Object.prototype key whose inherited value would otherwise seed the counter and satisfy
   // the membership test (the browser twin of addTo's fix; BUGS.md 2026-10-10).
   function reportRoleOrder(data) {
-    return tallyAcross(data.series, ["runsByRole"], ["costByRole", "notionalByRole", "rejectionsByRole", "revisionsByRole", "refusalsByRole", "failedRunsByRole", "mergeFailedByRole", "commitsByRole", "mergedByRole"]);
+    return tallyAcross(data.series, ["runsByRole"], ["costByRole", "notionalByRole", "rejectionsByRole", "revisionsByRole", "refusalsByRole", "imageReroutesByRole", "failedRunsByRole", "mergeFailedByRole", "commitsByRole", "mergedByRole"]);
   }
 
   // X-axis labels: MM-DD, thinned to at most seven, counted back from the newest day so today
@@ -370,6 +370,11 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // way as its rejection/revision siblings.
   function chartRefusalsByRole(data) {
     return roleStackChart(data, "refusalsByRole", (n) => plural(n, "refusal"), countAxis, true);
+  }
+  // Image reroutes per role, drawn like the other role stacks: one segment per (day, role)
+  // with a reroute.
+  function chartImageReroutesByRole(data) {
+    return roleStackChart(data, "imageReroutesByRole", (n) => plural(n, "image reroute"), countAxis, true);
   }
   // Runs that ended in an error, per role, drawn the same way.
   function chartFailedRunsByRole(data) {

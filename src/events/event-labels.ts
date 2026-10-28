@@ -85,6 +85,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   backend_binary: "backend checked",
   opencode_free_model_billed: "free model billed",
   image_blind: "image not seen",
+  image_reroute: "image sent to another model",
   build_stale: "update available",
   restart_pending: "update waits for idle",
   restart: "restarted onto update",

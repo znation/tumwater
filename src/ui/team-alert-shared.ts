@@ -111,6 +111,9 @@ export interface AlertRole {
    * `false` marks a text-only role the `images` alert considers; null (unknown) is not
    * counted as text-only. Always present on the real status rows. */
   imageInput?: boolean | null;
+  /** The role's image reroute target as `<tier> (<model>)`, when a peer tier reads images.
+   * Absent (or null) when no other tier reads images — the amber no-target alert. */
+  imageReroute?: string | null;
   /** ms the in-flight run has been silent (its stall span), from the live tail's quietMs and
    * capped to the run by progressOfRun; absent when the caller holds no live tail. */
   stuckMs?: number;

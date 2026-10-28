@@ -380,6 +380,7 @@ function pushReportFrictionLines(lines: string[], data: ReportData): void {
   // through review, which rejections/revisions would miss entirely. Zero-means-absent, so a
   // failure-free window renders no line and an all-zero window renders "-" like the others.
   pushRankedRoleLine(lines, "Failed runs by role", rankedRoleTotals(data.series, (d) => d.failedRunsByRole ?? {}));
+  pushRankedRoleLine(lines, "Image reroutes by role", rankedRoleTotals(data.series, (d) => d.imageReroutesByRole ?? {}));
 }
 
 /** The team-only deferred-runs-by-reason line. */

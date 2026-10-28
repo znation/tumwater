@@ -206,6 +206,16 @@ export function loadRunnerState(root: string, role: string): RunnerState {
     });
   if (s.mergeFlakeExcused !== undefined && typeof s.mergeFlakeExcused !== "string")
     delete s.mergeFlakeExcused;
+  // The image-reroute marker is a one-shot nested record consumed by the next run; a torn
+  // scalar is dropped (its consumers read/mutate fields), and the tier is repaired to a
+  // known tier name so a corrupt tier cannot route a rerouted run to a phantom seam.
+  if (s.imageReroute !== undefined) {
+    const healed = healRecord(s.imageReroute, () => {});
+    s.imageReroute =
+      healed && (healed.tier === "small" || healed.tier === "default" || healed.tier === "strong")
+        ? healed
+        : undefined;
+  }
   return s;
 }
 

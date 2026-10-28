@@ -85,6 +85,11 @@ export async function handlePiResultPhase(
     flow,
     filed,
     ci,
+    // The image-reroute arm resolves its target from the live config and the current
+    // regime, and names the model this run ran on as the handoff's `from`.
+    config: ctx.config,
+    rerouteRegime: ctx.rerouteRegime(),
+    runModel: cfg.model,
     warn: (message) => ctx.warn(message),
     merge: (w, sum) => mergePhase(ctx, w, sum),
     finishAbortedRun: () => ctx.finishAbortedRun(userPrompt, wt),

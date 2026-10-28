@@ -199,11 +199,12 @@ function runPromptCancel(root: string, position: number, role: string | null): v
 
 /** Run the CLI's image-input gate for one `prompt` surface. Shared by the submit and
  * --edit forms so the refusal promise holds across every CLI attach surface: an image no
- * configured model can read is refused (fail) before a byte is written — the peer-tier
- * reroute was subtracted, so there is no notice to say. */
+ * configured model can read is refused (fail) before a byte is written, and a role that
+ * reroutes a blind read is told (say) where the prompt will run. */
 function runPromptImageGate(root: string, target: string): void {
   const guidance = imagePromptGuidance(root, target);
   if (guidance.refusal) fail(guidance.refusal);
+  if (guidance.notice) say(guidance.notice);
 }
 
 /** The `--edit` attachment phase: read the `--attach` image list (undefined when there is
@@ -220,8 +221,9 @@ function readEditAttachments(root: string, position: number, attachPaths: string
   // "Attachments", part 5/5): editing an attachment into a queued prompt is the same
   // run-time discovery the submit gate prevents, so the refusal promise holds across every
   // CLI attach surface — an image no configured model can read is refused before a byte is
-  // written; the peer-tier reroute was subtracted, so there is no notice to say. The target
-  // role is resolved first (the same resolution the verb below makes) so the gate can name it.
+  // written, and a role that reroutes a blind read is told where the prompt will run. The
+  // target role is resolved first (the same resolution the verb below makes) so the gate can
+  // name it.
   if (images !== undefined && images.length > 0) {
     const targetRole = role ?? resolveListedRole(root, position);
     runPromptImageGate(root, targetRole);

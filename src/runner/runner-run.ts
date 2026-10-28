@@ -9,6 +9,7 @@ import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.
 import { leaseSlot } from "../git/worktree-pool.js";
 import { slotCount } from "../config/config.js";
 import { useWorktree } from "../git/worktree-use.js";
+import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { branchName, worktreePath, mergeRefName, rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
 import { buildConflictHandbackNote, buildSalvageRestoreNote } from "../prompt/gate-prompts.js";
@@ -26,8 +27,12 @@ import {
   reviewedAfterMerge,
   scheduleConfigForRole,
   seamHoldKey,
+  withModelOverrides,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
+import { imageReroute, seamImageInput } from "../agent/image-input.js";
+import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
+import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { planRunStart, planWithSalvagedWork, takesSalvagedWork, type RunStartPlan } from "../run/run-resume.js";
 import { restoreSalvagedWork } from "../git/slot-salvage.js";
 import { DEFAULT_BACKEND } from "../agent/agent-backend.js";
@@ -71,6 +76,10 @@ export interface RunnerRunContext {
   /** The signal a run's pi runs watch: harness shutdown OR this run's abort controller. */
   runSignal(): AbortSignal;
   runPrompt(backend?: string): string | null;
+  /** Which pair set an image reroute may look among (plans/image-input.md "Reroute target"
+   * "Regime"): the free fallback pairs while the budget gate is on fallback, else the primary
+   * tiers. Delegates to the runner's rule. */
+  rerouteRegime(): "primary" | "fallback";
   /** The live value of the runner's recoveryFailure field (set by the recovery phase mid-run,
    * read at finalize time). */
   readonly recoveryFailure: string | undefined;
@@ -150,10 +159,67 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
   // writes cannot disagree.
   const planBacklogOpen = !planBacklogFull(ctx.root, ctx.config);
   // This run's effective config: the role's own resolved config (a run always resolves its
-  // role's own config — the model-fallback episode is gone, Subtract part 5o/6). The budget
-  // gate's fallback pair, when a cap episode is active, is installed into the live config
-  // itself, so the config here already names the pair the run uses.
-  const cfg = scheduleConfigForRole(ctx.config, ctx.role, planBacklogOpen);
+  // role's own config — the model-fallback episode is gone, Subtract part 5o/6) unless an image
+  // reroute below moves it. The budget gate's fallback pair, when a cap episode is active, is
+  // installed into the live config itself, so the config here already names the pair the run
+  // uses.
+  const primaryCfg = scheduleConfigForRole(ctx.config, ctx.role, planBacklogOpen);
+  let cfg = primaryCfg;
+  // Image-input reroute (plans/image-input.md part 4/5). A pending one-shot marker means
+  // THIS run is the blind-read reroute: start directly on the image-capable target the
+  // prior run recorded, over the kept worktree, in a fresh session. The marker is consumed
+  // (cleared) here so it does not route a later run; imageRerouteActive stays true for the
+  // whole run so the verdict's one-hop guard fails a second blind read instead of
+  // rerouting again. A preflight (below) sets the same active flag without a marker.
+  s.imageRerouteActive = false;
+  let preflightBlocked = false;
+  if (s.imageReroute) {
+    const r = s.imageReroute;
+    cfg = withModelOverrides(ctx.config, r.tier, {
+      backend: r.backend,
+      provider: r.provider,
+      model: r.model,
+      thinking: r.thinking,
+    });
+    // The marker is NOT cleared here: planRunStart reads its `from`/`path` when it builds
+    // the handoff note (and clears it then), so a run skipped before the plan (an empty
+    // inbox) leaves the reroute pending for the next eligible run.
+    s.imageRerouteActive = true;
+  } else {
+    // Preflight (plans/image-input.md "Attachments"): a queued prompt carrying an
+    // `[image attached: …]` line needs a model that can read images BEFORE any run starts,
+    // so a text-only run hops straight to the target instead of spending a failed run
+    // learning it; with no target the run errors without spawning pi.
+    const nextPrompt =
+      ctx.role === DIRECTOR_ROLE ? peekPrompt(ctx.root) : peekRolePrompt(ctx.root, ctx.role);
+    const carriesImages = nextPrompt !== null && /^\[image attached: .+\]$/m.test(nextPrompt);
+    if (carriesImages) {
+      const providers = readPiProviders(piModelsPath());
+      const listed = readPiListedModels(ctx.root);
+      if (seamImageInput(cfg, providers, listed) !== true) {
+        const target = imageReroute(
+          ctx.config, ctx.role, ctx.rerouteRegime(), undefined, null, null, listed,
+        );
+        if (target !== null) {
+          cfg = target.config;
+          s.imageRerouteActive = true;
+          logEventBestEffort(ctx.root, {
+            source: ctx.role,
+            type: "image_reroute",
+            run: s.runs + 1,
+            from: primaryCfg.model,
+            to: target.config.model,
+            tier: target.tier,
+            preflight: true,
+          });
+        } else {
+          preflightBlocked = true;
+          s.lastError =
+            `an inbox message for ${ctx.role} attaches an image, but no configured tier can read it`;
+        }
+      }
+    }
+  }
   // Capture what this run runs on (the orchestrator's budget handback matches it against
   // the fallback pair) and clear any stale handback flag: an abort request that lands while
   // the runner is idle must not name a later run's resume.
@@ -189,12 +255,18 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
     source: ctx.role,
     type: "run_start",
     run: runNumber,
+    // A run routed onto the image-capable target — a blind-read handoff or an attachment
+    // preflight — is stamped so the feed shows the reroute and the model it landed on.
+    ...(s.imageRerouteActive ? { reroute: "image" } : {}),
     ...modelSelectorField(cfg),
   });
 
   let outcome: RunOutcome;
   try {
-    outcome = await ctx.runOnce(cfg);
+    // The preflight can end the run before any pi spawns: a text-only runner with an image
+    // attachment and no image-capable target has nothing to run, so it errors without
+    // spending a model call. Everything else runs the pipeline as usual.
+    outcome = preflightBlocked ? { result: "error" } : await ctx.runOnce(cfg);
   } catch (err) {
     outcome = { result: "error" };
     s.lastError = errorMessage(err);
@@ -263,6 +335,16 @@ export async function runOncePhase(
   });
   if (plan === null) return { result: "skipped" };
   if (ctx.role === DIRECTOR_ROLE) {
+    // The image-reroute one-shot marker routes exactly ONE run onto the image-capable
+    // target (plans/image-input.md part 4/5, INV-J2): for a role runner, planRunStart consumes
+    // it after reading its handoff-note facts. The director never resumes, so planRunStart's
+    // image-reroute branch never runs for it and the marker would otherwise linger and
+    // re-route every later director run off its own tier. It is cleared here — after this
+    // run is confirmed to run (an empty-inbox skip above returns before this, leaving the
+    // reroute pending for the next eligible run) — so the rerouted director prompt is
+    // delivered exactly once and the director is back on its own tier next.
+    // A promptless recovery run delivers no prompt, so it leaves a pending reroute for the next.
+    if (plan.prompt !== null) s.imageReroute = undefined;
     // The director keeps its dedicated worktree (it runs outside the permit, consumes its
     // config-request file at that exact path, and never resumes). Hold it from before
     // ensureWorktree — creating or resetting it is part of the use — to the run's end

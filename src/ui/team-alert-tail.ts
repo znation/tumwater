@@ -199,18 +199,29 @@ function pushStoppedAlert(out: TeamAlert[], snap: TailAlertsInput["snap"]): void
 
 function pushImagesAlert(out: TeamAlert[], roles: readonly AlertRole[]): void {
   // Image input (plans/image-input.md "Surfaces", part 5/5): a role whose model cannot read
-  // images. The peer-tier reroute was subtracted, so a text-only role's blind read fails and
-  // image submissions to it are refused — amber and asks. No alert
+  // images. Blue when every text-only role has a reroute target (a run that reads an image
+  // stops and reruns — nothing fails); amber when some text-only role has none (a blind read
+  // fails and image submissions are refused). No alert
   // when every enabled role reads images (imageInput true or unknown — an unknown seam is not
   // counted as text-only, mirroring the submit gate and the doctor's `tier models` stance).
   const textOnly = roles.filter((l) => l.imageInput === false);
-  if (textOnly.length > 0) {
+  const noTarget = textOnly.filter((l) => l.imageReroute == null || l.imageReroute === "");
+  if (noTarget.length > 0) {
     out.push({
       key: "images",
       tone: "amber",
-      title: `No configured model can read images for ${listRoles(textOnly)}`,
+      title: `No configured model can read images for ${listRoles(noTarget)}`,
       detail: "A run that reads an image fails, and image attachments to these roles are refused. Declare image input on a vision model in pi's models.json, or point a tier at one.",
-      actions: openRoleActions(textOnly),
+      actions: openRoleActions(noTarget),
+    });
+  } else if (textOnly.length > 0) {
+    const targets = [...new Set(textOnly.map((l) => l.imageReroute ?? ""))].filter(Boolean);
+    out.push({
+      key: "images",
+      tone: "blue",
+      title: `${listRoles(textOnly)} ${agree(textOnly.length, "runs", "run")} on models that can't read images`,
+      detail: `A run that reads an image stops and reruns on ${targets.join(", ")}.`,
+      actions: [],
     });
   }
 }

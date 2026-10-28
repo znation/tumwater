@@ -1,15 +1,20 @@
 /** The seam's answer to "who in this team can read images" (plans/image-input.md
- * "Capability"). One resolver, `seamImageInput`, is the only place that rule lives, so the
- * answer is never reached two ways. It lives at runtime level because it needs the backend
- * registry: a claude seam is always capable through the AgentBackend.imageInput hook, a pi
- * seam reads the model's `input` in models.json, and any other backend answers null unless it
- * declares a hook. */
+ * "Capability"). One resolver, `seamImageInput`, is the only place that rule lives; the reroute
+ * target (imageReroute) and the per-role surfaces (roleImageInfo) both read it, so the answer
+ * is never reached two ways. It lives at runtime level because it needs the backend registry:
+ * a claude seam is always capable through the AgentBackend.imageInput hook, a pi seam reads the
+ * model's `input` in models.json, and any other backend answers null unless it declares a hook. */
 
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { configForRole } from "../config/config-views.js";
+import type { ModelTier, FallbackModelConfig } from "../config/config-schema.js";
+import type { ResolvedModelConfig } from "../config/config-views.js";
+import { configForRole, roleSeamTier, withModelOverrides } from "../config/config-views.js";
+import { BORROW_ORDER, resolveTierFallbacks } from "../config/config-fallbacks.js";
 import { seamAgent } from "../config/config-model-selector.js";
-import { piModelImageInput, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
+import { modelLabel } from "./backend-traits.js";
+import { piModelImageInput, piPairFree, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import { piListedImageInput, type PiListedModels } from "../pi/pi-listed-models.js";
+import type { ClaudeAccount } from "./claude/claude-account.js";
 import { backendById } from "./agent-backend.js";
 
 /** The subset of a resolved seam the capability resolver reads: an `agent` when the config
@@ -47,19 +52,106 @@ export function seamImageInput(
   return piModelImageInput(providers, seam.provider, seam.model) ?? piListedImageInput(listed, seam.provider, seam.model);
 }
 
+/** Which set of pairs a reroute may look among: the primary tiers (the model each tier's
+ * top-level selector names) normally, or — while the budget gate is on fallback — only the
+ * tiers' free fallback pairs, so a reroute never spends past the daily cap. */
+type RerouteRegime = "primary" | "fallback";
+
+/** A reroute candidate resolved fully: which tier it sits on (so a surface can name "reroutes
+ * to strong (…)", the same borrow order the budget fallback uses) and that tier's runnable
+ * config. */
+interface ImageReroute {
+  tier: ModelTier;
+  config: ResolvedModelConfig;
+}
+
+/** The image-capable reroute target for `role`, or null when no peer tier can read images
+ * (plans/image-input.md "Reroute target"). Walks the role's seam tier through BORROW_ORDER,
+ * skipping the tier itself — small → default → strong, default → strong → small, strong →
+ * default (a strong-tier seam never drops to small, the same rule as the budget fallback) —
+ * and takes the first tier whose model reads images. `regime` picks the pair set (see
+ * RerouteRegime); `modelsPath` and `account` are injectable so tests need no real pi install
+ * or account. */
+export function imageReroute(
+  config: TumwaterConfig,
+  role: string,
+  regime: RerouteRegime = "primary",
+  modelsPath: string = piModelsPath(),
+  account: ClaudeAccount | null = null,
+  providers: Map<string, PiModelDef[]> | null = null,
+  listed: PiListedModels | null = null,
+): ImageReroute | null {
+  const tier = roleSeamTier(config, role);
+  const candidates = BORROW_ORDER[tier].filter((t) => t !== tier);
+  if (candidates.length === 0) return null;
+  const providerMap = providers ?? readPiProviders(modelsPath);
+  const capable = (rc: ResolvedModelConfig): boolean => seamImageInput(rc, providerMap, listed) === true;
+  if (regime === "primary") {
+    for (const t of candidates) {
+      const rc = withModelOverrides(config, t, {});
+      if (capable(rc)) return { tier: t, config: rc };
+    }
+    return null;
+  }
+  // Fallback regime: only the tiers' free fallback pairs qualify (resolveTierFallbacks over the
+  // price check), never a priced primary model — a reroute must not spend past the cap.
+  const resolved = resolveTierFallbacks(config, (p: FallbackModelConfig) =>
+    // The free-ness lookup reads the one claude account held here (part 2a/9).
+    piPairFree(providerMap, p, (b: string) => (b === "claude" ? account : null)),
+  );
+  for (const t of candidates) {
+    const pair = resolved[t].pair;
+    if (!pair) continue;
+    const rc = withModelOverrides(config, t, {
+      provider: pair.provider,
+      model: pair.model,
+      thinking: pair.thinking,
+    });
+    if (capable(rc)) return { tier: t, config: rc };
+  }
+  return null;
+}
+
+/** The config of imageReroute, for callers that want only the target model. */
+export function imageRerouteTarget(
+  config: TumwaterConfig,
+  role: string,
+  regime: RerouteRegime = "primary",
+  modelsPath: string = piModelsPath(),
+  account: ClaudeAccount | null = null,
+  providers: Map<string, PiModelDef[]> | null = null,
+  listed: PiListedModels | null = null,
+): ResolvedModelConfig | null {
+  return imageReroute(config, role, regime, modelsPath, account, providers, listed)?.config ?? null;
+}
+
+/** A seam's model as one readable token, the same label the doctor's `image input` check used
+ * (`claude/<id>` for a claude seam, `provider/model` for pi), delegated to backend-traits'
+ * modelLabel. Used by roleImageInfo alone. */
+function seamImageLabel(
+  backend: string | undefined,
+  provider: string | undefined,
+  model: string | undefined,
+): string {
+  return modelLabel(backend, provider, model);
+}
+
 /** The per-role image-input surface (plans/image-input.md "Surfaces"): one call gives a caller
- * the role's own capability (`imageInput`, seamImageInput's true/false/null). Shared by the
- * status rows, the role page, and the submit gate so the three surfaces can never disagree
- * about what one role can read. */
+ * both the role's own capability (`imageInput`, seamImageInput's true/false/null) and its
+ * reroute target as the display label `<tier> (<model>)` or null when no peer tier reads
+ * images. Shared by the status rows, the role page, and the submit gate so the three surfaces
+ * can never disagree about what one role can read or where its image prompts run. */
 interface RoleImageInfo {
   /** Whether the role's own model reads images (`true`), is text-only (`false`), or the team
    * cannot tell (null — an unknown pair the `tier models` check already flags). */
   imageInput: boolean | null;
+  /** The reroute target as `<tier> (<model>)`, or null when no other tier reads images. */
+  imageReroute: string | null;
 }
 
 /** Compute RoleImageInfo for one role. `modelsPath` and `listed` are injectable; the providers
- * catalog is read (stat-cached) here. The peer-tier image reroute was subtracted (part 5g/6),
- * so a role reports its declared image input alone. */
+ * catalog is read (stat-cached) here and also handed to imageReroute so a poll that asks many
+ * roles still parses the catalog once. */
 export function roleImageInfo(
   config: TumwaterConfig,
   role: string,
@@ -69,5 +161,9 @@ export function roleImageInfo(
   const providers = readPiProviders(modelsPath);
   const rc = configForRole(config, role);
   const imageInput = seamImageInput(rc, providers, listed);
-  return { imageInput };
+  const rr = imageReroute(config, role, "primary", modelsPath, null, providers, listed);
+  const imageRerouteStr = rr
+    ? `${rr.tier} (${seamImageLabel(rr.config.agent, rr.config.provider, rr.config.model)})`
+    : null;
+  return { imageInput, imageReroute: imageRerouteStr };
 }

@@ -27,6 +27,22 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   let recallIndex = null;
   let recallDraft = "";
   const PROMPT_HISTORY_MAX = 50;
+  // The last status payload, kept so setTarget can re-render the image note between polls.
+  let composerData = null;
+  // The image-input notice under the image chips (plans/image-input.md "Surfaces", part 5/5):
+  // when the selected non-director role's model can't read images but reroutes a blind read
+  // to another tier, say so — read from the status payload (imageInput/imageReroute), the same
+  // facts the images alert and the submit gate use, so the composer never promises a run the
+  // gate would refuse.
+  function renderPromptImageNote() {
+    const target = (composerData && composerData.roles || []).find((l) => l.role === promptTarget);
+    const note = $("promptimagenote");
+    const text = target && target.imageInput === false && target.imageReroute
+      ? promptTarget + "'s model can't read images; image prompts run on " + target.imageReroute
+      : "";
+    if (note.textContent !== text) note.textContent = text;
+    note.hidden = text === "";
+  }
   function renderComposer(d) {
     const roles = (d.roles || []).map((l) => l.role).filter((r) => r !== "director");
     const key = roles.join(",");
@@ -43,6 +59,8 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     link.dataset.act = "queued"; // vocabulary-ok: data-act routing key the click handler matches
     const text = plural(n, "message") + " in the inbox";
     if (link.textContent !== text) link.textContent = text;
+    composerData = d;
+    renderPromptImageNote();
   }
   function composerHint() {
     $("prompthint").innerHTML = esc(promptTarget === "director"
@@ -65,6 +83,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     composerHint();
     autosize();
     updateCount();
+    renderPromptImageNote();
   }
   function autosize() {
     promptInput.style.height = "auto";

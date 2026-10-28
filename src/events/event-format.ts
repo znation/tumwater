@@ -245,9 +245,11 @@ function runEventMessage(e: HarnessEvent): string {
           ? "resuming the run cut off at the context ceiling (compacted pi session, same workspace)"
           : e.cause === "handoff"
             ? "handing the interrupted run off to a fresh session on another agent (same workspace, uncommitted edits kept)"
-            : e.cause === "salvaged"
-              ? "handing the work an earlier run left unsaved to a fresh session"
-              : "resuming the run a shutdown interrupted (same agent session and workspace)") + restored
+            : e.cause === "image-reroute"
+              ? "handing the blind-read run off to a fresh session on an image-capable model (same workspace, uncommitted edits kept)"
+              : e.cause === "salvaged"
+                ? "handing the work an earlier run left unsaved to a fresh session"
+                : "resuming the run a shutdown interrupted (same agent session and workspace)") + restored
       );
     }
     case "wake":
@@ -637,6 +639,13 @@ function imageRestartEventMessage(e: HarnessEvent): string {
             : "";
       return `blind image read: ${textOr(e.path)} on ${textOr(e.model, "the model")}${action}`;
     }
+    case "image_reroute":
+      // The run's work moves to a model that can read the image (plans/image-input.md part
+      // 4/5). Routine-with-explanation — no warning prefix: names the hop the way the
+      // handoff reads, and whether the traits-of-attachment preflight avoided a failed run.
+      return e.preflight === true
+        ? `image attachment routed to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) to read its image — no failed run`
+        : `image rerouted to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) — next run goes there after a blind read on ${textOr(e.from, "the prior model")}`;
     case "build_stale":
       // Self-hosting teams only (src/redeploy/redeploy.ts): the code main describes is not the
       // code running. Not a warning prefix — a stale build is a state, and auto-restart resolves
@@ -739,7 +748,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "team_paused": case "team_resumed": case "role_paused": case "role_resumed": case "role_streak_paused": case "role_cap_warning": case "role_cap_paused": case "role_cap_resumed": case "maintenance_quota_hold": case "maintenance_quota_resumed": case "bootstrap_complete": return holdEventMessage(e);
     case "disk_low": case "disk_ok": case "disk_reclaim": case "quiet_hours_started": case "quiet_hours_ended": case "rate_limit_hold": case "rate_limit_resumed": case "subscription_window_warning": case "subscription_window_reserved": case "subscription_window_limited": case "subscription_window_reset": return resourceEventMessage(e);
     case "max_concurrent_changed": case "retention_changed": case "config_changed": case "model_changed": case "backend_binary": case "state_migrated": case "orchestrator_start": case "orchestrator_stop": return configEventMessage(e);
-    case "image_blind": case "build_stale": case "restart_pending": case "restart": case "restart_refused": case "restart_blocked": case "restart_forced": case "supervisor_exit": return imageRestartEventMessage(e);
+    case "image_blind": case "image_reroute": case "build_stale": case "restart_pending": case "restart": case "restart_refused": case "restart_blocked": case "restart_forced": case "supervisor_exit": return imageRestartEventMessage(e);
     case "build_check": case "dep_install": case "slot_wait": case "provider_wait": case "check_wait": return checkWaitEventMessage(e);
     case "warning": return warningEventMessage(e);
     default:

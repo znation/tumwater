@@ -119,6 +119,12 @@ Keep one thing: a model per role (and per seam) in `tumwater.json`. Delete the t
 fallback maps and chain steps, the per-provider caps, the subscription-window carve-outs and the
 image-capability probe with their rows, alerts, keys and tests. A role whose model is unusable
 says so once, in doctor and in the report.
+
+**Amended 2026-10-28 (user):** the image reroute stays. A role whose model reads no images reruns
+an image on a model that can — today the first image-capable peer tier, after part 5e/6 the
+model the `images` entry names — and an image attachment to it is routed there before the run
+starts ([image-input.md](image-input.md)). Parts 5g/6 and 5h/6 (its deletion) were reverted;
+part 5v/6 drops only its fallback regime and part 5e/6 moves its target off the tier map.
 **Gate on measurement.**
 
 ### 6. Only a stopped team asks for a person
@@ -202,7 +208,8 @@ replaces the mechanism, not that it was wrong.
 - [model-tiers.md](model-tiers.md), [fallback-chain.md](fallback-chain.md),
   [fallback-model.md](fallback-model.md), [provider-concurrency.md](provider-concurrency.md),
   [image-input.md](image-input.md), [daily-cost-budget.md](daily-cost-budget.md) — stroke 5
-  retires the routing machinery; the daily cap stays as the one spend limit, per role.
+  retires the routing machinery; the daily cap stays as the one spend limit, per role. The image
+  reroute is the one routing rule kept (user, 2026-10-28; stroke 5's amendment).
 - [refusal-and-thrash.md](refusal-and-thrash.md) — its hold vocabulary reduces to the one note in
   stroke 2; the refusal itself stays.
 - [fast-merge.md](fast-merge.md), [review-gate.md](review-gate.md),

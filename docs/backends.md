@@ -93,7 +93,7 @@ fallback is carrying the team.
   `models.json` entry sets `compat.thinkingTokenBudgetField: "thinking_budget"`; without it,
   `:high` on that model is a no-op.
 
-## Image input
+## Image input (claims, reroute)
 
 A role reads an image (an `--attach` on a message in its inbox, or a file the run itself points pi
 at) only when its model job can. Capability has one source of truth — `seamImageInput`
@@ -106,13 +106,15 @@ at) only when its model job can. Capability has one source of truth — `seamIma
   assumed capable (the `models for each tier` doctor check flags a pair that is in neither
   `models.json` nor `pi --list-models`; the image-capability lookup reads `models.json` only).
 
-When a run does read an image on a text-only model job, it stops and the run fails with
-`lastError`, its prompt requeued for a later run — a blind read is never handed to a peer tier.
-The surfaces say which roles read images without running doctor: `tumwater role <id>` and
-`status --json` show the role's `imageInput`.
+When a run does read an image on a text-only model job, it is stopped and the role **reroutes**
+onto a peer tier that reads images (small → default → strong from the role's own tier; a strong
+job never drops to small). The surfaces say so without running doctor: `tumwater role <id>` and
+`status --json` show the role's `imageInput` and its reroute target, and the images team alert
+is blue when every text-only role has a target ("reruns on …") or amber when some role has none.
 
 The same capability gates **submission**: `tumwater prompt --attach` and the dashboard refuse an
-image when the target role reads none, naming the fix before anything is queued.
+image when the target role reads none and no tier can, naming the fix before anything is queued;
+when the role reroutes, the prompt is accepted and the command says where it will run.
 
 ## Claude Code (`backend: "claude"`)
 

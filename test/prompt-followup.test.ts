@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildCutOffNote,
+  buildHandoffPrompt,
   buildSummaryRequestPrompt,
 } from "../src/prompt/prompt-followup.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
@@ -47,3 +48,17 @@ test("the VERIFIED line asks for observations beyond the suite total, not a coun
   assert.doesNotMatch(p, /182 pass/, "the count example is gone");
 });
 
+test("buildHandoffPrompt names the prior model and the image for an image-reroute", () => {
+  const p = buildHandoffPrompt(
+    "feature",
+    "RUN_PROMPT",
+    "image-reroute",
+    { from: "local/text", path: "/x/s.png" },
+  );
+  assert.ok(p.startsWith("RUN_PROMPT"));
+  assert.match(p, /on local\/text stopped/);
+  assert.match(p, /read \/x\/s\.png/);
+  assert.match(p, /because that model cannot read images/);
+  assert.match(p, /CAN read images, so read the image again/);
+  assert.match(p, /review `git diff`/);
+});

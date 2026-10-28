@@ -103,6 +103,7 @@ function foldSinceWindow(
     checkWaitsMs: [],
     reviewDurationsMs: [],
     failedRunsByRole: {},
+    imageReroutesByRole: {},
     tokensByRole: {},
     promptTokensByRole: {},
     cacheReadTokensByRole: {},
@@ -221,6 +222,7 @@ function sinceRoleMaps(
   | "revisionsByRole"
   | "refusalsByRole"
   | "failedRunsByRole"
+  | "imageReroutesByRole"
   | "tokensByRole"
   | "commitsByRole"
   | "mergedByRole"
@@ -257,6 +259,7 @@ function sinceRoleMaps(
     revisionsByRole: scopedByRole(acc.revisionsByRole, bases),
     refusalsByRole: scopedByRole(acc.refusalsByRole, bases),
     failedRunsByRole: scopedByRole(acc.failedRunsByRole, bases),
+    imageReroutesByRole: scopedByRole(acc.imageReroutesByRole, bases),
     tokensByRole: scopedByRole(acc.tokensByRole, bases),
     ...nonemptyObj("promptTokensByRole", scopedByRole(acc.promptTokensByRole, bases)),
     ...nonemptyObj("cacheReadTokensByRole", scopedByRole(acc.cacheReadTokensByRole, bases)),
