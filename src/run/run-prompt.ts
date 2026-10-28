@@ -249,54 +249,41 @@ function collectSelfcheckDigest(root: string, base: string): string | undefined 
   return base === "selfcheck" || base === "feedback" ? selfcheckDigest(root) : undefined;
 }
 
-/** The `qa` observer's flow-coverage ledger: rerendered from disk each run, degrading to no
- * block on a missing or unreadable ledger (plans/observer-roles.md 2/2). */
-function collectQaCoverageBlock(root: string, base: string): string | undefined {
-  // The `qa` observer's flow rotation needs a memory of what it last exercised; every run
-  // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
-  // runtime state, and a missing or unreadable one degrades to no block.
-  let coverage: string | undefined;
-  if (base === "qa") {
-    try {
-      coverage = renderCoverageBlock(readQaCoverage(root));
-    } catch {
-      coverage = undefined;
-    }
+/** One observer-ledger block: rendered from disk only for its owning role, degrading to no
+ * block on a missing or unreadable ledger (a throw) so the run prompt stays byte-unchanged in
+ * the common first-run case. The `qa` (flow coverage), `ci` (parity) and `feedback` (filings)
+ * ledgers are runtime state a fresh session must not depend on, and the three collect*Block
+ * functions each rendered their ledger through this same try/catch guard before the helper. */
+function runtimeLedgerBlock(base: string, role: string, render: () => string | undefined): string | undefined {
+  if (base !== role) return undefined;
+  try {
+    return render();
+  } catch {
+    return undefined;
   }
-  return coverage;
 }
 
-/** The `ci` observer's parity block: what the last run covered (tip and lock hash) so a
- * fresh session can decide nothing-to-do without re-running the whole suite (part 3/3).
- * Runtime state, and a missing/unreadable record degrades to no block, exactly like qa's. */
+/** The `qa` observer's flow-coverage ledger, rerendered from disk each run (the flow rotation
+ * needs a memory of what it last exercised — every run is a fresh session, and a passing cheap
+ * check leaves nothing in the repo), degrading to no block (plans/observer-roles.md 2/2). */
+function collectQaCoverageBlock(root: string, base: string): string | undefined {
+  return runtimeLedgerBlock(base, "qa", () => renderCoverageBlock(readQaCoverage(root)));
+}
+
+/** The `ci` observer's parity block: what the last run covered (tip and lock hash) so a fresh
+ * session can decide nothing-to-do without re-running the whole suite (part 3/3). Degrades to
+ * no block exactly like qa's. */
 function collectCiParityBlock(root: string, config: TumwaterConfig, base: string): string | undefined {
-  let ciParity: string | undefined;
-  if (base === "ci") {
-    try {
-      ciParity = parityBlockFor(root, config);
-    } catch {
-      ciParity = undefined;
-    }
-  }
-  return ciParity;
+  return runtimeLedgerBlock(base, "ci", () => parityBlockFor(root, config));
 }
 
 /** The `feedback` observer's per-install filing ledger: what this install already filed as
  * GitHub issues on znation/tumwater, so the fresh session's charter dedupes against a
- * "previously filed" block instead of the network alone. Runtime state, and a missing or
- * unreadable ledger degrades to no block (plans/feedback-role.md 2/2). */
+ * "previously filed" block instead of the network alone. Degrades to no block
+ * (plans/feedback-role.md 2/2); the render returns undefined for an empty ledger, so the
+ * prompt is unchanged in the common first-run case. */
 function collectFeedbackFilingsBlock(root: string, base: string): string | undefined {
-  // The render returns undefined for an empty ledger, so the prompt is unchanged in the common
-  // first-run case.
-  let filings: string | undefined;
-  if (base === "feedback") {
-    try {
-      filings = renderFilingsBlock(readFeedbackFilings(root));
-    } catch {
-      filings = undefined;
-    }
-  }
-  return filings;
+  return runtimeLedgerBlock(base, "feedback", () => renderFilingsBlock(readFeedbackFilings(root)));
 }
 
 /** The clean role's deterministic backlog repair: stranded plan headings in the primary
