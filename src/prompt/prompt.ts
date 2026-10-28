@@ -413,37 +413,80 @@ from the repo.`,
 
 /** The prompt for one role run. */
 export function buildRunPrompt(input: RunPromptInput): string {
-  const { role, rejectedReview, principles, digest, coverage, ciParity, filings, backlogStructure, backlogIndex, notes, notesSavedDay, notesBacklog, extraInstructions, planTargetNote, flakyChecks, noCheck, check, gateCommand, briefFile, today, userRequest, agent, assigned } = input;
-  const dialect = dialectFor(agent);
-  const day = today ?? todayStamp();
+  const dialect = dialectFor(input.agent);
+  const day = input.today ?? todayStamp();
   const parts = [
+    ...runIdentityBlocks(input.role, input.rejectedReview, day),
+    ...runContextBlocks(input),
+    ...runEvidenceBlocks(input),
+    ...runNotesBlocks(input, day),
+    ...runTaskBlocks(input),
+    ...runRulesBlocks(input, dialect),
+  ];
+  return parts.join("\n\n");
+}
+
+/** The role identity line and the shared worktree + date preamble. */
+function runIdentityBlocks(role: Role, rejectedReview: string | undefined, day: string): string[] {
+  return [
     ...(rejectedReview ? [rejectedReview.trim()] : []),
     `You are the "${role.id}" role (${role.title}) on this project's tumwater team — tumwater runs a team of AI roles that develop the project.`,
     ...sharedPreamble(day),
   ];
-  if (principles) parts.push(principlesBlock(principles));
-  if (userRequest)
+}
+
+/** The principles block and the explicit user-request steering block, in that order. */
+function runContextBlocks(input: RunPromptInput): string[] {
+  const parts: string[] = [];
+  if (input.principles) parts.push(principlesBlock(input.principles));
+  if (input.userRequest)
     parts.push(
       `An explicit request from the user, aimed at this role. Treat it as this run's steering;
 your role's rules and the merge gate still apply unchanged. If the request is out of this
-role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n${userRequest.trim()}\n</user-request>`,
+role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n${input.userRequest.trim()}\n</user-request>`,
     );
-  if (coverage) parts.push(coverage);
-  if (ciParity) parts.push(ciParity);
-  if (filings) parts.push(filings);
-  if (digest) parts.push(digestBlock(digest));
-  if (backlogStructure) parts.push(backlogStructure);
-  if (backlogIndex) parts.push(backlogIndex);
-  if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes, Boolean(backlogIndex), notesSavedDay, day));
-  if (notesBacklog) parts.push(notesBacklog);
-  parts.push(`Your task this run:\n${role.find.trim()}`);
-  if (noCheck) parts.push(noCheck.trim());
-  if (planTargetNote) parts.push(planTargetNote.trim());
-  if (flakyChecks) parts.push(flakyChecks.trim());
-  if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
-  parts.push(roleNotesInstruction());
-  parts.push(commonRules(check, briefFile, role.scope, dialect, assigned, gateCommand).trim());
-  return parts.join("\n\n");
+  return parts;
+}
+
+/** The six rendered evidence blocks, in the fixed order. */
+function runEvidenceBlocks(input: RunPromptInput): string[] {
+  const parts: string[] = [];
+  if (input.coverage) parts.push(input.coverage);
+  if (input.ciParity) parts.push(input.ciParity);
+  if (input.filings) parts.push(input.filings);
+  if (input.digest) parts.push(digestBlock(input.digest));
+  if (input.backlogStructure) parts.push(input.backlogStructure);
+  if (input.backlogIndex) parts.push(input.backlogIndex);
+  return parts;
+}
+
+/** The role-notes block (only when a note exists) and the live backlog state block. */
+function runNotesBlocks(input: RunPromptInput, day: string): string[] {
+  const parts: string[] = [];
+  if (input.notes && input.notes.trim() !== "")
+    parts.push(roleNotesBlock(input.notes, Boolean(input.backlogIndex), input.notesSavedDay, day));
+  if (input.notesBacklog) parts.push(input.notesBacklog);
+  return parts;
+}
+
+/** The task text and its optional noCheck/plan-target/flake/extra notes. */
+function runTaskBlocks(input: RunPromptInput): string[] {
+  const parts: string[] = [];
+  parts.push(`Your task this run:\n${input.role.find.trim()}`);
+  if (input.noCheck) parts.push(input.noCheck.trim());
+  if (input.planTargetNote) parts.push(input.planTargetNote.trim());
+  if (input.flakyChecks) parts.push(input.flakyChecks.trim());
+  if (input.extraInstructions)
+    parts.push(`Additional standing instructions from the user:\n${input.extraInstructions.trim()}`);
+  return parts;
+}
+
+/** The note-write instruction and the shared rules, which close the prompt. */
+function runRulesBlocks(input: RunPromptInput, dialect: PromptDialect): string[] {
+  return [
+    roleNotesInstruction(),
+    commonRules(input.check, input.briefFile, input.role.scope, dialect, input.assigned, input.gateCommand).trim(),
+  ];
 }
 
 /** The prompt for a director run, which routes a user request into the project. */
