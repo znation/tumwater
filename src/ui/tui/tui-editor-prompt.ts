@@ -12,6 +12,18 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
   let rolePromptFor: string | null = null;
   const draft = savedPromptDraft(session);
 
+  // One home for turning a thrown role-prompt write (or a read of one) into the flash it
+  // deserves: each key arm wraps its work in this so a torn queue write flashes the reason
+  // instead of letting the throw escape the keypress handler and kill the TUI. The catch
+  // coerces the same way each arm's guard did, so the wording cannot drift.
+  const guardError = (fn: () => void): void => {
+    try {
+      fn();
+    } catch (err) {
+      session.flashError(err);
+    }
+  };
+
   // Leave role-prompt mode (Esc, Ctrl+R again, or Ctrl+T): restore the saved prompt text,
   // and reset the recall state with it — the saved draft was saved settled (see the Ctrl+R
   // handler), so resuming a browse entered in role mode would restore role-mode text onto
@@ -35,7 +47,7 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
       ctx.view >= 1 && ctx.view <= ctx.roleIds.length
     ) {
       const role = viewedRole(ctx); // defined: view is clamped inside the transcript range
-      try {
+      guardError(() => {
         if (rolePromptFor) {
           exitRolePromptMode();
           session.flashMessage("role prompt cancelled");
@@ -51,9 +63,7 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
           session.cursor = 0;
           session.flashMessage(`prompt for ${role}: Enter to send, Esc to cancel`);
         }
-      } catch (err) {
-        session.flashError(err);
-      }
+      });
       return true;
     }
     return false;
@@ -79,14 +89,12 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
     if (!parsed.ok) {
       session.flashMessage(parsed.error);
     } else {
-      try {
+      guardError(() => {
         submitRolePromptAndWake(session.root, role, parsed.value, undefined);
         session.promptHistory = pushPromptHistory(session.promptHistory, parsed.value);
         exitRolePromptMode();
         session.flashMessage(`added to ${role}'s inbox`);
-      } catch (err) {
-        session.flashError(err);
-      }
+      });
     }
     return true;
   };
