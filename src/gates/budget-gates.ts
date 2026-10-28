@@ -31,11 +31,9 @@ import {
 } from "../config/config-fallbacks.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { windowReserveFor } from "../config/config-views.js";
 import { piPairFree, readPiProviders } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { readAccount } from "../agent/subscription-account.js";
-import { claudeWindowUsedUp } from "../agent/claude/claude-account.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
 import {
@@ -72,20 +70,12 @@ export interface BudgetGateState {
    * breaker-demoted pause): the free pair installed top-level and every per-role/reviewer
    * model override dropped, so no seam can reach a priced model. */
   fallbackConfig: TumwaterConfig;
-  /** The used-up subscription window and the cap flag the cached `fallbackConfig` was derived
-   * under (`"<window?><cap?>"`): the view differs between a window move below the cap and a
-   * cap episode, so a change in either re-derives it beside a changed live config. */
+  /** The used-up window and the cap flag the cached `fallbackConfig` was derived under
+   * (`""`/`"c"`): the view differs between a window move below the cap and a cap episode, so a
+   * change in either re-derives it beside a changed live config. With the window move gone
+   * (part 5d/6) only the cap flag remains, kept in the same key slot so the view re-derives on
+   * a cap crossing beside a changed live config. */
   fromKey: string;
-  /** The backends whose window move was active last poll (a used-up own window with a fallback
-   * to move to), for the one per-backend return-on-reset poll. */
-  prevWindowMoved: ReadonlySet<string>;
-  /** The director's window view (directorWindowView) and the live config it was derived from;
-   * `directorFrom` is null while the director keeps the live config. */
-  directorFrom: TumwaterConfig | null;
-  directorView: TumwaterConfig;
-  /** The resolved-pairs key `directorView` was derived under, so a step crossing its own cap
-   * re-derives it. */
-  directorKey: string;
   /** Whether this episode's 80%-of-cap warning has fired (budgetWarning): edge-triggered like
    * the transitions — set when the warning logs, reset whenever spend falls back below the
    * threshold (midnight rollover, a cap raise), so the next crossing warns again. */
@@ -103,10 +93,6 @@ export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
     engaged: null,
     from: null,
     fromKey: "",
-    prevWindowMoved: new Set<string>(),
-    directorFrom: null,
-    directorView: config,
-    directorKey: "",
     fallbackConfig: config,
     warned: false,
     prevChain: {},
@@ -149,23 +135,9 @@ interface BudgetGatePoll {
   /** Whether the cap is reached this poll — the budget hold only ever holds while it is;
    * the per-role sets are empty when it is not. */
   budgetActive: boolean;
-  /** The used-up subscription windows behind this poll's move, keyed by backend — a backend
-   * counts only when a subscription seam of it is in the config with its own window used up
-   * and a fallback pair exists to move to; empty when no backend's window moves anything. */
-  windowOut: Partial<Record<string, { type: string; resetsAt: number; reserve?: true }>>;
-  /** The tiers the window move put on a fallback pair, tier → label (tierFallbackLabels over
-   * the moved tiers); empty when nothing moved. */
-  windowTiers: Partial<Record<ModelTier, string>>;
-  /** True on exactly the poll any backend's window move ends (its window reset, or no fallback):
-   * the orchestrator hands back the in-flight runs still on the fallback pairs, unless the cap
-   * still holds. */
-  windowResumed: boolean;
-  /** The backends whose move ended this poll (windowResumed true), for the orchestrator's
-   * return-on-reset hand-back. */
-  windowResumedBackends: readonly string[];
-  /** The config the director runs under: the live config, except while the window move stands
-   * and its own model job is subscription claude — then its tier's fallback pair
-   * (gateRoleConfig's `directorConfig`). The cap never moves it. */
+  /** The config the director runs under: always the live config — an explicit human prompt
+   * outranks the autonomous-spend cap (gateRoleConfig's `directorConfig`), and (part 5d/6) no
+   * usage window moves it either. */
   directorConfig: TumwaterConfig;
   /** Where each tier this poll moved off its primary runs (chainInfo); empty when none moved. */
   chain: Partial<Record<ModelTier, ChainTierInfo>>;
@@ -297,13 +269,12 @@ export function runOnPair(
 }
 
 /** The config a runner runs on while the budget gate stands: the director keeps the live config —
- * an explicit human prompt outranks the autonomous-spend cap — except while a used-up window has
- * its own subscription claude model unable to run, when it takes `directorConfig` (pollBudgetGate's
- * view: the tier's fallback pair; omitted means the live config). Every other role takes the gate's
- * derived view (pollBudgetGate's returned `roleConfig`). Single home for the rule, so the
- * scheduler's per-poll assignment (src/budget/budget-wiring.ts) and a throwaway merge author's
- * construction (src/merge/merge-verify.ts's resolveAuthor) cannot drift apart — say, an exemption
- * granted to one more role in one copy and not the other. */
+ * an explicit human prompt outranks the autonomous-spend cap (and, part 5d/6, no usage window
+ * moves it either) — so it takes `directorConfig` (always the live config; omitted means the live
+ * config). Every other role takes the gate's derived view (pollBudgetGate's returned `roleConfig`).
+ * Single home for the rule, so the scheduler's per-poll assignment (src/budget/budget-wiring.ts)
+ * and a throwaway merge author's construction (src/merge/merge-verify.ts's resolveAuthor) cannot
+ * drift apart — say, an exemption granted to one more role in one copy and not the other. */
 export function gateRoleConfig(
   role: string,
   liveConfig: TumwaterConfig,
@@ -359,14 +330,8 @@ export function pollBudgetGate(
   // verdict. The resolution below deliberately prices alone (the map's keys are the pairs
   // that would run absent a demotion, so a demotion cannot churn them); part 5c/8 wires the
   // full predicate into the resolution so a demoted pair re-resolves only the tiers using it.
-  // A backend's used-up subscription window (windowUsedUp, the rule the team hold reads too):
-  // while it stands a subscription pair of that backend is no fallback — it would meet the
-  // same window. `windowReserveFor(config, backend)` makes a window past its reserve fraction
-  // count as used up for the team; the director's own reading (directorWindowOutFor) ignores
-  // it, as it runs the operator's prompts.
-  const windowOutFor = (backend: string) =>
-    claudeWindowUsedUp(accounts(backend), now, true, windowReserveFor(liveConfig, backend));
-  const directorWindowOutFor = (backend: string) => claudeWindowUsedUp(accounts(backend), now);
+  // A used-up subscription window no longer moves a tier to its fallback (part 5d/6): only a
+  // spent maxDailyCostUsd does, so the free-ness predicate below is purely the cap rule.
   // A priced step (one pi does not price at zero, or claude on API billing) is usable only
   // while the team is under its cap and the step is under its own `maxDailyCostUsd`, so no cap
   // can be passed; at the cap only free steps remain, as before.
@@ -376,22 +341,15 @@ export function pollBudgetGate(
       // The first model of a subscription backend runs on the subscription only; a later one
       // (extraUsage, claude-only) may spend extra usage within its cap while no window is
       // rejected or refuses overage.
-      if (!p.extraUsage) return windowOutFor(subBackend) === null && piPairFree(providers, p, accounts, catalog);
-      // Past the reserve this step would spend the reserved quota before reaching extra usage:
-      // it waits until a reading shows the account already spending overage.
+      if (!p.extraUsage) return piPairFree(providers, p, accounts, catalog);
       const subAccount = accounts(subBackend)!;
-      if (
-        windowOutFor(subBackend)?.reserve === true &&
-        !Object.values(subAccount.windows).some((w) => w.isUsingOverage === true)
-      )
-        return false;
       return (
         !reached &&
         !claudeOverageRefused(subAccount) &&
         (p.maxDailyCostUsd === undefined || pairDailyCost(states, modelPairName(p), now) < p.maxDailyCostUsd)
       );
     }
-    // The subscription-window rule lives entirely in the branch above (it returns early for
+    // The subscription rule lives entirely in the branch above (it returns early for
     // any subscription pair); below that branch a pair is never a subscription, so only the
     // free-ness and cap rules apply.
     if (piPairFree(providers, p, accounts, catalog)) return true;
@@ -421,6 +379,7 @@ export function pollBudgetGate(
   const fallbackReady = pair !== null;
   const pairName = modelPairName(pair);
   const rejectedPair = fallbackPair(liveConfig);
+
   const pairNames: string[] = [];
   for (const tier of MODEL_TIERS) {
     const p = priceResolved[tier].pair;
@@ -472,11 +431,11 @@ export function pollBudgetGate(
     priceResolved,
     servingResolved,
   });
-  // The fallback config view — the derived config roles run under, the used-up window moves
-  // (windowOut/windowTiers/windowResumedBackends), the chain block, and the handback pairs —
-  // lives in src/budget/budget-fallback-view.ts (the view half, plan's part 5b/8, 5c/8, 6a/7):
-  // it reads these verdict half's resolved inputs and writes the cross-poll view state, and
-  // pollBudgetGate keeps this call signature so gate-polls.ts's destructure is unchanged.
+  // The fallback config view — the derived config roles run under, the chain block, and the
+  // handback pairs — lives in src/budget/budget-fallback-view.ts (the view half, plan's parts
+  // 5b/8, 5c/8, 6a/7): it reads these verdict half's resolved inputs and writes the cross-poll
+  // view state, and pollBudgetGate keeps this call signature so gate-polls.ts's destructure is
+  // unchanged.
   const view = budgetFallbackView({
     state,
     config: liveConfig,
@@ -485,8 +444,6 @@ export function pollBudgetGate(
     providers,
     catalog,
     accounts,
-    windowOutFor,
-    directorWindowOutFor,
     priceResolved,
     servingResolved,
     chainPairs,

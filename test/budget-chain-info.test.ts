@@ -39,14 +39,13 @@ function info(
   c: { config: Args["config"]; resolution: Resolution },
   over: Partial<Args> & {
     spend?: Record<string, number>;
-    windowOut?: { resetsAt: number; reserve?: true };
     account?: ClaudeAccount;
   } = {},
 ) {
-  const { spend, windowOut, account, ...rest } = over;
+  const { spend, account, ...rest } = over;
   const none = { pair: null, from: null };
-  // The default account makes the claude fallback pair a subscription seam; the window and
-  // overage reasons below read it through the per-backend `accounts` lookup.
+  // The default account makes the claude fallback pair a subscription seam; the overage reason
+  // below reads it through the per-backend `accounts` lookup.
   const acct = account ?? ({ billing: "subscription", observedAt: now, windows: {} } as ClaudeAccount);
   return chainInfo({
     config: c.config,
@@ -55,7 +54,6 @@ function info(
     breakers: {},
     states: spend ? [{ dayStamp: todayStamp(now), dayCostByPair: spend }] : [],
     now,
-    windowOutFor: () => (windowOut !== undefined ? windowOut : null),
     accounts: (b) => (b === "claude" ? acct : null),
     isPriced: () => true,
     ...rest,
@@ -77,17 +75,6 @@ test("chainInfo names a prior step whose own cap is spent as step-cap, back at l
   const under = info(piTwoStep(), { spend: { "free/qwen-free": 0.5 } });
   assert.equal(under.default?.reason, "cap");
   assert.equal(under.default?.returnsAt, midnight);
-});
-
-test("chainInfo tells a reserve hold from a used-up window, both back at the window's reset", () => {
-  const spend = { "free/qwen-free": 1.25 };
-  const held = info(claudePrimary(), { windowOut: { resetsAt: now + 5000, reserve: true }, spend });
-  assert.deepEqual(held.default, {
-    pair: "free/qwen-free", step: 2, of: 2, reason: "reserve", returnsAt: now + 5000, spentUsd: 1.25, capUsd: 3,
-  });
-  const used = info(claudePrimary(), { windowOut: { resetsAt: now + 5000 }, spend });
-  assert.equal(used.default?.reason, "window");
-  assert.equal(used.default?.returnsAt, now + 5000);
 });
 
 test("chainInfo names overage only for an extra-usage Claude step on an account that refuses it", () => {

@@ -23,8 +23,6 @@ import { todayStamp } from "../src/budget/budget.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { awaitSettledRun, fastConfig, runRepoOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { mergeWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakeClaudeReplay } from "./fakes/fake-claude.js";
-import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -399,89 +397,6 @@ test("a free fallback whose runs keep failing is demoted to a pause, then probed
   }
 });
 
-// A usage-window move puts role runs on the fallback pair below the cap; those runs feed the
-// breaker too, so a dead window fallback is demoted instead of failing until the window resets.
-test("a window move's failing fallback is demoted and its tier held, below the cap", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "window fallback breaker test");
-  const config = fallbackConfig(["clean"]);
-  config.maxDailyCostUsd = 1000; // never reached
-  // The claude primary is named by `backend`; a `provider` of "claude" now routes to pi.
-  delete config.provider;
-  config.backend = "claude";
-  config.model = "claude-opus-5-5";
-  saveConfig(repo, config);
-  const now = Date.now();
-  writeClaudeAccount(repo, {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
-  });
-  const dir = tmpdir("window-breaker-");
-  const healed = path.join(dir, "healed");
-  const argsFile = path.join(dir, "argv.log");
-  const fakeClaude = fakeClaudeReplay([]); // startup needs the binary; moved roles never run on it
-  const restorePi = fakePi(
-    [
-      `m=""; n=""`,
-      `while [ $# -gt 0 ]; do case "$1" in --model) m="$2";; -n) n="$2";; esac; shift; done`,
-      `echo "run: model=$m session=$n" >> "${argsFile}"`,
-      `if [ "$m" = "local-free" ] && [ ! -f "${healed}" ]; then`,
-      `  echo 'Connection error.' >&2`,
-      `  exit 1`,
-      `fi`,
-      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 0 })}'`,
-    ].join("\n"),
-  );
-  const models = writeFallbackModels();
-  const controller = new AbortController();
-  const done = runRepoOrchestrator(repo, {
-    signal: controller.signal,
-    pollMs: FAST_POLL_MS,
-    modelsPath: models,
-    fallbackBreakerPolicy: { failureLimit: 2, cooldownMs: 1500, maxCooldownMs: 1500 },
-  });
-  const clean = () => loadRunnerState(repo, "clean");
-  // A demoted lone fallback leaves its tiers on no pair: fallback_switched reads `to: null`.
-  const heldEvents = () =>
-    eventsOfType(repo, "fallback_switched").filter((e) =>
-      Object.values((e as { tiers?: Record<string, { to: string | null }> }).tiers ?? {}).some((t) => t.to === null),
-    );
-  try {
-    await waitFor(() => clean().runs >= 1 && !clean().running, "the first fallback run");
-    assert.equal(clean().lastResult, "error");
-    mergeWork(repo);
-    await waitFor(() => clean().runs >= 2 && !clean().running, "the second fallback run");
-    assert.equal(clean().lastResult, "error");
-    await waitFor(() => heldEvents().length >= 1, "the demotion of the window fallback");
-    assert.equal(readOrchestratorInfo(repo)?.fallbackDemotions?.["local/local-free"]?.failures, 2);
-    const runsAtDemotion = clean().runs;
-    assert.ok(runsAtDemotion >= 2);
-
-    mergeWork(repo);
-    await sleep(400);
-    assert.equal(clean().runs, runsAtDemotion, "no role run starts while the fallback is demoted");
-
-    fs.writeFileSync(healed, "");
-    await waitFor(
-      () => clean().runs > runsAtDemotion && !clean().running && clean().lastResult !== "error",
-      "the probe run to serve",
-    );
-    const log = fs.readFileSync(argsFile, "utf8");
-    assert.match(log.split("\n").filter((l) => l.includes("run:")).pop() ?? "", /model=local-free/);
-  } finally {
-    restorePi();
-    fakeClaude.restore();
-    controller.abort();
-    await done.catch(() => {});
-  }
-});
-
-// The budget handback (PLANS.md 2026-09-30): new runs are gated live, but a run that started
-// on the fallback keeps it until it ends — so a reopen at local midnight would leave the
-// team's fresh budget waiting on the slow local model. On the resuming poll the orchestrator
-// hands exactly those runs back: one budget_handback event, the run ends resumably, and its
-// resume continues the same session on the primary.
 test("budget_resumed hands the in-flight fallback runs back to the primary", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget handback e2e test");

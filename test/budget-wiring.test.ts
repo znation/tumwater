@@ -11,8 +11,6 @@ import { newTeamGateStates } from "../src/gates/gate-polls.js";
 import { pollBudgetGate } from "../src/gates/budget-gates.js";
 import { applyBudgetGateWiring, budgetPausedSubjects } from "../src/budget/budget-wiring.js";
 import type { TierFallbackMap } from "../src/config/config-fallbacks.js";
-import type { SubscriptionAccount } from "../src/agent/subscription-account.js";
-import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { spentRunnerState } from "./fixtures/runner-fixtures.js";
@@ -42,24 +40,15 @@ function fakeRunner(
   return runner as unknown as RoleRunner;
 }
 
-// A used-up claude subscription window moves the claude tier to the fallback pair below the cap.
-test("applyBudgetGateWiring: publishes spend/chain info and logs fallback_switched for a window move", () => {
+// A spent maxDailyCostUsd moves the tier to the fallback pair, publishing the chain and a
+// fallback_switched event (the window-triggered move is gone, part 5d/6).
+test("applyBudgetGateWiring: publishes spend/chain info and logs fallback_switched for a cap move", () => {
   const root = tmpdir("budget-wiring-publish-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
-  const now = Date.now();
-  writeClaudeAccount(root, {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
-  });
-  const runners = [fakeRunner("feature", spentRunnerState("feature", 1), null, [])];
+  const runners = [fakeRunner("feature", spentRunnerState("feature", 10), null, [])];
   const config = paidFallbackConfig(10);
-  config.provider = undefined;
-  config.backend = "claude";
-  config.model = "claude-sonnet-5-5";
   const states = newTeamGateStates(config);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: 0, roles: ["feature"] };
-  const accounts = () => null;
   const view = pollBudgetGate(states.budget, {
     root,
     states: runners.map((r) => r.state),
@@ -72,20 +61,19 @@ test("applyBudgetGateWiring: publishes spend/chain info and logs fallback_switch
     runners,
     liveConfig: config,
     info,
-    accounts,
     budget: states.budget,
     view,
   });
 
   assert.deepEqual(info.budget, { spentUsd: view.spentUsd, capUsd: view.capUsd }, "spend/cap published");
   assert.deepEqual(info.fallbackDemotions, {}, "the demotion map is published (empty here)");
-  assert.ok(info.chain, "chain is published while the window moved");
+  assert.ok(info.chain, "chain is published while the cap moves");
   assert.deepEqual(info.chain, view.chain, "the published chain mirrors this poll's resolution");
   const switched = readEvents(root, 100).filter((e) => e.type === "fallback_switched");
   assert.equal(switched.length, 1, "one switch event for the move");
   assert.equal(
     (switched[0]!.tiers as Record<string, { reason: string }>).default!.reason,
-    "window",
+    "cap",
   );
 });
 
@@ -115,14 +103,12 @@ test("applyBudgetGateWiring: a cap reopen hands in-flight fallback runs back to 
     startedAt: 0,
     roles: ["feature", "docs", DIRECTOR_ROLE],
   };
-  const accounts = () => null;
   const poll = (liveConfig: typeof config) =>
     applyBudgetGateWiring({
       root,
       runners,
       liveConfig,
       info,
-      accounts,
       budget: states.budget,
       view: pollBudgetGate(states.budget, {
         root,
@@ -149,24 +135,16 @@ test("applyBudgetGateWiring: a cap reopen hands in-flight fallback runs back to 
   assert.equal(handoff[0]!.model, "qwen-free");
 });
 
-// budgetPausedSubjects (src/budget/budget-wiring.ts): the per-tier budget pause subject sets,
-// moved out of pollTeamGates. A window move holds only the role whose own backend owns the out
-// window (a healthy backend on the same tier stays); at the cap a null servingResolved pair
-// holds every non-director role on that tier. The inline loop's behavior is still exercised
-// through pollTeamGates in test/gate-polls.test.ts.
-test("budgetPausedSubjects: a window move and a null-pair cap-pause fold the right roles", () => {
+// budgetPausedSubjects (src/budget/budget-wiring.ts): the per-tier budget pause set, moved
+// out of pollTeamGates. At the cap a null servingResolved pair holds every non-director role on
+// that tier; below the cap nothing pauses — the window-moved set is gone with part 5d/6. The
+// loop's behavior is still exercised through pollTeamGates in test/gate-polls.test.ts.
+test("budgetPausedSubjects: a null-pair cap-pause folds the right roles", () => {
   const config = paidFallbackConfig(10);
-  // Both feature and bugfix ride tier `strong`: feature on the test-only `sub` backend, bugfix
-  // pinned to claude on the SAME tier, so the tier's own seam (sub) moving must not drag claude's
-  // healthy role; docs rides the default tier.
-  config.model = {
-    strong: { backend: "sub", model: "sub-astra" },
-    default: { backend: "claude", model: "claude-sonnet-5-5" },
-  };
   config.roles = {
     ...config.roles,
     feature: { enabled: true, model: "strong" },
-    bugfix: { enabled: true, model: "strong", backend: "claude" },
+    bugfix: { enabled: true, model: "strong" },
   };
   const runners = [
     fakeRunner("feature", freshRunnerState("feature"), null, []),
@@ -174,10 +152,6 @@ test("budgetPausedSubjects: a window move and a null-pair cap-pause fold the rig
     fakeRunner("docs", freshRunnerState("docs"), null, []),
     fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, []),
   ];
-  const accounts = (backend: string) =>
-    backend === "sub" || backend === "claude"
-      ? ({ billing: "subscription" } as SubscriptionAccount)
-      : null;
   const free = { provider: "free", model: "qwen-free" };
   const pausedTiers: TierFallbackMap = {
     small: { pair: free, from: "small" },
@@ -185,40 +159,31 @@ test("budgetPausedSubjects: a window move and a null-pair cap-pause fold the rig
     strong: { pair: null, from: null },
   };
 
-  // Below the cap with sub's window out: only the sub role moves; a healthy claude role on the
-  // same tier and the director stay, and nothing pauses (the moved tier still has a usable pair).
+  // Below the cap nothing pauses, whatever the resolution.
   const below = budgetPausedSubjects({
     runners,
     liveConfig: config,
-    accounts,
     budgetActive: false,
     servingResolved: {
       small: { pair: free, from: "small" },
       default: { pair: free, from: "default" },
       strong: { pair: free, from: "strong" },
     },
-    windowTiers: { strong: "sub" },
   });
-  assert.deepEqual([...below.windowMovedRoles], ["feature"], "the sub role moves");
   assert.equal(below.budgetPausedRoles.size, 0, "below the cap a usable pair pauses nothing");
-  assert.ok(!below.windowMovedRoles.has("bugfix"), "the healthy claude role on the same tier stays");
-  assert.ok(!below.windowMovedRoles.has(DIRECTOR_ROLE), "the director stays");
 
   // At the cap with both tiers resolved to pause: every role on a null-pair tier is held, the
   // director exempt.
   const atCap = budgetPausedSubjects({
     runners,
     liveConfig: config,
-    accounts,
     budgetActive: true,
     servingResolved: pausedTiers,
-    windowTiers: {},
   });
   assert.deepEqual(
     [...atCap.budgetPausedRoles].sort(),
     ["bugfix", "docs", "feature"],
     "every role on a null-pair tier is held at the cap",
   );
-  assert.equal(atCap.windowMovedRoles.size, 0, "no used-up window, no moved roles");
   assert.ok(!atCap.budgetPausedRoles.has(DIRECTOR_ROLE), "the director is exempt");
 });

@@ -15,7 +15,6 @@ import { RoleRunner } from "../src/runner/runner.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { newTeamGateStates, pollTeamGates } from "../src/gates/gate-polls.js";
 import { BYTES_PER_GB } from "../src/gates/disk-gates.js";
-import { heldProviders } from "../src/team/team-hold.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeAccount } from "../src/agent/subscription-account.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -158,128 +157,12 @@ test("pollTeamGates: a budget reopen hands in-flight fallback runs back to the p
   assert.equal(handoff[0]!.model, "qwen-free");
 });
 
-test("pollTeamGates: a used-up claude window moves claude roles to the fallback and hands them back at the reset", () => {
-  const root = tmpdir("gate-polls-window-");
-  const modelsPath = writeModelsFile(root, MODELS_JSON);
-  const now = Date.now();
-  writeClaudeAccount(root, {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
-  });
-  const handbacks: string[] = [];
-  const featureState = spentRunnerState("feature", 1);
-  featureState.running = true;
-  const directorState = freshRunnerState(DIRECTOR_ROLE);
-  const runners = [
-    fakeRunner("feature", featureState, { provider: "free", model: "qwen-free" }, handbacks, "claude"),
-    fakeRunner(DIRECTOR_ROLE, directorState, null, handbacks, "claude"),
-  ];
-  const config = paidFallbackConfig(10);
-  config.provider = undefined;
-  config.backend = "claude"; config.model = "claude-sonnet-5-5";
-  const states = newTeamGateStates(config);
-  const ctx = {
-    root,
-    runners,
-    liveConfig: config,
-    modelsPath,
-    now,
-    info: { pid: process.pid, startedAt: 0, roles: ["feature", DIRECTOR_ROLE] },
-  };
-
-  const out = pollTeamGates(states, ctx);
-  assert.equal(out.gate, "open");
-  const cfgOf = (i: number) => (runners[i] as unknown as { config: { model?: unknown } }).config;
-  // On a claude team the pi pair's entry names its backend, so claude cannot take its id.
-  const piEntry = { backend: "pi", model: "free/qwen-free" };
-  assert.deepEqual(cfgOf(0).model, { small: piEntry, default: piEntry, strong: piEntry });
-  assert.deepEqual(cfgOf(1).model, cfgOf(0).model, "the director follows its tier to the fallback pair too");
-  assert.equal((runners[0] as unknown as { budgetFallbackActive?: boolean }).budgetFallbackActive, false, "the cap flag stays off");
-  const limited = readEvents(root, 100).filter((e) => e.type === "subscription_window_limited");
-  assert.equal(limited.length, 1);
-  assert.ok(limited[0]!.tiers, "the limited event names where the moved tiers went");
-  assert.deepEqual(handbacks, []);
-
-  // The window resets: the in-flight fallback run is handed back, with reason window.
-  writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
-  pollTeamGates(states, ctx);
-  assert.deepEqual(handbacks, ["feature"]);
-  const back = readEvents(root, 100).filter((e) => e.type === "budget_handback");
-  assert.equal(back.length, 1);
-  assert.equal(back[0]!.reason, "window");
-  assert.equal(back[0]!.backend, "claude", "the handback names the backend whose window resumed");
-  assert.equal(cfgOf(0), config, "the live config is back");
-  assert.equal(cfgOf(1), config, "the director's too");
-});
-
-test("pollTeamGates: a used-up window's demoted fallback holds the moved tier's roles below the cap", () => {
-  const root = tmpdir("gate-polls-window-demoted-");
-  const modelsPath = writeModelsFile(root, MODELS_JSON);
-  const now = Date.now();
-  const claudeWindow = {
-    billing: "subscription" as const,
-    observedAt: now,
-    windows: { five_hour: { status: "rejected" as const, resetsAt: now + 3_600_000, observedAt: now } },
-  };
-  writeClaudeAccount(root, claudeWindow);
-  const runners = [
-    fakeRunner("feature", spentRunnerState("feature", 1), { provider: "free", model: "qwen-free" }, [], "claude"),
-    fakeRunner("bugfix", spentRunnerState("bugfix", 1), { provider: "free", model: "qwen-free" }, [], "claude"),
-    fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, [], "claude"),
-  ];
-  const config = paidFallbackConfig(10);
-  config.provider = undefined;
-  config.backend = "claude"; config.model = "claude-sonnet-5-5";
-  config.roles = { ...config.roles, bugfix: { enabled: true, backend: "pi", model: "free/qwen-free" } };
-  const ctx = {
-    root,
-    runners,
-    liveConfig: config,
-    modelsPath,
-    now,
-    info: { pid: process.pid, startedAt: 0, roles: ["feature", DIRECTOR_ROLE] },
-  };
-  const demoted = {
-    ...IDLE_FALLBACK_BREAKER,
-    pair: "free/qwen-free",
-    capUsd: 10,
-    failures: 3,
-    probeAt: now + 60_000,
-  };
-
-  const states = newTeamGateStates(config);
-  states.budget.breakers = { "free/qwen-free": demoted };
-  const held = pollTeamGates(states, ctx);
-  assert.equal(held.budgetActive, false, "the cap is not reached");
-  assert.ok(held.windowMovedRoles.has("feature"));
-  assert.ok(held.budgetPausedRoles.has("feature"), "the demoted window fallback holds the moved role");
-  assert.ok(!held.windowMovedRoles.has("bugfix"), "a role pinned to a non-claude model is not moved");
-  assert.ok(!held.budgetPausedRoles.has("bugfix"), "nor held by the demoted fallback");
-  assert.ok(!held.windowMovedRoles.has(DIRECTOR_ROLE) && !held.budgetPausedRoles.has(DIRECTOR_ROLE));
-
-  const trusted = pollTeamGates(newTeamGateStates(config), ctx);
-  assert.ok(trusted.windowMovedRoles.has("feature"));
-  assert.ok(!trusted.budgetPausedRoles.has("feature"), "a trusted fallback keeps the moved role running");
-
-  writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
-  const none = pollTeamGates(newTeamGateStates(config), ctx);
-  assert.equal(none.windowMovedRoles.size, 0, "no used-up window, no moved roles");
-});
-
 test("pollTeamGates: fallback_switched is logged once per chain change and orchestrator info carries chain", () => {
   const root = tmpdir("gate-polls-chain-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
   const now = Date.now();
-  writeClaudeAccount(root, {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
-  });
-  const runners = [fakeRunner("feature", spentRunnerState("feature", 1), null, [], "claude")];
+  const runners = [fakeRunner("feature", spentRunnerState("feature", 10), null, [], "claude")];
   const config = paidFallbackConfig(10);
-  config.provider = undefined;
-  config.backend = "claude"; config.model = "claude-sonnet-5-5";
   const states = newTeamGateStates(config);
   const info: Record<string, unknown> = { pid: process.pid, startedAt: 0, roles: ["feature"] };
   const ctx = { root, runners, liveConfig: config, modelsPath, now, info: info as never };
@@ -288,157 +171,17 @@ test("pollTeamGates: fallback_switched is logged once per chain change and orche
   pollTeamGates(states, ctx);
   pollTeamGates(states, ctx);
   assert.equal(switched().length, 1);
-  assert.equal((switched()[0]!.tiers as Record<string, { reason: string }>).default!.reason, "window");
+  assert.equal((switched()[0]!.tiers as Record<string, { reason: string }>).default!.reason, "cap");
   assert.ok(info.chain, "chain is published while moved");
 
-  writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
-  pollTeamGates(states, ctx);
+  // The cap raises (the live reload): the tier returns to the primary, so the switch reads
+  // available and the chain empties.
+  pollTeamGates(states, { ...ctx, liveConfig: { ...config, maxDailyCostUsd: 100 } });
   assert.equal(switched().length, 2);
   const back = (switched()[1]!.tiers as Record<string, { to: unknown; reason: string }>).default!;
   assert.equal(back.to, null);
   assert.equal(back.reason, "available");
-  assert.equal(info.chain, undefined, "chain is gone after the reset");
-});
-
-test("pollTeamGates: a cap reopen while the claude window is still used up hands nothing back", () => {
-  const root = tmpdir("gate-polls-window-cap-");
-  const modelsPath = writeModelsFile(root, MODELS_JSON);
-  const now = Date.now();
-  writeClaudeAccount(root, {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
-  });
-  const handbacks: string[] = [];
-  const featureState = spentRunnerState("feature", 10);
-  featureState.running = true;
-  const runners = [fakeRunner("feature", featureState, { provider: "free", model: "qwen-free" }, handbacks, "claude")];
-  const config = paidFallbackConfig(10);
-  config.provider = undefined;
-  config.backend = "claude"; config.model = "claude-sonnet-5-5";
-  const states = newTeamGateStates(config);
-  const ctx = {
-    root,
-    runners,
-    liveConfig: config,
-    modelsPath,
-    now,
-    info: { pid: process.pid, startedAt: 0, roles: ["feature"] },
-  };
-  assert.equal(pollTeamGates(states, ctx).gate, "fallback");
-  const reopened = pollTeamGates(states, { ...ctx, liveConfig: { ...config, maxDailyCostUsd: 100 } });
-  assert.equal(reopened.gate, "open");
-  assert.deepEqual(handbacks, [], "the run is already on the pair the window still assigns");
-  assert.equal(readEvents(root, 100).filter((e) => e.type === "budget_handback").length, 0);
-});
-
-test("pollTeamGates: a used-up sub window moves the sub tier's roles, holds backend sub, and leaves claude untouched", () => {
-  const root = tmpdir("gate-polls-sub-window-");
-  const modelsPath = writeModelsFile(root, MODELS_JSON);
-  const now = Date.now();
-  const config = paidFallbackConfig(10);
-  // The strong tier routes to the test-only `sub` backend and the default tier to claude, so one
-  // config carries two subscription backends and each backend's window is judged from its own
-  // account (part 2e/9). Never through loadConfig: `sub` is a test-only backend id.
-  config.model = {
-    strong: { backend: "sub", model: "sub-astra" },
-    default: { backend: "claude", model: "claude-sonnet-5-5" },
-  };
-  config.roles = {
-    ...config.roles,
-    feature: { enabled: true, model: "strong" },
-    bugfix: { enabled: true, model: "default" },
-  };
-  const runners = [
-    fakeRunner("feature", spentRunnerState("feature", 1), null, [], "sub"),
-    fakeRunner("bugfix", spentRunnerState("bugfix", 1), null, [], "claude"),
-    fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, [], "sub"),
-  ];
-  const ctx = {
-    root,
-    runners,
-    liveConfig: config,
-    modelsPath,
-    now,
-    info: { pid: process.pid, startedAt: 0, roles: ["feature", "bugfix", DIRECTOR_ROLE] },
-  };
-
-  // sub rejected, claude healthy: only the sub role moves, the hold keys `sub`, the limited
-  // event names `sub`, and claude's role and account are untouched.
-  writeAccount(root, "sub", {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
-  });
-  writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
-  const states = newTeamGateStates(config);
-  const subOut = pollTeamGates(states, ctx);
-  assert.ok(subOut.windowMovedRoles.has("feature"), "the sub role moves");
-  assert.ok(!subOut.windowMovedRoles.has("bugfix"), "claude's healthy role does not move");
-  assert.ok(!subOut.windowMovedRoles.has(DIRECTOR_ROLE), "the director stays");
-  const limited = readEvents(root, 100).filter((e) => e.type === "subscription_window_limited");
-  assert.equal(limited.length, 1);
-  assert.equal(limited[0]!.backend, "sub", "the limited event names the sub backend");
-  const held = heldProviders(states.teamHold);
-  assert.ok(held.has("sub"), "the hold keys the sub backend");
-  assert.ok(!held.has("claude"), "claude's healthy window holds nothing");
-
-  // claude rejected, sub healthy: only claude's role moves, and the limited event names claude.
-  writeAccount(root, "sub", { billing: "subscription", observedAt: now, windows: {} });
-  writeClaudeAccount(root, {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
-  });
-  const claudeOut = pollTeamGates(newTeamGateStates(config), ctx);
-  assert.ok(claudeOut.windowMovedRoles.has("bugfix"), "claude's rejected role moves");
-  assert.ok(!claudeOut.windowMovedRoles.has("feature"), "the healthy sub role does not move");
-  const limitedClaude = readEvents(root, 100).filter((e) => e.type === "subscription_window_limited");
-  assert.equal(limitedClaude.length, 2, "a second limited event for claude");
-  assert.equal(limitedClaude[1]!.backend, "claude");
-});
-
-test("pollTeamGates: a window on one backend does not move a healthy backend's role on the same tier", () => {
-  const root = tmpdir("gate-polls-sub-same-tier-");
-  const modelsPath = writeModelsFile(root, MODELS_JSON);
-  const now = Date.now();
-  const config = paidFallbackConfig(10);
-  // Both roles ride tier `strong`: feature on the test-only `sub` backend, bugfix pinned to claude
-  // on the SAME tier, so the tier's own seam (sub) moving must not drag claude's healthy role.
-  config.model = {
-    strong: { backend: "sub", model: "sub-astra" },
-    default: { backend: "claude", model: "claude-sonnet-5-5" },
-  };
-  config.roles = {
-    ...config.roles,
-    feature: { enabled: true, model: "strong" },
-    bugfix: { enabled: true, model: "strong", backend: "claude" },
-  };
-  const runners = [
-    fakeRunner("feature", spentRunnerState("feature", 1), null, [], "sub"),
-    fakeRunner("bugfix", spentRunnerState("bugfix", 1), null, [], "claude"),
-    fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, [], "sub"),
-  ];
-  const ctx = {
-    root,
-    runners,
-    liveConfig: config,
-    modelsPath,
-    now,
-    info: { pid: process.pid, startedAt: 0, roles: ["feature", "bugfix", DIRECTOR_ROLE] },
-  };
-
-  // sub rejected, claude healthy: the tier moves because of sub, so only the sub role moves;
-  // the healthy claude role on the same tier keeps its pair (part 2e/9).
-  writeAccount(root, "sub", {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
-  });
-  writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
-  const out = pollTeamGates(newTeamGateStates(config), ctx);
-  assert.ok(out.windowMovedRoles.has("feature"), "the sub role moves");
-  assert.ok(!out.windowMovedRoles.has("bugfix"), "the healthy claude role on the same tier stays");
+  assert.equal(info.chain, undefined, "chain is gone after the reopen");
 });
 
 test("pollTeamGates: a sub reserve logs subscription_window_reserved once per window without disturbing claude's reserve memory", () => {

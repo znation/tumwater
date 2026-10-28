@@ -6,7 +6,6 @@ import type { HarnessEventInput } from "../events/events.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./team-failure-spread.js";
 import type { RunnerState } from "../runner/runner-state.js";
-import type { ModelTier } from "../config/config-schema.js";
 import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";
 import { eventsSince } from "../events/event-window.js";
@@ -64,8 +63,7 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
  * heldProviders() (until non-null), never bare key presence: a lifted hold must never
  * keep blocking. Events carry the provider when one is configured (an undefined provider
  * — pi's default — omits it, so an unconfigured team's events render exactly as before).
- * `windowTiers` is the budget poll's window move (tier → the pair its work went to), stamped on
- * the subscription window's limited event. `observations` is the per-subscription-backend hold
+ * `observations` is the per-subscription-backend hold
  * observations (one per backend in use; part 2e passes them), each stamped by the caller from
  * its account via windowObservation — the account's own `claudeWindowReserve`: crossings held
  * like a rejected window (but never the director) log pollClaudeWindowReserve's event instead
@@ -77,7 +75,6 @@ export function pollTeamHold(
   runners: readonly HoldInputs[],
   now: number,
   observations: readonly HoldObservation[] = [],
-  windowTiers: Partial<Record<ModelTier, string>> = {},
 ): Map<string | undefined, TeamHold> {
   const steps = [...holdObservations(runners), ...observations];
   const byProvider = groupBy(steps, (o) => o.provider);
@@ -107,9 +104,6 @@ export function pollTeamHold(
         ...providerFields,
         windowType: subObs?.windowType,
         resetsAt: pNext.until,
-        // Where each moved tier's work went (the budget poll's window move); absent when
-        // nothing moved, so a no-fallback team's event is today's.
-        ...(Object.keys(windowTiers).length > 0 ? { tiers: windowTiers } : {}),
       });
     };
     if (

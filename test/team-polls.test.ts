@@ -490,14 +490,6 @@ test("loggedWindowKeys keys by backend: two backends' same window keep their own
   );
 });
 
-test("pollTeamHold stamps the window move's tiers on subscription_window_limited", () => {
-  const root = tmpdir("team-polls-");
-  pollTeamHold(root, new Map(), [], T0, windowObs("claude", account(), T0), { default: "free/qwen-free" });
-  const limited = windowEvents(root).filter((e) => e.type === "subscription_window_limited");
-  assert.equal(limited.length, 1);
-  assert.deepEqual(limited[0]!.tiers, { default: "free/qwen-free" });
-});
-
 test("a reserve crossing holds claude but not the director, and logs subscription_window_reserved once per window", () => {
   const root = tmpdir("tumwater-team-polls-");
   const resetsAt = T0 + 3_600_000;

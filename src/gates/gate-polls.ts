@@ -129,8 +129,6 @@ export function newTeamGateStates(config: TumwaterConfig): TeamGateStates {
 interface TeamGatePoll {
   gate: BudgetGate;
   roleConfig: TumwaterConfig;
-  /** The director's config this poll (pollBudgetGate's `directorConfig`). */
-  directorConfig: TumwaterConfig;
   userPaused: boolean;
   pausedRoles: ReadonlySet<string>;
   capPaused: ReadonlySet<string>;
@@ -147,7 +145,7 @@ interface TeamGatePoll {
    * configured or the latch has ended it. */
   bootstrapHeld: ReadonlySet<string>;
   /** The roles (the director excluded) whose budget tier resolved to pause while the cap is
-   * reached (part 5c/8) or while a usage-window move holds the tier on a demoted fallback: a
+   * reached (part 5c/8): a
    * role whose own `model` tier (roleSeamTier) has no usable free pair
    * — none configured, one priced above zero, or its breaker demoted — starts no new runs,
    * beside `capPaused` (the scheduling pass folds the sets the same way). Roles on tiers that
@@ -165,11 +163,6 @@ interface TeamGatePoll {
   priceResolved: TierFallbackMap;
   /** Whether the cap is reached this poll: the budget hold only holds while it is. */
   budgetActive: boolean;
-  /** The roles (the director excluded) a usage-window move put on a fallback pair — their tier
-   * moved because the role's OWN subscription backend's window stands, so a role on the tier whose
-   * own backend is healthy (another backend moved it) is not in it: their run outcomes fold into
-   * the fallback breaker even below the cap. Empty while no window moved. */
-  windowMovedRoles: ReadonlySet<string>;
   /** The roles (the director excluded) whose own `quietHoursPerRole` window holds right now:
    * a stateless verdict recomputed every poll beside `capPaused` — no event, no bookkeeping
    * (the pause marker is anonymous and must never masquerade as an operator's schedule). */
@@ -210,15 +203,14 @@ export function pollTeamGates(
   // from claude's.
   const accounts = (backend: string) => readAccount(root, backend, now);
 
-  const budget = pollBudgetPhase(states, ctx, accounts);
+  const budget = pollBudgetPhase(states, ctx);
   const holds = pollHoldGates(states, ctx);
   const quietDisk = pollQuietAndDiskGates(states, ctx);
-  pollTeamFailureAlarms(states, ctx, accounts, budget.windowTiers);
+  pollTeamFailureAlarms(states, ctx, accounts);
 
   return {
     gate: budget.gate,
     roleConfig: budget.roleConfig,
-    directorConfig: budget.directorConfig,
     userPaused: holds.userPaused,
     pausedRoles: holds.pausedRoles,
     capPaused: holds.capPaused,
@@ -228,7 +220,6 @@ export function pollTeamGates(
     servingResolved: budget.servingResolved,
     priceResolved: budget.priceResolved,
     budgetActive: budget.budgetActive,
-    windowMovedRoles: budget.windowMovedRoles,
     roleQuietHeld: quietDisk.roleQuietHeld,
     quietNow: quietDisk.quietNow,
     diskHeld: quietDisk.diskHeld,
@@ -241,12 +232,10 @@ export function pollTeamGates(
 // owns only the wiring — the demotion publish below and the per-runner assignment at
 // the bottom of this block — and the per-tier budget pause (src/budget/budget-wiring.ts,
 // part 5c/8): a role whose model tier resolved to no usable free pair while the cap is
-// reached starts no new runs, and a role on a window-moved tier whose own backend owns
-// the out window is moved off it.
+// reached starts no new runs.
 function pollBudgetPhase(
   states: TeamGateStates,
   ctx: TeamGatePollCtx,
-  accounts: (backend: string) => ReturnType<typeof readAccount>,
 ) {
   const { root, runners, liveConfig, modelsPath, info } = ctx;
 
@@ -261,9 +250,6 @@ function pollBudgetPhase(
     priceResolved,
     servingResolved,
     budgetActive,
-    windowTiers,
-    windowResumedBackends,
-    directorConfig,
     chain,
   } = pollBudgetGate(states.budget, {
     root,
@@ -272,25 +258,20 @@ function pollBudgetPhase(
     modelsPath,
   });
   // The budget wiring (demotions publish, fallback_switched event, per-runner config/cap
-  // assignment, cap-reopen and window hand-back) lives in src/budget/budget-wiring.ts
-  // (part 5c/8, part 2e/9) along with the whole budget concern.
+  // assignment, cap-reopen hand-back) lives in src/budget/budget-wiring.ts
+  // (part 5c/8) along with the whole budget concern.
   applyBudgetGateWiring({
     root,
     runners,
     liveConfig,
     info,
-    accounts,
     budget: states.budget,
     view: {
       roleConfig,
-      directorConfig,
       onFallback,
       resumed: gateResumed,
       pairs: fallbackPairs,
-      priceResolved,
       budgetActive,
-      windowTiers,
-      windowResumedBackends,
       chain,
       spentUsd,
       capUsd,
@@ -298,31 +279,25 @@ function pollBudgetPhase(
   });
 
   // The per-tier budget pause (src/budget/budget-wiring.ts, part 5c/8): a role whose model
-  // tier resolved to no usable free pair while the cap is reached starts no new runs, and a
-  // role on a window-moved tier whose own backend owns the out window is moved off it — the
+  // tier resolved to no usable free pair while the cap is reached starts no new runs — the
   // stateless verdict recomputed every poll from the SAME resolution the gate's value came
   // from, beside `capPaused` (the scheduling pass folds the sets; the director is exempt, as
   // under every autonomous gate, and the demoted pair's probe pierces the set for its own
   // tier's roles only — probeRoles in the orchestrator's scheduling pass).
-  const { budgetPausedRoles, windowMovedRoles } = budgetPausedSubjects({
+  const { budgetPausedRoles } = budgetPausedSubjects({
     runners,
     liveConfig,
-    accounts,
     budgetActive,
     servingResolved,
-    windowTiers,
   });
 
   return {
     gate,
     roleConfig,
-    directorConfig,
     budgetPausedRoles,
-    windowMovedRoles,
     servingResolved,
     priceResolved,
     budgetActive,
-    windowTiers,
   };
 }
 
@@ -474,7 +449,6 @@ function pollTeamFailureAlarms(
   states: TeamGateStates,
   ctx: TeamGatePollCtx,
   accounts: (backend: string) => ReturnType<typeof readAccount>,
-  windowTiers: ReturnType<typeof pollBudgetGate>["windowTiers"],
 ) {
   const { root, runners, liveConfig, now, info } = ctx;
 
@@ -524,7 +498,6 @@ function pollTeamFailureAlarms(
     holdInputs(runners),
     now,
     windowObservations,
-    windowTiers,
   );
   // The standings hold, published for observers (PLANS.md 2026-10-17 "the dashboards and
   // `tumwater status` name a standing provider failure hold"): `standingHolds` turns the holds

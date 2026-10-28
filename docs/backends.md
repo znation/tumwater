@@ -163,10 +163,14 @@ API key — or one that saw `isUsingOverage` at any point — feeds the daily ca
 pi model; at a team of today's size it can amount to tens of dollars a day, so pair it with a
 free `fallback`. A run paid by a claude.ai subscription is exempt from the cap: its
 API-equivalent cost is tracked as estimated spend, printed on its own line in `tumwater report`,
-and never counted in the spend totals. A rejected subscription usage window moves subscription
-Claude model jobs to their tier's `fallback` until it resets (the first `allowed_warning` is logged too; both events page a configured `notify` command); with no usable fallback they wait for the reset instead, so the team does not
-burn a failed run per role per poll. A used-up window moves a subscription Claude director to its tier's fallback too (with no fallback it waits for the reset), while the cap still never moves the director. Pi model jobs and API-key Claude model jobs keep running, and a run
-cut off by the window keeps its worktree and continues on the fallback as a handoff. When the window resets, in-flight fallback runs are handed back to Claude (`budget_handback` with reason `window`). A
+and never counted in the spend totals. A rejected subscription usage window no longer moves subscription
+Claude model jobs to their tier's `fallback` (the daily cap alone does that — part 5d/6): it
+holds the backend until the window resets (the first `allowed_warning` is logged too; both
+events page a configured `notify` command), and with no usable fallback the team waits for the
+cap or the reset instead, so it does not burn a failed run per role per poll. Neither the
+window nor the cap moves the director, which keeps its budgeted model. Pi model jobs and
+API-key Claude model jobs keep running, and a run cut off by the window keeps its worktree and
+resumes once it resets. A
 subscription Claude job with no overage is free to the budget gate too: at the cap it stays
 put while priced jobs move to their fallback, and a subscription claude pair is accepted as a
 budget `fallback` for a priced pi primary; an account spending into overage counts like API
@@ -319,8 +323,9 @@ reports an API key, and `OPENAI_API_KEY` / `CODEX_API_KEY` are scrubbed from run
 no price, so per-token billing would spend money the cap cannot see.
 
 **The windows and reserve.** Codex reads two usage windows from each run's session file — a
-five-hour and a weekly — and a rejected (or reserved) window moves codex jobs down their tier's
-fallback chain until it resets, exactly as on a claude subscription. `backends.codex.windowReserve`
+five-hour and a weekly. A rejected (or reserved) window no longer moves codex jobs down their
+tier's fallback chain — exactly as on a claude subscription, the daily cap is the only mover
+(part 5d/6): the window holds the backend until it resets. `backends.codex.windowReserve`
 is a per-window-type fraction (0–1] left for you, on the same `five_hour` / `seven_day` type
 names claude uses, so one reserve reads the same on both subscriptions. With every codex job on a
 subscription, the badge shows the windows, not the spend.
