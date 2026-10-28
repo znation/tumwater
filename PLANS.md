@@ -474,4 +474,47 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** No new test module: the move is covered by the existing CLI logs tests, which spawn the CLI and drive this shared shell — test/cli-logs.test.ts "logs -n validates its value instead of misbehaving", "logs -n refuses a count above the cap instead of scanning the whole log", "logs -n --json prints exactly the raw stored events, in the text view's order, one JSON object per line", "logs -f --json streams each newly landed event as a JSON line", "logs -f's wait expires on the injected clock, not a real deadline" and "logs -f prints the current window and follows newly appended events"; and test/cli-logs-filtering.test.ts "logs --grep: -n bounds the scanned window, not the printed rows", "logs --grep -f applies the filter to the seeded window and every followed event", "logs --type -n composes with --grep (type AND text) and with --json", "logs --count prints one N × <type> line per present type, most-frequent-first", "logs --count composes with --type, --grep, --since, and -n", "logs --count --json emits a sorted type→count object" and "logs --count reports an empty window and empty match with the plain view's prose". Run those two files whole, then the project's gate, and confirm green.
 
+### `usageWords`'s complexity-17 description-cut-and-token-scan body is split into one named helper per concern — the usage-text extraction, the `<a|b>` alternation expansion, the completable-word test, the leading-run end and the bracket-depth delta — so "which text is the usage part?", "which alternatives does `<bash|zsh|fish>` contribute?" and "when does a token end the leading run?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the landed `movedSourceFindings`, `parseInitArgs`, `createTeamConfigKeyEditor`, `cmdLogs` and `sayLogsTail` plans each extract one named helper per job the same way; independent in file of every Planned entry — `grep -c 'usageWords' PLANS.md`, `grep -c 'completion' PLANS.md` and `grep -c 'completion.ts' PLANS.md` all print 0, so no `## Planned` heading, blocked part or touches list names the symbol or src/cli/completion.ts; PLANS-DONE.md holds no `^### .*usageWords` split — its two `usageWords` heading matches are the 2026-10-12 shell-completion behavior entries "Shell completion completes flag values…" and "Shell completion completes loop ids…", which added completable values and never moved this body; docs/invariants.md never names src/cli/completion.ts or `usageWords` (its only `completion` hit is "chat-completions" under INV-Y1, unrelated); touches src/cli/completion.ts)
+
+**Goal.** `usageWords` (`src/cli/completion.ts`, module-private, complexity 17) turns one help-stanza first line into the completable words that `completionSpec` turns into `subcommands`. Today one body does four jobs: it strips the `  tumwater <command>` prefix and cuts at the description column (two or more spaces); it walks the usage tokens tracking bracket depth and whether the leading run is still open; it expands a leading `<a|b|c>` word alternation into each alternative; and it classifies every other token as a completable bare word or as the token that closes the leading run. A reader asking "which text is the usage part?", "which alternatives does `<bash|zsh|fish>` contribute?" or "when does a token end the leading run?" has only the one body to scan, and the scan state (`depth`, `leading`) is unwound inside it.
+
+**Approach.** All edits in `src/cli/completion.ts`; move code, do not rewrite it — every condition, regex and token order stays exactly as today, and each existing `//`/doc comment stays with the code it annotates. Add module-private functions beside `usageWords`:
+
+- `function usagePortion(firstLine: string, command: string): string` — the usage-text extraction verbatim: `const rest = firstLine.replace(new RegExp(` + "`" + `^ {2}tumwater ${command}` + "`" + `), "");` then `return /^ {2,}/.test(rest) ? "" : (rest.split(/ {2,}/)[0] ?? "");`. It owns the prefix strip and the description-column cut.
+- `function alternationWords(token: string, leading: boolean): string[] | null` — the `<a|b>` expansion: `const alternation = /^<([a-z][a-z-]*(?:\|[a-z][a-z-]*)+)>$/.exec(token);` then `return alternation && leading ? alternation[1]!.split("|") : null;`. Its doc comment is the current alternation comment (the `completion` shell positional expanding to each shell and a bare placeholder like `<id>` staying skipped).
+- `function isCompletableWord(bare: string, token: string, depth: number, leading: boolean): boolean` — the push test: `return /^[a-z][a-z-]*$/.test(bare) && (depth > 0 || token.startsWith("[") || leading);`.
+- `function endsLeadingRun(bare: string, token: string, depth: number): boolean` — the close-run test: `return depth === 0 && !token.startsWith("[") && bare !== "";`.
+- `function bracketDelta(token: string): number` — the depth move: `let delta = 0; for (const ch of token) delta += ch === "[" ? 1 : ch === "]" ? -1 : 0; return delta;`.
+- `function usageWordsIn(usage: string): string[]` — the token scan that ties them together, with the original loop state and order:
+```ts
+function usageWordsIn(usage: string): string[] {
+  const words: string[] = [];
+  let depth = 0;
+  let leading = true;
+  for (const token of usage.split(/\s+/).filter(Boolean)) {
+    const alternates = alternationWords(token, leading);
+    if (alternates) { words.push(...alternates); continue; }
+    const bare = token.replace(/[[\]|]/g, "");
+    if (isCompletableWord(bare, token, depth, leading)) words.push(bare);
+    else if (endsLeadingRun(bare, token, depth)) leading = false;
+    depth += bracketDelta(token);
+  }
+  return words;
+}
+```
+`usageWords` keeps its name, its non-export, its signature, its parameter names and its doc comment (trimmed to the one-line summary, with the algorithm detail now carried by the helpers), and becomes `return usageWordsIn(usagePortion(firstLine, command));`. `completionSpec`'s call to `usageWords` is untouched.
+
+**Files touched.** `src/cli/completion.ts` only. No new module, no export change, no interface change, no test file edited, no docs edited.
+
+**Acceptance criteria.**
+- `usageWords`'s body holds only the `usageWordsIn(usagePortion(firstLine, command))` call: it contains no regex, no `split`, no `depth`/`leading` locals and no `for` loop — orchestration only.
+- `usagePortion`, `alternationWords`, `isCompletableWord`, `endsLeadingRun`, `bracketDelta` and `usageWordsIn` each exist exactly once at module scope, are not exported, and are called only from `src/cli/completion.ts`; the alternation regex appears only in `alternationWords`, the description cut only in `usagePortion`, and the bracket-depth loop only in `bracketDelta`.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/cli/completion.ts'`) no longer reports `usageWords` at 17 (it becomes 1), and each new helper reports 4 or below; the file's other functions keep the counts they report today (`completionSpec` 8, `completionConfigKeys` 2, `configValueWords` 8, `fishFlagValue` 16, `fishScript` 6, `bashScript` 1).
+- The exported surface is unchanged: `grep -nE '^export ' src/cli/completion.ts` still matches exactly `SUPPORTED_SHELLS`, `CompletionShell`, `completionSpec`, `completionRoleIds`, `completionModels`, `completionConfigKeys`, `configValueWords` and `completionScript`; no import line in src/ or test/ changes.
+- Behavior is preserved: the same usage text (same prefix strip and two-or-more-space cut), the same alternation alternatives in the same order, the same completable words in the same order, the same leading-run close rule and the same bracket-depth accounting, verified by the existing cases passing unedited — `test/completion.test.ts` "completionSpec parses a synthetic help: subcommands from the usage part only" (the single-space `gamma` description adds nothing and `[get | set <k>]` yields `get`, `set`), "completionSpec over the real help" (`subcommands.completion` is `["bash", "zsh", "fish"]`, the alternation expansion), "the bash script parses and completes commands, subcommands, and flags" (`completion z` completes `zsh`) and "the fish script names every command, subcommand, and flag from the spec".
+- docs/invariants.md is not edited: it binds no guarantee on this file or `usageWords`.
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind six module-private helpers, guarded by the test/completion.test.ts cases named above. Run test/completion.test.ts whole, then the project's gate, and confirm green.
+
 ## Done
