@@ -69,80 +69,90 @@ export function createTeamConfigKeyEditor(
     restoreDraft();
   };
 
+  // The key opens this team-scope editor only on the Activity view (view 0, the team
+  // scope): on the other views the key keeps its own meaning and this arm falls through
+  // so the later guards run. While open, the key toggles the editor out. Entering saves
+  // the prompt draft; leaving restores it.
+  const openOrToggle = (ctx: TuiEditorCtx): boolean => {
+    if (mode) {
+      exit();
+      return true;
+    }
+    if (ctx.view !== 0) return false;
+    // A check-cap editor with text on the line must fall through to applyKey's kill before the
+    // hold-guard runs: while another editor holds the (non-empty) line, Ctrl+K should still
+    // kill from the cursor to the line end rather than be consumed by the mutual-exclusion
+    // flash, and a typed draft must never be swallowed. Only Ctrl+K sets `requireEmptyPrompt`,
+    // so only it takes this fall-through.
+    if (spec.requireEmptyPrompt && session.input !== "") return false;
+    if (session.editorEntryDenied(spec.mode)) return true;
+    const existing = spec.prefill(session);
+    restoreDraft = session.takeDraft();
+    mode = true;
+    session.held[spec.mode] = true;
+    session.input = existing;
+    session.cursor = session.input.length;
+    session.flashMessage(spec.openFlash);
+    return true;
+  };
+
+  // Esc cancels the editor, restoring the previous prompt text.
+  const cancel = (): boolean => {
+    exit();
+    return true;
+  };
+
+  // The four-way message a successful commit flashes: an empty-line no-op clear, a real
+  // clear, an unchanged set, and a real set.
+  const commitFlash = (result: { ok: true; oldValue?: unknown }, text: string): string => {
+    const noop = text === "" ? result.oldValue === undefined : "unchanged" in result;
+    return noop
+      ? text === ""
+        ? `${spec.configKey} is not set in tumwater.json, so nothing was cleared`
+        : `${spec.configKey} is already ${text}, so tumwater.json was not written`
+      : text === ""
+        ? spec.clearedFlash
+        : spec.setFlash(text);
+  };
+
+  // Enter commits through the shared setter family the config CLI and the dashboard
+  // Settings use: a whitespace-trimmed empty line clears the key (`unsetConfigKey`),
+  // otherwise `setConfigKey` writes the trimmed line — it JSON-parses the text, so a
+  // bare command or typed value stays the literal while a typed number becomes a number
+  // — and validateConfig owns the value's truth (naming `configKey`) on the way out. An
+  // invalid value flashes and STAYS in edit mode so the operator can fix it (the file is
+  // untouched); success restores the saved prompt text.
+  const commit = (): boolean => {
+    const text = session.input.trim();
+    // Shape, before the write, for the plain-integer team keys: an exponent spelling is
+    // itself a JSON number that setConfigKey's JSON.parse would read past validateConfig
+    // and silently write, so refuse it here and stay in edit mode (the twin of the per-role
+    // instances/interval guards); a non-exponent invalid falls through to validateConfig.
+    if (spec.plainIntegerKey && text !== "" && isExponentSpelling(text)) {
+      session.flashMessage(`${spec.configKey} must be a plain integer — no exponent notation`);
+      return true;
+    }
+    const result =
+      text === ""
+        ? unsetConfigKey(session.root, spec.configKey)
+        : setConfigKey(session.root, spec.configKey, text);
+    if (result.ok) {
+      exit();
+      session.flashMessage(commitFlash(result, text));
+    } else {
+      session.flashMessage(result.error); // broken config or write failure — stay in edit mode
+    }
+    return true;
+  };
+
   const handleKey = (
     _str: string | undefined,
     key: { ctrl?: boolean; name?: string },
     ctx: TuiEditorCtx,
   ): boolean => {
-    if (key.ctrl && key.name === spec.openCtrl) {
-      // The key opens this team-scope editor only on the Activity view (view 0, the team
-      // scope): on the other views the key keeps its own meaning and this arm falls through
-      // so the later guards run. While open, the key toggles the editor out. Entering saves
-      // the prompt draft; leaving restores it.
-      if (mode) {
-        exit();
-        return true;
-      }
-      if (ctx.view !== 0) return false;
-      // A check-cap editor with text on the line must fall through to applyKey's kill before the
-      // hold-guard runs: while another editor holds the (non-empty) line, Ctrl+K should still
-      // kill from the cursor to the line end rather than be consumed by the mutual-exclusion
-      // flash, and a typed draft must never be swallowed. Only Ctrl+K sets `requireEmptyPrompt`,
-      // so only it takes this fall-through.
-      if (spec.requireEmptyPrompt && session.input !== "") return false;
-      if (session.editorEntryDenied(spec.mode)) return true;
-      const existing = spec.prefill(session);
-      restoreDraft = session.takeDraft();
-      mode = true;
-      session.held[spec.mode] = true;
-      session.input = existing;
-      session.cursor = session.input.length;
-      session.flashMessage(spec.openFlash);
-      return true;
-    }
-    if (key.name === "escape" && mode) {
-      // Esc cancels the editor, restoring the previous prompt text.
-      exit();
-      return true;
-    }
-    if (key.name === "return" && mode) {
-      // Enter commits through the shared setter family the config CLI and the dashboard
-      // Settings use: a whitespace-trimmed empty line clears the key (`unsetConfigKey`),
-      // otherwise `setConfigKey` writes the trimmed line — it JSON-parses the text, so a
-      // bare command or typed value stays the literal while a typed number becomes a number
-      // — and validateConfig owns the value's truth (naming `configKey`) on the way out. An
-      // invalid value flashes and STAYS in edit mode so the operator can fix it (the file is
-      // untouched); success restores the saved prompt text.
-      const text = session.input.trim();
-      // Shape, before the write, for the plain-integer team keys: an exponent spelling is
-      // itself a JSON number that setConfigKey's JSON.parse would read past validateConfig
-      // and silently write, so refuse it here and stay in edit mode (the twin of the per-role
-      // instances/interval guards); a non-exponent invalid falls through to validateConfig.
-      if (spec.plainIntegerKey && text !== "" && isExponentSpelling(text)) {
-        session.flashMessage(`${spec.configKey} must be a plain integer — no exponent notation`);
-        return true;
-      }
-      const result =
-        text === ""
-          ? unsetConfigKey(session.root, spec.configKey)
-          : setConfigKey(session.root, spec.configKey, text);
-      if (result.ok) {
-        exit();
-        const noop = text === "" ? result.oldValue === undefined : "unchanged" in result;
-        session.flashMessage(
-          noop
-            ? text === ""
-              ? `${spec.configKey} is not set in tumwater.json, so nothing was cleared`
-              : `${spec.configKey} is already ${text}, so tumwater.json was not written`
-            : text === ""
-              ? spec.clearedFlash
-              : spec.setFlash(text),
-        );
-      } else {
-        session.flashMessage(result.error); // broken config or write failure — stay in edit mode
-      }
-      return true;
-    }
+    if (key.ctrl && key.name === spec.openCtrl) return openOrToggle(ctx);
+    if (key.name === "escape" && mode) return cancel();
+    if (key.name === "return" && mode) return commit();
     return false;
   };
 
