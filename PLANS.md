@@ -556,4 +556,44 @@ The `??` chain preserves the body's exact predicate order because each helper re
 
 **Tests.** No new test module: a behavior-preserving move behind eight module-private helpers and one private type alias, guarded by the existing `test/claude-stream.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
 
+### `persistBaselineVerdicts`'s complexity-18 load-and-restore body is split into one named helper per concern — the saved list read, the well-formed-entry guard, and one restore per verdict kind (green with its `inheritedFrom` carry-over, red with its script and filtered failing tests) — so "which saved entries load?", "what makes an entry well-formed?" and "how does a saved green or red become a cached verdict?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `findTrust`, `inputViewWindow`, `refShaFromFiles`, `parseRef`, `garbledWordingFindings`, `usageWords`, `sayLogsTail`, `cmdLogs`, `parseInitArgs` and `movedSourceFindings` plans each extract one named helper per job the same way; independent in file of every Planned entry — `grep -c 'persistBaselineVerdicts' PLANS.md` prints 0 and `grep -c 'src/baseline/main-baseline.ts' PLANS.md` prints 0, so no `## Planned` heading or touches list names the symbol or the file (PLANS.md's only `src/baseline` match is `src/baseline/main-watch.ts` in the blocked part 3m/3's touches list, a different file); PLANS-DONE.md records no split of this symbol (`grep -cE '^### .*persistBaselineVerdicts' PLANS-DONE.md` prints 0); docs/invariants.md names the file only to bind `redeployTarget` and `watchVerifiesMain` (in the invariant at line 592) and `noteGreenBaseline` (INV-BJ4), none of which this private move changes, and `grep -c 'persistBaselineVerdicts' docs/invariants.md` prints 0; touches src/baseline/main-baseline.ts)
+
+**Goal.** `persistBaselineVerdicts` (`src/baseline/main-baseline.ts`, exported, complexity 18) is the startup loader that reads the previous generation's verdict file (`baselineVerdictsPath(root)`) and seeds the team-shared `baselineCache` with it (`saveGreens` mirrors it back). Today one body does four jobs: it resets `greensFile`, reads the JSON, and picks the `greens`/`reds` arrays; it validates each entry (an object with a 40–64 hex `sha`); it loads a green, carrying an optional `inheritedFrom`; and it loads a red, carrying an optional `script` and the string entries of an optional `failingTests`. A reader asking "which saved entries load?", "what makes an entry well-formed?" or "what does a saved red carry?" has only the one two-loop body to scan.
+
+**Approach.** All edits in `src/baseline/main-baseline.ts`; move code, do not rewrite it — every condition, order and comment stays exactly as today, and the doc comment on `persistBaselineVerdicts` stays. Add one module-private type alias and four module-private functions beside `persistBaselineVerdicts`:
+
+- `type StoredBaselineEntry = Record<string, unknown> & { sha: string };` — a saved entry that passed the guard.
+- `function storedVerdictList(stored: { greens?: unknown; reds?: unknown } | undefined, key: "greens" | "reds"): unknown[]` — the array read, exactly `const value = stored?.[key]; return Array.isArray(value) ? value : [];`.
+- `function storedVerdictEntry(entry: unknown): StoredBaselineEntry | null` — the shared guard: `if (!isJsonObject(entry)) return null; if (typeof entry.sha !== "string" || !/^[0-9a-f]{40,64}$/.test(entry.sha)) return null; return entry as StoredBaselineEntry;`.
+- `function restoreGreenVerdict(entry: unknown): void` — one saved green: `const parsed = storedVerdictEntry(entry); if (parsed === null || baselineCache.has(parsed.sha)) return; const from = typeof parsed.inheritedFrom === "string" ? { inheritedFrom: parsed.inheritedFrom } : {}; rememberBaseline(parsed.sha, { status: "green", sha: parsed.sha, ...from });`.
+- `function restoreRedVerdict(entry: unknown): void` — one saved red: `const parsed = storedVerdictEntry(entry); if (parsed === null || baselineCache.has(parsed.sha)) return; const failingTests = Array.isArray(parsed.failingTests) ? parsed.failingTests.filter((t): t is string => typeof t === "string") : []; const script = typeof parsed.script === "string" ? { script: parsed.script } : {}; rememberBaseline(parsed.sha, { status: "red", sha: parsed.sha, ...script, failingTests });`.
+
+`persistBaselineVerdicts` keeps its name, its exported signature and its `root` parameter, and becomes orchestration:
+
+```ts
+export function persistBaselineVerdicts(root: string): void {
+  const file = baselineVerdictsPath(root);
+  greensFile = undefined; // the load below re-writes nothing it just read
+  const stored = readJsonFile<{ greens?: unknown; reds?: unknown }>(file);
+  for (const entry of storedVerdictList(stored, "greens")) restoreGreenVerdict(entry);
+  for (const entry of storedVerdictList(stored, "reds")) restoreRedVerdict(entry);
+  greensFile = file;
+}
+```
+
+`saveGreens`, `rememberBaseline`, `baselineCache`, `greensFile`, `noteGreenBaseline`, `noteInheritedGreen`, `checkMainBaseline`, `shouldRerunRed` and the rest of the module are untouched, and no export changes. No behaviour changes: a torn file or a non-array `greens`/`reds` still yields no entries, a malformed entry (non-object, non-string or non-hex `sha`) is still skipped, a SHA the cache already holds is still left as it is, a non-string `inheritedFrom`/`script` is still dropped, and non-string `failingTests` entries are still filtered out.
+
+**Files touched.** `src/baseline/main-baseline.ts` only. No new module, no export change, no test file edited, no docs edited.
+
+**Acceptance criteria.**
+- `persistBaselineVerdicts`'s body contains only the `baselineVerdictsPath(root)` read, the two `greensFile` assignments, the `readJsonFile` call, the two `storedVerdictList` loops and the two restore calls: it contains no `Array.isArray`, no `isJsonObject`, no hex regex and no `inheritedFrom`/`failingTests`/`script` comparison.
+- `StoredBaselineEntry`, `storedVerdictList`, `storedVerdictEntry`, `restoreGreenVerdict` and `restoreRedVerdict` each exist exactly once at module scope, are not exported, and are called only from `persistBaselineVerdicts` (`storedVerdictEntry` from both restore helpers) in `src/baseline/main-baseline.ts`.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/baseline/main-baseline.ts'`) no longer reports `persistBaselineVerdicts` at 18, and no new helper reports 16 or above; every other function's reported count is unchanged (the next-highest, at line 395, stays at 14).
+- The exported surface is unchanged: `grep -nE '^export ' src/baseline/main-baseline.ts` still matches the same functions, and no import line is added or removed (every name the move uses — `isJsonObject`, `rememberBaseline`, `baselineCache`, `greensFile`, `baselineVerdictsPath`, `readJsonFile` — is already in the module).
+- Behaviour is preserved, verified by the existing `test/main-baseline-persist.test.ts` cases passing unedited — "a new generation starts from the saved greens and does not re-run the suite on them" (the green load), "a torn file or malformed entries read as no data" (the guard and the dropped non-string `inheritedFrom`), "a red the watch recorded loads with its failing tests; a green a run turned red leaves the greens" and "a restart reloads a saved red with its failing tests, and a new run keeps them" (the red load and the `script`/`failingTests` carry).
+- docs/invariants.md is not edited: it names `src/baseline/main-baseline.ts` only for `redeployTarget`, `watchVerifiesMain` and `noteGreenBaseline`, none of which this move touches.
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind four module-private helpers and one private type alias, guarded by the existing `test/main-baseline-persist.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
+
 ## Done
