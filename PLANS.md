@@ -582,4 +582,47 @@ function findTrust(
 
 **Tests.** No new test module: a behavior-preserving move behind three module-private helpers, guarded by the existing `test/codex-hook-trust.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
 
+### `buildRolloutLines`'s complexity-16 line-assembly body is split into one named helper per concern — the `run_usage` line, the `billing` line, the up-to-two `rate_limit` lines and the `switchedTo` model comparison — so "where is this run's usage line built?", "what does a subscription reading bill as?", "how do the two windows map?" and "when is a model switch reported?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `movedSourceFindings`, `parseInitArgs`, `createTeamConfigKeyEditor`, `cmdLogs`, `sayLogsTail`, `usageWords`, `inputViewWindow`, `rejectUnknownArgs` and `findTrust` plans each extract one named helper per job the same way; the residual of the landed `rolloutLines` split that created this builder; independent in file of every Planned entry — `grep -c 'buildRolloutLines' PLANS.md` prints 0 and `grep -c 'codex-rollout' PLANS.md` prints 0, so no `## Planned` heading, blocked part or touches list names the symbol or src/agent/codex/codex-rollout.ts (the only other `src/agent` touch is the sibling `findTrust` plan's src/agent/codex/codex-hook-trust.ts, a different file); PLANS-DONE.md holds no `^### .*buildRolloutLines` split — its `buildRolloutLines` prose belongs to the 2026-10-25 `rolloutLines` split that first created the function and names it only as the count that must not rise, plus the later last-block fix, neither of which moves this body; docs/invariants.md names no symbol of this file (`grep -c 'codex-rollout' docs/invariants.md` prints 0), so it stays unedited; touches src/agent/codex/codex-rollout.ts)
+
+**Goal.** `buildRolloutLines` (`src/agent/codex/codex-rollout.ts`, module-private, complexity 16) is the assembler that turns one turn's scanned `TurnRecords` into the canonical `RolloutLines`: the `run_usage` line (with its `Math.max(0, input - cacheRead)` math), the optional `billing` line, the up-to-two `rate_limit` lines for the primary (5 h) and secondary (weekly) windows, and the `switchedTo` comparison when the turn's `turn_context.model` differs from the requested one. Today one body does four jobs: it builds the usage line, it builds the billing line, it builds the rate-limit lines, and it compares models. A reader asking "where is this run's usage line built?", "what does a subscription reading bill as?", "how do the two windows map?" and "when is a model switch reported?" has only the one body to scan, and the complexity sits at the top of the module.
+
+**Approach.** All edits in `src/agent/codex/codex-rollout.ts`; move code, do not rewrite it — every condition, order and comment stays exactly as today. Add four module-private functions beside `buildRolloutLines`:
+
+- `function runUsageLine(lastUsage: Json): string` — the usage line: the `const input = finite(lastUsage.input_tokens) ?? 0`, the `const cacheRead = finite(lastUsage.cached_input_tokens) ?? 0`, and the `JSON.stringify({ type: "run_usage", input: Math.max(0, input - cacheRead), output: finite(lastUsage.output_tokens) ?? 0, cacheRead, cacheWrite: finite(lastUsage.cache_write_input_tokens) ?? 0 })` return.
+- `function billingLine(): string` — the billing line: the `JSON.stringify({ type: "billing", billing: "subscription" })` return, carrying today's plan_type comment (finding 5; API-key login is refused, decision 5).
+- `function rateLimitLines(lastRateLimits: Json | undefined): string[]` — the window lines: the `lastRateLimits !== undefined` guard returns `[]`, the `const reached = optionalString(lastRateLimits.rate_limit_reached_type)`, the `for (const key of ["primary", "secondary"] as const)` loop with the `isJsonObject(windowRaw)` and `minutes === undefined` skips, the `windowTypeName`/`finite(windowRaw.used_percent)` reads, the `windowStatus(typeName, reached, usedPercent)` call and the `rate_limit` JSON push with its utilization and resetsAt spreads; it carries today's killed-run comment (finding 23) about a `token_usage_record` with no `token_count`.
+- `function switchedToModel(model: string | undefined, requestedModel: string): string | undefined` — the comparison: the `model !== undefined && requestedModel !== undefined && model !== requestedModel ? model : undefined` expression.
+
+`buildRolloutLines` keeps its name, its `(records: TurnRecords, requestedModel: string): RolloutLines` signature and its doc comment, and becomes orchestration:
+
+```ts
+function buildRolloutLines(records: TurnRecords, requestedModel: string): RolloutLines {
+  // `rolloutLines` guarantees `lastUsage` is a Json object before calling (its presence check
+  // stays there, so this builder never reads `sawTurn`); narrow the shared interface here.
+  const lastUsage = records.lastUsage as Json;
+  const lines: string[] = [runUsageLine(lastUsage)];
+  if (records.planType !== undefined) {
+    lines.push(billingLine());
+  }
+  lines.push(...rateLimitLines(records.lastRateLimits));
+  const switchedTo = switchedToModel(records.model, requestedModel);
+  return { lines, ...(switchedTo !== undefined ? { switchedTo } : {}) };
+}
+```
+
+`finite`, `windowStatus`, `lineCarrierType`, `turnStartReading`, `usageFromRecord`, `rateLimitsFromCount`, `scanTurnRecords`, `rolloutLines` and `findRollout` are untouched, and no export changes. No behaviour changes: a reading still yields exactly one `run_usage` line first, then a `billing` line only when `planType` is present, then zero or more `rate_limit` lines in primary-then-secondary order, and `switchedTo` only when the model differs; the property order inside each JSON object is unchanged.
+
+**Files touched.** `src/agent/codex/codex-rollout.ts` only. No new module, no export change, no test file edited, no docs edited.
+
+**Acceptance criteria.**
+- `buildRolloutLines`'s body contains only the `records.lastUsage as Json` narrow, the `runUsageLine(lastUsage)` call, the `planType !== undefined` guard around `lines.push(billingLine())`, the `lines.push(...rateLimitLines(records.lastRateLimits))` call, the `switchedToModel(records.model, requestedModel)` call and the trailing `return { lines, ...(switchedTo !== undefined ? { switchedTo } : {}) }`: it contains no `Math.max`, no `JSON.stringify`, no `for`, no `isJsonObject`, no `windowStatus`, no `finite` and no `input_tokens`/`cached_input_tokens`/`resets_at` read.
+- `runUsageLine`, `billingLine`, `rateLimitLines` and `switchedToModel` each exist exactly once at module scope, are not exported, and are called only from `buildRolloutLines` in `src/agent/codex/codex-rollout.ts`.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/agent/codex/codex-rollout.ts'`) no longer reports `buildRolloutLines` at 16, and no new helper reports 16 or above; every other function's reported count is unchanged (`scanTurnRecords` stays at 14).
+- The exported surface is unchanged: no `export` line is added, removed or renamed, and the signatures of `rolloutLines` and `findRollout` are unchanged.
+- Behaviour is preserved, verified by the existing `test/codex-rollout.test.ts` cases passing unedited — "each turn's run_usage is its own last figure, not the thread total", "a requested model other than the one that ran reports the switch, requested model matches reports none", "the two usage windows map to five_hour and seven_day with the capture's resets and zero utilization", "a window at or past 90% reports allowed_warning, one the account hit outright reports rejected", "a fully-used window is rejected even without rate_limit_reached_type", "billing is subscription from the plus plan_type" and "a turn with no token_count yields run_usage with no rate_limit (a killed run)".
+- docs/invariants.md is not edited: it names no symbol of `src/agent/codex/codex-rollout.ts` (`grep -c 'codex-rollout' docs/invariants.md` prints 0).
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind four module-private helpers, guarded by the existing `test/codex-rollout.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
+
 ## Done
