@@ -5,7 +5,7 @@ import { DIRECTOR_ROLE } from "../../roles/roles.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import { parseBudgetInput } from "./tui-input.js";
 import { viewedRoleOrNull, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Ctrl+B budget editor on the shared prompt line. It owns its mode flag, its saved-draft
  * pair, the snapshot-fed cap/free flags `sync` drives, and the handleKey arms for its key: the
@@ -14,7 +14,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * the one prompt line via the session's held registry. */
 export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
   let budgetMode = false;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
   // The last snapshot's cap, synced by render so the Ctrl+B handler can pre-fill without
   // re-reading config itself (render already polls snapshot every second).
   let currentCapUsd = 0;
@@ -31,7 +31,7 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
     if (!budgetMode) return;
     budgetMode = false;
     session.held.budget = false;
-    restoreDraft();
+    draft.restore();
     lockedRole = null;
   };
 
@@ -40,7 +40,7 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
   // pre-fill the line from the cap (empty string when disabled — empty means "no cap"), and
   // announce the mode. Only the cap source and the announcement differ between the two scopes.
   const enterBudgetMode = (cap: number, message: string): void => {
-    restoreDraft = session.takeDraft();
+    draft.save();
     budgetMode = true;
     session.held.budget = true;
     session.input = cap > 0 ? String(cap) : "";

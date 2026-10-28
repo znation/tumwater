@@ -1,6 +1,6 @@
 import { releaseQuarantinedTest } from "../../review/known-flakes.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Failures view's Ctrl+X release editor on the shared prompt line, the terminal twin of
  * `tumwater quarantine --release <n>` and the dashboard Failures card's Release button. Like
@@ -17,7 +17,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * STAYS open so the operator can fix the name; an empty name flashes and stays. */
 export function createQuarantineReleaseEditor(session: TuiEditorSession): TuiEditorModule {
   let releaseMode = false;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave release-edit mode (Esc, Enter's success path, or Ctrl+T): restore the saved prompt
   // text.
@@ -25,7 +25,7 @@ export function createQuarantineReleaseEditor(session: TuiEditorSession): TuiEdi
     if (!releaseMode) return;
     releaseMode = false;
     session.held.release = false;
-    restoreDraft();
+    draft.restore();
   };
 
   // Open release-edit mode on the Failures view's prompt line (Ctrl+X). The Failures index
@@ -40,7 +40,7 @@ export function createQuarantineReleaseEditor(session: TuiEditorSession): TuiEdi
     // Mid-recall, hand the arrows' saved draft back before the release editor takes the line —
     // the same settle the retire and role editors do — so leaving restores the draft, not a
     // history entry, with no stale recall state riding along.
-    restoreDraft = session.takeDraft();
+    draft.save();
     releaseMode = true;
     session.held.release = true;
     session.input = "";

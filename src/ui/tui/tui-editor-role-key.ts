@@ -1,6 +1,6 @@
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import { viewedRole, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The role-pinned editor arm (Ctrl+X role model, Ctrl+G parallel-runner count, Ctrl+S min
  * run interval) on the shared prompt line — the terminal twins of the dashboard role drawer's
@@ -46,7 +46,7 @@ export function createRoleKeyEditor(
   spec: RoleKeySpec,
 ): TuiEditorModule {
   let mode = false;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
   // The role pinned when the editor opened, so Enter writes the same role's key even if
   // syncRoster shrinks or reorders the roster while the editor is open.
   let lockedRole: string | null = null;
@@ -56,7 +56,7 @@ export function createRoleKeyEditor(
     if (!mode) return;
     mode = false;
     session.held[spec.mode] = false;
-    restoreDraft();
+    draft.restore();
     lockedRole = null;
   };
 
@@ -76,7 +76,7 @@ export function createRoleKeyEditor(
     // source; a broken config degrades to no pre-fill and the write reports the error.
     lockedRole = role;
     const existing = spec.prefill(session, baseRoleOf(role));
-    restoreDraft = session.takeDraft();
+    draft.save();
     mode = true;
     session.held[spec.mode] = true;
     session.input = existing;

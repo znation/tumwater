@@ -1,6 +1,6 @@
 import { editBriefText } from "../../brief/brief-edit.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import { readEditorPath, type TuiEditorSession } from "./tui-editor-session.js";
+import { readEditorPath, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Brief view's Ctrl+E replace-the-brief-from-a-file editor on the shared prompt line, the
  * terminal twin of `tumwater brief --file <path>` and the dashboard's Brief card. It owns its
@@ -16,14 +16,14 @@ import { readEditorPath, type TuiEditorSession } from "./tui-editor-session.js";
  * re-entering. */
 export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
   let briefEdit = false;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave the brief editor (Esc or a successful Enter): restore the saved prompt text.
   const exitBriefMode = (): void => {
     if (!briefEdit) return;
     briefEdit = false;
     session.held.brief = false;
-    restoreDraft();
+    draft.restore();
   };
 
   // Ctrl+E opens the replace-the-brief editor on the Brief view's prompt line (mnemonic:
@@ -40,7 +40,7 @@ export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
     // Mid-recall, hand the arrows' saved draft back before the brief editor takes the line —
     // the same settle the other editors do — so leaving restores the draft, not a history
     // entry, with no stale recall state riding along.
-    restoreDraft = session.takeDraft();
+    draft.save();
     briefEdit = true;
     session.held.brief = true;
     session.input = "";

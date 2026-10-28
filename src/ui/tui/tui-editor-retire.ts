@@ -1,6 +1,6 @@
 import { artifactPhrase, retireRole } from "../../operator/operator-retire.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Health view's Ctrl+X retire editor on the shared prompt line, the terminal twin of
  * `tumwater retire --role <id>` and the dashboard Settings card's Retire button. It owns its
@@ -14,14 +14,14 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * so the operator can fix the id, Esc cancels and restores the draft. */
 export function createRetireEditor(session: TuiEditorSession): TuiEditorModule {
   let retireMode = false;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave retire-edit mode (Esc, Enter's success path, or Ctrl+T): restore the saved prompt text.
   const exitRetireMode = (): void => {
     if (!retireMode) return;
     retireMode = false;
     session.held.retire = false;
-    restoreDraft();
+    draft.restore();
   };
 
   // Ctrl+X toggles retire-edit mode on the Health view's prompt line (mnemonic: **x**
@@ -38,7 +38,7 @@ export function createRetireEditor(session: TuiEditorSession): TuiEditorModule {
     // Mid-recall, hand the arrows' saved draft back before the retire editor takes the line —
     // the same settle the role editors do — so leaving restores the draft, not a
     // history entry, with no stale recall state riding along.
-    restoreDraft = session.takeDraft();
+    draft.save();
     retireMode = true;
     session.held.retire = true;
     session.input = "";

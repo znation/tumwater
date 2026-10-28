@@ -1,7 +1,7 @@
 import { editQueuedFile, readQueuedPromptBody } from "../../inbox/inbox-edit.js";
 import { parseRolePromptInput } from "./tui-input.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Queued pane's in-place row editor (Ctrl+E) on the shared prompt line. It owns its target
  * (`queuedEditFor`), its saved-draft pair, its exit helper, and the readQueuedPromptBody /
@@ -9,7 +9,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * other editors via the session's held registry. */
 export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
   let queuedEditFor: { role: string; file: string } | null = null;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave the Queued pane's in-place editor (Esc, a saved edit, or Ctrl+T): restore the saved
   // prompt text, and reset the recall state with it — the same settle contract the other
@@ -18,7 +18,7 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
     if (!queuedEditFor) return;
     queuedEditFor = null;
     session.held.queued = null;
-    restoreDraft();
+    draft.restore();
   };
 
   // Ctrl+E opens the Queued pane's in-place editor on the selected row (mnemonic:
@@ -49,7 +49,7 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
           // Mid-recall, the line holds a history entry while the real draft sits in the
           // recall state: settle first, so the queued editor saves (and later restores)
           // the draft the operator was writing.
-          restoreDraft = session.takeDraft();
+          draft.save();
           queuedEditFor = { role: row.role, file: row.file };
           session.held.queued = queuedEditFor;
           session.input = body;

@@ -3,7 +3,7 @@ import { loadConfigSafe } from "../../config/config.js";
 import { DIRECTOR_ROLE } from "../../roles/roles.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import { viewedRole, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Ctrl+O per-role / Ctrl+S team-wide quiet-hours editor on the shared prompt line, the
  * terminal twin of the dashboard's `Quiet hours` rows and `tumwater role <id> --quiet-hours`
@@ -20,7 +20,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
 export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
   let quietMode = false;
   let quietTeam = false;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
   // The role scope pinned when the editor opened (per-role scope only), so Enter writes the
   // same role's window even if syncRoster shrinks or reorders the roster while the editor is
   // open. The team scope pins no role: it writes the top-level `quietHours` key.
@@ -34,7 +34,7 @@ export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
     quietTeam = false;
     session.held.quiet = false;
     session.held.quietTeam = false;
-    restoreDraft();
+    draft.restore();
     lockedRole = null;
   };
 
@@ -42,7 +42,7 @@ export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
   // restore on exit, raise the mode flags and the held registry for the chosen scope, pre-fill
   // the prompt text (cursor at its end) and flash the guidance line.
   const openQuietEditor = (team: boolean, existing: string, message: string): void => {
-    restoreDraft = session.takeDraft();
+    draft.save();
     quietMode = true;
     quietTeam = team;
     session.held.quiet = true;

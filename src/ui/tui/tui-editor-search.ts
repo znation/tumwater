@@ -1,5 +1,5 @@
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The shared `/` search editor on the prompt line: over the History pane's run rows or the
  * Activity feed's events. It owns its mode flag (`searchMode`), its target pane (`searchFor`),
@@ -11,7 +11,7 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
   // Backlog pane's entry search, or a role's live-transcript search. The target is captured when
   // `/` opens so a roster change mid-edit cannot retarget Enter.
   let searchFor: "history" | "activity" | "backlog" | "queued" | "transcript" = "history";
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave the shared search editor (Enter applies, Esc cancels, Ctrl+T cycles): restore the
   // saved prompt text, and reset the recall state with it — the same settle contract the budget
@@ -21,7 +21,7 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
     if (!searchMode) return;
     searchMode = false;
     session.held.search = false;
-    restoreDraft();
+    draft.restore();
   };
 
   // `/` opens a free-text search on the prompt line (the pager's search key; this project
@@ -39,7 +39,7 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
         (ctx.view >= 1 && ctx.view <= ctx.roleIds.length && !ctx.noteMode && !ctx.changeMode)
       )
     ) return false;
-    restoreDraft = session.takeDraft();
+    draft.save();
     if (ctx.view === 0) searchFor = "activity";
     else if (ctx.view === ctx.roleIds.length + 1) searchFor = "backlog";
     else if (ctx.view === ctx.roleIds.length + 4) searchFor = "history";

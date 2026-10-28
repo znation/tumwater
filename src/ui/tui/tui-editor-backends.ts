@@ -4,7 +4,7 @@ import { loadConfigSafe, parseJsonConfig } from "../../config/config.js";
 import { isJsonObject } from "../../files/json-object.js";
 import { CONFIG_BASENAME, configPath } from "../../paths.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Ctrl+X agent-backends editor on the Activity view's shared prompt line — the terminal
  * twin of the dashboard Settings `Agent backends (JSON)` field and `tumwater config set
@@ -22,14 +22,14 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * arm. */
 export function createBackendsEditor(session: TuiEditorSession): TuiEditorModule {
   let backendsMode = false;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave backends mode (Esc, Ctrl+X again, or Ctrl+T): restore the saved prompt text.
   const exitBackendsMode = (): void => {
     if (!backendsMode) return;
     backendsMode = false;
     session.held.backends = false;
-    restoreDraft();
+    draft.restore();
   };
 
   // Ctrl+X edits the team's agent backends on the Activity view (view 0) — the terminal
@@ -50,7 +50,7 @@ export function createBackendsEditor(session: TuiEditorSession): TuiEditorModule
     if (ctx.view !== 0) return false;
     if (session.editorEntryDenied("backends")) return true;
     const existing = rawBackends(session.root);
-    restoreDraft = session.takeDraft();
+    draft.save();
     backendsMode = true;
     session.held.backends = true;
     session.input = existing !== undefined ? JSON.stringify(existing) : "";

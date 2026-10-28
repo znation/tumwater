@@ -6,7 +6,7 @@ import {
 } from "../../backlog/backlog-question-answer.js";
 import { wakeQuestionAsker } from "../../operator/operator-intent.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The backlog pane's answer editor (Ctrl+A on a selected open question) on the shared prompt
  * line. It owns its target (`answerFor`), its saved-draft pair, its exit helper, and the
@@ -14,7 +14,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * editors via the session's held registry. */
 export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
   let answerFor: { position: number; title: string } | null = null;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave the backlog pane's answer editor (Esc, a recorded answer, or Ctrl+T): restore the
   // saved prompt text and reset the recall state, mirroring exitQueuedEdit.
@@ -22,7 +22,7 @@ export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
     if (!answerFor) return;
     answerFor = null;
     session.held.answer = null;
-    restoreDraft();
+    draft.restore();
   };
 
   // Ctrl+A opens the answer editor on the selected open question (mnemonic: **A**nswer);
@@ -42,7 +42,7 @@ export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
           session.flashMessage("only an open question can be answered here");
         } else {
           const position = sel - entries.filter((e) => e.label === "plan" || e.label === "bug").length + 1;
-          restoreDraft = session.takeDraft();
+          draft.save();
           answerFor = { position, title: entry.title };
           session.held.answer = answerFor;
           session.input = "";

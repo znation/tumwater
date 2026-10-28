@@ -2,7 +2,7 @@ import path from "node:path";
 import { imagePromptGuidance } from "../../inbox/inbox-submit.js";
 import { promptImagesCountProblem, readPromptImageFiles, type PromptImageInput } from "../../inbox/inbox-attachments.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Activity view's Ctrl+V image-attach editor on the shared prompt line, the terminal
  * twin of `tumwater prompt --attach <path>` and the dashboard composer's drop/paste. It owns
@@ -15,7 +15,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * their views. */
 export function createAttachEditor(session: TuiEditorSession): TuiEditorModule {
   let attachMode = false;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave attach mode (Esc, Ctrl+V again, or Ctrl+T): restore the saved prompt text. The
   // pending session.images are untouched — Esc cancels the path edit, not an attachment
@@ -24,7 +24,7 @@ export function createAttachEditor(session: TuiEditorSession): TuiEditorModule {
     if (!attachMode) return;
     attachMode = false;
     session.held.attach = false;
-    restoreDraft();
+    draft.restore();
   };
 
   // Ctrl+V toggles image-attach mode on the Activity view's prompt line (mnemonic: attach
@@ -45,7 +45,7 @@ export function createAttachEditor(session: TuiEditorSession): TuiEditorModule {
       // Mid-recall, hand the arrows' saved draft back before the attach editor takes the
       // line — the same settle the role editors do — so leaving restores the
       // draft, not a history entry, with no stale recall state riding along.
-      restoreDraft = session.takeDraft();
+      draft.save();
       attachMode = true;
       session.held.attach = true;
       session.input = "";

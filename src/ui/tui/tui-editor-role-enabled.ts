@@ -3,7 +3,7 @@ import { setConfigKey } from "../../config/config-write.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../../roles/roles.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Health view's Ctrl+V enable/disable editor on the shared prompt line, the terminal twin
  * of the dashboard Settings card's Enable and the role drawer's two-click Disable (and of the
@@ -21,7 +21,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
 export function createRoleEnabledEditor(session: TuiEditorSession): TuiEditorModule {
   let roleEnabledMode = false;
   let confirmBase: string | null = null;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave enable/disable mode (Esc, Enter's success path, or Ctrl+T): restore the saved prompt
   // text and drop the armed disable confirm (the line no longer names it).
@@ -30,7 +30,7 @@ export function createRoleEnabledEditor(session: TuiEditorSession): TuiEditorMod
     roleEnabledMode = false;
     confirmBase = null;
     session.held.roleEnabled = false;
-    restoreDraft();
+    draft.restore();
   };
 
   // Ctrl+V toggles enable/disable-edit mode on the Health view's prompt line (the same key
@@ -47,7 +47,7 @@ export function createRoleEnabledEditor(session: TuiEditorSession): TuiEditorMod
     }
     if (ctx.view !== ctx.roleIds.length + 7) return false; // off Health, keep the key's other meanings
     if (session.editorEntryDenied("roleEnabled")) return true;
-    restoreDraft = session.takeDraft();
+    draft.save();
     roleEnabledMode = true;
     session.held.roleEnabled = true;
     session.input = "";

@@ -1,5 +1,5 @@
 import { viewedRole, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
-import { readEditorPath, type TuiEditorSession } from "./tui-editor-session.js";
+import { readEditorPath, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The role-located file-read editor arm (Ctrl+E replace-notes, Ctrl+L replace-standing-
  * instructions) on the shared prompt line — the terminal twin of the `tumwater role <id>
@@ -53,7 +53,7 @@ export function createRoleFileEditor(
 ): TuiEditorModule {
   // The role pinned when the editor opened, or null when closed.
   let editFor: string | null = null;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave the editor (Esc, the key again, or a successful Enter): restore the saved prompt
   // text with no write.
@@ -61,7 +61,7 @@ export function createRoleFileEditor(
     if (editFor === null) return;
     editFor = null;
     session.held[spec.held] = null;
-    restoreDraft();
+    draft.restore();
   };
 
   // The Ctrl+<openCtrl> open/toggle arm: toggles the editor out while open; otherwise opens on
@@ -79,7 +79,7 @@ export function createRoleFileEditor(
       // same settle the role editors do — so leaving restores the draft, not a history entry,
       // with no stale recall state riding along.
       const role = viewedRole(ctx); // defined: the open-arm range guard above pins the view into roleIds
-      restoreDraft = session.takeDraft();
+      draft.save();
       editFor = role;
       session.held[spec.held] = role;
       session.input = "";

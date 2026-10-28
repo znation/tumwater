@@ -342,3 +342,23 @@ export function readEditorPath(session: TuiEditorSession): string | null {
   }
   return text;
 }
+
+/** One prompt-line editor's mutable saved-draft pair: `save` takes the prompt line's current
+ * draft (settling recall, via takeDraft) and `restore` puts it back — a no-op until a `save`
+ * happens, so an exit path that never took the line is safe. The shared entry and exit every
+ * editor that takes the prompt line implements; owning the pair here removes the repeated
+ * `let restoreDraft = () => {}` / `restoreDraft = session.takeDraft()` / `restoreDraft()`
+ * triple each editor module hand-rolled, so the save/restore contract is stated once instead of
+ * per editor. `save` may run again to re-park a newer draft, like the editors that take the
+ * line from more than one arm. */
+export function savedPromptDraft(
+  session: Pick<TuiEditorSession, "takeDraft">,
+): { save: () => void; restore: () => void } {
+  let restoreDraft: () => void = () => {};
+  return {
+    save: () => {
+      restoreDraft = session.takeDraft();
+    },
+    restore: () => restoreDraft(),
+  };
+}

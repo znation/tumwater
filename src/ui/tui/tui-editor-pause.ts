@@ -27,7 +27,7 @@ import {
   parseStopInInput,
 } from "./tui-input.js";
 import { viewedRole, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The pause/stop/wake editor on the shared prompt line: the whole-team Ctrl+F pause and Ctrl+Q
  * stop editors, the per-role Ctrl+P pause / Ctrl+A abort / Ctrl+W wake controls, and the
@@ -39,7 +39,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
   let pauseEditRole: string | null = null;
   let pauseEditWake = false;
   let pauseEditStop = false;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave pause-edit mode (Esc, Ctrl+F again, a written pause, or Ctrl+T): restore the draft.
   const exitPauseEditMode = (): void => {
@@ -52,11 +52,11 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     session.held.pauseEditRole = null;
     session.held.pauseEditWake = false;
     session.held.pauseEditStop = false;
-    restoreDraft();
+    draft.restore();
   };
 
   const openPauseEditor = (role: string | null, wake: boolean, stop: boolean, hint: string): void => {
-    restoreDraft = session.takeDraft();
+    draft.save();
     pauseEditMode = true;
     pauseEditRole = role;
     pauseEditWake = wake;

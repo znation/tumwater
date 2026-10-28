@@ -2,7 +2,7 @@ import { submitRolePromptAndWake } from "../../operator/operator-intent.js";
 import { pushPromptHistory } from "./tui-prompt-history.js";
 import { parseRolePromptInput } from "./tui-input.js";
 import { viewedRole, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The per-role prompt Ctrl+R editor on the shared prompt line. It owns its mode flag (the
  * viewed role's role id), its saved-draft pair, its exit helper, and the handleKey arms for its
@@ -10,7 +10,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * leaves. Mutually exclusive with the other editors via the session's held registry. */
 export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
   let rolePromptFor: string | null = null;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave role-prompt mode (Esc, Ctrl+R again, or Ctrl+T): restore the saved prompt text,
   // and reset the recall state with it — the saved draft was saved settled (see the Ctrl+R
@@ -20,7 +20,7 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
     if (!rolePromptFor) return;
     rolePromptFor = null;
     session.held.rolePromptFor = null;
-    restoreDraft();
+    draft.restore();
   };
 
   // Ctrl+R toggles role-prompt mode for the viewed role (mnemonic: p**R**ompt — Ctrl+P is
@@ -44,7 +44,7 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
           // recall state: settle first, so the role editor saves (and later restores) the
           // draft the operator was writing, and no stale index/draft crosses modes —
           // otherwise Esc here would surface role-mode recalls on the director line.
-          restoreDraft = session.takeDraft();
+          draft.save();
           rolePromptFor = role;
           session.held.rolePromptFor = role;
           session.input = "";

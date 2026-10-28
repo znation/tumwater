@@ -1,7 +1,7 @@
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
 import { isExponentSpelling } from "../../text/text.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The team-scope config-key editor arm (Ctrl+N run cap, Ctrl+W worktree slots, Ctrl+E
  * notify hook, Ctrl+L fallback, Ctrl+Y claude window reserve,
@@ -59,14 +59,14 @@ export function createTeamConfigKeyEditor(
   spec: TeamConfigKeySpec,
 ): TuiEditorModule {
   let mode = false;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
 
   // Leave the editor (Esc, the key again, or Ctrl+T): restore the saved prompt text.
   const exit = (): void => {
     if (!mode) return;
     mode = false;
     session.held[spec.mode] = false;
-    restoreDraft();
+    draft.restore();
   };
 
   // The key opens this team-scope editor only on the Activity view (view 0, the team
@@ -87,7 +87,7 @@ export function createTeamConfigKeyEditor(
     if (spec.requireEmptyPrompt && session.input !== "") return false;
     if (session.editorEntryDenied(spec.mode)) return true;
     const existing = spec.prefill(session);
-    restoreDraft = session.takeDraft();
+    draft.save();
     mode = true;
     session.held[spec.mode] = true;
     session.input = existing;

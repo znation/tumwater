@@ -6,7 +6,7 @@ import { promptLengthProblem } from "../../inbox/inbox-submit.js";
 import { collapseWhitespace } from "../../text/text.js";
 import { selectedEditableEntry } from "./tui-pane-backlog.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import { readEditorPath, type TuiEditorSession } from "./tui-editor-session.js";
+import { readEditorPath, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The backlog pane's title editor (Ctrl+N new entry, Ctrl+E on a selected plan or bug) on the
  * shared prompt line. It owns its target (`entryEditFor`), its plan↔bug flip, its saved-draft
@@ -15,7 +15,7 @@ import { readEditorPath, type TuiEditorSession } from "./tui-editor-session.js";
  * the session's held registry. */
 export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
   let entryEditFor: { kind: "plan" | "bug"; position: number | null; title: string } | null = null;
-  let restoreDraft: () => void = () => {};
+  const draft = savedPromptDraft(session);
   // The triple state of the entry editor's prompt line: false (the title field), true (the
   // file-path field whose contents replace the whole entry), and the draft the toggle parks
   // when it hands the line to a different field.
@@ -31,7 +31,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
     entryEditFor = null;
     entryBodyFile = false;
     session.held.entry = null;
-    restoreDraft();
+    draft.restore();
   };
 
   // On the Backlog view Ctrl+N files a new entry: it opens the title editor with a null
@@ -48,7 +48,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
   // already holding the line) is the notes/change/trail cycle, a pane arm the outer
   // dispatch handles — this factory returns false so it runs.
   const openNewEntry = (): boolean => {
-    restoreDraft = session.takeDraft();
+    draft.save();
     entryEditFor = { kind: "plan", position: null, title: "" };
     session.held.entry = entryEditFor;
     session.input = "";
@@ -86,7 +86,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
       if (selected !== null) {
         const kind = selected.kind;
         const position = selected.position;
-        restoreDraft = session.takeDraft();
+        draft.save();
         entryEditFor = { kind, position, title: selected.picked.title };
         session.held.entry = entryEditFor;
         session.input = stripEntryStamp(selected.picked.title);
