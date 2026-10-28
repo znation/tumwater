@@ -1,6 +1,6 @@
 import type { RunnerState } from "../runner/runner-state.js";
 import { backendSessionResumable } from "../agent/agent-backend.js";
-import { latestSession } from "../agent/session-ledger.js";
+import { latestSession, type SessionRecord } from "../agent/session-ledger.js";
 import { RETRIABLE_MERGE_RESULTS } from "../merge/merge-core.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { sessionDir } from "../paths.js";
@@ -118,8 +118,10 @@ interface RunStartDecision {
  * here so a resume that fails falls back to a normal fresh run; another shutdown mid-resume
  * sets it again) and reclaiming the interrupted run's re-queued prompt. Owns every read and
  * write of the resume flags, so a new cause or handoff rule is added here. */
-function resolveRunStartDecision(opts: RunStartOptions): RunStartDecision {
-  const s = opts.state;
+/** A run-start's first phase: read the last merge's failure and clear it, so a merge that
+ * failed non-terminally (kept its pin) still feeds the error streak when this run's recovery
+ * re-queues that pin (finishRecoveryRun). */
+function readPriorMergeFailure(s: RunnerState): string | undefined {
   // The last merge's failure, read before the clear below: a merge that failed
   // non-terminally kept its pin (the merger's own vocabulary — review_error, merge_conflict,
   // merge_blocked — with the detail it wrote into `lastError`), and when this run's recovery
@@ -129,7 +131,14 @@ function resolveRunStartDecision(opts: RunStartOptions): RunStartDecision {
       ? (s.lastError ?? `merge failed: ${s.lastResult}`)
       : undefined;
   s.lastError = undefined;
+  return priorMergeFailure;
+}
 
+/** A run-start's second phase: resolve, from the session ledger, which session a continue
+ * would reach and whether the backend can resume it, capturing the pending resume cause
+ * before the flags are consumed. */
+function resolveResumeTarget(opts: RunStartOptions) {
+  const s = opts.state;
   // A run interrupted by a harness shutdown left its pi session and its worktree's
   // uncommitted edits in place: resume that session instead of starting fresh. The flag
   // is consumed here so a resume that fails falls back to a normal fresh run; another
@@ -156,7 +165,6 @@ function resolveRunStartDecision(opts: RunStartOptions): RunStartDecision {
   const resumable = resumePending && !resumeMissing
     ? backendSessionResumable(dir, { kind: "author", agent }, opts.claudeConfigDir)
     : false;
-  const resumableSession = resumable;
   // A newest line our backend cannot resume is not ours to continue: another kind's or
   // another agent's session, OR our own author line whose session the backend no longer holds
   // (a `--resume` that answered "No conversation found" mid-run, leaving `resumeMissing`, or a
@@ -170,31 +178,33 @@ function resolveRunStartDecision(opts: RunStartOptions): RunStartDecision {
   // forward.
   // Captured before the flag is consumed below; a stale cause must not leak into a later resume.
   const pendingResumeCause = s.resumeCause;
-  // A budget-capped API claude run is a handback onto the fallback seam: the kept worktree must
-  // survive, but the next run is a FRESH session — the fallback seam may be a different backend,
-  // and claude keeps no flags across `--resume` (plans/agent-backends.md §7, part 7a/7).
-  const budgetCapped = pendingResumeCause === "budget-capped";
+  return { latest, resumable, pendingResumeCause };
+}
+
+/** A run-start's third phase: decide whether this run resumes its interrupted session or hands
+ * off to a fresh session over the kept worktree. */
+function resumeMode(
+  latest: SessionRecord | null,
+  resumable: boolean,
+  budgetCapped: boolean,
+  resumeBlocked: boolean,
+): { resuming: boolean; handingOff: boolean } {
   const handoff = (latest !== null && !resumable) || budgetCapped;
-  s.resumePending = false;
-  s.resumeCause = undefined;
-  s.resumeMissing = undefined;
-  // An interruption during the review gate leaves the author's work fully committed — there
-  // is nothing left to finish in its session. Recover (and re-review) the leftover commits
-  // via a fresh run instead: continuing the author session would burn a run on finished
-  // work, and any uncommitted edits are the reviewer's stray output, discarded by the fresh
-  // path's reset below.
-  const resumeBlocked = s.phase === "review";
   // A budget-capped handback never resumes the session whose seam the cap moved off of, even
   // when its transcript is still resumable: it hands off instead.
-  const resuming = resumableSession && !resumeBlocked && !budgetCapped;
+  const resuming = resumable && !resumeBlocked && !budgetCapped;
   const handingOff = handoff && !resumeBlocked;
-  // Reclaim the prompt the interrupted run re-queued for its resume (src/inbox/pending-prompt.ts):
-  // the resumed session still owns that request in its context, so this run's bookkeeping
-  // operates on the queue's copy. A handoff runs a FRESH session, so it does not reclaim — the
-  // fresh run dequeues the re-queued request like any other. Consumed even when this run does
-  // not resume, so a stale record never survives into a later resume.
-  opts.pending.reclaimForResume(s, resuming);
+  return { resuming, handingOff };
+}
 
+/** A run-start's last phase: derive which cause reaches the bridge, naming a quiet-kill, the
+ * cut-off streak, the resume's own cause, or a plain restart/handoff. */
+function resumeCauseFor(
+  handingOff: boolean,
+  budgetCapped: boolean,
+  pendingResumeCause: ResumeCause | undefined,
+  cutOffStreak: number,
+): ResumeCause {
   // Why the resume: a named quiet-kill means the last run died on a stalled tool call (the
   // bridge then warns against re-running it unchanged) or on the run deadline while still
   // making progress (the bridge asks for the smallest finish against the same limit); a
@@ -205,7 +215,41 @@ function resolveRunStartDecision(opts: RunStartOptions): RunStartDecision {
     ? budgetCapped
       ? "budget-capped"
       : "handoff"
-    : pendingResumeCause ?? ((s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart");
+    : pendingResumeCause ?? (cutOffStreak > 0 ? "cut-off" : "restart");
+  return resumeCause;
+}
+
+/** Resolve how a run starts, consuming the resume flags as a side effect (a flag is consumed
+ * here so a resume that fails falls back to a normal fresh run; another shutdown mid-resume
+ * sets it again) and reclaiming the interrupted run's re-queued prompt. Owns every read and
+ * write of the resume flags, so a new cause or handoff rule is added here. The body composes
+ * the four named phases — readPriorMergeFailure, resolveResumeTarget, resumeMode and
+ * resumeCauseFor — in order. */
+function resolveRunStartDecision(opts: RunStartOptions): RunStartDecision {
+  const s = opts.state;
+  const priorMergeFailure = readPriorMergeFailure(s);
+  const { latest, resumable, pendingResumeCause } = resolveResumeTarget(opts);
+  // A budget-capped API claude run is a handback onto the fallback seam: the kept worktree must
+  // survive, but the next run is a FRESH session — the fallback seam may be a different backend,
+  // and claude keeps no flags across `--resume` (plans/agent-backends.md §7, part 7a/7).
+  const budgetCapped = pendingResumeCause === "budget-capped";
+  // An interruption during the review gate leaves the author's work fully committed — there
+  // is nothing left to finish in its session. Recover (and re-review) the leftover commits
+  // via a fresh run instead: continuing the author session would burn a run on finished
+  // work, and any uncommitted edits are the reviewer's stray output, discarded by the fresh
+  // path's reset below.
+  const resumeBlocked = s.phase === "review";
+  const { resuming, handingOff } = resumeMode(latest, resumable, budgetCapped, resumeBlocked);
+  s.resumePending = false;
+  s.resumeCause = undefined;
+  s.resumeMissing = undefined;
+  // Reclaim the prompt the interrupted run re-queued for its resume (src/inbox/pending-prompt.ts):
+  // the resumed session still owns that request in its context, so this run's bookkeeping
+  // operates on the queue's copy. A handoff runs a FRESH session, so it does not reclaim — the
+  // fresh run dequeues the re-queued request like any other. Consumed even when this run does
+  // not resume, so a stale record never survives into a later resume.
+  opts.pending.reclaimForResume(s, resuming);
+  const resumeCause = resumeCauseFor(handingOff, budgetCapped, pendingResumeCause, s.cutOffStreak ?? 0);
   return { priorMergeFailure, resuming, handoff: handingOff, resumeCause };
 }
 
