@@ -297,6 +297,75 @@ export function renderInputView(text: string, cursor: number, width: number): st
   return displayWidth(withEllipsis) <= width - 2 ? withEllipsis : slice;
 }
 
+/** The code-unit start of each character in `chars`: `starts[k]` is how many UTF-16
+ * code units precede character `k` (a surrogate pair is two). The cursor is always on a
+ * character boundary (applyKey snaps mid-pair cursors; BMP characters are one unit each),
+ * so it names a character. */
+function characterStarts(chars: string[]): number[] {
+  const starts: number[] = [];
+  let units = 0;
+  for (const ch of chars) {
+    starts.push(units);
+    units += ch.length;
+  }
+  return starts;
+}
+
+/** The display columns before each character: `prefix[k]` = columns before character `k`,
+ * where each character costs its displayWidth (a CJK character two, an astral pair never
+ * measured as halves). */
+function displayPrefix(chars: string[]): number[] {
+  const prefix: number[] = [0];
+  for (let k = 0; k < chars.length; k++) prefix.push(prefix[k]! + displayWidth(chars[k]!));
+  return prefix;
+}
+
+/** The character the cursor (already snapped to a boundary, at code-unit `c`) sits on, or
+ * `chars.length` past the last as a virtual end marker. */
+function cursorCharIndex(starts: number[], chars: string[], c: number): number {
+  for (let k = 0; k < chars.length; k++) {
+    if (starts[k]! <= c && c < starts[k]! + chars[k]!.length) return k;
+  }
+  return chars.length;
+}
+
+/** The left extent of the window: starts at the cursor's character and extends left while
+ * the column budget holds, so the cursor's character ends up at the right edge. */
+function leftWindowStart(prefix: number[], cursorEnd: number, room: number): number {
+  let startCp = cursorEnd;
+  while (startCp > 0 && prefix[cursorEnd]! - prefix[startCp - 1]! <= room) startCp--;
+  return startCp;
+}
+
+/** The right fill of the window: when the window is anchored at the text's start (cursor
+ * near the beginning), fill rightward from the cursor's character up to the budget. */
+function rightWindowEnd(
+  prefix: number[],
+  startCp: number,
+  cursorEnd: number,
+  n: number,
+  room: number,
+): number {
+  let endCp = cursorEnd;
+  if (startCp === 0 && endCp < n) {
+    while (endCp < n && prefix[endCp + 1]! - prefix[0]! <= room) endCp++;
+  }
+  return endCp;
+}
+
+/** The whole-character overflow fallback: the smallest window around the cursor when the
+ * character it sits on alone exceeds `room` — that whole character (two columns when
+ * wide), or the whole character before it at end of text. */
+function wholeCharSpan(
+  starts: number[],
+  chars: string[],
+  ci: number,
+  n: number,
+): { start: number; end: number } {
+  const k = ci < n ? ci : n - 1;
+  return { start: starts[k]!, end: starts[k]! + chars[k]!.length };
+}
+
 /** The code-unit window `[start, end)` renderInputView shows for a prompt line wider than
  * its `room` display columns. The budget is spent in terminal display columns — each
  * character costs its displayWidth, so a CJK character costs two and astral pairs are never
@@ -316,47 +385,17 @@ export function inputViewWindow(
   room: number,
 ): { start: number; end: number } {
   const c = snapCursor(text, cursor);
-  // Per-character decomposition: where each code point starts (in units) and how many
-  // terminal columns it renders as. The cursor is always on a character boundary (applyKey
-  // snaps mid-pair cursors; BMP characters are one unit each), so it names a character.
   const chars = Array.from(text);
   const n = chars.length;
-  const starts: number[] = [];
-  let units = 0;
-  for (const ch of chars) {
-    starts.push(units);
-    units += ch.length;
-  }
-  const prefix: number[] = [0]; // prefix[k] = display columns before character k
-  for (let k = 0; k < n; k++) prefix.push(prefix[k]! + displayWidth(chars[k]!));
-  // The character the cursor sits on; past the last character it is a virtual end marker.
-  let ci = n;
-  for (let k = 0; k < n; k++) {
-    if (starts[k]! <= c && c < starts[k]! + chars[k]!.length) {
-      ci = k;
-      break;
-    }
-  }
-  // Window ending at the cursor's character, extended left while the column budget holds
-  // (cursor at the right edge); anchored at the text's start instead when the cursor is
-  // near the beginning, then filled rightward up to the budget.
+  const starts = characterStarts(chars);
+  const prefix = displayPrefix(chars);
+  const ci = cursorCharIndex(starts, chars, c);
   const cursorEnd = Math.min(n, ci + 1);
-  let startCp = cursorEnd;
-  while (startCp > 0 && prefix[cursorEnd]! - prefix[startCp - 1]! <= room) startCp--;
-  let endCp = cursorEnd;
-  if (startCp === 0 && endCp < n) {
-    while (endCp < n && prefix[endCp + 1]! - prefix[0]! <= room) endCp++;
-  }
-  let start = startCp < n ? starts[startCp]! : units;
-  let end = endCp < n ? starts[endCp]! : units;
-  if (end <= start && n > 0) {
-    // The character under the cursor alone exceeds the budget: show that whole character
-    // (two columns when wide), or the whole character before it at end of text.
-    const k = ci < n ? ci : n - 1;
-    start = starts[k]!;
-    end = starts[k]! + chars[k]!.length;
-  }
-  return { start, end };
+  const startCp = leftWindowStart(prefix, cursorEnd, room);
+  const endCp = rightWindowEnd(prefix, startCp, cursorEnd, n, room);
+  const start = startCp < n ? starts[startCp]! : text.length;
+  const end = endCp < n ? starts[endCp]! : text.length;
+  return end <= start && n > 0 ? wholeCharSpan(starts, chars, ci, n) : { start, end };
 }
 
 /** The runTui start guard's error message: names the missing stream — a piped stdin and a
