@@ -186,6 +186,118 @@ export function standingHolds(
   return out;
 }
 
+/** Decide whether the current hold still stands or the deadline re-opens it: return `prev`
+ * itself while open or still held (and not a re-evaluated reserve), else the re-opened
+ * skeleton. A reserve hold is re-evaluated every poll: the window may since have been
+ * rejected (the director keeps running) or the reserve removed from the config, and either
+ * must show now. The deadline passed: re-open, keeping provider/kind/escalation as the next
+ * storm's relapse memory, then fall through so a still-rejected subscription window (or a
+ * storm whose observations survived) holds again on this very poll rather than leaving one
+ * poll open. kind and provider stay because the next storm's relapse test compares against
+ * the hold that just ended. */
+function reopenTeamHold(prev: TeamHold, now: number): TeamHold {
+  if (prev.until === null) return prev;
+  if (now < prev.until && prev.reserve !== true) return prev;
+  return {
+    provider: prev.provider,
+    until: null,
+    kind: prev.kind,
+    roles: [],
+    escalation: prev.escalation,
+    reopenedAt: prev.reserve === true ? prev.reopenedAt : now,
+  };
+}
+
+/** The account-level subscription window hold, or undefined when none is rejected. A rejected
+ * subscription usage window is the account-level throttle: it holds every seam on its
+ * provider until `resetsAt`, whatever the role count — the one observation kind the
+ * per-role storm rule below does not gate. Overage is real money and never holds (the run
+ * continues into paid overflow); a window with no future `resetsAt` holds nothing. */
+function subscriptionWindowHold(
+  observations: readonly HoldObservation[],
+  now: number,
+  reopenedAt: number | null,
+): TeamHold | undefined {
+  const window = observations.find(
+    (o) => o.kind === "subscription-window" && (o.resetsAt ?? 0) > now,
+  );
+  if (window === undefined) return undefined;
+  return {
+    provider: window.provider,
+    until: window.resetsAt!,
+    kind: "subscription-window",
+    roles: [],
+    escalation: 0,
+    reopenedAt,
+    ...(window.reserve === true ? { reserve: true as const } : {}),
+  };
+}
+
+/** The observations that can still count toward the next storm: failures after the last
+ * re-open (the storm that hold already answered, and any an in-flight run hit while it
+ * held — that run's own retry is already waiting it out) and inside the storm window. */
+function recentStormObservations(
+  prev: TeamHold,
+  observations: readonly HoldObservation[],
+  now: number,
+): HoldObservation[] {
+  return observations.filter(
+    (o) => (prev.reopenedAt === null || o.at > prev.reopenedAt) && now - o.at <= HOLD_STORM_WINDOW_MS,
+  );
+}
+
+/** The first provider+kind group (in first-seen order, so the pick is deterministic) with
+ * HOLD_STORM_ROLES distinct roles behind it, or undefined when none qualifies — the answer
+ * to "which storm wins one poll?", since one poll can hold about only one kind. Undefined
+ * providers share one key: an unconfigured team is one backend by construction. */
+function firstStormGroup(
+  recent: readonly HoldObservation[],
+): { provider: string | undefined; kind: HoldKind; storm: HoldObservation[] } | undefined {
+  const byProviderKind = new Map<string, { provider: string | undefined; kind: HoldKind; group: HoldObservation[] }>();
+  for (const o of recent) {
+    const key = `${o.provider ?? ""}\n${o.kind}`;
+    getOrCreate(byProviderKind, key, () => ({ provider: o.provider, kind: o.kind, group: [] })).group.push(o);
+  }
+  for (const entry of byProviderKind.values()) {
+    const roles = new Set(entry.group.map((o) => o.role));
+    if (roles.size >= HOLD_STORM_ROLES) {
+      return { provider: entry.provider, kind: entry.kind, storm: entry.group };
+    }
+  }
+  return undefined;
+}
+
+/** The hold severity this storm earns: +1 on the previous escalation when it is a relapse of
+ * the just-ended hold, else 0. A relapse is per provider AND kind: the same storm re-tripping
+ * inside the window escalates, while a different kind — or the same kind at a DIFFERENT
+ * provider — after a re-open is a new incident at the base. */
+function holdEscalation(
+  prev: TeamHold,
+  provider: string | undefined,
+  kind: HoldKind,
+  now: number,
+): number {
+  const relapse =
+    prev.kind !== null &&
+    prev.kind === kind &&
+    prev.provider === provider &&
+    prev.reopenedAt !== null &&
+    now - prev.reopenedAt <= HOLD_RELAPSE_MS;
+  return relapse ? prev.escalation + 1 : 0;
+}
+
+/** How long this storm's hold lasts: the longest of the escalated base hold and, for a
+ * rate-limit storm, the furthest Retry-After deadline among its observations (each measured
+ * from its own 429, since that is when the provider said it), capped at HOLD_CAP_MS. */
+function holdDurationMs(
+  escalation: number,
+  storm: readonly HoldObservation[],
+  now: number,
+): number {
+  const retryAfterMs = Math.max(0, ...storm.map((o) => o.at + (o.retryAfterSeconds ?? 0) * 1000 - now));
+  return Math.min(HOLD_CAP_MS, Math.max(HOLD_BASE_MS * 2 ** escalation, retryAfterMs));
+}
+
 /** Step the hold by one orchestrator poll: from `prev` and every role's latest failure
  * observations, decide what holds at `now`. A held team stays held until `until` and then
  * re-opens by itself — nothing can get stuck, the same guarantee the budget gate's stateless
@@ -201,80 +313,22 @@ export function teamHold(
   observations: readonly HoldObservation[],
   now: number,
 ): TeamHold {
-  if (prev.until !== null) {
-    // A reserve hold is re-evaluated every poll: the window may since have been rejected (the
-    // director keeps running) or the reserve removed from the config, and either must show now.
-    if (now < prev.until && prev.reserve !== true) return prev;
-    // The deadline passed: re-open, keeping provider/kind/escalation as the next storm's
-    // relapse memory, then fall through so a still-rejected subscription window (or a storm
-    // whose observations survived) holds again on this very poll rather than leaving one poll
-    // open. kind and provider stay because the next storm's relapse test compares against the
-    // hold that just ended.
-    prev = {
-      provider: prev.provider,
-      until: null,
-      kind: prev.kind,
-      roles: [],
-      escalation: prev.escalation,
-      reopenedAt: prev.reserve === true ? prev.reopenedAt : now,
-    };
-  }
-  // A rejected subscription usage window is the account-level throttle: it holds every seam on
-  // its provider until `resetsAt`, whatever the role count — the one observation kind the
-  // per-role storm rule below does not gate. Overage is real money and never holds (the run
-  // continues into paid overflow); a window with no future `resetsAt` holds nothing.
-  const window = observations.find(
-    (o) => o.kind === "subscription-window" && (o.resetsAt ?? 0) > now,
-  );
-  if (window !== undefined) {
-    return {
-      provider: window.provider,
-      until: window.resetsAt!,
-      kind: "subscription-window",
-      roles: [],
-      escalation: 0,
-      reopenedAt: prev.reopenedAt,
-      ...(window.reserve === true ? { reserve: true as const } : {}),
-    };
-  }
-  const recent = observations.filter(
-    (o) => (prev.reopenedAt === null || o.at > prev.reopenedAt) && now - o.at <= HOLD_STORM_WINDOW_MS,
-  );
-  // Group the recent failures by provider+kind (in first-seen order, so the pick is
-  // deterministic) and hold about the first pair that has enough distinct roles behind it.
-  // undefined providers share one key: an unconfigured team is one backend by construction.
-  const byProviderKind = new Map<string, { provider: string | undefined; kind: HoldKind; group: HoldObservation[] }>();
-  for (const o of recent) {
-    const key = `${o.provider ?? ""}\n${o.kind}`;
-    getOrCreate(byProviderKind, key, () => ({ provider: o.provider, kind: o.kind, group: [] })).group.push(o);
-  }
-  let storm: HoldObservation[] = [];
-  let kind: HoldKind | null = null;
-  let provider: string | undefined;
-  for (const entry of byProviderKind.values()) {
-    const roles = new Set(entry.group.map((o) => o.role));
-    if (roles.size >= HOLD_STORM_ROLES) {
-      storm = entry.group;
-      kind = entry.kind;
-      provider = entry.provider;
-      break;
-    }
-  }
-  if (kind === null) return prev;
-  const roles = sortedRoles(new Set(storm.map((o) => o.role)));
-  // A relapse is per provider AND kind: the same storm re-tripping inside the window
-  // escalates, while a different kind — or the same kind at a DIFFERENT provider — after a
-  // re-open is a new incident at the base.
-  const relapse =
-    prev.kind !== null &&
-    prev.kind === kind &&
-    prev.provider === provider &&
-    prev.reopenedAt !== null &&
-    now - prev.reopenedAt <= HOLD_RELAPSE_MS;
-  const escalation = relapse ? prev.escalation + 1 : 0;
-  const retryAfterMs = Math.max(0, ...storm.map((o) => o.at + (o.retryAfterSeconds ?? 0) * 1000 - now));
-  const holdMs = Math.min(HOLD_CAP_MS, Math.max(HOLD_BASE_MS * 2 ** escalation, retryAfterMs));
-  return { provider, until: now + holdMs, kind, roles, escalation, reopenedAt: prev.reopenedAt };
+  const reopened = reopenTeamHold(prev, now);
+  if (reopened.until !== null) return reopened;
+  const window = subscriptionWindowHold(observations, now, reopened.reopenedAt);
+  if (window !== undefined) return window;
+  const group = firstStormGroup(recentStormObservations(reopened, observations, now));
+  if (group === undefined) return reopened;
+  const escalation = holdEscalation(reopened, group.provider, group.kind, now);
+  const roles = sortedRoles(new Set(group.storm.map((o) => o.role)));
+  return {
+    provider: group.provider,
+    until: now + holdDurationMs(escalation, group.storm, now),
+    kind: group.kind,
+    roles,
+    escalation,
+    reopenedAt: reopened.reopenedAt,
+  };
 }
 
 /** The providers whose standing hold is the account's rejected subscription window (kind
