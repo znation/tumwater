@@ -1,13 +1,12 @@
 /** The per-role and cross-field section rules of tumwater.json validation: the `customRoles`
  * collect-and-check block, the `roles.<id>` entry block, `review.afterMerge`'s name check,
- * the per-role daily cost caps and quiet hours, `claudeWindowReserve` and its
- * mutually-exclusive spelling pair, and the `idleBackoff`
+ * the per-role daily cost caps and quiet hours, and the `idleBackoff`
  * cross-field pair. Extracted from the single validateConfig gate (config-validation.ts) so a
  * per-role or cross-field edit lands as a per-theme diff instead of a whole-gate one; this
  * module runs once, at the gate's end, after every other section has appended its problems,
  * so the overall problem order is unchanged. These rules sit on top of the generic machinery
  * in config-field-checks.ts; the helpers passed in are the closures the gate binds once (the
- * problems-bound checkers and the shared model-triple/window-reserve sequences), and the
+ * problems-bound checkers and the shared model-triple sequence), and the
  * cross-cutting `customNames` set — collected in the customRoles block, consumed by the
  * roles.<id>, afterMerge, cap and quiet-hour blocks — is owned here, so validateConfig
  * passes no set across the boundary. */
@@ -70,7 +69,7 @@ function checkPerRoleMap(
 }
 
 /** The closures the gate binds once and hands to the per-role and cross-field block: the
- * problems-bound field checkers and the shared model-triple/window-reserve sequences. */
+ * problems-bound field checkers and the shared model-triple sequence. */
 interface RolesCrossFieldHelpers {
   checkString: (
     obj: Record<string, unknown>,
@@ -87,12 +86,11 @@ interface RolesCrossFieldHelpers {
   ) => void;
   checkPromptLength: (label: string, value: unknown, max: number) => void;
   checkModelTripleEntry: (o: Record<string, unknown>, at: string, atBase: string) => void;
-  checkWindowReserve: (label: string, value: unknown) => void;
 }
 
 /** Validate the per-role and cross-field sections that close the gate: `customRoles`, the
  * `roles.<id>` entries, `review.afterMerge`'s role names, the per-role caps and quiet hours,
- * `claudeWindowReserve` and the `idleBackoff` cross-field pair,
+ * and the `idleBackoff` cross-field pair,
  * each appended to `problems` in the order the gate produced. The single call site in
  * validateConfig is the point where these problems were appended, so the order across the
  * whole pass is unchanged. */
@@ -106,7 +104,6 @@ export function validateRolesAndCrossField(
   validateReviewAfterMerge(r, problems, customNames);
   validatePerRoleCostCaps(r, problems, customNames);
   validatePerRoleQuietHours(r, problems, customNames);
-  validateClaudeWindowReserve(r, problems, helpers);
   validateIdleBackoff(r, problems);
 }
 
@@ -285,32 +282,6 @@ function validatePerRoleQuietHours(
     const parsed = parseQuietHours(value, `quietHoursPerRole.${id}`);
     if (!parsed.ok) problems.push(parsed.error);
   });
-}
-
-/** Validate `claudeWindowReserve` (the subscription-window reserve: a map from window type to
- * a fraction, 0 < f <= 1) and its mutually-exclusive spelling pair with
- * `backends.claude.windowReserve`. */
-function validateClaudeWindowReserve(
-  r: Record<string, unknown>,
-  problems: string[],
-  helpers: RolesCrossFieldHelpers,
-): void {
-  const { checkWindowReserve } = helpers;
-  // The subscription-window reserve: a map from window type to a fraction, 0 < f <= 1.
-  if (r.claudeWindowReserve !== undefined)
-    checkWindowReserve("claudeWindowReserve", r.claudeWindowReserve);
-  // The reserve's two spellings are mutually exclusive (plans/codex-backend.md part 2b/9): the
-  // nested key is the current one; `claudeWindowReserve` is kept as claude's older spelling. A
-  // file holding both is ambiguous about which drives the window, so it is rejected naming both.
-  if (
-    r.claudeWindowReserve !== undefined &&
-    isJsonObject(r.backends) &&
-    isJsonObject(r.backends.claude) &&
-    r.backends.claude.windowReserve !== undefined
-  )
-    problems.push(
-      "claudeWindowReserve and backends.claude.windowReserve set the same value — keep one (backends.claude.windowReserve is the current spelling; claudeWindowReserve is its old name)",
-    );
 }
 
 /** Validate the `idleBackoff` cross-field pair (judged on the merged config, where both sides

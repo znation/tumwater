@@ -78,9 +78,6 @@ interface TuiHeld {
   roleModel: boolean;
   /** The Transcript view's Ctrl+G instance-count editor holds the prompt line. */
   instances: boolean;
-  /** The Activity view's Ctrl+Y claude subscription-window reserve editor holds the prompt
-   * line, editing the team's top-level `claudeWindowReserve`. */
-  claudeReserve: boolean;
   /** The Activity view's Ctrl+K check-cap (`maxConcurrentChecks`) editor holds the prompt
    * line. */
   checks: boolean;
@@ -111,7 +108,6 @@ type EditorEnterKey =
   | "roleModel"
   | "model"
   | "instances"
-  | "claudeReserve"
   | "checks"
   | "check";
 
@@ -210,7 +206,6 @@ const HOLDER_SUBJECTS: ReadonlyArray<readonly [Exclude<NonNullable<Parameters<Tu
   ["fallback", "fallback edit"],
   ["roleModel", "role model edit"],
   ["instances", "role instances"],
-  ["claudeReserve", "claude reserve"],
   ["checks", "check cap edit"],
   ["check", "declared-check edit"],
   ["budget", "budget edit"],
@@ -253,7 +248,6 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       roleModel: false,
       model: false,
       instances: false,
-      claudeReserve: false,
       checks: false,
       check: false,
     },

@@ -114,29 +114,11 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     if (typeof value === "string" && value.length > max)
       problems.push(tooLongMessage(label, value.length, max, PREFILL_REASON));
   };
-  // The window-reserve map validation shared by a backend's nested `windowReserve` (via
-  // checkBackendConfig) and the top-level `claudeWindowReserve` legacy spelling, so their
-  // object/empty-type/fraction messages cannot drift. `label` is the message path — the
-  // `.windowReserve`-suffixed prefix for a backend, `claudeWindowReserve` at top level.
-  const checkWindowReserve = (label: string, value: unknown): void => {
-    if (!isJsonObject(value)) {
-      problems.push(`${label} must be an object mapping window types to fractions (got ${show(value)})`);
-      return;
-    }
-    for (const [type, v] of Object.entries(value)) {
-      if (type.trim() === "") problems.push(`${label}.<empty> — a window type must not be empty`);
-      else if (typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > 1)
-        problems.push(`${label}.${type} must be a fraction above 0 and at most 1 (got ${show(v)})`);
-    }
-  };
-
   // claude's and codex's per-backend config dir (plans/notes-command.md "Keeping funes out
   // of team runs" and plans/codex-backend.md §4): a leading `~` expands; the value must be an
   // absolute path after expansion, or claude would resolve a relative CLAUDE_CONFIG_DIR (and
   // codex a relative CODEX_HOME) from the run's cwd and write transcripts somewhere
-  // unexpected. Only claude and codex accept the key, so it is inert nowhere else. The nested
-  // reserve spelling (part 2b/9): the same 0 < f ≤ 1 rule the top-level `claudeWindowReserve`
-  // map gets, so a bad entry can never silently no-op a reserve.
+  // unexpected. Only claude and codex accept the key, so it is inert nowhere else.
   const checkBackendConfig = (entry: Record<string, unknown>, prefix: string): void => {
     checkString(entry, `${prefix}.`, "configDir", false);
     if (typeof entry.configDir === "string" && entry.configDir !== "")
@@ -144,8 +126,6 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         problems.push(
           `${prefix}.configDir must be an absolute path after ~ expansion (got ${show(entry.configDir)})`,
         );
-    if (entry.windowReserve === undefined) return;
-    checkWindowReserve(`${prefix}.windowReserve`, entry.windowReserve);
   };
 
   // codex's `-c <key>=…` / `--config <key>=…` passthrough (plans/codex-backend.md §2/§3): a
@@ -355,7 +335,6 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     checkNumber,
     checkPromptLength,
     checkModelTripleEntry,
-    checkWindowReserve,
   });
 
   if (problems.length > 0) {

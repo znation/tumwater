@@ -31,8 +31,6 @@ export interface TuiPaneEditorState {
   roleModelMode: boolean;
   /** The Transcript view's Ctrl+L replace-standing-instructions mode holds the prompt line. */
   instructionsEditFor: string | null;
-  /** The Activity view's Ctrl+Y claude-window-reserve mode holds the prompt line. */
-  claudeReserveMode: boolean;
   /** The prompt line's typed text, when the caller carries it (the editors' state does). */
   input?: string;
 }
@@ -55,7 +53,7 @@ export function promptLineFree(es: TuiPaneEditorState): boolean {
     !es.budgetMode && !es.rolePromptFor && !es.searchMode &&
     !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
     !es.notesEditFor && !es.briefEditMode && !es.retireMode && !es.releaseMode && !es.roleEnabledMode && !es.quietMode && !es.intervalMode &&
-    !es.roleModelMode && !es.instructionsEditFor && !es.claudeReserveMode
+    !es.roleModelMode && !es.instructionsEditFor
   );
 }
 

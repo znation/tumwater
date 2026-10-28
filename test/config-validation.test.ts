@@ -232,48 +232,6 @@ test("maxConcurrentPerProvider is refused by name (removed; maxConcurrent is the
   );
 });
 
-test("claudeWindowReserve is an optional map of window types to fractions above 0 and at most 1", () => {
-  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), claudeWindowReserve: { seven_day: 0.8, five_hour: 1 } }));
-  for (const [bad, shown] of [[0, "0"], [1.5, "1\\.5"], ["0.8", '"0\\.8"']] as const) {
-    assert.match(
-      validationError({ claudeWindowReserve: { seven_day: bad } }),
-      new RegExp(`claudeWindowReserve\\.seven_day must be a fraction above 0 and at most 1 \\(got ${shown}\\)`),
-    );
-  }
-  assert.match(validationError({ claudeWindowReserve: [] }), /claudeWindowReserve must be an object/);
-});
-
-test("backends.claude.windowReserve takes the same fraction rule and refuses the other backends", () => {
-  assert.doesNotThrow(() => validateConfig({ backends: { claude: { windowReserve: { seven_day: 0.8, five_hour: 1 } } } }));
-  for (const [bad, shown] of [[0, "0"], [1.5, "1\\.5"], ["0.8", '"0\\\.8"']] as const) {
-    assert.match(
-      validationError({ backends: { claude: { windowReserve: { seven_day: bad } } } }),
-      new RegExp(`backends\\.claude\\.windowReserve\\.seven_day must be a fraction above 0 and at most 1 \\(got ${shown}\\)`),
-    );
-  }
-  assert.match(validationError({ backends: { claude: { windowReserve: [] } } }), /backends\.claude\.windowReserve must be an object/);
-  // claude only today: pi and opencode still refuse windowReserve as an unknown key.
-  assert.match(
-    validationError({ backends: { pi: { windowReserve: { seven_day: 0.8 } } } }),
-    /unknown key "windowReserve" in backends\.pi \(valid keys: bin, args\)/,
-  );
-  assert.match(
-    validationError({ backends: { opencode: { windowReserve: { seven_day: 0.8 } } } }),
-    /unknown key "windowReserve" in backends\.opencode \(valid keys: bin, args\)/,
-  );
-});
-
-test("a file holding both reserve spellings is a load error naming both", () => {
-  const err = validationError({
-    claudeWindowReserve: { seven_day: 0.8 },
-    backends: { claude: { windowReserve: { seven_day: 0.8 } } },
-  });
-  assert.match(
-    err,
-    /claudeWindowReserve and backends\.claude\.windowReserve set the same value — keep one/,
-  );
-});
-
 test("worktreeSlots is validated like maxConcurrent: a positive integer", () => {
   // 0 would leave the pool with no slots at all and every lease waiting forever, a negative
   // or fractional cap means nothing, and a string is a typo — each fails naming the key.
@@ -506,11 +464,8 @@ test("validateConfig validates the backends section: entry shapes and reserved f
   );
 });
 
-test("codex joins the backends section: configDir, windowReserve and reserved flags (part 4/9)", () => {
-  // configDir (a leading `~` expands) and windowReserve load, as they do for claude.
-  assert.doesNotThrow(() =>
-    validateConfig({ backends: { codex: { configDir: "~/.codex-tumwater", windowReserve: { seven_day: 0.7 } } } }),
-  );
+test("codex joins the backends section: configDir and reserved flags (part 4/9)", () => {
+  // configDir (a leading `~` expands) loads, as it does for claude.
   assert.doesNotThrow(() => validateConfig({ backends: { codex: { configDir: "/team/codex" } } }));
   // A relative config dir would resolve a relative CODEX_HOME against the run's cwd; refused.
   assert.match(

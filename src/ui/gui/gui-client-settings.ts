@@ -36,7 +36,6 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     ["maxConcurrent", "Max concurrent runs"],
     ["maxConcurrentChecks", "Max concurrent checks"],
     ["worktreeSlots", "Worktree slots"],
-    ["claudeWindowReserve", "Claude window reserve (backends.claude.windowReserve)"],
     ["quietHours", "Quiet hours"],
     ["notify", "Notify hook"],
     ["backends", "Agent backends (JSON)"],

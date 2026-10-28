@@ -287,11 +287,6 @@ export interface TumwaterConfig {
    * permits for its length, and a merge's conflict resolver one for its run, ahead of any
    * waiting role run (land-queue speed 2c). Only the director's own runs sit outside it. */
   maxConcurrent: number;
-  /** The share of each subscription usage window the team leaves for you (plans/fallback-chain.md
-   * "Reserve"): a map from window type (`five_hour`, `seven_day`) to a fraction 0 < f ≤ 1. At or
-   * past that utilization the subscription counts as used up for every role but the director
-   * until the window resets. Optional and absent by default. */
-  claudeWindowReserve?: Record<string, number>;
   /** Max approved changes the orchestrator's merge slot stacks into ONE merge (plans/merge-queue.md
    * 5/5): the changes are stacked into one worktree, run through ONE shared build check, and
    * fast-forwarded to main in one ff. 1 merges every approved change on its own (no coalescing). */
@@ -453,7 +448,6 @@ export const TOP_LEVEL_KEYS = [
   "check",
   "piArgs",
   "maxConcurrent",
-  "claudeWindowReserve",
   "mergeBatchMax",
   "maxConcurrentChecks",
   "worktreeSlots",
@@ -502,28 +496,22 @@ export interface BackendConfig {
    * must be absolute after expansion — validateConfig checks). Unset uses the backend's default
    * lookup. */
   configDir?: string;
-  /** Per-window-type share of the subscription window the team leaves for you (the nested
-   * spelling of `claudeWindowReserve`, plans/codex-backend.md part 2b/9): a map from window
-   * type (`five_hour`, `seven_day`) to a fraction 0 < f ≤ 1. Only `backends.claude` and
-   * `backends.codex` accept the key (CLAUDE_AGENT_KEYS / CODEX_BACKEND_KEYS); a file may set it
-   * or the top-level `claudeWindowReserve`, not both (validateConfig rejects a file with both). */
-  windowReserve?: Record<string, number>;
 }
 
 /** The keys an `backends.<id>` entry may hold; validation feeds checkKnownKeys so a typo'd
  * field (`backends.claude.binary`) is a load error rather than a silently inert entry.
- * `configDir`/`windowReserve` are claude/codex-only (CLAUDE_AGENT_KEYS / CODEX_BACKEND_KEYS),
- * so they are not silently inert on pi/opencode. */
+ * `configDir` is claude/codex-only (CLAUDE_AGENT_KEYS / CODEX_BACKEND_KEYS),
+ * so it is not silently inert on pi/opencode. */
 export const BACKEND_KEYS = ["bin", "args"];
 
-/** The keys a claude `backends.claude` entry may hold — the shared agent keys plus `configDir`
- * and `windowReserve`, the per-backend fields only the claude adapter reads. */
-export const CLAUDE_AGENT_KEYS = [...BACKEND_KEYS, "configDir", "windowReserve"];
+/** The keys a claude `backends.claude` entry may hold — the shared agent keys plus `configDir`,
+ * the per-backend field only the claude adapter reads. */
+export const CLAUDE_AGENT_KEYS = [...BACKEND_KEYS, "configDir"];
 
 /** The keys a codex `backends.codex` entry may hold — the same as claude's: the shared agent keys
- * plus `configDir` (which becomes `CODEX_HOME` for the codex processes, plans/codex-backend.md
- * §4) and `windowReserve` (the part 2 per-backend reserve). */
-export const CODEX_BACKEND_KEYS = [...BACKEND_KEYS, "configDir", "windowReserve"];
+ * plus `configDir`, which becomes `CODEX_HOME` for the codex processes (plans/codex-backend.md
+ * §4). */
+export const CODEX_BACKEND_KEYS = [...BACKEND_KEYS, "configDir"];
 
 /** The keys tumwater.json's `bootstrap` section may hold. */
 export const BOOTSTRAP_KEYS = ["untilPlansDone"];

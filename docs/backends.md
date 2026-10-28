@@ -196,15 +196,12 @@ spending extra usage up to the team cap. On API billing every Claude step is pri
 does not matter. The team hold still reads only a rejected window; overage never holds.
 
 **Reserve.** The team and you share one claude.ai account, so a team that uses up the weekly
-window leaves your own sessions on extra usage or locked out. `"backends.claude.windowReserve": { "seven_day": 0.8 }`
-(window type → fraction, above 0 and at most 1; absent by default — the older top-level
-`"claudeWindowReserve"` is its other spelling, and either may be set, but not both) counts a
-window as used up for the team once its utilization reaches that fraction, until the window
-resets: subscription Claude jobs move down their chain, or wait when there is nowhere to go,
-and `subscription_window_reserved` is logged once per window. The director is exempt, since it
-runs your own prompts. A later
-Claude model in a chain (the extra-usage step) waits too past the reserve, until a reading shows
-`isUsingOverage`. The team learns its utilization one run late: readings come only from runs.
+window leaves your own sessions on extra usage or locked out. The reserve config keys are gone
+(Subtract part 5v/6): a window is never held early for the team at a reserve fraction, and no
+rejected-subscription-window hold opens either — the gate passes the team hold no window
+observations (Subtract part 5u/6). A used-up window only moves subscription Claude jobs down
+their chain on their next poll, or they wait where there is nowhere to go. The team learns
+its utilization one run late: readings come only from runs.
 
 An exported `ANTHROPIC_API_KEY` (for pi's `anthropic` provider) makes every Claude model job
 prefer the key over a claude.ai login and bill the API, silently ending the subscription
@@ -298,7 +295,7 @@ ChatGPT subscription (Plus today), instead of pi:
 ```json
 {
   "backend": "codex",
-  "backends": { "codex": { "configDir": "~/.codex-tumwater", "windowReserve": { "seven_day": 0.7 } } }
+  "backends": { "codex": { "configDir": "~/.codex-tumwater" } }
 }
 ```
 
@@ -324,11 +321,10 @@ no price, so per-token billing would spend money the cap cannot see.
 
 **The windows and reserve.** Codex reads two usage windows from each run's session file — a
 five-hour and a weekly. A rejected (or reserved) window no longer moves codex jobs down their
-tier's fallback chain — exactly as on a claude subscription, the daily cap is the only mover
-(part 5d/6): the window holds the backend until it resets. `backends.codex.windowReserve`
-is a per-window-type fraction (0–1] left for you, on the same `five_hour` / `seven_day` type
-names claude uses, so one reserve reads the same on both subscriptions. With every codex job on a
-subscription, the badge shows the windows, not the spend.
+tier's fallback chain, and no subscription-window hold opens for it — exactly as on a claude
+subscription, the daily cap is the only mover (part 5d/6), since the gate passes the team hold
+no window observations (part 5u/6). With every codex job on a subscription, the badge shows
+the windows, not the spend.
 
 **What is disabled, and why.** Codex runs with no sandbox: `--dangerously-bypass-approvals-and-
 sandbox`, the same trust pi and claude (`bypassPermissions`) get. Under Codex's `workspace-write`

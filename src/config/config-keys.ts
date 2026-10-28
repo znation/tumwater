@@ -103,7 +103,7 @@ type ParsedConfigKey =
   | { kind: "map"; map: (typeof DOTTED_MAP_KEYS)[number]; role: string }
   | { kind: "tier"; map: "model"; tier: ModelTier }
   | { kind: "role"; id: string; field: string }
-  | { kind: "agent"; id: string; field: "bin" | "args" | "configDir" | "windowReserve" }
+  | { kind: "agent"; id: string; field: "bin" | "args" | "configDir" }
   | { kind: "section"; section: keyof typeof DOTTED_SECTION_FIELDS; field: string }
   | { kind: "error"; error: string };
 
@@ -125,12 +125,12 @@ export function parseConfigKey(key: string): ParsedConfigKey {
   // `roles.<id>.<field>` names one role field). The id is shape-checked only — routing owns
   // which agent ids exist (part 4b); a typo'd field is refused here with the valid ones named.
   if (parts.length === 3 && first === "backends" && second !== undefined && second !== "" && third !== undefined) {
-    // configDir/windowReserve are claude/codex-only (CLAUDE_AGENT_KEYS / CODEX_BACKEND_KEYS):
+    // configDir is claude/codex-only (CLAUDE_AGENT_KEYS / CODEX_BACKEND_KEYS):
     // a config set backends.pi.configDir would write a key nothing reads, so it is refused
     // everywhere but claude and codex.
     const validKeys = second === "claude" ? CLAUDE_AGENT_KEYS : second === "codex" ? CODEX_BACKEND_KEYS : BACKEND_KEYS;
     if ((validKeys as readonly string[]).includes(third))
-      return { kind: "agent", id: second, field: third as "bin" | "args" | "configDir" | "windowReserve" };
+      return { kind: "agent", id: second, field: third as "bin" | "args" | "configDir" };
     return {
       kind: "error",
       error: `unknown backend field "${third}" for backends.${second} (valid fields: ${validKeys.join(", ")})${typoSuffix(third, validKeys)}`,

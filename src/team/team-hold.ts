@@ -89,8 +89,8 @@ export interface HoldObservation {
    * the right deadline. Absent for failure observations. */
   windowType?: string;
   resetsAt?: number;
-  /** A subscription-window observation only: the window is held by the config's
-   * `claudeWindowReserve`, not rejected by the account. */
+  /** A subscription-window observation only: the window is held by the config's reserve
+   * crossing (utilization past its window type's fraction), not rejected by the account. */
   reserve?: true;
   /** The provider's Retry-After hint from that run's error text, when it sent one. Only the
    * rate-limit kind carries one; backend kinds leave it undefined, and the hold math gives
@@ -125,8 +125,9 @@ export interface TeamHold {
    * observations that tripped it, and any an in-flight run hit while it held — that run's
    * own retry is already waiting it out). Also the reference point for a relapse. */
   reopenedAt: number | null;
-  /** True while the standing subscription-window hold is a reserve crossing
-   * (`claudeWindowReserve`) rather than a rejected window: the director is not held on it. */
+  /** True while the standing subscription-window hold is a reserve crossing (utilization
+   * past its window type's fraction) rather than a rejected window: the director is not held
+   * on it. */
   reserve?: true;
 }
 

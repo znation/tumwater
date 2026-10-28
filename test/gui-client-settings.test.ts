@@ -80,8 +80,6 @@ test("renderSettings renders one row per curated key, esc'd, with the key's conf
   // An object value renders as compact JSON (esc'd), so it can round-trip through the field.
   assert.match(html, /id='set-backends' value='\{&quot;pi&quot;:\{&quot;bin&quot;:&quot;pi&quot;\}\}'/);
   assert.match(html, /<label for='set-maxConcurrentChecks'>Max concurrent checks<span class='settings-key'>maxConcurrentChecks<\/span><\/label>/);
-  // The claudeWindowReserve row renders under its curated label.
-  assert.match(html, /<label for='set-claudeWindowReserve'>Claude window reserve \(backends\.claude\.windowReserve\)<span class='settings-key'>claudeWindowReserve<\/span><\/label>/);
   // The check row (the no-check alert's surfaced remedy): an object value renders as compact
   // JSON, exactly as backends does, under its Declared check label.
   assert.match(html, /<label for='set-check'>Declared check \(JSON\)<span class='settings-key'>check<\/span><\/label>/);

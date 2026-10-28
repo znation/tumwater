@@ -43,8 +43,7 @@ import {
 
 /** Drop `field` from the `backends.<backend>` entry of the config `next`, dropping the whole
  * backend entry when it empties. The one home of the "remove a nested backend field, drop the
- * backend when empty" step the legacy `agentBin`/`piArgs` collapse and the `claudeWindowReserve`
- * collapse share, so the empty-entry rule cannot drift between the two. */
+ * backend when empty" step the legacy `agentBin`/`piArgs` collapse uses. */
 function dropNestedBackendField(
   next: TumwaterConfig,
   backend: string,
@@ -240,12 +239,6 @@ export function setConfigKey(
         if (parsed.field === "bin") delete nextRecord.agentBin;
         else delete nextRecord.piArgs;
       }
-      // Setting the nested claude reserve drops the top-level spelling, so the file can never
-      // hold both (validateConfig rejects a file that does, mirroring the agentBin/piArgs pair).
-      if (parsed.id === "claude" && parsed.field === "windowReserve") {
-        const nextRecord = next as unknown as Record<string, unknown>;
-        delete nextRecord.claudeWindowReserve;
-      }
       return preservingFileRoles(root, next);
     };
     const mergeRoleEntry = (
@@ -337,11 +330,6 @@ export function setConfigKey(
     // the file can never hold both (validateConfig's raw pass rejects a file that does).
     const dropLegacyPiAlias = (next: TumwaterConfig, key: string): TumwaterConfig =>
       dropNestedBackendField(next, "pi", key === "agentBin" ? "bin" : "args");
-    // Writers keep one spelling: setting the top-level `claudeWindowReserve` drops the nested
-    // `backends.claude.windowReserve`, so a supported `config set` never writes the rejected pair
-    // (validateConfig still refuses a hand-edited file holding both).
-    const dropNestedReserve = (next: TumwaterConfig): TumwaterConfig =>
-      dropNestedBackendField(next, "claude", "windowReserve");
     const result = writeConfigMutation(root, (cfg) => {
       oldValue = (cfg as unknown as Record<string, unknown>)[key];
       if (isDeepStrictEqual(oldValue, value)) {
@@ -360,7 +348,6 @@ export function setConfigKey(
       // config.ts) use, so the alias policy cannot drift between the per-key arm and the others.
       if (key === "backends") return collapseBackendAliases(next);
       if (key === "agentBin" || key === "piArgs") return dropLegacyPiAlias(next, key);
-      if (key === "claudeWindowReserve") return dropNestedReserve(next);
       return next;
     });
     if (!result.ok) return result;

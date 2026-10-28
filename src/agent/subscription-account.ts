@@ -73,9 +73,9 @@ export function subscriptionWindowRejected(
 /** The subscription account's used-up usage window, or null: a window reading `rejected` with
  * no overage, or (with `includeOverage`, the default) a window whose current reading shows
  * `isUsingOverage`, and a `resetsAt` still ahead of `now`; among several, the one that resets
- * last. With a `reserve` (config `backends.<id>.windowReserve`), a window whose utilization
- * has reached its type's fraction counts too, and comes back with `reserve: true`; a rejected
- * or overage window outranks a reserve one, so the flag is set only when no window is used up
+ * last. With a `reserve` (the subscription-window reserve), a window whose utilization has
+ * reached its type's fraction counts too and comes back with `reserve: true`; a rejected or
+ * overage window outranks a reserve one, so the flag is set only when no window is used up
  * for real. The budget gate's window move (pollBudgetGate) reads the default; the team hold
  * (windowObservation) passes `includeOverage: false`, because overage never holds a
  * seam. Only subscription billing produces one; a missing account reads null. */

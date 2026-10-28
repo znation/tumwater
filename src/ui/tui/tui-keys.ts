@@ -130,9 +130,6 @@ interface TuiKeysState {
   fallbackMode: boolean;
   /** The Transcript view's Ctrl+G instance-count mode holds the prompt line. */
   instancesMode: boolean;
-  /** The Activity view's Ctrl+Y claude subscription-window reserve mode holds the prompt
-   * line. */
-  claudeReserveMode: boolean;
   /** The Transcript view's Ctrl+L replace-standing-instructions mode holds the prompt line: the
    * role whose `roles.<base>.instructions` override the prompt line is replacing from a typed
    * file path, or null when closed. */

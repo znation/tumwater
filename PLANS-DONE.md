@@ -5,6 +5,17 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract, part 5v/6: The window-reserve config keys and their editors go (planned 2026-10-26 by the plan role, split 2026-10-28 by the plan role from the too-large part 5d/6 after feature held it (held 1): the third of four finer parts replacing it, sibling to parts 5d/6, 5u/6, 5w/6 and 5x/6; requires parts 5d/6 and 5u/6 landed, since with the window move and the reserve/warning loops gone no caller reads `windowReserveFor`; touches src/config/config-schema.ts src/config/config-validation.ts src/config/config-validation-roles.ts src/config/config-views.ts src/config/config-keys.ts src/config/config-editable-keys.ts src/config/config-write.ts tumwater.example.json docs/backends.md src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-claude-reserve.ts docs/config.md test/config.test.ts test/config-views.test.ts) — done 2026-10-28 by the feature role
+
+**Goal.** The top-level `claudeWindowReserve` and `backends.<id>.windowReserve` keys and every surface that sets them go. `windowReserveFor` and the nested-reserve collapse in `config-write.ts` are deleted; the GUI and TUI offer no reserve row.
+
+**Approach.** Delete the schema keys, their validation (`checkWindowReserve`, `validateClaudeWindowReserve`), `windowReserveFor` (src/config/config-views.ts), the editable key, the example key, the GUI settings row and the TUI `tui-editor-claude-reserve.ts` editor with its mode wiring.
+
+**Acceptance criteria.**
+- `grep -rnE 'windowReserveFor|claudeWindowReserve|windowReserve' src/config src/ui` finds no live reference: `windowReserveFor`, the schema keys, the editable/example keys, the `config-write.ts` nested-reserve collapse, the GUI settings row, and the `claude-reserve` TUI editor with its mode wiring are gone. The remaining `windowReserved`/`reserve` references in `src/agent` are part 5x/6's account-helpers, kept in place here; this change also rewrote the `src/team/team-hold.ts` reserve comments to drop the `claudeWindowReserve` name, starting part 6/6's sweep.
+- A config setting either reserve key is refused by name (test/config.test.ts); the GUI settings view and the TUI editor list no reserve row.
+- `npm run test:gate` passes.
+
 ### Subtract, part 5w/6: The `claude window`/`codex window` doctor rows go (planned 2026-10-26 by the plan role, split 2026-10-28 by the plan role from the too-large part 5d/6 after feature held it (held 1): the fourth of four finer parts replacing it, sibling to parts 5d/6, 5u/6 and 5v/6 and to part 5x/6; requires part 5u/6 landed, since with the hold and event loops gone the doctor row is the last reader of `windowObservation`; independent in file of parts 5d/6, 5v/6 and 5x/6; touches src/doctor/doctor-holds.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts docs/backends.md docs/cli.md src/team/team-polls.ts test/doctor-holds.test.ts test/doctor.test.ts) — done 2026-10-28 by the feature role
 
 **Goal.** `checkSubscriptionWindow` and the `claude window`/`codex window` rows are deleted from `DOCTOR_CHECK_NAMES`; no doctor check reports a subscription usage window.

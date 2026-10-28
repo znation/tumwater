@@ -12,7 +12,6 @@ import {
   teamModelLabel,
   modelSelectorField,
   resolvedBackendConfig,
-  windowReserveFor,
   resolverConfig,
   reviewConfig,
   reviewRunConfig,
@@ -991,21 +990,4 @@ test("the migrated operator config resolves claude for every primary seam and pi
   const fallback = seams.filter((s) => s.label.startsWith("fallback:"));
   assert.ok(fallback.length > 0);
   assert.ok(fallback.every((s) => s.agent === "pi" && s.provider === "qwenrunner" && s.model === "qwen3.8-27b"));
-});
-
-test("windowReserveFor reads the nested claude key, falls back to claudeWindowReserve, and is undefined otherwise", () => {
-  const nested = { backends: { claude: { windowReserve: { seven_day: 0.8 } } } };
-  assert.deepEqual(windowReserveFor(nested, "claude"), { seven_day: 0.8 });
-  // A backend with neither spelling answers undefined.
-  assert.equal(windowReserveFor({ backends: {} }, "codex"), undefined);
-  assert.equal(windowReserveFor({}, "codex"), undefined);
-  // The top-level spelling is claude's older fallback.
-  assert.deepEqual(windowReserveFor({ claudeWindowReserve: { five_hour: 1 } }, "claude"), { five_hour: 1 });
-  // but not a sibling backend's.
-  assert.equal(windowReserveFor({ claudeWindowReserve: { five_hour: 1 } }, "codex"), undefined);
-  // The nested key wins over the legacy spelling.
-  assert.deepEqual(
-    windowReserveFor({ claudeWindowReserve: { seven_day: 0.9 }, backends: { claude: { windowReserve: { seven_day: 0.8 } } } }, "claude"),
-    { seven_day: 0.8 },
-  );
 });

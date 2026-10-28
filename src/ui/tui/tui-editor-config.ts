@@ -4,7 +4,7 @@ import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The team-scope config-key editor arm (Ctrl+N run cap, Ctrl+W worktree slots, Ctrl+E
- * notify hook, Ctrl+L fallback, Ctrl+Y claude window reserve,
+ * notify hook, Ctrl+L fallback,
  * Ctrl+A team model, Ctrl+U declared check) on the shared prompt line —
  * the terminal twins of the dashboard Settings fields and their `tumwater config set <key>`
  * commands.
@@ -18,7 +18,7 @@ import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js
 interface TeamConfigKeySpec {
   /** The session's mutually-exclusive-held registry name this editor owns (and toggles on
    * the `held` object as it enters and leaves). */
-  mode: "concurrency" | "slots" | "notify" | "fallback" | "claudeReserve" | "model" | "checks" | "check";
+  mode: "concurrency" | "slots" | "notify" | "fallback" | "model" | "checks" | "check";
   /** The Ctrl+<key> arm that opens (and, while open, toggles out of) the editor. */
   openCtrl: string;
   /** The tumwater.json key the editor writes on Enter — cleared (`unsetConfigKey`) on an

@@ -560,31 +560,6 @@ test("setConfigKey's legacy top-level pi keys replace the new-form field they co
   assert.doesNotThrow(() => loadConfig(dir), "the legacy-only spelling reloads");
 });
 
-test("setConfigKey keeps one reserve spelling, dropping the one it collides with", () => {
-  const dir = tmpdir();
-  const base = defaultConfig();
-  base.claudeWindowReserve = { seven_day: 0.8 };
-  saveConfig(dir, base);
-  const file = path.join(dir, "tumwater.json");
-
-  // A nested claude set drops the top-level spelling so the file never holds both.
-  let r = setConfigKey(dir, "backends.claude.windowReserve", '{"seven_day":0.9}');
-  assert.ok(r.ok, JSON.stringify(r));
-  let raw = readJson(file) as Record<string, unknown>;
-  assert.ok(!("claudeWindowReserve" in raw), "the legacy top-level spelling is gone");
-  assert.deepEqual((raw.backends as { claude?: { windowReserve?: unknown } }).claude!.windowReserve, { seven_day: 0.9 });
-  assert.doesNotThrow(() => loadConfig(dir), "the nested-only file passes the alias rule");
-
-  // The other direction: a top-level set drops the nested spelling it collides with.
-  r = setConfigKey(dir, "claudeWindowReserve", '{"seven_day":0.8}');
-  assert.ok(r.ok, JSON.stringify(r));
-  raw = readJson(file) as Record<string, unknown>;
-  assert.deepEqual(raw.claudeWindowReserve, { seven_day: 0.8 });
-  const nestedAfter = (raw.backends as { claude?: Record<string, unknown> }).claude;
-  assert.ok(!nestedAfter || !("windowReserve" in nestedAfter), "the nested spelling is gone");
-  assert.doesNotThrow(() => loadConfig(dir), "the top-level-only file passes the alias rule");
-});
-
 test("whole-config writes keep one pi spelling: backends.pi.args survives an unrelated set", () => {
   const dir = tmpdir();
   const withNew = defaultConfig();
@@ -680,15 +655,14 @@ test("parseConfigKey names model.<tier> and rejects a bogus tier", () => {
   // backends.<id>.<field> names one backend field; a typo'd field names the valid ones.
   assert.deepEqual(parseConfigKey("backends.claude.bin"), { kind: "agent", id: "claude", field: "bin" });
   assert.deepEqual(parseConfigKey("backends.pi.args"), { kind: "agent", id: "pi", field: "args" });
-  // codex's configDir/windowReserve are CLI-addressable, like claude's (part 4/9): a
+  // codex's configDir is CLI-addressable, like claude's (part 4/9): a
   // `config set backends.codex.configDir` must be writable, not refused as an unknown field.
   assert.deepEqual(parseConfigKey("backends.codex.configDir"), { kind: "agent", id: "codex", field: "configDir" });
-  assert.deepEqual(parseConfigKey("backends.codex.windowReserve"), { kind: "agent", id: "codex", field: "windowReserve" });
   assert.deepEqual(parseConfigKey("backends.codex.args"), { kind: "agent", id: "codex", field: "args" });
   const badField = parseConfigKey("backends.claude.binary");
   assert.equal(badField.kind, "error");
   if (badField.kind === "error")
-    assert.match(badField.error, /unknown backend field "binary" for backends\.claude \(valid fields: bin, args, configDir, windowReserve\)/);
+    assert.match(badField.error, /unknown backend field "binary" for backends\.claude \(valid fields: bin, args, configDir\)/);
 });
 
 // The cross-process read-modify-write race (BUGS.md 2026-10-07): `tumwater config set` (CLI),

@@ -102,7 +102,6 @@ interface TuiMode {
   backendsMode?: boolean;
   modelMode?: boolean;
   instancesMode?: boolean;
-  claudeReserveMode?: boolean;
   checksMode?: boolean;
   checkMode?: boolean;
 }
@@ -130,7 +129,6 @@ export function hintLine(view: TuiView, mode: TuiMode, width: number): StatusLin
   else if (mode.intervalMode) keys = [["Enter", "save interval"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.roleModelMode) keys = [["Enter", "save model overrides"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.instancesMode) keys = [["Enter", "save instances"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.claudeReserveMode) keys = [["Enter", "save claude reserve"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.notifyMode) keys = [["Enter", "save the notify hook"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.fallbackMode) keys = [["Enter", "save the fallback"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.instructionsEditFor) keys = [["Enter", "save instructions"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -149,7 +147,7 @@ export function hintLine(view: TuiView, mode: TuiMode, width: number): StatusLin
   else if (view.kind === "health") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+R", "re-run checks"], ["Ctrl+A", "commit backlog"], ["Ctrl+U", "re-sync install"], ["Ctrl+E", "reclaim disk"], ["Ctrl+N", "test notify"], ["Ctrl+K", "kill orphans"], ["Ctrl+S", "drop broken pins"], ["Ctrl+X", "retire role"], ["Ctrl+L", "retire leftovers"], ["Ctrl+B", "archive backlog"], ["Ctrl+V", "enable/disable role"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "brief") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+E", "edit brief"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+V", "top"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+E", "notify hook"], ["Ctrl+A", "model"], ["Ctrl+N", "run cap"], ["Ctrl+K", "check cap"], ["Ctrl+U", "declared check"], ["Ctrl+S", "quiet hours"], ["Ctrl+W", "worktree slots"], ["Ctrl+O", view.notable ? "notable only" : view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+X", "agent backends"], ["Ctrl+T", "next view"], ["Ctrl+L", "fallback"], ["Ctrl+Y", "claude reserve"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+R", "restart"], ["Ctrl+D", "quit"]];
+  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+E", "notify hook"], ["Ctrl+A", "model"], ["Ctrl+N", "run cap"], ["Ctrl+K", "check cap"], ["Ctrl+U", "declared check"], ["Ctrl+S", "quiet hours"], ["Ctrl+W", "worktree slots"], ["Ctrl+O", view.notable ? "notable only" : view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+X", "agent backends"], ["Ctrl+T", "next view"], ["Ctrl+L", "fallback"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+R", "restart"], ["Ctrl+D", "quit"]];
   // The mode branches above name their own keys and keep the line, so every remaining
   // view hint always shows the send affordance. This comment marks that ordering.
   const spans: StatusSpan[] = [];
@@ -191,7 +189,6 @@ function editorPromptPrefix(mode: TuiMode): StatusSpan[] | undefined {
     [mode.intervalMode, labeledPrefix("min run interval")],
     [mode.roleModelMode, labeledPrefix("model overrides")],
     [mode.instancesMode, labeledPrefix("instances")],
-    [mode.claudeReserveMode, labeledPrefix("claude reserve")],
     [mode.notifyMode, labeledPrefix("notify hook")],
     [mode.fallbackMode, labeledPrefix("fallback")],
     [mode.instructionsEditFor, labeledPrefix(`instructions for ${mode.instructionsEditFor}`)],

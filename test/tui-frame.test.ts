@@ -108,7 +108,7 @@ test("the tab strip names every view and brackets the current one", () => {
 
 test("the hint line says what the keys do in each view and mode", () => {
   const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null, queuedEditFor: { role: string; file: string } | null = null, answerFor: { position: number; title: string } | null = null) => plain(hintLine(view, { budget, rolePromptFor, queuedEditFor, answerFor }, 500));
-  assert.equal(hint({ kind: "activity", role: null, grep: null, type: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+E notify hook · Ctrl+A model · Ctrl+N run cap · Ctrl+K check cap · Ctrl+U declared check · Ctrl+S quiet hours · Ctrl+W worktree slots · Ctrl+O type: all · Ctrl+G scope: team · / search · Ctrl+X agent backends · Ctrl+T next view · Ctrl+L fallback · Ctrl+Y claude reserve · Ctrl+F pause team · Ctrl+Q stop later · Ctrl+C interrupt director · Ctrl+V attach image · Ctrl+R restart · Ctrl+D quit");
+  assert.equal(hint({ kind: "activity", role: null, grep: null, type: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+E notify hook · Ctrl+A model · Ctrl+N run cap · Ctrl+K check cap · Ctrl+U declared check · Ctrl+S quiet hours · Ctrl+W worktree slots · Ctrl+O type: all · Ctrl+G scope: team · / search · Ctrl+X agent backends · Ctrl+T next view · Ctrl+L fallback · Ctrl+F pause team · Ctrl+Q stop later · Ctrl+C interrupt director · Ctrl+V attach image · Ctrl+R restart · Ctrl+D quit");
   // The Activity hint names the Ctrl+V image attach on the prompt line.
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 460)), /Ctrl\+V attach image/);
   // The Activity hint names the Ctrl+A team-model editor.
@@ -248,7 +248,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 500)), /Ctrl\+D quit/);
   // Keys stand out from what they do.
   const spans = hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 500);
-  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+E", "Ctrl+A", "Ctrl+N", "Ctrl+K", "Ctrl+U", "Ctrl+S", "Ctrl+W", "Ctrl+O", "Ctrl+G", "/", "Ctrl+X", "Ctrl+T", "Ctrl+L", "Ctrl+Y", "Ctrl+F", "Ctrl+Q", "Ctrl+C", "Ctrl+V", "Ctrl+R", "Ctrl+D"]);
+  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+E", "Ctrl+A", "Ctrl+N", "Ctrl+K", "Ctrl+U", "Ctrl+S", "Ctrl+W", "Ctrl+O", "Ctrl+G", "/", "Ctrl+X", "Ctrl+T", "Ctrl+L", "Ctrl+F", "Ctrl+Q", "Ctrl+C", "Ctrl+V", "Ctrl+R", "Ctrl+D"]);
 });
 
 test("retire-edit mode shows its own hint keys and prompt prefix", () => {
@@ -408,13 +408,6 @@ test("the transcript Ctrl+L instructions mode names its save/cancel keys and an 
   const edit = { ...base, instructionsEditFor: "qa" };
   assert.equal(plain(hintLine({ kind: "transcript", role: "qa", index: 1, count: 1, note: false, change: false }, edit, 300)), "Enter save instructions · Esc cancel · Ctrl+D quit");
   assert.equal(plain(promptPrefix(edit)), "instructions for qa › ");
-});
-test("the claude-reserve mode names its save/cancel keys, a `claude reserve ›` prefix, and its Activity hint", () => {
-  const base = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null };
-  const edit = { ...base, claudeReserveMode: true };
-  assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, edit, 300)), "Enter save claude reserve · Esc cancel · Ctrl+D quit");
-  assert.equal(plain(promptPrefix(edit)), "claude reserve › ");
-  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, base, 370)), /Ctrl\+Y claude reserve/);
 });
 
 test("the notify mode names its save/cancel keys, a `notify hook ›` prefix, and its Activity hint", () => {

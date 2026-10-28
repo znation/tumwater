@@ -18,6 +18,7 @@ import { exampleConfigProblem, exampleDrift, seedConfig } from "../src/config/co
 import { configForRole } from "../src/config/config-views.js";
 import { exampleConfigPath } from "../src/paths.js";
 import { validateConfig } from "../src/config/config-validation.js";
+import { setConfigKey } from "../src/config/config-write.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import { backdate } from "./helpers/backdate.js";
 import { validationError } from "./fixtures/config-fixtures.js";
@@ -794,4 +795,17 @@ test("exampleDrift names template keys the local config lacks, and nothing else"
   fs.writeFileSync(exampleConfigPath(root), "{ broken");
   assert.deepEqual(exampleDrift(root), []);
   assert.deepEqual(exampleDrift(tmpdir()), []);
+});
+
+test("a config set refuses the removed window-reserve keys by name", () => {
+  const dir = tmpdir();
+  // The top-level legacy reserve key is gone from TOP_LEVEL_KEYS: refused by name.
+  const top = setConfigKey(dir, "claudeWindowReserve", '{"seven_day":0.8}');
+  assert.equal(top.ok, false);
+  if (!top.ok) assert.match(top.error, /unknown config key "claudeWindowReserve"/);
+  // The nested per-backend reserve is gone from the backend's valid fields: refused by name.
+  const nested = setConfigKey(dir, "backends.claude.windowReserve", '{"seven_day":0.8}');
+  assert.equal(nested.ok, false);
+  if (!nested.ok)
+    assert.match(nested.error, /unknown backend field "windowReserve" for backends\.claude \(valid fields: bin, args, configDir\)/);
 });
