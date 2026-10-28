@@ -219,6 +219,10 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 - **Symptom:** the run prompt's verify rule (`src/prompt/prompt.ts`) has every agent run execute `npm run test:gate`, and the team then runs the same gate check on the change, so each change's suite runs twice and agents add 1.3–1.7 suites in flight.
 - **Expected / fix sketch:** drop the agent-side `test:gate` run in favor of targeted tests. This is a policy call about the verification guarantee (the active "Every commit is verified on main" plan series), so a run must not change it unilaterally: record the decision here (or file it in QUESTIONS.md if no operator decision exists), then edit the prompt. Do not treat it as a routine cleanup.
 
+### post-merge review of 3c1c1c61 never reached a verdict (found by the review role 2026-10-28)
+
+The post-merge review of commit `3c1c1c6176c2080a9788e2a6aa0193a75b72aebf` (Fold gui-client-history.ts's 8 delegated handler guards into the shared clickClosest helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
 ## Fixed
 
 ## Verified
