@@ -6,7 +6,6 @@ import path from "node:path";
 import { isKnownFlake, MERGE_FLAKY_WARNING_PREFIX, quarantinedTests } from "../src/review/known-flakes.js";
 import { MERGE_CHECK_FAILURE_LIMIT } from "../src/merge/merge-check-failures.js";
 import { mergeApprovedChange, reviewPinnedChange } from "../src/merge/merge-core.js";
-import type { BatchRoleWiring } from "../src/merge/merge-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
 import { readSlotsState } from "../src/git/slots-state.js";
 import { mergeRefName, mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
@@ -30,12 +29,11 @@ import {
   declareCheck,
   batchFixture,
   runBatch,
-  replyLine,
-  reviewerByRole,
-  awaitEvent,
   advanceMain,
   perRoleReviewerPi,
   runBatchRecorded,
+  afterMergeConfig,
+  checkRunNumber,
 } from "./fixtures/merger-fixtures.js";
 
 // These tests pin the sequential merge stages (the check, then the review).
@@ -750,27 +748,26 @@ test("an all-rejected batch returns a defined result for every request without t
 });
 
 test("a green batch stacks every approved change, fast-forwards main once, and logs per-change events", async () => {
-  await withApprovePi(async () => {
-    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
-    const mainBefore = mainSha(root);
+  const { root, shas, states, wiringFor } = await batchFixture(["alpha", "beta"]);
+  // No pre-merge reviewer verdict: each change's approval is the gate's deterministic green
+  // build pre-check (review.afterMerge acts on a pre-check that passed).
+  declareCheck(root, "#!/bin/sh\necho ok\n");
+  const mainBefore = mainSha(root);
 
-    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+  const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor, undefined, afterMergeConfig(["alpha", "beta"]));
 
-    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
-    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes merged on main");
-    const merged = eventsOfType(root, "merged");
-    assert.equal(merged.length, 2, "one merged event per change, in queue order");
-    assert.equal(merged[0]!.commit, sh(root, "git", "rev-parse", "main~1"), "the head is the first new commit on main");
-    assert.notEqual(merged[0]!.commit, shas.alpha!, "the head re-committed onto the fresh main base");
-    assert.equal(merged[1]!.commit, mainSha(root), "the stacked tip is main's head");
-    assert.notEqual(merged[1]!.commit, shas.beta!, "the second change re-committed on top of the first");
-    assert.equal(await refSha(root, mergeRefName("alpha")), null, "the ff deleted the head's ref");
-    assert.equal(await refSha(root, mergeRefName("beta")), null, "and the stacked one's");
-    assert.equal(folded.get("alpha")!.length, 1, "the gate's reviewer run folded into its own role");
-    assert.equal(folded.get("beta")!.length, 1);
-    assert.equal(states.alpha.lastApprovedHead, shas.alpha!, "the verdict persisted per role");
-    assert.equal(states.beta.lastApprovedHead, shas.beta!);
-  });
+  assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+  assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes merged on main");
+  const merged = eventsOfType(root, "merged");
+  assert.equal(merged.length, 2, "one merged event per change, in queue order");
+  assert.equal(merged[0]!.commit, sh(root, "git", "rev-parse", "main~1"), "the head is the first new commit on main");
+  assert.notEqual(merged[0]!.commit, shas.alpha!, "the head re-committed onto the fresh main base");
+  assert.equal(merged[1]!.commit, mainSha(root), "the stacked tip is main's head");
+  assert.notEqual(merged[1]!.commit, shas.beta!, "the second change re-committed on top of the first");
+  assert.equal(await refSha(root, mergeRefName("alpha")), null, "the ff deleted the head's ref");
+  assert.equal(await refSha(root, mergeRefName("beta")), null, "and the stacked one's");
+  assert.equal(states.alpha.lastApprovedHead, shas.alpha!, "the verdict persisted per role");
+  assert.equal(states.beta.lastApprovedHead, shas.beta!);
 });
 
 test("the batch fixture's pins are backdated so a same-second pick cannot reproduce a pin's sha (regression)", async () => {
@@ -791,7 +788,9 @@ test("the batch fixture's pins are backdated so a same-second pick cannot reprod
 test("a batch stacks every commit of a multi-commit pin, not its head alone", async () => {
   // The regression this pins: picking a pin's single head would merge only its last diff and
   // orphan the work beneath it — the stack must pick the whole range from main to that head.
-  const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
+  declareCheck(root, "#!/bin/sh\necho ok\n");
+  const config = afterMergeConfig(["alpha", "beta"]);
   sh(root, "git", "checkout", "--detach", shas.alpha!);
   fs.writeFileSync(path.join(root, "more.txt"), "more by alpha\n");
   sh(root, "git", "add", "more.txt");
@@ -800,19 +799,15 @@ test("a batch stacks every commit of a multi-commit pin, not its head alone", as
   await setRef(root, mergeRefName("alpha"), shas.alpha);
   sh(root, "git", "checkout", "main");
   const mainBefore = mainSha(root);
-  await withApprovePi(async () => {
-    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
-    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
-    // THREE commits on main: both of alpha's, then beta's — none orphaned.
-    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3");
-    assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"), "the work beneath the head merged");
-    assert.ok(sh(root, "git", "show", "main:more.txt").includes("more by alpha"));
-    assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"));
-    assert.equal(await refSha(root, mergeRefName("alpha")), null);
-    assert.equal(await refSha(root, mergeRefName("beta")), null);
-    assert.equal(folded.get("alpha")!.length, 1);
-    assert.equal(folded.get("beta")!.length, 1);
-  });
+  const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor, undefined, config);
+  assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+  // THREE commits on main: both of alpha's, then beta's — none orphaned.
+  assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3");
+  assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"), "the work beneath the head merged");
+  assert.ok(sh(root, "git", "show", "main:more.txt").includes("more by alpha"));
+  assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"));
+  assert.equal(await refSha(root, mergeRefName("alpha")), null);
+  assert.equal(await refSha(root, mergeRefName("beta")), null);
 });
 
 test("an abort mid-batch routes every request without a terminal outcome to aborted, refs kept", async () => {
@@ -861,68 +856,79 @@ test("an aborted batch merges nothing even when every gate would short-circuit o
   });
 });
 
-test("an abort after the last gate approved stops the batch before its shared check", async () => {
+test("an abort during a gate build check settles the batch aborted with nothing merged and no shared check", async () => {
   const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
-  // beta's approval is the last gate to finish: its review holds until alpha's verdict is on
-  // record, as it must when the two verifies run at once.
-  await withPi(
-    reviewerByRole({ beta: `${awaitEvent(root, "alpha", "review_verdict")}${replyLine("VERDICT: approve")}` }),
-    async () => {
-      declareCheck(root, "#!/bin/sh\necho ok\n");
-      const mainBefore = mainSha(root);
-      const controller = new AbortController();
-      // The stop arrives the moment beta's gate hands back its approval — after every gate, before
-      // the stack is assembled and checked.
-      const stopAfterBeta = (role: string): BatchRoleWiring => {
-        const w = wiringFor(role);
-        return role === "beta"
-          ? {
-              ...w,
-              foldUsage: (run) => {
-                w.foldUsage(run);
-                controller.abort();
-              },
-            }
-          : w;
-      };
-
-      const results = await runBatch(root, shas, ["alpha", "beta"], stopAfterBeta, controller);
-
-      assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"], "both approved changes read aborted");
-      assert.equal(mainSha(root), mainBefore, "nothing merged");
-      assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!, "the refs survive for recovery");
-      assert.equal(await refSha(root, mergeRefName("beta")), shas.beta!);
-      const checks = eventsOfType(root, "build_check");
-      assert.equal(checks.filter((e) => e.scope === "gate").length, 2, "both gates ran their pre-check");
-      assert.equal(checks.filter((e) => e.scope === "batch").length, 0, "the shared check never started");
-    },
+  const dir = tmpdir("gate-abort-");
+  const announce = path.join(dir, "announce");
+  const release = path.join(dir, "release");
+  const checkCount = path.join(root, ".checkcount");
+  // The check runs from the repo root (the npm walk-up's package root), one run per gate in
+  // queue order: run 1 is alpha's verify gate, run 2 beta's. Alpha's passes green; beta's parks
+  // in flight until the abort kills it, so the batch is stopped at a step boundary that spawns
+  // no pi (BUGS.md 2026-09-23), before the shared check would assemble.
+  declareCheck(
+    root,
+    `#!/bin/sh\n` +
+      checkRunNumber(checkCount) +
+      `if [ "$n" -eq 2 ]; then touch '${announce}'; i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done; fi\n` +
+      `echo ok\n`,
   );
+  const config = afterMergeConfig(["alpha", "beta"]);
+  const mainBefore = mainSha(root);
+  const controller = new AbortController();
+  // Fire the abort the moment beta's gate build check is in flight — the merge is stopped at a
+  // step boundary that spawns no pi (BUGS.md 2026-09-23), before the shared check would assemble.
+  const watcher = setInterval(() => {
+    if (fs.existsSync(announce)) {
+      controller.abort();
+      clearInterval(watcher);
+    }
+  }, 5);
+  watcher.unref();
+  const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor, controller, config);
+  clearInterval(watcher);
+
+  assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"], "both changes read aborted");
+  assert.equal(mainSha(root), mainBefore, "nothing merged");
+  assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!, "the refs survive for recovery");
+  assert.equal(await refSha(root, mergeRefName("beta")), shas.beta!);
+  const checks = eventsOfType(root, "build_check");
+  assert.equal(checks.filter((e) => e.scope === "gate").length, 2, "both gates ran their pre-check");
+  assert.equal(checks.filter((e) => e.scope === "batch").length, 0, "the shared check never started");
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("an abort after the gate stops a one-change merge before it merges", async () => {
+test("an abort during a one-change merge's gate build check stops it before it merges", async () => {
   // The one-change (and fallback) merges go through mergeApprovedChange, which runs no gate
-  // of its own — only its own abort check sees a stop that arrived after the verify.
-  await withApprovePi(async () => {
-    const { root, shas, wiringFor } = await batchFixture(["alpha"]);
-    const mainBefore = mainSha(root);
-    const controller = new AbortController();
-    const stopAfterGate = (role: string): BatchRoleWiring => {
-      const w = wiringFor(role);
-      return {
-        ...w,
-        foldUsage: (run) => {
-          w.foldUsage(run);
-          controller.abort();
-        },
-      };
-    };
+  // of its own. A stop that arrives after the verify is observed by the verify's parked gate
+  // build check (bug 2026-09-23), which settles the change `aborted` before anything merges.
+  const { root, shas, wiringFor } = await batchFixture(["alpha"]);
+  const dir = tmpdir("one-gate-abort-");
+  const announce = path.join(dir, "announce");
+  const release = path.join(dir, "release");
+  const checkCount = path.join(root, ".checkcount");
+  // The sole gate check (run 1) parks in flight until the abort kills it — the stop a reviewer
+  // run used to observe, now observed by the verify's gate build check (BUGS.md 2026-09-23).
+  declareCheck(
+    root,
+    `#!/bin/sh\n${checkRunNumber(checkCount)}if [ "$n" -eq 1 ]; then touch '${announce}'; i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done; fi\necho ok\n`,
+  );
+  const mainBefore = mainSha(root);
+  const controller = new AbortController();
+  const watcher = setInterval(() => {
+    if (fs.existsSync(announce)) {
+      controller.abort();
+      clearInterval(watcher);
+    }
+  }, 5);
+  watcher.unref();
+  const results = await runBatch(root, shas, ["alpha"], wiringFor, controller);
+  clearInterval(watcher);
 
-    const results = await runBatch(root, shas, ["alpha"], stopAfterGate, controller);
-
-    assert.deepEqual(results.map((r) => r.result), ["aborted"]);
-    assert.equal(mainSha(root), mainBefore, "nothing merged");
-    assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!, "the ref survives for recovery");
-  });
+  assert.deepEqual(results.map((r) => r.result), ["aborted"]);
+  assert.equal(mainSha(root), mainBefore, "nothing merged");
+  assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!, "the ref survives for recovery");
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // The per-change status hook (BUGS.md 2026-09-23): the drain mirrors these reports into the

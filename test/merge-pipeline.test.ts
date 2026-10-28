@@ -36,6 +36,7 @@ import {
   runnersFor,
 } from "./fixtures/merge-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { declareCheck, checkRunNumber } from "./fixtures/merger-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { sleep, waitFor, waitForFile, within } from "./helpers/wait.js";
@@ -234,12 +235,20 @@ test("the merge's conflict resolver takes a shared permit, ahead of a verificati
   enqueueMerge(root, entry("alpha", alpha));
   const flags = tmpdir("resolver-permit-");
   const order = path.join(flags, "order");
+  // The ordered verification is beta's GATE BUILD CHECK, not its reviewer run: with the pre-merge
+  // reviewer still running, its verdict is irrelevant here, and the parked verification's real
+  // subject — its place in the shared-permit order — is pinned by the build check that runs when
+  // it gets the permit. The declared check runs from the repo root (the npm walk-up's package
+  // root), so it cannot see a slot worktree's files; the shared check counter names the runs:
+  // 1 alpha's verify gate, 2 alpha's re-review gate (after the resolver), 3 beta's verify gate,
+  // 4 beta's in-lock re-check — so run 3 is beta's verification's build check.
+  const checkCount = path.join(root, ".checkcount");
+  declareCheck(root, `#!/bin/sh\n${checkRunNumber(checkCount)}if [ "$n" -eq 3 ]; then echo beta-check >> '${order}'; fi\necho ok\n`);
   const restore = fakePi(
     [
-      leasedRoleShell(),
       `for a in "$@"; do case "$a" in`,
       `tumwater-*-conflict) echo resolved > alpha.txt; echo resolver >> '${order}'; printf '%s\\n' '${assistantLine("resolved")}'; exit 0;;`,
-      `*"VERDICT:"*) case "$role" in beta) echo beta-review >> '${order}';; esac; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
+      `*"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
       `esac; done`,
     ].join("\n"),
   );
@@ -273,7 +282,7 @@ test("the merge's conflict resolver takes a shared permit, ahead of a verificati
     ctx.semaphore.release(); // the run ends: the merge's resolver is first in line
     held = false;
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "both to merge");
-    assert.deepEqual(fs.readFileSync(order, "utf8").trim().split("\n"), ["resolver", "beta-review"], "the resolver ran before the parked verification");
+    assert.deepEqual(fs.readFileSync(order, "utf8").trim().split("\n"), ["resolver", "beta-check"], "the resolver ran before the parked build-check verification");
     assert.equal(sh(root, "git", "show", "main:alpha.txt"), "resolved", "the resolution merged");
     assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"));
   } finally {

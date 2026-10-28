@@ -41,8 +41,8 @@ import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
-import { piRunResult, withPi } from "./fakes/fake-pi.js";
-import { assistantLine } from "./fixtures/pi-events.js";
+import { checkRunNumber } from "./fixtures/merger-fixtures.js";
+import { piRunResult } from "./fakes/fake-pi.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // These tests pin the sequential merge stages (the check, then the review).
@@ -536,7 +536,7 @@ test("a foreign changes shape or a null record degrades instead of crashing a me
   assert.equal(after[0]!.status, "approved");
 });
 
-test("a queued merge's record names each phase while it runs: the gate's check, the review, the merge's in-lock check", async () => {
+test("a queued merge's record names each phase while it runs: the gate's check, then the merge's in-lock check", async () => {
   const root = makeRepo();
   // A pinned change ahead of main, exactly what a run leaves behind for the pipeline.
   const sha = pinOffMain(
@@ -549,36 +549,37 @@ test("a queued merge's record names each phase while it runs: the gate's check, 
   enqueueMerge(root, entry);
 
   // Every observation point appends the marker's stage as the observers would read it: the
-  // project's declared check (the verification's gate pre-check, then the merge's in-lock
-  // re-check), and the reviewer run. The reviewer also moves main by a code file, so the in-lock
-  // re-check has a rebased tree to verify — the merge step's own long phase, which names itself a
-  // build check too. (An empty or doc-only move would leave the verified tree's bytes, plus at most
+  // project's declared check runs the verification's gate pre-check, then the merge's in-lock
+  // re-check. With no pre-merge reviewer, the deterministic gate approves on the green pre-check
+  // (review.afterMerge). The check itself moves main by a code file, so the in-lock re-check has
+  // a rebased tree to verify — the merge step's own long phase, which names itself a build check
+  // too. (An empty or doc-only move would leave the verified tree's bytes, plus at most
   // exempt paths, and the re-check would rightly be skipped.)
   const rec = path.join(tmpdir(), "stages");
   const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${mergeStatePath(root)}' | head -n 1`;
-  const config = { ...defaultConfig(), check: { command: `echo "check:$(${stageOf})" >> '${rec}'` } };
-  await withPi(
-    [
-      `echo "review:$(${stageOf})" >> '${rec}'`,
-      `echo moved > '${root}/main-moved.txt'`,
-      `git -C '${root}' add main-moved.txt`,
-      `git -C '${root}' commit -q -m 'main moves under the merge'`,
-      `printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
-    ].join("\n"),
-    async () => {
-      const author = makeRoleRunner(root, "improve", config);
-
-      const result = await mergeHead(root, author, config, "improve");
-
-      assert.equal(result, "changed", `the merge succeeds: ${author.state.lastError ?? ""}`);
-      assert.deepEqual(
-        fs.readFileSync(rec, "utf8").trim().split("\n"),
-        ["check:build-check", "review:reviewing", "check:build-check"],
-        "each phase ran under its own stage",
-      );
-      assert.equal(readMergeMarker(root), null, "the marker is removed after the outcome");
+  // Run 1 of the declared check is the gate pre-check, run 2 the merge's in-lock re-check, so the
+  // check moves main only on run 1: a second main move under the merge would leave the merge's
+  // fast-forward target behind main and block it (the gate's own pre-check already moved main once
+  // here so the in-lock re-check has a rebased tree to verify).
+  const checkCount = path.join(root, ".checkcount");
+  const config = {
+    ...defaultConfig(),
+    review: { ...defaultConfig().review, afterMerge: ["improve"] },
+    check: {
+      command: `${checkRunNumber(checkCount)}if [ "$n" -eq 1 ]; then echo moved >> '${root}/main-moved.txt'; git -C '${root}' add main-moved.txt; git -C '${root}' commit -q -m 'main moves under the merge'; fi; echo "check:$(${stageOf})" >> '${rec}'`,
     },
+  };
+  const author = makeRoleRunner(root, "improve", config);
+
+  const result = await mergeHead(root, author, config, "improve");
+
+  assert.equal(result, "changed", `the merge succeeds: ${author.state.lastError ?? ""}`);
+  assert.deepEqual(
+    fs.readFileSync(rec, "utf8").trim().split("\n"),
+    ["check:build-check", "check:build-check"],
+    "the gate pre-check and the in-lock re-check each ran under their own stage",
   );
+  assert.equal(readMergeMarker(root), null, "the marker is removed after the outcome");
 });
 
 // The marker is cross-process display state: observers poll it every second while a pipeline

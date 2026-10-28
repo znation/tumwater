@@ -4,7 +4,7 @@ import type { MergeRequest, MergerContext } from "../../src/merge/merge-core.js"
 import { mergeApproved, verifyRequest, type BatchContext, type BatchRoleWiring } from "../../src/merge/merge-batch.js";
 import { setRef } from "../../src/git/git.js";
 import { ensureWorktree } from "../../src/git/worktree.js";
-import { eventsLogPath, mergeRefName } from "../../src/paths.js";
+import { mergeRefName } from "../../src/paths.js";
 import { defaultConfig } from "../../src/config/config.js";
 import { freshRunnerState } from "../../src/runner/runner-state.js";
 import { readEvents } from "../../src/events/event-read.js";
@@ -261,40 +261,26 @@ export function runBatch(
   roles: string[],
   wiringFor: (role: string) => BatchRoleWiring,
   controller?: AbortController,
+  config?: TumwaterConfig,
 ) {
   return verifyThenMerge(
-    makeBatchCtx(root, undefined, controller),
+    makeBatchCtx(root, config, controller),
     roles.map((role) => request(shas[role]!, { role })),
     wiringFor,
   );
 }
 
+/** A config that approves the given roles on the deterministic green build pre-check alone
+ * (review.afterMerge), so a batch test can merge without reading a pre-merge reviewer verdict. */
+export function afterMergeConfig(roles: string[]): TumwaterConfig {
+  const cfg = defaultConfig();
+  cfg.review = { ...cfg.review, afterMerge: roles };
+  return cfg;
+}
+
 // A test that cares WHICH verify does what keys its reviewer on the change under review, and one
 // that cares about order waits on an event rather than guessing a sleep long enough for a
 // loaded host.
-
-/** The shell that prints `reply` as a review run's one assistant turn. */
-export const replyLine = (reply: string): string => `printf '%s\\n' '${assistantLine(reply)}'`;
-
-/** A reviewer shim whose review run behaves per change: a verify holds a pooled `_slot-<n>`
- * lease, so `$role` (from slots.json) names the change under review. `byRole` maps a role to
- * the shell its review run executes; every other role runs `otherwise` (approve at once). */
-export function reviewerByRole(byRole: Record<string, string>, otherwise = replyLine("VERDICT: approve")): string {
-  return [
-    `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
-    leasedRoleShell(),
-    `case "$role" in`,
-    ...Object.entries(byRole).map(([role, body]) => `"${role}") ${body} ;;`),
-    `*) ${otherwise} ;;`,
-    `esac; exit 0;;`,
-    `esac; done`,
-  ].join("\n");
-}
-
-/** Shell that holds a review run until the events log records `role`'s `type` event — bounded
- * at ~30 s, so a regression fails the assertions instead of hanging the suite. */
-export const awaitEvent = (root: string, role: string, type: string): string =>
-  `i=0; until grep -q '"loop":"${role}","type":"${type}"' '${eventsLogPath(root)}' 2>/dev/null || [ $i -ge 300 ]; do sleep 0.1; i=$((i+1)); done; `;
 
 /** A counting build check: `$n` is the invocation's 1-based number (checkRunNumber) — runs 1
  * and 2 are the two verifies' gate pre-checks, run 3 is the stack's first shared check — and `body`
