@@ -20,7 +20,7 @@ import {
   sortRolesByState,
 } from "../src/ui/status-model.js";
 import { phaseTone } from "../src/ui/tone.js";
-import { workingDetail } from "../src/ui/run-progress-model.js";
+import { STALL_RE, workingDetail } from "../src/ui/run-progress-model.js";
 import { teamAlerts } from "../src/ui/team-alerts.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -162,6 +162,30 @@ test("workingDetail does not flag a fresh tool call as stalled", () => {
   const detail = workingDetail(root, s);
   assert.ok(detail.endsWith("bash npm test"), `unexpected shape: ${detail}`);
   assert.doesNotMatch(detail, /tool call stalled/);
+});
+
+test("workingDetail defers the flat silence flag to an open buffered tool call's stall window", () => {
+  const root = tmpdir();
+  const s = freshRunnerState("clean");
+  s.lastRunStartedAt = Date.now() - 700_000;
+  // An open redirected call — the run prompt's prescribed `> check.log` verify shape. Its
+  // stdout cannot reach pi until the suite exits, so the flat 5-minute "no agent output" flag
+  // would cry wolf inside the call's own 10-minute buffered stall window (BUGS.md 2026-10-28).
+  const p = parseProgress([SESSION, toolStart("bash", { command: "npm run gate > log 2>&1" })], 6 * 60_000);
+  assert.equal(p.stalledTool, undefined, "at 6 minutes the buffered call is still inside its window");
+  const quiet = workingDetail(root, s, p);
+  assert.doesNotMatch(quiet, /no agent output/, `6-minute buffered silence must not read as a stall: ${quiet}`);
+  assert.doesNotMatch(quiet, /tool call stalled/, `...nor as a tool-call stall: ${quiet}`);
+  assert.doesNotMatch(quiet, STALL_RE, `the stuck alert must not fire: ${quiet}`);
+  // The same call past the buffered threshold (11 minutes) names itself as stalled.
+  const call = p.openToolCalls?.[0];
+  assert.ok(call, "the open call is tracked");
+  call.lastActivityAt -= 600_001;
+  p.stalledTool = stalledToolLabel(p.openToolCalls);
+  p.quietMs = 11 * 60_000;
+  const stalled = workingDetail(root, s, p);
+  assert.match(stalled, /tool call stalled: bash npm run gate/, `a real stall still reads as one: ${stalled}`);
+  assert.match(stalled, STALL_RE, `the stuck alert fires: ${stalled}`);
 });
 
 test("rolePhase surfaces the live detail only while a run is in flight", () => {

@@ -251,16 +251,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
   - drop the agent-side `test:gate` run in favor of targeted tests, since the team runs the gate anyway;
   - have the doctor's contention advice weigh host load before it recommends a higher cap.
 
-### The "look stuck" alert reads the run prompt's own redirected test run as a stall: "no agent output" fires at a flat 5 minutes even while the open call is inside its own 10-minute buffered-output threshold (found by operator session 2026-10-28 from the dashboard's "feature #2, bugfix #2, and bugfix #3 look stuck" warning)
-
-- **Symptom:** on 2026-10-28 at about 04:30 the dashboard showed "feature #2, bugfix #2, and bugfix #3 look stuck", with no agent output for 11m55s, 15m15s and 15m25s. All three were inside `npm run test:gate > …/check.log 2>&1` calls. bugfix-2's took 929 s and bugfix-3's 986 s; feature-2's was still running at 04:31. None was hung: their output went to a file, which is the shape the run prompt prescribes ("Write the check's full output to a scratch file once"). Every agent suite run over 5 minutes now raises the alert, and under the load in the entry above that is most of them.
-- **Reproduce:** in a role's live log tail, open a pi bash tool call whose command redirects stdout to a file, and write nothing for over 5 minutes. `inFlightDetail` (src/ui/run-progress-model.ts) appends "no agent output for …" once `quietMs >= 300_000`, and the stuck alert (src/ui/team-alert-status.ts) fires on it.
-- **Cause:** two thresholds disagree.
-  - **The tool-call stall check knows redirects.** It gives a redirected or piped call `bufferedCommandStallMs` (src/pi/command-shape.ts: at least 10 minutes) before calling it stalled.
-  - **The silence check does not.** The "no agent output" check ignores the open call and fires at a flat 5 minutes.
-  Because the alert names silence, not the call, the operator cannot tell a slow suite from a hang.
-- **Expected / fix sketch:** while a tool call is open, let the silence flag defer to that call's own stall threshold, the buffered one for a redirect or pipe. Name the call in the cell and the alert, as in "running `npm run test:gate` for 12m", so a real stall past the threshold still reads as one. Pin it with a run-progress-model case: an open redirected call at 6 minutes is not stuck, and the same call at 11 minutes is.
-
 ### `a demoted fallback admits exactly one probe run per cool-down; other due roles wait` failed, then passed on the same tree (quarantined by tumwater 2026-10-28)
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

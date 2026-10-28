@@ -5,6 +5,17 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### The "look stuck" alert reads the run prompt's own redirected test run as a stall: "no agent output" fires at a flat 5 minutes even while the open call is inside its own 10-minute buffered-output threshold (found by operator session 2026-10-28 from the dashboard's "feature #2, bugfix #2, and bugfix #3 look stuck" warning) — fixed 2026-10-28 by the bugfix role
+
+- **Validation gap:** real-run-needed — no offline path covered the stuck alert firing from a slow redirected suite run; only a live dashboard run surfaced it.
+- **Symptom:** on 2026-10-28 at about 04:30 the dashboard showed "feature #2, bugfix #2, and bugfix #3 look stuck", with no agent output for 11m55s, 15m15s and 15m25s. All three were inside `npm run test:gate > …/check.log 2>&1` calls. bugfix-2's took 929 s and bugfix-3's 986 s; feature-2's was still running at 04:31. None was hung: their output went to a file, which is the shape the run prompt prescribes ("Write the check's full output to a scratch file once"). Every agent suite run over 5 minutes now raises the alert, and under the load in the entry above that is most of them.
+- **Reproduce:** in a role's live log tail, open a pi bash tool call whose command redirects stdout to a file, and write nothing for over 5 minutes. `inFlightDetail` (src/ui/run-progress-model.ts) appends "no agent output for …" once `quietMs >= 300_000`, and the stuck alert (src/ui/team-alert-status.ts) fires on it.
+- **Cause:** two thresholds disagree.
+  - **The tool-call stall check knows redirects.** It gives a redirected or piped call `bufferedCommandStallMs` (src/pi/command-shape.ts: at least 10 minutes) before calling it stalled.
+  - **The silence check does not.** The "no agent output" check ignores the open call and fires at a flat 5 minutes.
+  Because the alert names silence, not the call, the operator cannot tell a slow suite from a hang.
+- **Fix:** while a tool call that buffers its output (a redirect or pipe) is open, `inFlightDetail` defers the flat 5-minute "no agent output" flag to the call's own `bufferedCommandStallMs` window; a real stall past that window already names itself as "tool call stalled: <tool>" (src/ui/run-progress-model.ts). Pinned by a run-progress-model case: an open redirected call at 6 minutes is not stuck, and the same call at 11 minutes is.
+
 ### Bugfix runs add synthetic CPU load to the shared host to reproduce load flakes, and leak the burners (found by operator session 2026-10-28 from `tumwater doctor orphans`) — fixed 2026-10-28 by the bugfix role
 
 - **Symptom:** on 2026-10-28, seven bash `while :; do :; done` loops stood at PPID 1:

@@ -1,3 +1,4 @@
+import { callBuffersOutput } from "../pi/command-shape.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress-data.js";
 import { compactTokens } from "../text/format.js";
@@ -82,8 +83,15 @@ export function inFlightDetail(head: string, p: LiveProgress | null): string {
   if (p.stalledTool) parts.push(`tool call stalled: ${p.stalledTool}`);
   else if (p.lastTool) parts.push(p.lastTool);
   // Silence under five minutes is normal (slow local-model prefills, long tool calls);
-  // only flag a stall once at least five minutes have passed without any pi output.
-  if (p.quietMs >= 300_000) parts.push(`no agent output for ${duration(p.quietMs)}`);
+  // only flag a stall once at least five minutes have passed without any pi output. While a
+  // tool call that buffers its output (a redirect or pipe — the run prompt's prescribed
+  // `> check.log` verify shape) is open, that flat threshold would cry wolf inside the call's
+  // own generous wall-clock stall window: the silence is the prescribed shape, not a hang,
+  // and a real stall past that window has already named itself as `tool call stalled: <tool>`
+  // above. Defer to the call so a slow suite stops being read as a hang (BUGS.md 2026-10-28).
+  const hasOpenBuffered =
+    p.openToolCalls?.some((call) => callBuffersOutput(p.agent, call.command || call.label)) ?? false;
+  if (p.quietMs >= 300_000 && !hasOpenBuffered) parts.push(`no agent output for ${duration(p.quietMs)}`);
   return parts.join(" · ");
 }
 
