@@ -387,6 +387,24 @@ async function killTrees(
   return { killed, failed };
 }
 
+/** The `pid N (+N descendant) command` line per killed tree and the `could not kill` line per
+ * refused tree, in the read the reapers' best-effort warning logs — the one shape both
+ * reapPreviousTeamOrphans and reapAttributableOrphans report, so the two cannot drift on the
+ * itemized wording. Callers join `[...items, ...refused]` with "; " behind their own verb
+ * phrase. */
+function orphanKillReportLines(
+  killed: KilledOrphan[],
+  failed: { pid: number; reason: string }[],
+): { items: string[]; refused: string[] } {
+  return {
+    items: killed.map((k) => {
+      const tree = k.descendants > 0 ? ` (+${plural(k.descendants, "descendant")})` : "";
+      return `pid ${k.pid}${tree} ${k.command}`;
+    }),
+    refused: failed.map((f) => `could not kill pid ${f.pid}: ${f.reason}`),
+  };
+}
+
 /** Team start's reap of a crashed predecessor's leaks: kill the parentless processes whose run
  * marks all name dead harnesses and at least one names `previousPid`, the orchestrator the
  * info file recorded. Safe without an operator's judgment: a mark proves a tumwater start
@@ -412,11 +430,7 @@ export async function reapPreviousTeamOrphans(
     });
     if (chosen.length === 0) return 0;
     const { killed, failed } = await killTrees(root, scan.rows, chosen, signals);
-    const items = killed.map((k) => {
-      const tree = k.descendants > 0 ? ` (+${plural(k.descendants, "descendant")})` : "";
-      return `pid ${k.pid}${tree} ${k.command}`;
-    });
-    const refused = failed.map((f) => `could not kill pid ${f.pid}: ${f.reason}`);
+    const { items, refused } = orphanKillReportLines(killed, failed);
     warnEventBestEffort(
       root,
       TUMWATER_SOURCE,
@@ -453,11 +467,7 @@ export async function reapAttributableOrphans(
     if (chosen.length === 0) return 0;
     const { killed, failed } = await killTrees(root, scan.rows, chosen, signals);
     if (killed.length === 0) return 0;
-    const items = killed.map((k) => {
-      const tree = k.descendants > 0 ? ` (+${plural(k.descendants, "descendant")})` : "";
-      return `pid ${k.pid}${tree} ${k.command}`;
-    });
-    const refused = failed.map((f) => `could not kill pid ${f.pid}: ${f.reason}`);
+    const { items, refused } = orphanKillReportLines(killed, failed);
     warnEventBestEffort(
       root,
       TUMWATER_SOURCE,
