@@ -2,7 +2,7 @@
  * merges or fails, so this module buckets the merge bookkeeping events per role and resolves
  * each queued run to the verdict of the merge attempt that belongs to it. Split out of
  * history-data.ts, which keeps the run-row shape and collectors; the three consumers of the
- * join (history-data.ts's runRows, failure/time-spend.ts, run/run-detail-data.ts) import it
+ * join (history-data.ts's runRows, failure/failure-time-spend.ts, run/run-detail-data.ts) import it
  * from here. */
 import type { HarnessEvent } from "../events/events.js";
 import { textOr } from "../text/text.js";
@@ -11,7 +11,7 @@ import { groupBy } from "../collections.js";
 /** The merge bookkeeping resolveQueuedResult joins over: per role, the `merge_queued` pins
  * and the `merge_done`/`merge_failed` outcomes, each list oldest-first (the scan order). Exported
  * as one helper with exactly three call sites — readRunRows' history-row join, the failure
- * digest's time-and-spend fold (time-spend.ts), and run-detail-data.ts — so the collectors
+ * digest's time-and-spend fold (failure-time-spend.ts), and run-detail-data.ts — so the collectors
  * cannot disagree about which events feed the join or in what order they sit: a fourth
  * merge-bookkeeping event
  * type, or a changed order rule, is edited once here. Callers bucket only the events they
@@ -100,7 +100,7 @@ export function resolveQueuedResult(
  * its queued label names the held commit, not a merge this run made. Returning false keeps that
  * row's raw queued label and, crucially, leaves the earlier change's merge pins unclaimed, so the
  * verdict that belongs to the queued entry is not credited to the held run. One guard covers all
- * three call sites (history-data.ts, time-spend.ts, run-detail-data.ts). When `floorTs` (a
+ * three call sites (history-data.ts, failure-time-spend.ts, run-detail-data.ts). When `floorTs` (a
  * since-window's cutoff, null in the count view) sits after the run_start's ts, the row's join
  * evidence is not whole in the windowed read and the row keeps its raw queued label. A MISSING
  * start needs no guard — it joins, because rotation drops a prefix, so every pin older than the

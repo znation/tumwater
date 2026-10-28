@@ -75,7 +75,7 @@ export function roleCapVerdicts(
   now: number,
 ): Map<string, RoleCapVerdict> {
   // Group by base role via the shared Map-of-arrays step (collections.groupBy, which
-  // time-spend, history-data, and team-polls also fold), then drop the exempt director's
+  // failure-time-spend, history-data, and team-polls also fold), then drop the exempt director's
   // group so it never holds a verdict; first-appearance order is preserved.
   const groups = groupBy(runners, (r) => baseRoleOf(r.role));
   groups.delete(DIRECTOR_ROLE);

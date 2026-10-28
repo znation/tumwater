@@ -11,7 +11,7 @@ import { isPassingFullCheck, isRedFullCheck } from "../build/build-check-events.
 import { eventRole, eventUsage } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { finiteNumber, nonNegativeNumber } from "../files/json-object.js";
-import { OUTCOME_CLASS } from "../failure/time-spend.js";
+import { OUTCOME_CLASS } from "../failure/failure-time-spend.js";
 import type { RunResult } from "../run/run-outcome.js";
 import { commitTier } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";

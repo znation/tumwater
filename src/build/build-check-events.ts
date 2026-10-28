@@ -23,8 +23,8 @@ export type BuildCheckScope = "gate" | "merge" | "batch";
  * full-suite check. The one vocabulary the three predicates that recognize a full-suite check
  * select on — isPassingFullCheck, isRedFullCheck, and the status polls' newest-merge-check
  * scan (status-polls.ts) — so they cannot drift on which scopes count. The deadline-killed
- * failure costing in time-spend.ts is a narrower pair (merge/batch only, with a status and a
- * timeout required), so it keeps its own check. `full` is the event's `full` field: false
+ * failure costing in failure-time-spend.ts is a narrower pair (merge/batch only, with a status
+ * and a timeout required), so it keeps its own check. `full` is the event's `full` field: false
  * (a check.mergeCommand run) is never a full-suite check. */
 export function isFullCheckScope(scope: unknown, full?: unknown): boolean {
   // A merge or batch run of check.mergeCommand carries `full: false` (buildCheckEvent): it ran

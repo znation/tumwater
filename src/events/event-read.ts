@@ -95,7 +95,7 @@ function runStartEvents(events: HarnessEvent[]): Map<string, HarnessEvent> {
 
 /** The run_start pairing's start epoch ms: `${role}#${run}` → start epoch ms, the projection
  * of runStartEvents onto each event's `ts` — shared by `tumwater history`'s row spans
- * (history-data.ts), the failure digest's time-and-spend fold (time-spend.ts), and the run
+ * (history-data.ts), the failure digest's time-and-spend fold (failure-time-spend.ts), and the run
  * drill-down's duration (run-detail-data.ts), so those consumers cannot drift into different
  * notions of a run's span. A run_end whose start is not in `events` (log rotation cut it, or
  * the run was skipped before any start logged) has no entry; callers decide what an unpaired

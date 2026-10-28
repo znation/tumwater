@@ -5,7 +5,7 @@
  * evidence wrapper (selfcheckDigest, SELFCHECK_DIGEST_MS) lives in run/selfcheck-digest.ts. */
 import type { RunResult } from "../run/run-outcome.js";
 import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-data.js";
-import type { LossCause, SpendCell } from "./time-spend.js";
+import type { LossCause, SpendCell } from "./failure-time-spend.js";
 import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
 import { boundedWindowLine, clockHm, dayKey, dayLabel, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";

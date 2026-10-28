@@ -17,8 +17,8 @@ export function isJsonObject(value: unknown): value is Record<string, unknown> {
  * when it is an array and [] otherwise — the one home of the "an event/record field is the
  * list or it is nothing" read every formatter applies (event-format.ts's review_rejected
  * reasons, dep_install packages, config_changed keys; src/failure/failure-state-change.ts's
- * config_changed keys; time-spend.ts's review-rejection reasons; team-state.ts's paused-roles
- * list). A torn or hand-edited line
+ * config_changed keys; failure-time-spend.ts's review-rejection reasons; team-state.ts's
+ * paused-roles list). A torn or hand-edited line
  * never throws and never renders a placeholder: the field reads as absent, and the caller's
  * empty-list branch fires. Foreign entries inside an array are dropped for the same reason —
  * letting them through made `join` render "[object Object]" and handed
@@ -60,9 +60,9 @@ export function finiteNumber<T>(value: unknown, fallback: T): number | T {
  * runner/runner-state-load.ts's healNumber (every numeric RunnerState field → 0),
  * run/run-usage.ts's counter (each persisted usage count → 0), pi/pi-stream.ts's usageNumber
  * (one wire usage number → 0), ui/progress-data.ts's message_end read (totalTokens → the
- * previous context, output and its peak floor → 0), time-spend.ts's runDurationMs (an event's
- * durationMs → null, the "no own duration" marker) and its merge_blocked_deadline example
- * (the deadline-killed check's timeoutMs → 0, so a torn deadline prices as 0s, never NaN);
+ * previous context, output and its peak floor → 0), failure-time-spend.ts's runDurationMs (an
+ * event's durationMs → null, the "no own duration" marker) and its merge_blocked_deadline
+ * example (the deadline-killed check's timeoutMs → 0, so a torn deadline prices as 0s, never NaN);
  * pi-extension/context-budget.ts's
  * contextNote (usedTokens, usedWindow → null), pi-extension/context-shake.ts's percentOf
  * (tokens, contextWindow → null), merge/merge-queue.ts's isMergeEntry (run, enqueuedAt,

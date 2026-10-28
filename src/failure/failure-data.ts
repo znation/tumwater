@@ -6,14 +6,14 @@
  * apart from "how it prints" (column layout, cell wording), which change for different
  * reasons. The cluster-key rules themselves — normalization, timeout pooling, grouping — live
  * in failure-cluster.ts, shared with the error-storm reducer. The time-and-spend fold —
- * the per-role × outcome-class pricing and the loss ranking — lives in time-spend.ts.
+ * the per-role × outcome-class pricing and the loss ranking — lives in failure-time-spend.ts.
  */
 import type { RunResult } from "../run/run-outcome.js";
 import { assertReportSinceMs, eventWindowCovers, readWindowEvents, sinceWindowTiming, type EventLogState } from "../events/event-window.js";
 import { eventDayKey, eventRole } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { scopeBases } from "../report/report-fold.js";
-import { timeAndSpend, type LossCause, type TimeSpendRow } from "./time-spend.js";
+import { timeAndSpend, type LossCause, type TimeSpendRow } from "./failure-time-spend.js";
 import type { HarnessEvent } from "../events/events.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";

@@ -29,8 +29,9 @@ export const PREFILL_REASON = "it rides into every run's prefill";
  * drift across the four surfaces that show just that first reason: the review gate's returned
  * detail (review.ts), the event feed's one-line reject (event-format.ts), the failure digest's
  * rejection clusters (failure-data.ts), and the error a role's next run records (run-apply.ts).
- * Sites that render the whole reason list, or intentionally omit the fallback (time-spend.ts's
- * first-reason example, review.ts's rejection event `reason`), keep their own handling. */
+ * Sites that render the whole reason list, or intentionally omit the fallback
+ * (failure-time-spend.ts's first-reason example, review.ts's rejection event `reason`), keep
+ * their own handling. */
 export function firstReason(reasons: readonly unknown[] | undefined): string {
   const first = reasons?.[0];
   return typeof first === "string" ? first : NO_REASONS_GIVEN;

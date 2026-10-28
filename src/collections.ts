@@ -5,10 +5,10 @@
 
 /** Group items by a key, preserving first-seen key order and input order within each group.
  * The single home of the "append to a Map of arrays" step, shared by the event bucketers
- * (history-queued.ts's bucketMergeEvents, failure/time-spend.ts's rejected-by-role pass) and
- * the team-hold poll's observations-by-provider grouping (team-polls.ts's pollTeamHold), so
- * those sites cannot drift on how a missing key is seeded. Returns a fresh Map; the input is
- * never mutated. */
+ * (history-queued.ts's bucketMergeEvents and failure/failure-time-spend.ts's rejected-by-role
+ * pass) and the team-hold poll's observations-by-provider grouping (team-polls.ts's
+ * pollTeamHold), so those sites cannot drift on how a missing key is seeded. Returns a fresh
+ * Map; the input is never mutated. */
 export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T[]> {
   const groups = new Map<K, T[]>();
   for (const item of items) {
@@ -34,7 +34,7 @@ export function distinctOrdered<T>(items: Iterable<T>): T[] {
 /** Return `map`'s value for `key`, creating and storing `make()`'s result first when the key is
  * absent — the single home of the `map.get(key) ?? fresh; …; map.set(key, value)` step, shared
  * by the failure digest's per-role stats, outcome, and prompt-token accumulators (failure-data.ts),
- * its time-and-spend per-role row (time-spend.ts), the team hold's provider+kind grouping
+ * its time-and-spend per-role row (failure-time-spend.ts), the team hold's provider+kind grouping
  * (team-hold.ts), the error-storm reducer's roles-by-key set (src/team/team-error-storm.ts), and
  * `groupBy` above, so those sites cannot drift on how a missing key is seeded. `make` runs only
  * when the key is absent. A stored value of `undefined` reads as absent, matching the `??` idiom
@@ -147,10 +147,10 @@ export function trimToLast<T>(arr: T[], max: number): void {
  * ranks counters by count calls one of them rather than re-implementing the comparator —
  * `rankCountEntries` serves the `[key, count]` entry shape (src/report/report-render.ts's
  * rankedRoleMap, src/team/team-failure-spread.ts's strongest-kind pick) and `rankByCount` serves
- * callers whose counts are fields or computations on other shapes
- * (src/failure/failure-cluster.ts's clusters, src/team/team-error-storm.ts's strongest-cause pick,
- * failure-data.ts's outcome table, and time-spend.ts's time-and-spend table). `sortByValueDesc`
- * is the deliberate sibling for the same value-descending shape that wants a code-unit tiebreak
+ * callers whose counts are fields or computations on other shapes (src/failure/failure-cluster.ts's
+ * clusters and src/team/team-error-storm.ts's strongest-cause pick; failure-data.ts's outcome
+ * table and failure-time-spend.ts's time-and-spend table). `sortByValueDesc` is the deliberate
+ * sibling for the same value-descending shape that wants a code-unit tiebreak
  * instead of localeCompare, and unlike these two it sorts its input array in place. The one
  * deliberate exception to both orderings is ui/gui/gui-client-report-chart.ts's reportRoleOrder,
  * which keeps its own copy by design: it runs in the browser, where harness modules cannot be
@@ -169,9 +169,9 @@ export function rankByCount<T>(
  * aliases `items` when it already fits; `hidden` is `max(0, items.length - top)`, which the
  * slice-length arithmetic yields without the explicit clamp (a slice never returns more than
  * `top` even when the list is shorter). Shared by the merge-intent and conflict-hunk caps
- * (merge-git.ts), the failure digest's loss-cause and message-cluster tops
- * (time-spend.ts, failure-cluster.ts), and the answered-questions cap (backlog-question-answer.ts),
- * so those cuts cannot drift on how the remainder is counted. */
+ * (merge-git.ts), the failure digest's loss-cause and message-cluster tops (failure-time-spend.ts
+ * and failure-cluster.ts), and the answered-questions cap (backlog-question-answer.ts), so those
+ * cuts cannot drift on how the remainder is counted. */
 export function topAndHidden<T>(items: readonly T[], top: number): { visible: T[]; hidden: number } {
   const visible = items.slice(0, top);
   return { visible, hidden: items.length - visible.length };

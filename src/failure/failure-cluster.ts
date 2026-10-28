@@ -14,14 +14,14 @@ export const EXAMPLE_MAX = 120;
 
 /** The example and cluster key every message-less failure takes: errorTextOrPlaceholder
  * returns it for the digest's error clusters (failure-data.ts) and its loss ranking
- * (time-spend.ts), so a broken `run_end` that skipped its error text reads the same on both
+ * (failure-time-spend.ts), so a broken `run_end` that skipped its error text reads the same on both
  * surfaces. */
 const NO_ERROR_TEXT = "(no error text recorded)";
 
 /** The error text a failure event carries, or NO_ERROR_TEXT when it carries none — the field
  * is a non-empty string or absent. The single home of the placeholder rule, shared by the
  * digest's error clusters (failure-data.ts) and the loss ranking's clustered and review_error
- * arms (time-spend.ts), so a message-less failure reads the same on every surface. */
+ * arms (failure-time-spend.ts), so a message-less failure reads the same on every surface. */
 export function errorTextOrPlaceholder(v: unknown): string {
   return typeof v === "string" && v !== "" ? v : NO_ERROR_TEXT;
 }

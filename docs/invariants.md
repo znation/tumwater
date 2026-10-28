@@ -277,7 +277,7 @@ cause carrying its rejection reason, a `review_error` under the matching review-
 and a conflict under a `merge-conflict` cause taking the shared no-text placeholder — a conflict
 names no rejection and is not invented as one.
 
-**Binds.** `src/failure/time-spend.ts` (`timeAndSpend`), `src/failure/failure-data.ts`
+**Binds.** `src/failure/failure-time-spend.ts` (`timeAndSpend`), `src/failure/failure-data.ts`
 (`collectFailureReport`).
 
 **Pinned by.** `test/failure-time-spend.test.ts` — "a review-rejected change's authoring hours
@@ -304,7 +304,7 @@ never reads as a complete itemization of the window.
 
 **Binds.** `src/failure/failure-data.ts` (the `*_TOP` caps, and the `hiddenClusters` /
 `lossCausesHidden` / `stateChangesTotal` / `mergedTotal` fields the render reads),
-`src/failure/failure-render.ts` (`renderFailureMarkdown`, `renderClusters`), `src/failure/time-spend.ts`
+`src/failure/failure-render.ts` (`renderFailureMarkdown`, `renderClusters`), `src/failure/failure-time-spend.ts`
 (`LOSS_TOP`), `src/failure/failure-state-change.ts` (`STATE_CHANGE_TOP`).
 
 **Pinned by.** `test/failure-render.test.ts` — "the top-N cluster sections mark their cut:
