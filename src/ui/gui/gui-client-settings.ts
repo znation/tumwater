@@ -192,10 +192,11 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // POST one two-click Health-card action after its slot was armed by a prior click: the first
   // click only arms the slot (the handler's button repaints to "Confirm …") and returns; a
   // second click within the confirm window disarms, repaints, flashes the action line, posts,
-  // and re-runs the card's checks. Shared by the Kill-orphans / Drop-broken-pins /
-  // Retire-leftovers / Archive-backlog handlers, which differ only in their slot, key, button
-  // repaint, flash line, endpoint, and — for Retire-leftovers — the outcome-line override
-  // passed through to postSetting.
+  // and re-runs the card's checks. The Health card's four repair buttons (Kill orphans, Drop
+  // broken pins, Retire leftovers, Archive backlog) share this one confirm shape: only the slot
+  // key, the paint fn, the flash line, the endpoint, and an optional news override (passed
+  // through to postSetting, e.g. Retire-leftovers' outcome-line override) differ, so they fold
+  // into this one helper instead of four copies of the arm/disarm/paint/flash/postSetting tail.
   async function postConfirmedHealthAction(slot, key, paint, flash, path, news) {
     if (!slot.armed(key)) {
       slot.arm(key);
@@ -237,8 +238,9 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   }
   const retireLeftoversSlot = confirmSlot(paintRetireLeftoversButton);
   async function retireLeftoversClick() {
-    // The outcome override's none-left fallback matches the none-left sentence the TUI Health
-    // key flashes when nothing is retirable.
+    // The news override's none-left fallback matches the none-left sentence the TUI Health key
+    // flashes when nothing is retirable: the shared leftoverRetireLines join is empty when
+    // nothing is retirable, so the button falls back to that same sentence.
     await postConfirmedHealthAction(retireLeftoversSlot, "retire-leftovers", paintRetireLeftoversButton, "Retiring every disabled role's leftovers…", "/api/doctor-retire-leftovers",
       (d) => (d.ok ? "" : "error: ") + (d.message || "no leftover roles to retire"));
   }
