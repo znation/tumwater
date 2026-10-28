@@ -26,6 +26,7 @@ import {
   parseRoleWakeInput,
   parseStopInInput,
 } from "./tui-input.js";
+import { guardError } from "./tui-guard.js";
 import { viewedRole, type TuiEditorCtx, type TuiEditorModule } from "./tui-editor-ctx.js";
 import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
@@ -41,17 +42,6 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
   let pauseEditStop = false;
   const draft = savedPromptDraft(session);
 
-  // One home for turning a thrown pause/stop/wake marker-write (or a read of one) into the
-  // flash it deserves: every arm below wraps its write in this so a lock timeout or torn fs
-  // flashes the reason instead of letting the throw escape the keypress handler and kill the
-  // TUI. The catch coerces the same way each handler's guard did, so the wording cannot drift.
-  const guardError = (fn: () => void): void => {
-    try {
-      fn();
-    } catch (err) {
-      session.flashError(err);
-    }
-  };
 
   // Leave pause-edit mode (Esc, Ctrl+F again, a written pause, or Ctrl+T): restore the draft.
   const exitPauseEditMode = (): void => {
@@ -96,7 +86,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       exitPauseEditMode();
       return true;
     }
-    guardError(() => {
+    guardError(session, () => {
       if (isTeamPaused(session.root)) {
         session.flashMessage(resumeTeam(session.root) ? teamResumePhrase() : "team was not paused");
       } else {
@@ -117,7 +107,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       exitPauseEditMode();
       return true;
     }
-    guardError(() => {
+    guardError(session, () => {
       if (scheduledStopAt(session.root) !== undefined) {
         session.flashMessage(cancelScheduledStopMessage(session.root));
       } else {
@@ -139,7 +129,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
   // out of pause-edit mode, whose prompt line the restart must not disturb. The write can
   // fail like any marker write, so flash the reason instead of letting the throw escape.
   const restartNow = (_ctx: TuiEditorCtx): boolean => {
-    guardError(() => {
+    guardError(session, () => {
       const result = requestRestart(session.root);
       session.flashMessage(result.ok ? result.message : result.error);
     });
@@ -164,7 +154,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
   // throw would escape this keypress handler and kill the TUI — flash the reason instead.
   const roleControlArm = (name: "p" | "a" | "w" | "v", ctx: TuiEditorCtx): boolean => {
     const role = viewedRole(ctx); // defined: view is clamped inside the transcript range
-    guardError(() => {
+    guardError(session, () => {
       if (name === "p") {
         // Toggle by the marker's current state, read fresh: pauseRole/resumeRole's false
         // return means another window raced us to the same state, and the wording
@@ -238,7 +228,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       session.flashMessage(stopParsed.error);
       return;
     }
-    guardError(() => {
+    guardError(session, () => {
       const result = requestScheduledStop(session.root, stopParsed.inMs);
       exitPauseEditMode();
       session.flashMessage(result.ok ? result.message : `error: ${result.error}`);
@@ -250,7 +240,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       session.flashMessage(wakeParsed.error);
       return;
     }
-    guardError(() => {
+    guardError(session, () => {
       const message = wakeParsed.cancel ? cancelWakes(session.root, [target]) : requestWake(session.root, [target], wakeParsed.inMs);
       exitPauseEditMode();
       session.flashMessage(message);
@@ -261,7 +251,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     parsed: Extract<ReturnType<typeof parseRolePauseInput>, { ok: true }>,
     target: string,
   ): void => {
-    guardError(() => {
+    guardError(session, () => {
       const at = session.now();
       const until = parsed.forMs === undefined ? undefined : at + parsed.forMs;
       const changed = pauseRole(session.root, target, until);
@@ -279,7 +269,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
   };
 
   const applyTeamPauseEntry = (parsed: Extract<ReturnType<typeof parsePauseInput>, { ok: true }>): void => {
-    guardError(() => {
+    guardError(session, () => {
       const until = parsed.forMs === undefined ? undefined : session.now() + parsed.forMs;
       const changed = pauseTeam(session.root, until, parsed.reason);
       exitPauseEditMode();

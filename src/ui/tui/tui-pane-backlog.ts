@@ -8,6 +8,7 @@ import { requestWake } from "../../operator/operator-intent.js";
 import { isOpenBacklogLabel, moveEntrySelection, pageMarkdownBody, visibleBacklogIndexes, type labeledBacklogEntries } from "./tui-backlog.js";
 import { arrowDir, pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
+import { guardError } from "./tui-guard.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
 /** Resolve the selected plan/bug from the flat backlog list, deduping the four entry-action
@@ -81,18 +82,6 @@ export function createBacklogPane(
     entryScroll = 0;
   };
 
-  // One home for turning a thrown backlog write (cancel/move/release) or a read of one into
-  // the flash it deserves: every entry-action arm below wraps its core call in this so a torn
-  // fs write flashes the reason instead of letting the throw escape the keypress handler and
-  // kill the TUI. The catch coerces the same way each arm's guard did, so the wording cannot
-  // drift.
-  const guardError = (fn: () => void): void => {
-    try {
-      fn();
-    } catch (err) {
-      session.flashError(err);
-    }
-  };
 
   // The pane's three entry actions (Ctrl+X cancel, Ctrl+V move-to-top, Ctrl+R release) live in
   // named helpers so each handler stays at two or three levels: the handler resolves the
@@ -104,7 +93,7 @@ export function createBacklogPane(
     armedTitle: string,
   ): void => {
     const { kind, position } = target;
-    guardError(() => {
+    guardError(session, () => {
       const claims = allLiveClaims(session.root);
       const outcome = tryCancelEntry(session.root, kind, position, armedTitle);
       const claimNote = outcome.status === "cancelled" ? cancelledClaimNote(claims.get(entryKey(outcome.title)) ?? null) : "";
@@ -129,7 +118,7 @@ export function createBacklogPane(
     return hold === null ? "" : ` — ${stillHeldNote(hold)}`;
   };
   const moveEntryToTop = (kind: "plan" | "bug", position: number, title: string): void => {
-    guardError(() => {
+    guardError(session, () => {
       const outcome = tryMoveEntryToTop(session.root, kind, position, title);
       let heldTail = "";
       if (outcome.status === "moved_to_top") {
@@ -152,7 +141,7 @@ export function createBacklogPane(
     armedTitle: string,
   ): void => {
     const { kind, position } = target;
-    guardError(() => {
+    guardError(session, () => {
       const outcome = tryReleaseEntry(session.root, kind, position, armedTitle);
       let heldTail = "";
       if (outcome.status === "released") {

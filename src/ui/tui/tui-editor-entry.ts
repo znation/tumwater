@@ -5,6 +5,7 @@ import { submitRolePromptAndWake } from "../../operator/operator-intent.js";
 import { promptLengthProblem } from "../../inbox/inbox-submit.js";
 import { collapseWhitespace } from "../../text/text.js";
 import { selectedEditableEntry } from "./tui-pane-backlog.js";
+import { guardError } from "./tui-guard.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import { readEditorPath, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
 
@@ -23,16 +24,6 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
   let entryBodySavedInput = "";
   let entryBodySavedCursor = 0;
 
-  // Run an (open/file/commit) write under the guard every editor arm needs: a disk read,
-  // a write, or the backlog re-read must flash its reason on the session instead of letting
-  // the throw escape the keypress handler and kill the TUI.
-  const guardError = (fn: () => void): void => {
-    try {
-      fn();
-    } catch (err) {
-      session.flashError(err);
-    }
-  };
 
   // Leave the backlog pane's title editor (Esc, a saved edit, or Ctrl+T): the same settle
   // contract as exitAnswerMode. Any open file mode is dropped too, so the editor always lands
@@ -92,7 +83,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
   // saves through tryEditEntry, the non-exiting core the dashboard drawer shares, keeping
   // the body and stamp. The prompt line is single-line, so only the title is editable here.
   const openSelectedEntry = (ctx: TuiEditorCtx): boolean => {
-    guardError(() => {
+    guardError(session, () => {
       const selected = selectedEditableEntry(session, ctx.selectedEntry, "edited");
       if (selected !== null) {
         const kind = selected.kind;
@@ -122,7 +113,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
   // the two arms pass differently is the (title, body) pair taking the entry's place;
   // an omitted body preserves the matched entry's own body (the title edit arm).
   const applyEntryEdit = (target: NonNullable<typeof entryEditFor>, newTitle: string, newBody?: string): void => {
-    guardError(() => {
+    guardError(session, () => {
       // Both call sites (the file arm's and the title arm's Entry-save paths) run only
       // when `target.position` is non-null, so the position math never sees a null.
       const position = target.position!;
@@ -172,7 +163,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
   // New entry (Ctrl+N): file by title with an empty body and wake its role, the same
   // steps handleBacklogFile takes; a length problem or a throw stays in the editor.
   const fileNewEntry = (target: NonNullable<typeof entryEditFor>): void => {
-    guardError(() => {
+    guardError(session, () => {
       const { role, wakeText } = OPERATOR_FILE_KINDS[target.kind];
       const problem = promptLengthProblem(wakeText(collapseWhitespace(session.input)), role);
       if (problem) {

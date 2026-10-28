@@ -9,6 +9,7 @@ import { roleInspectMarkdown } from "./tui-pane.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
+import { guardError } from "./tui-guard.js";
 import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 
 /** The per-role transcript panes (views 1..roleIds.length) of the TUI: the Ctrl+N
@@ -44,17 +45,6 @@ export function createTranscriptPane(session: TuiPaneSession) {
   // session.view into 1..roleIds.length or compares against a known role id.
   const viewedRole = (): string => session.roleIds[session.view - 1]!;
 
-  // Flash a caught failure instead of letting it escape a keypress/sync handler and kill the
-  // TUI: the one home for the three try/catch arms' repeated `catch (err) {
-  // session.flashError(err); }` tail. The catch coerces the same way each arm's guard did, so
-  // the wording cannot drift.
-  const guardError = (fn: () => void): void => {
-    try {
-      fn();
-    } catch (err) {
-      session.flashError(err);
-    }
-  };
 
   // The change step's collector, shared by the notes→change arm and the Ctrl+Y diffstat
   // toggle so both load through one path. It clears the cached render (the pane paints its
@@ -68,7 +58,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
     const target = role;
     // The role's waiting merges head the change, exact-matching this one runner id.
     let queueText = "";
-    guardError(() => {
+    guardError(session, () => {
       const { view, scope } = scopeMergeQueue(readMergeQueue(session.root), [role], (r) => r === role);
       if (view.entries.length > 0) {
         const inFlight = queueInFlight(session.root, view.entries, orchestratorAlive(session.root));
@@ -136,7 +126,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
       // throw leaves the transcript shown (the mode stays off) and flashes the reason
       // instead of escaping the handler and killing the TUI.
       noteCache = null;
-      guardError(() => {
+      guardError(session, () => {
         noteCache = roleInspectMarkdown(session.root, role);
         noteMode = true;
       });
@@ -176,7 +166,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
     }
     const role = viewedRole();
     if (session.armedNotes === role) {
-      guardError(() => {
+      guardError(session, () => {
         session.flashMessage(`${role}: ${saveRoleNote(roleNotesPath(session.root, role), "")}`);
         noteCache = roleInspectMarkdown(session.root, role);
         session.paneScroll = 0;

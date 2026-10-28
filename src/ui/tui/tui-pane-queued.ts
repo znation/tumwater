@@ -4,6 +4,7 @@ import { movePromptToTop } from "../../inbox/inbox-top.js";
 import { moveEntrySelection } from "./tui-backlog.js";
 import { arrowDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
+import { guardError } from "./tui-guard.js";
 import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 
 /** The Queued pane (view roleIds.length + 6) of the TUI (src/ui/tui/tui.tsx): the prompt row
@@ -43,16 +44,6 @@ export function createQueuedPane(
     session.paneScroll = 0;
   };
 
-  // One home for turning a thrown queued-row arm (a lock timeout, a torn disk) into the
-  // flash it deserves: both arms below wrap their move in this so the reason flashes instead
-  // of letting the throw escape the keypress handler and kill the TUI.
-  const guardError = (fn: () => void): void => {
-    try {
-      fn();
-    } catch (err) {
-      session.flashError(err);
-    }
-  };
 
   // Ctrl+X cancels the selected queued prompt through the CLI's own per-role path
   // (`tumwater prompt --cancel <n> --role <id>`): cancelRolePrompt removes that role's Nth
@@ -62,7 +53,7 @@ export function createQueuedPane(
   // guards on the row being defined (a no-selection list-mode press, or any other view,
   // leaves the queue untouched).
   const cancelQueuedRow = (row: QueuedListRow): void => {
-    guardError(() => {
+    guardError(session, () => {
       const outcome = cancelRolePrompt(session.root, row.role, row.position);
       // A gone outcome is the concurrent-dequeue race (cancelRolePrompt's own contract),
       // not a failure: flash it honestly and still refresh the listing.
@@ -84,7 +75,7 @@ export function createQueuedPane(
   // guards on the row being defined (a no-selection list-mode press, or any other view,
   // leaves the queues untouched).
   const moveQueuedRow = (row: QueuedListRow): void => {
-    guardError(() => {
+    guardError(session, () => {
       if (row.position === 1) {
         // A head row is a no-op, not movePromptToTop's throw: it is already where the
         // reorder would put it, and throwing would flash an error for a press that
