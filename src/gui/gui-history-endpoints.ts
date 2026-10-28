@@ -140,32 +140,72 @@ function windowOrCount(q: URLSearchParams, res: http.ServerResponse):
 }
 
 export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root: string): void {
+  const req = historyRequest(q, res);
+  if (req === null) return;
+  const ctl = req.windowCtl;
+  if (ctl.kind === "window") serveHistoryWindow(res, root, req, ctl.sinceMs, ctl.untilMs);
+  else serveHistoryCount(q, res, root, req);
+}
+/** The parsed `GET /api/history` request: the role/grep/class/model filters, the summary flag,
+ * and the rival window-vs-count shape (`windowCtl`, typed exactly as windowOrCount's non-null
+ * return) — so the parse order, the filter order and the two shapes each have one home. */
+interface HistoryRequest {
+  role: string | null;
+  grep: string | null;
+  classes: HistoryResultClass[];
+  modelPieces: string[];
+  summary: boolean;
+  windowCtl: { kind: "window"; sinceMs: number; untilMs?: number } | { kind: "count" };
+}
+/** Parse the request prefix `GET /api/history` shares across both shapes: the `role`/`grep`
+ * filters, the `result` class list (resultClassesQuery, a 400 on an unknown class), the `model`
+ * selector list, the `summary` flag's mere presence, and the rival `sinceMs`-vs-`n` shape
+ * (windowOrCount, a 400 on both or a bad cap). Any 400 is already sent and yields null. */
+function historyRequest(q: URLSearchParams, res: http.ServerResponse): HistoryRequest | null {
   const role = q.get("role") || null; // "" and absent both read all roles
   const grep = q.get("grep") || null; // "" and absent both filter nothing
   // `model` is a comma list of exact selectors (trimmed, deduplicated); "", absent and a list
   // with no non-empty piece all filter nothing, and an unknown selector keeps no rows.
   const classes = resultClassesQuery(q, res);
-  if (classes === null) return;
-  const inClasses = (rows: RunRow[]): RunRow[] => (classes.length ? rows.filter((r) => classes.includes(historyClass(r.result))) : rows);
+  if (classes === null) return null;
   const modelPieces = splitCommaListUnique(q.get("model") ?? "");
-  const onModels = (rows: RunRow[]): RunRow[] => (modelPieces.length ? runRowsOnModels(rows, modelPieces) : rows);
   const summary = q.get("summary") !== null; // the flag's presence, whatever its value
   const windowCtl = windowOrCount(q, res);
-  if (windowCtl === null) return;
-  if (windowCtl.kind === "window") {
-    const { sinceMs, untilMs } = windowCtl;
-    const { rows, covered } = readRunRowsSince(root, sinceMs, role, untilMs ?? null);
-    const matched = onModels(inClasses(grep === null ? rows : runRowsMatchingGrep(rows, grep)));
-    sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE, ...(summary ? { summary: summarizeRunRows(matched), modelSummary: summarizeRunRowsByModel(matched) } : {}) });
-    return;
-  }
+  if (windowCtl === null) return null;
+  return { role, grep, classes, modelPieces, summary, windowCtl };
+}
+/** The shared filter chain both shapes apply to the served rows: grep first, then the `result`
+ * outcome classes, then the `model` selectors — the CLI's `history --grep`, `--result` and
+ * `--model` rules, in that order. */
+function historyRows(rows: RunRow[], req: HistoryRequest): RunRow[] {
+  const grepped = req.grep === null ? rows : runRowsMatchingGrep(rows, req.grep);
+  const classed = req.classes.length ? grepped.filter((r) => req.classes.includes(historyClass(r.result))) : grepped;
+  return req.modelPieces.length ? runRowsOnModels(classed, req.modelPieces) : classed;
+}
+/** The optional additive fold both answers share: when `summary` is present, `{ summary,
+ * modelSummary }` added to the 200 payload; absent, nothing (so the response is byte-for-byte
+ * today's). */
+function historySummaryFields(rows: RunRow[], summary: boolean): Record<string, unknown> {
+  return summary ? { summary: summarizeRunRows(rows), modelSummary: summarizeRunRowsByModel(rows) } : {};
+}
+/** Answer the trailing-window shape ({ rows, covered, note }): rows read through readRunRowsSince
+ * from `sinceMs` (untilMs drops the rows newer than now − untilMs when present, exactly as the
+ * CLI's `history --since … --until` window reads), then the shared historyRows filter, then the
+ * optional summary fold — key order rows, covered, note, summary, modelSummary. */
+function serveHistoryWindow(res: http.ServerResponse, root: string, req: HistoryRequest, sinceMs: number, untilMs: number | undefined): void {
+  const { rows, covered } = readRunRowsSince(root, sinceMs, req.role, untilMs ?? null);
+  const matched = historyRows(rows, req);
+  sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE, ...historySummaryFields(matched, req.summary) });
+}
+/** Answer the newest-`n` count shape: `n` parses through intQuery (non-negative, default
+ * HISTORY_DEFAULT_RUNS) and is clamped to [1, HISTORY_MAX_RUNS] — the GUI clamps where the CLI
+ * fails fast — then rows read through readRunRows, filtered and answered through the shared
+ * historyRows/historySummaryFields, key order rows, summary, modelSummary. */
+function serveHistoryCount(q: URLSearchParams, res: http.ServerResponse, root: string, req: HistoryRequest): void {
   const parsed = intQuery(q, res, "n", "non-negative", HISTORY_DEFAULT_RUNS);
   if (parsed === null) return;
-  const n = clampCount(parsed, HISTORY_MAX_RUNS);
-  let rows = readRunRows(root, n, role);
-  if (grep !== null) rows = runRowsMatchingGrep(rows, grep);
-  rows = onModels(inClasses(rows));
-  sendJson(res, 200, summary ? { rows, summary: summarizeRunRows(rows), modelSummary: summarizeRunRowsByModel(rows) } : { rows });
+  const rows = historyRows(readRunRows(root, clampCount(parsed, HISTORY_MAX_RUNS), req.role), req);
+  sendJson(res, 200, { rows, ...historySummaryFields(rows, req.summary) });
 }
 /** How many of the log's newest events `GET /api/logs` scans by default, and the most it will
  * scan however large `n` asks: the CLI's `-n` shape (n bounds the scanned tail, not the printed
