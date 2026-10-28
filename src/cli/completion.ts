@@ -189,6 +189,16 @@ const ROLE_POSITIONAL_COMMANDS = ["role", "history", "revert"];
 /** Flags whose value is a file path: completion offers file names after them. */
 const PATH_FLAGS = ["--file", "--attach", "--notes-file", "--instructions-file", "--path"];
 
+/** The constant fish value suffix for the flags whose candidates are a fixed `__tumwater_*` list:
+ * `--role`, `--result`, `--type` and `--status` take comma lists, so they complete per item through
+ * `__fish_complete_list`, skipping the items already listed. */
+const FISH_LIST_FLAG_SUFFIXES: Record<string, string> = {
+  "--role": ` -x -a "(__fish_complete_list , __tumwater_roles)"`,
+  "--result": ` -x -a "(__fish_complete_list , __tumwater_results)"`,
+  "--type": ` -x -a "(__fish_complete_list , __tumwater_types)"`,
+  "--status": ` -x -a "(__fish_complete_list , __tumwater_review_states)"`,
+};
+
 /** The event-type codes `logs --type` filters by: the keys of the labels map, so a new event
  * type completes the moment it gains a label. Sorted for a stable, alphabetical offer of a
  * vocabulary too large to recall offhand — the same reason `--role`, `--template`, and
@@ -331,25 +341,36 @@ function bashScript(help: string): string {
   ].join("\n");
 }
 
+/** The fish value suffix for the flags whose value depends on the command: `--transcript` has role
+ * ids only under `logs`, and `--model` completes the closed tier set under `role` but the log's
+ * selectors under `history`. Undefined for a flag this helper does not own. */
+function fishScopedFlagSuffix(command: string, flag: string): string | undefined {
+  if (flag === "--transcript" && command === "logs") return FISH_LIST_FLAG_SUFFIXES["--role"];
+  if (flag === "--model" && command === "role") return ` -x -a "${MODEL_TIERS.join(" ")}"`;
+  if (flag === "--model" && command === "history") return ` -x -a "(__fish_complete_list , __tumwater_models)"`;
+  return undefined;
+}
+
+/** The fish value suffix for the flags whose candidates are a joined literal list. Undefined for a
+ * flag this helper does not own. */
+function fishWordSuffix(flag: string): string | undefined {
+  switch (flag) {
+    case "--template": return ` -x -a "${templateIds().join(" ")}"`;
+    case "--thinking": return ` -x -a "${THINKING_LEVEL_WORDS.join(" ")}"`;
+    case "--backend": return ` -x -a "${BACKEND_IDS.join(" ")}"`;
+    case "--by": return ` -x -a "${HISTORY_SUMMARY_GROUPS.join(" ")}"`;
+    default: return undefined;
+  }
+}
+
 /** The value suffix a fish flag line carries: what completes after the flag. `--role`, `--result`
  * `--type` and `--status` take comma lists, so they complete per item through
  * `__fish_complete_list`,
- * skipping the items already listed. */
+ * skipping the items already listed. Tries the command-scoped flags, then the fixed
+ * `__tumwater_*` list table, then the joined literal-word flags, and finally the path flags, in
+ * the same order the ladder did. */
 function fishFlagValue(command: string, flag: string): string {
-  if (flag === "--role") return ` -x -a "(__fish_complete_list , __tumwater_roles)"`;
-  if (flag === "--transcript" && command === "logs") return ` -x -a "(__fish_complete_list , __tumwater_roles)"`;
-  if (PATH_FLAGS.includes(flag)) return ` -r -F`;
-  if (flag === "--template") return ` -x -a "${templateIds().join(" ")}"`;
-  if (flag === "--result") return ` -x -a "(__fish_complete_list , __tumwater_results)"`;
-  if (flag === "--type") return ` -x -a "(__fish_complete_list , __tumwater_types)"`;
-  if (flag === "--status") return ` -x -a "(__fish_complete_list , __tumwater_review_states)"`;
-  if (flag === "--thinking") return ` -x -a "${THINKING_LEVEL_WORDS.join(" ")}"`;
-  if (flag === "--backend") return ` -x -a "${BACKEND_IDS.join(" ")}"`;
-  if (flag === "--by") return ` -x -a "${HISTORY_SUMMARY_GROUPS.join(" ")}"`;
-  // `role --model` completes the closed tier set; `history --model` completes the log's selectors.
-  if (flag === "--model" && command === "role") return ` -x -a "${MODEL_TIERS.join(" ")}"`;
-  if (flag === "--model" && command === "history") return ` -x -a "(__fish_complete_list , __tumwater_models)"`;
-  return "";
+  return fishScopedFlagSuffix(command, flag) ?? FISH_LIST_FLAG_SUFFIXES[flag] ?? fishWordSuffix(flag) ?? (PATH_FLAGS.includes(flag) ? " -r -F" : "");
 }
 
 function fishScript(help: string): string {
