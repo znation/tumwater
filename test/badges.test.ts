@@ -21,65 +21,6 @@ test("budgetBadge renders the standing daily-cost rule in every cap state", () =
   assert.equal(budgetBadge({ spentUsd: 0, capUsd: 0, capHitAt: null, free: true, fallback: null }), " · budget: n/a", "free outranks disabled too");
 });
 
-// The cost n/a fallback model (plans/fallback-model.md): while it carries the team the badge
-// names it, and the roles keep their ordinary state cells — they are working, not stopped.
-test("budgetBadge names the fallback model only while it is carrying the team", () => {
-  const fallback = { provider: "omlx", model: "local-free" };
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback }),
-    " · budget: $50.00/$50 today · over-cap model: local-free (cost n/a)",
-    "at the cap with a usable fallback: the badge says what the team is running on now",
-  );
-  assert.equal(
-    budgetBadge({ spentUsd: 10, capUsd: 50, capHitAt: null, free: false, fallback }),
-    " · budget: $10.00/$50 today",
-    "under the cap the fallback is not engaged, so the badge is byte-identical to before",
-  );
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null }),
-    " · budget: $50.00/$50 today",
-    "at the cap with no usable fallback: the team is paused, nothing to name",
-  );
-  // A fallback naming only a provider still identifies itself.
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx" } }),
-    " · budget: $50.00/$50 today · over-cap model: omlx (cost n/a)",
-  );
-});
-
-// A claude fallback (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7): the pair's `backend`
-// is `claude`, so it renders agent-qualified — `claude/claude-sonnet-5-5` —
-// the same form every other surface carries, never a bare `claude-sonnet-5-5`.
-test("budgetBadge agent-qualifies a claude fallback", () => {
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { backend: "claude", provider: "claude", model: "claude-sonnet-5-5" }, tiers: null }),
-    " · budget: $50.00/$50 today · over-cap model: claude/claude-sonnet-5-5 (cost n/a)",
-  );
-});
-
-test("budgetBadge lists the tiers when the fallback resolves to two or more distinct pairs", () => {
-  // Part 7b/8: the snapshot's tier map stands exactly in that state, and the badge lists
-  // each tier's pair in tier order, borrowed ones marked by their `(from …)` suffix.
-  const tiers = { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" };
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "free", model: "qwen-free" }, tiers }),
-    " · budget: $50.00/$50 today · over-cap model: small: free/qwen-free (from default), default: free/qwen-free, strong: free/llama-free (cost n/a)",
-    "a strong-tier borrow must be visible at a glance",
-  );
-  // A one-entry map (a torn snapshot — never emitted by status-data, which requires two
-  // distinct pairs) falls back to the single-pair text, exactly like an absent map.
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "free", model: "qwen-free" }, tiers: { default: "free/qwen-free" } }),
-    " · budget: $50.00/$50 today · over-cap model: qwen-free (cost n/a)",
-  );
-  // Without the map — the single-fallback state the pre-tier badge saw — the single-pair
-  // text stands byte-identical.
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx", model: "local-free" }, tiers: null }),
-    " · budget: $50.00/$50 today · over-cap model: local-free (cost n/a)",
-  );
-});
-
 test("budgetBadge appends the burn-rate forecast as · ~cap at HH:MM and stays byte-identical without one", () => {
   // A forecast stands: wall-clock local, hours and minutes only (formatTime's seconds are
   // noise for a forecast), zero-padded on both sides — 14:05, not 14:5.
@@ -88,10 +29,6 @@ test("budgetBadge appends the burn-rate forecast as · ~cap at HH:MM and stays b
     budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: hit, free: false, fallback: null }),
     " · budget: $12.34/$50 today · ~cap at 14:05",
   );
-
-  // The forecast and the fallback fragment can never co-occur: the fallback stands only once
-  // the cap is reached — the one state where projectCapHit is itself null — so no assertion
-  // pairs them here; the fragment order is still forecast-before-fallback by construction.
 
   // No forecast (`capHitAt: null` — no cap, no spend, cap reached, or a burn that misses
   // midnight): every reading is byte-identical to the pre-projection badge.
@@ -319,13 +256,6 @@ test("budgetBadge renders the subscription window in place of or beside the dail
   assert.equal(subscriptionWindowTone([block({ primary: { type: "five_hour", status: "allowed_warning", observedAt: 0 } })]), "yellow");
   assert.equal(subscriptionWindowTone([block()]), undefined);
   assert.equal(subscriptionWindowTone(undefined), undefined);
-});
-
-test("budgetBadge's fallback label with no pair halves is pi's default", () => {
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: {} }),
-    " · budget: $50.00/$50 today · over-cap model: pi default (cost n/a)",
-  );
 });
 
 test("wakeBadge names a pending scheduled wake and is empty otherwise", () => {

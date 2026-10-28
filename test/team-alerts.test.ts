@@ -38,16 +38,7 @@ test("a healthy team raises nothing; a stopped one says how to start it", () => 
   assert.equal(stopped.filter(alertNeedsYou).length, 0, "information does not count as needing you");
 });
 
-test("a tier on a fallback step raises one informational alert", () => {
-  const chain = { default: { pair: "DeepSeek-V4-Flash", step: 2, of: 2, reason: "window" as const } };
-  const alerts = teamAlerts({ ...base, chain }, [], [], Date.now());
-  assert.equal(alerts.length, 1);
-  assert.match(alerts[0]?.detail ?? "", /^running on fallback: default → DeepSeek-V4-Flash/);
-  assert.equal(alertNeedsYou(alerts[0]!), false);
-  assert.deepEqual(teamAlerts({ ...base, chain: {} }, [], [], Date.now()), []);
-});
-
-test("a spent budget pauses the roles, or hands them to the free fallback", () => {
+test("a spent budget pauses the roles", () => {
   const spent: Snap = {
     ...base,
     budget: { spentUsd: 10.5, capUsd: 10, capHitAt: null, free: false, fallback: null },
@@ -57,71 +48,29 @@ test("a spent budget pauses the roles, or hands them to the free fallback", () =
   assert.equal(budget?.tone, "red");
   assert.match(budget?.detail ?? "", /Spent \$10\.50 of the \$10 cap/);
   assert.deepEqual(budget?.actions.map((a) => a.act), ["budget"]);
-  const onFallback = teamAlerts({ ...spent, budget: { ...spent.budget, fallback: { provider: "local", model: "small-model" } } }, [], [], Date.now());
-  assert.equal(onFallback[0]?.key, "fallback");
-  assert.equal(onFallback[0]?.tone, "blue", "the team keeps working, so it informs rather than alarms");
-  assert.match(onFallback[0]?.detail ?? "", /^small-model carries them/);
-  // A claude fallback (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7): the pair's
-  // provider IS the backend id, so it renders agent-qualified, never a bare model id.
-  const claudeFallback = teamAlerts(
-    { ...spent, budget: { ...spent.budget, fallback: { backend: "claude", provider: "claude", model: "claude-sonnet-5-5" } } },
-    [],
-    [],
-    Date.now(),
-  )[0];
-  assert.equal(claudeFallback?.key, "fallback");
-  assert.match(claudeFallback?.detail ?? "", /claude\/claude-sonnet-5-5 carries them/);
   assert.deepEqual(teamAlerts({ ...spent, budget: { ...spent.budget, free: true } }, [], [], Date.now()), [], "an all-free team has no cap to hit");
   assert.deepEqual(teamAlerts({ ...spent, budget: { ...spent.budget, capUsd: 0 } }, [], [], Date.now()), [], "no cap, nothing spent against it");
-
-  // Tiered fallback (part 7b/8): with the snapshot's tier map standing (two or more distinct
-  // pairs), the detail lists each tier's pair, borrowed ones marked, instead of naming just
-  // the default tier's.
-  const tiered = teamAlerts(
-    { ...spent, budget: { ...spent.budget, fallback: { provider: "free", model: "qwen-free" }, tiers: { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" } } },
+  // A spent cap with a usable fallback (non-null) on every tier does NOT pause the roles —
+  // the gate keeps them running on fallbackConfig, so the paused banner would lie; the spend
+  // shows in the header badge instead.
+  const onFallback = teamAlerts(
+    { ...spent, budget: { ...spent.budget, fallback: { provider: "local", model: "small-model" } } },
     [], [], Date.now(),
   );
-  assert.equal(tiered[0]?.key, "fallback");
-  assert.match(tiered[0]?.detail ?? "", /^small: free\/qwen-free \(from default\), default: free\/qwen-free, strong: free\/llama-free carry them/);
-
-  // The budget banner names the roles whose tier has no usable free pair (gate-polls.ts's
-  // budgetPausedRoles): the roles that moved sit next to the ones that stopped, one sentence
-  // each, so a spent cap never reads as if every role kept working. Each held id renders
-  // through listRoleIds (a stale id still appears); with none held the detail is byte-identical
-  // to the tier sentence above.
-  const split = teamAlerts(
+  assert.deepEqual(onFallback.filter((a) => a.key === "budget"), [], "an all-fallback team is not paused");
+  // But `budget.fallback` is only the default tier's pair while `budgetPausedRoles` is
+  // per-tier: a spent cap with a fallback on one tier still pauses the tiers without one, and
+  // that pause set is what must raise the red banner (a small-tier-only fallback pauses the
+  // strong-tier role).
+  const somePaused = teamAlerts(
     {
       ...spent,
-      budget: {
-        ...spent.budget,
-        fallback: { provider: "free", model: "qwen-free" },
-        tiers: { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" },
-      },
-      budgetPausedRoles: ["coverage", "docs", "stale-role"],
+      budget: { ...spent.budget, fallback: { provider: "local", model: "small-model" } },
+      budgetPausedRoles: ["strong-tier-role"],
     },
     [], [], Date.now(),
   );
-  assert.equal(split[0]?.key, "fallback");
-  assert.match(
-    split[0]?.detail ?? "",
-    /coverage, docs, and stale-role have no free pair and stay paused until local midnight\.$/,
-  );
-  const noPaused = teamAlerts(
-    {
-      ...spent,
-      budget: {
-        ...spent.budget,
-        fallback: { provider: "free", model: "qwen-free" },
-        tiers: { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" },
-      },
-    },
-    [], [], Date.now(),
-  )[0];
-  assert.match(
-    noPaused?.detail ?? "",
-    /^small: free\/qwen-free \(from default\), default: free\/qwen-free, strong: free\/llama-free carry them at no cost until midnight\.$/,
-    "empty budgetPausedRoles keeps today's exact tier sentence",
-  );
+  assert.equal(somePaused.filter((a) => a.key === "budget").length, 1, "a role whose tier has no fallback is paused");
 });
 
 // Quiet hours 2/2: the schedule holding the team informs rather than asks (blue, no
@@ -269,20 +218,9 @@ test("a streak behind a working label still raises the failing alert; a healthil
   assert.equal(teamAlerts(base, [], healthyWorking, now).filter((a) => a.key === "failing").length, 0);
 });
 
-// The detail arms the two-role case above cannot reach: a fallback named by provider alone
-// (model unset) or by nothing at all, and a stale build that is neither restart-blocked nor
-// already restarting — the operator has to restart the team by hand, so the alert says so.
-test("a fallback names its provider or nothing; a plain stale build asks for a manual restart", () => {
-  const spent = (fallback: Snap["budget"]["fallback"]): Snap => ({
-    ...base,
-    budget: { spentUsd: 10, capUsd: 10, capHitAt: null, free: false, fallback },
-  });
-  const byProvider = teamAlerts(spent({ provider: "local" }), [], [], Date.now());
-  assert.equal(byProvider[0]?.key, "fallback");
-  assert.match(byProvider[0]?.detail ?? "", /^local carries them/);
-  const unnamed = teamAlerts(spent({}), [], [], Date.now());
-  assert.match(unnamed[0]?.detail ?? "", /^The fallback carries them/);
-
+// A stale build that is neither restart-blocked nor already restarting — the operator has
+// to restart the team by hand, so the alert says so.
+test("a plain stale build asks for a manual restart", () => {
   const stale = teamAlerts({ ...base, build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 2 } }, [], [], Date.now());
   assert.deepEqual(stale.map((a) => [a.key, a.tone, a.title]), [
     ["build", "blue", "Update available (2 commits behind)"],

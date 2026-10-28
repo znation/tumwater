@@ -1,5 +1,5 @@
 /** The status/capacity and role-phase team alerts, in emission order: a spent budget
- * (chain/fallback/budget), per-role cap, disk, install, and main-red holds, roles failing run
+ * (budget), per-role cap, disk, install, and main-red holds, roles failing run
  * after run or stuck, and a stale running build. One of the per-domain builders split out of
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts. */
 
@@ -10,9 +10,6 @@ import {
   openRoleActions, seeFailures, listRoles, listRoleIds, stuckDetail, localizeInstants,
   type TeamAlert, type AlertRole,
 } from "./team-alert-shared.js";
-import { chainFragments } from "./badges.js";
-import { fallbackTierEntries } from "../budget/budget.js";
-import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, plural } from "../text/phrases.js";
 import { BRIEF_TEXT_MAX_CHARS } from "../brief/brief.js";
 import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
@@ -25,7 +22,7 @@ import { PRINCIPLES_MAX_CHARS } from "../prompt/principles.js";
 interface StatusAlertsInput {
   snap: Pick<
     StatusSnapshot,
-    "budget" | "chain" | "disk" | "rootInstallDrift" | "capPaused" | "budgetPausedRoles" | "build"
+    "budget" | "disk" | "rootInstallDrift" | "capPaused" | "budgetPausedRoles" | "build"
     | "noDeclaredCheck"
     | "noBrief"
     | "briefTruncated"
@@ -37,53 +34,23 @@ interface StatusAlertsInput {
   staleClaims: readonly ClaimState[];
 }
 
-function pushChainAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
-  const onFallback = chainFragments(snap.chain);
-  if (onFallback) {
-    out.push({
-      key: "chain",
-      tone: "blue",
-      title: "Running on fallback",
-      detail: `running on fallback: ${onFallback}`,
-      actions: [],
-    });
-  }
-}
-
 function pushSpentBudgetAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
   const b = snap.budget;
-  if (!b.free && b.capUsd > 0 && b.spentUsd >= b.capUsd) {
-    // Tiered fallbacks (part 7b/8): the snapshot's tier map stands exactly when the
-    // tiers resolve to two or more distinct pairs, so list them and let the borrowed
-    // ones' `(from …)` suffixes mark the borrow; a tier-free snapshot keeps the
-    // single-pair sentence.
-    const fallbackDetail = b.tiers
-      ? `${fallbackTierEntries(b.tiers).join(", ")} carry them at no cost until midnight.`
-      : `${fallbackDisplayPair(b.fallback, "The fallback")} carries them at no cost until midnight.`;
-    out.push(
-      b.fallback
-        ? {
-            key: "fallback",
-            tone: "blue",
-            title: "Today's budget is spent — roles switched to the over-cap model",
-            // The roles whose tier has no usable free pair (gate-polls.ts's budgetPausedRoles)
-            // don't move: they sit on `budget paused` rows while the banner says everyone
-            // switched. One sentence names both halves of the split so the spent-cap banner
-            // doesn't read as if every role kept working.
-            detail:
-              snap.budgetPausedRoles.length > 0
-                ? `${fallbackDetail} ${listRoleIds(snap.budgetPausedRoles)} ${agree(snap.budgetPausedRoles.length, "has", "have")} no free pair and ${agree(snap.budgetPausedRoles.length, "stays", "stay")} paused until local midnight.`
-                : fallbackDetail,
-            actions: [{ label: "Raise the cap", act: "budget" }],
-          }
-        : {
-            key: "budget",
-            tone: "red",
-            title: "Today's budget is spent, so the roles are paused",
-            detail: `Spent ${usd(b.spentUsd)} of the ${usdCap(b.capUsd)} cap. They resume at midnight, or as soon as you raise the cap.`,
-            actions: [{ label: "Raise the cap", act: "budget" }],
-          },
-    );
+  // The red "paused" banner fires exactly when the spent cap pauses a role. `b.fallback` is
+  // only the default tier's pair, while the per-tier pause set (gate-polls.ts's
+  // budgetPausedRoles) is what the gate actually runs on: a spent cap with a fallback on one
+  // tier still pauses the tiers without one. So the banner follows either a spent cap with no
+  // usable fallback at all, or a non-empty pause set. A spent cap whose every paying role
+  // keeps working on a fallback (empty pause set) emits no budget alert — the spend already
+  // shows in the header badge.
+  if (!b.free && b.capUsd > 0 && b.spentUsd >= b.capUsd && (!b.fallback || snap.budgetPausedRoles.length > 0)) {
+    out.push({
+      key: "budget",
+      tone: "red",
+      title: "Today's budget is spent, so the roles are paused",
+      detail: `Spent ${usd(b.spentUsd)} of the ${usdCap(b.capUsd)} cap. They resume at midnight, or as soon as you raise the cap.`,
+      actions: [{ label: "Raise the cap", act: "budget" }],
+    });
   }
 }
 
@@ -340,7 +307,7 @@ function pushStaleClaimsAlert(out: TeamAlert[], staleClaims: readonly ClaimState
 }
 
 /** The status/capacity and role-phase alerts, in emission order: a spent budget
- * (chain/fallback/budget), per-role cap, disk, install, and main-red holds, roles
+ * (budget), per-role cap, disk, install, and main-red holds, roles
  * failing run after run or stuck, and a stale running build. Extracted from
  * teamAlerts (part 1/5 of the teamAlerts split) so the shared module stays small;
  * the input names exactly the fields this run reads. The caller pushes the returned
@@ -349,7 +316,6 @@ function pushStaleClaimsAlert(out: TeamAlert[], staleClaims: readonly ClaimState
 export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
   const { snap, roles, staleClaims } = input;
   const out: TeamAlert[] = [];
-  pushChainAlert(out, snap);
   pushSpentBudgetAlert(out, snap);
   pushRoleCapAlert(out, snap, roles);
   pushDiskAlert(out, snap);
