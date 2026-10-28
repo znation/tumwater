@@ -226,6 +226,8 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 ### The team never reaps the orphans its own doctor lists: on 2026-10-28 `tumwater doctor` was red with 50 orphaned processes, 47 of them CPU spinners that had used about 11 of the host's 18 cores on average for up to 2½ days, and no alert named them (found by operator session 2026-10-28 from the dashboard's "look stuck" warnings and a load average of 131–192)
 
+**Needs review 2026-10-28 by bugfix: too large for one run — the three fix-sketches are independent subsystems (the amber-alert naming orphans' count/CPU time, the orchestrator reaper with attribution/age/harness rules, and the spawn-preload-guard restoration + busy-wait guard), each warrants its own split entry and focused run**
+
 - **Symptom:** `tumwater doctor orphans` on 2026-10-28 04:40: `fail orphans 50 orphaned processes (PPID 1)`. Three groups:
   - **40 `node -e` writers** from `test/team-state.test.ts`'s old "simultaneous cross-process pauseRole calls all survive in the marker". Five suites leaked eight each between 2026-10-25 14:23:59 and 14:33, in `_slot-7`, `_gate-main` and `_merge`. Each spins in `while (!fs.existsSync(".../start-when-aligned")) {}` on a `tumwater-test-run-*` root that no longer exists, so it can never exit. By 10-28 04:30 each had used about 16.4 CPU-hours, about 655 CPU-hours in all, or roughly 10.5 cores on average.
   - **7 bash CPU burners** that bugfix runs started (filed separately below).
