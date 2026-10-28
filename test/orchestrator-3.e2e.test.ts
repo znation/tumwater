@@ -81,14 +81,17 @@ test("a user abort during a merge kills it and discards the pinned ref", async (
   // asserts the aftermath (a fresh run would re-enqueue and re-pin and muddy the asserts).
   const cfg = fastConfig(["clean"]);
   cfg.minRunIntervalSeconds = 300;
-  saveConfig(repo, cfg);
-  // Author run: make a change and finish. Review run (its prompt contains VERDICT): touch the
-  // marker, then hang until the abort kills it — the merge stays in flight for as long as
-  // the abort marker sits on disk.
+  // Author run: make a change and finish. The gate check on the change's tree (hello.txt
+  // present) touches the marker and parks, holding the merge in flight for as long as the
+  // abort marker sits on disk; main's baseline sees no hello.txt and passes at once.
   const marker = path.join(tmpdir(), "clean-reviewing");
+  cfg.check = {
+    command: `if [ -e hello.txt ]; then touch '${marker}'; exec sleep 30; fi; exit 0`,
+  };
+  saveConfig(repo, cfg);
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${marker}'; exec sleep 30;; esac; done`,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'`,
       `echo hello > hello.txt`,
     ].join("\n"),
@@ -98,7 +101,7 @@ test("a user abort during a merge kills it and discards the pinned ref", async (
     // The run commits + enqueues; the merge slot picks the entry up and starts its
     // reviewer run — by merge queue 3/5 this is where `tumwater abort --role` reaches it.
     await waitFor(() => runQueued(repo, "clean"), "the run to enqueue its merge");
-    await waitFor(() => fs.existsSync(marker), "the merge's reviewer run to be in flight");
+    await waitFor(() => fs.existsSync(marker), "the merge's gate check to be in flight");
 
     // What `tumwater abort --role clean` does from the CLI side: drop the per-role marker.
     const markerFile = abortRequestPath(repo, "clean");
@@ -130,13 +133,17 @@ test("a user abort during a merge kills it and discards the pinned ref", async (
 test("a role with a queued or in-flight merge never starts a new run (interlock)", async () => {
   // minRunInterval 0: the role is due on EVERY poll — only the interlock can hold it.
   const repo = await makeFastRepo("interlock e2e test", ["clean"]);
-  // Author run: first time a change, after that nothing to do. Review run: touch the marker,
-  // then hang until the test's abort kills it — the merge stays in flight through the window.
+  // Author run: first time a change, after that nothing to do. The gate check on the change's
+  // tree (hello.txt present) touches the marker and parks, holding the merge in flight through
+  // the window; main's baseline sees no hello.txt and passes at once.
   const hang = path.join(tmpdir(), "interlock-hang");
   const did = path.join(tmpdir(), "interlock-did");
+  const cfg = fastConfig(["clean"]);
+  cfg.check = { command: `if [ -e hello.txt ]; then touch '${hang}'; exec sleep 30; fi; exit 0` };
+  saveConfig(repo, cfg);
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${hang}'; exec sleep 30;; esac; done`,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
       `if [ -f '${did}' ]; then printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'; else touch '${did}'; printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'; fi`,
       `echo hello > hello.txt`,
     ].join("\n"),
@@ -145,7 +152,7 @@ test("a role with a queued or in-flight merge never starts a new run (interlock)
   try {
     // The run commits + enqueues; the merge slot picks the entry up and its reviewer hangs.
     await waitFor(() => runQueued(repo, "clean"), "the run to enqueue its merge");
-    await waitFor(() => fs.existsSync(hang), "the merge's reviewer run to be in flight");
+    await waitFor(() => fs.existsSync(hang), "the merge's gate check to be in flight");
 
     // ~10 poll cycles pass with the role due on every one — yet no second run starts: the
     // entry stays in the queue until the merge settles, and the interlock covers both the
@@ -480,6 +487,19 @@ test("an abort for one queued role stops only that role's verify and discards it
   // A long minimum interval: nothing re-runs while the test asserts the aftermath.
   const cfg = fastConfig(["clean", "dedupe"]);
   cfg.minRunIntervalSeconds = 300;
+  const dir = tmpdir("verify-abort-");
+  const release = path.join(dir, "release");
+  // Each change's gate check parks in its verify's check slot until released (bounded ~60 s, so
+  // a failed assert can never leave one spinning); the abort kills dedupe's. main's baseline
+  // sees neither change file and passes at once. maxConcurrentChecks 2 lets both parked checks
+  // run at once, so neither holds the other's check permit.
+  cfg.maxConcurrentChecks = 2;
+  cfg.check = {
+    command:
+      `if [ -e dedupe.txt ]; then touch '${dir}/dedupe-reviewing'; i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done; exit 0; fi; ` +
+      `if [ -e clean.txt ]; then touch '${dir}/clean-reviewing'; i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done; exit 0; fi; ` +
+      `exit 0`,
+  };
   saveConfig(repo, cfg);
   await seedMergeQueue(repo, "clean", "dedupe");
   // The 300 s min-gap only throttles runs AFTER the first: a never-run role has
@@ -491,25 +511,16 @@ test("an abort for one queued role stops only that role's verify and discards it
     s.lastRunEndedAt = Date.now();
     saveRunnerState(repo, s);
   }
-  // Each reviewer marks itself and parks until released (bounded ~60 s, so a failed assert can
-  // never leave one spinning); the abort kills dedupe's.
-  const dir = tmpdir("verify-abort-");
-  const release = path.join(dir, "release");
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
-      leasedRoleShell(),
-      `case "$role" in clean) touch '${dir}/clean-reviewing';; dedupe) touch '${dir}/dedupe-reviewing';; esac`,
-      `i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done`,
-      `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
-      `esac; done`,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
     ].join("\n"),
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
       () => fs.existsSync(path.join(dir, "clean-reviewing")) && fs.existsSync(path.join(dir, "dedupe-reviewing")),
-      "both verifies' reviewer runs to be in flight",
+      "both verifies' gate checks to be in flight",
       60_000,
     );
     // What `tumwater abort --role dedupe` does from the CLI side.
@@ -539,7 +550,7 @@ test("an abort for one queued role stops only that role's verify and discards it
     assert.equal(loadRunnerState(repo, "clean").runs, 0, "the interlock held: no run ever started");
     assert.equal(loadRunnerState(repo, "dedupe").runs, 0);
   } finally {
-    fs.writeFileSync(release, ""); // never leave a review parked
+    fs.writeFileSync(release, ""); // never leave a check parked
     await stopOrchestrator(orch, restore);
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -715,11 +726,17 @@ test("a restart's hand-off aborts the merges that outlive its deadline instead o
   // every verify when the window lapses, and exits — the pins surviving for the new build.
   const repo = await makeFastRepo("restart hand-off test", ["clean", "dedupe"]);
   // Both roles are interlocked by their queued entries, so no role run ever starts: the drain
-  // has nothing to wait for and the restart takes effect mid-review — the incident's shape.
+  // has nothing to wait for and the restart takes effect mid-build-check — the incident's shape.
   await seedMergeQueue(repo, "clean", "dedupe");
   const reviewing = path.join(tmpdir(), "handoff-reviewing");
+  // Each change's gate check parks in its verify's build pre-check (one of them touches the
+  // marker and sleeps 60 s), holding both merges in flight until the hand-off's lapse aborts
+  // them; main's baseline sees neither change file and passes at once.
+  const cfg = fastConfig(["clean", "dedupe"]);
+  cfg.check = { command: `if [ -e clean.txt ] || [ -e dedupe.txt ]; then touch '${reviewing}'; exec sleep 60; fi; exit 0` };
+  saveConfig(repo, cfg);
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${reviewing}'; exec sleep 60;; esac; done`,
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
   );
   // Staleness is re-evaluated only when main moves: stale once the first verify's reviewer is
   // running, and the test moves main after that — so the restart arrives mid-review.
@@ -729,7 +746,7 @@ test("a restart's hand-off aborts the merges that outlive its deadline instead o
     handoffMergeWindowMs: 500,
   });
   try {
-    await waitFor(() => fs.existsSync(reviewing), "the first verify's reviewer run to be in flight");
+    await waitFor(() => fs.existsSync(reviewing), "the first verify's gate check to be in flight");
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the verifies");
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
@@ -772,8 +789,14 @@ test("a restart's drain aborts only its permit-holding role runs — the in-flig
   await seedMergeQueue(repo, "dedupe"); // dedupe is interlocked: its merge runs, its run never starts
   const reviewing = path.join(tmpdir(), "rolestop-reviewing");
   const authoring = path.join(tmpdir(), "rolestop-authoring");
+  // dedupe's gate check parks in its verify's build pre-check (touches the marker and sleeps
+  // 60 s), holding the merge in flight through the announced hand-off window; main's baseline
+  // sees no dedupe.txt and passes at once.
+  const cfg = fastConfig(["dedupe"]);
+  cfg.check = { command: `if [ -e dedupe.txt ]; then touch '${reviewing}'; exec sleep 60; fi; exit 0` };
+  saveConfig(repo, cfg);
   const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${reviewing}'; exec sleep 60;; esac; done\n` +
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done\n` +
       `touch '${authoring}'; sleep 5`,
   );
   const { redeployer, swaps } = scriptedRedeployer(repo, {
@@ -785,7 +808,7 @@ test("a restart's drain aborts only its permit-holding role runs — the in-flig
     handoffMergeWindowMs: 500,
   });
   try {
-    await waitFor(() => fs.existsSync(reviewing), "dedupe's verify reviewer to be in flight");
+    await waitFor(() => fs.existsSync(reviewing), "dedupe's verify gate check to be in flight");
     // Enable clean mid-run — the live-reload path, not startup — and let its run take a permit
     // BEFORE main moves: a held poll starts no run, so the permit holder must predate the hold.
     saveConfig(repo, fastConfig(["clean", "dedupe"]));
