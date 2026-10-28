@@ -206,11 +206,61 @@ export function planDependencyProblems(
   unparsed: string[];
   misworded: Array<{ title: string; ref: string }>;
 } {
+  const known = dependencyKnownParts(planned, doneTitles);
+  const { nodes, dangling, unparsed, misworded } = dependencyEntryScan(planned, known);
+  return { cycle: firstDependencyCycle(nodes), dangling, unparsed, misworded };
+}
+
+/** The part keys that count as known for dangling checks: every still-planned entry's part plus
+ * every done title's part — a dangling ref is one no planned or done heading carries. */
+function dependencyKnownParts(
+  planned: readonly BacklogEntry[],
+  doneTitles: readonly string[],
+): Set<string> {
   const known = plannedPartKeys(planned);
   for (const t of doneTitles) {
     const part = seriesPart(t);
     if (part !== null) known.add(partKey(part.series, part.part));
   }
+  return known;
+}
+
+/** The misworded refs a still-planned `Series, part i/n:` entry contributes: the series-parts its
+ * trailing-or-open parenthetical names through a dependency verb with no requires clause holding
+ * them, each `title`+`ref` deduped against the refs already collected across the whole planned
+ * list (a duplicate title contributes one ref, not one per occurrence). */
+function miswordedDependencyRefs(
+  entry: BacklogEntry,
+  own: PartRef,
+  refs: readonly PartRef[],
+  plannedKeys: ReadonlySet<string>,
+  misworded: Array<{ title: string; ref: string }>,
+): void {
+  let meta = trailingParenthetical(entry.title);
+  if (meta === "") meta = openParenthetical(entry.title);
+  const held = new Set(refs.map((ref) => partKey(ref.series, ref.part)));
+  for (const m of meta.matchAll(MISWORDED_DEPENDENCY_RE)) {
+    for (const ref of parseRef(m[1]!, own.series).refs) {
+      const key = partKey(ref.series, ref.part);
+      if (!plannedKeys.has(key) || held.has(key)) continue;
+      const name = `${ref.series} ${ref.part}/${ref.of}`;
+      if (!misworded.some((w) => w.title === entry.title && w.ref === name)) misworded.push({ title: entry.title, ref: name });
+    }
+  }
+}
+
+/** The one-pass scan over the planned entries: a clause that parses to no refs pushes its title to
+ * `unparsed`, a ref `known` does not carry lands in `dangling`, and each entry with a series part
+ * contributes its misworded refs and a graph node whose deps are its required parts' keys. */
+function dependencyEntryScan(
+  planned: readonly BacklogEntry[],
+  known: ReadonlySet<string>,
+): {
+  nodes: Map<string, { name: string; deps: string[] }>;
+  dangling: Array<{ title: string; ref: string }>;
+  unparsed: string[];
+  misworded: Array<{ title: string; ref: string }>;
+} {
   const dangling: Array<{ title: string; ref: string }> = [];
   const unparsed: string[] = [];
   const misworded: Array<{ title: string; ref: string }> = [];
@@ -225,22 +275,21 @@ export function planDependencyProblems(
     }
     const own = seriesPart(entry.title);
     if (own === null) continue;
-    let meta = trailingParenthetical(entry.title);
-    if (meta === "") meta = openParenthetical(entry.title);
-    const held = new Set(refs.map((ref) => partKey(ref.series, ref.part)));
-    for (const m of meta.matchAll(MISWORDED_DEPENDENCY_RE)) {
-      for (const ref of parseRef(m[1]!, own.series).refs) {
-        const key = partKey(ref.series, ref.part);
-        if (!plannedKeys.has(key) || held.has(key)) continue;
-        const name = `${ref.series} ${ref.part}/${ref.of}`;
-        if (!misworded.some((w) => w.title === entry.title && w.ref === name)) misworded.push({ title: entry.title, ref: name });
-      }
-    }
+    miswordedDependencyRefs(entry, own, refs, plannedKeys, misworded);
     nodes.set(partKey(own.series, own.part), {
       name: `${own.series} ${own.part}/${own.of}`,
       deps: refs.map((ref) => partKey(ref.series, ref.part)),
     });
   }
+  return { nodes, dangling, unparsed, misworded };
+}
+
+/** The first dependency cycle the depth-first walk finds, as `Series i/n` names in walk order with
+ * the first name repeated last (a self-reference is a one-hop cycle), or null when the graph is
+ * acyclic. The `open`/`done` state map and the walk order decide which cycle reports first. */
+function firstDependencyCycle(
+  nodes: ReadonlyMap<string, { name: string; deps: string[] }>,
+): string[] | null {
   const state = new Map<string, "open" | "done">();
   const stack: string[] = [];
   const visit = (key: string): string[] | null => {
@@ -267,7 +316,7 @@ export function planDependencyProblems(
     cycle = visit(key);
     if (cycle !== null) break;
   }
-  return { cycle, dangling, unparsed, misworded };
+  return cycle;
 }
 
 /** The prerequisite refs of `title`'s `requires … landed` clause when none of them is still in

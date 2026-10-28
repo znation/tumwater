@@ -455,6 +455,9 @@ test("planDependencyProblems flags a still-planned prerequisite named without a 
   const held = "S, part 2/2: b (requires part 1/2 landed; after part 1/2)"; // vocabulary-ok: PLANS.md heading syntax
   assert.deepEqual(planDependencyProblems([e("S, part 1/2: a"), e(held)], []).misworded, []);
   assert.deepEqual(planDependencyProblems([e("S, part 1/2: a"), e("Plain plan (after part 1/2)")], []).misworded, []);
+  // a duplicated title's same misworded ref is reported once, not once per occurrence:
+  // the dedup spans the whole planned list, matching the pre-split behavior
+  assert.deepEqual(planDependencyProblems([e("S, part 1/2: a"), e(b), e(b)], []).misworded, [{ title: b, ref: "S 1/2" }]);
 });
 
 test("planDependencyProblems finds dangling refs, unparsed clauses and cycles", () => {
