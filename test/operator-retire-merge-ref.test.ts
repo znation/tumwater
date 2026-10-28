@@ -1,13 +1,13 @@
 // --- retire and the merge ref: an unmerged pin blocks, a legacy-named pin is cleaned up ---
-// test/retire.test.ts pins the merged-pin case that must not block; these cover the two merge-ref
-// paths that guard work or clean up state: an unmerged pin with the branch sitting at main, and a
-// pin under the legacy name.
+// test/operator-retire.test.ts pins the merged-pin case that must not block; these two cover
+// the merge-ref paths that guard work or clean up state: an unmerged pin with the branch
+// sitting at main, and a pin under the legacy name.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { branchName, legacyLandingRefName, mergeRefName, worktreePath } from "../src/paths.js";
-import { collectRetire, retireRole } from "../src/operator/retire.js";
+import { collectRetire, retireRole } from "../src/operator/operator-retire.js";
 import { mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { branchHead, refSha, setRef } from "../src/git/git.js";

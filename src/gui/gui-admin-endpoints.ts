@@ -2,14 +2,14 @@
  * The dashboard's GET settings/admin handlers (src/gui/gui-server.ts routes to them):
  * prompt-text, doctor, config, retire-list, and brief. Each answers its request and touches no
  * socket beyond its own `res`; the domain work lives one layer down (doctor/doctor.js,
- * config/config.js, operator/retire.js), so this module only adapts HTTP onto it. Barrelled
- * into gui/gui-endpoints.ts beside the other per-family GET endpoint modules.
+ * config/config.js, operator/operator-retire.js), so this module only adapts HTTP onto it.
+ * it is barrelled into gui/gui-endpoints.ts beside the other per-family GET endpoint modules.
  */
 import { runDoctor } from "../doctor/doctor.js";
 import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { runnerEnabled } from "../roles/runner-ids.js";
-import { artifactPhrase, previewRetire } from "../operator/retire.js";
+import { artifactPhrase, previewRetire } from "../operator/operator-retire.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
 import { readBrief } from "../brief/brief.js";
 import { readQueuedPromptBody } from "../inbox/inbox-edit.js";

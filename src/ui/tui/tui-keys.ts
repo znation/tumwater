@@ -12,7 +12,7 @@ import { MERGE_LOCK_WAIT_MS } from "../../paths.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import { commitOperatorBacklogEdit } from "../../backlog/backlog-commit.js";
 import { stampedSubject } from "../../git/commit-message.js";
-import { previewRevert, revertMergedCommit } from "../../operator/revert.js";
+import { previewRevert, revertMergedCommit } from "../../operator/operator-revert.js";
 import { requestAbort } from "../../operator/operator-intent.js";
 import { errorMessage } from "../../text/text.js";
 import { DIRECTOR_ROLE } from "../../roles/roles.js";

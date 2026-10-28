@@ -1,4 +1,4 @@
-import { artifactPhrase, retireRole } from "../../operator/retire.js";
+import { artifactPhrase, retireRole } from "../../operator/operator-retire.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 

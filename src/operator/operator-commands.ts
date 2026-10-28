@@ -3,8 +3,8 @@ import { fail, say, sayJson } from "../cli/cli-output.js";
 import { failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
 import { errorMessage, splitCommaList } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
-import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
-import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "./revert.js";
+import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./operator-retire.js";
+import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "./operator-revert.js";
 import { runNotFoundMessage } from "../run/run-detail.js";
 import { readRunDetail } from "../run/run-detail-data.js";
 import { readRunRows } from "../history/history-data.js";
@@ -440,8 +440,8 @@ function sayRemoveInventory(removed: readonly string[], skipped: readonly string
 
 /** `tumwater retire --role <id> [--force] [--json]`: remove a disabled role's leftover worktree,
  * branch, merge ref, and paused-state marker. The collection, safety rails, and removal live in
- * src/operator/retire.ts; this is the render layer — one line per removed artifact, the skip lines
- * that make a second run idempotent, or the `--json` payload. */
+ * src/operator/operator-retire.ts; this is the render layer — one line per removed
+ * artifact, the skip lines that make a second run idempotent, or the `--json` payload. */
 export async function cmdRetire(root: string, args: string[]): Promise<void> {
   // The config exists only to validate the id against built-ins plus user-defined roles, with
   // the leftover-branch gate for ids no config names; a missing --role fails before it is needed.
@@ -584,7 +584,7 @@ function revertRunSha(root: string, positionals: string[], last: boolean): { sha
 /** `tumwater revert <sha>|<role> <n>|<role> --last`: undo one merged change on main,
  * committing the inverse as `tumwater(operator): Revert <short sha>` under the primary-worktree
  * lock. The lock, branch guard, and fail-closed ref/conflict handling live in
- * src/operator/revert.ts; this renderer names the new main head and names the role
+ * src/operator/operator-revert.ts; this renderer names the new main head and names the role
  * that made the reverted commit, when one did, as the one that may redo the work.
  * `--json` prints the preview or the revert as one JSON object instead (refusals still fail on
  * stderr). */

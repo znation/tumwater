@@ -1482,7 +1482,7 @@ test("wake --in is capped at 90d like pause --for", async () => {
 });
 
 // --- revert: undo one merged change on main ---
-// The CLI renderer for src/operator/revert.ts (its fail-closed unit surface lives in
+// The CLI renderer for src/operator/operator-revert.ts (its fail-closed unit surface lives in
 // test/operator-revert.test.ts). Here we pin the arity gate, the exit code and printed head on
 // success, and that the usage errors write no commit.
 

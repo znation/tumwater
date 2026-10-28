@@ -5,7 +5,7 @@ import type { OrphanKillReport } from "../../doctor/doctor-orphans.js";
 import type { BrokenPinDrop, LeftoverRetireReport } from "../../doctor/doctor-contention-checks.js";
 import type { BacklogCommitReport } from "../../doctor/doctor-backlog.js";
 import type { ArchiveOnMainOutcome } from "../../backlog/backlog-archive.js";
-import type { previewRevert, revertMergedCommit } from "../../operator/revert.js";
+import type { previewRevert, revertMergedCommit } from "../../operator/operator-revert.js";
 import type { RunDetail } from "../../run/run-detail-data.js";
 import { HISTORY_RESULT_CLASSES, HISTORY_RESULT_FLAG_NAMES } from "../../history/history-data.js";
 import type { HistoryResultClass } from "../../history/history-data.js";

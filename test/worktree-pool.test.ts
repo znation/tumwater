@@ -2,7 +2,7 @@
  * 2a/5): which slot a lease gets, that concurrent leases take distinct slots, that a lease with
  * none free waits and honors an abort signal, the role affinity order, and the persisted lease
  * record in slots.json. The persisted layout module itself is covered where it is used
- * (test/retire.test.ts, test/change-data.test.ts). */
+ * (test/operator-retire.test.ts, test/change-data.test.ts). */
 
 import test from "node:test";
 import assert from "node:assert/strict";

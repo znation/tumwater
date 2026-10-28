@@ -28,7 +28,7 @@ import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js
 import { staleClaimDetail, staleClaimEntries } from "../scheduling/claim-entries.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { branchName, mergeLockDir, worktreesDir } from "../paths.js";
-import { artifactPhrase, retireRole } from "../operator/retire.js";
+import { artifactPhrase, retireRole } from "../operator/operator-retire.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { failOutcome, noConfigOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";

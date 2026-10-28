@@ -18,7 +18,7 @@ import { renderModelSummary, renderSummary } from "../../history/history-render.
 import { historyPaneText } from "./tui-history.js";
 import { readRunDetail, type RunDetail } from "../../run/run-detail-data.js";
 import { renderRunDetail, runTranscriptLines } from "../../run/run-detail-render.js";
-import { revertFollowUp, runRevertSha } from "../../operator/revert.js";
+import { revertFollowUp, runRevertSha } from "../../operator/operator-revert.js";
 import { shortSha } from "../../text/format.js";
 import { plural } from "../../text/phrases.js";
 import { pageMarkdownBody } from "./tui-backlog.js";

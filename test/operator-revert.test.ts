@@ -1,7 +1,8 @@
 // --- tumwater revert <sha>: undo one merged change on main, under the primary-worktree lock ---
-// The unit surface of src/operator/revert.ts: fail-closed ref/conflict/branch handling, pinned
-// against real git repos. The CLI wiring (usage errors, exit codes, the printed head) is pinned
-// in test/cli-operators.test.ts; here we exercise revertMergedCommit directly.
+// The unit surface of src/operator/operator-revert.ts: the fail-closed ref/conflict/branch
+// handling, pinned against real git repos. The CLI wiring (usage errors, exit codes, the
+// printed head) is pinned in test/cli-operators.test.ts; here we exercise revertMergedCommit
+// directly.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +11,7 @@ import path from "node:path";
 import { headSha, makeRepo, seedCommit, sh, writeConfig } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { stampedRole } from "../src/git/commit-message.js";
-import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "../src/operator/revert.js";
+import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "../src/operator/operator-revert.js";
 import type { RunDetail } from "../src/run/run-detail-data.js";
 
 test("reverting a rename commit commits both halves and leaves the tree clean", async () => {

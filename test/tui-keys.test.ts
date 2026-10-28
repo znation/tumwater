@@ -13,7 +13,7 @@ import { renderDoctor, renderDoctorProblems } from "../src/doctor/doctor-render.
 import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
-import type { previewRevert } from "../src/operator/revert.js";
+import type { previewRevert } from "../src/operator/operator-revert.js";
 import { overlapDrillHeading, overlapHolders, mergeQueueRoles, postReviewRoles } from "../src/ui/tui/tui-pane-pending.js";
 import { historyWindowBounds } from "../src/ui/tui/tui-pane-history.js";
 import { promptLineFree, type TuiPaneEditorState } from "../src/ui/tui/tui-pane-ctx.js";
@@ -5403,7 +5403,7 @@ test("Ctrl+N off the Health view never runs the notify hook", async () => {
 
 // Ctrl+X on the Health view retires a disabled role's leftovers — the terminal twin of
 // `tumwater retire --role <id>` and the dashboard Settings card's Retire button, all through
-// the same retireRole core (src/operator/retire.ts). An empty id flashes and stays; a
+// the same retireRole core (src/operator/operator-retire.ts). An empty id flashes and stays; a
 // safety-rail refusal flashes --force's naming and stays; success exits edit mode and flashes
 // the dashboard's own outcome wording. Every other view keeps Ctrl+X for its own arm.
 test("Ctrl+X on the Health view retires a disabled role's leftovers", async () => {

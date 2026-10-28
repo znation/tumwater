@@ -2683,7 +2683,7 @@ still removes the marker", "consumeAbortRequests silently clears a marker for an
 
 ## Retire: a role's leftovers go only when nothing unmerged or in use goes with them
 
-`tumwater retire --role <id>` (`src/operator/retire.ts`) deletes a role's worktree, branch and merge
+`tumwater retire --role <id>` (`src/operator/operator-retire.ts`) deletes a role's worktree, branch and merge
 ref. Its rails are the only thing between an operator and lost work.
 
 ### INV-AR1: without --force, retire refuses and removes nothing while the role is in use or holds unmerged work
@@ -2695,14 +2695,14 @@ counted from the branch ref, even when the worktree directory is gone, and a mer
 one unmerged commit even while the branch sits at main. `--force` overrides those rails. A
 `tumwater.json` that cannot be read refuses even with `--force`.
 
-**Binds.** `src/operator/retire.ts` (`collectRetire`, `objections`, `retireRole`).
+**Binds.** `src/operator/operator-retire.ts` (`collectRetire`, `objections`, `retireRole`).
 
-**Pinned by.** `test/retire.test.ts` — "retire refuses an enabled role, unmerged commits, a dirty
+**Pinned by.** `test/operator-retire.test.ts` — "retire refuses an enabled role, unmerged commits, a dirty
 worktree, and a mid-run role; --force goes through", "retire refuses a dirty worktree and a mid-run
 role before removing anything", "retire refuses an unusable worktree it cannot check for uncommitted
 changes", "retire counts a dead worktree's unmerged branch commits even when the directory is gone",
 "retire refuses an enabled work instance id, not just its bare base role (part 5b/7)" and "retire
-refuses when tumwater.json cannot be read, even with --force"; `test/retire-merge-ref.test.ts` —
+refuses when tumwater.json cannot be read, even with --force"; `test/operator-retire-merge-ref.test.ts` —
 "retire refuses a merge ref pinning an unmerged commit while the branch sits at main".
 
 ### INV-AR2: a pooled slot is unpinned and reset in place, and anything already gone is skipped
@@ -2711,9 +2711,9 @@ refuses when tumwater.json cannot be read, even with --force"; `test/retire-merg
 legacy worktree is removed, and a dead registration is cleared with it. An artifact already gone is
 reported as skipped, so a second retire exits 0.
 
-**Binds.** `src/operator/retire.ts` (`retireRole`).
+**Binds.** `src/operator/operator-retire.ts` (`retireRole`).
 
-**Pinned by.** `test/retire.test.ts` — "retire a pinned slot clears the pin and resets it in place
+**Pinned by.** `test/operator-retire.test.ts` — "retire a pinned slot clears the pin and resets it in place
 instead of removing it", "retire clears a pinned slot whose directory is already gone", "a second
 retire is idempotent: skipped artifacts, exit 0" and "retire removes a dead worktree registration
 (directory already gone, branch remains)".
@@ -2724,11 +2724,11 @@ retire is idempotent: skipped artifacts, exit 0" and "retire removes a dead work
 the legacy name is reported and removed. A pin already merged into main does not block.
 `hasRetirableLeftovers` accepts only a well-formed, non-director id that still has a branch or a pin.
 
-**Binds.** `src/operator/retire.ts` (`mergeRefSha`, `hasRetirableLeftovers`, `retireRole`).
+**Binds.** `src/operator/operator-retire.ts` (`mergeRefSha`, `hasRetirableLeftovers`, `retireRole`).
 
-**Pinned by.** `test/retire.test.ts` — "retire removes a disabled role's worktree, branch, and merge
+**Pinned by.** `test/operator-retire.test.ts` — "retire removes a disabled role's worktree, branch, and merge
 ref", "hasRetirableLeftovers gates on a well-formed non-director id with a branch or merge ref" and
-"hasRetirableLeftovers counts a legacy-named pin"; `test/retire-merge-ref.test.ts` — "retire reports
+"hasRetirableLeftovers counts a legacy-named pin"; `test/operator-retire-merge-ref.test.ts` — "retire reports
 and deletes a legacy-named merge ref that is the role's only pin".
 
 ### INV-AR4: --dry-run previews the removal and changes nothing
@@ -2736,9 +2736,9 @@ and deletes a legacy-named merge ref that is the role's only pin".
 **Guarantee.** `retire --dry-run` lists what a real run would remove or skip, leaves the worktree,
 branch and merge ref in place, and `previewRetire` leaves a paused marker in place.
 
-**Binds.** `src/operator/retire.ts` (`previewRetire`).
+**Binds.** `src/operator/operator-retire.ts` (`previewRetire`).
 
-**Pinned by.** `test/retire.test.ts` — "retire --dry-run previews the removal and changes nothing"
+**Pinned by.** `test/operator-retire.test.ts` — "retire --dry-run previews the removal and changes nothing"
 and "previewRetire lists a paused marker and leaves it in place".
 
 ## Prompt submission: a prompt is capped, gated and queued in one step, or nothing is queued

@@ -29,7 +29,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
 import { readRunDetail, type RunDetail, runCommitSha, runMergedSha } from "../run/run-detail-data.js";
 import { renderRunDetail, runDetailPatch, runDetailStat, runTranscriptLines } from "../run/run-detail-render.js";
-import { resolveRevertTarget } from "../operator/revert.js";
+import { resolveRevertTarget } from "../operator/operator-revert.js";
 import { rolePayload } from "../roles/role-view.js";
 import { clampCount, intQuery, rejectBadRole, sinceMsQuery, untilMsQuery } from "./gui-args.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
