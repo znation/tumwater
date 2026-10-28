@@ -543,4 +543,43 @@ async function seedProject(root: string, plan: InitPlan): Promise<
 
 **Tests.** No new test module: a behavior-preserving move behind nine module-private helpers and one private interface, guarded by the existing `test/init.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
 
+### `handleDiff`'s complexity-16 three-mode dispatch body is split into one named helper per view — the `?overlaps` path list, the role-less team roster, the `?role` per-role view and the shared `?path=` parse — so "how does the endpoint answer `?overlaps`?", "what does `/api/diff` serve with no role?", "how is a bad `?path=` refused?" and "which query modes does the endpoint dispatch?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `buildRolloutLines`, `classifyError`, `findTrust`, `inputViewWindow`, `usageWords`, `sayLogsTail`, `editAndAnnounce`, `movedSourceFindings`, `parseInitArgs` and `createTeamConfigKeyEditor` plans each extract one named helper per job the same way; independent in file of every Planned entry — `grep -c 'handleDiff' PLANS.md` prints 0 and `grep -c 'gui-backlog-endpoints' PLANS.md` prints 0, so no `## Planned` heading or touches list names the symbol or the file (PLANS.md's only `src/gui` matches are `src/gui/gui-config-commands.ts` and `src/gui/gui-server.ts`, named by blocked `Subtract` and `Every commit is verified on main` parts — different files, so whichever lands second does not rebase here); PLANS-DONE.md records no split of `handleDiff` (`grep -cE '^### .*handleDiff.*complexity' PLANS-DONE.md` prints 0; the three headings that mention `handleDiff` are the `/api/diff?role&stat` feature plan and two sibling endpoint plans that name it only in their independence prose, never in an approach or acceptance bullet that splits its body); docs/invariants.md names neither the file nor the symbol (`grep -c 'handleDiff' docs/invariants.md` and `grep -c 'gui-backlog-endpoints' docs/invariants.md` both print 0), so it stays unchanged; touches src/gui/gui-backlog-endpoints.ts)
+
+**Goal.** `handleDiff` (`src/gui/gui-backlog-endpoints.ts`, `export async function`, complexity 16) is the dashboard's `GET /api/diff` handler: it answers three query modes from one ~42-line body, and its three route-free concerns are interleaved. Today one body parses `?path=` and `?stat` once, then (a) the `?overlaps` list — refusing stat, normalising path, resolving `roleListQuery`, collecting `collectChangeOverlaps` and scoping it by roles and by path; (b) the role-less team roster — refusing `stat` and `path` with their own 400s, then `collectTeamChanges`; and (c) the `?role` per-role view — `rejectBadRole`, the shared path normalize with its 400, then `collectRoleChange` with its path/stat options. A reader asking any of the four questions above has only the one block to scan, and the `?path=` validate-and-400 is written twice.
+
+**Approach.** All code edits in `src/gui/gui-backlog-endpoints.ts`; move code, do not rewrite it — every condition, order, message string and comment stays exactly as today, and the `handleDiff` doc contract (its exports and the file's module comment) stays. Add four module-private helpers beside `handleDiff`:
+
+- `function diffPathParam(res: http.ServerResponse, rawPath: string | null): { path: string | undefined } | null` — `{ path: undefined }` for an absent `?path=`, otherwise `normalizeDiffPath(rawPath)`; on a `null` result it answers the existing 400 ("path takes a repo-relative path such as src/cli.ts (as overlaps lists it)") and returns `null` so the caller returns. This is the one shared concern the `?overlaps` and `?role` arms repeat today.
+- `async function handleDiffOverlaps(q: URLSearchParams, res: http.ServerResponse, root: string, rawPath: string | null, stat: boolean): Promise<void>` — today's `?overlaps` arm in full: the stat 400 ("overlaps lists paths, not patches; drop stat"), `diffPathParam`, `roleListQuery` (its `null` means return), `collectChangeOverlaps`, the optional `scopeChangeOverlaps` and `scopeChangeOverlapsToPath`, and `sendJson`.
+- `async function handleDiffTeam(res: http.ServerResponse, root: string, rawPath: string | null, stat: boolean): Promise<void>` — today's role-less arm: the `stat` 400 ("stat needs role (the team roster carries no patch)"), the `rawPath !== null` 400 ("path needs role (the team roster carries no patch)") and `sendJson(res, 200, await collectTeamChanges(root))`.
+- `async function handleDiffRole(res: http.ServerResponse, root: string, role: string, rawPath: string | null, stat: boolean): Promise<void>` — today's `?role` arm: `rejectBadRole`, `diffPathParam`, and the `collectRoleChange(root, role, { ...(path === undefined ? {} : { path }), ...(stat ? { stat: true } : {}) })` payload.
+
+`handleDiff` keeps its name, signature, `export` and doc comment, and becomes dispatch only:
+
+```ts
+export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
+  const rawPath = q.get("path");
+  const stat = q.get("stat") !== null;
+  if (q.get("overlaps") !== null) return handleDiffOverlaps(q, res, root, rawPath, stat);
+  const role = q.get("role");
+  if (role === null) return handleDiffTeam(res, root, rawPath, stat);
+  return handleDiffRole(res, root, role, rawPath, stat);
+}
+```
+
+`handleBacklog`, `handleBacklogMatch`, the `BACKLOG_FILE_*` table and every import are untouched, and no export changes. No behaviour changes: the same statuses and messages answer the same queries, `?overlaps` still scopes by role then path in that order, and `?role` still refuses an unknown role before normalising the path.
+
+**Files touched.** `src/gui/gui-backlog-endpoints.ts`. No new module, no export change, no test file edited, and `docs/invariants.md` unchanged (it binds none of this file).
+
+**Acceptance criteria.**
+- `handleDiff`'s body contains only the `rawPath`/`stat` parse, the `?overlaps` test with its return, the `role` read with its null test and return, and the final `return handleDiffRole(...)`: it contains no `badRequest`, no `normalizeDiffPath`, no `roleListQuery`, no `rejectBadRole`, no `collectChangeOverlaps`, no `collectTeamChanges`, no `collectRoleChange` and no `sendJson`.
+- `diffPathParam`, `handleDiffOverlaps`, `handleDiffTeam` and `handleDiffRole` each exist exactly once at module scope, are not exported, and are called only from `handleDiff`; the literal "path takes a repo-relative path such as src/cli.ts (as overlaps lists it)" appears exactly once in the module (inside `diffPathParam`).
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/gui/gui-backlog-endpoints.ts'`) no longer reports `handleDiff` at 16, and no new helper reports 16 or above; `handleBacklog` (5) and `handleBacklogMatch` (4) are unchanged.
+- The exported surface is unchanged: `grep -nE '^export ' src/gui/gui-backlog-endpoints.ts` still matches `handleBacklog`, `handleBacklogMatch` and `handleDiff` and nothing else, and no import line is added or removed (every name the move uses — `collectChangeOverlaps`, `scopeChangeOverlaps`, `scopeChangeOverlapsToPath`, `collectTeamChanges`, `collectRoleChange`, `normalizeDiffPath`, `rejectBadRole`, `roleListQuery`, `badRequest`, `sendJson` — is already imported by the module).
+- `docs/invariants.md` is byte-identical (it names neither `handleDiff` nor `src/gui/gui-backlog-endpoints.ts`).
+- Behaviour is preserved, verified by the existing `test/gui-endpoints.test.ts` cases passing unedited — "handleDiff serves the team roster with no patch fields, matching collectTeamChanges", "handleDiff with ?role serves the full per-role view, matching collectRoleChange", "handleDiff degrades an absent worktree and a fresh repo without throwing", "handleDiff refuses an unknown role through rejectBadRole's 400", "handleDiff with ?overlaps serves collectChangeOverlaps's document, scoped by role", "handleDiff with ?role&path serves the path-scoped view, matching collectRoleChange", "handleDiff with ?role&stat serves the diffstat view, matching collectRoleChange with stat", "handleDiff refuses stat without role and with overlaps" and "handleDiff refuses path without role and outside the repo".
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind four module-private helpers, guarded by the existing `test/gui-endpoints.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
+
 ## Done
