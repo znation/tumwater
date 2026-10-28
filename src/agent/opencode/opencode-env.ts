@@ -15,6 +15,8 @@
  * set: OpenCode's shell-tool children inherit the environment, and pointing XDG at a private
  * dir would stop `git` reading `~/.config/git/config`, losing commits' author identity (§3). */
 
+import { scrubEnv } from "../env-scrub.js";
+
 /** One run's opencode isolation environment. */
 export interface OpencodeEnvOptions {
   /** The session database file this run reads and writes (design §4). */
@@ -25,19 +27,19 @@ export interface OpencodeEnvOptions {
 
 /** Build the opencode process environment from `base`. Never mutates `base`. */
 export function opencodeEnv(base: NodeJS.ProcessEnv, opts: OpencodeEnvOptions): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(base)) {
+  return scrubEnv(base, {
     // Everything an inherited OpenCode session set is scrubbed — server, config, database,
     // client and session id — except the operator's API key, which is operator intent and must
     // survive. `AI_AGENT` goes too, so the shell tool sets its own (finding 16).
-    if (key === "OPENCODE" || (key.startsWith("OPENCODE_") && key !== "OPENCODE_API_KEY") || key === "AI_AGENT") continue;
-    env[key] = value;
-  }
-  env.OPENCODE_DISABLE_CLAUDE_CODE = "1";
-  env.OPENCODE_DISABLE_CLAUDE_CODE_SKILLS = "1";
-  env.OPENCODE_DISABLE_AUTOUPDATE = "1";
-  env.OPENCODE_DISABLE_FILEWATCHER = "1";
-  env.OPENCODE_DB = opts.dbPath;
-  env.OPENCODE_CONFIG_CONTENT = opts.configContent;
-  return env;
+    keep: (key: string) =>
+      !(key === "OPENCODE" || (key.startsWith("OPENCODE_") && key !== "OPENCODE_API_KEY") || key === "AI_AGENT"),
+    then: (env: NodeJS.ProcessEnv) => {
+      env.OPENCODE_DISABLE_CLAUDE_CODE = "1";
+      env.OPENCODE_DISABLE_CLAUDE_CODE_SKILLS = "1";
+      env.OPENCODE_DISABLE_AUTOUPDATE = "1";
+      env.OPENCODE_DISABLE_FILEWATCHER = "1";
+      env.OPENCODE_DB = opts.dbPath;
+      env.OPENCODE_CONFIG_CONTENT = opts.configContent;
+    },
+  });
 }

@@ -18,6 +18,8 @@
  * Bash timeout fires before tumwater's quiet kill and the model sees a tool error rather than a
  * dead run. */
 
+import { scrubEnv } from "../env-scrub.js";
+
 /** The cloud-provider switches that make a claude run bill as API rather than a claude.ai
  * subscription: Bedrock, Vertex, and Azure Foundry. They carry operator intent, so the run
  * environment keeps them (the allowlist below); claude-account's seedBilling and this module's
@@ -71,30 +73,30 @@ export interface ClaudeEnvOptions {
 /** Build the claude process environment from `base`. Never mutates `base`. */
 export function claudeEnv(base: NodeJS.ProcessEnv, opts: ClaudeEnvOptions): NodeJS.ProcessEnv {
   const hadClaudeCode = base.CLAUDECODE !== undefined;
-  const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(base)) {
-    if (key === "CLAUDECODE" || key === "CLAUDE_PID" || key === "CLAUDE_EFFORT") continue;
-    if (key.startsWith("CLAUDE_CODE_") && !CLAUDE_CODE_ALLOWLIST.has(key)) continue;
-    if (key.startsWith("CLAUDE_AGENT_SDK_")) continue;
-    // The host session's proxy, not the operator's: only when CLAUDECODE says we are inside one.
-    if (key === "ANTHROPIC_BASE_URL" && hadClaudeCode) continue;
-    env[key] = value;
-  }
-  env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
-  env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = "1";
-  env.BASH_DEFAULT_TIMEOUT_MS = String(BASH_DEFAULT_TIMEOUT_MS);
-  if (opts.quietTimeoutSeconds > 0) {
-    // 60 s under the quiet kill, so claude's tool error arrives before the run is declared hung;
-    // floored so a quiet window under 60 s never derives a non-positive cap.
-    const derived = opts.quietTimeoutSeconds * 1000 - 60_000;
-    env.BASH_MAX_TIMEOUT_MS = String(Math.max(derived, MIN_BASH_MAX_TIMEOUT_MS));
-  }
-  env.DISABLE_AUTOUPDATER = "1";
-  env.DISABLE_TELEMETRY = "1";
-  env.DISABLE_ERROR_REPORTING = "1";
-  // A team config dir (plans/notes-command.md "Keeping funes out of team runs"): force claude's
-  // own config and transcripts under it, so a funes hook on ~/.claude/projects never indexes
-  // team runs. Unset leaves any inherited CLAUDE_CONFIG_DIR (or claude's default) untouched.
-  if (opts.configDir) env.CLAUDE_CONFIG_DIR = opts.configDir;
-  return env;
+  return scrubEnv(base, {
+    keep: (key: string) =>
+      (key !== "CLAUDECODE" && key !== "CLAUDE_PID" && key !== "CLAUDE_EFFORT") &&
+      !(key.startsWith("CLAUDE_CODE_") && !CLAUDE_CODE_ALLOWLIST.has(key)) &&
+      !key.startsWith("CLAUDE_AGENT_SDK_") &&
+      // The host session's proxy, not the operator's: only when CLAUDECODE says we are inside one.
+      !(key === "ANTHROPIC_BASE_URL" && hadClaudeCode),
+    then: (env: NodeJS.ProcessEnv) => {
+      env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
+      env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = "1";
+      env.BASH_DEFAULT_TIMEOUT_MS = String(BASH_DEFAULT_TIMEOUT_MS);
+      if (opts.quietTimeoutSeconds > 0) {
+        // 60 s under the quiet kill, so claude's tool error arrives before the run is
+        // declared hung; floored so a short quiet window never derives a non-positive cap.
+        const derived = opts.quietTimeoutSeconds * 1000 - 60_000;
+        env.BASH_MAX_TIMEOUT_MS = String(Math.max(derived, MIN_BASH_MAX_TIMEOUT_MS));
+      }
+      env.DISABLE_AUTOUPDATER = "1";
+      env.DISABLE_TELEMETRY = "1";
+      env.DISABLE_ERROR_REPORTING = "1";
+      // A team config dir (plans/notes-command.md "Keeping funes out of team runs"): force claude's
+      // own config and transcripts under it, so a funes hook on ~/.claude/projects never indexes
+      // team runs. Unset leaves any inherited CLAUDE_CONFIG_DIR (or claude's default) untouched.
+      if (opts.configDir) env.CLAUDE_CONFIG_DIR = opts.configDir;
+    },
+  });
 }
