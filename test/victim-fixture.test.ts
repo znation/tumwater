@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { pidAlive } from "../src/process/process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { armVictimKill, exitWithOwnerEnv, ownerAliveSh } from "./fixtures/victim-fixture.js";
+import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 
 // The owner watch (exit-with-owner.ts) that the victim fixtures and every other long-lived
 // test child ride on. A child started under exitWithOwnerEnv must leave once its owner dies,
@@ -69,6 +70,25 @@ test("a child under exitWithOwnerEnv and the node grandchild it starts both exit
     "the child and its grandchild to follow their killed owner out",
     10_000,
   );
+});
+
+test("a child spawned through spawnReadyChild is stamped with the owner env and preload", async (t) => {
+  // A ready child must not inherit the test process's environment (which may hold a stale
+  // owner pid and no preload) — it must ride the exitWithOwnerEnv stamp instead, exactly like
+  // spawnLiveChild and the other owner-watch children. See "A `spawnReadyChild` child inherits
+  // its owner pid and NODE_OPTIONS from the test process".
+  const dir = tmpdir();
+  const envFile = path.join(dir, "env");
+  const source = [
+    "const fs = require('node:fs');",
+    `fs.writeFileSync(${JSON.stringify(envFile)}, JSON.stringify({ NODE_OPTIONS: process.env.NODE_OPTIONS, OWNER: process.env.TUMWATER_TEST_OWNER_PID }));`,
+  ].join("\n");
+  const handle = spawnReadyChild(source, () => fs.existsSync(envFile), "the ready child never wrote its env");
+  t.after(() => stopChild(handle));
+  await waitFor(() => fs.existsSync(envFile), "the child to write its env", 10_000);
+  const seen = JSON.parse(fs.readFileSync(envFile, "utf8")) as { NODE_OPTIONS?: string; OWNER?: string };
+  assert.match(seen.NODE_OPTIONS ?? "", /--import=file:\/\/\S+\/exit-with-owner\.js/, "the child carries the owner preload flag");
+  assert.equal(seen.OWNER, String(process.pid), "the child is stamped with the test process's owner pid");
 });
 
 test("exitWithOwnerEnv appends the preload once and names the owner", () => {

@@ -33,7 +33,7 @@ export function spawnReadyChild(
   missingMessage: string,
   maxSpins = 500,
 ): ReadyChild {
-  const child = spawn(process.execPath, ["-e", source]);
+  const child = spawn(process.execPath, ["-e", source], { env: exitWithOwnerEnv() });
   child.stderr?.resume();
   const exited = new Promise<void>((resolve) => child.on("exit", () => resolve()));
   const ready = (async () => {
