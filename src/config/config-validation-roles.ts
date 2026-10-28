@@ -27,18 +27,13 @@ import { parseQuietHours } from "../scheduling/quiet-hours.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
 import {
   DOLLAR_CAP,
-  MAX_DURATION_SECONDS,
+  DURATION_NON_NEGATIVE,
   type NumberRule,
   checkKnownKeys,
   checkKnownRoleId,
   checkNumberField,
   show,
 } from "./config-field-checks.js";
-
-const DURATION_NON_NEGATIVE: NumberRule = {
-  ok: (n) => n >= 0 && n <= MAX_DURATION_SECONDS,
-  what: `a number of 0 or more, at most ${MAX_DURATION_SECONDS}`,
-};
 
 /** A per-role instance count (`roles.feature.instances`): an integer from 1 to 8. Bounded so
  * a typo like `instances: 800` cannot spawn hundreds of runners, and integer so

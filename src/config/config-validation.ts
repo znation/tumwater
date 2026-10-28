@@ -29,7 +29,9 @@ import {
   NON_NEGATIVE,
   NON_NEGATIVE_OR_DISABLED,
   DOLLAR_CAP,
-  MAX_DURATION_SECONDS,
+  DURATION_NON_NEGATIVE,
+  DURATION_OR_DISABLED,
+  DURATION_POSITIVE,
   POSITIVE,
   POSITIVE_INTEGER,
   show,
@@ -58,21 +60,6 @@ import { validateRolesAndCrossField } from "./config-validation-roles.js";
  * unknown-key and known-role guards, the NumberRule table, and the per-field type checkers —
  * lives in config-field-checks.ts; this module is the section-by-section rules plus the
  * cross-field checks, and the one export gate (validateConfig) for them. */
-
-const DURATION_POSITIVE: NumberRule = {
-  ok: (n) => n > 0 && n <= MAX_DURATION_SECONDS,
-  what: `a number greater than 0, at most ${MAX_DURATION_SECONDS}`,
-};
-const DURATION_NON_NEGATIVE: NumberRule = {
-  ok: (n) => n >= 0 && n <= MAX_DURATION_SECONDS,
-  what: `a number of 0 or more, at most ${MAX_DURATION_SECONDS}`,
-};
-const DURATION_OR_DISABLED: NumberRule = {
-  ok: (n) => n >= 0 && n <= MAX_DURATION_SECONDS,
-  what: `a number of 0 or more, at most ${MAX_DURATION_SECONDS} (0 disables)`,
-};
-
-
 
 /** Validate tumwater.json values, so a typo fails fast with an actionable message instead
  * of misbehaving at runtime — e.g. a non-numeric runTimeoutSeconds becomes NaN and kills

@@ -132,6 +132,23 @@ export const AT_LEAST_ONE: NumberRule = { ok: (n) => n >= 1, what: "a number of 
  * dashboard's interval editor cannot drift from the schema's bound. */
 export const MAX_DURATION_SECONDS = 2147483;
 
+/** The seconds-valued duration rules, bounded by MAX_DURATION_SECONDS so a `×1000` delay stays
+ * inside node's signed-32-bit range. One home for the family, so the whole-gate section
+ * (config-validation.ts) and the per-role section (config-validation-roles.ts) name the same
+ * rules instead of each declaring DURATION_NON_NEGATIVE for itself. */
+export const DURATION_POSITIVE: NumberRule = {
+  ok: (n) => n > 0 && n <= MAX_DURATION_SECONDS,
+  what: `a number greater than 0, at most ${MAX_DURATION_SECONDS}`,
+};
+export const DURATION_NON_NEGATIVE: NumberRule = {
+  ok: (n) => n >= 0 && n <= MAX_DURATION_SECONDS,
+  what: `a number of 0 or more, at most ${MAX_DURATION_SECONDS}`,
+};
+export const DURATION_OR_DISABLED: NumberRule = {
+  ok: (n) => n >= 0 && n <= MAX_DURATION_SECONDS,
+  what: `a number of 0 or more, at most ${MAX_DURATION_SECONDS} (0 disables)`,
+};
+
 /** Shared known-role guard for the per-role config sections (`roles.<id>` entries and
  * `maxDailyCostUsdPerRole.<id>` keys): an id outside the role catalog and customRoles cannot
  * work — a `roles` typo spawns a phantom role that errors every run forever; a caps typo
