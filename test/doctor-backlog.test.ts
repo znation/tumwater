@@ -513,6 +513,15 @@ test("checkStalledEntries warns on a stalled bug like any Needs review one", () 
   assert.match(held.detail, /BUGS\.md bug "Parked bug \(reported 2026-10-14\)" is held by a Needs review note/);
 });
 
+test("checkStalledEntries does not warn on a bugfix wait-for-the-next-failure note", () => {
+  // A "by bugfix" Needs-review note is a wait for evidence that selfcheck clears, not the
+  // plan role's stalled work: the doctor's stalled-entries row stays quiet for it.
+  const dir = tmpdir("doctor-stalled-bugfix-wait-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n### Flaky bug (reported 2026-10-14)\n**Needs review 2026-10-26 by bugfix: the failure message names the cause**\n`);
+  assert.equal(checkStalledEntries(dir).level, "ok");
+});
+
 test("checkStalledEntries reads ok with no notes, and ignores Done, Refused, and bodyless headings", () => {
   const ok = { level: "ok", detail: "no planned plan or open bug is held by a Needs-review note" };
   assert.deepEqual(checkStalledEntries(tmpdir("doctor-stalled-none-")), ok);

@@ -650,6 +650,66 @@ test("stalledEntries and the surfaces carry a stalled-entries alert from PLANS.m
   assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /entries are stalled in review/);
 });
 
+test("bugfix wait-for-the-next-failure notes do not surface as stalled; a too-large note does", () => {
+  const now = Date.now();
+  // A BUGS.md holding only the bugfix role's wait notes ("by bugfix") raises no
+  // stalled-entries alert: those parks are evidence waits that selfcheck clears, not the
+  // plan role's stalled work.
+  const wait = makeRepo();
+  writeBacklogFile(wait, "BUGS.md", [
+    {
+      heading: "## Open",
+      body: [
+        "### Flaky a (found by bugfix 2026-10-20)",
+        "",
+        "**Needs review 2026-10-26 by bugfix: the next failure's message names the cause**",
+        "",
+        "### Flaky b (found by bugfix 2026-10-21)",
+        "",
+        "**Needs review 2026-10-26 by bugfix: the next failure's message names the cause**",
+      ].join("\n"),
+    },
+    { heading: "## Fixed" },
+  ]);
+  const waitPayload = statusPayload(wait, now) as { alerts: Array<{ key: string }> };
+  assert.equal(waitPayload.alerts.find((a) => a.key === "stalled-entries"), undefined);
+  assert.doesNotMatch(renderStatus(wait, snapshot(wait, undefined, now)), /entries are stalled in review/);
+  // The same BUGS.md with the plan role's too-large note does raise it.
+  const tooLarge = makeRepo();
+  writeBacklogFile(tooLarge, "BUGS.md", [
+    {
+      heading: "## Open",
+      body: [
+        "### Too-large bug (found by bugfix 2026-10-20)",
+        "",
+        "**Needs review 2026-10-26 by feature: too large for one run**",
+      ].join("\n"),
+    },
+    { heading: "## Fixed" },
+  ]);
+  const tooLargePayload = statusPayload(tooLarge, now) as { alerts: Array<{ key: string; title?: string }> };
+  assert.equal(tooLargePayload.alerts.find((a) => a.key === "stalled-entries")?.title, "1 backlog entry is stalled in review");
+  // A mix: the two bugfix waits stay out of the count, the one too-large note counts.
+  const mixed = makeRepo();
+  writeBacklogFile(mixed, "BUGS.md", [
+    {
+      heading: "## Open",
+      body: [
+        "### Flaky a (found by bugfix 2026-10-20)",
+        "",
+        "**Needs review 2026-10-26 by bugfix: the next failure's message names the cause**",
+        "",
+        "### Too-large bug (found by bugfix 2026-10-21)",
+        "",
+        "**Needs review 2026-10-26 by feature: too large for one run**",
+      ].join("\n"),
+    },
+    { heading: "## Fixed" },
+  ]);
+  const mixedPayload = statusPayload(mixed, now) as { alerts: Array<{ key: string; title?: string }> };
+  assert.equal(mixedPayload.alerts.find((a) => a.key === "stalled-entries")?.title, "1 backlog entry is stalled in review");
+});
+
 test("plans filed under the wrong backlog section raise a standing amber alert", () => {
   const now = Date.now();
   const one = teamAlerts(base, [], [], now, [], null, [], [

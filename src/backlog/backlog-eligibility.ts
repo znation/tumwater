@@ -74,6 +74,25 @@ export function needsReviewNote(body: string): string | null {
   return noteText(body, NEEDS_REVIEW_PREFIX);
 }
 
+/** True when `entry` is parked with the plan role — its Needs-review note is the feature
+ * role's too-large note, the automatic convergence hold, or a final-round rejection, all of
+ * which the plan role clears by splitting or replanning (role-catalog.ts `plan` find). False
+ * for the bugfix role's wait-for-the-next-failure note ("by bugfix: …"), which parks the
+ * entry for selfcheck to lift when the cluster fails again (selfcheck step 4) and which no
+ * role can act on until then. entryHold returns "needs-review" for every such note (all of
+ * them park the entry), so the stalled-with-the-plan-role surfaces — the stalled-entries team
+ * alert (team-alert-backlog.ts) and the doctor's `stalled entries` row
+ * (checkStalledEntries) — classify by this agreed subset, keeping the bugfix parks out of the
+ * plan-role blame. Reads the note's text after the NEEDS_REVIEW_PREFIX once, so the alert and
+ * the doctor row cannot disagree on which notes the plan role clears; the eligibility mark
+ * (holdMark) continues to hold every needs-review note, a by-bugfix park included. */
+export function isPlanStalled(entry: BacklogEntry): boolean {
+  const note = needsReviewNote(entry.body);
+  if (note === null) return false;
+  // A "by bugfix:" note is a wait for evidence that selfcheck clears, not plan-role work.
+  return !note.includes("by bugfix");
+}
+
 /** `lines` without any line starting with `prefix` (the same line-prefix rule hasNoteLine
  * applies). When a dropped note sat between two blank lines, the blank line after it goes too,
  * so releasing leaves one blank line where the note was. Every other line is kept. */
@@ -337,12 +356,14 @@ export function entryKindLabel(file: "plans" | "bugs"): "Bug" | "Plan" {
   return file === "bugs" ? "Bug" : "Plan";
 }
 
-/** The planned plans and open bugs whose hold is exactly `"needs-review"`, in file order: the
- * entries parked by a Needs-review note until the plan role splits or replans them (the
- * `stalled-entries` team alert's input), each carrying its backlog file, 0-based index and the
- * hold. Same `backlogHolds(root)` + the planned/`openBugEntries` readers `refusedEntries`
- * uses, so the alert and the doctor's `stalled entries` row classify through the same
- * `entryHold` and cannot disagree on which holds are role-resolvable. A missing
+/** The planned plans and open bugs parked with the plan role — whose Needs-review hold the plan
+ * role clears by splitting or replanning (the feature role's too-large note, the convergence hold,
+ * a final-round rejection), in file order: the `stalled-entries` team alert's input, each
+ * carrying its backlog file, 0-based index and the hold. Same `backlogHolds(root)` + the
+ * planned/`openBugEntries` readers `refusedEntries` uses, so the alert and the doctor's
+ * `stalled entries` row classify through the same `entryHold` + `isPlanStalled` and cannot
+ * disagree on which holds are role-resolvable. The bugfix role's wait-for-the-next-failure
+ * parks ("by bugfix:") are excluded: selfcheck lifts them, not the plan role. A missing
  * file yields `[]`. */
 export function stalledEntries(root: string): StalledEntry[] {
   const holds = backlogHolds(root);
@@ -350,7 +371,9 @@ export function stalledEntries(root: string): StalledEntry[] {
   const entriesOf = (entries: readonly BacklogEntry[], held: readonly (EntryHold | null)[], file: "plans" | "bugs"): void => {
     entries.forEach((e, i) => {
       const hold = held[i];
-      if (hold === "needs-review") out.push({ file, index: i, title: e.title, hold });
+      // Only holds the plan role can clear surface as stalled: the bugfix role's
+      // wait-for-the-next-failure parks stay out of the plan-role blame.
+      if (hold === "needs-review" && isPlanStalled(e)) out.push({ file, index: i, title: e.title, hold });
     });
   };
   entriesOf(plannedPlanEntries(root), holds.plans, "plans");

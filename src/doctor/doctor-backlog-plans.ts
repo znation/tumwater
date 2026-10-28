@@ -4,7 +4,7 @@ import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import path from "node:path";
 import { truncate } from "../text/text.js";
 import { donePlans, fixedBugEntries, openBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
-import { entryHold, entryKindLabel } from "../backlog/backlog-eligibility.js";
+import { entryHold, entryKindLabel, isPlanStalled } from "../backlog/backlog-eligibility.js";
 import { planDependencyProblems } from "../backlog/backlog-parts.js";
 import { BACKLOG_FILES, FINISHED_ARCHIVES, validationGapTag } from "../backlog/backlog-md.js";
 import { statOrNull } from "../files/files.js";
@@ -377,15 +377,19 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
       `that adds another copy — remove the duplicate in a deliberate edit)`);
 }
 
-/** Stalled entries — plans or bugs held by a **Needs review …** note,
- * parked until the plan role splits or replans them. No role takes a held entry (the claim gate
- * refuses one) and nothing clears the note on its own, so the state is visible only as the
+/** Stalled entries — plans or bugs parked with the plan role by a **Needs review …** note
+ * that the plan role clears by splitting or replanning (the feature role's too-large note, the
+ * convergence hold, a final-round rejection). The bugfix role's wait-for-the-next-failure
+ * parks ("by bugfix:") are excluded — selfcheck lifts them, not the plan role, so they are
+ * not the plan role's stalled work. No role takes a held entry (the claim gate refuses one)
+ * and nothing clears a plan-role note on its own, so the state is visible only as the
  * `[needs review]` marks in the backlog listings; this names them so an
  * operator gets a single-line health signal from `tumwater doctor`. Reads the tree at `root`
  * — the primary checkout IS main's tree — like checkRefusedEntries, which is also where
- * refusal notes (a different hold) are surfaced. entryHold (src/backlog/backlog-eligibility.ts)
- * already classifies the notes, so this check adds no parsing: only the entries whose hold is
- * exactly needs-review are collected, from both PLANS.md
+ * refusal notes (a different hold) are surfaced. entryHold + isPlanStalled
+ * (src/backlog/backlog-eligibility.ts) already classify the notes, so this check adds no
+ * parsing: only the entries whose hold is exactly needs-review and which isPlanStalled
+ * accepts are collected, from both PLANS.md
  * and BUGS.md. A warn, never a fail — the checkRefusedEntries precedent: a parked entry is
  * operator signal, not a broken environment; the plan role resolves it by splitting or
  * replanning. */
@@ -393,7 +397,7 @@ export function checkStalledEntries(root: string): CheckOutcome {
   const planned = plannedPlanEntries(root);
   const collect = (entry: BacklogEntry, file: "plans" | "bugs"): { file: "plans" | "bugs"; entry: BacklogEntry } | null => {
     const hold = entryHold(entry, planned);
-    return hold === "needs-review"
+    return hold === "needs-review" && isPlanStalled(entry)
       ? { file, entry }
       : null;
   };
