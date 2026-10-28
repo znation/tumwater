@@ -51,6 +51,16 @@ export function newPauseGateState(): PauseGateState {
  * empty, so a logged `until` is the live deadline. */
 export function pollPauseGates(root: string, state: PauseGateState): PauseGates {
   const marker = standingTeamPause(root);
+  const userPaused = pollTeamPauseCrossing(root, state, marker);
+  const { roles: pausedRolesNow, until: rolesUntil } = standingRolePause(root);
+  const pausedRolesSet = pollRolePauseCrossing(root, state, pausedRolesNow, rolesUntil);
+  return { userPaused, pausedRoles: pausedRolesSet };
+}
+
+/** The team-pause crossing: one `team_paused`/`team_resumed` event on the poll where the
+ * marker's presence flips, carrying a timed pause's `until`/`reason` or the `expired` mark
+ * when the previous poll's deadline ran out. Returns whether the team is paused now. */
+function pollTeamPauseCrossing(root: string, state: PauseGateState, marker: ReturnType<typeof standingTeamPause>): boolean {
   const userPaused = marker !== null;
   if (userPaused !== state.prevUserPaused) {
     logEventBestEffort(
@@ -71,7 +81,13 @@ export function pollPauseGates(root: string, state: PauseGateState): PauseGates 
     state.prevUserPaused = userPaused;
   }
   state.prevTeamUntil = marker?.until;
-  const { roles: pausedRolesNow, until: rolesUntil } = standingRolePause(root);
+  return userPaused;
+}
+
+/** The per-role crossings: one `role_paused` per role that just entered the set, and one
+ * `role_resumed` per role that left it, carrying the shared deadline or `expired` mark when
+ * the previous poll's deadline ran out. Returns the now-paused role set. */
+function pollRolePauseCrossing(root: string, state: PauseGateState, pausedRolesNow: string[], rolesUntil: number | undefined): Set<string> {
   const rolesExpired = state.prevRolesUntil !== undefined && state.prevRolesUntil <= Date.now();
   const pausedRolesSet = new Set(pausedRolesNow);
   for (const r of pausedRolesNow)
@@ -82,5 +98,5 @@ export function pollPauseGates(root: string, state: PauseGateState): PauseGates 
       logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "role_resumed", role: r, ...(rolesExpired ? { expired: true } : {}) });
   state.prevPausedRoles = pausedRolesSet;
   state.prevRolesUntil = rolesUntil;
-  return { userPaused, pausedRoles: pausedRolesSet };
+  return pausedRolesSet;
 }
