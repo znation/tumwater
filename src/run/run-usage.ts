@@ -117,9 +117,26 @@ export class RunUsage {
    * through foldMergeUsage: those never advance the run's pre-edit counter, which measures
    * the authoring search. */
   fold(s: RunnerState, run: PiRunResult, authoring = true, provider?: string, pair?: string): void {
+    this.foldLifetimeTotals(s, run);
+    this.foldCost(s, run, provider, pair);
+    this.foldAccount(run);
+    this.foldPromptTokens(run, authoring);
+    this.turns += run.turns;
+    this.foldEpisodes(run, provider);
+  }
+
+  /** Grow the role's lifetime totals on `s` from this run: its generated tokens and the real
+   * spend both accumulate through the healed counter, and the peak context is the new max. */
+  private foldLifetimeTotals(s: RunnerState, run: PiRunResult): void {
     s.generatedTokens = counter(s.generatedTokens) + run.outputTokens;
     s.peakContextTokens = Math.max(counter(s.peakContextTokens), run.peakContextTokens);
     s.totalCostUsd = counter(s.totalCostUsd) + run.costUsd;
+  }
+
+  /** Split this run's cost real from notional: a subscription run's cost is notional and never
+   * charges the daily cap; an API run's — or a run that ever saw overage — is real money.
+   * totalCostUsd still counts both: it is lifetime usage, not a budget figure. */
+  private foldCost(s: RunnerState, run: PiRunResult, provider?: string, pair?: string): void {
     // The billing split (plans/agent-backends.md §7): a subscription run's cost is notional
     // and never charges the daily cap; an API run's — or a run that ever saw overage — is real
     // money. totalCostUsd still counts both: it is lifetime usage, not a budget figure.
@@ -134,9 +151,20 @@ export class RunUsage {
       this.notionalCostUsd += run.costUsd;
       this.bumpProviderCost(provider, run.costUsd, 'notionalCostUsd');
     }
+  }
+
+  /** Carry the newest account readings this run reported: the billing state, the subscription
+   * rate windows, and the agent they came from (whose name is only meaningful beside them). */
+  private foldAccount(run: PiRunResult): void {
     if (run.billing !== undefined) this.billing = run.billing;
     if (run.rateWindows !== undefined) this.rateWindows = run.rateWindows;
     if (run.billing !== undefined || run.rateWindows !== undefined) this.agent = run.agent;
+  }
+
+  /** Advance the token counters: the prompt and cache-read shares count every run, while the
+   * pre-edit prefix freezes at the first edit — authoring-only, and skipped for a merge/review
+   * run. */
+  private foldPromptTokens(run: PiRunResult, authoring: boolean): void {
     this.promptTokens += run.promptTokens;
     this.cacheReadTokens += run.cacheReadTokens;
     // The pre-edit prefix freezes at the run's first edit: every authoring run while no edit
@@ -146,7 +174,14 @@ export class RunUsage {
       if (!this.editSeen) this.preEditPromptTokens += run.preEditPromptTokens;
       if (run.firstEditTurn !== undefined) this.editSeen = true;
     }
-    this.turns += run.turns;
+  }
+
+  /** Stamp the team-wide hold's failure observations for a run that ENDED on them: pi exits on
+   * a 429 or backend error, so "now" is when the provider refused. A run that merely logged one
+   * inside pi's own auto-retry and then finished would stamp a false observation, possibly hours
+   * late. The backend kind travels with its stamp (src/pi/pi-failure.ts classified the text at
+   * parse time); a 429 never ends up here — pi-stream checks rate-limit first. */
+  private foldEpisodes(run: PiRunResult, provider?: string): void {
     // The team-wide hold's rate-limit input (lastRateLimit above), from the same
     // once-per-run choke point. Only a run that ENDED on the 429 counts: pi exits on the error,
     // so "now" is when the provider refused — a run that merely logged one inside pi's own
