@@ -347,6 +347,33 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     return queued.handleKey?.(key, ctx) ?? false;
   };
 
+  /** The ordered Ctrl dispatch table: each letter a pane router serves maps to its handler. */
+  const ctrlRoutes: Record<string, (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx) => boolean> = {
+    n: routeCtrlN,
+    g: routeCtrlG,
+    e: routeCtrlE,
+    k: routeCtrlK,
+    w: routeCtrlW,
+    s: routeCtrlS,
+    p: routeCtrlP,
+    a: routeCtrlA,
+    u: routeCtrlU,
+    b: routeCtrlB,
+    l: routeCtrlL,
+    y: routeCtrlY,
+    o: routeCtrlO,
+    x: routeCtrlX,
+    r: routeCtrlR,
+    v: routeCtrlV,
+  };
+
+  /** Look up one bound Ctrl key in `ctrlRoutes`; null when the key is not a bound Ctrl chord. */
+  const ctrlRoute = (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx): boolean | null => {
+    if (!key.ctrl || key.name === undefined) return null;
+    const route = ctrlRoutes[key.name];
+    return route === undefined ? null : route(key, ctx);
+  };
+
   /** Run the pane arms of the key dispatch; true when one consumed the key. `es` is the
    * editors' state, so the exclusion guards read the flags the editors hold. Each pane module
    * checks its own view/guard and returns true only when it consumed the key; this router keeps
@@ -359,22 +386,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     // writes the line and return true whenever one is open — but each module restates its
     // mutual-exclusion guard so it reads on its own instead of leaning on the routing order.
     const ctx: TuiPaneCtx = { es };
-    if (key.ctrl && key.name === "n") return routeCtrlN(key, ctx);
-    if (key.ctrl && key.name === "g") return routeCtrlG(key, ctx);
-    if (key.ctrl && key.name === "e") return routeCtrlE(key, ctx);
-    if (key.ctrl && key.name === "k") return routeCtrlK(key, ctx);
-    if (key.ctrl && key.name === "w") return routeCtrlW(key, ctx);
-    if (key.ctrl && key.name === "s") return routeCtrlS(key, ctx);
-    if (key.ctrl && key.name === "p") return routeCtrlP(key, ctx);
-    if (key.ctrl && key.name === "a") return routeCtrlA(key, ctx);
-    if (key.ctrl && key.name === "u") return routeCtrlU(key, ctx);
-    if (key.ctrl && key.name === "b") return routeCtrlB(key, ctx);
-    if (key.ctrl && key.name === "l") return routeCtrlL(key, ctx);
-    if (key.ctrl && key.name === "y") return routeCtrlY(key, ctx);
-    if (key.ctrl && key.name === "o") return routeCtrlO(key, ctx);
-    if (key.ctrl && key.name === "x") return routeCtrlX(key, ctx);
-    if (key.ctrl && key.name === "r") return routeCtrlR(key, ctx);
-    if (key.ctrl && key.name === "v") return routeCtrlV(key, ctx);
+    const ctrl = ctrlRoute(key, ctx);
+    if (ctrl !== null) return ctrl;
     const arrow = arrowDir(key.name);
     if (arrow !== null) return routeArrow(key, ctx);
     const page = pageDir(key.name);
