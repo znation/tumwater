@@ -530,4 +530,40 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Tests.** No new test module: a behaviour-preserving private move guarded by the existing suite. Run test/build-check-detect.test.ts ("a configured check.command wins over the walk-up and carries cwd and timeout", "a command without timeoutSeconds gets the shared 300 s cap; invalid values fall to it too", "a blank command falls through to the walk-up instead of disabling the check", "the walk-up finds the nearest ancestor with package.json AND node_modules", "scripts.test is preferred, then typecheck, then build", "check.timeoutSeconds bounds the npm-detected check too, and checkTimeoutMs enforces it", "the FIRST qualifying directory is the project: no scripts there means null, never an unrelated ancestor", "no qualifying ancestor within the bound means null", "detectBuildCheck honors the maxLevels bound and terminates at the filesystem root") and the project's gate, and confirm green.
 
+### `describeToolCall`'s complexity-14 arg-to-label body is split into one named helper per concern — the candidate-key scan and the per-key rendering — so "which args key does the label take, and in what order?" and "how does a path-like or command-like key render?" are each found by name (planned 2026-10-28 by the plan role; continues the landed split-large-function family — the 2026-10-28 `detectBuildCheck`, `handleHistory`, `cmdPause`, `RunUsage.fold` and `checkClaudeVersion` plans each extract one named helper per concern the same way; independent in file of every `## Planned` entry — before this entry `grep -c 'describeToolCall' PLANS.md`, `grep -c 'phrases' PLANS.md` and `grep -c 'withoutLeadingCd' PLANS.md` all print 0, and `grep -o 'src/text/[A-Za-z0-9._-]*' PLANS.md | sort -u` prints nothing, so no `## Planned` heading or touches list names the symbol or src/text/phrases.ts; PLANS-DONE.md records no split of this function (`grep -cE '^### .*describeToolCall' PLANS-DONE.md` prints 0, and its 8 `^### .*phrases` headings are behavior entries and docs/invariants plans, none a body split); docs/invariants.md INV-AE4 binds `describeToolCall` and `withoutLeadingCd` by name and both names and every guarantee survive the move, so no invariants edit; touches src/text/phrases.ts)
+
+**Goal.** `describeToolCall` (src/text/phrases.ts, exported; complexity 14) turns a stalled/active tool call's name and args into one bounded label: it reads the first string among `path`, `file_path`, `command`, `cmd`, `pattern` and `url`, renders a path-like key as its basename, a command-like key with `withoutLeadingCd`, and any other key verbatim, then squashes the detail to 32 characters and joins it to the tool name. A reader asking "which key wins?" or "why does a command lose its `cd`?" reads the whole nested conditional. Extract one module-private helper per concern and leave `describeToolCall` the composition. No behaviour change.
+
+**Approach.** All edits in src/text/phrases.ts. Keep `LEADING_CD`, `withoutLeadingCd` and `describeToolCall`'s `export function` signature and doc comment as they are; add the two non-exported helpers between `withoutLeadingCd` and `describeToolCall`, in the file's existing private-helper style:
+
+```ts
+/** The first present candidate string in a tool call's args, or "" when none is a string.
+ * The read order — path, file_path, command, cmd, pattern, url — is the order INV-AE4 pins. */
+function toolCallCandidate(args: Record<string, unknown>): string {
+  const candidate = args.path ?? args.file_path ?? args.command ?? args.cmd ?? args.pattern ?? args.url;
+  return typeof candidate === "string" ? candidate : "";
+}
+
+/** How one candidate reads as a detail: a path-like key reduces to its file name, a
+ * command-like key drops a leading `cd`, and any other key shows verbatim. */
+function toolCallDetail(candidate: string, args: Record<string, unknown>): string {
+  if (candidate === args.path || candidate === args.file_path) return path.basename(candidate);
+  if (candidate === args.command || candidate === args.cmd) return withoutLeadingCd(candidate);
+  return candidate;
+}
+```
+
+`describeToolCall` keeps its doc comment and body shape and becomes the ordered calls: `const raw = isJsonObject(args) ? toolCallDetail(toolCallCandidate(args), args) : "";`, then `const detail = squash(raw, 32);`, then `if (!detail) return toolName;`, then `return toolName ? `${toolName} ${detail}` : detail;`. Do NOT replace the `??` chain with a loop over a key list: the chain takes the FIRST non-null/undefined value and then rejects it if it is not a string, so `{ path: 5, command: "ls" }` yields no detail; a loop that skips a non-string key and continues to `command` would change the label. No new import: `path`, `squash`, `isJsonObject` and `withoutLeadingCd` are already in scope.
+
+**Files touched.** src/text/phrases.ts
+
+**Acceptance criteria.**
+- The two helpers are each declared exactly once and neither is exported: `grep -nE '^(export )?function (toolCallCandidate|toolCallDetail)\(' src/text/phrases.ts` shows one declaration per name, each without an `export` prefix, and `describeToolCall` keeps its `export function` signature and its doc comment.
+- The complexity falls: `npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json src/text/phrases.ts` reports `describeToolCall` at no more than 4 (it reports 14 today), `toolCallCandidate` at no more than 7 and `toolCallDetail` at no more than 5 (a run of the proposed bodies against the same config reported 4, 7 and 5), and no function in the file reports 14 or above.
+- The file's other functions are untouched at their current counts (`withoutLeadingCd` 3, `backendKindPhrase` 6, and no other function above 6; none is edited or renamed).
+- Behaviour is preserved: the first string among `path`, `file_path`, `command`, `cmd`, `pattern`, `url` still wins in that order; a non-string first present key still suppresses the whole detail rather than falling through; `path`/`file_path` still basename, `command`/`cmd` still lose leading `cd <dir> &&`/`;` prefixes, and `pattern`/`url`/any other key still show verbatim; the detail is still squashed to at most 32 characters; an empty tool name still yields the bare detail with no leading space and non-object/string-less args still yield the bare tool name — so every existing test/phrases.test.ts case is green.
+- No edit lands outside src/text/phrases.ts; docs/invariants.md is not edited (`grep -c 'INV-AE4' docs/invariants.md` printed 1 and its `Binds` line still names `describeToolCall` and `withoutLeadingCd`); `withoutLeadingCd` and `LEADING_CD` are not renamed or edited; and no caller of `describeToolCall` changes.
+
+**Tests.** No new test module: a behaviour-preserving private move guarded by the existing suite. Run test/phrases.test.ts ("describeToolCall summarizes common arg shapes tersely", "describeToolCall with an omitted toolName yields the bare detail, no leading space", "describeToolCall basenames path-like keys and shows the others verbatim", "describeToolCall prefers the first present key in path, file_path, command, cmd, pattern, url order", "describeToolCall falls back to the bare tool name for non-object or non-string args", "describeToolCall drops a leading cd so the label names the command") and the project's gate, and confirm green.
+
 ## Done
