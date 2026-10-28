@@ -680,21 +680,30 @@ export function createHistoryPane(
     return false;
   };
 
+  const ctrlRoutes: Record<string, (ctx: TuiPaneCtx) => boolean> = {
+    n: historyTrailToggle,
+    l: historyNewestFailure,
+    p: historyStepBack,
+    r: historyTranscriptCycle,
+    w: historyPatchToggle,
+    v: historyRevertArm,
+    g: historyScopeCycle,
+    s: historyWindowCycle,
+    o: historyResultCycle,
+    x: historyModelCycle,
+    y: historySummaryCycle,
+  };
+  const ctrlRoute = (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx): boolean | null => {
+    if (!key.ctrl || key.name === undefined) return null;
+    const route = ctrlRoutes[key.name];
+    return route === undefined ? null : route(ctx);
+  };
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
-    if (key.ctrl && key.name === "n") return historyTrailToggle(ctx);
-    if (key.ctrl && key.name === "l") return historyNewestFailure(ctx);
-    if (key.ctrl && key.name === "p") return historyStepBack(ctx);
-    if (key.ctrl && key.name === "r") return historyTranscriptCycle(ctx);
-    if (key.ctrl && key.name === "w") return historyPatchToggle(ctx);
-    if (key.ctrl && key.name === "v") return historyRevertArm(ctx);
-    if (key.ctrl && key.name === "g") return historyScopeCycle(ctx);
-    if (key.ctrl && key.name === "s") return historyWindowCycle(ctx);
-    if (key.ctrl && key.name === "o") return historyResultCycle(ctx);
-    if (key.ctrl && key.name === "x") return historyModelCycle(ctx);
-    if (key.ctrl && key.name === "y") return historySummaryCycle(ctx);
+    const ctrl = ctrlRoute(key, ctx);
+    if (ctrl !== null) return ctrl;
     const page = pageDir(key.name);
     if (page !== null) return historyTrailPage(page);
     return false;

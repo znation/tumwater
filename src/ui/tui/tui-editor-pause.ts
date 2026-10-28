@@ -296,25 +296,47 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     }
   };
 
+  const pauseLineFree = (): boolean => !session.anyEditorHeld("pause");
+  const restartAllowed = (ctx: TuiEditorCtx): boolean => ctx.view === 0 && !pauseEditMode && pauseLineFree();
+  const roleViewEditable = (ctx: TuiEditorCtx): boolean =>
+    !session.anyEditorHeld("rolePromptFor", "search") &&
+    ctx.roleIds.length > 0 &&
+    ctx.view >= 1 && ctx.view <= ctx.roleIds.length;
+  const ctrlRoutes: ReadonlyArray<{
+    name: string;
+    should: (ctx: TuiEditorCtx) => boolean;
+    run: (ctx: TuiEditorCtx) => boolean;
+  }> = [
+    { name: "f", should: pauseLineFree, run: teamPauseToggle },
+    { name: "q", should: pauseLineFree, run: stopLaterToggle },
+    { name: "r", should: restartAllowed, run: restartNow },
+    { name: "p", should: () => pauseEditRole !== null, run: closeRolePauseEdit },
+    { name: "w", should: () => pauseEditRole !== null, run: closeRolePauseEdit },
+    { name: "p", should: roleViewEditable, run: (ctx) => roleControlArm("p", ctx) },
+    { name: "a", should: roleViewEditable, run: (ctx) => roleControlArm("a", ctx) },
+    { name: "w", should: roleViewEditable, run: (ctx) => roleControlArm("w", ctx) },
+    { name: "v", should: roleViewEditable, run: (ctx) => roleControlArm("v", ctx) },
+  ];
+  const routeCtrl = (key: { ctrl?: boolean; name?: string }, ctx: TuiEditorCtx): boolean | null => {
+    for (const route of ctrlRoutes) {
+      if (route.name === key.name && route.should(ctx)) return route.run(ctx);
+    }
+    return null;
+  };
+  const editEntryArm = (key: { ctrl?: boolean; name?: string }): boolean => {
+    if (key.name === "escape" && pauseEditMode) return cancelPauseEdit();
+    if (key.name === "return" && pauseEditMode) return commitPauseEntry();
+    return false;
+  };
   const handleKey = (
     _str: string | undefined,
     key: { ctrl?: boolean; name?: string },
     ctx: TuiEditorCtx,
   ): boolean => {
-    // Ordered dispatch: a guard miss falls through to the next arm, then to applyKey.
-    if (key.ctrl && key.name === "f" && !session.anyEditorHeld("pause")) return teamPauseToggle(ctx);
-    if (key.ctrl && key.name === "q" && !session.anyEditorHeld("pause")) return stopLaterToggle(ctx);
-    if (key.ctrl && key.name === "r" && ctx.view === 0 && !pauseEditMode && !session.anyEditorHeld("pause")) return restartNow(ctx);
-    if (key.ctrl && (key.name === "p" || key.name === "w") && pauseEditRole !== null) return closeRolePauseEdit();
-    if (
-      !session.anyEditorHeld("rolePromptFor", "search") &&
-      ctx.roleIds.length > 0 &&
-      ctx.view >= 1 && ctx.view <= ctx.roleIds.length &&
-      key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w" || key.name === "v")
-    ) return roleControlArm(key.name, ctx);
-    if (key.name === "escape" && pauseEditMode) return cancelPauseEdit();
-    if (key.name === "return" && pauseEditMode) return commitPauseEntry();
-    return false;
+    // Ordered dispatch: a guard miss falls through to the next route, then to editEntryArm.
+    const ctrl = key.ctrl ? routeCtrl(key, ctx) : null;
+    if (ctrl !== null) return ctrl;
+    return editEntryArm(key);
   };
 
   return { handleKey, exit: exitPauseEditMode };

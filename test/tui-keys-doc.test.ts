@@ -23,8 +23,14 @@ function handledCtrlKeys(): Set<string> {
   const paneFiles = fileNames("tui-pane-");
   for (const file of [...editorFiles, ...paneFiles, "../../src/ui/tui/tui-keys.ts", "../../src/ui/tui/tui-panes.ts"]) {
     for (const line of read(file).split("\n")) {
-      if (!line.includes("key.ctrl &&")) continue;
-      for (const m of line.matchAll(/key\.name === "([a-z])"/g)) keys.add(m[1]!.toUpperCase());
+      if (line.includes("key.ctrl &&")) {
+        for (const m of line.matchAll(/key\.name === "([a-z])"/g)) keys.add(m[1]!.toUpperCase());
+      }
+      // The pause editor's dispatch is a route table, not `key.ctrl &&` arms; its
+      // `name: "x", should:` entries are Ctrl routes too.
+      if (/name: "([a-z])", should:/.test(line)) {
+        for (const m of line.matchAll(/name: "([a-z])", should:/g)) keys.add(m[1]!.toUpperCase());
+      }
     }
   }
   const input = read("../../src/ui/tui/tui-input.ts");
