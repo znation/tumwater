@@ -66,6 +66,101 @@ export function newStreakGateState(): StreakGateState {
   return { acked: new Map() };
 }
 
+/** Seed a fresh in-run ack cache from the persisted excused streak, so a restart keeps the
+ * grace the breaker (and a later operator resume) relies on instead of re-pausing a role
+ * whose frozen streak never ran down (BUGS.md 2026-10-23). */
+function seedStreakAck(state: StreakGateState, role: string, s: RunnerState): void {
+  if (!state.acked.has(role) && s.streakAcked !== undefined) {
+    state.acked.set(role, s.streakAcked);
+  }
+}
+
+/** Ack while paused: the marker is the ack carrier. The streak is frozen while a role is
+ * paused (no new runs start), so recording it here is exactly the level the resume excuses. */
+function ackPausedStreak(
+  root: string,
+  role: string,
+  streak: number,
+  s: RunnerState,
+  state: StreakGateState,
+): void {
+  if ((state.acked.get(role) ?? 0) !== streak) {
+    state.acked.set(role, streak);
+    s.streakAcked = streak;
+    saveRunnerStateBestEffort(root, s);
+  }
+}
+
+/** A streak that reset through the role's own success ends the excused episode: the next one
+ * must climb a fresh ERROR_STREAK_BREAKER of its own, so drop the durable ack too. */
+function clearResetStreak(
+  root: string,
+  role: string,
+  s: RunnerState,
+  state: StreakGateState,
+): void {
+  if (state.acked.get(role) !== undefined) {
+    state.acked.delete(role);
+    delete s.streakAcked;
+    saveRunnerStateBestEffort(root, s);
+  }
+}
+
+/** Ack at trip time, before the pause is observed: the bar for the next trip is
+ * ERROR_STREAK_BREAKER more failures from this level, whether or not any poll sees the role
+ * paused in between (an operator resume racing the next poll must not re-trip). The durable
+ * copy is written only once the pause is confirmed below — a failed or crashed pauseRole must
+ * not leave a permanent excused ack with no marker behind it. Returns the pause key when the
+ * pause was written, undefined when pauseRole failed. */
+function tripStreakPause(
+  root: string,
+  role: string,
+  streak: number,
+  s: RunnerState,
+  state: StreakGateState,
+  pauseKey: (role: string) => string,
+): string | undefined {
+  state.acked.set(role, streak);
+  if (!pauseRole(root, pauseKey(role))) return undefined;
+  s.streakAcked = streak;
+  saveRunnerStateBestEffort(root, s);
+  logEventBestEffort(root, {
+    source: TUMWATER_SOURCE,
+    type: "role_streak_paused",
+    role: pauseKey(role),
+    streak,
+    ...(s.lastError ? { lastError: s.lastError } : {}),
+  });
+  return pauseKey(role);
+}
+
+/** One runner's turn in the poll: seed the in-run ack, ack while paused, clear on a reset,
+ * and trip past the bar. Returns the pause key when this poll tripped the role, undefined
+ * otherwise. The order is forced and unchanged: seed, then paused, then reset, then the bar,
+ * then trip. */
+function pollStreakRunner(
+  root: string,
+  role: string,
+  s: RunnerState,
+  state: StreakGateState,
+  pausedRoles: ReadonlySet<string>,
+  pauseKey: (role: string) => string,
+): string | undefined {
+  const streak = s.consecutiveErrors ?? 0;
+  seedStreakAck(state, role, s);
+  if (runnerPaused(pausedRoles, role)) {
+    ackPausedStreak(root, role, streak, s, state);
+    return undefined;
+  }
+  if (streak === 0) {
+    clearResetStreak(root, role, s, state);
+    return undefined;
+  }
+  const ack = state.acked.get(role) ?? 0;
+  if (streak < ERROR_STREAK_BREAKER + ack) return undefined;
+  return tripStreakPause(root, role, streak, s, state, pauseKey);
+}
+
 /** Step the gate by one orchestrator poll. For each runner whose consecutive error streak
  * has reached ERROR_STREAK_BREAKER plus what its ack already excused, and whose role is not
  * in `pausedRoles`: write the per-role pause marker and log one `role_streak_paused` event
@@ -87,53 +182,8 @@ export function pollStreakGate(
 ): string[] {
   const tripped: string[] = [];
   for (const { role, state: s } of runners) {
-    const streak = s.consecutiveErrors ?? 0;
-    // Seed a fresh in-run ack cache from the persisted excused streak, so a restart keeps the
-    // grace the breaker (and a later operator resume) relies on instead of re-pausing a role
-    // whose frozen streak never ran down (BUGS.md 2026-10-23).
-    if (!state.acked.has(role) && s.streakAcked !== undefined) {
-      state.acked.set(role, s.streakAcked);
-    }
-    // Ack while paused: the marker is the ack carrier. The streak is frozen while a role is
-    // paused (no new runs start), so recording it here is exactly the level the resume excuses.
-    if (runnerPaused(pausedRoles, role)) {
-      if ((state.acked.get(role) ?? 0) !== streak) {
-        state.acked.set(role, streak);
-        s.streakAcked = streak;
-        saveRunnerStateBestEffort(root, s);
-      }
-      continue;
-    }
-    if (streak === 0) {
-      // A streak that reset through the role's own success ends the excused episode: the
-      // next one must climb a fresh ERROR_STREAK_BREAKER of its own, so drop the durable ack too.
-      if (state.acked.get(role) !== undefined) {
-        state.acked.delete(role);
-        delete s.streakAcked;
-        saveRunnerStateBestEffort(root, s);
-      }
-      continue;
-    }
-    const ack = state.acked.get(role) ?? 0;
-    if (streak < ERROR_STREAK_BREAKER + ack) continue;
-    // Ack at trip time, before the pause is observed: the bar for the next trip is
-    // ERROR_STREAK_BREAKER more failures from this level, whether or not any poll sees the
-    // role paused in between (an operator resume racing the next poll must not re-trip). The
-    // durable copy is written only once the pause is confirmed below — a failed or crashed
-    // pauseRole must not leave a permanent excused ack with no marker behind it.
-    state.acked.set(role, streak);
-    if (pauseRole(root, pauseKey(role))) {
-      s.streakAcked = streak;
-      saveRunnerStateBestEffort(root, s);
-      logEventBestEffort(root, {
-        source: TUMWATER_SOURCE,
-        type: "role_streak_paused",
-        role: pauseKey(role),
-        streak,
-        ...(s.lastError ? { lastError: s.lastError } : {}),
-      });
-      tripped.push(pauseKey(role));
-    }
+    const key = pollStreakRunner(root, role, s, state, pausedRoles, pauseKey);
+    if (key !== undefined) tripped.push(key);
   }
   return tripped;
 }
