@@ -233,23 +233,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
   - drop the agent-side `test:gate` run in favor of targeted tests, since the team runs the gate anyway;
   - have the doctor's contention advice weigh host load before it recommends a higher cap.
 
-### `a demoted fallback admits exactly one probe run per cool-down; other due roles wait` failed, then passed on the same tree (quarantined by tumwater 2026-10-28)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-ℹ cancelled 0
-ℹ skipped 3
-ℹ todo 0
-ℹ duration_ms 830473.422042
-✖ failing tests:
-test at dist/test/orchestrator-probe.test.js:47:1
-✖ a demoted fallback admits exactly one probe run per cool-down; other due roles wait (64410.04825ms)
-Error: timed out waiting for the breaker's budget_paused event
-at waitFor (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wait.js:38:19)
-at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/orchestrator-probe.test.js:84:9)
-~~~~
-
 ### `once: a merge_blocked change is re-queued by the pipeline and merges with no second run` failed in the full e2e suite and passed on re-run in isolation (found by the ci role 2026-10-28)
 
 - **Symptom:** in the full CI e2e run against main tip `14dfbc45a` on 2026-10-28, under sustained host load (load avg ≈ 164), `test/orchestrator-once.e2e.test.ts`'s `once: a merge_blocked change is re-queued by the pipeline and merges with no second run` failed at 30.577 s with `Error: once round did not exit on its own` (dist/test/fixtures/orchestrator-fixtures.js:223) — the once round blew the 30 s `withHangGuard`. The same run went red on the two documented `orchestrator-budget` run-start-marker members (`a reached cap switches roles to the free fallback model instead of stopping them` and `a free fallback whose runs keep failing is demoted to a pause, then probed back once it serves`, both ~153 s wait.js:38), the class residual BUGS.md 70-141 records; `npm test` itself was fully green (7632 pass, 0 fail, 5 skipped).

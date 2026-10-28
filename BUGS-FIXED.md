@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `a demoted fallback admits exactly one probe run per cool-down; other due roles wait` failed, then passed on the same tree (quarantined by tumwater 2026-10-28) — fixed 2026-10-28 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+Root cause: the breaker's three tripping failures need real fake-pi runs (one primary spend-to-cap, then three dead-fallback failures), and the poll loop cycles on the real clock — so under the full suite's saturation the trip's spawn latency stretched past the test's 45 s abort, which killed the still-progressing trip before budget_paused could fire, and the 60 s wait then timed out (the 64 s failure). It is not a backoff floor: the trip completes in ~6 s idle, and a wake-per-failure experiment changed nothing in its cadence. Fix (test-bound only, like the landed e2e run-start-marker waits): give this real-spawn trip phase generous wall-clock room — the budget_paused wait 60 s → 150 s and the abort 45 s → 180 s, which a true hang still trips but a slow-but-progressing loaded trip no longer does. The injected-clock probe phase after the trip is unchanged and stays fast.
+
+~~~~
+ℹ cancelled 0
+ℹ skipped 3
+ℹ todo 0
+ℹ duration_ms 830473.422042
+✖ failing tests:
+test at dist/test/orchestrator-probe.test.js:47:1
+✖ a demoted fallback admits exactly one probe run per cool-down; other due roles wait (64410.04825ms)
+Error: timed out waiting for the breaker's budget_paused event
+at waitFor (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wait.js:38:19)
+at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/orchestrator-probe.test.js:84:9)
+~~~~
+
+**Validation gap:** no-repro — the flake fired only under the full suite's load and could not be reproduced on demand, so the fix is a generous trip bound with no deterministic regression guard (the scheduler-pacing hypothesis was tested and ruled out by waking the roles without changing the trip's cadence).
+
 ### An agent killed every test process on the host by pattern, despite the run prompt's kill-by-PID rule, and took the team's own checks down mid-run (found by operator session 2026-10-28 while tracing the 2026-10-25 orphans above) — fixed 2026-10-28 by the bugfix role
 
 - **Symptom:** on 2026-10-25 at 14:14, feature-3's own `npm run test:gate` in `_slot-18` hit the bash tool's 600 s timeout. From 14:23 to 14:33 the agent ran five commands that kill by pattern, for example `ps aux | grep -E "test-runner|node --test" | grep -v grep | awk '{print $2}' | xargs -r kill` and `for p in $(ps aux | grep -E "node dist/test/test-runner|node --test|npm run test:gate|dist/test/test-durations" | grep -v grep | awk '{print $2}'); do kill "$p"; done`. Its reason was "Multiple overlapping test runs from the timed-out command are competing. Let me stop the ones I started." Its thinking at 14:16 had said "I shouldn't kill by pattern."

@@ -82,7 +82,15 @@ test("a demoted fallback admits exactly one probe run per cool-down; other due r
     },
     fallbackBreakerPolicy: { failureLimit: 3, cooldownMs: 1500, maxCooldownMs: 6000 },
   });
-  const timeout = setTimeout(() => controller.abort(), 45_000);
+  // The trip phase below is real work, not a can-proceed seam: it drives the breaker through
+  // three real fake-pi runs (one primary spend-to-cap, then three dead-fallback failures). On
+  // a saturated host each spawn stretches, and the merge gate runs the whole suite concurrently,
+  // so the trip has no fixed short bound — the load-sensitivity that quarantined this test
+  // (BUGS.md 2026-10-28) is this phase outrunning its 45 s abort / 60 s wait, not the probe
+  // phase, which rides the injected breaker clock. Bound it generously: 150 s for the trip
+  // wait (well above the observed ~45 s+ stretch) and a 180 s abort that only fires on a true
+  // hang, never a merely slow trip, while the injected-clock probe phase after it stays fast.
+  const timeout = setTimeout(() => controller.abort(), 180_000);
   timeout.unref();
   try {
     // Three dead-backend failures trip the breaker: the gate drops to paused, naming the
@@ -91,6 +99,7 @@ test("a demoted fallback admits exactly one probe run per cool-down; other due r
     await waitFor(
       () => eventsOfType(repo, "budget_paused").length === 1,
       "the breaker's budget_paused event",
+      150_000,
     );
     const onFallback = () => fs.readFileSync(argsFile, "utf8").match(/--model qwen-free/g)?.length ?? 0;
     await waitFor(() => onFallback() >= 3, "the three tripping failures");
