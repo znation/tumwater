@@ -38,6 +38,7 @@ import type { RetentionPruner } from "./retention.js";
 import type { newOpencodeCatalogRefresh } from "../gates/startup-gates.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { p75RunDurationMs } from "../run/run-timing.js";
+import { reapAttributableOrphans } from "../doctor/doctor-orphans.js";
 import { pollTeamGates, type TeamGateStates } from "../gates/gate-polls.js";
 import type { ReclaimController } from "../team/team-reclaim.js";
 import { heldProviders, windowHeldProviders } from "../team/team-hold.js";
@@ -99,10 +100,24 @@ export interface PollState {
   /** The maintenance permits withheld for work roles that have work to take (part 7/7), so the
    * event logs only the crossings into and out of a reserved state. */
   lastReserve: number;
+  /** The last poll at which the orphan reap ran (src/doctor/doctor-orphans.ts's
+   * reapAttributableOrphans), 0 before the first reap so the first poll reaps immediately. */
+  lastOrphanReapAt: number;
 }
 
 export function newPollState(): PollState {
-  return { restart: false, holdForRestart: false, diskHeld: false, warnedBranchDivergence: false, lastReserve: 0 };
+  return { restart: false, holdForRestart: false, diskHeld: false, warnedBranchDivergence: false, lastReserve: 0, lastOrphanReapAt: 0 };
+}
+
+/** How often the orchestrator's poll loop stands down the orphan reap — a once-per-interval
+ * throttle so a slow process-table scan never runs on the busy per-poll hot path. */
+export const ORPHAN_REAP_INTERVAL_MS = 15 * 60 * 1000;
+
+/** Whether the orphan reap is due now, given the last poll it ran: true at and after
+ * `now >= last + intervalMs`. Purely a clock comparison so tests pin it from literal
+ * numbers. A fresh state's `last` of 0 is always due against a real `now`. */
+export function dueForOrphanReap(last: number, now: number, intervalMs: number = ORPHAN_REAP_INTERVAL_MS): boolean {
+  return now - last >= intervalMs;
 }
 
 /** The start gate every reserved run passes the moment its permit is granted
@@ -160,6 +175,15 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
   // src/orchestrator/retention.ts. The live config (last-known-good while the file is broken or
   // missing) drives the check, like the budget gate.
   ctx.retentionPruner.poll(root, liveConfig.sessionRetentionDays);
+  // The orphan reap (src/doctor/doctor-orphans.ts): at most once per interval, kill the
+  // orphans the doctor row already reports that are old enough to be certain a live run no
+  // longer owns them — the automatic counterpart to the human click `doctor
+  // --kill-orphans`/dashboard/TUI makes. The time is stamped before the await, so a slow
+  // scan cannot overlap the next poll's reap (and this await anyway holds the poll step).
+  if (dueForOrphanReap(state.lastOrphanReapAt, Date.now())) {
+    state.lastOrphanReapAt = Date.now();
+    await reapAttributableOrphans(root);
+  }
   // A missing or stale opencode catalog is refetched at most once an hour while opencode is routed.
   ctx.opencodeCatalogRefresh.poll(liveConfig);
 

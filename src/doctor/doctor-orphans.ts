@@ -106,6 +106,23 @@ function harnessGone(marker: string): boolean | null {
   return m ? !pidAlive(Number(m[1])) : null;
 }
 
+/** ps's elapsed-time field (`[[D-]HH:]MM:SS`, the string the doctor line already prints) in
+ * milliseconds, the minimum-age gate the automatic reap uses so a just-leaked — still
+ * possibly owned — process is not killed. Any shape that does not parse, or that carries an
+ * out-of-range minute or second, reads 0: the conservative reading that keeps the reap from
+ * acting on uncertain evidence. */
+export function parseEtimeMs(etime: string): number {
+  const m = /^(?:\d+-)?(?:(\d+):)?(\d{1,2}):(\d{2})$/.exec(etime.trim());
+  if (!m) return 0;
+  const hh = Number(m[1] ?? 0);
+  const mm = Number(m[2]);
+  const ss = Number(m[3]);
+  if (mm > 59 || ss > 59) return 0;
+  const days = /^(\d+)-/.exec(etime.trim());
+  const d = days ? Number(days[1]) : 0;
+  return ((d * 24 + hh) * 3600 + mm * 60 + ss) * 1000;
+}
+
 /** A parent pid → child pids map of the table. */
 function childrenOf(rows: ProcessRow[]): Map<number, number[]> {
   const children = new Map<number, number[]>();
@@ -375,6 +392,47 @@ export async function reapPreviousTeamOrphans(
       TUMWATER_SOURCE,
       `killed ${plural(killed.length, "orphaned process", "orphaned processes")} left by tumwater ` +
         `${previousPid}'s runs at team start: ${[...items, ...refused].join("; ")}`,
+    );
+    return killed.length;
+  } catch {
+    return 0;
+  }
+}
+
+/** How long an orphan must have been running before the automatic reap may kill it: a young
+ * orphan may still be a live run's process that findOrphans read as parentless mid-hand-off,
+ * and ten minutes is far longer than any such attribution would hold. The operator's
+ * `--kill-orphans`/dashboard/TUI click bypasses this — doctors judge with their eyes. */
+const ORPHAN_REAP_MIN_AGE_MS = 10 * 60 * 1000;
+
+/** The orchestrator's once-per-interval sweep of the orphans `checkOrphans` already reports:
+ * kill the same set the operator's `--kill-orphans` kills, once each is old enough that no
+ * live run can still own it. Reuses findOrphans' attribution and killTrees' signal-and-wait,
+ * so the automatic reap cannot drift from the doctor row or the operator kill and never
+ * signals a process findOrphans does not list. An unreadable table, or no old-enough orphan,
+ * kills nothing and logs nothing; it never throws. Returns the number of orphan trees killed. */
+export async function reapAttributableOrphans(
+  root: string,
+  probe: ProcessProbe = systemProcessProbe,
+  signals: OrphanSignals = systemSignals,
+): Promise<number> {
+  try {
+    const scan = await findOrphans(root, probe);
+    if ("error" in scan) return 0;
+    const chosen = scan.orphans.filter((r) => parseEtimeMs(r.etime) >= ORPHAN_REAP_MIN_AGE_MS);
+    if (chosen.length === 0) return 0;
+    const { killed, failed } = await killTrees(root, scan.rows, chosen, signals);
+    if (killed.length === 0) return 0;
+    const items = killed.map((k) => {
+      const tree = k.descendants > 0 ? ` (+${plural(k.descendants, "descendant")})` : "";
+      return `pid ${k.pid}${tree} ${k.command}`;
+    });
+    const refused = failed.map((f) => `could not kill pid ${f.pid}: ${f.reason}`);
+    warnEventBestEffort(
+      root,
+      TUMWATER_SOURCE,
+      `reaped ${plural(killed.length, "orphaned process", "orphaned processes")}: ` +
+        [...items, ...refused].join("; "),
     );
     return killed.length;
   } catch {

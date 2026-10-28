@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkOrphans, killOrphans, orphanKillLines, reapPreviousTeamOrphans, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
+import { checkOrphans, killOrphans, orphanKillLines, parseEtimeMs, reapAttributableOrphans, reapPreviousTeamOrphans, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
+import { dueForOrphanReap, ORPHAN_REAP_INTERVAL_MS } from "../src/orchestrator/orchestrator-poll.js";
 import { runDoctor } from "../src/doctor/doctor.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -398,4 +399,74 @@ test("orphanKillLines words a kill, a refusal, an empty report and an unreadable
   );
   assert.deepEqual(orphanKillLines({ killed: [], failed: [] }), ["no orphaned processes to kill"]);
   assert.deepEqual(orphanKillLines({ error: "ps: not found" }), ["could not scan the process table — ps: not found; nothing killed"]);
+});
+
+test("parseEtimeMs reads ps's elapse shapes and reads unparseable or out-of-range strings as 0", () => {
+  assert.equal(parseEtimeMs("01:00"), 60_000); // MM:SS
+  assert.equal(parseEtimeMs("01:30:00"), 5_400_000); // HH:MM:SS
+  assert.equal(parseEtimeMs("2-21:44:01"), 251_041_000); // D-HH:MM:SS
+  assert.equal(parseEtimeMs("00:59"), 59_000);
+  // Junk, a bare seconds, and out-of-range minutes/seconds never reap (read 0).
+  assert.equal(parseEtimeMs(""), 0);
+  assert.equal(parseEtimeMs("banana"), 0);
+  assert.equal(parseEtimeMs("59"), 0);
+  assert.equal(parseEtimeMs("00:61:00"), 0);
+  assert.equal(parseEtimeMs("1:00:61"), 0);
+});
+
+test("reapAttributableOrphans kills only orphans old enough, logging one warning for what it reaped", async () => {
+  const root = readyRepo();
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
+  const wt = path.join(fs.realpathSync(root), ".tumwater", "worktrees", "qa");
+  const { probe } = fakeProbe(
+    [
+      // An old orphan (1 h, past the 10-minute minimum) with a descendant to take down.
+      { pid: 9100, etime: "01:00:00", command: `node ${root}/.tumwater/worktrees/qa/x.js` },
+      { pid: 9101, ppid: 9100, command: "node child.js" },
+      // A young orphan (the 01:00 fake default, well under the minimum): left alone.
+      { pid: 9200, command: "node .tumwater/worktrees/qa/y.js" },
+      // A non-orphan: parentless but not this repo's, left alone.
+      { pid: 9300, command: "/usr/libexec/logd" },
+    ],
+    { 9200: wt, 9300: "/" },
+  );
+  const { signals, sent } = fakeSignals();
+  assert.equal(await reapAttributableOrphans(root, probe, signals), 1);
+  assert.deepEqual(sent.filter(([, s]) => s === "SIGTERM").map(([p]) => p).sort((a, b) => a - b), [9100, 9101]);
+  const warnings = readEvents(root).filter((e) => e.type === "warning");
+  assert.equal(warnings.length, 1);
+  assert.match(
+    String((warnings[0] as { message?: string }).message),
+    /^reaped 1 orphaned process: pid 9100 \(\+1 descendant\) node \.tumwater\/worktrees\/qa\/x\.js/,
+  );
+});
+
+test("reapAttributableOrphans returns 0 and logs nothing on an unreadable table or no old-enough orphan", async () => {
+  const root = readyRepo();
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
+  const wt = path.join(fs.realpathSync(root), ".tumwater", "worktrees", "qa");
+  // All young: every orphan is under the minimum age, nothing reaped, nothing logged.
+  const { probe } = fakeProbe([{ pid: 9100, command: `node ${root}/.tumwater/worktrees/qa/x.js` }], { 9100: wt });
+  const { signals, sent } = fakeSignals();
+  assert.equal(await reapAttributableOrphans(root, probe, signals), 0);
+  assert.deepEqual(sent, []);
+  assert.deepEqual(readEvents(root).filter((e) => e.type === "warning"), []);
+
+  // An unreadable table: 0, nothing logged, nothing signalled.
+  const broken: ProcessProbe = { ...probe, list: async () => { throw new Error("ps missing"); } };
+  const { signals: brokenSignals, sent: brokenSent } = fakeSignals();
+  assert.equal(await reapAttributableOrphans(root, broken, brokenSignals), 0);
+  assert.deepEqual(brokenSent, []);
+  assert.deepEqual(readEvents(root).filter((e) => e.type === "warning"), []);
+});
+
+test("dueForOrphanReap fires at and after the interval, never before, from literal times", () => {
+  assert.equal(dueForOrphanReap(0, 0, 900_000), false, "zero elapsed is not due");
+  assert.equal(dueForOrphanReap(0, 899_999, 900_000), false, "a millisecond short is not due");
+  assert.equal(dueForOrphanReap(0, 900_000, 900_000), true, "exactly the interval is due");
+  assert.equal(dueForOrphanReap(5_000, 1_000_000, 900_000), true, "past the interval is due");
+  // The default is the production 15-minute interval; a fresh state's last=0 against a real
+  // now (the very first poll) is always due.
+  assert.equal(ORPHAN_REAP_INTERVAL_MS, 15 * 60 * 1000);
+  assert.equal(dueForOrphanReap(0, Date.now()), true);
 });
