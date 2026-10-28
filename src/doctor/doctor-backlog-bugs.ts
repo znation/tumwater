@@ -10,7 +10,7 @@ import { formatTimestamp } from "../text/datetime.js";
 import { stringList } from "../files/json-object.js";
 import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
-import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
+import { type CheckOutcome, okOutcome, warnOutcome } from "./doctor-outcome.js";
 
 /** The doctor's open-bug and question checks, split out of doctor-backlog.ts: questions that
  * have waited too long for an answer (checkStaleQuestions), bugs left unfixed (checkStaleBugs),
@@ -19,7 +19,8 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * (readBacklogChecked, andMore) from doctor-backlog.ts, plus the age/trim bounds, and
  * all warn instead of failing: a stale or
  * parked entry is operator signal, not a broken environment. doctor.ts composes them beside the
- * plan-structure and queue checks; the shared CheckOutcome shape is imported from outcome.ts. */
+ * plan-structure and queue checks; the shared CheckOutcome shape is imported from
+ * doctor-outcome.ts. */
 
 /** Stale questions — open QUESTIONS.md questions that have waited more than 7 days for an
  * answer. A team can stay parked on a question for days while `tumwater doctor` reports

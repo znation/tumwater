@@ -21,7 +21,7 @@ import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { briefFile } from "../brief/brief.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
+import { type CheckOutcome, okOutcome, warnOutcome } from "./doctor-outcome.js";
 
 /** The doctor's backlog modules' shared scaffolding and the check groups that do not read a
  * single backlog document: the merge-queue, post-merge-review and queued-prompt checks
@@ -33,7 +33,8 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * checks live in doctor-backlog-plans.ts (the plan-document structure and fix-claim checks) and
  * doctor-backlog-bugs.ts (open bugs, questions and holds). All of them warn instead of failing:
  * damaged documentation is operator signal, not a broken environment. doctor.ts composes them
- * beside the environment checks; the shared CheckOutcome shape is imported from outcome.ts. */
+ * beside the environment checks; the shared CheckOutcome shape is imported from
+ * doctor-outcome.ts. */
 
 /** How many Fixed records the two newest-first Fixed-record checks (fix claims and validation
  * gaps) verify: the newest, since the section is newest-first by template convention. Older

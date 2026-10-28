@@ -1,7 +1,7 @@
 import { readRoleNotesOverCap } from "../status/status-role-notes.js";
 import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
 import { agree, plural } from "../text/phrases.js";
-import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
 /** How many oversized notes the `role notes` row names before appending "and N more", the
  * cap the other multi-role observer rows (e.g. workspaces) use so a long tail does not drown

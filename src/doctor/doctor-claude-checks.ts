@@ -1,6 +1,6 @@
 import os from "node:os";
 import { childEnv } from "../process/process.js";
-import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
+import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./doctor-probe.js";
 import { claudeBackend, claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { claudeEnv } from "../agent/claude/claude-env.js";
 import { claudeAuthUsesSubscription, parseClaudeAuthStatus, type ClaudeAuthStatus } from "../agent/claude/claude-account.js";
@@ -8,7 +8,7 @@ import { resolvedBackendConfig } from "../config/config-views.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { envPath } from "../files/files.js";
 import { belowNodeFloor } from "../version.js";
-import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 import {
   claudeSeamsInUse,
   loadConfigForCheck,
@@ -23,9 +23,9 @@ import {
  * distinct concern from the filesystem/git checks, kept together so a change to how doctor
  * spawns or scrubs claude does not touch the other model checks. The shared report contract
  * (CheckOutcome) and the seam/model framework (loadConfigForCheck, claudeSeamsInUse,
- * seamPairs) come from doctor-model-checks.ts, and the AUTH_CHECK_* probe budgets from probe.ts,
- * with the shared report contract (CheckOutcome) from outcome.ts, exactly as the other doctor-*
- * modules share them. */
+ * seamPairs) come from doctor-model-checks.ts, and the AUTH_CHECK_* probe budgets
+ * from doctor-probe.ts, with the shared report contract (CheckOutcome) from
+ * doctor-outcome.ts, exactly as the other doctor-* modules share them. */
 
 /** One bounded probe of the resolved `claude` binary under the scrubbed run environment a real
  * run gets: resolve the binary through the claude adapter that would spawn it and run `args`

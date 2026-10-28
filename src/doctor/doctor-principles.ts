@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readRegularTextOrNull } from "../files/files.js";
 import { PRINCIPLES_MAX_CHARS } from "../prompt/principles.js";
-import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
 /** Doctor check for PRINCIPLES.md's injection cap. readPrinciples caps the trimmed text at
  * PRINCIPLES_MAX_CHARS for every prompt's <principles> block, and principleBullets keeps only

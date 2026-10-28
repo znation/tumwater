@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { okOutcome } from "../src/doctor/outcome.js";
+import { okOutcome } from "../src/doctor/doctor-outcome.js";
 import { runDoctor, runDoctorCheck } from "../src/doctor/doctor.js";
 import { DOCTOR_CHECK_NAMES } from "../src/doctor/doctor-check-names.js";
 import type { ProcessProbe } from "../src/process/process-table.js";

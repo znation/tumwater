@@ -32,7 +32,7 @@ import { branchName, mergeLockDir, worktreesDir } from "../paths.js";
 import { artifactPhrase, retireRole } from "../operator/operator-retire.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
-import { failOutcome, noConfigOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { failOutcome, noConfigOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
 /** Merge lock — read-only classification via classifyLock (the same three cases the breaker
  * uses). A stale lock is a warning, not a failure: it self-heals on the next merge. */

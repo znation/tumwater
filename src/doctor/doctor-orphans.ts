@@ -7,7 +7,7 @@ import { type ProcessProbe, type ProcessRow, systemProcessProbe } from "../proce
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage, truncate } from "../text/text.js";
 import { plural } from "../text/phrases.js";
-import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
 /** The orphan-process check of `tumwater doctor`, split out of doctor.ts: it is the one
  * doctor check that inspects the operating system's process table (argv, cwd, parent-child

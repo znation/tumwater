@@ -34,7 +34,7 @@ import { roleLabel } from "../roles/role-labels.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../run/ci-parity.js";
 import { readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../run/qa-coverage.js";
-import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing
  * and deleting a temp file inside. The probe leaves the dir's listing unchanged after the run.
@@ -254,7 +254,7 @@ export function checkBuildCheck(
  * once, so a routine one-off flake stays quiet. ok/warn only — never a fail — so a flaky suite
  * cannot fail a scripted doctor pre-flight (the checkStalledEntries precedent; the exit-code
  * rule is
- * outcome.ts's). */
+ * doctor-outcome.ts's). */
 export function checkFlakyChecks(root: string, now: number = Date.now()): CheckOutcome {
   const { events } = readEventsSince(root, KNOWN_FLAKE_WINDOW_MS);
   const flapped = repeatedFlakeCounts(events);

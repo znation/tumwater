@@ -4,7 +4,7 @@ import { isNotifyFailure } from "../events/event-notify.js";
 import { DAY_MS, humanAgo } from "../text/datetime.js";
 import { plural } from "../text/phrases.js";
 import { errorMessage, squash } from "../text/text.js";
-import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
 /** How far back the `notify` check looks for failed pages: a day, fixed. An opinionated
  * default with no knob, like STALE_BUG_DAYS: long enough that a transient hook failure shows

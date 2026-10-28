@@ -1,5 +1,5 @@
 import { childEnv } from "../process/process.js";
-import { boundedProbe, AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS } from "./probe.js";
+import { boundedProbe, AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS } from "./doctor-probe.js";
 import { parseJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
 import { resolveBackendBin } from "../pi/pi-bin.js";
@@ -12,7 +12,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
  * codex each keep their provider checks in a doctor-<agent>-checks.ts module, so pi has the same
  * shape. This is doctor's only probe of `pi auth check --provider` and `pi --list-models`, a
  * distinct concern from the other model checks — the shared seam model framework and the
- * AUTH_CHECK_* probe budgets come from doctor-model-checks.ts and probe.ts, as the other
+ * AUTH_CHECK_* probe budgets come from doctor-model-checks.ts and doctor-probe.ts, as the other
  * doctor-* modules do. */
 
 /** The credential verdict one provider's `pi auth check --provider <p> --json` gives:
@@ -29,7 +29,7 @@ export type ProviderAuth = "ready" | "not-ready" | "unknown";
  * a crash, so readiness is read from the body alone and a reply that did not run or does not
  * parse is the only "unknown" (never not-ready, which would blame credentials). Never throws;
  * every failure mode ends on "unknown". The bounded subprocess is the shared boundedProbe
- * (probe.ts), also used by the claude probes. */
+ * (doctor-probe.ts), also used by the claude probes. */
 export async function piProviderAuth(
   config: TumwaterConfig,
   provider: string,

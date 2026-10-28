@@ -7,7 +7,7 @@
  * src/process/launch-services.ts, shared with the running team's watch. `platform` is a
  * parameter so the macOS branches are testable on any host. */
 
-import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
+import { type CheckOutcome, okOutcome, warnOutcome } from "./doctor-outcome.js";
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
 import {
   LAUNCH_SERVICES_KILL_PORTS,

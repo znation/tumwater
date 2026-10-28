@@ -12,7 +12,7 @@ import { duplicateHeadings, strandedPlanEntriesFor } from "../backlog/backlog-st
 import { liveFinishedHistory, liveFinishedRowList } from "../backlog/backlog-archive.js";
 
 import { fixSymbols, missingSymbolNames, cachedSourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
-import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
+import { type CheckOutcome, okOutcome, warnOutcome } from "./doctor-outcome.js";
 
 /** The doctor's PLANS.md-structure and fix-claim checks, split out of doctor-backlog.ts: the
  * checks that re-verify BUGS.md's newest Fixed records against the tree (checkFixClaims,
@@ -23,7 +23,7 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * heading-trim bounds,
  * and all of them warn instead of failing: damaged documentation is operator signal, not a
  * broken environment. doctor.ts composes them beside the open-item and queue checks; the shared
- * CheckOutcome shape is imported from outcome.ts. */
+ * CheckOutcome shape is imported from doctor-outcome.ts. */
 
 /** Fix claims — the standalone half of the merge gate's false-fix check (src/verdict/fix-claim.ts):
  * that gate fires only when an md-only diff moves a BUGS.md entry to Fixed, so a phantom fix that

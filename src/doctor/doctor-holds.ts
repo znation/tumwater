@@ -25,7 +25,7 @@ import { windowObservation } from "../team/team-polls.js";
 import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
-import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 import { redMainWarning } from "../baseline/main-guardrails.js";
 
 /** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`

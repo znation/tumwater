@@ -39,15 +39,15 @@ import { plural } from "../text/phrases.js";
 import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gates.js";
 import { claudeSeamsInUse, minVersionOutcome, opencodeSeamsInUse, versionFromProbe, piSeamsInUse } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
-import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
+import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./doctor-probe.js";
 import { childEnv } from "../process/process.js";
 import { opencodeBackend, OPENCODE_MIN_VERSION } from "../agent/opencode/opencode-backend.js";
-import { failOutcome, noConfigOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { failOutcome, noConfigOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 import { spawnSync } from "node:child_process";
 
 /** The environment/tooling and repo-setup pre-flight checks, split out of
  * doctor.ts. The shared report contract (CheckOutcome and its constructors) lives in
- * outcome.ts so it can be imported by every check module — including this one and
+ * doctor-outcome.ts so it can be imported by every check module — including this one and
  * doctor-model-checks.ts, which cannot value-import each other — and the toolchain and
  * repo-setup checks live here alongside it: the node/git/exec binaries, the repo/init/
  * config-key/brief/bootstrap setup, the agent backends' CLI versions, and the operator

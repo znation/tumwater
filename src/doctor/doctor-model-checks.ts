@@ -1,5 +1,5 @@
 import { childEnv } from "../process/process.js";
-import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./probe.js";
+import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./doctor-probe.js";
 import { defaultConfig, loadConfigSafe } from "../config/config.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { cacheReadUnpriced, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
@@ -11,7 +11,7 @@ import { envPath } from "../files/files.js";
 import { piListedModels, piProviderAuth, type ProviderAuth } from "./doctor-pi-checks.js";
 import { agree } from "../text/phrases.js";
 import { joinParts } from "../text/text.js";
-import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 import { belowNodeFloor } from "../version.js";
 
 /** The one phrase a configured-models check uses when the config declares no models at all:
@@ -38,8 +38,9 @@ const PHRASE_CANNOT_READ_MODELS = "cannot check — could not read pi's model de
  * modules do. The claude, opencode, codex and pi provider checks live in their own per-backend
  * modules (doctor-claude-checks.ts, doctor-opencode-checks.ts, doctor-codex-checks.ts,
  * doctor-pi-checks.ts), each importing this file's shared seam framework and the AUTH_CHECK_*
- * probe budgets from probe.ts rather than duplicating them. The shared report contract
- * (CheckOutcome) is imported from outcome.ts, exactly as the other doctor-* modules do. Together
+ * probe budgets from doctor-probe.ts rather than duplicating them. The shared report contract
+ * (CheckOutcome) is imported from doctor-outcome.ts, exactly as the other doctor-*
+ * modules do. Together
  * these are the doctor's only checks that read pi's model definitions and, for the probes, spawn
  * an agent binary — a distinct concern from the filesystem/git checks, kept together so a change
  * to how doctor reads models does not touch the environment checks. */

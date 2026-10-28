@@ -8,7 +8,7 @@ import { readEventsSince } from "../events/event-window.js";
 import { DAY_MS } from "../text/datetime.js";
 import { plural, shortSpanPhrase } from "../text/phrases.js";
 import { errorMessage, textOr } from "../text/text.js";
-import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
+import { type CheckOutcome, okOutcome, warnOutcome } from "./doctor-outcome.js";
 
 /** How far back a failed `dep_install` event may sit and still explain the drift. */
 const DEP_INSTALL_CHECK_WINDOW_MS = DAY_MS;

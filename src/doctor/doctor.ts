@@ -10,7 +10,7 @@ import { checkRoleNotes } from "./doctor-role-notes.js";
 import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
-import { failOutcome, type CheckOutcome } from "./outcome.js";
+import { failOutcome, type CheckOutcome } from "./doctor-outcome.js";
 import { errorMessage } from "../text/text.js";
 import type { DoctorCheckName } from "./doctor-check-names.js";
 import {

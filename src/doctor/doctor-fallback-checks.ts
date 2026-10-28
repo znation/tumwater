@@ -8,7 +8,7 @@ import { loadRunnerStates } from "./doctor-holds.js";
 import { modelPairName, pairDailyCost } from "../budget/budget.js";
 import { usd, usdCap } from "../text/format.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
-import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
 /** The doctor's cap-fallback checks, split out of doctor-model-checks.ts (whose seam framework
  * and declared-tier/image checks stay in a module whose per-backend provider checks live in
@@ -21,7 +21,7 @@ import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
  * kept separate so a change to fallback pricing does not touch how doctor reads seams. The
  * config guard (loadConfigForCheck) is imported from doctor-model-checks, exactly as the
  * per-backend modules import that file's seam framework. The shared report contract
- * (CheckOutcome) is imported from outcome.ts. */
+ * (CheckOutcome) is imported from doctor-outcome.ts. */
 
 /** Fallback model readiness — the daily-cost budget's third state (plans/fallback-model.md): with
  * `fallbackModel` set, pi's definitions must price that pair at zero or the gate refuses it and
