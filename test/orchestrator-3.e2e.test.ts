@@ -559,31 +559,39 @@ test("an abort for one queued role stops only that role's verify and discards it
 test("a role rejected in its verify runs again while another queued change is still in review", async () => {
   // BUGS.md 2026-09-23: a final verdict once kept its entry queued until a whole batch wrote
   // back, so the interlock skipped the rejected author's due run every poll through every
-  // later review, the stack check, and the ff. clean's reviewer rejects at once; dedupe's parks
-  // until released, keeping a merge in flight while the test watches clean.
+  // later review, the stack check, and the ff. clean's gate check fails on its tree and
+  // rejects; dedupe's gate check parks until released, keeping a merge in flight while the
+  // test watches clean.
   const repo = await makeFastRepo("verify early drop e2e test", ["clean", "dedupe"]); // minRunInterval 0: due on every poll
   await seedMergeQueue(repo, "clean", "dedupe");
   const dir = tmpdir("early-drop-");
   const held = path.join(dir, "dedupe-reviewing");
   const release = path.join(dir, "release");
-  // Reviews tell the changes apart by their diff; dedupe's park is bounded (~60 s) so a failed
-  // assert can never leave it spinning. Author runs (clean's fix run): nothing to do.
+  // The gate check keys off the change files: main's baseline sees neither and exits 0 at
+  // once. clean's tree (clean.txt present) fails deterministically on its run, so the gate
+  // attributes it to clean (main is green) and rejects with no reviewer run; dedupe's tree
+  // (dedupe.txt present) parks until released, bounded (~60 s) so a failed assert can never
+  // leave it spinning. Author runs (clean's fix run): nothing to do.
+  const cfg = fastConfig(["clean", "dedupe"]);
+  cfg.check = {
+    command:
+      `if [ -e clean.txt ]; then exit 1; fi; ` +
+      `if [ -e dedupe.txt ]; then touch '${held}'; i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done; exit 0; fi; ` +
+      `exit 0`,
+  };
+  saveConfig(repo, cfg);
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
-      `case "$a" in *"clean.txt"*) printf '%s\\n' '${assistantLine("VERDICT: reject\n1. not needed")}'; exit 0;; esac`,
-      `touch '${held}'; i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done`,
-      `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
-      `esac; done`,
-      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(() => fs.existsSync(held), "dedupe's review to be in flight — clean's verdict is already in", 60_000);
-    // The interlock frees clean while dedupe's review is still parked: its due run runs.
+    await waitFor(() => fs.existsSync(held), "dedupe's gate check to be in flight — clean's verdict is already in", 60_000);
+    // The interlock frees clean while dedupe's gate check is still parked: its due run starts.
     await waitFor(() => loadRunnerState(repo, "clean").runs >= 1, "the rejected role's fix run to start mid-merge", 30_000);
-    assert.ok(!fs.existsSync(release), "dedupe's merge is still in flight: its review never returned");
+    assert.ok(!fs.existsSync(release), "dedupe's merge is still in flight: its gate check never returned");
     assert.equal(loadRunnerState(repo, "dedupe").runs, 0, "dedupe's entry is still queued, so the interlock still holds it");
     assert.deepEqual(
       readEvents(repo)
@@ -614,25 +622,33 @@ test("a role rejected in its verify runs again while another queued change is st
 test("maxConcurrent 4 verifies three queued changes at once on the live orchestrator, then merges them all", async () => {
   // Merge-queue speed 2c through the scheduler's own wiring: every verify takes one of the shared
   // maxConcurrent permits (the authors are interlocked, so no role run holds one), verifyLimit
-  // keeps the fourth for authoring, all three reviews run together (each records how many were
-  // in flight as it started), and the merge slot merges every change. The fake samples only the
-  // PRE-merge gate reviews in samples.log — a post-merge review (part 3g/3, its prompt the only
-  // one naming an "already on main" commit) is settled without sampling, so it can't skew the
-  // pre-merge overlap count or the one-review-per-change invariant this test asserts.
+  // keeps the fourth for authoring, all three gate checks run together (each records how many
+  // were in flight as it started), and the merge slot merges every change. Sampling now lives
+  // in the declared check, not the reviewer run: each gate check parks ~3 s and counts its
+  // fellow gate checks in samples.log on exactly the change's own tree. A per-change once
+  // marker (one sample each) keeps the in-lock re-check and any post-merge run from skewing
+  // the count, and main's baseline sees no change file and passes at once.
   const repo = makeRepo();
   await initProject(repo, "verification stage e2e test");
   const roles = ["feature", "bugfix", "clean"];
   const cfg = { ...fastConfig(roles), maxConcurrent: 4 };
   cfg.minRunIntervalSeconds = 300; // merges never run; the seeded-queue drive needs no author runs
+  cfg.maxConcurrentChecks = 3; // no check permit serializes the three parked checks
+  const runDir = tmpdir();
+  cfg.check = {
+    command:
+      `d='${runDir}/runs'; mkdir -p "$d"; ` +
+      `for r in feature bugfix clean; do ` +
+      `if [ -e "$r.txt" ] && [ ! -e "$d/$r.sampled" ]; then ` +
+      `touch "$d/$r.sampled"; f=$(mktemp "$d/run.XXXXXX"); ` +
+      `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${runDir}/samples.log'; ` +
+      `sleep 3; rm -f "$f"; exit 0; fi; done; exit 0`,
+  };
   saveConfig(repo, cfg);
   await seedMergeQueue(repo, ...roles);
-  const runDir = tmpdir();
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"already on main"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; *"VERDICT:"*)`,
-      `d='${runDir}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
-      `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${runDir}/samples.log'`,
-      `sleep 3; rm -f "$f"; printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );
@@ -644,8 +660,8 @@ test("maxConcurrent 4 verifies three queued changes at once on the live orchestr
       60_000,
     );
     const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
-    assert.equal(samples.length, 3, "one review per change");
-    assert.equal(Math.max(...samples), 3, `the three reviews overlapped (in flight at each start: ${samples})`);
+    assert.equal(samples.length, 3, "one sample per change");
+    assert.equal(Math.max(...samples), 3, `the three gate checks overlapped (in flight at each start: ${samples})`);
     assert.equal(eventsOfType(repo, "merged").length, 3, "every change merged");
   } finally {
     await stopOrchestrator(orch, restore);
