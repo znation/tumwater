@@ -23,9 +23,26 @@ import { slotWorktreePath } from "../src/paths.js";
 import { pauseRole } from "../src/team/team-state.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
-import { makeFastRepo, onceRound } from "./fixtures/orchestrator-fixtures.js";
+import { makeFastRepo, onceRound, withHangGuard } from "./fixtures/orchestrator-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { withIdlePi } from "./fakes/fake-pi.js";
+
+test("once: withHangGuard honors an explicit timeoutMs instead of only the 30 s default", async () => {
+  // The once round's hang guard is widened past the 30 s default so a load-stretched
+  // merge_blocked requeue round does not flake (BUGS.md). Pin that the guard really accepts a
+  // custom budget: a 60 ms guard fires at ~60 ms, not at the 30 s default. On the old
+  // signature the third argument is ignored, so reject lands at ~30 s and the <2 s bound fails.
+  const t0 = Date.now();
+  await assert.rejects(
+    withHangGuard(new Promise(() => {}), "custom guard fired", 60),
+    (err: Error) => {
+      assert.match(String(err.message), /custom guard fired/);
+      const elapsed = Date.now() - t0;
+      assert.ok(elapsed < 2000, `custom guard fired after ${elapsed} ms, expected well under the 30 s default`);
+      return true;
+    },
+  );
+});
 
 test("once: an idle team exits on its own, runs each role exactly once, and returns the once-mode shape", async () => {
   const repo = await makeFastRepo("once exit contract test", ["clean", "dedupe"]);

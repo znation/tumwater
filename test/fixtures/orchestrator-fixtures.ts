@@ -240,16 +240,32 @@ export function startLiveOrchestrator(
   };
 }
 
-/** Race `promise` against a 30s unref'd timeout that rejects with `message` — a hang becomes a
- * test failure instead of a stalled suite. The one home of the guard `onceRound` and the
- * redeploy tests each spelled out inline. */
-export function withHangGuard<T>(promise: Promise<T>, message: string): Promise<T> {
+/** Race `promise` against an unref'd timeout that rejects with `message` — a hang becomes a
+ * test failure instead of a stalled suite. `timeoutMs` defaults to 30 s; `onceRound` passes a
+ * robust budget because a once round that re-queues `merge_blocked` (a pre-check, the
+ * reviewer-moves-main rebase, the in-lock merge check, the re-queue, the re-merge) is far
+ * heavier than the redeploy rounds this guard was first written to bound, and under host load
+ * it can exceed 30 s without hanging (BUGS.md's once requeue flake). The one home of the
+ * guard `onceRound` and the redeploy tests each spelled out inline. */
+export function withHangGuard<T>(
+  promise: Promise<T>,
+  message: string,
+  timeoutMs = 30_000,
+): Promise<T> {
   const timeout = new Promise<never>((_, reject) => {
-    const t = setTimeout(() => reject(new Error(message)), 30_000);
+    const t = setTimeout(() => reject(new Error(message)), timeoutMs);
     t.unref();
   });
   return Promise.race([promise, timeout]);
 }
+
+/** The once round's hang-guard budget. A once round that only re-queues a `merge_blocked`
+ * change (a pre-check, the reviewer-moves-main rebase, the in-lock merge check, the re-queue,
+ * the re-merge) is heavier than the ordinary idle round, and under host load it has exceeded
+ * the original 30 s guard without hanging (BUGS.md's once requeue e2e flake). 150 s matches
+ * the robust grow-wait budgets the deterministic e2e plan deliberately kept, and the guard's
+ * timer is unref'd, so a round that finishes early never holds the suite open. */
+const ONCE_ROUND_HANG_GUARD_MS = 150_000;
 
 /** Run one once round in-process with the repo's on-disk config, failing loudly if the round
  * does not exit on its own — a once round that hangs is the bug `--once` exists to avoid, so
@@ -266,7 +282,7 @@ export function onceRound(
     once: true,
     roleFilter: roleFilter !== undefined ? [roleFilter] : undefined,
   });
-  return withHangGuard(done, "once round did not exit on its own");
+  return withHangGuard(done, "once round did not exit on its own", ONCE_ROUND_HANG_GUARD_MS);
 }
 
 /** The idle-pi orchestrator prelude the e2e tests shared as a copy-pasted pair: install the
