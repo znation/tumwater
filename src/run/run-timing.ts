@@ -100,10 +100,16 @@ export async function runTimedRoleRun(
 /** Sleep up to ms, but wake immediately when `signal` aborts — so shutdown (SIGTERM →
  * abort) is prompt instead of waiting out the current poll cycle. The listener is removed
  * on either exit path so long-running orchestrators don't accumulate one per poll, and an
- * already-aborted signal returns synchronously through runOnAbort. Exported as a unit-test
+ * already-aborted signal returns synchronously through runOnAbort. Without a signal it is a
+ * plain setTimeout sleep. The review gate's retry wait (src/review/review.ts, whose signal is
+ * optional) shares this helper rather than keeping a second copy. Exported as a unit-test
  * seam, like runTimedRoleRun above. */
-export function sleepInterruptible(ms: number, signal: AbortSignal): Promise<void> {
+export function sleepInterruptible(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
+    if (signal === undefined) {
+      setTimeout(resolve, ms);
+      return;
+    }
     const onAbort = () => {
       clearTimeout(timer);
       resolve();

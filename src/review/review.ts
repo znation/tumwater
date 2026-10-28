@@ -18,6 +18,7 @@ import { setMergeStage } from "../merge/merge-slot.js";
 import type { SlotLeaseHandle } from "../git/worktree-pool.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
 import { diffRuleReasons } from "./diff-rules.js";
+import { sleepInterruptible } from "../run/run-timing.js";
 
 export { REVIEW_FAILURE_LIMIT } from "./review-run.js";
 import { restoreReviewedHead, runReviewer, withRuns } from "./review-run.js";
@@ -134,7 +135,7 @@ const REVIEW_RETRY_DELAY_ENV = "TUMWATER_REVIEW_RETRY_DELAY_MS";
 /** The pause before each retry: the context override wins; else the tunable env knob read through
  * the shared plain-decimal rule (parseNonNegativeInt — a 0 ms delay, the test-suite's setting, is
  * valid). A malformed spelling falls back to REVIEW_RETRY_DELAY_MS rather than silently becoming
- * NaN: `sleepUnlessAborted(NaN)` resolves at ~0 ms and the retries would fire back-to-back instead
+ * NaN: `sleepInterruptible(NaN)` resolves at ~0 ms and the retries would fire back-to-back instead
  * of 30 s apart. */
 export function reviewRetryDelayMs(ctxRetryDelayMs: number | undefined): number {
   const raw = process.env[REVIEW_RETRY_DELAY_ENV];
@@ -402,8 +403,8 @@ export async function reviewAheadOfMain(
     // The pause holds no team permit: a verification's lease is handed back while it waits and
     // re-taken before the next attempt, so a reviewer that keeps failing does not starve the roles.
     await idleWithoutPermit(async () => {
-      await sleepUnlessAborted(delayMs, ctx.signal);
-      while (ctx.reviewHeld?.() && !ctx.signal?.aborted) await sleepUnlessAborted(Math.min(delayMs, 5000), ctx.signal);
+      await sleepInterruptible(delayMs, ctx.signal);
+      while (ctx.reviewHeld?.() && !ctx.signal?.aborted) await sleepInterruptible(Math.min(delayMs, 5000), ctx.signal);
     }, ctx.signal);
     if (ctx.signal?.aborted) return { decision: "failed", aborted: true };
     if (!held) retry.retriesLeft -= 1;
@@ -411,15 +412,3 @@ export async function reviewAheadOfMain(
   }
 }
 
-function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal?.aborted) return resolve();
-    const done = (): void => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", done);
-      resolve();
-    };
-    const timer = setTimeout(done, ms);
-    signal?.addEventListener("abort", done, { once: true });
-  });
-}
