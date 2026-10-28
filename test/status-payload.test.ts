@@ -10,9 +10,10 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-index-data.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { staleOpenQuestions, capacityContention, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS } from "../src/ui/alert-feeds.js";
+import { staleOpenQuestions, capacityContention, regressedFixesAlert, refreshOrphanAlert, orphanAlertFromScan, REGRESSED_FIX_WINDOW_MS } from "../src/ui/alert-feeds.js";
 import { PROMPT_END, PROMPT_START, BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
+import { checkOrphans, findOrphans } from "../src/doctor/doctor-orphans.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool, staleWorkspacePins } from "../src/doctor/doctor-contention-checks.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { initProject } from "../src/init/init.js";
@@ -32,6 +33,7 @@ import { PRINCIPLES_MAX_CHARS } from "../src/prompt/principles.js";
 import { writeEvents, writeLogLines, writeOrchestratorMarker, writeMarker } from "./fixtures/log-fixtures.js";
 import { makeRepo, tmpdir, writeBacklogFile, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
+import { fakeProbe } from "./fixtures/doctor-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
 
@@ -978,6 +980,36 @@ test("regressedFixesAlert carries the doctor's sentence for a fix whose test fai
   writeEvents(old, [{ ts: now - 25 * 3600_000, source: "review", type: "warning", message: "✖ aQuotedTestNameThatIsLongEnough failed again" }]);
   assert.ok(25 * 3600_000 > REGRESSED_FIX_WINDOW_MS, "the 25h-old failure predates the alert's daily window");
   assert.equal(regressedFixesAlert(old, now), null);
+});
+
+test("refreshOrphanAlert mirrors the doctor's orphans row on a staged orphan scan", async () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
+  // A leaked build-check runner whose cwd lies inside a worktree — the leak shape of the 2026-10-28
+  // incident — staged through the fake process table, never a real host process.
+  const { probe } = fakeProbe(
+    [
+      { pid: 88052, etime: "2-21:44:01", time: "0:03.12", command: "node dist/test/test-runner.js" },
+      { pid: 95649, ppid: 88052, etime: "01:00", time: "4:44.00", command: "node a.test.js" },
+    ],
+    { 88052: path.join(root, ".tumwater", "worktrees", "qa") },
+  );
+  const doctor = await checkOrphans(root, probe);
+  const alert = await refreshOrphanAlert(root, probe);
+  // The standing alert carries the exact doctor-row sentence and count, so the alert and the
+  // `orphans` row cannot drift on the count, the per-orphan cpu or the remediation.
+  assert.equal(alert?.count, 1);
+  assert.equal(alert?.detail, doctor.detail);
+  // The pure feed agrees with the probe-driven refresh — the same staged scan, the same message.
+  const staged = orphanAlertFromScan(await findOrphans(root, probe), root);
+  assert.deepEqual(staged, alert);
+});
+
+test("refreshOrphanAlert raises none on a clean host", async () => {
+  const root = makeRepo();
+  const { probe } = fakeProbe([]);
+  assert.equal(await refreshOrphanAlert(root, probe), null);
+  assert.equal(orphanAlertFromScan({ rows: [], orphans: [], marks: new Map<number, string[]>(), cwdProblem: null }), null);
 });
 
 

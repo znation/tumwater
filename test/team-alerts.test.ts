@@ -31,6 +31,21 @@ const base: Snap = {
   maintenanceQuota: { allowance: 0, used: 0, held: [] },
 };
 
+test("a red doctor orphan scan raises the standing amber orphans alert naming the count", () => {
+  // The alert-feed half (refreshOrphanAlert) supplies the doctor-row sentence; here we pin that
+  // teamAlerts renders it as a standing amber banner, so a red `orphans` row is never silent on
+  // the dashboard or TUI again (BUGS.md 2026-10-28).
+  const orphan = { count: 2, detail: "2 orphaned processes (PPID 1): pid 11 (age 01:00, cpu 0:41.20) node run.js — nothing reaps these; `tumwater doctor --kill-orphans` kills each with its descendants" };
+  const alerts = teamAlerts(base, [], [], Date.now(), undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, orphan);
+  const o = alerts.find((a) => a.key === "orphans");
+  assert.ok(o, "a red orphan scan must raise the standing orphans alert");
+  assert.equal(o?.tone, "amber");
+  assert.match(o?.detail ?? "", /^2 orphaned processes \(PPID 1\)/);
+  // A clean scan raises nothing.
+  const clean = teamAlerts(base, [], [], Date.now(), undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, null);
+  assert.ok(!clean.some((a) => a.key === "orphans"));
+});
+
 test("a healthy team raises nothing; a stopped one says how to start it", () => {
   assert.deepEqual(teamAlerts(base, [], [], Date.now()), []);
   const stopped = teamAlerts({ ...base, running: false }, [], [], Date.now());

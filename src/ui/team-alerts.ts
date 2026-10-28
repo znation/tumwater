@@ -15,7 +15,7 @@
 import type { StatusSnapshot } from "../status/status-data.js";
 import type { StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
-import type { CapacityBottleneck, RegressedFixAlert } from "./status-payload.js";
+import type { CapacityBottleneck, OrphanAlert, RegressedFixAlert } from "./status-payload.js";
 import type { RefusedEntry, StalledEntry } from "../backlog/backlog-eligibility.js";
 import type { ClaimState } from "../scheduling/claim-entries.js";
 import type { StaleWorkspacePin } from "../doctor/doctor-contention-checks.js";
@@ -86,11 +86,12 @@ export function teamAlerts(
   workspacePins: readonly StaleWorkspacePin[] = [],
   liveFinished: readonly LiveFinishedEntry[] = [],
   instancePool: readonly string[] = [],
+  orphans: OrphanAlert | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
-  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, instancePool }));
+  out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles, workspacePins, instancePool, orphans }));
 
   return out;
 }

@@ -92,8 +92,10 @@ function descendantPids(children: Map<number, number[]>, pid: number): number[] 
 
 /** What the orphan scan found: the table it read, the orphans in it, each scanned process's
  * `TUMWATER_RUN` marks and why cwds could not be read (null when they could), or the reason the
- * table itself could not be read. */
-type OrphanScan =
+ * table itself could not be read. Public so the always-on orphan alert feed (src/ui/alert-feeds.ts)
+ * can stage a scan (a fake probe's) the same way `checkOrphans` reads it, without re-deriving the
+ * orphan set — the alert and the doctor row cannot drift on what is an orphan. */
+export type OrphanScan =
   | { rows: ProcessRow[]; orphans: ProcessRow[]; marks: Map<number, string[]>; cwdProblem: string | null }
   | { error: string };
 
@@ -123,8 +125,10 @@ function shownCommand(command: string, root: string): string {
 }
 
 /** The detection half of checkOrphans, shared with killOrphans so the check and the kill cannot
- * disagree about the set. */
-async function findOrphans(root: string, probe: ProcessProbe): Promise<OrphanScan> {
+ * disagree about the set. Exported so the always-on orphan alert feed (src/ui/alert-feeds.ts)
+ * runs the exact same scan the doctor row reads — the alert and the row cannot drift on the
+ * orphan set. */
+export async function findOrphans(root: string, probe: ProcessProbe): Promise<OrphanScan> {
   const roots = rootSpellings(root);
   let rows: ProcessRow[];
   try {
@@ -206,18 +210,15 @@ async function findOrphans(root: string, probe: ProcessProbe): Promise<OrphanSca
  * never a crashed doctor; unreadable cwds degrade to the argv match and say so. Any orphan is
  * a fail — the exit code is the point: a scripted doctor must notice. `probe` is injectable so
  * tests run against a fake table. */
-export async function checkOrphans(
-  root: string,
-  probe: ProcessProbe = systemProcessProbe,
-): Promise<CheckOutcome> {
-  const scan = await findOrphans(root, probe);
-  if ("error" in scan) return warnOutcome(`could not scan the process table — ${scan.error}`);
+/** The orphan-problem sentence for the standing alert feed, shared with checkOrphans so the
+ * alert and the doctor row cannot drift on the wording: the count, each listed orphan's pid,
+ * age, cpu and command (with its descendant count and the run mark that caught it), and the
+ * nothing-reaps-these remediation. null when the scan errored or found no orphans. Public so
+ * the feed (src/ui/alert-feeds.ts) can stage a scan and get exactly the row's message. */
+export function orphanFailDetail(root: string, scan: OrphanScan): string | null {
+  if ("error" in scan) return null;
   const { rows, orphans, marks, cwdProblem } = scan;
-  if (orphans.length === 0) {
-    if (cwdProblem !== null)
-      return warnOutcome(`none named in argv, but process cwds are unreadable (${cwdProblem}) — an orphan started inside a worktree, like a leaked test runner, would be missed`);
-    return okOutcome("none — no process reparented to PID 1 runs from .tumwater/worktrees/ or carries only dead runs' marks");
-  }
+  if (orphans.length === 0) return null;
   const children = childrenOf(rows);
   const listed = orphans.slice(0, ORPHANS_LISTED_MAX).map((r) => {
     const n = descendantPids(children, r.pid).length;
@@ -230,9 +231,25 @@ export async function checkOrphans(
   });
   const more = orphans.length - listed.length;
   const count = `${plural(orphans.length, "orphaned process", "orphaned processes")} (PPID 1)`;
-  return failOutcome(`${count}: ${listed.join("; ")}${more > 0 ? `; and ${more} more` : ""}` +
+  return `${count}: ${listed.join("; ")}${more > 0 ? `; and ${more} more` : ""}` +
       " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice) kills each with its descendants" +
-      (cwdProblem !== null ? ` (process cwds unreadable — ${cwdProblem}; argv matched only)` : ""));
+      (cwdProblem !== null ? ` (process cwds unreadable — ${cwdProblem}; argv matched only)` : "");
+}
+
+/** The doctor's `orphans` row. */
+export async function checkOrphans(
+  root: string,
+  probe: ProcessProbe = systemProcessProbe,
+): Promise<CheckOutcome> {
+  const scan = await findOrphans(root, probe);
+  if ("error" in scan) return warnOutcome(`could not scan the process table — ${scan.error}`);
+  const { orphans, cwdProblem } = scan;
+  if (orphans.length === 0) {
+    if (cwdProblem !== null)
+      return warnOutcome(`none named in argv, but process cwds are unreadable (${cwdProblem}) — an orphan started inside a worktree, like a leaked test runner, would be missed`);
+    return okOutcome("none — no process reparented to PID 1 runs from .tumwater/worktrees/ or carries only dead runs' marks");
+  }
+  return failOutcome(orphanFailDetail(root, scan) as string);
 }
 
 /** The seams killOrphans signals through, injectable so tests send no real signal. */

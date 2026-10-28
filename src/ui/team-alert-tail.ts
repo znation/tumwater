@@ -7,7 +7,7 @@
 
 import { listRoleIds, listRoles, openRoleActions, seeFailures, type TeamAlert, type AlertRole } from "./team-alert-shared.js";
 import type { StatusSnapshot } from "../status/status-data.js";
-import type { CapacityBottleneck, RegressedFixAlert } from "./status-payload.js";
+import type { CapacityBottleneck, OrphanAlert, RegressedFixAlert } from "./status-payload.js";
 import { stalePinPhrase, type StaleWorkspacePin } from "../doctor/doctor-contention-checks.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
@@ -30,6 +30,7 @@ interface TailAlertsInput {
   now: number;
   contention: readonly CapacityBottleneck[];
   regressedFixes: RegressedFixAlert | null;
+  orphans: OrphanAlert | null;
   roles: readonly AlertRole[];
   workspacePins: readonly StaleWorkspacePin[];
   instancePool: readonly string[];
@@ -168,6 +169,24 @@ function pushInstancePoolAlert(out: TeamAlert[], instancePool: readonly string[]
   }
 }
 
+function pushOrphansAlert(out: TeamAlert[], orphans: OrphanAlert | null): void {
+  // Orphaned worktree processes — the always-on twin of the doctor's `orphans` row
+  // (doctor-orphans.ts checkOrphans): a detected orphan holds no lock, writes no event and
+  // touches no state file, so nothing else on the always-on surfaces names it until an operator
+  // runs `tumwater doctor`, and it then burns CPU for days unnoticed. alert-feeds.ts's
+  // getOrphanAlert feeds it the doctor's own orphanFailDetail sentence and count, so the alert
+  // and the row cannot drift on the trigger, the cpu, or the remediation.
+  if (orphans) {
+    out.push({
+      key: "orphans",
+      tone: "amber",
+      title: `${plural(orphans.count, "orphaned process", "orphaned processes")} are burning CPU (PPID 1)`,
+      detail: orphans.detail,
+      actions: [],
+    });
+  }
+}
+
 function pushRegressedFixesAlert(out: TeamAlert[], regressedFixes: RegressedFixAlert | null): void {
   // A Fixed record whose quoted test failed again in the trailing day — the always-on twin of
   // the doctor's `regressed fixes` row (doctor-backlog-bugs.ts checkRegressedFixes).
@@ -240,7 +259,7 @@ function pushImagesAlert(out: TeamAlert[], roles: readonly AlertRole[]): void {
  * occupy, so the emitted key order is unchanged. */
 export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
-  const { snap, now, contention, regressedFixes, roles, workspacePins, instancePool } = input;
+  const { snap, now, contention, regressedFixes, roles, workspacePins, instancePool, orphans } = input;
 
   pushQuietAlert(out, snap);
   pushMaintenanceAlert(out, snap);
@@ -249,6 +268,7 @@ export function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
   pushContentionAlert(out, contention);
   pushWorkspacePinsAlert(out, workspacePins);
   pushInstancePoolAlert(out, instancePool);
+  pushOrphansAlert(out, orphans);
   pushRegressedFixesAlert(out, regressedFixes);
   pushStoppedAlert(out, snap);
   pushImagesAlert(out, roles);
