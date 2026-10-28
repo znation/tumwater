@@ -205,6 +205,8 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 ### The orchestrator does not reap orphaned processes it can attribute beyond doubt, so they outlive every run until an operator clicks (split 2026-10-28 by the plan role from "The team never reaps the orphans its own doctor lists"; sibling of "The team raises no standing alert while the doctor's `orphans` row is red" and "A test node child can lose the `exit-with-owner.js` preload guard and then busy-wait past it"; the 2026-10-19 `logs -f` entry records the same detector-without-reaper gap)
 
+**Needs review 2026-10-28 by bugfix: too large for one run**
+
 - **Symptom:** the 2026-10-28 doctor's 50 orphans (40 dead-barrier `node -e` writers at ~16.4 CPU-hours each, 7 bash burners, 3 fake-pi shells) survived roughly a dozen orchestrator generations; nothing reaped them until a human clicked.
 - **Reproduce:** live-host `tumwater doctor orphans`; no offline repro of the leak itself, but `test/doctor-orphans.test.ts` already pins `findOrphans`, `killTrees` and `reapPreviousTeamOrphans` against a fake probe and signals.
 - **Cause:** the only automatic reap is `reapPreviousTeamOrphans` (src/doctor/doctor-orphans.ts), called once at team start (src/orchestrator/orchestrator.ts), and it reaps only marked orphans whose marks all name the just-crashed `previousPid`. A still-running harness's orphans, and a long-dead harness's leaks between starts, are never reclaimed. `killOrphans` (src/doctor/doctor-orphans.ts) exists but only an operator's `doctor --kill-orphans`/dashboard/TUI click runs it.
