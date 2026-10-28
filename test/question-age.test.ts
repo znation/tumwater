@@ -5,7 +5,7 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
-import { questionFilingDate, questionAgeSuffix } from "../src/backlog/question-answer.js";
+import { questionFilingDate, questionAgeSuffix } from "../src/backlog/backlog-question-answer.js";
 
 // The open-question age (`tumwater questions --list` names how long each open question has
 // waited since its `(asked by <who> YYYY-MM-DD)` clause): the two pure helpers (questionFilingDate,

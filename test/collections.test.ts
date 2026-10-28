@@ -210,7 +210,7 @@ test("memoSetLru never exceeds max entries even when all distinct", () => {
 
 // topAndHidden is the shared home of the "slice to a cap and count the remainder" pairing the
 // merge-intent and conflict-hunk caps (merge-git.ts), the failure digest tops (time-spend.ts,
-// failure-cluster.ts), and the answered-questions cap (question-answer.ts) built by hand.
+// failure-cluster.ts), and the answered-questions cap (backlog-question-answer.ts) built by hand.
 // These pin the two facts its doc comment claims: the visible slice is the first `top`, and
 // hidden is the number cut off (zero when the list is shorter than the cap).
 

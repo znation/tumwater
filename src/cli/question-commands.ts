@@ -1,8 +1,9 @@
 /** The CLI layer of `tumwater questions` — the `tumwater questions` command body: list the open
  * questions in QUESTIONS.md numbered, or `answer <n> <decision>` one, which moves its entry from
  * `## Open` to `## Answered` with a dated operator answer. The markdown surgery itself — the
- * fence-aware `### ` block cut and the `## Answered` skeleton — lives in src/backlog/
- * question-answer.ts (the shared QUESTIONS.md core the TUI and dashboard also call); this module
+ * fence-aware `### ` block cut and the `## Answered` skeleton — lives in
+ * src/backlog/backlog-question-answer.ts (the shared QUESTIONS.md core the TUI and dashboard also
+ * call); this module
  * is the command's argument scan, say/fail/editor jacket and commit-and-wake tail over that core,
  * routed to by src/cli.ts.
  */
@@ -17,7 +18,7 @@ import { typoSuffix } from "../text/suggest.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { wakeQuestionAsker } from "../operator/operator-intent.js";
-import { answeredQuestionAt, answeredQuestionCount, answeredQuestionList, answeredQuestionPayload, openQuestionAt, openQuestionList, questionListPayload, renderShownQuestion, type AnswerOutcome, UNCLOSED_FENCE_MESSAGE, tryAnswerQuestion } from "../backlog/question-answer.js";
+import { answeredQuestionAt, answeredQuestionCount, answeredQuestionList, answeredQuestionPayload, openQuestionAt, openQuestionList, questionListPayload, renderShownQuestion, type AnswerOutcome, UNCLOSED_FENCE_MESSAGE, tryAnswerQuestion } from "../backlog/backlog-question-answer.js";
 import { bodyStructureProblem, normalizeEntryBody } from "../backlog/backlog-write.js";
 
 /** `questions --answered -n`'s ceiling: bounds how many answered questions one list shows,

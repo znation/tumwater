@@ -5,7 +5,7 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
-import { questionAsker } from "../src/backlog/question-answer.js";
+import { questionAsker } from "../src/backlog/backlog-question-answer.js";
 import { wakeQuestionAsker } from "../src/operator/operator-intent.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { wakeRequestPath } from "../src/paths.js";

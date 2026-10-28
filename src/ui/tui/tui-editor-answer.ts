@@ -3,7 +3,7 @@ import {
   tryAnswerQuestion,
   UNCLOSED_FENCE_MESSAGE,
   type AnswerOutcome,
-} from "../../backlog/question-answer.js";
+} from "../../backlog/backlog-question-answer.js";
 import { wakeQuestionAsker } from "../../operator/operator-intent.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";

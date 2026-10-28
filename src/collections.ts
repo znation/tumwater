@@ -170,7 +170,7 @@ export function rankByCount<T>(
  * slice-length arithmetic yields without the explicit clamp (a slice never returns more than
  * `top` even when the list is shorter). Shared by the merge-intent and conflict-hunk caps
  * (merge-git.ts), the failure digest's loss-cause and message-cluster tops
- * (time-spend.ts, failure-cluster.ts), and the answered-questions cap (question-answer.ts),
+ * (time-spend.ts, failure-cluster.ts), and the answered-questions cap (backlog-question-answer.ts),
  * so those cuts cannot drift on how the remainder is counted. */
 export function topAndHidden<T>(items: readonly T[], top: number): { visible: T[]; hidden: number } {
   const visible = items.slice(0, top);

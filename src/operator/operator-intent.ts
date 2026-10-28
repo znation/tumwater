@@ -6,7 +6,7 @@ import { durationLabel } from "../cli/cli-args.js";
 import { formatDate, formatTime, humanUntil, DAY_MS } from "../text/datetime.js";
 import { submitRolePrompt } from "../inbox/inbox-submit.js";
 import type { PromptImageInput } from "../inbox/inbox-attachments.js";
-import { questionAsker } from "../backlog/question-answer.js";
+import { questionAsker } from "../backlog/backlog-question-answer.js";
 import { knownRoleIdsCached, loadConfigCached } from "../config/config.js";
 import { baseRoleOf, runnerIds } from "../roles/runner-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";

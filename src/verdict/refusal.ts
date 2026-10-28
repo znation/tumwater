@@ -141,7 +141,7 @@ async function stripBlockedPlanRefusalNotes(ctx: RefusalContext, wt: string): Pr
       // and a plain writeFileSync that a kill interrupted would commit a truncated file,
       // permanently dropping the plan entries past the cut point. writeTextAtomic is the
       // harness's one write-to-temp-then-rename entry point — the same one backlog-write.ts
-      // and question-answer.ts use for the markdown backlog files.
+      // and backlog-question-answer.ts use for the markdown backlog files.
       try {
         writeTextAtomic(plansFile, md);
         for (const title of dropped) {

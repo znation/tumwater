@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
 import { answerQuestion, sayAnswered } from "../src/cli/question-commands.js";
-import { tryAnswerQuestion, openQuestionList, questionListPayload, answeredQuestionList, answeredQuestionAt, answeredQuestionPayload, answeredQuestionSummaries } from "../src/backlog/question-answer.js";
+import { tryAnswerQuestion, openQuestionList, questionListPayload, answeredQuestionList, answeredQuestionAt, answeredQuestionPayload, answeredQuestionSummaries } from "../src/backlog/backlog-question-answer.js";
 import { openQuestionEntries } from "../src/backlog/backlog.js";
 import { writeTextAtomic } from "../src/files/files.js";
 import { primaryWorktreeLockPath } from "../src/paths.js";
@@ -15,7 +15,8 @@ import { dateOf } from "./helpers/oracles.js";
 /** The QUESTIONS.md core's tests: list numbering, the answer move (one block, verbatim, with the
  * dated operator paragraph), the out-of-range error wording, the --json payloads, and the
  * missing-file degradation — exercised in-process against a seeded QUESTIONS.md in a temp
- * project root. The core reads/writes QUESTIONS.md (src/backlog/question-answer.ts) and the CLI
+ * project root. The core reads/writes QUESTIONS.md
+ * (src/backlog/backlog-question-answer.ts) and the CLI
  * jacket that maps refusals to exit-1 `fail` (src/cli/question-commands.ts) both feature here.
  * cmdQuestion's paths only read or write QUESTIONS.md, so attempt's in-process exit capture is
  * safe for them (see test/helpers/exit-capture.ts's scope limit). */

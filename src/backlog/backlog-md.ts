@@ -4,8 +4,8 @@ import { daysBetween } from "../text/datetime.js";
  * QUESTIONS.md text, with no filesystem access — every function here takes the markdown text as
  * an argument. Split from src/backlog/backlog.ts, which keeps the stat-cached file readers
  * (sectionEntries, the root-based plannedPlans/openBugs/openQuestions family, and the
- * Done/Fixed date scan): consumers who only parse markdown (question-answer.ts's QUESTIONS.md
- * walks, backlog-write.ts's section appends, backlog-structure.ts's stranding checks)
+ * Done/Fixed date scan): consumers who only parse markdown (backlog-question-answer.ts's
+ * QUESTIONS.md walks, backlog-write.ts's section appends, backlog-structure.ts's stranding checks)
  * import from here without reaching the file/cache layer, and a caller who parses a string never
  * pays for a stat. Both layers share one fenceTracker state machine, so independent readers can
  * never disagree about what is body content. */
@@ -106,7 +106,7 @@ export function headingTitle(line: string, prefix: "## " | "### "): string {
  * code block. The single home of the fence-aware heading guard (`!fenced.inside(line) &&
  * line.startsWith(prefix)` plus headingTitle) that every line-level reader of the backlog
  * docs repeats: sectionLines' section boundaries and parseEntryDetails' entry boundaries here,
- * and question-answer.ts's walks of QUESTIONS.md (the Open/Answered scan, the `### ` block
+ * and backlog-question-answer.ts's walks of QUESTIONS.md (the Open/Answered scan, the `### ` block
  * split, and the Answered section's start); that file's two pure next-`## ` boundary walks
  * go through nextSectionHeading below instead. Readers that walk
  * whole documents collecting heading lines go through fenceAwareHeadingLines instead; callers
@@ -144,7 +144,7 @@ export function sectionLines(md: string, sectionTitle: string): string[] {
 /** The index of the next `## ` section heading at or after `from`, fence-aware through the
  * caller's `fenced` tracker — or `lines.length` when none follows. The section-end boundary
  * rule as an index, for readers that must cut or splice at the boundary rather than collect
- * its content (question-answer.ts cuts the Open section at its end and inserts a moved
+ * its content (backlog-question-answer.ts cuts the Open section at its end and inserts a moved
  * block before Answered's next `## `; backlog-write.ts cuts the section a filed entry is
  * appended to). Shares fencedHeadingTitle's guard with sectionLines, so
  * a boundary found here is the same boundary sectionLines would stop at. */
@@ -451,7 +451,7 @@ export function lastDate(text: string, dateRe: RegExp): string | null {
  * about when an entry opened. dateRe is cloned with the g flag so matchAll sees every date; a
  * text with no date yields null. Exported so the heading stamp parsers that apply the same
  * filing rule to a single title line — `filingDate` (backlog.ts) and `questionFilingDate`
- * (question-answer.ts) — share the one first-match mechanism instead of re-stating it;
+ * (backlog-question-answer.ts) — share the one first-match mechanism instead of re-stating it;
  * entryDates selects it with `first`, so the walker stays single-homed like lastDate's
  * completion rule. */
 export function firstDate(text: string, dateRe: RegExp): string | null {

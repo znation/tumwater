@@ -14,7 +14,7 @@ import { eventTypeLabel } from "../../events/event-labels.js";
 import { eventTypeTally } from "../../events/event-tally.js";
 import type { HarnessEvent } from "../../events/events.js";
 import { backlogLines, entryBodyWindow, browsableBacklogEntries, isOpenBacklogLabel, planListLines } from "./tui-backlog.js";
-import { answeredQuestionSummaries } from "../../backlog/question-answer.js";
+import { answeredQuestionSummaries } from "../../backlog/backlog-question-answer.js";
 import { DASHBOARD_ANSWERED_QUESTIONS, recentFinished } from "../status-payload.js";
 import { donePlanEntries, DONE_DATE_RE, entryMatches, FIXED_DATE_RE, fixedBugEntries } from "../../backlog/backlog.js";
 import { isNotableEvent } from "../tone.js";

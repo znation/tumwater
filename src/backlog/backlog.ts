@@ -138,7 +138,7 @@ export function sectionCompletionLags(
  * because the stamp is the entry's own and the body may name other dates.
  * null when the heading carries no such clause. Routed through backlog-md.ts's firstDate -
  * the one first-match mechanism - with this module's own stamp regex.
- * questionFilingDate (question-answer.ts) is the same recipe for the `asked by` verb. */
+ * questionFilingDate (backlog-question-answer.ts) is the same recipe for the `asked by` verb. */
 const STAMP_DATE_RE = /(?:planned|reported|found by)\b[^)]*?\b(\d{4}-\d{2}-\d{2})/;
 export function filingDate(title: string): string | null {
   return firstDate(title, STAMP_DATE_RE);

@@ -4,7 +4,7 @@
  * question-answer, backlog-file, backlog-cancel, backlog-release, backlog-top, and
  * backlog-edit — the `checkedBacklogKind` / `checkedEntryPositionAndTitle` validators they share
  * ride with them. Each handler adapts
- * HTTP onto the domain work one layer down (backlog-write, question-answer, backlog-commit)
+ * HTTP onto the domain work one layer down (backlog-write, backlog-question-answer, backlog-commit)
  * and touches no socket beyond its own `res`.
  */
 import { backlogHolds, cancelledClaimNote, stillHeldNote, type EntryHold } from "../backlog/backlog-eligibility.js";
@@ -15,7 +15,7 @@ import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome } from "../backlog/backlog-write.js";
 import { tryMoveEntryToTop, tryReleaseEntry, type MoveEntryOutcome, type ReleaseEntryOutcome } from "../backlog/backlog-release.js";
-import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../backlog/question-answer.js";
+import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../backlog/backlog-question-answer.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { requestWake, submitRolePromptAndWake, wakeQuestionAsker } from "../operator/operator-intent.js";
 import { badRequest, okGone, sendJson } from "./gui-http-body.js";

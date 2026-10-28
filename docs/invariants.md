@@ -109,7 +109,7 @@ the TUI's queued-prompt rows (`src/ui/tui/tui.tsx`) push one styled row per item
 queue's rows (`src/merge/merge-queue-render.ts`) are indented and carry per-row columns.
 
 **Binds.** `src/text/markdown.ts` (`numberedList`), `src/prompt/gate-prompts.ts`,
-`src/prompt/gate-notes.ts`, `src/backlog/question-answer.ts`, `src/operator/operator-intent.ts`
+`src/prompt/gate-notes.ts`, `src/backlog/backlog-question-answer.ts`, `src/operator/operator-intent.ts`
 (`renderWakeList`).
 
 **Pinned by.** `test/markdown.test.ts` — "numberedList numbers items from 1, one per line" and
