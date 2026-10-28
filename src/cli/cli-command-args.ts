@@ -84,6 +84,16 @@ function failStrayArg(args: string[], reason: string, ...claimed: number[]): voi
   if (extra !== undefined) fail(`unexpected argument ${JSON.stringify(extra)} — ${reason}`);
 }
 
+/** The two positions a valued flag claims for a free-form-prompt parser's stray-argument
+ * accounting: the flag token and its value — the flag and its value are never prompt content.
+ * Empty when the flag is absent, so a negative index never over-claims a real token. The one
+ * shape every valued-flag pair claims for the parsePromptFlags/parsePromptArgs stray-argument
+ * accounting — `--role`, `--grep`, `--at` in parsePromptFlags and `--file` in editPromptArgs
+ * ("claimed like --role's": each site is this same pair) — so no site can drift from the others. */
+function pairClaim(flagIndex: number): number[] {
+  return flagIndex >= 0 ? [flagIndex, flagIndex + 1] : [];
+}
+
 /** Read a `--file <path>` prompt file: fail naming the file when it cannot be read. A raw
  * ENOENT/EISDIR names the path but not its role, so the message says this was the --file
  * prompt. Shared by the init and prompt parsers' path branches; the prompt parser's stdin
@@ -406,7 +416,7 @@ function parsePromptRole(args: string[], roleFlag: number): { role: string | nul
   const role = roleRaw ?? null;
   // The flag and its value are never prompt content: --role is a scope, not text. Only claimed
   // when actually present — negative indexes would over-claim real tokens.
-  const roleClaim = roleFlag >= 0 ? [roleFlag, roleFlag + 1] : [];
+  const roleClaim = pairClaim(roleFlag);
   return { role, roleClaim };
 }
 
@@ -425,7 +435,7 @@ function parsePromptGrep(args: string[], scan: PromptScan): { grepRaw: string | 
   if (scan.grepFlag >= 0 && (!grepRaw || grepRaw.startsWith("--"))) {
     fail("--grep needs text (usage: tumwater prompt --list --grep <text>)");
   }
-  const grepClaim = scan.grepFlag >= 0 ? [scan.grepFlag, scan.grepFlag + 1] : [];
+  const grepClaim = pairClaim(scan.grepFlag);
   return { grepRaw, grepClaim };
 }
 
@@ -466,7 +476,7 @@ function parsePromptDeferral(args: string[], atFlag: number): { atDelayMs: numbe
   // An edit keeps the target prompt's existing deferral exactly as it was (the marker is
   // plumbing the edit carries over), so a --at alongside it has nothing to mean.
   // The pair is claimed like --role's: the flag and its value are never prompt content.
-  const atClaim = atFlag >= 0 ? [atFlag, atFlag + 1] : [];
+  const atClaim = pairClaim(atFlag);
   let atDelayMs: number | null = null;
   if (atFlag >= 0) {
     atDelayMs = parseDurationFlag("--at", args[atFlag + 1]);
@@ -551,7 +561,7 @@ function editPromptArgs(args: string[], f: PromptFlags): PromptArgs {
   // a mistyped command would edit prompt N with only the trailing fragment — so they are
   // refused here by the same stray-argument wording the sibling modes use; tokens after the
   // position are the replacement text, minus any claimed attach pair (none: edit in $EDITOR).
-  const fileClaim = f.fileFlag >= 0 ? [f.fileFlag, f.fileFlag + 1] : [];
+  const fileClaim = pairClaim(f.fileFlag);
   for (let i = 0; i < f.editFlag; i++) {
     if (f.roleClaim.includes(i) || f.attachClaims.includes(i) || fileClaim.includes(i)) continue;
     fail(`unexpected argument ${JSON.stringify(args[i])} — with --edit the replacement text comes after the position`);
