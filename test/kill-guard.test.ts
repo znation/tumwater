@@ -30,7 +30,7 @@ test("commands that only read or mention the process table pass", () => {
     "ps aux",
     "ps -ef | grep test-runner | grep -v grep", // an inspection, no kill
     "pgrep -f npm",
-    "ps -o time= -p $$", // a $(ps) substitution that reads, with no kill
+    "$(ps -o time= -p $$)", // a $(ps) substitution that reads, with no kill
     "echo pkill test", // mentions, not a command word
     "man pkill",
     "grep -rn pkill src/",
