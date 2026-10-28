@@ -105,6 +105,58 @@ export function newRoleCapGateState(): RoleCapGateState {
   return { prev: new Set(), warned: new Set() };
 }
 
+/** One base role's pause/resume edge, logged by the poll's loop: reads whether the role was
+ * already judged over its cap at the last poll (`state.prev`) and on ENTER logs one
+ * `role_cap_paused` (role, spentUsd, capUsd); on EXIT logs one `role_cap_resumed` (role). */
+function logCapCrossing(
+  root: string,
+  base: string,
+  verdict: RoleCapVerdict,
+  cap: number | undefined,
+  state: RoleCapGateState,
+): void {
+  const was = state.prev.has(base);
+  if (verdict.over && !was) {
+    logEventBestEffort(root, {
+      source: TUMWATER_SOURCE,
+      type: "role_cap_paused",
+      role: base,
+      spentUsd: verdict.spentUsd,
+      capUsd: cap,
+    });
+  } else if (!verdict.over && was) {
+    logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "role_cap_resumed", role: base });
+  }
+}
+
+/** The 80% early warning (PLANS.md 2026-10-09), the per-role twin of the team's
+ * budget_warning and edge-triggered with the same reset-on-below: crossing the threshold
+ * while still under the cap logs one `role_cap_warning`, a dip back under re-arms it. Warn
+ * only while the cap is open — a poll that jumps straight to the cap already logs its own
+ * `role_cap_paused`, so the warning never doubles the page on the poll the cap is reached. */
+function logCapWarning(
+  root: string,
+  base: string,
+  verdict: RoleCapVerdict,
+  cap: number | undefined,
+  state: RoleCapGateState,
+): void {
+  const warn =
+    !verdict.over && cap !== undefined && budgetWarning({ spentUsd: verdict.spentUsd, capUsd: cap });
+  if (warn && !state.warned.has(base)) {
+    logEventBestEffort(root, {
+      source: TUMWATER_SOURCE,
+      type: "role_cap_warning",
+      role: base,
+      spentUsd: verdict.spentUsd,
+      capUsd: cap,
+    });
+    state.warned.add(base);
+  } else if (!warn) {
+    state.warned.delete(base);
+  }
+}
+
 /** Step the gate by one orchestrator poll. Per runner (the director exempt, like every
  * autonomous gate): judge `roleCapPaused` against its configured cap; on ENTER log one
  * `role_cap_paused` carrying the role, its spend, and its cap; on EXIT log one
@@ -126,38 +178,9 @@ export function pollRoleCapGate(
   const paused = new Set<string>();
   const overBases = new Set<string>();
   for (const [base, verdict] of verdicts) {
-    const was = state.prev.has(base);
-    if (verdict.over && !was) {
-      logEventBestEffort(root, {
-        source: TUMWATER_SOURCE,
-        type: "role_cap_paused",
-        role: base,
-        spentUsd: verdict.spentUsd,
-        capUsd: caps?.[base],
-      });
-    } else if (!verdict.over && was) {
-      logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "role_cap_resumed", role: base });
-    }
-    // The 80% early warning (PLANS.md 2026-10-09), the per-role twin of the team's
-    // budget_warning and edge-triggered with the same reset-on-below: crossing the threshold
-    // while still under the cap logs one role_cap_warning, a dip back under re-arms it. Warn
-    // only while the cap is open — a poll that jumps straight to the cap already logs its own
-    // role_cap_paused, so the warning never doubles the page on the poll the cap is reached.
     const cap = caps?.[base];
-    const warn =
-      !verdict.over && cap !== undefined && budgetWarning({ spentUsd: verdict.spentUsd, capUsd: cap });
-    if (warn && !state.warned.has(base)) {
-      logEventBestEffort(root, {
-        source: TUMWATER_SOURCE,
-        type: "role_cap_warning",
-        role: base,
-        spentUsd: verdict.spentUsd,
-        capUsd: cap,
-      });
-      state.warned.add(base);
-    } else if (!warn) {
-      state.warned.delete(base);
-    }
+    logCapCrossing(root, base, verdict, cap, state);
+    logCapWarning(root, base, verdict, cap, state);
     if (verdict.over) {
       overBases.add(base);
       for (const id of verdict.roleIds) paused.add(id);
