@@ -137,58 +137,76 @@ function scanTurnRecords(text: string, sinceTurnStart: string | undefined): Turn
   return { sawTurn, lastUsage, lastRateLimits, model, planType };
 }
 
+/** The `run_usage` line of a turn's scanned usage: this run's own input (net of what the
+ * cache already held), output and cache figures (finding 4: the stream reports only the
+ * whole-thread total; the rollout records this run's own). */
+function runUsageLine(lastUsage: Json): string {
+  const input = finite(lastUsage.input_tokens) ?? 0;
+  const cacheRead = finite(lastUsage.cached_input_tokens) ?? 0;
+  return JSON.stringify({
+    type: "run_usage",
+    input: Math.max(0, input - cacheRead),
+    output: finite(lastUsage.output_tokens) ?? 0,
+    cacheRead,
+    cacheWrite: finite(lastUsage.cache_write_input_tokens) ?? 0,
+  });
+}
+
+/** The `billing` line of a turn with a plan_type: a reading with a plan_type bills on the
+ * subscription (finding 5; API-key login is refused, decision 5). */
+function billingLine(): string {
+  // A reading with a plan_type bills on the subscription (finding 5; API-key login is
+  // refused, decision 5).
+  return JSON.stringify({ type: "billing", billing: "subscription" });
+}
+
+/** The up-to-two `rate_limit` lines of a turn's scanned rate limits: the primary (5 h) and
+ * the secondary (weekly) windows when both are present and well-formed. */
+function rateLimitLines(lastRateLimits: Json | undefined): string[] {
+  // Two windows when present: the primary (5 h) and the secondary (weekly). A killed run's
+  // rollout has a token_usage_record but no token_count, so it yields run_usage with no
+  // rate_limit (finding 23).
+  if (lastRateLimits === undefined) return [];
+  const reached = optionalString(lastRateLimits.rate_limit_reached_type);
+  const lines: string[] = [];
+  for (const key of ["primary", "secondary"] as const) {
+    const windowRaw = lastRateLimits[key];
+    if (!isJsonObject(windowRaw)) continue;
+    const minutes = finite(windowRaw.window_minutes);
+    if (minutes === undefined) continue;
+    const typeName = windowTypeName(minutes);
+    const usedPercent = finite(windowRaw.used_percent);
+    lines.push(
+      JSON.stringify({
+        type: "rate_limit",
+        rateLimitType: typeName,
+        status: windowStatus(typeName, reached, usedPercent),
+        ...(usedPercent !== undefined ? { utilization: usedPercent / 100 } : {}),
+        ...(finite(windowRaw.resets_at) !== undefined ? { resetsAt: finite(windowRaw.resets_at) } : {}),
+      }),
+    );
+  }
+  return lines;
+}
+
+/** The model this turn switched to when its `turn_context.model` differs from what the run
+ * requested (finding 24): the model itself, else undefined for no switch. */
+function switchedToModel(model: string | undefined, requestedModel: string): string | undefined {
+  return model !== undefined && requestedModel !== undefined && model !== requestedModel ? model : undefined;
+}
+
 /** Assemble the reading's canonical `run_usage`, `billing` and up-to-two `rate_limit` lines
  * (in that order), plus the `switchedTo` model comparison, from scanned records. */
 function buildRolloutLines(records: TurnRecords, requestedModel: string): RolloutLines {
   // `rolloutLines` guarantees `lastUsage` is a Json object before calling (its presence check
   // stays there, so this builder never reads `sawTurn`); narrow the shared interface here.
   const lastUsage = records.lastUsage as Json;
-  const { lastRateLimits, model, planType } = records;
-  const lines: string[] = [];
-  const input = finite(lastUsage.input_tokens) ?? 0;
-  const cacheRead = finite(lastUsage.cached_input_tokens) ?? 0;
-  lines.push(
-    JSON.stringify({
-      type: "run_usage",
-      input: Math.max(0, input - cacheRead),
-      output: finite(lastUsage.output_tokens) ?? 0,
-      cacheRead,
-      cacheWrite: finite(lastUsage.cache_write_input_tokens) ?? 0,
-    }),
-  );
-
-  if (planType !== undefined) {
-    // A reading with a plan_type bills on the subscription (finding 5; API-key login is
-    // refused, decision 5).
-    lines.push(JSON.stringify({ type: "billing", billing: "subscription" }));
+  const lines: string[] = [runUsageLine(lastUsage)];
+  if (records.planType !== undefined) {
+    lines.push(billingLine());
   }
-
-  // Two windows when present: the primary (5 h) and the secondary (weekly). A killed run's
-  // rollout has a token_usage_record but no token_count, so it yields run_usage with no
-  // rate_limit (finding 23).
-  if (lastRateLimits !== undefined) {
-    const reached = optionalString(lastRateLimits.rate_limit_reached_type);
-    for (const key of ["primary", "secondary"] as const) {
-      const windowRaw = lastRateLimits[key];
-      if (!isJsonObject(windowRaw)) continue;
-      const minutes = finite(windowRaw.window_minutes);
-      if (minutes === undefined) continue;
-      const typeName = windowTypeName(minutes);
-      const usedPercent = finite(windowRaw.used_percent);
-      lines.push(
-        JSON.stringify({
-          type: "rate_limit",
-          rateLimitType: typeName,
-          status: windowStatus(typeName, reached, usedPercent),
-          ...(usedPercent !== undefined ? { utilization: usedPercent / 100 } : {}),
-          ...(finite(windowRaw.resets_at) !== undefined ? { resetsAt: finite(windowRaw.resets_at) } : {}),
-        }),
-      );
-    }
-  }
-
-  const switchedTo =
-    model !== undefined && requestedModel !== undefined && model !== requestedModel ? model : undefined;
+  lines.push(...rateLimitLines(records.lastRateLimits));
+  const switchedTo = switchedToModel(records.model, requestedModel);
   return { lines, ...(switchedTo !== undefined ? { switchedTo } : {}) };
 }
 
