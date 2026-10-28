@@ -231,6 +231,79 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 - **Cause:** two rules meet. The shared role guidance (src/prompt/prompt.ts) reserves the Refused note for "a task that would harm the project" and tells every role, the plan role included, to "Skip entries carrying a Refused note: never pick or re-refuse them". The feature charter (src/roles/role-catalog.ts) ends "A plan that resists implementation is a finding: refuse it with the objection recorded rather than forcing it" and offers no other note for a defective plan: its one Needs-review note means too large for one run. So a plan whose approach or criteria are wrong, which is a defect the plan role can fix, goes to the operator's desk. The convergence hold already routes the reviewer's surviving objections to the plan role (`holdEntryAfterExhaustion`, src/runner/runner-revision.ts); an implementer's objection to the plan has no equivalent.
 - **Expected / fix sketch:** following the self-healing direction (hand the work back to the role that owns it), give the feature role a replan hand-back: a Needs-review note carrying the objection (for example `by feature: plan defect — …`) that the plan role's charter treats like a convergence hold. The plan role reads the objection and the code it names, then rewrites, splits or refuses the plan with the objection recorded, and removes the note. Keep Refused for "this should not be done at all", which really is the operator's call. Pin it with a role-catalog case that the feature text offers the replan note for a plan defect, and a plan-prompt case that a planned entry carrying it outranks adding a new plan. Optionally, the `refused` alert could also name how many planned parts each refusal holds, so a series stall shows from the alert alone.
 
+### The team never reaps the orphans its own doctor lists: on 2026-10-28 `tumwater doctor` was red with 50 orphaned processes, 47 of them CPU spinners that had used about 11 of the host's 18 cores on average for up to 2½ days, and no alert named them (found by operator session 2026-10-28 from the dashboard's "look stuck" warnings and a load average of 131–192)
+
+- **Symptom:** `tumwater doctor orphans` on 2026-10-28 04:40: `fail orphans 50 orphaned processes (PPID 1)`. Three groups:
+  - **40 `node -e` writers** from `test/team-state.test.ts`'s old "simultaneous cross-process pauseRole calls all survive in the marker". Five suites leaked eight each between 2026-10-25 14:23:59 and 14:33, in `_slot-7`, `_gate-main` and `_merge`. Each spins in `while (!fs.existsSync(".../start-when-aligned")) {}` on a `tumwater-test-run-*` root that no longer exists, so it can never exit. By 10-28 04:30 each had used about 16.4 CPU-hours, about 655 CPU-hours in all, or roughly 10.5 cores on average.
+  - **7 bash CPU burners** that bugfix runs started (filed separately below).
+  - **3 fake-pi `/bin/sh` shells** from test run roots.
+  Since the spinners appeared, the gate check median went from 177 s (10-25) to 232–313 s, and check timeouts went from 56 to 114–124 a day. The doctor row was the only signal: no dashboard, TUI or status alert names orphans, and nothing reaps them. They were still running when this was filed.
+- **Reproduce:** run `tumwater doctor orphans` on the live project. To list the spinners with their start times and CPU time, run `ps -eo pid,ppid,lstart,time,command | awk '$2==1 && /start-when-aligned/'`.
+- **Cause:** three gaps, any one of which would have stopped this.
+  - **The test-side owner guard did not fire.** The writers' environment carries `TUMWATER_TEST_OWNER_PID=38077`, an owner long gone. But their `NODE_OPTIONS` holds only the LaunchServices preload (`NO_LAUNCH_SERVICES_CHECK_IN`), not `test/helpers/exit-with-owner.js`, and why the preload dropped out between the suite env and the spawned child is not established. Even when loaded, `exitWithOwner` is a `setInterval`, which cannot fire while a synchronous loop holds the event loop.
+  - **Nothing guards against the next busy-wait.** b98d1ba31 (2026-10-26) replaced that busy-wait barrier with a readiness handshake. But nothing stops a test child script from busy-waiting again.
+  - **Nothing reaps automatically.** `tumwater doctor --kill-orphans`, the dashboard Health card's Kill orphans and the TUI's Ctrl+K exist, but only an operator's click runs them, and no standing alert prompts that click.
+  The 2026-10-19 `logs -f` entry above is the same gap (a detector without a reaper). Its condition, "confirm no other orphan source before adding a general reaper", is now answered by three more sources.
+- **Expected / fix sketch:**
+  - **Alert:** raise a standing amber alert while the orphans row is red, naming the count and the CPU time used.
+  - **Reap automatically:** have the orchestrator reap orphans it can attribute without doubt. That means PPID 1, an argv under `.tumwater/worktrees/` or a `$TMPDIR/tumwater-*` run root, past a minimum age, and either a dead `TUMWATER_RUN` harness or a dead `TUMWATER_TEST_OWNER_PID`.
+  - **Restore the guard:** establish why the spawned `node -e` children kept the owner pid but lost the owner preload.
+
+### An agent killed every test process on the host by pattern, despite the run prompt's kill-by-PID rule, and took the team's own checks down mid-run (found by operator session 2026-10-28 while tracing the 2026-10-25 orphans above)
+
+- **Symptom:** on 2026-10-25 at 14:14, feature-3's own `npm run test:gate` in `_slot-18` hit the bash tool's 600 s timeout. From 14:23 to 14:33 the agent ran five commands that kill by pattern, for example `ps aux | grep -E "test-runner|node --test" | grep -v grep | awk '{print $2}' | xargs -r kill` and `for p in $(ps aux | grep -E "node dist/test/test-runner|node --test|npm run test:gate|dist/test/test-durations" | grep -v grep | awk '{print $2}'); do kill "$p"; done`. Its reason was "Multiple overlapping test runs from the timed-out command are competing. Let me stop the ones I started." Its thinking at 14:16 had said "I shouldn't kill by pattern."
+  The events show every check in flight killed at once:
+  - **14:23:34:** organize's gate check, the main baseline and feature-2's merge check (`skipped`).
+  - **14:24:10:** the restarts of all three (`killed by SIGTERM after 35 s`). feature-2's merge was rejected as unverified.
+  - **14:32:55–14:33:30:** dedupe's gate check twice, the main baseline three times and organize's merge check.
+  These kills left the 40 spinners in the entry above.
+- **Reproduce:** read the tool calls at 14:23:24, 14:32:46, 14:33:01, 14:33:08 and 14:33:18 PDT in `.tumwater/sessions/feature-3/2026-10-25T20-54-55-677Z_01a174d8-4fbc-705b-bb58-80e04c329c1f.jsonl` (sessions are pruned at 7 days). Match them against the `build_check` events at those times in `.tumwater/log/events.jsonl`.
+- **Cause:**
+  - **The rule is prompt-only.** `KILL_BY_PID_RULE` (src/prompt/prompt.ts) names `pgrep … | xargs kill`, but a `ps | grep | awk | xargs kill` pipeline or a `for p in $(ps …)` loop kills "by PID" all the same, and nothing at the tool layer refuses either one.
+  - **Load set it off.** The agent read a suite that was slow under load and stopped at the tool's 600 s cap as its own runaway runs.
+  - **The process table is shared.** The pattern reaches the team's checks and other roles' suites.
+  A search of the past week's sessions found no other pattern kill of test processes. The other runs whose kill commands mention tests killed their own PIDs.
+- **Expected / fix sketch:**
+  - **Guard:** a tool-layer guard beside the write guard (af43c803a, bcde979f4) that refuses `pkill`, `killall`, and any bash command that feeds `ps` or `pgrep` output into `kill`. Its refusal message should name `kill $!` and the run's exit sweep.
+  - **Timeout message:** have a timed-out tool call's result say that, on a loaded host, the command may simply be slow, and that the run's own processes are reaped when the run ends.
+
+### Bugfix runs add synthetic CPU load to the shared host to reproduce load flakes, and leak the burners (found by operator session 2026-10-28 from `tumwater doctor orphans`)
+
+- **Symptom:** on 2026-10-28, seven bash `while :; do :; done` loops stood at PPID 1:
+  - **3 from bugfix-2's 2026-10-27 00:30 run in `_slot-5`:** state R, about 391 CPU-minutes each.
+  - **4 from bugfix-4's 2026-10-26 14:53 run in `_slot-7`:** about 199 CPU-minutes each, now in state U.
+  Both runs started their loaders as `(for i in 1 2 3 4; do (while :; do :; done) & done; echo "$!" > /tmp/….pids)`. `$!` records only the last loop, so a cleanup by that pid leaves the other three. The sessions show two more loader runs on 2026-10-26: bugfix-4 at 17:40 with eight loaders, and bugfix-2 at 17:44. None of their loaders survives now. The host they load is the one every check and review runs on.
+- **Reproduce:** `tumwater doctor orphans` lists them as `/bin/bash -c cd …/_slot-5 && npx tsc --incremental … (for i in 1 2 3 4; do (while :; do :; done) & done …`. The sessions' tool calls show where they started; search them for `while :; do :; done`.
+- **Cause:** flake investigations reproduce load by adding it (the supervisor-test entry above ran "30 concurrent runs of the test beside 8 CPU-spinning node processes", and the hanging-fake entry ran copies "under 6 CPU+spawn-churn load loops"), on the shared host, with nothing to end the loaders. The run's exit sweep did not reap these. Their environment is unreadable to `ps`, so whether they carried the run's `TUMWATER_RUN` mark is not known.
+- **Expected / fix sketch:**
+  - **Prompt:** tell bugfix runs that the host is already loaded by the team, and that synthetic load must not outlive the command that starts it. A load helper that exits on its own deadline would make that easy.
+  - **Exit sweep:** establish why the sweep missed backgrounded subshells of a bash tool call, and cover them.
+
+### Agents' own test-suite runs bypass `maxConcurrentChecks` and every suite starts about 17 node --test workers, so the host runs several full-width suites at once; gate checks went from a 92 s median to 313 s and from no timeouts to over 100 a day (found by operator session 2026-10-28 from the host's load average and the event log)
+
+- **Symptom:** on 2026-10-28 at 04:30, 9 suites ran at once on the 18-core host, at a load average of 131–192. The gate check median for passed checks went 92 s (10-20), 147 s (10-23), 177 s (10-25), 232 s (10-26), 255 s (10-27) and 313 s (10-28). Gate and baseline checks that hit the 600 s timeout went from 0 (10-23) to 124 (10-26) and 114 (10-27). The main baseline itself timed out at 600 s on 10-28 at 04:46.
+  Over 10-26 to 10-28 the team's own checks averaged about 2.2 in flight, against a cap of 12. Agents' own full or gate suite runs averaged 1.3–1.7 in flight: 965 and 915 a day on 10-23 and 10-24, and 514 and 444 on 10-26 and 10-27. Their p90 was 559–610 s, so many ended at the bash tool's 600 s cap. The run prompt's verify rule has every run execute `npm run test:gate` itself, and the team then runs the same gate check on the change.
+- **Reproduce:** for the census, walk each process's PPID chain to the orchestrator pid and class it by a `test-runner.js` ancestor plus a `/bin/bash -c cd …/worktrees/…` agent ancestor. For the trend, take agent suite runs from `.tumwater/sessions/**` (each toolCall's timestamp to its toolResult's) and check spans from the `build_check` events' `spawnedAt`/`settledAt`.
+- **Cause:**
+  - **Agents' suites take no permit.** `maxConcurrentChecks` gates only the team's checks.
+  - **Worker counts never adapt.** `test/test-runner.ts` passes `--test-concurrency` only for the e2e tier, so every other run uses node's default (`availableParallelism() - 1`, 17 here) however many suites are already running.
+  - **The doctor's advice ignores CPU.** Its `check contention` row advises raising `maxConcurrentChecks` from queue wait alone. It was raised to 12 on 2026-10-26 and 2026-10-27. That removed about 500 minutes a day of `check_wait`, but in-flight checks still averaged about 2.2, and the medians kept rising.
+- **Expected / fix sketch:** pick one or more:
+  - size each suite's `--test-concurrency` by the number of suites in flight on the host;
+  - make an agent's own check run take the same permit as the team's checks;
+  - drop the agent-side `test:gate` run in favor of targeted tests, since the team runs the gate anyway;
+  - have the doctor's contention advice weigh host load before it recommends a higher cap.
+
+### The "look stuck" alert reads the run prompt's own redirected test run as a stall: "no agent output" fires at a flat 5 minutes even while the open call is inside its own 10-minute buffered-output threshold (found by operator session 2026-10-28 from the dashboard's "feature #2, bugfix #2, and bugfix #3 look stuck" warning)
+
+- **Symptom:** on 2026-10-28 at about 04:30 the dashboard showed "feature #2, bugfix #2, and bugfix #3 look stuck", with no agent output for 11m55s, 15m15s and 15m25s. All three were inside `npm run test:gate > …/check.log 2>&1` calls. bugfix-2's took 929 s and bugfix-3's 986 s; feature-2's was still running at 04:31. None was hung: their output went to a file, which is the shape the run prompt prescribes ("Write the check's full output to a scratch file once"). Every agent suite run over 5 minutes now raises the alert, and under the load in the entry above that is most of them.
+- **Reproduce:** in a role's live log tail, open a pi bash tool call whose command redirects stdout to a file, and write nothing for over 5 minutes. `inFlightDetail` (src/ui/run-progress-model.ts) appends "no agent output for …" once `quietMs >= 300_000`, and the stuck alert (src/ui/team-alert-status.ts) fires on it.
+- **Cause:** two thresholds disagree.
+  - **The tool-call stall check knows redirects.** It gives a redirected or piped call `bufferedCommandStallMs` (src/pi/command-shape.ts: at least 10 minutes) before calling it stalled.
+  - **The silence check does not.** The "no agent output" check ignores the open call and fires at a flat 5 minutes.
+  Because the alert names silence, not the call, the operator cannot tell a slow suite from a hang.
+- **Expected / fix sketch:** while a tool call is open, let the silence flag defer to that call's own stall threshold, the buffered one for a redirect or pipe. Name the call in the cell and the alert, as in "running `npm run test:gate` for 12m", so a real stall past the threshold still reads as one. Pin it with a run-progress-model case: an open redirected call at 6 minutes is not stuck, and the same call at 11 minutes is.
+
 ## Fixed
 
 ## Verified
