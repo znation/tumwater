@@ -5747,7 +5747,7 @@ test("Ctrl+X edits a role's model override on its Transcript; instance writes th
   keys.handleKey(undefined, { ctrl: true, name: "x" });
   assert.equal(keys.state().roleModelMode, true, "Ctrl+X on a role's Transcript opens the role-model editor");
   assert.equal(keys.state().input, "", "an override-less role pre-fills an empty line");
-  assert.match(keys.state().flash!, /edit feature's model override/);
+  assert.match(keys.state().flash!, /edit feature's model overrides/);
   keys.handleKey(undefined, { name: "escape" });
   assert.equal(keys.state().roleModelMode, false);
   assert.equal(keys.state().input, "pending draft", "Esc restores the saved draft");
@@ -5759,7 +5759,7 @@ test("Ctrl+X edits a role's model override on its Transcript; instance writes th
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().roleModelMode, false, "a saved model leaves edit mode");
   assert.equal(keys.state().input, "pending draft", "Enter restores the saved draft");
-  assert.match(keys.state().flash!, /feature: model override set to anthropic\/claude-3-7-sonnet/);
+  assert.match(keys.state().flash!, /feature: model overrides set to model anthropic\/claude-3-7-sonnet/);
   assert.equal(modelOf("feature"), "anthropic/claude-3-7-sonnet", "the override is written through setRoleModelFields");
 
   // An instance id writes its base role's key — roles.feature, not roles.feature-2.

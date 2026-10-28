@@ -310,7 +310,7 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures �
     assert.match(frame, /\[Transcript: clean \(1\/1\)\]/);
     // The role's own keys ride the hint line while its transcript is up (the hint is
     // clipped at the terminal width, so match the start that fits).
-    assert.match(frame, /Ctrl\+R prompt clean · Ctrl\+N notes · Ctrl\+X role model/);
+    assert.match(frame, /Ctrl\+R prompt clean · Ctrl\+N notes · Ctrl\+X model overrides/);
     assert.match(frame, /tidied the imports/); // assistant text renders…
     assert.doesNotMatch(frame, /Build a thing/); // …but never the user's run prompt
 

@@ -128,7 +128,7 @@ export function hintLine(view: TuiView, mode: TuiMode, width: number): StatusLin
   else if (mode.modelMode) keys = [["Enter", "save the model"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.quietMode) keys = [["Enter", mode.quietTeam ? "save team quiet hours" : "save quiet hours"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.intervalMode) keys = [["Enter", "save interval"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.roleModelMode) keys = [["Enter", "save role model"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  else if (mode.roleModelMode) keys = [["Enter", "save model overrides"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.instancesMode) keys = [["Enter", "save instances"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.claudeReserveMode) keys = [["Enter", "save claude reserve"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.notifyMode) keys = [["Enter", "save the notify hook"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -139,7 +139,7 @@ export function hintLine(view: TuiView, mode: TuiMode, width: number): StatusLin
   else if (mode.rolePromptFor) keys = [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.briefEditMode) keys = [["Enter", "replace brief from file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (view.kind === "transcript") {
-    keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notes"], ...(view.change ? [["Ctrl+Y", view.changeStat ? "full patch" : "stat only"] as [string, string]] : []), ...(view.note ? [["Ctrl+X", "clear notes"] as [string, string], ["Ctrl+E", "edit notes"] as [string, string]] : [["Ctrl+X", "role model"] as [string, string]]), ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "stop run"], ["Ctrl+V", "reset counters"], ["Ctrl+B", "daily cap"], ["Ctrl+O", "quiet hours"], ["Ctrl+G", "instances"], ["Ctrl+S", "min run interval"], ["Ctrl+L", "instructions"],
+    keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notes"], ...(view.change ? [["Ctrl+Y", view.changeStat ? "full patch" : "stat only"] as [string, string]] : []), ...(view.note ? [["Ctrl+X", "clear notes"] as [string, string], ["Ctrl+E", "edit notes"] as [string, string]] : [["Ctrl+X", "model overrides"] as [string, string]]), ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "stop run"], ["Ctrl+V", "reset counters"], ["Ctrl+B", "daily cap"], ["Ctrl+O", "quiet hours"], ["Ctrl+G", "instances"], ["Ctrl+S", "min run interval"], ["Ctrl+L", "instructions"],
       ...(!view.note && !view.change ? [["/", view.grep ? `search: ${view.grep}` : "search"] as [string, string]] : []),
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["/", "search entries"], ["Ctrl+O", "ready only"], ["Ctrl+X", "cancel entry"], ["Ctrl+R", "release entry"], ["Ctrl+V", "top entry"], ["Ctrl+E", "edit entry"], ["Ctrl+N", "new plan/bug"], ["Ctrl+A", "answer question"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
@@ -171,7 +171,7 @@ export function promptPrefix(mode: TuiMode): StatusSpan[] {
   if (mode.slotsMode) return [{ text: "worktree slots", tone: "brand" }, { text: " › " }];
   if (mode.backendsMode) return [{ text: "agent backends", tone: "brand" }, { text: " › " }];
   if (mode.intervalMode) return [{ text: "min run interval", tone: "brand" }, { text: " › " }];
-  if (mode.roleModelMode) return [{ text: "role model", tone: "brand" }, { text: " › " }];
+  if (mode.roleModelMode) return [{ text: "model overrides", tone: "brand" }, { text: " › " }];
   if (mode.instancesMode) return [{ text: "instances", tone: "brand" }, { text: " › " }];
   if (mode.claudeReserveMode) return [{ text: "claude reserve", tone: "brand" }, { text: " › " }];
   if (mode.notifyMode) return [{ text: "notify hook", tone: "brand" }, { text: " › " }];

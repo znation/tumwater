@@ -128,7 +128,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 100)), /Ctrl\+B daily cap/);
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notes · Ctrl+X role model · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+S min run interval · Ctrl+L instructions · / search · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notes · Ctrl+X model overrides · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+S min run interval · Ctrl+L instructions · / search · Ctrl+T next view · Ctrl+D quit",
   );
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: true, change: false }),
@@ -136,7 +136,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   ); // the notes's next step is the change view, and Ctrl+E replaces the notes
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: true }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+Y stat only · Ctrl+X role model · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+S min run interval · Ctrl+L instructions · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+Y stat only · Ctrl+X model overrides · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+S min run interval · Ctrl+L instructions · Ctrl+T next view · Ctrl+D quit",
   ); // the cycle's last step names the way back, and the change step's Ctrl+Y shows the diffstat
   // The change-view hint names Ctrl+Y's stat toggle: the diffstat on the first heap, and the
   // full patch on a second press.
@@ -396,11 +396,11 @@ test("the transcript Ctrl+S interval mode names its save/cancel keys and a `min 
   assert.equal(plain(promptPrefix(edit)), "min run interval › ");
 });
 
-test("the transcript Ctrl+X role-model mode names its save/cancel keys and a `role model ›` prefix", () => {
+test("the transcript Ctrl+X role-model mode names its save/cancel keys and a `model overrides ›` prefix", () => {
   const base = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null };
   const edit = { ...base, roleModelMode: true };
-  assert.equal(plain(hintLine({ kind: "transcript", role: "qa", index: 1, count: 1, note: false, change: false }, edit, 300)), "Enter save role model · Esc cancel · Ctrl+D quit");
-  assert.equal(plain(promptPrefix(edit)), "role model › ");
+  assert.equal(plain(hintLine({ kind: "transcript", role: "qa", index: 1, count: 1, note: false, change: false }, edit, 300)), "Enter save model overrides · Esc cancel · Ctrl+D quit");
+  assert.equal(plain(promptPrefix(edit)), "model overrides › ");
 });
 
 test("the transcript Ctrl+L instructions mode names its save/cancel keys and an `instructions for <role> ›` prefix", () => {

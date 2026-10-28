@@ -28,7 +28,7 @@ test("Ctrl+P toggles the viewed role's pause marker and flashes the CLI's wordin
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
-    assert.match(tui.lastFrame(), /Ctrl\+N notes · Ctrl\+X role model/); // header hint (Ctrl+A clips at 100 cols)
+    assert.match(tui.lastFrame(), /Ctrl\+N notes · Ctrl\+X model overrides/); // header hint (Ctrl+A clips at 100 cols)
 
     tui.key(undefined, "p", { ctrl: true }); // opens the duration editor
     assert.deepEqual(pausedRoles(repo), [], "the editor writes nothing until Enter");
