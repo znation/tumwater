@@ -11,7 +11,7 @@
  * Pure translation: no spawn, no backend registration, no config. The factory keeps per-run
  * state (the pending split-block assistant message, the unmapped native types seen, whether a
  * `run_cost` arrived), so call it once per run. Unmapped native types are recorded once each
- * on the seam's optional `warnings()` — src/agent/run-stream.ts forwards each as an
+ * on the seam's optional `warnings()` — src/agent/agent-stream.ts forwards each as an
  * `agent_unknown_event` warning after the run. `cost_unknown` is recorded the same way when a
  * run produced no authoritative `run_cost`. */
 

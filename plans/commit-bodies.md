@@ -99,7 +99,7 @@ paper trail of claimed understanding to check against.
 ## Files touched
 
 `src/verdict/reply-contract.ts` (SUMMARY_BLOCK extension), `src/git/commit-message.ts` (extractCommitBody + commitTrailer), `src/pi/pi-stream.ts` (parser
-turn counter; PiRunResult.turns via the single `resultFromParser` builder, src/agent/run-agent.ts), `src/loop/loop.ts` (tickTurns reset in tick()
+turn counter; PiRunResult.turns via the single `resultFromParser` builder, src/agent/agent-run.ts), `src/loop/loop.ts` (tickTurns reset in tick()
 + increment in foldUsage; assembly at the changed-tick site),
 `test/commit-message.test.ts` (extraction tolerant of partial blocks + 200-char caps; trailer
 format from harness counters, not model text; assembled message shape with and without body; turn

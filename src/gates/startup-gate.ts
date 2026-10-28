@@ -28,8 +28,8 @@ import { HOUR_MS } from "../text/datetime.js";
 import { errorMessage } from "../text/text.js";
 import { backendById } from "../agent/agent-backend.js";
 // Register the built-in pi and claude adapters into the registry this module reads (see
-// unregisteredBackendInUse) — importing run-agent.ts is the one place they register.
-import "../agent/run-agent.js";
+// unregisteredBackendInUse) — importing agent-run.ts is the one place they register.
+import "../agent/agent-run.js";
 
 /** The startup gate of `tumwater start` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has
@@ -102,7 +102,7 @@ export async function runStartupCheck(
   // A backend an enabled seam routes to that this build has no registered adapter for cannot
   // run its jobs: refuse to start rather than letting the run fall through to pi with a model
   // id pi cannot serve (plans/opencode-backend.md part 2/7). Read the registry through
-  // run-agent.ts, whose module scope registers the built-in pi and claude adapters.
+  // agent-run.ts, whose module scope registers the built-in pi and claude adapters.
   const unregistered = unregisteredBackendInUse(config);
   if (unregistered !== undefined) {
     return { problem: `backend ${unregistered} is configured but this build has no adapter for it` };
@@ -264,7 +264,7 @@ export function backendsInUse(config: TumwaterConfig): string[] {
 
 /** The first backend an enabled seam routes to that this build has no registered adapter for,
  * or undefined when every seam's backend is registered. The built-in pi and claude adapters
- * are registered by importing src/agent/run-agent.ts (see the import above); a seam backend
+ * are registered by importing src/agent/agent-run.ts (see the import above); a seam backend
  * that is not in the registry is one this build cannot run. Doctor's binary check asks the
  * same question, so the startup gate and doctor cannot disagree about which backend a build
  * can serve. opencode's and codex's adapters now register like pi's and claude's, so only a

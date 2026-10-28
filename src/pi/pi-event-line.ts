@@ -1,6 +1,6 @@
 /** Parsing one line of pi's JSONL event stream — pure string functions with no subprocess or file
  * I/O. Split out of pi.ts, whose child-process integration (runPi) now lives in
- * src/agent/run-agent.ts and whose PiStreamParser in pi-stream.ts folds those lines into a run
+ * src/agent/agent-run.ts and whose PiStreamParser in pi-stream.ts folds those lines into a run
  * result — because these are shared
  * by every observer that folds raw pi log lines into per-type state (src/ui/progress-data.ts's live
  * tail, transcript.ts's renderer), and those display modules should not import from the subprocess
@@ -9,11 +9,11 @@
 import { isJsonObject, parseJsonObject } from "../files/json-object.js";
 import { isNonBlankString, textOr } from "../text/text.js";
 
-/** Which kind of pi run a raw-log `tumwater_run` marker names (src/agent/run-spawn.ts writes
+/** Which kind of pi run a raw-log `tumwater_run` marker names (src/agent/agent-spawn.ts writes
  * it): the authoring run ("author") or the review/merge gate's run ("gate"). A
  * role's one log interleaves both, and the dashboards demultiplex them by this field rather
  * than by the run's worktree path (plans/worktree-pool.md part 1/5). Declared in this pure
- * module so both the subprocess layer (src/agent/run-spawn.ts) and the display layer
+ * module so both the subprocess layer (src/agent/agent-spawn.ts) and the display layer
  * (progress-data.ts) can name it without importing each other. */
 export type PiRunKind = "author" | "gate";
 

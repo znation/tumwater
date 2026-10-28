@@ -243,7 +243,7 @@ test("a named branch in a repo with no local branches reports an empty branch li
 // The no-registered-adapter guard (part 2/7): a backend an enabled seam routes to that this
 // build has no registered adapter for must refuse startup, naming the backend — a run would
 // otherwise fall through to pi with a model id pi cannot serve. The registry is read through
-// src/agent/run-agent.ts (startup-gate.ts imports it), which registers the built-in pi,
+// src/agent/agent-run.ts (startup-gate.ts imports it), which registers the built-in pi,
 // claude and opencode adapters; a fake under `opencode` stands in for a future adapter.
 // (Part 5/7 registered opencode, so the no-adapter guard now has no reachable trigger; this
 // test verifies opencode's new registered behavior instead — a missing configured binary

@@ -5,7 +5,7 @@
  * layers can read a backend's traits without pulling the registry in. That is the same reason
  * `BACKEND_DEFAULT_MODELS` lives in src/config/config-model-selector.ts.
  *
- * An id with no entry reads as pi, because src/agent/run-agent.ts routes an unregistered id to
+ * An id with no entry reads as pi, because src/agent/agent-run.ts routes an unregistered id to
  * the pi backend.
  */
 

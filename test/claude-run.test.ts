@@ -7,14 +7,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { runAgent } from "../src/agent/run-agent.js";
+import { runAgent } from "../src/agent/agent-run.js";
 import type { AgentRunSpec } from "../src/agent/agent-backend.js";
 import { claudeBackend, claudeConfigDir, claudeProjectSlug, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { readSessions, recordSession } from "../src/agent/session-ledger.js";
 import { backendBinSourceLabel } from "../src/pi/pi-bin.js";
 import { defaultConfig } from "../src/config/config.js";
 import { configForRole } from "../src/config/config-views.js";
-import type { PiRunOptions } from "../src/agent/run-agent.js";
+import type { PiRunOptions } from "../src/agent/agent-run.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { setEnv } from "./helpers/env.js";
 import { fakeClaudeReplay, readRunBlocks, withClaudeReplay } from "./fakes/fake-claude.js";
@@ -157,7 +157,7 @@ test("agent: claude with no model resolves the author tier default that reaches 
 
 test("a run killed before its result still flushes the last assistant message", async () => {
   // A batching backend closes its folded assistant message only on the next event or the
-  // result. A run the watchdog kills mid-turn sends neither, so run-agent must ask the
+  // result. A run the watchdog kills mid-turn sends neither, so agent-run must ask the
   // translator to flush at stream end (StreamTranslator.finalize) or the raw log readers lose
   // the last turn (BUGS.md 2026-10-09). The fake prints one assistant event and then sleeps
   // until the quiet watchdog kills it.

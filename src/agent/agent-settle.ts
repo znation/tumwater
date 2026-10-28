@@ -1,15 +1,15 @@
-/** The settlement half of a backend agent run (the split of src/agent/run-agent.ts along the
+/** The settlement half of a backend agent run (the split of src/agent/agent-run.ts along the
  * same seam the runner-run → runner-outcome split used): everything that happens after the
  * run's live feed — the spawn-`error` result, the `exit` orphan sweep, and the `close`-time
- * flush/reconcile/classify that builds the `PiRunResult`. run-agent.ts keeps the lifecycle
- * (setup, watchdogs, the feed), delegates its build-and-spawn stage to src/agent/run-spawn.ts,
- * its streaming pipeline to src/agent/run-stream.ts and its `error`/`exit`/`close` listeners
+ * flush/reconcile/classify that builds the `PiRunResult`. agent-run.ts keeps the lifecycle
+ * (setup, watchdogs, the feed), delegates its build-and-spawn stage to src/agent/agent-spawn.ts,
+ * its streaming pipeline to src/agent/agent-stream.ts and its `error`/`exit`/`close` listeners
  * here, so the streaming half stays readable.
  *
- * Each handler takes the run's live state (`RunSettleState`, defined in run-agent.ts and
+ * Each handler takes the run's live state (`RunSettleState`, defined in agent-run.ts and
  * imported here only as a type) and reads what it closes over at the moment its event fires —
  * the live flags it needs are getters on that state. There is no runtime import cycle:
- * run-agent imports these functions at runtime, and this module imports only run-agent's type.
+ * agent-run imports these functions at runtime, and this module imports only agent-run's type.
  */
 
 import type { PiRunResult } from "../pi/pi-run-result.js";
@@ -17,7 +17,7 @@ import { backendBinConfigKey, backendBinSourceLabel, type ResolvedBackendBin } f
 import type { AgentBackend, AgentExitClassification } from "./agent-backend.js";
 import { terminateChild } from "../process/process.js";
 import { leftoversSweptMessage, sweepRunMarker } from "../process/run-marker.js";
-import type { RunSettleState } from "./run-agent.js";
+import type { RunSettleState } from "./agent-run.js";
 
 /** Prefix of PiRunResult.errorMessage when the agent process never started (no session file
  * is created for such a run). The resolved binary follows it, so a configured agentBin

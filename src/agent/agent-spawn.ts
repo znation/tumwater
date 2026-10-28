@@ -3,10 +3,10 @@
  * parser, the run marker, backend-bin resolution, the notes shim, the run spec, the backend's
  * optional `prepare`, the session-ledger record, the native-to-canonical translator, the two
  * incremental decoders, and the child spawn. It returns the `SpawnedRun` bundle the coordinator
- * (src/agent/run-agent.ts) binds its watchdogs and settlement wiring to, and passes to
- * createAgentStream (src/agent/run-stream.ts).
- * Part 1/2 of the runAgent split: the streaming pipeline (part 2/2) lives in run-stream.ts.
- * This module imports only run-agent's type surface, so
+ * (src/agent/agent-run.ts) binds its watchdogs and settlement wiring to, and passes to
+ * createAgentStream (src/agent/agent-stream.ts).
+ * Part 1/2 of the runAgent split: the streaming pipeline (part 2/2) lives in agent-stream.ts.
+ * This module imports only agent-run's type surface, so
  * there is no runtime import cycle. */
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -26,7 +26,7 @@ import { seamImageInput } from "./image-input.js";
 import { ensureNotesShim } from "./notes-shim.js";
 import { nearestTumwaterRoot } from "../paths.js";
 import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
-import type { PiRunOptions } from "./run-agent.js";
+import type { PiRunOptions } from "./agent-run.js";
 
 /** A best-effort append log: its parent is created and it is rotated when oversized before the
  * stream opens, and an 'error' event (EACCES, ENOSPC) flips `broken` so the caller can skip

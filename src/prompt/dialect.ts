@@ -72,7 +72,7 @@ export const CODEX_DIALECT: PromptDialect = {
 };
 
 /** The dialect table keyed by backend id: every backend but claude speaks pi's dialect (and
- * an unknown id falls back to pi because run-agent.ts routes an unregistered id to the pi
+ * an unknown id falls back to pi because agent-run.ts routes an unregistered id to the pi
  * backend). Adding a backend means one row here, not another branch. */
 const DIALECTS: Record<string, PromptDialect> = {
   pi: PI_DIALECT,

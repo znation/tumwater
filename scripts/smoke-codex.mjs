@@ -18,12 +18,12 @@ import path from "node:path";
 import { requireDistBuild } from "./live-fixture.mjs";
 
 requireDistBuild(
-  "../dist/src/agent/run-agent.js",
+  "../dist/src/agent/agent-run.js",
   "smoke:codex drives the compiled codex backend",
 );
 
-// run-agent registers the backends on import, so this import brings `codex` online too.
-const { runAgent } = await import("../dist/src/agent/run-agent.js");
+// agent-run registers the backends on import, so this import brings `codex` online too.
+const { runAgent } = await import("../dist/src/agent/agent-run.js");
 const { defaultConfig } = await import("../dist/src/config/config.js");
 const { routeModel } = await import("../dist/src/config/config-model-selector.js");
 const { readSessions } = await import("../dist/src/agent/session-ledger.js");

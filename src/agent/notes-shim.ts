@@ -1,5 +1,5 @@
 /** Installing the per-team `tumwater-notes` shim every backend's run finds on its PATH
- * (plans/notes-command.md "Reaching it from a run"): run-spawn calls `ensureNotesShim(root)`
+ * (plans/notes-command.md "Reaching it from a run"): agent-spawn calls `ensureNotesShim(root)`
  * before building each invocation, and the backend prepends the returned dir to the run's
  * PATH (backendBaseEnv's `binDir`, src/process/run-marker.ts). The shim is a two-line `sh`
  * script that execs the compiled notes CLI, so a model's shell — pi's, Claude Code's or
@@ -23,7 +23,7 @@ export const NOTES_SHIM_NAME = "tumwater-notes";
 /** Install the `tumwater-notes` shim under `<root>/.tumwater/bin` and return that directory.
  * The shim is written atomically with mode 0755, only when its content differs from what is
  * already there (a redeploy that changes `<dist>` rewrites it). Never throws: a failure to
- * write is the caller's to absorb — run-spawn logs one warning and runs without the shim. */
+ * write is the caller's to absorb — agent-spawn logs one warning and runs without the shim. */
 export function ensureNotesShim(root: string, execPath: string = process.execPath): string {
   const dir = notesShimDir(root);
   const target = path.join(dir, NOTES_SHIM_NAME);

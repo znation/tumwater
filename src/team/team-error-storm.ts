@@ -47,7 +47,7 @@ export const ERROR_STORM_QUIET: ErrorStorm = { key: null, roles: [] };
 
 /** The config knob a shared cause points at, when one is known. Only the timeout cause is
  * mapped: `timed out after <dur>` is the reducer's pooled rendering of the run-timeout errors
- * (src/agent/run-agent.ts's two `timed out after ${runTimeoutSeconds}s` shapes, pooled into one
+ * (src/agent/agent-run.ts's two `timed out after ${runTimeoutSeconds}s` shapes, pooled into one
  * key by poolTimeoutKey — src/failure/failure-cluster.ts owns the two shapes and their
  * pooling), and a team-wide
  * run of it means the run budget does not fit the serving model — the one cause with a knob

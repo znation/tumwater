@@ -109,7 +109,7 @@ test("a storm that switches cause is a new episode", () => {
 });
 
 test("the progressing timeout shape pools with the plain one into one storm", () => {
-  // src/agent/run-agent.ts emits two run-timeout messages: the plain one and the
+  // src/agent/agent-run.ts emits two run-timeout messages: the plain one and the
   // still-making-progress variant (session and worktree preserved for resume). Both point at the
   // same knob, so the reducer pools them under one cause — a mixed team must not split 2/2 into
   // two sub-threshold clusters and stay quiet while the team is melting down.

@@ -2,7 +2,7 @@
 // become backend traits"): the config, prompt, watchdog, progress and doctor layers read these
 // instead of testing a backend id by its literal. pi streams tool output, resolves its model
 // jobs through pi's models.json, and labels a pair `provider/model`; claude does none of that
-// and labels its bare model. An id with no entry reads as pi, because run-agent.ts routes an
+// and labels its bare model. An id with no entry reads as pi, because agent-run.ts routes an
 // unregistered id to the pi backend.
 import test from "node:test";
 import assert from "node:assert/strict";

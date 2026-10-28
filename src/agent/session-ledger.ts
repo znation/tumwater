@@ -62,7 +62,7 @@ export function recordSession(dir: string, record: SessionRecord): void {
 }
 
 /** The one run's ledger record, minus the id the two recording sites mint differently — the
- * pre-spawn id in run-spawn.ts, or the stream-minted session id in run-stream.ts. One place
+ * pre-spawn id in agent-spawn.ts, or the stream-minted session id in agent-stream.ts. One place
  * for the record's non-id shape (agent, kind, name, cwd, the optional model and the stamp), so
  * the two appends cannot drift on the model spread or the required fields. `agent` is the
  * owning backend's id; the run options supply the rest. */

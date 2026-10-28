@@ -1,7 +1,7 @@
 /** The claude adapter for the agent seam (plans/agent-backends.md "The seam", "Sessions",
  * "The claude invocation"). It shapes one run's argv/stdin/env, translates claude's
  * `stream-json` into the canonical stream, and classifies the exit's stderr — everything
- * backend-specific. src/agent/run-spawn.ts spawns the run and records this run in the session
+ * backend-specific. src/agent/agent-spawn.ts spawns the run and records this run in the session
  * ledger; claude mints its own session id (a fresh UUID, or the resumed record's id), which
  * `invocation` returns so the ledger can carry it.
  *
@@ -11,7 +11,7 @@
  * missing transcript, a different cwd, or another kind's newer session all review fresh rather
  * than resuming the wrong conversation.
  *
- * Registration lives in src/agent/run-agent.ts beside the pi adapter, so a test can register a
+ * Registration lives in src/agent/agent-run.ts beside the pi adapter, so a test can register a
  * fake under its own id; a test selects claude by setting `config.agent = "claude"` on a run. */
 
 import fs from "node:fs";

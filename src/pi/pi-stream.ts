@@ -13,7 +13,7 @@ import { backendKind, isBackendFailureKind, isPermanentConfigError, TRANSIENT_BA
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts, whose child-process integration (runPi, hasResumableSession,
- * and the stderr crash signature) now lives in src/agent/run-agent.ts,
+ * and the stderr crash signature) now lives in src/agent/agent-run.ts,
  * src/agent/session-ledger.ts, and src/pi/pi-backend.ts — so the parser can be unit-tested and
  * reasoned about without spawning a process, the same separation pi-event-line.ts gives the
  * per-line parse and reply-contract.ts the sentinel/verdict text. */
@@ -341,7 +341,7 @@ export class PiStreamParser {
        * the only blind signal. */
       imageInput?: boolean | null;
       /** Called once, at the FIRST blind read, with its path — the runner's hook to kill an
-       * authoring run at once (src/agent/run-spawn.ts) before the agent goes on working from
+       * authoring run at once (src/agent/agent-spawn.ts) before the agent goes on working from
        * a picture it never saw. */
       onBlindRead?: (path: string) => void;
     } = {},

@@ -13,11 +13,11 @@ import {
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Unit coverage for src/pi/pi-bin.ts's agent-binary resolution messages. The module exists so
-// that cli.ts's fail-fast, doctor.ts's report, and src/agent/run-agent.ts's spawn errors describe
+// that cli.ts's fail-fast, doctor.ts's report, and src/agent/agent-run.ts's spawn errors describe
 // the same missing-binary problem with the same words — its contract is that the wording cannot
 // drift between the surfaces that quote it. cli.test.ts and doctor.test.ts pin the wording
 // end-to-end through the CLI/doctor surfaces; these tests pin the shared source directly,
-// including the "default" label whose case the other surfaces never reach (cli.ts and run-agent.ts
+// including the "default" label whose case the other surfaces never reach (cli.ts and agent-run.ts
 // short-circuit a default source before calling backendBinSourceLabel, and doctor returns early
 // — so a regression there is invisible to every surface test).
 

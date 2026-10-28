@@ -33,7 +33,7 @@ export function execFileAsync(
  * added after the abort event never fires, so `addEventListener` alone would leave the caller
  * waiting on a shutdown that has come and gone. A missing signal (no shutdown wiring)
  * registers nothing. Shared by spawnSupervised (supervisor.ts), runPi's child spawn
- * (src/agent/run-spawn.ts), sleepInterruptible (run-timing.ts), and abortOnShutdown
+ * (src/agent/agent-spawn.ts), sleepInterruptible (run-timing.ts), and abortOnShutdown
  * (merge-pipeline.ts).
  *
  * Returns a disposer that detaches `fn`. A `{ once: true }` listener detaches itself when the
@@ -136,7 +136,7 @@ export function terminateChild(child: ChildProcess): void {
  * reached a live process: false when nothing was left to receive it — ESRCH from a group that
  * died with its leader, the normal case once the child has exited. Never throws: a process
  * that died between the caller's decision and this call is the normal case. Shared by runPi's
- * teardown (src/agent/run-agent.ts) and the detached process-group runner (runScriptGroup,
+ * teardown (src/agent/agent-run.ts) and the detached process-group runner (runScriptGroup,
  * process-group.ts) — the same "signal the tree, not just the direct child" guarantee in one
  * home, this module. */
 export function signalTree(child: ChildProcess, signal: NodeJS.Signals): boolean {

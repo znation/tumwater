@@ -6,11 +6,11 @@
  * matcher, and the exit classification. This file keeps the coordinator — setup, the watchdog
  * wiring, abort, the child's stream-attachment and the settlement-state assembly — and
  * delegates the build-and-spawn stage (the marker,
- * parser, bin resolution, `prepare`, invocation and spawn) to src/agent/run-spawn.ts, the
+ * parser, bin resolution, `prepare`, invocation and spawn) to src/agent/agent-spawn.ts, the
  * streaming pipeline (native-to-canonical stdout split, the stderr window, the stream-minted
- * session record and the settle/flush) to src/agent/run-stream.ts, and the post-run settlement
+ * session record and the settle/flush) to src/agent/agent-stream.ts, and the post-run settlement
  * (spawn-error result, exit orphan sweep, close-time reconcile and
- * classify) to src/agent/run-settle.ts. `runPi` (src/pi/pi.ts) is the thin alias the existing
+ * classify) to src/agent/agent-settle.ts. `runPi` (src/pi/pi.ts) is the thin alias the existing
  * call sites use, so a caller and its fakes are untouched by this split. */
 
 import type { ChildProcess } from "node:child_process";
@@ -32,13 +32,13 @@ import { piBackend } from "../pi/pi-backend.js";
 import { claudeBackend } from "./claude/claude-backend.js";
 import { codexBackend } from "./codex/codex-backend.js";
 import { opencodeBackend } from "./opencode/opencode-backend.js";
-import { setupFailureResult, settleClose, settleError, settleExit } from "./run-settle.js";
-import { openAppendLog, spawnPiRun, type AppendLog, type SpawnedRun } from "./run-spawn.js";
-import { createAgentStream } from "./run-stream.js";
+import { setupFailureResult, settleClose, settleError, settleExit } from "./agent-settle.js";
+import { openAppendLog, spawnPiRun, type AppendLog, type SpawnedRun } from "./agent-spawn.js";
+import { createAgentStream } from "./agent-stream.js";
 
 // The streaming pipeline's over-long-native-line cap stays reachable from here, the historical
-// home the test suite still imports it from, even though the value now lives in run-stream.ts.
-export { MAX_NATIVE_LINE_CHARS } from "./run-stream.js";
+// home the test suite still imports it from, even though the value now lives in agent-stream.ts.
+export { MAX_NATIVE_LINE_CHARS } from "./agent-stream.js";
 
 // The seam's adapters. Registering here — where the lookup happens — keeps the registration
 // explicit and lets a test register a fake under its own id.
@@ -47,13 +47,13 @@ registerAgentBackend(claudeBackend);
 registerAgentBackend(opencodeBackend);
 registerAgentBackend(codexBackend);
 
-/** The live state a running agent shares with the settlement half (src/agent/run-settle.ts):
- * what the `error`/`exit`/`close` handlers run-settle owns read at the moment their event
- * fires. run-agent constructs it (the getters read through to the run's still-mutating feed
+/** The live state a running agent shares with the settlement half (src/agent/agent-settle.ts):
+ * what the `error`/`exit`/`close` handlers agent-settle owns read at the moment their event
+ * fires. agent-run constructs it (the getters read through to the run's still-mutating feed
  * state — the stderr buffer, the fallback-clone flag, the settled/aborted/blind-read flags and
- * the kill classification), and run-settle imports only this type, so there is no runtime
- * import cycle: run-agent imports run-settle's handlers at runtime and run-settle imports
- * nothing of run-agent's runtime surface. */
+ * the kill classification), and agent-settle imports only this type, so there is no runtime
+ * import cycle: agent-run imports agent-settle's handlers at runtime and agent-settle imports
+ * nothing of agent-run's runtime surface. */
 export interface RunSettleState {
   child: ChildProcess;
   resolved: ResolvedBackendBin;
@@ -193,7 +193,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // The whole build-and-spawn stage — the marker write, parser construction, run marker,
     // backend-bin resolution, notes shim, run spec, the backend's optional `prepare`, the
     // session-ledger record, translator/decoders, and the child spawn — now lives in
-    // spawnPiRun (src/agent/run-spawn.ts) and returns the SpawnedRun bundle. A synchronous
+    // spawnPiRun (src/agent/agent-spawn.ts) and returns the SpawnedRun bundle. A synchronous
     // throw anywhere in it (a broken marker write, parser construction, backend.resolveBin,
     // claude's invocation rejecting a run with no model) propagates out of the await and is
     // rejected by the catch below, matching what a synchronous executor's throw used to get
@@ -251,7 +251,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // The streaming pipeline — native-to-canonical stdout split with the over-long-line
     // discard, the stderr window and its fallback-clone warning matcher, the stream-minted
     // session's second ledger record, and the settle/flush that resolves the run — now lives
-    // in src/agent/run-stream.ts behind the AgentStream interface. run-agent only wires the
+    // in src/agent/agent-stream.ts behind the AgentStream interface. agent-run only wires the
     // child's `data` events to it and binds its getters into the settlement state below.
     const stream = createAgentStream({
       opts,
@@ -267,7 +267,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     child.stdout?.on("data", (chunk: Buffer) => stream.feedStdout(chunk));
     child.stderr?.on("data", (chunk: Buffer) => stream.feedStderr(chunk));
 
-    // The run state the settlement-half handlers (run-settle.ts) read when their event
+    // The run state the settlement-half handlers (agent-settle.ts) read when their event
     // fires. The getters read through to the run's still-mutating feed state, so a handler
     // sees the current value rather than a snapshot taken when its listener was registered.
     const state: RunSettleState = {
@@ -331,7 +331,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // run with no resolved model) rejects the run, preserving the contract a synchronous
       // executor's throw used to get from the Promise constructor. No child was spawned, so no
       // `error`/`close` ever fires and the settle path that removes the private TMPDIR
-      // (run-stream.ts's finish) never runs — remove it here, best-effort like finish does, so
+      // (agent-stream.ts's finish) never runs — remove it here, best-effort like finish does, so
       // a broken run does not leave a `tumwater-run-*` temp dir behind.
       try {
         removeTree(runTmp);

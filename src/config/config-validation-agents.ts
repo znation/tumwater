@@ -68,7 +68,7 @@ export function validateAgentsBlock(
   checkString(r, "", "agentBin", false);
   // The agent backend for bare/no-model selectors (plans/agent-backends.md "Config"): a
   // non-blank id from the schema's reserved set. An unknown id would fall back to pi at run
-  // time (src/agent/run-agent.ts), silently running the wrong backend against a named one.
+  // time (src/agent/agent-run.ts), silently running the wrong backend against a named one.
   checkString(r, "", "backend", false);
   if (typeof r.backend === "string" && !isBackendId(r.backend))
     problems.push(`backend must name a backend (${BACKEND_IDS.join(", ")}; got ${show(r.backend)})${typoSuffix(r.backend, BACKEND_IDS)}`);

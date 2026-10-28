@@ -3,18 +3,18 @@
  * canonical stdout line splitting with its over-long-line discard, the stderr window and its
  * fallback-clone warning matcher, the stream-minted session's second ledger record, and the
  * settle/flush that resolves the run's promise. It is the part of the runAgent split (part
- * 2/2) that the coordinator (src/agent/run-agent.ts) delegates to behind the `AgentStream`
- * interface: run-agent wires the child's `data` events to `feedStdout`/`feedStderr`, binds the
+ * 2/2) that the coordinator (src/agent/agent-run.ts) delegates to behind the `AgentStream`
+ * interface: agent-run wires the child's `data` events to `feedStdout`/`feedStderr`, binds the
  * settlement state's stream getters, and keeps the watchdogs, abort wiring and the
- * `error`/`exit`/`close` listeners itself. This module imports only run-agent's, run-spawn's
- * and run-settle's type surfaces, so there is no runtime import cycle. */
+ * `error`/`exit`/`close` listeners itself. This module imports only agent-run's, agent-spawn's
+ * and agent-settle's type surfaces, so there is no runtime import cycle. */
 
 import { removeTree } from "../files/files.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { startPiWatchdogs } from "../pi/pi-watchdogs.js";
 import type { AgentBackend } from "./agent-backend.js";
-import type { PiRunOptions } from "./run-agent.js";
-import type { AppendLog, SpawnedRun } from "./run-spawn.js";
+import type { PiRunOptions } from "./agent-run.js";
+import type { AppendLog, SpawnedRun } from "./agent-spawn.js";
 import { recordSession, sessionRecordFor } from "./session-ledger.js";
 
 /** How many trailing stderr characters are carried into the next chunk's warning match, so a

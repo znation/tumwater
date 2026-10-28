@@ -1,16 +1,16 @@
 /** The backend seam (plans/agent-backends.md "The seam"): what one non-interactive agent
  * run needs from its backend — how to build the command, how to translate its native stdout
- * into tumwater's canonical event stream, and how to classify its exit. src/agent/run-spawn.ts
- * builds and spawns the run (the marker, parser, bin resolution and spawn); src/agent/run-agent.ts
+ * into tumwater's canonical event stream, and how to classify its exit. src/agent/agent-spawn.ts
+ * builds and spawns the run (the marker, parser, bin resolution and spawn); src/agent/agent-run.ts
  * keeps the coordinator — the backend-neutral watchdogs, the abort wiring and the settlement-state
- * assembly — while src/agent/run-stream.ts owns the streaming pipeline (native-to-canonical stdout
- * split and the stderr window) and the settle/flush; the
+ * assembly — while src/agent/agent-stream.ts owns the streaming pipeline (the native-to-canonical
+ * stdout split and the stderr window) and the settle/flush; the
  * post-run settlement — the group-kill and marker sweeps on exit, the spawn-error result and
  * the close-time reconcile/classify that builds the `PiRunResult` — lives in
- * src/agent/run-settle.ts. A backend registered here supplies the rest. src/agent/run-agent.ts
+ * src/agent/agent-settle.ts. A backend registered here supplies the rest. src/agent/agent-run.ts
  * registers the pi and claude adapters here.
  *
- * The registry is keyed by id and fed by explicit registration (src/agent/run-agent.ts
+ * The registry is keyed by id and fed by explicit registration (src/agent/agent-run.ts
  * registers both adapters at load), so a test can register a fake backend without importing a
  * real one. */
 
@@ -44,7 +44,7 @@ export interface AgentRunSpec {
   /** The role notes to export as TUMWATER_NOTES_PATH, when this run carries one. */
   notesPath?: string;
   /** The notes shim directory (notesShimDir under the team root) to prepend to this run's
-   * PATH, when run-spawn could install it — how a run on any backend finds the
+   * PATH, when agent-spawn could install it — how a run on any backend finds the
    * `tumwater-notes` command (plans/notes-command.md "Reaching it from a run"). Undefined
    * when the install failed or this run is not a harness run. */
   binDir?: string;
@@ -124,7 +124,7 @@ export interface AgentExitClassification {
 }
 
 /** One registered backend's contract — the seam's per-backend half: its identity and binary,
- * the command builder and stdout translator run-spawn.ts reads at run time, the resume check
+ * the command builder and stdout translator agent-spawn.ts reads at run time, the resume check
  * the runner consults on the resume-decision paths before a run, and the exit classifier the
  * runner reads at exit. */
 export interface AgentBackend {

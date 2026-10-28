@@ -190,7 +190,7 @@ logged in with ChatGPT, `plan_type: "plus"`. The probes ran in throwaway git rep
       closing event is written.
     - SIGKILL leaves the same orphan.
     - The orphan's environment still carries `TUMWATER_RUN` (checked on a `node` child). So
-      run-settle's marker sweep is what ends it.
+      agent-settle's marker sweep is what ends it.
     - `codex exec` runs in-process. A shared `codex app-server` daemon was running
       (`daemon_auto_start` is on), but the run's commands were children of the exec process, not
       of the daemon.
@@ -436,10 +436,10 @@ codex exec resume <ledger id> --json <the same flags, with -m again> -   # findi
 
 **Sessions.**
 
-- **A fresh run** has no id until the stream's `thread.started`. Today run-agent records the
+- **A fresh run** has no id until the stream's `thread.started`. Today agent-run records the
   ledger line before the spawn, with the id the backend minted ahead of time. That does not fit
   Codex.
-- **The seam gains `StreamTranslator.sessionId?()`.** As soon as it first returns an id, run-agent
+- **The seam gains `StreamTranslator.sessionId?()`.** As soon as it first returns an id, agent-run
   appends a second ledger record (same kind, cwd, model and name) carrying it. The pre-spawn record
   for a Codex run carries the session name and is never resumable.
 - **A continue** takes the newest ledger record of this run's kind that is Codex's, has a UUID id

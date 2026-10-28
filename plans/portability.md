@@ -881,7 +881,7 @@ single-change path's call site is inside `mergeToMain` (src/landing/landing-merg
 ## 5/7 — Make the agent binary configurable
 
 **Goal.** Stop assuming the agent CLI is a binary literally named `pi` on `PATH`. The pi spawn
-(src/agent/run-agent.ts) ran `spawn("pi", …)`, and both `cmdRun`'s startup-gate preflight
+(src/agent/agent-run.ts) ran `spawn("pi", …)`, and both `cmdRun`'s startup-gate preflight
 (src/cli/cli-run.ts, src/gates/startup-gate.ts) and doctor's binary check
 (src/doctor/doctor-checks.ts's `checkAgentBinary`) gated on `findOnPath("pi")` — so a non-PATH
 install, a wrapper script, or two pi builds side by side are all impossible.
@@ -909,7 +909,7 @@ install, a wrapper script, or two pi builds side by side are all impossible.
 - src/config/config-schema.ts + src/config/config-validation.ts — `agentBin?: string` on
   TumwaterConfig and in `TOP_LEVEL_KEYS`, validated as a non-empty string.
 - src/pi/pi-bin.ts — `resolveAgentBin(config): { bin: string; source: "env" | "config" | "default" }`;
-  src/agent/run-agent.ts — `spawn(resolved, …)`; the spawn-error message names it.
+  src/agent/agent-run.ts — `spawn(resolved, …)`; the spawn-error message names it.
 - src/cli/cli-run.ts + src/gates/startup-gate.ts — `cmdRun`'s preflight resolves through the same
   helper instead of `findOnPath("pi")`, and its failure names the resolved value and source.
 - src/doctor/doctor-checks.ts — `checkPiBinary` becomes `checkAgentBinary`, printing the resolved
@@ -920,7 +920,7 @@ install, a wrapper script, or two pi builds side by side are all impossible.
   test/doctor.test.ts (all three sources).
 
 **Files touched.** src/config/config-schema.ts, src/config/config-validation.ts, src/pi/pi-bin.ts,
-src/agent/run-agent.ts, src/cli/cli-run.ts, src/gates/startup-gate.ts, src/doctor/doctor-checks.ts,
+src/agent/agent-run.ts, src/cli/cli-run.ts, src/gates/startup-gate.ts, src/doctor/doctor-checks.ts,
 test/pi.test.ts, test/cli.test.ts, test/doctor.test.ts, test/config.test.ts; and
 `tumwater.example.json` only when 4a/7 has already created it (see correction 6 below).
 
@@ -941,7 +941,7 @@ happened since. Every load-bearing claim re-verified on this tree; six correctio
 four load-bearing.**
 
 Verified as written: `spawn("pi", …)` was then the single pi spawn (now
-src/agent/run-agent.ts), the `SPAWN_ERROR_PREFIX` constant sits in src/agent/run-settle.ts (it
+src/agent/agent-run.ts), the `SPAWN_ERROR_PREFIX` constant sits in src/agent/agent-settle.ts (it
 moved with the post-run settlement split), and
 `grep -rn 'findOnPath("pi")' src/` then returned exactly the two named gates — `cmdRun`'s preflight
 (now src/cli/cli-run.ts, src/gates/startup-gate.ts) and `checkPiBinary` (now `checkAgentBinary` in
@@ -962,7 +962,7 @@ Corrections:
    and test/doctor.test.ts — so only a non-default source gains the
    "resolved `<bin>` from `TUMWATER_PI_BIN`/`agentBin`" clause.
 2. **`runPi` already receives the config.** `PiRunOptions.config: TumwaterConfig` exists
-   (src/agent/run-agent.ts), so the spawn site resolves `resolveAgentBin(opts.config)` with **no
+   (src/agent/agent-run.ts), so the spawn site resolves `resolveAgentBin(opts.config)` with **no
    signature change** in the loop, landing, and review call sites (src/loop/loop.ts,
    src/loop/loop-pi.ts, src/landing/, src/review/review.ts) — thread nothing. Pin this so the
    implementer does not add an `agentBin` field to `PiRunOptions`.
@@ -997,7 +997,7 @@ Corrections:
    **test/config.test.ts** (there was no `test/config-validation.test.ts` at the time; that file
    exists now), so `agentBin`'s validation test joins test/config.test.ts.
 
-Sizing unchanged: src/pi/pi-bin.ts ~20 lines, src/agent/run-agent.ts ~2, src/cli/cli-run.ts +
+Sizing unchanged: src/pi/pi-bin.ts ~20 lines, src/agent/agent-run.ts ~2, src/cli/cli-run.ts +
 src/gates/startup-gate.ts ~5, src/doctor/doctor-checks.ts ~8, src/config/config-schema.ts +
 src/config/config-validation.ts ~4, tests ~40. No design question remains open; landable
 after 2/7.
@@ -1016,10 +1016,10 @@ except where re-pinned here.**
    path-shaped value with `fs.accessSync(…, X_OK)` and a bare name through PATH, so doctor cannot
    pass a binary the startup gate would reject. Keep the helper private and shared — a divergent
    PATH-resolution path in doctor would break that promise.
-2. **Line pins refreshed.** The single pi spawn is in src/agent/run-agent.ts (the spawn gained
+2. **Line pins refreshed.** The single pi spawn is in src/agent/agent-run.ts (the spawn gained
    `detached: true` and a process-group kill, `c73363e` — no interaction with this entry);
-   `SPAWN_ERROR_PREFIX` is in src/agent/run-settle.ts (moved with the settlement split);
-   `PiRunOptions.config` is in src/agent/run-agent.ts; `TOP_LEVEL_KEYS`
+   `SPAWN_ERROR_PREFIX` is in src/agent/agent-settle.ts (moved with the settlement split);
+   `PiRunOptions.config` is in src/agent/agent-run.ts; `TOP_LEVEL_KEYS`
    is src/config/config-schema.ts; `loadConfigSafe` is src/config/config.ts. `cmdRun`'s preflight
    still precedes its `loadConfig` (src/cli/cli-run.ts), so correction 4 stands as written;
    `findOnPath` (src/files/files.ts) is unchanged, so correction 3 stands.

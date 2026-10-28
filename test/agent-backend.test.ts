@@ -7,19 +7,19 @@ import {
   registerAgentBackend,
   type AgentBackend,
 } from "../src/agent/agent-backend.js";
-import { runAgent, MAX_NATIVE_LINE_CHARS } from "../src/agent/run-agent.js";
+import { runAgent, MAX_NATIVE_LINE_CHARS } from "../src/agent/agent-run.js";
 import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 
 // The agent seam (plans/agent-backends.md "The seam"): a registry keyed by id, and a runner
-// that lets a backend deliver the prompt on stdin. src/agent/run-agent.ts registers the pi and
+// that lets a backend deliver the prompt on stdin. src/agent/agent-run.ts registers the pi and
 // claude adapters; these tests use a fake backend so the neutral runner's stdin path is
 // exercised without a real agent.
 
 test("the registry returns the registered pi adapter and undefined for an unknown id", () => {
   const pi = backendById("pi");
-  assert.ok(pi, "pi is registered by src/agent/run-agent.ts");
+  assert.ok(pi, "pi is registered by src/agent/agent-run.ts");
   assert.equal(pi.label, "pi");
   assert.equal(backendById("no-such-agent"), undefined);
 });

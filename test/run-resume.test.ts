@@ -9,7 +9,7 @@ import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.j
 import { sessionDir } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
 import { registerAgentBackend } from "../src/agent/agent-backend.js";
-import { runAgent } from "../src/agent/run-agent.js";
+import { runAgent } from "../src/agent/agent-run.js";
 import { resolveRunVerdict } from "../src/run/run-verdict.js";
 import { applyRunOutcome } from "../src/run/run-apply.js";
 import { slotPinnedForResume } from "../src/runner/runner-run.js";
@@ -24,7 +24,7 @@ import { setEnv } from "./helpers/env.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // The resume guard dispatches to the registered backend, so this process must register the two
-// real adapters exactly as src/agent/run-agent.ts does when the harness loads.
+// real adapters exactly as src/agent/agent-run.ts does when the harness loads.
 registerAgentBackend(piBackend);
 registerAgentBackend(claudeBackend);
 

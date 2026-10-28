@@ -131,7 +131,7 @@ test("maxDailyCostUsd rejects a finite-but-unrepresentable cap past MAX_SAFE_INT
 
 test("duration-seconds fields reject values whose milliseconds overflow node's timer range", () => {
   // BUGS.md 2026-10-03: the seconds rules admitted any finite number, so a one-zero typo
-  // (`{"runTimeoutSeconds": 1e300}`) multiplied to Infinity ms in src/agent/run-agent.ts — and
+  // (`{"runTimeoutSeconds": 1e300}`) multiplied to Infinity ms in src/agent/agent-run.ts — and
   // node's setTimeout/setInterval clamp a delay that does not fit in a signed 32-bit integer
   // down to 1ms (verified: a setTimeout(1e300*1000) fired ~2ms later), killing every pi run the
   // moment it started. All seconds fields that feed a ×1000 duration share one bound:

@@ -564,9 +564,9 @@ input is false), the runner kills the run before its next event and the run ends
 recorded on the run and logged as `image_blind` with `action: "logged"`. An authoring run's
 blind read logs `image_blind` with `action: "fail"`, and the run ends error.
 
-**Binds.** `src/pi/pi-stream.ts` (`PiStreamParser.detectBlindRead`), `src/agent/run-spawn.ts`
-(the onBlindRead action, the kill armed on spawn), `src/agent/run-agent.ts`
-(the blindRead settle getter), `src/agent/run-settle.ts` (the result),
+**Binds.** `src/pi/pi-stream.ts` (`PiStreamParser.detectBlindRead`), `src/agent/agent-spawn.ts`
+(the onBlindRead action, the kill armed on spawn), `src/agent/agent-run.ts`
+(the blindRead settle getter), `src/agent/agent-settle.ts` (the result),
 `src/run/run-verdict.ts` (the fail branch).
 
 **Pinned by.** `test/pi-parser.test.ts` — the blind-read detection cases; `test/pi.test.ts` —
@@ -2360,7 +2360,7 @@ process and tumwater did not kill the run. A killed run's own group SIGTERM woul
 counted as a leak. `runAgent` passes it the sweep's count and its killed flag.
 
 **Binds.** `src/process/run-marker.ts` (`leftoversSweptMessage`) and its caller in
-`src/agent/run-settle.ts`.
+`src/agent/agent-settle.ts`.
 
 **Pinned by.** `test/run-marker.test.ts` — "leftoversSweptMessage words the sweep's count and stays
 silent for a killed or clean run".
@@ -4523,7 +4523,7 @@ index, rather than skipping the preserve".
 
 **Guarantee.** `runAgent` keeps its never-throws contract when its synchronous setup fails (session dir, raw or native log, scratch dir): it resolves `ok: false` with "could not prepare the agent run: <error>" and spawns nothing. A log opened before the failure is ended so no fd stays open.
 
-**Binds.** `src/agent/run-agent.ts` (`runAgent`) and `src/agent/run-settle.ts`
+**Binds.** `src/agent/agent-run.ts` (`runAgent`) and `src/agent/agent-settle.ts`
 (`setupFailureResult`).
 
 **Pinned by.** `test/pi.test.ts` — "an agent run whose session dir or log cannot be created resolves as a failed run instead of rejecting", "an agent run whose scratch dir cannot be created resolves as a failed run" and "an agent run that cannot open its second log ends the first". The scratch-dir test asserts the two opened log streams both report `writableEnded`; the second-log test asserts the raw log opened before the failed open is ended.

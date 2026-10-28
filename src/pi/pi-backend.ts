@@ -1,8 +1,8 @@
 /** The pi adapter for the agent seam (plans/agent-backends.md "The seam"). Every piece here
  * is today's pi-specific behavior moved behind the `AgentBackend` interface — argv via
  * pi-args, the identity translator (pi's event vocabulary IS the canonical stream), the
- * stderr exit rules, and the model-fallback-clone warning — so src/agent/run-agent.ts stays
- * backend-neutral. The claude adapter registers alongside it in src/agent/run-agent.ts. */
+ * stderr exit rules, and the model-fallback-clone warning — so src/agent/agent-run.ts stays
+ * backend-neutral. The claude adapter registers alongside it in src/agent/agent-run.ts. */
 
 import { piArgs } from "./pi-args.js";
 import { resolveBinForBackend, type ResolvedBackendBin } from "./pi-bin.js";

@@ -158,9 +158,9 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   abort/pin/recovery phases, and `runner-fallback.ts` the model-fallback fold.
 - `src/orchestrator/orchestrator.ts`: the scheduler; `src/orchestrator/orchestrator-launch.ts`
   holds its launch pass (admitting due roles to their runs).
-- `src/agent/`: the backend-neutral agent runner (`run-agent.ts` — the spawn, the
+- `src/agent/`: the backend-neutral agent runner (`agent-run.ts` — the spawn, the
   `tumwater_run` marker, watchdogs, abort, stderr capture, and the live feed), its post-run
-  settlement (`run-settle.ts` — spawn-error result, exit orphan sweep, and close-time
+  settlement (`agent-settle.ts` — spawn-error result, exit orphan sweep, and close-time
   reconcile/classify that assembles the `PiRunResult`), the `AgentBackend` interface with its
   id-keyed registry (`agent-backend.ts`),
   and the per-run session ledger the resume paths query (`session-ledger.ts`).

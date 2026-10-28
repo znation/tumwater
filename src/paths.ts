@@ -336,7 +336,7 @@ export function piLogPath(root: string, role: string): string {
 /** A role's backend-native stdout log (.tumwater/log/<role>.<backend>.native.jsonl), written
  * beside the canonical raw log and kept for debugging only: no reader folds it, and the backend
  * is in the name because one role's runs may switch backends and the two dialects must not
- * mix. Written and rotated like the raw log (src/agent/run-agent.ts). */
+ * mix. Written and rotated like the raw log (src/agent/agent-run.ts). */
 export function nativeLogPath(root: string, role: string, backend: string): string {
   return path.join(tumwaterDir(root), "log", `${role}.${backend}.native.jsonl`);
 }
@@ -361,7 +361,7 @@ export function sessionDir(root: string, role: string): string {
 }
 
 /** `sessionDir`'s real team root — the nearest ancestor holding a `.tumwater` directory — or
- * undefined when none does. run-spawn installs the notes shim from THIS (never from teamRootOf,
+ * undefined when none does. agent-spawn installs the notes shim from THIS (never from teamRootOf,
  * whose no-ancestor fallback can be a shared directory): writing `.tumwater` at the fallback
  * would mint a phantom harness root every other suite on the host then found — BUGS.md
  * 2026-10-18's `$TMPDIR/.tumwater/bin/tumwater-notes`. */
@@ -394,16 +394,16 @@ export function owningTeamRoot(dir: string): string | undefined {
  * unreachable in a harness run and used only by OpenCode's harness-only read-back lookups
  * (opencodeDbPath, loadConfigSafe), which always see a real root. Never use this to decide
  * where to WRITE a `.tumwater`: the fallback can be a shared directory, and creating `.tumwater`
- * there mints a phantom root (BUGS.md 2026-10-18); run-spawn's shim install uses
+ * there mints a phantom root (BUGS.md 2026-10-18); agent-spawn's shim install uses
  * nearestTumwaterRoot instead. Moved here from the opencode adapter (plans/notes-command.md) so
- * run-spawn's shim install — which every backend's run needs — shares the one lookup instead of
+ * agent-spawn's shim install — which every backend's run needs — shares the one lookup instead of
  * the opencode adapter keeping it private. */
 export function teamRootOf(sessionDir: string): string {
   return nearestTumwaterRoot(sessionDir) ?? path.dirname(path.dirname(sessionDir));
 }
 
 /** The directory the notes shim lands in, under a team root: `<root>/.tumwater/bin`.
- * run-spawn installs the `tumwater-notes` command there (src/agent/notes-shim.ts) and
+ * agent-spawn installs the `tumwater-notes` command there (src/agent/notes-shim.ts) and
  * run-marker's backendBaseEnv prepends it to every run's PATH, so a run on any backend finds
  * the command (plans/notes-command.md "Reaching it from a run"). */
 export function notesShimDir(root: string): string {

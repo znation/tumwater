@@ -1,6 +1,6 @@
 /** Building the pi command line for one run — pure argv construction with no subprocess or
  * file I/O. Split out of pi.ts; the child-process integration (runPi) now lives in
- * src/agent/run-agent.ts and the run's result types in src/pi/pi-run-result.ts, while
+ * src/agent/agent-run.ts and the run's result types in src/pi/pi-run-result.ts, while
  * test/pi-args.test.ts pins how config and session choices shape the command line. */
 
 import path from "node:path";
@@ -36,7 +36,7 @@ export function bundledExtensionPaths(): string[] {
  * prints the same names so a package meant for the team does not vanish silently. */
 export const PI_KEPT_BUILTINS = ["llama.cpp", "codemode", "tool-search"] as const;
 
-/** The fields of PiRunOptions (src/agent/run-agent.ts) that piArgs reads, plus the resolved
+/** The fields of PiRunOptions (src/agent/agent-run.ts) that piArgs reads, plus the resolved
  * agent binary. Declared standalone rather than as a Pick of PiRunOptions so this module stays
  * cycle-free from pi-backend.ts, which imports piArgs back for the command line. */
 interface PiArgOptions {

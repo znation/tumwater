@@ -1,10 +1,10 @@
 /** The run's watchdog clocks, split out of pi.ts's runPi (2026-10-04, organize): the run
  * deadline and the quiet watchdog (quiet-kill plus the stalled-tool-call warning) — the
  * timing policy of one pi run, which changes for different reasons than the spawn, stream,
- * and result-distillation wiring that drives it (src/agent/run-agent.ts keeps those). The
+ * and result-distillation wiring that drives it (src/agent/agent-run.ts keeps those). The
  * factory owns all the mutable state the two timers kept in runPi's closure (the progress
  * window, the zero-byte grace, the warned-call set) and exposes the flags the run's close
- * handler reads back; run-agent.ts feeds the parser live through the deps accessors, so no
+ * handler reads back; agent-run.ts feeds the parser live through the deps accessors, so no
  * notification path is needed when events land. */
 import { bufferedCommandStallMs, callBuffersOutput } from "./command-shape.js";
 import type { OpenToolCall } from "./pi-event-line.js";

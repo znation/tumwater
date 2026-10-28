@@ -1,7 +1,7 @@
 /** The codex adapter for the agent seam (plans/codex-backend.md §4, §5, §6): it shapes one
  * run's argv/stdin/env, translates codex's `exec --json` stream, reads the authoritative
  * rollout after the process exits, and classifies the exit's stderr — everything
- * backend-specific. src/agent/run-spawn.ts spawns the run and records this run in the session
+ * backend-specific. src/agent/agent-spawn.ts spawns the run and records this run in the session
  * ledger; codex mints its own session id (a thread id, or the resumed record's id) in the
  * stream's `thread.started`, which the runner's stream-mint pass appends to the ledger and
  * `invocation` returns so a later `exec resume` can reach it.
@@ -12,7 +12,7 @@
  * thread and the existing `handoff` path takes over (design §4). Together with the `resumable`
  * hook, that is every resume point's one rule.
  *
- * Registration lives in src/agent/run-agent.ts beside the pi, claude and opencode adapters; a
+ * Registration lives in src/agent/agent-run.ts beside the pi, claude and opencode adapters; a
  * test selects codex by setting `config.agent = "codex"` on a run. A run carrying a note gets
  * the notes path in its environment (the `tumwater-notes` command on PATH reads it), as the
  * pi and claude adapters do. */

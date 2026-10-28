@@ -148,7 +148,7 @@ translator drops tool-result content anyway (src/agent/claude/claude-stream.ts:2
 - **Not blind:** pi's `[Image omitted: could not be converted…]` / `…resized…` notes are
   processing failures, not a capability gap.
 
-On a blind read the runner (src/agent/run-agent.ts) kills an **authoring** run at once, through
+On a blind read the runner (src/agent/agent-run.ts) kills an **authoring** run at once, through
 the same `terminateChild` the watchdogs use, so the agent does not go on working from a picture it
 never saw. Gate runs (the reviewer, the conflict resolver) only log the read in this version.
 
@@ -264,7 +264,7 @@ src/config/config-views.ts (export the borrow order / a tier-config builder),
 src/doctor/doctor-model-checks.ts, src/doctor/doctor.ts, new src/doctor/image-probe.ts (PNG +
 probe), src/paths.ts (cache path), src/cli.ts and src/cli/help.ts (`--reprobe`),
 src/ui/tui/tui-keys.ts and src/gui/gui-endpoints.ts (`probeImages: "never"`), src/pi/pi-stream.ts,
-src/pi/pi-run-result.ts, src/agent/run-agent.ts, src/tick/tick-verdict.ts,
+src/pi/pi-run-result.ts, src/agent/agent-run.ts, src/tick/tick-verdict.ts,
 src/tick/tick-outcome.ts, src/tick/tick-apply.ts, src/tick/tick-resume.ts,
 src/prompt/prompt-followup.ts, src/loop/loop-state.ts, src/loop/loop-tick.ts, src/loop/loop.ts,
 src/loop/model-fallback.ts, src/events/events.ts, src/events/event-format.ts,
