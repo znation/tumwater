@@ -81,7 +81,7 @@ test("checkFixClaims warns naming the heading and missing symbols of a record wh
   assert.ok(r.detail.includes("runScriptGroup, signalTree, src/build/build-check.ts…"), r.detail);
   assert.ok(!r.detail.includes("killAfter"), r.detail);
   // A second suspect is still named, so fixing the first does not hide it.
-  assert.match(r.detail, /and 1 more record\(s\): "Entry 2:/);
+  assert.match(r.detail, /and 1 more record: "Entry 2:/);
   assert.match(r.detail, /land the fix or keep the bug Open \/ refresh a stale record/);
   // Open entries are never verified — an Open bug has no fix to back.
   assert.ok(!r.detail.includes("openOnlyPhantom"), r.detail);
@@ -1090,6 +1090,7 @@ test("checkMergeQueueFiles warns naming every file the reader skips", () => {
   assert.match(out.detail, /000-torn\.json/);
   assert.match(out.detail, /999-foreign\.json/);
   assert.match(out.detail, /2 files/);
+  assert.match(out.detail, /and 1 more file:/, "two skips render the singular extra, not file(s)");
   assert.ok(!out.detail.includes(path.basename(queuedMergeFiles(root)[0]!.file)), "the readable entry's own file is not named");
 });
 

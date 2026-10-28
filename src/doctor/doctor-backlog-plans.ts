@@ -1,4 +1,5 @@
 import { andMore, quoteHeading, readDoc, readBacklogChecked, FIX_CLAIMS_CHECKED, REFUSAL_NOTE_MAX } from "./doctor-backlog.js";
+import { agree } from "../text/phrases.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import path from "node:path";
@@ -46,7 +47,7 @@ export function checkFixClaims(root: string): CheckOutcome {
   const { heading, missing } = first;
   const names = missingSymbolNames(missing);
   // Every other suspect is still named, shortened: a doctor check is one line.
-  const more = andMore(rest, (p) => quoteHeading(p.heading), "record(s)");
+  const more = andMore(rest, (p) => quoteHeading(p.heading), agree(rest.length, "record", "records"));
   return warnOutcome(`BUGS.md records "${heading}" as Fixed, but none of the symbols its Fix paragraph names ` +
       `exist on this tree: ${names}${more} — land the fix or keep the bug Open / refresh a stale record`);
 }
@@ -173,14 +174,14 @@ export function checkValidationGaps(root: string): CheckOutcome {
   if (!first) {
     if (unpinned.length > 0) {
       const up = unpinned[0]!;
-      const more = andMore(unpinned.slice(1), (s) => quoteHeading(s.title), "record(s)");
+      const more = andMore(unpinned.slice(1), (s) => quoteHeading(s.title), agree(unpinned.slice(1).length, "record", "records"));
       return warnOutcome(`BUGS.md record "${up.title}" is an \`unclear-invariant\` fix but names no ` +
         `docs/invariants.md section — record the reconstructed guarantee there (a "Pinned by" line) in the ` +
         `same commit so the next bug in that area does not reconstruct it again${more}`);
     }
     return okOutcome(`newest ${validationGapRecords(root).length} Fixed record(s) carry a known Validation gap tag`);
   }
-  const more = andMore(rest, (s) => quoteHeading(s.title), "record(s)");
+  const more = andMore(rest, (s) => quoteHeading(s.title), agree(rest.length, "record", "records"));
   const what = first.kind === "missing"
     ? `BUGS.md record "${first.title}" has no **Validation gap:** line`
     : `BUGS.md record "${first.title}" names unrecognized Validation gap tag "${first.tag}"`;
@@ -458,16 +459,16 @@ export function planDependencyProblem(root: string): PlanDependencyProblem | nul
   }
   if (firstDangling) {
     return { kind: "dangling", message: danglingMsg(firstDangling) +
-      andMore(restDangling, (d) => `${quote(d.title)} → ${d.ref}`, "ref(s)") +
+      andMore(restDangling, (d) => `${quote(d.title)} → ${d.ref}`, agree(restDangling.length, "ref", "refs")) +
       others([[unparsed.length, "unparsed clause(s)"], [misworded.length, "misworded dependency(ies)"]]) };
   }
   if (firstUnparsed) {
-    return { kind: "unparsed", message: unparsedMsg(firstUnparsed) + andMore(restUnparsed, quote, "clause(s)") +
+    return { kind: "unparsed", message: unparsedMsg(firstUnparsed) + andMore(restUnparsed, quote, agree(restUnparsed.length, "clause", "clauses")) +
       others([[misworded.length, "misworded dependency(ies)"]]) };
   }
   if (firstMisworded) {
     return { kind: "misworded", message: miswordedMsg(firstMisworded) +
-      andMore(restMisworded, (w) => `${quote(w.title)} → ${w.ref}`, "dependency(ies)") };
+      andMore(restMisworded, (w) => `${quote(w.title)} → ${w.ref}`, agree(restMisworded.length, "dependency", "dependencies")) };
   }
   return null;
 }

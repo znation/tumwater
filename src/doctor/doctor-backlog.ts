@@ -9,7 +9,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { eventsSince } from "../events/event-window.js";
 import { finiteNumber } from "../files/json-object.js";
 import { lowerMedian } from "../collections.js";
-import { plural, shortSpanPhrase } from "../text/phrases.js";
+import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { queuedMerges, unreadableMergeQueueFiles } from "../merge/merge-queue.js";
 import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
 import { listWideScope, queuedListRows, type QueuedListRow } from "../inbox/inbox.js";
@@ -65,7 +65,8 @@ export const STALE_BUG_DAYS = 3;
  * shortened, since a doctor check renders one line. `render` makes each extra item's short
  * form — the fix-claim and stranded-plan sites quote a heading trimmed to
  * FIX_CLAIM_HEADING_MAX, the duplicate-headings site passes its items through as built;
- * `noun` names what the extras are ("record(s)" for fix claims, empty for the other two).
+ * `noun` names what the extras are and must already agree with `rest.length` — callers pass
+ * `agree(rest.length, "record", "records")`, or empty where no noun is named.
  * Empty string when there are no extras. */
 export function andMore<T>(rest: readonly T[], render: (item: T) => string, noun = ""): string {
   return rest.length > 0
@@ -189,7 +190,7 @@ export function checkMergeQueueFiles(root: string): CheckOutcome {
   const files = skippedMergeQueueFiles(root);
   if (files.length === 0) return okOutcome("the queue reader skips no merge-queue file");
   const [first, ...rest] = files;
-  const more = andMore(rest, (f) => f, "file(s)");
+  const more = andMore(rest, (f) => f, agree(rest.length, "file", "files"));
   return warnOutcome(`the merge queue holds ${plural(files.length, "file")} the reader skips — ${first!}${more}; ` +
     `a torn or foreign file is never cleared, so nothing ages it or surfaces its merge — remove it (a crashed enqueue's merge ref still recovers on the next run)`);
 }
