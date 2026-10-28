@@ -65,6 +65,48 @@ export function readPiDefaultModel(
   );
 }
 
+/** The saved default pair, or null when either half is missing or empty — pi uses a saved
+ * default only as a pair. */
+function savedDefaultPair(
+  doc: Record<string, unknown>,
+): { provider: string; model: string } | null {
+  const { defaultProvider, defaultModel } = doc;
+  if (typeof defaultProvider !== "string" || defaultProvider === "") return null;
+  if (typeof defaultModel !== "string" || defaultModel === "") return null;
+  return { provider: defaultProvider, model: defaultModel };
+}
+
+/** Whether pi starts on the first scoped model instead of the saved default — a pattern
+ * tumwater does not resolve, so the reader shows nothing. */
+function startsWithScopedModels(doc: Record<string, unknown>): boolean {
+  return Array.isArray(doc.enabledModels) && doc.enabledModels.length > 0;
+}
+
+/** Whether the project's own `.pi/settings.json` names any default key, which makes pi's final
+ * choice depend on whether it trusts the project — unknowable to tumwater, so show nothing. */
+function projectOverridesSavedDefault(projectRoot: string): boolean {
+  // A project-local override that names any default key means pi's final choice depends on
+  // whether it trusts the project — unknowable to tumwater, so show nothing.
+  const proj = readJsonFile<Record<string, unknown>>(path.join(projectRoot, ".pi", "settings.json"));
+  if (!proj) return false;
+  for (const key of DEFAULT_KEYS) {
+    if (proj[key] !== undefined) return true;
+  }
+  return false;
+}
+
+/** pi's thinking for the pair: `modelThinkingLevels[key]` first, else `defaultThinkingLevel`. */
+function savedThinkingLevel(
+  doc: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const levels = doc.modelThinkingLevels;
+  const level = isJsonObject(levels) ? levels[key] : undefined;
+  if (typeof level === "string") return level;
+  if (typeof doc.defaultThinkingLevel === "string") return doc.defaultThinkingLevel;
+  return undefined;
+}
+
 function readPiDefaultModelUncached(
   settingsPath: string,
   projectRoot: string,
@@ -73,25 +115,12 @@ function readPiDefaultModelUncached(
   // file; the nested shapes get the same isJsonObject guard.
   const doc = readJsonFile<Record<string, unknown>>(settingsPath);
   if (!doc) return null;
-  const { defaultProvider, defaultModel } = doc;
-  if (typeof defaultProvider !== "string" || defaultProvider === "") return null;
-  if (typeof defaultModel !== "string" || defaultModel === "") return null;
-  if (Array.isArray(doc.enabledModels) && doc.enabledModels.length > 0) return null;
-  // A project-local override that names any default key means pi's final choice depends on
-  // whether it trusts the project — unknowable to tumwater, so show nothing.
-  const proj = readJsonFile<Record<string, unknown>>(path.join(projectRoot, ".pi", "settings.json"));
-  if (proj) {
-    for (const key of DEFAULT_KEYS) {
-      if (proj[key] !== undefined) return null;
-    }
-  }
-  const key = `${defaultProvider}/${defaultModel}`;
-  const levels = doc.modelThinkingLevels;
-  const level = isJsonObject(levels) ? levels[key] : undefined;
-  let thinking: string | undefined;
-  if (typeof level === "string") thinking = level;
-  else if (typeof doc.defaultThinkingLevel === "string") thinking = doc.defaultThinkingLevel;
+  const pair = savedDefaultPair(doc);
+  if (!pair) return null;
+  if (startsWithScopedModels(doc)) return null;
+  if (projectOverridesSavedDefault(projectRoot)) return null;
+  const thinking = savedThinkingLevel(doc, `${pair.provider}/${pair.model}`);
   return thinking !== undefined
-    ? { provider: defaultProvider, model: defaultModel, thinking }
-    : { provider: defaultProvider, model: defaultModel };
+    ? { provider: pair.provider, model: pair.model, thinking }
+    : { provider: pair.provider, model: pair.model };
 }
