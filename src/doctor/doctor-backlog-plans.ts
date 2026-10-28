@@ -227,9 +227,10 @@ export function checkLiveFinished(root: string): CheckOutcome {
 }
 
 /** One `## ` title found more than once in a backlog file by the shared scanBacklogHeadings
- * loop, with the file that carries it — the structural twin the always-on `backlog-headings`
- * team alert reads (src/ui/team-alert-backlog.ts, fed via src/ui/status-payload.ts), so the
- * doctor row and the alert cannot drift on which headings count. */
+ * loop, with the file that carries it — also read (re-exported as `BacklogHeadingDuplicate`
+ * via src/ui/team-alert-shared.ts) by the always-on `backlog-headings` team alert
+ * (src/ui/team-alert-backlog.ts), so the doctor row and the alert cannot drift on which
+ * headings count. */
 export interface DuplicatedBacklogHeading {
   file: string;
   heading: string;
@@ -417,7 +418,7 @@ export function checkStalledEntries(root: string): CheckOutcome {
  * then misworded) and `message` is byte-identical to what the doctor's `plan dependencies` row
  * shows. Shared by checkPlanDependencies and the always-on plan-dependencies team alert, so the
  * problem set, the severity order, and the wording cannot drift. */
-interface PlanDependencyProblem {
+export interface PlanDependencyProblem {
   kind: "cycle" | "dangling" | "unparsed" | "misworded";
   message: string;
 }

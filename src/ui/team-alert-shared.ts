@@ -8,6 +8,7 @@ import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { STALL_RE, duration } from "./run-progress-model.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
+import type { DuplicatedBacklogHeading, LiveFinishedEntry, PlanDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 
 /** A stale open question the doctor's 7-day rule warns about (src/doctor/doctor-backlog-bugs.ts
  * checkStaleQuestions, STALE_QUESTION_DAYS): an open QUESTIONS.md entry whose `(asked by …)` stamp
@@ -23,41 +24,21 @@ export interface StaleQuestion {
   days: number;
 }
 
-/** A broken plan-dependency clause the doctor's `plan dependencies` rule (src/doctor/
- * doctor-backlog-plans.ts, planDependencyProblem) warns about: a cycle that blocks a whole
- * series forever, a dangling `requires … landed` ref naming no heading (its hold is void), an
- * unparsed clause that holds nothing, or a misworded dependency the claim allocator ignores.
- * Computed in src/ui/alert-feeds.ts's planDependencyAlert through the same function the
- * doctor's check uses, so the alert and the doctor cannot drift on the problem set, the
- * severity order, or the wording. Gives the alert's title its kind and the detail.
- */
-export interface PlanDependencyProblem {
-  kind: "cycle" | "dangling" | "unparsed" | "misworded";
-  message: string;
-}
+/** The doctor's `plan dependencies` problem type (src/doctor/doctor-backlog-plans.ts), re-exported
+ * so the plan-dependencies alert reads the same `{ kind, message }` shape the doctor's
+ * checkPlanDependencies row names — no structural twin left to drift. */
+export type { PlanDependencyProblem };
 
-/** One `## ` section heading that appears more than once in a backlog file — the always-on twin
- * of the doctor's `backlog headings` rule (src/doctor/doctor-backlog-plans.ts, computed by the
- * shared duplicatedBacklogHeadings, which itself shares scanBacklogHeadings with the doctor's
- * checkBacklogHeadings). Structural twin: no mapping in status-payload, which just passes
- * duplicatedBacklogHeadings(root) through as the teamAlerts `duplicatedHeadings` argument. */
-export interface BacklogHeadingDuplicate {
-  file: string;
-  heading: string;
-}
+/** The doctor's duplicated-`## `-heading row type, re-exported under the alert builders' name
+ * `BacklogHeadingDuplicate` (the doctor spells it `DuplicatedBacklogHeading` in
+ * src/doctor/doctor-backlog-plans.ts), so the `backlog-headings` alert and the doctor share one
+ * definition instead of a structural twin. */
+export type { DuplicatedBacklogHeading as BacklogHeadingDuplicate };
 
-/** One live backlog file's finished-history row as liveFinishedHistory reports it — the always-on
- * twin of the doctor's `backlog archive` rule (src/doctor/doctor-backlog-plans.ts, computed by the
- * shared liveFinishedEntriesFor, which itself shares liveFinishedHistory with checkLiveFinished).
- * Structural twin: no mapping in status-payload, which just passes
- * liveFinishedEntriesFor(root) through as the teamAlerts `liveFinished` argument. */
-export interface LiveFinishedEntry {
-  file: string;
-  section: string;
-  archive: string;
-  entries: number;
-  bytes: number;
-}
+/** The doctor's finished-history row type (src/doctor/doctor-backlog-plans.ts LiveFinishedEntry),
+ * re-exported so the `backlog archive` alert's `liveFinished` rows share one definition instead
+ * of a structural twin. */
+export type { LiveFinishedEntry };
 
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
