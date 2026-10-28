@@ -38,8 +38,8 @@ export function stringList(value: unknown): string[] {
  * build_stale, slot_wait, restart, and permit_reserve renderers (aheadCommits, waitedMs,
  * abortedRuns, reserve → 0); phrases.ts's budgetPhrase (spentUsd, capUsd → 0); redeploy.ts's
  * autoRestartRecord (lastAt → null); build/build-info.ts's readBuildInfo (builtAt → 0);
- * failure/failure-state-change.ts's model_fallback_ended (durationMs → 0) and build_stale
- * renderer (aheadCommits → 0); gates/maintenance-quota.ts's foldLine and seed (ev.ts → null);
+ * failure/failure-state-change.ts's build_stale renderer (aheadCommits → 0);
+ * gates/maintenance-quota.ts's foldLine and seed (ev.ts → null);
  * team/team-orchestrator-info.ts's isFiniteNumber (v → undefined); team/team-state.ts's
  * standingMarker, pausedRoles, and standingRolesUntil (until → undefined);
  * operator/operator-requests.ts's consumeWakeRequest (notBeforeMs → undefined);

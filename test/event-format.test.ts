@@ -910,7 +910,6 @@ test("formatEvent never renders undefined or [object Object] for corrupt event f
     { ts: 0, source: "tumwater", type: "budget_paused", fallbackRejected: { a: 1 } } as never,
     { ts: 0, source: "tumwater", type: "budget_paused", fallbackDemoted: "free/model", failures: { a: 1 } } as never,
     { ts: 0, source: "tumwater", type: "role_streak_paused", role: { a: 1 }, streak: { a: 1 } } as never,
-    { ts: 0, source: "tumwater", type: "model_fallback_started", provider: { a: 1 }, model: { a: 1 }, reason: { a: 1 } } as never,
     // Array-valued fields can be corrupt too: stringList drops foreign entries, so a
     // hand-edited packages/keys/reasons array never joins to "[object Object]".
     { ts: 0, source: "tumwater", type: "dep_install", packages: ["pi", { a: 1 }] } as never,
@@ -1052,38 +1051,6 @@ test("formatEvent renders model_changed with the new selector, or pi's default",
     to: null,
   } as never);
   assert.match(cleared, /tumwater\s+model changed — now pi's default$/);
-});
-
-test("formatEvent renders the model-fallback episode start and end", () => {
-  const started = formatEvent({
-    ts: 0,
-    source: "bugfix",
-    type: "model_fallback_started",
-    provider: "backup",
-    model: "f1",
-    reason: "server",
-  } as never);
-  assert.match(started, /bugfix\s+model fallback — backup\/f1 engaged \(primary failing: server\)$/);
-  const ended = formatEvent({
-    ts: 0,
-    source: "bugfix",
-    type: "model_fallback_ended",
-    provider: "primary",
-    model: "m1",
-    durationMs: 5 * 60_000,
-  } as never);
-  assert.match(ended, /bugfix\s+model fallback ended — back on primary\/m1 after 5m$/);
-  // A torn durationMs is not NaN minutes: the episode length reads as 0.
-  const endedTorn = formatEvent({
-    ts: 0,
-    source: "bugfix",
-    type: "model_fallback_ended",
-    provider: "primary",
-    model: "m1",
-    durationMs: "five",
-  } as never);
-  assert.match(endedTorn, /after 0m$/, `corrupt durationMs must read zero: ${endedTorn}`);
-  assert.doesNotMatch(endedTorn, /NaN/);
 });
 
 test("formatEvent renders an opencode free model billed as demoted from free to priced", () => {

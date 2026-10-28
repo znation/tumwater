@@ -5,6 +5,21 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract, part 5p/6: The `model_fallback_*` event vocabulary goes — no event type, label or failure line names the removed episode (planned 2026-10-27 by the plan role; the fourth part replacing part 5c/6; requires Subtract part 5c/6 and Subtract part 5o/6 landed, since the report-fold dispatcher and the runner emitter are gone; touches src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts test/event-format.test.ts test/failure-state-change.test.ts test/failure-render.test.ts) — done 2026-10-27 by the feature role
+
+**Goal.** `model_fallback_started` and `model_fallback_ended` no longer exist as event types: the union, its labels, the formatter and the failure-state-change renderer drop them. The budget-fallback events remain for part 5k/6 to remove.
+
+**Approach.**
+- `src/events/events.ts`: delete the two members from the `HarnessEvent` union; `src/events/event-labels.ts`: delete their `EVENT_TYPE_LABELS` entries.
+- `src/events/event-format.ts`: delete their `formatEvent` cases and remove them from the `budgetEventMessage` case list and its shared comment.
+- `src/failure/failure-state-change.ts`: delete the two names from the tracked-event list and their `case` arms in both the reason and the rendering switches.
+
+**Acceptance criteria.**
+- `grep -rn 'model_fallback_started\|model_fallback_ended' src/` finds nothing.
+- test/event-format.test.ts, test/failure-state-change.test.ts and test/failure-render.test.ts pass with their model-fallback cases and fixtures removed; `npm run test:gate` passes.
+
+**Tests.** Update the three modules, then run them and the project's gate, and confirm green.
+
 ### `editAndAnnounce`'s complexity-18 flag/source/commit shell is split into one named helper per concern — the `--edit`/`--file` flag resolution, the editor round-trip, the unchanged report and the commit-plus-hold announcement — so "which flags does an edit accept?", "what does the editor round-trip write when the buffer is unchanged?" and "which message says the entry is still held?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the sibling `parsePromptArgs` split and the `parseInitArgs`, `movedSourceFindings` and `createTeamConfigKeyEditor` plans each extract one named helper per job the same way; independent in file of every Planned entry — before this entry `grep -c 'backlog-cli' PLANS.md` and `grep -c 'editAndAnnounce' PLANS.md` both print 0, so no `## Planned` entry names the symbol or src/backlog/backlog-cli.ts; PLANS-DONE.md records only behavior additions to the shell (the still-held prose and the `unchanged` no-op), never a split of `editAndAnnounce` (`grep -cE '^### .*editAndAnnounce' PLANS-DONE.md` counts three behavior entries, none a move of this body); docs/invariants.md names no `editAndAnnounce` symbol (`grep -c 'editAndAnnounce' docs/invariants.md` prints 0) — its INV-B5 binds the file only through `commitOperatorBacklogEdit` and `announceFiled`, both preserved; touches src/backlog/backlog-cli.ts) — done 2026-10-27 by the feature role
 
 **Goal.** `editAndAnnounce` (`src/backlog/backlog-cli.ts`, complexity 18) is the shared shell of `tumwater bug --edit` and `tumwater plan --edit`. One body interleaves four jobs: the `--file`/`--edit`/`--json` flag resolution with its repeat and stray-positional refusals; the ready-repo gate; the source resolution that either opens the entry in `$VISUAL`/`$EDITOR` (an unchanged buffer reports and stops) or reads `--file`/positionals; and the tail that commits through `commitOperatorBacklogEdit` and prints the prose or `--json` payload, with `stillHeldNote` when the entry stays held. A reader asking "which flags does an edit accept?", "when does the editor round-trip commit nothing?" or "which message says the entry is still held?" has only the one body to scan.

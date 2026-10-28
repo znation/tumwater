@@ -361,21 +361,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 5p/6: The `model_fallback_*` event vocabulary goes — no event type, label or failure line names the removed episode (planned 2026-10-27 by the plan role; the fourth part replacing part 5c/6; requires Subtract part 5c/6 and Subtract part 5o/6 landed, since the report-fold dispatcher and the runner emitter are gone; touches src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts test/event-format.test.ts test/failure-state-change.test.ts test/failure-render.test.ts)
-
-**Goal.** `model_fallback_started` and `model_fallback_ended` no longer exist as event types: the union, its labels, the formatter and the failure-state-change renderer drop them. The budget-fallback events remain for part 5k/6 to remove.
-
-**Approach.**
-- `src/events/events.ts`: delete the two members from the `HarnessEvent` union; `src/events/event-labels.ts`: delete their `EVENT_TYPE_LABELS` entries.
-- `src/events/event-format.ts`: delete their `formatEvent` cases and remove them from the `budgetEventMessage` case list and its shared comment.
-- `src/failure/failure-state-change.ts`: delete the two names from the tracked-event list and their `case` arms in both the reason and the rendering switches.
-
-**Acceptance criteria.**
-- `grep -rn 'model_fallback_started\|model_fallback_ended' src/` finds nothing.
-- test/event-format.test.ts, test/failure-state-change.test.ts and test/failure-render.test.ts pass with their model-fallback cases and fixtures removed; `npm run test:gate` passes.
-
-**Tests.** Update the three modules, then run them and the project's gate, and confirm green.
-
 ### Subtract, part 5k/6: The budget fallback's events, alerts, badges and doctor rows go (planned 2026-10-27 by the plan role; the fifth part replacing part 5c/6; requires Subtract part 5p/6 landed, since the event files this part edits lost their model-fallback members in 5p/6 and its prerequisite chain (5o/6, 5n/6) already removed the role-view and drawer fallback displays; touches src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts src/ui/team-alert-status.ts src/ui/badges.ts src/ui/status-render.ts src/ui/status-payload.ts src/roles/role-view.ts src/roles/role-render.ts src/ui/gui/gui-client-drawer-config.ts src/pi/pi-models.ts src/doctor/doctor-fallback-checks.ts (deleted) src/doctor/doctor.ts src/doctor/doctor-check-names.ts docs/how-it-works.md test/badges.test.ts test/status-payload.test.ts test/role-view.test.ts test/doctor-checks.test.ts test/doctor-model-checks.test.ts test/event-format.test.ts test/team-orchestrator-info.test.ts)
 
 **Goal.** No surface shows a budget or over-cap fallback: the events, alerts, badges, status fields, role rows and doctor rows that named one are deleted.

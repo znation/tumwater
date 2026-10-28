@@ -113,8 +113,6 @@ export interface HarnessEvent {
     | "config_changed" // a live tumwater.json edit changed other settings (keys)
     | "model_changed" // a live tumwater.json edit changed the team's model wiring; carries from/to (teamModelLabel of the previous/next config) and roles (the per-role selector diffs) when a roles.<id> model override changed
     | "backend_binary" // a live tumwater.json edit newly routed a seam to a backend the previous config did not use; carries agent and found (the resolved binary was present) — the binary check's verdict, logged so a newly added backend is verified like startup would
-    | "model_fallback_started" // a role tripped its model-fallback episode after consecutive provider-class failures on the primary; carries provider/model of the fallback pair and the tripping reason
-    | "model_fallback_ended" // a probe run on the primary answered without a provider failure; carries durationMs of the episode and the primary's provider/model
     | "opencode_free_model_billed" // a catalog-free OpenCode model reported a nonzero run cost, demoting it to priced (plans/opencode-backend.md §7, part 6c/7): carried as model (the catalog cache key) and costUsd, once per model (src/agent/opencode/opencode-catalog.ts observeOpencodeRun)
     | "image_blind" // a run's agent read an image its model cannot see (plans/image-input.md "Detecting a blind read"): pi strips such images, so an authoring run was killed and the run fails — carried as source, run, path, model, and action "fail" when the authoring run was killed, "logged" when only a gate run recorded the read
     | "build_stale" // main's build inputs moved past the running build (self-hosting teams; src/redeploy/redeploy.ts)

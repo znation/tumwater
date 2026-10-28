@@ -9,7 +9,7 @@ import { truncateExample } from "./failure-cluster.js";
 import { cutSplitsSurrogatePair, isNonBlankString } from "../text/text.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
-import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
+import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 
 import { shortSha } from "../text/format.js";
 import { deferredReasonText, untilClockSuffix, gigabytes, windowSuffix, windowResetPhrase, backendLabel } from "../events/event-format.js";
@@ -17,7 +17,7 @@ import { claudeUtilizationPct } from "../agent/claude/claude-account.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
  * cap/team gates and the team hold, the error-streak breaker's pause, the role's own daily
- * cap, model fallbacks, live-config edits, self-hosted redeploys, need-based deferrals,
+ * cap, live-config edits, self-hosted redeploys, need-based deferrals,
  * orchestrator lifecycle, and the gate holds/lifts that stop and restart work — low disk,
  * quiet hours, the maintenance allowance and the subscription-window reserve). Everything the
  * set omits is deliberately excluded and named in STATE_CHANGE_EXCLUDED_TYPES; the two sets
@@ -39,8 +39,6 @@ export const STATE_CHANGE_TYPES = new Set<string>([
   "role_streak_paused",
   "role_cap_paused",
   "role_cap_resumed",
-  "model_fallback_started",
-  "model_fallback_ended",
   "rate_limit_hold",
   "rate_limit_resumed",
   "max_concurrent_changed",
@@ -182,7 +180,7 @@ function field(v: unknown): string {
 
 /** The backend a fallback-ish decision line names, as "provider/model", defaulting each half
  * to pi's own default when the event omits it and slicing both through field. Shared by the
- * budget_fallback and model_fallback lines so the default and its slice rule stay in one place. */
+ * budget_fallback line so the default and its slice rule stay in one place. */
 function providerModel(ev: HarnessEvent): string {
   return `${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")}`;
 }
@@ -264,15 +262,6 @@ function pauseStateChange(ev: HarnessEvent): string {
 function modelStateChange(ev: HarnessEvent): string {
   let text: string;
   switch (ev.type) {
-    case "model_fallback_started":
-      // The role tripped off its primary onto its fallback after provider-class failures.
-      text = `model fallback — ${providerModel(ev)} engaged (${field(ev.reason ?? "backend failure")})`;
-      break;
-    case "model_fallback_ended":
-      // The return counterpart: names the primary the role resumed on and how long the
-      // off-model episode ran.
-      text = `model fallback ended — back on ${providerModel(ev)} after ${shortSpanPhrase(finiteNumber(ev.durationMs, 0))}`;
-      break;
     case "model_changed":
       // A model_cleared (or a roles.<id>.model-only) live edit arrives with `to: null`;
       // name pi's default the way the feed does so the digest never renders a bare
@@ -472,8 +461,6 @@ export function describeStateChange(ev: HarnessEvent): string {
     case "role_cap_paused":
     case "role_cap_resumed":
       return truncateExample(pauseStateChange(ev), STATE_CHANGE_MAX);
-    case "model_fallback_started":
-    case "model_fallback_ended":
     case "model_changed":
     case "fallback_switched":
     case "budget_handback":

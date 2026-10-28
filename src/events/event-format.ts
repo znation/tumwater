@@ -138,7 +138,7 @@ function subscriptionWindowPhrase(e: HarnessEvent): string {
 
 /** The provider/model pair a fallback-ish line names, as "provider/model", defaulting each
  * half when the event omits it (a bare pi run carries neither). Shared by the budget_fallback
- * and model_fallback lines so the pair's shape and defaults cannot drift between them. */
+ * line so the pair's shape and defaults cannot drift. */
 function providerModelPair(e: HarnessEvent, providerDefault: string, modelDefault: string): string {
   return `${textOr(e.provider, providerDefault)}/${textOr(e.model, modelDefault)}`;
 }
@@ -463,13 +463,6 @@ function budgetEventMessage(e: HarnessEvent): string {
       });
       return `fallback: ${parts.join("; ")}`;
     }
-    case "model_fallback_started":
-      // Routine-with-explanation, like rate_limit_hold: the switch IS the harness handling the
-      // failure. Names the pair the role now runs on and why the primary was abandoned.
-      return `model fallback — ${providerModelPair(e, "pi's default", "pi's default")} engaged (primary failing: ${textOr(e.reason, "backend failure")})`;
-    case "model_fallback_ended":
-      // The return counterpart: names the pair runs resume on and how long the episode ran.
-      return `model fallback ended — back on ${providerModelPair(e, "pi's default", "pi's default")} after ${minutes(e.durationMs)}m`;
     case "opencode_free_model_billed":
       // The promotion ended (plans/opencode-backend.md §7, part 6c/7): a run billed what the
       // catalog called free, so the team now prices that model as paid from here on. No warning
@@ -633,9 +626,9 @@ function configEventMessage(e: HarnessEvent): string {
 function imageRestartEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "image_blind": {
-      // Routine-with-explanation like the model-fallback events — no warning prefix: the
-      // run was stopped (or a gate run noted) because the model cannot see the image. Names
-      // the file, the model, and whether the run failed on it or a gate run only logged it.
+      // Routine-with-explanation — no warning prefix: the run was stopped (or a gate run
+      // noted) because the model cannot see the image. Names the file, the model, and
+      // whether the run failed on it or a gate run only logged it.
       const action =
         e.action === "logged"
           ? " (gate run logged)"
@@ -742,7 +735,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "merged": case "merge_queued": case "merge_cancelled": case "merge_topped": case "merge_done": case "merge_failed": case "conflict_handback": case "operator_revert": case "main_check": case "main_culprit": case "main_red_hold": return mergeEventMessage(e);
     case "review_start": case "review_verdict": case "review_rejected": case "review_failed": case "revision": return reviewEventMessage(e);
     case "prompt_enqueued": case "prompt_cancelled": case "prompt_edited": case "prompt_topped": case "prompt_taken": case "question_posted": case "entry_refused": case "issue_filed": return inboxEventMessage(e);
-    case "budget_warning": case "budget_paused": case "budget_fallback": case "budget_resumed": case "budget_handback": case "fallback_switched": case "model_fallback_started": case "model_fallback_ended": case "opencode_free_model_billed": return budgetEventMessage(e);
+    case "budget_warning": case "budget_paused": case "budget_fallback": case "budget_resumed": case "budget_handback": case "fallback_switched": case "opencode_free_model_billed": return budgetEventMessage(e);
     case "team_paused": case "team_resumed": case "role_paused": case "role_resumed": case "role_streak_paused": case "role_cap_warning": case "role_cap_paused": case "role_cap_resumed": case "maintenance_quota_hold": case "maintenance_quota_resumed": case "bootstrap_complete": return holdEventMessage(e);
     case "disk_low": case "disk_ok": case "disk_reclaim": case "quiet_hours_started": case "quiet_hours_ended": case "rate_limit_hold": case "rate_limit_resumed": case "subscription_window_warning": case "subscription_window_reserved": case "subscription_window_limited": case "subscription_window_reset": return resourceEventMessage(e);
     case "max_concurrent_changed": case "retention_changed": case "config_changed": case "model_changed": case "backend_binary": case "state_migrated": case "orchestrator_start": case "orchestrator_stop": return configEventMessage(e);
