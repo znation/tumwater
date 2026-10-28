@@ -6,9 +6,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Every commit is verified on main, part 3h/3: the pre-merge gate runs no model reviewer (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; split 2026-10-25 by the plan role — the gate-scope narrowing moved to part 3m/3, then split again the same day after feature held it too large (held 6): the migration of the pre-merge reviewer's merge-verify and pipeline/runner/e2e cases moved to parts 3p/3–3w/3, so this part now requires parts 3g/3, 3l/3, 3p/3, 3z/3, 4a/3, 3q/3, 3r/3, 3s/3, 3t/3, 3u/3, 3v/3, 4b/3, 4c/3, 3w/3, 4d/3, 3x/3 and 3y/3 landed — 3g/3's universal post-landing review and 3l/3's review-suite retirement are on main, and 3p/3–3y/3 must retire the remaining reviewer-run cases before the run they assert goes; touches src/review/review.ts docs/how-it-works.md test/review.test.ts test/review-precheck.test.ts)
-
-**Needs review 2026-10-28 by feature: plan defect — the premise that parts 3p/3–3y/3 already retired the pre-merge reviewer's pipeline/runner/e2e cases is false.**
+### Every commit is verified on main, part 3h/3: the pre-merge gate runs no model reviewer (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; split 2026-10-25 by the plan role — the gate-scope narrowing moved to part 3m/3, then split again the same day after feature held it too large (held 6): the migration of the pre-merge reviewer's merge-verify and pipeline/runner/e2e cases moved to parts 3p/3–4d/3, all landed; replanned 2026-10-28 by the plan role after a feature run implementing this part found the migration incomplete — ~12 cases across seven further test files still pin the pre-merge reviewer, so those move to parts 4f/3 and 4g/3, and this part requires part 4f/3 landed and part 4g/3 landed. 3g/3's universal post-landing review and 3l/3's review-suite retirement are on main; touches src/review/review.ts docs/how-it-works.md test/review.test.ts test/review-precheck.test.ts test/post-merge-review.test.ts)
 
 **Previously held 6**
 
@@ -20,7 +18,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Keep the `reject` path's bookkeeping, the exempt path and `gateBuildPrecheck`'s behavior unchanged.
 - docs/how-it-works.md: the **Review.** paragraph says the pre-merge gate is deterministic (the diff rules, the exempt fast path and the build pre-check) and every merge is judged once after landing, by the post-landing review; the `review.afterMerge` bullet's "A role listed in `review.afterMerge` is reviewed after merging … then merges with no reviewer run" becomes true of every role pending part 3d/3's key deletion.
 
-**Files touched.** src/review/review.ts docs/how-it-works.md test/review.test.ts test/review-precheck.test.ts
+**Files touched.** src/review/review.ts docs/how-it-works.md test/review.test.ts test/review-precheck.test.ts test/post-merge-review.test.ts
 
 **Acceptance criteria.**
 - `reviewAheadOfMain` starts no pi reviewer run: a healthy code change reaches `{ decision: "approved" }` with `state.lastApprovedHead === head` and the pi-run marker absent.
@@ -31,7 +29,9 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Part 3l/3 has retired the reviewer cases in both files; re-point only the kept cases the source change touches.
 - test/review.test.ts: re-point `gate fails closed on an aborted run without bookkeeping` off its fake reviewer run (`a shutdown during a failing pre-check fails closed` in test/review-precheck.test.ts already covers the abort path) while keeping its assertions that the commit stays and no bookkeeping is written. The deterministic-rule, exempt, already-approved and no-op cases pass unchanged; no case references `runReviewer`, and the `reviewRetryDelayMs` case stays until the reviewer seams go with review-run.ts.
 - test/review-precheck.test.ts: add `a green pre-check approves with no reviewer run` — a healthy build returns `{ decision: "approved" }`, `state.lastApprovedHead` is set, and the pi-run marker is absent.
+- test/post-merge-review.test.ts: re-point `a listed role's change passes the gate with no reviewer run; an unlisted role's is reviewed` — with the reviewer gone before the merge, both the listed and the unlisted role now pass the gate with the pi-run marker absent and no `review_start`; the second `reviewGate` call's `assert.ok(fs.existsSync(marker))` (the unlisted role was reviewed) is the only reviewer-run assertion and goes, while the listed-role half and the post-review queueing stay.
 - The existing `gateBuildPrecheck` and exempt-path cases still pass.
+- The seven test files whose reviewer-run cases parts 4f/3 and 4g/3 own are not touched here.
 
 ### Every commit is verified on main, part 3i/3: the reviewer-provider holds defer only the post-landing review — no role start, verify or landing waits on the reviewer, and the `review.afterMerge` scheduling exemptions go (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; requires part 3h/3 landed, since no pre-merge reviewer remains to be held; touches src/orchestrator/scheduling-skip.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-scope.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-run.ts docs/how-it-works.md test/orchestrator-scheduling.test.ts test/runner-recovery.test.ts test/runner-leftover-recovery.test.ts)
 
@@ -258,7 +258,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-
 ### Subtract, part 5u/6: The subscription-window hold, reserve and warning loops go (planned 2026-10-26 by the plan role, split 2026-10-28 by the plan role from the too-large part 5d/6 after feature held it (held 1): the second of four finer parts replacing it, sibling to parts 5d/6, 5v/6 and 5w/6 and to part 5x/6; requires part 5d/6 landed since both edit src/gates/gate-polls.ts and src/team/team-polls.ts and 5d/6's windowTiers plumbing must settle first; touches src/team/team-polls.ts src/gates/gate-polls.ts src/orchestrator/orchestrator.ts src/events/events.ts src/events/event-format.ts src/failure/failure-state-change.ts docs/how-it-works.md docs/invariants.md test/team-polls.test.ts test/gate-polls.test.ts test/event-format.test.ts)
 
 **Goal.** The team stops holding, reserving and warning on subscription usage windows. Delete the hold's window observation and the `pollClaudeWindowReserve`/`pollClaudeWindowWarning` loops (`windowObservation`'s gate use, `logWindowEventOnce`, `loggedWindowKeys`, the `claudeWindowWarned`/`claudeWindowReserved` gate state) and the `subscription_window_warning`/`subscription_window_reserved` events with their formatting. A run rejected on a subscription usage window still keeps its session and resumes on the live `PiRunResult` flags (`subscriptionWindowRejected`, src/agent/claude/claude-account.ts).
@@ -320,6 +319,39 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `falseFixReason`'s complexity drops below 15 and each new helper's does too: `npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json src/verdict/fix-claim.ts` reports no `complexity` warning for `falseFixReason` or any helper above the 15 the family targets (the rule's `max: 0` lists every surviving function).
 - The four helpers are each declared exactly once and are not exported: `grep -nE 'function (readFixedHeads|baseFixedBodies|movedEntryReason|addedRecordReason)\(' src/verdict/fix-claim.ts` shows one declaration per name, and `grep -nE '^export (async )?function (readFixedHeads|baseFixedBodies|movedEntryReason|addedRecordReason)' src/verdict/fix-claim.ts` finds nothing.
 - Every existing `test/fix-claim.test.ts` and `test/fix-claim-archive.test.ts` case passes unchanged, including the moved-entry and rewritten-entry rejections, the added-record rejection, the "carries forward a name the base already holds" pass, the deleted and symlinked BUGS.md passes and the merge-base restoration case; the rejection strings are byte-identical, so no test is added or edited.
+- `npm run test:gate` passes.
+
+### Every commit is verified on main, part 4f/3: the pre-merge reviewer's batch, phase and pipeline cases move to the deterministic gate ahead of its removal (planned 2026-10-28 by the plan role, split from part 3h/3 after a 2026-10-28 feature run found the earlier re-pointing parts (3p/3–4d/3) had left these reviewer-run cases standing; sibling to part 4g/3, which takes the vet-slot, high-friction, rejection and merge-lock cases in test/merge-drain-verify.test.ts, test/runner-2.test.ts, test/runner-3.test.ts and test/runner-4.test.ts, so the two are independent in files and hold no prerequisite, since every case it re-points is green while the pre-merge reviewer still runs; touches test/merger.test.ts test/merge-pipeline.test.ts test/merge-slot.test.ts)
+
+**Goal.** The pre-merge reviewer's batch-sequencing, merge-phase and pipeline-permit cases in these three files still read a reviewer verdict or a reviewer run. Part 3h/3 stops `reviewAttempt` running the reviewer, which breaks them, so move them first with part 3p/3's rule: delete a case that exists only to pin the reviewer; re-point one whose real subject is batch/phase/permit bookkeeping to a deterministic gate outcome (a green or red build pre-check, a parked build-check verification, or a deterministic diff rejection).
+
+**Approach.**
+- test/merger.test.ts: `a green batch stacks every approved change, fast-forwards main once, and logs per-change events` and `a batch stacks every commit of a multi-commit pin, not its head alone` read the reviewer's approve verdict to make each change gate-approved; re-point their approval to the deterministic green build pre-check. `an abort after the last gate approved stops the batch before its shared check` and `an abort after the gate stops a one-change merge before it merges` expect the reviewer run to observe the abort; re-point the abort to the gate build check, as the 4b/3 and 4c/3 siblings did for orchestrator-3 (a parked build check settles `aborted`).
+- test/merge-pipeline.test.ts: `the merge's conflict resolver takes a shared permit, ahead of a verification parked for one` parks a `beta-review` verification; re-point that parked verification to a build-check verification (or drop the review row it names) and keep the resolver-before-parked-verification ordering assertion.
+- test/merge-slot.test.ts: `a queued merge's record names each phase while it runs: the gate's check, the review, the merge's in-lock check` expects a `review:reviewing` stage; with no pre-merge reviewer there is no `reviewing` stage, so re-point the record to `check:build-check` before and after the in-lock check and drop the `review:reviewing` expectation.
+- Leave `test/fixtures/pi-events.ts` and `test/fixtures/merge-fixtures.ts` reviewer-run helpers in place; part 3e/3 deletes them.
+
+**Files touched.** test/merger.test.ts test/merge-pipeline.test.ts test/merge-slot.test.ts
+
+**Acceptance criteria.**
+- The three files pass while the pre-merge reviewer still runs; none of their cases reads a pre-merge reviewer verdict to reach its assertion (no `reviewerPi`/`review_start`/`reviewArgs` pre-merge read remains in them).
+- `npm run test:gate` passes.
+
+### Every commit is verified on main, part 4g/3: the pre-merge reviewer's vet-slot, high-friction, rejection and merge-lock cases move to the deterministic gate ahead of its removal (planned 2026-10-28 by the plan role, split from part 3h/3 after a 2026-10-28 feature run found the earlier re-pointing parts (3p/3–4d/3) had left these reviewer-run cases standing; sibling to part 4f/3, which takes the batch, phase and pipeline cases in test/merger.test.ts, test/merge-pipeline.test.ts and test/merge-slot.test.ts, so the two are independent in files and hold no prerequisite, since every case it re-points is green while the pre-merge reviewer still runs; touches test/merge-drain-verify.test.ts test/runner-2.test.ts test/runner-3.test.ts test/runner-4.test.ts)
+
+**Goal.** The pre-merge reviewer's vet-slot, high-friction, rejection and merge-lock cases in these four files still read a reviewer run or its args. Part 3h/3 stops `reviewAttempt` running the reviewer, which breaks them, so move them first with part 3p/3's rule: delete a case that exists only to pin the reviewer; re-point one whose real subject is vet-slot permit, friction flag, rejection bookkeeping or merge-lock timing to a deterministic gate outcome.
+
+**Approach.**
+- test/merge-drain-verify.test.ts: `a verification runs in a pooled slot (purpose vet while it works, no lease after) and creates no _land-<role>` relies on the vet slot's reviewer run, which writes the `cwd` the case reads; part 3t/3 left it untouched believing it drove no reviewer verdict. Re-point it to the deterministic build-check verification whose permit behavior is its real subject, or delete it if the reviewer-run slot was its only subject; keep `mergeBatchMax caps each merge's stack, read from the live config at each drain` untouched.
+- test/runner-2.test.ts: the three high-friction cases (`a changed run past thrashTurns is flagged high-friction end to end`, `a changed run past only thrashTurns is not flagged high-friction`, `an ordinary changed run under both thresholds is not flagged high-friction`) read the fake reviewer's `review-args` for `HIGH-FRICTION`. With no pre-merge reviewer prompt there is no reviewer-args consumer; drop the `reviewArgs`/`HIGH-FRICTION` assertions and keep each case's `outcome.highFriction` and warning-event assertions, or re-point to whatever post-landing consumer remains if `highFriction` survives with one.
+- test/runner-3.test.ts: `a rejected change is re-applied on the role's next run and its reasons ride along` rejects through a reviewer verdict; re-point the rejection to a deterministic gate reject (a conflict-marker diff, a leaked credential or a failing declared check) and keep the re-apply and reasons-ride-along assertions.
+- test/runner-4.test.ts: `the merge slot is the only merge-lock holder: another runner runs and queues behind it` relies on the reviewer run holding A's merge lock long enough for B to run; re-point its timing to a deterministic stage that still holds the lock (a slow declared check or a parked build check) so the "B ran while A's merge held the lock" assertion keeps its subject.
+- Leave `test/fixtures/pi-events.ts` reviewer-run helpers in place; part 3e/3 deletes them.
+
+**Files touched.** test/merge-drain-verify.test.ts test/runner-2.test.ts test/runner-3.test.ts test/runner-4.test.ts
+
+**Acceptance criteria.**
+- The four files pass while the pre-merge reviewer still runs; no case reads a pre-merge reviewer verdict or its args to reach its assertion.
 - `npm run test:gate` passes.
 
 ## Done
