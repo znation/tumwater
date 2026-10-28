@@ -29,6 +29,8 @@ import { commitIn, mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixture
 import { piRanMarker, withPi } from "./fakes/fake-pi.js";
 import { gateCtx, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
+import { waitForFile } from "./helpers/wait.js";
+import { quarantinedTests } from "../src/review/known-flakes.js";
 
 // The gate's integration with the deterministic build pre-check (src/build/build-check.ts): a
 // failing build rejects with zero reviewer runs, naming the failing assertion. The check's own
@@ -347,6 +349,41 @@ test("a configured check.command gates a merge in a repo with no npm install at 
     const rejected = readEvents(root).find((e) => e.type === "review_rejected");
     assert.ok(rejected, "the rejection is logged");
   });
+});
+
+test("an abort mid-check stops the gate's build pre-check and fails closed as aborted", async () => {
+  // A declared check that parks on its own tree (main's baseline passes at once — the fixture's
+  // worktree script is what matters) and then sleeps, so an abort fired after the marker appears
+  // really interrupts a long-running check instead of one about to finish. The abort is the
+  // verify's controller signal (a user abort or a shutdown both fire it), which the gate now
+  // hands to its check; `reviewPinnedChange` settles the verify `aborted` on this result.
+  const parked = path.join(tmpdir(), `precheck-parked-${process.pid}-${Math.random().toString(36).slice(2)}`);
+  const { root, wt } = await gateBuildFixture(`touch '${parked}'; sleep 30`);
+  try {
+    const controller = new AbortController();
+    const gate = (async () => {
+      const { state, result } = await reviewGate(root, wt, { signal: controller.signal });
+      return { state, result };
+    })();
+    await waitForFile(parked, 30_000);
+    controller.abort();
+    const started = Date.now();
+    const { state, result } = await gate;
+    assert.ok(Date.now() - started < 20_000, "returned well under the 30 s sleep");
+    assert.equal(result.decision, "failed");
+    assert.ok(result.aborted, "the harness's stop fails closed as aborted");
+    assert.deepEqual(buildCheckEvents(root), ["gate:skipped"], "one build_check attempt, no retry, no baseline");
+    assert.deepEqual(quarantinedTests(root), [], "the aborted check quarantines nothing");
+    assert.equal(
+      warningMessages(root).some((w) => w.includes("gate check failed then passed on retry")),
+      false,
+      "no flaky-warning on an abort",
+    );
+    assert.equal(await aheadOfMain(wt, "main"), 1, "the commit is kept for another attempt");
+    assert.equal(state.lastReview, undefined, "no review bookkeeping on an abort");
+  } finally {
+    fs.rmSync(parked, { force: true });
+  }
 });
 
 test("a shutdown during a failing pre-check fails closed before main is consulted, keeping the commit", async () => {

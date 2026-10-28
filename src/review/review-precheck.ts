@@ -93,8 +93,20 @@ export async function gateBuildPrecheck(
       ctx.sampleSleep ?? sampleSleepClock,
       undefined,
       checkWaitStage(root, [role]),
+      undefined,
+      ctx.signal,
     );
   const preCheck = await runGateCheck();
+  // A check the harness stopped on the verify's abort (a user abort or a shutdown) is not the
+  // tree's verdict and not a flake: fail closed as aborted before the re-run, the quarantine
+  // and the attribution — the signal fires MID-check (runScriptGroup returns an `aborted`
+  // skip), and `reviewPinnedChange` settles the verify `aborted` on this result so an abort
+  // never has to wait a parked check out. A signal already aborted before the check started is
+  // caught by the `aborted` checks in the attribution path below (the check ran and reached
+  // its own verdict), so the pre-existing shutdown case keeps its two attempts.
+  if (preCheck?.outcome.skipReason === "aborted") {
+    return { resolved: { decision: "failed", aborted: true } };
+  }
   if (preCheck) {
     const { check } = preCheck;
     let { outcome } = preCheck;

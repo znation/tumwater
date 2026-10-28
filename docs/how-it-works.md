@@ -129,7 +129,8 @@ doctor's merge-check median leave them out. Unset, `check.mergeCommand` falls ba
   pipeline check.
 
 Errors keep the commit for re-review, up to three strikes. `tumwater abort --role <id>`
-discards a role's in-flight merge.
+discards a role's in-flight merge and stops the change's gate build check mid-run — an abort
+never has to wait a parked check out.
 
 ## Scheduling
 

@@ -89,6 +89,7 @@ async function runScopedCheckWithRetry(
   install: InstallRunner,
   permitWait: PermitWaitHooks | undefined,
   cheaper: boolean,
+  signal?: AbortSignal,
 ): Promise<{ raw: BuildCheckOutcome; durationMs: number }> {
   // One permit covers both attempts (the killed-check retry re-runs under the permit it
   // holds); durationMs prices the run itself, not the wait for a permit.
@@ -106,7 +107,7 @@ async function runScopedCheckWithRetry(
       // event (the feed must answer how long a check took), then the final event below records
       // the retry's classified outcome.
       const { outcome, durationMs: d } = await runWithCleanRetry(
-        () => runBuildCheck(wt, runCheck, timeoutMs, undefined, sampleSleep, install),
+        () => runBuildCheck(wt, runCheck, timeoutMs, undefined, sampleSleep, install, signal),
         (first, dur) => logEventBestEffort(root, buildCheckEvent(role, scope, first, dur, cheaper)),
       );
       durationMs = d;
@@ -223,6 +224,10 @@ function warnScopedCheck(
   unverifiedReason: string | null,
 ): void {
   if (outcome.status === "skipped") {
+    // A check the harness stopped on an abort signal is neither weather nor a skip to warn
+    // about: the caller (the gate pre-check) fails closed as aborted on its way out, so no
+    // "proceeding to model review" warning may suggest the check still stands.
+    if (outcome.skipReason === "aborted") return;
     // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
     // code run into the 3-strike discard (gate) or a merge behind the merge lock.
     const w = SCOPE_WORDS[scope];
@@ -284,6 +289,7 @@ export async function runScopedBuildCheck(
   install: InstallRunner = npmInstall,
   permitWait?: PermitWaitHooks,
   sampleLoad: LoadSampler = sampleHostLoad,
+  signal?: AbortSignal,
 ): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
   const r = resolveScopedCheck(wt, scope, config, timeoutMs, sampleLoad);
   if (!r) return null;
@@ -299,6 +305,7 @@ export async function runScopedBuildCheck(
     install,
     permitWait,
     r.cheaper,
+    signal,
   );
   const { outcome, unverifiedReason } = unverifiedOutcomeFor(
     scope,

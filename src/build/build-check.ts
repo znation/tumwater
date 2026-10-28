@@ -44,13 +44,14 @@ import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
 // ── Execution ─────────────────────────────────────────────────────────────────────────────
 
 /** Why a declared check reached no verdict: the script never finished (timeout), the script died on
- * a signal the harness did not send (killed — e.g. another run's `pkill`, BUGS.md 2026-09-23),
- * npm is not on PATH, the toolchain below the project is broken, or the tree's lockfile pins
+ * a signal the harness did not send (killed — e.g. another run's `pkill`, BUGS.md 2026-09-23), the
+ * harness stopped the tree on its caller's abort signal (aborted), npm is not on PATH, the
+ * toolchain below the project is broken, or the tree's lockfile pins
  * dependencies the walk-up does not provide and installing them failed (install — BUGS.md
  * 2026-10-01; usually an unreachable registry). Shared with main-baseline.ts's MainBaselineCheck,
  * whose skip is the same environmental case family — the string literals live in one place so a
  * new reason can be added without two unions drifting apart. */
-export type BuildSkipReason = "timeout" | "killed" | "no-npm" | "toolchain" | "install";
+export type BuildSkipReason = "timeout" | "killed" | "no-npm" | "toolchain" | "install" | "aborted";
 
 /** What the deterministic build check concluded. "passed": proceed to the reviewer unchanged.
  * "failed": a started process exited nonzero — a deterministic REJECTION with the clipped output
@@ -206,6 +207,7 @@ export async function runBuildCheck(
   killGraceMs = KILL_GRACE_MS,
   sampleSleep: SleepSampler = sampleSleepClock,
   install: InstallRunner = npmInstall,
+  signal?: AbortSignal,
 ): Promise<BuildCheckOutcome> {
   const script = checkScriptName(check);
   const effectiveMs = checkTimeoutMs(check, timeoutMs);
@@ -238,13 +240,13 @@ export async function runBuildCheck(
       };
     if (r) installed = { packages: r.packages, durationMs: r.durationMs };
   }
-  const outcome = await runDeclaredCheck(wt, check, script, effectiveMs, killGraceMs, sampleSleep);
+  const outcome = await runDeclaredCheck(wt, check, script, effectiveMs, killGraceMs, sampleSleep, signal);
   return installed ? { ...outcome, install: installed } : outcome;
 }
 
 /** runBuildCheck's run-and-classify step, once the probe and any owed install are done: spawn
- * the declared check as a process group under its deadline, bracketed by sleep samples, and
- * classify what it did. */
+ * the declared check as a process group under its deadline — or, when `signal` fires, stopped
+ * by the harness as its own abort — bracketed by sleep samples, and classify what it did. */
 async function runDeclaredCheck(
   wt: string,
   check: BuildCheck,
@@ -252,6 +254,7 @@ async function runDeclaredCheck(
   effectiveMs: number,
   killGraceMs: number,
   sampleSleep: SleepSampler,
+  signal?: AbortSignal,
 ): Promise<BuildCheckOutcome> {
   // Sleep evidence brackets the spawn: the opening sample is taken while the host is provably
   // awake (this code is running), so any sleep the closing sample can attribute began inside
@@ -265,12 +268,14 @@ async function runDeclaredCheck(
           timeoutMs: effectiveMs,
           killGraceMs,
           maxBuffer: EXEC_MAX_BUFFER,
+          signal,
         })
       : await runScriptGroup("npm", ["run", check.script], {
           cwd: wt,
           timeoutMs: effectiveMs,
           killGraceMs,
           maxBuffer: EXEC_MAX_BUFFER,
+          signal,
         });
   // Spawn failed before anything ran — the runner is missing from PATH.
   if (r.spawnError) return { status: "skipped", script, skipReason: "no-npm" };
@@ -282,6 +287,11 @@ async function runDeclaredCheck(
   // the deadline, SIGKILL at the grace for anything that survived). `run` says when the
   // deadline actually fired, which the warning reports when it was late.
   if (r.timedOut) return { status: "skipped", script, skipReason: "timeout", run };
+  // The harness stopped the tree on an abort signal (a user abort or a shutdown) — its own
+  // stop, not weather and not a verdict about the tree: classify it separately from a timeout
+  // and from an external killed signal so runScopedBuildCheck neither retries it nor warns it
+  // as a skip.
+  if (r.aborted) return { status: "skipped", script, skipReason: "aborted", run };
   // The tree died on a signal the harness did NOT send (runScriptGroup resolves its own
   // timeout with timedOut already set, so a signal reaching this line is external — another
   // run's `pkill`, an operator's cleanup): the outcome says nothing about the tree, but it is

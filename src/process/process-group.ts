@@ -31,12 +31,17 @@ export const KILL_GRACE_MS = 10_000;
 
 /** What one runScriptGroup attempt observed — enough for runBuildCheck to classify the
  * outcome exactly as execFile's rejection used to: how the process ended (exit code or
- * signal), whether the check's timeout fired, what the script printed, whether it never
- * spawned at all, and when it ran. */
+ * signal), whether the check's timeout fired, whether the harness stopped it on an abort
+ * signal, what the script printed, whether it never spawned at all, and when it ran. */
 interface ScriptGroupResult {
   code?: number;
   signal?: NodeJS.Signals;
   timedOut: boolean;
+  /** True when the caller's abort signal fired mid-run and the harness stopped the whole
+   * tree on purpose — distinct from a timeout (`timedOut`) and from an external signal the
+   * harness did not send (`signal`, `killed`). A check the harness aborts is neither weather
+   * nor a verdict about the tree. */
+  aborted?: boolean;
   spawnError?: NodeJS.ErrnoException;
   stdout: string;
   stderr: string;
@@ -153,7 +158,7 @@ export function armGroupDeadline(
 export function runScriptGroup(
   cmd: string,
   args: string[],
-  opts: { cwd: string; timeoutMs: number; killGraceMs: number; maxBuffer: number },
+  opts: { cwd: string; timeoutMs: number; killGraceMs: number; maxBuffer: number; signal?: AbortSignal },
 ): Promise<ScriptGroupResult> {
   return new Promise((resolve) => {
     const spawnedAt = Date.now();
@@ -166,6 +171,13 @@ export function runScriptGroup(
       env: withoutLaunchServicesCheckIn(process.env),
     });
     let settled = false;
+    let aborted = false;
+    // Abort-stop timers, the mirror of armGroupDeadline's — armed only while an abort fires
+    // before settle (never at spawn), SIGTERM first then SIGKILL after killGraceMs for a
+    // survivor, settling as soon as the whole group is gone — cleared on finish, the caller's
+    // single settle path.
+    let abortPoll: NodeJS.Timeout | undefined;
+    let abortKillTimer: NodeJS.Timeout | undefined;
     // Captured output is capped at maxBuffer per stream (further chunks are dropped —
     // classification reads the tail, so a chatty script can neither wedge the check nor balloon
     // memory). The overflow is deliberately ignored here: truncated output still classifies.
@@ -178,10 +190,28 @@ export function runScriptGroup(
       killGraceMs: opts.killGraceMs,
       onTimedOut: () => finish({ signal: "SIGTERM" }),
     });
-    function finish(result: Pick<ScriptGroupResult, "code" | "signal" | "spawnError">): void {
+    function stopForAbort(): void {
+      if (settled) return;
+      aborted = true;
+      // The harness's own stop, signalled the way a timeout stops the tree: SIGTERM the whole
+      // group (grandchild included), then SIGKILL anything still alive after the grace. The
+      // run settles when the group is gone, so the caller never sees a live tree behind it.
+      signalTree(child, "SIGTERM");
+      abortPoll = setInterval(() => {
+        if (!groupAlive(child.pid)) finish({ aborted: true });
+      }, GROUP_POLL_MS);
+      abortKillTimer = setTimeout(() => {
+        signalTree(child, "SIGKILL");
+        finish({ aborted: true });
+      }, opts.killGraceMs);
+    }
+    function finish(result: Pick<ScriptGroupResult, "code" | "signal" | "spawnError" | "aborted">): void {
       if (settled) return;
       settled = true;
       deadline.dispose();
+      if (abortPoll) clearInterval(abortPoll);
+      if (abortKillTimer) clearTimeout(abortKillTimer);
+      if (opts.signal) opts.signal.removeEventListener("abort", stopForAbort);
       const timedOut = deadline.fired();
       if (timedOut) {
         // Nothing more is read once the deadline has fired: release the handles so a pipe
@@ -190,15 +220,27 @@ export function runScriptGroup(
       }
       const run: BuildCheckRun = { spawnedAt, settledAt: Date.now(), timeoutMs: opts.timeoutMs };
       if (timedOut) run.deadlineLateMs = deadline.lateMs();
-      resolve({ ...result, timedOut, stdout: captured.stdout, stderr: captured.stderr, run });
+      resolve({ ...result, aborted, timedOut, stdout: captured.stdout, stderr: captured.stderr, run });
     }
+    // An abort signal stops the tree mid-check — the harness's own stop, so the outcome says
+    // the harness aborted it, distinct from a timeout and from an external killed signal. The
+    // listener is removed as soon as the run settles. An already-aborted signal is deliberately
+    // NOT acted on at spawn: the swap happens mid-run (a user abort or a shutdown fires while
+    // the check is running), and a signal already aborted before the check started is caught by
+    // the caller's `aborted` check when the run returns — a fast failing check under a
+    // pre-aborted signal still reaches its own verdict first (the pre-existing shutdown-test
+    // behavior).
+    if (opts.signal) opts.signal.addEventListener("abort", stopForAbort, { once: true });
     child.on("error", (err: NodeJS.ErrnoException) => {
-      // Before the deadline this is the spawn failing (npm missing from PATH). After it, it can
-      // only be a teardown signal that could not be delivered: the run is a timeout either way,
-      // settled by the group probe or the grace timer.
-      if (!deadline.fired()) finish({ spawnError: err });
+      // Before a stop this is the spawn failing (npm missing from PATH). After the deadline or
+      // an abort it can only be a teardown signal that could not be delivered — the stop's own
+      // group probe or grace timer settles the run.
+      if (!deadline.fired() && !aborted) finish({ spawnError: err });
     });
     child.on("close", (code, signal) => {
+      // During an abort-stop the run settles on the whole group being gone (the probe or the
+      // grace timer), never on the leader's close alone. Otherwise the timeout rule stands.
+      if (aborted) return;
       // Before the deadline the leader's close settles the run. After it, settle only once the
       // whole group is gone: something in the group may outlive the leader, and the poll
       // settles the run when it goes, or the grace timer SIGKILLs it and settles then.
