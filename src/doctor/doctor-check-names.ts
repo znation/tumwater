@@ -25,6 +25,8 @@ export const DOCTOR_CHECK_NAMES = [
   "check contention",
   "repeated failures",
   "main's check",
+  "over-cap model",
+  "fallback chain",
   "models for each tier",
   "claude auth",
   "claude api key",

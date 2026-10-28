@@ -7,18 +7,33 @@
 export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
   // A Configuration section built from the same /api/role payload the CLI's tumwater role
   // <id> renders (rolePayload), so the drawer's and the terminal's rows read one document and
-  // cannot drift: what the role RUNS ON (model/tier, image reading, billing, min run
-  // interval) and CARRIES (queued prompts, the instructions override, find text). Each row
-  // is guarded by a present/own check so an absent field renders no row, and a notes-only
-  // payload adds an empty (omitted) section. Labels and wording mirror
+  // cannot drift: what the role RUNS ON (model/tier, image reading, the
+  // fallback pairs, billing, min run interval) and CARRIES (queued prompts, the instructions
+  // override, find text). Each row is guarded by a present/own check so an absent field
+  // renders no row — no fallback shows no fallback rows, and a notes-only payload adds an
+  // empty (omitted) section. Labels and wording mirror
   // role-render.ts's family; no backticks allowed here (this whole script is one big
   // String.raw template).
   function drawerConfigHtml(view, role) {
     const pair = (p, m) => [p, m].filter(Boolean).join("/");
-    // Wall-clock HH:MM for the role-cap forecast's ~cap at stamp — the drawer is browser
+    // A fallback pair's label, mirroring role-render.ts's fallbackPairLabel so the drawer's
+    // Budget fallback row names a non-pi backend's namespace the same way the CLI's fallback
+    // lines do: a non-pi backend with a model reads <backend>/<model>, else <provider>/<model>,
+    // else the model, else the provider, else the pair-less default. A budget pair's provider
+    // already holds the backend, so its row stays byte-identical.
+    // Local wall-clock HH:MM for the role-cap forecast's ~cap at stamp — the drawer is browser
     // code and cannot import ../text/datetime.js (the quietWindowEnd precedent's own note), so
     // it routes through the bundle's shared clockHm in FORMAT_JS, the same helper the operator
     // view's window clock uses.
+    const fallbackLabel = (fb, fbDefault) => {
+      const agentBackend = fb.backend !== undefined && fb.backend !== "pi" ? fb.backend : undefined;
+      if (fb.model !== undefined) {
+        if (agentBackend !== undefined) return agentBackend + "/" + fb.model;
+        return fb.provider !== undefined ? fb.provider + "/" + fb.model : fb.model;
+      }
+      if (fb.provider !== undefined) return fb.provider;
+      return fbDefault;
+    };
     // A verbatim value's single-line clamped rendering (80 chars + ellipsis) with the full
     // text riding the title tooltip — the same clamp+tooltip idiom the run summaries use.
     // The single-line squash rides the shared format-region squash (text.ts's browser twin).
@@ -94,6 +109,9 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
       const revBody = revAfter ? "after merge" : "before merge";
       const revControl = "<button type='button' class='btn btn-sm' data-act='review-toggle' data-arg='" + esc(role) + "'>" + (revAfter ? "Review before merge" : "Review after merge") + "</button>";
       rows.push("<div><dt>Review</dt><dd title='" + esc(revBody) + "'>" + esc(revBody) + revControl + "</dd></div>");
+    }
+    if (view.fallback && typeof view.fallback === "object" && view.fallback.model !== undefined) {
+      rows.push(kvRow("Budget fallback", fallbackLabel(view.fallback, "") + " (" + (view.fallbackFree ? "free" : "priced") + ")"));
     }
     if (view.billing !== undefined) {
       const window = view.billing === "subscription" && view.billingWindow ? " (" + view.billingWindow + " window)" : "";

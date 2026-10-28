@@ -1,6 +1,6 @@
 /** One role's read-only inspection payload — the collector behind `tumwater role <id>`:
  * what the role IS (catalog entry or custom, enabled, paused, tier), what it RUNS ON
- * (resolved provider/model), what it CARRIES (the instructions
+ * (resolved provider/model, the budget fallback pair), what it CARRIES (the instructions
  * override and the role's own find text verbatim), and what its NEXT run's prompt will
  * read like, assembled through the preview seam so nothing queued is consumed. Split out
  * of cli.ts like backlogPayload and status/status-data.ts's snapshot so the collector is testable
@@ -9,7 +9,7 @@
  * fresh state, a missing queue directory an empty inbox — so the command works with the
  * team stopped and never throws on a torn repo. */
 
-import type { ModelTier } from "../config/config-schema.js";
+import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js";
 import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe, parseJsonConfig } from "../config/config.js";
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
 import { queuedRolePromptCount } from "../inbox/inbox.js";
@@ -22,12 +22,14 @@ import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { quietHoursStatus } from "../scheduling/quiet-hours.js";
 import { assembleRunPrompt } from "../run/run-prompt.js";
 import { configForRole, resolvedModelFields, reviewedAfterMerge, reviewRunConfig, roleSeamTier } from "../config/config-views.js";
-import { piModelsPath, seamContextWindowForRole } from "../pi/pi-models.js";
+import { fallbackPair } from "../config/config-fallbacks.js";
+import { fallbackModelPair, piModelsPath, seamContextWindowForRole } from "../pi/pi-models.js";
+import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { formatModelSelector } from "../config/config-model-selector.js";
 import { roleImageInfo } from "../agent/image-input.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
-import type { ClaudeBilling } from "../agent/claude/claude-account.js";
+import { readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
 import { readAccount, windowEntries } from "../agent/subscription-account.js";
 import { CONFIG_BASENAME, configPath, roleNotesPath } from "../paths.js";
 import { coverageRows, readQaCoverage, type CoverageRow } from "../run/qa-coverage.js";
@@ -36,6 +38,7 @@ import { readRegularTextOrNull, statOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
 import { finiteNumber, objectOrEmpty } from "../files/json-object.js";
 import { canonicalRoleId } from "./legacy-role-ids.js";
+import { orchestratorAlive, readOrchestratorInfo, type ChainTierInfo } from "../team/team-orchestrator-info.js";
 
 /** What `tumwater role <id>` reports about one role — the payload both the `--json`
  * document and the Markdown renderer consume (one shape, two surfaces). */
@@ -70,6 +73,11 @@ export interface RoleViewPayload {
    * tumwater.json names none. The effective `thinking` wins over the default's, matching
    * status-data.ts's snapshot. Absent for every other seam, so the JSON shape is unchanged. */
   piDefault?: string;
+  /** The budget gate's fallback pair, or null when none is configured. */
+  fallback: FallbackModelConfig | null;
+  /** Whether that fallback is actually free in pi's definitions — what makes the gate
+   * willing to engage it. Meaningful only when `fallback` is non-null. */
+  fallbackFree: boolean;
   /** The subscription backend whose billing this answer reads (the role's own non-pi seam,
    * else the review gate's non-pi backend — today's claude precedence generalized, so a
    * codex role or a pi author on a codex reviewer names codex here): `"claude"`, `"codex"`, …
@@ -94,6 +102,9 @@ export interface RoleViewPayload {
   /** The primary subscription window's type (`five_hour`), present only for a subscription
    * reading that reported a window — the renderer's "(5h window)". */
   billingWindow?: string;
+  /** Where the running orchestrator has this role's tier moved on its fallback chain (its
+   * `chain` block), or null when no orchestrator is alive or the tier is on its primary. */
+  chainStep: ChainTierInfo | null;
   /** The effective min-run interval: the role's override or the global value. */
   minRunIntervalSeconds: number;
   /** The role's own min-run-interval override (roles.<base>.minRunIntervalSeconds), present
@@ -228,8 +239,8 @@ export function rawRoleField(root: string, roleId: string, field: string): unkno
 }
 
 /** Collect one role's inspection payload. `modelsPath` overrides pi's model definitions location
- * — a test seam, like status/status-data.ts's snapshot — and supplies the context-window answer
- * and pi's own saved default model. */
+ * — a test seam, like status/status-data.ts's snapshot — consulted only when a fallback pair is
+ * configured (the freeness verdict needs the definitions; nothing else does). */
 export function rolePayload(
   root: string,
   typedRole: string,
@@ -274,6 +285,8 @@ export function rolePayload(
     cfg.review.enabled && reviewAgent !== undefined && reviewAgent !== "pi" ? reviewAgent : undefined;
   const billingBackend = roleBackend ?? reviewBackend;
   const account = billingBackend !== undefined ? readAccount(root, billingBackend) : null;
+  const info = readOrchestratorInfo(root);
+  const chainStep = (orchestratorAlive(root, info) && info?.chain?.[roleSeamTier(cfg, role)]) || null;
   const billingWindow = account?.billing === "subscription" ? windowEntries(account)[0]?.type : undefined;
   // pi's own saved default for a pi seam that resolves no model, read once beside the models
   // catalog this collector already takes as a seam (piSettingsPath). The config's `thinking`
@@ -284,6 +297,30 @@ export function rolePayload(
     effective.provider === undefined &&
     effective.model === undefined;
   const piDefault = runsPiWithoutAModel ? readPiDefaultModel(piSettingsPath(modelsPath), root) : null;
+  // The fallback story the operator sees: the declared pair, but the price-resolved pair when
+  // one exists (a map with no `default` entry borrows another tier's free pair) and the
+  // freeness verdict from the same read. `fallbackFree` false keeps the declared pair visible
+  // so a refused fallback is still named.
+  const declaredFallback = fallbackPair(cfg);
+  // The opencode catalog answer (part 6b/7), read the way the budget gate reads it — always,
+  // from the same team-global cache the startup gate seeds — so the fallback free-ness verdict
+  // prices opencode pairs against the same snapshot as the gate. A conditional read cannot
+  // decide up front which pair the verdict will price: `fallbackModelPair` may resolve to a
+  // free pair BORROWED from another tier (a map whose `default` entry is priced borrows a
+  // free pair elsewhere), which routes to opencode even when the role's own seam, the declared
+  // default pair, and the review gate are not opencode. A null catalog would read that borrowed
+  // opencode pair NOT free, so this view and the gate would disagree; reading always (as the
+  // gate does) keeps them on one answer. OpenCode's `catalog` is threaded the way claude's
+  // `account` is: absent, an opencode pair reads NOT free.
+  const opencodeCatalog = readOpencodeCache(root);
+  // The claude account answer (6a/7), read the way the budget gate reads it — always, so the
+  // fallback price verdict sees the subscription even when claude is not this role's own seam
+  // (a pi role may still fall back to claude). The lookup returns it only for "claude" (part
+  // 2a/9) — no caller asks for another backend yet.
+  const claudeFallbackAccount = readClaudeAccount(root);
+  const accounts = (b: string) => (b === "claude" ? claudeFallbackAccount : null);
+  const freeFallback = declaredFallback ? fallbackModelPair(cfg, modelsPath, accounts, opencodeCatalog) : null;
+  const fallback = freeFallback ?? declaredFallback;
   // One state read serves the next-run preview below.
   const state = loadRunnerState(root, role);
   // The role's recent run outcomes, read from the event log (readEvents) so the command
@@ -415,8 +452,11 @@ export function rolePayload(
         }
       : {}),
     backend: effective.agent ?? "pi",
+    fallback,
+    fallbackFree: freeFallback !== null,
     ...(account !== null ? { billing: account.billing, billingBackend } : {}),
     ...(billingWindow !== undefined ? { billingWindow } : {}),
+    chainStep,
     ...roleImageInfo(cfg, role, modelsPath, readPiListedModels(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,
     ...(minRunIntervalOverride !== undefined ? { minRunIntervalOverride } : {}),

@@ -32,7 +32,7 @@ import { redMainWarning } from "../baseline/main-guardrails.js";
  * (checkBudget), the `claude window`/`codex window` rows (checkSubscriptionWindow),
  * `maintenance quota` (checkMaintenanceQuota), and `error streaks` (checkErrorStreaks), all
  * read-only reports of holds on running. */
-function loadRunnerStates(root: string, config: TumwaterConfig): RunnerState[] {
+export function loadRunnerStates(root: string, config: TumwaterConfig): RunnerState[] {
   return runnerIds(config)
     .map((id) => loadRunnerState(root, id))
     .sort((a, b) => a.role.localeCompare(b.role));
@@ -106,8 +106,8 @@ export function checkQuietHours(config: TumwaterConfig | undefined, now: Date = 
  * (teamDailyCost, budgetReached, roleCapVerdicts), so the verdict cannot disagree with the gate.
  * `published` is the running scheduler's figure (it includes runs charged since the last save)
  * and wins over the persisted sum, as in status. A reached team cap is a warn because roles
- * run on their tier fallback or hold until local midnight; per-role caps reached alone are ok
- * because the operator chose them by name. */
+ * run on their tier fallback or hold until local midnight (the `fallback` row says which);
+ * per-role caps reached alone are ok because the operator chose them by name. */
 export function checkBudget(
   root: string,
   config: TumwaterConfig | undefined,
@@ -128,7 +128,7 @@ export function checkBudget(
   const phrase = budgetPhrase(spent, cap);
   if (budgetReached(view)) {
     return warnOutcome(
-      `daily cap reached — ${phrase} today; roles run on their over-cap model or hold until local midnight${cappedPhrase}`,
+      `daily cap reached — ${phrase} today; roles run on their over-cap model or hold until local midnight (see the over-cap model row)${cappedPhrase}`,
     );
   }
   if (budgetWarning(view)) return okOutcome(`${phrase} today — past 80% of the cap${cappedPhrase}`);

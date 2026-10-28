@@ -1,8 +1,9 @@
 # Daily cost budget — cap the fleet's autonomous spend
 
-**Kept, narrowed 2026-10-26** by [subtract.md](subtract.md) (Subtract part 5/6): the per-day cap is
-the one spend limit that stays, now per role. The over-cap fallback model it could switch to goes
-with the rest of the model routing; a spent cap pauses the role.
+**Kept 2026-10-26** by [subtract.md](subtract.md) (Subtract part 5/6): the per-day cap is the one
+spend limit that stays, now per role. The over-cap fallback model it can switch to stays too
+(user, 2026-10-28; [fallback-model.md](fallback-model.md)); with none configured a spent cap
+pauses the role.
 
 Planned 2026-08-30 · audited 2026-08-30 (plan loop — verified against main; clarifications
 folded in) · by the plan loop

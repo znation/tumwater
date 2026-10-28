@@ -387,6 +387,29 @@ test("renderStatus shows paused in idle roles' state cells ahead of waiting: bud
   assert.match(paused, /director\s+ready for messages/);
 });
 
+test("renderStatus keeps roles working under the fallback and pauses them without one", () => {
+  const root = tmpdir();
+  const roles = [{ role: "feature" }, { role: "director" }];
+  // At the cap WITH a usable free fallback: the roles keep running on it, so no row reads
+  // `waiting: budget spent` — the header badge is where the operator learns the cap is spent.
+  const degraded = renderStatus(root, {
+    ...snapshotWith(roles, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx", model: "local-free" } }),
+    running: true,
+  });
+  assert.doesNotMatch(degraded, /waiting: budget spent/, "a fallback team is not a stopped team");
+  assert.match(degraded, /feature\s+due/);
+  assert.match(headerOf(degraded), /· budget: \$50\.00\/\$50 today · over-cap model: local-free \(cost n\/a\)$/);
+
+  // The same spend with no usable fallback pauses the roles, exactly as before — per
+  // role now (part 5c/8): the snapshot's budgetPausedRoles set, not a team-wide verdict.
+  const stopped = renderStatus(root, {
+    ...snapshotWith(roles, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null }),
+    budgetPausedRoles: ["feature"],
+    running: true,
+  });
+  assert.match(stopped, /feature\s+waiting: budget spent/);
+});
+
 test("status table groups a merge role above queued/sleeping rows with newer last runs", () => {
   const root = tmpdir();
   const t = (min: number) => Date.parse("2026-09-11T00:00:00Z") + min * 60000;

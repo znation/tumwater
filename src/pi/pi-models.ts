@@ -186,6 +186,16 @@ export function seamContextWindowForRole(
   return seamContextWindow(configForRole(cfg, role), projectRoot, modelsPath);
 }
 
+/** A provider's `baseUrl` from pi's models.json, or null when the file, the provider or the
+ * field is missing — what doctor probes to tell a local server that is down from one that is up. */
+export function piProviderBaseUrl(modelsPath: string, provider: string): string | null {
+  const doc = readJsonFile<Record<string, unknown>>(modelsPath);
+  const providers = doc?.providers;
+  if (!isJsonObject(providers) || !Object.hasOwn(providers, provider)) return null;
+  const pdef = providers[provider];
+  return isJsonObject(pdef) && typeof pdef.baseUrl === "string" ? pdef.baseUrl : null;
+}
+
 /** Resolve a `provider`/`model` pair against pi's definitions — the shared first step of
  * pairFree and cacheReadUnpriced. Undefined when the pair cannot be resolved at all: an
  * omitted provider or model (pi's own default), a missing or malformed definitions file, an

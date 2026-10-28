@@ -1,8 +1,10 @@
 # Fallback model — keep working for free once the budget is spent
 
-**Retired 2026-10-26** by [subtract.md](subtract.md) (Subtract part 5/6): the free model a spent
-budget switches to goes, with the `budget_fallback`/`budget_handback` events and the over-cap
-rows and alerts. The daily cap itself stays, per role; a spent cap pauses the role.
+**Retirement withdrawn 2026-10-28** (user decision): [subtract.md](subtract.md) had retired the
+over-cap fallback on 2026-10-26 (Subtract part 5/6). The user kept it: a spent cap still switches
+each tier to its free fallback when one is configured, and pauses the roles otherwise. The
+`budget_fallback`/`budget_handback` events, the over-cap rows and the `Running on fallback` alert
+stay — Subtract parts 5r/6–5t/6, which had removed the surfaces, were reverted.
 
 Planned 2026-09-18 · requested by user · implemented 2026-09-18
 

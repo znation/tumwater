@@ -29,8 +29,10 @@ const PHRASE_CANNOT_READ_MODELS = "cannot check — could not read pi's model de
  * repo-setup checks stay there, and whose state/disk/build checks live in
  * doctor-project-checks.ts), and split apart again so one theme owns one module: this file holds
  * the shared config guard, the seam framework (seamPairs and the per-backend seam predicates),
- * and the declared-tier check (checkTierModels). The claude, opencode, codex and pi provider
- * checks live in their own per-backend
+ * and the declared-tier check (checkTierModels). The cap
+ * fallback price and fallback-chain checks (checkFallbackModel, checkFallbackChain) live in
+ * doctor-fallback-checks.ts, importing this file's loadConfigForCheck just as the per-backend
+ * modules do. The claude, opencode, codex and pi provider checks live in their own per-backend
  * modules (doctor-claude-checks.ts, doctor-opencode-checks.ts, doctor-codex-checks.ts,
  * doctor-pi-checks.ts), each importing this file's shared seam framework and the AUTH_CHECK_*
  * probe budgets from probe.ts rather than duplicating them. The shared report contract
@@ -41,8 +43,8 @@ const PHRASE_CANNOT_READ_MODELS = "cannot check — could not read pi's model de
 
 /** The config a readiness check reads, or the warn outcome a broken tumwater.json earns:
  * checkInit already fails on a broken config, so a model check only reports that it could not
- * run. One home for the guard and its wording, shared by checkTierModels here and by the
- * per-backend modules (the same shape doctor-backlog.ts's
+ * run. One home for the guard and its wording, shared by checkTierModels here and by
+ * doctor-fallback-checks.ts and the per-backend modules (the same shape doctor-backlog.ts's
  * readDocChecked uses for unreadable files). The config or the warn outcome, so each check's
  * one-line guard — `const config = loadConfigForCheck(root); if ("level" in config) return
  * config;` — is all a check needs to read its config instead of repeating a
@@ -368,8 +370,8 @@ function tierOutcome(
  * collected in the same sweep teamModelsFree prices: each tier's top-level selector (a string is
  * default's), every enabled role's resolved pair (per-role overrides included; tier-name overrides
  * resolve through configForRole), and the reviewer's while review is on. A pair with no model is
- * pi's own default and out of scope. Levels: an unresolvable pair fails, a provider
- * that is not ready warns
+ * pi's own default and out of scope; fallback pairs are the sibling check's (checkFallbackModel
+ * prices the cap pair). Levels: an unresolvable pair fails, a provider that is not ready warns
  * (credentials are fixable without a config edit), a probe that cannot run warns rather than
  * guesses, and a priced model whose cache reads declare $0 warns — the daily budget would
  * undercount it (BUGS.md 2026-10-06). When one of PI_SMOL_MODEL / PI_SLOW_MODEL / PI_PLAN_MODEL is

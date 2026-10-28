@@ -2,8 +2,10 @@ import { joinParts } from "../text/text.js";
 import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, usd } from "../text/format.js";
 import { clockHm, formatAge, formatTimestamp, humanAgo, nextRunPhrase, secondsUntil } from "../text/datetime.js";
+import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import { windowLabel } from "../agent/subscription-account.js";
 import { backendDefaultLabel, backendDisplayName } from "../agent/backend-traits.js";
+import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import type { RoleViewPayload } from "./role-view.js";
@@ -41,11 +43,12 @@ function fencedOrNone(label: string, text: string | null, noneNote = "none"): st
  * `renderRoleMarkdown` splices these at the same position, so the extracted function and the
  * full document cannot drift. */
 export function inspectMarkdownLines(p: RoleViewPayload, now = Date.now()): string[] {
-  return inspectBodyLines(p, now);
+  const running = chainStepLine(p);
+  return [...(running ? [running, ""] : []), ...inspectBodyLines(p, now)];
 }
 
 /** The notes, prompt and disclosure blocks alone — what renderRoleMarkdown splices after
- * its own Team lines. */
+ * its own Team lines, which already carry the fallback-step bullet. */
 function inspectBodyLines(p: RoleViewPayload, now: number): string[] {
   const lines: string[] = [];
   lines.push(
@@ -118,7 +121,8 @@ function inspectBodyLines(p: RoleViewPayload, now: number): string[] {
 }
 
 /** The provider/model wiring as one readable token — `provider/model` when both are named,
- * `model` alone when only the model is (the join simply drops unset halves). */
+ * `model` alone when only the model is (the join simply drops unset halves) — shared by the
+ * main line and the budget-fallback line, so the two render the same wiring the same way. */
 function modelPair(provider: string | undefined, model: string | undefined): string {
   return joinParts([provider, model], "/");
 }
@@ -146,6 +150,25 @@ function modelLine(p: RoleViewPayload): string {
   return `${agent}${pair}${thinking}`;
 }
 
+/** A fallback pair as one readable token, agent-qualified exactly like modelLine — a non-pi
+ * backend (its `agent`, or a provider that names one, `claude`) is named as the selector's
+ * namespace; a pi pair keeps `provider/model`; neither half present falls back to the
+ * backend-default label. One home for the Budget fallback line, so a
+ * claude fallback reads `claude/claude-sonnet-5-5`, not a bare id (PLANS.md "Mixed claude +
+ * pi fleets, part 3/4" gap 7). */
+function fallbackPairLabel(
+  fb: { provider?: string; model?: string; backend?: string },
+  backendDefault: string,
+): string {
+  const agentBackend = fb.backend !== undefined && fb.backend !== "pi" ? fb.backend : undefined;
+  if (fb.model !== undefined) {
+    if (agentBackend !== undefined) return `${agentBackend}/${fb.model}`;
+    return fb.provider !== undefined ? `${fb.provider}/${fb.model}` : fb.model;
+  }
+  if (fb.provider !== undefined) return fb.provider;
+  return backendDefault;
+}
+
 /** The backend-and-window label the role view shows for a non-claude backend's window:
  * `backendDisplayName(billingBackend)` beside `windowLabel(windowType)` — "Codex 7d" for a
  * codex subscription (plans/codex-backend.md part 3c/9), so a reader knows whose window it
@@ -155,6 +178,43 @@ function billingWindowLabel(billingBackend: string | undefined, windowType: stri
   const backend =
     billingBackend !== undefined && billingBackend !== "claude" ? backendDisplayName(billingBackend) : "";
   return [backend, type].filter(Boolean).join(" ");
+}
+
+/** Why a tier moved down its fallback chain, as the role view words it. The window phrase
+ * names the backend in play ("Codex 7d window used up") when a non-claude backend moved the
+ * role; claude keeps today's wording byte-identical, and an unknown backend falls back to
+ * today's hardcoded "Claude". */
+function chainReasonPhrase(
+  reason: ChainTierInfo["reason"],
+  billingBackend: string | undefined,
+  windowType: string | undefined,
+): string {
+  switch (reason) {
+    case "window":
+      if (billingBackend !== undefined && billingBackend !== "claude") {
+        return `${billingWindowLabel(billingBackend, windowType)} window used up`;
+      }
+      return `${windowType !== undefined ? claudeWindowLabel(windowType) : "Claude"} window used up`;
+    case "reserve":
+      return "window reserve reached";
+    case "cap":
+      return "daily cap reached";
+    case "step-cap":
+      return "previous step's cap reached";
+    case "overage":
+      return "extra usage refused";
+    case "demoted":
+      return "previous step demoted";
+  }
+}
+
+/** The `Running on fallback <step> of <of> (<why>, resets HH:MM)` bullet, or null when the
+ * role's tier is on its primary. */
+function chainStepLine(p: RoleViewPayload): string | null {
+  const c = p.chainStep;
+  if (!c) return null;
+  const resets = c.returnsAt !== undefined ? `, resets ${clockHm(c.returnsAt)}` : "";
+  return `- Running on fallback ${c.step} of ${c.of} (${chainReasonPhrase(c.reason, p.billingBackend, p.billingWindow)}${resets})`;
 }
 
 /** One recent run outcome as a Markdown bullet line — `<time> · <result> · <span> —
@@ -244,6 +304,12 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   if (p.reviewedAfterMerge) {
     lines.push(`- Review: after merge (a rejected change stays on main with the reviewer's recorded reasons)`);
   }
+  if (p.fallback) {
+    const pair = fallbackPairLabel(p.fallback, backendDefault(p));
+    lines.push(`- Over-cap model: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
+  }
+  const running = chainStepLine(p);
+  if (running) lines.push(running);
   // The claude seam's billing (plans/agent-backends.md §7/§8, PLANS.md part 6d/7): absent on
   // a pi seam, so its role view is byte-identical to before.
   if (p.billing) {

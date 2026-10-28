@@ -33,7 +33,7 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * existence rules. Deliberately looser than the gate: a record warns only when EVERY symbol its Fix
  * paragraph names is absent (one live symbol passes — the phantom signature, not a half-stale
  * narrative), and a record naming no symbols is skipped, since pure-documentation fixes are
- * legitimate. A warn, never a fail: a suspicious record is
+ * legitimate. A warn, never a fail (the checkFallbackModel precedent): a suspicious record is
  * operator signal, not a broken environment. */
 export function checkFixClaims(root: string): CheckOutcome {
   const doc = readBacklogChecked(root, "BUGS.md");

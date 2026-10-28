@@ -2,6 +2,8 @@ import type { TestCounts } from "../build/build-check-counts.js";
 import { utilizationPct, windowLabel, type SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
+import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
+import { fallbackDisplayPair } from "../config/config-views.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { clockHm, humanAgo, humanUntil } from "../text/datetime.js";
 import { pauseReasonSuffix, plural } from "../text/phrases.js";
@@ -89,6 +91,14 @@ export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"]): string {
   const counts = fragment ? ` · ${fragment}` : "";
   const sha = mainCheck.sha ? `${shortSha(mainCheck.sha)}: ` : "";
   return ` · main ${sha}${verdict}${counts}`;
+}
+
+/** The team's current budget-gate state, derived from a snapshot's budget block — the header
+ * badge's default-tier story (part 5c/8): the badge names the team's bulk fallback, so it
+ * reads the `default` tier's verdict alone (the per-tier pause lives on the role rows, via
+ * status-data.ts's budgetPausedRoles). */
+function teamBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
+  return budgetGate(budgetReached(budget), { default: budget.fallback !== null, strong: budget.fallback !== null }, false);
 }
 
 /** The new-project bootstrap's progress fragment (plans/work-ratio.md, part 2/2):
@@ -199,7 +209,8 @@ export function subscriptionWindowTone(blocks: SubscriptionWindowBlock[] | undef
  * exactly when the gate is no longer open, so no gate check is needed here, and every
  * no-forecast state stays byte-identical to the pre-projection badge. The `no cap` branch
  * needs no forecast slot: a disabled cap never carries a capHitAt (projectCapHit returns null
- * for capUsd <= 0), so it cannot compete for the line. */
+ * for capUsd <= 0), and the fallback fragment only stands once the cap IS reached — the one
+ * state where the forecast is itself null — so the fragments can never compete for the line. */
 export function budgetBadge(
   budget: StatusSnapshot["budget"],
   windows?: SubscriptionWindowBlock[],
@@ -216,12 +227,30 @@ export function budgetBadge(
   // fall through to the daily spend.
   if (only && blocks) return window;
   if (budget.free) return ` · budget: n/a${window}`;
+  // Only while the fallback is actually carrying the team (plans/fallback-model.md): the cap
+  // is spent, so the dollar figure alone would read like a stopped team. Naming the model
+  // answers the operator's next question — what is it running on now? Its cost is n/a by
+  // construction (the gate engages nothing else), so no second figure is shown. When the
+  // snapshot carries the per-tier map (tiers, part 7b/8 — non-null exactly when the tiers
+  // resolve to two or more distinct pairs), list each tier's pair instead, borrowed ones
+  // marked, so a strong-tier borrow is visible at a glance; a tier-free snapshot keeps the
+  // single-pair text byte-identical to the pre-tier badge. Off-gate the badge is byte-
+  // identical to before either way.
+  const tierEntries = fallbackTierEntries(budget.tiers);
+  // The label when the engaged pair names neither half: pi's own default.
+  const backendDefault = "pi default";
+  const fallback =
+    teamBudgetGate(budget) === "fallback"
+      ? tierEntries.length >= 2
+        ? ` · over-cap model: ${tierEntries.join(", ")} (cost n/a)`
+        : ` · over-cap model: ${fallbackDisplayPair(budget.fallback, backendDefault)} (cost n/a)`
+      : "";
   const forecast =
     budget.capHitAt !== null
       ? ` · ~cap at ${clockHm(budget.capHitAt)}`
       : "";
   if (budget.capUsd > 0)
-    return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today${forecast}${window}`;
+    return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today${forecast}${fallback}${window}`;
   return ` · budget: ${usd(budget.spentUsd)} today · no cap${window}`;
 }
 

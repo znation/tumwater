@@ -210,7 +210,8 @@ export function checkDurationPhrase(events: readonly HarnessEvent[]): string | u
  * a warn, not informational (the 2026-09-05 stance predates non-npm targets being supported,
  * when a warn would have been noise no operator could act on — with `check.command` available
  * the warning is actionable): the three gates degrade to "no check" and a silently absent
- * safety layer is the failure this check exists to surface. Warn does not fail the exit code. */
+ * safety layer is the failure this check exists to surface. Warn does not fail the exit code
+ * (the fallback check's precedent, doctor-fallback-checks.ts's checkFallbackModel). */
 export function checkBuildCheck(
   root: string,
   config?: CheckConfigSlice | null,

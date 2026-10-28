@@ -824,7 +824,7 @@ test("the drawer renders the feedback filings and shows none without them", asyn
 // The role drawer's Configuration section mirrors `tumwater role <id>`'s field labels and
 // wording family from the same /api/role payload (rolePayload), so the page and the CLI read
 // one role's configuration identically: model/tier, provider cap, image reading (with the
-// reroute target), billing, min run interval, queued
+// reroute target), budget fallback pair, billing, min run interval, queued
 // prompts, and the clamped instructions/find text. Absent fields render no row, so a
 // cap-less or notes-only payload keeps an empty section.
 test("the role drawer renders the Configuration section from the role payload", async () => {
@@ -836,6 +836,8 @@ test("the role drawer renders the Configuration section from the role payload", 
       modelTier: "strong",
       imageInput: false,
       imageReroute: "strong (claude-opus-5-5)",
+      fallback: { provider: "omlx", model: "Qwen3.8" },
+      fallbackFree: true,
       billing: "subscription",
       billingWindow: "five_hour",
       minRunIntervalSeconds: 30,
@@ -851,6 +853,7 @@ test("the role drawer renders the Configuration section from the role payload", 
   assert.match(role, /<h3>Configuration<\/h3>/);
   assert.match(role, /<dt>Model<\/dt><dd[^>]*>deepseek\/deepseek-v4 \(strong tier\)<\/dd>/);
   assert.match(role, /<dt>Images<\/dt><dd[^>]*>no — reruns on strong \(claude-opus-5-5\)<\/dd>/);
+  assert.match(role, /<dt>Budget fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 \(free\)<\/dd>/);
   assert.match(role, /<dt>Billing<\/dt><dd[^>]*>subscription \(five_hour window\)<\/dd>/);
   assert.match(role, /<dt>Min run interval<\/dt><dd title='30s \(team default\)'>30s \(team default\)<button[^>]*data-act='interval-edit'[^>]*>Set interval<\/button><\/dd>/);
   assert.match(role, /<dt>Queued prompts<\/dt><dd[^>]*>4<\/dd>/);
@@ -859,6 +862,28 @@ test("the role drawer renders the Configuration section from the role payload", 
   assert.match(role, /<dt>Instructions override<\/dt><dd title='say the version on every reply\nkeep it short'>say the version on every reply keep it short/);
   assert.match(role, /data-act='instructions-edit' data-arg='clean'>Edit<\/button>/);
   assert.match(role, /<dt>Find text<\/dt><dd title='look for redundant code'>look for redundant code<\/dd>/);
+});
+
+// The drawer's Configuration fallback row names a non-pi fallback's backend namespace the same
+// way role-render's fallback line does (fallbackPairLabel), so the page and `tumwater role <id>`
+// agree on which model a claude seam's budget fallback runs: a non-pi budget pair keeps its
+// namespace exactly once even when the model id shares it.
+test("the Configuration fallback row names a non-pi fallback's backend namespace", async () => {
+  const responses: Record<string, unknown> = {
+    "/api/role?role=clean": {
+      notes: null,
+      nextPrompt: null,
+      model: "deepseek/deepseek-v4",
+      modelTier: "strong",
+      fallback: { backend: "claude", provider: "claude", model: "claude-haiku-5-5" },
+      fallbackFree: true,
+    },
+  };
+  const t = openDrawer(["toggleRole"], { status: workingStatus(), responses });
+  t.scope.toggleRole("clean");
+  await flush();
+  const role = t.paintedFor("drawerrole");
+  assert.match(role, /<dt>Budget fallback<\/dt><dd[^>]*>claude\/claude-haiku-5-5 \(free\)<\/dd>/);
 });
 
 // Context-window visibility: the Configuration section names the resolved seam's declared
@@ -983,8 +1008,8 @@ test("the quiet-hours own-window editor prefills the window and the director has
   assert.match(dirRole, /<dt>Quiet hours<\/dt><dd[^>]*>12:00-13:00 \(team window; not holding now\)<\/dd>/);
 });
 
-test("the Configuration section omits absent fields (cap-less team, notes-only)", async () => {
-  // A cap-less team carries no provider row; no images-reroute.
+test("the Configuration section omits absent fields (cap-less team, no fallback, image-\nyes, notes-only)", async () => {
+  // A cap-less team carries no provider row; no fallbacks, no images-reroute.
   const partial = openDrawer(["toggleRole"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": {
@@ -997,6 +1022,7 @@ test("the Configuration section omits absent fields (cap-less team, notes-only)"
   assert.match(role, /<dt>Images<\/dt><dd[^>]*>yes<\/dd>/);
   assert.doesNotMatch(role, /<dt>Provider<\/dt>/);
   assert.doesNotMatch(role, /Model fallback/);
+  assert.doesNotMatch(role, /Budget fallback/);
   assert.doesNotMatch(role, /<dt>Billing<\/dt>/);
   assert.doesNotMatch(role, /Min run interval/);
 

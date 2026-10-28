@@ -120,11 +120,21 @@ fallback maps and chain steps, the per-provider caps, the subscription-window ca
 image-capability probe with their rows, alerts, keys and tests. A role whose model is unusable
 says so once, in doctor and in the report.
 
-**Amended 2026-10-28 (user):** the image reroute stays. A role whose model reads no images reruns
-an image on a model that can — today the first image-capable peer tier, after part 5e/6 the
-model the `images` entry names — and an image attachment to it is routed there before the run
-starts ([image-input.md](image-input.md)). Parts 5g/6 and 5h/6 (its deletion) were reverted;
-part 5v/6 drops only its fallback regime and part 5e/6 moves its target off the tier map.
+**Amended 2026-10-28 (user):** three routing rules stay, and the tiers they hang on with them.
+- **The tier map** (`small`/`default`/`strong`) stays; part 5e/6, which deleted it, is withdrawn.
+  `roles.<id>.model` already gives one role its own model.
+- **The budget fallback** stays: at `maxDailyCostUsd` each tier switches to its own free fallback,
+  with its chain, breaker, events and surfaces. Parts 5u/6, 5v/6, 5w/6, 5m/6 and 5q/6 (its
+  removal) are withdrawn, and the landed parts 5r/6–5t/6 (its alert, badge fragment, role rows
+  and doctor rows) were reverted.
+- **The image reroute** stays: a role whose model reads no images reruns an image on the first
+  image-capable peer tier — `default` → `strong` — and an image attachment to it is routed there
+  before the run starts ([image-input.md](image-input.md)). Parts 5g/6 and 5h/6 (its deletion)
+  were reverted.
+
+What stroke 5 still deletes: the image probe, the per-provider caps, the model-failure fallback
+episode, and the subscription-window carve-outs (part 5d/6, which also drops the used-up-window
+trigger that moved a tier to its fallback before the cap).
 **Gate on measurement.**
 
 ### 6. Only a stopped team asks for a person
@@ -136,6 +146,7 @@ the operator's own decision queue:
 |---|---|
 | main's check is failing — roles blocked / main red | the team is stopped |
 | today's budget is spent, so the roles are paused | the team is stopped |
+| today's budget is spent and the roles switched to the fallback / running on fallback | the user kept the budget fallback and asked to see when it runs (2026-10-28) |
 | N roles are failing run after run / looks stuck | the team is stopped for that role |
 | tumwater is not running | nothing is happening |
 | low disk / the root install is behind the lockfile | the team is about to be stopped |
@@ -146,7 +157,8 @@ Every other amber alert — churn, at-risk reviews, flapped checks, quarantine, 
 stale pins, stale claims, regressed fixes, unreadable queue files, provider caps, image probe,
 role-note caps, brief caps, PRINCIPLES caps, qa coverage, ci parity — becomes a doctor row (it
 already is one) or is deleted with its mechanism. The dashboard shows a count and a link to the
-doctor; the doctor keeps the detail. **Target: the feed can be red or it can be empty.**
+doctor; the doctor keeps the detail. **Target: the feed can be red or it can be empty** — apart
+from the blue fallback banners the user kept (2026-10-28).
 
 ## Before deleting concurrency and model policy
 
@@ -181,11 +193,11 @@ the check cheaper or land less often, both of which this plan's strokes push tow
 
 | Part | What it deletes | Requires |
 | --- | --- | --- |
-| 1a–1e/6 Only a stopped team asks for a person | the amber/blue/gray alert builders, split into five sub-plans: 1a the dashboard's doctor link, 1b the staleness/notify/queue banners, 1c the review/check banners, 1d the status/tail banners, 1e the backlog staleness/structure banners | 1b: Subtract parts 1a/6 and 2a/6–2c/6; 1d: Subtract part 1c and 5e/6; the rest chain part-by-part |
+| 1a–1e/6 Only a stopped team asks for a person | the amber/blue/gray alert builders, split into five sub-plans: 1a the dashboard's doctor link, 1b the staleness/notify/queue banners, 1c the review/check banners, 1d the status/tail banners, 1e the backlog staleness/structure banners | 1b: Subtract parts 1a/6 and 2a/6–2c/6; 1d: Subtract part 1c/6; the rest chain part-by-part |
 | 2a–2c/6 One hold vocabulary | 2a: Needs replan; 2b: Waiting for the next failure; 2c: the held counters and the operator-held threshold | 2b requires 2a; 2c requires 2b |
 | 3/6 The queue becomes a lock and a fast-forward | the queue stages, the batch check and bisect, the requeue, the drop limits, the interlock | Every commit is verified on main part 3f/3 |
 | 4/6 One runner per role | instance claims, the worktree pool, `instances` | Subtract part 3/6 |
-| 5a–5e/6 One model per role | 5a the image-capability probe, 5b the per-provider caps, 5c the fallback chains, 5d the subscription-window carve-outs, 5e the tier map | 5b requires 5a; 5c requires 5b; 5d requires 5c; 5e requires 5d |
+| 5a–5d/6 One model per role | 5a the image-capability probe, 5b the per-provider caps, 5c the model-failure fallback episode (the budget fallback's removal, also once part of 5c, was withdrawn 2026-10-28), 5d the subscription-window carve-outs; 5e the tier map — withdrawn 2026-10-28 | 5b requires 5a; 5c requires 5b; 5d requires 5c |
 | 6/6 The sweep | the rows, keys, aliases and docs the five parts left behind | — |
 
 ## Supersedes / retires
@@ -205,11 +217,12 @@ replaces the mechanism, not that it was wrong.
   per-role tiering has no subject.
 - [parallel-work-instances.md](parallel-work-instances.md), [worktree-pool.md](worktree-pool.md) —
   stroke 4 retires both.
-- [model-tiers.md](model-tiers.md), [fallback-chain.md](fallback-chain.md),
-  [fallback-model.md](fallback-model.md), [provider-concurrency.md](provider-concurrency.md),
-  [image-input.md](image-input.md), [daily-cost-budget.md](daily-cost-budget.md) — stroke 5
-  retires the routing machinery; the daily cap stays as the one spend limit, per role. The image
-  reroute is the one routing rule kept (user, 2026-10-28; stroke 5's amendment).
+- [provider-concurrency.md](provider-concurrency.md) — stroke 5 retires the per-provider caps.
+  [image-input.md](image-input.md) — partly: the probe goes, the reroute stays.
+  [model-tiers.md](model-tiers.md), [fallback-model.md](fallback-model.md),
+  [daily-cost-budget.md](daily-cost-budget.md) — kept (user, 2026-10-28; stroke 5's amendment):
+  the tiers, the over-cap fallback and the daily cap stay. [fallback-chain.md](fallback-chain.md)
+  — kept except its used-up-window trigger, which goes with part 5d/6.
 - [refusal-and-thrash.md](refusal-and-thrash.md) — its hold vocabulary reduces to the one note in
   stroke 2; the refusal itself stays.
 - [fast-merge.md](fast-merge.md), [review-gate.md](review-gate.md),
@@ -236,9 +249,10 @@ replaces the mechanism, not that it was wrong.
 - The feed on a healthy team is empty; on a stopped team it names the stop and nothing else.
 - `tumwater doctor`'s row count falls: 79 rows today, and the rows stroke 2, 3, 4 and 5 delete
   with their mechanisms (`stalled entries`, `backlog headings`, `plan dependencies`, the three
-  contention rows, `worktree pool`, `parallel instances`, `provider concurrency`, `image input`,
-  the model-tier and fallback rows) leave with them.
+  contention rows, `worktree pool`, `parallel instances`, `provider concurrency`, the
+  `claude window`/`codex window` rows) leave with them. The model-tier, over-cap model, fallback
+  chain and `image input` rows stay with the routing the user kept (2026-10-28).
 - One check runs per change, once, after landing: `build_check` events per merged commit fall to
   1 (they are ≥2 today, and up to a dozen in a reject cycle).
-- The config schema loses its model-routing and capacity keys; the alert tests shrink with the
-  builders.
+- The config schema loses its capacity keys and the subscription-window reserves (the tier map,
+  the fallback keys and the daily cap stay); the alert tests shrink with the builders.

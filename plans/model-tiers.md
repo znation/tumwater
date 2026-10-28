@@ -1,8 +1,10 @@
 # Model tiers — small, default, and strong models, each with its own free fallback
 
-**Retired 2026-10-26** by [subtract.md](subtract.md) (Subtract part 5/6): one model per role, named
-once in `tumwater.json`. The tier map goes; a role whose model is unusable fails its run like any
-other failure, and says so once in doctor and in the report.
+**Retirement withdrawn 2026-10-28** (user decision): [subtract.md](subtract.md) had retired the
+tier map on 2026-10-26 (Subtract part 5/6, later part 5e/6). The user kept the budget fallback
+(each tier's own free fallback) and the image reroute (`default` → `strong`), both built on the
+tiers, so part 5e/6 was withdrawn: `small`/`default`/`strong` stay, and `roles.<id>.model` still
+gives one role its own model.
 
 Planned 2026-10-05 · requested by user
 
