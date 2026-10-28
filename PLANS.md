@@ -552,4 +552,56 @@ export function persistBaselineVerdicts(root: string): void {
 
 **Tests.** No new test module: a behavior-preserving move behind four module-private helpers and one private type alias, guarded by the existing `test/main-baseline-persist.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
 
+### `seedProject`'s complexity-18 init-seed body is split into one named helper per seeding concern — the new-repo `git init`, the freshness resolve, the created/left-alone bookkeeping and atomic writer, the brief's README-versus-TUMWATER choice, the template backlog files, the config seed with its bootstrap, the .gitignore edit, the starter directories and the commit — so "does this root need a git init?", "is this a fresh project?", "what does a seeded path record as created or left alone?", "where does the brief go?", "which templates are written?", "is a config seeded and does it carry bootstrap?", "what happens to .gitignore?", "which starter directories are made?" and "what gets committed?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `buildRolloutLines`, `classifyError`, `findTrust`, `inputViewWindow`, `usageWords`, `sayLogsTail`, `editAndAnnounce`, `movedSourceFindings`, `parseInitArgs` and `createTeamConfigKeyEditor` plans each extract one named helper per job the same way, and the 2026-10-25 `initProject` split is the sibling extraction that first created `seedProject`; independent in file of every Planned entry — `grep -c 'seedProject' PLANS.md` prints 0 and `grep -c 'src/init/init.ts' PLANS.md` prints 0, so no `## Planned` heading or touches list names the symbol or the file, and no blocked `Every commit is verified on main` part, `Subtract` part or in-flight split names src/init; PLANS-DONE.md's `init/init.ts` headings are the init behavior plans and the `resolveInitPlan` split, none a split of `seedProject`'s body (`grep -cE '^### .*seedProject' PLANS-DONE.md` prints 0); docs/invariants.md binds `src/init/init.ts` at INV-Q2 (`seedProject`'s local `claim`), INV-Q4 and INV-Q5 (`seedProject`), and only INV-Q2's `claim` token moves to the new `seedWriters` helper; touches src/init/init.ts docs/invariants.md)
+
+**Goal.** `seedProject` (`src/init/init.ts`, module-private, complexity 18) is the side-effecting half of `tumwater init`: it runs the new-repo `git init`, settles whether the project is fresh, writes every absent project file and starter directory atomically, seeds the config with its bootstrap, edits .gitignore, and commits the files it created. Today one ~115-line body does ten jobs: the `!wasRepo` git init with its dry-run skip; the `withCommits`/`fresh` resolve; the `created`/`leftAlone` arrays and the `claim`/`write` closures with their bookkeeping comments; the README-versus-TUMWATER-versus-existing-brief choice; the PLANS/BUGS/QUESTIONS/PRINCIPLES writes with the starter-plans substitution; the config existence check, seed and fresh bootstrap; the `ensureGitignore` result and its `leftAlone` fallback; the starter-directory loop; and the committable filter, `git add`, staged check and commit. A reader asking any of the nine questions above has only the one block to scan.
+
+**Approach.** All code edits in `src/init/init.ts`; move code, do not rewrite it — every condition, order and comment stays exactly as today, and the doc comment on `seedProject` stays. Add one module-private interface and nine module-private functions beside `seedProject`:
+
+- `interface SeedWriters { created: string[]; leftAlone: string[]; claim(name: string, full: string, make: () => void): void; write(name: string, content: string): void; }` — the bookkeeping and writer pair.
+- `function seedWriters(root: string, dryRun: boolean): SeedWriters` — the `created`/`leftAlone` arrays and the `claim`/`write` closures above, with their existing doc comments; `claim` is exactly today's exists → `leftAlone` / `!dryRun` make / `created` discipline and `write` exactly today's atomic `writeTextAtomic` call.
+- `async function initSeedRepo(root: string, plan: InitPlan): Promise<{ repoInitialized: boolean; createdBranch: string | undefined }>` — the `!plan.wasRepo` block: `git init -b plan.preferredBranch` unless `plan.dryRun`, then `repoInitialized = true` and `createdBranch = plan.preferredBranch`.
+- `async function resolveSeedFreshness(root: string, plan: InitPlan): Promise<{ withCommits: boolean; fresh: boolean }>` — `withCommits = plan.wasRepo && (await hasCommits(root))` and `fresh = await isFreshProject(root, withCommits)`.
+- `function seedBriefFile(root: string, plan: InitPlan, writers: SeedWriters): void` — the `projectName(root)` name and the `brief !== null` → `leftAlone.push(plan.brief)` / `adopted` → existing README to `leftAlone` plus TUMWATER.md / else README.md decision.
+- `function seedBacklogFiles(tpl: InitPlan["tpl"], writers: SeedWriters): void` — the `tpl.starterPlans.length > 0` PLANS substitution and the PLANS/BUGS/QUESTIONS/PRINCIPLES writes.
+- `function seedConfigFile(root: string, fresh: boolean, dryRun: boolean, writers: SeedWriters): number | null` — the `configPath(root)` existence check, the `seedConfig(root)` seed with `fresh`'s `bootstrap = { untilPlansDone: BOOTSTRAP_PLANS }`, the `saveConfig` unless `dryRun`, the `created`/`leftAlone` push, and the returned bootstrap.
+- `function seedGitignore(root: string, dryRun: boolean, writers: SeedWriters): void` — `ensureGitignore(root, dryRun)` → `created` else an existing `.gitignore` → `leftAlone`.
+- `function seedStarterDirs(root: string, tpl: InitPlan["tpl"], writers: SeedWriters): void` — the `for (const dir of tpl.starterDirs)` `claim` loop.
+- `async function commitSeeded(root: string, plan: InitPlan, withCommits: boolean, writers: SeedWriters): Promise<boolean>` — the `tpl.starterDirs` Set, the committable filter, and the `!dryRun && committable.length > 0` `git add` / `gitTry diff --cached` / `committerIdentArgs` commit.
+
+`seedProject` keeps its name, its signature and its doc comment, and becomes orchestration in the original order:
+
+```ts
+async function seedProject(root: string, plan: InitPlan): Promise<
+  Pick<InitResult, "created" | "leftAlone" | "committed" | "repoInitialized" | "branch" | "bootstrap">
+> {
+  const { dryRun, tpl } = plan;
+  const { repoInitialized, createdBranch } = await initSeedRepo(root, plan);
+  const { withCommits, fresh } = await resolveSeedFreshness(root, plan);
+  const writers = seedWriters(root, dryRun);
+  seedBriefFile(root, plan, writers);
+  seedBacklogFiles(tpl, writers);
+  const bootstrap = seedConfigFile(root, fresh, dryRun, writers);
+  seedGitignore(root, dryRun, writers);
+  seedStarterDirs(root, tpl, writers);
+  const committed = await commitSeeded(root, plan, withCommits, writers);
+  return { created: writers.created, leftAlone: writers.leftAlone, committed, repoInitialized, branch: createdBranch, bootstrap };
+}
+```
+
+`initProject`, `resolveInitPlan`, `ensureGitignore`, `isFreshProject`, `isScaffoldingPath` and every import are untouched, and no export changes. No behaviour changes: a new repo is still git-inited on the preferred branch (never on a dry run), a fresh project still seeds the bootstrap and a repo with code still does not, .gitignore still gains only its missing lines, and the commit pathspec still excludes tumwater.json and the starter directories.
+
+**Files touched.** `src/init/init.ts` and `docs/invariants.md` (one Binds token). No new module, no export change, no test file edited.
+
+**Acceptance criteria.**
+- `seedProject`'s body contains only the `const { dryRun, tpl } = plan` destructure, the nine helper calls, and the return: it contains no `if`, no `for`, no `git(`/`gitTry(`, no `fs.existsSync`, no `writeTextAtomic`, no `saveConfig`, no `hasCommits`, no `isFreshProject` and no `ensureGitignore`.
+- `SeedWriters`, `seedWriters`, `initSeedRepo`, `resolveSeedFreshness`, `seedBriefFile`, `seedBacklogFiles`, `seedConfigFile`, `seedGitignore`, `seedStarterDirs` and `commitSeeded` each exist exactly once at module scope, are not exported, and are called only from `seedProject`; the `claim`/`write` closures exist only inside `seedWriters`.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/init/init.ts'`) no longer reports `seedProject` at 18, and no new helper reports 16 or above; every other function's reported count is unchanged.
+- The exported surface is unchanged: `grep -nE '^export ' src/init/init.ts` still matches the same names, and no import line is added or removed (every name the move uses — `saveConfig`, `seedConfig`, `ensureDir`, `writeTextAtomic`, `commitAuthorArgs`, `committerIdentArgs`, `git`, `gitTry`, `hasCommits`, `briefTemplate`, `readmeTemplate`, `projectName`, `CONFIG_BASENAME`, `configPath`, `PLANS_TEMPLATE`, `BUGS_TEMPLATE`, `QUESTIONS_TEMPLATE`, `PRINCIPLES_TEMPLATE` — is already imported in the module).
+- `docs/invariants.md` changes exactly one token: INV-Q2's `Binds.` line reads `(... (`seedWriters`'s `claim`, `ensureGitignore`)` instead of today's ``seedProject`'s local `claim``; every `Guarantee.` and `Pinned by.` line, and INV-Q1, INV-Q3, INV-Q4, INV-Q5 and INV-Q6 in full, stay byte-identical.
+- Behaviour is preserved, verified by the existing `test/init.test.ts` cases passing unedited — "initProject creates and commits the harness files", "initProject seeds a git repo when the cwd is not one yet (BUGS.md 2026-09-08)", "initProject never clobbers existing files and is idempotent", "initProject appends both ignore entries to an existing .gitignore on their own lines", "initProject --dry-run writes nothing: no files, no gitignore edit, no commit", "initProject seeds bootstrap on a fresh project", "initProject seeds no bootstrap when the repo already carries code", "a repo that only gains a config reports it and stays uncommitted" and "initProject leaves no half-written file when a seeded write dies mid-way".
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind nine module-private helpers and one private interface, guarded by the existing `test/init.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
+
 ## Done
