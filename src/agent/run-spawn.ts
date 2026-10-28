@@ -149,6 +149,16 @@ function buildAndSpawn(backend: AgentBackend, opts: PiRunOptions, pre: SpawnInpu
   };
 }
 
+/** Warn on a run's own root that a backend's optional `prepare` step failed, then let the run
+ * go on without it — the shared tail of the synchronous-throw and async-rejection prepare guards
+ * below, so both warn the same way. `warnRoot` is undefined when the session dir has no team
+ * root; the warning is then skipped because there is no tumwater event log to write to. */
+function warnPrepareFailed(warnRoot: string | undefined, error: unknown): void {
+  if (warnRoot !== undefined) {
+    warnEventBestEffort(warnRoot, TUMWATER_SOURCE, `agent prepare failed, run continues: ${errorMessage(error)}`);
+  }
+}
+
 /** Build and spawn one non-interactive agent run, from the marker write through the child spawn,
  * and return the bundle the run's stream pipeline, watchdogs and settlement wiring consume. The
  * caller's setup (opened logs, the run's private TMPDIR) is passed in; a synchronous throw here
@@ -161,6 +171,7 @@ function buildAndSpawn(backend: AgentBackend, opts: PiRunOptions, pre: SpawnInpu
  * synchronous step — the ordering the logical-clock watchdog tests pin, which advance the fake
  * clock immediately after the run promise is created. A backend WITH a `prepare` (codex)
  * resolves its trust first and returns a promise that resolves to the bundle after the await. */
+
 export function spawnPiRun(
   backend: AgentBackend,
   logs: { raw: AppendLog },
@@ -252,9 +263,7 @@ export function spawnPiRun(
   try {
     prepared = backend.prepare?.(runSpec);
   } catch (error) {
-    if (warnRoot !== undefined) {
-      warnEventBestEffort(warnRoot, TUMWATER_SOURCE, `agent prepare failed, run continues: ${errorMessage(error)}`);
-    }
+    warnPrepareFailed(warnRoot, error);
   }
   if (prepared === undefined) {
     // No `prepare` step: build and spawn synchronously and hand the bundle straight back, so
@@ -266,9 +275,7 @@ export function spawnPiRun(
     try {
       await prepared;
     } catch (error) {
-      if (warnRoot !== undefined) {
-        warnEventBestEffort(warnRoot, TUMWATER_SOURCE, `agent prepare failed, run continues: ${errorMessage(error)}`);
-      }
+      warnPrepareFailed(warnRoot, error);
     }
     return buildAndSpawn(backend, opts, { runSpec, parser, runMarker, resolved, blind, runTmp });
   })();
