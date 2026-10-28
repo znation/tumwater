@@ -100,6 +100,11 @@ function releaseOwnedLock(dir: string): void {
   rmLockDir(dir);
 }
 
+/** The ledger-facing release primitive: the same releaseOwnedLock every mutex exits with, but
+ * exported so src/concurrency/check-slots.ts can hand a suite's slot back without re-implementing
+ * the owned-pid guard (a holder whose lock was stolen must not delete its successor's dir). */
+export const releaseOwnedLockDir = releaseOwnedLock;
+
 type AcquireStep =
   /** The verdict of one acquire attempt against the lock: "acquired" means our atomically
    * published dir is in place; "retry" means a live holder kept it — sleep the caller's
@@ -163,6 +168,23 @@ function publishLockDir(dir: string): void {
   } catch (err) {
     rmLockDir(tmp); // Never leave behind a temp dir we own but did not publish.
     throw err;
+  }
+}
+
+/** The one-shot claim step of the lock protocol, exported for a caller that wants a single
+ * best-effort claim rather than withLock's retry loop: claim `dir` by atomic publish, returning
+ * true on success and false when `dir` already exists (a live holder) or contention — never
+ * throwing, unlike publishLockDir. The suite-slot ledger (check-slots.ts) calls it per index as
+ * it walks a ledger, so it must not throw on a held slot to inspect the others. A genuine
+ * filesystem failure (ENOSPC, a read-only parent) also returns false; the ledger degrades to
+ * "run unpermitted" on an unable-to-create ledger, which suits a best-effort scheduling cap. */
+export function tryClaimLockDir(dir: string): boolean {
+  try {
+    if (fs.existsSync(dir)) return false; // A held slot (live or stale) — the caller walks on.
+    publishLockDir(dir);
+    return true;
+  } catch {
+    return false;
   }
 }
 
