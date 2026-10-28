@@ -36,6 +36,28 @@ import { readPostBody, readRoleBody, sendRequestResult } from "./gui-endpoint-co
 import { wakeInSecondsMs } from "./gui-team-commands.js";
 import type http from "node:http";
 
+/** The shared body of the dashboard's Health/Action buttons that run a domain function and
+ * answer its text lines joined with "; ": readPostBody (400/413 sent on a null return) plus the
+ * one sendJson built from the caller's `ok` predicate and line renderer. kill-orphans,
+ * drop-broken-pins, retire-leftovers and resync-install each restated this read-then-reply
+ * flow, differing only in what they run and how they say ok; this is the one home so the body
+ * discipline and the "; " joining cannot drift between them. commit-backlog and
+ * archive-backlog deliberately do not ride it (they carry extra payload fields or multi-branch
+ * replies), and neither does sendRequestResult's marker family (a different reply shape). */
+async function runLinesAction<Rep>(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  root: string,
+  run: (root: string) => Promise<Rep>,
+  ok: (report: Rep) => boolean,
+  lines: (report: Rep) => string[],
+): Promise<void> {
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
+  const report = await run(root);
+  sendJson(res, 200, { ok: ok(report), message: lines(report).join("; ") });
+}
+
 /** Handle POST /api/reset-counters: the dashboard's counter reset — the same marker-writing
  * core `tumwater reset-counters` calls (requestResetCounters). Same body discipline and
  * `{}` → every configured role default as /api/wake. */
@@ -98,10 +120,7 @@ export async function handleReclaim(req: http.IncomingMessage, res: http.ServerR
  * killOrphans `tumwater doctor --kill-orphans` runs, answering its lines joined with "; ". Same
  * body discipline as /api/reclaim; `ok` is false when the scan failed or a signal was refused. */
 export async function handleKillOrphans(req: http.IncomingMessage, res: http.ServerResponse, root: string, kill: (root: string) => Promise<OrphanKillReport> = killOrphans): Promise<void> {
-  const body = await readPostBody(req, res, "{}");
-  if (!body) return;
-  const report = await kill(root);
-  sendJson(res, 200, { ok: !("error" in report) && report.failed.length === 0, message: orphanKillLines(report).join("; ") });
+  return runLinesAction(req, res, root, kill, (r) => !("error" in r) && r.failed.length === 0, orphanKillLines);
 }
 
 /** Handle POST /api/doctor-drop-broken-pins: the dashboard Health card's Drop broken pins
@@ -109,10 +128,7 @@ export async function handleKillOrphans(req: http.IncomingMessage, res: http.Ser
  * lines joined with "; ". `ok` is false when any pin could not be dropped. Same body discipline
  * as /api/kill-orphans; `drop` is injectable so a test need not touch git. */
 export async function handleDropBrokenPins(req: http.IncomingMessage, res: http.ServerResponse, root: string, drop: (root: string) => Promise<BrokenPinDrop> = dropBrokenPins): Promise<void> {
-  const body = await readPostBody(req, res, "{}");
-  if (!body) return;
-  const result = await drop(root);
-  sendJson(res, 200, { ok: result.failed.length === 0, message: brokenPinDropLines(result).join("; ") });
+  return runLinesAction(req, res, root, drop, (r) => r.failed.length === 0, brokenPinDropLines);
 }
 
 /** Handle POST /api/doctor-retire-leftovers: the dashboard Health card's Retire leftovers
@@ -121,10 +137,7 @@ export async function handleDropBrokenPins(req: http.IncomingMessage, res: http.
  * retire was refused. Same body discipline as /api/kill-orphans; `retire` is injectable so a
  * test need not touch git. */
 export async function handleRetireLeftovers(req: http.IncomingMessage, res: http.ServerResponse, root: string, retire: (root: string) => Promise<LeftoverRetireReport> = (r) => retireLeftovers(r, loadConfigSafe(r).config)): Promise<void> {
-  const body = await readPostBody(req, res, "{}");
-  if (!body) return;
-  const report = await retire(root);
-  sendJson(res, 200, { ok: report.failed.length === 0, message: leftoverRetireLines(report).join("; ") });
+  return runLinesAction(req, res, root, retire, (r) => r.failed.length === 0, leftoverRetireLines);
 }
 
 /** Handle POST /api/doctor-commit-backlog: the dashboard Health card's Commit backlog button —
@@ -193,10 +206,7 @@ export async function handleResyncInstall(
   root: string,
   resync: (root: string) => Promise<RootInstallResync> = resyncRootInstall,
 ): Promise<void> {
-  const body = await readPostBody(req, res, "{}");
-  if (!body) return;
-  const r = await resync(root);
-  sendJson(res, 200, { ok: r.ok, message: rootInstallResyncLines(r).join("; ") });
+  return runLinesAction(req, res, root, resync, (r) => r.ok, rootInstallResyncLines);
 }
 
 /** Handle POST /api/abort: the dashboard's per-row abort control — the same marker-writing
