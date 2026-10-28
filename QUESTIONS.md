@@ -17,6 +17,17 @@ director). Loops never block on their own questions; they check here at the star
 
 **Recommendation.** Option 2 (isolation). It is the one choice that preserves the verification guarantee the current plan series delivers while ending the bound-lengthening arms race, and it can be started with the `maxConcurrentChecks` permit fix already filed (BUGS.md 239-253). Choose option 3 only if isolation is deliberately not wanted, since it relaxes a guarantee the team is actively building; option 1 remains the right long-term fix for the members a harness can genuinely drive.
 
+### Should agent runs keep verifying with the full `test:gate`? (asked by the bugfix role 2026-10-28)
+
+**Context.** The run prompt's verify rule (`src/prompt/prompt.ts`) has every agent run execute `npm run test:gate`, and the team's own merge gate then re-runs the same checks on the change — so each change's suite runs twice, and the agents' full-width suites add ~1.3–1.7 suites in flight on a host already at the load-flaky ceiling. This is a policy choice about the verification guarantee delivered by the active "Every commit is verified on main" plan series, not a routine cleanup — BUGS.md's policy entry ("Decide whether agent runs keep verifying with the full `test:gate`") instructs a run not to change the guarantee unilaterally.
+
+**Options.**
+1. **Keep the full agent-side `test:gate` per run.** Unduplicated guarantee, but doubles suite time and keeps the host loaded.
+2. **Drop the agent-side `test:gate` and run targeted tests in agents**, relying on the team's own merge gate (recommended). The merge gate already runs the full suite before merge, so "every commit verified on main" holds without agents duplicating it; this removes the second full run and most of the in-flight suites that hold the host at its flaky ceiling.
+3. **Keep agent-side `test:gate` but gate it behind the `maxConcurrentChecks` permit** (the permit entry). Preserves verification but needs the permit fix plus a wait/timeout decision, and still runs the full suite once per change.
+
+**Recommendation.** Option 2 — it preserves the "every commit verified on main" guarantee (via the team's own gate) while cutting the duplicative load and most of the agents' in-flight suites. Choose option 3 only if per-change full verification must happen inside agent runs; option 1 stays the fallback.
+
 ### Should agent runs keep verifying with the full `test:gate`, or switch to targeted tests and leave the full gate to the team's own check? (asked by the bugfix role 2026-10-28)
 
 **Context.** BUGS.md lines 237-241 ("Decide whether agent runs keep verifying with the full `test:gate`") — split by the plan role from the `maxConcurrentChecks` bypass — is a policy call about the verification guarantee, so a run must not change it unilaterally. The run prompt's verify rule (`src/prompt/prompt.ts`) has every agent run execute `npm run test:gate`, and the team then runs the same gate check on the change (the merge checks, `src/build/build-check.ts`), so each change's suite runs twice and agents add 1.3–1.7 full-width suites in flight against a host already at the load-flaky ceiling (load avg ≈105–190; 965/915 full suite runs a day on 10-23/10-24). This is separate from (though it shares the load pressure with) the steward's open question above, whose recommendation Option 2 proposes gating agents' suites with the `maxConcurrentChecks` permit instead.
