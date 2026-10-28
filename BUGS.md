@@ -223,6 +223,10 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 The post-merge review of commit `3c1c1c6176c2080a9788e2a6aa0193a75b72aebf` (Fold gui-client-history.ts's 8 delegated handler guards into the shared clickClosest helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
 
+### post-merge review of 6407b7d6 never reached a verdict (found by the review role 2026-10-28)
+
+The post-merge review of commit `6407b7d67f7c9889df53fde798306f4630790d3d` (recovered leftover work from dedupe: Fold run-verdict's three unfulfilled-error blocking into one unfulfilledError helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
 ## Fixed
 
 ## Verified
