@@ -197,26 +197,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Each case keeps its original subject (the rejected role's fix run starts while another merge is in flight, the three verifies overlap, the un-creatable slot degrades to a terminal error) and asserts the same outcome.
 - No edit outside test/orchestrator-3.e2e.test.ts.
 
-### Every commit is verified on main, part 4d/3: the pre-merge reviewer's orchestrator-director cases are re-pointed ahead of its removal (planned 2026-10-27 by the plan role, split from the too-large part 3w/3 after feature held it (held 8): the director-file half of part 3w/3, sibling to part 3w/3, which takes the same series' mixed case in test/orchestrator-mixed.e2e.test.ts, and independent in files of it; replanned 2026-10-28 by the operator after feature refused the hand-off case's conflict-resolution hold, so that case parks on its gate build check; requires part 4e/3 landed, since a parked gate check settles `aborted` only once 4e/3 stops it on an abort; touches test/orchestrator-director.test.ts)
-
-**Goal.** Part 3h/3 stops `reviewAttempt` from running the model reviewer, which makes `test/orchestrator-director.test.ts`'s reviewer-driven cases fail: `director: once recovers a kept merge pin and drains the queue before exit` (its idle reply is a `review_error`), `merge queue interlock: a role with a queued merge starts no run until the merge ends` (a real pre-merge review run precedes the role's run) and `restart hand-off: an in-flight merge outliving its deadline is aborted, not waited out` (it sets `review.afterMerge: []` to hold the merge on a pre-merge review). Re-point each to a deterministic hold or rejection.
-
-**Why the hand-off case changed.** Feature refused the first version on 2026-10-27 for this case alone. Holding the merge on a parked conflict-resolution run makes the hand-off's abort settle `merge_conflict`, not `aborted`: `resolveConflict` (src/merge/merge-to-main.ts) returns false with no abort check. The first two cases re-pointed cleanly and were verified working, so their approach stands. The gate's build pre-check runs inside the verify under the verify's own abort controller, which the hand-off fires, and once part 4e/3 lands that abort kills it and the verify settles `aborted`.
-
-**Approach.** In `test/orchestrator-director.test.ts`:
-- `director: once recovers...`: re-point the reject-reviewer arm to a deterministic gate rejection (a conflict-marker diff or a failing declared check) and keep its subject (the pin is re-queued and the queue drains before exit).
-- `merge queue interlock...`: replace the pre-merge review run with a parked conflict-resolution run on a conflicting rebase, so the same ordering (the merge's own run finishes before the role's run starts) is asserted.
-- `restart hand-off...`: stop relying on `review.afterMerge: []`. Declare a check (`check.command`) that parks only on the change's tree (it touches the case's marker and sleeps; on main's tree it exits 0), wait on that marker where the case now waits on the reviewer's, and keep the lapse warning and `clean:aborted` assertions.
-- Leave the reviewer-run helpers in place; part 3e/3 deletes them.
-
-**Files touched.** test/orchestrator-director.test.ts
-
-**Acceptance criteria.**
-- `npm run test:gate` passes with the pre-merge reviewer still running.
-- No case in the file drives a pre-merge reviewer verdict: the reject is the gate's own finding, the interlock's merge run is a parked conflict-resolution run, and the hand-off's in-flight merge is held by a parked gate build check.
-- `restart hand-off` no longer relies on `review.afterMerge: []` for its hold.
-- Each case keeps its original subject (recovery drain, the interlock ordering, the hand-off abort) and asserts the same outcome; the hand-off still ends `clean:aborted`.
-- No edit outside test/orchestrator-director.test.ts.
 
 ### Subtract, part 3/6: The merge queue becomes a lock and a fast-forward (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 3; requires Every commit is verified on main part 3f/3 landed; touches src/merge src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts src/orchestrator/scheduling-scope.ts src/runner/runner-run.ts src/status/status-data.ts src/doctor/doctor-contention-checks.ts src/concurrency/check-permit.ts docs/how-it-works.md docs/invariants.md test/merger-restack.test.ts test/merge-backlog-conflicts.test.ts test/worktree-pool.test.ts)
 

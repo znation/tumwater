@@ -14,8 +14,9 @@
  *   the pause. The director runs while the paused role never starts one.
  * - Merge queue 3/5 interlock: a role with a queued merge starts no new run until the
  *   merge ends — the poll lists the queue once and skips that role's reservation. Pinned by
- *   prompt order: the queued change's review run (its summary is in the reviewer's prompt)
- *   completes before the role's own run prompt runs.
+ *   prompt order: the merge's own conflict-resolution run (the queued change's rebase onto
+ *   main conflicts; a session ending `-conflict` parks until the test releases it) completes
+ *   before the role's own run prompt runs. No pre-merge reviewer is involved.
  * - The restart hand-off's deadline: a self-redeploy with an in-flight merge and no role
  *   run waits only handoffMergeWindowMs for it, then aborts it and exits — the drain's
  *   abort callback (the shutdown path's last resort), which only the e2e tier exercised.
@@ -28,6 +29,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
 import { enqueueMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { pauseTeam } from "../src/team/team-state.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
@@ -59,12 +61,6 @@ function sessionOf(block: string): string {
   const lines = block.split("\n");
   const i = lines.indexOf("-n");
   return i >= 0 && i + 1 < lines.length ? lines[i + 1]! : "";
-}
-
-/** A fake pi that records every run's argv (logPromptsTo) and replies with the standard
- * nothing-to-do line: the interlock test's reviewer and role pi in one shim. */
-function recordingIdlePi(log: string): () => void {
-  return fakePi(`${logPromptsTo(log)}\nprintf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
 }
 
 /** One real commit that main does not hold, for a queued merge to verify: a side branch off
@@ -141,14 +137,15 @@ test("director: a queued prompt runs without a permit even while the only slot i
 
 test("director: once recovers a kept merge pin and drains the queue before exit", async () => {
   const repo = await makeFastRepo("once director leftover", ["director"]);
+  // The recoverable pin's change fails the gate's declared check only where the change is
+  // checked out (kept.txt exists on the change's tree, not on main, so main stays green), and
+  // the gate rejects the change deterministically — the gate's own finding, no reviewer
+  // verdict — ending the merge rejected, re-queuing the pin and draining the queue.
+  const cfg = loadConfig(repo);
+  saveConfig(repo, { ...cfg, check: { command: "test ! -f kept.txt" } });
   const sha = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "kept.txt"), "kept\n"), "kept director change");
   await setRef(repo, mergeRefName("director"), sha);
-  // A reviewer that rejects ends the merge rejected; an idle reply is a review_error, which the
-  // pipeline re-queues after 60 s and a once round would wait for.
-  const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: reject")}'; exit 0;; esac; done\n` +
-      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-  );
+  const restore = fakePiIdle();
   try {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
@@ -183,28 +180,88 @@ test("director: a team pause holds role runs but not the director's queued promp
 
 test("merge queue interlock: a role with a queued merge starts no run until the merge ends", async () => {
   const repo = await makeFastRepo("merge queue interlock test", ["clean"]);
+  // Opt clean into a post-landing merge so no pre-merge reviewer verdict drives the outcome; the
+  // merge's own run is then its parked conflict-resolution pi run — the queued change conflicts
+  // with main on rebase, and the resolver (session tumwater-clean-1-conflict) parks until the
+  // test releases it. The interlock relief (scheduling-skip.ts) holds a post-merge role while its
+  // queued merge is conflict-resolving, so a due, ready clean must not start a run until the
+  // merge's own run finishes.
+  const cfg = loadConfig(repo);
+  saveConfig(repo, {
+    ...cfg,
+    review: { ...cfg.review, afterMerge: ["clean"] },
+    // A long post-run gap keeps clean's first run the only one the test counts: its own
+    // interlock-run happens once, after the queued merge ends.
+    roles: { ...cfg.roles, clean: { ...cfg.roles.clean!, minRunIntervalSeconds: 300 } },
+  });
+  // Stage clean to be due long after the orchestrator starts: a fresh role is due on poll 0
+  // (nextRunAt 0), which would author before the merge ever reaches its conflict. Deferring the
+  // first run past when the conflict-resolution run starts lets the test assert the interlock
+  // held a due, ready clean until the merge's own run ended.
+  const state = loadRunnerState(repo, "clean");
+  state.nextRunAt = Date.now() + 12_000;
+  saveRunnerState(repo, state);
   const log = path.join(tmpdir(), "interlock-prompts.log");
-  const restore = recordingIdlePi(log);
-  // A queued change main does not hold: its verify runs a real review run (the idle reply has no
-  // verdict, so the merge ends rejected and the entry is dropped), and until that outcome
-  // the interlock must keep clean's own run from starting.
+  const parked = path.join(tmpdir(), "interlock-conflict-parked");
+  const release = path.join(tmpdir(), "interlock-conflict-release");
+  // Record every run's argv; on the conflict-resolution run touch the parked marker and hold
+  // until the release file appears, then resolve the conflicted seed.txt; idle others.
+  const restore = fakePi(
+    `prev=""; n=""\n` +
+      `for a in "$@"; do if [ "$prev" = "-n" ]; then n="$a"; fi; prev="$a"; done\n` +
+      `${logPromptsTo(log)}\n` +
+      `case "$n" in\n` +
+      `  *-conflict) touch '${parked}'; while [ ! -f '${release}' ] && ${ownerAliveSh()}; do sleep 0.1; done; echo combined > seed.txt;;\n` +
+      `esac\n` +
+      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+  );
+  // A queued change main no longer holds, whose rebase onto main conflicts: the change edits
+  // seed.txt to "branch", then main advances it to "main", so rebasing conflicts on seed.txt.
+  const conflictSha = (() => {
+    const g = (args: string[]) => {
+      const r = spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+      if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${r.stderr}`);
+      return r.stdout.trim();
+    };
+    g(["checkout", "-b", "interlock-fixture"]);
+    fs.writeFileSync(path.join(repo, "seed.txt"), "branch\n");
+    g(["add", "seed.txt"]);
+    g(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "interlock sentinel change"]);
+    const sha = g(["rev-parse", "HEAD"]);
+    g(["checkout", "main"]);
+    fs.writeFileSync(path.join(repo, "seed.txt"), "main\n");
+    g(["add", "seed.txt"]);
+    g(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "main moves under the sentinel"]);
+    return sha;
+  })();
   enqueueMerge(repo, {
     role: "clean",
-    sha: shaOnSideBranch(repo),
+    sha: conflictSha,
     run: 1,
     summary: "interlock sentinel change",
     enqueuedAt: Date.now(),
   });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
+    await waitFor(() => fs.existsSync(parked), "the queued change's conflict-resolution run to be in flight");
+    // Clean is now due (its 12 s clock has run) while its merge is still parked in conflict —
+    // the interlock must keep it from starting a run.
+    await waitFor(() => Date.now() >= state.nextRunAt, "clean's first run clock to come due");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "a due, ready clean stayed held while its merge resolved");
+    fs.writeFileSync(release, "");
     await waitFor(() => queueDepth(repo) === 0, "the queued merge to settle and drop", 30_000);
     await awaitSettledRun(repo, "clean", 1, "clean's first run after the interlock released it");
     const runs = readRunBlocks(log);
-    const reviewIdx = runs.findIndex((b) => b.includes("interlock sentinel change"));
-    const runIdx = runs.findIndex((b) => sessionOf(b).startsWith("tumwater-clean-"));
-    assert.ok(reviewIdx >= 0, "the queued change got a review run");
+    const conflictIdx = runs.findIndex((b) => sessionOf(b).endsWith("-conflict"));
+    const runIdx = runs.findIndex(
+      (b) => sessionOf(b).startsWith("tumwater-clean-") && !sessionOf(b).endsWith("-conflict"),
+    );
+    assert.ok(conflictIdx >= 0, "the queued change's merge ran a conflict-resolution run");
     assert.ok(runIdx >= 0, "clean eventually got its own run");
-    assert.ok(reviewIdx < runIdx, "the review finished before the role's run started — the interlock held the role back");
+    assert.ok(
+      conflictIdx < runIdx,
+      "the merge's own run finished before the role's run started — the interlock held the role back",
+    );
     assert.equal(loadRunnerState(repo, "clean").runs, 1, "only the post-interlock run counted");
   } finally {
     await stopOrchestrator(orch, restore);
@@ -213,19 +270,26 @@ test("merge queue interlock: a role with a queued merge starts no run until the 
 
 test("restart hand-off: an in-flight merge outliving its deadline is aborted, not waited out", async () => {
   const repo = await makeFastRepo("restart hand-off abort test", ["clean"]);
-  // Fast merge "Defaults" merge clean on its gate alone (reviewed AFTER it lands); this test
-  // pins the restart hand-off aborting an IN-FLIGHT merge held by a pre-merge reviewer, so opt
-  // clean back into pre-merge review (review.afterMerge [] — the merge must be held by a review
-  // that the hand-off can then abort).
+  // Fast merge "Defaults" merges clean on its gate alone and reviews it AFTER it lands; this test
+  // pins the restart hand-off aborting an IN-FLIGHT merge, held this time by a parked gate build
+  // check rather than a pre-merge reviewer — and no longer by review.afterMerge: []. The check
+  // parks only on the change's tree (it touches the marker and sleeps where the queued change's
+  // interlock-note.txt is checked out; on main's tree it exits 0), so the verify's gate pre-check
+  // holds the merge in flight for the hand-off's abort (part 4e/3) to stop it.
   const cfg = loadConfig(repo);
-  saveConfig(repo, { ...cfg, review: { ...cfg.review, afterMerge: [] } });
-  const reviewing = path.join(tmpdir(), "handoff-abort-reviewing");
-  // The queued change's reviewer run holds the merge in flight (a minute-long review); the
-  // interlock keeps clean itself from running, so the verify is the only work the hand-off waits
-  // on — the drain's bounded wait, then its abort callback, is what this pins.
-  const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${reviewing}'; exec sleep 60;; esac; done`,
-  );
+  const parked = path.join(tmpdir(), "handoff-abort-parked");
+  saveConfig(repo, {
+    ...cfg,
+    review: { ...cfg.review, afterMerge: ["clean"] },
+    check: { command: `if [ -f interlock-note.txt ]; then touch '${parked}'; sleep 60; fi` },
+  });
+  // If the parked check ever fails to park (its alpha flake mode), the merge would proceed past
+  // the verify into a clean run — so a pi shim stays on PATH and answers idle rather than calling
+  // a real model (a test never does).
+  const restore = fakePiIdle();
+  // The queued change's gate check holds the merge in flight; the interlock keeps clean itself
+  // from running, so the parked check is the only work the hand-off waits on — the drain's
+  // bounded wait, then its abort callback, is what this pins.
   enqueueMerge(repo, {
     role: "clean",
     sha: shaOnSideBranch(repo),
@@ -233,15 +297,15 @@ test("restart hand-off: an in-flight merge outliving its deadline is aborted, no
     summary: "hand-off sentinel change",
     enqueuedAt: Date.now(),
   });
-  // Staleness is re-evaluated only when main moves: stale once the reviewer is running, and
-  // the test moves main then — the restart takes effect mid-review, with no role run in flight.
-  const { redeployer, swaps } = scriptedRedeployer(repo, { stale: () => fs.existsSync(reviewing) });
+  // Staleness is re-evaluated only when main moves: stale once the gate check is parked, and
+  // the test moves main then — the restart takes effect mid-check, with no role run in flight.
+  const { redeployer, swaps } = scriptedRedeployer(repo, { stale: () => fs.existsSync(parked) });
   const { run, stop } = startRedeployRun(repo, redeployer, {
     timeoutMs: 90_000,
     handoffMergeWindowMs: 500,
   });
   try {
-    await waitFor(() => fs.existsSync(reviewing), "the verify's reviewer run to be in flight");
+    await waitFor(() => fs.existsSync(parked), "the verify's parked gate check to be in flight");
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the verify");
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
