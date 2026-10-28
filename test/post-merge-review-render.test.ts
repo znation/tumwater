@@ -125,7 +125,8 @@ test("a rejected entry carries its reasons", () => {
 
 test("a rejected entry with empty reasons still renders as rejected", () => {
   const out = renderPostReviews([e({ rejected: [] })]);
-  assert.match(out, /\[rejected — \]/);
+  assert.match(out, /\[rejected\]/);
+  assert.doesNotMatch(out, /\[rejected — \]/);
 });
 
 test("an entry with positive failures carries the failed-review-run count", () => {
@@ -174,5 +175,5 @@ test("a postReviewStatusLabel names the rejection or the failed-run count", () =
   assert.equal(postReviewStatusLabel(e({})), "");
   assert.equal(postReviewStatusLabel(e({ failures: 2 })), "[2 failed review runs]");
   assert.equal(postReviewStatusLabel(e({ rejected: ["a", "b"] })), "[rejected — a; b]");
-  assert.equal(postReviewStatusLabel(e({ rejected: [] })), "[rejected — ]");
+  assert.equal(postReviewStatusLabel(e({ rejected: [] })), "[rejected]");
 });

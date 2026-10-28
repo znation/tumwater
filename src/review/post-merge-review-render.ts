@@ -36,7 +36,9 @@ export type PostReviewState = (typeof POST_REVIEW_STATES)[number];
 
 /** The bracketed status suffix one post-merge review entry carries on every observer surface
  * (`tumwater reviews`, the dashboard's Post-merge reviews card, and the TUI Pending pane's
- * review block): the reviewer's recorded rejected reasons when `rejected` is set; else the
+ * review block): the reviewer's recorded rejected reasons when `rejected` is set — or just
+ * `[rejected]` when the recorded list is empty, so a rejection with no reasons never renders
+ * a dangling `rejected — `; else the
  * number of verdict-less review runs when `failures` is positive, naming the
  * last failure's reason beside the count when `lastFailure` is a non-empty string; else `""`.
  * Reasons are squashed to 60 as `tumwater reviews` has always printed them, and the failure
@@ -47,8 +49,12 @@ export function postReviewStatusLabel(entry: PostReview): string {
   switch (postReviewState(entry)) {
     case "fixed":
       return `[fixed — the repair ${shortSha(entry.fixed!)} already merged on main]`;
-    case "rejected":
-      return `[rejected — ${entry.rejected!.map((r) => squash(r, 60)).join("; ")}]`;
+    case "rejected": {
+      const reasons = entry.rejected!; // postReviewState only says "rejected" when rejected is an array
+      return reasons.length === 0
+        ? "[rejected]"
+        : `[rejected — ${reasons.map((r) => squash(r, 60)).join("; ")}]`;
+    }
     case "failing": {
       const failures = entry.failures as number; // postReviewState only says "failing" when failures > 0
       if (typeof entry.lastFailure === "string" && entry.lastFailure.length > 0) {

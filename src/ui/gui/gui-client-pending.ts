@@ -267,6 +267,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       case "fixed":
         return "[fixed — the repair " + shortSha(e.fixed) + " already merged on main]";
       case "rejected":
+        if (!e.rejected || e.rejected.length === 0) return "[rejected]";
         return "[rejected — " + e.rejected.map((r) => squashText(r, 60)).join("; ") + "]";
       case "failing":
         if (e && typeof e.lastFailure === "string" && e.lastFailure.length > 0) {
