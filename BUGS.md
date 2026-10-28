@@ -221,6 +221,8 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 ### An agent's own full-suite run starts about 17 node --test workers regardless of how many suites are already in flight (split 2026-10-28 by the plan role from "Agents' own test-suite runs bypass `maxConcurrentChecks` and every suite starts about 17 node --test workers…"; sibling of "An agent's own check does not take the team's check permit", "Decide whether agent runs keep verifying with the full `test:gate`", and "The doctor's check-contention advice ignores host load")
 
+**Needs review 2026-10-28 by feature: too large for one run** — the fix sketch is a multi-part feature (a cross-platform process-tree census walking PPID chains to the orchestrator, impossible to offline-test per the entry itself, plus sizing logic and a change to the unit tier's argv and its pinned tests), not one small complete change; needs to be split or re-scoped by the plan role.
+
 - **Symptom:** on 2026-10-28 at 04:30, 9 suites ran at once at a load average of 131–192 on the 18-core host; the gate check median went 92 s (10-20) to 313 s (10-28) and gate/baseline timeouts went from 0 (10-23) to 114–124 a day (the main baseline timed out at 600 s on 10-28 04:46).
 - **Reproduce:** `buildNodeTestArgs`' argv for a non-e2e tier (`grep -n test-concurrency test/test-runner.ts`); node's default worker count is `availableParallelism() - 1`.
 - **Cause:** `test/test-runner.ts` passes `--test-concurrency` only for the pure e2e tier (`opts.concurrency`), so every other suite uses node's default (17 here) however many suites are already running.
