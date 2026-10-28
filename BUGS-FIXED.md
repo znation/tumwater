@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### An agent killed every test process on the host by pattern, despite the run prompt's kill-by-PID rule, and took the team's own checks down mid-run (found by operator session 2026-10-28 while tracing the 2026-10-25 orphans above) — fixed 2026-10-28 by the bugfix role
+
+- **Symptom:** on 2026-10-25 at 14:14, feature-3's own `npm run test:gate` in `_slot-18` hit the bash tool's 600 s timeout. From 14:23 to 14:33 the agent ran five commands that kill by pattern, for example `ps aux | grep -E "test-runner|node --test" | grep -v grep | awk '{print $2}' | xargs -r kill` and `for p in $(ps aux | grep -E "node dist/test/test-runner|node --test|npm run test:gate|dist/test/test-durations" | grep -v grep | awk '{print $2}'); do kill "$p"; done`. Its reason was "Multiple overlapping test runs from the timed-out command are competing. Let me stop the ones I started." Its thinking at 14:16 had said "I shouldn't kill by pattern."
+  The events show every check in flight killed at once:
+  - **14:23:34:** organize's gate check, the main baseline and feature-2's merge check (`skipped`).
+  - **14:24:10:** the restarts of all three (`killed by SIGTERM after 35 s`). feature-2's merge was rejected as unverified.
+  - **14:32:55–14:33:30:** dedupe's gate check twice, the main baseline three times and organize's merge check.
+  These kills left the 40 spinners in the entry above.
+- **Reproduce:** read the tool calls at 14:23:24, 14:32:46, 14:33:01, 14:33:08 and 14:33:18 PDT in `.tumwater/sessions/feature-3/2026-10-25T20-54-55-677Z_01a174d8-4fbc-705b-bb58-80e04c329c1f.jsonl` (sessions are pruned at 7 days). Match them against the `build_check` events at those times in `.tumwater/log/events.jsonl`.
+- **Cause:**
+  - **The rule is prompt-only.** `KILL_BY_PID_RULE` (src/prompt/prompt.ts) names `pgrep … | xargs kill`, but a `ps | grep | awk | xargs kill` pipeline or a `for p in $(ps …)` loop kills "by PID" all the same, and nothing at the tool layer refuses either one.
+  - **Load set it off.** The agent read a suite that was slow under load and stopped at the tool's 600 s cap as its own runaway runs.
+  - **The process table is shared.** The pattern reaches the team's checks and other roles' suites.
+  A search of the past week's sessions found no other pattern kill of test processes. The other runs whose kill commands mention tests killed their own PIDs.
+- **Expected / fix sketch:**
+  - **Guard:** a tool-layer guard beside the write guard (af43c803a, bcde979f4) that refuses `pkill`, `killall`, and any bash command that feeds `ps` or `pgrep` output into `kill`. Its refusal message should name `kill $!` and the run's exit sweep.
+  - **Timeout message:** have a timed-out tool call's result say that, on a loaded host, the command may simply be slow, and that the run's own processes are reaped when the run ends.
+  The guard half is real now: pi's bundled kill-guard extension (INV-KG1) refuses `pkill`/`killall` and any `bash` call feeding `ps`/`pgrep` output into `kill` through `xargs` or a `$(ps|pgrep)` substitution, naming `kill $!` and the run's exit sweep. The timeout-message half is pi-internal (the bash tool's 600 s cap is pi's own) and not owned by tumwater's tree; its absence no longer lets the harm happen, since the pattern kill is refused at the tool.
+**Validation gap:** no-repro — the 2026-10-25 incident was reconstructed from session and event logs, not reproduced as a failing test; no offline run replays a live agent's pattern kill, though its exact command shapes are pinned by the kill-guard tests.
+
 ### The "look stuck" alert reads the run prompt's own redirected test run as a stall: "no agent output" fires at a flat 5 minutes even while the open call is inside its own 10-minute buffered-output threshold (found by operator session 2026-10-28 from the dashboard's "feature #2, bugfix #2, and bugfix #3 look stuck" warning) — fixed 2026-10-28 by the bugfix role
 
 - **Validation gap:** real-run-needed — no offline path covered the stuck alert firing from a slow redirected suite run; only a live dashboard run surfaced it.

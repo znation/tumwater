@@ -218,24 +218,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
   - **Reap automatically:** have the orchestrator reap orphans it can attribute without doubt. That means PPID 1, an argv under `.tumwater/worktrees/` or a `$TMPDIR/tumwater-*` run root, past a minimum age, and either a dead `TUMWATER_RUN` harness or a dead `TUMWATER_TEST_OWNER_PID`.
   - **Restore the guard:** establish why the spawned `node -e` children kept the owner pid but lost the owner preload.
 
-### An agent killed every test process on the host by pattern, despite the run prompt's kill-by-PID rule, and took the team's own checks down mid-run (found by operator session 2026-10-28 while tracing the 2026-10-25 orphans above)
-
-- **Symptom:** on 2026-10-25 at 14:14, feature-3's own `npm run test:gate` in `_slot-18` hit the bash tool's 600 s timeout. From 14:23 to 14:33 the agent ran five commands that kill by pattern, for example `ps aux | grep -E "test-runner|node --test" | grep -v grep | awk '{print $2}' | xargs -r kill` and `for p in $(ps aux | grep -E "node dist/test/test-runner|node --test|npm run test:gate|dist/test/test-durations" | grep -v grep | awk '{print $2}'); do kill "$p"; done`. Its reason was "Multiple overlapping test runs from the timed-out command are competing. Let me stop the ones I started." Its thinking at 14:16 had said "I shouldn't kill by pattern."
-  The events show every check in flight killed at once:
-  - **14:23:34:** organize's gate check, the main baseline and feature-2's merge check (`skipped`).
-  - **14:24:10:** the restarts of all three (`killed by SIGTERM after 35 s`). feature-2's merge was rejected as unverified.
-  - **14:32:55–14:33:30:** dedupe's gate check twice, the main baseline three times and organize's merge check.
-  These kills left the 40 spinners in the entry above.
-- **Reproduce:** read the tool calls at 14:23:24, 14:32:46, 14:33:01, 14:33:08 and 14:33:18 PDT in `.tumwater/sessions/feature-3/2026-10-25T20-54-55-677Z_01a174d8-4fbc-705b-bb58-80e04c329c1f.jsonl` (sessions are pruned at 7 days). Match them against the `build_check` events at those times in `.tumwater/log/events.jsonl`.
-- **Cause:**
-  - **The rule is prompt-only.** `KILL_BY_PID_RULE` (src/prompt/prompt.ts) names `pgrep … | xargs kill`, but a `ps | grep | awk | xargs kill` pipeline or a `for p in $(ps …)` loop kills "by PID" all the same, and nothing at the tool layer refuses either one.
-  - **Load set it off.** The agent read a suite that was slow under load and stopped at the tool's 600 s cap as its own runaway runs.
-  - **The process table is shared.** The pattern reaches the team's checks and other roles' suites.
-  A search of the past week's sessions found no other pattern kill of test processes. The other runs whose kill commands mention tests killed their own PIDs.
-- **Expected / fix sketch:**
-  - **Guard:** a tool-layer guard beside the write guard (af43c803a, bcde979f4) that refuses `pkill`, `killall`, and any bash command that feeds `ps` or `pgrep` output into `kill`. Its refusal message should name `kill $!` and the run's exit sweep.
-  - **Timeout message:** have a timed-out tool call's result say that, on a loaded host, the command may simply be slow, and that the run's own processes are reaped when the run ends.
-
 ### Agents' own test-suite runs bypass `maxConcurrentChecks` and every suite starts about 17 node --test workers, so the host runs several full-width suites at once; gate checks went from a 92 s median to 313 s and from no timeouts to over 100 a day (found by operator session 2026-10-28 from the host's load average and the event log)
 
 - **Symptom:** on 2026-10-28 at 04:30, 9 suites ran at once on the 18-core host, at a load average of 131–192. The gate check median for passed checks went 92 s (10-20), 147 s (10-23), 177 s (10-25), 232 s (10-26), 255 s (10-27) and 313 s (10-28). Gate and baseline checks that hit the 600 s timeout went from 0 (10-23) to 124 (10-26) and 114 (10-27). The main baseline itself timed out at 600 s on 10-28 at 04:46.

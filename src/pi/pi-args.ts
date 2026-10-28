@@ -13,7 +13,9 @@ import type { ResolvedModelConfig } from "../config/config-views.js";
  * context-budget appends its context-usage note to the (already bounded) result that crosses a
  * threshold, strip-thinking drops the model's replayed thinking from each request on a
  * small-window chat-completions model, trim-system-prompt drops pi's docs section from the
- * system prompt, and write-guard refuses an edit or write outside the run's worktree. Notes ride
+ * system prompt, and write-guard refuses an edit or write outside the run's worktree, while
+ * kill-guard refuses a bash call that kills processes by pattern (pkill/killall and ps/pgrep fed
+ * into kill). Notes ride
  * the `tumwater-notes` command on
  * every backend from part 2/4 on, so the role-notes extension is no longer bundled. */
 export function bundledExtensionPaths(): string[] {
@@ -24,6 +26,7 @@ export function bundledExtensionPaths(): string[] {
     "strip-thinking.js",
     "trim-system-prompt.js",
     "write-guard.js",
+    "kill-guard.js",
   ].map((file) => fileURLToPath(new URL(`../pi-extension/${file}`, import.meta.url)));
 }
 

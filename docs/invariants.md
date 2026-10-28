@@ -4680,6 +4680,16 @@ instead of skipping its re-review".
 
 **Pinned by.** `test/codex-args.test.ts` — "codexArgs places guardArgs after the harness -c keys and before -m on fresh and resumed runs (part 6/9)" and "codexArgs omits guardArgs when unset"; `test/codex-run.test.ts` — "a fresh and a resumed run carry the write guard's hook and trust, and never bypass hook trust (part 6/9)" and "a codex run whose trust lookup fails carries neither guard -c value (part 6/9)".
 
+## Kill guard: a run's bash tool never kills processes by pattern
+
+### INV-KG1: a `bash` call that kills by pattern is refused at pi's tool layer, naming `kill $!` and the run's exit sweep
+
+**Guarantee.** The bundled `kill-guard` pi extension (loaded on every pi run) blocks a `bash` `tool_call` whose command `patternKillRefusal` refuses, returning the refusal as the tool's error. It refuses `pkill`/`killall` spelled as a command word (behind a command-boundary so a line that only mentions them passes), and a command that reads the process table (`ps`/`pgrep`) and feeds it into `kill`, whether through `xargs … kill` or a `$(ps|pgrep)` substitution next to a `kill`. A specific-PID kill like `kill $!` and a command that only reads or mentions the table pass, as does a non-string command, a missing input, or any non-`bash` tool. It fails open like the write guard: an unexpected failure lets the call through rather than stopping every bash command of the run, and the run's prompt rule (KILL_BY_PID_RULE) and its process-group sweep stay as the backstops.
+
+**Binds.** `src/pi-extension/kill-guard.ts` (`patternKillRefusal`, `guardKillToolCall`, the default export) and `src/pi/pi-args.ts` (`bundledExtensionPaths`).
+
+**Pinned by.** `test/kill-guard.test.ts` — "pkill and killall used as a command word are refused", "ps or pgrep output fed into kill is refused", "commands that only read or mention the process table pass", "non-bash tools and malformed calls pass (fail-open)" and "the extension registers the guard as the tool_call handler"; `test/pi-args.test.ts` — "piArgs loads the context-shake extension right after bounded-output" and "piArgs no longer loads the role-notes extension (notes ride tumwater-notes)".
+
 ## Run deadline progress grace: a fired deadline grants at most one short grace, and a run reaches that branch at most once
 
 ### INV-CX1: the run deadline arms the 250 ms progress grace once, and "once per run" equals "once per deadline"
