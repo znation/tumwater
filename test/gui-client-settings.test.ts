@@ -375,8 +375,8 @@ test("the Brief card: built by the view, filled esc'd, saved with the textarea's
 });
 
 test("a submit on form.brief-form routes to saveBrief, and the settings listener is scoped to form.settings-row", () => {
-  assert.match(GUI_CLIENT_BOOT_JS, /closest\("form\.brief-form"\)[\s\S]*?saveBrief\(form\)/);
-  assert.match(GUI_CLIENT_BOOT_JS, /closest\("form\.settings-row"\)[\s\S]*?saveSetting\(form\)/);
+  assert.match(GUI_CLIENT_BOOT_JS, /clickClosest\(ev, "form\.brief-form"\)[\s\S]*?saveBrief\(form\)/);
+  assert.match(GUI_CLIENT_BOOT_JS, /clickClosest\(ev, "form\.settings-row"\)[\s\S]*?saveSetting\(form\)/);
   assert.doesNotMatch(clientRegion("settings-view").slice(clientRegion("settings-view").indexOf("async function fetchBrief")), /settings-row/);
 });
 

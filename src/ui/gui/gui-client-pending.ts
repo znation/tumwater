@@ -389,7 +389,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       // A Merge queue row's Move to top: a single click posts /api/queue-top by sha, moving
       // that entry to the head of the queue and refetching (the move is reversible and
       // non-destructive, so it needs no two-step arm).
-      const t = e.target.closest("[data-top]");
+      const t = clickClosest(e, "[data-top]");
       if (t) {
         const sha = t.getAttribute("data-top");
         if (sha) {
@@ -398,7 +398,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
         }
         return;
       }
-      const b = e.target.closest("[data-cancel]");
+      const b = clickClosest(e, "[data-cancel]");
       if (!b) return;
       const sha = b.getAttribute("data-cancel");
       if (!sha) return;
@@ -416,7 +416,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     // (repainting that button as Confirm accept), a second on the armed commit within 5 s posts
     // /api/post-review-accept then clears the arm and refetches so the removed row disappears.
     $("pendingreviews").addEventListener("click", async (e) => {
-      const b = e.target.closest("[data-accept]");
+      const b = clickClosest(e, "[data-accept]");
       if (!b) return;
       const commit = b.getAttribute("data-accept");
       if (!commit) return;
@@ -446,7 +446,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       }
     });
     $("pendingoverlaps").addEventListener("click", (e) => {
-      const b = e.target.closest("[data-overlap]");
+      const b = clickClosest(e, "[data-overlap]");
       if (b) togglePendingOverlap(Number(b.dataset.overlap));
     });
     $("pendingoverlaps").addEventListener("change", (e) => {

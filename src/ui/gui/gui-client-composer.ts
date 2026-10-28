@@ -221,7 +221,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
       "<button type='button' data-idx='" + i + "' title='Remove' aria-label='Remove " + esc(img.name) + "'>×</button></span>").join("");
   }
   $("promptimages").addEventListener("click", (ev) => {
-    const b = ev.target instanceof Element ? ev.target.closest("button[data-idx]") : null;
+    const b = clickClosest(ev, "button[data-idx]");
     if (!b) return;
     promptImages.splice(Number(b.dataset.idx), 1);
     renderPromptImages();

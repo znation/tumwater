@@ -73,13 +73,13 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   // submit listener saves the row's key (saveSetting, gui-client-settings). No per-row wiring,
   // so rows can repaint freely.
   document.addEventListener("submit", (ev) => {
-    const form = ev.target instanceof Element ? ev.target.closest("form.settings-row") : null;
+    const form = clickClosest(ev, "form.settings-row");
     if (form) { ev.preventDefault(); saveSetting(form); }
   });
   // The Brief card's Save: its own form class, so the settings listener above never
   // routes it to saveSetting.
   document.addEventListener("submit", (ev) => {
-    const form = ev.target instanceof Element ? ev.target.closest("form.brief-form") : null;
+    const form = clickClosest(ev, "form.brief-form");
     if (form) { ev.preventDefault(); saveBrief(form); }
   });
   // The Settings view's Clear buttons: one delegated click listener resolves the row's Clear

@@ -116,7 +116,7 @@ function composerScope(opts: { activeView?: string; innerWidth?: number; failRea
   const code = [ESC_LINE, clientRegion("format"), clientRegion("labels"), GUI_CLIENT_COMPOSER_JS,
     `return { renderComposer, setTarget, draftForDirector, focusComposer, addPromptImages, isImageFile, fmtImageSize };`]
     .join("\n");
-  const keys = ["$", "window", "location", "activeView", "drawer", "closeDrawer", "showFlash", "refresh", "postJson", "Element", "FileReader"];
+  const keys = ["$", "window", "location", "activeView", "drawer", "closeDrawer", "showFlash", "refresh", "postJson", "Element", "clickClosest", "FileReader"];
   const run = new Function(...keys, code) as (...args: unknown[]) => ComposerFns;
   const scope = run(
     el,
@@ -134,6 +134,7 @@ function composerScope(opts: { activeView?: string; innerWidth?: number; failRea
       return { ok: true };
     },
     Element,
+    (ev: { target?: unknown }, _sel: string) => (ev.target instanceof Element ? ev.target.closest() : null),
     FileReader,
   );
   /** Let the submit handler's awaits (file reads, posts) settle. */
