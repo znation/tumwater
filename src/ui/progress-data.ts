@@ -202,62 +202,78 @@ interface ProgressEvent {
   message?: { role?: string; content?: unknown; usage?: { totalTokens?: unknown; output?: unknown } };
 }
 
+/** A new run starts: everything before it was a previous run — restore the at-time-zero state. */
+function applySessionEvent(progress: LiveProgress): void {
+  Object.assign(progress, freshProgress(progress.quietMs));
+}
+
+/** A tool execution starts: count the call, record its label as the last tool, and seed the
+ * open-call entry the stall flag reads. Track the open call for the stall flag — pi runs a
+ * message's tool calls concurrently by default, so several can be open at once and end in
+ * completion order. The state machine is shared with runPi's stall warning
+ * (src/pi/pi-watchdogs.ts); only the fallback label differs here. The full raw command rides
+ * along because the flag classifies the command's shape, and describeToolCall's label
+ * truncates at 32 chars — an operator past that point would be invisible there. */
+function applyToolStart(progress: LiveProgress, event: ProgressEvent): void {
+  progress.toolCalls += 1;
+  const label = event.toolName ? describeToolCall(event.toolName, event.args) : undefined;
+  if (label) progress.lastTool = label;
+  applyToolExecutionEvent(
+    progress.openToolCalls ??= [],
+    event.type,
+    event.toolCallId,
+    event.partialResult,
+    label ?? "tool",
+    toolCallCommand(event.args),
+  );
+}
+
+/** A tool update or end folds through the same call: `applyToolExecutionEvent` reads `event.type`
+ * to decide what to do (a content-bearing update moves the activity clock; end closes the
+ * call), and both no-op when no call is tracked. Only content-bearing updates prove the
+ * command is alive — bash emits one empty-content update right after start, and a
+ * content-free keepalive must not mask a hang — a rule applyToolExecutionEvent owns. */
+function applyToolProgress(progress: LiveProgress, event: ProgressEvent): void {
+  if (progress.openToolCalls)
+    applyToolExecutionEvent(progress.openToolCalls, event.type, event.toolCallId, event.partialResult);
+}
+
+/** An assistant message ends: count the turn and fold usage/peak/context and the first work item.
+ * Guard each count like pi-stream's usageNumber does: a string-serialized or corrupt wire value
+ * would otherwise poison the live cell — `+=` would concatenate output into a string and
+ * Math.max would yield NaN. An unusable total keeps the previous context (this cell is "latest
+ * value"), while output and the peak floor treat it as absent. The first text the role speaks
+ * in this run is its work item ("I'll implement plan X"); later messages never replace it. */
+function applyAssistantTurn(progress: LiveProgress, event: ProgressEvent): void {
+  if (event.message?.role !== "assistant") return;
+  progress.turns += 1;
+  const usage = event.message.usage;
+  if (usage) {
+    progress.contextTokens = nonNegativeNumber(usage.totalTokens, progress.contextTokens);
+    progress.outputTokens += nonNegativeNumber(usage.output, 0);
+    progress.peakContextTokens = Math.max(
+      progress.peakContextTokens,
+      nonNegativeNumber(usage.totalTokens, 0),
+    );
+  }
+  if (!progress.currentWork) progress.currentWork = workItemFromContent(event.message.content);
+}
+
 /** Apply one parsed progress event to a progress object (mutates it). */
 function feedLine(progress: LiveProgress, event: ProgressEvent): void {
   switch (event.type) {
     case "session": // A new run starts: everything before it was a previous run — restore the at-time-zero state.
-      Object.assign(progress, freshProgress(progress.quietMs));
+      applySessionEvent(progress);
       break;
-    case "tool_execution_start": {
-      progress.toolCalls += 1;
-      const label = event.toolName ? describeToolCall(event.toolName, event.args) : undefined;
-      if (label) progress.lastTool = label;
-      // Track the open call for the stall flag — pi runs a message's tool calls concurrently
-      // by default, so several can be open at once and end in completion order. The state
-      // machine is shared with runPi's stall warning (src/pi/pi-watchdogs.ts); only the
-      // fallback label differs here. The full raw command rides along because the flag
-      // classifies the command's shape, and describeToolCall's label truncates at 32 chars —
-      // an operator past that point would be invisible there.
-      applyToolExecutionEvent(
-        progress.openToolCalls ??= [],
-        event.type,
-        event.toolCallId,
-        event.partialResult,
-        label ?? "tool",
-        toolCallCommand(event.args),
-      );
+    case "tool_execution_start":
+      applyToolStart(progress, event);
       break;
-    }
-    // Updates and ends fold through the same call: `applyToolExecutionEvent` reads `event.type`
-    // to decide what to do (a content-bearing update moves the activity clock; end closes the
-    // call), and both no-op when no call is tracked. Only content-bearing updates prove the
-    // command is alive — bash emits one empty-content update right after start, and a
-    // content-free keepalive must not mask a hang — a rule applyToolExecutionEvent owns.
     case "tool_execution_update":
     case "tool_execution_end":
-      if (progress.openToolCalls)
-        applyToolExecutionEvent(progress.openToolCalls, event.type, event.toolCallId, event.partialResult);
+      applyToolProgress(progress, event);
       break;
     case "message_end":
-      if (event.message?.role === "assistant") {
-        progress.turns += 1;
-        const usage = event.message.usage;
-        if (usage) {
-          // Guard each count like pi-stream's usageNumber does: a string-serialized or corrupt
-          // wire value would otherwise poison the live cell — `+=` would concatenate output into
-          // a string and Math.max would yield NaN. An unusable total keeps the previous context
-          // (this cell is "latest value"), while output and the peak floor treat it as absent.
-          progress.contextTokens = nonNegativeNumber(usage.totalTokens, progress.contextTokens);
-          progress.outputTokens += nonNegativeNumber(usage.output, 0);
-          progress.peakContextTokens = Math.max(
-            progress.peakContextTokens,
-            nonNegativeNumber(usage.totalTokens, 0),
-          );
-        }
-        // The first text the role speaks in this run is its work item ("I'll implement plan X");
-        // later messages never replace it.
-        if (!progress.currentWork) progress.currentWork = workItemFromContent(event.message.content);
-      }
+      applyAssistantTurn(progress, event);
       break;
   }
 }
