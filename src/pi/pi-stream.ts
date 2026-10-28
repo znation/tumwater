@@ -380,6 +380,18 @@ export class PiStreamParser {
    * treat a `rejected` window as the transient rate limit it is (with the resetsAt-derived
    * wait the translator attached). */
   private applyRateLimit(event: PiStreamEvent): void {
+    const reading = this.readRateWindow(event);
+    this.upsertRateWindow(reading);
+    if (reading.status === "rejected") {
+      this.transientRateLimit = true;
+      this.setRetryAfterSeconds(event.retryAfterSeconds);
+    }
+  }
+
+  /** Build one `RateWindow` reading from a canonical `rate_limit` event: derive the `type`
+   * (falling back to `unknown` when pi names none), default the `status` to "" when absent,
+   * and copy through the four optional fields that the event carries. */
+  private readRateWindow(event: PiStreamEvent): RateWindow {
     const type = typeof event.rateLimitType === "string" && event.rateLimitType ? event.rateLimitType : "unknown";
     const reading: RateWindow = { type, status: typeof event.status === "string" ? event.status : "" };
     if (typeof event.resetsAt === "number" && Number.isFinite(event.resetsAt)) reading.resetsAt = event.resetsAt;
@@ -387,16 +399,20 @@ export class PiStreamParser {
       reading.utilization = event.utilization;
     if (typeof event.overageStatus === "string") reading.overageStatus = event.overageStatus;
     if (event.isUsingOverage === true) reading.isUsingOverage = true;
-    const existing = this.rateWindows.findIndex((w) => w.type === type);
+    return reading;
+  }
+
+  /** Insert one reading, keeping the newest per type: replace the window whose `type` matches
+   * and, when the reading is status-less (a non-binding window's utilization), carry the last
+   * known status of the window it replaces; note overage so a caller can see a rate limit hit
+   * even before it is rejected. */
+  private upsertRateWindow(reading: RateWindow): void {
+    const existing = this.rateWindows.findIndex((w) => w.type === reading.type);
     // A reading without a status (a non-binding window's utilization) keeps the last known one.
-    if (reading.status === "" && existing >= 0) reading.status = this.rateWindows[existing]?.status ?? "";
+    if (reading.status === "") reading.status = this.rateWindows[existing]?.status ?? "";
     if (existing >= 0) this.rateWindows[existing] = reading;
     else this.rateWindows.push(reading);
     if (reading.isUsingOverage === true) this.usedOverage = true;
-    if (reading.status === "rejected") {
-      this.transientRateLimit = true;
-      this.setRetryAfterSeconds(event.retryAfterSeconds);
-    }
   }
 
   /** Fold a provider Retry-After hint into `retryAfterSeconds`: ignore a non-number or
