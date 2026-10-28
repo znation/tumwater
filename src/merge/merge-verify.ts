@@ -5,7 +5,7 @@ import { withRunPermit } from "../concurrency/run-permit.js";
 import { RoleRunner } from "../runner/runner.js";
 import { branchHead, commitMessage, isMergedInto, refSha } from "../git/git.js";
 import { commitRunOf } from "../git/commit-message.js";
-import { recoveredMergeEntry, recoveredMetadata } from "../runner/leftover.js";
+import { recoveredMergeEntry, recoveredMetadata } from "../runner/runner-leftover.js";
 import { addMergeChange, mergeUsage, removeMergeChange, setMergeChangeStatus } from "./merge-slot.js";
 import { dropMerge, enqueueMerge, entryRevisionFields, queuedMergeFiles, staleHeadFile, tornHeadRole, type MergeEntry } from "./merge-queue.js";
 import { mergeRefName } from "../paths.js";

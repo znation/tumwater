@@ -11,7 +11,7 @@ import { Semaphore } from "../src/concurrency/semaphore.js";
 import { defaultConfig } from "../src/config/config.js";
 import { MAIN_RED_VERDICT_WAIT_MS, requeueKeptChange, requeueMainRedPin } from "../src/merge/merge-requeue.js";
 import { enqueueMerge, headMerge, queuedMerges, type MergeEntry } from "../src/merge/merge-queue.js";
-import { MERGE_CONFLICT_LIMIT } from "../src/runner/leftover.js";
+import { MERGE_CONFLICT_LIMIT } from "../src/runner/runner-leftover.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { noteGreenBaseline, persistBaselineVerdicts } from "../src/baseline/main-baseline.js";

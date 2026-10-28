@@ -60,7 +60,7 @@ export function buildRejectedReviewNote(review: {
 }
 
 /** The note injected into a role's run prompt when its rejected change has been re-applied to
- * current main as uncommitted edits (plans/revise-rejected.md, runner/revision.ts's
+ * current main as uncommitted edits (plans/revise-rejected.md, runner/runner-revision.ts's
  * applyRevision): this run's one task is to revise the change already in the worktree, not
  * author a new one. The prior objections are numbered so the author can work through them; a
  * revision round past the first also reaches here. The chain keeps revising while each round
@@ -180,7 +180,7 @@ ${lines.join("\n")}
 }
 
 /** The note injected into a role's prompt after leftover recovery discarded its pinned change
- * at MERGE_CONFLICT_LIMIT (src/runner/leftover.ts): at the cap recovery ordinarily hands the
+ * at MERGE_CONFLICT_LIMIT (src/runner/runner-leftover.ts): at the cap recovery ordinarily hands the
  * change back to its author with markers instead, so a discard means that lineage already used
  * its hand-back. The merge failures were harness-level, so without the note the author would
  * never learn its work is gone — or that redoing it from memory of the old diff would conflict

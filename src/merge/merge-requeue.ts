@@ -6,7 +6,7 @@
  * retriable result) or once main's head stops being red (a `main_red` pin). */
 import { enqueueMerge, queuedMerges, type MergeEntry } from "./merge-queue.js";
 import { RETRIABLE_MERGE_RESULTS } from "./merge-core.js";
-import { pinnedRetrySha } from "../runner/leftover.js";
+import { pinnedRetrySha } from "../runner/runner-leftover.js";
 import { branchHead } from "../git/git.js";
 import { cachedBaselineVerdict } from "../baseline/main-baseline.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";

@@ -19,7 +19,7 @@ import type { StagedDescription } from "../prompt/gate-prompts.js";
 import { logEventBestEffort } from "../events/events.js";
 import { enqueueMerge, entryRevisionFields, queuedMerges } from "../merge/merge-queue.js";
 import type { PriorReview } from "../merge/merge-queue.js";
-import { hasUnmergedPin } from "../runner/leftover.js";
+import { hasUnmergedPin } from "../runner/runner-leftover.js";
 import { plural } from "../text/phrases.js";
 import { squash } from "../text/text.js";
 import { recordDismissedFiling, recordDismissedFlow } from "./run-dismiss.js";
@@ -524,7 +524,7 @@ interface RunFiled {
  * the per-run authoring-run counters as a snapshot, plus the callbacks that touch the
  * role — warnings, the summary follow-up run, the pre-queue self-check with its fix-up
  * run, the merge-ref pin, and the abort finalizer. Mirrors the context-object shapes of
- * leftover.ts, refusal.ts, and merge-core.ts. */
+ * runner-leftover.ts, refusal.ts, and merge-core.ts. */
 interface RunStageContext {
   /** The trailer's Model line for the seam where this authoring run began; transient
    * retries reuse the same seam. */

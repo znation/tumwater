@@ -204,7 +204,7 @@ function startOverlappedCheck(ctx: ReviewContext, state: RunnerState, head: stri
 
 /** Run the adversarial review gate over everything ahead of main in `wt` and update `state`
  * accordingly. Shared by the run path (after commitAll) and leftover recovery
- * (leftover.ts's recoverLeftover) — every path
+ * (runner-leftover.ts's recoverLeftover) — every path
  * that can move a commit into main routes through here, so no crash or abort path smuggles
  * unreviewed work in:
  * - gate disabled, or an already-approved HEAD, or an exempt (doc-only) diff → merge as-is;
@@ -318,7 +318,7 @@ async function reviewAttempt(
   // Deterministic build pre-check — after BOTH early returns above (an md-only diff cannot
   // break the build) and before any reviewer run or the phase/event that would show
   // "reviewing": a deterministic rejection never shows as reviewing on the dashboards. Both
-  // gate callers (the run path and leftover.ts's recoverLeftover) get it for free. Its run,
+  // gate callers (the run path and runner-leftover.ts's recoverLeftover) get it for free. Its run,
   // flake re-run, and attribution live in review-precheck.ts (the check run itself lives in
   // runScopedBuildCheck, shared with the merge path's in-lock re-check); a resolved result
   // here is returned verbatim and a pass hands the verified head to the merge path below.

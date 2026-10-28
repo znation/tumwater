@@ -1082,7 +1082,7 @@ hands each queued run the newest unclaimed pin at or before its end, so two runs
 pin.
 
 **Binds.** `src/history/history-queued.ts` (`resolveQueuedResult`, `recoveredAttemptVerdict`,
-`isRecoveryPin`, `endsChange`, `bucketMergeEvents`), `src/runner/leftover.ts` (`recoverLeftover`,
+`isRecoveryPin`, `endsChange`, `bucketMergeEvents`), `src/runner/runner-leftover.ts` (`recoverLeftover`,
 the "recovered leftover work from " summary prefix).
 
 **Pinned by.** `test/history-data.test.ts` — "a queued run resolves to its change's merge outcome
@@ -3299,7 +3299,7 @@ cannot flag friction or claim a round. Leftover recovery gets the round back fro
 `parseCommitMetadata`).
 
 **Pinned by.** `test/commit-message.test.ts` — "hasFrictionTrailer matches only the
-harness-stamped Friction line"; `test/revision.test.ts` — "leftover recovery rebuilds a revision's
+harness-stamped Friction line"; `test/runner-revision.test.ts` — "leftover recovery rebuilds a revision's
 round from its commit trailer"; `test/commit-message-stamps.test.ts` — "revisionRoundOf reads only
 a whole harness Revision line, and parseCommitMetadata carries it".
 
@@ -3713,10 +3713,10 @@ revised plan for the plan role to clear; a bug's hold reaches the plan role and 
 splitting instead of parking (`tumwater bug --release` keeps the note, INV-AT1). Otherwise the ref points at the judged head and the round
 advances. The director never revises.
 
-**Binds.** `src/merge/merge-core.ts` (`recordRejectedChange`); `src/runner/revision.ts`
+**Binds.** `src/merge/merge-core.ts` (`recordRejectedChange`); `src/runner/runner-revision.ts`
 (`REVISION_FINAL_ON_REPEAT`, `REVISION_BACKSTOP`, `holdEntryAfterExhaustion`).
 
-**Pinned by.** `test/revision.test.ts` — "a gate rejection points the rejected ref at the judged
+**Pinned by.** `test/runner-revision.test.ts` — "a gate rejection points the rejected ref at the judged
 head and records round 1", "a repeat (prior N) objection that has survived two revisions is final
 and deletes the rejected ref", "an out-of-range (prior N) tag, or one with no prior round, counts
 one revision and is not final", "a converging chain whose revisions raise only new objections keeps
@@ -3735,10 +3735,10 @@ longer applies, when git could not start for `pickBase`'s reads (`gitTryStarted`
 ends in `error` with no agent run, and `state.revision` and the rejected ref wait for the next run.
 Only git's own answer, a missing object or a conflict no settler resolves, drops them.
 
-**Binds.** `src/runner/revision.ts` (`pickBase`, `pickSettlingBacklog`, `applyRevision`,
+**Binds.** `src/runner/runner-revision.ts` (`pickBase`, `pickSettlingBacklog`, `applyRevision`,
 `applyWithConflicts`), `src/git/git-run.ts` (`gitTryStarted`) and `src/runner/runner-run.ts`.
 
-**Pinned by.** `test/revision.test.ts` — "a re-apply git could not start throws, rather than
+**Pinned by.** `test/runner-revision.test.ts` — "a re-apply git could not start throws, rather than
 reporting a diff that no longer applies" and "a revision whose re-apply git could not start keeps
 the revision and its ref for the next run".
 

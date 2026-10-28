@@ -146,7 +146,7 @@ export const NEEDS_REVIEW_PREFIX = `**Needs review `;
 export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: too large for one run**`;
 
 /** The literal reason the automatic convergence hold writes into a held plan's note
- * (holdEntryAfterExhaustion, src/runner/revision.ts, builds the note as
+ * (holdEntryAfterExhaustion, src/runner/runner-revision.ts, builds the note as
  * `**Needs review … by <role>: could not converge — <surviving objections>**`, INV-BH4).
  * Exported so the writer and the reader share one literal: it sits between holdEntryAfterExhaustion
  * (which writes the note) and the plan role's charter (role-catalog.ts `find`) which reads it, so

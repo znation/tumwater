@@ -28,7 +28,7 @@ import {
   finishRecoveryRunPhase,
   pinAndResetPhase,
 } from "./runner-recovery.js";
-import type { LeftoverRecovery } from "./leftover.js";
+import type { LeftoverRecovery } from "./runner-leftover.js";
 
 /** One role runner: owns a persistent worktree + branch and runs one run at a time. */
 export class RoleRunner {

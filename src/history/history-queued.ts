@@ -202,7 +202,7 @@ function recoveredAttemptVerdict(queuedList: HarnessEvent[], idx: number, outcom
 }
 
 /** True when a pin re-enqueues the previous attempt's kept pin rather than starting a fresh
- * change. `recoverLeftover` (src/runner/leftover.ts) is the one `merge_queued` producer whose
+ * change. `recoverLeftover` (runner-leftover.ts) is the one `merge_queued` producer whose
  * summary starts with this label, so a fresh change's pin after a conflict-cap discard ends
  * `resolveQueuedResult`'s walk. */
 function isRecoveryPin(pin: HarnessEvent | undefined): boolean {

@@ -86,7 +86,7 @@ export interface RunOutcome {
    * only by those outcomes; every other resume cause is derived from state (cut-off streak,
    * restart). */
   resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped";
-  /** The run ended on leftover recovery (src/runner/leftover.ts) — the leftover went on the merge
+  /** The run ended on leftover recovery (runner-leftover.ts) — the leftover went on the merge
    * queue (or already was there, or could not be pinned) — without an authoring run. No model
    * ran, so the orchestrator's fallback breaker takes the run as no evidence about the backend. */
   recoveredLeftover?: boolean;

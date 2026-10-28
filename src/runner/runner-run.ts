@@ -38,8 +38,8 @@ import { finalizeRun } from "../run/run-finalize.js";
 import { errorMessage } from "../text/text.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
 import type { RunUsage } from "../run/run-usage.js";
-import { hasUnmergedPin, recoverLeftover, type LeftoverRecovery } from "./leftover.js";
-import { applyRevision, applyWithConflicts } from "./revision.js";
+import { hasUnmergedPin, recoverLeftover, type LeftoverRecovery } from "./runner-leftover.js";
+import { applyRevision, applyWithConflicts } from "./runner-revision.js";
 import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
 import { changedFiles } from "../git/git-diff.js";
 import { handlePiResultPhase } from "./runner-outcome.js";
@@ -395,7 +395,7 @@ async function runWithWorktreePhase(
       ...(plan.restored !== undefined ? { restored: plan.restored } : {}),
     });
   } else {
-    // Salvage a commit a previous run left unmerged (src/runner/leftover.ts): recovery puts it
+    // Salvage a commit a previous run left unmerged (runner-leftover.ts): recovery puts it
     // back on the merge queue, so it merges through the orchestrator's merge pipeline — the
     // same gate as a fresh run's change, and main keeps exactly one writer (an in-run
     // recovery merge raced the slot's batches into `merge_blocked`). A salvaged leftover

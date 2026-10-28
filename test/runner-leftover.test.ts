@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { MERGE_CONFLICT_LIMIT, hasUnmergedPin, pinnedRetrySha, recoverLeftover, type LeftoverContext } from "../src/runner/leftover.js";
+import { MERGE_CONFLICT_LIMIT, hasUnmergedPin, pinnedRetrySha, recoverLeftover, type LeftoverContext } from "../src/runner/runner-leftover.js";
 import { commitTrailer } from "../src/git/commit-message.js";
 import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
@@ -14,7 +14,7 @@ import { eventsOfType, unwritableEvents, warningMessages } from "./fixtures/log-
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
-// Unit coverage for src/runner/leftover.ts's recoverLeftover — the salvage path that puts a commit
+// Unit coverage for runner-leftover.ts's recoverLeftover — the salvage path that puts a commit
 // a
 // previous run left unmerged back on the durable merge queue (merge-queue speed 3c: the slot is
 // main's one writer): normally pinned by refs/tumwater/landing/<role>, or unpinned on the branch

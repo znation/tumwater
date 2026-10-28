@@ -12,7 +12,7 @@ import { isAfterMergeRole } from "../review/post-merge-review.js";
 import { deferRunReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { freshlyWoken } from "../runner/runner-state.js";
-import { MERGE_CONFLICT_LIMIT } from "../runner/leftover.js";
+import { MERGE_CONFLICT_LIMIT } from "../runner/runner-leftover.js";
 import { noteSkip, type SchedulingScope } from "./scheduling-scope.js";
 
 /** A runner's skip verdict under the per-runner gates: `skip: true` when a gate declined the

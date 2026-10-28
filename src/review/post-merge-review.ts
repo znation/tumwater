@@ -13,7 +13,7 @@ import { buildReviewPrompt } from "../prompt/gate-prompts.js";
 import { shortSha } from "../text/format.js";
 import { errorMessage } from "../text/text.js";
 import { revisionRoundOf } from "../git/commit-message.js";
-import { REVISION_BACKSTOP } from "../runner/revision.js";
+import { REVISION_BACKSTOP } from "../runner/runner-revision.js";
 import { eventRole } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { fixLine } from "../verdict/reply-contract.js";

@@ -12,7 +12,7 @@ import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
 import { warnEventBestEffort, logEventBestEffort } from "../events/events.js";
 import type { GateRunsPi, PiRunWiring } from "../runner/runner-pi.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
-import { REVISION_FINAL_ON_REPEAT, REVISION_BACKSTOP, holdEntryAfterExhaustion } from "../runner/revision.js";
+import { REVISION_FINAL_ON_REPEAT, REVISION_BACKSTOP, holdEntryAfterExhaustion } from "../runner/runner-revision.js";
 import { priorObjectionNumber } from "../review/review-verdict.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { shortSha } from "../text/format.js";

@@ -5,7 +5,7 @@ import { aheadOfMain, headOf, setRef } from "../git/git.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { mergeRefName } from "../paths.js";
 import { shortSha } from "../text/format.js";
-import type { LeftoverRecovery } from "./leftover.js";
+import type { LeftoverRecovery } from "./runner-leftover.js";
 
 /** What the recovery phases need from their `RoleRunner` host. `setRecoveryFailure` writes the
  * merge failure back to the runner's field (which `run` reads at finalize time) instead of
@@ -76,7 +76,7 @@ export async function pinAndResetPhase(ctx: RecoveryContext, wt: string, sha: st
   return true;
 }
 
-/** End a run whose leftover recovery found work to salvage (src/runner/leftover.ts) without an
+/** End a run whose leftover recovery found work to salvage (runner-leftover.ts) without an
  * authoring run — the leftover owns the role's one merge ref until its merge resolves. A
  * run's dequeued user prompt goes back to its queue, since nothing ran it. A pin put on
  * the merge queue ends the run `queued` exactly like a fresh changed run (the merge-queue

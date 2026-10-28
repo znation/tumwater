@@ -18,7 +18,7 @@ import type { MergePipeline } from "../merge/merge-pipeline.js";
 import { isAfterMergeRole } from "../review/post-merge-review.js";
 import { aheadOfMainBranch, branchExists } from "../git/git.js";
 import { branchName } from "../paths.js";
-import { hasUnmergedPin } from "../runner/leftover.js";
+import { hasUnmergedPin } from "../runner/runner-leftover.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import {
