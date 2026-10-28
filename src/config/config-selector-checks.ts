@@ -3,7 +3,7 @@ import { checkKnownKeys, show } from "./config-field-checks.js";
 import { isJsonObject } from "../files/json-object.js";
 import { isNonBlankString } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
-import { isBackendId, parseModelSelector } from "./model-selector.js";
+import { isBackendId, parseModelSelector } from "./config-model-selector.js";
 
 /** Model-selector and fallback-chain checks that validateConfig (config-validation.ts) runs
  * on each model-choosing section: empty selector halves, `fallback` lists and steps, and an

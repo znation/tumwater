@@ -7,7 +7,7 @@
  * saving, the role-selection helpers) lives in config.ts, the write side in config-write.ts
  * (editor verbs) and config-request.ts (the director's staged request). */
 import { MODEL_TIERS, type BackendConfig, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "./config-schema.js";
-import { formatModelSelector, parseModelSelector, routeModel, type ModelSelector } from "./model-selector.js";
+import { formatModelSelector, parseModelSelector, routeModel, type ModelSelector } from "./config-model-selector.js";
 import { modelPairName } from "../budget/budget.js";
 import { isJsonObject } from "../files/json-object.js";
 import { DIRECTOR_ROLE, roleById } from "../roles/roles.js";

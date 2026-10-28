@@ -12,7 +12,7 @@ import { baseRoleOf, configuredInstances, instanceIndex, runnerIds, runnerPaused
 import { errorStreakAtWarn, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { hasOutstandingWork } from "../runner/runner-state.js";
-import { formatModelSelector } from "../config/model-selector.js";
+import { formatModelSelector } from "../config/config-model-selector.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { isJsonObject } from "../files/json-object.js";
 import { runnerStateForPoll } from "./status-polls.js";

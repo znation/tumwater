@@ -19,7 +19,7 @@ import {
 } from "./config-schema.js";
 import { isJsonObject } from "../files/json-object.js";
 import { typoSuffix } from "../text/suggest.js";
-import { isBackendId } from "./model-selector.js";
+import { isBackendId } from "./config-model-selector.js";
 import { reservedPassthroughFlag } from "../agent/backend-traits.js";
 import {
   checkObjectSection,

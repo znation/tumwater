@@ -15,7 +15,7 @@ import {
   type ModelTier,
   type TumwaterConfig,
 } from "./config-schema.js";
-import { formatModelSelector, parseModelSelector, routeModel } from "./model-selector.js";
+import { formatModelSelector, parseModelSelector, routeModel } from "./config-model-selector.js";
 import { modelPairName } from "../budget/budget.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { enabledRoleIds } from "./config.js";

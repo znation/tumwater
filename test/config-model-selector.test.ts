@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatModelSelector, parseModelSelector, routeModel } from "../src/config/model-selector.js";
+import { formatModelSelector, parseModelSelector, routeModel } from "../src/config/config-model-selector.js";
 
 // parseModelSelector / formatModelSelector (plans/model-tiers.md "Selectors"): the
 // provider/id[:thinking] strings `model` and `fallback` accept, and their round-trip.

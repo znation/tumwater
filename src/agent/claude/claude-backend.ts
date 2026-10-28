@@ -20,7 +20,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { resolvedBackendConfig } from "../../config/config-views.js";
 import { MODEL_TIERS } from "../../config/config-schema.js";
-import { routeModel } from "../../config/model-selector.js";
+import { routeModel } from "../../config/config-model-selector.js";
 import { backendRunEnv } from "../../process/run-marker.js";
 import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
 import { expandHomeTilde } from "../../files/files.js";

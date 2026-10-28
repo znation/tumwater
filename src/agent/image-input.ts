@@ -7,7 +7,7 @@
 
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { configForRole } from "../config/config-views.js";
-import { seamAgent } from "../config/model-selector.js";
+import { seamAgent } from "../config/config-model-selector.js";
 import { piModelImageInput, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import { piListedImageInput, type PiListedModels } from "../pi/pi-listed-models.js";
 import { backendById } from "./agent-backend.js";

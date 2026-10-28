@@ -32,7 +32,7 @@ import {
 } from "../config/config-fallbacks.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { enabledRoleIds } from "../config/config.js";
-import { formatModelSelector, seamAgent } from "../config/model-selector.js";
+import { formatModelSelector, seamAgent } from "../config/config-model-selector.js";
 import {
   configForRole,
   isTierName,

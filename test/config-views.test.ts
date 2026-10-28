@@ -29,7 +29,7 @@ import {
   type TierFallback,
   type TierFallbackMap,
 } from "../src/config/config-fallbacks.js";
-import { routeModel } from "../src/config/model-selector.js";
+import { routeModel } from "../src/config/config-model-selector.js";
 
 // The config views' derived models over a loaded config: how the role, review, and fallback
 // overlays resolve on top of the top-level pi settings. The per-seam resolution lives in

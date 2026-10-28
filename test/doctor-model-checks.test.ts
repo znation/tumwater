@@ -188,7 +188,7 @@ test("checkTierModels fails a pair pi cannot resolve and warns on an unready pro
 test("checkTierModels warns on a declared selector that names no provider", async () => {
   const models = writeModels();
   const root = readyRepo();
-  // A slash-less selector is a bare pattern with no provider (model-selector.ts): pi
+  // A slash-less selector is a bare pattern with no provider (config-model-selector.ts): pi
   // resolves it against its own default, so tumwater cannot verify it — warn rather than
   // look it up as the empty-string provider and fail. The auth stub must never be called.
   writeConfig(root, { model: "bare-model" });

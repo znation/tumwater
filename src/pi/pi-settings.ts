@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { ModelSelector } from "../config/model-selector.js";
+import type { ModelSelector } from "../config/config-model-selector.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";

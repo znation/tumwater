@@ -14,7 +14,7 @@ import path from "node:path";
 import { isNonBlankString, tooLongMessage } from "../text/text.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
-import { isBackendId } from "./model-selector.js";
+import { isBackendId } from "./config-model-selector.js";
 import {
   AT_LEAST_ONE,
   type NumberRule,

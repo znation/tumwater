@@ -25,7 +25,7 @@ import { configForRole, resolvedModelFields, reviewedAfterMerge, reviewRunConfig
 import { fallbackPair } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath, seamContextWindowForRole } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
-import { formatModelSelector } from "../config/model-selector.js";
+import { formatModelSelector } from "../config/config-model-selector.js";
 import { roleImageInfo } from "../agent/image-input.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";

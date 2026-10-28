@@ -5,7 +5,7 @@ import type { FallbackModelConfig, TumwaterConfig } from "../config/config-schem
 import { enabledRoleIds, loadConfigSafe } from "../config/config.js";
 import { configForRole, resolverConfig, resolvedBackendConfig, reviewConfig } from "../config/config-views.js";
 import { fallbackPair } from "../config/config-fallbacks.js";
-import { seamAgent } from "../config/model-selector.js";
+import { seamAgent } from "../config/config-model-selector.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
@@ -250,7 +250,7 @@ export function cacheReadUnpriced(
 }
 
 /** The shared shape the free predicate below judges (its backend identity resolved by
- * `seamAgent` in model-selector) and the fallback view preserves. */
+ * `seamAgent` in config-model-selector) and the fallback view preserves. */
 interface SeamModel {
   agent?: string;
   provider?: string;

@@ -3,7 +3,7 @@
  * read (plans/opencode-backend.md "Groundwork: the claude-only branches become backend
  * traits"). Pure — imports nothing from the runtime registry (agent-backend.ts) — so those
  * layers can read a backend's traits without pulling the registry in. That is the same reason
- * `BACKEND_DEFAULT_MODELS` lives in src/config/model-selector.ts.
+ * `BACKEND_DEFAULT_MODELS` lives in src/config/config-model-selector.ts.
  *
  * An id with no entry reads as pi, because src/agent/run-agent.ts routes an unregistered id to
  * the pi backend.

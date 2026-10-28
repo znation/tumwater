@@ -23,7 +23,7 @@ requireDistBuild(
 // run-agent registers the backends on import, so this import brings `claude` online too.
 const { runAgent } = await import("../dist/src/agent/run-agent.js");
 const { defaultConfig } = await import("../dist/src/config/config.js");
-const { routeModel } = await import("../dist/src/config/model-selector.js");
+const { routeModel } = await import("../dist/src/config/config-model-selector.js");
 const { readSessions } = await import("../dist/src/agent/session-ledger.js");
 const { claudeBackend } = await import("../dist/src/agent/claude/claude-backend.js");
 const { claudeEnv } = await import("../dist/src/agent/claude/claude-env.js");
