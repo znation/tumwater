@@ -277,6 +277,20 @@ export function createPendingPane(session: TuiPaneSession) {
       }
     }
   };
+  // Re-render the whole queue body from scratch after a filter (Ctrl+G role scope, Ctrl+O
+  // review state) cycled: rebuild the rows off the current filter, drop any overlap drill,
+  // reset the composed body and the pane cache to the new content, and repaint from the top.
+  // The shared tail of the two filter-cycle arms, so both filters repaint identically.
+  const repaintQueueBody = (): void => {
+    rebuildQueueRows();
+    overlapIndex = -1;
+    ++drillGen;
+    head = queueAndReviews() + rosterText;
+    compose();
+    session.paneCache = base;
+    session.paneScroll = 0;
+    session.requestRender();
+  };
   const refresh = (): void => {
     // Generation guard: each refresh bumps the counter, and a resolution paints only if it
     // is the latest request's — Ctrl+R held twice, or a refresh raced with a re-entry,
@@ -348,14 +362,7 @@ export function createPendingPane(session: TuiPaneSession) {
       const slots = [null, ...roles];
       const at = roleScope === null ? 0 : slots.indexOf(roleScope);
       roleScope = slots[(at + 1) % slots.length] ?? null;
-      rebuildQueueRows();
-      overlapIndex = -1;
-      ++drillGen;
-      head = queueAndReviews() + rosterText;
-      compose();
-      session.paneCache = base;
-      session.paneScroll = 0;
-      session.requestRender();
+      repaintQueueBody();
       return true;
     }
     if (key.ctrl && key.name === "o" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
@@ -370,14 +377,7 @@ export function createPendingPane(session: TuiPaneSession) {
       const slots = [null, ...POST_REVIEW_STATES];
       const at = reviewState === null ? 0 : slots.indexOf(reviewState);
       reviewState = slots[(at + 1) % slots.length] ?? null;
-      rebuildQueueRows();
-      overlapIndex = -1;
-      ++drillGen;
-      head = queueAndReviews() + rosterText;
-      compose();
-      session.paneCache = base;
-      session.paneScroll = 0;
-      session.requestRender();
+      repaintQueueBody();
       return true;
     }
     if (key.ctrl && key.name === "n" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
