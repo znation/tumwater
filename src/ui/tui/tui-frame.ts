@@ -160,33 +160,62 @@ export function hintLine(view: TuiView, mode: TuiMode, width: number): StatusLin
   return clipSpans(spans, width);
 }
 
-/** The prompt line's target, like the dashboard composer's: who Enter sends to. */
+/** The brand-tone label pair that names the prompting target on the prompt line, with the
+ * ` › ` separator nearly every editor arm uses — the budget arm is the lone exception, its
+ * trailing space keeping the input in the cap field's own line. */
+function labeledPrefix(label: string): StatusSpan[] {
+  return [{ text: label, tone: "brand" }, { text: " › " }];
+}
+
+/** The ordered label table that owns prompt-line prefix precedence: each row's first element is
+ * one editor/mode arm and the second the prefix it shows; the first truthy row wins, so "which
+ * editor owns the prefix, and if two flags are set which one?" is one read of the table's
+ * order. The order is the old `if (mode.…)` chain, from the daily-cap editor to the pause
+ * editor. */
+function editorPromptPrefix(mode: TuiMode): StatusSpan[] | undefined {
+  // The three object-armed rows below dereference their target (entry/answer/queued), so each
+  // captures the value and guards its label against the null case — the label is built eagerly
+  // for every row, but only ever returned when its row's flag is truthy.
+  const entry = mode.entryEditFor;
+  const answer = mode.answerFor;
+  const queued = mode.queuedEditFor;
+  const prompts: Array<[unknown, StatusSpan[]]> = [
+    [mode.budget, [{ text: "daily cap $", tone: "brand" }, { text: " " }]],
+    [mode.concurrencyMode, labeledPrefix("run cap")],
+    [mode.checksMode, labeledPrefix("check cap")],
+    [mode.checkMode, labeledPrefix("declared check")],
+    [mode.modelMode, labeledPrefix("model")],
+    [mode.quietMode, labeledPrefix(mode.quietTeam ? "team quiet hours" : "quiet hours")],
+    [mode.slotsMode, labeledPrefix("worktree slots")],
+    [mode.backendsMode, labeledPrefix("agent backends")],
+    [mode.intervalMode, labeledPrefix("min run interval")],
+    [mode.roleModelMode, labeledPrefix("model overrides")],
+    [mode.instancesMode, labeledPrefix("instances")],
+    [mode.claudeReserveMode, labeledPrefix("claude reserve")],
+    [mode.notifyMode, labeledPrefix("notify hook")],
+    [mode.fallbackMode, labeledPrefix("fallback")],
+    [mode.instructionsEditFor, labeledPrefix(`instructions for ${mode.instructionsEditFor}`)],
+    [mode.briefEditMode, labeledPrefix("brief")],
+    [mode.retireMode, labeledPrefix("retire")],
+    [mode.releaseMode, labeledPrefix("release")],
+    [mode.roleEnabledMode, labeledPrefix("role state")],
+    [mode.notesEditFor, labeledPrefix(`notes for ${mode.notesEditFor}`)],
+    [entry, entry ? labeledPrefix(entry.position === null ? `new ${entry.kind}` : `edit ${entry.kind} #${entry.position}`) : []],
+    [answer, answer ? labeledPrefix(`answer #${answer.position}`) : []],
+    [queued, queued ? labeledPrefix(`edit ${queued.role}`) : []],
+    [mode.pauseEditMode && mode.pauseEditStop, labeledPrefix("stop in")],
+    [mode.pauseEditMode, labeledPrefix(mode.pauseEditRole ? `${mode.pauseEditWake ? "wake" : "pause"} ${mode.pauseEditRole}` : "pause")],
+  ];
+  for (const [active, spans] of prompts) if (active) return spans;
+  return undefined;
+}
+
+/** The prompt line's target, like the dashboard composer's: who Enter sends to, read from the
+ * ordered label table in editorPromptPrefix and falling back to the director/role target (with
+ * its image count) when no editor owns the prefix. */
 export function promptPrefix(mode: TuiMode): StatusSpan[] {
-  if (mode.budget) return [{ text: "daily cap $", tone: "brand" }, { text: " " }];
-  if (mode.concurrencyMode) return [{ text: "run cap", tone: "brand" }, { text: " › " }];
-  if (mode.checksMode) return [{ text: "check cap", tone: "brand" }, { text: " › " }];
-  if (mode.checkMode) return [{ text: "declared check", tone: "brand" }, { text: " › " }];
-  if (mode.modelMode) return [{ text: "model", tone: "brand" }, { text: " › " }];
-  if (mode.quietMode) return [{ text: mode.quietTeam ? "team quiet hours" : "quiet hours", tone: "brand" }, { text: " › " }];
-  if (mode.slotsMode) return [{ text: "worktree slots", tone: "brand" }, { text: " › " }];
-  if (mode.backendsMode) return [{ text: "agent backends", tone: "brand" }, { text: " › " }];
-  if (mode.intervalMode) return [{ text: "min run interval", tone: "brand" }, { text: " › " }];
-  if (mode.roleModelMode) return [{ text: "model overrides", tone: "brand" }, { text: " › " }];
-  if (mode.instancesMode) return [{ text: "instances", tone: "brand" }, { text: " › " }];
-  if (mode.claudeReserveMode) return [{ text: "claude reserve", tone: "brand" }, { text: " › " }];
-  if (mode.notifyMode) return [{ text: "notify hook", tone: "brand" }, { text: " › " }];
-  if (mode.fallbackMode) return [{ text: "fallback", tone: "brand" }, { text: " › " }];
-  if (mode.instructionsEditFor) return [{ text: `instructions for ${mode.instructionsEditFor}`, tone: "brand" }, { text: " › " }];
-  if (mode.briefEditMode) return [{ text: "brief", tone: "brand" }, { text: " › " }];
-  if (mode.retireMode) return [{ text: "retire", tone: "brand" }, { text: " › " }];
-  if (mode.releaseMode) return [{ text: "release", tone: "brand" }, { text: " › " }];
-  if (mode.roleEnabledMode) return [{ text: "role state", tone: "brand" }, { text: " › " }];
-  if (mode.notesEditFor) return [{ text: `notes for ${mode.notesEditFor}`, tone: "brand" }, { text: " › " }];
-  if (mode.entryEditFor) return [{ text: mode.entryEditFor.position === null ? `new ${mode.entryEditFor.kind}` : `edit ${mode.entryEditFor.kind} #${mode.entryEditFor.position}`, tone: "brand" }, { text: " › " }];
-  if (mode.answerFor) return [{ text: `answer #${mode.answerFor.position}`, tone: "brand" }, { text: " › " }];
-  if (mode.queuedEditFor) return [{ text: `edit ${mode.queuedEditFor.role}`, tone: "brand" }, { text: " › " }];
-  if (mode.pauseEditMode && mode.pauseEditStop) return [{ text: "stop in", tone: "brand" }, { text: " › " }];
-  if (mode.pauseEditMode) return [{ text: mode.pauseEditRole ? `${mode.pauseEditWake ? "wake" : "pause"} ${mode.pauseEditRole}` : "pause", tone: "brand" }, { text: " › " }];
+  const prefix = editorPromptPrefix(mode);
+  if (prefix) return prefix;
   // The pending image count (e.g. `director (2 images) › `) is named beside the target, so
   // the user sees what the next Enter will send before pressing it. The image count names the
   // director prompt only: session.images ride into the next director submit (submitPrompt),
