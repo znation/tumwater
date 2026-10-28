@@ -139,36 +139,63 @@ export function seamContextWindow(
   const backend = seamAgent(seam);
   switch (backend) {
     case "pi":
-      let { provider, model } = seam;
-      if (!provider || !model) {
-        const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), projectRoot);
-        provider = piDefault?.provider;
-        model = piDefault?.model;
-      }
-      return declaredWindow(resolveModelDef(readPiProviders(modelsPath), provider, model)?.contextWindow);
+      return piSeamContextWindow(seam, projectRoot, modelsPath);
     case "opencode":
-      // The models.dev cache (readOpencodeCache, an empty cache when the file is missing) holds
-      // the window part 6a/7 parsed from `limit.context`, keyed by the gateway-qualified id the
-      // run actually invokes (opencodeModelKey) — the same key and entry the free-ness check
-      // prices by, so a seam's window never disagrees with the model it runs.
-      if (seam.model === undefined) return null;
-      return declaredWindow(readOpencodeCache(projectRoot).models[opencodeModelKey(seam.model)]?.context);
+      return opencodeSeamContextWindow(seam, projectRoot);
     case "codex":
-      // The model catalog (codex-catalog.ts) holds the window part 8/9 parsed from
-      // `context_window × effective_context_window_percent / 100`, read from the team's codex
-      // home (backends.codex.configDir) at this project root — the same home the runs use. An
-      // unknown model, an absent home or a missing catalog reads null (declaredWindow's safe
-      // answer for an unknown window).
-      if (seam.model === undefined) return null;
-      {
-        const { config } = loadConfigSafe(projectRoot);
-        const home = codexHome(resolvedBackendConfig(config ?? {}, "codex"));
-        if (home === undefined) return null;
-        return declaredWindow(readCodexCatalog(home).get(seam.model)?.contextWindow);
-      }
+      return codexSeamContextWindow(seam, projectRoot);
     default:
       return null;
   }
+}
+
+/** The window a pi seam declares, or null when it cannot be known: reads the pair's
+ * `contextWindow` from pi's models.json, running on pi's saved default
+ * (readPiDefaultModel) when the seam names no provider/model — exactly the model pi will
+ * start on. An unresolvable pair or a missing/unusable window reads null. */
+function piSeamContextWindow(
+  seam: { agent?: string; provider?: string; model?: string },
+  projectRoot: string,
+  modelsPath: string,
+): number | null {
+  let { provider, model } = seam;
+  if (!provider || !model) {
+    const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), projectRoot);
+    provider = piDefault?.provider;
+    model = piDefault?.model;
+  }
+  return declaredWindow(resolveModelDef(readPiProviders(modelsPath), provider, model)?.contextWindow);
+}
+
+/** The window an opencode seam declares, or null when it cannot be known. The models.dev cache
+ * (readOpencodeCache, an empty cache when the file is missing) holds the window part 6a/7
+ * parsed from `limit.context`, keyed by the gateway-qualified id the run actually invokes
+ * (opencodeModelKey) — the same key and entry the free-ness check prices by, so a seam's
+ * window never disagrees with the model it runs. A missing cache, an unknown model or an
+ * unusable `context` reads null. */
+function opencodeSeamContextWindow(
+  seam: { agent?: string; provider?: string; model?: string },
+  projectRoot: string,
+): number | null {
+  if (seam.model === undefined) return null;
+  return declaredWindow(readOpencodeCache(projectRoot).models[opencodeModelKey(seam.model)]?.context);
+}
+
+/** The window a codex seam declares, or null when it cannot be known. The model catalog
+ * (codex-catalog.ts) holds the window part 8/9 parsed from
+ * `context_window × effective_context_window_percent / 100`, read from the team's codex home
+ * (backends.codex.configDir) at this project root — the same home the runs use. An unknown
+ * model, an absent home or a missing catalog reads null (declaredWindow's safe answer for an
+ * unknown window). */
+function codexSeamContextWindow(
+  seam: { agent?: string; provider?: string; model?: string },
+  projectRoot: string,
+): number | null {
+  if (seam.model === undefined) return null;
+  const { config } = loadConfigSafe(projectRoot);
+  const home = codexHome(resolvedBackendConfig(config ?? {}, "codex"));
+  if (home === undefined) return null;
+  return declaredWindow(readCodexCatalog(home).get(seam.model)?.contextWindow);
 }
 
 /** The resolved primary seam's declared context window for a role — `configForRole` resolves
