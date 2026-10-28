@@ -72,9 +72,7 @@ export async function staleNameFindings(wt: string, diff: string): Promise<strin
   const { removedIn, addedIn } = declaredNameDeltas(diff);
   const candidates = staleNameCandidates(removedIn, addedIn);
   if (candidates.length === 0) return [];
-  const out = await gitTry(wt, "grep", "-n", "-w", "-I", "--cached", ...candidates.flatMap((n) => ["-e", n]));
-  if (!out) return [];
-  const lines = gitGrepHits(out);
+  const lines = await wholeWordGrep(wt, candidates);
   const findings: string[] = [];
   for (const name of candidates) {
     if (findings.length >= MAX_STALE_PATHS) break;
@@ -101,6 +99,16 @@ function staleNameCandidates(removedIn: Map<string, Set<string>>, addedIn: Map<s
 /** A whole-word, case-sensitive matcher for `name`. */
 function staleNameWord(name: string): RegExp {
   return new RegExp(`(?<![\\w$])${name.replace(/\$/g, "\\$")}(?![\\w$])`, "g");
+}
+
+/** `git grep -w --cached` for every name in `names`, returning its `file:line` hit records;
+ * `null` (gitTry maps a clean no-match and a real failure the same way) becomes `[]`. Shared by
+ * the stale-name and moved-name sweeps, which both grep the staged tree for a batch of compound
+ * names exactly the same way before each filters its own subset of the hits. */
+async function wholeWordGrep(wt: string, names: readonly string[]): Promise<GrepHit[]> {
+  const out = await gitTry(wt, "grep", "-n", "-w", "-I", "--cached", ...names.flatMap((n) => ["-e", n]));
+  if (!out) return [];
+  return gitGrepHits(out);
 }
 
 /** The hits whose text has at least one whole-word occurrence of `word`. */
@@ -134,9 +142,7 @@ export async function movedNameFindings(wt: string, diff: string): Promise<strin
   const { removedIn, addedIn } = declaredNameDeltas(diff);
   const picked = movedNames(removedIn, addedIn);
   if (picked.length === 0) return [];
-  const out = await gitTry(wt, "grep", "-n", "-w", "-I", "--cached", ...picked.flatMap((m) => ["-e", m.name]));
-  if (!out) return [];
-  const lines = gitGrepHits(out);
+  const lines = await wholeWordGrep(wt, picked.map((m) => m.name));
   const findings: string[] = [];
   for (const move of picked) {
     if (findings.length >= MAX_STALE_PATHS) break;
@@ -209,7 +215,7 @@ function placesMovedNameInOldFile(text: string, word: RegExp, name: string, base
 
 /** The staged-index hits that still place `move.name` in its old file, capped. */
 function movedNameHits(move: MovedName, lines: GrepHit[]): string[] {
-  const word = new RegExp(`(?<![\\w$])${move.name.replace(/\$/g, "\\$")}(?![\\w$])`, "g");
+  const word = staleNameWord(move.name);
   const mine = lines.filter((l) => l.text.search(word) !== -1);
   if (mine.some((l) => l.file === move.from)) return [];
   const base = path.basename(move.from);
