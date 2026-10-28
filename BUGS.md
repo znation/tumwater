@@ -304,6 +304,23 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
   Because the alert names silence, not the call, the operator cannot tell a slow suite from a hang.
 - **Expected / fix sketch:** while a tool call is open, let the silence flag defer to that call's own stall threshold, the buffered one for a redirect or pipe. Name the call in the cell and the alert, as in "running `npm run test:gate` for 12m", so a real stall past the threshold still reads as one. Pin it with a run-progress-model case: an open redirected call at 6 minutes is not stuck, and the same call at 11 minutes is.
 
+### `a demoted fallback admits exactly one probe run per cool-down; other due roles wait` failed, then passed on the same tree (quarantined by tumwater 2026-10-28)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+ℹ cancelled 0
+ℹ skipped 3
+ℹ todo 0
+ℹ duration_ms 830473.422042
+✖ failing tests:
+test at dist/test/orchestrator-probe.test.js:47:1
+✖ a demoted fallback admits exactly one probe run per cool-down; other due roles wait (64410.04825ms)
+Error: timed out waiting for the breaker's budget_paused event
+at waitFor (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/helpers/wait.js:38:19)
+at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/orchestrator-probe.test.js:84:9)
+~~~~
+
 ## Fixed
 
 ## Verified
