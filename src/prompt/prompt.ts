@@ -89,6 +89,21 @@ export const TEST_RUNNER_RULE = `- Run tests only through the project's declared
   never a runner you guessed (say, \`npx vitest\` in a suite written for node:test): a mismatched
   runner finds no tests at best, and can kill them mid-run, leaking processes and temp files.`;
 
+/** The synthetic-load rule every run that may run commands carries, word for word: the run and
+ * director rules (full and compact). The bounding sentence is the point — a loader that ends with
+ * the command cannot leak. 2026-10-28: seven leaked \`while :; do :; done\` loops from bugfix runs
+ * reproducing a load flake stood at PPID 1 loading the shared host (BUGS.md): macOS \`ps -E\`
+ * hides the environment of platform binaries like bash, so the end-of-run marker sweep cannot
+ * attribute them to a run to reap them. The only reliable prevention is never starting unbounded
+ * load in the first place — a leaked platform-binary loader cannot be reaped on macOS by any
+ * sweep that exists. */
+export const SYNTHETIC_LOAD_RULE = `The host is shared by every run, review, and check on the team,
+  and already under load; never add synthetic CPU load (a \`while :; do :; done\` spinner, a
+  CPU-spinning node process) to reproduce a load flake unless it ends with the command that starts
+  it — a \`timeout\`, or backgrounded and killed with \`kill $!\` before that tool call returns. A
+  loader that outlives its command is an orphan no sweep can reliably reap, and loads the host
+  every sibling run and check runs on until a \`tumwater doctor\` sweep or a human stops it.`;
+
 /** Render a dialect's `backendRules` as one bullet each, or nothing when the dialect has none
  * (pi and claude) — so a backend's extra shell/reasoning guidance rides the reading-budget
  * section right after the oversized-output rule. */
@@ -196,6 +211,7 @@ Where you work:
   servers, watch modes). To test such a program, background it with a hard time limit (at most
   30 minutes) and never give it a real TTY.
 - ${KILL_BY_PID_RULE} A pattern also kills other agents' runs and checks.
+- ${SYNTHETIC_LOAD_RULE}
 - Leave the project working: ${verify} Write the check's full output to a scratch file once
   (\`${gateCommand ? "<gate>" : "<check>"} > <scratch-dir>/check.log 2>&1\`) and \`tail\` it; grep that file for anything else, and
   re-run the check only after an edit changes the tree.

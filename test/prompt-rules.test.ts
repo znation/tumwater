@@ -4,6 +4,7 @@ import { CLAIMS_RULE, REPLY_ENDINGS } from "../src/verdict/reply-contract.js";
 import {
   KILL_BY_PID_RULE,
   ROOT_FROM_WORKTREE,
+  SYNTHETIC_LOAD_RULE,
   TEST_RUNNER_RULE,
   buildDirectorPrompt,
   buildRunPrompt,
@@ -53,6 +54,7 @@ const DIRECTIVES: readonly string[] = [
   "check.log 2>&1",
   TEST_RUNNER_RULE,
   KILL_BY_PID_RULE,
+  SYNTHETIC_LOAD_RULE,
   "Never create, amend, or revert git commits, branches, or merges",
   "Never touch the .tumwater directory or tumwater.json.",
   "between the tumwater:prompt markers",

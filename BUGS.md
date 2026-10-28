@@ -234,18 +234,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
   - **Guard:** a tool-layer guard beside the write guard (af43c803a, bcde979f4) that refuses `pkill`, `killall`, and any bash command that feeds `ps` or `pgrep` output into `kill`. Its refusal message should name `kill $!` and the run's exit sweep.
   - **Timeout message:** have a timed-out tool call's result say that, on a loaded host, the command may simply be slow, and that the run's own processes are reaped when the run ends.
 
-### Bugfix runs add synthetic CPU load to the shared host to reproduce load flakes, and leak the burners (found by operator session 2026-10-28 from `tumwater doctor orphans`)
-
-- **Symptom:** on 2026-10-28, seven bash `while :; do :; done` loops stood at PPID 1:
-  - **3 from bugfix-2's 2026-10-27 00:30 run in `_slot-5`:** state R, about 391 CPU-minutes each.
-  - **4 from bugfix-4's 2026-10-26 14:53 run in `_slot-7`:** about 199 CPU-minutes each, now in state U.
-  Both runs started their loaders as `(for i in 1 2 3 4; do (while :; do :; done) & done; echo "$!" > /tmp/….pids)`. `$!` records only the last loop, so a cleanup by that pid leaves the other three. The sessions show two more loader runs on 2026-10-26: bugfix-4 at 17:40 with eight loaders, and bugfix-2 at 17:44. None of their loaders survives now. The host they load is the one every check and review runs on.
-- **Reproduce:** `tumwater doctor orphans` lists them as `/bin/bash -c cd …/_slot-5 && npx tsc --incremental … (for i in 1 2 3 4; do (while :; do :; done) & done …`. The sessions' tool calls show where they started; search them for `while :; do :; done`.
-- **Cause:** flake investigations reproduce load by adding it (the supervisor-test entry above ran "30 concurrent runs of the test beside 8 CPU-spinning node processes", and the hanging-fake entry ran copies "under 6 CPU+spawn-churn load loops"), on the shared host, with nothing to end the loaders. The run's exit sweep did not reap these. Their environment is unreadable to `ps`, so whether they carried the run's `TUMWATER_RUN` mark is not known.
-- **Expected / fix sketch:**
-  - **Prompt:** tell bugfix runs that the host is already loaded by the team, and that synthetic load must not outlive the command that starts it. A load helper that exits on its own deadline would make that easy.
-  - **Exit sweep:** establish why the sweep missed backgrounded subshells of a bash tool call, and cover them.
-
 ### Agents' own test-suite runs bypass `maxConcurrentChecks` and every suite starts about 17 node --test workers, so the host runs several full-width suites at once; gate checks went from a 92 s median to 313 s and from no timeouts to over 100 a day (found by operator session 2026-10-28 from the host's load average and the event log)
 
 - **Symptom:** on 2026-10-28 at 04:30, 9 suites ran at once on the 18-core host, at a load average of 131–192. The gate check median for passed checks went 92 s (10-20), 147 s (10-23), 177 s (10-25), 232 s (10-26), 255 s (10-27) and 313 s (10-28). Gate and baseline checks that hit the 600 s timeout went from 0 (10-23) to 124 (10-26) and 114 (10-27). The main baseline itself timed out at 600 s on 10-28 at 04:46.
