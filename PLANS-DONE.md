@@ -5,6 +5,67 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `classifyResult`'s complexity-16 structured-signal classification body is split into one named helper per concern — the terminal abort/budget guards, the status rows (429 and the server-transient set), the context-overflow text, the config status set, the resume-missing text, the config text, the transient text (rate-limit, server, and the shared connection/timeout prose tail) and the HTTP-digit text — so "did the harness abort this run?", "is this a 429?", "is the context-overflow text winning over a 400?", "is this a missing session?" and "is this a dropped connection?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `movedSourceFindings`, `parseInitArgs`, `createTeamConfigKeyEditor`, `cmdLogs`, `sayLogsTail`, `usageWords`, `inputViewWindow`, `rejectUnknownArgs`, `findTrust`, `buildRolloutLines` and `classifyError` plans each extract one named helper per job the same way; independent in file of every Planned entry — no `## Planned` heading or touches list names `src/agent/claude/claude-stream.ts` (`grep -c 'src/agent/claude/claude-stream.ts' PLANS.md` prints 0; the only planned `src/agent` touches are this family's src/agent/codex/codex-hook-trust.ts, src/agent/codex/codex-rollout.ts and src/agent/opencode/opencode-stream.ts and Subtract part 5k/6's src/agent/subscription-account.ts, src/agent/claude/claude-account.ts and src/agent/codex/codex-account.ts — the last is the account sibling, not this stream file); PLANS.md's only `classifyResult` mention is the probe text inside the sibling `classifyError` entry's parenthetical, never a heading or touches list, and PLANS-DONE.md holds no split of this symbol (`grep -cE '^### .*classifyResult' PLANS-DONE.md` prints 0 — its `classifyResult` mentions are the landed `handleRateLimitEvent` split's acceptance bullet, which says this classifier keeps the count it reports today, and a design-doc quote of its 400-vs-context ordering); docs/invariants.md names the file only as an INV-AF5 consumer of `canonicalUsageBlock` (`grep -c 'claude-stream' docs/invariants.md` prints 1), a module-level import this move does not touch, so it stays unedited; touches src/agent/claude/claude-stream.ts) — done 2026-10-27 by the feature role
+
+**Goal.** `classifyResult` (`src/agent/claude/claude-stream.ts`, module-private, complexity 16) is the classifier that turns one native `result` event's structured error signals into the canonical `tumwaterKind` (and, for a transient backend, its kind): the harness-abort and budget terminal reasons, then the text budget cap, the status 429, the server-transient status set, the context-overflow text, the config status set, and the ordered text fallbacks (missing session, not-logged-in/model prose, rate-limit prose, server prose, the shared connection/timeout prose tail, then a bare HTTP digit). Today one body does all of it, and the complexity sits at the top of the file (the next-highest is the `flush` arrow at 14). A reader asking "did the harness abort this run?", "is this a 429?", "is the context-overflow text winning over a 400?", "is this a missing session?" and "is this a dropped connection?" has only the one body to scan.
+
+**Approach.** All edits in `src/agent/claude/claude-stream.ts`; move code, do not rewrite it — every condition, order and comment stays exactly as today. Add a module-private interface for the current inline return shape:
+
+```ts
+interface ClaudeErrorClassification {
+  kind?: TumwaterKind;
+  backendKind?: BackendFailureKind;
+}
+```
+
+and eight module-private functions beside `classifyResult`, each taking the reads it needs and returning `ClaudeErrorClassification | undefined` (`undefined` when its guard fails):
+
+- `function terminalAndBudgetClassification(terminal: string | undefined, text: string): ClaudeErrorClassification | undefined` — `terminal === "aborted_tools"` returns `{}` (the harness killed the run, so the chain stops there); `terminal === "error_max_budget_usd"` returns `{ kind: "budgetCapped" }`; `/error_max_budget_usd/i.test(text)` returns `{ kind: "budgetCapped" }`; else `undefined`. Carries today's doc-comment note that a SIGTERM is deliberate.
+- `function statusClassification(status: number | undefined): ClaudeErrorClassification | undefined` — `status === 429` returns `{ kind: "transientRateLimit" }`; `status !== undefined && SERVER_TRANSIENT_STATUS.has(status)` returns `{ kind: "transientBackend", backendKind: "server" }`; else `undefined`.
+- `function contextOverflowClassification(text: string): ClaudeErrorClassification | undefined` — `/prompt is too long/i.test(text)` returns `{ kind: "contextExceeded" }`; else `undefined`; carries today's comment that the context-overflow text wins over a configuration status.
+- `function configStatusClassification(status: number | undefined): ClaudeErrorClassification | undefined` — `status !== undefined && CONFIG_STATUS.has(status)` returns `{ kind: "configError" }`; else `undefined`.
+- `function resumeMissingClassification(text: string): ClaudeErrorClassification | undefined` — `/No conversation found with session ID/i.test(text)` returns `{ kind: "resumeMissing" }`; else `undefined`.
+- `function configTextClassification(text: string): ClaudeErrorClassification | undefined` — `/Not logged in|issue with the selected model|does not support this model/i.test(text)` returns `{ kind: "configError" }`; else `undefined`.
+- `function transientTextClassification(text: string): ClaudeErrorClassification | undefined` — `/\b429\b|rate limit/i.test(text)` returns `{ kind: "transientRateLimit" }`; `/overloaded|internal server error|bad gateway|service unavailable|gateway timeout|\b5\d\d\b/i.test(text)` returns `{ kind: "transientBackend", backendKind: "server" }`; otherwise `const prose = transientProseKind(text); return prose;` (the shared connection/timeout vocabulary).
+- `function httpStatusTextClassification(text: string): ClaudeErrorClassification | undefined` — `/\b(400|401|403|404)\b/i.test(text)` returns `{ kind: "configError" }`; else `undefined`; carries today's comment that these are the text fallbacks for statuses claude leaves null or omits.
+
+`classifyResult` keeps its `(result: Json)` signature and its doc comment, and becomes the narrow-and-chain:
+
+```ts
+function classifyResult(result: Json): ClaudeErrorClassification {
+  const terminal = optionalString(result.terminal_reason);
+  const text = joinParts([optionalString(result.result), optionalString(result.error)], " ");
+  const status = nonNegativeNumber(result.api_error_status, undefined);
+  return (
+    terminalAndBudgetClassification(terminal, text) ??
+    statusClassification(status) ??
+    contextOverflowClassification(text) ??
+    configStatusClassification(status) ??
+    resumeMissingClassification(text) ??
+    configTextClassification(text) ??
+    transientTextClassification(text) ??
+    httpStatusTextClassification(text) ??
+    {}
+  );
+}
+```
+
+The `??` chain preserves the body's exact predicate order because each helper returns `undefined` when its guard fails and a matched classification (or, for the abort case, `{}`) otherwise, so a later check can never pre-empt an earlier one. The order matters: the terminal abort/budget guards precede every status and text row; the status 429 and server set precede the context-overflow text and the config status set; and the context-overflow text is consulted before the config status set, so a 400 whose text says "prompt is too long" is `contextExceeded`, never `configError`. Computing `text` and `status` before the chain is behavior-preserving: `optionalString`, `joinParts` and `nonNegativeNumber` have no side effects and no dependency on each other. `SERVER_TRANSIENT_STATUS` and `transientProseKind` (`src/agent/backend-traits.ts`) stay the single homes of their vocabularies, and `CONFIG_STATUS` stays the module's own constant. No other function changes, and no export or import changes (the file's `export` lines stay `ClaudeStreamTranslator` and `claudeTranslator`).
+
+**Files touched.** `src/agent/claude/claude-stream.ts` only. No new module, no export change, no test file edited, no docs edited.
+
+**Acceptance criteria.**
+- `classifyResult`'s body contains only the `terminal`/`text`/`status` narrowing, the eight helper calls chained with `??` in the order above and the trailing `{}`: it contains no regex literal, no `transientProseKind`, no `SERVER_TRANSIENT_STATUS`/`CONFIG_STATUS`, and no `terminal_reason` or `api_error_status` comparison beyond the three reads.
+- `terminalAndBudgetClassification`, `statusClassification`, `contextOverflowClassification`, `configStatusClassification`, `resumeMissingClassification`, `configTextClassification`, `transientTextClassification` and `httpStatusTextClassification` each exist exactly once at module scope, are not exported, and are called only from `classifyResult`.
+- Each helper returns `undefined` exactly when its guards fail, and the chain's guards are the same conditions in the same order as the body's checks today: the terminal abort/budget guards precede the budget text, the status 429 and server set precede the context-overflow text, the context-overflow text precedes the config status set, and the config status set precedes the ordered text tail (resume-missing, config text, rate-limit text, server text, `transientProseKind`, then the bare HTTP-digit text).
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/agent/claude/claude-stream.ts'`) no longer reports `classifyResult` at 16, and no helper reports 16 or above; every other function's reported count is unchanged (the `flush` arrow stays at 14, `canonicalBlock` at 11, `claudeRateLimitReading` at 9).
+- The exported surface is unchanged: `grep -nE '^export ' src/agent/claude/claude-stream.ts` still matches `ClaudeStreamTranslator` and `claudeTranslator` only, and no import line is added or removed (every name the move uses — `joinParts`, `optionalString`, `nonNegativeNumber`, `SERVER_TRANSIENT_STATUS`, `transientProseKind` — is already imported).
+- Behaviour is preserved, verified by the existing `test/claude-stream.test.ts` cases passing unedited — "classifies API errors from the result's structured signals" (its 404/not-logged-in config rows, 429, 529 server, prompt-too-long with and without a 400, `error_max_budget_usd`, resume-missing, rate-limit/overloaded/connection/timeout text rows, the 401-under-null-status row and the no-known-signal row) and "a SIGTERM aborted_tools result carries no error classification".
+- docs/invariants.md is not edited: it names `src/agent/claude/claude-stream.ts` only as an INV-AF5 consumer of `canonicalUsageBlock` (`grep -c 'claude-stream' docs/invariants.md` prints 1), an import this move does not touch.
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind eight module-private helpers and one private interface, guarded by the existing `test/claude-stream.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
+
 ### `rejectUnknownArgs`'s complexity-18 flag-gate body is split into one named helper per concern — the flag-spelling claim map, the no-known-flag refusal and the valued-flag token consumption — so "which spec does this spelling name?", "what does a token naming no flag fail with?" and "which tokens does one flag occurrence consume?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `movedSourceFindings`, `parseInitArgs`, `createTeamConfigKeyEditor`, `cmdLogs`, `sayLogsTail`, `usageWords` and `inputViewWindow` plans each extract one named helper per job the same way; independent in file of every Planned entry — `grep -c 'rejectUnknownArgs' PLANS.md` prints 0 and `grep -c 'cli-flag-specs' PLANS.md` prints 0, so no `## Planned` heading, blocked part or touches list names the symbol or src/cli/cli-flag-specs.ts; PLANS-DONE.md holds no `^### .*rejectUnknownArgs` split — its one heading match is the 2026-10-19 `history <role> <n> --transcript --prompt` behavior entry, whose prose names `rejectUnknownArgs` as a shared edit site but never moves its body; docs/invariants.md names neither src/cli/cli-flag-specs.ts nor `rejectUnknownArgs` (`grep -c` prints 0 for each); touches src/cli/cli-flag-specs.ts) — done 2026-10-27 by the feature role
 
 **Goal.** `rejectUnknownArgs` (`src/cli/cli-flag-specs.ts`, exported, complexity 18) is the gate `src/cli.ts` runs before the ready-repo gate and every command body: it fails a misspelled, duplicated, missing-value, malformed-value or equals-form flag fast with an actionable message. Today one body does three jobs: it builds the spelling-to-spec claim map; it refuses a token naming no known flag (routing a `--flag=value` token through `rejectEqualsForm`, then the "takes no arguments" and generic `failUnknownArgument` messages); and it consumes a recognised flag occurrence (the trailing missing-value failure, the value-shape `validate` call, and marking the one or two claimed tokens). A reader asking "which spec is this spelling?", "what does an unknown token print?" and "which tokens does this flag claim?" has only the one loop to scan.

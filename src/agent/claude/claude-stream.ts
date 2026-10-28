@@ -102,39 +102,88 @@ function canonicalBlock(block: Json): Json | undefined {
   }
 }
 
+interface ClaudeErrorClassification {
+  kind?: TumwaterKind;
+  backendKind?: BackendFailureKind;
+}
+
+/** `terminal === "aborted_tools"` is deliberate: the harness killed the run, so no provider
+ * classification applies — the chain stops there. `error_max_budget_usd`, as a terminal
+ * reason or in the text, caps the budget. */
+function terminalAndBudgetClassification(
+  terminal: string | undefined,
+  text: string,
+): ClaudeErrorClassification | undefined {
+  if (terminal === "aborted_tools") return {};
+  if (terminal === "error_max_budget_usd") return { kind: "budgetCapped" };
+  if (/error_max_budget_usd/i.test(text)) return { kind: "budgetCapped" };
+  return undefined;
+}
+
+function statusClassification(status: number | undefined): ClaudeErrorClassification | undefined {
+  if (status === 429) return { kind: "transientRateLimit" };
+  if (status !== undefined && SERVER_TRANSIENT_STATUS.has(status)) return { kind: "transientBackend", backendKind: "server" };
+  return undefined;
+}
+
+/** The context-overflow text wins over a configuration status: claude reports an oversized
+ * prompt as HTTP 400 ("prompt is too long"), whose status alone would read as configError. */
+function contextOverflowClassification(text: string): ClaudeErrorClassification | undefined {
+  if (/prompt is too long/i.test(text)) return { kind: "contextExceeded" };
+  return undefined;
+}
+
+function configStatusClassification(status: number | undefined): ClaudeErrorClassification | undefined {
+  if (status !== undefined && CONFIG_STATUS.has(status)) return { kind: "configError" };
+  return undefined;
+}
+
+function resumeMissingClassification(text: string): ClaudeErrorClassification | undefined {
+  if (/No conversation found with session ID/i.test(text)) return { kind: "resumeMissing" };
+  return undefined;
+}
+
+function configTextClassification(text: string): ClaudeErrorClassification | undefined {
+  if (/Not logged in|issue with the selected model|does not support this model/i.test(text))
+    return { kind: "configError" };
+  return undefined;
+}
+
+function transientTextClassification(text: string): ClaudeErrorClassification | undefined {
+  if (/\b429\b|rate limit/i.test(text)) return { kind: "transientRateLimit" };
+  if (/overloaded|internal server error|bad gateway|service unavailable|gateway timeout|\b5\d\d\b/i.test(text))
+    return { kind: "transientBackend", backendKind: "server" };
+  const prose = transientProseKind(text);
+  return prose;
+}
+
+/** Text fallbacks, for the statuses claude leaves null or omits. */
+function httpStatusTextClassification(text: string): ClaudeErrorClassification | undefined {
+  if (/\b(400|401|403|404)\b/i.test(text)) return { kind: "configError" };
+  return undefined;
+}
+
 /** How a `result` event's error signals classify into the canonical `tumwaterKind` (and, for
  * a transient backend, its kind), trusted by `PiStreamParser` before its text regexes. Empty
  * when the result is not an error or carries no signal the vocabulary names — a SIGTERM
  * (`terminal_reason: "aborted_tools"`) is deliberate: the harness killed the run, so no
  * provider classification applies. `status` is `api_error_status`, which is null on the
  * not-logged-in result, so the text checks carry that case. */
-function classifyResult(result: Json): {
-  kind?: TumwaterKind;
-  backendKind?: BackendFailureKind;
-} {
+function classifyResult(result: Json): ClaudeErrorClassification {
   const terminal = optionalString(result.terminal_reason);
-  if (terminal === "aborted_tools") return {};
-  if (terminal === "error_max_budget_usd") return { kind: "budgetCapped" };
   const text = joinParts([optionalString(result.result), optionalString(result.error)], " ");
-  if (/error_max_budget_usd/i.test(text)) return { kind: "budgetCapped" };
   const status = nonNegativeNumber(result.api_error_status, undefined);
-  if (status === 429) return { kind: "transientRateLimit" };
-  if (status !== undefined && SERVER_TRANSIENT_STATUS.has(status)) return { kind: "transientBackend", backendKind: "server" };
-  // The context-overflow text wins over a configuration status: claude reports an oversized
-  // prompt as HTTP 400 ("prompt is too long"), whose status alone would read as configError.
-  if (/prompt is too long/i.test(text)) return { kind: "contextExceeded" };
-  if (status !== undefined && CONFIG_STATUS.has(status)) return { kind: "configError" };
-  // Text fallbacks, for the statuses claude leaves null or omits.
-  if (/No conversation found with session ID/i.test(text)) return { kind: "resumeMissing" };
-  if (/Not logged in|issue with the selected model|does not support this model/i.test(text))
-    return { kind: "configError" };
-  if (/\b429\b|rate limit/i.test(text)) return { kind: "transientRateLimit" };
-  if (/overloaded|internal server error|bad gateway|service unavailable|gateway timeout|\b5\d\d\b/i.test(text))
-    return { kind: "transientBackend", backendKind: "server" };
-  const prose = transientProseKind(text);
-  if (prose) return prose;
-  if (/\b(400|401|403|404)\b/i.test(text)) return { kind: "configError" };
-  return {};
+  return (
+    terminalAndBudgetClassification(terminal, text) ??
+    statusClassification(status) ??
+    contextOverflowClassification(text) ??
+    configStatusClassification(status) ??
+    resumeMissingClassification(text) ??
+    configTextClassification(text) ??
+    transientTextClassification(text) ??
+    httpStatusTextClassification(text) ??
+    {}
+  );
 }
 
 /** Build a fresh per-run claude translator. */
