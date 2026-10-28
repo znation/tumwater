@@ -43,15 +43,26 @@ export function createQueuedPane(
     session.paneScroll = 0;
   };
 
+  // One home for turning a thrown queued-row arm (a lock timeout, a torn disk) into the
+  // flash it deserves: both arms below wrap their move in this so the reason flashes instead
+  // of letting the throw escape the keypress handler and kill the TUI.
+  const guardError = (fn: () => void): void => {
+    try {
+      fn();
+    } catch (err) {
+      session.flashError(err);
+    }
+  };
+
   // Ctrl+X cancels the selected queued prompt through the CLI's own per-role path
   // (`tumwater prompt --cancel <n> --role <id>`): cancelRolePrompt removes that role's Nth
   // queue file and logs the prompt_cancelled event, so the pane, the CLI, and the dashboard
   // cancel cannot drift. It then re-reads the queue so the pane's list and rows reflect the
-  // removal and the selection clamps. Its write and flash stay under one try/catch; the
-  // caller guards on the row being defined (a no-selection list-mode press, or any other
-  // view, leaves the queue untouched).
+  // removal and the selection clamps. Its write and flash stay under one guard; the caller
+  // guards on the row being defined (a no-selection list-mode press, or any other view,
+  // leaves the queue untouched).
   const cancelQueuedRow = (row: QueuedListRow): void => {
-    try {
+    guardError(() => {
       const outcome = cancelRolePrompt(session.root, row.role, row.position);
       // A gone outcome is the concurrent-dequeue race (cancelRolePrompt's own contract),
       // not a failure: flash it honestly and still refresh the listing.
@@ -61,9 +72,7 @@ export function createQueuedPane(
           : `inbox message #${row.position} for ${row.role} was already gone`,
       );
       refreshQueued();
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
   };
 
   // Ctrl+V moves the selected queued prompt to the head of its role's queue through the
@@ -71,11 +80,11 @@ export function createQueuedPane(
   // role's Nth queue file to the head and logs the prompt_topped event, so the pane, the
   // CLI, and the dashboard cannot drift. A position-1 row is already the head (a no-op); a
   // gone outcome is the concurrent-dequeue race (movePromptToTop's own contract), not a
-  // failure, so flash it honestly. Its write and flash stay under one try/catch; the caller
+  // failure, so flash it honestly. Its write and flash stay under one guard; the caller
   // guards on the row being defined (a no-selection list-mode press, or any other view,
   // leaves the queues untouched).
   const moveQueuedRow = (row: QueuedListRow): void => {
-    try {
+    guardError(() => {
       if (row.position === 1) {
         // A head row is a no-op, not movePromptToTop's throw: it is already where the
         // reorder would put it, and throwing would flash an error for a press that
@@ -91,9 +100,7 @@ export function createQueuedPane(
           ? `moved inbox message #${row.position} for ${row.role} to the top: ${outcome.preview}`
           : `inbox message #${row.position} for ${row.role} was already gone`,
       );
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
   };
 
   // Ctrl+X cancels the selected queued prompt and Ctrl+V moves it to its role queue's head,
