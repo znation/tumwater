@@ -178,81 +178,65 @@ interface DoctorOptionalParts {
   leftoverRetire: LeftoverRetireReport | undefined;
 }
 
-async function doctorKillOrphans(root: string, args: string[]): Promise<OrphanKillReport | undefined> {
-  let orphanKill: OrphanKillReport | undefined;
-  if (args.includes("--kill-orphans")) {
-    const { killOrphans, orphanKillLines } = await import("./doctor/doctor-orphans.js");
-    orphanKill = await killOrphans(root);
-    // The text form prints the kill before the report; --json keeps stdout one document.
-    if (!args.includes("--json")) {
-      for (const line of orphanKillLines(orphanKill)) say(line);
-      say("");
-    }
+/** Run one doctor side-effect (`--kill-orphans`, `--commit-backlog`, `--resync-install`,
+ * `--drop-broken-pins`, `--retire-leftovers`) and return its report payload for the optional
+ * `--json` run — the shape every doctor*Case side-effect wrapper follows: import the effect's
+ * module and run it only when its flag is present, then (text form only) print the effect's
+ * own lines before the report with a separating blank line when there is anything to print;
+ * `--json` keeps stdout one document, carrying the result on the payload instead. The lazy
+ * per-effect `load` keeps each module imported only when its flag is asked for. */
+async function doctorSideEffect<TPayload>(
+  args: string[],
+  flag: string,
+  load: () => Promise<{ run: () => Promise<TPayload>; lines: (p: TPayload) => string[] }>,
+): Promise<TPayload | undefined> {
+  if (!args.includes(flag)) return undefined;
+  const { run, lines } = await load();
+  const payload = await run();
+  // The text form prints the effect before the report; --json keeps stdout one document.
+  if (!args.includes("--json")) {
+    const out = lines(payload);
+    for (const line of out) say(line);
+    if (out.length > 0) say("");
   }
-  return orphanKill;
+  return payload;
+}
+
+async function doctorKillOrphans(root: string, args: string[]): Promise<OrphanKillReport | undefined> {
+  return doctorSideEffect(args, "--kill-orphans", async () => {
+    const { killOrphans, orphanKillLines } = await import("./doctor/doctor-orphans.js");
+    return { run: () => killOrphans(root), lines: orphanKillLines };
+  });
 }
 
 async function doctorCommitBacklog(root: string, args: string[]): Promise<BacklogCommitReport | undefined> {
-  let backlogCommit: BacklogCommitReport | undefined;
-  if (args.includes("--commit-backlog")) {
+  return doctorSideEffect(args, "--commit-backlog", async () => {
     const { commitUncommittedBacklog, backlogCommitLines } = await import("./doctor/doctor-backlog.js");
     const { config } = loadConfigSafe(root); // the report's own config, so base resolution and the off-base skip match the `uncommitted backlog` row's
-    backlogCommit = await commitUncommittedBacklog(root, config);
-    // The text form prints the commits before the report; --json keeps stdout one document.
-    if (!args.includes("--json")) {
-      for (const line of backlogCommitLines(backlogCommit)) say(line);
-      say("");
-    }
-  }
-  return backlogCommit;
+    return { run: () => commitUncommittedBacklog(root, config), lines: backlogCommitLines };
+  });
 }
 
 async function doctorResyncInstall(root: string, args: string[]): Promise<RootInstallResync | undefined> {
-  let resyncInstall: RootInstallResync | undefined;
-  if (args.includes("--resync-install")) {
+  return doctorSideEffect(args, "--resync-install", async () => {
     const { resyncRootInstall, rootInstallResyncLines } = await import("./build/dep-install.js");
-    resyncInstall = await resyncRootInstall(root);
-    // The text form prints the re-sync outcome before the report; --json keeps stdout one
-    // document, carrying the result as `resyncInstall` on the payload.
-    if (!args.includes("--json")) {
-      for (const line of rootInstallResyncLines(resyncInstall)) say(line);
-      say("");
-    }
-  }
-  return resyncInstall;
+    return { run: () => resyncRootInstall(root), lines: rootInstallResyncLines };
+  });
 }
 
 async function doctorDropBrokenPins(root: string, args: string[]): Promise<BrokenPinDrop | undefined> {
-  let brokenPinDrop: BrokenPinDrop | undefined;
-  if (args.includes("--drop-broken-pins")) {
+  return doctorSideEffect(args, "--drop-broken-pins", async () => {
     const { dropBrokenPins, brokenPinDropLines } = await import("./doctor/doctor-contention-checks.js");
-    brokenPinDrop = await dropBrokenPins(root);
-    // The text form prints the drop before the report; --json keeps stdout one document,
-    // carrying the result as `brokenPinDrop` on the payload.
-    if (!args.includes("--json")) {
-      const lines = brokenPinDropLines(brokenPinDrop);
-      for (const line of lines) say(line);
-      if (lines.length > 0) say("");
-    }
-  }
-  return brokenPinDrop;
+    return { run: () => dropBrokenPins(root), lines: brokenPinDropLines };
+  });
 }
 
 async function doctorRetireLeftovers(root: string, args: string[]): Promise<LeftoverRetireReport | undefined> {
-  let leftoverRetire: LeftoverRetireReport | undefined;
-  if (args.includes("--retire-leftovers")) {
+  return doctorSideEffect(args, "--retire-leftovers", async () => {
     const { retireLeftovers, leftoverRetireLines } = await import("./doctor/doctor-contention-checks.js");
     const { config } = loadConfigSafe(root); // the row's own config, so the reap and the report agree on what is retirable
-    leftoverRetire = await retireLeftovers(root, config);
-    // The text form prints the retire lines before the report; --json keeps stdout one
-    // document, carrying the result as `leftoverRetire` on the payload.
-    if (!args.includes("--json")) {
-      const lines = leftoverRetireLines(leftoverRetire);
-      for (const line of lines) say(line);
-      if (lines.length > 0) say("");
-    }
-  }
-  return leftoverRetire;
+    return { run: () => retireLeftovers(root, config), lines: leftoverRetireLines };
+  });
 }
 
 function doctorPayload<T extends object>(payload: T, parts: DoctorOptionalParts): T {
