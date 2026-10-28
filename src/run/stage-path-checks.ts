@@ -108,6 +108,58 @@ async function pathGrepHits(wt: string, needle: string, excludeFile?: string): P
   return hits;
 }
 
+/** One moved-source file's line delta: its removed `-` lines and its added `+` set, each line
+ * trimmed and at least MOVED_LINE_MIN_CHARS long so braces and `});` never count toward a move. */
+interface MovedLineDelta {
+  removed: string[];
+  added: Set<string>;
+}
+
+/** The moved-line delta per changed file, from `diffRemovedAdded(diff)`: each file's removed
+ * lines and added set, trimmed and filtered at MOVED_LINE_MIN_CHARS. The single place the
+ * walk and its threshold live, so a reader asking what counts as a moved line finds it here. */
+function movedLineDeltas(diff: string): Map<string, MovedLineDelta> {
+  const files = new Map<string, MovedLineDelta>();
+  for (const f of diffRemovedAdded(diff)) {
+    const removed = f.removed.map((l) => l.trim()).filter((l) => l.length >= MOVED_LINE_MIN_CHARS);
+    const added = new Set(f.added.map((l) => l.trim()).filter((l) => l.length >= MOVED_LINE_MIN_CHARS));
+    files.set(f.path, { removed, added });
+  }
+  return files;
+}
+
+/** Which files count as receivers of a move source: the other files whose added set contains
+ * at least one of the source's removed lines, in diff order. */
+function movedLineReceivers(
+  src: MovedLineDelta,
+  others: ReadonlyArray<[string, MovedLineDelta]>,
+): string[] {
+  return others.filter(([, v]) => src.removed.some((l) => v.added.has(l))).map(([f]) => f);
+}
+
+/** How many of the source's removed lines another file added verbatim. */
+function movedLineCount(
+  src: MovedLineDelta,
+  others: ReadonlyArray<[string, MovedLineDelta]>,
+): number {
+  return src.removed.filter((l) => others.some(([, v]) => v.added.has(l))).length;
+}
+
+/** The moved-source finding wording: the source path, its moved-line count, the receiving
+ * files (capped at MAX_STALE_PATHS) and the still-matching `file:line` hits to re-check. */
+function movedSourceFinding(
+  path: string,
+  moved: number,
+  receivers: string[],
+  hits: string[],
+): string {
+  return (
+    `${path} had ${moved} lines moved to ${cappedList(receivers, MAX_STALE_PATHS)}, but it is ` +
+      `still named at: ${hits.join(", ")} — check each still describes what stays in ${path}, ` +
+      `and point any that describes the moved code at its new file`
+  );
+}
+
 /** (f) References to a file the change moved code out of. A modified (`M`) file is a source
  * when at least MOVED_LINES_MIN of its removed `-U0` lines (trimmed, at least MOVED_LINE_MIN_CHARS
  * long) were added verbatim to another file. Each hit of the source's path outside record prose
@@ -122,12 +174,7 @@ async function movedSourceFindings(
   diff: string,
   entries: NameStatusEntry[],
 ): Promise<string[]> {
-  const files = new Map<string, { removed: string[]; added: Set<string> }>();
-  for (const f of diffRemovedAdded(diff)) {
-    const removed = f.removed.map((l) => l.trim()).filter((l) => l.length >= MOVED_LINE_MIN_CHARS);
-    const added = new Set(f.added.map((l) => l.trim()).filter((l) => l.length >= MOVED_LINE_MIN_CHARS));
-    files.set(f.path, { removed, added });
-  }
+  const files = movedLineDeltas(diff);
   const findings: string[] = [];
   for (const e of entries) {
     if (e.status !== "M" || isRecordProse(e.path)) continue;
@@ -135,18 +182,11 @@ async function movedSourceFindings(
     const src = files.get(e.path);
     if (!src) continue;
     const others = [...files].filter(([f]) => f !== e.path);
-    const receivers = others
-      .filter(([, v]) => src.removed.some((l) => v.added.has(l)))
-      .map(([f]) => f);
-    const moved = src.removed.filter((l) => others.some(([, v]) => v.added.has(l))).length;
+    const moved = movedLineCount(src, others);
     if (moved < MOVED_LINES_MIN) continue;
     const hits = await pathGrepHits(wt, e.path, e.path);
     if (hits.length === 0) continue;
-    findings.push(
-      `${e.path} had ${moved} lines moved to ${cappedList(receivers, MAX_STALE_PATHS)}, but it is ` +
-        `still named at: ${hits.join(", ")} — check each still describes what stays in ${e.path}, ` +
-        `and point any that describes the moved code at its new file`,
-    );
+    findings.push(movedSourceFinding(e.path, moved, movedLineReceivers(src, others), hits));
   }
   return findings;
 }
