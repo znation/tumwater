@@ -64,51 +64,64 @@ function writeNote(text: string): number {
   return 0;
 }
 
+function cmdWrite(args: string[]): number {
+  const [, flag, flagArg] = args;
+  if (flag === undefined) return writeNote(readStdin());
+  if (flag === "--file") {
+    if (flagArg === undefined || args.length > 3) return refuse(USAGE);
+    let text: string;
+    try {
+      text = fs.readFileSync(flagArg, "utf8");
+    } catch (err) {
+      return refuse(`cannot read ${JSON.stringify(flagArg)}: ${errorMessage(err)}`);
+    }
+    return writeNote(text);
+  }
+  return refuse(USAGE);
+}
+
+function cmdShow(flag: string | undefined): number {
+  if (flag !== undefined) return refuse(USAGE);
+  let note: string;
+  try {
+    note = readNote();
+  } catch (err) {
+    return refuse(`could not read the note: ${errorMessage(err)}`);
+  }
+  // The note is model-authored text, so strip terminal controls at this display
+  // boundary — the same treatment say()/fail()/the TUI frame give every untrusted
+  // string, so a prompt-injected note with an ANSI escape (cursor move, title set,
+  // OSC 52 clipboard write, carriage-return overwrite) cannot drive the operator's
+  // terminal when they run `tumwater-notes show`.
+  process.stdout.write(stripTerminalControls(note));
+  return 0;
+}
+
+function cmdClear(flag: string | undefined): number {
+  if (flag !== undefined) return refuse(USAGE);
+  try {
+    writeRoleNote(NOTES_PATH!, "");
+  } catch (err) {
+    return refuse(`could not clear the note: ${errorMessage(err)}`);
+  }
+  process.stdout.write("notes cleared\n");
+  return 0;
+}
+
 function main(): number {
   if (NOTES_PATH === undefined || NOTES_PATH === "") {
     return refuse("this run keeps no notes");
   }
 
   const args = process.argv.slice(2);
-  const [command, flag, flagArg] = args;
+  const [command, flag] = args;
   switch (command) {
     case "write":
-      if (flag === undefined) return writeNote(readStdin());
-      if (flag === "--file") {
-        if (flagArg === undefined || args.length > 3) return refuse(USAGE);
-        let text: string;
-        try {
-          text = fs.readFileSync(flagArg, "utf8");
-        } catch (err) {
-          return refuse(`cannot read ${JSON.stringify(flagArg)}: ${errorMessage(err)}`);
-        }
-        return writeNote(text);
-      }
-      return refuse(USAGE);
+      return cmdWrite(args);
     case "show":
-      if (flag !== undefined) return refuse(USAGE);
-      let note: string;
-      try {
-        note = readNote();
-      } catch (err) {
-        return refuse(`could not read the note: ${errorMessage(err)}`);
-      }
-      // The note is model-authored text, so strip terminal controls at this display
-      // boundary — the same treatment say()/fail()/the TUI frame give every untrusted
-      // string, so a prompt-injected note with an ANSI escape (cursor move, title set,
-      // OSC 52 clipboard write, carriage-return overwrite) cannot drive the operator's
-      // terminal when they run `tumwater-notes show`.
-      process.stdout.write(stripTerminalControls(note));
-      return 0;
+      return cmdShow(flag);
     case "clear":
-      if (flag !== undefined) return refuse(USAGE);
-      try {
-        writeRoleNote(NOTES_PATH, "");
-      } catch (err) {
-        return refuse(`could not clear the note: ${errorMessage(err)}`);
-      }
-      process.stdout.write("notes cleared\n");
-      return 0;
+      return cmdClear(flag);
     default:
       process.stderr.write(`${USAGE}\n`);
       return 2;
