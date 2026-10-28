@@ -142,8 +142,8 @@ export function loadRunnerState(root: string, role: string): RunnerState {
       r && typeof r.patchId === "string" && typeof r.sessionDir === "string" ? r : undefined;
   }
   // The nested scheduling records carry the same numeric class — epoch-ms stamps, recovery
-  // counts, and the fallback episode's clock — and are read by comparison or arithmetic
-  // (`ctx.now - claim.at > CLAIM_IDLE_MAX_MS`, `prior.count + 1`, `cooldownMs * 2`), so a
+  // counts, and retry/review counts — and are read by comparison or arithmetic
+  // (`ctx.now - claim.at > CLAIM_IDLE_MAX_MS`, `prior.count + 1`, `attempts + 1`), so a
   // foreign value there is healed the same way the top-level fields are.
   if (s.lastReview !== undefined)
     s.lastReview = healRecord(s.lastReview, (v) => {
@@ -206,13 +206,6 @@ export function loadRunnerState(root: string, role: string): RunnerState {
     });
   if (s.mergeFlakeExcused !== undefined && typeof s.mergeFlakeExcused !== "string")
     delete s.mergeFlakeExcused;
-  if (s.modelFallback !== undefined)
-    s.modelFallback = healRecord(s.modelFallback, (v) => {
-      v.failures = healNumber(v.failures, 0);
-      v.since = healNumber(v.since, 0);
-      v.probeAt = healNumber(v.probeAt, 0);
-      v.cooldownMs = healNumber(v.cooldownMs, 0);
-    });
   return s;
 }
 

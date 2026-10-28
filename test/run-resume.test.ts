@@ -14,7 +14,6 @@ import { resolveRunVerdict } from "../src/run/run-verdict.js";
 import { applyRunOutcome } from "../src/run/run-apply.js";
 import { slotPinnedForResume } from "../src/runner/runner-run.js";
 import { defaultConfig } from "../src/config/config.js";
-import { fallbackRoleConfig } from "../src/config/config-fallbacks.js";
 import { piBackend } from "../src/pi/pi-backend.js";
 import { claudeBackend, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { initializedWorktree, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -100,9 +99,10 @@ test("a fresh run takes the assembled prompt and derives the restart cause", () 
 
 test("a fresh run hands the effective agent to the prompt assembly", () => {
   // plans/agent-backends.md, part 5/7: the run's prompt dialect must match the backend the
-  // run actually uses. planRunStart receives the effective `cfg.agent` (the model-fallback
-  // pair while an episode is active) and passes it to the fresh-run assembly; deriving the
-  // dialect from the role's primary instead would speak claude's MCP dialect to a pi run.
+  // run actually uses. planRunStart receives the effective `cfg.agent` (the config the run
+  // resolves — a budget cap's fallback pair while a cap episode is active, else the role's
+  // own) and passes it to the fresh-run assembly; deriving the dialect from the role's
+  // primary instead would speak claude's MCP dialect to a pi run.
   const dir = tmpdir();
   const s = state();
   let seen: string | undefined = "unset";
@@ -422,33 +422,6 @@ test("a claude resume whose only ledger line names another agent hands off", () 
     assert.ok(p);
     assert.equal(p.resuming, false);
     assert.equal(p.handoff, true, "another agent's session is not claude's to resume");
-    assert.match(String(p.prompt), /uncommitted edits are in your worktree/);
-  } finally {
-    restoreHome();
-  }
-});
-
-// PLANS.md part 4d/7 ("Selectors"): the resume check and the spawn must read the same
-// `cfg.agent`. While a model-fallback episode is active the resolved view is the fallback pair,
-// so a claude primary whose tier falls back to a pi pair runs — and resumes — as pi: the
-// interrupted claude session is not pi's to continue, so the next run hands off.
-test("the fallback view's routed agent drives the resume check", () => {
-  const root = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  try {
-    const s = state({ resumePending: true });
-    withSession(root, "feature"); // a pi session file exists, so only the agent can refuse it
-    withClaudeAuthor(root, fs.realpathSync(root));
-    // The role's tier falls back to a pi pair; under a claude primary the fallback view still
-    // routes to pi (the step names its own backend).
-    const config = { ...defaultConfig(), backend: "claude", fallback: [{ backend: "pi", model: "omlx/Qwen" }] };
-    const fb = fallbackRoleConfig(config, "feature");
-    assert.equal(fb?.agent, "pi", "a pi fallback pair routes to pi under a claude primary");
-    const p = plan(root, s, { agent: fb?.agent });
-    assert.ok(p);
-    assert.equal(p.resuming, false, "the pi fallback cannot --continue a claude session");
-    assert.equal(p.handoff, true);
-    assert.equal(p.resumeCause, "handoff");
     assert.match(String(p.prompt), /uncommitted edits are in your worktree/);
   } finally {
     restoreHome();

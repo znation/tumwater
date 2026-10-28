@@ -562,14 +562,12 @@ invariant.~~
 input is false), the runner kills the run before its next event and the run ends `error` with
 `lastError` naming the file and the model gap. A gate run's blind read is not killed; it is
 recorded on the run and logged as `image_blind` with `action: "logged"`. An authoring run's
-blind read logs `image_blind` with `action: "fail"`, and `modelFallbackVerdict` scores it
-inconclusive (never a provider failure or an "answered").
+blind read logs `image_blind` with `action: "fail"`, and the run ends error.
 
 **Binds.** `src/pi/pi-stream.ts` (`PiStreamParser.detectBlindRead`), `src/agent/run-spawn.ts`
 (the onBlindRead action, the kill armed on spawn), `src/agent/run-agent.ts`
 (the blindRead settle getter), `src/agent/run-settle.ts` (the result),
-`src/run/run-verdict.ts` (the fail branch),
-`src/runner/model-fallback.ts` (`modelFallbackVerdict`).
+`src/run/run-verdict.ts` (the fail branch).
 
 **Pinned by.** `test/pi-parser.test.ts` — the blind-read detection cases; `test/pi.test.ts` —
 "an authoring run that reads an image on a blind model is killed and fails" and "a gate run
@@ -4478,13 +4476,13 @@ index, rather than skipping the preserve".
 
 ## Runner run path: a failed state save never fails the run
 
-### INV-CN1: a run whose role-state saves fail resolves with its agent run's own result, folds its model-fallback verdict, and warns, never rejecting
+### INV-CN1: a run whose role-state saves fail resolves with its agent run's own result and warns, never rejecting
 
-**Guarantee.** The run context's `save` is best-effort: a failed write (full disk, EACCES) of the start-of-run state or the model-fallback fold logs a "could not save the role's state" warning instead of throwing, so `run()` keeps its never-throws contract, the agent run's own result is kept and the fallback verdict still folds. The end-of-run save persists the same in-memory state later.
+**Guarantee.** The run context's `save` is best-effort: a failed write (full disk, EACCES) of the start-of-run state logs a "could not save the role's state" warning instead of throwing, so `run()` keeps its never-throws contract and the agent run's own result is kept. The end-of-run save persists the same in-memory state later.
 
 **Binds.** `src/runner/runner.ts` (`runContext`), `src/runner/runner-run.ts` (`runPhase`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
 
-**Pinned by.** `test/runner-fallback.test.ts` — "an unwritable state file cannot reject a run or turn it into an error — its fallback verdict still folds (skip ${skip})"; the title is a template over `skip` in {0, 1}.
+**Pinned by.** `test/runner-state.test.ts` — "an unwritable state file cannot reject a run or turn it into an error (skip …)", which drives a full run with a failing state-file write and asserts it resolves with its own result and warns.
 
 ## Merge check attribution: a failed state save never fails the verdict
 

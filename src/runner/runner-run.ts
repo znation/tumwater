@@ -1,7 +1,6 @@
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunOutcome } from "../run/run-outcome.js";
-import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RunnerState } from "./runner-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { branchExists, deleteRef, commitMessage, changeBaseRev, headOf } from "../git/git.js";
@@ -29,14 +28,12 @@ import {
   seamHoldKey,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
-import { fallbackRoleConfig } from "../config/config-fallbacks.js";
 import { planRunStart, planWithSalvagedWork, takesSalvagedWork, type RunStartPlan } from "../run/run-resume.js";
 import { restoreSalvagedWork } from "../git/slot-salvage.js";
 import { DEFAULT_BACKEND } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { foldAgentCommitsSince } from "../run/run-stage.js";
 import { planBacklogFull } from "../scheduling/claims.js";
-import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
 import { finalizeRun } from "../run/run-finalize.js";
 import { errorMessage } from "../text/text.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
@@ -50,20 +47,11 @@ import { mainRedHealNote, namedFailures } from "../baseline/main-red.js";
 import { watchedBaseline } from "../baseline/main-baseline.js";
 import { extractCiResult, extractFlow, extractFiled } from "../verdict/reply-contract.js";
 
-/** The model-fallback episode context a run start resolves (src/runner/model-fallback.ts): the
- * tier's fallback pair (null when the feature is off), whether this run is the due probe, and
- * the primary pair it returns to. */
-export interface FallbackRunContext {
-  fallback: ResolvedModelConfig | null;
-  probe: boolean;
-  primary: ResolvedModelConfig;
-}
-
 /** Everything the run-pipeline phases need from their `RoleRunner` host. The runner builds one
  * per run (before its `runOnce` override point) from its readonly fields and live config, plus
- * bound callbacks back into the runner for the work whose body stays there (the merge,
- * recovery phases, the fallback fold). Splitting the pipeline out of the class keeps each phase
- * a plain function of this context. */
+ * bound callbacks back into the runner for the work whose body stays there (the merge and
+ * recovery phases). Splitting the pipeline out of the class keeps each phase a plain function
+ * of this context. */
 export interface RunnerRunContext {
   root: string;
   role: string;
@@ -92,10 +80,9 @@ export interface RunnerRunContext {
   /** A fresh per-run abort controller and a cleared user-abort flag. */
   resetRunAbort(): void;
   /** A run's pipeline entry: the runner's `runOnce` (test-overridable). */
-  runOnce(cfg: ResolvedModelConfig, fallbackCtx: FallbackRunContext): Promise<RunOutcome>;
+  runOnce(cfg: ResolvedModelConfig): Promise<RunOutcome>;
   finishAbortedRun(userPrompt: string | null, wt: string): Promise<RunOutcome>;
   pinAndReset(wt: string, sha: string): Promise<boolean>;
-  foldModelFallback(ctx: FallbackRunContext, pi: PiRunResult): void;
   finishRecoveryRun(
     recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
     userPrompt: string | null,
@@ -147,10 +134,9 @@ async function markerBearingFiles(wt: string): Promise<string[]> {
   return files.filter((f) => hasConflictMarkers(wt, [f]));
 }
 
-/** Run one full run of a role runner: resolve the config (including the model-fallback probe),
- * log the start, run the pipeline, then let finalizeRun schedule the next run. Never throws: a
- * failed run is an "error" result, saved and logged like any other so the runner stays
- * resumable and observable. */
+/** Run one full run of a role runner: resolve the config, log the start, run the pipeline, then
+ * let finalizeRun schedule the next run. Never throws: a failed run is an "error" result,
+ * saved and logged like any other so the runner stays resumable and observable. */
 export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
   const s = ctx.state;
   // This role's view of the config (per-role provider/model/thinking + minRunIntervalSeconds
@@ -163,21 +149,11 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
   // the one home of the rule, so the scheduler that admits plan and the nextRunAt this run
   // writes cannot disagree.
   const planBacklogOpen = !planBacklogFull(ctx.root, ctx.config);
-  const primaryCfg = scheduleConfigForRole(ctx.config, ctx.role, planBacklogOpen);
-  // Model-fallback episode (src/runner/model-fallback.ts): while one is active the run runs
-  // on the role's tier fallback pair, and once the cooldown elapses it runs on the primary
-  // as the probe. Resolved at run start so the authoring run below and the end-of-run fold
-  // agree on which pair ran. Null fallback (the tier resolves to pause) keeps the feature off.
-  const now = Date.now();
-  const fallback = fallbackRoleConfig(ctx.config, ctx.role);
-  const probing = fallback !== null && modelFallbackProbe(s.modelFallback, now);
-  const onFallback = fallback !== null && modelFallbackActive(s.modelFallback, now);
-  // The fallback pair keeps primaryCfg's gap (they resolve the same one outside the plan
-  // schedule's zero-gap window), so a plan on its model fallback still schedules the same gap.
-  let cfg =
-    onFallback && fallback !== null
-      ? { ...fallback, minRunIntervalSeconds: primaryCfg.minRunIntervalSeconds }
-      : primaryCfg;
+  // This run's effective config: the role's own resolved config (a run always resolves its
+  // role's own config — the model-fallback episode is gone, Subtract part 5o/6). The budget
+  // gate's fallback pair, when a cap episode is active, is installed into the live config
+  // itself, so the config here already names the pair the run uses.
+  const cfg = scheduleConfigForRole(ctx.config, ctx.role, planBacklogOpen);
   // Capture what this run runs on (the orchestrator's budget handback matches it against
   // the fallback pair) and clear any stale handback flag: an abort request that lands while
   // the runner is idle must not name a later run's resume.
@@ -218,7 +194,7 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
 
   let outcome: RunOutcome;
   try {
-    outcome = await ctx.runOnce(cfg, { fallback, probe: probing, primary: primaryCfg });
+    outcome = await ctx.runOnce(cfg);
   } catch (err) {
     outcome = { result: "error" };
     s.lastError = errorMessage(err);
@@ -265,7 +241,6 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
 export async function runOncePhase(
   ctx: RunnerRunContext,
   cfg: ResolvedModelConfig,
-  fallbackCtx: FallbackRunContext,
 ): Promise<RunOutcome> {
   const s = ctx.state;
   // How this run starts — resume the interrupted session or run fresh, and which prompt —
@@ -294,10 +269,10 @@ export async function runOncePhase(
     // (plans/disk-floor.md, part 2/4), so a concurrent pressure reclaim never cleans a tree
     // this run is creating or working in.
     return useWorktree(ctx.root, worktreePath(ctx.root, ctx.role), () =>
-      runWithWorktreePhase(ctx, plan, cfg, fallbackCtx),
+      runWithWorktreePhase(ctx, plan, cfg),
     );
   }
-  return runOnceInLeasePhase(ctx, plan, cfg, fallbackCtx);
+  return runOnceInLeasePhase(ctx, plan, cfg);
 }
 
 /** Whether a finished role run's leased slot must stay pinned for the next run's resume —
@@ -329,7 +304,6 @@ async function runOnceInLeasePhase(
   ctx: RunnerRunContext,
   plan: RunStartPlan,
   cfg: ResolvedModelConfig,
-  fallbackCtx: FallbackRunContext,
 ): Promise<RunOutcome> {
   const lease = await leaseSlot(ctx.root, {
     role: ctx.role,
@@ -348,7 +322,7 @@ async function runOnceInLeasePhase(
       await checkoutRoleBranchPhase(ctx, lease.dir);
       run = await restoreSalvagedPhase(ctx, plan, lease.dir);
     }
-    outcome = await runWithWorktreePhase(ctx, run, cfg, fallbackCtx, lease.dir);
+    outcome = await runWithWorktreePhase(ctx, run, cfg, lease.dir);
     return outcome;
   } finally {
     // The slot is pinned for the next run's resume when the verdict armed `resumePending`
@@ -400,7 +374,6 @@ async function runWithWorktreePhase(
   ctx: RunnerRunContext,
   plan: RunStartPlan,
   cfg: ResolvedModelConfig,
-  fallbackCtx: FallbackRunContext,
   /** The leased slot the run runs in; omitted by the director, which ensures its own. */
   leasedDir?: string,
 ): Promise<RunOutcome> {
@@ -637,17 +610,14 @@ async function runWithWorktreePhase(
   await foldAgentCommitsSince(ctx, wt, runBase);
   // A write that landed in the primary checkout never reaches the worktree's commit, so the run
   // can read as no_change with its work orphaned (BUGS.md, 2026-10-20). The before/after diff
-  // cannot attribute paths to this run when roles overlap, so only warn: the verdict, resume
-  // handling and model-fallback fold below stay as they were.
+  // cannot attribute paths to this run when roles overlap, so only warn: the verdict and
+  // resume handling below stay as they were.
   const primaryAfter = primaryBefore === null ? null : await changedFiles(ctx.root).catch(() => null);
   const strayed = primaryAfter === null ? [] : primaryAfter.filter((f) => !primaryBefore!.includes(f));
   if (strayed.length > 0 && !pi.aborted) {
     const shown = strayed.slice(0, 10).join(", ") + (strayed.length > 10 ? `, … (${strayed.length} paths)` : "");
     ctx.warn(`wrote outside the worktree (possibly another writer's): ${shown}`);
   }
-  // Fold the authoring run's verdict into the role's model-fallback episode NOW, before the
-  // post-run handlers spend any more pi runs: only this run is evidence about the primary.
-  ctx.foldModelFallback(fallbackCtx, pi);
   // The `qa` observer's reply ends with a result-carrying `FLOW:` line (plans/observer-roles.md
   // 2/2). Extracted once here, recorded only at the success returns below — an interrupted or
   // failed run must not advance the rotation. The harness records it, never pi.

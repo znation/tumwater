@@ -11,8 +11,11 @@ import { orchestratorAlive, readOrchestratorInfo } from "../src/team/team-orches
 import { dailyCost, todayStamp } from "../src/budget/budget.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
-import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
-import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { tmpdir, initializedRepo, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
+import { withIdlePi } from "./fakes/fake-pi.js";
+import { patchFsMethod, errnoError } from "./helpers/fs-faults.js";
+import { writeOrchestratorMarker, warningMessages } from "./fixtures/log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 
 /** The persisted-state file's own tests (src/runner/runner-state.ts): fresh defaults, the tolerant
@@ -257,9 +260,9 @@ test("loadRunnerState heals corrupt numeric fields inside nested records", () =>
   const dir = tmpdir();
   const file = statePath(dir, "nested");
   ensureParentDir(file);
-  // The nested scheduling records carry epoch-ms stamps, recovery counts, and the fallback
-  // episode's clock; a hand-edited or foreign-typed value there feeds comparisons and
-  // arithmetic, so it heals to 0 exactly as the top-level fields do.
+  // The nested scheduling records carry epoch-ms stamps and recovery counts; a hand-edited
+  // or foreign-typed value there feeds comparisons and arithmetic, so it heals to 0 exactly
+  // as the top-level fields do.
   fs.writeFileSync(
     file,
     JSON.stringify({
@@ -271,7 +274,6 @@ test("loadRunnerState heals corrupt numeric fields inside nested records", () =>
       conflictDiscard: { sha: "abc", summary: "s", attempts: -3, at: {} },
       conflictHandback: { sha: "abc", at: "later", round: -4, reason: "landing", applied: false }, // vocabulary-ok: legacy state value read from old files
       mergeCheckFailures: { patchId: "p", count: [1] },
-      modelFallback: { failures: "3", since: -1, probeAt: null, cooldownMs: "500", reason: "r" },
     }),
   );
   const s = loadRunnerState(dir, "nested");
@@ -286,10 +288,6 @@ test("loadRunnerState heals corrupt numeric fields inside nested records", () =>
   assert.equal(s.conflictHandback?.round, 0);
   assert.equal(s.conflictHandback?.reason, "merge", "an old build's merge reason loads as merge");
   assert.equal(s.mergeCheckFailures?.count, 0);
-  assert.equal(s.modelFallback?.failures, 0);
-  assert.equal(s.modelFallback?.since, 0);
-  assert.equal(s.modelFallback?.probeAt, 0);
-  assert.equal(s.modelFallback?.cooldownMs, 0);
 });
 
 test("loadRunnerState heals a foreign-typed lastReview.reasons to an empty list", () => {
@@ -338,7 +336,6 @@ test("loadRunnerState drops a nested record that is not a plain object, keeping 
       conflictHandback: 0,
       mergeCheckFailures: "none",
       mergeFlakeExcused: 7,
-      modelFallback: "primary",
       claim: { file: "BUGS.md", key: "k", title: "t", at: 42, source: "staged" }, // real record kept
     }),
   );
@@ -350,7 +347,6 @@ test("loadRunnerState drops a nested record that is not a plain object, keeping 
   assert.equal(s.conflictHandback, undefined);
   assert.equal(s.mergeCheckFailures, undefined);
   assert.equal("mergeFlakeExcused" in s, false);
-  assert.equal(s.modelFallback, undefined);
   assert.equal(s.claim?.at, 42, "a valid record keeps its real values");
   assert.equal(s.claim?.key, "k");
 });
@@ -558,3 +554,38 @@ test("loadRunnerState maps the five legacy tick and merge keys, healing each as 
     assert.equal(old in onDisk, false);
   assert.equal(onDisk.lastRunEndedAt, 200);
 });
+
+// INV-CN1 (docs/invariants.md "Runner run path: a failed state save never fails the run"): the
+// start-of-run state save is best-effort. Relocated here when the model-fallback episode went —
+// a failing state write must warn "could not save the role's state" and keep run()'s
+// never-throws contract (the run resolves with its own agent result, never an error), and a
+// later save still lands.
+for (const skip of [0, 1]) {
+  test(`an unwritable state file cannot reject a run or turn it into an error (skip ${skip})`, async () => {
+    const repo = await initializedRepo();
+    const runner = makeRoleRunner(repo, "clean");
+    // writeJsonAtomic saves under a per-pid tmp name beside the state file; make that tmp write
+    // throw from the `skip`-th attempt on, so either the start-of-run (skip 0) or the end-of-run
+    // (skip 1) save is the one that fails.
+    const stateTmp = `${statePath(repo, "clean")}.tmp-`;
+    let writes = 0;
+    await withIdlePi(async () => {
+      const undo = patchFsMethod("writeFileSync", (orig) => (...args) => {
+        const file = args[0];
+        if (typeof file === "string" && file.startsWith(stateTmp) && writes++ >= skip) {
+          throw errnoError("ENOSPC");
+        }
+        return orig(...args);
+      });
+      try {
+        assert.equal((await runner.run()).result, "no_change");
+      } finally {
+        undo();
+      }
+    });
+    assert.ok(
+      warningMessages(repo).some((m) => m.startsWith("could not save the role's state")),
+      "a failed save warns",
+    );
+  });
+}

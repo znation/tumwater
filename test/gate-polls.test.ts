@@ -16,7 +16,6 @@ import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.j
 import { newTeamGateStates, pollTeamGates } from "../src/gates/gate-polls.js";
 import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
 import { heldProviders } from "../src/team/team-hold.js";
-import type { ModelFallbackState } from "../src/runner/model-fallback.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeAccount } from "../src/agent/subscription-account.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -24,7 +23,6 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { spentRunnerState } from "./fixtures/runner-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
-import { piRunResult } from "./fakes/fake-pi.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
@@ -481,54 +479,6 @@ test("pollTeamGates: a sub reserve logs subscription_window_reserved once per wi
   assert.equal(byBackend("sub").length, 1, "the sub reserve logs once per window");
   assert.equal(byBackend("claude").length, 1, "claude's own reserve logs once too");
   assert.equal(reserved().length, 2, "each backend's crossing keeps its own key");
-});
-
-// The per-provider failure hold keys on the provider each role's NEXT run will run on
-// (PLANS.md "Model failure fallback, part 1/2"): a role mid-episode reports its fallback
-// pair, so a storm on that pair forms its own hold while the abandoned primary stays clear —
-// and a healthy role still on the primary is not gated by the fallback hold.
-test("pollTeamGates: a fallback episode's failures key the hold on the fallback provider", () => {
-  const root = tmpdir("gate-polls-fallback-hold-");
-  const modelsPath = writeModelsFile(root, MODELS_JSON);
-  const config = paidFallbackConfig();
-  const now = Date.now();
-  const episode = (): ModelFallbackState => ({
-    failures: 0,
-    since: now - 1000,
-    probeAt: now + 60_000,
-    cooldownMs: 5 * 60_000,
-    reason: "rate-limit",
-  });
-  const feature = new RoleRunner(root, "feature", config, "main");
-  const docs = new RoleRunner(root, "docs", config, "main");
-  const perf = new RoleRunner(root, "perf", config, "main");
-  for (const r of [feature, docs]) {
-    r.state.modelFallback = episode();
-    // Stamp each role's latest observation as a 429; the poll reads the provider through
-    // runProvider, which resolves the active episode's fallback pair, not the primary.
-    r.foldMergeUsage(piRunResult({ ok: false, transientRateLimit: true }));
-  }
-  const runners = [feature, docs, perf];
-
-  const states = newTeamGateStates(config);
-  const ctx = {
-    root,
-    runners,
-    liveConfig: config,
-    modelsPath,
-    now,
-    info: { pid: process.pid, startedAt: 0, roles: ["feature", "docs", "perf"] },
-  };
-  pollTeamGates(states, ctx);
-
-  const held = heldProviders(states.teamHold);
-  assert.ok(held.has("free"), "the storm on the fallback pair forms a hold there");
-  assert.ok(!held.has("paid"), "the abandoned primary is not held");
-  assert.equal(
-    perf.runProvider(now),
-    "paid",
-    "a role with no episode keeps reporting the primary, so the free hold does not gate it",
-  );
 });
 
 test("pollTeamGates: capPaused reflects maxDailyCostUsdPerRole; an absent key yields the empty set", () => {

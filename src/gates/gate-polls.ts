@@ -460,14 +460,16 @@ function pollQuietAndDiskGates(states: TeamGateStates, ctx: TeamGatePollCtx) {
 
 // Each runner as the two provider-failure polls read it (HoldInputs) is built ONCE here so
 // the hold and the spread read the same list, like holdObservations on the reducer side.
-// Keying on the effective provider is what lets a storm on the fallback pair form its own
-// hold while the abandoned primary stays clear (PLANS.md "Model failure fallback, part 1/2").
+// Keying on the effective provider is what lets a storm on the budget fallback pair form its
+// own hold while the abandoned primary stays clear.
 //
 // Each stamp (lastRateLimit/lastBackendFailure) carries the hold key of the backend that
 // ACTUALLY failed — a reviewer run folded through the author's role stamps `claude`, not
 // the pi author's provider — and the polls' observation mapper files each stamp under that
 // key, falling back to runProvider here for a stamp without one (PLANS.md "Mixed claude +
-// pi fleets, part 2/4"). The spreads below carry the stamps wholesale, provider included.
+// pi fleets, part 2/4"). The spreads below carry the stamps wholesale, provider included;
+// the provider is each runner's resolved seam key (runProvider), naming the budget fallback
+// pair when a cap episode is active — the pair the run actually uses.
 function pollTeamFailureAlarms(
   states: TeamGateStates,
   ctx: TeamGatePollCtx,
@@ -479,7 +481,7 @@ function pollTeamFailureAlarms(
   const holdInputs = (rs: readonly RoleRunner[]): HoldInputs[] =>
     rs.map((r) => ({
       role: r.role,
-      provider: r.runProvider(now),
+      provider: r.runProvider(),
       ...(r.lastRateLimit ? { lastRateLimit: r.lastRateLimit } : {}),
       ...(r.lastBackendFailure ? { lastBackendFailure: r.lastBackendFailure } : {}),
     }));

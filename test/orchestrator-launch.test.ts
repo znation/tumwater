@@ -33,8 +33,8 @@ import { waitFor, sleep } from "./helpers/wait.js";
 import { captureStderr } from "./helpers/exit-capture.js";
 
 /** A stand-in runner: only what launchDueRuns reads. `config` is what runConfig returns —
- * the run's pair comes from the runner's own config view (part 5c/8), or from its active
- * model-fallback episode in the real runner. */
+ * the run's pair comes from the runner's own config view (part 5c/8), which names the
+ * budget-fallback pair when a cap episode is active. */
 function fakeRunner(
   role: string,
   run: () => Promise<RunOutcome> = async () => ({ result: "changed" }),
@@ -187,11 +187,11 @@ test("the probe goes to a runner whose tier resolves to the probed pair, one per
   assert.equal(c.rolePermitHolders.size, 0);
 });
 
-test("a model-fallback run folds its breaker evidence into the pair runConfig names, not the primary (PLANS.md 1/2)", async () => {
-  // The runner's installed config is the primary (what configForRole would read), but its
-  // active model-fallback episode means the run uses the fallback pair, which runConfig —
-  // the start pass's read — returns. The evidence must end up on the fallback breaker; the
-  // primary's must stay untouched.
+test("a budget-fallback run folds its breaker evidence into the pair runConfig names, not the primary (part 5c/8)", async () => {
+  // The runner's installed config would read as the primary (what configForRole returns), but
+  // the budget cap's fallback pair is installed into the live config itself, so runConfig —
+  // the start pass's read — returns the pair the run actually used. The evidence must end up
+  // on the fallback breaker; the primary's must stay untouched.
   const primary = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "paid/gpt", 10);
   const fallback = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "free/qwen", 10);
   const gateStates = {

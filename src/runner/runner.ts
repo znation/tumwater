@@ -15,15 +15,12 @@ import {
   seamHoldKey,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
-import { fallbackRoleConfig } from "../config/config-fallbacks.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
-import { modelFallbackActive } from "./model-fallback.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { RunUsage } from "../run/run-usage.js";
 import {
   runOncePhase,
   runPhase,
-  type FallbackRunContext,
   type RunnerRunContext,
 } from "./runner-run.js";
 import {
@@ -31,7 +28,6 @@ import {
   finishRecoveryRunPhase,
   pinAndResetPhase,
 } from "./runner-recovery.js";
-import { foldModelFallbackPhase } from "./runner-fallback.js";
 import type { LeftoverRecovery } from "./leftover.js";
 
 /** One role runner: owns a persistent worktree + branch and runs one run at a time. */
@@ -194,22 +190,20 @@ export class RoleRunner {
     return this.state.running ? (this.runPair ?? null) : null;
   }
 
-  /** The config this role's NEXT run will run on: the tier fallback pair while the episode is
-   * active (a due probe runs the primary), else the role's own resolved config. The hold and
-   * start passes read this so a role mid-episode is keyed by the provider it will actually use.
-   * Pure read of config + state + the caller's clock. */
-  runConfig(now: number): ResolvedModelConfig {
-    const fallback = fallbackRoleConfig(this.config, this.role);
-    if (fallback !== null && modelFallbackActive(this.state.modelFallback, now)) return fallback;
+  /** The config this role's NEXT run will run on: the role's own resolved config
+   * (configForRole). The hold and start passes read this so a role is keyed by the provider
+   * it will use. The budget gate's fallback pair, when a cap episode is active, is installed
+   * into the live config itself, so this read already names the pair the run uses. */
+  runConfig(): ResolvedModelConfig {
     return configForRole(this.config, this.role);
   }
 
-  /** The seam key `runConfig(now)` resolves to (config-views.ts seamHoldKey): the agent id
+  /** The seam key `runConfig()` resolves to (config-views.ts seamHoldKey): the agent id
    * for a non-pi backend (claude seams carry no pi provider), else the pi provider. The hold
    * and start passes read only this, so a claude seam is gated by a `claude` hold and pi's
    * default seams (undefined) are not. */
-  runProvider(now: number): string | undefined {
-    return seamHoldKey(this.runConfig(now));
+  runProvider(): string | undefined {
+    return seamHoldKey(this.runConfig());
   }
 
   /** The signal every pi run of the current run watches: harness shutdown OR a per-run user
@@ -292,24 +286,16 @@ export class RoleRunner {
   }
 
   /** Run one full run of this role runner (the pipeline lives in src/runner/runner-run.ts):
-   * `runPhase` resolves the config and fallback episode, logs run_start, runs the pipeline,
+   * `runPhase` resolves the role's own config, logs run_start, runs the pipeline,
    * and finalizes. Never throws: a failed run is an "error" result, saved and logged. */
   async run(): Promise<RunOutcome> {
     return runPhase(this.runContext());
   }
 
-  /** Thin delegate to foldModelFallbackPhase (src/runner/runner-fallback.ts). */
-  private foldModelFallback(fallbackCtx: FallbackRunContext, pi: PiRunResult): void {
-    foldModelFallbackPhase(this.runContext(), fallbackCtx, pi);
-  }
-
   /** The run pipeline's entry (src/runner/runner-run.ts): a thin delegate so `run` assembles
    * phase context once and tests can still override `runOnce` to bypass the pipeline. */
-  private async runOnce(
-    cfg: ResolvedModelConfig,
-    fallbackCtx: FallbackRunContext,
-  ): Promise<RunOutcome> {
-    return runOncePhase(this.runContext(), cfg, fallbackCtx);
+  private async runOnce(cfg: ResolvedModelConfig): Promise<RunOutcome> {
+    return runOncePhase(this.runContext(), cfg);
   }
 
   /** Assemble the run pipeline's host context (src/runner/runner-run.ts) from this runner's
@@ -339,7 +325,7 @@ export class RoleRunner {
       setRecoveryFailure: (message) => {
         self.recoveryFailure = message;
       },
-      runOnce: (cfg, fallbackCtx) => this.runOnce(cfg, fallbackCtx),
+      runOnce: (cfg) => this.runOnce(cfg),
       setRunPair: (pair) => {
         self.runPair = pair;
       },
@@ -352,7 +338,6 @@ export class RoleRunner {
       },
       finishAbortedRun: (userPrompt, wt) => this.finishAbortedRun(userPrompt, wt),
       pinAndReset: (wt, sha) => this.pinAndReset(wt, sha),
-      foldModelFallback: (fallbackCtx, pi) => this.foldModelFallback(fallbackCtx, pi),
       finishRecoveryRun: (recovered, userPrompt, wt, priorMergeFailure) =>
         this.finishRecoveryRun(recovered, userPrompt, wt, priorMergeFailure),
     };

@@ -336,9 +336,7 @@ export function reviewRunConfig(config: TumwaterConfig): ResolvedModelConfig {
  * build a triple this way and follow the same rule — an absent or empty
  * value is
  * omitted rather than written as undefined/"" (an empty selector field would read as
- * "override present," so it must not appear). config-fallbacks.ts's modelFallbackView
- * assembles its episode triple through this function too; its readers were removed by
- * Subtract part 5n/6, so it is kept only until part 5o/6 deletes it. */
+ * "override present," so it must not appear). */
 export function resolvedModelFields(
   provider: string | undefined,
   model: string | undefined,

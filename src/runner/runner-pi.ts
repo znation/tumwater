@@ -508,8 +508,8 @@ export class RunnerPi {
    * abort.
    *
    * The follow-up continues this run's own session, so it must run on the same pair that
-   * session ran on: the caller passes the run's effective config (the fallback pair while a
-   * model-fallback episode is active). A caller without one rides the role's own config. The
+   * session ran on: the caller passes the run's effective config (a budget cap's fallback
+   * pair while a cap episode is active). A caller without one rides the role's own config. The
    * shared per-runner wiring (runnerPiOpts) takes the follow-up's hard caps overriding the
    * authoring run's budget: one short reply on a warm session. The agent run takes the runner's
    * SHARED transient-failure retry (BUGS.md 2026-10-01): a 429 on the follow-up turn waits its

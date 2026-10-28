@@ -361,25 +361,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 5o/6: The model-failure episode machinery goes — a run always resolves its role's own config (planned 2026-10-27 by the plan role; the third part replacing part 5c/6; requires Subtract part 5n/6 landed, since with the role view and status row no longer reading them this part deletes `modelFallbackView` and `fallbackRoleConfig`, whose last readers are there; touches src/runner/model-fallback.ts (deleted) src/runner/runner-fallback.ts (deleted) src/runner/runner.ts src/runner/runner-run.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/config/config-fallbacks.ts src/gates/gate-polls.ts src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-launch.ts docs/invariants.md test/model-fallback.test.ts (deleted) test/runner-fallback.test.ts (deleted) test/runner-state.test.ts test/run-resume.test.ts test/gate-polls.test.ts test/config-views.test.ts)
-
-**Goal.** A failing provider never changes which model a run uses: the episode state machine, its runner plumbing and the two config helpers only it reads are gone. The two event types it emitted stay defined until part 5p/6 removes them.
-
-**Approach.**
-- Delete `src/runner/model-fallback.ts` (the state machine) and `src/runner/runner-fallback.ts` (`foldModelFallbackPhase`, the last emitter of the episode events).
-- `src/runner/runner.ts`: remove the `fallbackRoleConfig` and `modelFallbackActive` imports and make `runConfig` return `configForRole(this.config, this.role)` unconditionally; drop the now-unused clock parameter from `runConfig`/`runProvider` and update their three call sites (`src/gates/gate-polls.ts`, `src/orchestrator/orchestrator-poll.ts`, `src/orchestrator/orchestrator-launch.ts`) — or keep the parameter if the implementing run finds that smaller.
-- `src/runner/runner-run.ts`: remove the `modelFallbackActive`/`modelFallbackProbe` imports and the fallback resolution (`fallback`, `probing`, `onFallback`, the `cfg` override), the `FallbackRunContext` interface and its `runOnce` parameter, the `foldModelFallback` member of the host interface and the `ctx.foldModelFallback(fallbackCtx, pi)` call; `cfg` becomes `primaryCfg`.
-- `src/runner/runner-state.ts`: delete the `modelFallback` field; `src/runner/runner-state-load.ts`: delete its heal block.
-- `src/config/config-fallbacks.ts`: delete `fallbackRoleConfig`, `ModelFallbackView`, `modelFallbackView` and the `../runner/model-fallback.js` import.
-- `docs/invariants.md`: delete the `modelFallbackVerdict` sentence and the model-fallback fold clause in INV-CN1.
-
-**Acceptance criteria.**
-- `grep -rniE 'modelFallback|FallbackRunContext|fallbackRoleConfig|foldModelFallback' src/` finds no live reference (the `model_fallback_started`/`model_fallback_ended` event names and their comments in src/events and src/failure belong to part 5p/6).
-- `RunnerState` carries no `modelFallback`; a provider failure no longer changes a run's model.
-- test/model-fallback.test.ts and test/runner-fallback.test.ts are deleted; test/runner-state.test.ts, test/run-resume.test.ts, test/gate-polls.test.ts and test/config-views.test.ts pass with their episode fixtures and `fallbackRoleConfig` cases removed; `npm run test:gate` passes.
-
-**Tests.** Delete the two modules' tests, update the four listed modules, then run them and the project's gate, and confirm green.
-
 ### Subtract, part 5p/6: The `model_fallback_*` event vocabulary goes — no event type, label or failure line names the removed episode (planned 2026-10-27 by the plan role; the fourth part replacing part 5c/6; requires Subtract part 5c/6 and Subtract part 5o/6 landed, since the report-fold dispatcher and the runner emitter are gone; touches src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/failure/failure-state-change.ts test/event-format.test.ts test/failure-state-change.test.ts test/failure-render.test.ts)
 
 **Goal.** `model_fallback_started` and `model_fallback_ended` no longer exist as event types: the union, its labels, the formatter and the failure-state-change renderer drop them. The budget-fallback events remain for part 5k/6 to remove.

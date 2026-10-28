@@ -24,7 +24,6 @@ import {
 import {
   applyFallbackModel,
   fallbackPair,
-  fallbackRoleConfig,
   resolveTierFallbacks,
   seamsInUse,
   type TierFallback,
@@ -517,28 +516,6 @@ test("applyFallbackModel keeps a free agent-default tier's ambient thinking", ()
   assert.equal(reviewConfig(out).thinking, "high");
 });
 
-test("fallbackRoleConfig resolves the role's tier pair and is null when it pauses", () => {
-  const config: TumwaterConfig = defaultConfig();
-  config.model = "paid/primary";
-  config.fallback = "free/f";
-  const fb = fallbackRoleConfig(config, "feature");
-  assert.equal(fb?.provider, "free");
-  assert.equal(fb?.model, "f");
-  assert.equal(
-    fb?.minRunIntervalSeconds,
-    config.roles.feature?.minRunIntervalSeconds ?? config.minRunIntervalSeconds,
-  );
-  // A strong-tier role borrows the default tier's own fallback (BORROW_ORDER).
-  config.roles.feature = { enabled: true, model: "strong" };
-  const strong = fallbackRoleConfig(config, "feature");
-  assert.equal(strong?.provider, "free");
-  assert.equal(strong?.model, "f");
-  // No fallback configured resolves every tier to pause: the feature is off.
-  const none: TumwaterConfig = defaultConfig();
-  none.model = "paid/primary";
-  assert.equal(fallbackRoleConfig(none, "feature"), null);
-});
-
 test("resolvedBackendConfig reads the legacy agentBin/piArgs as the pi entry's bin/args", () => {
   // A config with only the legacy spellings resolves them under backends.pi.
   const legacy: TumwaterConfig = defaultConfig();
@@ -652,17 +629,6 @@ test("a review backend routes its seam alone to that agent", () => {
   // The rest of the team stays on pi with pi's own default.
   assert.equal(configForRole(config, "feature").agent, "pi");
   assert.equal(configForRole(config, "feature").model, undefined);
-});
-
-test("a mixed fallback under agent: claude runs on pi while the primary stays claude", () => {
-  const config: TumwaterConfig = defaultConfig();
-  config.backend = "claude";
-  config.fallback = { default: { backend: "pi", model: "omlx/Qwen3.8-27B-MLX" } };
-  assert.equal(configForRole(config, "feature").agent, "claude");
-  const fb = fallbackRoleConfig(config, "feature");
-  assert.equal(fb?.agent, "pi", "an explicit pi step runs on pi");
-  assert.equal(fb?.provider, "omlx");
-  assert.equal(fb?.model, "Qwen3.8-27B-MLX");
 });
 
 test("seamHoldKey keys a claude seam by its agent and a pi seam by its provider", () => {

@@ -1,8 +1,8 @@
 /** The budget/tier FALLBACK side of the config views, split out of config-views.ts: how the
  * team falls back at the daily spend cap — which free pair each tier runs on
- * (resolveTierFallbacks and its BORROW_ORDER), the per-role fallback config a model-failure
- * or cap episode hands a role (fallbackRoleConfig, applyFallbackModel), and the surfaces
- * that name those pairs (seamsInUse, modelFallbackView, tierFallbackLabels). The per-seam
+ * (resolveTierFallbacks and its BORROW_ORDER), the per-role fallback config a cap episode
+ * hands a role (applyFallbackModel), and the surfaces
+ * that name those pairs (seamsInUse, tierFallbackLabels). The per-seam
  * resolution these build on — how one role/reviewer/resolver provider/model/thinking resolves
  * (configForRole, reviewConfig, withModelOverrides, …) — stays in config-views.ts, so the
  * one-way dependency runs fallback → seam and never back. Pure, like its sibling: no I/O and
@@ -18,9 +18,7 @@ import {
 import { formatModelSelector, parseModelSelector, routeModel } from "./model-selector.js";
 import { modelPairName } from "../budget/budget.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
 import { enabledRoleIds } from "./config.js";
-import { modelFallbackActive, type ModelFallbackState } from "../runner/model-fallback.js";
 import {
   FALLBACK_REVIEW_TIMEOUT_S,
   REVIEW_TIMEOUT_S,
@@ -225,22 +223,6 @@ export function resolveTierFallbacks(
   return { small: resolve("small"), default: resolve("default"), strong: resolve("strong") };
 }
 
-/** The config a role's runs use while a model-fallback episode is active (PLANS.md "Model
- * failure fallback, part 1/2"): the role's tier pair from resolveTierFallbacks (the tier's own
- * pair, else BORROW_ORDER's borrow), shaped like configForRole — provider/model/thinking over
- * the role's own and top-level values, plus the role's minRunIntervalSeconds. Null when the
- * tier resolves to pause (no fallback configured), so the feature stays off. Pure. */
-export function fallbackRoleConfig(config: TumwaterConfig, role: string): ResolvedModelConfig | null {
-  const tier = roleSeamTier(config, role);
-  const pair = resolveTierFallbacks(config, () => true)[tier].pair;
-  if (pair === null) return null;
-  const rc = config.roles[baseRoleOf(role)];
-  return {
-    ...withModelOverrides(config, tier, pairOverrides(pair)),
-    minRunIntervalSeconds: rc?.minRunIntervalSeconds ?? config.minRunIntervalSeconds,
-  };
-}
-
 /** One seam the team can spawn, with the human label that names it and the resolved routing
  * a run gets — the single enumeration the startup gate, doctor, and the claude-account seed
  * and live-edit reload sweep, so a seam that exists only as a fallback is checked exactly like
@@ -259,8 +241,7 @@ interface SeamInUse {
 /** Every seam the team can spawn, each with its label: every enabled role's resolved config
  * (configForRole), the review gate when it is on (reviewRunConfig), the conflict resolver
  * (resolverConfig), the director (a catalog role, named explicitly so it is never missed), and
- * each tier's budget fallback (resolveTierFallbacks) — the model-failure fallback
- * (fallbackRoleConfig) runs the same tier pair, so one enumeration covers it. Deduplicated by
+ * each tier's budget fallback (resolveTierFallbacks). Deduplicated by
  * label + routed pair so a seam reached through several surfaces is listed once. Read by the
  * startup gate's agent list, doctor's pair sweep (and so its binary/credential/version checks
  * and routing table), and the live-edit reload's newly-routed-backend check — no surface can
@@ -288,43 +269,6 @@ export function seamsInUse(config: TumwaterConfig): SeamInUse[] {
     );
   }
   return [...seams.values()];
-}
-
-/** The active model-fallback episode (RunnerState.modelFallback) resolved for display: the
- * pair the role's runs use, when the episode began, and the provider-class failure that
- * tripped it. */
-interface ModelFallbackView {
-  provider?: string;
-  model?: string;
-  thinking?: string;
-  /** The backend the fallback pair routes to — its own id for a non-pi agent (`claude`),
-   * else `pi` — carried so the role view qualifies the pair the same way every other
-   * surface does (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7). */
-  backend?: string;
-  since: number;
-  reason: string;
-}
-
-/** Build a ModelFallbackView for an episode, or null while the episode is not running the
- * fallback (no episode, or a due probe on the primary): the pair the role's runs use, when
- * the episode began, and the provider-class failure that tripped it. `now` is the caller's clock,
- * so the caller and the episode agree on what "active" means. Its surface readers were removed
- * by Subtract part 5n/6; kept only until part 5o/6 deletes the episode machinery. */
-export function modelFallbackView(
-  episode: ModelFallbackState | undefined,
-  config: TumwaterConfig,
-  role: string,
-  now = Date.now(),
-): ModelFallbackView | null {
-  if (episode === undefined || !modelFallbackActive(episode, now)) return null;
-  const episodeConfig = fallbackRoleConfig(config, role);
-  if (episodeConfig === null) return null;
-  return {
-    ...resolvedModelFields(episodeConfig.provider, episodeConfig.model, episodeConfig.thinking),
-    ...(episodeConfig.agent !== undefined && episodeConfig.agent !== "pi" ? { backend: episodeConfig.agent } : {}),
-    since: episode.since,
-    reason: episode.reason,
-  };
 }
 
 /** The per-tier fallback labels the observability surfaces render (part 7b/8): tier →

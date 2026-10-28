@@ -44,9 +44,9 @@ interface RunPromptInput {
    * not dequeued, so assembling a preview can never consume a queued request. Everything
    * else — brief, principles, check, the state-derived notes — is assembled identically. */
   preview?: boolean;
-  /** The effective backend this run RUNS on — the model-fallback pair while an episode
-   * is active — selecting the prompt dialect. planRunStart passes the same `cfg.agent` the
-   * authoring run gets, so a fallback seam's prompt cannot speak the primary's dialect.
+  /** The effective backend a run uses — the budget cap's fallback pair while a cap
+   * episode is active — selecting the prompt dialect. planRunStart passes the same `cfg.agent`
+   * the authoring run gets, so a fallback seam's prompt cannot speak the primary's dialect.
    * Omitted: the role's primary `configForRole(config, role).agent`. */
   backend?: string;
 }

@@ -269,7 +269,7 @@ export function pollGatesAndHolds(
     teamHeldNow,
     reviewHeldNow: () => liveConfig.review.enabled && teamHeldNow().has(reviewSeamKey),
     reviewHeld: liveConfig.review.enabled && teamHeldProviders.has(reviewSeamKey),
-    roleProviders: new Map(runners.map((r) => [r.role, r.runProvider(now)])),
+    roleProviders: new Map(runners.map((r) => [r.role, r.runProvider()])),
   };
 }
 

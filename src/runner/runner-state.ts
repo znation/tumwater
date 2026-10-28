@@ -1,6 +1,5 @@
 import type { RunResult } from "../run/run-outcome.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
-import type { ModelFallbackState } from "./model-fallback.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { statePath } from "../paths.js";
 import { tryOrWarn } from "../events/events.js";
@@ -213,12 +212,6 @@ export interface RunnerState {
     round?: number;
     applied: boolean;
   };
-  /** This role's active model-fallback episode (src/runner/model-fallback.ts): set once
-   * consecutive provider-class failures on the primary trip it, cleared by a probe run on
-   * the primary that answers without a provider failure. Absent means the role runs its
-   * primary model, so existing state files read unchanged. Persisted: an episode must survive
-   * a restart like the schedule does. */
-  modelFallback?: ModelFallbackState;
   /** The pinned change a merge failed to review on a permanent provider configuration error
    * (a 4xx other than 408/429): the request can never succeed until the model config changes,
    * so leftover recovery holds the pin instead of re-queuing it at suite speed (BUGS.md

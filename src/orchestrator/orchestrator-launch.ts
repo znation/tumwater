@@ -200,15 +200,13 @@ export function launchDueRuns(ctx: LaunchContext): void {
         async () => {
           started = true;
           // A role run that starts while the budget holds uses the fallback pair its tier
-          // resolved to (the gate's per-tier view was installed in its config), or — when a
-          // model-fallback episode is active — on the tier's model-fallback pair, which can
-          // differ from the budget pair. Its outcome is the evidence for the pair it ACTUALLY
-          // ran on, so read it from runConfig (config + episode), never from configForRole
-          // alone: a per-pair breaker fed a fallback run under the primary's name would
-          // misprice a healthy pair and miss a dead one (PLANS.md "Model failure fallback,
-          // part 1/2").
-          const now = Date.now();
-          const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(now);
+          // resolved to (the gate's per-tier view was installed in its config). Its outcome
+          // is the evidence for the pair it ACTUALLY ran on, so read it from the runner's
+          // resolved config (runConfig), which names the budget-fallback pair when a cap
+          // episode is active: a per-pair breaker fed a fallback run under the primary's
+          // name would misprice a healthy pair and miss a dead one (PLANS.md "Mixed claude +
+          // pi fleets, part 2/4").
+          const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig();
           // The breaker is keyed by the seam that ran (seamHoldKey), like the run pair and
           // the team-hold stamps (PLANS.md "Mixed claude + pi fleets, part 2/4"): a claude
           // fallback run demotes the `claude/<model>` breaker entry, never `?/…`.
