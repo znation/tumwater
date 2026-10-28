@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { checkNotify } from "../src/doctor/doctor-notify.js";
 import { logEvent, TUMWATER_SOURCE, warnEvent } from "../src/events/events.js";
-import { notifyExitWarning } from "../src/events/notify.js";
+import { notifyExitWarning } from "../src/events/event-notify.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readyRepo } from "./fixtures/doctor-fixtures.js";

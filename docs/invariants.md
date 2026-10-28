@@ -378,11 +378,11 @@ crash guard tripped), it runs the `notify` command from tumwater.json once, with
 throttle; a missing or invalid tumwater.json or an absent `notify` pages nothing and never throws.
 A once round's `ONCE_FAILED_EXIT_CODE` is an asked-for ending and pages nothing.
 
-**Binds.** `src/events/notify.ts` (`notifyTeamDown`) and `src/cli/cli-start.ts`
+**Binds.** `src/events/event-notify.ts` (`notifyTeamDown`) and `src/cli/cli-start.ts`
 (`superviseRunCommand`'s `onTeamDown`).
 
 **Pinned by.** `test/cli-start-shutdown.test.ts` — "a team that goes down unasked runs the notify
-hook once"; `test/notify.test.ts` — the `notifyTeamDown` tests; `test/supervisor.test.ts` — "a
+hook once"; `test/event-notify.test.ts` — the `notifyTeamDown` tests; `test/supervisor.test.ts` — "a
 once round's failed exit code passes through without paging".
 
 ### INV-E3: a notify hook that exits nonzero leaves a warning naming the paged type
@@ -391,10 +391,10 @@ once round's failed exit code passes through without paging".
 still running, one `warning` from role `harness` names the paged event type and the exit code or
 signal; a clean exit logs nothing and the page is not retried.
 
-**Binds.** `src/events/notify.ts` (`notifyExitWarning` and the `exit` listener in
+**Binds.** `src/events/event-notify.ts` (`notifyExitWarning` and the `exit` listener in
 `spawnNotifyCommand`).
 
-**Pinned by.** `test/notify.test.ts` — the `notifyExitWarning` test and "a notify hook that exits
+**Pinned by.** `test/event-notify.test.ts` — the `notifyExitWarning` test and "a notify hook that exits
 nonzero logs one warning naming the paged type".
 
 ## Hermetic, deterministic gating tests

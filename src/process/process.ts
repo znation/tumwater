@@ -222,8 +222,8 @@ export function captureCappedOutput(
 
 /** The child-environment policy every spawn that hands a child the harness's environment shares:
  * start from `process.env` and apply `overrides` on top. The explicit spawn sites
- * (supervisor.ts, self-reload.ts, notify.ts, git-run.ts, doctor-model-checks.ts) all want exactly
- * this, so the spread lives here once instead of in each spawn's options. */
+ * (supervisor.ts, self-reload.ts, event-notify.ts, git-run.ts, doctor-model-checks.ts) all want
+ * exactly this, so the spread lives here once instead of in each spawn's options. */
 export function childEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return { ...process.env, ...overrides };
 }

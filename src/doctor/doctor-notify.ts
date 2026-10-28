@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { eventsSince } from "../events/event-window.js";
-import { isNotifyFailure } from "../events/notify.js";
+import { isNotifyFailure } from "../events/event-notify.js";
 import { DAY_MS, humanAgo } from "../text/datetime.js";
 import { plural } from "../text/phrases.js";
 import { errorMessage, squash } from "../text/text.js";

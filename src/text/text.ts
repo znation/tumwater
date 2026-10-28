@@ -101,9 +101,9 @@ export function gotSuffix(v: unknown): string {
  * and its legacy provider, exempt paths, custom-role tasks), pi-event-line.ts's tool-result content
  * test, quiet-hours.ts's per-role window lookup, and inbox-attachments.ts's image-name check, so
  * the blank-means-unset rule cannot drift per call site. Callers where a bare empty string means
- * unset rather than blank text (notify.ts, version.ts, inbox-cancel.ts) keep their own `=== ""`
- * check; typed-string callers (checkStringField's two-branch shape, checkStringArray's blank-index
- * report) spell the trim test inline. */
+ * unset rather than blank text (event-notify.ts, version.ts, inbox-cancel.ts) keep their own
+ * `=== ""` check; typed-string callers (checkStringField's two-branch shape,
+ * checkStringArray's blank-index report) spell the trim test inline. */
 export function isNonBlankString(v: unknown): v is string {
   return typeof v === "string" && v.trim() !== "";
 }

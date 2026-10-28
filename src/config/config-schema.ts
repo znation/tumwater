@@ -379,9 +379,9 @@ export interface TumwaterConfig {
   worktreeIdleReclaimHours: number;
   /** Operator notify hook: a shell command the orchestrator runs when a notable event fires
    * (the states where the team or one of its changes is stopped and only a human can act, plus
-   * warnings ahead of them and a posted question; `NOTIFY_EVENT_TYPES` in src/events/notify.ts
-   * owns the allowlist and the per-type one-minute throttle, and docs/config.md's Notify events
-   * table lists it). The command
+   * warnings ahead of them and a posted question; `NOTIFY_EVENT_TYPES` in
+   * src/events/event-notify.ts owns the allowlist and the per-type one-minute throttle, and
+   * docs/config.md's Notify events table lists it). The command
    * runs detached with
    * TUMWATER_EVENT_TYPE, TUMWATER_EVENT_SOURCE, and TUMWATER_EVENT_MESSAGE (the line
    * `tumwater logs` renders) in its environment; a nonzero exit logs a warning. Absent or an

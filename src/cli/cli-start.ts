@@ -22,7 +22,7 @@ import { orchestratorAlive, readOrchestratorInfo } from "../team/team-orchestrat
 import { runStartupCheck, runStartupProblem } from "../gates/startup-gate.js";
 import { repairInterruptedSwap } from "../build/build-stage.js";
 import { logEvent, subscribeEvents } from "../events/events.js";
-import { notifyTeamDown } from "../events/notify.js";
+import { notifyTeamDown } from "../events/event-notify.js";
 import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import { runStartupMigrations } from "../orchestrator/startup-migration-steps.js";

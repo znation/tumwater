@@ -23,7 +23,7 @@ import { mergeTasks, newMergePipeline } from "../merge/merge-pipeline.js";
 import { bestEffortEventLogger, logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { OnceRound } from "../scheduling/once-round.js";
-import { newNotifier } from "../events/notify.js";
+import { newNotifier } from "../events/event-notify.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { Semaphore } from "../concurrency/semaphore.js";
 import { orchestratorStatePath } from "../paths.js";
@@ -280,10 +280,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // In-memory only: a restart mid-episode can re-log at most one event.
   const deferredDue = new Map<string, boolean>();
 
-  // The operator notify hook (src/events/notify.ts owns the whole concern): one configured shell
-  // command run on notable events (budget_paused, role_streak_paused, merge_failed,
-  // restart_blocked). Subscribed here so it sees every event this process logs from start;
-  // disposed beside the orchestrator_stop event below.
+  // The operator notify hook (src/events/event-notify.ts owns the whole concern): one
+  // configured shell command run on notable events (budget_paused, role_streak_paused,
+  // merge_failed, restart_blocked). Subscribed here so it sees every event this
+  // process logs from start; disposed beside the orchestrator_stop event below.
   const notifier = newNotifier(root);
 
   // Best-effort event logging in the poll loop (bestEffortEventLogger, events.ts): this loop

@@ -19,7 +19,7 @@ import { drainMergeQueue, settleAbortedApproved } from "../merge/merge-drain.js"
 import { abortableMerges, mergeTasks, type MergePipeline } from "../merge/merge-pipeline.js";
 import { TUMWATER_SOURCE, type HarnessEventInput } from "../events/events.js";
 import type { OnceRound } from "../scheduling/once-round.js";
-import type { newNotifier } from "../events/notify.js";
+import type { newNotifier } from "../events/event-notify.js";
 import {
   consumeAbortRequests,
   consumeReclaimRequest,
@@ -151,7 +151,7 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
   // src/config/config-live.ts owns the last-known-good retention and the edge-triggered
   // warnings/events around it.
   const liveConfig = ctx.liveReload.poll();
-  // The notify command rides the same last-known-good reload (src/events/notify.ts): a live
+  // The notify command rides the same last-known-good reload (src/events/event-notify.ts): a live
   // `config set notify` edit takes effect on the next poll, no restart.
   ctx.notifier.update(liveConfig);
 

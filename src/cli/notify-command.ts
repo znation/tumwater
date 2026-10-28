@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { fail, say } from "./cli-output.js";
 import { loadConfig } from "../config/config.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
-import { notifyCommandEnv, notifyExitGloss } from "../events/notify.js";
+import { notifyCommandEnv, notifyExitGloss } from "../events/event-notify.js";
 
 /** The one representative allowlisted event `tumwater notify --test` fires: a failed merge
  * with source `tumwater`. Fixed and opinionated — the goal is to prove the hook runs, not to
@@ -22,7 +22,7 @@ export const NOTIFY_TEST_TIMEOUT_MS = 10_000;
 type NotifyHookResult = { code: number } | { timedOut: true };
 
 /** Run one notify hook to completion, returning its exit code. Unlike the notifier's detached
- * fire-and-forget spawn (src/events/notify.ts), this waits with inherited stdio by
+ * fire-and-forget spawn (src/events/event-notify.ts), this waits with inherited stdio by
  * default (the dashboard passes "ignore"), so the
  * operator sees the hook's own output and its exit. A shell that cannot start resolves 127 —
  * the conventional "command not found" code. A hook that does not finish within `timeoutMs`

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { NOTIFY_EVENT_TYPES } from "../src/events/notify.js";
+import { NOTIFY_EVENT_TYPES } from "../src/events/event-notify.js";
 import { ROLE_ENTRY_KEYS, TOP_LEVEL_KEYS } from "../src/config/config-schema.js";
 
 /** docs/config.md's "Every setting" and "Notify events" tables — the guard that keeps the
