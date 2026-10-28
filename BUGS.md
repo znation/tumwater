@@ -276,6 +276,12 @@ at waitFor (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/hel
 at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/orchestrator-probe.test.js:84:9)
 ~~~~
 
+### `once: a merge_blocked change is re-queued by the pipeline and merges with no second run` failed in the full e2e suite and passed on re-run in isolation (found by the ci role 2026-10-28)
+
+- **Symptom:** in the full CI e2e run against main tip `14dfbc45a` on 2026-10-28, under sustained host load (load avg ≈ 164), `test/orchestrator-once.e2e.test.ts`'s `once: a merge_blocked change is re-queued by the pipeline and merges with no second run` failed at 30.577 s with `Error: once round did not exit on its own` (dist/test/fixtures/orchestrator-fixtures.js:223) — the once round blew the 30 s `withHangGuard`. The same run went red on the two documented `orchestrator-budget` run-start-marker members (`a reached cap switches roles to the free fallback model instead of stopping them` and `a free fallback whose runs keep failing is demoted to a pause, then probed back once it serves`, both ~153 s wait.js:38), the class residual BUGS.md 70-141 records; `npm test` itself was fully green (7632 pass, 0 fail, 5 skipped).
+- **Reproduce:** run the full e2e tier while the shared host sits far past the ≈105 ceiling. The failing test re-run in isolation through the project's own runner (`orchestrator-once.e2e#once: a merge_blocked change is re-queued by the pipeline and merges with no second run`) passed in 23.09 s under load avg ≈ 117–141, comfortably under the 30 s guard.
+- **Cause:** a wall-clock load flake and a new member of the load-sensitive e2e class (BUGS.md 70-141): the once round's merge_blocked requeue (pre-check red, the reviewer-moves-main rebase, the in-lock merge check, the re-queue, the re-merge) exceeds the once round's 30 s `withHangGuard` only when the host is heavily loaded. No src change with functional content since the last covered tip (`ab5c154`) touches the once/merge/landing/scheduling pipeline — `git diff --name-only ab5c154..HEAD -- src/scheduling src/merge src/landing` is only a comment docword rename and a `question-answer.ts`→`backlog-question-answer.ts` re-point, so this is not a regression. Not previously listed among 70-141's members; a future deterministic-contention/isolation step or a widened guard should cover it.
+
 ## Fixed
 
 ## Verified
