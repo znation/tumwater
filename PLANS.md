@@ -361,23 +361,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No src/ui/team-alert-shared.ts export is left with zero callers in src/ui.
 - `npm run test:gate` passes.
 
-### Subtract, part 5s/6: The over-cap model and fallback-chain role rows go (planned 2026-10-27 by the plan role, split 2026-10-27 by the plan role from the held part 5k/6 after feature held it as too large for one run: the role-view, role-render and GUI drawer surfaces are the second of three sibling parts, 5r/6 through 5t/6, that replace part 5k/6; requires Subtract part 5p/6 landed; independent in file of parts 5r/6 and 5t/6, which take the alert/badge and doctor surfaces; this part also removes `role-render.ts`'s `chainStepLine` `Running on fallback` bullet and `RoleViewPayload.chainStep`, which is what makes the split's `grep 'Running on fallback' src/roles` criterion achievable and what part 5l/6's premise (`the surfaces its view fed are gone`) needs gone before it retires the chain; touches src/roles/role-view.ts src/roles/role-render.ts src/ui/gui/gui-client-drawer-config.ts test/role-view.test.ts test/gui-client-drawer.test.ts)
-
-**Goal.** No role view, `tumwater role <id>` line or dashboard drawer names an over-cap model or a fallback-chain step: `RoleViewPayload` carries no `fallback`, `fallbackFree` or `chainStep`, and the renderer and drawer drop their rows.
-
-**Approach.**
-- `src/roles/role-view.ts`: delete the `fallback`/`fallbackFree` and `chainStep` fields from `RoleViewPayload` with their doc comments and their initializers; delete the `declaredFallback`, `opencodeCatalog`, `claudeFallbackAccount`, `accounts`, `freeFallback` and `fallback` locals and the `const info`/`chainStep` read; drop the now-unused imports `fallbackPair`, `fallbackModelPair`, `readOpencodeCache`, `orchestratorAlive`, `readOrchestratorInfo` and `ChainTierInfo`, and drop `readClaudeAccount` from the agent/claude import (keep the `ClaudeBilling` type the billing field uses). `roleSeamTier`, the billing `readAccount` read and `billingBackend` stay (the Billing row uses them).
-- `src/roles/role-render.ts`: delete the `if (p.fallback)` block and its `Over-cap model:` line, `fallbackPairLabel`, `chainStepLine` and `chainReasonPhrase`, and the `ChainTierInfo` import (its only reader). `billingWindowLabel` stays (the Billing line uses it).
-- `src/ui/gui/gui-client-drawer-config.ts`: delete the `view.fallback` `Budget fallback` row and the `fallbackLabel` helper; drop the then-unused imports.
-- `docs/invariants.md` stays unchanged: it binds `src/roles/role-view.ts` only for the symlink read and `gui-client-drawer-config.ts`/`role-render.ts` for the model `thinking` suffix (INV-AX6), neither naming these rows.
-
-**Acceptance criteria.**
-- `grep -rn 'Running on fallback\|Over-cap model\|Budget fallback' src/roles src/ui/gui` finds nothing.
-- `RoleViewPayload` declares no `fallback`, `fallbackFree` or `chainStep` member, and `tumwater role <id> --json` carries none of them.
-- `npm run test:gate` passes.
-
-**Tests.** Update `test/role-view.test.ts` and `test/gui-client-drawer.test.ts` to drop the over-cap fallback and chain-step fixtures (`p.chainStep?.step` and the `Budget fallback`/`Over-cap model` assertions). Run them, then the project's gate, and confirm green.
-
 ### Subtract, part 5t/6: The over-cap model and fallback-chain doctor rows go (planned 2026-10-27 by the plan role, split 2026-10-27 by the plan role from the held part 5k/6 after feature held it as too large for one run: the doctor surfaces are the third of three sibling parts, 5r/6 through 5t/6, that replace part 5k/6; requires Subtract part 5p/6 landed; independent in file of parts 5r/6 and 5s/6; this part's deletion of `src/doctor/doctor-fallback-checks.ts` must land before part 5l/6 deletes `src/budget/fallback-breaker.ts`, whose `FallbackDemotion` type the doctor module imports; touches src/doctor/doctor-fallback-checks.ts (deleted) src/doctor/doctor.ts src/doctor/doctor-check-names.ts test/doctor-model-checks.test.ts test/doctor.test.ts)
 
 **Goal.** `tumwater doctor` lists no `over-cap model` or `fallback chain` row: the check module that priced the fallback and walked each tier's chain is deleted.

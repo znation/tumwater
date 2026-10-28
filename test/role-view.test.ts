@@ -19,10 +19,10 @@ import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readmeTemplate } from "../src/brief/brief.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
-import { writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
+import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeAccount } from "../src/agent/subscription-account.js";
-import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { recordFlow } from "../src/run/qa-coverage.js";
 import { recordFiled } from "../src/run/feedback-filings.js";
@@ -206,40 +206,6 @@ test("an instance id resolves the instructions override through its base role", 
   assert.equal(base.instructions, "Stay small.");
 });
 
-test("a configured fallback pair is reported, with its freeness verdict from pi's definitions", () => {
-  const dir = root();
-  writeConfig(dir, { fallbackModel: { provider: "free-prov", model: "free-model" } });
-  const p = rolePayload(dir, "bugfix", NO_MODELS);
-  assert.deepEqual(p.fallback, { provider: "free-prov", model: "free-model" });
-  assert.equal(p.fallbackFree, false); // no definitions file: not provably free
-  // No fallback configured: null pair, and the definitions file is never consulted.
-  const bare = rolePayload(root(), "bugfix", NO_MODELS);
-  assert.equal(bare.fallback, null);
-  assert.equal(bare.fallbackFree, false);
-});
-
-test("an opencode fallback pair reads free in the role view only when the cached catalog prices it free", () => {
-  // Part 6b/7: the fallback free-ness verdict reads the opencode catalog exactly as the budget
-  // gate does, so `tumwater role` cannot disagree with the gate about a fallback it would
-  // engage. A missing cache (no catalog read) leaves the pair NOT free — the safe direction.
-  const dir = root();
-  writeConfig(dir, { fallback: [{ backend: "opencode", model: "deepseek-v4.1-flash-free" }] });
-  const noCache = rolePayload(dir, "bugfix", NO_MODELS);
-  assert.equal(noCache.fallbackFree, false, "no cached catalog: an opencode fallback is not provably free");
-  writeOpencodeCache(dir); // the fixture prices the gateway free model free
-  const withCache = rolePayload(dir, "bugfix", NO_MODELS);
-  assert.equal(withCache.fallbackFree, true, "a catalog-free opencode fallback reads free to the view");
-  assert.deepEqual(withCache.fallback, { backend: "opencode", provider: "opencode", model: "deepseek-v4.1-flash-free" });
-});
-
-test("a subscription claude fallback reads free in the role view", () => {
-  const dir = root();
-  writeConfig(dir, { fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] });
-  writeClaudeAccount(dir, { billing: "subscription", observedAt: Date.now(), windows: {} });
-  const p = rolePayload(dir, "bugfix", NO_MODELS);
-  assert.deepEqual(p.fallback, { backend: "claude", provider: "claude", model: "claude-sonnet-5-5" });
-  assert.equal(p.fallbackFree, true); // the account's subscription makes the claude pair free
-});
 
 test("a custom role's task is its find text, and it reads as enabled and custom", () => {
   const dir = root();
@@ -302,7 +268,6 @@ test("renderRoleMarkdown renders the payload's sections, with verbatim text fenc
   writeConfig(dir, {
     provider: "prov-a",
     model: "model-a",
-    fallbackModel: { provider: "fp", model: "fm" },
     roles: { feature: { instructions: "Be terse.\nThen terser." } },
   });
   enqueueRolePrompt(dir, "feature", "check the scheduler first");
@@ -312,7 +277,6 @@ test("renderRoleMarkdown renders the payload's sections, with verbatim text fenc
   assert.match(md, /- State: enabled, not paused/);
   assert.match(md, /- Priority: work/);
   assert.match(md, /- Model: prov-a\/model-a \(default tier\)/m);
-  assert.match(md, /- Over-cap model: fp\/fm \(priced\)/); // no definitions file in the fixture
   assert.match(md, /- Min run interval: 20s/);
   assert.match(md, /- Inbox: 1/);
   assert.match(md, /## Instructions override\n\n```\nBe terse\.\nThen terser\.\n```/); // verbatim, fenced
@@ -363,7 +327,6 @@ test("unset things render as explicit placeholder lines, not omissions", () => {
   const dir = root();
   const md = renderRoleMarkdown(rolePayload(dir, "director", NO_MODELS));
   assert.match(md, /- Model: pi default \(strong tier\)/m);
-  assert.ok(!md.includes("Over-cap model")); // no fallback configured: no line at all
   assert.match(md, /## Instructions override\n\n_\(none\)_/);
   assert.match(md, /_\(none — the director is driven by its inbox, not by instructions\)_/);
   assert.match(md, /## Notes\n\n_\(none yet/); // the director has no notes
@@ -468,24 +431,6 @@ test("the Model line shows a thinking level and drops a missing pair half", () =
   assert.match(md, /- Model: m-only \(thinking: high\)/);
 });
 
-test("a one-sided fallback pair renders with its missing half dropped", () => {
-  const dir = root();
-  writeConfig(dir, { fallbackModel: { provider: "fp-only" } });
-  const md = renderRoleMarkdown(rolePayload(dir, "qa", NO_MODELS));
-  assert.match(md, /- Over-cap model: fp-only \(priced\)/);
-});
-
-test("a fallback pair priced free in pi's definitions renders as free", () => {
-  const dir = root();
-  writeConfig(dir, { fallbackModel: { provider: "lm-studio", model: "qwen3.8-27b" } });
-  const file = path.join(dir, "models.json");
-  fs.writeFileSync(
-    file,
-    JSON.stringify({ providers: { "lm-studio": { models: [{ id: "qwen3.8-27b" }] } } }),
-  ); // no cost field: free
-  const md = renderRoleMarkdown(rolePayload(dir, "qa", file));
-  assert.match(md, /- Over-cap model: lm-studio\/qwen3\.8-27b \(free\)/);
-});
 
 test("a fenced block grows past any backtick run in the verbatim text", () => {
   const dir = root();
@@ -591,26 +536,6 @@ test("a codex subscription account renders Codex window labels", () => {
   assert.equal(p.billing, "subscription");
   assert.equal(p.billingWindow, "seven_day");
   assert.match(renderRoleMarkdown(p), /- Billing: subscription \(Codex 7d window\)/m);
-
-  // A codex window hold words the chain's window reason with the backend too.
-  const returnsAt = new Date(2026, 9, 16, 17, 40).getTime();
-  writeOrchestratorMarker(dir, [], {
-    chain: { default: { pair: "p/m", step: 2, of: 3, reason: "window", returnsAt } },
-  });
-  assert.match(
-    renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)),
-    /- Running on fallback 2 of 3 \(Codex 7d window used up, resets 17:40\)/,
-  );
-
-  // A codex subscription whose account reports no window still names the backend in the
-  // phrase ("Codex window used up", where claude would say "Claude window used up").
-  writeAccount(dir, "codex", { billing: "subscription", observedAt: Date.now(), windows: {} });
-  const noWindow = rolePayload(dir, "feature", NO_MODELS);
-  assert.equal(noWindow.billingWindow, undefined);
-  assert.match(
-    renderRoleMarkdown(noWindow),
-    /- Running on fallback 2 of 3 \(Codex window used up, resets 17:40\)/,
-  );
 });
 
 // Context-window visibility: the role view names the resolved primary seam's declared window,
@@ -651,24 +576,6 @@ test("the role view names the resolved seam's context window and previews the sa
   assert.equal(unk.nextPrompt?.includes(contextBudgetRule(PI_DIALECT)), true);
 });
 
-test("the role view names the fallback step a live orchestrator moved the role's tier to", () => {
-  const dir = root();
-  writeConfig(dir, { backend: "claude" });
-  writeClaudeAccount(dir, {
-    billing: "subscription",
-    observedAt: Date.now(),
-    windows: { five_hour: { status: "rejected", resetsAt: Date.now() + 3600_000, observedAt: Date.now() } },
-  });
-  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Running on fallback/);
-  const returnsAt = new Date(2026, 9, 16, 17, 40).getTime();
-  writeOrchestratorMarker(dir, [], {
-    chain: { default: { pair: "p/m", step: 2, of: 3, reason: "window", returnsAt } },
-  });
-  const p = rolePayload(dir, "feature", NO_MODELS);
-  assert.equal(p.chainStep?.step, 2);
-  assert.match(renderRoleMarkdown(p), /- Running on fallback 2 of 3 \(5h window used up, resets 17:40\)/);
-  assert.match(inspectMarkdownLines(p)[0] ?? "", /^- Running on fallback 2 of 3/);
-});
 
 // A pi author with a claude reviewer (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7):
 // the role's changes are reviewed on claude, so the role view names that billing too, not

@@ -25,7 +25,6 @@ import {
   subscriptionWindowRejected,
   utilizationPct,
   windowEntries,
-  windowLabel,
   windowReserved,
   windowUsedUp,
   writeAccount,
@@ -101,12 +100,6 @@ export function claudeWindowUsedUp(
  * predate the per-backend store (budget gates, team holds, the doctor, the role view, the
  * status poll). */
 export { subscriptionWindowRejected, windowReserved };
-
-/** The window type as a compact label — subscription-account.ts's windowLabel, under its
- * historical claude name. */
-export function claudeWindowLabel(type: string): string {
-  return windowLabel(type);
-}
 
 /** The fraction of a subscription usage window consumed as a whole-number percent —
  * subscription-account.ts's utilizationPct, under its historical claude name. */
