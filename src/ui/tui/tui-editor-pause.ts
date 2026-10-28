@@ -42,6 +42,17 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
   const draft = savedPromptDraft(session);
 
   // Leave pause-edit mode (Esc, Ctrl+F again, a written pause, or Ctrl+T): restore the draft.
+  // Run a pause/stop/wake write under the guard every handler needs: a disk write or
+  // marker failure (a lock timeout, a torn fs) must flash its reason on the session
+  // instead of letting the throw escape the keypress handler and kill the TUI.
+  const guardError = (fn: () => void): void => {
+    try {
+      fn();
+    } catch (err) {
+      session.flashError(err);
+    }
+  };
+
   const exitPauseEditMode = (): void => {
     if (!pauseEditMode) return;
     pauseEditMode = false;
@@ -84,7 +95,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       exitPauseEditMode();
       return true;
     }
-    try {
+    guardError(() => {
       if (isTeamPaused(session.root)) {
         session.flashMessage(resumeTeam(session.root) ? teamResumePhrase() : "team was not paused");
       } else {
@@ -92,9 +103,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
         // until resumed. A paused team resumes at once.
         openPauseEditor(null, false, false, 'pause the team: [duration] [reason], e.g. "2h deploy freeze" (empty pauses until resumed) — Enter to pause, Esc to cancel');
       }
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
     return true;
   };
 
@@ -107,7 +116,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       exitPauseEditMode();
       return true;
     }
-    try {
+    guardError(() => {
       if (scheduledStopAt(session.root) !== undefined) {
         session.flashMessage(cancelScheduledStopMessage(session.root));
       } else {
@@ -115,9 +124,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
         // stop intent (no role pinned, stop mode on): nothing is written until Enter.
         openPauseEditor(null, false, true, 'stop the team later: a duration, e.g. "2h" — current runs finish, then the team stops — Enter to schedule, Esc to cancel');
       }
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
     return true;
   };
 
@@ -131,12 +138,10 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
   // out of pause-edit mode, whose prompt line the restart must not disturb. The write can
   // fail like any marker write, so flash the reason instead of letting the throw escape.
   const restartNow = (_ctx: TuiEditorCtx): boolean => {
-    try {
+    guardError(() => {
       const result = requestRestart(session.root);
       session.flashMessage(result.ok ? result.message : result.error);
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
     return true;
   };
 
@@ -158,7 +163,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
   // throw would escape this keypress handler and kill the TUI — flash the reason instead.
   const roleControlArm = (name: "p" | "a" | "w" | "v", ctx: TuiEditorCtx): boolean => {
     const role = viewedRole(ctx); // defined: view is clamped inside the transcript range
-    try {
+    guardError(() => {
       if (name === "p") {
         // Toggle by the marker's current state, read fresh: pauseRole/resumeRole's false
         // return means another window raced us to the same state, and the wording
@@ -187,9 +192,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
         // Ctrl+W opens the one-line wake editor; nothing is written until Enter. Empty wakes now.
         openPauseEditor(role, true, false, `wake ${role}: [duration], e.g. "2h", or "cancel" (empty wakes now) — Enter to apply, Esc to cancel`);
       }
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
     return true;
   };
 
@@ -234,13 +237,11 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       session.flashMessage(stopParsed.error);
       return;
     }
-    try {
+    guardError(() => {
       const result = requestScheduledStop(session.root, stopParsed.inMs);
       exitPauseEditMode();
       session.flashMessage(result.ok ? result.message : `error: ${result.error}`);
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
   };
 
   const applyWakeEntry = (wakeParsed: ReturnType<typeof parseRoleWakeInput>, target: string): void => {
@@ -248,20 +249,18 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       session.flashMessage(wakeParsed.error);
       return;
     }
-    try {
+    guardError(() => {
       const message = wakeParsed.cancel ? cancelWakes(session.root, [target]) : requestWake(session.root, [target], wakeParsed.inMs);
       exitPauseEditMode();
       session.flashMessage(message);
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
   };
 
   const applyRolePauseEntry = (
     parsed: Extract<ReturnType<typeof parseRolePauseInput>, { ok: true }>,
     target: string,
   ): void => {
-    try {
+    guardError(() => {
       const at = session.now();
       const until = parsed.forMs === undefined ? undefined : at + parsed.forMs;
       const changed = pauseRole(session.root, target, until);
@@ -275,13 +274,11 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
           at,
         ),
       );
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
   };
 
   const applyTeamPauseEntry = (parsed: Extract<ReturnType<typeof parsePauseInput>, { ok: true }>): void => {
-    try {
+    guardError(() => {
       const until = parsed.forMs === undefined ? undefined : session.now() + parsed.forMs;
       const changed = pauseTeam(session.root, until, parsed.reason);
       exitPauseEditMode();
@@ -291,9 +288,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
           ? `${teamPausePhrase()}${forSuffix}${changed && parsed.reason ? `: ${parsed.reason}` : ""}`
           : "team is already paused",
       );
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
   };
 
   const pauseLineFree = (): boolean => !session.anyEditorHeld("pause");
