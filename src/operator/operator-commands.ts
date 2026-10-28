@@ -246,17 +246,9 @@ export async function cmdRestart(root: string, _args: string[]): Promise<void> {
   say(result.message);
 }
 
-/** `tumwater pause [--role <id>[,<id>...]] [--for <duration>]`: with roles (a comma list pauses
- * each), stop THAT role from
- * starting new runs — in-flight ones finish, every other role (the director included)
- * keeps running; without one, stop every role from starting NEW runs while in-flight
- * ones finish and the director keeps running (its prompts outrank operator gates, like
- * under the budget cap). The markers
- * are persistent state, not one-shot requests: presence means paused until `resume` removes
- * it — so pausing before startup starts an already-paused team. Unlike abort, no live
- * harness is required; when none runs, say where the pause takes effect instead of failing.
- * Idempotent: a second pause reports the existing marker as-is. */
-export async function cmdPause(root: string, args: string[] = [], now: number = Date.now()): Promise<void> {
+/** Parse and validate the `--for`/`--reason` flags, failing fast on a bad value before any
+ * marker is written: "how is `--reason` validated?" is answered here. */
+function pauseFlags(args: string[]): { forMs: number | undefined; reason: string | undefined } {
   // `--for <duration>` (the timed pause): the ms-epoch deadline pauseTeam/pauseRole write
   // into the marker and every consumer honors — the command's own gate (runMarkerCommand's
   // rejectUnknownArgs) has already restricted the flag to this command and validated its
@@ -279,29 +271,49 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // capped-flag idiom the --since windows in cli.ts use).
   if (forMs !== undefined)
     failOverDurationCap("pause --for", forMs, PAUSE_FOR_MAX_MS, PAUSE_FOR_OVERFLOW_HINT);
+  return { forMs, reason };
+}
+
+/** The timed-pause deadline shape from `--for` and the single `now` instant the deadline and
+ * the confirmation both read, injected by tests so the wording they pin cannot drift with
+ * the wall clock — the same single-clock discipline timedPauseBits's own `now` parameter
+ * follows: "what deadline does `--for` resolve to?" is answered here. */
+function pauseTiming(forMs: number | undefined, now: number): { timed: { ms: number; untilMs: number } | undefined; untilMs: number | undefined } {
   // `now` is the one instant the deadline and the confirmation both read, injected by tests
   // so the wording they pin cannot drift with the wall clock — the same single-clock
   // discipline timedPauseBits's own `now` parameter follows.
   const timed = forMs === undefined ? undefined : { ms: forMs, untilMs: now + forMs };
-  const untilMs = timed?.untilMs;
-  const roles = pauseTargetRoles(root, args);
-  if (roles) {
-    // The plan keeps per-role pauses anonymous (a per-role reason would need a per-role map
-    // for no observed need), so a reason aimed at a role pause fails fast here — accepting
-    // the flag and silently dropping the note would tell the operator the reason stands
-    // when no marker carries it. Before any marker is written, beside the other fail-fasts.
-    if (reason !== undefined)
-      fail(
-        "pause --reason states why the whole team is paused — a per-role pause carries no reason (drop --role, or run bare `tumwater pause --reason <text>`)",
-      );
-    // Per-role branch: pauseRole in src/team/team-state.ts is the single writer of the role
-    // marker (the TUI's Ctrl+P and the dashboard's /api/pause-role toggle call it too), so
-    // the CLI, TUI, and GUI cannot drift on format or idempotence; a false return means the
-    // role was already in the set, which rolePauseMessage words — unless a `--for` stands,
-    // which overwrites the deadline and reports the fresh confirmation.
-    for (const role of roles) say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed, now));
-    return;
-  }
+  return { timed, untilMs: timed?.untilMs };
+}
+
+/** The per-role pause branch: rejects a reason aimed at a role pause (a per-role reason would
+ * need a per-role map for no observed need), then pauses each named role through
+ * `rolePauseMessage`/`pauseRole`. */
+function pauseRoleGroup(root: string, roles: string[], forMs: number | undefined, now: number, reason: string | undefined): void {
+  const { timed, untilMs } = pauseTiming(forMs, now);
+  // The plan keeps per-role pauses anonymous (a per-role reason would need a per-role map
+  // for no observed need), so a reason aimed at a role pause fails fast here — accepting
+  // the flag and silently dropping the note would tell the operator the reason stands
+  // when no marker carries it. Before any marker is written, beside the other fail-fasts.
+  if (reason !== undefined)
+    fail(
+      "pause --reason states why the whole team is paused — a per-role pause carries no reason (drop --role, or run bare `tumwater pause --reason <text>`)",
+    );
+  // Per-role branch: pauseRole in src/team/team-state.ts is the single writer of the role
+  // marker (the TUI's Ctrl+P and the dashboard's /api/pause-role toggle call it too), so
+  // the CLI, TUI, and GUI cannot drift on format or idempotence; a false return means the
+  // role was already in the set, which rolePauseMessage words — unless a `--for` stands,
+  // which overwrites the deadline and reports the fresh confirmation.
+  for (const role of roles) say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed, now));
+}
+
+/** The team pause branch: writes the pause marker through pauseTeam (the single writer, the
+ * GUI's /api/pause toggle calls it too), reports "already paused" on a false return, and
+ * prints the confirmation template. The reason rides the fresh pause write (or a `--for`
+ * overwrite): the same last-write-wins rule as the deadline, so an "already paused" no-op
+ * keeps the standing note as-is. */
+function pauseTeamGroup(root: string, forMs: number | undefined, now: number, reason: string | undefined): void {
+  const { timed, untilMs } = pauseTiming(forMs, now);
   // pauseTeam in src/team/team-state.ts is the single writer of the pause marker — the GUI's
   // /api/pause toggle calls it too, so the CLI and the dashboard cannot drift on format
   // or idempotence; a false return means the marker was already there (a `--for` never
@@ -318,6 +330,23 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   say(
     `team paused${forPhrase}${why} — roles start no new runs${when} (current runs finish; the director keeps running your messages)${note}${tail}`,
   );
+}
+
+/** `tumwater pause [--role <id>[,<id>...]] [--for <duration>]`: with roles (a comma list pauses
+ * each), stop THAT role from
+ * starting new runs — in-flight ones finish, every other role (the director included)
+ * keeps running; without one, stop every role from starting NEW runs while in-flight
+ * ones finish and the director keeps running (its prompts outrank operator gates, like
+ * under the budget cap). The markers
+ * are persistent state, not one-shot requests: presence means paused until `resume` removes
+ * it — so pausing before startup starts an already-paused team. Unlike abort, no live
+ * harness is required; when none runs, say where the pause takes effect instead of failing.
+ * Idempotent: a second pause reports the existing marker as-is. */
+export async function cmdPause(root: string, args: string[] = [], now: number = Date.now()): Promise<void> {
+  const { forMs, reason } = pauseFlags(args);
+  const roles = pauseTargetRoles(root, args);
+  if (roles) pauseRoleGroup(root, roles, forMs, now, reason);
+  else pauseTeamGroup(root, forMs, now, reason);
 }
 
 /** Deliver the stop signal to the recorded orchestrator pid: "signalled" when SIGTERM was
