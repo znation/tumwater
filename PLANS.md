@@ -492,4 +492,49 @@ function usageWordsIn(usage: string): string[] {
 
 **Tests.** No new test module: a behavior-preserving move behind six module-private helpers, guarded by the test/completion.test.ts cases named above. Run test/completion.test.ts whole, then the project's gate, and confirm green.
 
+### `inputViewWindow`'s complexity-17 window-selection body is split into one named helper per concern — the per-character code-unit starts and display-column prefix, the cursor's character index, the left extent and right fill, and the whole-character overflow fallback — so "where does each character begin in the string?", "how many terminal columns precede it?", "which character does the cursor sit on?" and "what shows when the cursor's own character exceeds the room?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `movedSourceFindings`, `parseInitArgs`, `createTeamConfigKeyEditor`, `cmdLogs`, `sayLogsTail` and `usageWords` plans each extract one named helper per job the same way; independent in file of every Planned entry — `grep -c 'inputViewWindow' PLANS.md` prints 0, and no `## Planned` entry's touches list names src/ui/tui/tui-input.ts (`grep -c 'tui-input' PLANS.md` prints 1, the refused TUI Transcript entry's refusal prose, which is no work): the in-flight plans edit src/backlog/backlog-cli.ts, src/cli/log-commands.ts and src/cli/completion.ts, the blocked `Every commit is verified on main` parts' touches lines name src/ui but not this file, and the blocked `Subtract` parts edit src/ui/tui/tui-editor-*.ts, tui-keys.ts, tui-frame.ts and tui-pane-ctx.ts, not src/ui/tui/tui-input.ts; PLANS-DONE.md holds no `inputViewWindow` split (`grep -c 'inputViewWindow' PLANS-DONE.md` prints 0); docs/invariants.md names neither src/ui/tui/tui-input.ts nor `inputViewWindow` (`grep -c` prints 0 for each); touches src/ui/tui/tui-input.ts)
+
+**Goal.** `inputViewWindow` (`src/ui/tui/tui-input.ts`, exported, complexity 17) is the pure window selector `renderInputView` calls for a prompt line wider than its display columns: it returns the `[start, end)` code-unit slice that keeps the cursor visible while spending at most `room` display columns. Today one body does five jobs: it builds each character's code-unit start and its cumulative display-column prefix; it finds the character the snapped cursor sits on; it extends the window left from the cursor's character while the column budget holds, then fills rightward from the text start when the cursor is near the beginning; and, when the cursor's own character alone exceeds `room`, it falls back to that whole character. A reader asking "where does each character begin?" versus "how wide is it?", "which character is under the cursor?" or "what happens at room 1?" has only the one body to scan, and the `starts`/`prefix` scans, the index search and the two window walks are interleaved.
+
+**Approach.** All edits in `src/ui/tui/tui-input.ts`; move code, do not rewrite it — every condition, boundary and order stays exactly as today, and the existing `//` comments move with the lines they annotate. Add module-private functions beside `inputViewWindow`:
+
+- `function characterStarts(chars: string[]): number[]` — the code-unit start of each character: `const starts: number[] = []; let units = 0; for (const ch of chars) { starts.push(units); units += ch.length; } return starts;`.
+- `function displayPrefix(chars: string[]): number[]` — the display columns before each character: `const prefix: number[] = [0]; for (let k = 0; k < chars.length; k++) prefix.push(prefix[k]! + displayWidth(chars[k]!)); return prefix;`.
+- `function cursorCharIndex(starts: number[], chars: string[], c: number): number` — the character the cursor sits on, or `chars.length` past the last: `for (let k = 0; k < chars.length; k++) if (starts[k]! <= c && c < starts[k]! + chars[k]!.length) return k; return chars.length;`.
+- `function leftWindowStart(prefix: number[], cursorEnd: number, room: number): number` — the left extent: `let startCp = cursorEnd; while (startCp > 0 && prefix[cursorEnd]! - prefix[startCp - 1]! <= room) startCp--; return startCp;`.
+- `function rightWindowEnd(prefix: number[], startCp: number, cursorEnd: number, n: number, room: number): number` — the right fill: `let endCp = cursorEnd; if (startCp === 0 && endCp < n) while (endCp < n && prefix[endCp + 1]! - prefix[0]! <= room) endCp++; return endCp;`.
+- `function wholeCharSpan(starts: number[], chars: string[], ci: number, n: number): { start: number; end: number }` — the overflow fallback: `const k = ci < n ? ci : n - 1; return { start: starts[k]!, end: starts[k]! + chars[k]!.length };`.
+
+`inputViewWindow` keeps its name, its export, its signature, its parameter names and its doc comment (trimmed only to drop detail now carried by the helpers' own comments), and becomes orchestration:
+
+```ts
+const c = snapCursor(text, cursor);
+const chars = Array.from(text);
+const n = chars.length;
+const starts = characterStarts(chars);
+const prefix = displayPrefix(chars);
+const ci = cursorCharIndex(starts, chars, c);
+const cursorEnd = Math.min(n, ci + 1);
+const startCp = leftWindowStart(prefix, cursorEnd, room);
+const endCp = rightWindowEnd(prefix, startCp, cursorEnd, n, room);
+const start = startCp < n ? starts[startCp]! : text.length;
+const end = endCp < n ? starts[endCp]! : text.length;
+return end <= start && n > 0 ? wholeCharSpan(starts, chars, ci, n) : { start, end };
+```
+
+`snapCursor` and `renderInputView` are untouched; `renderInputView`'s call to `inputViewWindow` is unchanged. (`units` in the old body equals `text.length`, the sum of the characters' code-unit lengths, so the two end markers are spelled `text.length` above.)
+
+**Files touched.** `src/ui/tui/tui-input.ts` only. No new module, no export change, no interface change, no test file edited, no docs edited.
+
+**Acceptance criteria.**
+- `inputViewWindow`'s body contains only the `snapCursor` call, `Array.from(text)`, the six helper calls, the `Math.min`, the two `start`/`end` selections and the one `wholeCharSpan` return: it contains no `for` loop, no `while` loop, no `push`, no `displayWidth` and no `starts[k]` index expression.
+- `characterStarts`, `displayPrefix`, `cursorCharIndex`, `leftWindowStart`, `rightWindowEnd` and `wholeCharSpan` each exist exactly once at module scope, are not exported, and are called only from `src/ui/tui/tui-input.ts`; the `displayWidth` accumulation lives only in `displayPrefix`, the character-index boundary test only in `cursorCharIndex`, and the code-unit `+ ch.length` accumulation only in `characterStarts`.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/ui/tui/tui-input.ts'`) no longer reports `inputViewWindow` at 17, and each new helper reports at most 4; `applyKey` keeps its reported count and the file's other functions keep theirs.
+- The exported surface is unchanged: `grep -nE '^export ' src/ui/tui/tui-input.ts` still matches exactly `applyKey`, `parseBudgetInput`, `parsePauseInput`, `parseRolePauseInput`, `parseRoleWakeInput`, `parseStopInInput`, `parseRolePromptInput`, `renderInputView`, `inputViewWindow` and `tuiTerminalError`; no import line in src/ or test/ changes.
+- Behavior is preserved: the same code-unit start and display-column prefix per character, the same cursor-clamped character index, the same left extent and right fill, the same whole-character fallback and the same returned `[start, end)`, verified by the existing cases passing unedited — `test/tui-input.test.ts` "renderInputView windows astral text without a lone surrogate or a hidden cursor" (the three direct `inputViewWindow` assertions at `"ab\u{1f600}\u{1f600}"` cursors 4 and 5 at room 2 and `"\u{1f600}\u{1f600}"` cursor 4 at room 1, plus the width/cursor property loop), "renderInputView budgets the prompt line in display columns, not UTF-16 units" and "the rendered prompt line never exceeds the terminal width".
+- docs/invariants.md is not edited: it binds no guarantee on this file or `inputViewWindow`.
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind six module-private helpers, guarded by the `test/tui-input.test.ts` cases named above. Run `test/tui-input.test.ts` whole, then the project's gate, and confirm green.
+
 ## Done
