@@ -15,7 +15,7 @@ import { renderPostReviews, postReviewStatusLabel, scopePostReviews, POST_REVIEW
 import { acceptPostReview } from "../../review/post-merge-review-accept.js";
 import { squash } from "../../text/text.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
-import type { TuiPaneSession } from "./tui-pane-session.js";
+import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 import { arrowDir } from "./tui-keymap.js";
 import { distinctOrdered } from "../../collections.js";
 import { moveEntrySelection } from "./tui-backlog.js";
@@ -288,8 +288,7 @@ export function createPendingPane(session: TuiPaneSession) {
     head = queueAndReviews() + rosterText;
     compose();
     session.paneCache = base;
-    session.paneScroll = 0;
-    session.requestRender();
+    paneAtHead(session);
   };
   const refresh = (): void => {
     // Generation guard: each refresh bumps the counter, and a resolution paints only if it
@@ -337,8 +336,7 @@ export function createPendingPane(session: TuiPaneSession) {
       // its head so the changed body starts at the top; the roster's git read is a fresh
       // collector run, and a run already in flight is superseded by the new read.
       refresh();
-      session.paneScroll = 0;
-      session.requestRender();
+      paneAtHead(session);
       return true;
     }
     if (key.ctrl && key.name === "g" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
@@ -390,15 +388,13 @@ export function createPendingPane(session: TuiPaneSession) {
         overlapIndex = -1;
         ++drillGen;
         session.paneCache = base;
-        session.paneScroll = 0;
-        session.requestRender();
+        paneAtHead(session);
         return true;
       }
       const { path, roles } = overlaps.overlaps[overlapIndex]!;
       const heading = overlapDrillHeading(overlapIndex, overlaps.overlaps.length, path);
       session.paneCache = heading + "\n\nloading…";
-      session.paneScroll = 0;
-      session.requestRender();
+      paneAtHead(session);
       const gen = ++drillGen;
       const refresh0 = refreshGen;
       const current = (): boolean => gen === drillGen && refresh0 === refreshGen && session.view === session.roleIds.length + 5;
@@ -426,8 +422,7 @@ export function createPendingPane(session: TuiPaneSession) {
       selectedQueue = moveEntrySelection(queueRows.length, selectedQueue, arrow);
       const selRow = selectedQueue === null ? undefined : queueRows[selectedQueue];
       queueDetail = selRow ? rowDetail(selRow) : "";
-      session.paneScroll = 0;
-      session.requestRender();
+      paneAtHead(session);
       return true;
     }
     if (key.name === "escape" && session.view === session.roleIds.length + 5 && selectedQueue !== null && promptLineFree(ctx.es)) {
@@ -436,8 +431,7 @@ export function createPendingPane(session: TuiPaneSession) {
       // paneScroll resets with the body switch, like a selection move.
       selectedQueue = null;
       queueDetail = "";
-      session.paneScroll = 0;
-      session.requestRender();
+      paneAtHead(session);
       return true;
     }
     if (key.ctrl && key.name === "x" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {

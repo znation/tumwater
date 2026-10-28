@@ -9,7 +9,7 @@ import { brokenPinDropLines, leftoverRetireLines } from "../../doctor/doctor-con
 import { describeArchivedFile } from "../../backlog/backlog-archive.js";
 import { shortSha } from "../../text/format.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
-import type { TuiPaneSession } from "./tui-pane-session.js";
+import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 
 /** The Health pane (view roleIds.length + 7) of the TUI (src/ui/tui/tui.tsx): the doctor
  * re-run (Ctrl+R), reclaim (Ctrl+E), notify test (Ctrl+N), commit-backlog (Ctrl+A),
@@ -95,8 +95,7 @@ export function createHealthPane(session: TuiPaneSession) {
     // problems-only toggle, and re-enters at the head so the changed body starts at the
     // top. Every other view keeps today's Ctrl+R (the backlog release).
     void run();
-    session.paneScroll = 0;
-    session.requestRender();
+    paneAtHead(session);
     return true;
   };
   const healthReclaim = (ctx: TuiPaneCtx): boolean => {
@@ -300,8 +299,7 @@ export function createHealthPane(session: TuiPaneSession) {
     healthProblems = !healthProblems;
     if (lastDoctorReport !== null)
       session.paneCache = (healthProblems ? renderDoctorProblems : renderDoctor)(lastDoctorReport);
-    session.paneScroll = 0;
-    session.requestRender();
+    paneAtHead(session);
     return true;
   };
 

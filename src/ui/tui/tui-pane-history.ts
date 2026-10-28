@@ -24,7 +24,7 @@ import { plural } from "../../text/phrases.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
-import { nextInCycle, cycleLabel, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPaneSession } from "./tui-pane-session.js";
+import { paneAtHead, nextInCycle, cycleLabel, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPaneSession } from "./tui-pane-session.js";
 
 /** The bounds `readRunRowsSince` reads for a trailing window of `windowMs` stepped `step` window
  * lengths back: step 0 (or no window) is the trailing window, step k the window (k+1)*len to k*len
@@ -438,8 +438,7 @@ export function createHistoryPane(
       const empty = filtered ? "no completed runs match the pane's filters" : "no completed runs to inspect";
       if (loadTrail(() => session.flashMessage(empty))) trailMode = true;
     }
-    session.paneScroll = 0; // either way the pane starts at its head
-    session.requestRender();
+    paneAtHead(session);
     return true;
   };
 
@@ -474,8 +473,7 @@ export function createHistoryPane(
     // readRunRows(root, HISTORY_MAX_RUNS, null) and takes .filtered[0] — the newest failing
     // run of any role, exactly what the dashboard's Newest failure button and the CLI open.
     if (loadTrail(() => session.flashMessage("no failing run in the scanned window"))) trailMode = true;
-    session.paneScroll = 0;
-    session.requestRender();
+    paneAtHead(session);
     return true;
   };
 
@@ -556,8 +554,7 @@ export function createHistoryPane(
       if (trailStat === null) loadTrailStat(trailRun.detail);
       composeTrail();
     }
-    session.paneScroll = 0;
-    session.requestRender();
+    paneAtHead(session);
     return true;
   };
 

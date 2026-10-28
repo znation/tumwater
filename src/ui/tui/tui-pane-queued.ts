@@ -4,7 +4,7 @@ import { movePromptToTop } from "../../inbox/inbox-top.js";
 import { moveEntrySelection } from "./tui-backlog.js";
 import { arrowDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
-import type { TuiPaneSession } from "./tui-pane-session.js";
+import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 
 /** The Queued pane (view roleIds.length + 6) of the TUI (src/ui/tui/tui.tsx): the prompt row
  * selection, the up/down select and Esc-to-list arms, and the Ctrl+X cancel and Ctrl+V
@@ -152,8 +152,7 @@ export function createQueuedPane(
       // was cancelled), so the pane shows the same renderQueuedList it entered with. The
       // shared paneScroll resets with the body switch, like a selection move.
       selectedQueued = null;
-      session.paneScroll = 0;
-      session.requestRender();
+      paneAtHead(session);
       return true;
     }
     return false;

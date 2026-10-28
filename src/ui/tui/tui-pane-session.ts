@@ -272,3 +272,13 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     runPatch: deps.runPatch,
   };
 }
+
+/** Re-enter the active pane at its head: reset the shared within-body scroll offset to the top
+ * and repaint. The panes' key-handler and refresh arms reset the scroll and request a render
+ * together every time they return a view to its start, so this single helper keeps that pair
+ * from drifting — and names the intent (the pane starts at its head) once instead of at each
+ * call site. A key-handler caller that consumed the key follows with its own `return true`. */
+export function paneAtHead(session: TuiPaneSession): void {
+  session.paneScroll = 0;
+  session.requestRender();
+}

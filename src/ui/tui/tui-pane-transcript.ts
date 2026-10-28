@@ -9,7 +9,7 @@ import { roleInspectMarkdown } from "./tui-pane.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
-import type { TuiPaneSession } from "./tui-pane-session.js";
+import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 
 /** The per-role transcript panes (views 1..roleIds.length) of the TUI: the Ctrl+N
  * transcript→notes→change cycle and its two-step Ctrl+X notes-clear arm, the Ctrl+Y
@@ -134,8 +134,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
         session.flashError(err);
       }
     }
-    session.paneScroll = 0; // either way the pane starts at its head
-    session.requestRender();
+    paneAtHead(session);
     return true;
   };
 
@@ -218,8 +217,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
     refreshNotes(role: string) {
       if (!noteMode || viewedRole() !== role) return;
       noteCache = roleInspectMarkdown(session.root, role);
-      session.paneScroll = 0;
-      session.requestRender();
+      paneAtHead(session);
     },
     reset() {
       // A cycle away leaves notes and change modes and drops their snapshots; changeGen
@@ -239,8 +237,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
       // viewed role and returns the pane to its head.
       if (session.view < 1 || session.view > session.roleIds.length) return;
       transcriptSearch = pattern === null ? null : { role: viewedRole(), pattern };
-      session.paneScroll = 0;
-      session.requestRender();
+      paneAtHead(session);
     },
     state() {
       const transcriptGrep = transcriptSearch !== null && viewedRole() === transcriptSearch.role
