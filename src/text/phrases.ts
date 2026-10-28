@@ -269,6 +269,21 @@ function withoutLeadingCd(command: string): string {
   return rest.trim() ? rest : command;
 }
 
+/** The first present candidate string in a tool call's args, or "" when none is a string.
+ * The read order — path, file_path, command, cmd, pattern, url — is the order INV-AE4 pins. */
+function toolCallCandidate(args: Record<string, unknown>): string {
+  const candidate = args.path ?? args.file_path ?? args.command ?? args.cmd ?? args.pattern ?? args.url;
+  return typeof candidate === "string" ? candidate : "";
+}
+
+/** How one candidate reads as a detail: a path-like key reduces to its file name, a
+ * command-like key drops a leading `cd`, and any other key shows verbatim. */
+function toolCallDetail(candidate: string, args: Record<string, unknown>): string {
+  if (candidate === args.path || candidate === args.file_path) return path.basename(candidate);
+  if (candidate === args.command || candidate === args.cmd) return withoutLeadingCd(candidate);
+  return candidate;
+}
+
 /** One-line description of a tool call from its name and args — shared by live progress data
  * collection (LiveProgress.lastTool), transcript rendering, and the harness's stalled-tool-call
  * warning (src/pi/pi-stream.ts builds the label src/pi/pi-watchdogs.ts renders). Path-like keys
@@ -276,19 +291,8 @@ function withoutLeadingCd(command: string): string {
  * is dropped from a command, because the run's cwd is implied and the path would use up the
  * 32-character budget. */
 export function describeToolCall(toolName: string, args: unknown): string {
-  let detail = "";
-  if (isJsonObject(args)) {
-    const candidate = args.path ?? args.file_path ?? args.command ?? args.cmd ?? args.pattern ?? args.url;
-    if (typeof candidate === "string") {
-      detail =
-        candidate === args.path || candidate === args.file_path
-          ? path.basename(candidate)
-          : candidate === args.command || candidate === args.cmd
-            ? withoutLeadingCd(candidate)
-            : candidate;
-    }
-  }
-  detail = squash(detail, 32);
+  const raw = isJsonObject(args) ? toolCallDetail(toolCallCandidate(args), args) : "";
+  const detail = squash(raw, 32);
   // An empty name (pi omits toolName on some start events) yields the bare detail — no
   // leading space in front of it.
   return detail ? (toolName ? `${toolName} ${detail}` : detail) : toolName;
