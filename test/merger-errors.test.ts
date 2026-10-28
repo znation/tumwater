@@ -69,3 +69,19 @@ test("a stack abandoned to one-at-a-time keeps the prefix that merged and degrad
     assert.notEqual(await refSha(root, mergeRefName("beta")), null);
   });
 });
+
+test("a verify whose slot cannot be leased degrades to a terminal 'error' with the message on the role's state", async () => {
+  // verifyRequest's catch around leaseSlot (the slot the review would run in) is the gate
+  // check cannot reach: it yields passed/rejected/main_red/merge_blocked, never a thrown
+  // error. Only a lease failure — here a dangling pin whose commit the slot's
+  // ensureDetachedWorktree cannot check out — throws its way out of leaseSlot into that
+  // catch, so pin it directly. The lease fails before any pi run, so no fake pi is needed.
+  const { root, states, wiringFor } = await batchFixture(["alpha"], {});
+  const v = await verifyRequest(
+    makeBatchCtx(root),
+    request("0123456789abcdef0123456789abcdef01234567", { role: "alpha" }),
+    wiringFor("alpha"),
+  );
+  assert.deepEqual(v, { kind: "result", result: "error" });
+  assert.ok(states.alpha!.lastError, "the lease failure is on the role's state");
+});

@@ -41,7 +41,7 @@ import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
-import { APPROVE_PI, assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
+import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 
 const FAST_POLL_MS = 100;
 
@@ -664,72 +664,6 @@ test("maxConcurrent 4 verifies three queued changes at once on the live orchestr
     assert.equal(Math.max(...samples), 3, `the three gate checks overlapped (in flight at each start: ${samples})`);
     assert.equal(eventsOfType(repo, "merged").length, 3, "every change merged");
   } finally {
-    await stopOrchestrator(orch, restore);
-  }
-});
-
-test("a verify slot that can no longer be created is contained: the healthy change merges, the other drops as an error", async () => {
-  // mergeApproved degrades failed merges to results, but a git-level failure in a stack's
-  // assembly still throws, and the merge's catch must keep every entry queued (un-approved, so
-  // each is reviewed afresh next poll) instead of escaping as an unhandled rejection; clean's
-  // own re-verify degrades the same failure to an "error" outcome. Either way the queue must
-  // drain: clean, whose just-freed slot cannot be re-created, drops as a terminal error, and
-  // dedupe merges. Trigger: clean's own review run deletes its just-freed slot and makes the
-  // worktrees parent unwritable before it approves, after seeding the shared `_merge` checkout
-  // so dedupe's change (part 2c) can still merge.
-  const repo = await makeFastRepo("merger worktree throw recovery test", ["clean", "dedupe"]);
-  await seedMergeQueue(repo, "clean", "dedupe");
-  const worktrees = path.join(repo, ".tumwater", "worktrees");
-  const mergeWt = path.join(worktrees, "_merge");
-  const armed = path.join(tmpdir(), "worktree-throw-armed");
-  const restore = fakePi(
-    [
-      `for a in "$@"; do case "$a" in`,
-      `*"VERDICT:"*)`,
-      leasedRoleShell(),
-      `case "$role" in clean) if [ ! -e '${armed}' ]; then`,
-      `  touch '${armed}'; slot="$PWD"; cd /;`,
-      // The shared merge checkout must exist before the parent is locked (a verify on a pooled
-      // slot does not create it): seed it, then remove clean's just-freed slot and lock the
-      // parent, so clean can no longer re-verify (its slot cannot be re-created) while the seeded
-      // shared `_merge` checkout survives and dedupe's change merges.
-      `  git -C '${repo}' worktree add --detach '${mergeWt}' main >/dev/null 2>&1;`,
-      `  rm -rf "$slot"; chmod 555 '${worktrees}'`,
-      `fi;; esac`,
-      `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
-      `esac; done`,
-      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-    ].join("\n"),
-  );
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
-  try {
-    await waitFor(() => fs.existsSync(armed), "clean's review to arm the corruption", 60_000);
-    // The failure was contained and the pipeline self-terminated: dedupe's change merges, while
-    // clean's — whose merger worktree can no longer be created — drops as a terminal error
-    // instead of silently vanishing or wedging the queue forever.
-    await waitFor(
-      () => fs.existsSync(path.join(repo, "dedupe.txt")) && queueDepth(repo) === 0,
-      "dedupe's merge to finish and the queue to drain",
-      60_000,
-    );
-    assert.ok(fs.existsSync(path.join(repo, "dedupe.txt")), "dedupe's change merged on main");
-    assert.ok(
-      !fs.existsSync(path.join(repo, "clean.txt")),
-      "clean's change did not merge — its merger worktree was gone",
-    );
-    const cleanErrors = readEvents(repo).filter(
-      (e) => e.type === "merge_failed" && e.source === "clean" && e.result === "error",
-    );
-    assert.ok(cleanErrors.length >= 1, "clean ended in a terminal error outcome");
-    const merged = eventsOfType(repo, "merged");
-    assert.equal(
-      merged.filter((e) => e.source === "dedupe").length,
-      1,
-      "exactly one merged event, and it is dedupe's",
-    );
-  } finally {
-    // Restore before stopping: shutdown and later runs must be able to create worktrees.
-    fs.chmodSync(worktrees, 0o755);
     await stopOrchestrator(orch, restore);
   }
 });
