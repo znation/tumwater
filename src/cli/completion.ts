@@ -22,36 +22,67 @@ interface CompletionSpec {
   flags: Record<string, string[]>;
 }
 
-/** The completable words of a stanza's usage part: the text after `tumwater <command>` up to the
- * description column (two or more spaces). Bare lowercase words count inside `[...]` and as the
- * leading run directly after the command; outside brackets the first other token ends the run, so
- * a single-space description (`role <id> --clear-notes Clear that notes`) adds nothing. */
-function usageWords(firstLine: string, command: string): string[] {
+/** The usage text of a stanza first line: the part after `tumwater <command>` up to the
+ * description column (two or more spaces). */
+function usagePortion(firstLine: string, command: string): string {
   const rest = firstLine.replace(new RegExp(`^ {2}tumwater ${command}`), "");
   // Usage arguments follow the command after a single space; two or more spaces start the
   // description.
-  const usage = /^ {2,}/.test(rest) ? "" : (rest.split(/ {2,}/)[0] ?? "");
+  return /^ {2,}/.test(rest) ? "" : (rest.split(/ {2,}/)[0] ?? "");
+}
+
+/** An angle-bracket alternation of plain words — `<bash|zsh|fish>`, the completion command's
+ * shell positional — expands to each alternative as a subcommand word, so `tumwater completion
+ * <TAB>` lists exactly the shells the command accepts. A bare placeholder like `<id>` or `<k>`
+ * carries no `|` and so stays a placeholder, skipped as before (its `<`/`>` never leave the
+ * token, so it never looked like a word). The expansion only fires while the leading run is
+ * open; the returned words contribute as the leading words of the usage part. */
+function alternationWords(token: string, leading: boolean): string[] | null {
+  const alternation = /^<([a-z][a-z-]*(?:\|[a-z][a-z-]*)+)>$/.exec(token);
+  return alternation && leading ? alternation[1]!.split("|") : null;
+}
+
+/** Whether a token counts as a completable bare word: it is a plain lowercase word and either
+ * sits inside brackets, opens a bracket itself, or is still within the leading run. */
+function isCompletableWord(bare: string, token: string, depth: number, leading: boolean): boolean {
+  return /^[a-z][a-z-]*$/.test(bare) && (depth > 0 || token.startsWith("[") || leading);
+}
+
+/** Whether a token ends the leading run: outside brackets, not opening a bracket, and not
+ * blank once its brackets and bars are stripped (so an angle-bracket placeholder closes it). */
+function endsLeadingRun(bare: string, token: string, depth: number): boolean {
+  return depth === 0 && !token.startsWith("[") && bare !== "";
+}
+
+/** The bracket-depth delta of a token: `[` +1 and `]` -1 per character, everything else 0. */
+function bracketDelta(token: string): number {
+  let delta = 0;
+  for (const ch of token) delta += ch === "[" ? 1 : ch === "]" ? -1 : 0;
+  return delta;
+}
+
+/** The completable words of a usage text: the angle-bracket alternation expands, bare lowercase
+ * words count inside `[...]` and as the leading run directly after the command, and outside
+ * brackets the first other token ends the run. */
+function usageWordsIn(usage: string): string[] {
   const words: string[] = [];
   let depth = 0;
   let leading = true;
   for (const token of usage.split(/\s+/).filter(Boolean)) {
-    // An angle-bracket alternation of plain words — `<bash|zsh|fish>`, the completion
-    // command's shell positional — expands to each alternative as a subcommand word, so
-    // `tumwater completion <TAB>` lists exactly the shells the command accepts. A bare
-    // placeholder like `<id>` or `<k>` carries no `|` and so stays a placeholder, skipped
-    // as before (its `<`/`>` never leave the token, so it never looked like a word).
-    const alternation = /^<([a-z][a-z-]*(?:\|[a-z][a-z-]*)+)>$/.exec(token);
-    if (alternation && leading) {
-      for (const alt of alternation[1]!.split("|")) words.push(alt);
-      continue;
-    }
+    const alternates = alternationWords(token, leading);
+    if (alternates) { words.push(...alternates); continue; }
     const bare = token.replace(/[[\]|]/g, "");
-    const isWord = /^[a-z][a-z-]*$/.test(bare);
-    if (isWord && (depth > 0 || token.startsWith("[") || leading)) words.push(bare);
-    else if (depth === 0 && !token.startsWith("[") && bare !== "") leading = false;
-    for (const ch of token) depth += ch === "[" ? 1 : ch === "]" ? -1 : 0;
+    if (isCompletableWord(bare, token, depth, leading)) words.push(bare);
+    else if (endsLeadingRun(bare, token, depth)) leading = false;
+    depth += bracketDelta(token);
   }
   return words;
+}
+
+/** The completable words of a stanza's usage part: the text after `tumwater <command>` up to the
+ * description column (two or more spaces). */
+function usageWords(firstLine: string, command: string): string[] {
+  return usageWordsIn(usagePortion(firstLine, command));
 }
 
 export function completionSpec(help: string = HELP): CompletionSpec {
