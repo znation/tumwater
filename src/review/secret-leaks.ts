@@ -36,39 +36,53 @@ export function secretEnvValues(env: NodeJS.ProcessEnv): { name: string; value: 
   return out;
 }
 
-/** The credentials pi stores: literal `apiKey`s and header values in `models.json`, and the
- * `key`/`access`/`refresh` fields (plus secret-named `env` values) of the sibling `auth.json`.
- * `$NAME` interpolations (secretEnvValues covers those) and `!command` values are skipped. A
- * missing or torn file yields nothing; never throws. */
-export function piCredentialValues(modelsPath: string = piModelsPath()): Secret[] {
+/** Push `value` into `out` as a credential named `name`, unless it is not a string, is a `$NAME`
+ * interpolation or `!command`, or fails `looksLikeSecret`. */
+function addPiSecret(out: Secret[], name: string, value: unknown): void {
+  if (typeof value !== "string" || value.startsWith("$") || value.startsWith("!")) return;
+  if (looksLikeSecret(value)) out.push({ name, value });
+}
+
+function modelsJsonCredentials(modelsPath: string): Secret[] {
   const out: Secret[] = [];
-  const add = (name: string, value: unknown) => {
-    if (typeof value !== "string" || value.startsWith("$") || value.startsWith("!")) return;
-    if (looksLikeSecret(value)) out.push({ name, value });
-  };
   const models = readJsonFile<Record<string, unknown>>(modelsPath);
   if (models && isJsonObject(models.providers)) {
     for (const [p, cfg] of Object.entries(models.providers)) {
       if (!isJsonObject(cfg)) continue;
-      add(`models.json ${p}.apiKey`, cfg.apiKey);
+      addPiSecret(out, `models.json ${p}.apiKey`, cfg.apiKey);
       if (isJsonObject(cfg.headers)) {
-        for (const [h, v] of Object.entries(cfg.headers)) add(`models.json ${p}.headers.${h}`, v);
-      }
-    }
-  }
-  const auth = readJsonFile<Record<string, unknown>>(path.join(path.dirname(modelsPath), "auth.json"));
-  if (auth) {
-    for (const [p, cred] of Object.entries(auth)) {
-      if (!isJsonObject(cred)) continue;
-      for (const f of ["key", "access", "refresh"]) add(`auth.json ${p}.${f}`, cred[f]);
-      if (isJsonObject(cred.env)) {
-        for (const [n, v] of Object.entries(cred.env)) {
-          if (SECRET_NAME.test(n)) add(`auth.json ${p}.env.${n}`, v);
+        for (const [h, v] of Object.entries(cfg.headers)) {
+          addPiSecret(out, `models.json ${p}.headers.${h}`, v);
         }
       }
     }
   }
   return out;
+}
+
+function authJsonCredentials(modelsPath: string): Secret[] {
+  const out: Secret[] = [];
+  const auth = readJsonFile<Record<string, unknown>>(path.join(path.dirname(modelsPath), "auth.json"));
+  if (auth) {
+    for (const [p, cred] of Object.entries(auth)) {
+      if (!isJsonObject(cred)) continue;
+      for (const f of ["key", "access", "refresh"]) addPiSecret(out, `auth.json ${p}.${f}`, cred[f]);
+      if (isJsonObject(cred.env)) {
+        for (const [n, v] of Object.entries(cred.env)) {
+          if (SECRET_NAME.test(n)) addPiSecret(out, `auth.json ${p}.env.${n}`, v);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** The credentials pi stores: literal `apiKey`s and header values in `models.json`, and the
+ * `key`/`access`/`refresh` fields (plus secret-named `env` values) of the sibling `auth.json`.
+ * `$NAME` interpolations (secretEnvValues covers those) and `!command` values are skipped. A
+ * missing or torn file yields nothing; never throws. */
+export function piCredentialValues(modelsPath: string = piModelsPath()): Secret[] {
+  return [...modelsJsonCredentials(modelsPath), ...authJsonCredentials(modelsPath)];
 }
 
 /** Every secret the gate knows: secret-named environment values (named `$NAME`) then pi's stored
