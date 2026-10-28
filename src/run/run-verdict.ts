@@ -91,6 +91,18 @@ function abortWithResume(
   return { result, resumeCause };
 }
 
+/** End a run as an unfulfilled error: record `lastError`, re-queue the raw prompt for a later
+ * fresh run (requeueUnfulfilled) and return the error outcome — the terminal the timeout and
+ * image-blind arms share, filed here so the "record lastError, re-queue unfulfilled, end as
+ * error" contract cannot drift between them (the resume-arming twin is abortWithResume above;
+ * failedRunArm's error path keeps its own split because it arms a resume for a dirty worktree
+ * and sets lastError before that choice). */
+function unfulfilledError(s: RunnerState, ctx: RunVerdictContext, message: string): RunOutcome {
+  s.lastError = message;
+  ctx.pending.requeueUnfulfilled(ctx.userPrompt);
+  return { result: "error" };
+}
+
 /** Classify what the finished run left behind; null means the run is fulfillable and staging
  * should take over. Never throws: every branch returns an outcome, recording what went wrong
  * in `state.lastError` or a warning event. */
@@ -194,11 +206,9 @@ function progressingTimeoutArm(ctx: RunVerdictContext): RunOutcome | undefined {
 function timeoutArm(ctx: RunVerdictContext): RunOutcome | undefined {
   const { pi, state: s } = ctx;
   if (pi.timedOut) {
-    s.lastError = pi.errorMessage ?? "timed out";
     // The request never ran to completion and no work merged: put it back so the next
     // run retries it. (A killed run's half-done edits are discarded by the reset.)
-    ctx.pending.requeueUnfulfilled(ctx.userPrompt);
-    return { result: "error" };
+    return unfulfilledError(s, ctx, pi.errorMessage ?? "timed out");
   }
   return undefined;
 }
@@ -260,12 +270,10 @@ function imageBlindArm(ctx: RunVerdictContext): RunOutcome | undefined {
     // between tiers forever. Set at run start by runPhase when it routes a run onto the
     // target (blind-read handoff or attachment preflight).
     if (s.imageRerouteActive) {
-      s.lastError = pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`;
       // No work was done (the run was killed at the first read): nothing to resume, and the
       // prompt re-queues to run fresh later like any other error. The error backoff/streak
       // apply as usual.
-      ctx.pending.requeueUnfulfilled(ctx.userPrompt);
-      return { result: "error" };
+      return unfulfilledError(s, ctx, pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`);
     }
     // Otherwise, when the role's tier has an image-capable reroute target, the failed work
     // is not discarded: the next run starts directly on that target over the kept worktree.
@@ -301,9 +309,7 @@ function imageBlindArm(ctx: RunVerdictContext): RunOutcome | undefined {
       });
       return { result: "aborted", resumeCause: "image-reroute" };
     }
-    s.lastError = pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`;
-    ctx.pending.requeueUnfulfilled(ctx.userPrompt);
-    return { result: "error" };
+    return unfulfilledError(s, ctx, pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`);
   }
   return undefined;
 }
