@@ -892,7 +892,7 @@ reported in `leftAlone`. An existing .gitignore only gains the missing ignore li
 own line. A README.md without the managed markers is adopted (the brief goes to TUMWATER.md) and
 never rewritten.
 
-**Binds.** `src/init/init.ts` (`seedProject`'s local `claim`, `ensureGitignore`),
+**Binds.** `src/init/init.ts` (`seedWriters`'s `claim`, `ensureGitignore`),
 `src/brief/brief.ts` (`briefFile`).
 
 **Pinned by.** `test/init.test.ts` — "initProject never clobbers existing files and is

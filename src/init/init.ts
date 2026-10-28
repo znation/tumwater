@@ -348,32 +348,17 @@ async function resolveInitPlan(
   return { dryRun, tpl, combinedPrompt, brief, readmeExists, adopted, wasRepo, preferredBranch };
 }
 
-/** Seed `root` from a resolved `InitPlan`: git init (a new repo only), every absent project
- * file and starter directory, the config, and the commit. Holds the `created`/`leftAlone`
- * bookkeeping locally; performs no validation and never refuses. Returns everything the
- * composed `InitResult` needs except `adopted`, `dryRun` and `template`, which `initProject`
- * reads off `plan`. */
-async function seedProject(
-  root: string,
-  plan: InitPlan,
-): Promise<
-  Pick<InitResult, "created" | "leftAlone" | "committed" | "repoInitialized" | "branch" | "bootstrap">
-> {
-  const { dryRun, tpl, combinedPrompt, brief, readmeExists, adopted, wasRepo, preferredBranch } = plan;
-  let repoInitialized = false;
-  let createdBranch: string | undefined;
-  if (!wasRepo) {
-    if (!dryRun) await git(root, "init", "-b", preferredBranch!);
-    repoInitialized = true;
-    createdBranch = preferredBranch;
-  }
+/** The `created`/`leftAlone` bookkeeping and the `claim`/`write` writer pair, shared by every
+ * seeded path so the file and empty-directory writers' bookkeeping cannot drift. */
+interface SeedWriters {
+  created: string[];
+  leftAlone: string[];
+  claim(name: string, full: string, make: () => void): void;
+  write(name: string, content: string): void;
+}
 
-  // Decided before any project file is written (init only seeds bootstrap on a fresh project).
-  // A repo the `git init` above just created (or a dry run would) has no commits, and init
-  // itself commits nothing before the end, so this one answer also picks the commit message.
-  const withCommits = wasRepo && (await hasCommits(root));
-  const fresh = await isFreshProject(root, withCommits);
-
+/** The `created`/`leftAlone` arrays and the `claim`/`write` closures above them. */
+function seedWriters(root: string, dryRun: boolean): SeedWriters {
   const created: string[] = [];
   const leftAlone: string[] = [];
   /** Record a template path this run either created (via `make`, under a real run only) or
@@ -395,17 +380,53 @@ async function seedProject(
   // never repair it.
   const write = (name: string, content: string) =>
     claim(name, path.join(root, name), () => writeTextAtomic(path.join(root, name), content));
+  return { created, leftAlone, claim, write };
+}
 
+/** The new-repo `git init` job: seed the preferred branch unless the run is a dry run. */
+async function initSeedRepo(
+  root: string,
+  plan: InitPlan,
+): Promise<{ repoInitialized: boolean; createdBranch: string | undefined }> {
+  let repoInitialized = false;
+  let createdBranch: string | undefined;
+  if (!plan.wasRepo) {
+    if (!plan.dryRun) await git(root, "init", "-b", plan.preferredBranch!);
+    repoInitialized = true;
+    createdBranch = plan.preferredBranch;
+  }
+  return { repoInitialized, createdBranch };
+}
+
+/** Whether `root` is a fresh project and the repo has commits — decided before any project
+ * file is written (init only seeds bootstrap on a fresh project). A repo the `git init`
+ * above just created (or a dry run would) has no commits, and init itself commits nothing
+ * before the end, so this one answer also picks the commit message. */
+async function resolveSeedFreshness(
+  root: string,
+  plan: InitPlan,
+): Promise<{ withCommits: boolean; fresh: boolean }> {
+  const withCommits = plan.wasRepo && (await hasCommits(root));
+  const fresh = await isFreshProject(root, withCommits);
+  return { withCommits, fresh };
+}
+
+/** Where the brief goes: the existing brief file, TUMWATER.md (adopted), or README.md. */
+function seedBriefFile(root: string, plan: InitPlan, writers: SeedWriters): void {
   // README.md is the brief only when none exists yet and there is no README to adopt (a fresh
   // repo): with TUMWATER.md owning the managed sections, a created README.md would carry a
   // duplicate prompt + status block that readBriefText never reaches and the readme role
   // never maintains.
   const name = projectName(root);
-  if (brief !== null) leftAlone.push(brief);
-  else if (adopted) {
-    if (readmeExists) leftAlone.push("README.md");
-    write("TUMWATER.md", briefTemplate(name, combinedPrompt));
-  } else write("README.md", readmeTemplate(name, combinedPrompt));
+  if (plan.brief !== null) writers.leftAlone.push(plan.brief);
+  else if (plan.adopted) {
+    if (plan.readmeExists) writers.leftAlone.push("README.md");
+    writers.write("TUMWATER.md", briefTemplate(name, plan.combinedPrompt));
+  } else writers.write("README.md", readmeTemplate(name, plan.combinedPrompt));
+}
+
+/** The template backlog files: PLANS/BUGS/QUESTIONS/PRINCIPLES, with starter-plans subst. */
+function seedBacklogFiles(tpl: InitPlan["tpl"], writers: SeedWriters): void {
   // A template with starter plans seeds the backlog with them, rendered as `### ` entries —
   // the primary entry format every backlog reader parses — so the team's first runs land on
   // real work. blank keeps the `_None yet._` placeholder byte-identical to today.
@@ -416,12 +437,21 @@ async function seedProject(
           tpl.starterPlans.map((p) => `### ${p}`).join("\n\n"),
         )
       : PLANS_TEMPLATE;
-  write("PLANS.md", plansContent);
-  write("BUGS.md", BUGS_TEMPLATE);
-  write("QUESTIONS.md", QUESTIONS_TEMPLATE);
-  write("PRINCIPLES.md", PRINCIPLES_TEMPLATE);
+  writers.write("PLANS.md", plansContent);
+  writers.write("BUGS.md", BUGS_TEMPLATE);
+  writers.write("QUESTIONS.md", QUESTIONS_TEMPLATE);
+  writers.write("PRINCIPLES.md", PRINCIPLES_TEMPLATE);
+}
+
+/** The config seed and its fresh-project bootstrap; returns the seeded bootstrap count. */
+function seedConfigFile(
+  root: string,
+  fresh: boolean,
+  dryRun: boolean,
+  writers: SeedWriters,
+): number | null {
   let bootstrap: number | null = null;
-  if (fs.existsSync(configPath(root))) leftAlone.push(CONFIG_BASENAME);
+  if (fs.existsSync(configPath(root))) writers.leftAlone.push(CONFIG_BASENAME);
   else {
     const seed = seedConfig(root);
     if (fresh) {
@@ -429,35 +459,94 @@ async function seedProject(
       bootstrap = BOOTSTRAP_PLANS;
     }
     if (!dryRun) saveConfig(root, seed);
-    created.push(CONFIG_BASENAME);
+    writers.created.push(CONFIG_BASENAME);
   }
-  if (ensureGitignore(root, dryRun)) created.push(".gitignore");
-  else if (fs.existsSync(path.join(root, ".gitignore"))) leftAlone.push(".gitignore");
+  return bootstrap;
+}
+
+/** The .gitignore edit: gain the missing lines, or record it as left alone. */
+function seedGitignore(root: string, dryRun: boolean, writers: SeedWriters): void {
+  if (ensureGitignore(root, dryRun)) writers.created.push(".gitignore");
+  else if (fs.existsSync(path.join(root, ".gitignore"))) writers.leftAlone.push(".gitignore");
+}
+
+/** The template's starter directories — empty ones only, before the first run. */
+function seedStarterDirs(root: string, tpl: InitPlan["tpl"], writers: SeedWriters): void {
   // The template's starter directories: empty ones only, before the first run — the team's
   // own runs write any code. Existing directories are left alone, like existing files above.
   for (const dir of tpl.starterDirs) {
-    claim(dir, path.join(root, dir), () => ensureDir(path.join(root, dir)));
+    writers.claim(dir, path.join(root, dir), () => ensureDir(path.join(root, dir)));
   }
+}
 
+/** What gets committed: the committable filter and the `git add` / staged-check / commit. */
+async function commitSeeded(
+  root: string,
+  plan: InitPlan,
+  withCommits: boolean,
+  writers: SeedWriters,
+): Promise<boolean> {
   // The config stays out of the commit pathspec: `git add -- tumwater.json` fails on a path
   // the just-written .gitignore ignores (plans/portability.md §4a/7). It still heads the
   // `created …` line the CLI prints — the file WAS created, it just must not be tracked. When
   // that leaves the pathspec empty (`git add --` with no pathspec exits 1), there is nothing
   // to commit: a repo that only gained a config reports it and stays uncommitted.
-  const dirSet = new Set(tpl.starterDirs);
-  const committable = created.filter((name) => name !== CONFIG_BASENAME && !dirSet.has(name));
+  const dirSet = new Set(plan.tpl.starterDirs);
+  const committable = writers.created.filter(
+    (name) => name !== CONFIG_BASENAME && !dirSet.has(name),
+  );
   let committed = false;
-  if (!dryRun && committable.length > 0) {
+  if (!plan.dryRun && committable.length > 0) {
     await git(root, "add", "--", ...committable);
     const staged = await gitTry(root, "diff", "--cached", "--quiet");
     if (staged === null) {
       // Non-zero exit = something is staged.
       const message = withCommits ? "tumwater: init files" : "tumwater: init";
-      await git(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "-m", message, "--", ...committable);
+      await git(
+        root,
+        ...(await committerIdentArgs(root)),
+        "commit",
+        ...commitAuthorArgs(),
+        "-m",
+        message,
+        "--",
+        ...committable,
+      );
       committed = true;
     }
   }
-  return { created, leftAlone, committed, repoInitialized, branch: createdBranch, bootstrap };
+  return committed;
+}
+
+/** Seed `root` from a resolved `InitPlan`: git init (a new repo only), every absent project
+ * file and starter directory, the config, and the commit. Holds the `created`/`leftAlone`
+ * bookkeeping locally; performs no validation and never refuses. Returns everything the
+ * composed `InitResult` needs except `adopted`, `dryRun` and `template`, which `initProject`
+ * reads off `plan`. */
+async function seedProject(
+  root: string,
+  plan: InitPlan,
+): Promise<
+  Pick<InitResult, "created" | "leftAlone" | "committed" | "repoInitialized" | "branch" | "bootstrap">
+> {
+  const { dryRun, tpl } = plan;
+  const { repoInitialized, createdBranch } = await initSeedRepo(root, plan);
+  const { withCommits, fresh } = await resolveSeedFreshness(root, plan);
+  const writers = seedWriters(root, dryRun);
+  seedBriefFile(root, plan, writers);
+  seedBacklogFiles(tpl, writers);
+  const bootstrap = seedConfigFile(root, fresh, dryRun, writers);
+  seedGitignore(root, dryRun, writers);
+  seedStarterDirs(root, tpl, writers);
+  const committed = await commitSeeded(root, plan, withCommits, writers);
+  return {
+    created: writers.created,
+    leftAlone: writers.leftAlone,
+    committed,
+    repoInitialized,
+    branch: createdBranch,
+    bootstrap,
+  };
 }
 
 /** Initialize a repo for tumwater: README (with prompt + status) when no project brief exists
