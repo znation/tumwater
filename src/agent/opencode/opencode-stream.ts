@@ -51,36 +51,38 @@ const TOOL_NAMES: Record<string, string> = {
  * "retry in 30 seconds"). */
 const RETRY_AFTER = /retry (?:after|in) (\d+)\s*s(?:econds?)?\b/i;
 
-/** How an `error` line classifies into the canonical `tumwaterKind` (and, for a transient
- * backend, its kind), trusted by `PiStreamParser` before its text regexes. The error's
- * `type` — the provider signal the plan's table maps (provider.auth, provider.no-route,
- * unknown) — is consulted FIRST, the message text second (plans/opencode-backend.md §8 and
- * its classification table). */
-function classifyError(err: Json): {
+interface OpencodeErrorClassification {
   kind?: TumwaterKind;
   backendKind?: BackendFailureKind;
   freeTier?: boolean;
   retryAfterSeconds?: number;
-} {
-  const message = typeof err.message === "string" ? err.message : "";
-  const type = typeof err.type === "string" ? err.type : "";
-  const status = err.status;
-  // The free tier refuses intermittently (a provider failure, not a config error): three
-  // refusals in a row move the tier to its fallback through the existing model-failure
-  // episode. Typed `provider.auth` WITH status 403 — the free tier's own refusal — or the
-  // text naming the free tier. A `provider.auth` with any other status (a 401 bad
-  // credential) is not a refusal and falls through to the config-error row below.
+};
+
+/** Is this the free tier's intermittent refusal (a provider failure, not a config error)?
+ * Three refusals in a row move the tier to its fallback through the existing model-failure
+ * episode. Typed `provider.auth` WITH status 403 — the free tier's own refusal — or the
+ * text naming the free tier. A `provider.auth` with any other status (a 401 bad
+ * credential) is not a refusal and falls through to the config-error row. */
+function freeTierClassification(type: string, status: unknown, message: string): OpencodeErrorClassification | undefined {
   if ((type === "provider.auth" && status === 403) || /free\s?tier|FreeTierError/i.test(message))
     return { kind: "transientBackend", backendKind: "server", freeTier: true };
-  // Rate limiting — 429 or rate-limit text — is the world saying "later", inherently
-  // retryable; carry the echoed Retry-After hint when the message spells it.
+  return undefined;
+}
+
+/** Is this a rate limit (429 or rate-limit text) — the world saying "later", inherently
+ * retryable? Carry the echoed Retry-After hint when the message spells it. */
+function rateLimitClassification(status: unknown, message: string): OpencodeErrorClassification | undefined {
   if (status === 429 || /\b429\b|rate limit|too many requests/i.test(message)) {
     const retry = RETRY_AFTER.exec(message);
     return { kind: "transientRateLimit", ...(retry ? { retryAfterSeconds: Number(retry[1]) } : {}) };
   }
-  // An unknown model or variant, and the malformed `ses_` id, are permanent config errors
-  // (a misconfiguration, not a transient outage): typed `provider.no-route` / `unknown`, or
-  // the model-not-found / 401 text.
+  return undefined;
+}
+
+/** Is this a permanent config error — an unknown model or variant, or the malformed `ses_`
+ * id (a misconfiguration, not a transient outage): typed `provider.no-route` / `unknown`,
+ * or the model-not-found / 401 text? */
+function configErrorClassification(type: string, status: unknown, message: string): OpencodeErrorClassification | undefined {
   if (
     type === "provider.no-route" ||
     type === "unknown" ||
@@ -88,18 +90,46 @@ function classifyError(err: Json): {
     /unknown model|unknown provider|model not found|provider not found|unauthorized|status\s*401|\b401\b/i.test(message)
   )
     return { kind: "configError" };
-  // Context overflow that compaction could not fix. Matched STRICTLY (the same shape pi's
-  // own CONTEXT_ERROR matches), so a message that merely mentions "context" or "too long"
-  // in passing — a plugin error, say — is never misread as an overflow that would then be
-  // trusted by PiStreamParser over its own tighter regex.
+  return undefined;
+}
+
+/** Did context overflow in a way compaction could not fix? Matched STRICTLY (the same shape
+ * pi's own CONTEXT_ERROR matches), so a message that merely mentions "context" or "too long"
+ * in passing — a plugin error, say — is never misread as an overflow that would then be
+ * trusted by PiStreamParser over its own tighter regex. */
+function contextOverflowClassification(message: string): OpencodeErrorClassification | undefined {
   if (/context (size|length|window)?\s*(has been |was )?exceeded|exceeds? (the )?context|too (long|large) for .*context/i.test(message))
     return { kind: "contextExceeded" };
-  // Transient server, connection and timeout failures.
+  return undefined;
+}
+
+/** Is this a transient server, connection or timeout failure? The server statuses and text
+ * first, then the shared connection/timeout prose vocabulary (see `transientProseKind`). */
+function transientClassification(message: string): OpencodeErrorClassification | undefined {
   if (/\b(500|501|502|503|504|529)\b|internal server error|bad gateway|service unavailable|gateway timeout|overloaded/i.test(message))
     return { kind: "transientBackend", backendKind: "server" };
   const prose = transientProseKind(message);
   if (prose) return prose;
-  return {};
+  return undefined;
+}
+
+/** How an `error` line classifies into the canonical `tumwaterKind` (and, for a transient
+ * backend, its kind), trusted by `PiStreamParser` before its text regexes. The error's
+ * `type` — the provider signal the plan's table maps (provider.auth, provider.no-route,
+ * unknown) — is consulted FIRST, the message text second (plans/opencode-backend.md §8 and
+ * its classification table). */
+function classifyError(err: Json): OpencodeErrorClassification {
+  const message = typeof err.message === "string" ? err.message : "";
+  const type = typeof err.type === "string" ? err.type : "";
+  const status = err.status;
+  return (
+    freeTierClassification(type, status, message) ??
+    rateLimitClassification(status, message) ??
+    configErrorClassification(type, status, message) ??
+    contextOverflowClassification(message) ??
+    transientClassification(message) ??
+    {}
+  );
 }
 
 /** The step's token counts and cost → pi's canonical usage block: the four counts, their sum
