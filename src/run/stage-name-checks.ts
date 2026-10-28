@@ -14,6 +14,7 @@ import {
   MAX_STALE_HITS,
   MAX_STALE_PATHS,
   cappedList,
+  diffRemovedAdded,
   gitGrepHits,
   isRecordProse,
   standalonePathIndexes,
@@ -166,26 +167,13 @@ function noteDeclaredName(map: Map<string, Set<string>>, name: string, f: string
 function declaredNameDeltas(diff: string): { removedIn: Map<string, Set<string>>; addedIn: Map<string, Set<string>> } {
   const removedIn = new Map<string, Set<string>>();
   const addedIn = new Map<string, Set<string>>();
-  let file: string | null = null;
-  for (const line of diff.split("\n")) {
-    const header = /^diff --git a\/.* b\/(.*)$/.exec(line);
-    if (header) {
-      file = JS_FILE.test(header[1]!) ? header[1]! : null;
-      continue;
+  for (const f of diffRemovedAdded(diff)) {
+    if (!JS_FILE.test(f.path)) continue;
+    for (const n of f.removed.flatMap((l) => declaredNames(l)).filter(isCompoundName)) {
+      noteDeclaredName(removedIn, n, f.path);
     }
-    // The `---`/`+++` old/new path lines carry no declaration, and their path text must not
-    // count: an unanchored keyword regex can match `type FooBar` inside a path (`src/type
-    // FooBar.ts` → `FooBar`) and wrongly record the name as added (or removed), so keep the
-    // same exclusion the pre-split `staleNameFindings` used.
-    if (file === null) continue;
-    if (line.startsWith("-") && !line.startsWith("---")) {
-      for (const n of declaredNames(line.slice(1)).filter(isCompoundName)) {
-        noteDeclaredName(removedIn, n, file);
-      }
-    } else if (line.startsWith("+") && !line.startsWith("+++")) {
-      for (const n of declaredNames(line.slice(1)).filter(isCompoundName)) {
-        noteDeclaredName(addedIn, n, file);
-      }
+    for (const n of f.added.flatMap((l) => declaredNames(l)).filter(isCompoundName)) {
+      noteDeclaredName(addedIn, n, f.path);
     }
   }
   return { removedIn, addedIn };

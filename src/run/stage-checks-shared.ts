@@ -20,6 +20,32 @@ export function diffPlusPath(line: string): string {
   return line.slice(4).replace(/^b\//, "");
 }
 
+/** Parse a `-U0` unified diff into each file's removed and added content lines, marker-stripped.
+ * The `diff --git` header names the file, and git's `---`/`+++` old/new path headers carry no
+ * content; `@@` hunk headers, context lines and the `\ No newline` marker match neither branch,
+ * so the walk records only real `-`/`+` content lines. Consumers keep only what they want — a
+ * JS-file filter, a trim-and-min-length rule, a compound-name extraction — from the per-file
+ * removed/added lists; stage-path-checks's movedSourceFindings and stage-name-checks's
+ * declaredNameDeltas each walked this same grammar before the helper. stage-prose-checks's
+ * detachedDocFindings and addedDiffLines are deliberately not folded here: both need each hunk's
+ * start-line count from the `@@` header, which this shape drops. */
+export function diffRemovedAdded(diff: string): { path: string; removed: string[]; added: string[] }[] {
+  const files: { path: string; removed: string[]; added: string[] }[] = [];
+  let cur: { path: string; removed: string[]; added: string[] } | undefined;
+  for (const line of diff.split("\n")) {
+    const header = /^diff --git a\/.* b\/(.*)$/.exec(line);
+    if (header) {
+      cur = { path: header[1]!, removed: [], added: [] };
+      files.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    if (line.startsWith("-") && !line.startsWith("---")) cur.removed.push(line.slice(1));
+    else if (line.startsWith("+") && !line.startsWith("+++")) cur.added.push(line.slice(1));
+  }
+  return files;
+}
+
 /** Parse `git grep -n` stage output into `file:line:text` hits. `git grep -n` prints one
  * `path:line:text` per match, and the four name/path checks (stage-name-checks.ts's
  * staleNameFindings and movedNameFindings, stage-path-checks.ts's movedSourceFindings and

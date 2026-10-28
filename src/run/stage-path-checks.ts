@@ -18,6 +18,7 @@ import {
   MAX_STALE_PATHS,
   cappedList,
   diffPlusPath,
+  diffRemovedAdded,
   gitGrepHits,
   hasStandalonePathOccurrence,
   isRecordProse,
@@ -122,22 +123,10 @@ async function movedSourceFindings(
   entries: NameStatusEntry[],
 ): Promise<string[]> {
   const files = new Map<string, { removed: string[]; added: Set<string> }>();
-  let cur: { removed: string[]; added: Set<string> } | undefined;
-  for (const line of diff.split("\n")) {
-    const header = /^diff --git a\/.* b\/(.*)$/.exec(line);
-    if (header) {
-      cur = { removed: [], added: new Set() };
-      files.set(header[1]!, cur);
-      continue;
-    }
-    if (!cur) continue;
-    const isRemoved = line.startsWith("-") && !line.startsWith("---");
-    const isAdded = line.startsWith("+") && !line.startsWith("+++");
-    if (!isRemoved && !isAdded) continue;
-    const text = line.slice(1).trim();
-    if (text.length < MOVED_LINE_MIN_CHARS) continue;
-    if (isRemoved) cur.removed.push(text);
-    else cur.added.add(text);
+  for (const f of diffRemovedAdded(diff)) {
+    const removed = f.removed.map((l) => l.trim()).filter((l) => l.length >= MOVED_LINE_MIN_CHARS);
+    const added = new Set(f.added.map((l) => l.trim()).filter((l) => l.length >= MOVED_LINE_MIN_CHARS));
+    files.set(f.path, { removed, added });
   }
   const findings: string[] = [];
   for (const e of entries) {
