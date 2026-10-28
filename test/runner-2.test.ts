@@ -21,21 +21,20 @@ import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, firstRunThenIdle, logFlagsTo, logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
-import { APPROVE_PI, assistantLine, reviewerPi, thinkingOnlyLine } from "./fixtures/pi-events.js";
+import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
 // Thrash flag (plans/refusal-and-thrash.md item b): a changed run whose authoring run burned
 // BOTH more than thrashTurns turns and thrashMinutes of wall clock is flagged high-friction —
-// one warning event carrying both thresholds, the outcome flag, the reviewer prompt's
-// HIGH-FRICTION marker, and the Friction trailer line on the commit itself. Requiring both (not
-// either) keeps a fast model's ordinary 40-turn/few-minute run unflagged (BUGS.md 2026-09-19).
-// The fake pi identifies reviewer runs by their VERDICT prompt (the pattern this file already
-// uses for gate tests) and records that run's args to a file outside the worktree.
+// one warning event carrying both thresholds, the outcome flag, and the Friction trailer line on
+// the commit itself. Requiring both (not either) keeps a fast model's ordinary 40-turn/few-minute
+// run unflagged (BUGS.md 2026-09-19). The high-friction marker once rode the pre-merge reviewer's
+// prompt too; with that reviewer gone (part 3h/3) the flag, warning event and trailer are the
+// surviving consumers this file pins, and only the run outcome drives them.
 
 test("a changed run past thrashTurns is flagged high-friction end to end", async () => {
   const repo = await initializedRepo();
-  const reviewArgs = path.join(tmpdir(), "review-args");
   const script = [
-    reviewerPi("VERDICT: approve", reviewArgs),
+    APPROVE_PI,
     // Two assistant turns with thrashTurns set to 1 AND thrashMinutes set to 0 → past both
     // thresholds, so the flag fires.
     `printf '%s\\n' '${assistantLine("first turn of work")}'`,
@@ -69,9 +68,6 @@ test("a changed run past thrashTurns is flagged high-friction end to end", async
       /^high-friction run: 2 turns in \d+ min \(thresholds: 1 turns \/ 0 min\)$/,
     );
 
-    // The reviewer run's prompt carried the HIGH-FRICTION marker for extra scrutiny.
-    assert.match(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
-
     // The commit on main carries the Friction trailer line after the Run line (item d's e2e).
     const body = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(body, /^Run: improve #\d+ · turns 2 · ctx \S+\nModel: .+\nFriction: high \(2 turns \/ \d+m\)$/m);
@@ -80,9 +76,8 @@ test("a changed run past thrashTurns is flagged high-friction end to end", async
 
 test("a changed run past only thrashTurns is not flagged high-friction", async () => {
   const repo = await initializedRepo();
-  const reviewArgs = path.join(tmpdir(), "review-args");
   const script = [
-    reviewerPi("VERDICT: approve", reviewArgs),
+    APPROVE_PI,
     // Two turns with thrashTurns set to 1 is past the turn threshold; the default
     // thrashMinutes of 30 is nowhere near → only the turns side fires. Both are required, so
     // an ordinary fast run is NOT flagged (the false positive BUGS.md 2026-09-19 recorded).
@@ -99,23 +94,20 @@ test("a changed run past only thrashTurns is not flagged high-friction", async (
     assert.equal(await mergeHead(repo, runner, config, "improve"), "changed");
     assert.ok(!outcome.highFriction, "a turns-only fast run is not flagged high-friction");
 
-    // No high-friction warning event, no marker on the reviewer prompt, and no Friction
-    // trailer on the commit.
+    // No high-friction warning event and no Friction trailer on the commit.
     const events = readEvents(repo);
     assert.ok(
       !events.some((e) => e.type === "warning" && String(e.message).includes('high-friction')),
       "no high-friction warning event",
     );
-    assert.doesNotMatch(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
     assert.doesNotMatch(sh(repo, "git", "log", "-1", "--format=%B"), /Friction:/);
   });
 });
 
 test("an ordinary changed run under both thresholds is not flagged high-friction", async () => {
   const repo = await initializedRepo();
-  const reviewArgs = path.join(tmpdir(), "review-args");
   const script = [
-    reviewerPi("VERDICT: approve", reviewArgs),
+    APPROVE_PI,
     `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
     `echo hello > hello.txt`,
   ].join("\n");
@@ -133,8 +125,7 @@ test("an ordinary changed run under both thresholds is not flagged high-friction
       !events.some((e) => e.type === "warning" && String(e.message).includes('high-friction')),
       "no high-friction warning event",
     );
-    // …the reviewer prompt carries no marker, and the commit has no Friction line.
-    assert.doesNotMatch(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
+    // …and the commit has no Friction line.
     assert.doesNotMatch(sh(repo, "git", "log", "-1", "--format=%B"), /Friction:/);
   });
 });

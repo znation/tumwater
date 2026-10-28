@@ -15,6 +15,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { piLogPath } from "../src/paths.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
+import { declareCheck, parkUntil } from "./fixtures/merger-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -240,14 +241,17 @@ test("a run that changes other files emits no question_posted event", async () =
 
 test("the merge slot is the only merge-lock holder: another runner runs and queues behind it", async () => {
   const repo = await initializedRepo();
-  // A's MERGE (drained right after its run) touches the marker in its reviewer run, then
-  // holds — A holds the merge lock (the merger's run) until B's run is done, bounded at
-  // ~30s. B waits for that marker, then does its whole run (author + commit + pin + enqueue).
-  // Since merge queue 3/5 a run never merges, so it never needs the lock: B must finish while
-  // A's merge is still mid-flight. The merge slot serializes merges, not authoring. A run
-  // that did need the lock would wait out A's bound and finish after A's merge.
   const marker = path.join(tmpdir(), "a-merge");
   const bDone = path.join(tmpdir(), "b-done");
+  // A's MERGE (drained right after its run) is held in flight by its gate's declared build
+  // check, which parks (touches `marker`, waits for `b-done`) — A holds the merge lock, the
+  // merger's run, until B's run is done, bounded at ~60s. B waits for that marker, then does
+  // its whole run (author + commit + pin + enqueue). Since merge queue 3/5 a run never needs
+  // the lock: B must finish while A's merge is still mid-flight. The merge slot serializes
+  // merges, not authoring. A run that did need the lock would wait out A's bound and finish
+  // after A's merge. No pre-merge reviewer verdict holds the lock (part 4g/3) — the parked
+  // gate check does.
+  declareCheck(repo, `#!/bin/sh\n${parkUntil(marker, bDone)}\necho ok\n`);
   const approveLine = assistantLine("VERDICT: approve");
   await withPi(
     [
@@ -256,9 +260,9 @@ test("the merge slot is the only merge-lock holder: another runner runs and queu
       // prompt's VERDICT and key both on the leased role.
       `is_review=0; for a in "$@"; do case "$a" in *"VERDICT:"*) is_review=1;; esac; done`,
       `case "$role:$is_review" in`,
-      // A's merge's reviewer run (slot for improve): hold the lock while reviewing.
+      // A's merge's reviewer run (slot for improve): plain approve — the parked gate check,
+      // not this review, is what holds the merge lock.
       `improve:1)`,
-      `  touch '${marker}'; i=0; while [ ! -f '${bDone}' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done`,
       `  printf '%s\n' '${approveLine}'; exit 0;;`,
       // B's merge's reviewer run (slot for organize): plain approve.
       `organize:1)`,

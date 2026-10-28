@@ -81,20 +81,30 @@ test("a verification runs in a pooled slot (purpose vet while it works, no lease
   const role = "alpha";
   await queueChanges(root, [role]);
   const flags = tmpdir("vet-slot-");
+  // The verification's pooled slot (purpose verify, released when the verify ends) is captured
+  // by the gate's deterministic build check, which runs inside that slot and records its $PWD
+  // plus a mid-verify slots-state snapshot — the same permit behavior this case pins, now
+  // driven by the check (part 4g/3) instead of a pre-merge reviewer run. The check's PWD is
+  // the leased _slot-<n> the verify runs in; the snapshot shows the lease (role + purpose
+  // verify) while the check holds it.
+  const config = {
+    ...defaultConfig(),
+    check: {
+      command: `printf '%s\\n' "$PWD" >> '${flags}/cwd'; cp '${slotsStatePath(root)}' '${flags}/during.json'; exit 0`,
+    },
+  };
   await withPi(
     [
       // Part 3g/3: skip the merged change's post-merge review (a `-post-` session) so its run
       // does not overwrite the during.json slot snapshot taken by the verification under test.
       skipPostReview,
-      `printf '%s\\n' "$PWD" >> '${flags}/cwd'`,
-      `cp '${slotsStatePath(root)}' '${flags}/during.json' 2>/dev/null`,
       APPROVE(),
     ].join("\n"),
     async () => {
-      const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role]));
+      const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role], undefined, config), { config });
       await pumpUntil(ctx, pipeline, drained(root, pipeline), "the change to merge");
       const cwd = fs.readFileSync(path.join(flags, "cwd"), "utf8").trim();
-      assert.match(path.basename(cwd), /^_slot-\d+$/, "the reviewer ran in a pooled slot");
+      assert.match(path.basename(cwd), /^_slot-\d+$/, "the verification's check ran in a pooled slot");
       assert.equal(fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${role}`)), false, "no _land-<role> was created for the verification");
       const during = readJson(path.join(flags, "during.json")) as {
         slots: Array<{ dir: string; lease: { role: string; purpose: string } | null }>;
