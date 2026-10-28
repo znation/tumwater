@@ -41,10 +41,10 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
   let pauseEditStop = false;
   const draft = savedPromptDraft(session);
 
-  // Leave pause-edit mode (Esc, Ctrl+F again, a written pause, or Ctrl+T): restore the draft.
-  // Run a pause/stop/wake write under the guard every handler needs: a disk write or
-  // marker failure (a lock timeout, a torn fs) must flash its reason on the session
-  // instead of letting the throw escape the keypress handler and kill the TUI.
+  // One home for turning a thrown pause/stop/wake marker-write (or a read of one) into the
+  // flash it deserves: every arm below wraps its write in this so a lock timeout or torn fs
+  // flashes the reason instead of letting the throw escape the keypress handler and kill the
+  // TUI. The catch coerces the same way each handler's guard did, so the wording cannot drift.
   const guardError = (fn: () => void): void => {
     try {
       fn();
@@ -53,6 +53,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
     }
   };
 
+  // Leave pause-edit mode (Esc, Ctrl+F again, a written pause, or Ctrl+T): restore the draft.
   const exitPauseEditMode = (): void => {
     if (!pauseEditMode) return;
     pauseEditMode = false;
