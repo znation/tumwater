@@ -5,6 +5,48 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `findTrust`'s complexity-16 `hooks/list` traversal body is split into one named helper per concern — the reply's group list, one group's hooks and one hook's trust match — so "where are the groups?", "where are a group's hooks?" and "does this hook carry the guard's trust?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `movedSourceFindings`, `parseInitArgs`, `createTeamConfigKeyEditor`, `cmdLogs`, `sayLogsTail`, `usageWords`, `inputViewWindow` and `rejectUnknownArgs` plans each extract one named helper per job the same way; independent in file of every Planned entry — `grep -c 'findTrust' PLANS.md` prints 0 and `grep -c 'codex-hook-trust' PLANS.md` prints 0, so no `## Planned` heading, blocked part or touches list names the symbol or src/agent/codex/codex-hook-trust.ts; PLANS-DONE.md holds no `^### .*findTrust` split — the only `findTrust` heading match is the 2026-10-26 pid/signal test entry, whose prose mentions the symbol but never moves its body; docs/invariants.md's `lookupCodexHookTrust` guarantee states the same first-matching-hook behavior this plan preserves, so it stays unedited; touches src/agent/codex/codex-hook-trust.ts) — done 2026-10-27 by the feature role
+
+**Goal.** `findTrust` (`src/agent/codex/codex-hook-trust.ts`, module-private, complexity 16) is the reader that turns codex's `hooks/list` reply into the guard's `key`/`currentHash`: it reads the reply's `data` array, walks each group's `hooks` array, and returns the first hook whose `source` is `sessionFlags`, `eventName` `preToolUse` and `command` equals the guard definition's, taking its `key` and `currentHash` as strings. Today one body does four jobs: it extracts the top-level group list; it extracts one group's hook list; it recognizes the one matching hook; and it walks both loops to the first match. A reader asking "where are the groups?", "where are a group's hooks?" and "what makes a hook the guard's?" has only the one nested body to scan.
+
+**Approach.** All edits in `src/agent/codex/codex-hook-trust.ts`; move code, do not rewrite it — every condition, order and comment stays exactly as today. Add three module-private functions beside `findTrust`:
+
+- `function hookGroups(result: unknown): unknown[]` — the top-level extraction: the `typeof result !== "object" || result === null` guard returns `[]`, then the `(result as Record<string, unknown>).data` read returns it when `Array.isArray(...)`, else `[]`.
+- `function groupHooks(group: unknown): unknown[]` — one group's hooks: the `typeof group !== "object" || group === null` guard returns `[]`, then the `(group as Record<string, unknown>).hooks` read returns it when `Array.isArray(...)`, else `[]`.
+- `function matchHookTrust(hook: unknown, definition: CodexHookLookupOptions["definition"]): CodexHookTrust | null` — one hook's recognition: the `typeof hook !== "object" || hook === null` guard returns `null`, then the `source`/`eventName`/`command` comparisons each `return null` on mismatch, and the `typeof h.key === "string" && typeof h.currentHash === "string"` test returns `{ key: h.key, hash: h.currentHash }` or `null`.
+
+`findTrust` keeps its name, its signature, its parameter names and its doc comment, and becomes orchestration:
+
+```ts
+function findTrust(
+  result: unknown,
+  definition: CodexHookLookupOptions["definition"],
+): CodexHookTrust | null {
+  for (const group of hookGroups(result)) {
+    for (const hook of groupHooks(group)) {
+      const trust = matchHookTrust(hook, definition);
+      if (trust !== null) return trust;
+    }
+  }
+  return null;
+}
+```
+
+`hookListMessages`, `describeError`, `lookupCodexHookTrust`, `codexVersion`, `isTrust` and `codexHookTrust` are untouched, and no export changes. No behaviour changes: a non-object reply and a missing `data` both still yield no groups, a non-object group and a missing `hooks` both still skip the group, a non-object hook still skips the hook, and the first matching hook still wins over any later one.
+
+**Files touched.** `src/agent/codex/codex-hook-trust.ts` only. No new module, no export change, no test file edited, no docs edited.
+
+**Acceptance criteria.**
+- `findTrust`'s body contains only the two nested `for` loops, the `matchHookTrust(hook, definition)` call, the `trust !== null` return and the trailing `return null`: it contains no `Array.isArray`, no `Record<string, unknown>`, no `typeof` check and no `source`/`eventName`/`command` comparison.
+- `hookGroups`, `groupHooks` and `matchHookTrust` each exist exactly once at module scope, are not exported, and are called only from `findTrust` in `src/agent/codex/codex-hook-trust.ts`.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/agent/codex/codex-hook-trust.ts'`) no longer reports `findTrust` at 16, and no new helper reports 16 or above; every other function's reported count is unchanged.
+- The exported surface is unchanged: no `export` line is added, removed or renamed, and the signatures of `lookupCodexHookTrust` and `codexHookTrust` are unchanged.
+- Behaviour is preserved, verified by the existing `test/codex-hook-trust.test.ts` cases passing unedited — "a lookup returns the fake's key and sha256: hash", "a list holding non-matching hooks before the guard's still matches the guard's hook" (the traversal the split re-homes), "a hooks/list result whose data is not an array rejects as having no matching hook" and "a fake whose list holds no matching hook rejects with the message".
+- docs/invariants.md is not edited: its `lookupCodexHookTrust` guarantee already states the first-matching-`sessionFlags`-`preToolUse`-command behavior this move preserves.
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind three module-private helpers, guarded by the existing `test/codex-hook-trust.test.ts` cases named above. Run that module whole, then the project's gate, and confirm green.
+
 ### `inputViewWindow`'s complexity-17 window-selection body is split into one named helper per concern — the per-character code-unit starts and display-column prefix, the cursor's character index, the left extent and right fill, and the whole-character overflow fallback — so "where does each character begin in the string?", "how many terminal columns precede it?", "which character does the cursor sit on?" and "what shows when the cursor's own character exceeds the room?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the `movedSourceFindings`, `parseInitArgs`, `createTeamConfigKeyEditor`, `cmdLogs`, `sayLogsTail` and `usageWords` plans each extract one named helper per job the same way; independent in file of every Planned entry — `grep -c 'inputViewWindow' PLANS.md` prints 0, and no `## Planned` entry's touches list names src/ui/tui/tui-input.ts (`grep -c 'tui-input' PLANS.md` prints 1, the refused TUI Transcript entry's refusal prose, which is no work): the in-flight plans edit src/backlog/backlog-cli.ts, src/cli/log-commands.ts and src/cli/completion.ts, the blocked `Every commit is verified on main` parts' touches lines name src/ui but not this file, and the blocked `Subtract` parts edit src/ui/tui/tui-editor-*.ts, tui-keys.ts, tui-frame.ts and tui-pane-ctx.ts, not src/ui/tui/tui-input.ts; PLANS-DONE.md holds no `inputViewWindow` split (`grep -c 'inputViewWindow' PLANS-DONE.md` prints 0); docs/invariants.md names neither src/ui/tui/tui-input.ts nor `inputViewWindow` (`grep -c` prints 0 for each); touches src/ui/tui/tui-input.ts) — done 2026-10-27 by the feature role)
 
 **Goal.** `inputViewWindow` (`src/ui/tui/tui-input.ts`, exported, complexity 17) is the pure window selector `renderInputView` calls for a prompt line wider than its display columns: it returns the `[start, end)` code-unit slice that keeps the cursor visible while spending at most `room` display columns. Today one body does five jobs: it builds each character's code-unit start and its cumulative display-column prefix; it finds the character the snapped cursor sits on; it extends the window left from the cursor's character while the column budget holds, then fills rightward from the text start when the cursor is near the beginning; and, when the cursor's own character alone exceeds `room`, it falls back to that whole character. A reader asking "where does each character begin?" versus "how wide is it?", "which character is under the cursor?" or "what happens at room 1?" has only the one body to scan, and the `starts`/`prefix` scans, the index search and the two window walks are interleaved.

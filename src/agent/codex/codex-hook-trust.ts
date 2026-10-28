@@ -65,22 +65,46 @@ function findTrust(
   result: unknown,
   definition: CodexHookLookupOptions["definition"],
 ): CodexHookTrust | null {
-  if (typeof result !== "object" || result === null) return null;
-  const data = (result as Record<string, unknown>).data;
-  if (!Array.isArray(data)) return null;
-  for (const group of data) {
-    if (typeof group !== "object" || group === null) continue;
-    const hooks = (group as Record<string, unknown>).hooks;
-    if (!Array.isArray(hooks)) continue;
-    for (const hook of hooks) {
-      if (typeof hook !== "object" || hook === null) continue;
-      const h = hook as Record<string, unknown>;
-      if (h.source !== "sessionFlags" || h.eventName !== "preToolUse") continue;
-      if (h.command !== definition.command) continue;
-      if (typeof h.key === "string" && typeof h.currentHash === "string") {
-        return { key: h.key, hash: h.currentHash };
-      }
+  for (const group of hookGroups(result)) {
+    for (const hook of groupHooks(group)) {
+      const trust = matchHookTrust(hook, definition);
+      if (trust !== null) return trust;
     }
+  }
+  return null;
+}
+
+/** The top-level group list from `hooks/list`'s `result.data`, or `[]` when the result is not
+ * an object or has no array `data`. */
+function hookGroups(result: unknown): unknown[] {
+  if (typeof result !== "object" || result === null) return [];
+  const data = (result as Record<string, unknown>).data;
+  if (Array.isArray(data)) return data;
+  return [];
+}
+
+/** One group's hook list from its `hooks` field, or `[]` when the group is not an object or
+ * has no array `hooks`. */
+function groupHooks(group: unknown): unknown[] {
+  if (typeof group !== "object" || group === null) return [];
+  const hooks = (group as Record<string, unknown>).hooks;
+  if (Array.isArray(hooks)) return hooks;
+  return [];
+}
+
+/** The trust of one hook when it is the guard's — `source` `sessionFlags`, `eventName`
+ * `preToolUse`, `command` exactly the definition's, with string `key` and `currentHash` — or
+ * null. */
+function matchHookTrust(
+  hook: unknown,
+  definition: CodexHookLookupOptions["definition"],
+): CodexHookTrust | null {
+  if (typeof hook !== "object" || hook === null) return null;
+  const h = hook as Record<string, unknown>;
+  if (h.source !== "sessionFlags" || h.eventName !== "preToolUse") return null;
+  if (h.command !== definition.command) return null;
+  if (typeof h.key === "string" && typeof h.currentHash === "string") {
+    return { key: h.key, hash: h.currentHash };
   }
   return null;
 }
