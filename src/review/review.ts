@@ -8,6 +8,7 @@ import { resetWorktreeToMain } from "../git/worktree.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../runner/runner-pi.js";
 import { recordReview } from "../run/run-apply.js";
+import { sleepInterruptible } from "../run/run-timing.js";
 import { reviewedAfterMerge } from "../config/config-views.js";
 import { errorMessage, parseNonNegativeInt } from "../text/text.js";
 import { firstReason } from "../text/phrases.js";
@@ -18,7 +19,6 @@ import { setMergeStage } from "../merge/merge-slot.js";
 import type { SlotLeaseHandle } from "../git/worktree-pool.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
 import { diffRuleReasons } from "./diff-rules.js";
-import { sleepInterruptible } from "../run/run-timing.js";
 
 export { REVIEW_FAILURE_LIMIT } from "./review-run.js";
 import { restoreReviewedHead, runReviewer, withRuns } from "./review-run.js";

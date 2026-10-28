@@ -115,7 +115,7 @@ export function sleepInterruptible(ms: number, signal?: AbortSignal): Promise<vo
       resolve();
     };
     const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
+      signal?.removeEventListener("abort", onAbort);
       resolve();
     }, ms);
     runOnAbort(signal, onAbort);
