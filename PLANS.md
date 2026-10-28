@@ -509,4 +509,53 @@ The inline `opts` type may stay on `reclaimPass` exactly as today; `isIdleExpire
 
 **Tests.** No new test module: a behavior-preserving move behind six module-private functions, guarded by the existing test/team-reclaim.test.ts and test/team-reclaim-guards.test.ts cases named above. Run those two files whole, then the project's gate, and confirm green.
 
+### `movedSourceFindings`'s complexity-17 body is split into one named helper per concern — the `-U0` moved-line delta walk, the receiver list, the moved-line count and the finding wording — so "which files received this source's moved lines?" and "how is the moved-source message worded?" are each found by name (planned 2026-10-27 by the plan role; continues the landed split-large-function family — the 2026-10-27 `missingPathFindings` split in this same file and its `garbledWordingFindings`/`staleNameFindings`/`movedNameFindings`/`parseRef` siblings each extract one named helper per job the same way; independent in file of every Planned entry — before this entry `grep -c 'movedSourceFindings' PLANS.md` and `grep -c 'src/run/stage-path-checks.ts' PLANS.md` both print 0, so no `## Planned` heading or touches list names the symbol or the file (the in-flight `reclaimPass`/`teamHold`/`planDependencyProblems`/`buildRunPrompt` splits take src/team/team-reclaim.ts, src/team/team-hold.ts, src/backlog/backlog-parts.ts and src/prompt/prompt.ts, and the blocked `Every commit is verified on main` and `Subtract` parts edit src/review, src/orchestrator, src/runner, src/merge, src/baseline, src/status, src/doctor, src/config, src/cli, src/roles, src/ui, src/gui, src/events, src/backlog, src/run/run-finalize.ts and src/run/run-apply.ts, none of them src/run/stage-path-checks.ts); PLANS-DONE.md records no split of `movedSourceFindings` (`grep -cE '^### .*movedSourceFindings' PLANS-DONE.md` prints 0; its prose mentions belong to the `missingPathFindings` split and the file's earlier behavior additions, never a move of this body); docs/invariants.md binds this file only as `gitLevelFindings` and `MAX_MISSING_PATHS` under INV-BK1/INV-BK2, both preserved, so it stays unchanged; touches src/run/stage-path-checks.ts)
+
+**Goal.** `movedSourceFindings` (src/run/stage-path-checks.ts, module-private) is complexity 17 and runs as one flat body: it walks the `-U0` diff line by line into a map of each file's removed lines and added-line set (thresholded at `MOVED_LINE_MIN_CHARS`), then for each `M` entry that is not record prose, finds the other files that received its removed lines, counts the moved lines, stops below `MOVED_LINES_MIN`, greps the staged tree for the old path, and words one finding. A reader asking "which files count as a receiver?" or "where does the moved-source message come from?" has only the one body.
+
+**Approach.** All edits in src/run/stage-path-checks.ts; move code, do not rewrite it — every condition, threshold and message character stays exactly as today, and each existing `//`/doc comment stays with the code it annotates. Add a module-private interface and four module-private functions beside `movedSourceFindings`:
+- `interface MovedLineDelta { removed: string[]; added: Set<string> }` — the map value the walk builds and the receivers/count helpers read.
+- `function movedLineDeltas(diff: string): Map<string, MovedLineDelta>` — the walk verbatim: the `for (const line of diff.split("\n"))` loop, the `diff --git` header regex that starts a file and `files.set(header[1]!, cur)`, the `-`/`+` (not `---`/`+++`) detection, the `line.slice(1).trim()` and `MOVED_LINE_MIN_CHARS` filter, then `removed.push(text)` or `added.add(text)`.
+- `function movedLineReceivers(src: MovedLineDelta, others: ReadonlyArray<[string, MovedLineDelta]>): string[]` — the receivers expression verbatim: `others.filter(([, v]) => src.removed.some((l) => v.added.has(l))).map(([f]) => f)`.
+- `function movedLineCount(src: MovedLineDelta, others: ReadonlyArray<[string, MovedLineDelta]>): number` — the count expression verbatim: `src.removed.filter((l) => others.some(([, v]) => v.added.has(l))).length`.
+- `function movedSourceFinding(path: string, moved: number, receivers: string[], hits: string[]): string` — the template literal verbatim, `e.path` becoming `path`.
+`movedSourceFindings` keeps its name, its non-export, its signature, its parameter names and its doc comment, and becomes the orchestration over them:
+```ts
+async function movedSourceFindings(
+  wt: string,
+  diff: string,
+  entries: NameStatusEntry[],
+): Promise<string[]> {
+  const files = movedLineDeltas(diff);
+  const findings: string[] = [];
+  for (const e of entries) {
+    if (e.status !== "M" || isRecordProse(e.path)) continue;
+    if (findings.length >= MAX_STALE_PATHS) break;
+    const src = files.get(e.path);
+    if (!src) continue;
+    const others = [...files].filter(([f]) => f !== e.path);
+    const moved = movedLineCount(src, others);
+    if (moved < MOVED_LINES_MIN) continue;
+    const hits = await pathGrepHits(wt, e.path, e.path);
+    if (hits.length === 0) continue;
+    findings.push(movedSourceFinding(e.path, moved, movedLineReceivers(src, others), hits));
+  }
+  return findings;
+}
+```
+`NameStatusEntry`, `isRecordProse`, `pathGrepHits`, `cappedList`, `MAX_STALE_PATHS`, `MOVED_LINE_MIN_CHARS` and `MOVED_LINES_MIN` keep their imports and definitions.
+
+**Files touched.** src/run/stage-path-checks.ts
+
+**Acceptance criteria.**
+- `movedSourceFindings`'s body holds only the `movedLineDeltas` call, the entry loop with its `M`/record-prose skip, cap break, `files.get` guard, `moved < MOVED_LINES_MIN` guard and `hits.length === 0` guard, the `others`/`moved` resolution, the `pathGrepHits` call and the `findings.push(movedSourceFinding(...))`; it no longer inlines the diff walk, the receiver filter, the moved-line count or the message.
+- `MovedLineDelta` and the four helpers are module-private (no `export`) and each is called only from src/run/stage-path-checks.ts.
+- The complexity falls: the eslint one-shot (`npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs --format json 'src/run/stage-path-checks.ts'`) reports `movedSourceFindings` at 8 or below (it is 17 today) and `movedLineDeltas` at 8 or below, while `movedLineReceivers`, `movedLineCount` and `movedSourceFinding` report 1 and the file's other top-level functions keep the counts they report today (`parseNameStatus` 11, `gitLevelFindings` 7, `pathGrepHits` 7, `staleReferenceFindings` 8, `readStagedIndex` 5, `renameOriginPaths` 4, `missingPathTokens` 6, `missingPathsInDiff` 8, `missingPathFindings` 2).
+- The exported surface is unchanged: `grep -nE '^export ' src/run/stage-path-checks.ts` still matches exactly `gitLevelFindings`; no import line in src/ or test/ changes.
+- Behavior is preserved, including the moved-line threshold, the receiver list, the record-prose/cap skips and the exact finding wording, verified by the existing cases passing unedited — test/stage-check.test.ts "moving code out of a file that a doc still names yields the moved-source finding", "a reference inside the receiving file is reported too", "a move below the line threshold, a pure deletion, or a reference in record prose yields no moved-source finding", "archiving a backlog entry or moving a design-doc section is not a move source; a code move beside it still is" and "a basename-only reference is not reported".
+- docs/invariants.md is not edited: the move changes no bound symbol or guarantee (INV-BK1 and INV-BK2 name `gitLevelFindings` and `MAX_MISSING_PATHS`, both preserved).
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: a behavior-preserving move behind four module-private helpers and one interface, guarded by the test/stage-check.test.ts cases named above. Run test/stage-check.test.ts whole, then the project's gate, and confirm green.
+
 ## Done
