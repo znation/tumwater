@@ -16,6 +16,7 @@ import {
 } from "../../history/history-data.js";
 import { renderModelSummary, renderSummary } from "../../history/history-render.js";
 import { historyPaneText } from "./tui-history.js";
+import { guardError } from "./tui-guard.js";
 import { readRunDetail, type RunDetail } from "../../run/run-detail-data.js";
 import { renderRunDetail, runTranscriptLines } from "../../run/run-detail-render.js";
 import { revertFollowUp, runRevertSha } from "../../operator/operator-revert.js";
@@ -241,16 +242,15 @@ export function createHistoryPane(
   // or on a throw, which is flashed): the two outputs `tumwater history --transcript` prints.
   const loadTranscript = (): void => {
     trailTranscriptText = null;
-    if (trailTranscript === "off" || trailRun === null) return;
-    try {
-      const { found, note } = runTranscriptLines(session.root, trailRun.role, trailRun.run, trailRun.detail, {
+    const run = trailRun;
+    if (run === null || trailTranscript === "off") return;
+    guardError(session, () => {
+      const { found, note } = runTranscriptLines(session.root, run.role, run.run, run.detail, {
         includePrompts: trailTranscript === "prompts",
         grep: trailGrep ?? undefined,
       });
       trailTranscriptText = found.length > 0 ? found.join("\n") : note;
-    } catch (err) {
-      session.flashError(err);
-    }
+    });
   };
 
   // Resolve one async trail part (the run commit's stat or patch) through the session, and, if

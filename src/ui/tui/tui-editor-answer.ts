@@ -7,6 +7,7 @@ import {
 import { wakeQuestionAsker } from "../../operator/operator-intent.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
+import { guardError } from "./tui-guard.js";
 
 /** The backlog pane's answer editor (Ctrl+A on a selected open question) on the shared prompt
  * line. It owns its target (`answerFor`), its saved-draft pair, its exit helper, and the
@@ -34,9 +35,11 @@ export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
       !session.anyEditorHeld() &&
       ctx.view === ctx.roleIds.length + 1 && ctx.selectedEntry !== null
     ) {
-      try {
+      const selected = ctx.selectedEntry;
+      if (selected === null) return false;
+      guardError(session, () => {
         const entries = session.flat();
-        const sel = Math.min(ctx.selectedEntry, entries.length - 1);
+        const sel = Math.min(selected, entries.length - 1);
         const entry = entries[sel];
         if (entry?.label !== "question") {
           session.flashMessage("only an open question can be answered here");
@@ -49,9 +52,7 @@ export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
           session.cursor = 0;
           session.flashMessage(`answering question #${position} — Enter to record, Esc to cancel`);
         }
-      } catch (err) {
-        session.flashError(err);
-      }
+      });
       return true;
     }
     return false;
