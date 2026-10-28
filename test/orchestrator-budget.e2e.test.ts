@@ -232,12 +232,13 @@ test("a reached cap switches roles to the free fallback model instead of stoppin
     // A run-start marker (the shim's argv line), not a settled-run count: the flake here was
     // showing that clean's own paid run after the switch had even STARTED, which a settle
     // wait on a loaded host could miss (PLANS.md 2026-10-26). The marker appears the moment
-    // the orchestrator spawns the run, on whatever schedule the host can manage. This wait is
-    // verified green only at host load ≈105 and has never timed out below it; a 60 s timeout
-    // far past that — during the spawn of a post-switch run under sustained cross-agent load
-    // (≈113–162) — is the host's spawn latency, not a mis-bound: read it as environment before
-    // re-raising the bound or re-recording the flake (BUGS.md 2026-10-27).
-    await waitFor(() => runs().some((l) => l.includes("session=tumwater-clean-2")), "a role run after the cap was reached");
+    // the orchestrator spawns the run, on whatever schedule the host can manage. The wait is
+    // 150s — the same wall clock as the resize overlap grow-wait (orchestrator-resize.e2e.test.ts)
+    // — because the post-switch role run's spawn is the same CPU-starved orchestration event:
+    // at the ≈105 verified-load ceiling the host could not schedule it within the 60s default
+    // even one file at a time (BUGS.md 2026-10-27, where the carve recorded the ceiling but not
+    // the bound).
+    await waitFor(() => runs().some((l) => l.includes("session=tumwater-clean-2")), "a role run after the cap was reached", 150_000);
     assert.match(
       runs().find((l) => l.includes("session=tumwater-clean-2")) ?? "",
       /model=local-free provider=local/,
@@ -352,11 +353,12 @@ test("a free fallback whose runs keep failing is demoted to a pause, then probed
     // run 2's outcome was recorded, even though the run had started (PLANS.md 2026-10-26).
     // The marker appears the moment the orchestrator spawns the fallback run, and the
     // fallback's reject is immediate, so the error outcome lands a fast poll after it. This
-    // wait is verified green only at host load ≈105 and has never timed out below it; a 60 s
-    // timeout far past that — the spawn of this post-switch run under sustained cross-agent
-    // load (≈113–162) — is the host's spawn latency, not a mis-bound: read it as environment
-    // before re-raising the bound or re-recording the flake (BUGS.md 2026-10-27).
-    await waitFor(() => Boolean(runFor(2)), "the first fallback run");
+    // wait is 150s — the same wall clock as the resize overlap grow-wait
+    // (orchestrator-resize.e2e.test.ts) — because the post-switch role run's spawn is the same
+    // CPU-starved orchestration event: at the ≈105 verified-load ceiling the host could not
+    // schedule it within the 60s default even one file at a time (BUGS.md 2026-10-27, where the
+    // carve recorded the ceiling but not the bound).
+    await waitFor(() => Boolean(runFor(2)), "the first fallback run", 150_000);
     assert.match(runFor(2), /model=local-free/);
     await waitFor(() => clean().lastResult === "error", "the first fallback run to error");
     mergeWork(repo);
