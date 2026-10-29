@@ -223,7 +223,12 @@ test("a synchronous backend invocation throw does not leak the run's private tem
       /no model configured/,
     );
   } finally {
-    process.env.TMPDIR = oldTmp;
+    // Restore by deleting when TMPDIR was unset: `process.env.TMPDIR = undefined` coerces to the
+    // literal string "undefined", so os.tmpdir() would then return a relative, nonexistent path
+    // and every later mkdtempSync in this process (the descriptor-leak test below) would throw.
+    // CI leaves TMPDIR unset; a developer's shell usually sets it, which hid this.
+    if (oldTmp === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = oldTmp;
   }
   const leftovers = fs.readdirSync(sandbox).filter((n) => n.startsWith("tumwater-run-"));
   assert.deepEqual(leftovers, [], "the failed run must remove its private temp dir");
