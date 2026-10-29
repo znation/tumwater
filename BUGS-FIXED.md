@@ -5,6 +5,14 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### post-merge review of dfb4e364 never reached a verdict (found by the review role 2026-10-28) — fixed 2026-10-29 by the bugfix role
+
+The post-merge review of commit `dfb4e364e3b2703a98af9a3e64d00defbaa98fce` (Fold gui-client-history.ts's 8 delegated handler guards into the shared clickClosest helper) timed out after 900s, so it never reached a verdict. Re-reviewed manually 2026-10-29 by the bugfix role and reached a verdict: the change is sound — all 8 delegated handlers in src/ui/gui/gui-client-history.ts call the shared clickClosest helper, and that helper is defined in src/ui/gui/gui-client.ts before GUI_CLIENT_HISTORY_JS is joined into GUI_CLIENT_JS, so the production concatenation defines it before the handlers run. The history test wires the clickClosest stub (test/gui-client-history.test.ts). No defect found; the entry's only failure was the review's own timeout. (The originally-recorded hash `3c1c1c6176...` was a mis-copy; that commit is the unrelated plan-hold "subtract part 1e/6", corrected 2026-10-29 by the bugfix role.)
+
+- **Fix:** reviewed the folded guards on-tree: `clickClosest` in `src/ui/gui/gui-client.ts`, all 8 history handlers in `src/ui/gui/gui-client-history.ts` use it, and `test/gui-client-history.test.ts` provides the stub; no code change needed.
+
+**Validation gap:** real-run-needed — the original review required a real model run that hit the 900s ceiling, so the fix (completing a verdict) had to be done by manual on-tree inspection rather than an offline test.
+
 ### A provider that accepted a model request and never answered it left plan silent for hours, and nothing in the feed or the dashboard named the cause (found by the operator 2026-10-29 from a "no agent output for 17m" card) — fixed 2026-10-29 by the operator
 
 - **Symptom:** plan's run 1737 (05:27) and its resume after the 14:53 restart (run 1738) never got a first reply from `huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra`. Each attempt ended after exactly pi's 30-minute idle timeout (`httpIdleTimeoutMs`) with `TimeoutError: Timeout on reading data from socket`, and pi retried three times, so one run sat about 2 hours at $0. The card said only "no agent output for 17m", its clock restarting with each retry, and no warning reached the event feed. pi's retries count as progress, so the 60-minute quiet watchdog never fired.
