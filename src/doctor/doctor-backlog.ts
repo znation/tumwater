@@ -411,9 +411,9 @@ export async function commitUncommittedBacklog(root: string, config: TumwaterCon
  * for a BacklogCommitReport, so the three surfaces cannot drift: one `committed <file> on
  * <base>` line per committed file, one `could not commit <file> — commit it by hand` line per
  * failed file, then the skipped sentence when set. `[]` when the report committed nothing,
- * failed nothing, and carried no skip sentence. `tumwater doctor --commit-backlog` (src/cli.ts),
- * the dashboard Health card's Commit backlog (handleCommitBacklog) and the TUI Health tab's
- * Ctrl+A all render from this one source. */
+ * failed nothing, and carried no skip sentence. `tumwater doctor --commit-backlog`
+ * (src/cli/cli-doctor-command.ts), the dashboard Health card's Commit backlog
+ * (handleCommitBacklog) and the TUI Health tab's Ctrl+A all render from this one source. */
 export function backlogCommitLines(report: BacklogCommitReport): string[] {
   const lines = [
     ...report.committed.map((file) => `committed ${file} on ${report.base}`),
