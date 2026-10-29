@@ -186,37 +186,71 @@ export function chainInfo(a: {
   for (const tier of MODEL_TIERS) {
     const r = a.resolved[tier];
     if (!a.moved.has(tier) || r.pair === null) continue;
-    const own = steps.filter((s) => s.tier === (r.from ?? tier)).map((s) => s.pair);
-    const idx = r.step ?? 0;
-    const prior = idx > 0 ? own[idx - 1]! : null;
-    const info: ChainTierInfo = { pair: modelPairName(r.pair), step: idx + 1, of: own.length, reason: "cap" };
-    const priorName = prior ? modelPairName(prior) : "";
-    if (prior && a.breakers[priorName] !== undefined && !fallbackServingPair(a.breakers, priorName)) {
-      info.reason = "demoted";
-    } else if (
-      prior?.maxDailyCostUsd !== undefined &&
-      pairDailyCost(a.states, priorName, a.now) >= prior.maxDailyCostUsd
-    ) {
-      info.reason = "step-cap";
-      info.returnsAt = midnight;
-    } else if (
-      prior &&
-      subscriptionBackendOf(prior, a.accounts) !== null &&
-      prior.extraUsage &&
-      a.accounts("claude") &&
-      claudeOverageRefused(a.accounts("claude")!)
-    ) {
-      info.reason = "overage";
-    } else {
-      info.returnsAt = midnight;
-    }
-    if (r.pair.maxDailyCostUsd !== undefined && a.isPriced(r.pair)) {
-      info.spentUsd = pairDailyCost(a.states, modelPairName(r.pair), a.now);
-      info.capUsd = r.pair.maxDailyCostUsd;
-    }
+    const position = movedTierPosition(steps, tier, r);
+    const info: ChainTierInfo = {
+      pair: modelPairName(r.pair),
+      step: position.step,
+      of: position.of,
+      ...movedTierReason(a, position.prior, position.priorName, midnight),
+    };
+    Object.assign(info, movedTierSpend(a, r.pair));
     out[tier] = info;
   }
   return out;
+}
+
+/** The step a moved tier runs on and the pair just before it: the tier's own chain steps
+ * (`steps.filter((s) => s.tier === (r.from ?? tier))`) resolved to their pairs, positioned at
+ * `r.step ?? 0`, with the previous step's pair (or null at step 0). Answers "which step does
+ * this moved tier run on, and which pair precedes it?" (plans/fallback-chain.md "Events and
+ * surfaces"). */
+function movedTierPosition(
+  steps: ReturnType<typeof tierChainSteps>,
+  tier: ModelTier,
+  r: TierFallbackMap[ModelTier],
+): { step: number; of: number; prior: FallbackModelConfig | null; priorName: string } {
+  const own = steps.filter((s) => s.tier === (r.from ?? tier)).map((s) => s.pair);
+  const idx = r.step ?? 0;
+  const prior = idx > 0 ? own[idx - 1]! : null;
+  return { step: idx + 1, of: own.length, prior, priorName: prior ? modelPairName(prior) : "" };
+}
+
+/** Why the position before the active step cannot run, in INV-BN1's fixed order (demoted,
+ * step-cap, overage, cap). A demoted or overage result carries no `returnsAt`; a step-cap or
+ * cap result pins it to `midnight` (INV-BN2: local midnight only for step-cap and cap).
+ * Answers "why can't the position before the active step run, and when does it come back?". */
+function movedTierReason(
+  a: Parameters<typeof chainInfo>[0],
+  prior: FallbackModelConfig | null,
+  priorName: string,
+  midnight: number,
+): { reason: ChainTierInfo["reason"]; returnsAt?: number } {
+  if (prior && a.breakers[priorName] !== undefined && !fallbackServingPair(a.breakers, priorName)) {
+    return { reason: "demoted" };
+  }
+  if (prior?.maxDailyCostUsd !== undefined && pairDailyCost(a.states, priorName, a.now) >= prior.maxDailyCostUsd) {
+    return { reason: "step-cap", returnsAt: midnight };
+  }
+  if (
+    prior &&
+    subscriptionBackendOf(prior, a.accounts) !== null &&
+    prior.extraUsage &&
+    a.accounts("claude") &&
+    claudeOverageRefused(a.accounts("claude")!)
+  ) {
+    return { reason: "overage" };
+  }
+  return { reason: "cap", returnsAt: midnight };
+}
+
+/** What the active step has spent against its own cap: both keys absent unless the step is a
+ * priced capped one (INV-BN2). Answers "what has the active step spent against its cap?". */
+function movedTierSpend(
+  a: Parameters<typeof chainInfo>[0],
+  pair: FallbackModelConfig,
+): Partial<Pick<ChainTierInfo, "spentUsd" | "capUsd">> {
+  if (pair.maxDailyCostUsd === undefined || !a.isPriced(pair)) return {};
+  return { spentUsd: pairDailyCost(a.states, modelPairName(pair), a.now), capUsd: pair.maxDailyCostUsd };
 }
 
 /** The distinct non-null fallback pairs a resolution hands out (tier order, first occurrence
