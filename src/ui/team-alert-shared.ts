@@ -8,37 +8,6 @@ import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { STALL_RE, duration } from "./run-progress-model.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
-import type { DuplicatedBacklogHeading, LiveFinishedEntry, PlanDependencyProblem } from "../doctor/doctor-backlog-plans.js";
-
-/** A stale open question the doctor's 7-day rule warns about (src/doctor/doctor-backlog-bugs.ts
- * checkStaleQuestions, STALE_QUESTION_DAYS): an open QUESTIONS.md entry whose `(asked by …)` stamp
- * is at least 7 days old. Computed in src/ui/alert-feeds.ts's staleOpenQuestions from the same
- * threshold and the same questionFilingDate parser the doctor's check uses, so the alert and the
- * doctor cannot drift on the rule. Its 1-based position is the `questions --list`/`tumwater
- * questions answer <n>` number; its 0-based index is the `## Open` position kept only as the
- * file-order tiebreak; its title is stamp-stripped for prose; days is its whole-day age. */
-export interface StaleQuestion {
-  index: number;
-  position: number;
-  title: string;
-  days: number;
-}
-
-/** The doctor's `plan dependencies` problem type (src/doctor/doctor-backlog-plans.ts), re-exported
- * so the plan-dependencies alert reads the same `{ kind, message }` shape the doctor's
- * checkPlanDependencies row names — no structural twin left to drift. */
-export type { PlanDependencyProblem };
-
-/** The doctor's duplicated-`## `-heading row type, re-exported under the alert builders' name
- * `BacklogHeadingDuplicate` (the doctor spells it `DuplicatedBacklogHeading` in
- * src/doctor/doctor-backlog-plans.ts), so the `backlog-headings` alert and the doctor share one
- * definition instead of a structural twin. */
-export type { DuplicatedBacklogHeading as BacklogHeadingDuplicate };
-
-/** The doctor's finished-history row type (src/doctor/doctor-backlog-plans.ts LiveFinishedEntry),
- * re-exported so the `backlog archive` alert's `liveFinished` rows share one definition instead
- * of a structural twin. */
-export type { LiveFinishedEntry };
 
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
@@ -47,39 +16,6 @@ export type { LiveFinishedEntry };
 export function entryListDetail(titles: readonly string[]): string {
   const first = titles[0] === undefined ? "" : stripEntryStamp(titles[0]);
   return titles.length > 1 ? `${first} — and ${titles.length - 1} more` : first;
-}
-
-/** Append the folded names of the entries past an alert's first one, after a ` · ` separator,
- * when there are any, and the empty string otherwise — the shared idiom every amber
- * "name the oldest, fold the rest" alert (stale-questions, stranded-plans,
- * backlog-headings, validation-gaps, false-fixes) uses to compose its
- * `detail`, so the separator, the empty case, and the default fold (entryListDetail;
- * joinWithMore for the alerts that fold their rest labels with a count) cannot
- * drift. Callers pre-map each
- * rest element to the label the first clause already named. */
-function moreDetail(
-  restLabels: readonly string[],
-  fold: (items: readonly string[]) => string = entryListDetail,
-): string {
-  return restLabels.length > 0 ? ` · ${fold(restLabels)}` : "";
-}
-
-/** Split a bounded entry list into its first (oldest, named) item and the " · rest" suffix
- * moreDetail builds for the entries past it — the shared shape every amber "name the oldest,
- * fold the rest" alert (stale-questions, stranded-plans,
- * backlog-headings, validation-gaps, false-fixes) composes, so
- * the split and the separator/empty case have one home beside moreDetail. `label` maps each
- * rest element to the string its clause already named; `fold` defaults to entryListDetail
- * (moreDetail's own default), with joinWithMore(labels, 3) for the alerts that fold their rest
- * labels with a count. */
-export function firstAndMore<T>(
-  items: readonly T[],
-  label: (item: T) => string,
-  fold: (labels: readonly string[]) => string = entryListDetail,
-): { first: T; more: string } {
-  const first = items[0]!;
-  const rest = items.slice(1);
-  return { first, more: moreDetail(rest.map(label), fold) };
 }
 
 /** Something that needs the operator — or that they should know — about the team as a whole,
@@ -136,8 +72,8 @@ export function seeFailures(): Array<{ label: string; act: string; arg: string }
 
 /** The dashboard's "Open backlog" button for an alert naming one backlog entry: opens the
  * entry's backlog-card tab and that row (the dashboard's backlog arm reads `file:index`).
- * Shared by the refused and stalled-entries alerts,
- * so the button shape and the `file:index` contract cannot drift between them. */
+ * Used by the refused alert,
+ * so the button shape and the `file:index` contract cannot drift. */
 export function openBacklogAction(entry: { file: "plans" | "bugs"; index: number }): Array<{ label: string; act: string; arg: string }> {
   return [{ label: "Open backlog", act: "backlog", arg: `${entry.file}:${entry.index}` }];
 }

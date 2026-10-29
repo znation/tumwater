@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledEntries, checkStrandedPlans, checkValidationGaps, duplicatedBacklogHeadings, fixClaimProblems, planDependencyProblem, validationGapProblems, type DuplicatedBacklogHeading } from "../src/doctor/doctor-backlog-plans.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledEntries, checkStrandedPlans, checkValidationGaps, fixClaimProblems, planDependencyProblem } from "../src/doctor/doctor-backlog-plans.js";
 import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, failureMentions, quotedTestName } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkMergeQueueFiles, checkPostReviews, atRiskPostReviews, atRiskPostReviewsPhrase, POST_REVIEW_AT_RISK_FAILURES, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, skippedMergeQueueFiles, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
 import type { DirtyBacklogFiles } from "../src/doctor/doctor-backlog.js";
@@ -57,8 +57,8 @@ test("checkFixClaims reads ok for a record whose symbols exist — one live symb
 });
 
 test("checkFixClaims and fixClaimProblems agree on the false record", () => {
-  // The doctor's row and the always-on alert share one scan (fixClaimProblems), so they cannot
-  // name different records: the message must carry the same heading the alert would render.
+  // The doctor's row and the shared problem scanner share one scan (fixClaimProblems), so they
+  // cannot name different records: the message must carry the same heading the check names.
   const root = fixClaimsRepo(["`liveSymbol` is real.", "`runScriptGroup` and `signalTree` vanished."]);
   const [first] = fixClaimProblems(root);
   assert.ok(first, "the fake record must be a problem for the agreement to be observable");
@@ -238,54 +238,6 @@ test("checkValidationGaps reads ok with no BUGS.md", () => {
   });
 });
 
-test("validationGapProblems returns the doctor's rows and leaves its wording unchanged", () => {
-  // The always-on amber alert is fed by the same scan as the doctor's `validation gaps` row, so
-  // it must surface one row per offending category, suspects first then unpinned, sharing the
-  // record titles the doctor's messages name.
-  const missing = validationGapProblems(validationGapsRepo([null, "no-fake"]));
-  assert.equal(missing.length, 1);
-  assert.equal(missing[0]!.kind, "missing");
-  assert.match(missing[0]!.title, /^Entry 0: details/);
-  const unrecognized = validationGapProblems(validationGapsRepo(["no-reprod", "no-fake"]));
-  assert.equal(unrecognized.length, 1);
-  assert.equal(unrecognized[0]!.kind, "unrecognized");
-  assert.equal(unrecognized[0]!.tag, "no-reprod");
-  assert.match(unrecognized[0]!.title, /^Entry 0: details/);
-  // A single unclear-invariant fix that names no docs/invariants.md section is an unpinned row.
-  const unpinnedRoot = tmpdir("doctor-validation-gaps-unpinned-");
-  fs.writeFileSync(
-    path.join(unpinnedRoot, "BUGS.md"),
-    `# Bugs\n\n## Open\n\n## Fixed\n\n### Entry 0: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n\n- **Validation gap:** unclear-invariant — had to reconstruct the guarantee first.\n`,
-  );
-  const unpinned = validationGapProblems(unpinnedRoot);
-  assert.equal(unpinned.length, 1);
-  assert.equal(unpinned[0]!.kind, "unpinned");
-  assert.match(unpinned[0]!.title, /^Entry 0: details/);
-  // A fully tagged repo, an out-of-window unclear-invariant record, and an unreadable file are
-  // all clean to the alert (the doctor still reports its unreadable outcome).
-  assert.deepEqual(validationGapProblems(validationGapsRepo(["none", "no-fake"])), []);
-  const tagged = Array.from({ length: 10 }, () => "no-fake");
-  assert.deepEqual(validationGapProblems(validationGapsRepo([...tagged, "unclear-invariant"])), []);
-  assert.deepEqual(validationGapProblems(tmpdir("doctor-validation-gaps-none-")), []);
-  assert.deepEqual(checkValidationGaps(tmpdir("doctor-validation-gaps-none-")), {
-    level: "ok",
-    detail: "no BUGS.md — nothing to verify",
-  });
-  // The doctor's wording is unchanged; the ok text and each warn message still match.
-  const ok = checkValidationGaps(validationGapsRepo(["none", "no-fake"]));
-  assert.equal(ok.level, "ok");
-  assert.match(ok.detail, /newest 2 Fixed record\(s\) carry a known Validation gap tag/);
-  const miss = checkValidationGaps(validationGapsRepo([null, "no-fake"]));
-  assert.equal(miss.level, "warn");
-  assert.match(miss.detail, /has no \*\*Validation gap:\*\* line/);
-  const unrec = checkValidationGaps(validationGapsRepo(["no-reprod", "no-fake"]));
-  assert.equal(unrec.level, "warn");
-  assert.match(unrec.detail, /unrecognized Validation gap tag "no-reprod"/);
-  const nudge = checkValidationGaps(unpinnedRoot);
-  assert.equal(nudge.level, "warn");
-  assert.match(nudge.detail, /unclear-invariant.*docs\/invariants\.md/);
-});
-
 // checkStrandedPlans — the stranded-plan detector surfaced for the operator (plans part 3/4):
 // plan headings filed under the wrong PLANS.md section warn, naming the heading and section.
 
@@ -352,9 +304,6 @@ test("checkBacklogHeadings warns on a duplicated heading and stays silent on a c
     path.join(dir, "PLANS.md"),
     "## Done\n\n### A\n\n## Done\n\n### B\n\n## Planned\n\n_None yet._\n",
   );
-  // The always-on alert's structural twin reads the same set from the same scan.
-  const dup: DuplicatedBacklogHeading[] = duplicatedBacklogHeadings(dir);
-  assert.deepEqual(dup, [{ file: "PLANS.md", heading: "Done" }]);
   const warn = checkBacklogHeadings(dir);
   assert.equal(warn.level, "warn");
   assert.match(warn.detail, /PLANS\.md "## Done"/);
@@ -372,7 +321,6 @@ test("checkBacklogHeadings warns on a duplicated heading and stays silent on a c
     level: "ok",
     detail: "no duplicated ## section headings in the backlog files",
   });
-  assert.deepEqual(duplicatedBacklogHeadings(dir), []);
 
   // Absent files contribute nothing; a fenced duplicate is quoted content, not structure.
   fs.rmSync(path.join(dir, "BUGS.md"));
@@ -393,11 +341,6 @@ test("checkBacklogHeadings names an unreadable backlog file and still scans the 
   const r = checkBacklogHeadings(dir);
   assert.equal(r.level, "warn");
   assert.match(r.detail, /PLANS\.md \(unreadable\)/);
-  // The alert's structural twin scans the same readable files but has no unreadable clause:
-  // it returns the BUGS.md duplicate, and never a PLANS.md (unreadable) row.
-  const dupReadable: DuplicatedBacklogHeading[] = duplicatedBacklogHeadings(dir);
-  assert.deepEqual(dupReadable, [{ file: "BUGS.md", heading: "Open" }]);
-  assert.equal(dupReadable.some((d) => d.file === "PLANS.md"), false);
   // The doctor's row keeps BACKLOG_FILES order even when an unreadable file coexists with a
   // duplicate heading: the unreadable PLANS.md (first in BACKLOG_FILES) is named before the
   // BUGS.md duplicate, both as the named-first row and in the folded rest.
@@ -911,7 +854,7 @@ test("checkPlanDependencies is ok on a clean pair and when PLANS.md is absent", 
 });
 
 test("planDependencyProblem names a kind and message, or null for a clean pair", () => {
-  // The shared problem-set/severity/wording source behind the check and the alert: the same
+  // The shared problem-set/severity/wording source behind the check: the same
   // misworded clause the check warns on comes back as kind "misworded" with the same message,
   // and a clean series pair yields null.
   const misworded = planDependencyProblem(plansWith("### S, part 1/2: a\n\nbody\n\n### S, part 2/2: b (blocked by part 1/2 above)\n\nbody\n"));

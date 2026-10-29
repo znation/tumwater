@@ -291,7 +291,7 @@ test("sourceHaystack skips node_modules and dist trees at any depth but keeps ot
 // Regression coverage for the 2026-10-28 record (BUGS.md): the haystack walked only src/, test/
 // and scripts/, so a project whose code lives in tools/ and tests/ (no src/ at all) read an
 // empty haystack, every newest Fixed record whose Fix paragraph named a bare identifier looked
-// unbacked, and the doctor's claimed-bugs row and the standing amber alert fired on that tree's
+// unbacked, and the doctor's claimed-bugs row fired on that tree's
 // own live symbols. The walk is now layout-neutral — root-wide, build/vendored/VCS/harness
 // skipped — so a tools/+tests/ project backs its symbols like a src/ one.
 

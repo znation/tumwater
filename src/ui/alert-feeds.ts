@@ -1,48 +1,14 @@
-import { openQuestionEntries, ageInDays } from "../backlog/backlog.js";
-import { stripEntryStamp } from "../backlog/backlog-structure.js";
-import { questionFilingDate } from "../backlog/backlog-question-answer.js";
-import { byDaysThenIndex } from "../collections.js";
-import { STALE_QUESTION_DAYS } from "../doctor/doctor-backlog.js";
-import { planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { findOrphans, orphanFailDetail, type OrphanScan } from "../doctor/doctor-orphans.js";
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
-import type { PlanDependencyProblem, StaleQuestion } from "./team-alerts.js";
 
 /** This module is the alert-feed half of src/ui/status-payload.ts: each always-on team alert's
  * data-sourcing function lives here, a
  * sibling of the src/ui/team-alert-*.ts builders that turn them into banners. status-payload.ts
  * stays the one status-document builder, importing these feeds and folding each feed's result
- * into the `alerts` field; status-render.ts reads the feeds directly for the TUI. */
-/** The open questions the doctor's 7-day rule (src/doctor/doctor-backlog-bugs.ts
- * checkStaleQuestions, STALE_QUESTION_DAYS) calls stale: an open QUESTIONS.md entry whose
- * `(asked by …)` stamp is at least 7 days old. This is the always-on feed for the stale-questions
- * team alert — the shared rule's twin on every observer surface, computed from the same threshold
- * and the same questionFilingDate parser the doctor's check uses, so the two cannot drift on which
- * questions are stale. An undated heading is skipped (like the doctor's check); questions carry no
- * refused note to filter. The returned objects carry the 1-based position (for
- * `tumwater questions answer <n>`), the 0-based index (kept only as the file-order tiebreak), the
- * stamp-stripped title, and the whole-day age. Returned oldest-first — most days waited, ties in
- * file order — so a caller naming the first element names the most-stale question. */
-export function staleOpenQuestions(root: string, now = Date.now()): StaleQuestion[] {
-  return openQuestionEntries(root)
-    .flatMap((entry, index) => {
-      const stamp = questionFilingDate(entry.title);
-      if (stamp === null) return [];
-      const days = ageInDays(stamp, now);
-      return days >= STALE_QUESTION_DAYS ? [{ index, position: index + 1, title: stripEntryStamp(entry.title), days }] : [];
-    })
-    .sort(byDaysThenIndex);
-}
-
-/** A broken plan-dependency clause, the always-on twin of the doctor's `plan dependencies` row
- * (src/doctor/doctor-backlog-plans.ts checkPlanDependencies): the same rule's problem set,
- * severity order, and exact message, so the alert and the doctor cannot drift. The reader owns
- * the rule — planDependencyAlert passes the doctor's planDependencyProblem through unchanged,
- * like staleOpenQuestions and the other stale feeds do their doctor's rules. null when PLANS.md's
- * planned entries have no cycle, dangling ref, unparsed clause, or misworded dependency. */
-export function planDependencyAlert(root: string): PlanDependencyProblem | null {
-  return planDependencyProblem(root);
-}
+ * into the `alerts` field; status-render.ts reads the feeds directly for the TUI. The stale
+ * questions, plan dependencies, stalled entries, stranded plans, duplicated headings, live
+ * finished history, validation gaps and false fixes feeds moved to `tumwater doctor` rows
+ * (Subtract part 1e/6), so the only feed left is the orphan alert. */
 
 /** The standing orphan alert: how many orphaned processes the scan found, and the doctor row's
  * own sentence (orphanFailDetail) so the alert and the `orphans` row cannot drift on the count,

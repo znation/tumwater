@@ -18,7 +18,7 @@ import { conflictedFiles, rebaseOntoMainLeaveConflicts } from "../src/merge/merg
 import { resolveBacklogInsertConflicts, resolveInsertOnlyText } from "../src/merge/merge-backlog-conflicts.js";
 import { falseFixReason } from "../src/verdict/fix-claim.js";
 import { backlogStructureReason } from "../src/backlog/backlog-structure.js";
-import { checkLiveFinished, liveFinishedEntriesFor } from "../src/doctor/doctor-backlog-plans.js";
+import { checkLiveFinished } from "../src/doctor/doctor-backlog-plans.js";
 import { makeRepo, seedCommit, sh, initializedRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { errnoError, failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
@@ -228,38 +228,6 @@ test("the commit-time sweep leaves a Done plan with no done date in PLANS.md ins
     (await backlogStructureReason(root, "main", ["PLANS.md", "PLANS-DONE.md"])) ?? "",
     /^PLANS\.md files "Brand new \(planned 2026-10-18\)"/,
   );
-});
-
-test("liveFinishedEntriesFor caches the finished-history rows while the files are unchanged", () => {
-  const root = makeRepo();
-  seedCommit(root, "PLANS.md", plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"), "seed plans");
-  ignoreInRepo(root, ".tumwater/");
-  const expected = liveFinishedHistory(root).map((l) => ({ ...l }));
-  assert.deepEqual(liveFinishedEntriesFor(root), expected);
-  // An unchanged tree serves the cached rows, equal to liveFinishedHistory's.
-  assert.deepEqual(liveFinishedEntriesFor(root), expected);
-  // Appending a finished entry makes the next call report the new row without a restart.
-  fs.appendFileSync(path.join(root, "PLANS.md"), "### Two (planned 2026-10-01, done 2026-10-01)\n\nB.\n");
-  assert.equal(liveFinishedEntriesFor(root).find((l) => l.file === "PLANS.md")?.entries, 2);
-  assert.equal(liveFinishedEntriesFor(root).find((l) => l.file === "PLANS.md")?.entries, 2, "the second call stays cached after the change");
-});
-
-test("liveFinishedEntriesFor stays silent on an unreadable file while the doctor still reports it", () => {
-  const root = makeRepo();
-  seedCommit(root, "PLANS.md", plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"), "seed plans");
-  ignoreInRepo(root, ".tumwater/");
-  const plansPath = path.join(root, "PLANS.md");
-  fs.chmodSync(plansPath, 0o000);
-  try {
-    assert.deepEqual(liveFinishedEntriesFor(root), []);
-    // checkLiveFinished still reports the tree loudly (the doctor keeps calling
-    // liveFinishedHistory directly, so its unreadable-file throw is unchanged).
-    assert.throws(() => checkLiveFinished(root));
-  } finally {
-    fs.chmodSync(plansPath, 0o644); // restore so the assertion and harness cleanup can read it
-  }
-  // With the file readable again, the poll recovers.
-  assert.equal(liveFinishedEntriesFor(root).find((l) => l.file === "PLANS.md")?.entries, 1);
 });
 
 test("readers list the live section's finished entries first, then the archive's", () => {

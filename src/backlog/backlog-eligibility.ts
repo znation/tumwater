@@ -80,11 +80,10 @@ export function needsReviewNote(body: string): string | null {
  * for the bugfix role's wait-for-the-next-failure note ("by bugfix: …"), which parks the
  * entry for selfcheck to lift when the cluster fails again (selfcheck step 4) and which no
  * role can act on until then. entryHold returns "needs-review" for every such note (all of
- * them park the entry), so the stalled-with-the-plan-role surfaces — the stalled-entries team
- * alert (team-alert-backlog.ts) and the doctor's `stalled entries` row
- * (checkStalledEntries) — classify by this agreed subset, keeping the bugfix parks out of the
- * plan-role blame. Reads the note's text after the NEEDS_REVIEW_PREFIX once, so the alert and
- * the doctor row cannot disagree on which notes the plan role clears; the eligibility mark
+ * them park the entry), so the doctor's `stalled entries` row (checkStalledEntries) — the
+ * stalled-with-the-plan-role surface — classifies by this agreed subset, keeping the bugfix
+ * parks out of the plan-role blame. Reads the note's text after the NEEDS_REVIEW_PREFIX once,
+ * so the row cannot disagree on which notes the plan role clears; the eligibility mark
  * (holdMark) continues to hold every needs-review note, a by-bugfix park included. */
 export function isPlanStalled(entry: BacklogEntry): boolean {
   const note = needsReviewNote(entry.body);
@@ -337,18 +336,8 @@ export interface RefusedEntry {
   title: string;
 }
 
-/** A planned plan or open bug held by a Needs-review note, plus the 0-based
- * index within its backlog file and hold that let a surface land on its row
- * (`plans:<index>`/`bugs:<index>`). */
-export interface StalledEntry {
-  file: "plans" | "bugs";
-  index: number;
-  title: string;
-  hold: "needs-review";
-}
-
 /** The display noun for a backlog-file discriminator — the `"plans" | "bugs"` `file` on
- * RefusedEntry and StalledEntry (and the same discriminator the prompt's named-hold wording
+ * RefusedEntry (and the same discriminator the prompt's named-hold wording
  * and the doctor's Stalled row take): BUGS.md is a "Bug" and PLANS.md a "Plan", and the
  * lowercase form is the `Refused plan|bug:` label and the `tumwater plan|bug --release`
  * command noun. */
@@ -356,30 +345,6 @@ export function entryKindLabel(file: "plans" | "bugs"): "Bug" | "Plan" {
   return file === "bugs" ? "Bug" : "Plan";
 }
 
-/** The planned plans and open bugs parked with the plan role — whose Needs-review hold the plan
- * role clears by splitting or replanning (the feature role's too-large note, the convergence hold,
- * a final-round rejection), in file order: the `stalled-entries` team alert's input, each
- * carrying its backlog file, 0-based index and the hold. Same `backlogHolds(root)` + the
- * planned/`openBugEntries` readers `refusedEntries` uses, so the alert and the doctor's
- * `stalled entries` row classify through the same `entryHold` + `isPlanStalled` and cannot
- * disagree on which holds are role-resolvable. The bugfix role's wait-for-the-next-failure
- * parks ("by bugfix:") are excluded: selfcheck lifts them, not the plan role. A missing
- * file yields `[]`. */
-export function stalledEntries(root: string): StalledEntry[] {
-  const holds = backlogHolds(root);
-  const out: StalledEntry[] = [];
-  const entriesOf = (entries: readonly BacklogEntry[], held: readonly (EntryHold | null)[], file: "plans" | "bugs"): void => {
-    entries.forEach((e, i) => {
-      const hold = held[i];
-      // Only holds the plan role can clear surface as stalled: the bugfix role's
-      // wait-for-the-next-failure parks stay out of the plan-role blame.
-      if (hold === "needs-review" && isPlanStalled(e)) out.push({ file, index: i, title: e.title, hold });
-    });
-  };
-  entriesOf(plannedPlanEntries(root), holds.plans, "plans");
-  entriesOf(openBugEntries(root), holds.bugs, "bugs");
-  return out;
-}
 
 /** The planned plans, then the open bugs, whose hold is `"refused"`, in file order: the
  * entries that wait on an operator decision (the `refused` team alert's input), each carrying

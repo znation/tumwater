@@ -7,8 +7,7 @@ import { truncate } from "../text/text.js";
 import { donePlans, fixedBugEntries, openBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
 import { entryHold, entryKindLabel, isPlanStalled } from "../backlog/backlog-eligibility.js";
 import { planDependencyProblems } from "../backlog/backlog-parts.js";
-import { BACKLOG_FILES, FINISHED_ARCHIVES, validationGapTag } from "../backlog/backlog-md.js";
-import { statOrNull } from "../files/files.js";
+import { BACKLOG_FILES, validationGapTag } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
 import { liveFinishedHistory, liveFinishedRowList } from "../backlog/backlog-archive.js";
 
@@ -55,14 +54,13 @@ export function checkFixClaims(root: string): CheckOutcome {
 /** One problem found by the shared fix-claim scan (fixClaimProblems, below): a newest Fixed
  * record whose Fix paragraph names (`missing`) only symbols absent from the tree — the phantom
  * signature the review chain has burned on. `heading` is the record's title. The scan keeps
- * record order, so the first problem is the one the doctor's message names — the always-on
- * alert and the doctor stay in step by sharing this one scan. */
-export interface FixClaimProblem {
+ * record order, so the first problem is the one the doctor's message names. */
+interface FixClaimProblem {
   heading: string;
   missing: string[];
 }
 
-/** The fix-claim rows shared by the doctor's check and the always-on alert: each newest Fixed
+/** The fix-claim rows the doctor's check warns about: each newest Fixed
  * record classified through fixSymbols and unbackedSymbols — the gate's own parsing and
  * existence rules — against ONE cachedSourceHaystack built for the whole scan, keeping a record
  * only when EVERY symbol its Fix paragraph names is absent, and skipping a record that names no
@@ -83,17 +81,14 @@ function classifyFixClaims(records: readonly BacklogEntry[], root: string): FixC
 /** The ONE shared fix-claim scan: the newest Fixed records (bounded to FIX_CLAIMS_CHECKED so
  * pre-convention history never warns forever) as fixedBugEntries reads them — the stat-cached
  * section reader BUGS.md + BUGS-FIXED.md, bodies kept whole — classified through
- * classifyFixClaims. Reading through this same reader (and not a one-off fixedEntriesAt walk) is
- * what keeps the alert and the doctor on the identical problem set; there is only one scan. */
+ * classifyFixClaims. */
 function fixClaimRecords(root: string): BacklogEntry[] {
   return fixedBugEntries(root).slice(0, FIX_CLAIMS_CHECKED);
 }
 
-/** The problems the ONE shared fix-claim scan found among the newest Fixed records at `root`
+/** The problems the ONE fix-claim scan found among the newest Fixed records at `root`
  * (empty when BUGS.md is unreadable or every newest Fixed record names at least one live
- * symbol). Feeds the always-on amber alert through the stat-cached fixedBugEntries reader and
- * cachedSourceHaystack, so it stays in step with the doctor and adds no re-read to the 1 Hz TUI
- * and status-poll path. */
+ * symbol). */
 export function fixClaimProblems(root: string): FixClaimProblem[] {
   return classifyFixClaims(fixClaimRecords(root), root);
 }
@@ -103,18 +98,17 @@ export function fixClaimProblems(root: string): FixClaimProblem[] {
  * closed vocabulary (`unrecognized`, with `tag` set), or declares `unclear-invariant` while
  * naming no docs/invariants.md section (`unpinned`). `title` is the record's heading. The scan
  * orders suspects first, then `unpinned`, so the first problem is the one the doctor's message
- * names — the always-on alert and the doctor stay in step by sharing this one scan. */
-export interface ValidationGapProblem {
+ * names. */
+interface ValidationGapProblem {
   title: string;
   kind: "missing" | "unrecognized" | "unpinned";
   tag?: string;
 }
 
-/** The validation-gap rows shared by the doctor's check and the always-on alert: each newest
+/** The validation-gap rows the doctor's check warns about: each newest
  * Fixed record classified against the closed `**Validation gap:**` vocabulary through
  * validationGapTag, which is fence-aware — suspects (missing/unrecognized) first, then
- * `unpinned`, so the first row is the one the doctor's message names and the alert's reason
- * picks. */
+ * `unpinned`, so the first row is the one the doctor's message names. */
 function classifyValidationGaps(records: readonly BacklogEntry[]): ValidationGapProblem[] {
   const suspects: ValidationGapProblem[] = [];
   const unpinned: ValidationGapProblem[] = [];
@@ -128,22 +122,12 @@ function classifyValidationGaps(records: readonly BacklogEntry[]): ValidationGap
   return [...suspects, ...unpinned];
 }
 
-/** The ONE scan the doctor's `validation gaps` check and the always-on alert both hand their
- * rows from: the newest Fixed records (bounded to FIX_CLAIMS_CHECKED so pre-convention history
- * never warns forever) as fixedBugEntries reads them — the stat-cached section reader BUGS.md +
- * BUGS-FIXED.md, bodies kept whole — classified through classifyValidationGaps. Reading both
- * through this same reader (and not the doctor's one-off fixedEntriesAt/fixedSection walk) is
- * what keeps the alert and the doctor on the identical problem set; there is only one scan. */
+/** The ONE scan the doctor's `validation gaps` check hands its rows from: the newest Fixed
+ * records (bounded to FIX_CLAIMS_CHECKED so pre-convention history never warns forever) as
+ * fixedBugEntries reads them — the stat-cached section reader BUGS.md + BUGS-FIXED.md, bodies
+ * kept whole — classified through classifyValidationGaps. */
 function validationGapRecords(root: string): BacklogEntry[] {
   return fixedBugEntries(root).slice(0, FIX_CLAIMS_CHECKED);
-}
-
-/** The problems the ONE shared validation-gap scan found among the newest Fixed records at `root`
- * (empty when BUGS.md/BUGS-FIXED.md are unreadable or every newest Fixed record carries a known
- * tag/trace). Feeds the always-on amber alert through the stat-cached fixedBugEntries reader, so
- * it stays in step with the doctor and adds no re-read to the 1 Hz TUI and status-poll path. */
-export function validationGapProblems(root: string): ValidationGapProblem[] {
-  return classifyValidationGaps(validationGapRecords(root));
 }
 
 /** The fixed-record validation-gap twin of checkFixClaims, standing in for plans/repair-traces.md's
@@ -163,8 +147,7 @@ export function validationGapProblems(root: string): ValidationGapProblem[] {
 export function checkValidationGaps(root: string): CheckOutcome {
   // The doctor's check reads BUGS.md itself so it can return its no-file outcome (a missing
   // BUGS.md — nothing to verify); the classification then runs on the SAME fixedBugEntries
-  // reader the always-on alert feeds from, so the two cannot drift on the problem set. There
-  // is only one scan (validationGapRecords).
+  // reader, so the problem set cannot drift. There is only one scan (validationGapRecords).
   const doc = readBacklogChecked(root, "BUGS.md");
   if (typeof doc !== "string") return doc;
   const problems = classifyValidationGaps(validationGapRecords(root));
@@ -227,32 +210,17 @@ export function checkLiveFinished(root: string): CheckOutcome {
     "`tumwater archive` moves them to the archive files and commits them (a starting team does too)");
 }
 
-/** One `## ` title found more than once in a backlog file by the shared scanBacklogHeadings
- * loop, with the file that carries it — also read (re-exported as `BacklogHeadingDuplicate`
- * via src/ui/team-alert-shared.ts) by the always-on `backlog-headings` team alert
- * (src/ui/team-alert-backlog.ts), so the doctor row and the alert cannot drift on which
- * headings count. */
-export interface DuplicatedBacklogHeading {
-  file: string;
-  heading: string;
-}
-
-/** The always-on `backlog-headings` alert polls this on every observer surface and every
- * observer tick, so the per-file read must be stat-cached: a steady-state poll pays one stat
- * per file, not a full re-read of every BACKLOG_FILES member — the archives grow without bound
- * (PLANS-DONE.md and BUGS-FIXED.md run to MBs), and an uncached read on every poll would copy
- * them wholesale each time, unlike the stat-cached section readers the rest of the poll path
- * uses. cachedByStat serves an unchanged file from cache (dev/ino/mtime/size) and re-reads on
- * a change, so this shares the poll path's freshness contract. The one loop over BACKLOG_FILES
- * that feeds both checkBacklogHeadings and the always-on `backlog-headings` team alert: absent
+/** The one loop over BACKLOG_FILES the doctor's `backlog headings` check scans for duplicated
+ * `## ` titles. The per-file read is stat-cached (backlogHeadingFileCache) so repeated checks
+ * pay one stat per unchanged file rather than re-reading the whole BACKLOG_FILES member — the
+ * archives grow without bound (PLANS-DONE.md and BUGS-FIXED.md run to MBs) — and cachedByStat
+ * serves an unchanged file from cache (dev/ino/mtime/size) and re-reads on a change. Absent
  * files (an early repo) contribute nothing, an existing file that cannot be read adds
  * `${file} (unreadable)` to `rows` (its duplicate headings, if any, are invisible to every
- * reader), and each duplicate `## ` title joins both `duplicates` and, as
- * `${file} "## ${title}"`, `rows` — which therefore keeps BACKLOG_FILES order, the order the
- * doctor's `backlog headings` row lists its messages in. Two public functions share this so
- * they cannot drift on the file set, the unreadable clause, or the headings. */
-function scanBacklogHeadings(root: string): { duplicates: DuplicatedBacklogHeading[]; rows: string[] } {
-  const duplicates: DuplicatedBacklogHeading[] = [];
+ * reader), and each duplicate `## ` title appears as `${file} "## ${title}"` in
+ * `rows` — which therefore keeps BACKLOG_FILES order, the order the doctor's `backlog
+ * headings` row lists its messages in. */
+function scanBacklogHeadings(root: string): string[] {
   const rows: string[] = [];
   for (const file of BACKLOG_FILES) {
     const p = path.join(root, file);
@@ -273,11 +241,10 @@ function scanBacklogHeadings(root: string): { duplicates: DuplicatedBacklogHeadi
       continue;
     }
     for (const heading of scan.headings) {
-      duplicates.push({ file, heading });
       rows.push(`${file} "## ${heading}"`);
     }
   }
-  return { duplicates, rows };
+  return rows;
 }
 
 /** One stat-cached entry of scanBacklogHeadings per backlog file: whether the file was
@@ -287,76 +254,9 @@ interface BacklogHeadingFileScan {
   status: "unreadable" | "ok";
   headings: string[];
 }
-/** The module-level stat cache backing scanBacklogHeadings, shared by the doctor row and the
- * always-on alert so the poll path never re-reads an unchanged backlog or archive file. */
+/** The module-level stat cache backing scanBacklogHeadings, so a repeated check never re-reads
+ * an unchanged backlog or archive file. */
 const backlogHeadingFileCache = new Map<string, StatKeyedValue<BacklogHeadingFileScan>>();
-
-/** The duplicated `## ` headings already on main, exported so the always-on `backlog-headings`
- * team alert (src/ui/team-alert-backlog.ts) renders the same set the doctor's `backlog
- * headings` row warns about. */
-export function duplicatedBacklogHeadings(root: string): DuplicatedBacklogHeading[] {
-  return scanBacklogHeadings(root).duplicates;
-}
-
-/** One live backlog file's finished-history row as liveFinishedHistory reports it — the
- * `file`/`section`/`archive`/`entries`/`bytes` shape checkLiveFinished warns about, exported
- * so the always-on `backlog-archive` team alert (src/ui/team-alert-backlog.ts) renders the
- * same rows the doctor's `backlog archive` warn does. */
-export interface LiveFinishedEntry {
-  file: string;
-  section: string;
-  archive: string;
-  entries: number;
-  bytes: number;
-}
-
-/** One stat-cached value of liveFinishedEntriesFor per root: the combined stat signature of
- * that root's finished live files and archives when the rows were computed, plus the rows. */
-interface LiveFinishedCacheRow {
-  key: string;
-  rows: LiveFinishedEntry[];
-}
-
-/** The module-level stat cache backing liveFinishedEntriesFor, keyed by root, so a steady-state
- * status poll pays four stat calls (two live files, two archives) instead of re-parsing the
- * live files and the unbounded archives (PLANS-DONE.md runs to MBs) on every poll. Keyed by a
- * combined stat signature rather than the shared cachedByStat because each row spans FOUR files
- * (a live file, its finished entries, and the archive it empties into), so no single-file
- * stat-keyed cache entry can serve it. */
-const liveFinishedCache = new Map<string, LiveFinishedCacheRow>();
-
-/** The finished-history rows already on main, exported so the always-on `backlog-archive` team
- * alert (src/ui/team-alert-backlog.ts) renders the same set the doctor's `backlog archive`
- * row warns about — stat-gated so a steady-state poll pays four stats, not a full re-parse.
- * The cache key is the stat identity (`dev:ino:mtimeMs:size`, `absent` when the stat is
- * null) of every
- * FINISHED_ARCHIVES live file and archive under `root`, so any write that changes finished
- * history or the archive refreshes the rows on the next call without a process restart. Returns
- * a copy on a hit; on a miss it recomputes via liveFinishedHistory, and returns `[]` (uncached)
- * when that throws, so an unreadable file stays checkLiveFinished's loud signal and never
- * breaks a status poll. checkLiveFinished keeps calling liveFinishedHistory directly and is
- * unchanged. */
-export function liveFinishedEntriesFor(root: string): LiveFinishedEntry[] {
-  const key = FINISHED_ARCHIVES
-    .flatMap((spec) => [path.join(root, spec.file), path.join(root, spec.archive)])
-    .map((p) => {
-      const st = statOrNull(p);
-      return st ? `${st.dev}:${st.ino}:${st.mtimeMs}:${st.size}` : "absent";
-    })
-    .join("|");
-  const cached = liveFinishedCache.get(root);
-  if (cached?.key === key) return cached.rows.map((r) => ({ ...r }));
-  let rows: LiveFinishedEntry[];
-  try {
-    rows = liveFinishedHistory(root);
-  } catch {
-    liveFinishedCache.delete(root); // Never serve a stale read for an unreadable tree.
-    return []; // Unreadable — checkLiveFinished's signal; a status poll must not throw.
-  }
-  if (liveFinishedCache.size >= 64) liveFinishedCache.clear(); // Safety cap, like backlogHeadingFileCache.
-  liveFinishedCache.set(root, { key, rows });
-  return rows.map((r) => ({ ...r }));
-}
 
 /** Duplicated `## ` headings already on main (the duplicate-heading half of the backlog-structure
  * check, src/backlog/backlog-structure.ts): a `## Done` a past merge or conflict resolution added
@@ -368,7 +268,7 @@ export function liveFinishedEntriesFor(root: string): LiveFinishedEntry[] {
  * that leaves an existing duplicate alone passes and the duplicate itself needs a deliberate
  * removal edit. */
 export function checkBacklogHeadings(root: string): CheckOutcome {
-  const { rows } = scanBacklogHeadings(root);
+  const rows = scanBacklogHeadings(root);
   if (rows.length === 0)
     return okOutcome("no duplicated ## section headings in the backlog files");
   const [first, ...rest] = rows;
@@ -421,9 +321,8 @@ export function checkStalledEntries(root: string): CheckOutcome {
 /** A broken plan-dependency clause in PLANS.md's planned entries, named once with the doctor's
  * exact message: `kind` is the most serious rule violated (cycle, then dangling, then unparsed,
  * then misworded) and `message` is byte-identical to what the doctor's `plan dependencies` row
- * shows. Shared by checkPlanDependencies and the always-on plan-dependencies team alert, so the
- * problem set, the severity order, and the wording cannot drift. */
-export interface PlanDependencyProblem {
+ * shows. */
+interface PlanDependencyProblem {
   kind: "cycle" | "dangling" | "unparsed" | "misworded";
   message: string;
 }

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { withoutNeedsReviewNotes, withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, eligibleEntries, entryHold, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, refusalNote, refusedEntries, stalledEntries, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { withoutNeedsReviewNotes, withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, eligibleEntries, entryHold, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, refusalNote, refusedEntries, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
 import { entryKey, plannedPartKeys, prerequisitesMerged, planDependencyProblems, plansReleasedBy, plansWaitingOn, releasedPartsNote, requiredParts, seriesPart, type PartRef } from "../src/backlog/backlog-parts.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
@@ -605,39 +605,6 @@ test("refusedEntries lists the refused plans then the refused bugs, and [] with 
   assert.deepEqual(refusedEntries(dir), [
     { file: "plans", index: 1, title: "Dead plan (planned 2026-10-03)" },
     { file: "bugs", index: 1, title: "Dead bug (reported 2026-10-02)" },
-  ]);
-});
-
-test("stalledEntries lists the needs-review plans and bugs, keeping file order", () => {
-  assert.deepEqual(stalledEntries(tmpdir()), []);
-  const dir = tmpdir();
-  fs.writeFileSync(
-    path.join(dir, "PLANS.md"),
-    [
-      "# Plans",
-      "## Planned",
-      "### Ready (planned 2026-10-04)",
-      "body",
-      "### Needs review (planned 2026-10-03)",
-      "**Needs review 2026-10-07 by feature: too large for one run**",
-      "## Done",
-      "_None._",
-    ].join("\n"),
-  );
-  fs.writeFileSync(
-    path.join(dir, "BUGS.md"),
-    [
-      "# Bugs",
-      "## Open",
-      "### A held bug",
-      "**Needs review 2026-10-07 by feature: too large for one run**",
-      "## Fixed",
-      "_None._",
-    ].join("\n"),
-  );
-  assert.deepEqual(stalledEntries(dir), [
-    { file: "plans", index: 1, title: "Needs review (planned 2026-10-03)", hold: "needs-review" },
-    { file: "bugs", index: 0, title: "A held bug", hold: "needs-review" },
   ]);
 });
 

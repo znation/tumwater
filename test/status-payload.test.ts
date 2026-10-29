@@ -10,7 +10,7 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-index-data.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { staleOpenQuestions, refreshOrphanAlert, orphanAlertFromScan } from "../src/ui/alert-feeds.js";
+import { refreshOrphanAlert, orphanAlertFromScan } from "../src/ui/alert-feeds.js";
 import { PROMPT_END, PROMPT_START, BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { checkOrphans, findOrphans } from "../src/doctor/doctor-orphans.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
@@ -344,31 +344,6 @@ test("status payload carries planHolds and bugHolds parallel to plans and bugs",
   assert.equal(alerts.find((a) => a.key === "refused")?.title, "2 refused entries wait on your decision");
 });
 
-test("the status payload carries the false-fixes alert, and none without one", () => {
-  const now = Date.now();
-  const repo = makeRepo();
-  fs.mkdirSync(path.join(repo, "src"), { recursive: true });
-  fs.writeFileSync(path.join(repo, "src", "real.ts"), "export function liveSymbol() {}\n");
-  writeBacklogFile(repo, "BUGS.md", [
-    { heading: "## Open", body: "### Still broken (found by qa 2026-09-22)\n\n**Fix:** someday.\n" },
-    { heading: "## Fixed", body: "### Phantom bug: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n\n**Fix:** `ghostSymbol` merged.\n" },
-  ]);
-  const alerts = (statusPayload(repo, now) as { alerts: Array<{ key: string; title?: string; detail?: string }> }).alerts;
-  const alert = alerts.find((a) => a.key === "false-fixes");
-  assert.equal(alert?.title, "1 Fixed record names code that is not on this tree");
-  assert.match(alert?.detail ?? "", /"Phantom bug: details \(found by qa 2026-09-20, fixed 2026-09-21\)"/);
-  assert.match(alert?.detail ?? "", /ghostSymbol/);
-  // A repo whose Fixed record names a live symbol carries no false-fixes alert.
-  const clean = makeRepo();
-  fs.mkdirSync(path.join(clean, "src"), { recursive: true });
-  fs.writeFileSync(path.join(clean, "src", "real.ts"), "export function ghostSymbol() {}\n");
-  writeBacklogFile(clean, "BUGS.md", [
-    { heading: "## Open", body: "### Still broken (found by qa 2026-09-22)\n\n**Fix:** someday.\n" },
-    { heading: "## Fixed", body: "### Real bug: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n\n**Fix:** `ghostSymbol` merged.\n" },
-  ]);
-  assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "false-fixes"), undefined);
-});
-
 test("status payload's planHolds carries the working-on-it mark for a claimed plan", () => {
   const repo = makeRepo();
   writeBacklogFile(repo, "PLANS.md", [
@@ -416,36 +391,6 @@ test("status payload carries open questions, fresh per poll", async () => {
   ]);
   payload = statusPayload(repo) as { questions: string[] };
   assert.deepEqual(payload.questions, [], "an answered question is no longer open");
-});
-
-test("staleOpenQuestions picks the 7+ day set and the payload carries it", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "gui stale questions test");
-  const now = Date.parse("2026-10-24T12:00:00Z");
-  const stamp = (n: number) => new Date(now - n * 86_400_000).toISOString().slice(0, 10);
-  writeBacklogFile(repo, "QUESTIONS.md", [
-    { heading: "## Open", body: `### Q0: undated tenet\n\n**Context:** none.` },
-    { heading: "## Open", body: `### Q1: fresh rule (asked by director ${stamp(6)})\n\n**Context:** none.` },
-    { heading: "## Open", body: `### Q2: stale rule (asked by director ${stamp(8)})\n\n**Context:** none.` },
-  ]);
-  // Only the dated question at/over the 7-day threshold is stale, with its position and days.
-  assert.deepEqual(staleOpenQuestions(repo, now), [
-    { index: 2, position: 3, title: "Q2: stale rule", days: 8 },
-  ]);
-  // The status payload for that repo carries a stale-questions amber alert with the Answer action.
-  const payload = statusPayload(repo, now) as { alerts: Array<{ key: string; title: string; actions: Array<{ label: string; act: string }> }> };
-  const alert = payload.alerts.find((a) => a.key === "stale-questions");
-  assert.notEqual(alert, undefined);
-  assert.match(alert!.title, /^1 open question waited 7\+ days for an answer$/);
-  assert.deepEqual(alert!.actions, [{ label: "Answer", act: "questions" }]);
-  // A repo whose only question is fresh carries no stale-questions alert.
-  const clean = makeRepo();
-  await initProject(clean, "gui stale questions clean test");
-  writeBacklogFile(clean, "QUESTIONS.md", [
-    { heading: "## Open", body: `### Q: recent rule (asked by director ${stamp(1)})\n\n**Context:** none.` },
-  ]);
-  const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
-  assert.equal(cleanPayload.alerts.find((a) => a.key === "stale-questions"), undefined);
 });
 
 // Queued director prompts ride /api/status as truncated previews in execution order; the

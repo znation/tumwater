@@ -13,33 +13,19 @@
  * (defined in team-alert-shared.ts) so consumers keep importing them from this one path. */
 
 import type { StatusSnapshot } from "../status/status-data.js";
-import type { StrandedPlanEntry } from "../backlog/backlog-structure.js";
-import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import type { OrphanAlert } from "./status-payload.js";
-import type { RefusedEntry, StalledEntry } from "../backlog/backlog-eligibility.js";
-import type {
-  AlertRole, TeamAlert, StaleQuestion,
-  PlanDependencyProblem, BacklogHeadingDuplicate, LiveFinishedEntry,
-} from "./team-alert-shared.js";
+import type { RefusedEntry } from "../backlog/backlog-eligibility.js";
+import type { AlertRole, TeamAlert } from "./team-alert-shared.js";
 import { buildStatusAlerts } from "./team-alert-status.js";
 import { buildBacklogAlerts } from "./team-alert-backlog.js";
 import { buildTailAlerts } from "./team-alert-tail.js";
 
-export type {
-  StaleQuestion,
-  PlanDependencyProblem, BacklogHeadingDuplicate, LiveFinishedEntry, TeamAlert, AlertRole,
-} from "./team-alert-shared.js";
+export type { TeamAlert, AlertRole } from "./team-alert-shared.js";
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, disk and install drift, open
- * questions, refused entries, a plan stalled by a Needs
- * review note, the team
- * waiting on capacity slots (workspace, provider or
- * check), a plan
- * filed under the wrong backlog section, a duplicated
- * backlog section heading, finished history still under a live backlog file's `## Done` or
- * `## Fixed`, a Fixed record with a bad Validation gap trace, and a
- * stopped team.
+ * questions, refused entries, the team waiting on capacity slots (workspace, provider or
+ * check), and a stopped team.
  */
 export function teamAlerts(
   snap: Pick<
@@ -56,19 +42,11 @@ export function teamAlerts(
   roles: readonly AlertRole[],
   _now: number,
   refused: readonly RefusedEntry[] = [],
-  planDependency: PlanDependencyProblem | null = null,
-  stalledEntries: readonly StalledEntry[] = [],
-  strandedPlans: readonly StrandedPlanEntry[] = [],
-  duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
-  validationGaps: readonly ValidationGapProblem[] = [],
-  staleQuestions: readonly StaleQuestion[] = [],
-  fixClaims: readonly FixClaimProblem[] = [],
-  liveFinished: readonly LiveFinishedEntry[] = [],
   orphans: OrphanAlert | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles }));
-  out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, liveFinished, validationGaps, fixClaims }));
+  out.push(...buildBacklogAlerts({ questions, refused }));
   out.push(...buildTailAlerts({ snap, orphans }));
 
   return out;

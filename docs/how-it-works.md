@@ -513,12 +513,12 @@ validation, and atomic write, so you never have to hand-edit the file.
 - `gui --all-interfaces` has no authentication unless you pass `--token <secret>`. Clients send the
   token as `Authorization: Bearer <token>` or `?token=`.
 - The web dashboard opens on Team: alerts for whatever needs you (a failing or stuck role, a
-  failing check on main, a spent budget, open questions, a question
-  that has waited a week for an answer, refused entries,
-  a broken plan dependency clause, a plan or bug stalled by a
-  Needs review note,
-  a plan filed under the wrong
-  backlog section, a duplicated backlog section heading, finished history still under a live backlog file's `## Done` or `## Fixed` (the `backlog-archive` alert, the always-on twin of the doctor's `backlog archive` warn), a Fixed record whose Validation gap trace is missing or unrecognized, and a Fixed record whose Fix paragraph names code that is not on the tree). Anything the team could warn about on its own — a stale build, capacity contention, a stale claim, a regressed fix, a missing or over-cap brief, the no-check, an over-cap role note or PRINCIPLES.md, a pause, quiet hours, maintenance, or a provider hold — lives in `tumwater doctor` instead, one row each. The
+  failing check on main, a spent budget, open questions, refused entries). Anything the team
+  could warn about on its own — stale questions, a stalled entry, a broken plan dependency
+  clause, a stranded plan, a duplicated heading, finished history, a bad Validation gap trace,
+  a false Fix, a stale build, capacity contention, a stale claim, a regressed fix, a missing or
+  over-cap brief, the no-check, an over-cap role note or PRINCIPLES.md, a pause, quiet hours,
+  maintenance, or a provider hold — lives in `tumwater doctor` instead, one row each. The
   band names the same `needsYou` count the tab's badge and the page title carry, and — while it
   has alerts — shows one `Open Health check` control next to it that routes through the existing
   view/hash path to the Settings view's Health check card (`#doctorcard`), which keeps each

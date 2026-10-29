@@ -50,8 +50,7 @@ export const REVISION_BACKSTOP = 6;
  * objections verbatim (they are already in `RunnerState.lastReview.reasons`), so the plan role
  * sees exactly what would not converge. PLANS.md plans only, by design: the convergence hold
  * parks a revised plan whose author hit the round cap, so only the plan role needs to clear it;
- * a role's own too-large Needs-review note on a BUGS.md entry is the bug path (the
- * stalledEntries comment in src/backlog/backlog-eligibility.ts), which the
+ * a role's own too-large Needs-review note on a BUGS.md entry is the bug path, which the
  * plan role resolves by splitting it. A bug that cannot converge stays with the existing re-pick
  * behaviour (reviewer-feedback delivery, part 4/4, addresses that churn).
  * Written through the primary worktree lock, as every other backlog write is, and then committed

@@ -1,9 +1,8 @@
 import { answeredQuestionSummaries } from "../backlog/backlog-question-answer.js";
 import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries, openBugs, openQuestions, plannedPlans, type BacklogEntry } from "../backlog/backlog.js";
-import { backlogHolds, backlogInProgress, backlogMarks, refusedEntries, stalledEntries } from "../backlog/backlog-eligibility.js";
-import { finishedTitle, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
+import { backlogHolds, backlogInProgress, backlogMarks, refusedEntries } from "../backlog/backlog-eligibility.js";
+import { finishedTitle } from "../backlog/backlog-structure.js";
 import { groupBlockedSeries, partsLabel } from "../backlog/backlog-index-data.js";
-import { fixClaimProblems, validationGapProblems } from "../doctor/doctor-backlog-plans.js";
 import { readEvents } from "../events/event-read.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
@@ -16,9 +15,8 @@ import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainChe
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts } from "./team-alerts.js";
-import { duplicatedBacklogHeadings, liveFinishedEntriesFor } from "../doctor/doctor-backlog-plans.js";
 import { readPostReviews } from "../review/post-merge-review.js";
-import { getOrphanAlert, planDependencyAlert, staleOpenQuestions } from "./alert-feeds.js";
+import { getOrphanAlert } from "./alert-feeds.js";
 
 // The alert feeds' result types live with their functions in alert-feeds.ts, but team-alerts.ts
 // and the tests keep importing them through this module — one import edge into alert-feeds.ts.
@@ -440,7 +438,7 @@ function alertFields(root: string, snap: ReturnType<typeof snapshot>, questions:
   return {
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), planDependencyAlert(root), stalledEntries(root), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), staleOpenQuestions(root, now), fixClaimProblems(root), liveFinishedEntriesFor(root), getOrphanAlert(root)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), getOrphanAlert(root)),
   };
 }
 
