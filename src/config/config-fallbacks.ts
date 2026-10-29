@@ -363,6 +363,82 @@ function freeRoleModels(
   );
 }
 
+/** A pair's selector as a tier-map entry. Keeps pi's provider; a non-pi pair's model is
+ * already the whole id. On a team whose backend is not pi — or a pair routed off pi — the
+ * entry names the pair's backend, so the team's own backend cannot take a pi pair's id as
+ * its own: a bare selector when the pair rides the team backend and it is pi, else an
+ * object entry naming the pair's backend. */
+function pairSelectorOf(
+  config: TumwaterConfig,
+  pair: TierFallback["pair"],
+): string | ModelSelectorEntry | undefined {
+  if (!pair) return undefined;
+  const selector = formatModelSelector({
+    provider: pair.backend === undefined ? pair.provider : undefined,
+    model: pair.model ?? "",
+    thinking: pair.backend === undefined ? pair.thinking : undefined,
+  });
+  if (pair.backend === undefined && (config.backend ?? "pi") === "pi")
+    return formatModelSelector({ provider: pair.provider, model: pair.model ?? "", thinking: pair.thinking });
+  return {
+    backend: pair.backend ?? "pi",
+    model: selector,
+    ...(pair.thinking !== undefined ? { thinking: pair.thinking } : {}),
+  };
+}
+
+/** What a free seam keeps running: the tier's own primary selector — the backend namespace a
+ * resolved seam has cleared, plus the ambient thinking level `topTierSelector` alone omits.
+ * A moved seam gets its pair selector, which already carries that ambient level. */
+function freeTierEntry(
+  config: TumwaterConfig,
+  tier: ModelTier,
+  seam: ResolvedModelConfig,
+): string | ModelSelectorEntry | undefined {
+  const own = topTierSelector(config, tier);
+  // A tier entry that names a backend keeps it as an object entry: a bare selector string
+  // would route by namespace and drop the backend the entry chose.
+  const backend = topTierBackend(config, tier);
+  if (own !== undefined) {
+    const thinking = own.thinking ?? config.thinking;
+    if (backend !== undefined)
+      return {
+        backend,
+        model: formatModelSelector({ ...own, thinking: undefined }),
+        ...(thinking !== undefined ? { thinking } : {}),
+      };
+    else return formatModelSelector({ ...own, thinking });
+  }
+  // A tier with no top-level selector — `agent: "claude"` riding its agent default —
+  // has no own selector to carry the level, so name the routed default plus it.
+  if (seam.model !== undefined) {
+    const routed = { provider: seam.provider, model: seam.model };
+    return backend !== undefined
+      ? {
+          backend,
+          model: formatModelSelector(routed),
+          ...(seam.thinking !== undefined ? { thinking: seam.thinking } : {}),
+        }
+      : formatModelSelector({ ...routed, thinking: seam.thinking });
+  }
+  return undefined;
+}
+
+/** A config with no resolved tier map installs the single fallback pair at the top level,
+ * keeping every other value (and the reviewer's time budget floor) as in the resolved-map
+ * path's legacy peer. */
+function legacyPairConfig(config: TumwaterConfig, pair: FallbackModelConfig): TumwaterConfig {
+  return {
+    ...config,
+    ...(pair.backend !== undefined || config.backend !== undefined ? { backend: pair.backend ?? "pi" } : {}),
+    provider: pair.backend === undefined ? pair.provider : undefined,
+    model: pair.model,
+    thinking: pair.thinking,
+    review: fallbackReview(config.review),
+    roles: stripRoleModels(config.roles, false),
+  };
+}
+
 /** The config as seen by a role running on the free fallback model
  * (plans/fallback-model.md): the fallback's provider/model/thinking installed as the top-level
  * values AND every per-role and reviewer model override dropped, so that EVERY seam that could
@@ -390,25 +466,6 @@ export function applyFallbackModel(
   free?: (seam: { agent?: string; provider?: string; model?: string }) => boolean,
 ): TumwaterConfig {
   if (resolved) {
-    // A pair's selector keeps pi's provider; a non-pi pair's model is already the whole id. On a
-    // team whose backend is not pi — or a pair routed off pi — the entry names the pair's
-    // backend, so the team's own backend cannot take a pi pair's id as its own.
-    const selectorOf = (f: TierFallback): string | ModelSelectorEntry | undefined => {
-      const pair = f.pair;
-      if (!pair) return undefined;
-      const selector = formatModelSelector({
-        provider: pair.backend === undefined ? pair.provider : undefined,
-        model: pair.model ?? "",
-        thinking: pair.backend === undefined ? pair.thinking : undefined,
-      });
-      if (pair.backend === undefined && (config.backend ?? "pi") === "pi")
-        return formatModelSelector({ provider: pair.provider, model: pair.model ?? "", thinking: pair.thinking });
-      return {
-        backend: pair.backend ?? "pi",
-        model: selector,
-        ...(pair.thinking !== undefined ? { thinking: pair.thinking } : {}),
-      };
-    };
     const model: Partial<Record<ModelTier, string | ModelSelectorEntry>> = {};
     const stepCaps: Record<string, number> = {};
     for (const tier of MODEL_TIERS) {
@@ -417,36 +474,11 @@ export function applyFallbackModel(
       // seam gets its pair selector, which already carries that ambient level.
       const seam = withModelOverrides(config, tier, {});
       if (free?.(seam)) {
-        const own = topTierSelector(config, tier);
-        // A tier entry that names a backend keeps it as an object entry: a bare selector string
-        // would route by namespace and drop the backend the entry chose.
-        const backend = topTierBackend(config, tier);
-        if (own !== undefined) {
-          const thinking = own.thinking ?? config.thinking;
-          if (backend !== undefined)
-            model[tier] = {
-              backend,
-              model: formatModelSelector({ ...own, thinking: undefined }),
-              ...(thinking !== undefined ? { thinking } : {}),
-            };
-          else model[tier] = formatModelSelector({ ...own, thinking });
-        }
-        // A tier with no top-level selector — `agent: "claude"` riding its agent default —
-        // has no own selector to carry the level, so name the routed default plus it.
-        else if (seam.model !== undefined) {
-          const routed = { provider: seam.provider, model: seam.model };
-          model[tier] =
-            backend !== undefined
-              ? {
-                  backend,
-                  model: formatModelSelector(routed),
-                  ...(seam.thinking !== undefined ? { thinking: seam.thinking } : {}),
-                }
-              : formatModelSelector({ ...routed, thinking: seam.thinking });
-        }
+        const own = freeTierEntry(config, tier, seam);
+        if (own !== undefined) model[tier] = own;
         continue;
       }
-      const sel = selectorOf(resolved[tier]);
+      const sel = pairSelectorOf(config, resolved[tier].pair);
       if (sel !== undefined) model[tier] = sel;
       const cap = resolved[tier].pair?.maxDailyCostUsd;
       if (cap !== undefined) stepCaps[modelPairName(resolved[tier].pair)] = cap;
@@ -463,13 +495,5 @@ export function applyFallbackModel(
   }
   const pair = fallbackPair(config);
   if (!pair) return config;
-  return {
-    ...config,
-    ...(pair.backend !== undefined || config.backend !== undefined ? { backend: pair.backend ?? "pi" } : {}),
-    provider: pair.backend === undefined ? pair.provider : undefined,
-    model: pair.model,
-    thinking: pair.thinking,
-    review: fallbackReview(config.review),
-    roles: stripRoleModels(config.roles, false),
-  };
+  return legacyPairConfig(config, pair);
 }
