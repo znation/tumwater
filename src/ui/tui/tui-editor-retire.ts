@@ -1,6 +1,7 @@
 import { artifactPhrase, retireRole } from "../../operator/operator-retire.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import { savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
+import { flashReject } from "./tui-guard.js";
 
 /** The Health view's Ctrl+X retire editor on the shared prompt line, the terminal twin of
  * `tumwater retire --role <id>` and the dashboard Settings card's Retire button. It owns its
@@ -75,9 +76,7 @@ export function createRetireEditor(session: TuiEditorSession): TuiEditorModule {
             : removed.map((a) => `removed ${artifactPhrase(a, role)}`).join("; "),
         );
       },
-      (err: unknown) => {
-        session.flashError(err);
-      },
+      flashReject(session),
     );
     return true;
   };

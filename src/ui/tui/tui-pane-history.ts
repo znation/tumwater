@@ -25,6 +25,7 @@ import { plural } from "../../text/phrases.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
+import { flashReject } from "./tui-guard.js";
 import { paneAtHead, nextInCycle, cycleLabel, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPaneSession } from "./tui-pane-session.js";
 
 /** The bounds `readRunRowsSince` reads for a trailing window of `windowMs` stepped `step` window
@@ -380,7 +381,7 @@ export function createHistoryPane(
         const followUp = revertFollowUp(r.subject);
         session.flashMessage(`reverted ${shortSha(sha)}: main is now ${shortSha(r.headSha)}${followUp === null ? "" : `; ${followUp}`}`);
       },
-      (err: unknown) => session.flashError(err),
+      flashReject(session),
     ).finally(() => {
       reverting = false;
       session.armedRevert = null;
@@ -406,7 +407,7 @@ export function createHistoryPane(
           session.flashMessage(`press Ctrl+V again to revert ${shortSha(p.sha)} ${p.subject} (${plural(p.paths.length, "file")}) on ${p.primary} — any other key cancels`);
         }
       },
-      (err: unknown) => session.flashError(err),
+      flashReject(session),
     ).finally(() => {
       reverting = false;
       session.requestRender();

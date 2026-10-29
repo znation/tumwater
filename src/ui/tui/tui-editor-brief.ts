@@ -1,6 +1,7 @@
 import { editBriefText } from "../../brief/brief-edit.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import { readEditorPath, savedPromptDraft, type TuiEditorSession } from "./tui-editor-session.js";
+import { flashReject } from "./tui-guard.js";
 
 /** The Brief view's Ctrl+E replace-the-brief-from-a-file editor on the shared prompt line, the
  * terminal twin of `tumwater brief --file <path>` and the dashboard's Brief card. It owns its
@@ -81,11 +82,7 @@ export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
             : "brief unchanged",
         );
       },
-      (err: unknown) => {
-        // The read/replace/commit threw: flash the reason and stay in the editor so the
-        // operator can fix things, as the other editor Enter arms do.
-        session.flashError(err);
-      },
+      flashReject(session),
     );
     return true;
   };
