@@ -303,21 +303,28 @@ export function createHealthPane(session: TuiPaneSession) {
     return true;
   };
 
+  const ctrlRoutes: Record<string, (ctx: TuiPaneCtx) => boolean> = {
+    r: healthRefresh,
+    e: healthReclaim,
+    n: healthNotifyTest,
+    a: healthCommitBacklog,
+    k: healthKillOrphans,
+    s: healthDropBrokenPins,
+    u: healthResyncInstall,
+    l: healthRetireLeftovers,
+    b: healthArchiveBacklog,
+    o: healthToggleProblems,
+  };
+  const ctrlRoute = (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx): boolean | null => {
+    if (!key.ctrl || key.name === undefined) return null;
+    const route = ctrlRoutes[key.name];
+    return route === undefined ? null : route(ctx);
+  };
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
-    if (key.ctrl && key.name === "r") return healthRefresh(ctx);
-    if (key.ctrl && key.name === "e") return healthReclaim(ctx);
-    if (key.ctrl && key.name === "n") return healthNotifyTest(ctx);
-    if (key.ctrl && key.name === "a") return healthCommitBacklog(ctx);
-    if (key.ctrl && key.name === "k") return healthKillOrphans(ctx);
-    if (key.ctrl && key.name === "s") return healthDropBrokenPins(ctx);
-    if (key.ctrl && key.name === "u") return healthResyncInstall(ctx);
-    if (key.ctrl && key.name === "l") return healthRetireLeftovers(ctx);
-    if (key.ctrl && key.name === "b") return healthArchiveBacklog(ctx);
-    if (key.ctrl && key.name === "o") return healthToggleProblems(ctx);
-    return false;
+    return ctrlRoute(key, ctx) ?? false;
   };
 
   return {

@@ -164,7 +164,14 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   const routeCtrlK = (
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
-  ): boolean => health.handleKey?.(key, ctx) ?? false;
+  ): boolean => {
+    // Health owns Ctrl+K (kill orphans), routed ahead of every other pane like the other
+    // Health arms; its own two-step kill arm consumes the key on the Health view and falls
+    // through (returns false) off it. The explicit guard keeps the key in the Ctrl set the
+    // TUI keys docs check scans, matching the rest of these routers.
+    if (key.ctrl && key.name === "k") return health.handleKey?.(key, ctx) ?? false;
+    return false;
+  };
 
   const routeCtrlW = (
     key: { ctrl?: boolean; name?: string },

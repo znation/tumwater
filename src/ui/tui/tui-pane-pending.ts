@@ -601,20 +601,29 @@ export function createPendingPane(session: TuiPaneSession) {
     return true;
   };
 
+  const ctrlRoutes: Record<string, (ctx: TuiPaneCtx) => boolean> = {
+    r: pendingRefresh,
+    g: pendingScopeCycle,
+    o: pendingReviewStateCycle,
+    n: pendingOverlapDrill,
+    x: pendingCancelMerge,
+    a: pendingAcceptReview,
+    v: pendingMoveToTop,
+  };
+  const ctrlRoute = (key: { ctrl?: boolean; name?: string }, ctx: TuiPaneCtx): boolean | null => {
+    if (!key.ctrl || key.name === undefined) return null;
+    const route = ctrlRoutes[key.name];
+    return route === undefined ? null : route(ctx);
+  };
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
-    if (key.ctrl && key.name === "r") return pendingRefresh(ctx);
-    if (key.ctrl && key.name === "g") return pendingScopeCycle(ctx);
-    if (key.ctrl && key.name === "o") return pendingReviewStateCycle(ctx);
-    if (key.ctrl && key.name === "n") return pendingOverlapDrill(ctx);
+    const ctrl = ctrlRoute(key, ctx);
+    if (ctrl !== null) return ctrl;
     const arrow = arrowDir(key.name);
     if (arrow !== null) return pendingSelectRow(arrow, ctx);
     if (key.name === "escape") return pendingClearSelection(ctx);
-    if (key.ctrl && key.name === "x") return pendingCancelMerge(ctx);
-    if (key.ctrl && key.name === "a") return pendingAcceptReview(ctx);
-    if (key.ctrl && key.name === "v") return pendingMoveToTop(ctx);
     return false;
   };
 
