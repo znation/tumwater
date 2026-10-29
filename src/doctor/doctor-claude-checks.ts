@@ -27,6 +27,20 @@ import {
  * from doctor-probe.ts, with the shared report contract (CheckOutcome) from
  * doctor-outcome.ts, exactly as the other doctor-* modules share them. */
 
+/** The config a claude readiness row reads, or the warn outcome a broken `tumwater.json`
+ * earns, or the ok stand-down when no seam routes to claude. The claude rows repeat the same
+ * three-line guard and the same seam stand-down (`loadConfigForCheck` + `claudeSeamsInUse`);
+ * folding them here mirrors codexCheckBase so a change to how doctor guards a claude check
+ * touches one spot instead of three. Each caller still checks the seams it needs — the auth
+ * rows use `claudeSeamsInUse` directly (folded here), the version row goes on to
+ * `seamedModels` for the floors. */
+function claudeCheckBase(root: string): TumwaterConfig | CheckOutcome {
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
+  if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
+  return config;
+}
+
 /** One bounded probe of the resolved `claude` binary under the scrubbed run environment a real
  * run gets: resolve the binary through the claude adapter that would spawn it and run `args`
  * with a short deadline. Null when the probe could not run, the child errored, or the deadline
@@ -78,9 +92,8 @@ export async function checkClaudeAuth(
   pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<CheckOutcome> {
-  const config = loadConfigForCheck(root);
+  const config = claudeCheckBase(root);
   if ("level" in config) return config;
-  if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
   const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
   if (auth === null)
     return warnOutcome("could not check — `claude auth status` did not run or its output was unreadable");
@@ -107,9 +120,8 @@ export async function checkAnthroApiKey(
   pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<CheckOutcome> {
-  const config = loadConfigForCheck(root);
+  const config = claudeCheckBase(root);
   if ("level" in config) return config;
-  if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
   const apiKey = env.ANTHROPIC_API_KEY;
   if (apiKey === undefined || apiKey === "") return okOutcome("no ANTHROPIC_API_KEY set");
   const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
@@ -180,7 +192,7 @@ export async function checkClaudeVersion(
   pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<CheckOutcome> {
-  const config = loadConfigForCheck(root);
+  const config = claudeCheckBase(root);
   if ("level" in config) return config;
   const seams = seamedModels(config, "claude");
   if (seams.length === 0) return okOutcome("no model jobs run on claude");
