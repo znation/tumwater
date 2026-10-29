@@ -6,7 +6,7 @@
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { backendSessionResumable } from "../agent/agent-backend.js";
 import { reviewRunConfig, resolvedBackendConfig } from "../config/config-views.js";
-import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { logBlindRead, warnEventBestEffort } from "../events/events.js";
 import { nativeLogPath, piLogPath } from "../paths.js";
 import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../prompt/gate-prompts.js";
 import type { ToolCallStart } from "./suite-rerun.js";
@@ -63,15 +63,7 @@ async function runFollowupTurn(
     // A gate run that read an image its model cannot see is logged, not killed (plans/
     // image-input.md "Detecting a blind read") — same shape as the main review run in
     // review.ts.
-    onBlindRead: (path, action) =>
-      logEventBestEffort(ctx.root, {
-        source: ctx.role,
-        type: "image_blind",
-        run: ctx.runNumber,
-        path,
-        model: cfg.model,
-        action,
-      }),
+    onBlindRead: (path, action) => logBlindRead(ctx.root, ctx.role, ctx.runNumber, path, cfg.model, action),
     ...(opts.onToolCallStart ? { onToolCallStart: opts.onToolCallStart } : {}),
   });
 }

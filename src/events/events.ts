@@ -214,6 +214,22 @@ export function logEventBestEffort(root: string, event: HarnessEventInput): void
   }
 }
 
+/** Log one `image_blind` event (plans/image-input.md "Detecting a blind read"): an agent read an
+ * image its model cannot see — the authoring run was killed (action "fail") or a gate run merely
+ * recorded the read (action "logged"). The runner and both review paths used to build this exact
+ * event object themselves (source + type + run + path + model + action); it lives here so the
+ * payload has one home and cannot drift between the three callers. */
+export function logBlindRead(
+  root: string,
+  source: string,
+  run: number,
+  path: string,
+  model: string | undefined,
+  action: "fail" | "logged",
+): void {
+  logEventBestEffort(root, { source, type: "image_blind", run, path, model, action });
+}
+
 /** warnEvent's twin of logEventBestEffort: the "something is off but the loop continues"
  * warning must not be the thing that ends the role it warns about. The fallback keeps the
  * warning's own text on stderr — when the feed is the failure, this line is the only place the

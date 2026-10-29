@@ -12,7 +12,7 @@ import { dailyCost, teamDailyCost, pairDailyCost } from "../budget/budget.js";
 import { loadRunnerState } from "./runner-state-load.js";
 import { baseRoleOf, runnerIds } from "../roles/runner-ids.js";
 import { buildStageFixPrompt, type StagedDescription } from "../prompt/gate-prompts.js";
-import { logEventBestEffort } from "../events/events.js";
+import { logBlindRead } from "../events/events.js";
 import { nativeLogPath, piLogPath, roleNotesPath, sessionDir } from "../paths.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -176,14 +176,7 @@ export class RunnerPi {
       // merely recorded it ("logged") — each logged here with this runner's identity so the
       // feed names who, on which run, read which file on which blind model.
       onBlindRead: (path, action) =>
-        logEventBestEffort(this.host.root, {
-          source: this.host.role,
-          type: "image_blind",
-          run: this.host.runNumber(),
-          path,
-          model: resolved.model,
-          action,
-        }),
+        logBlindRead(this.host.root, this.host.role, this.host.runNumber(), path, resolved.model, action),
     };
   }
 

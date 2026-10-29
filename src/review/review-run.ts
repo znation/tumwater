@@ -1,6 +1,6 @@
 import { APPROVED_PATCH_IDS_MAX, REVIEW_RESUME_LIMIT, saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import { modelSelectorField, resolvedBackendConfig, reviewRunConfig } from "../config/config-views.js";
-import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { logBlindRead, logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { git } from "../git/git-run.js";
 import { changeBaseRev, headOf } from "../git/git.js";
 import { aheadOfMainDiff, revisionInterdiff } from "../git/git-diff.js";
@@ -207,14 +207,7 @@ export async function runReviewer(ctx: ReviewContext, state: RunnerState, input:
     // see, and the image_blind line names the file, the model, and this run so the operator
     // knows the diff was judged under a blind read.
     onBlindRead: (path, action) =>
-      logEventBestEffort(root, {
-        source: role,
-        type: "image_blind",
-        run: ctx.runNumber,
-        path,
-        model: reviewCfg.model,
-        action,
-      }),
+      logBlindRead(root, role, ctx.runNumber, path, reviewCfg.model, action),
   });
 
   // A reviewer told the pre-check passed that re-ran the full suite anyway held the merge
