@@ -227,6 +227,10 @@ The post-merge review of commit `3c1c1c6176c2080a9788e2a6aa0193a75b72aebf` (Fold
 
 The post-merge review of commit `6407b7d67f7c9889df53fde798306f4630790d3d` (recovered leftover work from dedupe: Fold run-verdict's three unfulfilled-error blocking into one unfulfilledError helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
 
+### post-merge review of 17c0bbbc never reached a verdict (found by the review role 2026-10-28)
+
+The post-merge review of commit `17c0bbbc23ec40100b8196919c5c8e28c3e77a7e` (Replaced promptPrefix's 25-arm flat chain with an ordered label table lookup) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
 ## Fixed
 
 ## Verified
