@@ -30,6 +30,8 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Cause:** `leftoverPending` is `pinnedDirector` (src/scheduling/skip.ts). `directorGate` (src/scheduling/scheduling.ts) runs whenever `leftoverPending` is set and `now >= nextRunAt`. The `relief_wait` arm of leftover recovery (src/runner/runner-recovery.ts) returns `{ result: "skipped" }`, and run-apply.ts schedules a skipped outcome with `scheduleAtMinInterval`, the 20 s default `minRunIntervalSeconds`, so the next poll admits it again. `directorGate`'s option comment says the leftover run "is due on `nextRunAt` … never earlier, so a persistently blocked fast-forward cannot spin the merge queue", but a relief wait is a wait on the queue, not a failed merge.
 - **Expected / fix sketch:** while the held commit waits on a queued change, the director is not due. Leave `leftoverPending` false for the relief-wait case, or wake the director when that queue entry settles, so a waiting second commit costs no runs.
 
+**Needs review 2026-10-29 by bugfix: too large for one run** — a review VERDICT for 17c0bbbc needs a real strong-tier live review run, which has no offline repro and times out at the 900s ceiling under the shared host's load; it is not a code defect (17c0bbbc is an ancestor refactor of src/ui/tui/tui-frame.ts, verified via git merge-base), so the review-path fix belongs to the plan role, which already owns the class fork under "Post-merge reviews time out at the 900s ceiling as a class". Do not close this entry as Fixed via an md-only edit.
+
 ## Fixed
 
 ## Verified
