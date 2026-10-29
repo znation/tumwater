@@ -439,7 +439,8 @@ const MAX_BUDGET_S = 3600;
  * test-file time, by the durations ledger, that an `--affected` run may select
  * (affected-tests.ts's fitBudget). n must be a whole number from 1 to MAX_BUDGET_S, and the flag
  * needs `--affected`, which main() checks; a bare `--budget` is an error. The last occurrence
- * wins. Without the flag `budgetMs` is undefined. Exported for test/test-runner-affected.test.ts. */
+ * wins. Without the flag `budgetMs` is undefined. Exported for test/test-runner-
+ * affected.test.ts. */
 export function splitBudgetArgv(argv: readonly string[]): { rest: string[]; budgetMs?: number; error?: string } {
   const rest = argv.filter((a) => a !== "--budget" && !a.startsWith("--budget="));
   const flag = argv.filter((a) => a === "--budget" || a.startsWith("--budget=")).pop();
