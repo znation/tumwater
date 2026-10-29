@@ -314,7 +314,9 @@ export interface TumwaterConfig {
   /** Warn — without killing — when ONE tool call has been open this many seconds with no
    * content-bearing output update: a `warning` event names the command and the role's state
    * cell flags it, while the quiet watchdog still counts down. Fires even while sibling calls
-   * keep streaming (total silence is not required); 0 disables the warning. */
+   * keep streaming (total silence is not required). The same threshold warns once when a model
+   * request has gone this long with no reply (pi only: the event names the provider and model,
+   * the cell reads "no model reply for <wait>"). 0 disables both warnings. */
   toolCallStallSeconds: number;
   /** Rotate events.jsonl and per-role pi logs when they exceed this size. */
   logMaxBytes: number;

@@ -1,11 +1,13 @@
 import { extractRefusal, hasVerdictLine, isNegatedRefusal, isNothingToDo } from "../verdict/reply-contract.js";
 import {
   applyToolExecutionEvent,
+  foldPendingReply,
   messageUpdateHasContent,
   piEventType,
   toolCallCommand,
   toolUpdateHasContent,
   type OpenToolCall,
+  type PendingReply,
 } from "./pi-event-line.js";
 import { describeToolCall } from "../text/phrases.js";
 import { objectOrEmpty, nonNegativeNumber, parseJsonObject, isJsonObject } from "../files/json-object.js";
@@ -320,6 +322,10 @@ export class PiStreamParser {
    * empty-content update right after start, and a content-free keepalive must not mask a hang.
    * Feeds runPi's stall warning; entries clear at tool_execution_end. */
   openToolCalls: OpenToolCall[] = [];
+  /** The model request pi has sent and the provider has not yet answered (see PendingReply), or
+   * undefined. Feeds runPi's unanswered-request warning; stamped with this parser's clock, since
+   * it observes the request live. */
+  pendingReply: PendingReply | undefined = undefined;
   /** Read tool calls started but not yet ended, keyed by pi's toolCallId so concurrent reads
    * attribute their end to the right start (pi runs one message's tool calls concurrently, so
    * several can be open at once and end in completion order — the same rule
@@ -489,6 +495,7 @@ export class PiStreamParser {
     if (event.type === "billing" && (event.billing === "subscription" || event.billing === "api"))
       this.billing = event.billing;
     this.countProgress(event);
+    this.pendingReply = foldPendingReply(this.pendingReply, event);
     this.applyToolExecution(event);
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     this.applyAssistantMessage(event.message);
@@ -503,7 +510,9 @@ export class PiStreamParser {
   // Nothing else in this parser acts on the type, so the line is done either way.
   private applyMessageUpdate(line: string): boolean {
     if (piEventType(line) === "message_update") {
-      if (messageUpdateHasContent(parseJsonObject(line))) this.progressCount += 1;
+      const hasContent = messageUpdateHasContent(parseJsonObject(line));
+      if (hasContent) this.progressCount += 1;
+      this.pendingReply = foldPendingReply(this.pendingReply, { type: "message_update" }, { hasContent });
       return true;
     }
     return false;

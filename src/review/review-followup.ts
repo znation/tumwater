@@ -59,7 +59,7 @@ async function runFollowupTurn(
     nativeLogFile: nativeLogPath(ctx.root, ctx.role, cfg.agent ?? "pi"),
     label: opts.label,
     signal: ctx.signal,
-    onToolCallStalled: (message) => warnEventBestEffort(ctx.root, ctx.role, message),
+    onStallWarning: (message) => warnEventBestEffort(ctx.root, ctx.role, message),
     // A gate run that read an image its model cannot see is logged, not killed (plans/
     // image-input.md "Detecting a blind read") — same shape as the main review run in
     // review.ts.

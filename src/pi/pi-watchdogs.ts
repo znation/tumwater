@@ -1,5 +1,6 @@
 /** The run's watchdog clocks, split out of pi.ts's runPi (2026-10-04, organize): the run
- * deadline and the quiet watchdog (quiet-kill plus the stalled-tool-call warning) — the
+ * deadline and the quiet watchdog (quiet-kill plus the stalled-tool-call and
+ * unanswered-model-request warnings) — the
  * timing policy of one pi run, which changes for different reasons than the spawn, stream,
  * and result-distillation wiring that drives it (src/agent/agent-run.ts keeps those). The
  * factory owns all the mutable state the two timers kept in runPi's closure (the progress
@@ -7,13 +8,16 @@
  * handler reads back; agent-run.ts feeds the parser live through the deps accessors, so no
  * notification path is needed when events land. */
 import { bufferedCommandStallMs, callBuffersOutput } from "./command-shape.js";
-import type { OpenToolCall } from "./pi-event-line.js";
+import type { OpenToolCall, PendingReply } from "./pi-event-line.js";
 
 interface PiWatchdogDeps {
   /** The parser's forward-progress counter, read live at each check. */
   progressCount(): number;
   /** The currently open tool calls, read live at each check. */
   openToolCalls(): OpenToolCall[];
+  /** The model request still waiting on its answer, read live at each check (pi alone opens
+   * one: the other backends' translators emit no `message_start`). Absent means none tracked. */
+  pendingReply?(): PendingReply | undefined;
   runTimeoutMs: number;
   quietMs: number;
   stallMs: number;
@@ -28,7 +32,9 @@ interface PiWatchdogDeps {
   extendOnProgress?: boolean;
   /** Kill the agent run's process tree (terminateChild on the spawned child). */
   kill(): void;
-  onToolCallStalled?: (message: string) => void;
+  /** Receives each stall warning: a tool call silent (or open) past its threshold, or a model
+   * request unanswered past stallMs. Warns only; the quiet watchdog still owns the kill. */
+  onStallWarning?: (message: string) => void;
 }
 
 /** The flags the run's close handler and finish() read back, plus the feed and teardown
@@ -158,9 +164,14 @@ function startDeadlineWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   state.timeout = setTimeout(fireDeadline, deps.runTimeoutMs);
 }
 
+/** Whole minutes read cleaner in the feed; sub-minute thresholds stay in seconds. */
+function silenceLabel(ms: number): string {
+  return ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`;
+}
+
 /** The quiet/stall clock: quiet-kills a run that stopped making progress and warns on
- * stalled tool calls, on one interval against the wall clock (BUGS.md 2026-09-23,
- * 2026-09-28, 2026-09-29, 2026-10-06). */
+ * stalled tool calls and unanswered model requests, on one interval against the wall clock
+ * (BUGS.md 2026-09-23, 2026-09-28, 2026-09-29, 2026-10-06, 2026-10-29). */
 function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   // Quiet watchdog: a healthy run makes PROGRESS continuously even when slow — messages
   // start and end, turns and tool calls complete. Prolonged lack of progress means a hung
@@ -227,7 +238,7 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
         const bufferedStallMs = bufferedCommandStallMs(deps.stallMs);
         if (openMs >= bufferedStallMs) {
           warnedStalledCalls.add(call.id);
-          deps.onToolCallStalled?.(
+          deps.onStallWarning?.(
             `tool call stalled: ${call.label} — no exit for ${Math.round(openMs / 60_000)}m`,
           );
         }
@@ -236,14 +247,27 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
       const silentMs = Date.now() - call.lastActivityAt;
       if (silentMs >= deps.stallMs) {
         warnedStalledCalls.add(call.id);
-        // Whole minutes read cleaner in the feed; sub-minute thresholds stay in seconds.
-        const silent =
-          silentMs < 60_000
-            ? `${Math.round(silentMs / 1000)}s`
-            : `${Math.round(silentMs / 60_000)}m`;
-        deps.onToolCallStalled?.(`tool call stalled: ${call.label} — no output for ${silent}`);
+        deps.onStallWarning?.(`tool call stalled: ${call.label} — no output for ${silenceLabel(silentMs)}`);
       }
     }
+  };
+  // The unanswered-request warning, the model-side twin of the stall warning: a provider can
+  // accept a request and never answer it (BUGS.md 2026-10-29: deepinfra's DeepSeek-V4.1-Flash
+  // sent plan only SSE keepalives, which pi never surfaces). pi then waits out its own idle
+  // timeout and retries, and each retry is progress to the quiet watchdog, so nothing else
+  // names the hang for hours. Like the stall warning it only warns: a slow local prefill can
+  // legitimately run this long, and pi's own timeout still owns each attempt. One warning per
+  // unanswered stretch, keyed by its start, not one per retry.
+  let warnedReplySince: number | undefined;
+  const warnUnansweredReply = () => {
+    const pending = deps.pendingReply?.();
+    if (!pending || pending.since === warnedReplySince) return;
+    const waitedMs = Date.now() - pending.since;
+    if (waitedMs < deps.stallMs) return;
+    warnedReplySince = pending.since;
+    deps.onStallWarning?.(
+      `model request unanswered: ${pending.target || "model"} — no reply for ${silenceLabel(waitedMs)}`,
+    );
   };
   const checkEveryMs = deps.quietMs > 0 ? deps.quietMs : deps.stallMs;
   state.quietCheck =
@@ -257,7 +281,10 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
               state.quietKilled = true;
               deps.kill();
             }
-            if (deps.stallMs > 0) warnStalledToolCalls();
+            if (deps.stallMs > 0) {
+              warnStalledToolCalls();
+              warnUnansweredReply();
+            }
           },
           Math.min(Math.max(checkEveryMs / 2, 250), 30_000),
         )

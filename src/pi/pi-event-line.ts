@@ -86,6 +86,59 @@ export function messageUpdateHasContent(event: unknown): boolean {
   return isNonBlankString(update.delta);
 }
 
+/** A model request pi sent that has not been answered — the reply-side twin of OpenToolCall. pi
+ * opens an assistant message (`message_start`) as it sends a request, so an open assistant message
+ * with no content-bearing delta yet is a provider that has not answered. A provider can accept a
+ * request and never answer it: on 2026-10-29 deepinfra's DeepSeek-V4.1-Flash returned HTTP 200 and
+ * then only SSE `: ping` comments (which pi never surfaces) for plan's request, pi waited out its
+ * 30-minute idle timeout and retried the same request, and the run sat silent for hours. Shared by
+ * runPi's warning (src/pi/pi-watchdogs.ts) and the dashboards' live flag (src/ui/progress-data.ts),
+ * so the event feed and the state cell agree on "unanswered". */
+export interface PendingReply {
+  /** Epoch ms the first unanswered attempt went out. A retry of a request that failed without an
+   * answer keeps it, so the wait spans the whole unanswered stretch, not one attempt. */
+  since: number;
+  /** Who was asked, `<provider>/<model>` as pi's message names them ("" when it names neither). */
+  target: string;
+  /** Requests sent in this stretch: the first, plus one per retry pi made. */
+  attempts: number;
+}
+
+/** The fields foldPendingReply reads off a pi event (a structural subset of pi's JSON). */
+interface ReplyEvent {
+  type?: string;
+  message?: { role?: unknown; provider?: unknown; model?: unknown; stopReason?: unknown };
+}
+
+/** Fold one pi event into the pending-reply state and return the new state — the single
+ * definition both observers apply (see PendingReply). An assistant `message_start` opens a
+ * stretch stamped `now`, or counts one more attempt of an open one. A `message_update` whose
+ * delta carries content (`hasContent`: each observer decides for itself whether a delta is worth
+ * parsing) or an assistant `message_end` that did not fail closes it: the model answered. A failed
+ * or aborted end keeps it open, because pi's retry that follows is the same unanswered request. */
+export function foldPendingReply(
+  pending: PendingReply | undefined,
+  event: ReplyEvent,
+  { hasContent = false, now = Date.now() }: { hasContent?: boolean; now?: number } = {},
+): PendingReply | undefined {
+  const msg = event.message;
+  switch (event.type) {
+    case "message_start": {
+      if (msg?.role !== "assistant") return pending;
+      if (pending) return { ...pending, attempts: pending.attempts + 1 };
+      const target = [msg.provider, msg.model].filter(isNonBlankString).join("/");
+      return { since: now, target, attempts: 1 };
+    }
+    case "message_update":
+      return hasContent ? undefined : pending;
+    case "message_end":
+      if (msg?.role !== "assistant") return pending;
+      return msg.stopReason === "error" || msg.stopReason === "aborted" ? pending : undefined;
+    default:
+      return pending;
+  }
+}
+
 /** One tool call started but not yet ended — keyed by pi's toolCallId, with a short human
  * label and the wall-clock time of its start or last content-bearing update. The shared shape
  * behind both open-call trackers: runPi's stall warning (src/pi/pi-watchdogs.ts) and the

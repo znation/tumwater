@@ -119,10 +119,11 @@ export interface PiRunOptions {
    * included); a run with no label still gets one, and its separator renders unlabeled. */
   label?: string;
   /** Called once per stalled tool call when it has been open with no content-bearing update
-   * for config.toolCallStallSeconds: the harness logs a warning event naming the command
-   * while the quiet watchdog still counts down (the dashboards derive their own flag from the
-   * raw log, so only the event needs wiring). */
-  onToolCallStalled?: (message: string) => void;
+   * for config.toolCallStallSeconds, and once per model request left unanswered that long: the
+   * harness logs a warning event naming the command or the model while the quiet watchdog
+   * still counts down (the dashboards derive their own flags from the raw log, so only the
+   * event needs wiring). */
+  onStallWarning?: (message: string) => void;
   /** Called once after the end-of-run sweep when a run tumwater did not kill left marked
    * processes running, with the warning naming the run kind and the count signaled. */
   onLeftoversSwept?: (message: string) => void;
@@ -223,6 +224,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     const wd = startPiWatchdogs({
       progressCount: () => parser.progressCount,
       openToolCalls: () => parser.openToolCalls,
+      pendingReply: () => parser.pendingReply,
       runTimeoutMs: opts.config.runTimeoutSeconds * 1000,
       quietMs: opts.config.quietTimeoutSeconds * 1000,
       stallMs: Math.max(0, opts.config.toolCallStallSeconds) * 1000,
@@ -236,7 +238,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // deadline stays right for them.
       extendOnProgress: opts.kind === "gate",
       kill: () => terminateChild(child),
-      onToolCallStalled: opts.onToolCallStalled,
+      onStallWarning: opts.onStallWarning,
     });
 
     let aborted = false;

@@ -98,11 +98,12 @@ export function listRoleIds(ids: readonly string[]): string {
 /** The stuck alert's per-role detail: the stall phrase the phase rendered, plus — when that
  * phrase does not already carry one — the honest silence span from the live tail (stuckMs,
  * ms since the role's last pi log write, capped to the run by progressOfRun). A
- * "no agent output for <d>" phrase already carries its duration, so only a tool-call stall gets
- * a " for <duration>" suffix, and only when the caller holds a live tail (stuckMs present). */
+ * "no agent output for <d>" or "no model reply for <d>" phrase already carries its duration, so
+ * only a tool-call stall gets a " for <duration>" suffix, and only when the caller holds a live
+ * tail (stuckMs present). */
 export function stuckDetail(l: AlertRole): string {
   const cause = (STALL_RE.exec(l.phase)?.[0] ?? "").trim();
-  if (cause && !cause.startsWith("no agent output for") && l.stuckMs !== undefined) {
+  if (cause.startsWith("tool call stalled") && l.stuckMs !== undefined) {
     return `${roleLabel(l.role)}: ${cause} for ${duration(l.stuckMs)}`;
   }
   return `${roleLabel(l.role)}: ${cause}`;

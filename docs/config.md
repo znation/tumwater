@@ -67,7 +67,7 @@ disable a role by omission — disable one with `tumwater config set roles.<id>.
 | `minRunIntervalSeconds` | `20` | The minimum seconds between two runs of the same role, even when woken early. |
 | `runTimeoutSeconds` | `14400` | The hard cap on one run, in seconds (four hours). |
 | `quietTimeoutSeconds` | `1800` | Kill a run that emits no output for this many seconds; 0 disables. |
-| `toolCallStallSeconds` | `300` | Warn, without killing, when one tool call has been open this many seconds with no output; 0 disables. |
+| `toolCallStallSeconds` | `300` | Warn, without killing, when one tool call has been open this many seconds with no output, or a model request has gone this long with no reply (pi); 0 disables. |
 | `logMaxBytes` | `16777216` | Rotate each role's pi transcript log when it exceeds this many bytes (16 MiB). The harness event log is separate: it rotates at a fixed 16 MiB and keeps five rotated generations, so a by-hand audit still sees months. |
 | `sessionRetentionDays` | `7` | Delete pi session files older than this many days at start; 0 disables. |
 | `maxDailyCostUsd` | `50` | The daily spend cap in USD; once reached, roles start no new runs until local midnight or a live edit; 0 disables. |

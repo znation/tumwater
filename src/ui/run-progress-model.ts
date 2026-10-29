@@ -58,13 +58,14 @@ function progressOfRun(s: RunnerState, p: LiveProgress | null | undefined): Live
 }
 
 /** The stall phrases a phase label can carry — inFlightDetail appends "tool call stalled:
- * <tool>" and "no agent output for <duration>" to the head — as a regex SOURCE string plus the
+ * <tool>", "no model reply for <duration>", and "no agent output for <duration>" to the head — as
+ * a regex SOURCE string plus the
  * compiled matcher, single-homed beside the code that renders those phrases. Every consumer
  * that must recognize a stall inside a rendered phase label goes through these two, so the
  * server-side alert (team-alert-status.ts) and the dashboard's browser twin (gui-client-model.ts,
  * interpolating the source into its String.raw script) cannot drift from the wording the cell
  * actually renders. */
-export const STALL_SOURCE = String.raw`tool call stalled[^·]*|no agent output for [^·]*`;
+export const STALL_SOURCE = String.raw`tool call stalled[^·]*|no model reply for [^·]*|no agent output for [^·]*`;
 
 /** STALL_SOURCE compiled — the server-side matcher (team-alert-status.ts's stuck alert). */
 export const STALL_RE = new RegExp(STALL_SOURCE);
@@ -91,7 +92,15 @@ export function inFlightDetail(head: string, p: LiveProgress | null): string {
   // above. Defer to the call so a slow suite stops being read as a hang (BUGS.md 2026-10-28).
   const hasOpenBuffered =
     p.openToolCalls?.some((call) => callBuffersOutput(p.agent, call.command || call.label)) ?? false;
-  if (p.quietMs >= 300_000 && !hasOpenBuffered) parts.push(`no agent output for ${duration(p.quietMs)}`);
+  // A model request left unanswered past the stall threshold names the cause instead: the
+  // provider has not replied (BUGS.md 2026-10-29). pi's retries write to the log, so the bare
+  // silence measure restarts with each attempt, while this one spans the whole wait.
+  if (p.unansweredReply) {
+    const { waitedMs, attempts } = p.unansweredReply;
+    parts.push(`no model reply for ${duration(waitedMs)}${attempts > 1 ? ` (${attempts} attempts)` : ""}`);
+  } else if (p.quietMs >= 300_000 && !hasOpenBuffered) {
+    parts.push(`no agent output for ${duration(p.quietMs)}`);
+  }
   return parts.join(" · ");
 }
 

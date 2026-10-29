@@ -196,9 +196,10 @@ export async function runReviewer(ctx: ReviewContext, state: RunnerState, input:
     // `── review @ <ts> ──`) so an operator can tell reviewer runs from author runs.
     label: "review",
     signal: overlap ? combineSignals(ctx.signal, overlap.abort.signal) : ctx.signal,
-    // A stalled tool call during review hangs the gate just like one during authoring —
-    // name it in the event feed while the quiet watchdog still counts down.
-    onToolCallStalled: (message) => warnEventBestEffort(root, role, message),
+    // A stalled tool call or an unanswered model request during review hangs the gate just
+    // like one during authoring — name it in the event feed while the quiet watchdog still
+    // counts down.
+    onStallWarning: (message) => warnEventBestEffort(root, role, message),
     onToolCallStart: (toolName, args) => {
       reviewerCalls.push({ toolName, args });
     },

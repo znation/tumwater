@@ -1,16 +1,20 @@
 import path from "node:path";
 import {
   applyToolExecutionEvent,
+  foldPendingReply,
+  messageUpdateHasContent,
   parsePiEventLine,
+  piEventType,
   toolCallCommand,
   type OpenToolCall,
+  type PendingReply,
   type PiRunKind,
 } from "../pi/pi-event-line.js";
 import { bufferedCommandStallMs, callBuffersOutput } from "../pi/command-shape.js";
 import { describeToolCall } from "../text/phrases.js";
 import { squash } from "../text/text.js";
 import { defaultConfig, liveConfig } from "../config/config.js";
-import { nonNegativeNumber } from "../files/json-object.js";
+import { nonNegativeNumber, parseJsonObject } from "../files/json-object.js";
 import { worktreesDir } from "../paths.js";
 import { statRoleLog, readCompleteLines, type TailState, withTail } from "../files/tail.js";
 
@@ -63,6 +67,13 @@ export interface LiveProgress {
    * silence is a property of wall-clock time, so readLiveProgress recomputes it on every read
    * (like quietMs) instead of feedLine setting it from any single line. */
   stalledTool?: string;
+  /** The model request pi sent that has not been answered yet (pi-event-line.ts's PendingReply),
+   * stamped with pi's own message timestamp so an observer that attaches mid-wait still sees the
+   * whole wait. Tail state like openToolCalls: freshProgress restores it to undefined. */
+  pendingReply?: PendingReply;
+  /** pendingReply once it has waited at least the configured stall threshold — the in-flight
+   * cell's "no model reply" flag. Derived from wall-clock time on every read, like stalledTool. */
+  unansweredReply?: { waitedMs: number; attempts: number };
 }
 
 /** How much log tail a first observation scans initially (or after rotation); findSeedOffset
@@ -156,6 +167,7 @@ function freshProgress(quietMs: number, agent?: string): LiveProgress {
     // stalledTool is deliberately NOT part of fresh: it is derived from wall-clock time on
     // every read, never folded from lines.
     openToolCalls: undefined,
+    pendingReply: undefined,
     currentWork: undefined,
     agent,
     quietMs,
@@ -175,8 +187,12 @@ const PROGRESS_TYPES = new Set([
   "tool_execution_start",
   "tool_execution_update",
   "tool_execution_end",
+  "message_start",
   "message_end",
 ]);
+
+/** pi's compact serialization of a message_start, up to the role's value. */
+const MESSAGE_START_ROLE = '{"type":"message_start","message":{"role":"';
 
 /** The fields feedLine reads off a parsed progress event (a structural subset of pi's JSON). */
 interface ProgressEvent {
@@ -199,7 +215,16 @@ interface ProgressEvent {
   // usage's counts are unvalidated wire JSON: pi-stream.ts guards the identical fields (its
   // usageNumber), because some providers serialize usage numbers as strings. They stay unknown
   // here so the guard below is the only way to read them.
-  message?: { role?: string; content?: unknown; usage?: { totalTokens?: unknown; output?: unknown } };
+  message?: {
+    role?: string;
+    content?: unknown;
+    usage?: { totalTokens?: unknown; output?: unknown };
+    provider?: unknown;
+    model?: unknown;
+    stopReason?: unknown;
+    /** pi's epoch-ms stamp on the message: when the request went out, for a message_start. */
+    timestamp?: unknown;
+  };
 }
 
 /** A new run starts: everything before it was a previous run — restore the at-time-zero state. */
@@ -272,10 +297,40 @@ function feedLine(progress: LiveProgress, event: ProgressEvent): void {
     case "tool_execution_end":
       applyToolProgress(progress, event);
       break;
+    case "message_start":
+      applyReplyEvent(progress, event);
+      break;
     case "message_end":
       applyAssistantTurn(progress, event);
+      applyReplyEvent(progress, event);
       break;
   }
+}
+
+/** A message starts or ends: fold it into the pending-reply state. A request opened before this
+ * observer attached is stamped with pi's own timestamp on the message, not with "now", so a
+ * dashboard started mid-wait still shows the whole wait. */
+function applyReplyEvent(progress: LiveProgress, event: ProgressEvent): void {
+  const sent = event.message?.timestamp;
+  const now = typeof sent === "number" && Number.isFinite(sent) ? sent : Date.now();
+  progress.pendingReply = foldPendingReply(progress.pendingReply, event, { now });
+}
+
+/** The raw-line step both feeds take before parsing (`line` already trimmed), true when the line
+ * needs nothing more. A streaming delta (most of a pi log) is consumed without a parse unless a
+ * model request is still waiting on its answer: then the first content-bearing delta is that
+ * answer. A message_start whose compact prefix verifiably names a non-assistant role (a user or
+ * tool-result message, whose content can run to tens of KB) is consumed unparsed too: only an
+ * assistant message_start opens a request. */
+function consumedUnparsed(progress: LiveProgress, line: string): boolean {
+  if (piEventType(line) === "message_update") {
+    if (progress.pendingReply) {
+      const hasContent = messageUpdateHasContent(parseJsonObject(line));
+      progress.pendingReply = foldPendingReply(progress.pendingReply, { type: "message_update" }, { hasContent });
+    }
+    return true;
+  }
+  return line.startsWith(MESSAGE_START_ROLE) && !line.startsWith('assistant"', MESSAGE_START_ROLE.length);
 }
 
 /** Parse pi event lines of ONE run (the `tumwater_run` marker is ignored; the run's
@@ -285,13 +340,16 @@ function feedLine(progress: LiveProgress, event: ProgressEvent): void {
 export function parseProgress(lines: string[], quietMs: number): LiveProgress {
   const progress = freshProgress(quietMs);
   for (const line of lines) {
-    const event = parsePiEventLine<ProgressEvent>(line, PROGRESS_TYPES);
+    const trimmed = line.trim();
+    if (consumedUnparsed(progress, trimmed)) continue;
+    const event = parsePiEventLine<ProgressEvent>(trimmed, PROGRESS_TYPES);
     if (event) feedLine(progress, event);
   }
   // Freshly fed lines stamp Date.now(), so nothing is stalled right after parsing — the flag
   // exists here so callers that pass a hand-built tail through workingDetail see the same
   // shape readLiveProgress returns.
   progress.stalledTool = stalledToolLabel(progress.openToolCalls);
+  progress.unansweredReply = unansweredReply(progress.pendingReply);
   return progress;
 }
 
@@ -333,6 +391,20 @@ export function stalledToolLabel(
   return undefined;
 }
 
+/** How long `pending` has waited and over how many attempts, once that wait reaches `stallMs` —
+ * the in-flight cell's "no model reply" flag, on the same threshold runPi's unanswered-request
+ * warning uses (src/pi/pi-watchdogs.ts), so the state cell and the event feed agree. `now` and
+ * `stallMs` are injectable for tests. */
+export function unansweredReply(
+  pending: PendingReply | undefined,
+  now = Date.now(),
+  stallMs = defaultConfig().toolCallStallSeconds * 1000,
+): LiveProgress["unansweredReply"] {
+  if (!pending || stallMs <= 0) return undefined;
+  const waitedMs = now - pending.since;
+  return waitedMs >= stallMs ? { waitedMs, attempts: pending.attempts } : undefined;
+}
+
 /** Fold one raw log line into a role log's per-kind tail state (mutates it): the harness's
  * `tumwater_run` marker or a `session` event switches which accumulator following lines fold
  * into. A marker carries the run's kind, so a `session` preceded by one keeps that kind even
@@ -343,7 +415,9 @@ export function stalledToolLabel(
  * run's turns/context can never show in the new run's cell. Everything else folds into the
  * current kind's accumulator. Non-JSON noise is skipped. */
 function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
-  const event = parsePiEventLine<ProgressEvent>(line, PROGRESS_TYPES);
+  const trimmed = line.trim();
+  if (consumedUnparsed(tail[tail.cur], trimmed)) return;
+  const event = parsePiEventLine<ProgressEvent>(trimmed, PROGRESS_TYPES);
   if (!event) return; // Blank, unparseable, or a type this feed does not act on.
   if (event.type === "session") {
     // A kind-bearing marker before this session already fixed the run's kind; a legacy
@@ -405,6 +479,7 @@ export function readLiveProgress(root: string, role: string, kind: ProgressRunKi
   // observer first saw the log stamps "now" at seed, so it cannot be flagged retroactively;
   // the mtime-based "no pi output" flag covers late observers.
   progress.stalledTool = stalledToolLabel(progress.openToolCalls, Date.now(), toolCallStallMs(root), progress.agent);
+  progress.unansweredReply = unansweredReply(progress.pendingReply, Date.now(), toolCallStallMs(root));
   // Copy the open-call entries: feedLine mutates the stored tail value in place — an
   // un-copied collection would alias one mutable structure across every frame ever returned
   // AND with the live tail state.

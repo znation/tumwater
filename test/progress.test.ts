@@ -8,10 +8,11 @@ import {
   readLiveProgress,
   stalledToolLabel,
   toolCallStallMs,
+  unansweredReply,
 } from "../src/ui/progress-data.js";
 import { piLogPath, worktreePath, worktreesDir } from "../src/paths.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
-import { assistantLine, kindMarker } from "./fixtures/pi-events.js";
+import { assistantLine, errorLine, kindMarker } from "./fixtures/pi-events.js";
 import { claudeAssistant, claudeToolUse } from "./fixtures/claude-events.js";
 import { claudeTranslator } from "../src/agent/claude/claude-stream.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
@@ -26,6 +27,19 @@ function toolUpdate(toolCallId: string, partialResult: unknown): string {
 }
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
+
+/** pi's line for a model request going out: an assistant message_start stamped `timestamp`. */
+function requestStart(timestamp: number): string {
+  return JSON.stringify({
+    type: "message_start",
+    message: { role: "assistant", content: [], provider: "huggingface", model: "m:deepinfra", stopReason: "pending", timestamp },
+  });
+}
+
+/** A streaming delta carrying `delta` (empty: a keepalive). */
+function delta(text: string): string {
+  return JSON.stringify({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: text } });
+}
 
 test("parseProgress counts turns/tools and tracks the latest context size", () => {
   const lines = [
@@ -669,4 +683,53 @@ test("readLiveProgress counts every turn of a run larger than the tail window", 
   writeLogLines(file, lines.concat(turns));
   assert.ok(fs.statSync(file).size > 4 * 1024 * 1024, "the fixture must exceed the tail window");
   assert.equal(readLiveProgress(root, "clean")?.turns, 24_000);
+});
+
+// BUGS.md 2026-10-29: a provider accepted plan's request and never answered it, and the cell said
+// only "no agent output", restarting its clock with every pi retry. The pending reply is what lets
+// the cell name the real cause and its whole wait.
+
+test("parseProgress tracks an unanswered model request from pi's own timestamp", () => {
+  const sent = Date.now() - 12 * 60_000;
+  const userStart = JSON.stringify({ type: "message_start", message: { role: "user", content: [], timestamp: sent - 5 } });
+  const p = parseProgress([SESSION, userStart, requestStart(sent)], 0);
+  assert.deepEqual(p.pendingReply, { since: sent, target: "huggingface/m:deepinfra", attempts: 1 });
+  assert.ok(p.unansweredReply, "twelve minutes is past the default five-minute threshold");
+  assert.equal(p.unansweredReply.attempts, 1);
+  assert.ok(p.unansweredReply.waitedMs >= 12 * 60_000, "the wait counts from when pi sent the request");
+});
+
+test("a retry after a failed attempt keeps the wait's start and counts the attempt", () => {
+  const sent = Date.now() - 40 * 60_000;
+  const p = parseProgress(
+    [SESSION, requestStart(sent), errorLine("TimeoutError: Timeout on reading data from socket"), requestStart(sent + 30 * 60_000)],
+    0,
+  );
+  assert.deepEqual(p.pendingReply, { since: sent, target: "huggingface/m:deepinfra", attempts: 2 });
+});
+
+test("the first content-bearing delta or an answered message ends the wait; a keepalive does not", () => {
+  const sent = Date.now() - 10 * 60_000;
+  assert.ok(parseProgress([SESSION, requestStart(sent), delta("")], 0).pendingReply, "an empty delta proves nothing");
+  assert.equal(parseProgress([SESSION, requestStart(sent), delta("Let me")], 0).pendingReply, undefined);
+  assert.equal(parseProgress([SESSION, requestStart(sent), assistantLine("done")], 0).pendingReply, undefined);
+  assert.equal(parseProgress([requestStart(sent), SESSION], 0).pendingReply, undefined, "a new session starts fresh");
+});
+
+test("unansweredReply flags a wait only once it reaches the stall threshold", () => {
+  const pending = { since: 1_000_000, target: "huggingface/m", attempts: 3 };
+  assert.equal(unansweredReply(pending, 1_000_000 + 299_999, 300_000), undefined);
+  assert.deepEqual(unansweredReply(pending, 1_000_000 + 300_000, 300_000), { waitedMs: 300_000, attempts: 3 });
+  assert.equal(unansweredReply(pending, 2_000_000, 0), undefined, "toolCallStallSeconds 0 disables the flag");
+  assert.equal(unansweredReply(undefined, 2_000_000, 300_000), undefined);
+});
+
+test("readLiveProgress clears a pending reply when a later poll brings the answer's first delta", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "plan");
+  writeLogLines(file, [kindMarker("author"), SESSION, requestStart(Date.now() - 7 * 60_000)]);
+  const waiting = readLiveProgress(root, "plan");
+  assert.ok(waiting?.unansweredReply, "seven minutes unanswered is flagged");
+  fs.appendFileSync(file, `${delta("Reading the plan")}\n`);
+  assert.equal(readLiveProgress(root, "plan")?.pendingReply, undefined, "the answer's first delta ends the wait");
 });

@@ -21,6 +21,7 @@ import {
 } from "../src/ui/status-model.js";
 import { phaseTone } from "../src/ui/tone.js";
 import { STALL_RE, workingDetail } from "../src/ui/run-progress-model.js";
+import { stuckDetail } from "../src/ui/team-alert-shared.js";
 import { teamAlerts } from "../src/ui/team-alerts.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -186,6 +187,31 @@ test("workingDetail defers the flat silence flag to an open buffered tool call's
   const stalled = workingDetail(root, s, p);
   assert.match(stalled, /tool call stalled: bash npm run gate/, `a real stall still reads as one: ${stalled}`);
   assert.match(stalled, STALL_RE, `the stuck alert fires: ${stalled}`);
+});
+
+test("workingDetail names an unanswered model request with its whole wait instead of the bare silence", () => {
+  // BUGS.md 2026-10-29: deepinfra accepted plan's request and never answered; pi retried every 30
+  // minutes, so the log's mtime (the bare silence measure) restarted with each attempt while the
+  // role had in fact waited on the provider the whole time.
+  const root = tmpdir();
+  const sent = Date.now() - 47 * 60_000;
+  const start = (timestamp: number) =>
+    JSON.stringify({ type: "message_start", message: { role: "assistant", content: [], provider: "huggingface", model: "m", timestamp } });
+  const file = writePiLog(root, "plan", [
+    SESSION,
+    start(sent),
+    JSON.stringify({ type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "TimeoutError" } }),
+    start(sent + 30 * 60_000),
+  ]);
+  backdate(file, 17 * 60_000); // the retry's lines are 17 minutes old
+  const s = freshRunnerState("plan");
+  s.lastRunStartedAt = sent - 1_000;
+  const detail = workingDetail(root, s);
+  assert.match(detail, /no model reply for 47m\d\ds \(2 attempts\)/, detail);
+  assert.doesNotMatch(detail, /no agent output/, `the named cause replaces the bare silence flag: ${detail}`);
+  assert.match(detail, STALL_RE, `the stuck alert fires: ${detail}`);
+  const alert = stuckDetail({ role: "plan", phase: detail, errorStreak: false, inFlight: true, stuckMs: 17 * 60_000 });
+  assert.match(alert, /no model reply for 47m\d\ds \(2 attempts\)$/, `the phrase carries its own duration: ${alert}`);
 });
 
 test("rolePhase surfaces the live detail only while a run is in flight", () => {

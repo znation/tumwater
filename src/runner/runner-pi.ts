@@ -164,9 +164,10 @@ export class RunnerPi {
       notesPath,
       // A tool call silent for the configured stall threshold names itself in the event feed
       // while the quiet watchdog still counts down (BUGS.md 2026-09-13 sibling): before this,
-      // a hung command was invisible until the kill. The dashboards derive their own flag from
-      // the raw log, so only the harness event needs wiring here.
-      onToolCallStalled: (message) => this.host.warn(message),
+      // a hung command was invisible until the kill. A model request unanswered that long does
+      // the same (BUGS.md 2026-10-29). The dashboards derive their own flags from the raw log,
+      // so only the harness event needs wiring here.
+      onStallWarning: (message) => this.host.warn(message),
       onLeftoversSwept: (message) => this.host.warn(message),
       // The translator's unmapped-native-type and cost_unknown warnings reach the event feed
       // as their own warning events, once per agent run.

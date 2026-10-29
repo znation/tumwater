@@ -151,7 +151,7 @@ async function withStalledToolCall(
       `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
     ].join("\n"),
     async () => {
-      const runOpts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+      const runOpts = runPiFixture(dir, { config, onStallWarning: (message) => warnings.push(message) });
       const run = runPi(runOpts);
       await waitForLogLines(runOpts.rawLogFile, "tool_execution_start");
       opts.during?.(clock, warnings);
@@ -281,7 +281,7 @@ test("a claude call driven through the translator waits out the buffered thresho
     stallMs: 300_000,
     agent: "claude",
     kill: () => {},
-    onToolCallStalled: (message) => claudeWarnings.push(message),
+    onStallWarning: (message) => claudeWarnings.push(message),
   });
   const piWd = startPiWatchdogs({
     progressCount: () => parser.progressCount,
@@ -291,7 +291,7 @@ test("a claude call driven through the translator waits out the buffered thresho
     stallMs: 300_000,
     agent: "pi",
     kill: () => {},
-    onToolCallStalled: (message) => piWarnings.push(message),
+    onStallWarning: (message) => piWarnings.push(message),
   });
   clock.advance(301_000); // past toolCallStallSeconds (300 s), short of the buffered floor (max(2×300s, 10m) = 600 s)
   assert.deepEqual(claudeWarnings, [], "a claude call past toolCallStallSeconds is not yet stalled");
@@ -321,12 +321,85 @@ test("no stall warning when the tool call ends before the threshold", async () =
     ].join("\n"),
     async () => {
       const result = await runPi(
-        runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) }),
+        runPiFixture(dir, { config, onStallWarning: (message) => warnings.push(message) }),
       );
       assert.equal(result.ok, true);
       assert.deepEqual(warnings, []);
     },
   );
+});
+
+// BUGS.md 2026-10-29: deepinfra accepted plan's request and never answered it — HTTP 200 and then
+// only SSE keepalives, which pi never surfaces. pi waited out its 30-minute idle timeout and
+// retried, each retry counting as progress, so the run sat silent for hours with no word in the
+// feed. The unanswered-request warning names the provider once the stall threshold passes.
+
+/** pi's line for a model request going out: an assistant message_start naming who was asked. */
+const requestStartLine = JSON.stringify({
+  type: "message_start",
+  message: { role: "assistant", content: [], provider: "huggingface", model: "deepseek-ai/DeepSeek-V4.1-Flash:deepinfra", stopReason: "pending" },
+});
+
+/** Run a fake pi that sends one model request, prints `after` (lines), then hangs; advance the
+ * logical clock 30 s (past the 2 s stall threshold, then the 5 s quiet kill) and return the run
+ * result and the warnings. */
+async function withUnansweredRequest(t: TestContext, after: string[]) {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 5;
+  config.toolCallStallSeconds = 2;
+  const warnings: string[] = [];
+  const clock = watchdogClock(t);
+  const result = await withPi(
+    [
+      `printf '%s\n' '${requestStartLine}'`,
+      ...after.map((line) => `printf '%s\n' '${line}'`),
+      `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
+    ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config, onStallWarning: (message) => warnings.push(message) });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, after.length > 0 ? "message_update" : "message_start");
+      clock.advance(30_000);
+      return run;
+    },
+  );
+  return { result, warnings };
+}
+
+test("a model request the provider never answers warns once, naming the provider and model", async (t) => {
+  const { result, warnings } = await withUnansweredRequest(t, []);
+  assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog, not the warning");
+  assert.equal(warnings.length, 1, "one warning per unanswered wait — not one per interval tick");
+  assert.match(
+    warnings[0] ?? "",
+    /^model request unanswered: huggingface\/deepseek-ai\/DeepSeek-V4\.1-Flash:deepinfra — no reply for \d+s$/,
+  );
+});
+
+test("a model request answered by a content-bearing delta raises no unanswered warning", async (t) => {
+  const answer = JSON.stringify({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "Reading" } });
+  const { warnings } = await withUnansweredRequest(t, [answer]);
+  assert.deepEqual(warnings, [], "the provider answered; a later silence is the quiet watchdog's business");
+});
+
+test("the parser keeps one pending reply across pi's retries and clears it when the model answers", () => {
+  const parser = new PiStreamParser();
+  parser.feed(`${requestStartLine}\n`);
+  const first = parser.pendingReply;
+  assert.deepEqual(
+    first && { target: first.target, attempts: first.attempts },
+    { target: "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra", attempts: 1 },
+  );
+  // pi's timeout ends the attempt in an error turn, then the retry sends the same request again.
+  parser.feed(`${JSON.stringify({ type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "TimeoutError: Timeout on reading data from socket" } })}\n`);
+  parser.feed(`${requestStartLine}\n`);
+  assert.equal(parser.pendingReply?.since, first?.since, "the wait spans the retry");
+  assert.equal(parser.pendingReply?.attempts, 2);
+  parser.feed(`${JSON.stringify({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "" } })}\n`);
+  assert.ok(parser.pendingReply, "a content-free delta is a keepalive, not an answer");
+  parser.feed(`${JSON.stringify({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "OK" } })}\n`);
+  assert.equal(parser.pendingReply, undefined, "the first content-bearing delta is the answer");
 });
 
 test("toolCallStallSeconds 0 disables the stall warning", async (t) => {
@@ -415,7 +488,7 @@ test("a stalled piped-stdout call warns nothing; the redirect is found in the fu
       `exec sleep 30`,
     ].join("\n"),
     async () => {
-      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+      const opts = runPiFixture(dir, { config, onStallWarning: (message) => warnings.push(message) });
       const run = runPi(opts);
       await waitForLogLines(opts.rawLogFile, "tool_execution_start");
       clock.advance(30_000); // well past the stall threshold, then past the quiet window
