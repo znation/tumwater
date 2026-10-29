@@ -209,9 +209,9 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 **Needs review 2026-10-26 by bugfix: the failure message names the exact assertion, so the next flake reads which line broke — if it is the `.durations.json` byte-identity assert, check whether an outer run's final `recordDurations` overlapped a nested writer (`before` vs `after` diff in the output); if it is a coverage-table line, the `**/test/**` exclude or the `all files` row under peak process contention; if it is `status`, the nested spawn itself.**
 
-### post-merge review of 3c1c1c61 never reached a verdict (found by the review role 2026-10-28)
+### post-merge review of dfb4e364 never reached a verdict (found by the review role 2026-10-28)
 
-The post-merge review of commit `3c1c1c6176c2080a9788e2a6aa0193a75b72aebf` (Fold gui-client-history.ts's 8 delegated handler guards into the shared clickClosest helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+The post-merge review of commit `dfb4e364e3b2703a98af9a3e64d00defbaa98fce` (Fold gui-client-history.ts's 8 delegated handler guards into the shared clickClosest helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work. (The originally-recorded hash `3c1c1c6176...` was a mis-copy; that commit is the unrelated plan-hold "subtract part 1e/6", corrected 2026-10-29 by the bugfix role.)
 
 ### post-merge review of 6407b7d6 never reached a verdict (found by the review role 2026-10-28)
 
