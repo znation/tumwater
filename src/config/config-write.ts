@@ -445,6 +445,131 @@ export function setRoleModelFields(
   return result;
 }
 
+/** Unset the top-level key `parsed.key` from the raw file, reverting it to its default or to
+ * absence (a whole-config write). Absent from the file (only a default carries it): nothing to
+ * remove — return the config unchanged so writeConfigMutation skips the write. */
+function unsetTopKey(
+  root: string,
+  cfg: TumwaterConfig,
+  raw: ConfigRecord,
+  parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "top" }>,
+): { cfg: TumwaterConfig; oldValue: unknown } {
+  // Absent from the file (only a default carries it): nothing to remove.
+  if (!Object.hasOwn(raw, parsed.key)) return { cfg, oldValue: undefined };
+  const oldValue = raw[parsed.key];
+  const record = cfg as unknown as ConfigRecord;
+  const next = without(record, parsed.key) as unknown as TumwaterConfig;
+  // An unrelated unset is a whole-config write too: keep the file's own roles section.
+  if (parsed.key !== "roles") preserveFileRoles(root, next);
+  return { cfg: next, oldValue };
+}
+
+/** Unset ONE dotted-map entry (`maxDailyCostUsdPerRole.<role>` / `quietHoursPerRole.<role>`),
+ * preserving its siblings; the `parsed.map` section is dropped when it empties. An absent file
+ * entry is a no-op success that leaves the config unchanged. */
+function unsetMapEntry(
+  root: string,
+  cfg: TumwaterConfig,
+  raw: ConfigRecord,
+  parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "map" }>,
+): { cfg: TumwaterConfig; oldValue: unknown } {
+  const rawMap = objectOrEmpty(raw[parsed.map]);
+  if (!Object.hasOwn(rawMap, parsed.role)) return { cfg, oldValue: undefined }; // absent file entry: a no-op success
+  const oldValue = rawMap[parsed.role];
+  const record = cfg as unknown as ConfigRecord;
+  const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
+  const next = without(existing, parsed.role);
+  return { cfg: withSectionOrDropped(root, cfg, parsed.map, next), oldValue };
+}
+
+/** Unset one `model.<tier>`; a string `model` resolves to { default } (modelTierMap), so unsetting
+ * a tier the FILE does not hold is a no-op that leaves the string untouched. The `model` section
+ * is dropped when it empties. */
+function unsetModelTier(
+  root: string,
+  cfg: TumwaterConfig,
+  raw: ConfigRecord,
+  parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "tier" }>,
+): { cfg: TumwaterConfig; oldValue: unknown } {
+  // A string `model` resolves to { default } (modelTierMap); unsetting a tier the FILE
+  // does not hold is a no-op that leaves the string untouched.
+  const rawTiers = modelTierMap(raw.model);
+  if (!Object.hasOwn(rawTiers, parsed.tier)) return { cfg, oldValue: undefined };
+  const oldValue = rawTiers[parsed.tier];
+  const existing = modelTierMap(cfg.model);
+  const next = without(existing, parsed.tier);
+  return { cfg: withSectionOrDropped(root, cfg, "model", next), oldValue };
+}
+
+/** Unset ONE dotted section field (`backoff.<field>` / `bootstrap.<field>` …), preserving its
+ * siblings; the section is dropped when it empties. Presence is judged against the FILE: a field
+ * only the default carries is a no-op success. */
+function unsetSectionField(
+  root: string,
+  cfg: TumwaterConfig,
+  raw: ConfigRecord,
+  parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "section" }>,
+): { cfg: TumwaterConfig; oldValue: unknown } {
+  // Presence is judged against the FILE: a field only the default carries is a no-op
+  // success, and an emptied section leaves the file.
+  const rawSection = objectOrEmpty(raw[parsed.section]);
+  if (!Object.hasOwn(rawSection, parsed.field)) return { cfg, oldValue: undefined };
+  const oldValue = rawSection[parsed.field];
+  const record = cfg as unknown as ConfigRecord;
+  const existing = (record[parsed.section] as Record<string, unknown> | undefined) ?? {};
+  return { cfg: withSectionOrDropped(root, cfg, parsed.section, without(existing, parsed.field)), oldValue };
+}
+
+/** Unset ONE `backends.<id>` field (`bin`/`args`/`configDir`); the entry and the `backends`
+ * section are dropped when they empty, so the file never keeps an empty object. Presence is
+ * judged against the FILE, so a field only the default (or the legacy alias's resolved view)
+ * carries is a no-op success. */
+function unsetBackendField(
+  root: string,
+  cfg: TumwaterConfig,
+  raw: ConfigRecord,
+  parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "agent" }>,
+): { cfg: TumwaterConfig; oldValue: unknown } {
+  // Presence is judged against the FILE, so unsetting a field only the default (or the
+  // legacy alias's resolved view) carries is a no-op success. The entry and the `backends`
+  // section are dropped when they empty, so the file never keeps an empty object.
+  const rawBackends = objectOrEmpty(raw.backends);
+  const rawEntry = objectOrEmpty(rawBackends[parsed.id]);
+  if (!Object.hasOwn(rawEntry, parsed.field)) return { cfg, oldValue: undefined }; // absent file field: a no-op success
+  const oldValue = rawEntry[parsed.field];
+  const record = cfg as unknown as ConfigRecord;
+  const backends = { ...(record.backends as Record<string, Record<string, unknown>> | undefined) };
+  const entry = { ...(backends[parsed.id] ?? {}) };
+  delete entry[parsed.field];
+  if (Object.keys(entry).length === 0) delete backends[parsed.id];
+  else backends[parsed.id] = entry;
+  return { cfg: withSectionOrDropped(root, cfg, "backends", backends), oldValue };
+}
+
+/** Unset ONE `roles.<id>` field, based on the FILE's own roles — not the loaded (catalog-merged)
+ * map — so the write must not re-expand the operator's partial section to every built-in. The
+ * entry is dropped when it empties, and the whole `roles` section when it was the last one. */
+function unsetRoleField(
+  cfg: TumwaterConfig,
+  raw: ConfigRecord,
+  parsed: Extract<ReturnType<typeof parseConfigKey>, { kind: "role" }>,
+): { cfg: TumwaterConfig; oldValue: unknown } {
+  const rawRoles = objectOrEmpty(raw.roles);
+  const rawEntry = objectOrEmpty(rawRoles[parsed.id]);
+  if (!Object.hasOwn(rawEntry, parsed.field)) return { cfg, oldValue: undefined }; // absent file field: a no-op success
+  const oldValue = rawEntry[parsed.field];
+  // Base the removal on the FILE's own roles, not the loaded (catalog-merged) map: the
+  // write must not re-expand the operator's partial section to every built-in.
+  const record = cfg as unknown as ConfigRecord;
+  const nextEntry = without(rawEntry, parsed.field); // the file's own entry (its field was present, checked above)
+  if (Object.keys(nextEntry).length > 0)
+    return { cfg: { ...cfg, roles: { ...rawRoles, [parsed.id]: nextEntry } } as unknown as TumwaterConfig, oldValue };
+  // The entry emptied: drop it, and the whole `roles` section when it was the last one.
+  const nextRoles = without(rawRoles, parsed.id);
+  if (Object.keys(nextRoles).length === 0) return { cfg: without(record, "roles") as unknown as TumwaterConfig, oldValue };
+  return { cfg: { ...cfg, roles: nextRoles } as unknown as TumwaterConfig, oldValue };
+}
+
 /** Remove ONE value of tumwater.json from its raw CLI text (`tumwater config unset <key>`):
  * the inverse of setConfigKey. A bare top-level key is deleted (reverting to its default or
  * to absence); a dotted key (`maxDailyCostUsdPerRole.<role>`, `quietHoursPerRole.<role>`,
@@ -480,76 +605,29 @@ export function unsetConfigKey(
   let oldValue: unknown;
   const result = writeConfigMutation(root, (cfg) => {
     const raw = rawConfigObject(root); // the file's own keys, before defaults fill them in
-    const record = cfg as unknown as ConfigRecord;
-    if (parsed.kind === "top") {
-      // Absent from the file (only a default carries it): nothing to remove.
-      if (!Object.hasOwn(raw, parsed.key)) return cfg;
-      oldValue = raw[parsed.key];
-      const next = without(record, parsed.key) as unknown as TumwaterConfig;
-      // An unrelated unset is a whole-config write too: keep the file's own roles section.
-      if (parsed.key !== "roles") preserveFileRoles(root, next);
-      return next;
+    let moved: { cfg: TumwaterConfig; oldValue: unknown };
+    switch (parsed.kind) {
+      case "top":
+        moved = unsetTopKey(root, cfg, raw, parsed);
+        break;
+      case "map":
+        moved = unsetMapEntry(root, cfg, raw, parsed);
+        break;
+      case "tier":
+        moved = unsetModelTier(root, cfg, raw, parsed);
+        break;
+      case "section":
+        moved = unsetSectionField(root, cfg, raw, parsed);
+        break;
+      case "agent":
+        moved = unsetBackendField(root, cfg, raw, parsed);
+        break;
+      case "role":
+        moved = unsetRoleField(cfg, raw, parsed);
+        break;
     }
-    if (parsed.kind === "map") {
-      const rawMapCandidate = raw[parsed.map];
-      const rawMap = objectOrEmpty(rawMapCandidate);
-      if (!Object.hasOwn(rawMap, parsed.role)) return cfg; // absent file entry: a no-op success
-      oldValue = rawMap[parsed.role];
-      const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
-      const next = without(existing, parsed.role);
-      return withSectionOrDropped(root, cfg, parsed.map, next);
-    }
-    if (parsed.kind === "tier") {
-      // A string `model` resolves to { default } (modelTierMap); unsetting a tier the FILE
-      // does not hold is a no-op that leaves the string untouched.
-      const rawTiers = modelTierMap(raw.model);
-      if (!Object.hasOwn(rawTiers, parsed.tier)) return cfg;
-      oldValue = rawTiers[parsed.tier];
-      const existing = modelTierMap(record.model);
-      const next = without(existing, parsed.tier);
-      return withSectionOrDropped(root, cfg, "model", next);
-    }
-    if (parsed.kind === "section") {
-      // Presence is judged against the FILE: a field only the default carries is a no-op
-      // success, and an emptied section leaves the file.
-      const rawSection = objectOrEmpty(raw[parsed.section]);
-      if (!Object.hasOwn(rawSection, parsed.field)) return cfg;
-      oldValue = rawSection[parsed.field];
-      const existing = (record[parsed.section] as Record<string, unknown> | undefined) ?? {};
-      return withSectionOrDropped(root, cfg, parsed.section, without(existing, parsed.field));
-    }
-    if (parsed.kind === "agent") {
-      // Presence is judged against the FILE, so unsetting a field only the default (or the
-      // legacy alias's resolved view) carries is a no-op success. The entry and the `backends`
-      // section are dropped when they empty, so the file never keeps an empty object.
-      const rawBackends = objectOrEmpty(raw.backends);
-      const rawEntryCandidate = rawBackends[parsed.id];
-      const rawEntry = objectOrEmpty(rawEntryCandidate);
-      if (!Object.hasOwn(rawEntry, parsed.field)) return cfg; // absent file field: a no-op success
-      oldValue = rawEntry[parsed.field];
-      const backends = { ...(record.backends as Record<string, Record<string, unknown>> | undefined) };
-      const entry = { ...(backends[parsed.id] ?? {}) };
-      delete entry[parsed.field];
-      if (Object.keys(entry).length === 0) delete backends[parsed.id];
-      else backends[parsed.id] = entry;
-      return withSectionOrDropped(root, cfg, "backends", backends);
-    }
-    const rawRolesCandidate = raw.roles;
-    const rawRoles = objectOrEmpty(rawRolesCandidate);
-    const rawEntryCandidate = rawRoles[parsed.id];
-    const rawEntry = objectOrEmpty(rawEntryCandidate);
-    if (!Object.hasOwn(rawEntry, parsed.field)) return cfg; // absent file field: a no-op success
-    oldValue = rawEntry[parsed.field];
-    // Base the removal on the FILE's own roles, not the loaded (catalog-merged) map: the
-    // write must not re-expand the operator's partial section to every built-in.
-    const existing = rawEntry; // the file's own entry (its field was present, checked above)
-    const nextEntry = without(existing, parsed.field);
-    if (Object.keys(nextEntry).length > 0)
-      return { ...cfg, roles: { ...rawRoles, [parsed.id]: nextEntry } } as unknown as TumwaterConfig;
-    // The entry emptied: drop it, and the whole `roles` section when it was the last one.
-    const nextRoles = without(rawRoles, parsed.id);
-    if (Object.keys(nextRoles).length === 0) return without(record, "roles") as unknown as TumwaterConfig;
-    return { ...cfg, roles: nextRoles } as unknown as TumwaterConfig;
+    oldValue = moved.oldValue;
+    return moved.cfg;
   });
   if (!result.ok) return result;
   return { ok: true, oldValue };
