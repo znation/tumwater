@@ -10,7 +10,7 @@ import type { RunnerState } from "../runner/runner-state.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
-import { checkFailureReasons, redCheckHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
+import { checkFailureReasons, FAILING_TESTS_MAX, redCheckHeadline } from "../build/build-check-report.js";
 import { sleptPhrase, UNVERIFIED_TREE, unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { sampleSleepClock } from "../build/host-sleep.js";
 import { recordReview } from "../run/run-apply.js";

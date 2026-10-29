@@ -138,13 +138,13 @@ export function describeCheck(check: BuildCheck): string {
   return check.kind === "npm" ? `\`npm run ${check.script}\`` : `\`${check.command}\``;
 }
 
-/** The one folded name of a red check's failure: failureHeadline's first non-stack line when the
- * clipped tail has one, else the check's command name. Every consumer that logs a red check's
- * headline — the gate's flake warning, the merge retry's quarantine note, and the merge-side
- * kept-pin records — builds this exact `failureHeadline(tail) ?? describeCheck(check)` pair
- * inline, so the fallback cannot drift between them. Exactly five call sites:
- * review-precheck.ts's two flake warnings, merge-to-main.ts's merge-retry quarantine, and
- * merge-check-failures.ts's kept-pin headline and attributeRedCheck's absent-tail record. */
+/** The single-line headline of a red check — the failureHeadline when the tail has one to
+ * offer (a test name or marker plus a non-framing message), else the check's describeCheck
+ * command name — the name the gate, merge, and review warnings print for a failed check.
+ * One definition for every red that names itself to a human: review-precheck's two
+ * flake/failure warnings, merge-to-main's merge-retry quarantine warning, and
+ * merge-check-failures's kept-pin headline record and attributeRedCheck absent-tail headline.
+ */
 export function redCheckHeadline(check: BuildCheck, tail: readonly string[] | undefined): string {
   return failureHeadline(tail) ?? describeCheck(check);
 }
