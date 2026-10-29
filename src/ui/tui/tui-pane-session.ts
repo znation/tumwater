@@ -1,4 +1,5 @@
 import { REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
+import { DAY_MS, HOUR_MS } from "../../text/datetime.js";
 import type { ChangeOverlapsView, TeamChangeView, RoleChangeView } from "../../change/change-data.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { OrphanKillReport } from "../../doctor/doctor-orphans.js";
@@ -67,9 +68,9 @@ export function cycleLabel<T>(table: ReadonlyArray<[T, string]>, current: T): st
  * report --since`'s bound) rather than History's old hard-coded 604_800_000 magic number, which
  * was the same value but untethered from the cap it mirrors. */
 const SESSION_WINDOW_TAIL: ReadonlyArray<[number, string]> = [
-  [3_600_000, "1h"],
-  [21_600_000, "6h"],
-  [86_400_000, "1d"],
+  [HOUR_MS, "1h"],
+  [6 * HOUR_MS, "6h"],
+  [DAY_MS, "1d"],
   [REPORT_SINCE_MAX_MS, "7d"],
 ];
 
