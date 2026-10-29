@@ -24,8 +24,19 @@ import {
 
 const roles = ["alpha", "beta"];
 
+// Every stack in this file merges a byte-identical tree, and a stack's cherry-picks are
+// committed at "now" — so two tests' merged tips collide into ONE sha whenever their picks land
+// in the same wall-clock second, and the process-global baselineCache (src/baseline/
+// main-baseline.ts) then hands the first test's seeded green to a later test's tip (the same
+// sha-collision class BUGS-FIXED.md records from 2026-10-19 and 2026-10-25). Seeding each
+// fixture with a file named for its own test makes every tip here unique, so no two can share a
+// sha — and a cached verdict with it.
+const seedTagged = (tag: string) => (root: string) => {
+  fs.writeFileSync(path.join(root, `${tag}.txt`), `${tag}\n`);
+};
+
 test("a stack whose batch check passed seeds the merged tip green", async () => {
-  const { root, shas, wiringFor } = await batchFixture(roles);
+  const { root, shas, wiringFor } = await batchFixture(roles, { seed: seedTagged("check-passed") });
   checkAfterGates(root, 2, "true");
   await withApprovePi(async () => {
     const results = await runBatch(root, shas, roles, wiringFor);
@@ -37,7 +48,7 @@ test("a stack whose batch check passed seeds the merged tip green", async () => 
 });
 
 test("a stack that fails only main's known failures merges but seeds nothing", async () => {
-  const { root, shas, wiringFor } = await batchFixture(roles);
+  const { root, shas, wiringFor } = await batchFixture(roles, { seed: seedTagged("known-failures") });
   declareCheck(root, `#!/bin/sh\necho '✖ X (1ms)'\nexit 1\n`);
   const watch = createMainWatch(root, "main");
   watch.poll(mainSha(root), false, defaultConfig());
@@ -53,6 +64,7 @@ test("a stack that fails only main's known failures merges but seeds nothing", a
 
 test("a doc-only stack runs no check and seeds nothing", async () => {
   const { root, shas, wiringFor } = await batchFixture(roles, {
+    seed: seedTagged("doc-only"),
     edit: (r, role) => fs.appendFileSync(path.join(r, `${role}.md`), `docs by ${role}\n`),
   });
   declareCheck(root, "#!/bin/sh\necho \"a doc-only stack must never run me\"; exit 1\n");
@@ -66,7 +78,7 @@ test("a doc-only stack runs no check and seeds nothing", async () => {
 });
 
 test("a stack merged on check.mergeCommand runs it as a non-full batch check and seeds nothing", async () => {
-  const { root, shas, wiringFor } = await batchFixture(roles);
+  const { root, shas, wiringFor } = await batchFixture(roles, { seed: seedTagged("merge-command") });
   // The full check passes the two gate pre-checks and fails anything after them.
   checkAfterGates(root, 2, "exit 1");
   const ctx = makeBatchCtx(root, { ...defaultConfig(), check: { command: "", mergeCommand: "echo cheap" } });
