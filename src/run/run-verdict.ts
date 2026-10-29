@@ -251,6 +251,16 @@ function budgetCappedArm(ctx: RunVerdictContext): RunOutcome | undefined {
   return undefined;
 }
 
+/** The failure message a run that ended on a blind read names when the agent gave none of its
+ * own: the image path the model could not see, unless the kill carried a more specific reason
+ * (pi.errorMessage). Shared by the two failing arms of imageBlindArm below — the one-hop-already
+ * branch and the no-reroute-target branch — so the "could not read the image" wording cannot
+ * drift between them. The reroute arm does NOT use it: its own lastError names the target's
+ * tier too. */
+function blindReadFailureMessage(pi: PiRunResult, path: string): string {
+  return pi.errorMessage ?? `read ${path}, but the model cannot read images`;
+}
+
 /** The image-blind decision: a run stopped the moment its agent read an image its model cannot
  * see. One hop to an image-capable reroute target is taken when one exists; otherwise the
  * run fails and the prompt re-queues (plans/image-input.md "Failing the run"). */
@@ -273,7 +283,7 @@ function imageBlindArm(ctx: RunVerdictContext): RunOutcome | undefined {
       // No work was done (the run was killed at the first read): nothing to resume, and the
       // prompt re-queues to run fresh later like any other error. The error backoff/streak
       // apply as usual.
-      return unfulfilledError(s, ctx, pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`);
+      return unfulfilledError(s, ctx, blindReadFailureMessage(pi, pi.imageBlind.path));
     }
     // Otherwise, when the role's tier has an image-capable reroute target, the failed work
     // is not discarded: the next run starts directly on that target over the kept worktree.
@@ -309,7 +319,7 @@ function imageBlindArm(ctx: RunVerdictContext): RunOutcome | undefined {
       });
       return { result: "aborted", resumeCause: "image-reroute" };
     }
-    return unfulfilledError(s, ctx, pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`);
+    return unfulfilledError(s, ctx, blindReadFailureMessage(pi, pi.imageBlind.path));
   }
   return undefined;
 }
