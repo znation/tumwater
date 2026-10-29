@@ -503,27 +503,27 @@ test("a holder robbed mid-section does not delete its successor's lock on releas
   assert.equal(readLockPid(asyncLock), pid, "the successor's pid file is untouched");
 });
 
-test("tryClaimLockDir returns false on an already-held dir and leaves it in place", () => {
-  const dir = path.join(tmpdir(), "held-slot");
-  fs.mkdirSync(dir);
-  fs.writeFileSync(path.join(dir, "pid"), String(process.pid));
-  assert.equal(tryClaimLockDir(dir), false, "a held slot is not claimed");
-  assert.ok(fs.existsSync(dir), "the held slot's dir is left untouched");
-  assert.equal(readLockPid(dir), process.pid, "the held slot's pid file is untouched");
-  fs.rmSync(dir, { recursive: true, force: true });
-  assert.equal(tryClaimLockDir(dir), true, "a free path is claimed");
-  assert.ok(fs.existsSync(dir), "the fresh claim published its dir");
-  assert.equal(readLockPid(dir), process.pid, "the fresh claim records this process as the holder");
-  fs.rmSync(dir, { recursive: true, force: true });
+// The ledger-facing one-shot primitives check-slots.ts reuses. tryClaimLockDir is a
+// non-throwing single attempt: it claims an absent dir and returns false on a held one without
+// touching it, and releaseOwnedLockDir must not delete a dir a successor now owns — exactly the
+// robbed-holder guard that governs the mutex releases above.
+test("tryClaimLockDir claims an absent dir and returns false on an already-held one, leaving it in place", () => {
+  const dir = path.join(tmpdir(), "claim-held.lock");
+  assert.equal(tryClaimLockDir(dir), true, "an absent dir is claimed");
+  assert.equal(readLockPid(dir), process.pid, "the claim wrote this process's pid");
+  assert.equal(tryClaimLockDir(dir), false, "an already-held dir is not re-claimed");
+  assert.ok(fs.existsSync(dir), "the held dir is left in place for its holder");
+  assert.equal(readLockPid(dir), process.pid, "the first holder's pid file is untouched");
 });
 
 test("releaseOwnedLockDir leaves a dir carrying another pid", async () => {
+  // The successor must be a real alive process: pidAlive treats a permission error as dead, so
+  // no hand-picked pid is reliably "alive" on every host.
   const pid = await sleeperPid();
-  const dir = path.join(tmpdir(), "robbed-slot");
-  fs.mkdirSync(dir);
-  fs.writeFileSync(path.join(dir, "pid"), String(pid));
+  const dir = path.join(tmpdir(), "claim-foreign.lock");
+  assert.equal(tryClaimLockDir(dir), true);
+  fs.writeFileSync(path.join(dir, "pid"), String(pid)); // a successor now "owns" the slot
   releaseOwnedLockDir(dir);
   assert.ok(fs.existsSync(dir), "a robbed holder must not delete its successor's slot dir");
   assert.equal(readLockPid(dir), pid, "the successor's pid file is untouched");
-  fs.rmSync(dir, { recursive: true, force: true });
 });
