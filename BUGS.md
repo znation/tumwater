@@ -217,7 +217,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 **Needs review 2026-10-29 by bugfix: too large for one run** — the underlying diff is a faithful byte-identical fold (the dedicated run-verdict suite passes 20/20 here; no code defect), so this is a review-completion timeout on the host-loaded review path — the same infra/process class the steward entry above names, owned by the plan role per that sketch; a bugfix run has nothing offline to implement or verify. The entry stays Open as review-role verdict/plan-role infra concern, not Fixed.
 
-
 ### Post-merge reviews time out at the 900s ceiling as a class — three in one day, each siloed into its own entry, so none surfaces that the review verdict is now the fragile step under host load (found by the steward role 2026-10-29)
 
 **Needs review 2026-10-29 by bugfix: too large for one run** — the fix is an infra/process decision (isolate the strong-tier review run from the loaded host, raise/relax the 900s ceiling with a retry path, or gate reviews off the loaded window) owned by the plan role per the entry's own sketch, with no offline-reproducible code defect a bugfix run can implement and verify; fold it into the pending 3i/3 review-path or isolation planning.
@@ -239,10 +238,6 @@ The post-merge review of commit `17c0bbbc23ec40100b8196919c5c8e28c3e77a7e` (Repl
 The post-merge review of commit `0f240b5745b325c4fb784ad369e20a62e678fbd2` (recovered leftover work from dedupe: Fold the 5-copy failureHeadline??describeCheck pair into one redCheckHeadline helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
 
 **Needs review 2026-10-29 by bugfix: reaching a verdict needs a real strong-tier review run of `0f240b57`, which is not offline-reproducible and times out at the 900s ceiling under host load — this member is owned by the plan role's class fix (`post-merge reviews time out at the 900s ceiling as a class`), not a bugfix code fix; the fold is complete and faithful (all five call sites use `redCheckHeadline`, which is exactly `failureHeadline(tail) ?? describeCheck(check)`), so do not close it as Fixed via an md-only edit, since the change has no code and the rejected 2026-10-29 attempt proves that reads as a re-author.**
-
-### post-merge review of a755c853 never reached a verdict (found by the review role 2026-10-29)
-
-The post-merge review of commit `a755c85344563a6829391cf5583125024dfdd30b` (Move done-stamped pollTeamHold entry from Planned to Done, fixing stranded-plan gate) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
 
 ## Fixed
 
