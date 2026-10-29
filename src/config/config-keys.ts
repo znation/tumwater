@@ -107,23 +107,36 @@ type ParsedConfigKey =
   | { kind: "section"; section: keyof typeof DOTTED_SECTION_FIELDS; field: string }
   | { kind: "error"; error: string };
 
-/** Split a config key into its write/get shape: `foo` is top-level,
- * `maxDailyCostUsdPerRole.feature` / `quietHoursPerRole.qa` name one map entry,
- * `roles.qa.model` names one role-entry field, and anything else dotted is an error
- * naming the supported dotted forms. */
-export function parseConfigKey(key: string): ParsedConfigKey {
-  if (!key.includes(".")) return { kind: "top", key };
-  const parts = key.split(".");
+/** The per-role map entry `maxDailyCostUsdPerRole.<role>` / `quietHoursPerRole.<role>` — a
+ * whole-value bare key with no deeper segment names one map entry. Returns undefined when
+ * the shape is not that of a two-segment per-role map entry. */
+function parseMapEntry(parts: string[]): ParsedConfigKey | undefined {
   const first = parts[0] ?? "";
   const second = parts.length > 1 ? parts[1] ?? "" : undefined;
   const third = parts.length > 2 ? parts[2] ?? "" : undefined;
   if (third === undefined && second !== undefined && second !== "" && (DOTTED_MAP_KEYS as readonly string[]).includes(first))
     return { kind: "map", map: first as (typeof DOTTED_MAP_KEYS)[number], role: second };
+  return undefined;
+}
+
+/** One role-entry field `roles.<id>.<field>` (e.g. `roles.qa.model`), with both segments
+ * non-empty. Returns undefined when the shape is not a three-segment `roles.` key. */
+function parseRoleField(parts: string[]): ParsedConfigKey | undefined {
+  const first = parts[0] ?? "";
+  const second = parts.length > 1 ? parts[1] ?? "" : undefined;
+  const third = parts.length > 2 ? parts[2] ?? "" : undefined;
   if (parts.length === 3 && first === "roles" && second !== undefined && second !== "" && third !== undefined && third !== "")
     return { kind: "role", id: second, field: third };
-  // `backends.<id>.<field>` names one field of one agent backend's entry (the way
-  // `roles.<id>.<field>` names one role field). The id is shape-checked only — routing owns
-  // which agent ids exist (part 4b); a typo'd field is refused here with the valid ones named.
+  return undefined;
+}
+
+/** `backends.<id>.<field>` names one field of one agent backend's entry (the way
+ * `roles.<id>.<field>` names one role field). The id is shape-checked only — routing owns
+ * which agent ids exist (part 4b); a typo'd field is refused here with the valid ones named. */
+function parseBackendField(parts: string[]): ParsedConfigKey | undefined {
+  const first = parts[0] ?? "";
+  const second = parts.length > 1 ? parts[1] ?? "" : undefined;
+  const third = parts.length > 2 ? parts[2] ?? "" : undefined;
   if (parts.length === 3 && first === "backends" && second !== undefined && second !== "" && third !== undefined) {
     // configDir is claude/codex-only (CLAUDE_AGENT_KEYS / CODEX_BACKEND_KEYS):
     // a config set backends.pi.configDir would write a key nothing reads, so it is refused
@@ -136,10 +149,16 @@ export function parseConfigKey(key: string): ParsedConfigKey {
       error: `unknown backend field "${third}" for backends.${second} (valid fields: ${validKeys.join(", ")})${typoSuffix(third, validKeys)}`,
     };
   }
-  // `model.<tier>` names one entry of the tier model map — the way `roles.<id>.model`
-  // names one role field, `maxDailyCostUsdPerRole.<role>` names one map entry. The tier
-  // must be a real tier: `config set model.turbo x` would otherwise write a dead map key
-  // the runtime (and doctor's checkKnownKeys) would silently never resolve.
+  return undefined;
+}
+
+/** `model.<tier>` names one entry of the tier model map — the way `roles.<id>.model`
+ * names one role field, `maxDailyCostUsdPerRole.<role>` names one map entry. The tier
+ * must be a real tier: `config set model.turbo x` would otherwise write a dead map key
+ * the runtime (and doctor's checkKnownKeys) would silently never resolve. */
+function parseModelTier(parts: string[]): ParsedConfigKey | undefined {
+  const first = parts[0] ?? "";
+  const second = parts.length > 1 ? parts[1] ?? "" : undefined;
   if (parts.length === 2 && first === "model") {
     if ((TIER_MAP_KEYS).includes(second ?? ""))
       return { kind: "tier", map: "model", tier: second as ModelTier };
@@ -148,8 +167,14 @@ export function parseConfigKey(key: string): ParsedConfigKey {
       error: `unknown model tier "${second ?? ""}" — a dotted \`model.<tier>\` names one of ${TIER_MAP_KEYS.join(", ")} (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`)${typoSuffix(second ?? "", TIER_MAP_KEYS)}`,
     };
   }
-  // `<section>.<field>` names one field of a fixed-shape section (review, check, idleBackoff,
-  // bootstrap); the field must be one the schema lists, or the write would be a dead key.
+  return undefined;
+}
+
+/** `<section>.<field>` names one field of a fixed-shape section (review, check, idleBackoff,
+ * bootstrap); the field must be one the schema lists, or the write would be a dead key. */
+function parseSectionField(parts: string[]): ParsedConfigKey | undefined {
+  const first = parts[0] ?? "";
+  const second = parts.length > 1 ? parts[1] ?? "" : undefined;
   if (parts.length === 2 && Object.hasOwn(DOTTED_SECTION_FIELDS, first)) {
     const section = first as keyof typeof DOTTED_SECTION_FIELDS;
     const fields: readonly string[] = DOTTED_SECTION_FIELDS[section];
@@ -159,9 +184,15 @@ export function parseConfigKey(key: string): ParsedConfigKey {
       error: `unknown ${first} field "${second ?? ""}" (valid fields: ${fields.join(", ")})${typoSuffix(second ?? "", fields)}`,
     };
   }
-  // A typo'd first segment is the common miss (`maxDailyCostUsdPerRoll.feature`,
-  // `modle.small`); when the head is one of the valid ones the shape itself is wrong, so
-  // suggesting that head back would mislead — the generic wording is the whole story there.
+  return undefined;
+}
+
+/** The generic dotted-shape rejection: the head is not one of the accepted shapes in a way
+ * the earlier parsers would have claimed, so name the supported dotted forms wholesale. A
+ * typo'd first segment is the common miss (`maxDailyCostUsdPerRoll.feature`, `modle.small`);
+ * when the head is one of the valid ones the shape itself is wrong, so suggesting that head
+ * back would mislead — hence the hint only when the head is unknown. */
+function dottedShapeError(key: string, first: string): ParsedConfigKey {
   const headHint = (DOTTED_KEY_HEADS as readonly string[]).includes(first)
     ? ""
     : typoSuffix(first, DOTTED_KEY_HEADS);
@@ -170,6 +201,24 @@ export function parseConfigKey(key: string): ParsedConfigKey {
     error:
       `unknown config key "${key}" — dotted keys name one entry of a per-role map or one field of a role entry (e.g. \`maxDailyCostUsdPerRole.feature 1.5\`, \`roles.qa.model x\`, \`review.model x\`); a bare key names a whole top-level value${headHint}`,
   };
+}
+
+/** Split a config key into its write/get shape: `foo` is top-level,
+ * `maxDailyCostUsdPerRole.feature` / `quietHoursPerRole.qa` name one map entry,
+ * `roles.qa.model` names one role-entry field, and anything else dotted is an error
+ * naming the supported dotted forms. */
+export function parseConfigKey(key: string): ParsedConfigKey {
+  if (!key.includes(".")) return { kind: "top", key };
+  const parts = key.split(".");
+  const first = parts[0] ?? "";
+  return (
+    parseMapEntry(parts) ??
+    parseRoleField(parts) ??
+    parseBackendField(parts) ??
+    parseModelTier(parts) ??
+    parseSectionField(parts) ??
+    dottedShapeError(key, first)
+  );
 }
 
 /** The error `tumwater config get <key>` and `config set <key> <value>` both surface for a
