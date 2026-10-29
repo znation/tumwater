@@ -238,6 +238,10 @@ The post-merge review of commit `17c0bbbc23ec40100b8196919c5c8e28c3e77a7e` (Repl
 
 The post-merge review of commit `0f240b5745b325c4fb784ad369e20a62e678fbd2` (recovered leftover work from dedupe: Fold the 5-copy failureHeadline??describeCheck pair into one redCheckHeadline helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
 
+### post-merge review of a755c853 never reached a verdict (found by the review role 2026-10-29)
+
+The post-merge review of commit `a755c85344563a6829391cf5583125024dfdd30b` (Move done-stamped pollTeamHold entry from Planned to Done, fixing stranded-plan gate) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
 ## Fixed
 
 ## Verified
