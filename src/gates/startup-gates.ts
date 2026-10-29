@@ -16,7 +16,7 @@ import {
 import { owningTeamRoot } from "../paths.js";
 import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
-import { seedCodexAccount } from "../agent/codex/codex-account.js";
+import { codexApiKeyRefusalMessage, seedCodexAccount } from "../agent/codex/codex-account.js";
 import {
   opencodeCatalogStale,
   readOpencodeCache,
@@ -131,8 +131,7 @@ export async function runStartupCheck(
   const codexAccount = seedOnce(root, config, "codex", codexSeedAttempted, () => seedCodexAccount(root, config));
   if (codexAccount?.billing === "api") {
     return {
-      problem:
-        "Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`",
+      problem: codexApiKeyRefusalMessage("<home>"),
     };
   }
   // Seed the opencode models catalog (part 6b/7) before the first run: the poll surfaces price

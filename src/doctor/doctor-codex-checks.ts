@@ -7,7 +7,7 @@ import { codexEffort, EFFORT_BY_THINKING } from "../agent/codex/codex-args.js";
 import { codexEnv } from "../agent/codex/codex-env.js";
 import { codexHome, readCodexCatalog } from "../agent/codex/codex-catalog.js";
 import { codexHookTrust } from "../agent/codex/codex-hook-trust.js";
-import { parseCodexLoginStatus } from "../agent/codex/codex-account.js";
+import { codexApiKeyRefusalMessage, parseCodexLoginStatus } from "../agent/codex/codex-account.js";
 import { codexWriteGuardDefinition } from "../agent/codex/codex-write-guard.js";
 import { resolvedBackendConfig } from "../config/config-views.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -105,10 +105,7 @@ export async function checkCodexAuth(
     return warnOutcome("could not check — `codex login status` did not run or its output was unreadable");
   const status = parseCodexLoginStatus(result.stdout);
   if (status === "subscription") return okOutcome("logged in using ChatGPT — billing: subscription");
-  if (status === "api")
-    return failOutcome(
-      `Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run \`CODEX_HOME=${home} codex login --device-auth\``,
-    );
+  if (status === "api") return failOutcome(codexApiKeyRefusalMessage(home));
   if (/Not logged in/i.test(result.stdout ?? ""))
     return failOutcome(`codex is not logged in — run \`CODEX_HOME=${home} codex login --device-auth\``);
   return warnOutcome("could not check — `codex login status` reply was unreadable");

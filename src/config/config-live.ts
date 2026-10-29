@@ -9,7 +9,7 @@ import type { Semaphore } from "../concurrency/semaphore.js";
 import { errorMessage } from "../text/text.js";
 import { backendsInUse, seedOpencodeCatalog, type OpenCodeSeedOptions } from "../gates/startup-gates.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
-import { seedCodexAccount, readCodexAccount } from "../agent/codex/codex-account.js";
+import { codexApiKeyRefusalMessage, seedCodexAccount, readCodexAccount } from "../agent/codex/codex-account.js";
 import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 
 /** The orchestrator's live view of tumwater.json: the single reload point shared by all roles,
@@ -125,9 +125,7 @@ export function newLiveConfigReload(deps: {
     if (newlyRoutedCodex && readCodexAccount(deps.root)?.billing === "api") {
       if (codexLiveRefused) return true;
       codexLiveRefused = true;
-      warn(
-        "refusing live edit: Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`",
-      );
+      warn(`refusing live edit: ${codexApiKeyRefusalMessage("<home>")}`);
       return true;
     }
     // A poll that did not refuse clears the warn-once marker so a later re-entry into the

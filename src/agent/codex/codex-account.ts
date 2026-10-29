@@ -112,6 +112,16 @@ export function parseCodexLoginStatus(stdout: string | null): CodexLoginStatus {
   return null;
 }
 
+/** The refusal message when a codex seam is API-key logged in (decision 5): Codex reports no
+ * cost, so per-token billing would spend money the budget cap cannot see. The one home of the
+ * remedy text the startup gate, the live config editor, and the doctor all print, so the remedy
+ * command and its wording cannot drift between them. `home` is the codex home named in the
+ * remedy: the literal `<home>` placeholder where the call site does not resolve the home, else
+ * the resolved `CODEX_HOME` path. */
+export function codexApiKeyRefusalMessage(home: string): string {
+  return `Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run \`CODEX_HOME=${home} codex login --device-auth\``;
+}
+
 /** The billing the login probe names, or null when it cannot be decided. */
 function seedBilling(config: TumwaterConfig): CodexBilling | null {
   const status = probeLoginStatus(config);
