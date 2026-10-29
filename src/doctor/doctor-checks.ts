@@ -37,7 +37,7 @@ import { formatBytes } from "../text/format.js";
 import { BRIEF_TEXT_MAX_CHARS, briefFile, promptBlockOf, readBrief } from "../brief/brief.js";
 import { plural } from "../text/phrases.js";
 import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gates.js";
-import { claudeSeamsInUse, minVersionOutcome, opencodeSeamsInUse, versionFromProbe, piSeamsInUse } from "./doctor-model-checks.js";
+import { claudeSeamsInUse, loadConfigForCheck, minVersionOutcome, opencodeSeamsInUse, versionFromProbe, piSeamsInUse } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./doctor-probe.js";
 import { childEnv } from "../process/process.js";
@@ -306,8 +306,8 @@ export async function checkOpencodeVersion(
   pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<CheckOutcome> {
-  const { config } = loadConfigSafe(root);
-  if (config === undefined) return noConfigOutcome();
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
   if (!opencodeSeamsInUse(config)) return okOutcome("no model jobs run on opencode");
   const resolved = opencodeBackend.resolveBin(config);
   const result = await boundedProbe(
