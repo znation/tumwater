@@ -22,7 +22,7 @@ import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { type BuildCheck, detectBuildCheck, gateCommandOf, mergeCommandOf } from "../build/build-check-detect.js";
 import { onlyKnownMainFailures } from "../baseline/main-watch.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
-import { describeCheck, failureHeadline } from "../build/build-check-report.js";
+import { redCheckHeadline } from "../build/build-check-report.js";
 import { MERGE_FLAKY_WARNING_PREFIX, quarantineTests } from "../review/known-flakes.js";
 import { noteGreenBaseline, noteInheritedGreen } from "../baseline/main-baseline.js";
 import { isExemptDiff } from "../review/exemptions.js";
@@ -284,7 +284,7 @@ async function verifyMerge(
     const failed = check.outcome;
     const retry = await runMergeCheck();
     if (retry?.outcome.status === "passed") {
-      warnEventBestEffort(ctx.root, ctx.role, `${MERGE_FLAKY_WARNING_PREFIX}${failureHeadline(failed.outputTail) ?? describeCheck(check.check)}`);
+      warnEventBestEffort(ctx.root, ctx.role, `${MERGE_FLAKY_WARNING_PREFIX}${redCheckHeadline(check.check, failed.outputTail)}`);
       quarantineTests(ctx.root, failed.failingTests, failed.outputTail);
       check = retry;
     }

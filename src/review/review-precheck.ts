@@ -10,7 +10,7 @@ import type { RunnerState } from "../runner/runner-state.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
-import { checkFailureReasons, describeCheck, failureHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
+import { checkFailureReasons, redCheckHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { sleptPhrase, UNVERIFIED_TREE, unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { sampleSleepClock } from "../build/host-sleep.js";
 import { recordReview } from "../run/run-apply.js";
@@ -129,7 +129,7 @@ export async function gateBuildPrecheck(
         if (unverifiedTreeOutcome(outcome)) {
           warnEventBestEffort(root, role, sleptPhrase("gate check", outcome.run!.sleptMs!, "then passed on retry"));
         } else {
-          const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
+          const flaky = redCheckHeadline(check, outcome.outputTail);
           warnEventBestEffort(root, role, `${FLAKY_WARNING_PREFIX}${flaky}`);
           // Each test the failed run named failed and then passed on this same tree: quarantined.
           quarantineTests(root, outcome.failingTests, outcome.outputTail);
@@ -159,7 +159,7 @@ export async function gateBuildPrecheck(
       // instead of ending the merge attempt as review_error and paying a requeue. It carries no
       // verifiedHead — the tree was not verified — so the merge
       // path's own check still judges the tree before it reaches main.
-      const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
+      const flaky = redCheckHeadline(check, outcome.outputTail);
       // A failure that names only tests main already fails is main's, not this change's: it goes
       // on to review with no fresh run on main. No verifiedHead — the tree did not pass, so the
       // merge path must not seed a green for it — and the merge check judges it by the same rule.

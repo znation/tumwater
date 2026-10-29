@@ -3,7 +3,7 @@ import { mergeRefName } from "../paths.js";
 import { recordReview } from "../run/run-apply.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
-import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
+import { checkFailureReasons, redCheckHeadline } from "../build/build-check-report.js";
 import { onlyKnownMainFailures } from "../baseline/main-watch.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
@@ -161,7 +161,7 @@ export async function mergeCheckRed(
   if (result === "merge_blocked" && !attributed) {
     warnEventBestEffort(ctx.root, role, `merge check failed (kept for one retry): ${reason}`);
     if (ctx.state.mergeCheckFailures) {
-      ctx.state.mergeCheckFailures.headline = failureHeadline(red.outcome.outputTail) ?? describeCheck(red.check);
+      ctx.state.mergeCheckFailures.headline = redCheckHeadline(red.check, red.outcome.outputTail);
     }
   }
   return result;
@@ -242,7 +242,7 @@ export async function attributeRedCheck(
   }
   const kept = keepForKnownFailures(ctx, role, label, red, state);
   if (kept) return kept;
-  const headline = failureHeadline(red.outcome.outputTail) ?? describeCheck(red.check);
+  const headline = redCheckHeadline(red.check, red.outcome.outputTail);
   const key = normalizeClusterKey(headline);
   if (isKnownFlake(ctx.root, headline) && state.mergeFlakeExcused !== key) {
     state.mergeFlakeExcused = key;
