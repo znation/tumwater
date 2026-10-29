@@ -81,31 +81,47 @@ export function pollTeamHold(
     const pPrev = prev.get(provider) ?? { ...TEAM_OPEN, provider };
     const pNext = teamHold(pPrev, byProvider.get(provider) ?? [], now);
     next.set(provider, pNext);
-    const providerFields = provider === undefined ? {} : { provider };
     if (pPrev.until === null && pNext.until !== null) {
-      logEventBestEffort(root, {
-        source: TUMWATER_SOURCE,
-        type: "rate_limit_hold",
-        ...providerFields,
-        kind: pNext.kind,
-        roles: pNext.roles,
-        holdMs: pNext.until - now,
-        escalation: pNext.escalation,
-      });
+      logHoldStart(root, provider, pNext, now);
     } else if (pPrev.until !== null && pNext.until === null) {
-      // The ended hold's kind rides the resumed event: the hold's own event names its kind, so
-      // the lift must be able to name what actually ended too — "429 hold lifted" after a
-      // connection-error hold is the same lie the hold line's kind split removed
-      // (BUGS.md 2026-09-29).
-      logEventBestEffort(root, {
-        source: TUMWATER_SOURCE,
-        type: "rate_limit_resumed",
-        ...providerFields,
-        kind: pNext.kind,
-      });
+      logHoldEnd(root, provider, pNext);
     }
   }
   return next;
+}
+
+/** The quiet→held crossing event: a provider whose hold just opened logs one `rate_limit_hold`
+ * naming the kind, the roles, how long it holds (until the re-open), and the escalation depth.
+ * The provider is carried only when one is configured (an undefined provider — pi's default —
+ * omits it, so an unconfigured team's events render exactly as before). */
+function logHoldStart(
+  root: string,
+  provider: string | undefined,
+  pNext: TeamHold,
+  now: number,
+): void {
+  logEventBestEffort(root, {
+    source: TUMWATER_SOURCE,
+    type: "rate_limit_hold",
+    ...(provider === undefined ? {} : { provider }),
+    kind: pNext.kind,
+    roles: pNext.roles,
+    holdMs: pNext.until! - now,
+    escalation: pNext.escalation,
+  });
+}
+
+/** The held→quiet lift event: a provider whose hold just re-opened logs one `rate_limit_resumed`.
+ * The ended hold's kind rides the resumed event: the hold's own event names its kind, so the
+ * lift must be able to name what actually ended too — "429 hold lifted" after a
+ * connection-error hold is the same lie the hold line's kind split removed (BUGS.md 2026-09-29). */
+function logHoldEnd(root: string, provider: string | undefined, pNext: TeamHold): void {
+  logEventBestEffort(root, {
+    source: TUMWATER_SOURCE,
+    type: "rate_limit_resumed",
+    ...(provider === undefined ? {} : { provider }),
+    kind: pNext.kind,
+  });
 }
 
 /** One poll of the team-wide error-storm warning (src/team/team-error-storm.ts): gather each
