@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/concurrency/lock.js";
+import { classifyLock, readLockPid, releaseOwnedLockDir, tryClaimLockDir, withLock, withSyncLock } from "../src/concurrency/lock.js";
 import { runningAsRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 import { errnoError, patchFsMethod, withReadOnlyDir } from "./helpers/fs-faults.js";
 import { backdate } from "./helpers/backdate.js";
@@ -501,4 +501,29 @@ test("a holder robbed mid-section does not delete its successor's lock on releas
   });
   assert.ok(fs.existsSync(asyncLock), "the robbed async holder left the successor's lock in place");
   assert.equal(readLockPid(asyncLock), pid, "the successor's pid file is untouched");
+});
+
+test("tryClaimLockDir returns false on an already-held dir and leaves it in place", () => {
+  const dir = path.join(tmpdir(), "held-slot");
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, "pid"), String(process.pid));
+  assert.equal(tryClaimLockDir(dir), false, "a held slot is not claimed");
+  assert.ok(fs.existsSync(dir), "the held slot's dir is left untouched");
+  assert.equal(readLockPid(dir), process.pid, "the held slot's pid file is untouched");
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.equal(tryClaimLockDir(dir), true, "a free path is claimed");
+  assert.ok(fs.existsSync(dir), "the fresh claim published its dir");
+  assert.equal(readLockPid(dir), process.pid, "the fresh claim records this process as the holder");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("releaseOwnedLockDir leaves a dir carrying another pid", async () => {
+  const pid = await sleeperPid();
+  const dir = path.join(tmpdir(), "robbed-slot");
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, "pid"), String(pid));
+  releaseOwnedLockDir(dir);
+  assert.ok(fs.existsSync(dir), "a robbed holder must not delete its successor's slot dir");
+  assert.equal(readLockPid(dir), pid, "the successor's pid file is untouched");
+  fs.rmSync(dir, { recursive: true, force: true });
 });
