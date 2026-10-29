@@ -292,7 +292,7 @@ test("an unpinned commit ahead of main (crash in the commit→pin window) is ado
   assert.equal(await refSha(root, mergeRefName(ROLE)), tip, "the fallback adopts the pin");
 });
 
-test("a no-pin ahead-of-main commit named by a reviewer hold or main_red retry is not adopted", async () => {
+test("a no-pin ahead-of-main commit named by a main_red retry is not adopted", async () => {
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.appendFileSync(path.join(wt, "held.txt"), "held work\n");
@@ -309,13 +309,19 @@ test("a no-pin ahead-of-main commit named by a reviewer hold or main_red retry i
   assert.deepEqual(queuedMerges(root), [], "nothing is queued");
   assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the main_red tip is not adopted into a pin");
   assert.equal(headSha(wt), tip, "the commit stays on the branch");
+});
 
-  const reviewError = { sha: tip, selector: "gpt-x", message: "reviewer config is broken" };
-  const held = await recoverLeftover({ ...makeCtx(root, wt), mergeReviewError: reviewError });
+test("a pin is never held by a reviewer config: a formerly-held leftover re-queues as any other pin", async () => {
+  // The permanent reviewer-config hold is gone: with no pre-merge reviewer, no selector can fail.
+  // A leftover that the old hold would have parked re-queues through the same path every pin does.
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
 
-  assert.deepEqual(held, { kind: "held", sha: tip, message: "reviewer config is broken" });
-  assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the held tip is not adopted into a pin");
-  assert.equal(headSha(wt), tip, "the commit stays on the branch");
+  const recovered = await recoverLeftover(makeCtx(root, wt));
+
+  assert.equal(recovered?.kind, "enqueued");
+  assert.equal((recovered as { entry?: { sha: string } })?.entry?.sha, sha, "the formerly-held pin is re-queued");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin stays for the merge slot");
 });
 
 test("a failed pin adoption is logged and queues nothing: the commit stays on the branch", async () => {

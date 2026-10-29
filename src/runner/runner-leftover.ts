@@ -18,8 +18,8 @@ import type { RunnerState } from "./runner-state.js";
  * holds whether or not the pin survived. Split out of runner.ts — which keeps the run lifecycle
  * around it — because this is a self-contained concern with its own entry condition and git
  * surface; the only things it borrows from the runner are identity, the run number, the
- * worktree (for the no-pin fallback), and three pieces of the role's merge state: its
- * conflict streak, outstanding hand-back, and permanent-reviewer hold. */
+ * worktree (for the no-pin fallback), and two pieces of the role's merge state: its conflict
+ * streak and outstanding hand-back. */
 
 /** Consecutive merges of one pinned sha that may end `merge_conflict` before recovery stops
  * re-queuing it (RunnerState.mergeConflicts). Each attempt costs a conflict-resolution run, and
@@ -51,40 +51,33 @@ async function dropDanglingPin(root: string, role: string, ref: string, sha: str
   return true;
 }
 
-/** The permanent-reviewer-config hold when it names `sha`, else undefined. */
-function reviewHold(held: RunnerState["mergeReviewError"], sha: string): { message: string } | undefined {
-  return held?.sha === sha ? held : undefined;
-}
-
 /** Consecutive conflict-ended merges of `sha` (0 when the streak names another sha). */
 function conflictAttempts(streak: RunnerState["mergeConflicts"], sha: string): number {
   return streak?.sha === sha ? streak.count : 0;
 }
 
 /** The sha of a role's kept pin when the merge pipeline may re-queue it itself: the pin exists,
- * main does not already contain it (a stale pin is deleted, as recovery does), no reviewer
- * configuration hold names it, and its conflict streak is under MERGE_CONFLICT_LIMIT. Null
- * otherwise — a pin at the limit is the author's conflict hand-back, a held one waits for a
- * config change, and both stay with recoverLeftover. */
+ * main does not already contain it (a stale pin is deleted, as recovery does), and its conflict
+ * streak is under MERGE_CONFLICT_LIMIT. Null otherwise — a pin at the limit is the author's
+ * conflict hand-back, and it stays with recoverLeftover. */
 export async function pinnedRetrySha(
   root: string,
   role: string,
   mainBranch: string,
-  state: Pick<RunnerState, "mergeConflicts" | "mergeReviewError">,
+  state: Pick<RunnerState, "mergeConflicts">,
 ): Promise<string | null> {
   const ref = mergeRefName(role);
   const sha = await refSha(root, ref).catch(() => null);
   if (!sha) return null;
   if (await dropDanglingPin(root, role, ref, sha)) return null;
   if (await dropStalePin(root, ref, sha, mainBranch)) return null;
-  if (reviewHold(state.mergeReviewError, sha)) return null;
   if (conflictAttempts(state.mergeConflicts, sha) >= MERGE_CONFLICT_LIMIT) return null;
   return sha;
 }
 
 /** What recoverLeftover needs from its owning runner: identity, the current run number, the
  * role's worktree (needed only for the no-pin ahead-of-main fallback), and the role's merge
- * state — its conflict streak, outstanding hand-back, and permanent-reviewer hold. */
+ * state — its conflict streak and outstanding hand-back. */
 export interface LeftoverContext {
   root: string;
   role: string;
@@ -100,10 +93,6 @@ export interface LeftoverContext {
   /** The role's outstanding hand-back (RunnerState.conflictHandback): when one exists, a pin at
    * the cap means this lineage already used its one hand-back, so it is discarded. */
   conflictHandback?: RunnerState["conflictHandback"];
-  /** The role's permanent-reviewer-config hold (RunnerState.mergeReviewError): while it names
-   * this pin's sha, recovery returns `held` instead of re-queueing, so a 4xx config error is
-   * not retried at suite speed (BUGS.md 2026-10-06). */
-  mergeReviewError?: RunnerState["mergeReviewError"];
   /** The record of a `main_red` pin waiting for the orchestrator poll's `requeueMainRedPin`
    * (RunnerState.mainRedRetry): while set, recovery holds the pin instead of re-queuing it. */
   mainRedRetry?: RunnerState["mainRedRetry"];
@@ -130,9 +119,6 @@ export interface LeftoverContext {
  *   lineage has not been handed back yet — the ref stays, and the run re-applies the diff over
  *   current main with the markers in place so the author resolves them; the run logs a
  *   `conflict_handback` `queued` event;
- * - `held`: a merge failed on a permanent reviewer configuration error and the model config
- *   is unchanged — the pin stays, nothing is queued, and the run ends on the error ladder
- *   instead of re-paying a gate check at suite speed (BUGS.md 2026-10-06);
  * - `main_red_wait`: a merge kept the pin because main was red, and main's head has not moved
  *   since — the pin stays, nothing is queued, and the run ends `main_red` on the idle ladder
  *   until the orchestrator poll re-queues the pin. */
@@ -141,7 +127,6 @@ export type LeftoverRecovery =
   | { kind: "already_queued"; entry: MergeEntry }
   | { kind: "relief_wait"; entry: MergeEntry }
   | { kind: "unpinned"; sha: string }
-  | { kind: "held"; sha: string; message: string }
   | { kind: "main_red_wait"; sha: string; message: string }
   | { kind: "handback"; sha: string; summary: string; attempts: number }
   | { kind: "discarded"; sha: string; summary: string; attempts: number };
@@ -202,12 +187,10 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     if (ahead <= 0) return null;
     sha = await headOf(ctx.wt, "HEAD").catch(() => null);
     if (!sha) return null;
-    // Hold checks BEFORE adopting: when a reviewer-config hold or a main_red retry names this
-    // tip, adopting it into the merge ref would create/repoint the pin and lose the kept sha
-    // the wait exists to preserve. Return the hold path without touching the ref (BUGS.md
-    // 2026-10-06, the main_red wait), leaving the commit on the branch.
-    const heldTip = reviewHold(ctx.mergeReviewError, sha);
-    if (heldTip) return { kind: "held", sha, message: heldTip.message };
+    // Hold checks BEFORE adopting: when a main_red retry names this tip, adopting it into the
+    // merge ref would create/repoint the pin and lose the kept sha the wait exists to preserve.
+    // Return the wait path without touching the ref (BUGS.md 2026-10-06, the main_red wait),
+    // leaving the commit on the branch.
     if (ctx.mainRedRetry) {
       return mainRedWait(sha, ctx.mainRedRetry.head);
     }
@@ -225,12 +208,6 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     }
   }
   const meta = await recoveredMetadata(ctx.root, sha);
-  // A permanent reviewer configuration error holds the pin: re-queuing it would pay another
-  // full gate check for a request that can never succeed until the model config changes. The
-  // caller clears the hold (and re-queues) once the resolved reviewer selector differs, so a
-  // fixed config recovers automatically (BUGS.md 2026-10-06).
-  const held = reviewHold(ctx.mergeReviewError, sha);
-  if (held) return { kind: "held", sha, message: held.message };
   // `requeueMainRedPin` owns the re-queue of a main_red pin, once main's head moves. Queuing it
   // here would pay a full gate check against the same red head, whose result is already known.
   if (ctx.mainRedRetry) {

@@ -236,13 +236,6 @@ export interface RunnerState {
    * tier. Read by the verdict's one-hop guard, which fails a blind read during a rerouted
    * run instead of rerouting it again. Transient: reset at every run start. */
   imageRerouteActive?: boolean;
-  /** The pinned change a merge failed to review on a permanent provider configuration error
-   * (a 4xx other than 408/429): the request can never succeed until the model config changes,
-   * so leftover recovery holds the pin instead of re-queuing it at suite speed (BUGS.md
-   * 2026-10-06). `selector` is the resolved reviewer selector that failed — when the runner's
-   * current reviewer selector differs, the config has changed and recovery clears the hold and
-   * re-queues. Cleared when the pin merges or is rejected. */
-  mergeReviewError?: { sha: string; selector?: string; message: string };
   /** A `main_red` merge's kept pin, waiting for main to move: `head` is main's head when the
    * attempt settled and `entry` the dropped queue entry (minus its sha, which is the pin's
    * current one). The orchestrator poll re-queues it on the first poll whose main head differs

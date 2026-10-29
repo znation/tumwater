@@ -64,7 +64,6 @@ const LEGACY_STATE_KEYS: Readonly<Record<string, string>> = {
   lastTickStartedAt: "lastRunStartedAt", // retired-name-ok: legacy name
   lastTickEndedAt: "lastRunEndedAt", // retired-name-ok: legacy name
   // retired-name-ok:start old state keys
-  landingReviewError: "mergeReviewError", // vocabulary-ok: legacy state key read from old files
   landingCheckFailures: "mergeCheckFailures", // vocabulary-ok: legacy state key read from old files
   lastLandedAt: "lastMergedAt", // vocabulary-ok: legacy state key read from old files
   // retired-name-ok:end
@@ -72,6 +71,11 @@ const LEGACY_STATE_KEYS: Readonly<Record<string, string>> = {
 
 /** Apply LEGACY_STATE_KEYS to a parsed state object in place. */
 function migrateLegacyStateKeys(saved: Record<string, unknown>): void {
+  // The pre-merge reviewer-config hold is gone (part 3j/3): a state file may still name it under
+  // either its old (landingReviewError) or its recent (mergeReviewError) key, and with no field
+  // to load it into — no reader consumes it — drop both here so a later save writes neither.
+  delete saved.landingReviewError; // retired-name-ok: legacy state key read from old files
+  delete saved.mergeReviewError;
   for (const [oldKey, newKey] of Object.entries(LEGACY_STATE_KEYS)) {
     if (!(oldKey in saved)) continue;
     if (!(newKey in saved)) saved[newKey] = saved[oldKey];

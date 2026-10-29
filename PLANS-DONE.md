@@ -5,6 +5,30 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3j/3: the permanent reviewer-config hold `mergeReviewError` is deleted (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; requires part 3i/3 landed, since with no pre-merge reviewer no selector can fail there and this removal takes its last consumers; touches src/merge/merge-core.ts src/runner/runner-leftover.ts src/runner/runner-run.ts src/runner/runner-state.ts src/run/run-apply.ts test/runner-leftover.test.ts test/runner-state.test.ts) — done 2026-10-29 by the feature role
+
+**Goal.** `RunnerState.mergeReviewError` held a merge pin when the pre-merge reviewer failed permanently on a bad model selector. Part 3h/3 removed the pre-merge reviewer, so `gate.configError` can no longer be set and the hold can never be produced; delete it and every reader.
+
+**Approach.**
+- src/merge/merge-core.ts: drop the `state.mergeReviewError = {...}` write on a `configError`, its two clears (in `discardPin` and on the approved path) and the `modelSelectorField`/`reviewRunConfig` reads that fed it.
+- src/runner/runner-leftover.ts: delete `reviewHold`, the `mergeReviewError` field on `LeftoverContext` and `pinnedRetrySha`'s state pick, and the two `reviewHold` read branches; recovery never reports `held` for a reviewer config.
+- src/runner/runner-run.ts: drop the `mergeReviewError` read/clear beside the review selector and its state hand-back.
+- src/runner/runner-state.ts: delete the `mergeReviewError?` field; src/run/run-apply.ts drops its `changeGone` clear. runner-state-load.ts drops both the legacy `landingReviewError` and the recent `mergeReviewError` keys on load (no field reads them), so a later save writes neither.
+- Delete the `mergeReviewError` cases and fixtures from the tests; this also removes the `held` arm from runner-recovery.ts's `finishRecoveryRunPhase` (the `held` recovery kind is gone from `LeftoverRecovery`), and the docs line that said a held reviewer config error is not re-queued.
+
+**Files touched.** src/merge/merge-core.ts src/runner/runner-leftover.ts src/runner/runner-run.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/run/run-apply.ts src/runner/runner-recovery.ts test/runner-leftover.test.ts test/runner-state.test.ts test/runner-recovery.test.ts test/merge-requeue.test.ts docs/how-it-works.md
+
+**Acceptance criteria.**
+- `mergeReviewError` is absent from `RunnerState` and from every read/write; a pin is never held for a reviewer selector, and recovery re-queues it as any other pin.
+- An old state file carrying `mergeReviewError` still loads (the legacy key is ignored).
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/runner-leftover.test.ts: `a pin is never held by a reviewer config` — a pinned leftover re-queues as any other pin (the old hold would have parked it).
+- test/runner-state.test.ts: a legacy `landingReviewError` state file still loads (the renamed key is dropped on next save); the field no longer exists on `RunnerState`.
+- test/runner-recovery.test.ts: the dead `finishRecoveryRunPhase` `held` arm is removed with the test that drove it.
+- test/merge-requeue.test.ts: the held reviewer config error re-queue case is removed (nothing holds a pin on a reviewer config).
+
 ### Subtract, part 5x/6: The subscription-window displays go and the account store loses only its window-hold helpers — its billing and overage reading stays (planned 2026-10-26 by the plan role, split 2026-10-28 by the plan role from the too-large part 5d/6 after feature held it (held 1): the display half of the held part, sibling to parts 5d/6, 5u/6, 5v/6 and 5w/6; requires part 5w/6 landed, since with the doctor row gone every display is the last reader of the window helpers; independent in file of parts 5d/6 and 5v/6; the per-backend account file and its `billing`/`windows` reading stay because the kept budget fallback's `seamFree`/`piPairFree`/`claudeOverageRefused` read them; touches src/ui/badges.ts src/ui/status-render.ts src/ui/status-payload.ts src/status/status-data.ts src/status/status-budget.ts src/status/status-roles.ts src/roles/role-render.ts src/roles/role-view.ts src/agent/subscription-account.ts src/agent/claude/claude-account.ts src/team/team-polls.ts docs/backends.md docs/how-it-works.md docs/invariants.md test/badges.test.ts test/role-view.test.ts test/status-payload.test.ts test/subscription-account.test.ts test/doctor-holds.test.ts test/team-polls.test.ts test/claude-account.test.ts test/status-budget.test.ts test/status-data-models.test.ts test/fixtures/status-fixtures.ts src/ui/gui/gui-client-operator.ts src/team/team-hold.ts test/team-hold.test.ts; src/status/status-roles.ts, docs/how-it-works.md, test/subscription-account.test.ts, test/status-payload.test.ts and test/doctor-holds.test.ts were listed but needed no edit — their remaining "window" references are context/quiet/run windows, not subscription windows; docs/invariants.md instead gained the reworded INV-BG4 guarantee in this change) — done 2026-10-28 by the feature role
 
 **Goal.** No role view, status row, badge or status render names a subscription usage window. `windowUsedUp`, `claudeWindowUsedUp`, `windowReserved`, `windowObservation`, `windowEntries`, `windowLabel`, `utilizationPct` and the `SubscriptionWindowBlock`/`ClaudeWindowEntry` display types are deleted. The store keeps `SubscriptionAccount.billing`, `plan`, `observedAt` and `windows`, so `subscriptionBackendOf`, `accountUsesOverage`, `claudeOverageRefused` and `subscriptionWindowRejected` keep working and the budget fallback's free-ness is unchanged.

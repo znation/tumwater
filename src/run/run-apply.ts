@@ -388,8 +388,6 @@ export function applyMergeOutcome(
     s.mergeCheckFailures = undefined;
     s.mergeFlakeExcused = undefined;
   }
-  // A permanent-reviewer-config hold ends with its pin's life: merged, or rejected away.
-  if (changeGone) s.mergeReviewError = undefined;
   // A hand-back ends with its change's life too: once the resolved change merges or is rejected,
   // a later change gets its own one-hand-back budget (PLANS.md "Robust conflict landing, part
   // 2/2"). A merge_conflict keeps it, so the resolved change's own cap discard fires.

@@ -8,8 +8,7 @@ import { mergeToMain } from "./merge-to-main.js";
 import { rebaseOntoMain } from "./merge-git.js";
 import { mergeCheckRed, noteMergeRetryPassed } from "./merge-check-failures.js";
 import { reviewAheadOfMain, type GateResult, type ReviewContext } from "../review/review.js";
-import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
-import { warnEventBestEffort, logEventBestEffort } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import type { GateRunsPi, PiRunWiring } from "../runner/runner-pi.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import { REVISION_FINAL_ON_REPEAT, REVISION_BACKSTOP, holdEntryAfterExhaustion } from "../runner/runner-revision.js";
@@ -201,16 +200,14 @@ export async function reviewPinnedChange(
   state: RunnerState,
   foldUsage: (run: PiRunResult) => void,
 ): Promise<GateOutcome> {
-  const { root, config } = ctx;
+  const { root } = ctx;
   const { role } = req;
   const ref = mergeRefName(role);
   // Both uses below — a rejection and a strike-cap discard — end a pinned change without
-  // keeping it: drop the held-selector note and the pin ref together, so the two-part cleanup
-  // cannot drift between them. The verify's checkout is a pooled slot (plans/worktree-pool.md,
+  // keeping it: drop the pin ref. The verify's checkout is a pooled slot (plans/worktree-pool.md,
   // "Vets and merges"): verifyRequest releases the lease in its finally, and a slot is reused, so
   // this path must not remove the worktree it ran in.
   const discardPin = async () => {
-    state.mergeReviewError = undefined;
     await deleteRef(root, ref);
   };
   // Already stopping: the gate never starts, so nothing is persisted or folded — the ref stays
@@ -280,23 +277,6 @@ export async function reviewPinnedChange(
 
   if (gate.decision === "failed") {
     state.lastError = `review failed: ${gate.detail}`;
-    // A permanent provider configuration error can never succeed until the config changes, so
-    // record the held pin with the reviewer selector that failed: leftover recovery refuses to
-    // re-queue while that selector stands and clears the hold once it changes (BUGS.md
-    // 2026-10-06). A discarded pin is gone, so no hold is recorded for it.
-    if (gate.configError && !gate.discarded) {
-      const selector = modelSelectorField(reviewRunConfig(config)).model;
-      state.mergeReviewError = {
-        sha: req.sha,
-        ...(selector ? { selector } : {}),
-        message: state.lastError,
-      };
-      warnEventBestEffort(
-        root,
-        role,
-        `review blocked by a permanent provider configuration error${selector ? ` on ${selector}` : ""}: ${gate.detail} — the pinned change is held until the model config changes`,
-      );
-    }
     // Strike-cap discard: the gate says so directly (it reset the worktree off the pin) — the
     // commit is gone and the ref goes too. An under-cap failure — a dead reviewer — keeps the
     // pin as it is: the gate never commits, so the pin still names the tree the next re-merge
@@ -317,8 +297,6 @@ export async function reviewPinnedChange(
     await setRef(root, ref, sha);
     req = { ...req, sha };
   }
-  // The change may merge: nothing is held against the previous reviewer selector any more.
-  state.mergeReviewError = undefined;
   return { kind: "gate", gate, sha };
 }
 

@@ -124,22 +124,6 @@ test("finishRecoveryRunPhase fails an unpinned leftover without resetting the wo
   assert.equal(inboxSize(root, "improve"), 1, "the run's request is requeued since nothing ran it");
 });
 
-test("finishRecoveryRunPhase ends error on a held pin and keeps its message", async () => {
-  const root = await initializedRepo();
-  const { ctx, state } = makeCtx(root);
-
-  const outcome = await finishRecoveryRunPhase(
-    ctx,
-    { kind: "held", sha: "sha1", message: "reviewer config is broken" },
-    null,
-    path.join(root, "unused"),
-    undefined,
-  );
-  assert.deepEqual(outcome, { result: "error", summary: "reviewer config is broken", recoveredLeftover: true });
-  assert.equal(state.lastError, "reviewer config is broken");
-  assert.equal(inboxSize(root, "improve"), 0, "a null prompt enqueues nothing");
-});
-
 test("finishRecoveryRunPhase ends main_red on a pin waiting for main to move", async () => {
   const { root, wt } = await initializedWorktree();
   const { ctx, state } = makeCtx(root);

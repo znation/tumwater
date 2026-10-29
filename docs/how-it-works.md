@@ -425,9 +425,8 @@ review instead of letting unreviewed or unchecked work through, and the change s
 its next attempt. When git cannot start at all, a revision waits for its role's next run and a
 post-merge review for the next poll, neither counted as failed. A change whose merge ends blocked, in a review error, or in a conflict that stays
 under the limit is put back in the merge queue by the pipeline itself, at once, with its original
-summary and no author run; a review error waits 60 s first, and a held reviewer configuration
-error is not re-queued. A change kept because main's check was failing goes back once main's head
-moves. A commit left unmerged by a crash or a restart (or one before it was queued) goes back in
+summary and no author run; a review error waits 60 s first. A change kept because main's check was
+failing goes back once main's head moves. A commit left unmerged by a crash or a restart (or one before it was queued) goes back in
 the merge queue at the role's next run, which ends there instead of authoring, so the one merge
 step stays main's only writer. The director's next run is otherwise only ever your prompt, so while
 it holds a kept commit it is also due on its own min-run clock. A commit whose last three merges

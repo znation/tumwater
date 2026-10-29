@@ -546,7 +546,9 @@ test("loadRunnerState maps the five legacy tick and merge keys, healing each as 
   assert.equal(s.lastRunStartedAt, 100);
   assert.equal(s.lastRunEndedAt, 200);
   assert.equal(s.lastMergedAt, 0);
-  assert.equal(s.mergeReviewError?.selector, "bad/model");
+  // The pre-merge reviewer-config hold is gone (part 3j/3): the legacy landingReviewError still
+  // loads without throwing, and the load drops both it and any recent-name key, so the save
+  // below writes neither and no field or reader consumes the value.
   assert.equal(s.mergeCheckFailures, undefined);
   saveRunnerState(dir, s);
   const onDisk = readJson<Record<string, unknown>>(file);

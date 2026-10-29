@@ -79,7 +79,7 @@ test("a merge_blocked change is re-queued at once with its original summary and 
   assert.equal(again[0]!.run, 7);
 });
 
-test("a review_error re-queue waits 60 s; a held reviewer config error does not re-queue", async () => {
+test("a review_error re-queue waits 60 s", async () => {
   const { root, entry, file } = await pinnedEntry();
   const state = freshRunnerState("improve");
   const before = Date.now();
@@ -87,12 +87,6 @@ test("a review_error re-queue waits 60 s; a held reviewer config error does not 
   const [queued] = queuedMerges(root);
   assert.ok(queued?.notBefore !== undefined);
   assert.ok(queued.notBefore >= before + 60_000 && queued.notBefore <= Date.now() + 60_000);
-
-  const held = await pinnedEntry();
-  const heldState = freshRunnerState("improve");
-  heldState.mergeReviewError = { sha: held.entry.sha, message: "401" };
-  await settleMergeOutcome(held.root, held.entry, heldState, "review_error", 5, NO_USAGE, held.file, "main");
-  assert.equal(queuedMerges(held.root).length, 0);
 });
 
 test("a change at MERGE_CONFLICT_LIMIT is not re-queued; a gone pin is not either", async () => {

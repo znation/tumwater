@@ -103,14 +103,6 @@ export async function finishRecoveryRunPhase(
     ctx.state.lastError = `failed to pin leftover ${shortSha(recovered.sha)} by its merge ref; left for the next run's recovery`;
     return { result: "error", summary: ctx.state.lastError, recoveredLeftover: true };
   }
-  if (recovered.kind === "held") {
-    // A permanent reviewer configuration error holds the pin: do not re-queue (and pay
-    // another gate check) until the model config changes. Ending `error` schedules the error
-    // ladder, so the hold is re-checked at backoff pace rather than at suite speed
-    // (BUGS.md 2026-10-06).
-    ctx.state.lastError = recovered.message;
-    return { result: "error", summary: recovered.message, recoveredLeftover: true };
-  }
   if (recovered.kind === "main_red_wait") {
     // The pin waits for the orchestrator poll to re-queue it once main moves; `main_red` takes
     // the idle ladder, and the worktree stays as it is.

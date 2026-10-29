@@ -23,7 +23,6 @@ import type { RunnerPi } from "./runner-pi.js";
 import {
   modelSelectorField,
   resolvedBackendConfig,
-  reviewRunConfig,
   scheduleConfigForRole,
   seamHoldKey,
   withModelOverrides,
@@ -483,11 +482,6 @@ async function runWithWorktreePhase(
     // ENDS the run: the role holds one merge ref, and the leftover owns it until its
     // merge resolves. With nothing to salvage the branch holds nothing either, so the reset
     // below leaves pristine main.
-    // A permanent reviewer config error — held from re-queueing — clears once the resolved
-    // reviewer selector changes, so fixing the model config recovers the pin automatically
-    // (BUGS.md 2026-10-06).
-    const reviewSelector = modelSelectorField(reviewRunConfig(ctx.config)).model;
-    if (s.mergeReviewError && s.mergeReviewError.selector !== reviewSelector) s.mergeReviewError = undefined;
     const recovered = await recoverLeftover({
       root: ctx.root,
       role: ctx.role,
@@ -496,7 +490,6 @@ async function runWithWorktreePhase(
       wt,
       mergeConflicts: s.mergeConflicts,
       conflictHandback: s.conflictHandback,
-      mergeReviewError: s.mergeReviewError,
       mainRedRetry: s.mainRedRetry,
     });
     if (recovered?.kind === "handback" && plan.prompt === null) {
