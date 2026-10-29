@@ -26,17 +26,20 @@ import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { flashReject } from "./tui-guard.js";
-import { paneAtHead, nextInCycle, cycleLabel, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPaneSession } from "./tui-pane-session.js";
+import { paneAtHead, nextInCycle, cycleLabel, steppedWindowBounds, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPaneSession } from "./tui-pane-session.js";
 
 /** The bounds `readRunRowsSince` reads for a trailing window of `windowMs` stepped `step` window
  * lengths back: step 0 (or no window) is the trailing window, step k the window (k+1)*len to k*len
- * ago, the `history --since --until` pair. */
+ * ago, the `history --since --until` pair. The step math delegates to the panes' shared
+ * `steppedWindowBounds`, mapping its absent `undefined` upper bound back to this signature's
+ * `null` (the collectors' default either way, and what readRunRowsSince's own tests pin), so the
+ * History and Usage/Failures panes cannot drift on what a stepped window means. */
 export function historyWindowBounds(
   windowMs: number | null,
   step: number,
 ): { sinceMs: number | null; untilMs: number | null } {
-  if (windowMs === null || step === 0) return { sinceMs: windowMs, untilMs: null };
-  return { sinceMs: (step + 1) * windowMs, untilMs: step * windowMs };
+  const b = steppedWindowBounds(windowMs, step);
+  return { sinceMs: b.sinceMs, untilMs: b.untilMs ?? null };
 }
 
 /** The History pane (view roleIds.length + 4) of the TUI (src/ui/tui/tui.tsx): the session
