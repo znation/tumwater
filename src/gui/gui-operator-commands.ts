@@ -29,10 +29,10 @@ import { queueInFlight } from "../status/status-polls.js";
 import { orchestratorAlive } from "../team/team-orchestrator-info.js";
 import { shortSha } from "../text/format.js";
 import { editBriefText } from "../brief/brief-edit.js";
-import { requireSha, requireStringField, validRoleIds } from "./gui-args.js";
+import { requireStringField, validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import { errorMessage, gotSuffix } from "../text/text.js";
-import { readPostBody, readRoleBody, sendRequestResult } from "./gui-endpoint-common.js";
+import { readPostBody, readRoleBody, readShaBody, sendRequestResult } from "./gui-endpoint-common.js";
 import { wakeInSecondsMs } from "./gui-team-commands.js";
 import type http from "node:http";
 
@@ -270,10 +270,9 @@ export async function handleRetire(req: http.IncomingMessage, res: http.ServerRe
  * answers `{ ok, preview }` (previewRevert, writing nothing); otherwise the revert commits and
  * answers `{ ok, headSha, beforeSha, message }`. A core's refusal is a 409 with its wording. */
 export async function handleRevert(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
-  if (!body) return;
-  const sha = requireSha(res, body.sha);
-  if (sha === null) return;
+  const parsed = await readShaBody(req, res);
+  if (parsed === null) return;
+  const { body, sha } = parsed;
   if (body.dryRun !== undefined && typeof body.dryRun !== "boolean")
     return badRequest(res, `"dryRun" must be true or false${gotSuffix(body.dryRun)}`);
   if (body.dryRun === true) {
@@ -311,10 +310,9 @@ function rejectInFlightMerge(res: http.ServerResponse, root: string, sha: string
  * raced the click) is a 200 `{ status: "gone" }` data, not an error. Otherwise it answers the
  * cancelled entry's role/commit/summary and removes the queue file and pin. */
 export async function handleQueueCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
-  if (!body) return;
-  const sha = requireSha(res, body.sha);
-  if (sha === null) return;
+  const parsed = await readShaBody(req, res);
+  if (parsed === null) return;
+  const { sha } = parsed;
   if (rejectInFlightMerge(res, root, sha)) return;
   const outcome: CancelQueuedByShaOutcome = await cancelQueuedMergeBySha(root, sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
@@ -337,10 +335,9 @@ export async function handleQueueCancel(req: http.IncomingMessage, res: http.Ser
  * accepted like any pending one. Otherwise it answers the
  * accepted entry's role/commit/summary and removes the entry. */
 export async function handlePostReviewAccept(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
-  if (!body) return;
-  const sha = requireSha(res, body.sha);
-  if (sha === null) return;
+  const parsed = await readShaBody(req, res);
+  if (parsed === null) return;
+  const { sha } = parsed;
   const outcome: AcceptPostReviewByShaOutcome = acceptPostReviewBySha(root, sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
 
@@ -365,10 +362,9 @@ export async function handlePostReviewAccept(req: http.IncomingMessage, res: htt
  * Otherwise it answers the topped entry's role/commit/summary and moves its queue file to
  * the front. */
 export async function handleQueueTop(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
-  if (!body) return;
-  const sha = requireSha(res, body.sha);
-  if (sha === null) return;
+  const parsed = await readShaBody(req, res);
+  if (parsed === null) return;
+  const { sha } = parsed;
   if (rejectInFlightMerge(res, root, sha)) return;
   const outcome: TopQueuedByShaOutcome = moveQueuedMergeToTopBySha(root, sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });

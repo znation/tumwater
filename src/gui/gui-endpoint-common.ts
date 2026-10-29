@@ -7,7 +7,7 @@
  * inputs with — and sendRequestResult, the shared boolean-claiming marker reply. The
  * per-domain `checked*` validators live with their domain's module, not here.
  */
-import { rejectBadRole } from "./gui-args.js";
+import { rejectBadRole, requireSha } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./gui-http-body.js";
 import type { RequestResult } from "../operator/operator-intent.js";
 import type http from "node:http";
@@ -48,6 +48,26 @@ export async function readRoleBody(
   if (body === null) return null; // 4xx already sent — oversized, malformed, or not an object
   if (rejectBadRole(root, res, body.role, allowMissing)) return null; // 400 already sent
   return body;
+}
+
+/** The sha-addressed POST handlers' shared prologue: readPostBody (400/413 sent on a null
+ * return) plus requireSha's hex-commit-id validation (400 sent on a null return), so the
+ * queue-cancel/queue-top/post-review-accept/revert family states the body-discipline-and-sha
+ * check pair once instead of two guard lines per handler. Its null return means the response
+ * is already written and the handler must stop; callers keep their own `if (!read) return`
+ * bail. Exactly four call sites — handleRevert, handleQueueCancel, handleQueueTop, and
+ * handlePostReviewAccept — returning the body too so handleRevert can read its optional
+ * dryRun; the other three callers use only the sha. A caller that needs neither the body nor
+ * the example can read just `{ sha }` from the result. */
+export async function readShaBody(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<{ body: Record<string, unknown>; sha: string } | null> {
+  const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
+  if (body === null) return null; // 4xx already sent — oversized, malformed, or not an object
+  const sha = requireSha(res, body.sha);
+  if (sha === null) return null; // 400 already sent
+  return { body, sha };
 }
 
 /** Reply for a boolean-claiming marker request (RequestResult): success maps to 200 with its
