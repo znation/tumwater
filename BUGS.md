@@ -6,6 +6,14 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
+### The full unit suite (`npm test`) was interrupted by an external signal in its last file under host load, then passed the whole run clean on a re-run (found by the ci role 2026-10-28)
+
+- **Symptom:** while running the CI workflow's test job against main tip 2ab85b1 @ a16a5b0, the full `npm test` suite's node --test process ended with no result block and only `Interrupted while running:` naming `dist/test/orchestrator-once.test.js` (the last file still running at the kill). No test assertion failed before it — the log's last lines were ordinary passing checks. The run's wall time was ~14.5 min, far inside the runner's 30-min `SUITE_TIMEOUT_MS` ceiling, so this was node --test receiving an external signal, not the harness's own timeout kill. The host was under concurrent load (the same shared host the open e2e-load-flake entries record).
+- **Reproduce:** a same-tree re-run of `npm test` immediately after passed the full suite green: 7662 tests, 7657 pass, 0 fail, 5 skipped, ~3.9 min — no test failed in either run.
+- **Cause:** unknown; an external SIGTERM-like signal to the unit-suite node --test process near the end of the run under host load. Not a test hang (the suite was progressing and the last file passed on re-run), and not the runner's ceiling.
+- **Expected / fix sketch:** none needed yet — this is a whole-process external interrupt rather than a competing assertion, so it is not a member of the e2e wall-clock flake class. If it repeats, capture the signal (the runner's spawnSync gives no signal handler, so instrument which signal node --test died on) and rule out the run-marker/orphan reaper and sibling-agent kills before touching the suite.
+- **Progress 2026-10-28 (ci):** one occurrence, passed clean on the immediate full re-run; recorded so a repeated whole-suite interrupt is recognized as this flake rather than a regression. No code change.
+
 ### `test/supervisor.test.ts` "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" flaked again on 2026-10-16, after its 10-01 and 10-09 Fixed entries and the 10-11 rewrite to a SIGUSR2-driven poll (found by operator session 2026-10-16 from improve's red merge check)
 
 - **Symptom:** at 07:29:28 PDT, improve's in-lock merge check for `d4b62873` failed one test: `✖ startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it — AssertionError [ERR_ASSERTION]: the orphaned grandchild's watch fired and ran its stop path`. The check ran 145 s. Recovery re-landed it green at 07:40, and it merged. That is the same assertion as the Fixed entry "The SIGKILL-grandchild supervisor test flaked twice in one 2026-10-09 window". Since then 4ec5d729 (10-11) replaced the real poll with one driven by SIGUSR2 from the test, and its comment says a loaded host "cannot stretch" the verdict. It still fails.
