@@ -2,8 +2,8 @@
  * merge-batch.ts, whose header scopes that file to the verify and merge halves): assemble the
  * approved changes as a cherry-picked stack on main's current tip, run ONE scope-`batch` build
  * check over the combined tree, and fast-forward main through the captured shas — with the
- * re-stack loop for a main that moves mid-check, the doc-only exemption and its cross-checks,
- * and the per-attempt abort observation. The bisect over a red stack (mergeApproved, in
+ * re-stack loop for a main that moves mid-check, the doc-only exemption, and the per-attempt
+ * abort observation. The bisect over a red stack (mergeApproved, in
  * merge-batch.ts) drives this file's mergeStack one prefix at a time. */
 
 import { committerIdentArgs, gitTry } from "../git/git-run.js";
@@ -12,7 +12,6 @@ import { treeDiffFiles } from "../git/git-diff.js";
 import { mergeRefName, mergeLockDir } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
-import { exemptSkipBlockReason } from "./merge-to-main.js";
 import { logNewQuestions } from "./merge-questions.js";
 import { openQuestions } from "../backlog/backlog.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
@@ -94,11 +93,13 @@ async function assembleStack(
  * the gate's own doc-only test (isExemptDiff over config.review.exemptPaths). A re-stack whose
  * new commits from main were doc-only rebuilds the checked tree with nothing but doc bytes
  * changed, and a doc-only delta cannot break the build: the reasoning verifyMerge
- * (src/merge/merge-to-main.ts) applies when it skips its in-lock re-check for a moved
- * doc-only merge. Its false-fix cross-check has no counterpart here — the delta is
- * commits main already merged through their own gate, not a claim this batch makes.
- * --no-renames so a rename out of a code path lists the deleted source, not only its exempt
- * destination. An unreadable diff is not exempt: the caller runs the check. */
+ * (src/merge/merge-to-main.ts) applies when it lets a moved doc-only merge through with no
+ * check. Since part 3m/3 that arm runs no cross-check, and neither does this delta — a false
+ * fix claim and a broken backlog structure are repairable by a later commit and reported by
+ * the main watch, and this delta is commits main already merged through their own gate, not a
+ * claim this batch makes. --no-renames so a rename out of a code path lists the deleted
+ * source, not only its exempt destination. An unreadable diff is not exempt: the caller runs
+ * the check. */
 async function exemptTreeDelta(
   root: string,
   from: string,
@@ -111,9 +112,7 @@ async function exemptTreeDelta(
 
 /** What one mergeStack call came to: `landed` — main fast-forwarded through every entry;
  * `red` — the check over the stacked tree failed (the check and its outcome, for the reasons);
- * `conflict` — the stack cannot be assembled on main's tip, or cannot be merged as a stack (a
- * doc-only stack that failed a cross-check: the one-at-a-time fallback merges its changes
- * through verifyMerge's exempt arm, which blocks or rejects with the proper handling);
+ * `conflict` — the stack cannot be assembled on main's tip (a pick conflicted);
  * `blocked` — the fast-forward lost
  * the race to a moved main on every attempt; `aborted` — a stop arrived before an attempt. */
 export type StackOutcome =
@@ -128,9 +127,10 @@ export type StackOutcome =
  * won, up to BATCH_RESTACK_ATTEMPTS times, and a re-stack whose tree is the checked tree plus
  * doc-only commits skips its re-check (exemptTreeDelta). A stack whose whole delta ahead of
  * its assembly base is review-exempt skips the check too — a doc-only delta cannot break the
- * build (the reasoning verifyMerge's exempt arm applies) — and runs the same cross-checks
- * that arm runs, the backlog heading structure and the false-fix claim; one that fails either
- * returns `conflict`, so the per-change fallback applies the gate's own verdict per change.
+ * build (the reasoning verifyMerge's exempt arm applies). Since part 3m/3 that arm runs no
+ * cross-check and neither does this skip: a false fix claim and a broken backlog structure are
+ * repairable by a later commit and reported by the main watch, so the doc-only stack merges on
+ * the exemption for the watch to report on main's tip.
  * A primary checkout on main that holds uncommitted or untracked files the stack changes
  * returns `blocked` before any check runs, with no re-stack.
  * On `landed` every entry's ref is deleted and the red-main baseline is seeded with the tip
@@ -176,16 +176,10 @@ async function mergeStackIn(ctx: MergeScopeContext, wtPath: string, entries: rea
       // exemption instead of paying a suite run no code change asked for).
       const stackFiles = await treeDiffFiles(ctx.root, base, tip);
       if (stackFiles !== null && isExemptDiff(stackFiles, exemptPaths)) {
-        // The same cross-checks verifyMerge's exempt arm runs (merge-to-main.ts's
-        // exemptSkipBlockReason): the skip must not wave through an md-only edit the gate would
-        // have rejected. A failure here cannot name a red check (none ran), so it hands the
-        // stack to the one-at-a-time fallback, whose exempt arm blocks or rejects each change
-        // with the proper handling. No baseline seeds — nothing ran on this tip.
-        if (await exemptSkipBlockReason(
-          { root: ctx.root, role: entries[0]!.role, mainBranch: ctx.mainBranch },
-          wtPath,
-          stackFiles,
-        )) return { kind: "conflict" };
+        // Since part 3m/3 an md-only stack's repairable findings (a false fix claim, a broken
+        // backlog structure) no longer refuse anything — the main watch reports them on main's
+        // tip after the merge — so the skip runs no cross-check and no check: doc-only cannot
+        // break the build. No baseline seeds — nothing ran on this tip.
       } else {
         // The merge cell names the check while it runs, then the merge steps after it — the ff
         // or what the caller does next — on every stacked change's own record.

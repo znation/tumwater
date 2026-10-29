@@ -601,12 +601,10 @@ test("a stale red strike of another pin is not recorded as a flake when a differ
   assert.equal(warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX)).length, 0);
 });
 
-// A fix-claim-blocked merge used to be kept like a lost fast-forward race and re-merged on
-// every recovery, each retry paying a fresh conflict-resolver run against the same block —
-// five resolver sessions for one pin on 2026-10-01. The block is a deterministic property of
-// the tree ahead of main, so it is counted like a red merge check: the first block keeps
-// the pin for one differently-rebased retry, and the second rejects the change with the
-// block's reason (no model run, no main-tip verdict needed).
+// A false-fix md-only change (a BUGS.md fix that names a symbol nowhere on the tree) used to
+// block the merge — five resolver sessions for one pin on 2026-10-01. Since part 3m/3 a false
+// fix claim is repairable by a later commit, so it no longer blocks: the change merges and the
+// main watch reports it on main's tip after it lands.
 async function fixClaimFixture(): Promise<{ root: string; sha: string }> {
   const { root } = await pinnedFixture();
   // Seed BUGS.md on main with the bug Open; the pin's md-only commit moves it to Fixed
@@ -637,35 +635,23 @@ async function fixClaimFixture(): Promise<{ root: string; sha: string }> {
   return { root, sha };
 }
 
-test("a fix-claim-blocked merge retries once, then rejects with the block reason", async () => {
-  assert.equal(MERGE_CHECK_FAILURE_LIMIT, 2);
+test("a repairable false-fix md-only change merges through the real merge flow", async () => {
   const { root, sha } = await fixClaimFixture();
   const state = freshRunnerState(ROLE);
   const { ctx, calls } = makeCtx(root, state);
+  const mainBefore = mainSha(root);
 
-  assert.equal(await mergeApprovedChange(ctx, request(sha)), "merge_blocked", "the first block keeps the pin for one retry");
-  assert.equal(await refSha(root, REF), sha);
-  assert.equal(state.mergeCheckFailures?.count, 1);
-  assert.match(state.lastError ?? "", /merge failed: merge_blocked — .*phantomSymbolName/);
-  assert.equal(state.mergeCheckFailures?.headline, undefined, "a cross-check block stores no flake headline");
-  assert.equal(warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX)).length, 0);
-
-  assert.equal(await mergeApprovedChange(ctx, request(sha)), "rejected", "the second identical block is attributed to the change");
-  assert.equal(await refSha(root, REF), null, "the pin is gone");
-  assert.equal(state.mergeCheckFailures, undefined, "the streak ends at the attribution");
-  assert.match(state.lastReview!.reasons[0]!, /phantomSymbolName/);
-  assert.equal(eventsOfType(root, "review_rejected").length, 1);
+  assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "the false-fix md-only change merges");
+  assert.notEqual(mainSha(root), mainBefore, "the change reached main for the main watch");
+  assert.equal(await refSha(root, REF), null, "the pin is gone — the change merged");
+  assert.equal(state.mergeCheckFailures, undefined, "no strike: nothing blocked");
   assert.equal(calls.length, 0, "no model run — no resolver, no reviewer");
 });
 
-test("a fix-claim-blocked first attempt followed by a green merge logs no merge-check flake", async () => {
+test("a false-fix md-only change merges with no merge-check flake", async () => {
   const { root, sha } = await fixClaimFixture();
   const state = freshRunnerState(ROLE);
   const { ctx } = makeCtx(root, state);
-  assert.equal(await mergeApprovedChange(ctx, request(sha)), "merge_blocked");
-  // The claimed symbol now exists on main, so the retry's cross-checks pass.
-  fs.mkdirSync(path.join(root, "src"), { recursive: true });
-  advanceMain(root, "src/nowhere.ts", "export const phantomSymbolName = 1;\n");
   assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed");
   assert.equal(warningMessages(root).filter((m) => m.startsWith(MERGE_FLAKY_WARNING_PREFIX)).length, 0);
 });
@@ -732,19 +718,25 @@ test("an all-rejected batch returns a defined result for every request without t
   // The review re-audit found this exact shape crashing: |S| == 0 made the merger index the
   // empty stack and throw, and the drain's catch kept every entry — a queue leak. Now the
   // batch simply returns: every request terminal, nothing to merge, refs gone.
-  // Both changes carry a conflict marker, so the deterministic gate's diff rule rejects each
-  // before any reviewer runs (part 3p/3).
-  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"], {
-    edit: (d) => fs.appendFileSync(path.join(d, "change.txt"), "<<<<<<< HEAD\n"),
-  });
-  const mainBefore = mainSha(root);
+  // Both changes leak a secret, so the deterministic gate's diff rule rejects each
+  // before any reviewer runs (part 3p/3; the gate's scope is the three unrepairable rules).
+  const SECRET = "batch-rejected-secret-888888888888";
+  process.env.TUMWATER_TEST_SECRET = SECRET;
+  try {
+    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"], {
+      edit: (d) => fs.appendFileSync(path.join(d, "change.txt"), `${SECRET}\n`),
+    });
+    const mainBefore = mainSha(root);
 
-  const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
-  assert.deepEqual(results.map((r) => r.result), ["rejected", "rejected"], "every request has a terminal result");
-  assert.equal(mainSha(root), mainBefore, "nothing merged");
-  assert.equal(await refSha(root, mergeRefName("alpha")), null, "a rejection deletes its ref");
-  assert.equal(await refSha(root, mergeRefName("beta")), null, "and the next request's too — the batch merges nothing");
+    assert.deepEqual(results.map((r) => r.result), ["rejected", "rejected"], "every request has a terminal result");
+    assert.equal(mainSha(root), mainBefore, "nothing merged");
+    assert.equal(await refSha(root, mergeRefName("alpha")), null, "a rejection deletes its ref");
+    assert.equal(await refSha(root, mergeRefName("beta")), null, "and the next request's too — the batch merges nothing");
+  } finally {
+    delete process.env.TUMWATER_TEST_SECRET;
+  }
 });
 
 test("a green batch stacks every approved change, fast-forwards main once, and logs per-change events", async () => {
@@ -936,22 +928,28 @@ test("an abort during a one-change merge's gate build check stops it before it m
 // every step, or a finished change keeps a live `merging` row (or an in-flight one shows none).
 
 test("a merge reports each change as it reaches it: the stack merges together, and a rejected change never reaches it", async () => {
-  // beta's change carries a conflict marker, so the deterministic gate's diff rule rejects it
+  // beta's change leaks a secret, so the deterministic gate's diff rule rejects it
   // before any reviewer runs; alpha and gamma approve through the deterministic check (part 3p/3).
   await withPi(perRoleReviewerPi({}), async () => {
-    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta", "gamma"], {
-      edit: (d, role) =>
-        fs.appendFileSync(path.join(d, `${role}.txt`), role === "beta" ? "<<<<<<< HEAD\n" : `work by ${role}\n`),
-    });
-    declareCheck(root, "#!/bin/sh\necho ok\n");
-    const { results, seen } = await runBatchRecorded(root, shas, ["alpha", "beta", "gamma"], wiringFor);
-    assert.deepEqual(results, ["changed", "rejected", "changed"]);
-    assert.deepEqual(seen, [
-      "alpha:merging", // the stack's shared check + ff: every stacked change merges together
-      "gamma:merging",
-      "alpha:done", // merged: the merge is done with them
-      "gamma:done",
-    ]);
+    const SECRET = "merge-reject-secret-123456789012";
+    process.env.TUMWATER_TEST_SECRET = SECRET;
+    try {
+      const { root, shas, wiringFor } = await batchFixture(["alpha", "beta", "gamma"], {
+        edit: (d, role) =>
+          fs.appendFileSync(path.join(d, `${role}.txt`), role === "beta" ? `${SECRET}\n` : `work by ${role}\n`),
+      });
+      declareCheck(root, "#!/bin/sh\necho ok\n");
+      const { results, seen } = await runBatchRecorded(root, shas, ["alpha", "beta", "gamma"], wiringFor);
+      assert.deepEqual(results, ["changed", "rejected", "changed"]);
+      assert.deepEqual(seen, [
+        "alpha:merging", // the stack's shared check + ff: every stacked change merges together
+        "gamma:merging",
+        "alpha:done", // merged: the merge is done with them
+        "gamma:done",
+      ]);
+    } finally {
+      delete process.env.TUMWATER_TEST_SECRET;
+    }
   });
 });
 

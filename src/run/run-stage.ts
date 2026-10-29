@@ -209,7 +209,7 @@ async function resolveCommitDescription(ctx: RunStageContext): Promise<StagedCom
   return { summary: pending.summary!, body: pending.body, summaryDerived: pending.summaryDerived };
 }
 
-/** Run the gate's deterministic backlog checks before the commit, giving the author's session
+/** Run the gate's remaining checks before the commit, giving the author's session
  * one bounded fix-up turn, and end the run `no_change` when the fix-up reverts the whole change
  * (leaving nothing to commit). Returns an outcome only when the run must end early; otherwise
  * mutates `desc.summary`/`desc.body` with any fix-up recovery, exactly as the inline block did. */
@@ -217,11 +217,11 @@ async function runStageSelfCheck(
   ctx: RunStageContext,
   desc: StagedCommitDescription,
 ): Promise<RunOutcome | undefined> {
-  // The gate's deterministic backlog checks run here, before the commit, while the authoring
-  // session can still be continued: a finding that reaches review costs a queue slot,
-  // a verification, and a rejection that discards the work. One bounded follow-up turn on the
-  // author's own session gets to fix them; the gate still has the final say, and the change commits
-  // and queues either way.
+  // The gate's remaining checks (a protected edit, a leaked credential) run here, before the
+  // commit, while the authoring session can still be continued: a finding that reaches review
+  // costs a queue slot, a verification, and a rejection that discards the work. One bounded
+  // follow-up turn on the author's own session gets to fix them, and the change commits and
+  // queues either way.
   const moved = await stagedBacklogMoves(ctx);
   const movedFindings = recordStagedClaims(ctx, moved);
   const findings = await ctx.stageCheck(ctx.wt);
@@ -560,7 +560,7 @@ interface RunStageContext {
   warn(message: string): void;
   /** One bounded follow-up turn in the still-open session, to produce a missing SUMMARY. */
   requestSummary(wt: string, overLength?: number): Promise<PiRunResult | null>;
-  /** The merge gate's deterministic backlog checks over the uncommitted change. */
+  /** The merge gate's remaining checks over the uncommitted change. */
   stageCheck(wt: string): Promise<string[]>;
   /** One bounded follow-up turn in the still-open session, to fix the self-check's findings;
    * `change` is the change's description so far, which the turn is told to leave alone. */

@@ -1,15 +1,14 @@
-/** The merge gate's deterministic checks, run BEFORE a changed run commits.
+/** The merge gate's checks that still refuse a change, plus staging-only heuristics for what a
+ * reviewer tends to reject, run BEFORE a changed run commits.
  *
- * The gate runs `backlogStructureReason` and `falseFixReason` at merge time, by which point
- * the author's session is over: a finding costs a queue slot, a verification, and a rejection that
- * discards the work (13 phantom-fix rejections between 2026-09-23 and 2026-10-02). Both checks
- * read the worktree and the change's merge-base, so the same questions can be asked at staging
- * time, while the authoring session can still be continued for one fix-up turn. This module
- * runs them over the run's uncommitted edits; the gate still has the final say.
- *
- * Scope mirrors the gate exactly: `backlogStructureReason` runs on every changed run, while
- * `falseFixReason` runs only for an exempt (doc-only) diff — the condition under which the gate
- * consults it.
+ * Since part 3m/3 the gate refuses only a brief-block edit, a protected edit and a leaked
+ * credential — the findings a later commit cannot repair. This module runs those same checks
+ * over the run's uncommitted edits while the authoring session can still be continued for one
+ * fix-up turn (a finding that reaches merge costs a queue slot, a verification, and a rejection
+ * that discards the work — 13 phantom-fix rejections between 2026-09-23 and 2026-10-02 priced
+ * that turn). The gate no longer refuses a false fix claim or a broken backlog structure —
+ * both are repairable by a later commit and reported by the main watch on main's tip — so
+ * those findings never spend the run's fix-up turn here.
  *
  * The git-level checks described next live across stage-path-checks.ts (`gitLevelFindings`),
  * stage-name-checks.ts and stage-prose-checks.ts, which this module appends.
@@ -20,8 +19,9 @@
  * files whose final newline the change removed. These stage the change (`git add -A`) to read
  * the index with git only, then restore the index to HEAD before returning: staging is a read
  * aid for the checks, not a change to the run's state. A git hiccup yields no finding rather
- * than failing the run. Unlike the backlog checks above, the gate does not run these: they are
- * heuristics for what a reviewer tends to reject, so neither path check looks inside record
+ * than failing the run. Unlike the gate's checks this module runs (which the gate also runs at
+ * merge time), the gate does not run these: they are heuristics for what a reviewer tends to
+ * reject, so neither path check looks inside record
  * prose (isRecordProse), where an old or not-yet-created path is correct as written.
  *
  * A fourth check, `staleNameFindings`, reports a compound identifier the change removed from a
@@ -60,11 +60,8 @@
 import path from "node:path";
 import { changedFiles } from "../git/git-diff.js";
 import { conflictMarkerReason } from "../merge/merge-git.js";
-import { isExemptDiff } from "../review/exemptions.js";
-import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { protectedEditReason } from "../review/protected-edits.js";
 import { secretLeakReason } from "../review/secret-leaks.js";
-import { falseFixReason } from "../verdict/fix-claim.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { readTextOrNull } from "../files/files.js";
 import {
@@ -182,30 +179,26 @@ async function placeholderFindings(wt: string, mainBranch: string, files: string
 }
 
 /** The findings likely to get this uncommitted change rejected at merge, or an empty list when
- * it is clean: the merge gate's own deterministic checks plus the staging-only heuristics (plan
- * dependencies, path drift). Checks the worktree at `wt` against
- * `mainBranch`'s merge-base; `exemptPaths` are the config's review-exemption globs that scope
- * the false-fix check.
+ * it is clean: the merge gate's remaining checks over the change plus the staging-only
+ * heuristics (plan dependencies, path drift). Checks the worktree at `wt` against
+ * `mainBranch`'s merge-base.
  *
  * Never throws: a check that fails yields no finding, so a git hiccup at staging time defers to
  * the gate instead of failing the run. */
 export async function stageCheckFindings(
   wt: string,
   mainBranch: string,
-  exemptPaths: string[],
   role: string,
 ): Promise<string[]> {
   const files = await changedFiles(wt).catch(() => null);
   if (files === null || files.length === 0) return [];
   const findings: string[] = [];
-  await pushReason(findings, backlogStructureReason(wt, mainBranch, files));
   if (files.includes("PLANS.md")) findings.push(...(await plansFindings(wt, mainBranch)));
   findings.push(...(await archiveFindings(wt, mainBranch, files)));
   if (files.includes("BUGS.md")) findings.push(...(await bugsFindings(wt, mainBranch)));
   findings.push(...(await placeholderFindings(wt, mainBranch, files)));
   await pushReason(findings, protectedEditReason(wt, mainBranch, files, role));
   await pushReason(findings, secretLeakReason(wt, mainBranch, files));
-  if (isExemptDiff(files, exemptPaths)) await pushReason(findings, falseFixReason(wt, mainBranch, files));
   findings.push(...(await gitLevelFindings(wt, mainBranch).catch(() => [])));
   const markers = conflictMarkerReason(wt, files);
   if (markers !== undefined) findings.push(markers);

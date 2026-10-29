@@ -183,15 +183,18 @@ export function noteMergeRetryPassed(
   if (headline) warnEventBestEffort(ctx.root, role, MERGE_FLAKY_WARNING_PREFIX + headline);
 }
 
-/** A merge blocked by a deterministic cross-check (onMergeBlocked's fix-claim or
- * backlog-structure reason — a property of the tree ahead of main, not a flaky run). The
- * block is counted like a red merge check, keyed by the same patch-id: under
- * MERGE_CHECK_FAILURE_LIMIT the pin is kept for one recovery re-merge — main may have moved
- * under the rebase, and a differently-rebased tree can pass the cross-check — but at the
+/** A merge blocked by a deterministic cross-check — a property of the tree ahead of main,
+ * not a flaky run. The block is counted like a red merge check, keyed by the same patch-id:
+ * under MERGE_CHECK_FAILURE_LIMIT the pin is kept for one recovery re-merge — main may have
+ * moved under the rebase, and a differently-rebased tree can pass the cross-check — but at the
  * limit the block is attributed to the change: rejected deterministically with the block
  * reason, the pin deleted, no model run. Without this a resolution that trips the same
  * cross-check on every re-resolve pays a fresh conflict-resolver run each run, forever
- * (BUGS.md 2026-10-02: five resolver sessions for one fix-claim-blocked pin). */
+ * (BUGS.md 2026-10-02: five resolver sessions for one fix-claim-blocked pin). Since part 3m/3
+ * the merge path no longer produces cross-check blocks (a fix claim and a broken backlog
+ * structure are repairable and land for the main watch), so nothing in the in-lock path calls
+ * this today; it stays as the strike-counting sink, still pinned by INV-BF2 and retired with
+ * the queue by 3f/3. */
 export async function mergeBlocked(
   ctx: MergerContext,
   role: string,

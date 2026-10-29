@@ -17,7 +17,6 @@ import {
 } from "../src/verdict/fix-claim.js";
 import { fixClaimProblems } from "../src/doctor/doctor-backlog-plans.js";
 import { aheadOfMain } from "../src/git/git.js";
-import { readEvents } from "../src/events/event-read.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, runningAsRoot, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
@@ -774,21 +773,21 @@ sh(root, "git", "add", "-A");
   return root;
 }
 
-test("gate rejects an md-only BUGS.md fix claim with no code behind it, without running pi", async () => {
+test("gate exempts an md-only BUGS.md fix claim with no code behind it, without running pi", async () => {
   const root = await falseFixFixture("runScriptGroup", false);
   const wt = path.join(root, ".tumwater", "worktrees", ROLE);
   const marker = piRanMarker();
   await withPi(`touch '${marker}'`, async () => {
     const { state, result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "rejected"); // deterministic — no reviewer run
+    assert.equal(result.decision, "exempt"); // a false fix claim is repairable — no reviewer run (part 3m/3)
     assert.ok(!fs.existsSync(marker));
-    assert.match(result.detail!, /runScriptGroup/);
-    assert.match(state.lastReview!.reasons[0]!, /Fixed/);
-    assert.equal(await aheadOfMain(wt, "main"), 0); // the false record is discarded
+    assert.equal(state.lastApprovedHead, undefined, "no gate approval recorded for an md-only exempt diff");
+    assert.equal(state.lastReview, undefined, "no rejection bookkeeping for a repairable finding");
+    assert.equal(await aheadOfMain(wt, "main"), 1, "the md-only diff stays; the main watch reports it on main's tip");
   });
 });
 
-test("gate rejects an md-only rewrite of an already-Fixed record's narrative", async () => {
+test("gate exempts an md-only rewrite of an already-Fixed record's narrative", async () => {
   const root = makeRepo();
   fs.writeFileSync(
     path.join(root, "BUGS.md"),
@@ -808,9 +807,8 @@ test("gate rejects an md-only rewrite of an already-Fixed record's narrative", a
   const marker = piRanMarker();
   await withPi(`touch '${marker}'`, async () => {
     const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "rejected", "the rewrite faces the same symbol check");
+    assert.equal(result.decision, "exempt", "an already-Fixed rewrite is repairable, so it lands for the watch (part 3m/3)");
     assert.ok(!fs.existsSync(marker));
-    assert.match(result.detail!, /runScriptGroup/);
   });
 });
 
@@ -849,37 +847,32 @@ async function duplicateDoneFixture(): Promise<string> {
   return root;
 }
 
-test("gate rejects an md-only diff that duplicates ## Done, without running pi or the check", async () => {
+test("gate exempts an md-only diff that duplicates ## Done, without running pi or the check", async () => {
   const root = await duplicateDoneFixture();
   const wt = path.join(root, ".tumwater", "worktrees", ROLE);
   const marker = piRanMarker();
   await withPi(`touch '${marker}'`, async () => {
     const { state, result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "rejected"); // deterministic — no reviewer run
+    assert.equal(result.decision, "exempt"); // a broken backlog structure is repairable — no reviewer or check run (part 3m/3)
     assert.ok(!fs.existsSync(marker));
-    assert.match(result.detail!, /## Done/);
-    assert.match(state.lastReview!.reasons[0]!, /PLANS\.md/);
-    assert.equal(await aheadOfMain(wt, "main"), 0); // the malformed file is discarded
+    assert.equal(state.lastReview, undefined, "no rejection bookkeeping for a repairable finding");
+    assert.equal(await aheadOfMain(wt, "main"), 1, "the malformed file stays; the main watch reports it on main's tip");
   });
 });
 
-test("gate rejects a code diff that breaks backlog structure before the build pre-check runs", async () => {
+test("gate approves a code diff that breaks backlog structure, without running pi", async () => {
   const root = await duplicateDoneFixture();
   const wt = path.join(root, ".tumwater", "worktrees", ROLE);
-  // Make the diff non-exempt with a real code change; the structure rejection must fire
-  // before any build_check event is logged.
+  // With a real code change the diff is not exempt; the gate's scope (part 3m/3) is the three
+  // findings a later commit cannot repair, so a broken backlog structure no longer refuses it
+  // pre-merge — the main watch reports it on main's tip.
   fs.writeFileSync(path.join(wt, "src.ts"), "export const x = 1;\n");
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "code plus a duplicated heading");
   const marker = piRanMarker();
   await withPi(`touch '${marker}'`, async () => {
     const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "rejected");
-    assert.match(result.detail!, /## Done/);
+    assert.equal(result.decision, "approved");
     assert.ok(!fs.existsSync(marker));
-    assert.ok(
-      !readEvents(root).some((e) => e.type === "build_check"),
-      "no check run spent on a tree the heading set already condemns",
-    );
   });
 });

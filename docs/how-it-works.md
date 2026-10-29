@@ -92,7 +92,10 @@ doctor's merge-check median leave them out. Unset, `check.mergeCommand` falls ba
   the build pre-check: it rejects, md-only diffs included, an edit to the brief's prompt block
   or to PRINCIPLES.md from any role but the director and steward, and a change that newly writes
   a secret environment variable's value, or a credential pi stores in `auth.json`/`models.json`,
-  into a file (INV-G2); a markdown-only diff is exempt; and a healthy change approves with no
+  into a file (INV-G2) — the three findings a later commit cannot repair. A conflict marker, a
+  false fix claim on an exempt diff and a broken backlog structure can all be repaired by a
+  later commit, so the gate lets them land and the main watch reports each on main's tip after
+  it lands; a markdown-only diff is exempt; and a healthy change approves with no
   model reviewer. Every merged change is judged once, after it lands, by the post-landing review.
   Each reviewer run is capped at `review.timeoutSeconds` (default 900, never above
   `runTimeoutSeconds`; at least 3600 while the over-cap model carries the team, since a slower
@@ -255,7 +258,7 @@ never has to wait a parked check out.
   names that head as its own culprit — the watch checks every new tip, so the newest head carries
   whatever it found — logging a `main_culprit` event with the head, its merging runner and the
   failing tests. The watch
-  also runs the review gate's five deterministic diff rules — conflict markers, protected edits,
+  also runs the deterministic diff rules' full set — conflict markers, protected edits,
   secret leaks, a false-fix claim on a doc-only tip, and backlog structure — against each first-parent
   commit's own diff in the watched range, attributed to that commit's own merging role; a violation is
   logged as a warning naming the rule and the head (the same reason text the

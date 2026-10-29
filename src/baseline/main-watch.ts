@@ -123,8 +123,9 @@ export function createMainWatch(
   }
 
   async function watchOnce(mainHead: string, config: TumwaterConfig): Promise<void> {
-    // The deterministic diff rules ("Every commit is verified on main, part 1/3"): run the same
-    // five checks the gate runs on a change, against main's new tip. A rule failure is a
+    // The deterministic diff rules ("Every commit is verified on main, part 1/3"): run the full
+    // five-check set the watch and gate share — the gate now runs only the three a later commit
+    // cannot repair — against main's new tip. A rule failure is a
     // deterministic red — it takes no confirming re-run and never quarantines — reported as a
     // warning naming the rule and the head (and each committing role, when a recent merged event
     // names one). It runs on every tip the watch covers in a poll — a build green, a build
@@ -160,6 +161,7 @@ export function createMainWatch(
           files,
           mergingRoleOf(root, commit) ?? "",
           isExemptDiff(files, config.review.exemptPaths),
+          "watch",
         );
         if (ruleReason !== undefined) {
           logEventBestEffort(root, {

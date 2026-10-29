@@ -17,11 +17,9 @@ import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Unit coverage for src/run/stage-check.ts (PLANS.md "Pre-queue self-check, part 1/2"):
-// the merge gate's deterministic backlog checks run before a changed run commits, so the
+// the merge gate's checks that still refuse a change run before a changed run commits, so the
 // author's still-open session can fix a finding instead of a rejection discarding the work.
 // These tests drive the real checks over a worktree with uncommitted edits.
-
-const EXEMPT = ["*.md", "docs/**"];
 
 const BUGS_BASE = `# Bugs
 
@@ -58,34 +56,23 @@ async function repoWith(files: Record<string, string>): Promise<{ root: string; 
   return { root, wt };
 }
 
-test("an md-only false-fix edit yields its symbol finding", async () => {
+test("an md-only false-fix edit no longer yields a staging finding", async () => {
   const { wt } = await repoWith({ "BUGS.md": BUGS_BASE });
   fs.writeFileSync(path.join(wt, "BUGS.md"), fixedBug("missingSymbolXyz"));
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
-
-  assert.equal(findings.length, 1);
-  assert.match(findings[0]!, /its Fix paragraph names code that exists nowhere on this tree/);
-  assert.match(findings[0]!, /missingSymbolXyz/);
+  // Since part 3m/3 a false fix claim is repairable by a later commit and reported by the main
+  // watch on main's tip, so the stage self-check no longer spends the run's fix-up turn on it.
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
 test("the same edit naming a symbol that exists on the tree yields no finding", async () => {
   const { wt } = await repoWith({ "BUGS.md": BUGS_BASE });
   fs.writeFileSync(path.join(wt, "BUGS.md"), fixedBug("seed.txt"));
 
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
-test("the false-fix check is scoped to exempt diffs, as at the gate", async () => {
-  const { wt } = await repoWith({ "BUGS.md": BUGS_BASE });
-  fs.writeFileSync(path.join(wt, "BUGS.md"), fixedBug("missingSymbolXyz"));
-  // An untracked code file makes the diff non-exempt, so falseFixReason is out of scope.
-  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
-
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
-});
-
-test("a duplicated ## Done heading yields the structure finding", async () => {
+test("a duplicated ## Done heading no longer yields a staging structure finding", async () => {
   const base = `# Plans
 
 ## Planned
@@ -115,10 +102,11 @@ _None yet._
 `,
   );
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
-  assert.equal(findings.length, 1);
-  assert.match(findings[0]!, /PLANS\.md adds another "## Done" heading/);
+  // Since part 3m/3 a broken backlog structure is repairable by a later commit and reported by
+  // the main watch on main's tip, so the stage self-check no longer spends the fix-up turn on it.
+  assert.deepEqual(findings, []);
 });
 
 const X_PLAN = "X (planned 2026-10-18 by the plan role; done";
@@ -171,7 +159,7 @@ test("a re-finished plan the archive already holds yields the finished-duplicate
   });
   fs.writeFileSync(path.join(wt, "PLANS.md"), doneMd(planEntry("2026-10-20", "New body.")));
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /is already archived in PLANS-DONE\.md/);
@@ -184,7 +172,7 @@ test("a clean change yields no findings", async () => {
     BUGS_BASE + "\n### Another bug: details (found by qa 2026-10-06)\n\n**Symptom:** also broke.\n",
   );
 
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
 test("a changed file still holding a conflict marker yields the conflict finding", async () => {
@@ -194,14 +182,14 @@ test("a changed file still holding a conflict marker yields the conflict finding
     "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nafter\n",
   );
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /conflict markers remain in: a\.txt/);
 });
 
 test("a git failure yields no findings instead of throwing", async () => {
-  assert.deepEqual(await stageCheckFindings(tmpdir("stage-check-norepo-"), "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(tmpdir("stage-check-norepo-"), "main", "feature"), []);
 });
 
 // PLANS.md "Pre-queue self-check, part 2/2": the git-level path checks appended to
@@ -216,7 +204,7 @@ test("a remaining reference to a renamed path yields the stale-reference finding
   fs.mkdirSync(path.join(wt, "src", "x"), { recursive: true });
   fs.renameSync(path.join(wt, "src", "a.ts"), path.join(wt, "src", "x", "a.ts"));
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /src\/a\.ts was renamed to src\/x\/a\.ts but is still named at: README\.md:\d+/);
@@ -231,7 +219,7 @@ test("updating the reference clears the stale-reference finding", async () => {
   fs.renameSync(path.join(wt, "src", "a.ts"), path.join(wt, "src", "x", "a.ts"));
   fs.writeFileSync(path.join(wt, "README.md"), "See src/x/a.ts for details.\n");
 
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
 test("a reference to a rename's new path is not a stale reference to the old one", async () => {
@@ -244,7 +232,7 @@ test("a reference to a rename's new path is not a stale reference to the old one
   // suffix must not be read as a stale reference to the old one.
   fs.renameSync(path.join(wt, "config.ts"), path.join(wt, "src", "config.ts"));
 
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
 test("a stale reference ending a sentence is still reported", async () => {
@@ -255,7 +243,7 @@ test("a stale reference ending a sentence is still reported", async () => {
   });
   fs.renameSync(path.join(wt, "config.ts"), path.join(wt, "src", "config.ts"));
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /config\.ts was renamed to src\/config\.ts but is still named at: README\.md:\d+/);
@@ -278,7 +266,7 @@ test("a stale reference in record prose is not reported, while one in a doc stil
   fs.mkdirSync(path.join(wt, "src", "x"), { recursive: true });
   fs.renameSync(path.join(wt, "src", "a.ts"), path.join(wt, "src", "x", "a.ts"));
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /src\/a\.ts was renamed to src\/x\/a\.ts but is still named at: README\.md:\d+$/);
@@ -297,7 +285,7 @@ test("a rename named only in record prose yields no stale-reference finding", as
   fs.mkdirSync(path.join(wt, "src", "x"), { recursive: true });
   fs.renameSync(path.join(wt, "src", "a.ts"), path.join(wt, "src", "x", "a.ts"));
 
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
 test("an added line naming a nonexistent path yields a finding", async () => {
@@ -307,7 +295,7 @@ test("an added line naming a nonexistent path yields a finding", async () => {
   });
   fs.writeFileSync(path.join(wt, "README.md"), "Start.\nSee src/x/src/x/a.ts.\n");
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /added lines name paths that do not exist in the tree/);
@@ -331,7 +319,7 @@ test("an added line in a test file naming a nonexistent path yields no finding",
     `export const x = 1;\nconst f = "${absent}";\n`,
   );
 
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
 test("an added line in a backlog prose file naming a nonexistent path yields no finding", async () => {
@@ -346,7 +334,7 @@ test("an added line in a backlog prose file naming a nonexistent path yields no 
   });
   fs.writeFileSync(path.join(wt, "PLANS.md"), `Start.\nAdd a \`${absent}\` module.\n`);
 
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
 test("an added line in a plans/ design doc naming a nonexistent path yields no finding", async () => {
@@ -360,7 +348,7 @@ test("an added line in a plans/ design doc naming a nonexistent path yields no f
   });
   fs.writeFileSync(path.join(wt, "plans", "design.md"), `Start.\nAdd a \`${absent}\` module.\n`);
 
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
 test("a source line naming the same absent path still yields the finding", async () => {
@@ -375,7 +363,7 @@ test("a source line naming the same absent path still yields the finding", async
   fs.writeFileSync(path.join(wt, "PLANS.md"), `Start.\nAdd a \`${absent}\` module.\n`);
   fs.writeFileSync(path.join(wt, "src", "notes.ts"), `export const note = \"${absent}\";\n`);
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /added lines name paths that do not exist in the tree/);
@@ -399,7 +387,7 @@ test("an added line outside test/ naming a nonexistent path still yields a findi
     `export const x = 1;\nconst f = "${absent}";\n`,
   );
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /added lines name paths that do not exist in the tree/);
@@ -415,7 +403,7 @@ test("a renamed-away path named as moved-from is not a nonexistent path", async 
   fs.renameSync(path.join(wt, "src", "a.ts"), path.join(wt, "src", "x", "a.ts"));
   fs.writeFileSync(path.join(wt, "README.md"), "Start.\nMoved src/a.ts to src/x/a.ts.\n");
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   // The moved-from mention is still a stale reference (check (a) reports every remaining
   // reference), but it must not be reported as a path that does not exist (check (b)).
@@ -426,7 +414,7 @@ test("removing a file's final newline yields the finding", async () => {
   const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n" });
   fs.writeFileSync(path.join(wt, "src/a.ts"), "export const a = 1;");
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /removes the final newline from: src\/a\.ts/);
@@ -439,7 +427,7 @@ test("added lines with a broken participle yield the garbled-wording finding", a
     "export const a = 1;\n// the role would have " + "ran twice\n// a never" + "-ran role\n",
   );
 
-  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) =>
+  const findings = (await stageCheckFindings(wt, "main", "feature")).filter((f) =>
     f.includes("garbled rename wording"),
   );
 
@@ -453,7 +441,7 @@ test("added lines that stack run on run yield the garbled-wording finding", asyn
   fs.mkdirSync(path.join(wt, "test"), { recursive: true });
   fs.writeFileSync(path.join(wt, "test/b.test.ts"), 'assert.ok(x, "no run was ' + 'running");\n');
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.ok(findings.some((f) => f.includes("garbled rename wording") && f.includes("test/b.test.ts:1")));
 });
@@ -466,7 +454,7 @@ test("garbled wording in record prose, and a correct participle, yield no findin
     "export const a = 1;\n// the role has run twice; it ran once today\n",
   );
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
 });
@@ -476,7 +464,7 @@ test("garbled wording already on the base is not reported", async () => {
   const { wt } = await repoWith({ "src/a.ts": old + "export const a = 1;\n" });
   fs.writeFileSync(path.join(wt, "src/a.ts"), old + "export const a = 2;\n");
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
 });
@@ -485,7 +473,7 @@ test("a file whose base already lacked a final newline yields no finding", async
   const { wt } = await repoWith({ "src/a.ts": "export const a = 1;" });
   fs.writeFileSync(path.join(wt, "src/a.ts"), "export const a = 2;");
 
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
 test("a new text file without a final newline yields the finding", async () => {
@@ -493,7 +481,7 @@ test("a new text file without a final newline yields the finding", async () => {
   fs.mkdirSync(path.join(wt, "src"), { recursive: true });
   fs.writeFileSync(path.join(wt, "src", "new.ts"), "export const n = 1;");
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /removes the final newline from: src\/new\.ts/);
@@ -506,7 +494,7 @@ test("a remaining reference to a deleted path yields the stale-reference finding
   });
   fs.rmSync(path.join(wt, "src", "a.ts"));
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /src\/a\.ts was deleted but is still named at: README\.md:\d+/);
@@ -519,7 +507,7 @@ test("the git-level check leaves the index clean, so change detection still sees
   });
   fs.rmSync(path.join(wt, "src", "a.ts"));
 
-  await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(sh(wt, "git", "diff", "--cached", "--name-only"), "", "nothing is left staged");
   assert.match(sh(wt, "git", "status", "--porcelain"), /src\/a\.ts/, "the worktree change remains");
@@ -544,10 +532,10 @@ test("an uncommitted PRINCIPLES.md edit is a finding for a non-steward role only
   const { wt } = await repoWith({ "PRINCIPLES.md": "# P\n" });
   fs.writeFileSync(path.join(wt, "PRINCIPLES.md"), "# P\n- x\n");
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /PRINCIPLES\.md is edited by the feature role/);
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "steward"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "steward"), []);
 });
 
 test("an uncommitted file holding a secret env value is a finding", async () => {
@@ -556,7 +544,7 @@ test("an uncommitted file holding a secret env value is a finding", async () => 
   process.env.TUMWATER_TEST_FAKE_TOKEN = "tw-secret-value-0123456789";
   try {
     fs.writeFileSync(path.join(wt, "report.json"), `{"env":"${process.env.TUMWATER_TEST_FAKE_TOKEN}"}\n`);
-    const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+    const findings = await stageCheckFindings(wt, "main", "feature");
     assert.equal(findings.length, 1, findings.join("\n"));
     assert.match(findings[0]!, /`report\.json` contains the value of \$TUMWATER_TEST_FAKE_TOKEN/);
   } finally {
@@ -609,7 +597,7 @@ test("a staged PLANS.md edit adding a dangling requires clause yields the depend
   const { wt } = await repoWith({ "PLANS.md": DEP_BASE });
   fs.writeFileSync(path.join(wt, "PLANS.md"), DEP_BASE.replace("requires part 1/2 landed", "requires part 3/2 landed"));
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "plan");
+  const findings = await stageCheckFindings(wt, "main", "plan");
 
   assert.ok(findings.some((f) => f.includes("which no PLANS.md heading carries")), findings.join("\n"));
 });
@@ -677,7 +665,7 @@ test("stageCheckFindings flags a PLANS.md refusal citing another part, for any r
   const { wt } = await repoWith({ "PLANS.md": PART6_BASE });
   fs.writeFileSync(path.join(wt, "PLANS.md"), PLAN_DOC(`${part69(BAD_REFUSE + "\n")}\n`));
   for (const role of ["feature", "bugfix"]) {
-    const findings = await stageCheckFindings(wt, "main", EXEMPT, role);
+    const findings = await stageCheckFindings(wt, "main", role);
     assert.ok(findings.some((f) => f.includes("do not refuse it")), `${role}: ${findings.join("\n")}`);
   }
 });
@@ -691,13 +679,13 @@ test("a comment still naming a renamed function yields the stale-name finding", 
   });
   fs.writeFileSync(path.join(wt, "src", "a.ts"), "export function runStartHeld() {}\n");
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /`tickStartHeld` was removed by this change but is still named at: src\/b\.ts:1/);
 
   fs.writeFileSync(path.join(wt, "src", "b.ts"), "// see runStartHeld\n");
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
 test("a removed interface field still named in a doc yields the finding", async () => {
@@ -707,7 +695,7 @@ test("a removed interface field still named in a doc yields the finding", async 
   });
   fs.writeFileSync(path.join(wt, "src", "a.ts"), "export interface S {\n  abortedRuns: number;\n}\n");
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /`abortedTicks` was removed .* README\.md:1/);
@@ -723,7 +711,7 @@ test("a removed name still declared elsewhere, quoted, marked retired-name-ok or
   for (const [label, extra] of Object.entries(cases)) {
     const { wt } = await repoWith({ "src/a.ts": "export function tickStartHeld() {}\n", ...extra });
     fs.writeFileSync(path.join(wt, "src", "a.ts"), "export function runStartHeld() {}\n");
-    assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), [], label);
+    assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), [], label);
   }
 });
 
@@ -734,7 +722,7 @@ test("a removed single-word name is never a candidate", async () => {
   });
   fs.writeFileSync(path.join(wt, "src", "a.ts"), "const state = 1;\n");
 
-  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+  assert.deepEqual(await stageCheckFindings(wt, "main", "feature"), []);
 });
 
 test("declaredNames reads keyword and field declarations, not calls", () => {
@@ -758,7 +746,7 @@ async function detachedFindings(files: Record<string, string>, edits: Record<str
   for (const [file, content] of Object.entries(edits)) {
     writeFileDeep(path.join(wt, file), content);
   }
-  return stageCheckFindings(wt, "main", EXEMPT, "feature");
+  return stageCheckFindings(wt, "main", "feature");
 }
 
 test("code inserted between a doc comment and its declaration yields the detached-doc finding", async () => {
@@ -840,7 +828,7 @@ async function movedFindings(
     }
     writeFileDeep(full, content);
   }
-  return (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) => f.includes(keep));
+  return (await stageCheckFindings(wt, "main", "feature")).filter((f) => f.includes(keep));
 }
 
 const MOVE_BASE = { "src/big.ts": `export const keep = 1;\n${MOVE_BODY}`, "docs/x.md": "The bodies live in src/big.ts.\n" };
@@ -967,7 +955,7 @@ test("a placeholder added to a non-empty BUGS.md section yields the stray-placeh
   const { wt } = await repoWith({ "BUGS.md": "# Bugs\n\n## Open\n\n### One bug\n\nBody.\n" });
   fs.appendFileSync(path.join(wt, "BUGS.md"), "\n_None yet._\n");
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "docs");
+  const findings = await stageCheckFindings(wt, "main", "docs");
 
   assert.equal(findings.filter((f) => f.includes("BUGS.md's \"## Open\" section holds 1 entry")).length, 1);
 });
@@ -984,7 +972,7 @@ test("added lines that stack run on runs or running, or a run's run, yield the g
       "// across runs and" + " runs\n",
   );
 
-  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) =>
+  const findings = (await stageCheckFindings(wt, "main", "feature")).filter((f) =>
     f.includes("garbled rename wording"),
   );
 
@@ -999,7 +987,7 @@ test("a garbled phrase split across two added comment lines yields the garbled-w
     "export const a = 1;\n// the alert stays up while the role's next run" + "\n// runs and clears after\n",
   );
 
-  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) =>
+  const findings = (await stageCheckFindings(wt, "main", "feature")).filter((f) =>
     f.includes("garbled rename wording"),
   );
 
@@ -1014,7 +1002,7 @@ test("the prescribed agent-run wording yields no garbled-wording finding", async
     "export const a = 1;\n// this run's agent run\n// the role has run twice; it ran once\n// a run, and then the next\n",
   );
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
 });
@@ -1028,7 +1016,7 @@ test("added comment and doc lines with a doubled word yield the garbled-wording 
   fs.mkdirSync(path.join(wt, "docs"), { recursive: true });
   fs.writeFileSync(path.join(wt, "docs/a.md"), "the role" + " role table\n");
 
-  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) =>
+  const findings = (await stageCheckFindings(wt, "main", "feature")).filter((f) =>
     f.includes("garbled rename wording"),
   );
 
@@ -1042,7 +1030,7 @@ test("a doubled word split across two added comment lines yields the garbled-wor
   const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n" });
   fs.writeFileSync(path.join(wt, "src/a.ts"), "export const a = 1;\n// the idle role" + "\n// role is waiting\n");
 
-  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) =>
+  const findings = (await stageCheckFindings(wt, "main", "feature")).filter((f) =>
     f.includes("garbled rename wording"),
   );
 
@@ -1067,7 +1055,7 @@ test("doubled words in code, in mixed case, after a hyphen, dot or slash, and th
   );
   fs.writeFileSync(path.join(wt, "PLANS.md"), "the role" + " role\n");
 
-  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+  const findings = await stageCheckFindings(wt, "main", "feature");
 
   assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
 });
@@ -1078,13 +1066,13 @@ test("a finished plan whose matches-nothing grep still matches yields the accept
   const { wt } = await repoWith({ "PLANS.md": planned + "_None yet._\n", "src/a.ts": "oldName\n" });
   fs.writeFileSync(path.join(wt, "PLANS.md"), `${planned}${entry}\n`);
 
-  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) => f.includes("src/a.ts:1"));
+  const findings = (await stageCheckFindings(wt, "main", "feature")).filter((f) => f.includes("src/a.ts:1"));
 
   assert.equal(findings.length, 1);
   assert.match(findings[0]!, /Rename it/);
 
   const held = await repoWith({ "PLANS.md": `${planned}${entry}\n`, "src/a.ts": "oldName\n" });
   fs.writeFileSync(path.join(held.wt, "PLANS.md"), `${planned}${entry}\n\nedited\n`);
-  const again = await stageCheckFindings(held.wt, "main", EXEMPT, "feature");
+  const again = await stageCheckFindings(held.wt, "main", "feature");
   assert.deepEqual(again.filter((f) => f.includes("src/a.ts:1")), []);
 });

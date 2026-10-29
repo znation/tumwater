@@ -219,21 +219,20 @@ async function reviewAttempt(
   }
 
   const files = await aheadOfMainFiles(wt, mainBranch);
-  // The five deterministic diff rules (conflict markers, protected edits, secret leaks, a false
-  // fix claim on an exempt md-only diff, and backlog structure) are judged by diffRuleReasons in
-  // the gate's own order and scope — the one call site the gate and the main watch share (the
-  // watch runs them on main's tip, "Every commit is verified on main, part 1/3"). A rejection is
-  // a hard stop and deterministic, like the pre-check below: no pi run consumed, reasons
-  // injected into the author's next run. A conflict marker must not merge raw `<<<<<<<` lines
-  // (PLANS.md "Robust conflict landing, part 2/2"), and an md-only diff skips the reviewer, so
-  // each rule below is what catches a change the reviewer would never see: an edit to the brief
-  // prompt block or PRINCIPLES.md (protectedEditReason), a leaked credential
-  // (secretLeakReason), an md-only fix claim with no backing code (falseFixReason, BUGS.md
-  // 2026-09-22), and a duplicated or dropped `## ` section heading (backlogStructureReason,
-  // PLANS.md 2026-09-25).
+  // The three deterministic diff rules the gate rejects on (a brief-block edit, a protected
+  // edit and a secret leak) are judged by diffRuleReasons in the "gate" scope — the same rules
+  // the main watch runs on main's tip, but a narrower set: a conflict marker, a false fix claim
+  // on an exempt md-only diff, and a broken backlog structure are all repairable by a later
+  // commit, so they stop refusing a diff pre-merge and the watch reports them on main's tip
+  // instead ("Every commit is verified on main, part 3m/3"). A rejection is a hard stop and
+  // deterministic, like the pre-check below: no pi run consumed, reasons injected into the
+  // author's next run. A brief edit or a leaked credential must not merge raw (PLANS.md
+  // "Robust conflict landing, part 2/2"), and an md-only diff skips the reviewer, so each rule
+  // below is what catches a change the reviewer would never see: an edit to the brief prompt
+  // block or PRINCIPLES.md (protectedEditReason), and a leaked credential (secretLeakReason).
   const baseRev = await changeBaseRev(wt, mainBranch);
   const exempt = isExemptDiff(files, config.review.exemptPaths);
-  const [firstFinding] = await diffRuleReasons(wt, baseRev, files, role, exempt);
+  const [firstFinding] = await diffRuleReasons(wt, baseRev, files, role, exempt, "gate");
   if (firstFinding !== undefined) return reject([firstFinding]);
   if (exempt) {
     state.reviewResume = undefined;

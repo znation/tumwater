@@ -73,38 +73,34 @@ test("a re-merge of a change main already holds logs no second merged event", as
   );
 });
 
-test("a fix-claim block in the merge's exempt arm warns, names the reason to the merger, and never runs pi", async () => {
+test("a repairable false-fix md-only change merges through the exempt arm, for the main watch", async () => {
   const { root, wt } = await initializedWorktree();
   // BUGS.md's template ends with "## Fixed"; an appended entry merges in that section. Its body
-  // names no symbol that exists on the tree, so the exempt arm's fix-claim cross-check
-  // (falseFixReason, src/verdict/fix-claim.ts) must block the merge — and, per BUGS.md
-  // 2026-10-02, say so on the feed and to the merger instead of failing silently.
+  // names no symbol that exists on the tree. Since part 3m/3 a false fix claim is repairable by
+  // a later commit, so the merge's exempt arm no longer refuses it: it lands, and the main
+  // watch reports it on main's tip.
   fs.appendFileSync(
     wt + "/BUGS.md",
     "\n### A bug nobody fixed (found by test 2026-10-02)\n\n- Fix: `noSuchHelperFn` handles it.\n",
   );
   commitIn(wt, "md-only fix record");
   // Move main so the merge rebase rewrites the branch head: a no-op rebase takes the
-  // "byte-identical to what the gate already checked" skip, and this merge was never
-  // reviewed — the rewrite is what routes it through the exempt arm's cross-checks.
+  // "byte-identical to what the gate already checked" skip. The rewrite routes the change
+  // through the exempt arm, which must let it merge.
   fs.writeFileSync(path.join(root, "unrelated.txt"), "main moved\n");
   commitIn(root, "main moves on");
   const { ctx, calls } = makeCtx(root);
-  const blocked: string[] = [];
-  ctx.onMergeBlocked = (reason) => blocked.push(reason);
   const mainBefore = mainSha(root);
 
   const result = await mergeToMain(ctx, wt, "md-only fix record");
 
-  assert.equal(result, "merge_blocked");
+  assert.equal(result, "changed");
   assert.equal(calls.length, 0, "no check ran on an exempt diff — and no pi run either");
-  assert.equal(mainSha(root), mainBefore, "nothing merged");
-  assert.equal(blocked.length, 1, "the merger is told the block reason for lastError");
-  assert.match(blocked[0]!, /^md-only BUGS.md edit moves/);
+  assert.notEqual(mainSha(root), mainBefore, "the change merged for the main watch to judge");
   assert.deepEqual(
     warningMessages(root).filter((m) => m.startsWith("merge blocked:")),
-    [`merge blocked: ${blocked[0]}`],
-    "the warning names the reason, like a structure block does",
+    [],
+    "no merge-block warning: the repairable finding lands",
   );
   assertWorktreeSettled(wt);
 });
@@ -540,10 +536,10 @@ test("a merge whose events feed is unwritable still merges and reports changed",
   assert.equal(mainSha(root), headSha(wt), "the fast-forward happened despite the broken feed");
 });
 
-test("a duplicate ## Done still blocks the merge when the events feed is unwritable", async () => {
-  // structureBlocked (merge-to-main.ts) warns and then RETURNS the block reason; an EISDIR on
-  // that warning must not turn the designed "merge_blocked" into a thrown merge error. Replace
-  // the feed with a directory so the block's append throws while every other file still writes.
+test("a code diff that duplicates ## Done still merges when the events feed is unwritable", async () => {
+  // Since part 3m/3 a duplicated section heading is repairable by a later commit, so the merge
+  // no longer blocks on it: it lands for the main watch to report. A broken events feed must
+  // not turn that successful merge into a thrown error.
   const { root, wt } = await initializedWorktree();
   seedFeatureAPlannedToDone(root, wt);
   const mainBefore = mainSha(root);
@@ -559,13 +555,13 @@ test("a duplicate ## Done still blocks the merge when the events feed is unwrita
 
   const result = await mergeToMain(ctx, wt, "branch work");
 
-  assert.equal(result, "merge_blocked", "the structure block stands despite the broken feed");
-  assert.equal(mainSha(root), mainBefore, "main is untouched");
+  assert.equal(result, "changed", "the repairable duplicate-heading change merges despite the broken feed");
+  assert.notEqual(mainSha(root), mainBefore, "the change reached main");
 });
 
-test("a fix-claim block still blocks the merge when the events feed is unwritable", async () => {
-  // exemptSkipBlockReason (merge-to-main.ts) warns for the fix-claim block and then returns it;
-  // the warning is best-effort so the block reason still reaches the merger on a broken feed.
+test("a repairable false-fix md-only change still merges when the events feed is unwritable", async () => {
+  // Since part 3m/3 a false fix claim is repairable, so the merge no longer blocks on it: it
+  // lands for the main watch. A broken events feed must not turn the merge into a thrown error.
   const { root, wt } = await initializedWorktree();
   fs.appendFileSync(
     wt + "/BUGS.md",
@@ -575,14 +571,11 @@ test("a fix-claim block still blocks the merge when the events feed is unwritabl
   fs.writeFileSync(path.join(root, "unrelated.txt"), "main moved\n");
   commitIn(root, "main moves on");
   const { ctx } = makeCtx(root);
-  const blocked: string[] = [];
-  ctx.onMergeBlocked = (reason) => blocked.push(reason);
   const mainBefore = mainSha(root);
   fs.mkdirSync(eventsLogPath(root), { recursive: true });
 
   const result = await mergeToMain(ctx, wt, "md-only fix record");
 
-  assert.equal(result, "merge_blocked", "the fix-claim block stands despite the broken feed");
-  assert.equal(mainSha(root), mainBefore, "nothing merged");
-  assert.equal(blocked.length, 1, "the merger is still told the block reason for lastError");
+  assert.equal(result, "changed", "the repairable false-fix change merges despite the broken feed");
+  assert.notEqual(mainSha(root), mainBefore, "the change reached main");
 });

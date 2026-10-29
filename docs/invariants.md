@@ -434,9 +434,11 @@ The gate rejects some changes without running a reviewer, because the exempt fas
 markdown would otherwise merge them unreviewed.
 
 The main watch (part 1/3 of the every-commit-verified-on-main plan) runs the same deterministic
-diff rules on main's new tip after it lands, in the gate's own order and scope — naming the rule
-and the head in a warning when one fires. The pre-merge rejections below stay in place through
-part 3/3.
+diff rules on main's new tip after it lands, in the rules' own order — the full set of five,
+while the pre-merge gate (part 3m/3) runs only the three findings a later commit cannot repair:
+the other three (a conflict marker, a false fix claim and a broken backlog structure) are all
+repairable by a later commit, so the gate lets them land and the watch reports them — naming the
+rule and the head in a warning when one fires. The pre-merge rejections here stay in place.
 
 ### INV-G1: a role cannot merge a change to the brief block, or to PRINCIPLES.md unless it is the director or steward
 
@@ -479,8 +481,10 @@ ENOTDIR, EISDIR) counts as resolved; any other read error counts as still confli
 reason names the file after `could not be read to check for conflict markers: `. A symlink (or
 directory/gitlink) counts as resolved too — it is never followed (lstat, not stat), because a
 symlink holds no text of its own and its target could point out of the worktree (the same policy
-INV-G4 pins for the secret-leak check). The review gate rejects it before review, md-only diffs
-included, the stage check flags it, and the merge resolver's resolution is not accepted. The
+INV-G4 pins for the secret-leak check). The stage check flags it (the author's pre-commit
+self-check), the main watch reports it on main's tip (a conflict marker is repairable by a later
+commit, so the pre-merge gate — part 3m/3 — lets it land unrejected), and the merge resolver's
+resolution is not accepted. The
 deterministic backlog-conflict resolver (merge-backlog-conflicts.ts) reads a conflicted root backlog
 file only when lstat shows it is a regular file; a symlink (or directory/gitlink, or an
 unreadable path) is left to the pi resolver, never followed out of the worktree. The backlog-
@@ -500,12 +504,12 @@ parseable headings into the backlog-index block every run prompt carries.
 
 **Binds.** `src/merge/merge-git.ts`, `src/merge/merge-backlog-conflicts.ts`,
 `src/backlog/backlog-structure.ts`, `src/verdict/fix-claim.ts`,
-`src/review/review.ts`, `src/run/stage-check.ts`,
-`src/merge/merge-to-main.ts`, `src/prompt/principles.ts`, `src/run/run-prompt.ts`,
+`src/run/stage-check.ts`,
+`src/baseline/main-watch.ts`, `src/merge/merge-to-main.ts`, `src/prompt/principles.ts`, `src/run/run-prompt.ts`,
 `src/doctor/doctor-principles.ts`, `src/status/status-role-notes.ts`,
 `src/roles/role-view.ts`, `src/files/stat-cache.ts`.
 
-**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — `test/backlog-structure.test.ts` — "backlogStructureReason never follows a symlinked backlog file out of the worktree" — `test/fix-claim.test.ts` — "falseFixReason never follows a symlinked BUGS.md out of the worktree" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run" — `test/run-prompt.test.ts` — "a symlinked role notes file never injects the outside file's text into the run prompt" and "a symlinked PRINCIPLES.md never injects the outside file's text into the run prompt" — and `test/stat-cache.test.ts` — "cachedTextByStat reads a symlinked file as absent and never follows it out of the worktree".
+**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — and `test/stage-check.test.ts` — "a changed file still holding a conflict marker yields the conflict finding" — `test/merge-backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — `test/backlog-structure.test.ts` — "backlogStructureReason never follows a symlinked backlog file out of the worktree" — `test/fix-claim.test.ts` — "falseFixReason never follows a symlinked BUGS.md out of the worktree" — `test/run-prompt.test.ts` — "a symlinked role notes file never injects the outside file's text into the run prompt" and "a symlinked PRINCIPLES.md never injects the outside file's text into the run prompt" — and `test/stat-cache.test.ts` — "cachedTextByStat reads a symlinked file as absent and never follows it out of the worktree".
 
 ### INV-G4: a changed file that exists but cannot be read is a secret-leak finding; only a path with no file is skipped
 
@@ -3066,18 +3070,22 @@ engage, arms idle passes at most hourly, and runs a manual request over every ca
 disk hold engage", "ReclaimController.pollIdle cleans once, throttles the next arm, and honors
 reclaimedAt" and "ReclaimController.requestManual runs a manual pass over every candidate".
 
-## False-fix gate: an md-only fix claim names only code the tree holds, wherever the Fixed entry lives
+## False-fix claim: an md-only fix claim names only code the tree holds, wherever the Fixed entry lives
 
 `src/verdict/fix-claim.ts` is the check on a diff that touches only Markdown and moves a bug to
 Fixed. A real claim usually arrives as a BUGS-FIXED.md edit, because the archive move happens right
-before the commit.
+before the commit. Since part 3m/3 the pre-merge gate no longer runs this check — a false fix claim is
+repairable by a later commit — so the main watch runs `falseFixReason` in its watch scope and reports
+it on main's tip instead.
 
 ### INV-AX1: a Fixed entry the diff writes or rewrites names only code the tree holds
 
 **Guarantee.** A new Fixed entry, or an already-Fixed entry whose body the diff rewrites (including
-text after a quoted fence), is rejected when a name in any of its Fix paragraphs is on neither the
-code haystack nor the tree. An untouched entry is not checked. This holds for an edit to BUGS.md
-and for an edit to BUGS-FIXED.md, measured against the diff's merge-base.
+text after a quoted fence), is reported by the main watch (a false fix claim is repairable by a later
+commit, so since part 3m/3 the pre-merge gate lets it land unrejected) when a name in any of its Fix
+paragraphs is on neither the code haystack nor the tree. An untouched entry is not checked. This
+holds for an edit to BUGS.md and for an edit to BUGS-FIXED.md, measured against the diff's
+merge-base.
 
 **Binds.** `src/verdict/fix-claim.ts` (`falseFixReason`, `fixSymbols`, `unbackedSymbols`).
 
@@ -3524,17 +3532,19 @@ by patch-id.
 
 ### INV-BF1: one patch's failures keep the pin under the limit and blame the change at it
 
-**Guarantee.** One patch's red in-lock check, or its deterministic cross-check block, keeps the pin
-(`merge_blocked`) under `MERGE_CHECK_FAILURE_LIMIT`. At the limit the failure is blamed on the
-change: a red check through `attributeRedCheck`, a block through a rejection that names it, with the
-pin deleted and the strike cleared.
+**Guarantee.** One patch's red in-lock check keeps the pin (`merge_blocked`) under
+`MERGE_CHECK_FAILURE_LIMIT`. At the limit the failure is blamed on the change: a red check through
+`attributeRedCheck`, with the pin deleted and the strike cleared. The deterministic cross-check
+block sink `mergeBlocked` is unchanged and still pinned by INV-BF2, but the merge path no longer
+produces cross-check blocks — since part 3m/3 a false fix claim and a broken backlog structure are
+repairable and land for the main watch.
 
 **Binds.** `src/merge/merge-check-failures.ts` (`MERGE_CHECK_FAILURE_LIMIT`, `pinKept`,
 `keepPinOrAttribute`, `mergeCheckRed`, `mergeBlocked`).
 
 **Pinned by.** `test/merger.test.ts` — "a single merge's red in-lock check retries once, then
 rejects on a green main", "a single merge's red in-lock check retries once, then keeps its pin as
-main_red" and "a fix-claim-blocked merge retries once, then rejects with the block reason".
+main_red" and "a repairable false-fix md-only change merges through the real merge flow".
 
 ### INV-BF2: strikes are counted per patch-id
 
@@ -3811,16 +3821,17 @@ kept, nothing merges" and "a batch whose files are dirty in the primary checkout
 its check"; `test/merge-stack.test.ts` — "ffStackToMain returns merge_blocked when main diverged
 under the stack, with no events".
 
-### INV-BJ3: a stack whose whole delta is review-exempt runs no check, but not no cross-check
+### INV-BJ3: a stack whose whole delta is review-exempt runs no check and no cross-check
 
-**Guarantee.** A stack whose whole delta is review-exempt runs no check, but runs the same
-cross-checks as `verifyMerge`'s exempt arm. If either fails, the stack goes to the one-at-a-time
-fallback.
+**Guarantee.** A stack whose whole delta is review-exempt runs no check. Since part 3m/3 it also
+runs no cross-check: a false fix claim and a broken backlog structure are repairable by a later
+commit, so they land and the main watch reports them on main's tip rather than sending the stack to
+the one-at-a-time fallback.
 
 **Binds.** `src/merge/merge-stack.ts` (`mergeStack`).
 
 **Pinned by.** `test/merger-bisect.test.ts` — "a stack whose every change is doc-only merges with no
-batch check" and "a doc-only stack that breaks backlog structure is blocked, not waved through".
+batch check" and "a doc-only stack that breaks backlog structure merges as one, for the main watch".
 
 ### INV-BJ4: only a full batch check that passed on exactly the merged tip seeds main's baseline
 

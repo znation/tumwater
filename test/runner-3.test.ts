@@ -19,26 +19,30 @@ import { firstRunThenIdle, logPromptsTo, readRunBlocks, withPi } from "./fakes/f
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 test("a rejected change is re-applied on the role's next run and its reasons ride along", async () => {
   const repo = await initializedRepo();
-  // The change carries an unresolved conflict marker (`<<<<<<< HEAD` in rejected.txt), so the
-  // gate's deterministic diff rule — conflictMarkerReason, the first of its five rules — rejects
-  // it before any build check or reviewer run, with one reason. There is no pre-merge reviewer
+  // The change carries a leaked secret (the value of $TUMWATER_TEST_SECRET in rejected.txt), so
+  // the gate's deterministic diff rule — secretLeakReason, one of the three rules that still
+  // reject pre-merge since part 3m/3 narrowed the gate — rejects it before any build check or
+  // reviewer run, with one reason. There is no pre-merge reviewer
   // verdict here: the rejection is the gate's own finding. Author runs record their full argv —
   // the fake appends the stdin prompt as the last argument (PROMPT_FROM_STDIN) — so the test can
   // assert what each run was actually told, not just that state changed.
   const promptsFile = path.join(tmpdir(), "prompts.log");
   const marker = path.join(tmpdir(), "changed-once");
+  const SECRET = "runner-reject-secret-111222333444";
   const script = [
     logPromptsTo(promptsFile),
     ...firstRunThenIdle(marker, [
       `printf '%s\n' '${assistantLine("did it\nSUMMARY: add rejected thing")}'`,
-      `printf '%s\n' '<<<<<<< HEAD' > rejected.txt`,
+      `printf '%s\n' '${SECRET}' > rejected.txt`,
     ]),
   ].join("\n");
-  await withPi(script, async () => {
-    const runner = makeRoleRunner(repo, "improve");
-    // Run 1: the change is committed and enqueued, then the gate rejects it on its conflict
-    // marker — nothing merges on main.
-    assert.equal((await runner.run()).result, "queued");
+  process.env.TUMWATER_TEST_SECRET = SECRET;
+  try {
+    await withPi(script, async () => {
+      const runner = makeRoleRunner(repo, "improve");
+      // Run 1: the change is committed and enqueued, then the gate rejects it on its leaked
+      // secret — nothing merges on main.
+      assert.equal((await runner.run()).result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "rejected");
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const wt = roleWt(repo, "improve");
@@ -58,7 +62,7 @@ test("a rejected change is re-applied on the role's next run and its reasons rid
     const second = runs[1] ?? "";
     assert.match(second, /is already in the worktree as uncommitted edits/);
     assert.match(second, /revision 1\b/);
-    assert.match(second, /1\. conflict markers remain in: rejected\.txt/);
+    assert.match(second, /1\. `rejected\.txt` contains the value of \$TUMWATER_TEST_SECRET/);
     // part 4/4 verdict-first placement: the revision note opens the run, before the charter, so
     // the author cannot miss why the diff is already in the worktree (runner-run prepends it).
     assert.ok(
@@ -68,7 +72,10 @@ test("a rejected change is re-applied on the role's next run and its reasons rid
     );
     assert.ok(!runs[1]?.includes("it is this run's primary task"), "the plain rejected note is replaced by the revision note");
     assertClean(wt, "a dropped revision leaves the worktree clean at main");
-  });
+    });
+  } finally {
+    delete process.env.TUMWATER_TEST_SECRET;
+  }
 });
 
 test("concurrent-main-advance still merges (rebase path, linear history)", async () => {

@@ -9,7 +9,6 @@ import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { piRanMarker, withPi } from "./fakes/fake-pi.js";
-import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 
 // Regression coverage for the 2026-08-27 build break (BUGS.md): src/review/review.ts shipped with a
@@ -69,16 +68,16 @@ test("gate exempts a doc-only diff without running pi", async () => {
   });
 });
 
-/** A deterministic gate rejection: commit `content` as `file` in a fresh repo, run the gate
- * under a pi shim that would create `piRanMarker()` if the reviewer ran, and assert the
- * rejection carried every `detailMatch` while pi never ran. The conflict-marker and
- * misfiled-plan tests share this shape because their rejections must be decided before any
- * reviewer run. */
-async function assertRejectedWithoutReview(
+/** A repairable-finding gate exemption: commit `content` as `file` in a fresh repo, run the gate
+ * under a pi shim that would create `piRanMarker()` if the reviewer ran, and assert the md-only
+ * diff is exempted while pi never ran. Since part 3m/3 the gate's scope is the three findings a
+ * later commit cannot repair, so a finding the watch reports — a conflict marker, a false fix
+ * claim or a broken backlog structure — no longer refuses an md-only diff pre-merge; the main
+ * watch reports it on main's tip (test/main-watch.test.ts). */
+async function assertExemptWithoutReview(
   file: string,
   content: string,
   message: string,
-  ...detailMatches: RegExp[]
 ): Promise<void> {
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");
@@ -88,71 +87,33 @@ async function assertRejectedWithoutReview(
   const marker = piRanMarker();
   await withPi(`touch '${marker}'`, async () => {
     const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "rejected");
-    for (const detail of detailMatches) assert.match(result.detail!, detail);
-    assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
+    assert.equal(result.decision, "exempt", "a repairable finding no longer refuses the diff pre-merge (part 3m/3)");
+    assert.ok(!fs.existsSync(marker), "exempt — no reviewer run at all");
   });
 }
 
-test("gate rejects a change that still holds conflict markers, with no pi run", async () => {
+test("gate exempts an md-only diff that still holds conflict markers, with no pi run", async () => {
   // A change handed back to its author with the markers left in place (PLANS.md "Robust
   // conflict landing, part 2/2") reaches the gate if the author's stage fix-up turn did not
-  // clear them. An md-only diff skips the reviewer by design, so only a deterministic check
-  // can stop raw `<<<<<<<` lines from being merged to main.
-  await assertRejectedWithoutReview(
+  // clear them. A conflict marker is repairable by a later commit, so since part 3m/3 the gate
+  // lets it land and the main watch reports it on main's tip (test/main-watch.test.ts); the gate
+  // still exempts the md-only diff without running the reviewer.
+  await assertExemptWithoutReview(
     "notes.md",
     "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nafter\n",
     "doc change with markers left in",
-    /conflict markers remain in: notes\.md/,
   );
 });
 
-test("gate rejects a change whose changed file cannot be read for conflict markers, with no pi run", async () => {
-  const root = makeRepo();
-  const wt = await ensureWorktree(root, ROLE, "main");
-  fs.writeFileSync(path.join(wt, "notes.md"), "no markers here\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "doc change");
-  const marker = piRanMarker();
-  await withPi(`touch '${marker}'`, async () => {
-    const undo = patchFsMethod("readFileSync", (orig) => (...args) => {
-      if (String(args[0]).startsWith(wt) && String(args[0]).endsWith("/notes.md")) throw errnoError("EMFILE");
-      return orig(...args);
-    });
-    try {
-      const { result } = await reviewGate(root, wt);
-      assert.equal(result.decision, "rejected");
-      assert.match(result.detail!, /could not be read to check for conflict markers: notes\.md/);
-    } finally {
-      undo();
-    }
-    assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
-  });
-});
-
-test("gate rejects conflict markers in a non-ASCII-named file (git C-quotes the diff path)", async () => {
-  // `git diff --name-only` C-quotes non-ASCII paths by default; if aheadOfMainFiles hands the
-  // gate that quoted text, hasConflictMarkers reads a path that does not exist and returns
-  // false, so a marker-bearing non-ASCII file slips through the same way a plain-named one did.
-  await assertRejectedWithoutReview(
-    "héllo.md",
-    "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nafter\n",
-    "non-ASCII doc change with markers left in",
-    /conflict markers remain in: héllo\.md/,
-  );
-});
-
-test("gate rejects an md-only diff that files a new plan directly under ## Done, with no pi run", async () => {
+test("gate exempts an md-only diff that files a new plan directly under ## Done, with no pi run", async () => {
   // The 2026-09-25 shape (PLANS.md 9eaae5ac, plans part 4/4): a plan written straight into
-  // the done section. The heading-set check cannot see it — one ## Done, heading set unchanged
-  // — so the new-plan-under-Done rule is what rejects it, deterministically, before any
-  // reviewer run.
-  await assertRejectedWithoutReview(
+  // the done section. The broken-backlog-structure finding is repairable by a later commit, so
+  // since part 3m/3 it no longer refuses the diff pre-merge; the main watch reports it on main's
+  // tip. The gate exempts the md-only diff without running the reviewer.
+  await assertExemptWithoutReview(
     "PLANS.md",
     "## Planned\n\n## Done\n\n### Feature B (planned 2026-09-26)\n\n**Goal.** New work.\n",
     "misfiled plan",
-    /PLANS\.md files "Feature B \(planned 2026-09-26\)"/,
-    /file it under "## Planned"/,
   );
 });
 

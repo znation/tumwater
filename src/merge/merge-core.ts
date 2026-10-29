@@ -6,7 +6,7 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { mergeToMain } from "./merge-to-main.js";
 import { rebaseOntoMain } from "./merge-git.js";
-import { mergeCheckRed, mergeBlocked, noteMergeRetryPassed } from "./merge-check-failures.js";
+import { mergeCheckRed, noteMergeRetryPassed } from "./merge-check-failures.js";
 import { reviewAheadOfMain, type GateResult, type ReviewContext } from "../review/review.js";
 import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
 import { warnEventBestEffort, logEventBestEffort } from "../events/events.js";
@@ -421,7 +421,6 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
   const wt = await ensureDetachedWorktree(ctx.root, mergeWorktreePath(ctx.root), req.sha);
   const pinPatch = await patchId(wt, ctx.mainBranch, req.sha).catch(() => null);
   let red: { check: BuildCheck; outcome: BuildCheckOutcome } | undefined;
-  let blocked: string | undefined;
   const result = await mergeToMain(
     {
       root: ctx.root,
@@ -433,9 +432,6 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
       runPi: ctx.runPi,
       onMergeCheckRed: (check, outcome) => {
         red = { check, outcome };
-      },
-      onMergeBlocked: (reason) => {
-        blocked = reason;
       },
       recheckResolved: async (resolvedWt) => {
         if (ctx.signal().aborted) return { verdict: "retry" };
@@ -499,12 +495,9 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
     return result;
   }
   if (result === "merge_blocked" && red) return mergeCheckRed(ctx, req.role, wt, red);
-  if (result === "merge_blocked" && blocked !== undefined) {
-    return mergeBlocked(ctx, req.role, wt, blocked);
-  }
   // merge_conflict / merge_blocked: keep the ref — the next run's recovery re-merges it.
-  // (Cross-check blocks no longer come through here: merge-check-failures.ts's mergeBlocked
-  // counts them.)
+  // (The deterministic cross-check blocks — fix-claim and backlog structure — no longer come
+  // through here: since part 3m/3 they are repairable and land for the main watch.)
   // A rejected recheck already wrote its own lastError and deleted its ref — leave it.
   if (result !== "rejected") ctx.state.lastError = `merge failed: ${result}`;
   return result;

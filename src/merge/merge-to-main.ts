@@ -26,8 +26,6 @@ import { describeCheck, failureHeadline } from "../build/build-check-report.js";
 import { MERGE_FLAKY_WARNING_PREFIX, quarantineTests } from "../review/known-flakes.js";
 import { noteGreenBaseline, noteInheritedGreen } from "../baseline/main-baseline.js";
 import { isExemptDiff } from "../review/exemptions.js";
-import { falseFixReason } from "../verdict/fix-claim.js";
-import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { withLock } from "../concurrency/lock.js";
 import { buildConflictPrompt } from "../prompt/gate-prompts.js";
 import { mergeLockDir } from "../paths.js";
@@ -77,14 +75,8 @@ export interface MergeContext extends RunsPi {
   lockTimeoutMs?: number;
   /** Told when the in-lock check went red on the rebased tree — the one merge_blocked cause
    * that is the change's own (merge-check-failures.ts counts it toward
-   * MERGE_CHECK_FAILURE_LIMIT); a failed fast-forward or a false fix never calls it. */
+   * MERGE_CHECK_FAILURE_LIMIT); a failed fast-forward never calls it. */
   onMergeCheckRed?(check: BuildCheck, outcome: BuildCheckOutcome): void;
-  /** Told when verifyMerge blocks the merge for a reason that is not a red check — the
-   * exempt arm's fix-claim or backlog-structure cross-checks (a conflict resolution's tree can
-   * trip either). The merger puts the reason in lastError; the warning event itself is emitted
-   * here in merge-to-main.ts, so a blocked resolution reads on the dashboards (BUGS.md
-   * 2026-10-02: the block used to be silent). */
-  onMergeBlocked?(reason: string): void;
   /** The gate, re-run over a conflict resolution's tree: a resolution whose diff ahead of main
    * is not a subset of the diff the reviewer approved has authored bytes the reviewer never
    * judged (BUGS.md 2026-10-01: a resolver restored code main had deliberately reverted, and
@@ -208,49 +200,13 @@ async function tryMerge(
   }, ctx.lockTimeoutMs);
 }
 
-/** The backlog-structure cross-check both verifyMerge paths run (exempt and code diffs
- * alike): when the tree ahead of main duplicates or drops a `## ` section heading, warn on the
- * role's feed with the one "merge blocked:" phrasing and return the reason (null when the
- * headings are intact). Shared so the wording and the block action cannot drift between the
- * paths. */
-async function structureBlocked(
-  ctx: { root: string; role: string; mainBranch: string },
-  wt: string,
-  files: string[],
-): Promise<string | null> {
-  const structure = await backlogStructureReason(wt, ctx.mainBranch, files);
-  if (!structure) return null;
-  warnEventBestEffort(ctx.root, ctx.role, `merge blocked: ${structure}`);
-  return structure;
-}
-
-/** The exempt arm's full cross-check — backlog structure, then fix-claim — shared by
- * verifyMerge and merge-batch.ts's stack skip: an md-only tree delta that skips the build
- * check must not wave through an edit the gate would have rejected. Returns the first blocking
- * reason (a structure reason already warned as "merge blocked: ..."), or null when the skip
- * may proceed. */
-export async function exemptSkipBlockReason(
-  ctx: { root: string; role: string; mainBranch: string },
-  wt: string,
-  files: string[],
-): Promise<string | null> {
-  const structure = await structureBlocked(ctx, wt, files);
-  if (structure) return structure;
-  const fix = await falseFixReason(wt, ctx.mainBranch, files);
-  // Warn like structureBlocked does: a fix-claim block that used to be silent read as five
-  // unexplained merge_blocked retries on the feed (BUGS.md 2026-10-02). The batch stack-skip
-  // caller may warn twice for one change (here, then again when the fallback's exempt arm
-  // blocks it) — a duplicated line is harmless next to a silent block.
-  if (fix) warnEventBestEffort(ctx.root, ctx.role, `merge blocked: ${fix}`);
-  return fix ?? null;
-}
-
 /** Verify the exact tree about to reach main — the post-rebase head (BUGS.md 2026-09-08: the
  * gate's pre-check ran outside this lock against a head the rebase may have rewritten, so the
- * bytes that become main were never run through a check). Returns false when the tree is
- * structurally unsound (backlogStructureReason: a duplicated or dropped `## ` section heading,
- * with a warning event so a broken conflict resolution shows on the dashboards) or when the
- * project's declared check FAILS on the rebased tree; every other outcome merges. Skips:
+ * bytes that become main were never run through a check). Returns false only when the project's
+ * declared check FAILS on the rebased tree; every other outcome merges. Since part 3m/3 no
+ * other finding refuses a diff here: a conflict resolution that duplicates or drops a `## `
+ * section heading, or a false fix claim, is repairable by a later commit, so it lands and the
+ * main watch reports it on main's tip after the merge. Skips:
  * - a no-op rebase whose exact tree the gate verified (`rebasedHead === verifiedHead`): main
  *   did not move under us, so the merge tree is byte-identical to what the gate's pre-check
  *   already ran green. Seed the red-main baseline with the SHA that becomes main: every role's
@@ -298,27 +254,12 @@ async function verifyMerge(
     return true;
   }
   const files = await aheadOfMainFiles(wt, ctx.mainBranch);
-  if (isExemptDiff(files, ctx.exemptPaths)) {
-    // Same cross-checks as the gate (fix-claim.ts, backlog-structure.ts): the in-lock re-check
-    // must not wave through an md-only edit the gate would have rejected — and this is the
-    // site that catches what the gate cannot see: a conflict resolution happens AFTER the
-    // gate, inside this lock, so a resolution that kept both sides of a `## Done` conflict and
-    // duplicated the heading merges here or not at all (PLANS.md 2026-09-25, 9eaae5ac).
-    const reason = await exemptSkipBlockReason(ctx, wt, files);
-    if (reason !== null) {
-      ctx.onMergeBlocked?.(reason);
-      return false;
-    }
-    return true;
-  }
-  // The heading check for code diffs too, before the build check: a conflict resolution that
-  // broke backlog structure reads as an explained block on the dashboards, not as an
-  // unexplained red check run on a tree that could never merge.
-  const structure = await structureBlocked(ctx, wt, files);
-  if (structure) {
-    ctx.onMergeBlocked?.(structure);
-    return false;
-  }
+  // An exempt (md-only) diff cannot break the build and — since part 3m/3 — carries no finding
+  // this merge must refuse: a false fix claim and a broken backlog structure are repairable by
+  // a later commit, so they land for the main watch to report on main's tip. The old rationale —
+  // "must not wave through an md-only edit the gate would have rejected" — is gone with the
+  // gate's narrowing: the gate no longer rejects those findings.
+  if (isExemptDiff(files, ctx.exemptPaths)) return true;
   if (await onlyExemptDriftFromVerified(ctx, wt, rebasedHead, verifiedHead)) return true;
   // The run itself (build_check event, environmental-skip warning) lives in
   // runScopedBuildCheck, shared with the review gate's pre-check. The merge cell names the

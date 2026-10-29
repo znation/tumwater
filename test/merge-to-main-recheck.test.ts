@@ -1,8 +1,9 @@
 /** The merge flow's in-lock post-rebase verification (BUGS.md 2026-09-08: the gate checked
  * the pre-rebase tree, so the bytes that merged on main were never run through a check): the
  * declared check re-runs the rebased tree, a red one blocks, an environmental skip warns and
- * merges, a no-op rebase seeds the baseline, and the duplicate-`## Done` structure gate it
- * consults. Extracted from merge-to-main.test.ts (2026-10-11); shared helpers live in
+ * merges, a no-op rebase seeds the baseline, and repairable findings (a duplicated `## Done`
+ * heading, a false fix claim) land for the main watch to report. Extracted from
+ * merge-to-main.test.ts (2026-10-11); shared helpers live in
  * fixtures/merge-to-main-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -316,12 +317,13 @@ test("a conflict resolution is re-verified inside the lock before merge", async 
   assert.equal(mergeChecks.length, 1, "the post-resolution tree was re-verified");
 });
 
-test("a conflict resolution that duplicates ## Done is blocked with a warning, main unchanged", async () => {
+test("a conflict resolution that duplicates ## Done now merges, for the main watch to report", async () => {
   // The 2026-09-25 shape (PLANS.md 9eaae5ac): main moves the only planned entry to Done by
   // ADDING a ## Done heading; the branch adds a new plan under ## Planned; the rebase
   // conflicts and a resolver that keeps both sides puts the new plan under a second
   // ## Done. The gate never saw this tree — the resolution happens after it, inside the
-  // lock — so the in-lock re-check is the only guard.
+  // lock. Since part 3m/3 a duplicated heading is repairable by a later commit, so the merge's
+  // exempt arm lets it land and the main watch reports it on main's tip.
   const { root, wt } = await initializedWorktree();
   seedFeatureAPlannedToDone(root, wt);
   const mainBefore = mainSha(root);
@@ -337,20 +339,16 @@ test("a conflict resolution that duplicates ## Done is blocked with a warning, m
 
   const result = await mergeToMain(ctx, wt, "branch work");
 
-  assert.equal(result, "merge_blocked", "the duplicated heading blocks the merge");
-  assert.equal(mainSha(root), mainBefore, "main is untouched");
-  const warnings = warningMessages(root);
-  assert.ok(
-    warnings.some((m) => m.includes("PLANS.md") && m.includes("## Done")),
-    `the warning names the file and the heading; got: ${JSON.stringify(warnings)}`,
-  );
+  assert.equal(result, "changed", "the repairable duplicate-heading resolution merges");
+  // main moved — the duplicate lands for the main watch
+  assert.notEqual(mainSha(root), mainBefore);
 });
 
-test("a conflict resolution that files a new plan under a single ## Done is blocked with a warning", async () => {
+test("a conflict resolution that files a new plan under a single ## Done now merges", async () => {
   // The other 2026-09-25 shape (plans part 4/4): ONE ## Done on main, so the duplicate-heading
-  // rule cannot see it. A resolver that keeps main's Done section and places the branch's new
-  // plan below it strands the plan where no Planned reader looks. The in-lock re-check is the
-  // site that catches conflict resolutions, so it must catch this one too.
+  // rule could not see it. A resolver that keeps main's Done section and places the branch's new
+  // plan below it strands the plan where no Planned reader looks. Since part 3m/3 this broken
+  // structure is repairable, so the merge lets it land and the main watch reports it.
   const { root, wt } = await initializedWorktree();
   seedFeatureAPlannedToDone(root, wt);
   const mainBefore = mainSha(root);
@@ -368,50 +366,43 @@ test("a conflict resolution that files a new plan under a single ## Done is bloc
 
   const result = await mergeToMain(ctx, wt, "branch work");
 
-  assert.equal(result, "merge_blocked", "the misfiled new plan blocks the merge");
-  assert.equal(mainSha(root), mainBefore, "main is untouched");
-  const warnings = warningMessages(root);
-  assert.ok(
-    warnings.some((m) => m.includes("PLANS.md") && m.includes("## Planned")),
-    `the warning names the file and where the plan belongs; got: ${JSON.stringify(warnings)}`,
-  );
+  assert.equal(result, "changed", "the misfiled-plan resolution merges for the main watch");
+  assert.notEqual(mainSha(root), mainBefore, "main moved");
   assertWorktreeSettled(wt);
 });
 
-test("a code diff that duplicates ## Done is blocked by the structure check before any build check", async () => {
-  // The exempt path's duplicate-heading block is covered above; this pins the sibling block
-  // for CODE diffs, which must fire BEFORE runScopedBuildCheck so a conflict resolution that
-  // broke backlog structure reads as an explained block, never as an unexplained red check
-  // run on a tree that could never merge.
+test("a code diff that duplicates ## Done now runs the build check instead of short-circuiting", async () => {
+  // The exempt path's duplicate-heading case is covered above; this pins the CODE-diff sibling.
+  // Since part 3m/3 the structure finding is repairable, so it no longer fires before the build
+  // check: a code diff that duplicates ## Done reaches runScopedBuildCheck and is judged there.
   const { root, wt } = await initializedWorktree();
-  // A deterministic red: if the structure block failed to fire, the merge would still be
-  // rejected — but as a failed build_check, so the absence of any build_check event below
-  // proves the structure block is what blocked this merge.
+  // A deterministic red: the code diff that duplicates ## Done must now be rejected as a failed
+  // build_check, never as an early structure block.
   declareBuildCheck(root, wt, "exit 1");
-  // A code file makes the delta non-exempt (an .md-only delta would take the exempt block).
+  // A code file makes the delta non-exempt (an .md-only delta would take the exempt fast path).
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
-  // initProject's template ships exactly one ## Done; a second one trips rule (a) — head
-  // count 2 exceeds the base's 1.
+  // initProject's template ships exactly one ## Done; a second one would trip the structure
+  // rule (head count 2 exceeds the base's 1) if the merge still ran it.
   fs.appendFileSync(path.join(wt, "PLANS.md"), "## Done\n");
   commitIn(wt, "code work");
   // Advance main so the rebase is a real rebase: a no-op rebase with no gateCommand
-  // short-circuits before any structure check runs.
+  // short-circuits before any check runs.
   advanceMain(root, "mainfile.txt", "from main\n");
   const mainBefore = mainSha(root);
   const { ctx } = makeCtx(root);
 
   const result = await mergeToMain(ctx, wt, "code work");
 
-  assert.equal(result, "merge_blocked", "the duplicated heading blocks the merge");
+  assert.equal(result, "merge_blocked", "the red build check rejects the merge");
   assert.equal(mainSha(root), mainBefore, "main is untouched");
-  const warnings = warningMessages(root);
   assert.ok(
-    warnings.some((m) => m.includes("PLANS.md") && m.includes('## Done')),
-    `the warning is the structure reason, not a check failure; got: ${JSON.stringify(warnings)}`,
+    readEvents(root).some((e) => e.type === "build_check" && e.scope === "merge"),
+    "the merge build check ran — the structure finding no longer short-circuits it",
   );
-  assert.ok(
-    !readEvents(root).some((e) => e.type === "build_check" && e.scope === "merge"),
-    "no merge build check ran — the structure block fires first",
+  assert.equal(
+    warningMessages(root).filter((m) => m.startsWith("merge blocked:")).length,
+    0,
+    "no structure warning — the rejection is the build check's",
   );
   assertWorktreeSettled(wt);
 });
