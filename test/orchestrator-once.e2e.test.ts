@@ -300,22 +300,23 @@ test("once: a merge_blocked change is re-queued by the pipeline and merges with 
   const counter = path.join(tmpdir("requeue-count-"), "n");
   const config = loadConfig(repo);
   // Invocation 1 is the review gate's pre-check, 2 the in-lock merge check, and 3 the merge
-  // check's one immediate flake re-run — the first attempt's three invocations. The reviewer
-  // then moves main, so the merge's rebase is not a no-op and the in-lock merge check runs. It
-  // is red twice (2 and 3), so the immediate re-run does not pass the red as a flake and merge;
-  // the change is re-queued as merge_blocked. The re-queued attempt's pre-check (4) is green.
-  config.check = {
-    command: `n=$(cat '${counter}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${counter}'; [ $n -lt 2 ] || [ $n -gt 3 ]`,
-  };
-  saveConfig(repo, config);
-  // The first review also moves main (once).
+  // check's one immediate flake re-run — the first attempt's three invocations. The gate's own
+  // pre-check moves main (once, via `bump`), so the merge's rebase is not a no-op and the
+  // in-lock merge check runs. It is red twice (2 and 3), so the immediate re-run does not pass
+  // the red as a flake and merge; the change is re-queued as merge_blocked. The re-queued
+  // attempt's pre-check (4) is green. With the pre-merge gate's reviewer gone (part 3h/3), the
+  // check command itself stages the main movement that used to ride the reviewer's VERDICT, so
+  // the rebase is still not a no-op and the in-lock merge check still runs.
   const bump =
     `[ -f '${counter}.bumped' ] || { touch '${counter}.bumped'; ` +
     `echo bump > '${repo}/bump.txt'; git -C '${repo}' add bump.txt; ` +
     `git -C '${repo}' -c user.name=t -c user.email=t@t commit -q -m bump; }`;
+  config.check = {
+    command: `${bump}\nn=$(cat '${counter}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${counter}'; [ $n -lt 2 ] || [ $n -gt 3 ]`,
+  };
+  saveConfig(repo, config);
   await withPi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) ${bump}; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
       `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file")}'`,
       `echo hello > hello.txt`,
     ].join("\n"),
