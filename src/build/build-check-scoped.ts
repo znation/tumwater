@@ -91,8 +91,6 @@ async function runScopedCheckWithRetry(
   cheaper: boolean,
   signal?: AbortSignal,
 ): Promise<{ raw: BuildCheckOutcome; durationMs: number }> {
-  // One permit covers both attempts (the killed-check retry re-runs under the permit it
-  // holds); durationMs prices the run itself, not the wait for a permit.
   let durationMs = 0;
   const raw = await withCheckPermit(
     config,
