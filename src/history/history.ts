@@ -3,7 +3,7 @@ import { betweenWindow, durationLabel, failRivalShapes, failUntilShorterThanSinc
 import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readRunRows, readRunRowsSince, runRows, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type HistoryResultClass, type RunRow } from "./history-data.js";
 import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
-import { followUntilParentGone, type FollowSeams } from "../cli/log-commands.js";
+import { followUntilParentGone, type FollowSeams } from "../cli/cli-log-commands.js";
 import { hasFollowFlag } from "../cli/cli-flag-specs.js";
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -24,7 +24,7 @@ export function parseHistoryModelList(raw: string | undefined): string[] {
 }
 
 /** `tumwater history [--role <id>[,<id>...]] [-n N]`: one row per completed run, newest first. The
- * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
+ * observing half beside cmdLogs (cli-log-commands.ts): read-only over the event log, stdout only —
  * every datum rides the `run_end` events src/run/run-finalize.ts already writes, so this
  * is a rendering of the existing record, not a new one. The rows themselves are collected
  * by history-data.ts (beside src/report/report-data.ts and src/failure/failure-data.ts), and
@@ -33,7 +33,7 @@ export function parseHistoryModelList(raw: string | undefined): string[] {
 
 /** The missing-pattern error cmdHistory prints for a valueless or empty `--grep`, exported so
  * cli.ts's rejectUnknownArgs spec for --grep can fail a trailing `history --grep` with the same
- * wording. Kept local to this module — log-commands.ts holds its own GREP_VALUE_ERROR — so the
+ * wording. Kept local to this module — cli-log-commands.ts holds its own GREP_VALUE_ERROR — so the
  * two observing views' wordings each name the command that printed them. */
 export const HISTORY_GREP_VALUE_ERROR = "history --grep needs a pattern";
 
@@ -221,7 +221,7 @@ function sayHistoryEmpty(q: HistoryQuery, filtered: HistoryFiltering): void {
   // `no runs in 2h` are statements about the LOG and the WINDOW, and both are false when
   // rows were scanned and filtered out — the operator would read a quiet team where the
   // truth is `the runs are there, none match`. The logs --grep rule (its `no events
-  // matching "<pattern>"`, src/cli/log-commands.ts) names the pattern instead; --json stays
+  // matching "<pattern>"`, src/cli/cli-log-commands.ts) names the pattern instead; --json stays
   // a bare {"rows":[]} document above, never prose in either form.
   //
   // The result class is named only when it emptied a non-empty set (`afterGrep > 0`): an

@@ -377,7 +377,7 @@ export function readEventsSinceJoined(
   return { cutoff, events, join: { cutoff: joinCutoff, events: joinEvents }, covered };
 }
 
-/** The duration-shaped windowed read behind `logs --since` (log-commands.ts): the cutoff is
+/** The duration-shaped windowed read behind `logs --since` (cli-log-commands.ts): the cutoff is
  * now − sinceMs, the rotation-spanning read is keyed on the cutoff's local calendar day
  * (dayKey — the shared dayKey helper eventDayKey buckets events with, so the read's day keys
  * cannot disagree with the ts filter), the day-keyed read may include earlier hours of that

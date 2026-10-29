@@ -53,7 +53,7 @@ import {
  * the `prompt` command, which drives the durable per-role queues rather than the marker
  * protocol, lives beside them in src/inbox/prompt-commands.ts, and the `config` command,
  * which reads and writes tumwater.json directly rather than touching team state, in
- * src/cli/config-commands.ts. Every command here is deliberately usable without a live
+ * src/cli/cli-config-commands.ts. Every command here is deliberately usable without a live
  * harness except `abort` and `stop`, which have nothing to reach when no team is up. */
 
 /** The `--role <id>` value when given, resolved WITHOUT tumwater.json when it names a

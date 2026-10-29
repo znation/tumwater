@@ -1,7 +1,7 @@
 /** In-process capture of a CLI command's fail() path: intercept process.exit, stdout, and
  * stderr around a call so a `fail()` branch (exit 1 + a stderr message) and a success return
  * are both assertable without killing the test process or polluting the runner's output. The
- * single home of that stub — it lived as four per-file copies (cli-args, log-commands-views,
+ * single home of that stub — it lived as four per-file copies (cli-args, cli-log-commands-views,
  * operator-commands, self-reload) whose shapes drifted independently. Every stub restores the
  * real globals in finally, and each saves the write function it replaces, so nests
  * (captureStdout around an attempt, or vice versa) unwind in LIFO order.
@@ -132,7 +132,7 @@ function captureWrite(stream: { write: (s: string) => boolean }): { text: () => 
 
 /** Intercept process.stdout.write for the duration of a test; restore() must run in finally.
  * For tests that read the output MID-flight or hold a capture across several awaited steps
- * (log-commands.test.ts drives a never-resolving follow this way) — a run-once
+ * (cli-log-commands.test.ts drives a never-resolving follow this way) — a run-once
  * call-then-assert belongs to expectOkAsync/attemptAsync above, which own the restore. */
 export function captureStdout(): { out: () => string; restore: () => void } {
   const capture = captureWrite(process.stdout as unknown as { write: (s: string) => boolean });

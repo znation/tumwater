@@ -1,6 +1,6 @@
 /** The read-only query commands' bodies (status, diff, queue, backlog), split out of
  * cli.ts's dispatcher: main() routes to a cmd* here exactly as it routes to operator-commands's
- * cmdAbort or config-commands's cmdConfig, and cli.ts keeps only routing and the help/version
+ * cmdAbort or cli-config-commands's cmdConfig, and cli.ts keeps only routing and the help/version
  * surfaces. Each command owns its argument gate, ready-repo gating decision, and output shape,
  * with the wording and gating order moved verbatim from main()'s cases. */
 

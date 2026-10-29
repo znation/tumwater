@@ -88,7 +88,7 @@ test("rankCountEntries accepts a Map and leaves the input unmutated", () => {
 });
 
 // sortByValueDesc is the sibling ordering for `[key, value, …]` pairs that want a code-unit
-// tiebreak instead of rankCountEntries's localeCompare: the log-commands per-type event-count
+// tiebreak instead of rankCountEntries's localeCompare: the cli-log-commands per-type event-count
 // lines and the report's mergeDone ranking. These pin its contract directly — value descending,
 // then code-unit ascending — and that it sorts the input array in place and returns it (the
 // `.sort()` the call sites replaced).

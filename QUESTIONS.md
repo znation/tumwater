@@ -63,7 +63,7 @@ the part 1/2 code that is now on main.
 src/gui/gui-endpoints.ts) and the TUI Activity pane (Ctrl+G, exact-role scope in
 src/ui/tui/tui-pane-activity.ts) both filter the event feed by role through `eventRole`. The
 CLI's `tumwater logs` cannot: `--role <id>` already switches it to that role's pi transcript, and
-`rejectRoleViewRival` (src/cli/log-commands.ts) rejects `--role` alongside every event-feed flag
+`rejectRoleViewRival` (src/cli/cli-log-commands.ts) rejects `--role` alongside every event-feed flag
 (`--grep`, `--type`, `--since`, `--count`, `--json`). Today the nearest workaround is
 `--grep feature`, which also matches other roles' lines that mention the word. Whatever name is
 picked takes a comma list like `history --role clean,dedupe`.

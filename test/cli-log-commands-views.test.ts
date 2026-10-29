@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { cmdLogs } from "../src/cli/log-commands.js";
+import { cmdLogs } from "../src/cli/cli-log-commands.js";
 import { logEvent } from "../src/events/events.js";
 import { piLogPath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
@@ -9,7 +9,7 @@ import { agentStart, assistantLine, userLine } from "./fixtures/pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 
-// The follow half of cmdLogs is covered by log-commands.test.ts (in-process, driven by mocked
+// The follow half of cmdLogs is covered by cli-log-commands.test.ts (in-process, driven by mocked
 // timers). These tests cover the one-shot views the follow tests never reach: the -n dump,
 // the --grep filter and its no-match note, the --since window and its rotation caveat, the
 // --transcript transcript without -f, and every mutually-exclusive-flag failure that guards the

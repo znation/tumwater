@@ -11,7 +11,7 @@ import { CLI, cli } from "./helpers/cli-harness.js";
 // boundary (single-dash words and a `--json` token past the number are prose, unknown flags
 // stay refused) and the question number's positive-integer rule. The list/--json forms and the
 // subcommand arity live in cli-questions-list.test.ts; the command bodies themselves are
-// exercised in-process in question-commands.test.ts. Split out of cli-arg-strictness.test.ts,
+// exercised in-process in cli-question-commands.test.ts. Split out of cli-arg-strictness.test.ts,
 // which keeps the parser-wide unknown-argument and flag-value gates.
 test("questions answer keeps single-dash decision words as prose", async () => {
   const repo = makeRepo();

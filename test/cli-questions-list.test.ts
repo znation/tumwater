@@ -10,7 +10,7 @@ import { cli } from "./helpers/cli-harness.js";
 // numbering, the missing-file degradation, the --json payload and its repeat refusal, and the
 // non-answer-subcommand / missing-decision refusals. The answer form's free-form decision
 // boundary and question-number rule live in cli-questions-strictness.test.ts; the command
-// bodies themselves are exercised in-process in question-commands.test.ts. Split out of the
+// bodies themselves are exercised in-process in cli-question-commands.test.ts. Split out of the
 // strictness file so the two surfaces run in parallel processes via the CLI child.
 test("questions lists the open questions, in prose and as JSON", async () => {
   const repo = makeRepo();

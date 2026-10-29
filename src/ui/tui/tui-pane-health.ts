@@ -3,7 +3,7 @@ import { orphanKillLines } from "../../doctor/doctor-orphans.js";
 import { backlogCommitMessage } from "../../doctor/doctor-backlog.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import { runManualReclaim } from "../../operator/operator-intent.js";
-import { testNotifyHook } from "../../cli/notify-command.js";
+import { testNotifyHook } from "../../cli/cli-notify-command.js";
 import { resyncRootInstall, rootInstallResyncLines } from "../../build/dep-install.js";
 import { brokenPinDropLines, leftoverRetireLines } from "../../doctor/doctor-contention-checks.js";
 import { describeArchivedFile } from "../../backlog/backlog-archive.js";
@@ -116,7 +116,7 @@ export function createHealthPane(session: TuiPaneSession) {
     if (!onHealthView(ctx, false)) return false;
     // Ctrl+N on the Health pane runs the saved notify hook once with the synthetic test event —
     // the terminal twin of `tumwater notify --test` and the dashboard Settings card's Send test,
-    // both reached through the same testNotifyHook (src/cli/notify-command.ts) — so a terminal
+    // both reached through the same testNotifyHook (src/cli/cli-notify-command.ts) — so a terminal
     // operator can check the push channel before a real page. The hook runs with stdio "ignore"
     // (the dashboard's choice) so a chatty hook's output cannot corrupt the alternate screen; the
     // running notice flashes first, then the outcome (the not-configured wording when no hook is

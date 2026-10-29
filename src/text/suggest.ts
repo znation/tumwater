@@ -27,7 +27,7 @@ function editDistance(a: string, b: string): number {
 
 /** The candidate closest to a mistyped `input` by case-insensitive edit distance, or null
  * when nothing is close enough to suggest: the "did you mean" behind typo'd command names
- * (help.ts) and config keys (config-write.ts, config-commands.ts, config-validation's
+ * (help.ts) and config keys (config-write.ts, cli-config-commands.ts, config-validation's
  * checkKnownKeys/checkKnownRoleId). Capped at `maxDistance`
  * (two edits by default — a typo's distance, not a different word's), so only a near miss
  * gets a hint and the suggestion can never fire as an auto-correction; the caller still

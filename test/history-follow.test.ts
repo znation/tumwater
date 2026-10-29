@@ -9,7 +9,7 @@ import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
 
 // `history -f` runs in-process with the follow's parent-death seams, the way
-// log-commands.test.ts drives `logs -f`.
+// cli-log-commands.test.ts drives `logs -f`.
 
 const at = (n: number) => Date.UTC(2026, 0, 1, 0, 0, n);
 const line = (o: object) => JSON.stringify(o) + "\n";

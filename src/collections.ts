@@ -68,7 +68,7 @@ export function filterKeepPositions<T>(items: readonly T[], keep: (item: T) => b
  * `map.set(k, (map.get(k) ?? 0) + 1)` step, shared by the failure-spread kind tally
  * (src/team/team-failure-spread.ts), the diff multiset's line tally (merge/merge-diff.ts), the
  * section-title tally (backlog/backlog-structure.ts), the logs' per-type tally
- * (cli/log-commands.ts), the flaky-check tally
+ * (cli/cli-log-commands.ts), the flaky-check tally
  * (doctor/doctor-project-checks.ts), and the multi-runner base tally
  * (orchestrator/orchestrator-scheduling.ts) — the exit-summary round's outcome tally
  * (cli/cli-start-summary.ts) seeds its own copy of this step inline — so those sites cannot
@@ -189,7 +189,7 @@ export function lowerMedian(values: number[]): number {
 
 /** Ascending string comparator by UTF-16 code unit — the locale-independent order a bare `.sort()`
  * uses, unlike `localeCompare` (which `rankByCount` uses for its tiebreak). Used directly by
- * src/cli/cli-start-summary.ts, src/cli/completion.ts, src/cli/log-commands.ts,
+ * src/cli/cli-start-summary.ts, src/cli/completion.ts, src/cli/cli-log-commands.ts,
  * src/history/history-data.ts, src/review/post-merge-review.ts, src/review/quarantine-render.ts,
  * src/budget/budget.ts and src/change/change-data.ts, and by `sortByValueDesc` for its tiebreak. */
 export function compareCodeUnits(a: string, b: string): number {
@@ -199,7 +199,7 @@ export function compareCodeUnits(a: string, b: string): number {
 /** Rank `[key, value, …]` pairs by value descending, breaking ties in code-unit order
  * (compareCodeUnits — the locale-independent order, unlike rankByCount's localeCompare), so
  * equal values always order the same way. The single home of that comparator, which
- * src/cli/log-commands.ts's per-type event-count lines and src/report/report-render.ts's
+ * src/cli/cli-log-commands.ts's per-type event-count lines and src/report/report-render.ts's
  * mergeDone sort hand-rolled before; `…rest` lets a site carry extra trailing fields
  * (report-render's third column) through the sort untouched. Mutates and returns the input
  * array, matching the `.sort()` the call sites replaced. */

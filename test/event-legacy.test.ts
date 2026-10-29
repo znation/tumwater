@@ -5,7 +5,7 @@ import { canonicalEventType, normalizeLegacyEvent } from "../src/events/event-le
 import { parseEventLine, readEvents } from "../src/events/event-read.js";
 import { readWindowEvents } from "../src/events/event-window.js";
 import { logEvent, subscribeEvents, type HarnessEventInput } from "../src/events/events.js";
-import { cmdLogs } from "../src/cli/log-commands.js";
+import { cmdLogs } from "../src/cli/cli-log-commands.js";
 import { eventsArchivePath, eventsLogPath } from "../src/paths.js";
 import { dayKey } from "../src/text/datetime.js";
 import { ensureParentDir } from "../src/files/files.js";

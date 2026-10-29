@@ -8,7 +8,7 @@ import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
 
 // `status -f` runs in-process with the follow's parent-death and TTY seams, driving the
-// follow deterministically the way log-commands.test.ts drives `logs -f`: mock only
+// follow deterministically the way cli-log-commands.test.ts drives `logs -f`: mock only
 // setInterval so each repaint and each parent-death poll is a tick, never a wall-clock
 // budget the suite's concurrent load can starve. status-follow was quarantined twice
 // (2026-10-21) because a real 5 ms repaint interval fired too slowly on a loaded machine

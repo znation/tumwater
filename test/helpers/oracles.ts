@@ -35,8 +35,8 @@ export function todayTs(agoMs = HOUR): number {
 /** Local calendar date `YYYY-MM-DD` from a Date's own local parts — the raw-parts date builder
  * dayKey and expectedTimestamp are made of (never datetime.ts's formatDate — a test-local
  * oracle, so a drift in the production formatter fails an assertion instead of matching its
- * own output). Its other callers are datetime.test.ts's dayAt cases and question-commands.test's
- * operator-answer stamp. */
+ * own output). Its other callers are datetime.test.ts's dayAt cases and
+ * cli-question-commands.test's operator-answer stamp. */
 export function dateOf(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }

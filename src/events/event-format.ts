@@ -206,7 +206,7 @@ export function eventFeedItem(e: HarnessEvent): { ts: number; source: string; ty
 
 /** The feed's `--grep`/Search match rule: case-insensitive substring over the raw event type
  * prefixed to the rendered line — exactly the haystack the operator would otherwise read. One
- * home shared by the CLI's `tumwater logs --grep` (cli/log-commands.ts) and the dashboard's
+ * home shared by the CLI's `tumwater logs --grep` (cli/cli-log-commands.ts) and the dashboard's
  * /api/logs search, so the two surfaces cannot disagree about what a pattern matches. */
 export function eventMatchesGrep(e: HarnessEvent, patternLower: string): boolean {
   return `${e.type} ${formatEvent(e)}`.toLowerCase().includes(patternLower);

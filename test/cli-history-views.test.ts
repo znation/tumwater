@@ -7,7 +7,7 @@ import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 import { displayWidth } from "../src/text/text-width.js";
 
 // The direct in-process views of `tumwater history` (history.ts): cmdHistory driven the way
-// log-commands-views.test.ts drives cmdLogs — stdout captured, fail() branches caught via the
+// cli-log-commands-views.test.ts drives cmdLogs — stdout captured, fail() branches caught via the
 // exit stub, no spawned child. The history-data.test.ts slice covers the row collector, and
 // gui-endpoints covers its JSON payload; the same renderer is also measured end-to-end by the
 // spawned-CLI runs in cli-history.test.ts and cli-history-filtering.test.ts (alignment, the

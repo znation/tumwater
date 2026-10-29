@@ -65,7 +65,7 @@ piped call is flagged past the buffered wall-clock threshold, not the silence on
 the surfaces cannot disagree on a feed row's fields or on what a pattern matches.
 
 **Binds.** `src/events/event-format.ts` (`eventFeedItem`, `eventMatchesGrep`),
-`src/ui/status-payload.ts` (`eventItems`), `src/cli/log-commands.ts` (`cmdLogs`),
+`src/ui/status-payload.ts` (`eventItems`), `src/cli/cli-log-commands.ts` (`cmdLogs`),
 `src/gui/gui-history-endpoints.ts` (`handleLogs`).
 
 **Pinned by.** `test/gui-endpoints.test.ts` — "handleLogs serves the matched tail oldest-first
@@ -220,9 +220,9 @@ stay staged). Your cancel, edit, and question answer (`--cancel`, `--edit`, `que
 (`commitOperatorBacklogEdit` returns false, never throws) and the entry stays written.
 
 **Binds.** `src/backlog/backlog-commit.ts` (`commitOperatorBacklogEdit`), `src/backlog/backlog-cli.ts`
-(`announceFiled`), `src/gui/gui-endpoint-commands.ts` (`handleBacklogFile`), `src/ui/tui/tui-keys.ts`, `src/cli/brief-command.ts`, `src/brief/brief-edit.ts`, `src/gui/gui-endpoint-commands.ts` (`handleBriefEdit`), `src/gui/gui-backlog-commands.ts` (`handleBacklogRelease`, `handleBacklogTop`).
+(`announceFiled`), `src/gui/gui-endpoint-commands.ts` (`handleBacklogFile`), `src/ui/tui/tui-keys.ts`, `src/cli/cli-brief-command.ts`, `src/brief/brief-edit.ts`, `src/gui/gui-endpoint-commands.ts` (`handleBriefEdit`), `src/gui/gui-backlog-commands.ts` (`handleBacklogRelease`, `handleBacklogTop`).
 
-**Pinned by.** `test/backlog-commit.test.ts`, `test/brief-command.test.ts`, `test/gui-endpoints.test.ts`.
+**Pinned by.** `test/backlog-commit.test.ts`, `test/cli-brief-command.test.ts`, `test/gui-endpoints.test.ts`.
 
 ### INV-B6: a scheduled stop fires once, is consumed when it fires, and is cleared at a fresh `start`
 
@@ -364,10 +364,10 @@ cannot drop it silently.
 hook forever; the bound is cleared on every outcome, so a hook that exits promptly never keeps
 the CLI alive. The dashboard's `POST /api/notify-test` runs the same test under the same bound.
 
-**Binds.** `src/cli/notify-command.ts` (`runNotifyHook`, `testNotifyHook`, `cmdNotify`, `NOTIFY_TEST_TIMEOUT_MS`) and
+**Binds.** `src/cli/cli-notify-command.ts` (`runNotifyHook`, `testNotifyHook`, `cmdNotify`, `NOTIFY_TEST_TIMEOUT_MS`) and
 `src/gui/gui-config-commands.ts` (`handleNotifyTest`).
 
-**Pinned by.** `test/notify-command.test.ts` — "a hook that never exits is killed at the timeout
+**Pinned by.** `test/cli-notify-command.test.ts` — "a hook that never exits is killed at the timeout
 and reported, not awaited forever" and "runNotifyHook resolves a never-ending hook at the
 injected timeout"; `test/gui-endpoints.test.ts` — the `handleNotifyTest` tests.
 

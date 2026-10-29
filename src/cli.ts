@@ -121,7 +121,7 @@ async function cmdGuiCase(root: string, args: string[]): Promise<void> {
 }
 
 async function cmdConfigCase(root: string, args: string[]): Promise<void> {
-  const { cmdConfig, CONFIG_USAGE } = await import("./cli/config-commands.js");
+  const { cmdConfig, CONFIG_USAGE } = await import("./cli/cli-config-commands.js");
   // Subcommand arity before the ready-repo gate, so a malformed get/set fails with its
   // usage no matter the directory: bare config takes nothing, `get`/`unset` exactly one
   // key, `set` exactly a key and a value. cmdConfig dispatches on the (now well-shaped)
@@ -280,7 +280,7 @@ async function cmdDoctorCase(root: string, args: string[]): Promise<void> {
 }
 
 async function cmdLogsCase(root: string, args: string[]): Promise<void> {
-  const { cmdLogs, GREP_VALUE_ERROR, TYPE_VALUE_ERROR } = await import("./cli/log-commands.js");
+  const { cmdLogs, GREP_VALUE_ERROR, TYPE_VALUE_ERROR } = await import("./cli/cli-log-commands.js");
   rejectUnknownArgs("logs", args, [
     FOLLOW_FLAG,
     N_FLAG,
@@ -302,7 +302,7 @@ async function cmdLogsCase(root: string, args: string[]): Promise<void> {
 async function cmdNotifyCase(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("notify", args, [{ names: ["--test"] }]);
   await requireReadyRepo(root);
-  await (await import("./cli/notify-command.js")).cmdNotify(root, args);
+  await (await import("./cli/cli-notify-command.js")).cmdNotify(root, args);
 }
 
 async function cmdHistoryCase(root: string, args: string[]): Promise<void> {
@@ -681,10 +681,10 @@ async function main(): Promise<void> {
       break;
     }
     case "questions":
-      await (await import("./cli/question-commands.js")).cmdQuestions(root, args);
+      await (await import("./cli/cli-question-commands.js")).cmdQuestions(root, args);
       break;
     case "brief":
-      await (await import("./cli/brief-command.js")).cmdBrief(root, args);
+      await (await import("./cli/cli-brief-command.js")).cmdBrief(root, args);
       break;
     case "role":
       await (await import("./cli/cli-role-command.js")).cmdRole(root, args);

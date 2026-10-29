@@ -110,7 +110,7 @@ export const GUI_CLIENT_FEED_JS = String.raw`
   const emptyFeedRow = (head, body) => "<li class='empty'><strong>" + head + "</strong>" + body +
     "<button type='button' class='linkish' data-action='feedclear'>Clear filter</button></li>";
   // A per-type tally for the Activity feed, mirroring the CLI's logs --count display rule
-  // (read-only from src/cli/log-commands.ts's sayTally): one N × <type> chip per present event
+  // (read-only from src/cli/cli-log-commands.ts's sayTally): one N × <type> chip per present event
   // type, count-descending then type-name ascending. A pure function of the rows in hand, so the
   // chips and the <li> rows below cannot drift on which events count; "" for an empty array so
   // empty and empty-state feeds paint no stray chips. Each chip is a button: clicking the

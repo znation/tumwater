@@ -1,7 +1,7 @@
 /** `tumwater init`'s implementation (src/init/init.ts does the work; this prints the report).
  * Split out of cli/cli-start.ts, whose name is for start alone: every command it dispatches
- * delegates to its own module (operator/operator-commands.ts, config-commands.ts, log-commands.ts,
- * doctor.ts, …), and init is no exception. cli.ts stays the pure dispatcher. */
+ * delegates to its own module (cli-config-commands.ts, cli-log-commands.ts, doctor.ts, …), and init
+ * is no exception. cli.ts stays the pure dispatcher. */
 import { say } from "./cli-output.js";
 import { parseInitArgs } from "./cli-command-args.js";
 import { initProject } from "../init/init.js";

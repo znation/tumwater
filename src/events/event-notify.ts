@@ -59,7 +59,7 @@ interface Notifier {
 
 /** The child environment the notify hook runs with: the three TUMWATER_EVENT_* variables over
  * the harness's own environment. One home for the variable names, shared by the notifier's
- * spawn and the `tumwater notify --test` diagnostic (src/cli/notify-command.ts), so the two
+ * spawn and the `tumwater notify --test` diagnostic (src/cli/cli-notify-command.ts), so the two
  * cannot drift on what a hook sees. */
 export function notifyCommandEnv(type: string, source: string, message: string): NodeJS.ProcessEnv {
   return childEnv({
@@ -96,7 +96,7 @@ export function notifyExitWarning(
  * not found", 126 its "found but not executable" — most often the configured `notify` command
  * is a typo or an uninstalled/non-executable binary, so a bare "code 127" hides the fix the
  * gloss names. Shared by the notifier's warning (notifyExitWarning above) and `tumwater
- * notify --test`'s diagnostic (src/cli/notify-command.ts) so both surfaces name the same fix
+ * notify --test`'s diagnostic (src/cli/cli-notify-command.ts) so both surfaces name the same fix
  * for a hook that cannot launch. Any other code gets no gloss. */
 export function notifyExitGloss(code: number): string {
   return code === 127 ? " (command not found)" : code === 126 ? " (found but not executable)" : "";

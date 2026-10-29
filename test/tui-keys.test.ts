@@ -4869,7 +4869,7 @@ test("Ctrl+E on the Activity view writes no reclaim marker", async () => {
 
 // Ctrl+N on the Health view runs the saved notify hook once with the synthetic test event — the
 // terminal twin of `tumwater notify --test` and the dashboard Settings card's Send test, both
-// reached through the same testNotifyHook (src/cli/notify-command.ts). The hook's stdio is
+// reached through the same testNotifyHook (src/cli/cli-notify-command.ts). The hook's stdio is
 // "ignore" (the dashboard's choice) so a chatty hook's output cannot corrupt the alternate
 // screen; the running notice flashes first, then the outcome once the hook exits.
 test("Ctrl+N on the Health view runs the notify hook once and flashes the outcome", async () => {

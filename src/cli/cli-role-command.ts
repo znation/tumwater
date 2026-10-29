@@ -1,7 +1,7 @@
 /** `tumwater role <id>`'s command body, split out of cli-query-commands.ts so that module
  * keeps only the read-only query commands (status, diff, queue, backlog). cli.ts's dispatcher
  * routes to cmdRole here exactly as it routes cmdStatus to cli-query-commands or cmdConfig to
- * config-commands. cmdRole is the one query-named command that also writes: it renders a
+ * cli-config-commands. cmdRole is the one query-named command that also writes: it renders a
  * role's standing and next-run prompts and carries eleven per-role write flags (notes,
  * instructions, quiet-hours, daily cap, min-run-interval, instances, enable/disable, and the
  * provider/model/thinking/backend), each through the same setConfigKey/unsetConfigKey core

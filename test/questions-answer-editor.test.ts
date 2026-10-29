@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { initProject } from "../src/init/init.js";
-import { ANSWER_EDITOR_CUT } from "../src/cli/question-commands.js";
+import { ANSWER_EDITOR_CUT } from "../src/cli/cli-question-commands.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { cliWithEnv } from "./helpers/cli-harness.js";
 

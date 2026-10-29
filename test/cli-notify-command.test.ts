@@ -5,7 +5,7 @@ import path from "node:path";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { setConfigKey } from "../src/config/config-write.js";
-import { runNotifyHook, testNotifyHook, NOTIFY_TEST_TIMEOUT_MS } from "../src/cli/notify-command.js";
+import { runNotifyHook, testNotifyHook, NOTIFY_TEST_TIMEOUT_MS } from "../src/cli/cli-notify-command.js";
 
 // The `notify --test` command: run the configured notify hook once with a synthetic event, via
 // the CLI the way the cli-queue tests drive `queue` — an initialized repo, child-process runs,

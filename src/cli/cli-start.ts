@@ -1,8 +1,8 @@
 /** `tumwater start`'s implementation, with its supervisor half (src/process/supervisor.ts) and
  * its exit-summary half (src/cli/cli-start-summary.ts). cli.ts stays the pure dispatcher;
  * `tumwater init` lives in cli/cli-init.ts and every other command it dispatches delegates to
- * its own module (operator/operator-commands.ts, prompt-commands.ts, config-commands.ts,
- * log-commands.ts, doctor.ts, …). */
+ * its own module (operator/operator-commands.ts, prompt-commands.ts, cli-config-commands.ts,
+ * cli-log-commands.ts, doctor.ts, …). */
 import type { StdioOptions } from "node:child_process";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { baseRoleOf, runnerIds } from "../roles/runner-ids.js";

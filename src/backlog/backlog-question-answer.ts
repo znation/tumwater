@@ -7,7 +7,7 @@
  * output helpers, so every surface can drive it without ending the process.
  *
  * Shared by every read/answer surface: the CLI's `tumwater questions` command body wraps it in
- * src/cli/question-commands.ts (the say/fail/editor layer), while the TUI's answer box
+ * src/cli/cli-question-commands.ts (the say/fail/editor layer), while the TUI's answer box
  * (src/ui/tui/tui-keys.ts) and the dashboard's POST route (src/gui/gui-endpoint-commands.ts)
  * import the non-exiting answer core directly. It lives with the rest of the BUGS/PLANS/QUESTIONS
  * markdown (src/backlog/), not under src/cli/, so the non-command surfaces never depend on the
