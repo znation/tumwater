@@ -1,3 +1,4 @@
+import { distinctOrdered } from "../collections.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { baselineCheckLogger, clearHealKeyOnGreen, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
@@ -62,7 +63,7 @@ const knownFailures = new Map<string, string[]>();
  * (review/known-flakes.ts). Empty when the verdict is green, red with no parsed test, or none has
  * been recorded yet in this process, and nothing is quarantined. */
 export function knownMainFailures(root: string): string[] {
-  return [...new Set([...(knownFailures.get(root) ?? []), ...quarantinedTests(root)])];
+  return distinctOrdered([...(knownFailures.get(root) ?? []), ...quarantinedTests(root)]);
 }
 
 /** The failing tests of a failed check when every one of them is a known main failure; null when

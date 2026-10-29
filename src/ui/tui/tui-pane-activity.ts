@@ -3,6 +3,7 @@ import { stepEntryScroll } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
+import { distinctOrdered } from "../../collections.js";
 
 /** The Activity pane (view 0) of the TUI (src/ui/tui/tui.tsx): the session live-tail scope
  * (Ctrl+G), the event type/notable cull cycle (Ctrl+O), the free-text search (`/`), and the
@@ -65,7 +66,7 @@ export function createActivityPane(
    * the old filtered list. */
   const activityTypeCycle = (ctx: TuiPaneCtx): boolean => {
     if (!promptLineFree(ctx.es)) return false;
-    const present = [...new Set(activityEvents(session.root, activityRole, activityGrep, null).map((e) => e.type))].sort();
+    const present = distinctOrdered(activityEvents(session.root, activityRole, activityGrep, null).map((e) => e.type)).sort();
     const slots: Array<{ notable: boolean; type: string | null }> = [
       { notable: false, type: null },
       { notable: true, type: null },

@@ -18,7 +18,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { dayAt, dayKey, dayWindow, DAY_MS, formatDate } from "../text/datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster } from "./failure-cluster.js";
-import { addTo, getOrCreate, memoSetLru, rankByCount } from "../collections.js";
+import { addTo, distinctOrdered, getOrCreate, memoSetLru, rankByCount } from "../collections.js";
 import { firstReason } from "../text/phrases.js";
 import { sameStatIdentity, statIdentityOrZero, statOrNull } from "../files/files.js";
 import { nonNegativeNumber } from "../files/json-object.js";
@@ -490,7 +490,7 @@ function outcomeRows(runEvents: HarnessEvent[]): OutcomeRow[] {
 function deltaRows(current: HarnessEvent[], prior: HarnessEvent[]): DeltaRow[] {
   const curStats = roleStats(current);
   const prevStats = roleStats(prior);
-  const roles = [...new Set([...curStats.keys(), ...prevStats.keys()])];
+  const roles = distinctOrdered([...curStats.keys(), ...prevStats.keys()]);
   return roles
     .map((role) => {
       const c = curStats.get(role) ?? ZERO_ROLE_STATS;

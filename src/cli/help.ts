@@ -4,6 +4,7 @@
  * <command>` from it by splitting the usage block on its `  tumwater <command>` lines, so a
  * topic can never drift out of sync with the full listing. */
 import { suggestClosest } from "../text/suggest.js";
+import { distinctOrdered } from "../collections.js";
 
 
 /** The role-grouped summary's JSON keys, quoted verbatim in `history --summary --json` help
@@ -650,7 +651,7 @@ sleep while there is nothing to do and wake when main moves. Everything is local
  * stanza; the distance mechanics are text/suggest.ts's suggestClosest, shared with the config-key
  * suggestion. */
 export function suggestCommand(input: string, help: string = HELP): string | null {
-  return suggestClosest(input, [...new Set(helpStanzas(help).map((s) => s.command))]);
+  return suggestClosest(input, distinctOrdered(helpStanzas(help).map((s) => s.command)));
 }
 
 /** One usage stanza: the command its `  tumwater <command>` line names and that line plus

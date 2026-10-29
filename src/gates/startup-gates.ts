@@ -17,6 +17,7 @@ import { owningTeamRoot } from "../paths.js";
 import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
 import { codexApiKeyRefusalMessage, seedCodexAccount } from "../agent/codex/codex-account.js";
+import { distinctOrdered } from "../collections.js";
 import {
   opencodeCatalogStale,
   readOpencodeCache,
@@ -258,7 +259,7 @@ export function opencodeProviders(config: TumwaterConfig): string[] {
  * One list the startup gate and doctor's binary check share, so a route the harness would
  * spawn is checked on both surfaces. */
 export function backendsInUse(config: TumwaterConfig): string[] {
-  return [...new Set(seamsInUse(config).map((s) => s.agent ?? "pi"))];
+  return distinctOrdered(seamsInUse(config).map((s) => s.agent ?? "pi"));
 }
 
 /** The first backend an enabled seam routes to that this build has no registered adapter for,

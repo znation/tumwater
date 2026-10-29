@@ -4,7 +4,7 @@
 import { customRoleNames, knownRoleIds, loadConfig } from "../config/config.js";
 import { BACKEND_IDS, BACKEND_KEYS, CLAUDE_AGENT_KEYS, CODEX_BACKEND_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS, THINKING_LEVELS, TOP_LEVEL_KEYS } from "../config/config-schema.js";
 import { DOTTED_MAP_KEYS, DOTTED_SECTION_FIELDS } from "../config/config-keys.js";
-import { compareCodeUnits } from "../collections.js";
+import { compareCodeUnits, distinctOrdered } from "../collections.js";
 import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, readRunRows } from "../history/history-data.js";
 import { templateIds } from "../init/init-templates.js";
 import { DOCTOR_CHECK_NAMES } from "../doctor/doctor-check-names.js";
@@ -87,7 +87,7 @@ function usageWords(firstLine: string, command: string): string[] {
 
 export function completionSpec(help: string = HELP): CompletionSpec {
   const stanzas = helpStanzas(help);
-  const commands = [...new Set(stanzas.map((s) => s.command))];
+  const commands = distinctOrdered(stanzas.map((s) => s.command));
   const subcommands: Record<string, string[]> = {};
   const flags: Record<string, string[]> = {};
   for (const command of commands) {
@@ -146,7 +146,7 @@ export function completionConfigKeys(root: string): string[] {
     ...Object.entries(DOTTED_SECTION_FIELDS).flatMap(([section, fields]) => fields.map((field) => `${section}.${field}`)),
     ...roleIds.flatMap((id) => ROLE_ENTRY_KEYS.map((field) => `roles.${id}.${field}`)),
   ];
-  return [...new Set(keys)];
+  return distinctOrdered(keys);
 }
 
 /** The value vocabulary `config set <key> <value>` completes for one key, or [] when the

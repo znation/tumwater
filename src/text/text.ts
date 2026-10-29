@@ -13,6 +13,8 @@
  * reaching into another module's internals — and the collapse/truncation/compaction/
  * abbreviation semantics live in exactly one place instead of drifting per consumer. */
 
+import { distinctOrdered } from "../collections.js";
+
 /** Collapse every run of whitespace to a single space and trim both ends — the shape every
  * one-line label takes before display (multi-line pi text, command strings, error messages). */
 export function collapseWhitespace(s: string): string {
@@ -121,7 +123,7 @@ export function splitCommaList(raw: string): string[] {
  * filter and the GUI's `role` and `model` query parameters, each of which treats a repeat as
  * the same selector. */
 export function splitCommaListUnique(raw: string): string[] {
-  return [...new Set(splitCommaList(raw))];
+  return distinctOrdered(splitCommaList(raw));
 }
 
 /** A value or list of `T` as a list: a bare `T` is one item, an array stays itself. The
@@ -293,5 +295,5 @@ export function tooLongMessage(subject: string, n: number, max: number, tail: st
  * role-note missing-path scan (run/run-prompt.ts), so the two agree on what reads as a path. */
 export function pathTokens(text: string): string[] {
   const tokenRe = /[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\.[A-Za-z0-9]+/g;
-  return [...new Set([...text.matchAll(tokenRe)].map((m) => m[0]))];
+  return distinctOrdered([...text.matchAll(tokenRe)].map((m) => m[0]));
 }

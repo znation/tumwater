@@ -8,7 +8,7 @@ import { humanSeconds, secondsSince, HOUR_MS, DAY_MS } from "../text/datetime.js
 import type { HarnessEvent } from "../events/events.js";
 import { eventsSince } from "../events/event-window.js";
 import { finiteNumber } from "../files/json-object.js";
-import { lowerMedian } from "../collections.js";
+import { distinctOrdered, lowerMedian } from "../collections.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { queuedMerges, unreadableMergeQueueFiles } from "../merge/merge-queue.js";
 import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
@@ -341,7 +341,7 @@ export async function dirtyBacklogFiles(root: string, config: TumwaterConfig | u
     // An unreadable brief is a doctor finding of its own; it must not abort the uncommitted-backlog
     // check or `--commit-backlog`, so the tracked backlog set is watched without it.
   }
-  const watched = [...new Set([...BACKLOG_FILES, ...(brief ? [brief] : [])])];
+  const watched = distinctOrdered([...BACKLOG_FILES, ...(brief ? [brief] : [])]);
   const out = await gitTry(root, "status", "--porcelain", "--", ...watched);
   if (out === null) return { base, primary, watched, dirty: null };
   const dirtySet = new Set(out.split("\n")

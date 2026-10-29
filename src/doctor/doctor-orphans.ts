@@ -9,6 +9,7 @@ import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage, truncate } from "../text/text.js";
 import { plural } from "../text/phrases.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
+import { distinctOrdered } from "../collections.js";
 
 /** The orphan-process check of `tumwater doctor`, split out of doctor.ts: it is the one
  * doctor check that inspects the operating system's process table (argv, cwd, parent-child
@@ -370,7 +371,7 @@ async function killTrees(
     }
   };
   const trees = chosen.map((r) => ({ r, pids: [r.pid, ...descendantPids(children, r.pid)] }));
-  const all = [...new Set(trees.flatMap((t) => t.pids))];
+  const all = distinctOrdered(trees.flatMap((t) => t.pids));
   for (const pid of all) send(pid, "SIGTERM");
   const stillAlive = (): number[] => all.filter((pid) => !refused.has(pid) && signals.alive(pid));
   const deadline = Date.now() + signals.graceMs;

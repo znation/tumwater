@@ -5,6 +5,7 @@ import { errorMessage, splitCommaList } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./operator-retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "./operator-revert.js";
+import { distinctOrdered } from "../collections.js";
 import { runNotFoundMessage } from "../run/run-detail.js";
 import { readRunDetail } from "../run/run-detail-data.js";
 import { readRunRows } from "../history/history-data.js";
@@ -90,7 +91,7 @@ function rolePieces(args: string[]): string[] | null {
 function namedRoleList(root: string, args: string[]): string[] | null {
   const pieces = rolePieces(args);
   if (pieces === null) return null;
-  return [...new Set(pieces.map((piece) => namedRole(root, ["--role", piece])!))];
+  return distinctOrdered(pieces.map((piece) => namedRole(root, ["--role", piece])!));
 }
 
 /** namedRole for the commands that write or lift the per-role pause marker, over a comma list
@@ -105,7 +106,7 @@ function pauseTargetRoles(root: string, args: string[]): string[] | null {
   const roles = pieces.map((piece) =>
     [...INSTANCE_ROLES].some((base) => piece === `${base}-1`) ? piece : namedRole(root, ["--role", piece])!,
   );
-  return [...new Set(roles)];
+  return distinctOrdered(roles);
 }
 
 /** The `--role <id>` value a marker command requires: namedRole's resolution plus the
