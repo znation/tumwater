@@ -2,12 +2,18 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** Affected-test selection for `npm run test:gate`, the review gate's per-change pre-check
- * (`check.gateCommand`, DEVELOPMENT.md "The gate runs the affected tests"). The team ran the
+ * (`check.gateCommand`, DEVELOPMENT.md "The gate runs the nearest tests"). The team ran the
  * whole suite before every model review, ~200 times a day, while most changes touch a handful of
- * modules. This picks the compiled test files a change can reach. The full suite still runs
- * once per landing (the in-lock and batch checks run `npm test`) unless `check.mergeCommand`
- * is set, so a dependency this misses costs a later rejection — or, with `mergeCommand`, a red
- * main the main watch finds after the merge.
+ * modules. This finds the compiled test files a change can reach and how far each is from it,
+ * and fitBudget keeps the nearest of them that fit the gate's time budget. The merge's in-lock
+ * check runs the gate command too (`check.mergeCommand` falls back to it), so only the main
+ * watch's full check after the merge runs the rest: a test this leaves out costs a red main
+ * that the watch finds and ci heals forward.
+ *
+ * Reachability alone was not a bound. The orchestrator, merge and CLI modules import most of the
+ * tree, so a typical change reached a quarter of the suite and one in ten nearly all of it; on a
+ * loaded host gates ran 4–10 minutes and timed out (2026-10-29). Distance is what ranks them: a
+ * test that imports the changed module runs before one that reaches it through five others.
  *
  * The graph is read from the compiled tree (plus scripts/ and the docs' .cjs tools), not from
  * TypeScript, so it is always the graph of the code about to run. A module depends on what it
@@ -29,8 +35,9 @@ import path from "node:path";
  *
  * What cannot be mapped is not guessed at. A changed file that is neither code, nor named by any
  * module, nor documentation or lint configuration, and every change to the build and test
- * machinery (FULL_SUITE_FILES), selects the full suite. All of it is pure over a file tree, so
- * test/affected-tests.test.ts pins the rules on a synthetic tree without git. */
+ * machinery (FULL_SUITE_FILES), selects the full suite, which the gate's budget then samples
+ * cheapest first. All of it is pure over a file tree, so test/affected-tests.test.ts pins the
+ * rules on a synthetic tree without git. */
 
 /** Changes that can move any test's outcome: dependencies, compiler settings, and the runner
  * and this selector themselves. */
@@ -326,12 +333,25 @@ export function buildDepGraph(distRoot: string, repoRoot: string): DepGraph {
   return { deps, prefixDeps, scanners, tests };
 }
 
-/** What a change selects: the gating test files to run (source ids, sorted), or the full suite
- * with the reason. */
-type AffectedSelection = { tests: string[]; reason?: undefined } | { tests?: undefined; reason: string };
+/** The distance a tree scanner ranks at when nothing nearer reaches it. It reads every file, so
+ * any change can break it, but a test that imports the changed module is the likelier one: at 1,
+ * the ~60 scanners (many match SCANS_TREE only to find a fixture) crowded a change to a merge
+ * module's own merger.test.ts out of the budget. */
+const SCANNER_DISTANCE = 2;
 
-/** The gating tests `changed` (repo-relative paths, deleted ones included) can reach in `graph`.
- * A full-suite answer names the first change that forced it. */
+/** What a change selects: the gating test files to run (source ids, sorted) and how far each is
+ * from the change — 0 for a changed test file, 1 for a test that imports a changed file or names
+ * its directory, one more per import hop beyond, and SCANNER_DISTANCE at most for a tree scanner.
+ * When the change cannot be mapped, `reason` names the first change that forced it and `tests`
+ * is the full suite; the tests the mapped part reached keep their distance, the rest have none. */
+interface AffectedSelection {
+  tests: string[];
+  distance: ReadonlyMap<string, number>;
+  reason?: string;
+}
+
+/** The gating tests `changed` (repo-relative paths, deleted ones included) can reach in `graph`,
+ * found breadth-first so each carries its shortest distance. */
 export function selectAffected(graph: DepGraph, changed: readonly string[]): AffectedSelection {
   const referenced = new Set<string>();
   for (const set of graph.deps.values()) for (const d of set) referenced.add(d);
@@ -341,15 +361,17 @@ export function selectAffected(graph: DepGraph, changed: readonly string[]): Aff
 
   const seeds: string[] = [];
   let codeChanged = false;
+  let reason: string | undefined;
   for (const file of changed) {
-    if (FULL_SUITE_FILES.has(file)) return { reason: `${file} changed` };
-    if (isCode(file)) {
+    if (FULL_SUITE_FILES.has(file)) {
+      reason ??= `${file} changed`;
+    } else if (isCode(file)) {
       codeChanged = true;
       seeds.push(file);
     } else if (referenced.has(file) || underPrefix(file)) {
       seeds.push(file);
     } else if (!isDoc(file) && !LINT_ONLY_FILES.has(file)) {
-      return { reason: `${file} changed, and no test's dependencies name it` };
+      reason ??= `${file} changed, and no test's dependencies name it`;
     }
   }
 
@@ -361,18 +383,73 @@ export function selectAffected(graph: DepGraph, changed: readonly string[]): Aff
       list.push(from);
     }
   }
-  const reached = new Set<string>();
+  // The queue stays ordered by distance: every seed (0) goes in before every directory dependent
+  // (1), and each later entry is one more than the entry that found it.
+  const distance = new Map<string, number>();
   const queue: string[] = [];
-  const visit = (id: string) => {
-    if (reached.has(id)) return;
-    reached.add(id);
+  const visit = (id: string, d: number) => {
+    if (distance.has(id)) return;
+    distance.set(id, d);
     queue.push(id);
   };
+  for (const seed of seeds) visit(seed, 0);
   for (const seed of seeds) {
-    visit(seed);
-    for (const [from, set] of graph.prefixDeps) if ([...set].some((p) => seed.startsWith(p))) visit(from);
+    for (const [from, set] of graph.prefixDeps) if ([...set].some((p) => seed.startsWith(p))) visit(from, 1);
   }
-  while (queue.length > 0) for (const from of dependents.get(queue.pop()!) ?? []) visit(from);
+  for (let i = 0; i < queue.length; i++) {
+    const id = queue[i]!;
+    for (const from of dependents.get(id) ?? []) visit(from, distance.get(id)! + 1);
+  }
+  if (codeChanged) {
+    for (const scanner of graph.scanners) if (!distance.has(scanner)) distance.set(scanner, SCANNER_DISTANCE);
+  }
 
-  return { tests: graph.tests.filter((t) => reached.has(t) || (codeChanged && graph.scanners.has(t))) };
+  const reached = graph.tests.filter((t) => distance.has(t));
+  return {
+    tests: reason === undefined ? reached : graph.tests,
+    distance: new Map(reached.map((t) => [t, distance.get(t)!])),
+    ...(reason === undefined ? {} : { reason }),
+  };
+}
+
+/** The gate's time budget over a selection: rank the tests nearest first (by distance, then
+ * cheapest, then name; a test with no distance after every one that has one) and take each that
+ * still fits in `budgetMs` of `costMs`, passing over one that does not, so one slow file near the
+ * change does not crowd out the cheaper ones behind it. `run` is what fits, in rank order;
+ * `left` is the rest, also in rank order, for main's full check. */
+export function fitBudget(
+  selection: Pick<AffectedSelection, "tests" | "distance">,
+  costMs: (test: string) => number,
+  budgetMs: number,
+): { run: string[]; left: string[] } {
+  const ranked = selection.tests
+    .map((test) => ({ test, d: selection.distance.get(test) ?? Infinity, ms: costMs(test) }))
+    // Two tests with no distance subtract to NaN, which reads as a tie.
+    .sort((a, b) => a.d - b.d || a.ms - b.ms || (a.test < b.test ? -1 : a.test > b.test ? 1 : 0));
+  const run: string[] = [];
+  const left: string[] = [];
+  let spent = 0;
+  for (const r of ranked) {
+    if (spent + r.ms <= budgetMs) {
+      spent += r.ms;
+      run.push(r.test);
+    } else {
+      left.push(r.test);
+    }
+  }
+  return { run, left };
+}
+
+/** Changes that can move the lint's verdict on files they do not touch: its config, its
+ * dependencies, and the compiler settings its type-aware rules read. */
+const WHOLE_LINT_FILES = new Set(["eslint.config.js", "package.json", "package-lock.json", "tsconfig.json"]);
+
+/** What the gate lints for `changed` (repo-relative paths): the changed files eslint reads that
+ * still exist (`exists` decides; a deleted path has nothing to lint), or null for the whole tree
+ * when the lint's own inputs changed. `npm test` lints the whole tree; the gate does not need to,
+ * because eslint's cache already re-lints only files whose own content changed, so a whole-tree
+ * run in a gate mostly re-lints what main moved under the worktree. */
+export function gateLintTargets(changed: readonly string[], exists: (file: string) => boolean): string[] | null {
+  if (changed.some((f) => WHOLE_LINT_FILES.has(f))) return null;
+  return changed.filter((f) => /\.(?:[cm]?js|tsx?)$/.test(f) && exists(f));
 }

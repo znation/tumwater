@@ -3,7 +3,7 @@
 ```bash
 npm install && npm run build && npm link   # build from source and put `tumwater` on PATH
 npm test                                   # lint + build + the unit suite (what the merge runs)
-npm run test:gate                          # lint + build + only the tests your change reaches
+npm run test:gate                          # build + lint + the nearest tests that fit 30 s
 npm run lint                               # just the lint: no-floating-promises (see eslint.config.js)
 npm test merge                             # only test files whose name contains "merge"
 npm test 'runner#resume'                   # …and inside them, only tests whose name contains "resume"
@@ -34,17 +34,31 @@ watch. Run suites in a worktree. For the same reason a test never writes the run
 own `dist/` or `tumwater.json`. The gui reload test in `test/cli-gui.test.ts` serves a copy of
 `dist/src` from a fixture repo instead.
 
-## The gate runs the affected tests
+## The gate runs the nearest tests
 
 The team's review gate runs `npm run test:gate` before each model review
-(`check.gateCommand` in tumwater.json). It runs the same lint and build as `npm test`, then only
-the test files the change can reach (`test-runner.js --affected`, selection in
-`test/affected-tests.ts`). The full `npm test` runs once per merge on the rebased tree and on main's baseline, unless a
-gate or merge command is set (`check.mergeCommand` defaults to `check.gateCommand`): the lock
-then runs only that command, and the main watch runs the full check after the merge. A
-dependency the selection misses then costs a later rejection, or with `mergeCommand` a red main
-that the watch finds and reverts. Over the team's recent commits the selection averaged about
-half the suite's time.
+(`check.gateCommand` in tumwater.json), and the merge lock runs it again on the rebased tree
+(`check.mergeCommand` falls back to it). It is meant to finish in about a minute on a loaded
+host, so it checks only what is nearest the change:
+
+- the same compile as `npm test`;
+- the lint, over only the files the change touches (`scripts/lint-changed.mjs`). A change to the
+  lint config, the dependencies or `tsconfig.json` lints the whole tree;
+- the test files nearest the change that fit a 30 s budget (`test-runner.js --affected
+  --budget=30`, selection in `test/affected-tests.ts`). It ranks the files the change can reach
+  by import distance (a changed test file first, then files that import a changed module, and
+  so on), cheapest first at each distance. It prices each file by the durations this build last
+  recorded (`dist/test/.durations.json`, 5 s for a file never timed) and passes over a file that
+  does not fit. Its first line of output says how many fit and names the left-out files nearest
+  the change: run those by hand (`npm test <name>`) when your change is about them.
+
+Everything else runs in the main watch's full check (`npm test`) on main's tip after the merge,
+which the team keeps running on every new head. A break that only the full suite catches lands
+on main, and the watch hands it to ci's red-main heal, which fixes it forward. Reachability alone
+was not enough to bound the gate: the orchestrator, merge and CLI modules import most of the
+tree, so a typical change reached a quarter of the suite and one in ten nearly all of it. Gates
+then ran 4–10 minutes under load and timed out. Some single test files take minutes on their
+own and never fit the budget; splitting them is how they get back into the gate.
 
 The selection follows the compiled tree. It reads imports, `new URL("…", import.meta.url)` file
 references, and, for the CLI, the command each call to the test harness names. So keep these
@@ -56,8 +70,9 @@ visible to it:
 - Call the CLI through `test/helpers/cli-harness.ts` with the command as a string literal
   (`cli(repo, "logs", …)`, `spawnCli(repo, ["run", …])`, `[CLI, "status"]`). A computed command
   makes the file depend on every command.
-- Changes to `package.json`, the lockfile, `tsconfig.json` or the runner itself always run the
-  full suite, as does any file the selector cannot map. It says so in its first line of output.
+- Changes to `package.json`, the lockfile, `tsconfig.json` or the runner itself make every test
+  file a candidate, as does any file the selector cannot map, and the budget then takes the
+  cheapest. It says so in its first line of output.
 
 ## CI
 

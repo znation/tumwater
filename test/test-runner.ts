@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { printCoverageTable } from "./coverage-table.js";
-import { buildDepGraph, selectAffected } from "./affected-tests.js";
+import { buildDepGraph, fitBudget, selectAffected } from "./affected-tests.js";
 import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
 import { findOnPath } from "../src/files/files.js";
 import { systemProcessProbe, type ProcessRow } from "../src/process/process-table.js";
@@ -151,7 +151,7 @@ export function selectTestFiles(filters: readonly string[], distDir: string): Te
     return {
       names: [],
       files: [],
-      error: `unknown option ${JSON.stringify(flag)} — the runner takes --coverage, --affected[=<ref>], --repeat=<n>, and file or file#name filters`,
+      error: `unknown option ${JSON.stringify(flag)} — the runner takes --coverage, --affected[=<ref>], --budget=<seconds>, --repeat=<n>, and file or file#name filters`,
     };
   for (const raw of filters) {
     if (parseFilter(raw).name === "")
@@ -432,6 +432,40 @@ export function splitAffectedArgv(argv: readonly string[]): { rest: string[]; re
   return { rest, ref };
 }
 
+/** The most seconds `--budget` may give the gate's tests. */
+const MAX_BUDGET_S = 3600;
+
+/** Split `--budget=<seconds>` off the runner's argv (already stripped of --affected): the most
+ * test-file time, by the durations ledger, that an `--affected` run may select
+ * (affected-tests.ts's fitBudget). n must be a whole number from 1 to MAX_BUDGET_S, and the flag
+ * needs `--affected`, which main() checks; a bare `--budget` is an error. The last occurrence
+ * wins. Without the flag `budgetMs` is undefined. Exported for test/test-runner-affected.test.ts. */
+export function splitBudgetArgv(argv: readonly string[]): { rest: string[]; budgetMs?: number; error?: string } {
+  const rest = argv.filter((a) => a !== "--budget" && !a.startsWith("--budget="));
+  const flag = argv.filter((a) => a === "--budget" || a.startsWith("--budget=")).pop();
+  if (flag === undefined) return { rest };
+  const raw = flag.slice("--budget=".length);
+  const n = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  if (!(n >= 1 && n <= MAX_BUDGET_S))
+    return { rest, error: `--budget needs a whole number of seconds from 1 to ${MAX_BUDGET_S}, as --budget=<seconds>` };
+  return { rest, budgetMs: n * 1000 };
+}
+
+/** What a budgeted run prices a test file the durations ledger has never timed (new, or never
+ * run in this build). The suite's mean file takes about 7 s and its median 1 s, so a fresh
+ * build's first gate runs a handful of files, and each run's own durations fill the ledger. */
+const UNTIMED_TEST_FILE_MS = 5_000;
+
+/** What a budgeted run adds to each file's price for the time node --test spends on it outside
+ * its tests: a worker process and its imports, which the ledger (test time only) leaves out. It
+ * measured ~0.14 s a file at load 24 on 18 cores and several times that at load 80, where a
+ * 30 s budget of 247 small files ran 64 s; without it a budget fills with hundreds of tiny files
+ * whose startup alone outruns it. */
+const PER_FILE_OVERHEAD_MS = 250;
+
+/** The most left-out files near the change that a budgeted run's announcement names. */
+const LEFT_OUT_NAMED = 5;
+
 /** The most times `--repeat` may rerun a filtered test. */
 const MAX_REPEAT = 50;
 
@@ -573,34 +607,66 @@ export function buildNodeTestArgs(
 }
 
 /** The `--affected` selection: the gating files test/affected-tests.ts finds the change since its
- * merge-base with `ref` can reach, announced in one line. Whatever cannot be decided (git cannot
- * answer, or a change the selector will not map) announces why and selects the full suite, the
- * safe answer for a pre-check. */
-function affectedTestFiles(distDir: string, ref: string): TestFileSelection {
+ * merge-base with `ref` can reach, announced in one line. Unbudgeted, whatever cannot be decided
+ * (git cannot answer, or a change the selector will not map) announces why and selects the full
+ * suite, the safe answer for a pre-check. Under `budgetMs` the run keeps the nearest files that
+ * fit (fitBudget), priced by this build's durations ledger; an undecidable change makes every
+ * file a candidate, cheapest first. The announcement names the left-out files nearest the
+ * change, so an agent knows which to run by hand. */
+function affectedTestFiles(distDir: string, ref: string, budgetMs: number | undefined): TestFileSelection {
   const full = selectTestFiles([], distDir);
   if (full.error) return full;
   const distRoot = path.dirname(distDir);
   const repoRoot = path.dirname(distRoot);
   const changed = changedSinceBase(repoRoot, ref);
-  const pick = "error" in changed ? { reason: changed.error } : selectAffected(buildDepGraph(distRoot, repoRoot), changed.files);
-  if (pick.reason !== undefined) {
-    console.log(`affected tests: ${pick.reason}; running the full suite`);
-    return full;
-  }
+  const graph = buildDepGraph(distRoot, repoRoot);
+  const pick = "error" in changed ? { tests: graph.tests, distance: new Map<string, number>(), reason: changed.error } : selectAffected(graph, changed.files);
   const stem = (name: string) => path.basename(name).replace(/\.[jt]sx?$/, "");
-  const wanted = new Set(pick.tests.map(stem));
-  const keep = full.names.map((name, i) => ({ name, file: full.files[i]! })).filter((n) => wanted.has(stem(n.name)));
+  const keep = (tests: readonly string[]): TestFileSelection => {
+    const wanted = new Set(tests.map(stem));
+    const kept = full.names.map((name, i) => ({ name, file: full.files[i]! })).filter((n) => wanted.has(stem(n.name)));
+    return { names: kept.map((n) => n.name), files: kept.map((n) => n.file) };
+  };
   const count = "files" in changed ? changed.files.length : 0;
-  console.log(`affected tests: ${keep.length} of ${full.files.length} test files reach the ${count} changed file(s) since ${ref}`);
-  return { names: keep.map((n) => n.name), files: keep.map((n) => n.file) };
+  if (budgetMs === undefined) {
+    if (pick.reason !== undefined) {
+      console.log(`affected tests: ${pick.reason}; running the full suite`);
+      return full;
+    }
+    const kept = keep(pick.tests);
+    console.log(`affected tests: ${kept.files.length} of ${full.files.length} test files reach the ${count} changed file(s) since ${ref}`);
+    return kept;
+  }
+  const durations = readJsonFile<Record<string, number>>(durationsPath(distDir)) ?? {};
+  const costMs = (test: string) =>
+    finiteNumber(durations[`${stem(test)}.js`], UNTIMED_TEST_FILE_MS) + PER_FILE_OVERHEAD_MS;
+  const { run, left } = fitBudget(pick, costMs, budgetMs);
+  const kept = keep(run);
+  const near = left.filter((t) => (pick.distance.get(t) ?? Infinity) <= 1);
+  const named = near
+    .slice(0, LEFT_OUT_NAMED)
+    .map((t) => `${path.basename(t)} (~${Math.round(costMs(t) / 1000)}s)`)
+    .join(", ");
+  const more = near.length > LEFT_OUT_NAMED ? ` and ${near.length - LEFT_OUT_NAMED} more` : "";
+  const scope =
+    pick.reason === undefined
+      ? `${kept.files.length} of the ${pick.tests.length} test files that reach the ${count} changed file(s) since ${ref}`
+      : `${pick.reason}, so every test file is a candidate: ${kept.files.length} of ${pick.tests.length}`;
+  console.log(
+    `affected tests: ${scope} fit the ${budgetMs / 1000}s budget, nearest first; main's full check runs the rest` +
+      (named === "" ? "" : `. Left out near the change: ${named}${more}`),
+  );
+  return kept;
 }
 
 async function main(): Promise<void> {
-  const { rest, ref } = splitAffectedArgv(process.argv.slice(2));
+  const { rest: unbudgeted, ref } = splitAffectedArgv(process.argv.slice(2));
+  const { rest, budgetMs, error: budgetError } = splitBudgetArgv(unbudgeted);
   const { filters: allFilters, coverage } = splitCoverageArgv(rest);
   const { rest: filters, repeat, error: repeatError } = splitRepeatArgv(allFilters);
-  if (repeatError !== undefined) {
-    process.stderr.write(`tumwater: ${repeatError}\n`);
+  for (const error of [budgetError, repeatError]) {
+    if (error === undefined) continue;
+    process.stderr.write(`tumwater: ${error}\n`);
     process.exit(1);
   }
   const distDir = defaultDistDir();
@@ -610,7 +676,11 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
-  const sel = ref === undefined ? selectTestFiles(filters, distDir) : affectedTestFiles(distDir, ref);
+  if (ref === undefined && budgetMs !== undefined) {
+    process.stderr.write("tumwater: --budget applies to an --affected run only\n");
+    process.exit(1);
+  }
+  const sel = ref === undefined ? selectTestFiles(filters, distDir) : affectedTestFiles(distDir, ref, budgetMs);
   if (sel.error) {
     process.stderr.write(`tumwater: ${sel.error}\n`);
     process.exit(1);

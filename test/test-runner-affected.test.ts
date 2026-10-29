@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { changedSinceBase, splitAffectedArgv } from "./test-runner.js";
+import { changedSinceBase, splitAffectedArgv, splitBudgetArgv } from "./test-runner.js";
 import { commitIn, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // The runner's `--affected` mode (`npm run test:gate`): its argv and the change it measures.
@@ -13,6 +13,14 @@ test("splitAffectedArgv lifts --affected out of the argv, defaulting the branch 
   assert.deepEqual(splitAffectedArgv(["--affected"]), { rest: [], ref: "main" });
   assert.deepEqual(splitAffectedArgv(["--affected=trunk", "loop"]), { rest: ["loop"], ref: "trunk" });
   assert.deepEqual(splitAffectedArgv(["--affected="]), { rest: [], ref: "main" });
+});
+
+test("splitBudgetArgv lifts --budget=<seconds> off the argv and rejects bad budgets", () => {
+  assert.deepEqual(splitBudgetArgv(["--budget=30"]), { rest: [], budgetMs: 30_000 });
+  assert.deepEqual(splitBudgetArgv(["runner"]), { rest: ["runner"] });
+  assert.equal(splitBudgetArgv(["--budget=5", "--budget=45"]).budgetMs, 45_000, "the last occurrence wins");
+  for (const bad of ["--budget", "--budget=0", "--budget=1.5", "--budget=3601", "--budget=soon"])
+    assert.match(splitBudgetArgv([bad]).error ?? "", /whole number of seconds/, bad);
 });
 
 test("changedSinceBase lists committed, staged, unstaged and untracked changes since the merge-base", () => {

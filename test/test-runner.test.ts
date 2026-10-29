@@ -761,6 +761,12 @@ test("splitRepeatArgv lifts --repeat=<n> off a filtered argv and rejects bad cou
   assert.match(splitRepeatArgv(["--repeat=3"]).error ?? "", /at least one file/);
 });
 
+test("the spawned runner refuses a budget outside an --affected run", () => {
+  const r = runRunner(["--budget=30", "json-object"]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /--budget applies to an --affected run only/);
+});
+
 test("repeatRuns invokes the runner n times on success and stops at the first failure", () => {
   const calls: number[] = [];
   assert.deepEqual(repeatRuns(4, (i) => (calls.push(i), 0)), { status: 0, runs: 4 });

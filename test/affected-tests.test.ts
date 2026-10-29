@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { buildDepGraph, selectAffected } from "./affected-tests.js";
+import { buildDepGraph, fitBudget, gateLintTargets, selectAffected } from "./affected-tests.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
@@ -54,6 +54,58 @@ test("documentation and lint configuration select no tests; machinery and unmapp
   assert.match(select(root, ["src/c.ts", "package.json"]).reason ?? "", /package\.json changed/);
   assert.match(select(root, ["test/test-runner.ts"]).reason ?? "", /test-runner\.ts changed/);
   assert.match(select(root, ["scripts/deploy.sh"]).reason ?? "", /no test's dependencies name it/);
+  // The full suite comes back as the tests, and the mapped part of the change keeps its ranking.
+  const mixed = select(root, ["scripts/deploy.sh", "src/c.ts"]);
+  assert.deepEqual(mixed.tests, ["test/a.test.ts", "test/c.test.ts"]);
+  assert.deepEqual([...mixed.distance], [["test/c.test.ts", 1]]);
+});
+
+test("each selected test carries its shortest import distance from the change", () => {
+  const root = checkout({
+    "dist/src/a.js": 'import { b } from "./b.js";\nexport const a = b;\n',
+    "dist/src/b.js": "export const b = 1;\n",
+    "dist/src/ext/one.js": "export {};\n",
+    "dist/test/helpers/h.js": 'export { a } from "../../src/a.js";\n',
+    "dist/test/a.test.js": 'import { a } from "./helpers/h.js";\nimport { b } from "../src/b.js";\n',
+    "dist/test/far.test.js": 'import { a } from "./helpers/h.js";\n',
+    "dist/test/tree.test.js": 'const EXT = new URL("../src/ext/", import.meta.url);\n',
+    "dist/test/layering.test.js": 'import fs from "node:fs";\nfs.readdirSync(ROOT);\n',
+  });
+  const pick = select(root, ["src/b.ts", "src/ext/one.ts", "test/far.test.ts"]);
+  assert.deepEqual(Object.fromEntries(pick.distance), {
+    "test/a.test.ts": 1, // imports b directly, though its helper also reaches it in three hops
+    "test/far.test.ts": 0, // a changed test file
+    "test/layering.test.ts": 2, // a tree scanner reads every file, but ranks behind direct importers
+    "test/tree.test.ts": 1, // names the changed file's directory
+  });
+  assert.equal(select(root, ["src/b.ts"]).distance.get("test/far.test.ts"), 3, "b → a → helper → far.test");
+});
+
+test("fitBudget keeps the nearest tests that fit, passing over a slow one for the cheaper ones behind it", () => {
+  const cost: Record<string, number> = { near: 10, slow: 50, cheap: 5, far: 10, other: 1, rest: 2 };
+  const pick = {
+    tests: ["cheap", "far", "near", "other", "rest", "slow"],
+    distance: new Map([["near", 1], ["slow", 0], ["cheap", 1], ["far", 3]]),
+  };
+  const fit = (budget: number) => fitBudget(pick, (t) => cost[t]!, budget);
+  // slow (distance 0) does not fit 20, so cheap and near (1, cheapest first) go before far (3), and
+  // the tests with no distance fill what is left, cheapest first.
+  assert.deepEqual(fit(20), { run: ["cheap", "near", "other", "rest"], left: ["slow", "far"] });
+  assert.deepEqual(fit(100).left, [], "everything fits a big enough budget");
+  assert.deepEqual(fit(100).run, ["slow", "cheap", "near", "far", "other", "rest"], "in rank order");
+  assert.deepEqual(fit(0).run, [], "a test that costs anything does not fit an empty budget");
+});
+
+test("gateLintTargets lints the changed source files, or the whole tree when the lint's own inputs change", () => {
+  const exists = (f: string) => !f.includes("gone");
+  assert.deepEqual(
+    gateLintTargets(["README.md", "src/a.ts", "test/a.test.ts", "src/gone.ts", "scripts/x.mjs", "docs/t.cjs", "src/ui/v.tsx"], exists),
+    ["src/a.ts", "test/a.test.ts", "scripts/x.mjs", "docs/t.cjs", "src/ui/v.tsx"],
+    "a deleted file has nothing to lint, and documentation is not linted",
+  );
+  assert.deepEqual(gateLintTargets(["PLANS.md"], exists), []);
+  for (const input of ["eslint.config.js", "package.json", "package-lock.json", "tsconfig.json"])
+    assert.equal(gateLintTargets(["src/a.ts", input], exists), null, input);
 });
 
 test("files named through new URL(…, import.meta.url) are dependencies, and a directory is a prefix", () => {
