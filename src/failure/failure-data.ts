@@ -15,7 +15,7 @@ import { baseRoleOf } from "../roles/runner-ids.js";
 import { scopeBases } from "../report/report-fold.js";
 import { timeAndSpend, type LossCause, type TimeSpendRow } from "./failure-time-spend.js";
 import type { HarnessEvent } from "../events/events.js";
-import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
+import { DAY_MS, dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster } from "./failure-cluster.js";
 import { addTo, getOrCreate, memoSetLru, rankByCount } from "../collections.js";
@@ -366,7 +366,7 @@ export function collectFailureReportSince(
     else if (ev.ts >= priorFrom && ev.ts < cutoff) prior.push(ev);
   }
   return assembleFailureReport(current, prior, raw.events, eventWindowCovers(raw, priorFrom), raw.logState, {
-    days: Math.ceil(length / 86_400_000),
+    days: Math.ceil(length / DAY_MS),
     from: dayKey(cutoff),
     to: dayKey(end),
     ...slice,
