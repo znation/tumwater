@@ -83,6 +83,18 @@ export function rejectBadQueueFileName(res: http.ServerResponse, name: unknown):
   return true;
 }
 
+/** Pull a required `sha` commit id out of a POST body by the rule the History revert, the
+ * merge-queue cancel/top, and the post-review accept endpoints share: a value that is not a
+ * 4-64 hex-digit commit id (so never a flag or a ref name) is refused as a 400 naming the
+ * value. Returns the validated commit id, or null once the 400 is sent — the body-sha twin of
+ * requireStringField / requirePausedFlag, so the four operators' validation and 400 wording
+ * cannot drift. */
+export function requireSha(res: http.ServerResponse, sha: unknown): string | null {
+  if (typeof sha === "string" && /^[0-9a-f]{4,64}$/i.test(sha)) return sha;
+  badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(sha)}`);
+  return null;
+}
+
 /** Read an integer query parameter with the GUI's established discipline for an explicit
  * count: absent → `fallback` (or, when no fallback is given, the parameter is required and
  * its absence is its own 400 — "<name> required"); present but not a plain decimal integer

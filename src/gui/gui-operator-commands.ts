@@ -29,7 +29,7 @@ import { queueInFlight } from "../status/status-polls.js";
 import { orchestratorAlive } from "../team/team-orchestrator-info.js";
 import { shortSha } from "../text/format.js";
 import { editBriefText } from "../brief/brief-edit.js";
-import { requireStringField, validRoleIds } from "./gui-args.js";
+import { requireSha, requireStringField, validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import { errorMessage, gotSuffix } from "../text/text.js";
 import { readPostBody, readRoleBody, sendRequestResult } from "./gui-endpoint-common.js";
@@ -272,16 +272,16 @@ export async function handleRetire(req: http.IncomingMessage, res: http.ServerRe
 export async function handleRevert(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
   if (!body) return;
-  if (typeof body.sha !== "string" || !/^[0-9a-f]{4,64}$/i.test(body.sha))
-    return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
+  const sha = requireSha(res, body.sha);
+  if (sha === null) return;
   if (body.dryRun !== undefined && typeof body.dryRun !== "boolean")
     return badRequest(res, `"dryRun" must be true or false${gotSuffix(body.dryRun)}`);
   if (body.dryRun === true) {
-    const preview = await previewRevert(root, body.sha);
+    const preview = await previewRevert(root, sha);
     if (!preview.ok) return sendJson(res, 409, { error: preview.error });
     return sendJson(res, 200, { ok: true, preview });
   }
-  const result = await revertMergedCommit(root, body.sha);
+  const result = await revertMergedCommit(root, sha);
   if (!result.ok) return sendJson(res, 409, { error: result.error });
   const followUp = revertFollowUp(result.subject);
   sendJson(res, 200, {
@@ -313,10 +313,10 @@ function rejectInFlightMerge(res: http.ServerResponse, root: string, sha: string
 export async function handleQueueCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
   if (!body) return;
-  if (typeof body.sha !== "string" || !/^[0-9a-f]{4,64}$/i.test(body.sha))
-    return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
-  if (rejectInFlightMerge(res, root, body.sha)) return;
-  const outcome: CancelQueuedByShaOutcome = await cancelQueuedMergeBySha(root, body.sha);
+  const sha = requireSha(res, body.sha);
+  if (sha === null) return;
+  if (rejectInFlightMerge(res, root, sha)) return;
+  const outcome: CancelQueuedByShaOutcome = await cancelQueuedMergeBySha(root, sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
   if (outcome.status !== "cancelled") return;
   sendJson(res, 200, {
@@ -339,9 +339,9 @@ export async function handleQueueCancel(req: http.IncomingMessage, res: http.Ser
 export async function handlePostReviewAccept(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
   if (!body) return;
-  if (typeof body.sha !== "string" || !/^[0-9a-f]{4,64}$/i.test(body.sha))
-    return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
-  const outcome: AcceptPostReviewByShaOutcome = acceptPostReviewBySha(root, body.sha);
+  const sha = requireSha(res, body.sha);
+  if (sha === null) return;
+  const outcome: AcceptPostReviewByShaOutcome = acceptPostReviewBySha(root, sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
 
   if (outcome.status === "settled")
@@ -367,13 +367,13 @@ export async function handlePostReviewAccept(req: http.IncomingMessage, res: htt
 export async function handleQueueTop(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
   if (!body) return;
-  if (typeof body.sha !== "string" || !/^[0-9a-f]{4,64}$/i.test(body.sha))
-    return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
-  if (rejectInFlightMerge(res, root, body.sha)) return;
-  const outcome: TopQueuedByShaOutcome = moveQueuedMergeToTopBySha(root, body.sha);
+  const sha = requireSha(res, body.sha);
+  if (sha === null) return;
+  if (rejectInFlightMerge(res, root, sha)) return;
+  const outcome: TopQueuedByShaOutcome = moveQueuedMergeToTopBySha(root, sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
   if (outcome.status === "already-first")
-    return sendJson(res, 200, { ok: true, status: "already-first", role: outcome.role, commit: outcome.sha, summary: outcome.summary, message: `${shortSha(body.sha)} is already at the front` });
+    return sendJson(res, 200, { ok: true, status: "already-first", role: outcome.role, commit: outcome.sha, summary: outcome.summary, message: `${shortSha(sha)} is already at the front` });
   if (outcome.status !== "topped") return;
   sendJson(res, 200, {
     ok: true,
