@@ -124,9 +124,12 @@ says so once, in doctor and in the report.
 - **The tier map** (`small`/`default`/`strong`) stays; part 5e/6, which deleted it, is withdrawn.
   `roles.<id>.model` already gives one role its own model.
 - **The budget fallback** stays: at `maxDailyCostUsd` each tier switches to its own free fallback,
-  with its chain, breaker, events and surfaces. Parts 5u/6, 5v/6, 5w/6, 5m/6 and 5q/6 (its
-  removal) are withdrawn, and the landed parts 5r/6–5t/6 (its alert, badge fragment, role rows
-  and doctor rows) were reverted.
+  with its chain, breaker, events and surfaces. The parts that removed it are withdrawn — 5u/6
+  (the breaker), 5v/6 (the switch at the cap), 5w/6 (the fallback resolution), 5m/6 (its keys
+  and editors) and 5q/6 (its events) — and the landed parts 5r/6–5t/6 (its alert, badge
+  fragment, role rows and doctor rows) were reverted. The same day the plan role reused the
+  letters 5u/6–5w/6 for three window parts split from part 5d/6 (the window holds, the reserve
+  keys, the window doctor rows); those are different parts, and they landed (PLANS-DONE.md).
 - **The image reroute** stays: a role whose model reads no images reruns an image on the first
   image-capable peer tier — `default` → `strong` — and an image attachment to it is routed there
   before the run starts ([image-input.md](image-input.md)). Parts 5g/6 and 5h/6 (its deletion)

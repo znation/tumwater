@@ -9,9 +9,11 @@ the peer-tier reroute and its surfaces; the user saw the amber `images` alert wi
 `strong` tier configured and asked that text-only roles fall back to it. Both parts were reverted
 (blind-read reroute, attachment preflight, `image_reroute` event and report tallies, the
 blue/amber alert, the role-page line and the submit notice). The same day the user also withdrew
-the tier map's removal (part 5e/6) and the budget fallback's (parts 5u/6–5w/6, 5m/6, 5q/6), so the
-reroute keeps walking the peer tiers and keeps its fallback regime: while the budget gate is on
-its fallback, it looks only among the tiers' free fallback pairs.
+the tier map's removal (part 5e/6) and the budget fallback's (the breaker, cap-switch and
+resolution parts first lettered 5u/6–5w/6, plus 5m/6 and 5q/6 — not the window parts that later
+reused those letters; see plans/subtract.md stroke 5's amendment), so the reroute keeps walking
+the peer tiers and keeps its fallback regime: while the budget gate is on its fallback, it looks
+only among the tiers' free fallback pairs.
 
 Planned 2026-10-15 · requested by user · decisions settled with the user the same day (end of file)
 
