@@ -5,8 +5,6 @@ import type { CheckPermitSnapshot, OrchestratorInfo, PermitSnapshot, SlotPoolSna
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { baseRoleOf, roleInScope, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
-import type { ClaudeWindowEntry } from "../agent/claude/claude-account.js";
-import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { configForStatus, queueInFlight, mainCheckForPoll, maintenanceQuotaForPoll, ciParityForPoll, type CiParityStatus, type MainCheckStatus } from "./status-polls.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
@@ -155,33 +153,6 @@ export interface StatusSnapshot {
    * live orchestrator's info file (fallback chain part 7c/7); absent when none moved or the
    * orchestrator is not alive. */
   chain?: OrchestratorInfo["chain"];
-  /** The claude.ai subscription usage window (plans/agent-backends.md §8, PLANS.md part 6d/7),
-   * derived from the claude entry of `subscriptionWindows`, kept for one release (part 3a/9) so
-   * the pre-3b displays keep their shape: present only when a seam routes to claude on
-   * subscription billing AND the account reported at least one window reading. `windows` is the
-   * full list (most constrained first), `primary` the one the badge shows, `only` the same
-   * team-global answer as `subscriptionOnly`, and `heldUntil` the rejected window's future
-   * `resetsAt` (epoch ms) the display names in "claude seams held until …", or null when no
-   * window holds. A pi-only or API-claude team has no account subscription reading, so the
-   * block is absent and every surface renders as before. */
-  claudeWindow?: {
-    windows: ClaudeWindowEntry[];
-    primary: ClaudeWindowEntry;
-    only: boolean;
-    heldUntil: number | null;
-  };
-  /** One subscription-window block per subscription backend in use (plans/codex-backend.md
-   * "Groundwork: the subscription account is per backend" item 3, part 3a/9), each carrying the
-   * backend's own windows most-constrained-first and the `heldUntil` of a rejected hold — the
-   * shared model parts 3b/9–3e/9 display. Present only when at least one subscription backend
-   * in use reported a window; `subscriptionOnly` is true when every paying seam is a
-   * subscription seam (the windows replace the daily-spend badge rather than just joining it).
-   * A claude-only team carries exactly this list's claude block, byte-identical to the fields
-   * `claudeWindow` still exposes for one release. */
-  subscriptionWindows?: SubscriptionWindowBlock[];
-  /** True when every paying seam is a subscription seam (see `subscriptionWindows`); the
-   * claude spelling `claudeWindow.only` shadows it for one release. */
-  subscriptionOnly: boolean;
   /** True while the operator has paused the team (`tumwater pause` marker present): every
    * idle role runner's state cell reads `paused`. Fresh per poll like `questions` — no cache,
    * because a 2-second-stale pause flag would mislead an operator mid-resume. */
@@ -458,13 +429,10 @@ function snapshotInboxFields(
   };
 }
 
-/** The spend/billing fields of the snapshot: the budget, the per-backend subscription windows
- * (and their claude-window spelling) and the running-only chain/provider holds. */
+/** The spend/billing fields of the snapshot: the budget and the running-only chain/provider
+ * holds. */
 function snapshotBudgetFields(
   budget: ReturnType<typeof collectBudget>["budget"],
-  subscriptionWindows: ReturnType<typeof collectBudget>["subscriptionWindows"],
-  subscriptionOnly: ReturnType<typeof collectBudget>["subscriptionOnly"],
-  claudeBlock: ReturnType<typeof collectBudget>["subscriptionWindows"][number] | undefined,
   running: boolean,
   info: ReturnType<typeof readOrchestratorInfo>,
 ): Partial<StatusSnapshot> {
@@ -473,20 +441,6 @@ function snapshotBudgetFields(
     // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,
     // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
     budget,
-    // One window block per subscription backend in use, raw for `status --json` and the
-    // parts 3b/9–3e/9 displays; omitted when no subscription backend reported a window.
-    ...(subscriptionWindows.length > 0 ? { subscriptionWindows } : {}),
-    subscriptionOnly,
-    ...(claudeBlock
-      ? {
-          claudeWindow: {
-            windows: claudeBlock.windows,
-            primary: claudeBlock.primary,
-            only: subscriptionOnly,
-            heldUntil: claudeBlock.heldUntil,
-          },
-        }
-      : {}),
     ...(running && info?.chain && Object.keys(info.chain).length > 0 ? { chain: info.chain } : {}),
     // Only while running: a stale info file beside a dead pid must not speak for a stopped
     // team, and only while a hold stands (an empty list is the same as none).
@@ -673,7 +627,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // The spend/billing block (status-budget.ts): the budget object, the per-backend
   // subscription windows and the team-global free-ness answer, and the two per-role pause
   // verdicts, all from one readPiProviders and one readAccount per backend in use per poll.
-  const { budget, subscriptionWindows, subscriptionOnly, budgetPausedRoles, capPaused } = collectBudget(
+  const { budget, budgetPausedRoles, capPaused } = collectBudget(
     root,
     cfg,
     roleRows,
@@ -683,9 +637,6 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     modelsPath,
     now,
   );
-  // The one-release claude spelling (see StatusSnapshot.claudeWindow), derived from the claude
-  // block so `subscriptionWindows` stays the single source of the window data.
-  const claudeBlock = subscriptionWindows.find((b) => b.backend === "claude");
   // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
   // gate folds, over the same event log, so the dashboards show the hold the scheduler
   // enforces. `merges` is the one merge queue snapshot read above, so in-flight maintenance
@@ -704,7 +655,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       { inbox, inboxPrompts, inboxFiles, inboxQueuedAt, inboxNotBefore, roleInbox, roleInboxPrompts },
     ),
     roles: roleRows,
-    ...snapshotBudgetFields(budget, subscriptionWindows, subscriptionOnly, claudeBlock, running, info),
+    ...snapshotBudgetFields(budget, running, info),
     ...snapshotPauseFields(
       teamPause,
       markerRoles,

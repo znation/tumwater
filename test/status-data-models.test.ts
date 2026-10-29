@@ -10,10 +10,8 @@ import { snapshot } from "../src/status/status-data.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init/init.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
-import { loadConfig, saveConfig } from "../src/config/config.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { setEnv } from "./helpers/env.js";
-import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 
 test("snapshot role rows carry the resolved selector always and the seam tier only under a tier map", async () => {
   const repo = makeRepo();
@@ -50,73 +48,6 @@ test("snapshot role rows carry the resolved selector always and the seam tier on
 // The subscription usage-window block (plans/agent-backends.md §8, PLANS.md part 6d/7): the
 // snapshot classifies the team's paying seams so the display can replace or join the daily
 // spend.
-test("snapshot carries the claude subscription window and classifies paying seams", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "claude window status test");
-  const modelsFile = writeModelsFile(tmpdir("status-claude-"), MODELS_JSON);
-  const cfg = loadConfig(repo);
-
-  // A pi-only team with no account reading: absent, so the surfaces render as before.
-  assert.equal(snapshot(repo, modelsFile).claudeWindow, undefined);
-
-  // Every seam claude on subscription billing: the window block is present and `only`.
-  cfg.backend = "claude";
-  saveConfig(repo, cfg);
-  const resetsAt = Date.now() + 3_600_000;
-  writeClaudeAccount(repo, {
-    billing: "subscription",
-    observedAt: Date.now(),
-    windows: { five_hour: { status: "allowed_warning", resetsAt, utilization: 0.64, observedAt: Date.now() } },
-  });
-  let snap = snapshot(repo, modelsFile);
-  assert.ok(snap.claudeWindow, "the window block is present");
-  assert.equal(snap.claudeWindow!.only, true, "every paying seam is subscription claude");
-  assert.equal(snap.claudeWindow!.primary.type, "five_hour");
-  assert.equal(snap.claudeWindow!.primary.utilization, 0.64);
-  assert.equal(snap.claudeWindow!.heldUntil, null);
-  // Part 3a/9: the snapshot also carries the per-backend list, one claude block here, and the
-  // claude spelling is derived from it (same windows/primary/heldUntil, `only` = subscriptionOnly).
-  assert.deepEqual(snap.subscriptionWindows!.map((b) => b.backend), ["claude"], "one claude block");
-  assert.equal(snap.subscriptionWindows![0]!.label, "Claude");
-  assert.equal(snap.subscriptionOnly, true, "the team-global answer matches the claude-only `only`");
-  // The payload carries the raw block and the preformatted badge folds the window in.
-  const payload = statusPayload(repo) as {
-    claudeWindow?: unknown;
-    subscriptionWindows?: unknown;
-    subscriptionOnly?: boolean;
-    budgetBadge: string;
-  };
-  assert.ok(payload.claudeWindow, "the payload carries the raw block for the GUI");
-  assert.ok(payload.subscriptionWindows, "the payload carries the per-backend list too");
-  assert.equal(payload.subscriptionOnly, true);
-  assert.match(payload.budgetBadge, /Claude 5h · 64% · resets /);
-
-  // A rejected window reports the future hold.
-  writeClaudeAccount(repo, {
-    billing: "subscription",
-    observedAt: Date.now(),
-    windows: { five_hour: { status: "rejected", resetsAt, utilization: 1, observedAt: Date.now() } },
-  });
-  snap = snapshot(repo, modelsFile);
-  assert.equal(snap.claudeWindow!.heldUntil, resetsAt);
-
-  // Mixed: the team on claude with one role on a priced pi model — the daily spend and the
-  // window both stand. The top-level legacy provider is cleared so the claude default is not
-  // read as a bare id under a pi provider.
-  cfg.backend = "claude";
-  delete (cfg as { provider?: unknown }).provider;
-  delete (cfg as { model?: unknown }).model;
-  cfg.roles.clean!.backend = "pi";
-  cfg.roles.clean!.model = "paid/gpt-x";
-  saveConfig(repo, cfg);
-  snap = snapshot(repo, modelsFile);
-  assert.ok(snap.claudeWindow, "the mixed team still shows the window");
-  assert.equal(snap.claudeWindow!.only, false, "priced pi seams keep the daily spend");
-  const mixed = statusPayload(repo) as { budgetBadge: string };
-  assert.match(mixed.budgetBadge, /budget: /, "the daily-spend line stands");
-  assert.match(mixed.budgetBadge, /Claude 5h/, "beside the window line");
-});
-
 // The pi-default facet of the role row (docs/backends.md): when tumwater.json resolves no
 // model and the seam routes to pi, the row names pi's own saved default from its settings.json
 // (read beside the models catalog) and marks it modelFromPi.

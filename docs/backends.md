@@ -164,17 +164,18 @@ pi model; at a team of today's size it can amount to tens of dollars a day, so p
 free `fallback`. A run paid by a claude.ai subscription is exempt from the cap: its
 API-equivalent cost is tracked as estimated spend, printed on its own line in `tumwater report`,
 and never counted in the spend totals. A rejected subscription usage window no longer moves subscription
-Claude model jobs to their tier's `fallback` (the daily cap alone does that — part 5d/6): it
-holds the backend until the window resets (the first `allowed_warning` is logged too; both
-events page a configured `notify` command), and with no usable fallback the team waits for the
-cap or the reset instead, so it does not burn a failed run per role per poll. Neither the
+Claude model jobs to their tier's `fallback` (the daily cap alone does that — part 5d/6): the
+subscription-window hold observations are gone (Subtract parts 5u/6 and 5x/6), so a rejected
+window does not hold the backend. Neither the
 window nor the cap moves the director, which keeps its budgeted model. Pi model jobs and
 API-key Claude model jobs keep running, and a run cut off by the window keeps its worktree and
 resumes once it resets. A
 subscription Claude job with no overage is free to the budget gate too: at the cap it stays
 put while priced jobs move to their fallback, and a subscription claude pair is accepted as a
 budget `fallback` for a priced pi primary; an account spending into overage counts like API
-spend. The subscription window is shown in place of the daily spend on a subscription-only team, one row per subscription backend in use, and a run
+spend. The subscription-window display is removed (Subtract part 5x/6): no role view, status
+row, badge or status render names a subscription usage window, and the account file keeps only
+its billing and overage reading for the budget fallback. A run
 cut off by a rejected window resumes once it resets (parts 6d–6e). See
 [plans/agent-backends.md](../plans/agent-backends.md) (its Billing and usage-window sections)
 for the design.
@@ -193,14 +194,16 @@ crosses into overage finishes there, because tumwater cannot stop the CLI mid-ru
 cost counts toward the step. **Behavior change:** an account that allows extra usage, with no
 later Claude model in its chain, now moves down its chain at the end of the window instead of
 spending extra usage up to the team cap. On API billing every Claude step is priced and position
-does not matter. The team hold still reads only a rejected window; overage never holds.
+does not matter.
 
 **Reserve.** The team and you share one claude.ai account, so a team that uses up the weekly
 window leaves your own sessions on extra usage or locked out. The reserve config keys are gone
 (Subtract part 5v/6): a window is never held early for the team at a reserve fraction, and no
 rejected-subscription-window hold opens either — the gate passes the team hold no window
-observations (Subtract part 5u/6). A used-up window only moves subscription Claude jobs down
-their chain on their next poll, or they wait where there is nowhere to go. The team learns
+observations (Subtract part 5u/6). A used-up window does not hold the backend or move
+subscription Claude jobs down their chain: the window-hold observations are gone (parts 5u/6
+and 5x/6) and only the daily cap moves a job to its tier's fallback (part 5d/6); with nowhere
+to move a job does not run until the window resets, and nothing reports a wait. The team learns
 its utilization one run late: readings come only from runs.
 
 An exported `ANTHROPIC_API_KEY` (for pi's `anthropic` provider) makes every Claude model job
@@ -323,8 +326,8 @@ no price, so per-token billing would spend money the cap cannot see.
 five-hour and a weekly. A rejected (or reserved) window no longer moves codex jobs down their
 tier's fallback chain, and no subscription-window hold opens for it — exactly as on a claude
 subscription, the daily cap is the only mover (part 5d/6), since the gate passes the team hold
-no window observations (part 5u/6). With every codex job on a subscription, the badge shows
-the windows, not the spend.
+no window observations (part 5u/6). With every codex job on a subscription (codex reports no cost), the badge shows
+neither the spend nor a usage window — the window fragment left the badge and snapshot in part 5x/6.
 
 **What is disabled, and why.** Codex runs with no sandbox: `--dangerously-bypass-approvals-and-
 sandbox`, the same trust pi and claude (`bypassPermissions`) get. Under Codex's `workspace-write`

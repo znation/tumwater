@@ -5,8 +5,7 @@
  * travels with the per-role display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, chainBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
-import type { SubscriptionWindowBlock } from "../src/agent/subscription-account.js";
+import { budgetBadge, chainBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
   // One home for the badge string (renderStatus's header and the payload's preformatted
@@ -234,93 +233,6 @@ test("diskBadge leaves the last reclaim to the Activity log, held or recovered",
   );
 });
 
-// The subscription usage-window fragment (plans/agent-backends.md §8, PLANS.md part 6d/7):
-// the window replaces the daily spend on a subscription-only team and joins it on a mixed one.
-// The reset clock is built from a LOCAL Date, so the expected HH:MM holds in any test timezone.
-test("budgetBadge renders the subscription window in place of or beside the daily spend", () => {
-  const at = (h: number, m: number) => new Date(2026, 9, 10, h, m).getTime();
-  const now = at(10, 18);
-  const block = (over: Partial<SubscriptionWindowBlock> = {}): SubscriptionWindowBlock => ({
-    backend: "claude",
-    label: "Claude",
-    windows: [{ type: "five_hour", status: "allowed", resetsAt: at(14, 30), utilization: 0.64, observedAt: 0 }],
-    primary: { type: "five_hour", status: "allowed", resetsAt: at(14, 30), utilization: 0.64, observedAt: 0 },
-    heldUntil: null,
-    ...over,
-  });
-  assert.equal(
-    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, [block()], true, now),
-    " · Claude 5h · 64% · resets in 4h 12m",
-    "subscription-only: the window replaces the daily spend",
-  );
-  assert.equal(
-    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, [block({
-      primary: { type: "five_hour", status: "allowed_warning", resetsAt: at(14, 30), observedAt: 0 },
-    })], true, now),
-    " · Claude 5h · near limit · resets in 4h 12m",
-    "no utilization: the status word stands in",
-  );
-  assert.equal(
-    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, [block({
-      primary: { type: "five_hour", status: "rejected", resetsAt: at(15, 0), utilization: 1, observedAt: 0 },
-      heldUntil: at(15, 0),
-    })], true),
-    " · Claude 5h · 100% · claude model jobs wait until 15:00",
-    "rejected: the held wording replaces resets",
-  );
-  assert.equal(
-    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, [block({
-      primary: { type: "five_hour", status: "allowed", isUsingOverage: true, utilization: 0.8, observedAt: 0 },
-    })], true),
-    " · Claude 5h · 80% · overage",
-    "the overage marker rides while the account spends into overage",
-  );
-  assert.equal(
-    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, [block({
-      primary: { type: "five_hour", status: "reset", observedAt: 0 },
-    })], true),
-    " · Claude 5h · reset",
-    "a past window reads reset and names no clock",
-  );
-  const sevenDay = (resetsAt: number) => block({
-    primary: { type: "seven_day", status: "allowed", resetsAt, utilization: 0.14, observedAt: 0 },
-  });
-  const budget = { spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null };
-  assert.equal(
-    budgetBadge(budget, [sevenDay(new Date(2026, 9, 15, 13, 18).getTime())], true, now),
-    " · Claude 7d · 14% · resets in 5d 3h",
-    "a 7d window days out reads as days, not a bare clock",
-  );
-  assert.equal(
-    budgetBadge(budget, [sevenDay(now - 5_000)], true, now),
-    " · Claude 7d · 14% · resets now",
-    "a deadline already past reads now",
-  );
-  // Mixed: the daily-spend line plus the window line.
-  assert.equal(
-    budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: null, free: false, fallback: null }, [block()], false, now),
-    " · budget: $12.34/$50 today · Claude 5h · 64% · resets in 4h 12m",
-    "mixed: both the daily spend and the window",
-  );
-  // None: no window block, byte-identical to before.
-  assert.equal(
-    budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: null, free: false, fallback: null }),
-    " · budget: $12.34/$50 today",
-  );
-  // All-free subscription-only: no windows and only=true still reads the free-team n/a badge —
-  // the window-in-place applies only while a window block actually exists, so this team keeps
-  // the `· budget: n/a` header badge instead of dropping it.
-  assert.equal(
-    budgetBadge({ spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null }, [], true, now),
-    " · budget: n/a",
-  );
-  // The tone: red at rejected, yellow near the limit, none otherwise. Reads blocks[0].
-  assert.equal(subscriptionWindowTone([block({ primary: { type: "five_hour", status: "rejected", observedAt: 0 } })]), "red");
-  assert.equal(subscriptionWindowTone([block({ primary: { type: "five_hour", status: "allowed_warning", observedAt: 0 } })]), "yellow");
-  assert.equal(subscriptionWindowTone([block()]), undefined);
-  assert.equal(subscriptionWindowTone(undefined), undefined);
-});
-
 test("budgetBadge's fallback label with no pair halves is pi's default", () => {
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: {} }),
@@ -357,47 +269,15 @@ test("runWindowBadge counts down to the deadline, then reads stopping, and is em
   assert.equal(runWindowBadge(now - 1, now), " · stopping");
 });
 
-test("budgetBadge names each tier's fallback step while the window is rejected", () => {
+test("budgetBadge appends each tier's fallback step from the chain", () => {
   const at = (h: number, m: number) => new Date(2026, 9, 10, h, m).getTime();
-  const blk: SubscriptionWindowBlock = {
-    backend: "claude",
-    label: "Claude",
-    windows: [{ type: "five_hour", status: "rejected", resetsAt: at(15, 0), utilization: 1, observedAt: 0 }],
-    primary: { type: "five_hour", status: "rejected", resetsAt: at(15, 0), utilization: 1, observedAt: 0 },
-    heldUntil: at(15, 0),
-  };
   const budget = { spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null };
   const chain = {
     default: { pair: "DeepSeek-V4-Flash", step: 2, of: 2, reason: "window" as const, returnsAt: at(15, 0), spentUsd: 3.1, capUsd: 5 },
   };
-  const moved = budgetBadge(budget, [blk], false, at(10, 0), chain);
-  assert.match(moved, /default → DeepSeek-V4-Flash \$3\.10\/\$5 until 15:00/);
-  assert.match(moved, /on fallback until 15:00/);
-  assert.doesNotMatch(moved, /wait until|held/);
-  assert.match(budgetBadge(budget, [blk], false, at(10, 0)), /claude model jobs wait until 15:00/);
+  assert.match(budgetBadge(budget, chain), /default → DeepSeek-V4-Flash \$3\.10\/\$5 until 15:00/);
   assert.equal(chainBadge(undefined), "");
   assert.equal(chainBadge({}), "");
-});
-
-// Part 3b/9: the badge reads the leading block's own label, so a multi-backend team names the
-// window under the backend it belongs to. blocks[0] is already most-constrained-first.
-test("budgetBadge reads the leading subscription block under its own backend label", () => {
-  const at = (h: number, m: number) => new Date(2026, 9, 10, h, m).getTime();
-  const resetsAt = at(14, 30);
-  const win = (type: string, utilization: number) => ({ type, status: "allowed", resetsAt, utilization, observedAt: 0 });
-  const sub: SubscriptionWindowBlock = { backend: "sub", label: "Sub", windows: [win("seven_day", 0.4)], primary: win("seven_day", 0.4), heldUntil: null };
-  const claude: SubscriptionWindowBlock = { backend: "claude", label: "Claude", windows: [win("five_hour", 0.6)], primary: win("five_hour", 0.6), heldUntil: null };
-  const budget = { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, fallback: null };
-  assert.equal(
-    budgetBadge(budget, [sub, claude], true, at(10, 18)),
-    " · Sub 7d · 40% · resets in 4h 12m",
-    "the leading sub block names the window under Sub",
-  );
-  assert.match(
-    budgetBadge(budget, [claude, sub], true, at(10, 18)),
-    /^ · Claude 5h/,
-    "claude first keeps the Claude reading",
-  );
 });
 
 test("checksBadge shows the check pool only while a check runs or waits", () => {

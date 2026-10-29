@@ -2,9 +2,7 @@ import { joinParts } from "../text/text.js";
 import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, usd } from "../text/format.js";
 import { clockHm, formatAge, formatTimestamp, humanAgo, nextRunPhrase, secondsUntil } from "../text/datetime.js";
-import { claudeWindowLabel } from "../agent/claude/claude-account.js";
-import { windowLabel } from "../agent/subscription-account.js";
-import { backendDefaultLabel, backendDisplayName } from "../agent/backend-traits.js";
+import { backendDefaultLabel } from "../agent/backend-traits.js";
 import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
@@ -169,32 +167,11 @@ function fallbackPairLabel(
   return backendDefault;
 }
 
-/** The backend-and-window label the role view shows for a non-claude backend's window:
- * `backendDisplayName(billingBackend)` beside `windowLabel(windowType)` — "Codex 7d" for a
- * codex subscription (plans/codex-backend.md part 3c/9), so a reader knows whose window it
- * is. Claude keeps today's bare window type ("5h") so its role view stays byte-identical. */
-function billingWindowLabel(billingBackend: string | undefined, windowType: string | undefined): string {
-  const type = windowType !== undefined ? windowLabel(windowType) : "";
-  const backend =
-    billingBackend !== undefined && billingBackend !== "claude" ? backendDisplayName(billingBackend) : "";
-  return [backend, type].filter(Boolean).join(" ");
-}
-
-/** Why a tier moved down its fallback chain, as the role view words it. The window phrase
- * names the backend in play ("Codex 7d window used up") when a non-claude backend moved the
- * role; claude keeps today's wording byte-identical, and an unknown backend falls back to
- * today's hardcoded "Claude". */
-function chainReasonPhrase(
-  reason: ChainTierInfo["reason"],
-  billingBackend: string | undefined,
-  windowType: string | undefined,
-): string {
+/** Why a tier moved down its fallback chain, as the role view words it. */
+function chainReasonPhrase(reason: ChainTierInfo["reason"]): string {
   switch (reason) {
     case "window":
-      if (billingBackend !== undefined && billingBackend !== "claude") {
-        return `${billingWindowLabel(billingBackend, windowType)} window used up`;
-      }
-      return `${windowType !== undefined ? claudeWindowLabel(windowType) : "Claude"} window used up`;
+      return "window used up";
     case "reserve":
       return "window reserve reached";
     case "cap":
@@ -214,7 +191,7 @@ function chainStepLine(p: RoleViewPayload): string | null {
   const c = p.chainStep;
   if (!c) return null;
   const resets = c.returnsAt !== undefined ? `, resets ${clockHm(c.returnsAt)}` : "";
-  return `- Running on fallback ${c.step} of ${c.of} (${chainReasonPhrase(c.reason, p.billingBackend, p.billingWindow)}${resets})`;
+  return `- Running on fallback ${c.step} of ${c.of} (${chainReasonPhrase(c.reason)}${resets})`;
 }
 
 /** One recent run outcome as a Markdown bullet line — `<time> · <result> · <span> —
@@ -313,11 +290,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   // The claude seam's billing (plans/agent-backends.md §7/§8, PLANS.md part 6d/7): absent on
   // a pi seam, so its role view is byte-identical to before.
   if (p.billing) {
-    const window =
-      p.billing === "subscription" && p.billingWindow
-        ? ` (${billingWindowLabel(p.billingBackend, p.billingWindow)} window)`
-        : "";
-    lines.push(`- Billing: ${p.billing === "api" ? "API" : p.billing}${window}`);
+    lines.push(`- Billing: ${p.billing === "api" ? "API" : p.billing}`);
   }
   lines.push(`- Min run interval: ${p.minRunIntervalSeconds}s`);
   if (p.instances !== undefined) lines.push(`- Instances: ${p.instances}`);

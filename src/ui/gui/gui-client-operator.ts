@@ -66,7 +66,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   // The subscription usage window (plans/agent-backends.md §8, PLANS.md part 6d/7): the
   // sidebar's spend card renders it beside the daily spend, or in its place for a
   // subscription-only team. The label/status/clock rules mirror badges.ts's
-  // subscriptionWindowBadge — the preformatted header fragment the TUI uses cannot be reused here
+  // window badge — the preformatted header fragment the TUI uses cannot be reused here
   // because the card lists EVERY window of EVERY block, not just the most constrained one.
   function windowLabel(type) {
     const m = /^(\w+)_(hour|day|week)$/.exec(String(type));
@@ -88,9 +88,9 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     if (hours < 24) return "resets in " + hours + "h " + (minutes % 60) + "m";
     return "resets in " + Math.floor(hours / 24) + "d " + (hours % 24) + "h";
   }
-  // A window's consumed fraction as a whole-number percent, the same shape as node-side
-  // utilizationPct - the browser script keeps its inline copy, so the text percentage and
-  // the meter width share this one home instead of each rounding w.utilization by hand.
+  // A window's consumed fraction as a whole-number percent, the same shape as the node-side
+  // utilization percent — the browser script keeps its inline copy, so the text percentage
+  // and the meter width share this one home instead of each rounding w.utilization by hand.
   function windowPct(w) {
     return Math.round(w.utilization * 100);
   }
@@ -172,7 +172,9 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   function renderBudgetBadge(d) {
     if (budgetEditing) return; // the open editor owns the slot until save or cancel
     const b = d && d.budget;
-    paintPanel("budgetwrap", b ? budgetCardHtml(b, d && d.subscriptionWindows, d && d.subscriptionOnly, d && d.chain) : "");
+    // The subscription-window block and its only flag no longer ride the status payload
+    // (Subtract 5x/6); the window card is dormant, so the budget card renders chain only.
+    paintPanel("budgetwrap", b ? budgetCardHtml(b, undefined, undefined, d && d.chain) : "");
   }
   function openBudgetEditor() {
     const b = lastStatus && lastStatus.budget;

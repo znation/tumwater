@@ -10,8 +10,6 @@ import { opencodeModelsPath } from "../src/paths.js";
 import { loadConfig } from "../src/config/config.js";
 import { spentRunnerState } from "./fixtures/runner-fixtures.js";
 import { saveRunnerState } from "../src/runner/runner-state.js";
-import { writeAccount } from "../src/agent/subscription-account.js";
-import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { LOCAL_FREE_MODELS_JSON, writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
 
 // The budget collector folds the spend/billing block from the shared reads (config, rows,
@@ -96,55 +94,6 @@ test("a foreign entry in the opencode catalog cache leaves collectBudget standin
 // The per-backend subscription window blocks (part 3a/9): one entry per subscription backend
 // the enabled seams route to, ordered most-constrained-first, each with backend/label/windows/
 // primary/heldUntil — the shared model the 3b–3e display parts consume.
-test("collectBudget carries one subscription-window block per subscription backend in use (part 3a/9)", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "status multi-backend windows");
-  // All default roles route to claude; the feature role rides the test-only `sub` backend.
-  writeConfig(repo, { backend: "claude", model: "claude-sonnet-5-5" });
-  const cfg = loadConfig(repo);
-  cfg.roles.feature = { enabled: true, backend: "sub", model: "sub-astra" };
-  const modelsFile = writeModelsFile(tmpdir("status-multibackend-"), LOCAL_FREE_MODELS_JSON);
-  const now = new Date(2026, 9, 1, 12, 0, 0).getTime();
-  const resetsAt = now + 3_600_000;
-  // sub's rejected window is the tighter constraint; claude's is only a warning.
-  writeAccount(repo, "sub", {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "rejected", resetsAt, utilization: 1, observedAt: now } },
-  });
-  writeClaudeAccount(repo, {
-    billing: "subscription",
-    observedAt: now,
-    windows: { five_hour: { status: "allowed_warning", resetsAt, utilization: 0.64, observedAt: now } },
-  });
-  const snap = snapshot(repo, modelsFile, now);
-  const got = collectBudget(
-    repo,
-    cfg,
-    snap.roles,
-    snap.roles.map((l) => l.role),
-    false,
-    readOrchestratorInfo(repo),
-    modelsFile,
-    now,
-  );
-  assert.equal(got.subscriptionWindows.length, 2, "one block per subscription backend in use");
-  assert.deepEqual(
-    got.subscriptionWindows.map((b) => b.backend),
-    ["sub", "claude"],
-    "blocks order most-constrained-first, primary tie broken by backend",
-  );
-  const sub = got.subscriptionWindows[0]!;
-  assert.equal(sub.label, "Sub", "the block labels the backend by its display name");
-  assert.equal(sub.primary.status, "rejected");
-  assert.equal(sub.heldUntil, resetsAt, "a rejected window reports the future hold");
-  const claude = got.subscriptionWindows[1]!;
-  assert.equal(claude.backend, "claude");
-  assert.equal(claude.label, "Claude");
-  assert.equal(claude.primary.utilization, 0.64);
-  assert.equal(claude.heldUntil, null);
-});
-
 test("snapshot carries the orchestrator's chain block only while it is alive", async () => {
   const repo = makeRepo();
   await initProject(repo, "chain block");

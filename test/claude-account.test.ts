@@ -11,8 +11,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  claudeWindowEntries,
-  claudeWindowUsedUp,
   observeClaudeAccount,
   readClaudeAccount,
   seedClaudeAccount,
@@ -89,8 +87,7 @@ test("readClaudeAccount: a reset window drops its overage flags, an open one kee
 
 test("readClaudeAccount drops a non-finite utilization instead of keeping Infinity", () => {
   // utilization is healed like the observedAt/resetsAt stamps: a hand-edited or torn file's
-  // `1e999` parses to Infinity, which would render as `Infinity%` and make the
-  // claudeWindowEntries comparator return NaN.
+  // `1e999` parses to Infinity, which would poison any consumer's utilization reading.
   const root = tmpdir();
   writeFileDeep(claudeAccountPath(root),
     '{"billing":"subscription","observedAt":1000,"windows":{"five_hour":{"status":"allowed","utilization":1e999,"observedAt":1000}}}',
@@ -291,106 +288,6 @@ test("seedClaudeAccount probes auth under a team config dir's CLAUDE_CONFIG_DIR"
       "the seed probed auth under the expanded team config dir",
     );
   });
-});
-
-test("claudeWindowEntries orders most constrained first by status severity", () => {
-  const entries = claudeWindowEntries(account({
-    windows: {
-      seven_day: { status: "allowed", observedAt: 1 },
-      reset: { status: "reset", observedAt: 1 },
-      five_hour: { status: "rejected", resetsAt: 9_000, observedAt: 1 },
-      warning: { status: "allowed_warning", observedAt: 1 },
-    },
-  }));
-  assert.deepEqual(
-    entries.map((e) => e.type),
-    ["five_hour", "warning", "seven_day", "reset"],
-    "rejected > allowed_warning > allowed > reset",
-  );
-  assert.equal(entries[0]?.resetsAt, 9_000, "the window entry keeps its own fields");
-});
-
-test("claudeWindowEntries breaks ties by utilization, then reset time, then type name", () => {
-  // Same status (allowed_warning), differing utilization: higher utilization first, and a
-  // missing reading sorts below any number.
-  const byUtil = claudeWindowEntries(account({
-    windows: {
-      low: { status: "allowed_warning", utilization: 0.4, observedAt: 1 },
-      high: { status: "allowed_warning", utilization: 0.9, observedAt: 1 },
-      none: { status: "allowed_warning", observedAt: 1 },
-    },
-  }));
-  assert.deepEqual(byUtil.map((e) => e.type), ["high", "low", "none"]);
-
-  // Same status and utilization: the earlier reset sorts first.
-  const byReset = claudeWindowEntries(account({
-    windows: {
-      later: { status: "rejected", utilization: 0.5, resetsAt: 9_000, observedAt: 1 },
-      earlier: { status: "rejected", utilization: 0.5, resetsAt: 8_000, observedAt: 1 },
-    },
-  }));
-  assert.deepEqual(byReset.map((e) => e.type), ["earlier", "later"]);
-
-  // Identical readings: the type name decides, deterministically.
-  const byName = claudeWindowEntries(account({
-    windows: {
-      zebra: { status: "allowed", utilization: 0.5, resetsAt: 9_000, observedAt: 1 },
-      alpha: { status: "allowed", utilization: 0.5, resetsAt: 9_000, observedAt: 1 },
-    },
-  }));
-  assert.deepEqual(byName.map((e) => e.type), ["alpha", "zebra"]);
-});
-
-test("claudeWindowEntries: empty account lists empty, prototype-key window listed as an entry", () => {
-  assert.deepEqual(claudeWindowEntries(account()), []);
-  // `setWindow` stores a `__proto__` rate-limit type as an own entry via defineProperty, so an
-  // object literal cannot reproduce it — define it the same way the writer does.
-  const proto = account();
-  Object.defineProperty(proto.windows, "__proto__", {
-    value: { status: "rejected", observedAt: 1 },
-    enumerable: true,
-    writable: true,
-    configurable: true,
-  });
-  const entries = claudeWindowEntries(proto);
-  assert.deepEqual(entries.map((e) => e.type), ["__proto__"], "a prototype-key window is an own entry");
-});
-
-test("claudeWindowUsedUp returns the rejected window that resets last; overage, API, past and warning read null", () => {
-  const w = (status: string, resetsAt: number, extra = {}) => ({ status, resetsAt, observedAt: 1, ...extra });
-  assert.equal(claudeWindowUsedUp(null, 100), null);
-  assert.deepEqual(
-    claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 500) } }), 100),
-    { type: "five_hour", resetsAt: 500 },
-  );
-  assert.deepEqual(
-    claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 500), seven_day: w("rejected", 900) } }), 100),
-    { type: "seven_day", resetsAt: 900 },
-  );
-  const over = account({ windows: { five_hour: w("allowed", 500, { isUsingOverage: true }) } });
-  assert.deepEqual(claudeWindowUsedUp(over, 100), { type: "five_hour", resetsAt: 500 }, "overage counts as used up");
-  assert.equal(claudeWindowUsedUp(over, 100, false), null, "the hold's reading ignores overage");
-  assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 500, { isUsingOverage: true }) } }), 100, false), null);
-  assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("allowed", 50, { isUsingOverage: true }) } }), 100), null);
-  assert.equal(claudeWindowUsedUp(account({ billing: "api", windows: { five_hour: w("rejected", 500) } }), 100), null);
-  assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 50) } }), 100), null);
-  assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("allowed_warning", 500) } }), 100), null);
-});
-
-test("claudeWindowUsedUp counts a window at its reserve fraction, flagged, and ranks a rejected one above it", () => {
-  const win = (utilization: number, resetsAt: number, status = "allowed") => ({ status, resetsAt, observedAt: 1, utilization });
-  const reserve = { seven_day: 0.8 };
-  assert.equal(claudeWindowUsedUp(account({ windows: { seven_day: win(0.75, 500) } }), 100, true, reserve), null);
-  assert.deepEqual(
-    claudeWindowUsedUp(account({ windows: { seven_day: win(0.8, 500) } }), 100, false, reserve),
-    { type: "seven_day", resetsAt: 500, reserve: true },
-  );
-  assert.equal(claudeWindowUsedUp(account({ windows: { seven_day: win(0.9, 500) } }), 100), null, "no reserve, no crossing");
-  assert.equal(claudeWindowUsedUp(account({ windows: { seven_day: win(0.9, 50) } }), 100, true, reserve), null, "a past reset");
-  assert.deepEqual(
-    claudeWindowUsedUp(account({ windows: { seven_day: win(0.9, 900), five_hour: win(1, 300, "rejected") } }), 100, true, reserve),
-    { type: "five_hour", resetsAt: 300 },
-  );
 });
 
 test("seedClaudeAccount: a failed account write returns null instead of throwing", () => {

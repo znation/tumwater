@@ -2,8 +2,8 @@
  * subscription-account.ts) — which billing pays for claude runs, and the newest subscription
  * usage-window reading each run reported (plans/agent-backends.md §7 "Billing" and §8 "The
  * subscription usage window"). Persisted at `.tumwater/state/claude-account.json`, written only
- * by the orchestrator process, so the sibling parts that throttle or display the subscription
- * window (6b/7–6e/7) read one answer instead of re-deriving it per surface.
+ * by the orchestrator process, so the sibling parts read one answer instead of re-deriving it
+ * per surface.
  *
  * Everything here is a thin wrapper over the generic per-backend store (found
  * grounds/codex-backend.md "Groundwork: the subscription account is per backend", item 1),
@@ -23,15 +23,10 @@ import {
   observeAccount,
   readAccount,
   subscriptionWindowRejected,
-  windowEntries,
-  windowLabel,
-  windowReserved,
-  windowUsedUp,
   writeAccount,
   type SubscriptionAccount,
   type SubscriptionBilling,
   type SubscriptionWindow,
-  type SubscriptionWindowEntry,
 } from "../subscription-account.js";
 import type { PiRunResult } from "../../pi/pi-run-result.js";
 import { claudeBackend, claudeConfigDir } from "./claude-backend.js";
@@ -50,10 +45,6 @@ export type ClaudeWindow = SubscriptionWindow;
 /** The persisted claude account state: the billing answer plus the newest reading per window
  * type. */
 export type ClaudeAccount = SubscriptionAccount;
-
-/** One window entry with its `rateLimitType` attached, as every display of the subscription
- * window needs it. */
-export type ClaudeWindowEntry = SubscriptionWindowEntry;
 
 /** Read the persisted claude account state, or null when it is absent or unreadable. A file
  * without a usable top-level `observedAt` reads as absent (the plan's torn-file rule), and a
@@ -85,31 +76,9 @@ export function observeClaudeAccount(
   return observeAccount(root, "claude", run, now);
 }
 
-/** The subscription account's used-up usage window, or null — see subscription-account.ts's
- * windowUsedUp for the rule. */
-export function claudeWindowUsedUp(
-  account: ClaudeAccount | null,
-  now: number,
-  includeOverage = true,
-  reserve?: Record<string, number>,
-): { type: string; resetsAt: number; reserve?: true } | null {
-  return windowUsedUp(account, now, includeOverage, reserve);
-}
-
-/** Re-export of the per-backend helpers under their historical claude names for callers that
- * predate the per-backend store (budget gates, team holds, the doctor, the role view, the
- * status poll). */
-export { subscriptionWindowRejected, windowReserved };
-
-/** The window type as a compact label — subscription-account.ts's windowLabel, under its
- * historical claude name. */
-export function claudeWindowLabel(type: string): string {
-  return windowLabel(type);
-}
-
-export function claudeWindowEntries(account: ClaudeAccount): ClaudeWindowEntry[] {
-  return windowEntries(account);
-}
+/** Re-export of the per-backend rejection signal under its historical claude name for callers
+ * that predate the per-backend store (the runner's run-verdict and hold wiring). */
+export { subscriptionWindowRejected };
 
 /** Seed the claude account file before the first run (plans/agent-backends.md §7):
  * `ANTHROPIC_API_KEY` set means claude prefers the key, so billing is API; otherwise

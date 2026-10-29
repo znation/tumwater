@@ -169,17 +169,19 @@ interface StandingHold {
 /** The holds that STAND, as a structured list for observers (the dashboards and `tumwater
  * status` name them; the event feed and failure digest already do): iterate the map, skip an
  * entry whose `until` is null (a lifted hold kept only for relapse memory) and one whose kind
- * is `"subscription-window"` (that hold already has the snapshot's `claudeWindow` block and
- * its header badge), and emit one `StandingHold` each, sorted by provider name so two reads of
- * one map agree. An `undefined` provider means pi's default backend, the same meaning
- * `heldProviders` gives it, so it is omitted rather than written as null. */
+ * is `"subscription-window"` (the account-level window throttle, not a failure-storm hold the
+ * standing list names; its display and crossing events are gone — parts 5u/6–5x/6), then
+ * emit one `StandingHold` each, sorted by provider name so two reads of one map agree. An
+ * `undefined` provider means pi's default backend, the same meaning `heldProviders` gives it,
+ * so it is omitted rather than written as null. */
 export function standingHolds(
   holds: ReadonlyMap<string | undefined, TeamHold>,
 ): Array<StandingHold> {
   const out: StandingHold[] = [];
   for (const [provider, hold] of holds) {
     // A lifted hold (until null) and a null kind (never standing) never publish; a
-    // subscription-window hold already has the snapshot's claudeWindow block and its badge.
+    // subscription-window hold is an account-level throttle, not a storm hold for this list,
+    // and its display and crossing events are gone (parts 5u/6–5x/6).
     if (hold.until === null || hold.kind === null || hold.kind === "subscription-window") continue;
     out.push({ ...(provider !== undefined ? { provider } : {}), until: hold.until, kind: hold.kind });
   }

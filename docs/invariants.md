@@ -3632,11 +3632,15 @@ re-opens by itself"; `test/team-polls.test.ts` — "a lifted provider's hold sta
 relapse memory but stops reading as held"; `test/team-hold-edges.test.ts` — "a failure stamped at
 the re-open poll never re-trips the hold; one a millisecond later does".
 
-### INV-BG4: a rejected subscription window holds its provider until `resetsAt`, and only it holds the director
+### INV-BG4: a rejected subscription window no longer holds its provider — its hold kind survives only in constructed states
 
-**Guarantee.** A rejected subscription window holds its provider until `resetsAt`, however many
-roles failed, and a window with no future `resetsAt` holds nothing. A reserve hold is re-checked
-every poll, and the director is held only by a rejected window (`windowHeldProviders`).
+**Guarantee.** No subscription-window hold is produced on a real poll: the per-backend window
+observations and their crossing events were removed with their last reader (Subtract parts
+5u/6–5x/6), so a rejected subscription window never holds a provider in operation and
+`windowHeldProviders` reads empty over a real poll. The reducer keeps the `subscription-window`
+kind for directly-constructed `HoldObservation`s (the tests below): given one it holds its
+provider until `resetsAt`, however many roles failed, a window with no future `resetsAt` holds
+nothing, a reserve hold is re-checked every poll, only that kind holds the director, and
 `standingHolds` lists neither lifted nor subscription-window holds.
 
 **Binds.** `src/team/team-hold.ts` (`windowHeldProviders`, `standingHolds`).

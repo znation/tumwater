@@ -30,7 +30,7 @@ import { roleImageInfo } from "../agent/image-input.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
-import { readAccount, windowEntries } from "../agent/subscription-account.js";
+import { readAccount } from "../agent/subscription-account.js";
 import { CONFIG_BASENAME, configPath, roleNotesPath } from "../paths.js";
 import { coverageRows, readQaCoverage, type CoverageRow } from "../run/qa-coverage.js";
 import { filingRows, readFeedbackFilings, type FilingRow } from "../run/feedback-filings.js";
@@ -99,9 +99,6 @@ export interface RoleViewPayload {
    * be known (a non-pi seam, an unresolvable provider/model pair, or a model pi's
    * definitions declare no window). The seam `- Next run:` previews, not the fallback. */
   contextWindow: number | null;
-  /** The primary subscription window's type (`five_hour`), present only for a subscription
-   * reading that reported a window — the renderer's "(5h window)". */
-  billingWindow?: string;
   /** Where the running orchestrator has this role's tier moved on its fallback chain (its
    * `chain` block), or null when no orchestrator is alive or the tier is on its primary. */
   chainStep: ChainTierInfo | null;
@@ -287,7 +284,6 @@ export function rolePayload(
   const account = billingBackend !== undefined ? readAccount(root, billingBackend) : null;
   const info = readOrchestratorInfo(root);
   const chainStep = (orchestratorAlive(root, info) && info?.chain?.[roleSeamTier(cfg, role)]) || null;
-  const billingWindow = account?.billing === "subscription" ? windowEntries(account)[0]?.type : undefined;
   // pi's own saved default for a pi seam that resolves no model, read once beside the models
   // catalog this collector already takes as a seam (piSettingsPath). The config's `thinking`
   // wins over the default's because tumwater passes it to pi as `--thinking`, mirroring the
@@ -455,7 +451,6 @@ export function rolePayload(
     fallback,
     fallbackFree: freeFallback !== null,
     ...(account !== null ? { billing: account.billing, billingBackend } : {}),
-    ...(billingWindow !== undefined ? { billingWindow } : {}),
     chainStep,
     ...roleImageInfo(cfg, role, modelsPath, readPiListedModels(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,

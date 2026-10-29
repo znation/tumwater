@@ -186,8 +186,9 @@ test("standingHolds names each standing provider hold and skips lifted and subsc
   map.set("deepinfra", held);
   assert.deepEqual(standingHolds(map), [{ provider: "deepinfra", until: held.until, kind: "rate-limit" }]);
 
-  // A lifted hold (until null, kept for relapse memory) and a subscription-window hold (which
-  // the snapshot's claudeWindow block already names) each yield no entry; an empty map none.
+  // A lifted hold (until null, kept for relapse memory) and a subscription-window hold (an
+  // account-level throttle whose crossing events are gone, parts 5u/6–5x/6) each yield no
+  // entry; an empty map none.
   const lifted = teamHold(held, [], held.until!);
   const window = teamHold(
     TEAM_OPEN,

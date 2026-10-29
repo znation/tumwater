@@ -1,33 +1,17 @@
 import { budgetReached, teamDailyCost, modelPairName, projectCapHit } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
-import {
-  configForRole,
-  resolverConfig,
-  reviewConfig,
-  roleSeamTier,
-} from "../config/config-views.js";
+import { roleSeamTier } from "../config/config-views.js";
 import { resolveTierFallbacks, tierFallbackLabels, tiersResolveDistinctPairs } from "../config/config-fallbacks.js";
-import { enabledRoleIds } from "../config/config.js";
-import { fallbackModelFree, piPairFree, readPiProviders, seamFree, teamModelsFree } from "../pi/pi-models.js";
-import { readOpencodeCache, type OpencodeCatalogCache } from "../agent/opencode/opencode-catalog.js";
-import { backendDisplayName } from "../agent/backend-traits.js";
-import {
-  compareWindowEntries,
-  readAccount,
-  windowEntries,
-  type SubscriptionAccount,
-  type SubscriptionWindowBlock,
-} from "../agent/subscription-account.js";
+import { fallbackModelFree, piPairFree, readPiProviders, teamModelsFree } from "../pi/pi-models.js";
+import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
+import { readAccount, type SubscriptionAccount } from "../agent/subscription-account.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { OrchestratorInfo } from "../team/team-orchestrator-info.js";
 import type { StatusRoleRow } from "./status-roles.js";
 
-type PiProviders = ReturnType<typeof readPiProviders>;
-
-/** The spend/billing-shaped slice of a status snapshot: the daily budget object, one
- * subscription-window block per subscription backend in use plus the team-global free-ness
- * answer, and the two per-role pause sets the budget verdicts drive. */
+/** The spend/billing-shaped slice of a status snapshot: the daily budget object, the
+ * team-global free-ness answer, and the two per-role pause sets the budget verdicts drive. */
 interface BudgetSlice {
   budget: {
     spentUsd: number;
@@ -37,52 +21,8 @@ interface BudgetSlice {
     fallback: { backend?: string; provider?: string; model?: string } | null;
     tiers?: Partial<Record<string, string>> | null;
   };
-  subscriptionWindows: SubscriptionWindowBlock[];
-  /** True when every paying seam is a subscription seam — the windows replace the daily-spend
-   * badge rather than just joining it (see StatusSnapshot.subscriptionWindows). */
-  subscriptionOnly: boolean;
   budgetPausedRoles: string[];
   capPaused: string[];
-}
-
-/** The subscription-window blocks and the team-global free-ness answer for a poll (see
- * StatusSnapshot.subscriptionWindows / subscriptionOnly): one `SubscriptionWindowBlock` per
- * distinct non-`pi` subscription backend the enabled seams (roles, review, resolver) route to
- * whose `accounts(backend)` reads subscription billing with at least one window. `only` is true
- * exactly when every paying seam is free (judged by its own backend's account or pi pair
- * price), so the display knows whether the windows replace or merely join the daily spend. The
- * blocks sort most-constrained-first by the same comparator windowEntries uses for one
- * account's windows (then backend), so a team's tightest window always leads. For a claude-only
- * team this is one claude block whose fields match the old claudeWindow block's, aside from the
- * added backend/label. The reviewer and the strong-tier resolver are included, like
- * teamModelsFree, since they can spend. */
-function windowBlocks(
-  cfg: TumwaterConfig,
-  providers: PiProviders,
-  accounts: (backend: string) => SubscriptionAccount | null,
-  catalog: OpencodeCatalogCache | null,
-): { blocks: SubscriptionWindowBlock[]; only: boolean } {
-  const seams = enabledRoleIds(cfg).map((role) => configForRole(cfg, role));
-  if (cfg.review.enabled) seams.push(reviewConfig(cfg));
-  if (seams.length > 0) seams.push(resolverConfig(cfg));
-  const blocks: SubscriptionWindowBlock[] = [];
-  for (const backend of new Set(
-    seams.map((s) => s.agent).filter((b): b is string => b !== undefined && b !== "pi"),
-  )) {
-    const account = accounts(backend);
-    if (account?.billing !== "subscription") continue;
-    const windows = windowEntries(account);
-    if (windows.length === 0) continue;
-    const heldUntil =
-      windows
-        .filter(
-          (w) => w.status === "rejected" && w.isUsingOverage !== true && typeof w.resetsAt === "number",
-        )
-        .reduce((max, w) => Math.max(max, w.resetsAt as number), 0) || null;
-    blocks.push({ backend, label: backendDisplayName(backend), windows, primary: windows[0]!, heldUntil });
-  }
-  blocks.sort((a, b) => compareWindowEntries(a.primary, b.primary) || a.backend.localeCompare(b.backend));
-  return { blocks, only: !seams.some((s) => !seamFree(providers, s, accounts, catalog)) };
 }
 
 /** The spend/billing block for a poll: the one materialized `spentUsd` (the scheduler's own
@@ -93,7 +33,7 @@ function windowBlocks(
  * (piPairFree, fallbackModelFree, teamModelsFree, resolveTierFallbacks) so it has one home:
  * models.json is read once (readPiProviders) and each subscription backend's account once
  * (readAccount, on the snapshot's own pinned `now`, via the per-poll memo), and every free-ness
- * verdict and the window blocks judge those same readings. The director is exempt from both
+ * verdict judges those same readings. The director is exempt from both
  * pause sets, exactly as the gates exempt it. */
 export function collectBudget(
   root: string,
@@ -134,8 +74,6 @@ export function collectBudget(
   const usable = (p: { provider?: string; model?: string }) =>
     piPairFree(providers, p, accounts, catalog) && !(modelPairName(p) in publishedDemotions);
   const servingResolved = resolveTierFallbacks(cfg, usable);
-  // The subscription usage windows (part 3a/9): one block per subscription backend in use.
-  const { blocks: subscriptionWindows, only: subscriptionOnly } = windowBlocks(cfg, providers, accounts, catalog);
   // The per-tier budget pause set (part 5c/8): the same resolution the scheduler's gate folds,
   // over the SAME usable predicate an observer can re-derive — the price check, and the pair
   // not among the running orchestrator's published per-pair demotions. Computed only while the
@@ -177,8 +115,6 @@ export function collectBudget(
           ? tierFallbackLabels(servingResolved)
           : null,
     },
-    subscriptionWindows,
-    subscriptionOnly,
     budgetPausedRoles,
     capPaused,
   };

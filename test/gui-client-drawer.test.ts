@@ -839,7 +839,6 @@ test("the role drawer renders the Configuration section from the role payload", 
       fallback: { provider: "omlx", model: "Qwen3.8" },
       fallbackFree: true,
       billing: "subscription",
-      billingWindow: "five_hour",
       minRunIntervalSeconds: 30,
       inboxCount: 4,
       instructions: "say the version on every reply\nkeep it short",
@@ -854,7 +853,7 @@ test("the role drawer renders the Configuration section from the role payload", 
   assert.match(role, /<dt>Model<\/dt><dd[^>]*>deepseek\/deepseek-v4 \(strong tier\)<\/dd>/);
   assert.match(role, /<dt>Images<\/dt><dd[^>]*>no — reruns on strong \(claude-opus-5-5\)<\/dd>/);
   assert.match(role, /<dt>Budget fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 \(free\)<\/dd>/);
-  assert.match(role, /<dt>Billing<\/dt><dd[^>]*>subscription \(five_hour window\)<\/dd>/);
+  assert.match(role, /<dt>Billing<\/dt><dd[^>]*>subscription<\/dd>/);
   assert.match(role, /<dt>Min run interval<\/dt><dd title='30s \(team default\)'>30s \(team default\)<button[^>]*data-act='interval-edit'[^>]*>Set interval<\/button><\/dd>/);
   assert.match(role, /<dt>Queued prompts<\/dt><dd[^>]*>4<\/dd>/);
   // Instructions and find text clamp to one line with the verbatim text in the tooltip; the

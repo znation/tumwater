@@ -1,7 +1,6 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./team-error-storm.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { teamHold, TEAM_OPEN, type TeamHold, type HoldObservation } from "./team-hold.js";
-import { claudeWindowUsedUp, type ClaudeAccount } from "../agent/claude/claude-account.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./team-failure-spread.js";
 import type { RunnerState } from "../runner/runner-state.js";
@@ -60,20 +59,19 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
  * heldProviders() (until non-null), never bare key presence: a lifted hold must never
  * keep blocking. Events carry the provider when one is configured (an undefined provider
  * — pi's default — omits it, so an unconfigured team's events render exactly as before).
- * `observations` is the per-subscription-backend hold
- * observations (one per backend in use), each stamped by the caller from its account via
- * windowObservation. The gate no longer passes them and no doctor row reads them (Subtract
- * parts 5u/6 and 5w/6); the seam stays for the unit tests. Returns the new map for the
- * caller to keep.
+ * Each provider's hold observations come only from its runners (holdObservations): the
+ * per-backend subscription-account observations and their subscription-window crossing
+ * events were removed with their last reader (Subtract parts 5u/6, 5w/6 and 5x/6), so the
+ * hold poll logs only the rate-limit/backend-failure hold events. Returns the new map for
+ * the caller to keep.
  * Exported as a unit-test seam, like its sibling polls below. */
 export function pollTeamHold(
   root: string,
   prev: ReadonlyMap<string | undefined, TeamHold>,
   runners: readonly HoldInputs[],
   now: number,
-  observations: readonly HoldObservation[] = [],
 ): Map<string | undefined, TeamHold> {
-  const steps = [...holdObservations(runners), ...observations];
+  const steps = holdObservations(runners);
   const byProvider = groupBy(steps, (o) => o.provider);
   const next = new Map<string | undefined, TeamHold>();
   // Every provider the map already knows, plus every provider this poll observed: a hold
@@ -84,91 +82,30 @@ export function pollTeamHold(
     const pNext = teamHold(pPrev, byProvider.get(provider) ?? [], now);
     next.set(provider, pNext);
     const providerFields = provider === undefined ? {} : { provider };
-    // The subscription-window observation (if any) for THIS provider: the window that opened
-    // (or would open) its hold, whose window type the limited event names. The events' backend
-    // is the provider itself (a subscription-window hold always carries a string provider — a
-    // rejected window or reserve crossing never keys the undefined-pi default) — the reset, in
-    // particular, fires after the window's observation has already gone (the account flipped to
-    // reset), so it cannot read its backend back from a still-present observation.
-    const subObs = byProvider.get(provider)?.find((o) => o.kind === "subscription-window");
-    const limitedEvent = (): void => {
-      // The subscription window's own crossing event, once per rejected window rather than
-      // once per failure storm. It names the window type and the deadline the hold lifts at.
+    if (pPrev.until === null && pNext.until !== null) {
       logEventBestEffort(root, {
         source: TUMWATER_SOURCE,
-        type: "subscription_window_limited",
-        backend: provider!,
+        type: "rate_limit_hold",
         ...providerFields,
-        windowType: subObs?.windowType,
-        resetsAt: pNext.until,
+        kind: pNext.kind,
+        roles: pNext.roles,
+        holdMs: pNext.until - now,
+        escalation: pNext.escalation,
       });
-    };
-    if (
-      pPrev.until !== null && pPrev.kind === "subscription-window" && pPrev.reserve === true &&
-      pNext.until !== null && pNext.kind === "subscription-window" && pNext.reserve !== true
-    ) {
-      // A reserve hold hardened into a rejected window: the operator hears the limit now.
-      limitedEvent();
-    } else if (pPrev.until === null && pNext.until !== null) {
-      if (pNext.kind === "subscription-window" && pNext.reserve === true) {
-        // A reserve crossing logs nothing here; the reserve event loop was removed (5u/6).
-      } else if (pNext.kind === "subscription-window") {
-        limitedEvent();
-      } else {
-        logEventBestEffort(root, {
-          source: TUMWATER_SOURCE,
-          type: "rate_limit_hold",
-          ...providerFields,
-          kind: pNext.kind,
-          roles: pNext.roles,
-          holdMs: pNext.until - now,
-          escalation: pNext.escalation,
-        });
-      }
     } else if (pPrev.until !== null && pNext.until === null) {
-      if (pNext.kind === "subscription-window") {
-        logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "subscription_window_reset", backend: provider!, ...providerFields });
-      } else {
-        // The ended hold's kind rides the resumed event: the hold's own event names its kind, so
-        // the lift must be able to name what actually ended too — "429 hold lifted" after a
-        // connection-error hold is the same lie the hold line's kind split removed
-        // (BUGS.md 2026-09-29).
-        logEventBestEffort(root, {
-          source: TUMWATER_SOURCE,
-          type: "rate_limit_resumed",
-          ...providerFields,
-          kind: pNext.kind,
-        });
-      }
+      // The ended hold's kind rides the resumed event: the hold's own event names its kind, so
+      // the lift must be able to name what actually ended too — "429 hold lifted" after a
+      // connection-error hold is the same lie the hold line's kind split removed
+      // (BUGS.md 2026-09-29).
+      logEventBestEffort(root, {
+        source: TUMWATER_SOURCE,
+        type: "rate_limit_resumed",
+        ...providerFields,
+        kind: pNext.kind,
+      });
     }
   }
   return next;
-}
-
-/** The hold observation one subscription account's usage windows imply, or null: a window
- * reading `rejected` with no overage and a future `resetsAt` holds every seam on provider
- * `backend` until the last such deadline — the account-level throttle of plans/agent-backends.md
- * §8. Only subscription billing produces one: an API-billed run's windows never hold (the plan's
- * "API claude seams run"), and a missing account file reads exactly as today's behavior. The
- * reader has already flipped a past-`resetsAt` window to `reset`, and the `resetsAt > now` guard
- * here lets the hold lift on its own even from a stale file. */
-export function windowObservation(
-  backend: string,
-  account: ClaudeAccount | null,
-  now: number,
-  reserve?: Record<string, number>,
-): HoldObservation | null {
-  const furthest = claudeWindowUsedUp(account, now, false, reserve);
-  if (furthest === null) return null;
-  return {
-    role: backend,
-    provider: backend,
-    kind: "subscription-window",
-    at: now,
-    windowType: furthest.type,
-    resetsAt: furthest.resetsAt,
-    ...(furthest.reserve === true ? { reserve: true as const } : {}),
-  };
 }
 
 /** One poll of the team-wide error-storm warning (src/team/team-error-storm.ts): gather each
