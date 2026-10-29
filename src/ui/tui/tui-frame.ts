@@ -106,48 +106,12 @@ interface TuiMode {
   checkMode?: boolean;
 }
 
-/** The footer's key hints for what the keys do right now: keys bright, words dim. */
+/** The footer's key hints for what the keys do right now: keys bright, words dim. Which
+ * keys each editor offers is one table read (modeKeyHints), and which keys each pane offers is
+ * another (viewKeyHints); this function only looks those up, then spreads the chosen keys into
+ * the span line and clips it to the width. */
 export function hintLine(view: TuiView, mode: TuiMode, width: number): StatusLine {
-  let keys: Array<[string, string]>;
-  if (mode.entryEditFor?.position === null) keys = [["Enter", `file ${mode.entryEditFor.kind}`], ["Ctrl+N", `switch to ${mode.entryEditFor.kind === "plan" ? "bug" : "plan"}`], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.entryEditFor) keys = [["Enter", "save title"], ["Ctrl+E", "body file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.answerFor) keys = [["Enter", "record answer"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.queuedEditFor) keys = [["Enter", "save the edit"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.pauseEditMode && mode.pauseEditStop) keys = [["Enter", "schedule stop"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.pauseEditMode) keys = [["Enter", mode.pauseEditRole ? `${mode.pauseEditWake ? "wake" : "pause"} ${mode.pauseEditRole}` : "pause"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.attachMode) keys = [["Enter", "attach image path"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.notesEditFor) keys = [["Enter", "replace notes from file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.retireMode) keys = [["Enter", "retire role"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.releaseMode) keys = [["Enter", "release test"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.roleEnabledMode) keys = [["Enter", "enable/disable role"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.concurrencyMode) keys = [["Enter", "save the run cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.checksMode) keys = [["Enter", "save the check cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.checkMode) keys = [["Enter", "save the declared check"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.modelMode) keys = [["Enter", "save the model"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.quietMode) keys = [["Enter", mode.quietTeam ? "save team quiet hours" : "save quiet hours"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.intervalMode) keys = [["Enter", "save interval"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.roleModelMode) keys = [["Enter", "save model overrides"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.instancesMode) keys = [["Enter", "save instances"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.notifyMode) keys = [["Enter", "save the notify hook"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.fallbackMode) keys = [["Enter", "save the fallback"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.instructionsEditFor) keys = [["Enter", "save instructions"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.slotsMode) keys = [["Enter", "save worktree slots"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.backendsMode) keys = [["Enter", "save agent backends"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.rolePromptFor) keys = [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.briefEditMode) keys = [["Enter", "replace brief from file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "transcript") {
-    keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notes"], ...(view.change ? [["Ctrl+Y", view.changeStat ? "full patch" : "stat only"] as [string, string]] : []), ...(view.note ? [["Ctrl+X", "clear notes"] as [string, string], ["Ctrl+E", "edit notes"] as [string, string]] : [["Ctrl+X", "model overrides"] as [string, string]]), ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "stop run"], ["Ctrl+V", "reset counters"], ["Ctrl+B", "daily cap"], ["Ctrl+O", "quiet hours"], ["Ctrl+G", "instances"], ["Ctrl+S", "min run interval"], ["Ctrl+L", "instructions"],
-      ...(!view.note && !view.change ? [["/", view.grep ? `search: ${view.grep}` : "search"] as [string, string]] : []),
-      ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["/", "search entries"], ["Ctrl+O", "ready only"], ["Ctrl+X", "cancel entry"], ["Ctrl+R", "release entry"], ["Ctrl+V", "top entry"], ["Ctrl+E", "edit entry"], ["Ctrl+N", "new plan/bug"], ["Ctrl+A", "answer question"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: team"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ...(view.window ? [["Ctrl+P", "earlier window"] as [string, string]] : []), ...(view.kind === "failures" ? [["Ctrl+X", "release test"] as [string, string]] : []), ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+L", "newest failure"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ...(!view.trail && view.since ? [["Ctrl+P", "earlier window"] as [string, string]] : []), ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+X", view.model ? `model: ${view.model}` : "model: all"], ["Ctrl+Y", view.summary === "model" ? "rows" : view.summary === "role" ? "by model" : "summary"], ["Ctrl+N", view.trail ? "history" : "run trail"], ...(view.trail ? [["Ctrl+P", "older run"] as [string, string], ["Ctrl+R", view.trailTranscript === "plain" ? "prompts" : view.trailTranscript === "prompts" ? "hide transcript" : "transcript"] as [string, string], ["Ctrl+W", view.trailPatch ? "hide patch" : "patch"] as [string, string], ["Ctrl+V", "revert run"] as [string, string]] : []), ["/", view.trail && view.trailTranscript !== undefined && view.trailTranscript !== "off" ? (view.trailGrep ? `transcript search: ${view.trailGrep}` : "search transcript") : (view.grep ? `search: ${view.grep}` : "search")], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "select merge/review"], ["PgUp/PgDn", "scroll"], ["Ctrl+R", "refresh"], ["Ctrl+N", "overlaps"], ["Ctrl+G", "overlap role"], ["Ctrl+O", "review state"], ["Ctrl+X", "cancel merge"], ["Ctrl+V", "move to top"], ["Ctrl+A", "accept review"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "health") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+R", "re-run checks"], ["Ctrl+A", "commit backlog"], ["Ctrl+U", "re-sync install"], ["Ctrl+E", "reclaim disk"], ["Ctrl+N", "test notify"], ["Ctrl+K", "kill orphans"], ["Ctrl+S", "drop broken pins"], ["Ctrl+X", "retire role"], ["Ctrl+L", "retire leftovers"], ["Ctrl+B", "archive backlog"], ["Ctrl+V", "enable/disable role"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "brief") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+E", "edit brief"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+V", "top"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+E", "notify hook"], ["Ctrl+A", "model"], ["Ctrl+N", "run cap"], ["Ctrl+K", "check cap"], ["Ctrl+U", "declared check"], ["Ctrl+S", "quiet hours"], ["Ctrl+W", "worktree slots"], ["Ctrl+O", view.notable ? "notable only" : view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+X", "agent backends"], ["Ctrl+T", "next view"], ["Ctrl+L", "fallback"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+R", "restart"], ["Ctrl+D", "quit"]];
+  const keys = modeKeyHints(mode) ?? viewKeyHints(view);
   // The mode branches above name their own keys and keep the line, so every remaining
   // view hint always shows the send affordance. This comment marks that ordering.
   const spans: StatusSpan[] = [];
@@ -156,6 +120,136 @@ export function hintLine(view: TuiView, mode: TuiMode, width: number): StatusLin
     spans.push({ text: key, tone: "bold" }, { text: ` ${what}`, tone: "dim" });
   });
   return clipSpans(spans, width);
+}
+
+/** The ordered table that owns footer key-hint precedence among editors: each row's first
+ * element is one editor/mode arm and the second the keys it shows; the first truthy row wins,
+ * so "which keys does this editor offer?" is one read of the table's order. The order is the
+ * old `if (mode.…)` chain, from the new-entry editor to the brief editor. Returns undefined
+ * when no editor is active, so the caller falls through to the view table. */
+function modeKeyHints(mode: TuiMode): Array<[string, string]> | undefined {
+  // The object-armed rows below dereference their target (entry/answer/queued), so each
+  // captures the value and guards its keys against the null case — the array is built eagerly
+  // for every row, but only ever returned when its row's flag is truthy.
+  const entry = mode.entryEditFor;
+  const answer = mode.answerFor;
+  const queued = mode.queuedEditFor;
+  const rows: Array<[unknown, Array<[string, string]>]> = [
+    [entry?.position === null, entry ? [["Enter", `file ${entry.kind}`], ["Ctrl+N", `switch to ${entry.kind === "plan" ? "bug" : "plan"}`], ["Esc", "cancel"], ["Ctrl+D", "quit"]] : []],
+    [entry, entry ? [["Enter", "save title"], ["Ctrl+E", "body file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]] : []],
+    [answer, answer ? [["Enter", "record answer"], ["Esc", "cancel"], ["Ctrl+D", "quit"]] : []],
+    [queued, queued ? [["Enter", "save the edit"], ["Esc", "cancel"], ["Ctrl+D", "quit"]] : []],
+    [mode.pauseEditMode && mode.pauseEditStop, [["Enter", "schedule stop"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.pauseEditMode, [["Enter", mode.pauseEditRole ? `${mode.pauseEditWake ? "wake" : "pause"} ${mode.pauseEditRole}` : "pause"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.attachMode, [["Enter", "attach image path"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.notesEditFor, [["Enter", "replace notes from file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.retireMode, [["Enter", "retire role"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.releaseMode, [["Enter", "release test"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.roleEnabledMode, [["Enter", "enable/disable role"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.budget, [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.concurrencyMode, [["Enter", "save the run cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.checksMode, [["Enter", "save the check cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.checkMode, [["Enter", "save the declared check"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.modelMode, [["Enter", "save the model"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.quietMode, [["Enter", mode.quietTeam ? "save team quiet hours" : "save quiet hours"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.intervalMode, [["Enter", "save interval"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.roleModelMode, [["Enter", "save model overrides"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.instancesMode, [["Enter", "save instances"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.notifyMode, [["Enter", "save the notify hook"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.fallbackMode, [["Enter", "save the fallback"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.instructionsEditFor, [["Enter", "save instructions"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.slotsMode, [["Enter", "save worktree slots"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.backendsMode, [["Enter", "save agent backends"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.rolePromptFor, [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+    [mode.briefEditMode, [["Enter", "replace brief from file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]],
+  ];
+  for (const [active, keys] of rows) if (active) return keys;
+  return undefined;
+}
+
+/** The ordered table that owns footer key-hint precedence among panes: each row's first element
+ * is one view predicate and the second the keys that pane shows; the first truthy row wins, so
+ * "which keys does this pane offer?" is one read of the table's order. The order is the old
+ * `else if (view.kind === …)` chain, from transcript to the default activity row. */
+function viewKeyHints(view: TuiView): Array<[string, string]> {
+  // Each row's second element is guarded by the same predicate as its first so the viewer is
+  // narrowed to that pane's variant when the keys are built (the array is eager), mirroring
+  // the object-armed rows in modeKeyHints.
+  const rows: Array<[boolean, Array<[string, string]>]> = [
+    [view.kind === "transcript", view.kind === "transcript" ? transcriptKeyHints(view) : []],
+    [view.kind === "backlog", backlogKeyHints()],
+    [view.kind === "usage" || view.kind === "failures", (view.kind === "usage" || view.kind === "failures") ? usageKeyHints(view) : []],
+    [view.kind === "history", view.kind === "history" ? historyKeyHints(view) : []],
+    [view.kind === "pending", pendingKeyHints()],
+    [view.kind === "health", view.kind === "health" ? healthKeyHints(view) : []],
+    [view.kind === "brief", briefKeyHints()],
+    [view.kind === "queued", view.kind === "queued" ? queuedKeyHints(view) : []],
+    [true, activityKeyHints(view)],
+  ];
+  for (const [active, keys] of rows) if (active) return keys;
+  return activityKeyHints(view);
+}
+
+/** The transcript pane's keys: the send/history affordance, the per-role prompt, and the
+ * toggles and editors that act on the open transcript or change. */
+function transcriptKeyHints(view: Extract<TuiView, { kind: "transcript" }>): Array<[string, string]> {
+  return [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notes"], ...(view.change ? [["Ctrl+Y", view.changeStat ? "full patch" : "stat only"] as [string, string]] : []), ...(view.note ? [["Ctrl+X", "clear notes"] as [string, string], ["Ctrl+E", "edit notes"] as [string, string]] : [["Ctrl+X", "model overrides"] as [string, string]]), ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "stop run"], ["Ctrl+V", "reset counters"], ["Ctrl+B", "daily cap"], ["Ctrl+O", "quiet hours"], ["Ctrl+G", "instances"], ["Ctrl+S", "min run interval"], ["Ctrl+L", "instructions"],
+      ...(!view.note && !view.change ? [["/", view.grep ? `search: ${view.grep}` : "search"] as [string, string]] : []),
+      ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+}
+
+/** The backlog pane's keys: entry selection, search, and the per-entry actions. */
+function backlogKeyHints(): Array<[string, string]> {
+  return [["Enter", "send"], ["↑↓", "open entries"], ["/", "search entries"], ["Ctrl+O", "ready only"], ["Ctrl+X", "cancel entry"], ["Ctrl+R", "release entry"], ["Ctrl+V", "top entry"], ["Ctrl+E", "edit entry"], ["Ctrl+N", "new plan/bug"], ["Ctrl+A", "answer question"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+}
+
+/** The usage/failures pane's keys: the history navigation, scope and window, and the failure
+ * digest's release affordance. */
+function usageKeyHints(view: Extract<TuiView, { kind: "usage" | "failures" }>): Array<[string, string]> {
+  return [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: team"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ...(view.window ? [["Ctrl+P", "earlier window"] as [string, string]] : []), ...(view.kind === "failures" ? [["Ctrl+X", "release test"] as [string, string]] : []), ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+}
+
+/** The completed-run history pane's keys: outcome filters, the run trail's navigation, and
+ * the search pair delegated to historySearchHint so this table stays under the threshold. */
+function historyKeyHints(view: Extract<TuiView, { kind: "history" }>): Array<[string, string]> {
+  return [["Enter", "send"], ["↑↓", "history"], ["Ctrl+L", "newest failure"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ...(!view.trail && view.since ? [["Ctrl+P", "earlier window"] as [string, string]] : []), ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+X", view.model ? `model: ${view.model}` : "model: all"], ["Ctrl+Y", view.summary === "model" ? "rows" : view.summary === "role" ? "by model" : "summary"], ["Ctrl+N", view.trail ? "history" : "run trail"], ...(view.trail ? [["Ctrl+P", "older run"] as [string, string], ["Ctrl+R", view.trailTranscript === "plain" ? "prompts" : view.trailTranscript === "prompts" ? "hide transcript" : "transcript"] as [string, string], ["Ctrl+W", view.trailPatch ? "hide patch" : "patch"] as [string, string], ["Ctrl+V", "revert run"] as [string, string]] : []), historySearchHint(view), ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+}
+
+/** The history pane's trailing search pair: `/[search]` naming what the forward slash searches,
+ * the transcript search while a run trail is open and its transcript is readable, else the
+ * plain entry search. Kept as its own helper so the history table stays under the threshold. */
+function historySearchHint(view: Extract<TuiView, { kind: "history" }>): [string, string] {
+  return ["/", view.trail && view.trailTranscript !== undefined && view.trailTranscript !== "off" ? (view.trailGrep ? `transcript search: ${view.trailGrep}` : "search transcript") : (view.grep ? `search: ${view.grep}` : "search")];
+}
+
+/** The pending-change roster's keys: merge/review selection and the review actions. */
+function pendingKeyHints(): Array<[string, string]> {
+  return [["Enter", "send"], ["↑↓", "select merge/review"], ["PgUp/PgDn", "scroll"], ["Ctrl+R", "refresh"], ["Ctrl+N", "overlaps"], ["Ctrl+G", "overlap role"], ["Ctrl+O", "review state"], ["Ctrl+X", "cancel merge"], ["Ctrl+V", "move to top"], ["Ctrl+A", "accept review"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+}
+
+/** The health pane's keys: the checks, install, and backlog maintenance actions. */
+function healthKeyHints(view: Extract<TuiView, { kind: "health" }>): Array<[string, string]> {
+  return [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+R", "re-run checks"], ["Ctrl+A", "commit backlog"], ["Ctrl+U", "re-sync install"], ["Ctrl+E", "reclaim disk"], ["Ctrl+N", "test notify"], ["Ctrl+K", "kill orphans"], ["Ctrl+S", "drop broken pins"], ["Ctrl+X", "retire role"], ["Ctrl+L", "retire leftovers"], ["Ctrl+B", "archive backlog"], ["Ctrl+V", "enable/disable role"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+}
+
+/** The brief pane's keys: the send affordance and the brief editor. */
+function briefKeyHints(): Array<[string, string]> {
+  return [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+E", "edit brief"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+}
+
+/** The queued-prompt pane's keys: the queue navigation, the edit/cancel actions, and search. */
+function queuedKeyHints(view: Extract<TuiView, { kind: "queued" }>): Array<[string, string]> {
+  return [["Enter", "send"], ["↑↓", "history"], ["Ctrl+V", "top"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+}
+
+/** The default activity pane's keys (the old `else` arm): the run controls, the scope/type
+ * filters, search, and the team-wide actions every other pane's hints sit on top of. */
+function activityKeyHints(view: TuiView): Array<[string, string]> {
+  // notable/type exist only on the activity view, so each access is narrowed by kind before
+  // use — the array is built eagerly for the table's last (always-matching) row, but the
+  // default activity arm is the only caller that reads these fields.
+  const activity = view.kind === "activity";
+  return [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+E", "notify hook"], ["Ctrl+A", "model"], ["Ctrl+N", "run cap"], ["Ctrl+K", "check cap"], ["Ctrl+U", "declared check"], ["Ctrl+S", "quiet hours"], ["Ctrl+W", "worktree slots"], ["Ctrl+O", activity && view.notable ? "notable only" : activity && view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", activity && view.role ? `scope: ${view.role}` : "scope: team"], ["/", activity && view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+X", "agent backends"], ["Ctrl+T", "next view"], ["Ctrl+L", "fallback"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+R", "restart"], ["Ctrl+D", "quit"]];
 }
 
 /** The brand-tone label pair that names the prompting target on the prompt line, with the

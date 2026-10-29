@@ -65,12 +65,13 @@ test("docs/cli.md's TUI keys table names no Ctrl key the TUI lacks", () => {
 });
 
 test("the Health view's hint and docs rows name the same Ctrl keys", () => {
-  const hinted = new Set<string>();
-  for (const line of read("../../src/ui/tui/tui-frame.ts").split("\n")) {
-    if (!line.includes(`view.kind === "health") keys =`)) continue;
-    for (const m of line.matchAll(/Ctrl\+([A-Z])/g)) hinted.add(m[1]!);
-  }
-  assert.ok(hinted.size > 0, "found the Health hint line");
+  const lines = read("../../src/ui/tui/tui-frame.ts").split("\n");
+  const marker = lines.findIndex((l) => l.includes(`function healthKeyHints(`));
+  assert.notEqual(marker, -1, "found the Health hint marker line");
+  let end = marker;
+  while (!lines[end]!.includes("];")) end += 1;
+  const hinted = new Set([...lines.slice(marker, end + 1).join("\n").matchAll(/Ctrl\+([A-Z])/g)].map((m) => m[1]!));
+  assert.ok(hinted.size > 0, "found the Health hint keys");
 
   const doc = read("../../docs/cli.md");
   const start = doc.indexOf("## TUI keys");
@@ -100,12 +101,13 @@ test("the Health view's hint and docs rows name the same Ctrl keys", () => {
 });
 
 test("the Pending view's hint and docs rows name the same Ctrl keys", () => {
-  const hinted = new Set<string>();
-  for (const line of read("../../src/ui/tui/tui-frame.ts").split("\n")) {
-    if (!line.includes(`view.kind === "pending") keys =`)) continue;
-    for (const m of line.matchAll(/Ctrl\+([A-Z])/g)) hinted.add(m[1]!);
-  }
-  assert.ok(hinted.size > 0, "found the Pending hint line");
+  const lines = read("../../src/ui/tui/tui-frame.ts").split("\n");
+  const marker = lines.findIndex((l) => l.includes(`function pendingKeyHints(`));
+  assert.notEqual(marker, -1, "found the Pending hint marker line");
+  let end = marker;
+  while (!lines[end]!.includes("];")) end += 1;
+  const hinted = new Set([...lines.slice(marker, end + 1).join("\n").matchAll(/Ctrl\+([A-Z])/g)].map((m) => m[1]!));
+  assert.ok(hinted.size > 0, "found the Pending hint keys");
 
   const doc = read("../../docs/cli.md");
   const start = doc.indexOf("## TUI keys");
@@ -137,7 +139,7 @@ test("the Pending view's hint and docs rows name the same Ctrl keys", () => {
 test("the Transcript view's hint and docs rows name the same Ctrl keys", () => {
   // The transcript hint spans three physical lines; its marker line has no `keys =`.
   const lines = read("../../src/ui/tui/tui-frame.ts").split("\n");
-  const marker = lines.findIndex((l) => l.includes(`view.kind === "transcript")`));
+  const marker = lines.findIndex((l) => l.includes(`function transcriptKeyHints(`));
   assert.notEqual(marker, -1, "found the Transcript hint marker line");
   let end = marker;
   while (!lines[end]!.includes("];")) end += 1;
@@ -174,12 +176,13 @@ test("the Transcript view's hint and docs rows name the same Ctrl keys", () => {
 });
 
 test("the Activity view's hint and docs rows name the same Ctrl keys", () => {
-  const hinted = new Set<string>();
-  for (const line of read("../../src/ui/tui/tui-frame.ts").split("\n")) {
-    if (!line.includes(`else keys = [`)) continue;
-    for (const m of line.matchAll(/Ctrl\+([A-Z])/g)) hinted.add(m[1]!);
-  }
-  assert.ok(hinted.size > 0, "found the Activity hint line");
+  const lines = read("../../src/ui/tui/tui-frame.ts").split("\n");
+  const marker = lines.findIndex((l) => l.includes(`function activityKeyHints(`));
+  assert.notEqual(marker, -1, "found the Activity hint marker line");
+  let end = marker;
+  while (!lines[end]!.includes("];")) end += 1;
+  const hinted = new Set([...lines.slice(marker, end + 1).join("\n").matchAll(/Ctrl\+([A-Z])/g)].map((m) => m[1]!));
+  assert.ok(hinted.size > 0, "found the Activity hint keys");
 
   const doc = read("../../docs/cli.md");
   const start = doc.indexOf("## TUI keys");
