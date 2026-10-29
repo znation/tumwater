@@ -165,24 +165,35 @@ test("runnerStateForPoll yields a fresh state for a role with no state file", as
   assert.deepEqual(runnerStateForPoll(repo, "clean"), freshRunnerState("clean"));
 });
 
-test("snapshot reads the orchestrator info file once per poll", async () => {
+test("snapshot serves unchanged orchestrator info from the stat-keyed cache", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
   // A live orchestrator's info file: both consumers (the pid column and the running flag)
   // have data to work with.
   writeOrchestratorMarker(repo, ["feature"]);
-  assert.equal(snapshot(repo).running, true); // first read
+  assert.equal(snapshot(repo).running, true); // first read populates the cache
 
-  const reads = withCountedReads(
-    () => {
+  withCountedReads(
+    (reads) => {
       const snap = snapshot(repo);
-      assert.equal(snap.pid, process.pid); // the info was read and used for the pid…
-      assert.equal(snap.running, true); // …and for the liveness check from that same read
+      assert.equal(snap.pid, process.pid); // the info was read once and serves both the pid…
+      assert.equal(snap.running, true); // …and the liveness check from that same cached read
+      assert.equal(reads(), 0); // unchanged — no re-read of the info file at all
+      // Each poll still gets its own objects: mutating one snapshot must not poison later ones.
+      snap.providerHolds = [{ kind: "x", until: 1 }];
+      assert.equal(snapshot(repo).providerHolds, undefined);
     },
     (file) =>
       typeof file === "string" && file.endsWith(`${path.sep}state${path.sep}orchestrator.json`),
   );
-  assert.equal(reads, 1); // one read serves both — not two
+
+  // A changed info file (the orchestrator republished its build) is picked up on the next
+  // poll — the stat-keyed cache must not serve stale team state.
+  writeOrchestratorMarker(repo, ["feature"], { build: { sha: "abc", builtAt: Date.now(), stale: true } });
+  assert.ok(
+    snapshot(repo).build !== undefined,
+    "a republished info file is re-read, not served stale",
+  );
 });
 
 // The `custom` flag marks user-defined roles (tumwater.json's customRoles) for the

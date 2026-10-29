@@ -2,6 +2,7 @@ import type { ModelTier } from "../config/config-schema.js";
 import type { BuildStatus } from "../build/build-info.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { pidAlive } from "../process/process.js";
 import { orchestratorStatePath } from "../paths.js";
@@ -176,12 +177,36 @@ export function publishInfoFields(
  * trusted because the `OrchestratorInfo` annotation says so: a foreign shape (a scalar
  * `fallbackDemotions`, a `disk` missing its numbers) would otherwise throw out of a render —
  * `modelPairName(p) in publishedDemotions` or `formatGB(undefined)` — on every second's
- * poll. An unreadable field is dropped, so observers read it as absent. */
+ * poll. An unreadable field is dropped, so observers read it as absent. The value is served
+ * from a stat-keyed cache (infoCache): the TUI, GUI and `tumwater status` poll snapshot every
+ * second, but the orchestrator writes the info file only at start and whenever a published
+ * field (build, budget, disk, permits) changes — between writes it sits unchanged for minutes.
+ * An unchanged file costs one stat syscall per poll instead of re-reading, re-parsing, and
+ * re-normalizing JSON; any write invalidates via dev/ino/mtime/size (writeJsonAtomic's
+ * tmp+rename is the same freshness contract the other cachedByStat consumers rely on). */
+// Per-root info cache (stat-cache.cachedByStat), keyed by state-file path so distinct roots
+// never collide; capped inside cachedByStat so many short-lived roots in tests cannot grow it
+// unbounded. readOrchestratorInfo serves an unchanged file from this cache on a poll, and the
+// orchestrator's own writes (tmp+rename) invalidate it exactly like every other cachedByStat
+// consumer.
+const infoCache = new Map<string, StatKeyedValue<OrchestratorInfo>>();
+
 export function readOrchestratorInfo(root: string): OrchestratorInfo | null {
-  const info = readJsonFile<OrchestratorInfo>(orchestratorStatePath(root));
-  if (info === null) return null;
-  normalizeInfoFields(info as unknown as Record<string, unknown>);
-  return info;
+  const file = orchestratorStatePath(root);
+  return (
+    cachedByStat(
+      infoCache,
+      file,
+      file,
+      () => {
+        const info = readJsonFile<OrchestratorInfo>(file);
+        if (info === null) return null;
+        normalizeInfoFields(info as unknown as Record<string, unknown>);
+        return info;
+      },
+      (info) => ({ ...info }), // A copy: callers may treat the result as their own.
+    ) ?? null
+  );
 }
 
 /** Number type-guard over the shared `finiteNumber` read (json-object.ts): that helper is the
