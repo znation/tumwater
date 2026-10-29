@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { pollRunnerReasons } from "../src/orchestrator/orchestrator-scheduling.js";
+import { mergeStartHeld } from "../src/orchestrator/orchestrator-poll.js";
 import { newMaintenanceQuotaGateState, pollMaintenanceQuotaGate } from "../src/gates/maintenance-quota.js";
 import { OnceRound } from "../src/scheduling/once-round.js";
 import { pollTeamHold } from "../src/team/team-polls.js";
@@ -29,11 +30,11 @@ import { HOUR } from "./helpers/oracles.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
 // holds the roles whose run model is on P while roles on a healthy provider Q keep running;
-// with the review gate on, a hold on the reviewer's provider (or an unresolvable strong tier)
-// holds the roles a pre-merge review gates while a role on `review.afterMerge` keeps running;
-// and — the seam the 2026-10-06 review called out as untested — a storm, its lift, and the
-// SUBSEQUENT poll run through scheduling end with the previously held role admitted again:
-// a lifted hold never keeps blocking.
+// a hold on the reviewer's provider parks only the post-merge review drain, never a role start
+// (and the unresolvable strong tier no longer reaches this pass); and — the seam the 2026-10-06
+// review called out as untested — a storm, its lift, and the SUBSEQUENT poll run through
+// scheduling end with the previously held role admitted again: a lifted hold never keeps
+// blocking.
 
 const T0 = 1_000_000_000;
 
@@ -72,12 +73,9 @@ function schedulingCtx(root: string, runners: readonly RoleRunner[], roleProvide
     bootstrapHeld: new Set<string>(),
     budgetPausedRoles: new Set<string>(),
     probeRoles: new Set<string>(),
-    reviewStrongPaused: false,
-    afterMergeRoles: new Set(defaultConfig().review.afterMerge ?? []),
     roleQuietHeld: new Set<string>(),
     heldProviders: new Set<string | undefined>() as ReadonlySet<string | undefined>,
     windowHeldProviders: new Set<string | undefined>() as ReadonlySet<string | undefined>,
-    reviewHeld: false,
     roleProviders,
     openBugsNow: false,
     workBacklogOpen: false,
@@ -116,7 +114,6 @@ test("a storm at provider P holds only P's roles through scheduling, and the lif
   // review-gate full block is in play here).
   const heldCtx = schedulingCtx(root, runners, roleProviders);
   heldCtx.heldProviders = held;
-  heldCtx.reviewHeld = false;
   const reasonsHeld = await pollRunnerReasons(heldCtx);
   assert.equal(reasonsHeld.has(runners[0]!), false, "a role on the held provider starts no run");
   assert.equal(reasonsHeld.has(runners[1]!), false, "its sibling on the same provider is held too");
@@ -131,7 +128,6 @@ test("a storm at provider P holds only P's roles through scheduling, and the lif
   assert.notEqual(liftedHolds.get("P"), undefined, "the lifted entry stays keyed for its relapse memory");
   const liftedCtx = schedulingCtx(root, runners, roleProviders);
   liftedCtx.heldProviders = lifted;
-  liftedCtx.reviewHeld = false;
   const reasonsLifted = await pollRunnerReasons(liftedCtx);
   assert.equal(reasonsLifted.has(runners[0]!), true, "the previously held role is admitted again");
   assert.equal(reasonsLifted.has(runners[1]!), true);
@@ -453,7 +449,7 @@ test("a deferred maintenance role records its deferral once per episode", async 
   assert.equal(fs.existsSync(file), false, "the unchanged verdict does not rewrite the state file");
 });
 
-test("the reviewer's provider being held holds a pre-merge role but admits a review.afterMerge role, and only while it stands", async () => {
+test("the reviewer-hold parks only the no-role drain — a named role is never held", async () => {
   const root = tmpdir("tumwater-scheduling-review-");
   const runners = [fakeRunner("feature", defaultConfig()), fakeRunner("dedupe", defaultConfig())];
   const roleProviders = new Map([
@@ -461,34 +457,18 @@ test("the reviewer's provider being held holds a pre-merge role but admits a rev
     ["dedupe", "Q"],
   ]);
 
-  // A storm on the reviewer's provider while the review gate is on: the roles a pre-merge
-  // review gates are held (feature could not merge without a reviewer), while a role on
-  // review.afterMerge (dedupe — its review runs after merging) is admitted.
-  const heldCtx = schedulingCtx(root, runners, roleProviders);
-  heldCtx.reviewHeld = true;
-  const reasonsHeld = await pollRunnerReasons(heldCtx);
-  assert.equal(reasonsHeld.has(runners[0]!), false, "a pre-merge-review role starts no run while the reviewer's provider is held");
-  assert.equal(reasonsHeld.has(runners[1]!), true, "a review.afterMerge role keeps authoring while the reviewer's provider is held");
+  // A storm on the reviewer's provider while the review gate is on: the scheduling pass carries
+  // no reviewer hold at all (every role keeps authoring), and the merge start gate parks only
+  // the no-role post-review drain, never a named entry — so a role's merge starts while the
+  // reviewer's provider is held.
+  const ctx = schedulingCtx(root, runners, roleProviders);
+  const reasonsHeld = await pollRunnerReasons(ctx);
+  assert.equal(reasonsHeld.size, 2, "every role's run is admitted; the scheduling pass carries no reviewer hold");
+  assert.equal(mergeStartHeld(false, true, "feature"), false, "a role's merge starts while the reviewer's provider is held");
+  assert.equal(mergeStartHeld(false, true), true, "the post-review drain (the no-role startHeld) stays parked while the reviewer's provider is held");
 
-  // When the review hold lifts, both roles run again.
-  const openCtx = schedulingCtx(root, runners, roleProviders);
-  const reasonsOpen = await pollRunnerReasons(openCtx);
-  assert.equal(reasonsOpen.size, 2, "both roles run again once the review hold lifts");
-});
-
-test("an unresolvable strong tier under the review gate holds a pre-merge role but admits a review.afterMerge role", async () => {
-  const root = tmpdir("tumwater-scheduling-review-strong-");
-  const runners = [fakeRunner("feature", defaultConfig()), fakeRunner("dedupe", defaultConfig())];
-  const roleProviders = new Map([
-    ["feature", "Q"],
-    ["dedupe", "Q"],
-  ]);
-
-  const heldCtx = schedulingCtx(root, runners, roleProviders);
-  heldCtx.reviewStrongPaused = true;
-  const reasonsHeld = await pollRunnerReasons(heldCtx);
-  assert.equal(reasonsHeld.has(runners[0]!), false, "an unresolvable strong tier holds a pre-merge-review role");
-  assert.equal(reasonsHeld.has(runners[1]!), true, "a review.afterMerge role is admitted under the strong-tier hold");
+  // When the review hold lifts, the no-role drain re-opens as before.
+  assert.equal(mergeStartHeld(false, false), false, "the post-review drain resumes once the review hold lifts");
 });
 
 /** Put a directory where the append-only events log belongs: every logEvent under `root`
@@ -946,12 +926,13 @@ test("a runner waiting on its queued change holds no place: a second runner star
   assert.equal(keys.includes("alpha"), false, "the new runs take other entries than the waiting one");
 });
 
-// Interlock relief (parts 1-3/4): the queued/in-flight merge interlock scopes a POST-MERGE-review
-// role to the stages that actually race its branch (an approved-and-waiting or in-flight-merge
-// queued change no longer parks the author), while a pre-merge role keeps the full interlock.
-// bugfix is a post-merge role (defaultConfig's review.afterMerge lists it); feature is pre-merge.
+// Interlock relief (parts 1-3/4, now team-wide per part 3i/3): the queued/in-flight merge
+// interlock is scoped to the stages that actually race a role's branch (an approved-and-waiting
+// or in-flight-merge queued change no longer parks the author). No role waits on a reviewer, so
+// the relief holds for every role — a role is held only while its queued change is in a held
+// stage. feature (a pre-merge role) approved-and-waiting is admitted; bugfix is still pre-approval.
 
-test("interlock relief: a queued post-merge role is admitted once its change is approved; a queued pre-merge role stays held", async () => {
+test("interlock relief: a queued role is admitted once its change is approved; a queued role still pre-approval stays skipped", async () => {
   const { root } = await initializedWorktree("bugfix"); // the bugfix branch exists at main
   const bugfix = fakeRunner("bugfix", defaultConfig());
   const feature = fakeRunner("feature", defaultConfig());
@@ -960,18 +941,18 @@ test("interlock relief: a queued post-merge role is admitted once its change is 
     ["feature", undefined],
   ]);
   const sha = mainSha(root);
-  enqueueMerge(root, { role: "bugfix", sha, run: 1, summary: "approved", enqueuedAt: Date.now() });
-  enqueueMerge(root, { role: "feature", sha, run: 1, summary: "verifying", enqueuedAt: Date.now() });
+  enqueueMerge(root, { role: "feature", sha, run: 1, summary: "approved", enqueuedAt: Date.now() });
+  enqueueMerge(root, { role: "bugfix", sha, run: 1, summary: "verifying", enqueuedAt: Date.now() });
 
   const ctx = schedulingCtx(root, [bugfix, feature], providers);
-  ctx.merges.approved.set("bugfix", {} as unknown as ApprovedMerge); // approved-and-waiting
-  ctx.merges.verifying.set("feature", {} as InFlightMerge); // still pre-approval
+  ctx.merges.approved.set("feature", {} as unknown as ApprovedMerge); // approved-and-waiting
+  ctx.merges.verifying.set("bugfix", {} as InFlightMerge); // still pre-approval
   const reasons = await pollRunnerReasons(ctx);
-  assert.equal(reasons.has(bugfix), true, "an approved queued change no longer parks the post-merge author");
-  assert.equal(reasons.has(feature), false, "a pre-merge role with any queued change stays skipped");
+  assert.equal(reasons.has(feature), true, "an approved queued change no longer parks a pre-merge role's author");
+  assert.equal(reasons.has(bugfix), false, "a role with a queued change still pre-approval stays skipped");
 });
 
-test("interlock relief: a queued post-merge role is admitted while its change is in the merge's fast-forward", async () => {
+test("interlock relief: a queued role is admitted while its change is in the merge's fast-forward", async () => {
   const { root } = await initializedWorktree("bugfix"); // the bugfix branch exists at main
   const bugfix = fakeRunner("bugfix", defaultConfig());
   const sha = mainSha(root);
@@ -979,10 +960,10 @@ test("interlock relief: a queued post-merge role is admitted while its change is
 
   const ctx = schedulingCtx(root, [bugfix], new Map([["bugfix", undefined]]));
   ctx.merges.merge = { roles: ["bugfix"] } as InFlightMerge; // in the merge's fast-forward, approved already
-  assert.equal((await pollRunnerReasons(ctx)).has(bugfix), true, "an in-flight-merge queued change no longer parks the post-merge author");
+  assert.equal((await pollRunnerReasons(ctx)).has(bugfix), true, "an in-flight-merge queued change no longer parks the author");
 });
 
-test("interlock relief: a queued post-merge role is held in a pre-approval or conflict-resolving stage, or not yet picked up", async () => {
+test("interlock relief: a queued role is held in a pre-approval or conflict-resolving stage, or not yet picked up", async () => {
   const repo = await initializedRepo();
   const bugfix = fakeRunner("bugfix", defaultConfig());
   const providers = new Map([["bugfix", undefined]]);
@@ -993,22 +974,22 @@ test("interlock relief: a queued post-merge role is held in a pre-approval or co
   assert.equal(
     (await pollRunnerReasons(schedulingCtx(repo, [bugfix], providers))).has(bugfix),
     false,
-    "a queued-but-unpicked post-merge change stays held",
+    "a queued-but-unpicked change stays held",
   );
 
   // Verifying (pre-approval).
   const verifying = schedulingCtx(repo, [bugfix], providers);
   verifying.merges.verifying.set("bugfix", {} as InFlightMerge);
-  assert.equal((await pollRunnerReasons(verifying)).has(bugfix), false, "a verifying queued post-merge change stays held");
+  assert.equal((await pollRunnerReasons(verifying)).has(bugfix), false, "a verifying queued change stays held");
 
   // Resolving a conflict: approved, but the live marker says the resolver is mid-run.
   const resolving = schedulingCtx(repo, [bugfix], providers);
   resolving.merges.approved.set("bugfix", {} as unknown as ApprovedMerge);
   writeMergeMarker(repo, { role: "bugfix", sha, summary: "resolving", startedAt: Date.now(), stage: "resolving" });
-  assert.equal((await pollRunnerReasons(resolving)).has(bugfix), false, "a conflict-resolving queued post-merge change stays held");
+  assert.equal((await pollRunnerReasons(resolving)).has(bugfix), false, "a conflict-resolving queued change stays held");
 });
 
-test("interlock relief: a queued post-merge role is held while its branch is already ahead of main", async () => {
+test("interlock relief: a queued role is held while its branch is already ahead of main", async () => {
   const { root, wt } = await initializedWorktree("bugfix");
   // A prior relief run held a commit on the role's branch: it sits ahead of main, so even an
   // approved queued change must not let the author start (a fresh run would race that commit).
@@ -1019,7 +1000,7 @@ test("interlock relief: a queued post-merge role is held while its branch is alr
   enqueueMerge(root, { role: "bugfix", sha, run: 1, summary: "approved", enqueuedAt: Date.now() });
   const ctx = schedulingCtx(root, [bugfix], new Map([["bugfix", undefined]]));
   ctx.merges.approved.set("bugfix", {} as unknown as ApprovedMerge);
-  assert.equal((await pollRunnerReasons(ctx)).has(bugfix), false, "a post-merge role whose branch is ahead of main does not start");
+  assert.equal((await pollRunnerReasons(ctx)).has(bugfix), false, "a role whose branch is ahead of main does not start");
 });
 
 test("running runners count against instances, and admissions in one poll count too", async () => {

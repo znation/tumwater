@@ -8,7 +8,6 @@ import type { RoleRunner } from "../runner/runner.js";
 import { logEventBestEffort } from "../events/events.js";
 import { baseRoleOf, configuredInstances, runnerPaused } from "../roles/runner-ids.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
-import { isAfterMergeRole } from "../review/post-merge-review.js";
 import { deferRunReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { freshlyWoken } from "../runner/runner-state.js";
@@ -40,8 +39,6 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
     diskHeld,
     windowHeldProviders,
     roleProviders,
-    reviewHeld,
-    afterMergeRoles,
     heldProviders,
     openBugsNow,
     workBacklogOpen,
@@ -113,12 +110,8 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
   // re-queue every poll until the repeated-failure pause stops it.
   if (runner.role === DIRECTOR_ROLE && windowHeldProviders.has(roleProviders.get(runner.role)))
     return { skip: true };
-  if (
-    runner.role !== DIRECTOR_ROLE &&
-    (heldProviders.has(roleProviders.get(runner.role)) ||
-      (reviewHeld && !afterMergeRoles.has(baseRoleOf(runner.role))))
-  )
-    return { skip: true }; // nor while ITS provider's failure storm holds — or the reviewer's, which a pre-merge review gates (a review.afterMerge role is exempt)
+  if (runner.role !== DIRECTOR_ROLE && heldProviders.has(roleProviders.get(runner.role)))
+    return { skip: true }; // nor while ITS provider's failure storm holds — the reviewer's hold parks only the post-merge review queue, never a role start
   // The role's OWN queue decides inbox due-ness: the director counts its historical
   // inbox, every other role its per-role queue (tumwater prompt --role <id>) — so a
   // queued prompt makes its role due by itself, no wake marker needed (isEligible).
@@ -156,14 +149,13 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
   // results — but the merge's outcome replaces it before the interlock lets the role back into
   // this pass), and skipping here saves that branch's workMergedSince git-range query for the
   // skipped role.
-  // Interlock relief (parts 1-3/4): a post-merge-review role (its own config `review.afterMerge`
-  // names it) with a queued change is held only while it is in a non-admissible stage — the
-  // pre-approval/conflict/branch-ahead holds buildSchedulingScope put in `interlockedHold` — and
-  // otherwise falls through to author (the merge no longer parks it). A pre-merge-review role,
-  // and a post-merge role still in a held stage, keep the full interlock: their rejection must
-  // reach the runner before it authors again.
+  // Interlock relief (parts 1-3/4): a queued role is held only while it is in a non-admissible
+  // stage — the pre-approval/conflict/branch-ahead holds buildSchedulingScope put in
+  // `interlockedHold` — and otherwise falls through to author (the merge no longer parks it).
+  // A role still in a held stage keeps the full interlock: its rejection must reach the runner
+  // before it authors again. The relief now applies team-wide: no role waits on a reviewer.
   if (queuedRoles.has(runner.role)) {
-    if (!isAfterMergeRole(runner.config, runner.role) || interlockedHold.has(runner.role)) {
+    if (interlockedHold.has(runner.role)) {
       noteSkip(root, runner, undefined);
       return { skip: true };
     }

@@ -715,24 +715,24 @@ test("an approved change merges while an earlier queue entry is still verifying"
 // own mid-flight hold is covered above by "an approved change merges while an earlier queue entry
 // is still verifying".
 
-// The reviewer-hold scoping (plans post-merge-review role): a hold on the reviewer's provider
-// parks only the entries a pre-merge review gates. The production pollMergeDrain start gate and
-// these tests drive one exported predicate (mergeStartHeld), so the wiring cannot drift.
+// The reviewer-hold (part 3i/3): a hold on the reviewer's provider parks only the post-merge
+// review drain — its no-role verdict — never a role start, verify or landing. The production
+// pollMergeDrain start gate and these tests drive one exported predicate (mergeStartHeld), so
+// the wiring cannot drift.
 
-test("mergeStartHeld scopes the reviewer hold to pre-merge roles", () => {
-  const after = new Set(["dedupe"]);
-  assert.equal(mergeStartHeld(true, true, after, "feature"), true, "a restart/disk hold holds a pre-merge role");
-  assert.equal(mergeStartHeld(true, true, after, "feature-2"), true, "the instance's base role still finds no afterMerge exemption");
-  assert.equal(mergeStartHeld(false, true, after, "dedupe"), false, "a review.afterMerge role drains while the reviewer is held");
-  assert.equal(mergeStartHeld(false, true, after, undefined), true, "the no-role verdict stays held (what drainPostReviews and mergeApproved read)");
-  assert.equal(mergeStartHeld(true, false, after, "dedupe"), true, "a restart/disk hold still holds every role, afterMerge included");
+test("mergeStartHeld holds only the no-role drain under a reviewer hold", () => {
+  assert.equal(mergeStartHeld(true, true, "feature"), true, "a restart/disk hold holds a role");
+  assert.equal(mergeStartHeld(false, true, "feature"), false, "no role start is held by the reviewer");
+  assert.equal(mergeStartHeld(false, true, "dedupe"), false, "every role drains while the reviewer is held — no afterMerge exemption exists");
+  assert.equal(mergeStartHeld(false, true, undefined), true, "the no-role verdict stays held (what drainPostReviews and mergeApproved read)");
+  assert.equal(mergeStartHeld(true, false, "dedupe"), true, "a restart/disk hold still holds every role");
 });
 
-test("an approved pre-merge entry merges while the reviewer's provider is held", async () => {
+test("approved entries merge while the reviewer's provider is held", async () => {
   const root = makeRepo();
   const roles = ["feature", "dedupe"];
   await queueChanges(root, roles);
-  const config = { ...defaultConfig(), review: { ...defaultConfig().review, afterMerge: ["dedupe"] } };
+  const config = defaultConfig();
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { config });
   try {
@@ -746,43 +746,44 @@ test("an approved pre-merge entry merges while the reviewer's provider is held",
     );
     assert.equal(queueDepth(root), 2, "no merge has run yet");
 
-    // Free the slot and close the reviewer hold with the production predicate. feature is
-    // already approved, so it still merges through drainMerge (no reviewer run needed) and no
-    // new feature verification starts; dedupe (afterMerge) merges too.
+    // Free the slot and close the reviewer hold with the production predicate: no role's merge
+    // is held by the reviewer, so both approved entries drain.
     pipeline.merge = null;
-    ctx.startHeld = (role?: string) => mergeStartHeld(false, true, new Set(["dedupe"]), role);
+    ctx.startHeld = (role?: string) => mergeStartHeld(false, true, role);
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the approved entries to merge while the reviewer is held");
     assert.equal(queueDepth(root), 0, "the approved entries merged despite the reviewer hold");
     // The two approved changes merge as one stack's combined commit, so the original pinned shas
     // are branch tips, not main ancestors — assert main holds each change's content instead.
-    assert.equal(sh(root, "git", "show", "main:feature.txt").trim(), "work by feature", "the approved pre-merge change merged while the reviewer's provider was held");
-    assert.equal(sh(root, "git", "show", "main:dedupe.txt").trim(), "work by dedupe", "the afterMerge change merged too");
+    assert.equal(sh(root, "git", "show", "main:feature.txt").trim(), "work by feature", "the approved feature change merged while the reviewer's provider was held");
+    assert.equal(sh(root, "git", "show", "main:dedupe.txt").trim(), "work by dedupe", "the dedupe change merged too");
   } finally {
     await Promise.allSettled(allTasks(pipeline));
     restore();
   }
 });
 
-test("a fresh pre-merge entry stays queued while a review.afterMerge entry drains under a reviewer hold", async () => {
+test("a fresh entry verifies and merges while the reviewer's provider is held — no role is parked", async () => {
   const root = makeRepo();
   const roles = ["feature", "dedupe"];
-  const shas = await queueChanges(root, roles);
-  const config = { ...defaultConfig(), review: { ...defaultConfig().review, afterMerge: ["dedupe"] } };
-  const held = (role?: string) => mergeStartHeld(false, true, new Set(["dedupe"]), role);
+  await queueChanges(root, roles);
+  const config = defaultConfig();
+  const held = (role?: string) => mergeStartHeld(false, true, role);
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, undefined, config), { config, held });
   try {
-    await pumpUntil(ctx, pipeline, () => queueDepth(root) === 1, "dedupe to merge and feature to stay queued", 30_000);
-    assert.deepEqual(queuedMergeFiles(root).map((q) => q.entry.role), ["feature"], "the fresh pre-merge entry stays queued while the reviewer is held");
-    assert.equal(pipeline.verifying.has("feature"), false, "no feature verification started under the reviewer hold");
+    await pumpUntil(ctx, pipeline, drained(root, pipeline), "both fresh entries to verify and merge while the reviewer is held", 30_000);
+    assert.equal(queueDepth(root), 0, "the reviewer hold parks no role — both entries drained");
     assert.equal(ctx.startHeld(), true, "the no-role startHeld (what drainPostReviews reads) is true under the reviewer hold");
-    assert.ok(await isMergedInto(root, shas.dedupe!, "main"), "the review.afterMerge entry merged despite the reviewer hold");
-    assert.ok(!(await isMergedInto(root, shas.feature!, "main")), "the pre-merge entry never merged under the reviewer hold");
+    // Both fresh changes merge as one stack's combined commit, so assert main holds each
+    // change's content rather than the pinned shas (branch tips, not ancestors).
+    assert.equal(sh(root, "git", "show", "main:feature.txt").trim(), "work by feature", "the fresh feature entry merged despite the reviewer hold");
+    assert.equal(sh(root, "git", "show", "main:dedupe.txt").trim(), "work by dedupe", "the fresh dedupe entry merged too — every role drains while the reviewer is held");
   } finally {
     await Promise.allSettled(allTasks(pipeline));
     restore();
   }
 });
+
 
 // The merge cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23) through the pipeline: each
 // change's own record carries its stage, so a change's stage must leave the gate stage the moment

@@ -24,7 +24,6 @@ import {
   modelSelectorField,
   resolvedBackendConfig,
   reviewRunConfig,
-  reviewedAfterMerge,
   scheduleConfigForRole,
   seamHoldKey,
   withModelOverrides,
@@ -93,7 +92,7 @@ export interface RunnerRunContext {
   finishAbortedRun(userPrompt: string | null, wt: string): Promise<RunOutcome>;
   pinAndReset(wt: string, sha: string): Promise<boolean>;
   finishRecoveryRun(
-    recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
+    recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" } | { kind: "already_queued" }>,
     userPrompt: string | null,
     wt: string,
     priorMergeFailure: string | undefined,
@@ -526,18 +525,12 @@ async function runWithWorktreePhase(
       s.conflictHandback = undefined;
       s.conflictDiscard = { sha: recovered.sha, summary: recovered.summary, attempts: recovered.attempts, at: Date.now() };
       prompt = appendPromptNote(prompt, buildConflictDiscardNote(recovered.summary, recovered.attempts));
-    } else if (
-      recovered &&
-      !(
-        recovered.kind === "already_queued" &&
-        reviewedAfterMerge(ctx.config, ctx.role)
-      )
-    ) {
-      // Every recovery kind ends the run here — EXCEPT `already_queued` for a post-merge-review
-      // role, whose arm the scheduler admits (plans/interlock-relief.md part 3/4) and whose
-      // branch is at main: that one falls through to author below instead of ending. Every
-      // other kind, `relief_wait` (a held commit ahead of main beside a queued entry) included,
-      // ends the run.
+    } else if (recovered && recovered.kind !== "already_queued") {
+      // Every recovery kind ends the run here — EXCEPT `already_queued`, whose arm the
+      // scheduler admits (the interlock relief applies team-wide) and whose branch is at main:
+      // that one falls through to author below instead of ending. Every other kind,
+      // `relief_wait` (a held commit ahead of main beside a queued entry) included, ends the
+      // run.
       return ctx.finishRecoveryRun(recovered, userPrompt, wt, priorMergeFailure);
     }
     await resetWorktreeToMain(wt, ctx.mainBranch);

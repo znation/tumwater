@@ -152,16 +152,6 @@ test("finishRecoveryRunPhase ends main_red on a pin waiting for main to move", a
   assert.ok(fs.existsSync(path.join(wt, "dirty.txt")), "the worktree is not reset");
 });
 
-test("finishRecoveryRunPhase maps an already-queued pin to queued without a recovery failure", async () => {
-  const root = await initializedRepo();
-  const { ctx, failures } = makeCtx(root);
-  const entry: MergeEntry = { role: "improve", sha: "sha1", run: 3, summary: "the summary", highFriction: true, enqueuedAt: 0 };
-
-  const outcome = await finishRecoveryRunPhase(ctx, { kind: "already_queued", entry }, null, path.join(root, "unused"), "prior failure");
-  assert.deepEqual(outcome, { result: "queued", summary: "the summary", commit: "sha1", highFriction: true, recoveredLeftover: true });
-  assert.deepEqual(failures, [], "nothing was enqueued this run, so no prior failure is carried");
-});
-
 test("finishRecoveryRunPhase queues a freshly enqueued pin, resets the worktree, and carries the prior failure", async () => {
   const { root, wt } = await initializedWorktree();
   const { ctx, failures } = makeCtx(root);

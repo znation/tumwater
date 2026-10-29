@@ -186,12 +186,10 @@ never has to wait a parked check out.
   pipeline is still resolving how that change lands: its entry is pre-approval (verifying,
   or not yet picked up), in a conflict or main-red hold, or its branch is already ahead of
   main — a fresh run would race it, and its rejection must reach the author's next prompt.
-  That is the whole story for a pre-merge-review role, whose rejection arrives before the
-  merge, so the hold lasts the whole time its change queued. A post-merge-review role — one
-  opted in by its own `review.afterMerge`, whose verdict arrives after the merge — is
-  admitted again once its change is approved and waiting for the merge slot or the merge is
-  in flight: its branch is reset to main every run, so a queued approved change never
-  blocks it.
+  The hold lasts only while the queued change is in a held stage — once it is approved and
+  waiting for the merge slot, or the merge is in flight, the role is admitted again, because
+  its branch is reset to main every run and a queued approved change never blocks it. The
+  relief is team-wide: no role waits on a reviewer.
 - **One bound.** `maxConcurrent` is the only concurrency bound: a run whose admission waits
   30 s or more because the team is busy logs a `provider_wait` event, and `tumwater doctor`'s
   "provider contention" row sums the last 24 h and warns at 10 minutes. Every wait is a
@@ -285,12 +283,11 @@ never has to wait a parked check out.
   naming each role — the reviewer-fix signal to narrow
   `review.afterMerge` for the noisy role or raise the authoring bar.
   While the reviewer's provider stands under a failure hold, or its strong tier is unresolvable
-  under the review gate, the roles a pre-merge review gates are held — but a role on
-  `review.afterMerge` is not: it merges without a reviewer, so it keeps authoring and its
-  approved/queued changes keep draining through the scheduler and merge pulse's role-scoped start
-  gate. The post-merge review queue holds only where that gate's no-role form holds — a restart or
-  disk hold, or a hold on the reviewer's provider — and never on the unresolvable strong tier,
-  which never reaches the post-merge review queue.
+  under the review gate, the hold parks only the post-merge review queue: no role start, verify
+  or landing waits on the reviewer. Every role keeps authoring and its approved/queued changes
+  keep draining. The post-merge review queue holds only where that gate's no-role form holds — a
+  restart or disk hold, or a hold on the reviewer's provider — and never on the unresolvable
+  strong tier, which never reaches the post-merge review queue.
 - A test that fails and then passes on the same tree is quarantined at once: the gate's re-run, a
   red in-lock merge check's one immediate re-run (the change then merges), and the watch's
   confirming re-run each add the failing tests the failed run named to

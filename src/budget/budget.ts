@@ -194,11 +194,10 @@ export function modelPairName(p: { provider?: string; model?: string } | null): 
  * `strong` tiers resolved to a usable free pair (resolveTierFallbacks over the full usable
  * predicate — price AND breaker serving) — plus whether the review gate is on. The gate is
  * `paused` when `default` resolves to pause (nothing for the team's bulk to run on), or when
- * review is on and `strong` does (nothing could merge for the roles a pre-merge review gates, so
- * their authoring runs are wasted work — a `review.afterMerge` role's is not);
- * `fallback` otherwise, with the tiers that did resolve running their pairs and the rest held
- * per role. The single definition of the gate: the orchestrator enforces it and both dashboards
- * display it, so what an operator sees is what the scheduler is doing. */
+ * review is on and `strong` does; `fallback` otherwise, with the tiers that did resolve running
+ * their pairs and the rest held per role. This is the value the dashboards display; the
+ * orchestrator's role holds come from the per-tier set `budgetPausedRoles` (a tier whose own
+ * pair did not resolve), not from a reviewer-derived team-wide pause. */
 export function budgetGate(
   reached: boolean,
   tiers: { default: boolean; strong: boolean },

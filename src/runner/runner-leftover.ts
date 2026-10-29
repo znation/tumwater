@@ -113,8 +113,9 @@ export interface LeftoverContext {
  * - `enqueued`: the pin went onto the merge queue and `merge_queued` was logged — the run ends
  *   `queued`, exactly like a fresh changed run, and the merge-queue interlock holds the role
  *   until the slot has merged it;
- * - `already_queued`: the role already has a merge on the queue (the interlock normally keeps
- *   such a role from running at all) — nothing is enqueued twice and no ref is touched;
+ * - `already_queued`: the role already has a merge on the queue (the interlock relief admits
+ *   it — runner-run.ts's `already_queued` arm falls through to author for every role) —
+ *   nothing is enqueued twice and no ref is touched;
  * - `relief_wait`: the role already has a merge on the queue AND its branch holds a second
  *   commit ahead of main staged unpinned by a prior relief run (plans/interlock-relief.md
  *   part 1/4) — neither re-queued nor reset, left on the branch for the run after the queued

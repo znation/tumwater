@@ -130,11 +130,11 @@ export interface RoleViewPayload {
    * like the min-run-interval override, so an instance id shows the count its runs carry. */
   instances?: number;
   /** Whether the review gate reviews this role's commits AFTER they merge
-   * (config-views.ts's reviewedAfterMerge, the one membership test the gate, the runner's
-   * `already_queued` recovery arm and this view share). Present only while review is enabled
-   * (`review.enabled !== false`) and `review.afterMerge` lists the role's base id — absent
-   * for a pre-merge-reviewed role or when the gate is off, matching the absent-when-default
-   * pattern of `imageReroute`/`instances`. */
+   * (config-views.ts's reviewedAfterMerge, the membership test the review gate and this view
+   * share). Present only while review is enabled (`review.enabled !== false`) and
+   * `review.afterMerge` lists the role's base id — absent for a pre-merge-reviewed role or
+   * when the gate is off, matching the absent-when-default pattern of
+   * `imageReroute`/`instances`. */
   reviewedAfterMerge?: true;
   /** Whether the review gate is on at all (`review.enabled !== false`) — the browser twin of
    * `tumwater role <id> --review-after-merge`'s gate check, told apart from `reviewedAfterMerge`

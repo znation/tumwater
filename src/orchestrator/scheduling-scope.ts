@@ -15,7 +15,6 @@ import { hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { readMergeMarker, mergeChanges } from "../merge/merge-slot.js";
 import type { MergePipeline } from "../merge/merge-pipeline.js";
-import { isAfterMergeRole } from "../review/post-merge-review.js";
 import { aheadOfMainBranch, branchExists } from "../git/git.js";
 import { branchName } from "../paths.js";
 import { hasUnmergedPin } from "../runner/runner-leftover.js";
@@ -64,18 +63,6 @@ export interface SchedulingPassCtx {
    * probe. A probe blind to the pair's tier lifted the pause for every role (an objection to
    * an earlier draft of this pass). */
   probeRoles: ReadonlySet<string>;
-  /** With the review gate on, an unresolvable strong tier means nothing could merge, so every
-   * role a pre-merge review gates is held (the director exempt) — not only the strong ones.
-   * budgetGate's second pause cause, split from the per-tier set so the dashboards can name the
-   * tiers' own holds separately from this team-wide one. A role on `review.afterMerge` (whose
-   * review runs after merging) is exempt, exactly as the reviewer's provider hold exempts it. */
-  reviewStrongPaused: boolean;
-  /** The base role ids listed in `review.afterMerge` (src/review/post-merge-review.ts): the
-   * roles whose review runs after merging, so while the review gate's team holds (the
-   * reviewer's provider under a failure hold, or an unresolvable strong tier) they keep
-   * authoring and their approved/queued changes keep draining. Only these exempt the scoped
-   * team holds — every other role is held exactly as before. */
-  afterMergeRoles: ReadonlySet<string>;
   /** The providers whose team-wide failure hold stands (team/team-hold.ts heldProviders —
    * `until` non-null; key presence is relapse memory, not a hold). A role starts no new
    * run while ITS provider is held (the director exempt). */
@@ -83,10 +70,6 @@ export interface SchedulingPassCtx {
   /** The subset of `heldProviders` held by a subscription window (team-hold.ts
    * windowHeldProviders): the one hold the director is NOT exempt from. */
   windowHeldProviders: ReadonlySet<string | undefined>;
-  /** The reviewer's provider is held while the review gate is on: the roles a pre-merge review
-   * gates are blocked (a role on `review.afterMerge` merges without a reviewer, so it is
-   * exempt), not just roles running on that provider. */
-  reviewHeld: boolean;
   /** Each runner's run model provider (configForRole at poll time): the key the
    * heldProviders check reads for that role. */
   roleProviders: ReadonlyMap<string, string | undefined>;
@@ -132,12 +115,9 @@ export interface SchedulingScope {
   maintenanceQuota: MaintenanceQuotaVerdict;
   budgetPausedRoles: ReadonlySet<string>;
   probeRoles: ReadonlySet<string>;
-  reviewStrongPaused: boolean;
-  afterMergeRoles: ReadonlySet<string>;
   roleQuietHeld: ReadonlySet<string>;
   heldProviders: ReadonlySet<string | undefined>;
   windowHeldProviders: ReadonlySet<string | undefined>;
-  reviewHeld: boolean;
   roleProviders: ReadonlyMap<string, string | undefined>;
   openBugsNow: boolean;
   workBacklogOpen: boolean;
@@ -147,10 +127,9 @@ export interface SchedulingScope {
   deferredDue: Map<string, boolean>;
   workMergedSince: WorkMergedCache;
   queuedRoles: Set<string>;
-  /** The queued post-merge-review roles (their own config `review.afterMerge` names them) held
-   * by the scoped interlock this poll: pre-approval, conflict-resolving, or a branch already
-   * ahead of main. A queued post-merge role absent from this set falls through the interlock to
-   * author; a pre-merge role is never here (it keeps the full interlock). */
+  /** The queued roles held by the scoped interlock this poll: pre-approval, conflict-resolving,
+   * or a branch already ahead of main. A queued role absent from this set falls through the
+   * interlock to author. */
   interlockedHold: Set<string>;
   pinnedDirector: boolean;
   claimGroups: Map<string, ClaimGroup>;
@@ -198,12 +177,9 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     bootstrapHeld,
     budgetPausedRoles,
     probeRoles,
-    reviewStrongPaused,
-    afterMergeRoles,
     roleQuietHeld,
     heldProviders,
     windowHeldProviders,
-    reviewHeld,
     roleProviders,
     openBugsNow,
     workBacklogOpen,
@@ -224,23 +200,22 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   // clock, since its only other run is an operator prompt. A queued or in-flight pin is the
   // merge-queue interlock's to hold, so the leftover reason is not offered then.
   const pinnedDirector = !queuedRoles.has(DIRECTOR_ROLE) && (await hasUnmergedPin(root, DIRECTOR_ROLE));
-  // Merge-queue interlock relief (parts 1-3/4): for a post-merge-review role — one whose own
-  // config `review.afterMerge` names it — the queued/in-flight interlock is scoped to the stages
-  // that actually race the author's branch. `interlockedHold` holds exactly the QUEUED post-merge
-  // roles in a non-admissible stage: pre-approval (`verifying`, or queued but not yet picked up —
-  // absent from the pipeline's approved/merge sets), conflict resolution (`resolve-wait`/
-  // `resolving`, read from the live marker), or a branch already ahead of main (a prior relief
-  // run's held commit). An approved-and-waiting or in-flight-merge queued change no longer parks
-  // the author. Pre-merge-review roles keep the full interlock (their rejection must reach the
-  // runner before it authors again), so they are never added here; scheduling-skip.ts skips a
-  // queued role unless it is BOTH post-merge AND absent from interlockedHold.
+  // Merge-queue interlock relief (parts 1-3/4): the queued/in-flight interlock is scoped to
+  // the stages that actually race the author's branch. `interlockedHold` holds exactly the
+  // QUEUED roles in a non-admissible stage: pre-approval (`verifying`, or queued but not yet
+  // picked up — absent from the pipeline's approved/merge sets), conflict resolution
+  // (`resolve-wait`/`resolving`, read from the live marker), or a branch already ahead of main
+  // (a prior relief run's held commit). An approved-and-waiting or in-flight-merge queued
+  // change no longer parks the author. The relief applies team-wide — no role waits on a
+  // reviewer — so every queued role is held only while it is in interlockedHold;
+  // scheduling-skip.ts skips a queued role unless it is absent from that set.
   const interlockedHold = new Set<string>();
   if (queuedRoles.size > 0) {
     const marker = readMergeMarker(root);
     const markerChanges = marker ? mergeChanges(marker) : [];
     for (const runner of runners) {
       const role = runner.role;
-      if (!queuedRoles.has(role) || !isAfterMergeRole(runner.config, role)) continue;
+      if (!queuedRoles.has(role)) continue;
       const inApproved = merges.approved.has(role);
       const inMerge = (merges.merge?.roles ?? []).includes(role);
       const stage = markerChanges.find((c) => c.role === role)?.stage;
@@ -333,16 +308,10 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   // The per-role windows (quietHoursPerRole) fold in beside the team one as a fourth
   // disjunct — a role held by either window (or both, held once) starts no new runs;
   // the director stays exempt by the same role check that covers the other disjuncts.
-  // The budget hold, per role (part 5c/8): a tier that resolved to pause holds its own roles,
-  // and — with review on — an unresolvable strong tier holds every role a pre-merge review
-  // gates (nothing could merge) — except a role on `review.afterMerge`, whose review runs
-  // after merging, so it keeps authoring. The probe of a demoted pair pierces the hold for
-  // EXACTLY the probed pair's tier's roles: the earlier draft's pair-blind pierce lifted the
-  // pause team-wide on any due probe.
-  const budgetHolds = (role: string): boolean =>
-    (budgetPausedRoles.has(role) ||
-      (reviewStrongPaused && !afterMergeRoles.has(baseRoleOf(role)))) &&
-    !probeRoles.has(role);
+  // The budget hold, per role (part 5c/8): a tier that resolved to pause holds its own
+  // roles. The probe of a demoted pair pierces the hold for EXACTLY the probed pair's tier's
+  // roles: the earlier draft's pair-blind pierce lifted the pause team-wide on any due probe.
+  const budgetHolds = (role: string): boolean => budgetPausedRoles.has(role) && !probeRoles.has(role);
   const operatorPauseBlocks = (role: string): boolean =>
     (userPaused || quietNow || roleQuietHeld.has(role) || budgetHolds(role)) &&
     role !== DIRECTOR_ROLE;
@@ -400,12 +369,9 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     bootstrapHeld,
     budgetPausedRoles,
     probeRoles,
-    reviewStrongPaused,
-    afterMergeRoles,
     roleQuietHeld,
     heldProviders,
     windowHeldProviders,
-    reviewHeld,
     roleProviders,
     openBugsNow,
     workBacklogOpen,

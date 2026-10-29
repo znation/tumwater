@@ -268,7 +268,7 @@ export class RoleRunner {
 
   /** Thin delegate to finishRecoveryRunPhase (src/runner/runner-recovery.ts). */
   private async finishRecoveryRun(
-    recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
+    recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" } | { kind: "already_queued" }>,
     userPrompt: string | null,
     wt: string,
     priorMergeFailure: string | undefined,

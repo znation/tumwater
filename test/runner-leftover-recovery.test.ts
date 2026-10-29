@@ -333,12 +333,12 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
   );
 });
 
-// The interlock relief (plans/interlock-relief.md part 2/4): when a post-merge-review role has
-// a queued change and its branch is at main, recovery reports `already_queued`, and for a
-// post-merge-review role that arm falls through to author instead of ending the run — the
-// fall-through IS the run the scheduler admits (part 3/4). A pre-merge-review role's
-// `already_queued` still ends the run, as today.
-test("a post-merge-review role with an already_queued recovery falls through to author", async () => {
+// The interlock relief (plans/interlock-relief.md part 2/4, now team-wide per part 3i/3): when
+// a role has a queued change and its branch is at main, recovery reports `already_queued`, and
+// that arm falls through to author instead of ending the run — the fall-through IS the run the
+// scheduler admits (part 3/4). The relief holds for every role: no role waits on a reviewer, so
+// no role's `already_queued` membership test ends the run.
+test("a role with an already_queued recovery falls through to author", async () => {
   const repo = await initializedRepo();
   enqueueMerge(repo, { role: "bugfix", sha: "a".repeat(40), run: 3, summary: "queued change", enqueuedAt: Date.now() });
   const authored = path.join(tmpdir(), "authored");
@@ -352,7 +352,7 @@ test("a post-merge-review role with an already_queued recovery falls through to 
       const runner = makeRoleRunner(repo, "bugfix");
       const outcome = await runner.run();
 
-      assert.ok(fs.existsSync(authored), "the already_queued post-merge run reached the author");
+      assert.ok(fs.existsSync(authored), "the already_queued run reached the author");
       // The authored follow-up is held on the branch (part 1/4): the role still has a queued entry.
       assert.equal(outcome.result, "queued", "the run ended queued, holding its commit on the branch");
       assert.equal(headMerge(repo)?.entry.sha, "a".repeat(40), "the queued entry is untouched");
@@ -360,19 +360,20 @@ test("a post-merge-review role with an already_queued recovery falls through to 
   );
 });
 
-test("a pre-merge-review role with an already_queued recovery still ends the run", async () => {
+test("an already_queued recovery from any role falls through to author", async () => {
   const repo = await initializedRepo();
   enqueueMerge(repo, { role: "improve", sha: "a".repeat(40), run: 3, summary: "queued change", enqueuedAt: Date.now() });
   const authored = path.join(tmpdir(), "authored");
   await withPi(
-    [`touch "${authored}"`, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
+    [`touch "${authored}"`, `printf '%s\n' '${assistantLine("ok\nSUMMARY: follow-up work")}'`, `echo followup > followup.txt`].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
       const outcome = await runner.run();
 
-      assert.equal(outcome.result, "queued", "the pre-merge role ends on the recovery run");
-      assert.ok(!fs.existsSync(authored), "no authoring run: recovery ended the run");
-      assert.equal(headMerge(repo)?.entry.sha, "a".repeat(40));
+      assert.ok(fs.existsSync(authored), "the already_queued run reached the author for any role");
+      // The authored follow-up is held on the branch (part 1/4): the role still has a queued entry.
+      assert.equal(outcome.result, "queued", "the run ended queued, holding its commit on the branch");
+      assert.equal(headMerge(repo)?.entry.sha, "a".repeat(40), "the queued entry is untouched");
     },
   );
 });

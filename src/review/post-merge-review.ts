@@ -1,7 +1,7 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { compareCodeUnits } from "../collections.js";
 import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir, reviewFixRef } from "../paths.js";
-import { reviewedAfterMerge, reviewRunConfig } from "../config/config-views.js";
+import { reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, TUMWATER_SOURCE, tryOrWarn } from "../events/events.js";
 import { isJsonObject } from "../files/json-object.js";
 import { git, gitCouldNotStart, gitTry } from "../git/git-run.js";
@@ -101,13 +101,6 @@ export function postMergeChurn(events: readonly HarnessEvent[]): { count: number
   const roles = postMergeRejectionCounts(events);
   const count = roles.reduce((n, r) => n + r.count, 0);
   return count >= POST_MERGE_REJECT_WARN ? { count, roles } : null;
-}
-
-/** Whether `role`'s changes are reviewed after merging instead of before. One home for the
- * membership test, config-views.ts's reviewedAfterMerge — the same predicate the review gate,
- * the runner's `already_queued` recovery arm and the role view read. */
-export function isAfterMergeRole(config: TumwaterConfig, role: string): boolean {
-  return reviewedAfterMerge(config, role);
 }
 
 /** The queued entries. A torn or hand-edited entry (not an object with a string commit, role and

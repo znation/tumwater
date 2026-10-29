@@ -59,8 +59,8 @@ export async function pollRunnerReasons(
 
 /** The team-hold key of the reviewer's seam, read from the config merges actually review under
  * (the poll's roleConfig, which a used-up claude window or the cap has moved to a fallback), so
- * a reviewer that left claude no longer holds the roles a pre-merge review gates on the claude
- * hold. */
+ * a reviewer that left claude no longer parks the no-role post-merge review drain on the claude
+ * hold — no named entry (start, verify or landing) waits on the reviewer. */
 export function reviewHoldKey(roleConfig: TumwaterConfig): string | undefined {
   return seamHoldKey(reviewRunConfig(roleConfig));
 }
@@ -72,7 +72,6 @@ interface DeferralInputs {
   plansFull: boolean;
   probePair: string | null;
   probeRoles: Set<string>;
-  reviewStrongPaused: boolean;
 }
 
 /** Backlog-aware deferral: while PLANS.md `## Planned` or BUGS.md `## Open` on main
@@ -87,17 +86,14 @@ interface DeferralInputs {
  * exactly why it is being probed). Only those roles pierce the budget hold, and the launch
  * pass admits exactly one of them as the probe — a probe blind to the pair's tier would lift
  * the pause for every role, and a probe with no eligible runner must not hijack the poll's
- * other launches. The review-on strong pause (budgetGate): with the review gate on, an
- * unresolvable strong tier means nothing could merge, so every role a pre-merge review gates is
- * held (a `review.afterMerge` role is exempt — its review runs after merging) — the per-tier
- * pause set alone would let small/default roles author changes no reviewer could judge. The
- * probe of the strong pair pierces this hold for exactly the probed tier's roles too. */
+ * other launches. The probe of a demoted pair pierces the hold for
+ * exactly the probed tier's roles too. */
 export function pollDeferralInputs(
   root: string,
   runners: readonly RoleRunner[],
   liveConfig: TumwaterConfig,
   gateStates: TeamGateStates,
-  gates: Pick<ReturnType<typeof pollTeamGates>, "priceResolved" | "servingResolved" | "budgetActive">,
+  gates: Pick<ReturnType<typeof pollTeamGates>, "priceResolved">,
   breakerNowMs: number,
 ): DeferralInputs {
   const openBugsNow = openBugs(root).length > 0;
@@ -112,7 +108,5 @@ export function pollDeferralInputs(
       if (p !== null && modelPairName(p) === probePair) probeRoles.add(r.role);
     }
   }
-  const reviewStrongPaused =
-    gates.budgetActive && liveConfig.review.enabled && gates.servingResolved.strong.pair === null;
-  return { openBugsNow, workBacklogOpen, plansFull, probePair, probeRoles, reviewStrongPaused };
+  return { openBugsNow, workBacklogOpen, plansFull, probePair, probeRoles };
 }

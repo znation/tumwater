@@ -84,15 +84,15 @@ export async function pinAndResetPhase(ctx: RecoveryContext, wt: string, sha: st
  * holding the commit. When the pin is left over from a merge that failed non-terminally
  * (`priorMergeFailure`), re-queuing it is a retry of a PERSISTENT failure the `queued` result
  * cannot express, so it rides the outcome's recoveryFailure into the error streak and the
- * warning that names the stuck gate (BUGS.md 2026-09-21). A role whose merge is still queued
- * ends `queued` on that entry — nothing enqueued twice, nothing reset; a queued entry whose
- * branch also holds a relief commit ahead of main ends `skipped`, leaving both untouched. A
- * leftover that could
+ * warning that names the stuck gate (BUGS.md 2026-09-21); an already-queued pin never reaches
+ * this phase (runner-run routes that arm to the authoring run). A queued entry whose branch
+ * also holds a relief commit ahead of main ends `skipped`, leaving both untouched. A leftover
+ * that could
  * not be pinned stays on the branch and the run fails like a fresh run's failed pin. Every
  * arm is `recoveredLeftover`: no model ran, so the run is no evidence about the backend. */
 export async function finishRecoveryRunPhase(
   ctx: RecoveryContext,
-  recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
+  recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" } | { kind: "already_queued" }>,
   userPrompt: string | null,
   wt: string,
   priorMergeFailure: string | undefined,

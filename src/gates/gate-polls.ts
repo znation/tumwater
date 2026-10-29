@@ -440,13 +440,12 @@ function pollTeamFailureAlarms(states: TeamGateStates, ctx: TeamGatePollCtx) {
   // Team-wide failure hold, per provider (src/team/team-hold.ts, PLANS.md 2026-10-05): once two
   // roles' runs have ended on the SAME provider AND failure kind within a short window — 429s, or a
   // connection, timeout, 5xx, or model-load backend failure — roles on THAT provider start no
-  // new runs, and the merge queue starts no new verify, whose reviewer run has no retry and would
-  // spend a review strike on the storm — until the hold re-opens at its own deadline (Retry-After
+  // new runs until the hold re-opens at its own deadline (Retry-After
   // honored on the rate-limit kind, doubling on a relapse, capped). Roles on a healthy provider
-  // keep running; a hold on the reviewer's provider (with the review gate on) still blocks every
-  // role a pre-merge review gates — a `review.afterMerge` role's changes merge without a reviewer,
-  // so it stays running; the orchestrator's scheduling and start passes derive that verdict from
-  // this map. The director's runs are exempt, as under the budget gate and the
+  // keep running; a hold on the reviewer's provider parks only the no-role post-merge review
+  // drain — it holds no role start, verify or landing (no role waits on a reviewer), so the
+  // scheduling and start passes read no reviewer verdict from this map. The director's runs are
+  // exempt, as under the budget gate and the
   // operator pause: an explicit human prompt outranks an autonomous gate, one director run is not
   // the concurrency that sustains a storm, its 429 runs keep the per-run transient retry
   // (backend-failure kinds ride this hold alone), and a prompt its run fails to fulfill goes back

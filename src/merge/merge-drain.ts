@@ -35,8 +35,9 @@ async function postReviewDue(config: TumwaterConfig, root: string, commit: strin
 }
 
 /** One poll of the merge queue (the scheduler's WHEN: after the gates, never while a restart
- * or a disk hold is pending — a reviewer-provider hold does not stop the whole drain, it parks
- * only the entries a pre-merge review gates, per the role-scoped startHeld): start a
+ * or a disk hold is pending — a reviewer-provider hold does not stop the whole drain: it parks
+ * only the post-merge review drain, whose no-role startHeld reads it, never a merge entry, so
+ * no verify or landing waits on the reviewer): start a
  * verification for every queued change the pipeline does not already hold (drainVerify, in
  * merge-verify.ts), and start the merge when the slot is free and something is approved
  * (drainMerge). A queued merge is COMMITTED work awaiting completion, not a new run, so the

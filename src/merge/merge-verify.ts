@@ -172,9 +172,10 @@ export async function drainVerify(ctx: MergePipelineContext, p: MergePipeline): 
     // The dedupe awaited git: a task that settled meanwhile may have dropped this very entry
     // (its role was busy when the queue was listed) or claimed its role. Start nothing for it.
     if (!fs.existsSync(file) || liveRoles(p).has(entry.role)) continue;
-    // A pre-merge entry during a reviewer hold stays queued instead of starting a parked verify
-    // that fills the verify limit; a review.afterMerge role's entry keeps draining (its review
-    // runs after merging, so the hold is not for it) — ctx's role-scoped start gate decides.
+    // A reviewer hold parks no named entry — every entry keeps draining (no verify, start or
+    // landing waits on the reviewer); only a restart or disk hold (the start gate's other legs)
+    // parks it here, and a parked verification re-checks the gate when its permit comes. The
+    // start gate decides.
     if (ctx.startHeld(entry.role)) continue;
     startVerify(ctx, p, entry, file);
   }

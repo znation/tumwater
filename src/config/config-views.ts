@@ -212,9 +212,8 @@ export function roleSeamTier(config: TumwaterConfig, role: string): ModelTier {
 
 /** Whether the review gate reviews this role's commits AFTER they merge (review.afterMerge
  * lists the role's base id). One home for the membership test the review gate (review.ts's
- * reviewAttempt), the runner's `already_queued` recovery arm (runner-run.ts) and the role
- * view (`tumwater role <id>` / the dashboard role drawer) all share, so an operator reading
- * one surface sees the same answer every consumer enforces. Pure, no I/O. */
+ * reviewAttempt) and the role view (`tumwater role <id>` / the dashboard role drawer) share,
+ * so an operator reading one surface sees the same answer every consumer enforces. Pure, no I/O. */
 export function reviewedAfterMerge(config: TumwaterConfig, role: string): boolean {
   return (config.review.afterMerge ?? []).includes(baseRoleOf(role));
 }

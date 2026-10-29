@@ -32,9 +32,8 @@ export interface InFlightMerge {
 }
 
 /** A change the verify stage approved (or found exempt), waiting for the merge slot: still
- * queued — a pre-merge-review role's author stays interlocked until it merges, while a
- * post-merge-review role's author is admitted once the change is approved (interlock relief,
- * parts 1-3/4: the scoped interlock no longer parks an approved-and-waiting author) — with the
+ * queued — the scoped interlock no longer parks an approved-and-waiting author (interlock
+ * relief, parts 1-3/4), and no role start, verify or landing waits on the reviewer — with the
  * head its gate approved in its merge ref (`sha`) and the approval's patch-id in its state (2a).
  * In memory only: after a
  * restart the entry is verified again, and its review carries over through the patch-id while
@@ -59,9 +58,9 @@ export interface ApprovedMerge extends AbortableMerge, FoldsUsage {
 }
 
 /** The per-poll state the pipeline reads from the scheduler, resolved once by the poll loop.
- * The scheduler keeps WHEN to drain (after the gates; the startHeld gate is applied per entry
- * and role, so a reviewer's team hold parks only the entries a pre-merge review gates while
- * review.afterMerge roles keep draining); merge-drain.ts owns HOW — from the queue to each
+ * The scheduler keeps WHEN to drain (after the gates; the startHeld gate applies to the
+ * no-role post-merge review drain only — the reviewer hold parks no named entry, so no role
+ * start, verify or landing waits on the reviewer); merge-drain.ts owns HOW — from the queue to each
  * verification and the merge. */
 export interface MergePipelineContext {
   root: string;
@@ -91,10 +90,10 @@ export interface MergePipelineContext {
    * it actually starts, exactly as a parked role run re-checks it (run-timing.ts's
    * runTimedRoleRun): a verification queued before the hold must not start a reviewer mid-drain
    * or into the storm. A held verification hands its permit back and starts nothing; its entry
-   * stays queued for the next drain. The gate is per-role: `role` names the entry's authoring
-   * role, so a `review.afterMerge` role's verification keeps running while a pre-merge-review
-   * role's stays parked under a reviewer hold; a caller that cannot name a role (the no-role
-   * form, still held the conservative team-wide verdict) passes no argument. */
+   * stays queued for the next drain. The reviewer hold parks only the no-role form — the
+   * post-merge review drain, which calls startHeld() with no role — never a named entry: no
+   * role start, verify or landing waits on the reviewer. `role` names the entry's authoring
+   * role; a caller that cannot name one (the post-review drain) passes no argument. */
   startHeld(role?: string): boolean;
 }
 
