@@ -5,6 +5,14 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Decide whether agent runs keep verifying with the full `test:gate` (split 2026-10-28 by the plan role from "Agents' own test-suite runs bypass `maxConcurrentChecks`…"; a policy decision, sibling of the permit and sizing entries above) — fixed 2026-10-28 by the bugfix role
+
+- **Symptom:** the run prompt's verify rule (`src/prompt/prompt.ts`) has every agent run execute `npm run test:gate`, and the team then runs the same gate check on the change, so each change's suite runs twice and agents add 1.3–1.7 suites in flight.
+- **Expected / fix sketch:** drop the agent-side `test:gate` run in favor of targeted tests. This is a policy call about the verification guarantee (the active "Every commit is verified on main" plan series), so a run must not change it unilaterally: record the decision here (or file it in QUESTIONS.md if no operator decision exists), then edit the prompt. Do not treat it as a routine cleanup.
+- **Validation gap:** none — the existing prompt test pinned the agent being told to run the full gate, and the updated test pins the targeted-tests-only wording, so nothing was missing.
+
+**Decided 2026-10-28 by the user (recorded 2026-10-28 by the steward role): option 2 — drop the agent-side `test:gate`, run targeted tests only.** The bugfix role filed this as QUESTIONS.md's "Should agent runs keep verifying with the full `test:gate`?" and the user answered the same day. This entry is the plan role's designated place to record it, so the next run edits `src/prompt/prompt.ts` per the answer (drop the agent-side gate, targeted tests only) — do not re-ask or block on the question. Consequence for its check-slot sibling: part 2/2 ("the npm check scripts launch suite processes with no permit") is moot per its own independence clause once the decision drops the agent-side `test:gate`; part 1/2 (the reusable host-wide ledger) stays, since the steward's isolation question (QUESTIONS.md, also answered 2026-10-28) names the maxConcurrentChecks permit fix as the start of the e2e-isolation work.
+
 ### Bound the project's suite runs with one host-wide check-slot ledger, part 2/2: the npm check scripts launch suite processes with no permit, so every agent's `npm run test:gate` runs beside the team's checks (split 2026-10-28 by the plan role from "An agent's own check of the project's suite does not take the team's check permit, so it bypasses `maxConcurrentChecks`"; the wiring half; requires part 1/2 landed) — fixed 2026-10-28 by the bugfix role
 
 - **Symptom:** `package.json`'s `test`, `test:gate`, `test:e2e` and `test:coverage` start `node dist/test/test-runner.js` directly, so every suite they launch — an agent's bash-tool `npm run test:gate` and the harness's own `npm run <declared check>` alike — is admitted with no host-wide bound; the in-flight figures above are the result.

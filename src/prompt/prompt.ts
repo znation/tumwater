@@ -160,9 +160,9 @@ function commonRules(
   gateCommand?: string,
 ): string {
   const verify = check && gateCommand
-    ? `verify with \`${gateCommand}\` (lint, compile and the tests your change affects) — run it
-  after your change and fix what you broke. Tumwater runs the full check (${describeCheck(check)})
-  itself; do not run it.`
+    ? `verify the change with a compile or the one or two test files that cover it — run them
+  after your change and fix what you broke. Tumwater runs the full gate (\`${gateCommand}\`)
+  itself before the change merges; do not run it.`
     : check
     ? `verify with ${describeCheck(check)} (the project's declared check) — run it after your
   change and fix what you broke.`
@@ -376,8 +376,9 @@ interface RunPromptInput {
    * configured or detected (plans/portability.md §6/7) — names the verify command in the
    * rules instead of asserting npm. Omitted: no check — generic wording, no npm assertion. */
   check?: BuildCheck;
-  /** The configured `check.gateCommand` (gateCommandOf), when set: the verify rule names it and
-   * says tumwater runs the full check. Omitted: the verify rule names the check itself. */
+  /** The configured `check.gateCommand` (gateCommandOf), when set: the agent verifies with
+   * targeted tests only; tumwater runs the full gate before it merges (BUGS.md 2026-10-28).
+   * Omitted: the verify rule names the check itself. */
   gateCommand?: string;
   /** The file the project brief (the managed brief text + status) is read from —
    * TUMWATER.md when it owns the sections, else README.md (plans/portability.md §7a/7).
