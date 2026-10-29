@@ -260,15 +260,9 @@ function parseOrDelete(rec: Record<string, unknown>, key: string, parse: (v: unk
   else rec[key] = parsed;
 }
 
-/** Degrade each known nested field to a usable shape or drop it, mutating the freshly parsed
- * object in place so a well-formed file keeps its values unchanged. */
-function normalizeInfoFields(rec: Record<string, unknown>): void {
-  parseOrDelete(rec, "build", parseBuild);
-  parseOrDelete(rec, "fallbackDemoted", parseDemotion);
-  parseOrDelete(rec, "permits", parsePermits);
-  parseOrDelete(rec, "checkPermits", parseCheckPermits);
-  parseOrDelete(rec, "slotPool", parseSlotPool);
-
+/** Drop a non-object `fallbackDemotions` or each entry that does not parse, keeping
+ * well-formed entries unchanged. */
+function normalizeFallbackDemotions(rec: Record<string, unknown>): void {
   const demotions = rec.fallbackDemotions;
   if (!isJsonObject(demotions)) delete rec.fallbackDemotions;
   else {
@@ -278,14 +272,10 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
       else demotions[key] = parsed;
     }
   }
+}
 
-  const budget = rec.budget;
-  if (!isJsonObject(budget) || !isFiniteNumber(budget.spentUsd)) delete rec.budget;
-
-  if (rec.chain !== undefined && !isJsonObject(rec.chain)) delete rec.chain;
-
-  if (rec.stopsAt !== undefined && !isFiniteNumber(rec.stopsAt)) delete rec.stopsAt;
-
+/** Drop a non-array `providerHolds` or keep each well-formed entry, dropping foreign ones. */
+function normalizeProviderHolds(rec: Record<string, unknown>): void {
   const providerHolds = rec.providerHolds;
   if (!Array.isArray(providerHolds)) delete rec.providerHolds;
   else {
@@ -296,7 +286,10 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
     }
     rec.providerHolds = kept;
   }
+}
 
+/** Drop a `disk` that lacks finite numbers or a boolean `held`, or an invalid `lastReclaim`. */
+function normalizeDisk(rec: Record<string, unknown>): void {
   const disk = rec.disk;
   if (
     !isJsonObject(disk) ||
@@ -309,6 +302,28 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
   } else if (disk.lastReclaim !== undefined && !isLastReclaim(disk.lastReclaim)) {
     delete disk.lastReclaim;
   }
+}
+
+/** Degrade each known nested field to a usable shape or drop it, mutating the freshly parsed
+ * object in place so a well-formed file keeps its values unchanged. */
+function normalizeInfoFields(rec: Record<string, unknown>): void {
+  parseOrDelete(rec, "build", parseBuild);
+  parseOrDelete(rec, "fallbackDemoted", parseDemotion);
+  parseOrDelete(rec, "permits", parsePermits);
+  parseOrDelete(rec, "checkPermits", parseCheckPermits);
+  parseOrDelete(rec, "slotPool", parseSlotPool);
+
+  normalizeFallbackDemotions(rec);
+
+  const budget = rec.budget;
+  if (!isJsonObject(budget) || !isFiniteNumber(budget.spentUsd)) delete rec.budget;
+
+  if (rec.chain !== undefined && !isJsonObject(rec.chain)) delete rec.chain;
+
+  if (rec.stopsAt !== undefined && !isFiniteNumber(rec.stopsAt)) delete rec.stopsAt;
+
+  normalizeProviderHolds(rec);
+  normalizeDisk(rec);
 }
 
 /** Publish the running orchestrator's info file atomically (writeJsonAtomic's tmp + rename).
