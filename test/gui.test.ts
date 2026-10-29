@@ -23,6 +23,7 @@ import { writeLogLines } from "./fixtures/log-fixtures.js";
 import { makeRepo, tmpdir, writeBacklogFile, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { clockOf, dayKey } from "./helpers/oracles.js";
+import { humanSeconds } from "../src/text/datetime.js";
 import { setEnv } from "./helpers/env.js";
 
 // The dashboard tests read JSON responses the way gui-client's own getJson guard does; this
@@ -491,6 +492,23 @@ test("the GUI last run cell shows absolute time plus relative age, mirroring the
   // The whole cell — absolute stamp and age bucketing — must stay byte-identical to the TUI's
   // lastRunCell, so a drift in either surface fails here.
   for (const ts of [t45, t190, t2h, t3d]) assert.equal(fmtLastRun(ts), lastRunCell(ts));
+});
+
+test("the dashboard page's humanSeconds copy matches node's bucketing at every unit edge", async () => {
+  // The page authors its own browser-side humanSeconds (the marked region) so relative ages
+  // render without a server round-trip. gui.test.ts probes it through fmtLastRun only at
+  // values deliberately "far from the rounding edges" (45 s / 3 m / 2 h / 3 d), so a drift at
+  // the 59m59s→1h and 23h59m→1d rollovers, or the day-count fallthrough past 90 d, could
+  // escape unnoticed. Pin the page copy to node's datetime.ts humanSeconds across every
+  // bucket and both rollover edges — the two cannot drift.
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
+  const hs = /\/\/ human-seconds-fmt:start\n([\s\S]*?)\n  \/\/ human-seconds-fmt:end/.exec(GUI_PAGE);
+  assert.ok(hs, "human-seconds-fmt region found in the page");
+  const pageHumanSeconds = new Function(`${hs[1]}\nreturn humanSeconds;`)() as (s: number) => string;
+  // One interior sample per bucket, then the second that rounds up into each next unit.
+  for (const s of [45, 3599, 3600, 86399, 86400, 3 * 86400 + 2 * 3600, 90 * 86400]) {
+    assert.equal(pageHumanSeconds(s), humanSeconds(s), `second count ${s}`);
+  }
 });
 
 // Full backlog entries:
