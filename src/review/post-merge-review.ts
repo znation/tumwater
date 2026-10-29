@@ -1,4 +1,5 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { compareCodeUnits } from "../collections.js";
 import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir, reviewFixRef } from "../paths.js";
 import { reviewRunConfig } from "../config/config-views.js";
@@ -103,28 +104,48 @@ export function postMergeChurn(events: readonly HarnessEvent[]): { count: number
   return count >= POST_MERGE_REJECT_WARN ? { count, roles } : null;
 }
 
+// One stat-cached read of the review queue, keyed by the queue file (merge-queue.ts's readEntry
+// caches its single JSON file the same way): the dashboard's /api/status poll asks this every
+// second, and the file only changes when a merge settles its review — an unchanged file costs
+// one stat per poll instead of a whole-file read plus a JSON.parse on every request. Any write
+// (addPostReview/settlePostReview's tmp+rename) lands a fresh inode and mtime/size, so the same
+// dev/ino/mtime/size check invalidates it exactly like the other polled files; each caller gets
+// a deep-enough copy (the entry objects and their `rejected` arrays) so treating a read result
+// as one's own cannot poison a later poll.
 /** The queued entries. A torn or hand-edited entry (not an object with a string commit, role and
  * summary, or a `rejected` that is not an array — a non-string `lastFailure` is dropped like the
  * other fields) is dropped, and the next write leaves it out. */
+const postReviewCache = new Map<string, StatKeyedValue<PostReview[]>>();
 export function readPostReviews(root: string): PostReview[] {
-  const saved = readJsonFile<{ pending?: unknown }>(postReviewPath(root));
-  if (!Array.isArray(saved?.pending)) return [];
-  const entries: PostReview[] = [];
-  for (const raw of saved.pending as unknown[]) {
-    if (!isJsonObject(raw)) continue;
-    const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt, fixed } = raw;
-    if (typeof commit !== "string" || typeof role !== "string" || typeof summary !== "string") continue;
-    if (rejected !== undefined && !Array.isArray(rejected)) continue;
-    const entry: PostReview = { commit, role, summary };
-    if (typeof body === "string") entry.body = body;
-    if (typeof failures === "number" && Number.isFinite(failures)) entry.failures = failures;
-    if (typeof lastFailure === "string") entry.lastFailure = lastFailure;
-    if (Array.isArray(rejected)) entry.rejected = rejected.filter((r): r is string => typeof r === "string");
-    if (typeof fixed === "string") entry.fixed = fixed;
-    if (typeof enqueuedAt === "number" && Number.isFinite(enqueuedAt) && enqueuedAt >= 0) entry.enqueuedAt = enqueuedAt;
-    entries.push(entry);
-  }
-  return entries;
+  const file = postReviewPath(root);
+  return (
+    cachedByStat(
+      postReviewCache,
+      file,
+      file,
+      () => {
+        const saved = readJsonFile<{ pending?: unknown }>(file);
+        if (!Array.isArray(saved?.pending)) return [];
+        const entries: PostReview[] = [];
+        for (const raw of saved.pending as unknown[]) {
+          if (!isJsonObject(raw)) continue;
+          const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt, fixed } = raw;
+          if (typeof commit !== "string" || typeof role !== "string" || typeof summary !== "string") continue;
+          if (rejected !== undefined && !Array.isArray(rejected)) continue;
+          const entry: PostReview = { commit, role, summary };
+          if (typeof body === "string") entry.body = body;
+          if (typeof failures === "number" && Number.isFinite(failures)) entry.failures = failures;
+          if (typeof lastFailure === "string") entry.lastFailure = lastFailure;
+          if (Array.isArray(rejected)) entry.rejected = rejected.filter((r): r is string => typeof r === "string");
+          if (typeof fixed === "string") entry.fixed = fixed;
+          if (typeof enqueuedAt === "number" && Number.isFinite(enqueuedAt) && enqueuedAt >= 0) entry.enqueuedAt = enqueuedAt;
+          entries.push(entry);
+        }
+        return entries;
+      },
+      (entries) => entries.map((e) => ({ ...e, ...(e.rejected !== undefined ? { rejected: [...e.rejected] } : {}) })),
+    ) ?? []
+  );
 }
 
 function writePostReviews(root: string, pending: PostReview[]): void {
