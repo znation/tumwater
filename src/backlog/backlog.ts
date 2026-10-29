@@ -2,6 +2,7 @@ import path from "node:path";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { entryDates, entryLags, finishedArchiveOf, firstDate, lastDate, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
 import { CHECK_DECLARATION_MARKER } from "../roles/role-guidance.js";
+import { DAY_MS } from "../text/datetime.js";
 
 export type { BacklogEntry } from "./backlog-md.js";
 
@@ -164,7 +165,7 @@ export function completionDate(title: string, dateRe: RegExp): string | null {
 /** Whole days between a filing stamp and `now`, floored at 0 so a future-dated entry reads as
  * fresh (0d) rather than negative. Shared by the suffix and the `--list --json` `ageDays` field. */
 export function ageInDays(since: string, now: number = Date.now()): number {
-  return Math.max(0, Math.floor((now - Date.parse(since)) / 86400000));
+  return Math.max(0, Math.floor((now - Date.parse(since)) / DAY_MS));
 }
 
 /** The ` · since YYYY-MM-DD (Nd)`/`(today)` tail a listing line gains for its entry's filing
