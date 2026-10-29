@@ -11,7 +11,7 @@ import { BACKLOG_FILES, validationGapTag } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
 import { liveFinishedHistory, liveFinishedRowList } from "../backlog/backlog-archive.js";
 
-import { fixSymbols, missingSymbolNames, cachedSourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
+import { fixSymbols, isCommitRef, missingSymbolNames, cachedSourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./doctor-outcome.js";
 
 /** The doctor's PLANS.md-structure and fix-claim checks, split out of doctor-backlog.ts: the
@@ -64,12 +64,14 @@ interface FixClaimProblem {
  * record classified through fixSymbols and unbackedSymbols — the gate's own parsing and
  * existence rules — against ONE cachedSourceHaystack built for the whole scan, keeping a record
  * only when EVERY symbol its Fix paragraph names is absent, and skipping a record that names no
- * symbols (pure-documentation fixes are legitimate). */
+ * symbols (pure-documentation fixes are legitimate). A commit id is a citation, not a symbol:
+ * this synchronous scan cannot ask git whether it exists (the gate does), so a record that cites
+ * only the commit it reviewed names nothing checkable. */
 function classifyFixClaims(records: readonly BacklogEntry[], root: string): FixClaimProblem[] {
   const problems: FixClaimProblem[] = [];
   let haystack: string | undefined;
   for (const { title, body } of records) {
-    const symbols = fixSymbols(body);
+    const symbols = fixSymbols(body).filter((symbol) => !isCommitRef(symbol));
     if (symbols.length === 0) continue;
     haystack ??= cachedSourceHaystack(root);
     const missing = unbackedSymbols(root, symbols, haystack);

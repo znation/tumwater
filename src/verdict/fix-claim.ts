@@ -42,7 +42,14 @@
  *   heading.
  * - A `path:line` location (`status-roles.ts:66`) was checked as a symbol, and no file is named
  *   that. A location now claims its file, a bare line reference (`:368`) claims nothing, and a
- *   bare file name is backed by a file of that name anywhere in the walked source dirs. */
+ *   bare file name is backed by a file of that name anywhere in the walked source dirs.
+ *
+ * Another false positive (BUGS.md 2026-10-29): a commit id was checked as a symbol, and no code
+ * file ever spells one. A dropped post-merge review is filed as a bug whose whole fix is a review
+ * of the commit, so the Fix paragraph cites `17c0bbbc…` and nothing else — and six bugfix runners
+ * resubmitted that close 29 times in five hours, each rejected the same way. A commit id is now
+ * backed when it names a commit in the repository (withoutKnownCommits); a made-up one is still
+ * rejected. */
 
 import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
@@ -55,7 +62,7 @@ import {
   trailingParenthetical,
   type BacklogEntry,
 } from "../backlog/backlog-md.js";
-import { changeBaseRev, fileContentAt } from "../git/git.js";
+import { changeBaseRev, commitExists, fileContentAt } from "../git/git.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 
 /** How much of a one-line record a rejection quotes: the record is one line by construction but
@@ -318,6 +325,30 @@ export function unbackedSymbols(root: string, symbols: string[], haystack: strin
   });
 }
 
+/** A commit id as a Fix paragraph cites one: 7 to 40 lowercase hex digits, optionally cut short
+ * with a trailing ellipsis (`3c1c1c6176...`). Group 1 is the id itself. */
+const COMMIT_REF_RE = /^([0-9a-f]{7,40})(?:\.\.\.|…)?$/;
+
+/** Whether a Fix-paragraph span is shaped like a commit id: a citation of history rather than a
+ * name code could hold. The doctor's synchronous scan cannot ask git, so it leaves these out of a
+ * record's names; the gate checks them with withoutKnownCommits. */
+export function isCommitRef(span: string): boolean {
+  return COMMIT_REF_RE.test(span);
+}
+
+/** `missing` without the commit ids that name a commit in the repository at `wt`. No code file
+ * ever spells a commit id, so the haystack could never back one: a Fix paragraph citing the
+ * commit it reviewed or landed in read as a phantom fix. An id that names no commit stays
+ * missing, so an invented one is still rejected. */
+export async function withoutKnownCommits(wt: string, missing: string[]): Promise<string[]> {
+  const out: string[] = [];
+  for (const name of missing) {
+    const sha = COMMIT_REF_RE.exec(name)?.[1];
+    if (sha === undefined || !(await commitExists(wt, sha))) out.push(name);
+  }
+  return out;
+}
+
 /** The unbacked names for a one-line message: all of them when 3 or fewer, otherwise the
  * first 3 and an ellipsis — a doctor check or gate message has room for one line. */
 export function missingSymbolNames(missing: string[]): string {
@@ -374,16 +405,16 @@ async function baseFixedBodies(
  * walks and reads the entire source tree (~5 MB here), and the common BUGS.md edit moves
  * nothing to Fixed: an Open bug added, a narrative touched elsewhere, so the gate and the
  * in-lock recheck each paid that walk for a check that never reached a symbol. */
-function movedEntryReason(
+async function movedEntryReason(
   wt: string,
   entries: { title: string; body: string }[],
   bodies: Map<string, Set<string>>,
   getHaystack: () => string,
-): string | undefined {
+): Promise<string | undefined> {
   for (const { title: heading, body } of entries) {
     const knownBodies = bodies.get(normalizeFixedHeading(heading));
     if (knownBodies?.has(body)) continue;
-    const missing = unbackedSymbols(wt, fixSymbols(body), getHaystack());
+    const missing = await withoutKnownCommits(wt, unbackedSymbols(wt, fixSymbols(body), getHaystack()));
     if (missing.length === 0) continue;
     const names = missingSymbolNames(missing);
     // The rejection says which shape it saw: the old message called every rewrite of an
@@ -406,12 +437,12 @@ function movedEntryReason(
  * old name, so a record the diff adds or edits may carry forward any name the base's Fixed
  * section already records. A name it introduces must exist on the tree: a bug moved straight
  * from Open into a one-line record faces the same check as a full entry. */
-function addedRecordReason(
+async function addedRecordReason(
   wt: string,
   records: string[],
   bases: string[],
   getHaystack: () => string,
-): string | undefined {
+): Promise<string | undefined> {
   const baseLines = bases.flatMap((base) => sectionLines(base, "Fixed")).map((line) => line.trim());
   const seen = new Set(baseLines);
   const baseText = baseLines.join("\n");
@@ -419,7 +450,7 @@ function addedRecordReason(
     if (seen.has(record)) continue;
     const introduced = fixSymbols(record).filter((symbol) => !baseText.includes(symbol));
     if (introduced.length === 0) continue;
-    const missing = unbackedSymbols(wt, introduced, getHaystack());
+    const missing = await withoutKnownCommits(wt, unbackedSymbols(wt, introduced, getHaystack()));
     if (missing.length === 0) continue;
     return (
       `md-only BUGS.md edit adds the one-line Fixed record "${truncate(record, RECORD_QUOTE_MAX)}", ` +
@@ -456,5 +487,5 @@ export async function falseFixReason(
   // the in-lock recheck each paid that walk for a check that never reached a symbol.
   let haystack: string | undefined;
   const getHaystack = () => (haystack ??= sourceHaystack(wt));
-  return movedEntryReason(wt, entries, bodies, getHaystack) ?? addedRecordReason(wt, records, bases, getHaystack);
+  return (await movedEntryReason(wt, entries, bodies, getHaystack)) ?? (await addedRecordReason(wt, records, bases, getHaystack));
 }

@@ -9,6 +9,7 @@ import {
   fixSymbols,
   fixedHeadings,
   fixedSection,
+  isCommitRef,
   isOneLineRecord,
   missingSymbolNames,
   normalizeFixedHeading,
@@ -646,6 +647,66 @@ test("falseFixReason backs a Fix paragraph that cites its fix as path:line locat
     "## Fixed\n\n### A bug (found 2026-10-21, fixed 2026-10-22)\n\n**Fix:** `src/ghost.ts:12` now keeps it.\n",
   );
   assert.match((await falseFixReason(root, "main", ["BUGS.md"]))!, /nowhere on this tree: src\/ghost\.ts —/);
+});
+
+// BUGS.md 2026-10-29: a dropped post-merge review is filed as a bug whose whole fix is a review
+// of the commit, so the close cites only the commit id — and no code file ever spells one, so six
+// bugfix runners had the same close rejected 29 times in five hours.
+test("falseFixReason backs a Fix paragraph that cites a commit in the repository", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n### post-merge review of abc never reached a verdict (found 2026-10-28)\n\n**Symptom:** x.\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  const sha = sh(root, "git", "rev-parse", "HEAD");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### post-merge review of abc never reached a verdict (found 2026-10-28, fixed 2026-10-29)\n\n" +
+      `**Fix:** reviewed \`${sha}\` (short \`${sha.slice(0, 8)}\`, cut \`${sha.slice(0, 10)}...\`): APPROVE.\n`,
+  );
+  assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+  // A commit id that names no commit is still a phantom.
+  const invented = "0123456789abcdef0123456789abcdef01234567";
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### post-merge review of abc never reached a verdict (found 2026-10-28, fixed 2026-10-29)\n\n" +
+      `**Fix:** reviewed \`${invented}\`: APPROVE.\n`,
+  );
+  assert.match((await falseFixReason(root, "main", ["BUGS.md"]))!, new RegExp(`nowhere on this tree: ${invented} —`));
+});
+
+test("falseFixReason lets a new one-line record cite a commit in the repository", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n### A bug (found 2026-10-28)\n\n**Symptom:** x.\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  const sha = sh(root, "git", "rev-parse", "--short=9", "HEAD");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `## Fixed\n\n- A bug: reviewed \`${sha}\` (fixed 2026-10-29; commit ${sha}; gap: none)\n`,
+  );
+  assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+});
+
+test("isCommitRef matches full, short and ellipsis-cut commit ids only", () => {
+  assert.equal(isCommitRef("17c0bbbc23ec40100b8196919c5c8e28c3e77a7e"), true);
+  assert.equal(isCommitRef("17c0bbbc"), true);
+  assert.equal(isCommitRef("3c1c1c6176..."), true);
+  assert.equal(isCommitRef("3c1c1c6176…"), true);
+  assert.equal(isCommitRef("abc12"), false, "under 7 digits is not an id");
+  assert.equal(isCommitRef("falseFixReason"), false);
+  assert.equal(isCommitRef("17C0BBBC"), false, "git prints ids in lowercase");
+});
+
+test("fixClaimProblems leaves a record that cites only a commit id alone", () => {
+  // The doctor's scan cannot ask git, so a commit id is a citation there, not a symbol: a record
+  // whose Fix paragraph names nothing else names nothing checkable, like a prose-only fix.
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "# Bugs\n\n## Open\n\n## Fixed\n\n### post-merge review of 17c0bbbc never reached a verdict (found 2026-10-28, fixed 2026-10-29)\n\n" +
+      "**Fix:** reviewed `17c0bbbc23ec40100b8196919c5c8e28c3e77a7e`: APPROVE.\n",
+  );
+  assert.deepEqual(fixClaimProblems(root), []);
 });
 
 test("falseFixReason measures an Open→Fixed restoration against the merge-base, not main's tip", async () => {

@@ -5,6 +5,13 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### The false-fix gate rejects every close whose Fix paragraph cites a commit id, so a dropped post-merge review's bug can never be closed and six bugfix runners resubmitted the same closes 29 times (found by the operator 2026-10-29 from the run events) — fixed 2026-10-29 by the operator
+
+- **Symptom:** from 2026-10-28 23:56 to 2026-10-29 05:27, bugfix, bugfix-2, -3, -4, -5 and -6 had 29 Markdown-only closes of the "post-merge review of `<sha>` never reached a verdict" entries rejected with the same reason: "its Fix paragraph names code that exists nowhere on this tree: 17c0bbbc23ec…". Each runner resubmitted until it parked the entry under a Needs-review note saying it must not be closed through a Markdown-only edit.
+- **Cause:** a dropped post-merge review is filed as a bug whose whole fix is a review of the commit, so the close cites the commit id. The false-fix check reads every backticked span of a Fix paragraph as a symbol that must appear in the tree's code, and no code file ever spells a commit id. The one close that merged (dfb4e364) got through only because its Fix paragraph also named real code.
+- **Fix:** `withoutKnownCommits` in `src/verdict/fix-claim.ts` drops, from a changed entry's or one-line record's unbacked names, every commit-shaped span (`isCommitRef`: 7–40 lowercase hex digits, optionally cut short with an ellipsis) that names a commit in the repository, so an invented id is still rejected. The doctor's synchronous scan (`classifyFixClaims` in `src/doctor/doctor-backlog-plans.ts`) cannot ask git, so it leaves commit ids out of a record's names, the same way it already treats prose-only fixes.
+**Validation gap:** none — the fix-claim suite's real-repo fixtures reproduced the rejection offline as soon as a case cited a commit id, and the live events gave the exact message to match.
+
 ### post-merge review of dfb4e364 never reached a verdict (found by the review role 2026-10-28) — fixed 2026-10-29 by the bugfix role
 
 The post-merge review of commit `dfb4e364e3b2703a98af9a3e64d00defbaa98fce` (Fold gui-client-history.ts's 8 delegated handler guards into the shared clickClosest helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work. (The originally-recorded hash `3c1c1c6176...` was a mis-copy; that commit is the unrelated plan-hold "subtract part 1e/6", corrected 2026-10-29 by the bugfix role.)
