@@ -57,6 +57,15 @@ function elapsed(ms: unknown): string {
   return ` (in ${shortSpanPhrase(n)})`;
 }
 
+/** The `waited <duration>` head of the three wait-family events (slot_wait, provider_wait,
+ * check_wait) — each rendered its own `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))}`
+ * inline, so the corrupt-field rule and the s/m bucketing cannot drift between them. Each
+ * caller keeps its own `to start`/`for a run slot`/`for a check slot` tail and its own
+ * parenthetical after it. */
+function waitedSpan(waitedMs: unknown): string {
+  return `waited ${shortSpanPhrase(finiteNumber(waitedMs, 0))}`;
+}
+
 /** A disk event's GB field as "12.3 GB" text. A torn or hand-edited event whose value is
  * missing or non-numeric reads as "0.0 GB", never "NaN" — the same corrupt-field rule
  * budgetPhrase applies to spentUsd/capUsd, since HarnessEvent's index signature hands every
@@ -683,14 +692,13 @@ function checkWaitEventMessage(e: HarnessEvent): string {
       // working as designed. Names the wait, the pool it waited on, and how many slots are
       // pinned, so the operator can raise worktreeSlots with the numbers in hand.
       const purpose = e.purpose === "verify" ? "check" : "run";
-      return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} to start (${textOr(e.role)} ${purpose}; ${textOr(e.slots)} workspaces, ${textOr(e.pinned)} pinned)`;
+      return `${waitedSpan(e.waitedMs)} to start (${textOr(e.role)} ${purpose}; ${textOr(e.slots)} workspaces, ${textOr(e.pinned)} pinned)`;
     }
     case "provider_wait": {
       // Routine-with-explanation, like slot_wait: waiting for the team slot is the cap
       // working as designed, so no warning prefix. Names the wait, so the operator can size
       // maxConcurrent with the number in hand.
-      const span = shortSpanPhrase(finiteNumber(e.waitedMs, 0));
-      return `waited ${span} for a run slot (${textOr(e.role)})`;
+      return `${waitedSpan(e.waitedMs)} for a run slot (${textOr(e.role)})`;
     }
     case "check_wait":
       // Routine-with-explanation, like slot_wait: waiting for a check permit is the cap working
@@ -701,7 +709,7 @@ function checkWaitEventMessage(e: HarnessEvent): string {
         const limit = finiteNumber(e.limit, null);
         const behind =
           heldBy.length > 0 ? `; held by ${heldBy.join(", ")}${limit === null ? "" : ` of maxConcurrentChecks ${limit}`}` : "";
-        return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} for a check slot (${textOr(e.role)} ${textOr(e.scope)} check${behind})`;
+        return `${waitedSpan(e.waitedMs)} for a check slot (${textOr(e.role)} ${textOr(e.scope)} check${behind})`;
       }
     default: return textOr(e.type);
   }
