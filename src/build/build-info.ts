@@ -104,6 +104,13 @@ export interface BuildStatus {
    * post-restart cooldown (it lapses on its own) and a new build that could not start here (the
    * startup gate is re-asked every poll, so repairing the environment clears it). */
   restartBlocked?: string;
+  /** Main's tip, when its build inputs differ from the running build's but no commit that
+   * carries them has passed main's check yet: while the main watch verifies main, redeploy moves
+   * only to a passing commit (redeployTarget), so `checkedHead` stays behind and `stale` reads
+   * false. `aheadCommits` counts main's commits since the build's. Absent while redeploy's target
+   * is main's tip. Without it a team whose main checks kept timing out ran an old build for
+   * hours with nothing on any surface saying an update was waiting (BUGS.md 2026-10-29). */
+  waitingForCheck?: { head: string; aheadCommits: number };
 }
 
 /** How far the running build is behind `mainHead`. */

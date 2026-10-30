@@ -5,6 +5,13 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### While main's check keeps timing out or failing, the team runs an old build for hours and no surface says an update is waiting (found by the operator 2026-10-29 from the running instance's dashboard) — fixed 2026-10-29 by the operator
+
+- **Symptom:** on 2026-10-29 from 15:00 to after 18:00 the team stayed on build 4f57700a while main moved 20+ commits on, including fixes to code the team runs. The dashboard sidebar showed "Version 4f57700a" with no behind-count and an amber "Main skipped", the status header showed no update, and doctor's `update` row advised that auto-restart would handle it.
+- **Cause:** with the main watch on, redeploy targets the newest commit that passed main's check (`redeployTarget`), not main's tip. Every full check of main's new tips timed out at `check.timeoutSeconds` (600 s on a host at load ~85) or failed, so no commit after a9ef341 passed, the target stayed on a commit the running build already covered, and `BuildStatus.stale` read false. Every surface explains only a stale build, so none had anything to say.
+- **Fix:** the orchestrator's redeploy poll now hands the `Redeployer` main's tip beside the target (`noteTip` in `src/redeploy/redeployer.ts`). While the tip's build inputs differ from the running build's and the target's do not, `status()` publishes `waitingForCheck` with the tip and how far ahead it is (`src/build/build-info.ts`; parsed by `parseBuild` in `src/team/team-orchestrator-info.ts`). `buildBadge` in `src/ui/badges.ts` renders it as "update waiting: main is N commits ahead at <sha>, and no newer commit has passed main's check yet" (yellow in the terminal header), the dashboard's Version row reads amber "update waits for main's check" with no restart button, and doctor's `update` row (`checkBuild` in `src/doctor/doctor-project-checks.ts`) says auto-restart waits for a passing check instead of promising it. docs/how-it-works.md "Updates" and docs/glossary.md say the same.
+**Validation gap:** none — the redeployer, status-header, doctor-checks and sidebar suites' fakes drove a fresh target with a stale tip directly; the live symptom came from orchestrator.json's `checkedHead` and the main baseline's `build_check` timeouts.
+
 ### post-merge review of a755c853 never reached a verdict (found by the review role 2026-10-29) — fixed 2026-10-29 by the bugfix role
 
 The post-merge review of commit `a755c85344563a6829391cf5583125024dfdd30b` (Move done-stamped pollTeamHold entry from Planned to Done, fixing stranded-plan gate) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.

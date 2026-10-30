@@ -114,6 +114,19 @@ test("the Build row's text and behind-count are unchanged in both cases", () => 
     "the fresh row keeps its text and shows no behind-count");
 });
 
+// BUGS.md 2026-10-29: a build current against the newest passing commit while main's tip moved
+// the code on read like an up-to-date team; the row now says the update waits for main's check.
+test("a build waiting for main's check reads amber with no restart button", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  renderSidebar({
+    running: true,
+    pid: 123,
+    build: { sha: "a".repeat(40), stale: false, aheadCommits: 0, waitingForCheck: { head: "c".repeat(40), aheadCommits: 6 } },
+  });
+  assert.match(panels.statuschips!, /class='row t-amber'[^>]*><i:refresh>Version <span class='mono'>aaaaaaaa<\/span> · update waits for main's check/);
+  assert.doesNotMatch(panels.statuschips!, /data-act/, "a forced restart would land on the same build, so no button");
+});
+
 // The disk floor (plans/disk-floor.md, part 4/4): the sidebar renders the payload's
 // preformatted diskBadge — the same string the TUI/status header carries — so the hold reads
 // the same on both dashboards. An empty badge (no disk block, or comfortable space) leaves

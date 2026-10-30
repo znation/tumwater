@@ -442,10 +442,13 @@ restarts, at most once every 4 hours. The commit it builds is main's newest one 
 passed and that is newer than the running build, so a red tip does not stall an update that an older
 green commit allows. With the main watch on (the default whenever `check.gateCommand` is set),
 that verdict is the watch's: the update waits for the watch to call a newer commit green and runs
-no check of its own. The restart cooldown is a rate limit against restart storms, not a work stop:
+no check of its own. Until it does — main's check timing out under load, or failing — the running
+build is current against the newest green commit, so instead of `Update available` the status
+shows `update waiting`: main's tip, how many commits it is ahead, and that no newer commit has
+passed main's check yet. The `Main` row (and doctor's `main's check` row) says why. The restart cooldown is a rate limit against restart storms, not a work stop:
 while a restart merely waits out its cooldown, the team keeps authoring and merging on the running
 build (it has been executing that build all along), and only the redeploy itself — the drain and the
-swap — waits. A failing check on main (with no green commit newer than the running build) or a failed compile keeps the old
+swap — waits. With the main watch off, a failing check on main (with no green commit newer than the running build) or a failed compile keeps the old
 build running and shows `restart BLOCKED`, with the reason. You do not have to wait out the
 4-hour clock: the dashboard's update alert has a refresh button that waives the cooldown
 and starts the pending update immediately — every other gate (a passing check on main, a

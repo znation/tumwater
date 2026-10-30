@@ -236,6 +236,9 @@ function parseBuild(v: unknown): BuildStatus | undefined {
   if (typeof v.checkedHead === "string") build.checkedHead = v.checkedHead;
   if (typeof v.restartPending === "boolean") build.restartPending = v.restartPending;
   if (typeof v.restartBlocked === "string") build.restartBlocked = v.restartBlocked;
+  const waiting = v.waitingForCheck;
+  if (isJsonObject(waiting) && typeof waiting.head === "string" && isFiniteNumber(waiting.aheadCommits))
+    build.waitingForCheck = { head: waiting.head, aheadCommits: waiting.aheadCommits };
   return build;
 }
 

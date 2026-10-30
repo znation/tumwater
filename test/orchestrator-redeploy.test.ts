@@ -37,7 +37,7 @@ interface ScriptedStep {
  * current step's build status. While `ready` returns false every poll answers "none" without
  * advancing the script, so a step can wait on team state instead of a poll count. Cast through
  * unknown: Redeployer is a class with private state,
- * and the orchestrator touches only poll/status/forceRestart plus the build sha it logs at
+ * and the orchestrator touches only poll/noteTip/status/forceRestart plus the build sha it logs at
  * startup. Also returns how many polls ran, so a hold-length assertion cannot pass by accident
  * of a stalled run. */
 function scriptedRedeployer(steps: ScriptedStep[], ready: () => boolean = () => true): {
@@ -58,6 +58,7 @@ function scriptedRedeployer(steps: ScriptedStep[], ready: () => boolean = () => 
         i = Math.min(i + 1, steps.length - 1);
         return step.action ?? "none";
       },
+      async noteTip() {},
       status() {
         return current().build ?? { sha: BUILD_SHA, builtAt: BUILT_AT };
       },

@@ -48,8 +48,14 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
         // markup alertParts() emits for the build alert; a fresh build's icon stays inert
         // decoration.
         const lead = stale ? restartButton(icon("refresh")) : icon("refresh");
-        rows += row(stale ? (d.build.restartBlocked ? "amber" : "blue") : "", lead,
-          "Version <span class='mono'>" + esc(shortSha(d.build.sha)) + "</span>" + (stale ? " · " + esc(plural(d.build.aheadCommits || 0, "commit")) + " behind" : ""),
+        // Main's tip moved the code on but no newer commit has passed main's check, so redeploy has
+        // nothing to move to (BuildStatus.waitingForCheck): amber, and the Main row below says why.
+        // No restart button — a forced restart would land on this same build.
+        const waiting = !stale && d.build.waitingForCheck;
+        rows += row(stale ? (d.build.restartBlocked ? "amber" : "blue") : waiting ? "amber" : "", lead,
+          "Version <span class='mono'>" + esc(shortSha(d.build.sha)) + "</span>" +
+            (stale ? " · " + esc(plural(d.build.aheadCommits || 0, "commit")) + " behind"
+              : waiting ? " · update waits for main's check" : ""),
           localizeInstants(("Running version" + (d.buildBadge || "").replace(/^, build/, "")).trim()));
       }
       if (d.mainCheck) {

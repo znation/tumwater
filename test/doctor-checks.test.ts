@@ -855,6 +855,14 @@ test("checkBuild reports an unstamped dist, a foreign harness, a matching build,
   const blocked = await checkBuild(repo, here, undefined, { ...running, restartBlocked: "main deadbeef is red" });
   assert.equal(blocked.level, "warn");
   assert.match(blocked.detail, /auto-restart is BLOCKED \(main deadbeef is red\) and will not retry until main moves/);
+  // A team whose redeploy target is still the running build — no newer commit has passed main's
+  // check — must not be told auto-restart will handle it (BUGS.md 2026-10-29).
+  const waiting = await checkBuild(repo, here, undefined, {
+    sha: head, builtAt: 1, stale: false, aheadCommits: 0, checkedHead: head, waitingForCheck: { head: "f".repeat(40), aheadCommits: 2 },
+  });
+  assert.equal(waiting.level, "warn");
+  assert.match(waiting.detail, /auto-restart waits for a commit that passes main's check — none newer than [0-9a-f]{8} has yet/);
+  assert.doesNotMatch(waiting.detail, /npm run build/);
 });
 
 test("checkInit warns naming drifted template keys, never rewrites, and its remedy works", async () => {

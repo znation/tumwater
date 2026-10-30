@@ -25,11 +25,20 @@ import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
  * team keeps running the stale build, so the badge reads "work continues" and keeps the
  * deadline; `restart pending` (the drain that precedes the swap, which actually holds new runs
  * and merges) resolves itself; `restart BLOCKED` never will until main moves. Telling them apart
- * at a glance is the whole point (see BuildStatus.restartBlocked). Empty when the dist carries
- * no stamp. Shared by the TUI/status header and the GUI's. */
+ * at a glance is the whole point (see BuildStatus.restartBlocked). A build that is current against
+ * the newest commit that passed main's check, while main's tip has moved its code on, says the
+ * update waits for that check (BuildStatus.waitingForCheck) — otherwise nothing tells the
+ * operator why the team stays on an old build. Empty when the dist carries no stamp. Shared by
+ * the TUI/status header and the GUI's. */
 export function buildBadge(build: StatusSnapshot["build"]): string {
   if (!build) return "";
-  const stale = build.stale ? ` — update available (${plural(build.aheadCommits ?? 0, "commit")} behind)` : "";
+  const waiting = build.waitingForCheck;
+  const stale = build.stale
+    ? ` — update available (${plural(build.aheadCommits ?? 0, "commit")} behind)`
+    : waiting
+      ? ` — update waiting: main is ${plural(waiting.aheadCommits, "commit")} ahead at ` +
+        `${shortSha(waiting.head)}, and no newer commit has passed main's check yet`
+      : "";
   const restart = build.restartBlocked
     ? build.restartBlocked.startsWith("cooldown until ")
       ? ` — restarts after cooldown; work continues (${build.restartBlocked})`

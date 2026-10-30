@@ -314,6 +314,8 @@ export async function pollRedeploy(
     liveConfig.autoRestart,
     now,
   );
+  // The tip beside the target: a tip no passing check covers yet is published as waitingForCheck.
+  await redeploy.noteTip(mainHead);
   publishInfoFields(ctx.root, ctx.info, [["build", redeploy.status(now)]]);
   if (action === "restart") {
     state.restart = true;

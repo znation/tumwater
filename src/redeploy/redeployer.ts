@@ -59,6 +59,10 @@ export function bestEffortLog(log: (event: RedeployEvent) => void): (event: Rede
 export class Redeployer {
   private lastHead: string | null = null;
   private staleness: BuildStaleness | null = null;
+  /** Main's tip as noteTip last saw it, and the build's staleness against it. Differs from
+   * lastHead only while redeploy's target is an older passing commit (redeployTarget). */
+  private lastTip: string | null = null;
+  private tipStaleness: BuildStaleness | null = null;
   /** The head a restart is pending for. */
   private pendingHead: string | null = null;
   /** When the team's current unbroken hold began — 0 when it is not being held. The drain
@@ -210,8 +214,23 @@ export class Redeployer {
             (urgent ? ` (the running version's own commit fails its check — cut to ${RESTART_URGENT_COOLDOWN_MIN} min)` : "");
         else if (this.refusedReason !== null) s.restartBlocked = `the update could not start: ${this.refusedReason}`;
       }
+      // A tip whose code no passing commit carries yet: nothing above can say so, since the
+      // target is the newest passing commit and the build is current against it.
+      if (!s.stale && this.lastTip !== null && this.lastTip !== this.lastHead && this.tipStaleness?.stale)
+        s.waitingForCheck = { head: this.lastTip, aheadCommits: this.tipStaleness.aheadCommits };
     }
     return s;
+  }
+
+  /** Record main's tip beside the redeploy target poll is given. When the main watch verifies
+   * main, the target is the newest commit that passed main's check, so a tip whose check keeps
+   * timing out or failing leaves the target — and with it `stale` — behind; status() then
+   * publishes the tip as waitingForCheck. Computes the tip's staleness once per moved tip, and
+   * not at all on a project that is not the harness itself. */
+  async noteTip(tip: string): Promise<void> {
+    if (!this.selfHosted || tip === this.lastTip) return;
+    this.lastTip = tip;
+    this.tipStaleness = tip === "" ? null : await this.deps.staleness(tip);
   }
 
   /** When the current post-restart cooldown expires (epoch ms), or 0 when none is running. */

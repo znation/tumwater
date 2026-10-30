@@ -161,6 +161,15 @@ test("the header names the running build and flags a stale one", () => {
   const blocked = { ...stale.build, restartBlocked: "main cccccccc is red" };
   assert.match(buildBadge(blocked), /behind\); restart blocked: main cccccccc is red$/);
   assert.equal(buildBadge(stale.build), ", build aaaaaaaa — update available (7 commits behind)", "silent when neither");
+  // Current against the newest passing commit while main's tip has moved the code on: the update
+  // waits for main's check, and the header says so in yellow rather than nothing (BUGS.md
+  // 2026-10-29).
+  const waiting = { ...fresh, build: { ...fresh.build, waitingForCheck: { head: "c".repeat(40), aheadCommits: 6 } } };
+  assert.equal(
+    buildBadge(waiting.build),
+    ", build aaaaaaaa — update waiting: main is 6 commits ahead at cccccccc, and no newer commit has passed main's check yet",
+  );
+  assert.match(headerOf(renderStatus("/tmp/x", waiting)), /build aaaaaaaa — update waiting: main is 6 commits ahead/);
   const unstamped = { ...fresh, build: null };
   assert.match(headerOf(renderStatus("/tmp/x", unstamped)), /running \(pid 4242\)/, "no stamp: the pre-stamp header");
   assert.equal(buildBadge(null), "");

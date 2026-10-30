@@ -47,6 +47,44 @@ test("a fresh build reports not stale and takes no action", async () => {
   assert.deepEqual(r.status(), { sha: BUILD.sha, builtAt: 1, stale: false, aheadCommits: 2, checkedHead: HEAD_B });
 });
 
+// BUGS.md 2026-10-29: with the main watch on, redeploy's target is the newest commit that passed
+// main's check; while main's checks kept timing out the target stayed on the running build, the
+// build read fresh, and no surface said an update was waiting for hours.
+test("a tip no passing check covers yet is published as waitingForCheck beside a fresh target", async () => {
+  const f = fakeDeps({
+    staleness: async (h) => (h === HEAD_B ? { stale: false, aheadCommits: 1 } : { stale: true, aheadCommits: 6 }),
+  });
+  const { r, events } = harness(f.deps);
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "the target is current: nothing to redeploy");
+  await r.noteTip(HEAD_C);
+  assert.deepEqual(r.status(), {
+    sha: BUILD.sha, builtAt: 1, stale: false, aheadCommits: 1, checkedHead: HEAD_B,
+    waitingForCheck: { head: HEAD_C, aheadCommits: 6 },
+  });
+  assert.deepEqual(events, [], "waiting is a status, not an event");
+  // The tip catching up with the target (its check passed): nothing is waiting any more.
+  await r.noteTip(HEAD_B);
+  assert.equal(r.status().waitingForCheck, undefined);
+});
+
+test("waitingForCheck stays absent while the tip is the target, its code unchanged, or the target already stale", async () => {
+  const unchanged = fakeDeps({ stale: { stale: false, aheadCommits: 2 } });
+  const a = harness(unchanged.deps);
+  await a.r.poll(HEAD_B, IDLE, true);
+  await a.r.noteTip(HEAD_C);
+  assert.equal(a.r.status().waitingForCheck, undefined, "a tip whose build inputs match the running build waits for nothing");
+  const stale = fakeDeps();
+  const b = harness(stale.deps);
+  await b.r.poll(HEAD_B, IDLE, false);
+  await b.r.noteTip(HEAD_C);
+  assert.equal(b.r.status().stale, true);
+  assert.equal(b.r.status().waitingForCheck, undefined, "a stale target already says update available");
+  const foreign = fakeDeps({ stale: { stale: true, aheadCommits: 4 } });
+  const c = harness(foreign.deps, false);
+  await c.r.noteTip(HEAD_C);
+  assert.deepEqual(c.r.status(), { sha: BUILD.sha, builtAt: 1 }, "a project that is not tumwater itself never computes staleness");
+});
+
 test("stale + autoRestart off: one build_stale event, staleness published, no restart", async () => {
   const f = fakeDeps();
   const { r, types } = harness(f.deps);

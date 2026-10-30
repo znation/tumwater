@@ -40,6 +40,7 @@ current one, so history, old logs and old scripts stay readable.
 | stalled | A run was stopped for producing nothing ("Stalled, resumed"). |
 | paused | Only a pause you set. |
 | update available | A newer tumwater build exists ("Update available (3 commits behind)"); work continues while the restart waits. |
+| update waiting | Main's code has moved past the running build, but no newer commit has passed main's check yet, so there is nothing to update to ("update waiting: main is 6 commits ahead"). The Main row says why. |
 | restart N | How many times tumwater has restarted onto an update. |
 | priority | Which kind of work a role does first, for example "Priority: work". |
 | over-cap model | The model a role falls back to when its budget cap is spent. |

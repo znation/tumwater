@@ -326,7 +326,10 @@ export async function checkBuild(
       ? `; auto-restart is BLOCKED (${running.restartBlocked}) and will not retry until main moves or the block clears`
       : running?.restartPending
         ? "; auto-restart is under way"
-        : "; run `npm run build` and restart `tumwater start` (auto-restart does this for a running team)";
+        : running?.waitingForCheck
+          ? `; auto-restart waits for a commit that passes main's check — none newer than ` +
+            `${shortSha(running.checkedHead ?? info.sha)} has yet (the main's check row says why)`
+          : "; run `npm run build` and restart `tumwater start` (auto-restart does this for a running team)";
     return warnOutcome(`dist/ from ${sha} is stale — main has ${plural(stale.aheadCommits, "later commit")} touching ${STALE_INPUTS_LABEL}${next}`);
   }
   return okOutcome(`dist/ from ${sha}, matches main`);
