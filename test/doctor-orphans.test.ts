@@ -602,3 +602,44 @@ test("dueForOrphanReap fires at and after the interval, never before, from liter
 test("a fresh PollState has no reap stamp, so the first poll reaps immediately", () => {
   assert.equal(newPollState().lastOrphanReapAt, 0);
 });
+
+test("checkOrphans still reports a parentless tree whose descendant marks are all dead, and reaps it", async () => {
+  const root = readyRepo();
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
+  const dead = 999_999_993; // No live pid is this large on either platform.
+  const { probe } = fakeProbe(
+    [
+      { pid: 7700, etime: "18:00:00", command: `/bin/bash -c cd ${root}/.tumwater/worktrees/qa && (npm test &) & echo $!` },
+      { pid: 7701, ppid: 7700, command: "npm test" },
+    ],
+    { 7700: path.join(fs.realpathSync(root), ".tumwater", "worktrees", "qa") },
+    { 7701: `${dead}-cafe-${rootToken(root)}` },
+  );
+  const r = await checkOrphans(root, probe);
+  assert.equal(r.level, "fail");
+  assert.match(r.detail, /pid 7700 /, "a dead-marked tree is still this repo's orphan");
+  assert.doesNotMatch(r.detail, /left alone/, "no live-owned tree here");
+  const { signals, sent } = fakeSignals();
+  assert.equal(await reapAttributableOrphans(root, probe, signals), 1);
+  assert.deepEqual(sent.filter(([, s]) => s === "SIGTERM").map(([p]) => p).sort((a, b) => a - b), [7700, 7701]);
+});
+
+test("reapAttributableOrphans never signals a parentless tree a live run's descendant marks as its own", async () => {
+  const root = readyRepo();
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
+  const wt = path.join(fs.realpathSync(root), ".tumwater", "worktrees", "qa");
+  const live = process.pid;
+  const { probe } = fakeProbe(
+    [
+      { pid: 7700, etime: "18:00:00", command: `/bin/bash -c cd ${root}/.tumwater/worktrees/qa && (npm test &) & echo $!` },
+      { pid: 7701, ppid: 7700, command: "npm test" },
+      { pid: 7702, ppid: 7701, command: "node dist/test/test-runner.js" },
+    ],
+    { 7700: wt },
+    { 7702: `${live}-beef-${rootToken(root)}` },
+  );
+  const { signals, sent } = fakeSignals();
+  assert.equal(await reapAttributableOrphans(root, probe, signals), 0, "the reaper must not kill a live run's tree");
+  assert.deepEqual(sent, [], "no signal at all for a live-owned tree");
+});
+
