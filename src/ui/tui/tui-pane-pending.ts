@@ -570,7 +570,7 @@ export function createPendingPane(session: TuiPaneSession) {
     }
     const top = async (): Promise<void> => {
       if (row.position === 1) {
-        session.flashMessage("merge #1 is already at the front");
+        session.flashMessage(`merge #${row.position} is already at the front`);
         session.requestRender();
         return;
       }
