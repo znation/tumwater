@@ -18,9 +18,6 @@ import type { SlotLeaseHandle } from "../git/worktree-pool.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
 import { diffRuleReasons } from "./diff-rules.js";
 
-export { REVIEW_FAILURE_LIMIT, restoreReviewedHead, runReviewer, withRuns } from "./review-run.js";
-
-
 /** Everything reviewAheadOfMain needs from its caller (a RoleRunner run or recovery). */
 export interface ReviewContext {
   root: string;
@@ -112,7 +109,7 @@ export interface GateResult {
    * one ran — folded into the runner totals by the caller right after `run`. Absent when the
    * reviewer's own reply parsed (no follow-up needed) or there was no session to continue. */
   followUpRun?: PiRunResult;
-  /** The no-re-run nudge turn (requestNoRerun, BUGS.md 2026-10-02), when one ran — folded
+  /** The no-re-run nudge turn (BUGS.md 2026-10-02), when one ran — folded
    * into the runner totals like followUpRun. Absent when the reviewer never broke the
    * no-re-run rule (or there was no session to continue). */
   nudgeRun?: PiRunResult;
@@ -175,8 +172,7 @@ export interface CheckOverlap {
  *   reasons when main's own tip is green (or has no verdict); when main is red too, fail
  *   without advancing the count and leave the commit — the failure is main's. Never throws.
  * `highFriction` marks a change whose authoring run burned more than the configured turn/time
- * thresholds (plans/refusal-and-thrash.md): kept for the caller's convenience while the
- * reviewer's remaining seams stay in review-run.ts/review-followup.ts. */
+ * thresholds (plans/refusal-and-thrash.md): kept for the caller's convenience. */
 async function reviewAttempt(
   ctx: ReviewContext,
   state: RunnerState,

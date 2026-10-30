@@ -5,6 +5,31 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 4h/3: the dead pre-merge reviewer run and follow-up modules are deleted (planned 2026-10-29 by the plan role, split from the too-large part 3e/3; requires part 3j/3 landed, since with no pre-merge reviewer `review-run.ts` and `review-followup.ts` have no caller; touches src/review/review-run.ts (deleted) src/review/review-followup.ts (deleted) src/review/review.ts src/prompt/gate-prompts.ts src/request-timeouts.ts src/agent/agent-run.ts src/config/config-views.ts src/verdict/reply-contract.ts docs/how-it-works.md test/review-followup.test.ts (deleted) test/gate-prompts.test.ts) — done 2026-10-29 by the feature role
+
+**Goal.** Part 3h/3's deterministic gate leaves the pre-merge reviewer unreferenced: `runReviewer` is only re-exported by `review.ts` and never called, `requestVerdict`/`requestNoRerun` are called only by `review-run.ts`, and the three reviewer follow-up prompt builders are called only by those two modules. Delete the two modules and their exclusive prompts so no pre-merge reviewer prompt, verdict follow-up or no-rerun nudge remains.
+
+**Approach.**
+- Delete `src/review/review-run.ts` and `src/review/review-followup.ts`.
+- `src/review/review.ts`: remove the re-export line `export { REVIEW_FAILURE_LIMIT, restoreReviewedHead, runReviewer, withRuns } from "./review-run.js";` and reword the `reviewAttempt` header comment that names the two deleted files. Leave `reviewAheadOfMain`'s retry scaffold in place — it is wired through `ReviewContext` from `merge-core.ts`, `merge-batch.ts` and `orchestrator-poll.ts`, so collapsing it is a separate cross-cutting sweep.
+- `src/prompt/gate-prompts.ts`: delete `buildReviewResumePrompt`, `buildVerdictRequestPrompt` and `buildNoRerunPrompt`; `buildReviewPrompt` stays because `post-merge-review.ts` reads it.
+- Reword the comments that name the deleted files or builders: `src/request-timeouts.ts`, `src/agent/agent-run.ts`, `src/config/config-views.ts` (point its `review_start` note at `post-merge-review.ts`) and `src/verdict/reply-contract.ts`.
+- `docs/how-it-works.md`'s **Review.** paragraph: drop the sentences describing the pre-merge reviewer's run and timeout extension, keeping the post-landing review description.
+- Delete `test/review-followup.test.ts`; drop the `buildReviewResumePrompt` import and case from `test/gate-prompts.test.ts`.
+- Leave the fake-pi fixtures (`reviewerPi`/`APPROVE_PI` in test/fixtures/pi-events.ts, `perRoleReviewerPi` in test/fixtures/merger-fixtures.ts, `APPROVE` in test/fixtures/merge-fixtures.ts) untouched: the surviving runner, merge and post-review tests still call them, so they are generic fake-pi builders rather than dead reviewer helpers (the old part 3e/3's promise to delete them is stale).
+
+**Files touched.** src/review/review-run.ts (deleted) src/review/review-followup.ts (deleted) src/review/review.ts src/prompt/gate-prompts.ts src/request-timeouts.ts src/agent/agent-run.ts src/config/config-views.ts src/verdict/reply-contract.ts docs/how-it-works.md test/review-followup.test.ts (deleted) test/gate-prompts.test.ts
+
+**Acceptance criteria.**
+- `src/review/review-run.ts` and `src/review/review-followup.ts` no longer exist, and `grep -rnE "review-run\.js|review-followup" src/ test/` prints nothing.
+- `grep -rnE "runReviewer|restoreReviewedHead|withRuns|\bREVIEW_FAILURE_LIMIT\b|buildReviewResumePrompt|buildVerdictRequestPrompt|buildNoRerunPrompt" src/ test/` prints nothing.
+- The gate still runs its deterministic diff rules and build pre-check and returns the verdicts part 3h/3 established.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/gate-prompts.test.ts: the `buildReviewResumePrompt` case goes; the `buildReviewPrompt` cases stay green.
+- test/review.test.ts: the deterministic gate cases still pass with the two modules gone.
+
 ### Option-2 isolation, part 2/2: the post-merge reviewer's budget stretches on a starved host (planned 2026-10-29 by the plan role, split from the Steward queue-gap note 2026-10-29 and the review-900s class note; independent of part 1/2 — different files, no `requires`; touches src/config/config-views.ts src/build/build-check-events.ts docs/config.md docs/how-it-works.md test/config-views.test.ts) — done 2026-10-29 by the feature role
 
 **Goal.** The post-merge review is now the only review path, and a strong-tier reviewer run killed at its 900 s ceiling (`review.timeoutSeconds`) on the loaded host leaves the commit verdict-less (four such Open members). A merge-scope check in exactly this situation already gets a longer deadline: `starvedDeadlineMs` (`src/build/build-check-events.ts`) stretches it by the host's load-to-cores ratio, capped at `STARVED_DEADLINE_MAX_FACTOR`. Give the reviewer run the same starvation-aware budget, so a progressing review on a starved host is not killed at the wall by load it does not control.

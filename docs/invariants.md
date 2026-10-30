@@ -3985,8 +3985,8 @@ when `git diff` fails. Read as empty, the file list was vacuously review-exempt,
 skipped its reviewer and the in-lock re-check its build check, and the reviewer judged an empty
 diff. `tumwater diff`'s role and overlap views catch the error and show no ahead-of-main change.
 
-**Binds.** `src/git/git-diff.ts` (`aheadOfMainFiles`, `aheadOfMainDiff`); their deciding callers
-`src/review/review.ts`, `src/review/review-run.ts` and `src/merge/merge-to-main.ts`
+**Binds.** `src/git/git-diff.ts` (`aheadOfMainFiles`, `aheadOfMainDiff`); their deciding caller
+`src/review/review.ts` and `src/merge/merge-to-main.ts`
 (`verifyMerge`); the views in `src/change/change-data.ts` (`collectRoleChange`,
 `collectChangeOverlaps`).
 
@@ -4520,7 +4520,7 @@ index, rather than skipping the preserve".
 
 **Guarantee.** The role-state saves inside a merge's verify (the review's resume-count, phase and `reviewResume` saves, the verdict save, and the two `recheckResolved` saves) are best-effort: a failed write (full disk, EACCES) logs a "could not save the role's state" warning instead of throwing, so the reviewer's usage still folds, a rejected pin is still deleted and `review_rejected` is still logged. The merge write-back saves the same in-memory state later.
 
-**Binds.** `src/review/review-run.ts` (`runReviewer`), `src/merge/merge-core.ts` (`reviewPinnedChange`, `mergeApprovedChangeIn`'s `recheckResolved`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
+**Binds.** `src/merge/merge-core.ts` (`reviewPinnedChange`, `mergeApprovedChangeIn`'s `recheckResolved` and its `saveRunnerStateBestEffort` calls), `src/merge/merge-check-failures.ts` (`saveRunnerStateBestEffort`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
 
 **Pinned by.** `test/merger.test.ts` — "an unwritable state file mid-review still folds the reviewer runs and settles a rejected re-review" (covers the phase, verdict and `recheckResolved` saves; the resume-count and `reviewResume` saves are covered by the swap only).
 

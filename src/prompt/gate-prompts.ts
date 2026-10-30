@@ -341,52 +341,6 @@ ${TEST_RUNNER_RULE}
   return parts.join("\n\n");
 }
 
-/** The prompt for the next attempt at a review whose previous run hit its time budget while
- * still making progress (RunnerState.reviewResume): that run continues the timed-out reviewer's
- * own session (`--continue`), so the diff and everything the reviewer already read are in
- * context. This prompt carries no diff — re-sending it would defeat the resume — and names the
- * frozen comparison base and the unchanged patch-id so the reviewer knows the change it was
- * judging has not moved. `baseRev` is changeBaseRev's frozen revision (see buildReviewPrompt);
- * `patchId` is git/git.ts's patchId for the change. It closes with the same VERDICT_ENDING
- * contract as the full review prompt, so the accepted forms cannot drift. */
-export function buildReviewResumePrompt(baseRev: string, patchId: string): string {
-  return `${dateLine()}
-
-You are resuming an adversarial review of a tumwater change: the previous attempt hit its time budget while still making progress, and this run continues that same reviewer session. Everything you already read — the diff and the files you checked — is in your context; do not re-read it.
-
-The change is unchanged since that attempt (patch-id ${patchId}) and is still measured against ${shortSha(baseRev)}. Other roles merge on main while you review, so compare against ${shortSha(baseRev)}, never against \`main\`.
-
-Finish the checks you had not completed, then end your reply with exactly one line in this form:
-  ${VERDICT_ENDING.replace(/\n/g, "\n  ")}`;
-}
-
-/** The one-turn follow-up sent into the REVIEWER's own session (--continue) when its run
- * completed but the reply carried no parseable VERDICT line — the review-gate sibling of
- * prompt-followup.ts's buildSummaryRequestPrompt. The session already holds the full review, so one
- * short reply recovers the verdict the gate needs without paying a second full review run;
- * the caller bounds the run tightly and counts the strike against the HEAD only when this
- * too yields nothing (BUGS.md 2026-09-29). It shares the review prompt's closing rule
- * (reply-contract.ts's VERDICT_ENDING), so the accepted forms cannot drift between the prompts. */
-export function buildVerdictRequestPrompt(): string {
-  return `Your review reply above did not include the verdict line tumwater parses, so
-your judgment was lost. Reply now with ONLY the closing block — no tool calls, no other text:
-one line in this form:
-  ${VERDICT_ENDING}`;
-}
-
-/** The no-re-run nudge (BUGS.md 2026-10-02): the reviewer broke the prompt's no-re-run rule
- * despite a green pre-check, so this turn on its own session names the exact tool call and
- * asks it to finish the review from what it already read. The reviewer's only output channel
- * is the verdict, so the closing rule names both accepted forms like the review prompt does. */
-export function buildNoRerunPrompt(rerun: string): string {
-  return `You started a tool call tumwater's pre-check already covered, so it must not run:
-  ${rerun}
-The full check passed at this exact tree before your review began. Do not re-run it — not in
-this worktree, not in a scratch copy. Finish the review now from what you have already read:
-reply with ONLY the closing block — no tool calls, no other text — one line in this form:
-  ${VERDICT_ENDING}`;
-}
-
 /** The one-turn follow-up sent into a run's OWN session (--continue) when the harness's
  * pre-queue self-check found problems likely to get the change rejected. Only some findings are
  * the merge gate's own deterministic checks; the rest (path drift, plan dependencies) are

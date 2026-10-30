@@ -81,10 +81,9 @@ ${SUMMARY_BLOCK.replace(/^ {2}/gm, "     ")}`;
 
 /** The review gate's closing rule as stated to pi: the two accepted verdict forms and the
  * numbered-reasons line that must follow them. buildReviewPrompt (gate-prompts.ts) ends its
- * rules list with this, and the gate's two same-session follow-ups (buildVerdictRequestPrompt,
- * buildNoRerunPrompt) re-state it — one home, so the advertised pair is edited in one place
- * instead of drifting between the three prompts. Indentation is the caller's: the review prompt
- * indents both lines, the two follow-ups indent only the VERDICT line. The machine detector for
+ * rules list with this — one home, so the advertised pair is edited in one place
+ * instead of drifting between the prompts. Indentation is the caller's: the review prompt
+ * indents both lines. The machine detector for
  * these forms lives beside it (VERDICT_LINE_SOURCE below); gate-prompts.test.ts pins the forms
  * buildReviewPrompt advertises against what parseVerdict accepts. */
 export const VERDICT_ENDING = `VERDICT: approve   or   VERDICT: reject

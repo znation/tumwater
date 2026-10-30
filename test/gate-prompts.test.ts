@@ -10,7 +10,6 @@ import {
   buildSalvageRestoreNote,
   buildConflictPrompt,
   buildReviewPrompt,
-  buildReviewResumePrompt,
   buildStageFixPrompt,
 } from "../src/prompt/gate-prompts.js";
 import { parseVerdict } from "../src/review/review-verdict.js";
@@ -357,22 +356,8 @@ test("buildReviewPrompt's fix-forward clause and FIX: line reach only the post-m
   assert.equal([...post.matchAll(/VERDICT:/g)].length, 2, "the post-merge verdict contract is untouched");
 });
 
-// A resumed review continues the timed-out reviewer's own session, so re-sending the diff
-// would waste the context the resume exists to preserve. The prompt names the frozen base and
-// the unchanged patch-id, and keeps the same VERDICT contract as the full review prompt.
-test("buildReviewResumePrompt continues the session without re-sending the diff", () => {
-  const base = "a".repeat(40);
-  const prompt = buildReviewResumePrompt(base, "patch-id-123");
-  assert.match(prompt, /resuming an adversarial review/);
-  assert.match(prompt, /hit its time budget while still making progress/);
-  assert.match(prompt, /do not re-read it/);
-  assert.match(prompt, /patch-id patch-id-123/);
-  assert.equal([...prompt.matchAll(/aaaaaaaa/g)].length, 2, "the frozen base is named in both places");
-  assert.ok(!prompt.includes("<diff>"), "no diff block is sent into the continued session");
-  const advertised = [...oneLine(prompt).matchAll(/VERDICT:\s*(\w+)/g)].map((m) => m[1]);
-  assert.deepEqual(advertised, ["approve", "reject"]);
-  assert.equal([...prompt.matchAll(/VERDICT:/g)].length, 2, "the verdict contract is untouched");
-});
+// The pre-merge reviewer's resume prompt was deleted with the reviewer itself (part 4h/3),
+// so its case is gone; the VERDICT contract it shared is covered by buildReviewPrompt's cases.
 
 // BUGS.md 2026-09-23: reviewers told "Do not spend your run re-running it" in the context
 // paragraph re-ran the suite in scratch copies under /tmp anyway. The rule is now its own line in

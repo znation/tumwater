@@ -139,31 +139,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/helpers' own case (in the file that covers `wait.ts`, or `test/wait.test.ts`): `awaitQuietHost` returns true immediately under a quiet injected sampler, false after the bounded wait under a saturated one, and never throws.
 - A run of `test/orchestrator-budget.e2e.test.ts` under a saturated injected sampler shows the skip wording; under the live quiet host it runs.
 
-### Every commit is verified on main, part 4h/3: the dead pre-merge reviewer run and follow-up modules are deleted (planned 2026-10-29 by the plan role, split from the too-large part 3e/3; requires part 3j/3 landed, since with no pre-merge reviewer `review-run.ts` and `review-followup.ts` have no caller; touches src/review/review-run.ts (deleted) src/review/review-followup.ts (deleted) src/review/review.ts src/prompt/gate-prompts.ts src/request-timeouts.ts src/agent/agent-run.ts src/config/config-views.ts src/verdict/reply-contract.ts docs/how-it-works.md test/review-followup.test.ts (deleted) test/gate-prompts.test.ts)
-
-**Goal.** Part 3h/3's deterministic gate leaves the pre-merge reviewer unreferenced: `runReviewer` is only re-exported by `review.ts` and never called, `requestVerdict`/`requestNoRerun` are called only by `review-run.ts`, and the three reviewer follow-up prompt builders are called only by those two modules. Delete the two modules and their exclusive prompts so no pre-merge reviewer prompt, verdict follow-up or no-rerun nudge remains.
-
-**Approach.**
-- Delete `src/review/review-run.ts` and `src/review/review-followup.ts`.
-- `src/review/review.ts`: remove the re-export line `export { REVIEW_FAILURE_LIMIT, restoreReviewedHead, runReviewer, withRuns } from "./review-run.js";` and reword the `reviewAttempt` header comment that names the two deleted files. Leave `reviewAheadOfMain`'s retry scaffold in place — it is wired through `ReviewContext` from `merge-core.ts`, `merge-batch.ts` and `orchestrator-poll.ts`, so collapsing it is a separate cross-cutting sweep.
-- `src/prompt/gate-prompts.ts`: delete `buildReviewResumePrompt`, `buildVerdictRequestPrompt` and `buildNoRerunPrompt`; `buildReviewPrompt` stays because `post-merge-review.ts` reads it.
-- Reword the comments that name the deleted files or builders: `src/request-timeouts.ts`, `src/agent/agent-run.ts`, `src/config/config-views.ts` (point its `review_start` note at `post-merge-review.ts`) and `src/verdict/reply-contract.ts`.
-- `docs/how-it-works.md`'s **Review.** paragraph: drop the sentences describing the pre-merge reviewer's run and timeout extension, keeping the post-landing review description.
-- Delete `test/review-followup.test.ts`; drop the `buildReviewResumePrompt` import and case from `test/gate-prompts.test.ts`.
-- Leave the fake-pi fixtures (`reviewerPi`/`APPROVE_PI` in test/fixtures/pi-events.ts, `perRoleReviewerPi` in test/fixtures/merger-fixtures.ts, `APPROVE` in test/fixtures/merge-fixtures.ts) untouched: the surviving runner, merge and post-review tests still call them, so they are generic fake-pi builders rather than dead reviewer helpers (the old part 3e/3's promise to delete them is stale).
-
-**Files touched.** src/review/review-run.ts (deleted) src/review/review-followup.ts (deleted) src/review/review.ts src/prompt/gate-prompts.ts src/request-timeouts.ts src/agent/agent-run.ts src/config/config-views.ts src/verdict/reply-contract.ts docs/how-it-works.md test/review-followup.test.ts (deleted) test/gate-prompts.test.ts
-
-**Acceptance criteria.**
-- `src/review/review-run.ts` and `src/review/review-followup.ts` no longer exist, and `grep -rnE "review-run\.js|review-followup" src/ test/` prints nothing.
-- `grep -rnE "runReviewer|restoreReviewedHead|withRuns|REVIEW_FAILURE_LIMIT|buildReviewResumePrompt|buildVerdictRequestPrompt|buildNoRerunPrompt" src/ test/` prints nothing.
-- The gate still runs its deterministic diff rules and build pre-check and returns the verdicts part 3h/3 established.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/gate-prompts.test.ts: the `buildReviewResumePrompt` case goes; the `buildReviewPrompt` cases stay green.
-- test/review.test.ts: the deterministic gate cases still pass with the two modules gone.
-
 ### Every commit is verified on main, part 4i/3: the pre-merge reviewer's resume state and its event vocabulary are deleted (planned 2026-10-29 by the plan role, split from the too-large part 3e/3; requires part 4h/3 landed, since part 4h/3 deletes the modules that read and produce the resume marker; touches src/runner/runner-state.ts src/runner/runner-state-load.ts src/review/review.ts src/run/run-apply.ts src/failure/failure-cluster.ts src/events/events.ts src/events/event-format.ts test/runner-state.test.ts test/run-apply.test.ts test/failure-cluster.test.ts test/event-format.test.ts)
 
 **Goal.** After part 4h/3 nothing reads `RunnerState.reviewResume` or `approvedPatchIds`, nothing produces the `review_start` `resumed` flag, and no run reports the "continues this review" timeout wording. Delete the resume state and the vocabulary built on it.
