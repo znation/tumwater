@@ -63,11 +63,31 @@ function isParityEntry(value: unknown): value is CiParityEntry {
   );
 }
 
+// Stat-keyed cache (stat-cache.cachedByStat) for the parity ledger, keyed by the ledger
+// path: the status snapshot's ciParityForPoll and the doctor row poll it every second while
+// the ledger changes only when a ci run records a verdict, so an unchanged file costs one
+// stat per poll instead of a re-read plus JSON.parse — the same stat-keyed contract every
+// other per-poll snapshot reader uses. recordParity's write is atomic (tmp + rename), so any
+// write invalidates via dev/ino/mtime/size, exactly as the lock-hash cache below re-keys on
+// an atomic package-lock change. Bounded inside cachedByStat so many short-lived roots in
+// tests cannot grow it unbounded; a null (no data) result is not cached, so a torn ledger is
+// re-parsed next poll but a valid record (the steady state) costs one stat per poll.
+const parityLedgerCache = new Map<string, StatKeyedValue<CiParityEntry | null>>();
+
 /** Read the parity ledger. A missing, torn, or wrong-shaped file reads as null — the caller
  * renders no block and the run proceeds as before. */
 export function readCiParity(root: string): CiParityEntry | null {
-  const file = readJsonFile<{ parity?: unknown }>(ciParityPath(root));
-  return file?.parity && isParityEntry(file.parity) ? file.parity : null;
+  const file = ciParityPath(root);
+  return cachedByStat(
+    parityLedgerCache,
+    file,
+    file,
+    () => {
+      const ledger = readJsonFile<{ parity?: unknown }>(file);
+      return ledger?.parity && isParityEntry(ledger.parity) ? ledger.parity : null;
+    },
+    (entry) => (entry === null ? null : { ...entry }), // A copy: callers may treat it as their own.
+  );
 }
 
 /** Record what a `ci` run covered: the tip it named on its `CI:` line and the verdict that
