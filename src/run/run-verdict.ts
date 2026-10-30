@@ -271,8 +271,8 @@ function imageBlindArm(ctx: RunVerdictContext): RunOutcome | undefined {
   // the agent was about to answer about a picture it never saw. The run was deliberately
   // stopped before it could work on, so its half-done edits are discarded exactly as a
   // timed-out run's are — nothing to resume, and the prompt re-queues to run fresh on a
-  // model that CAN see (part 4 adds the reroute arm here). The error backoff and streak apply
-  // as for any error.
+  // model that CAN see, with one reroute hop to an image-capable target (the arm below). The
+  // error backoff and streak apply as for any error.
   if (pi.imageBlind) {
     // One hop only (plans/image-input.md "Rerunning on a model that can read images"): a
     // run that ALREADY started on the image-capable target and still read blind is not
