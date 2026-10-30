@@ -68,10 +68,11 @@ test("followView rides through a first-frame failure and repaints on the next ti
 // shape. This test pins the sync read (and its paint) to the same skip-and-retry policy.
 test("followView rides through a sync frame throw on a tick and repaints on the next", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
-  // The runner sets TUMWATER_SUPERVISOR_PID (see its suiteEnv), so followView's parent watch
-  // compares the polling ppid against that expected pid. Match it so the watch stays down
-  // across the throwing and recovered ticks, then flip it to end the follow; when the runner
-  // did not set it, any distinct ppid keeps the watch down until flipped.
+  // A direct `node --test` run inherits TUMWATER_SUPERVISOR_PID from the supervised shell that
+  // started it, so followView's parent watch may compare the polling ppid against that expected
+  // pid (the suite runner's suiteEnv deletes the mark). Match it so the watch stays down across
+  // the throwing and recovered ticks, then flip it to end the follow; when the mark is absent,
+  // any distinct ppid keeps the watch down until flipped.
   const expected = process.env.TUMWATER_SUPERVISOR_PID
     ? Number(process.env.TUMWATER_SUPERVISOR_PID)
     : 4242;
