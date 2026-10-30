@@ -448,7 +448,7 @@ export async function reapPreviousTeamOrphans(
  * orphan may still be a live run's process that findOrphans read as parentless mid-hand-off,
  * and ten minutes is far longer than any such attribution would hold. The operator's
  * `--kill-orphans`/dashboard/TUI click bypasses this — doctors judge with their eyes. */
-const ORPHAN_REAP_MIN_AGE_MS = 10 * 60 * 1000;
+const ORPHAN_REAP_MIN_AGE_MS = 10 * 60_000;
 
 /** The orchestrator's once-per-interval sweep of the orphans `checkOrphans` already reports:
  * kill the same set the operator's `--kill-orphans` kills, once each is old enough that no

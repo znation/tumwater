@@ -111,7 +111,7 @@ export function newPollState(): PollState {
 
 /** How often the orchestrator's poll loop stands down the orphan reap — a once-per-interval
  * throttle so a slow process-table scan never runs on the busy per-poll hot path. */
-export const ORPHAN_REAP_INTERVAL_MS = 15 * 60 * 1000;
+export const ORPHAN_REAP_INTERVAL_MS = 15 * 60_000;
 
 /** Whether the orphan reap is due now, given the last poll it ran: true at and after
  * `now >= last + intervalMs`. Purely a clock comparison so tests pin it from literal

@@ -8,7 +8,7 @@ import { primaryWorktreeLockPath } from "../paths.js";
 
 /** How old a lock dir must be before it is stale on age alone — regardless of whether its
  * recorded pid still looks alive, so a reused pid cannot latch a dead holder as live. */
-const STALE_MS = 10 * 60 * 1000;
+const STALE_MS = 10 * 60_000;
 /** A creator publishes its lock dir with the holder's pid already inside (atomic rename), so a
  * visible lock always carries a readable pid. This grace remains for a pid-less dir an older
  * build or an interrupted hand operation left behind: past it, the dir is an orphan and safe
