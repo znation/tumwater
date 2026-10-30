@@ -13,7 +13,7 @@ import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
 import { topQueuedFile, type FileTopOutcome } from "../inbox/inbox-top.js";
-import { parseDurationMs } from "../cli/cli-args.js";
+import { durationLabel, parseDurationMs } from "../cli/cli-args.js";
 import { PAUSE_FOR_MAX_MS, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadQueueFileName, rejectBadRole, requirePromptText } from "./gui-args.js";
@@ -70,7 +70,7 @@ function checkedPromptDefer(res: http.ServerResponse, body: Record<string, unkno
     return null;
   }
   if (ms > PAUSE_FOR_MAX_MS) {
-    badRequest(res, `defer is capped at 90d${gotSuffix(body.defer)}`);
+    badRequest(res, `defer is capped at ${durationLabel(PAUSE_FOR_MAX_MS)}${gotSuffix(body.defer)}`);
     return null;
   }
   return Date.now() + ms;

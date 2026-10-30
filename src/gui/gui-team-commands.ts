@@ -11,6 +11,7 @@ import { cancelWakes, PAUSE_FOR_MAX_MS, requestWake } from "../operator/operator
 import { requirePausedFlag, validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import { gotSuffix } from "../text/text.js";
+import { DAY_MS } from "../text/datetime.js";
 import { readPostBody, readRoleBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 
@@ -36,7 +37,7 @@ function boundedSecondsMs(
     return null;
   }
   if (seconds * 1000 > PAUSE_FOR_MAX_MS) {
-    badRequest(res, `${field} is capped at ${PAUSE_FOR_MAX_MS / 1000} seconds (90 days)${gotSuffix(seconds)}${capHint}`);
+    badRequest(res, `${field} is capped at ${PAUSE_FOR_MAX_MS / 1000} seconds (${PAUSE_FOR_MAX_MS / DAY_MS} days)${gotSuffix(seconds)}${capHint}`);
     return null;
   }
   return Math.round(seconds * 1000);
