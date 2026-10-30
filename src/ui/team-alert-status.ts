@@ -1,4 +1,4 @@
-/** The status/capacity and role-phase team alerts, in emission order: a spent budget
+/** The status and role-phase team alerts, in emission order: a spent budget
  * (chain/fallback/budget), disk, install, and main-red holds, roles failing run after run or
  * stuck. One of the per-domain builders split out of src/ui/team-alerts.ts; the shared types
  * and wording helpers live in team-alert-shared.ts. */
@@ -169,7 +169,7 @@ function pushStuckRoleAlert(out: TeamAlert[], roles: readonly AlertRole[]): void
   }
 }
 
-/** The status/capacity and role-phase alerts, in emission order: a spent budget
+/** The status and role-phase alerts, in emission order: a spent budget
  * (chain/fallback/budget), disk, install, and main-red holds, roles failing run after run or
  * stuck. Extracted from teamAlerts (part 1/5 of the teamAlerts split) so the shared module
  * stays small; the input names exactly the fields this run reads. The caller pushes the

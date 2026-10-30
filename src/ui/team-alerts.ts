@@ -24,8 +24,7 @@ export type { TeamAlert, AlertRole } from "./team-alert-shared.js";
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, disk and install drift, open
- * questions, refused entries, the team waiting on capacity slots (workspace, provider or
- * check), and a stopped team.
+ * questions, refused entries, orphaned processes, and a stopped team.
  */
 export function teamAlerts(
   snap: Pick<
