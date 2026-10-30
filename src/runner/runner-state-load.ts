@@ -83,27 +83,11 @@ function migrateLegacyStateKeys(saved: Record<string, unknown>): void {
   }
 }
 
-/** Load the runner's persisted state; never throws — a missing or unreadable file yields a
- * fresh state, fields absent from an older file fall back to defaults, and a numeric field
- * (top-level or nested) that is present but not a finite non-negative number is healed to 0,
- * a nested record that is present but not a plain object is dropped, and lastReview.reasons is
- * rebuilt to its string entries. The load is the one
- * read boundary for the state file (readJsonFile returns an unchecked cast), so healing here
- * keeps a hand-edited string, null, or negative out of the schedulers and the dashboards'
- * arithmetic instead of relying on each reader to guard it. Optional fields that are absent
- * stay absent, so an older state file's shape is preserved. */
-export function loadRunnerState(root: string, role: string): RunnerState {
-  const saved = readJsonFile<Partial<RunnerState>>(statePath(root, role));
-  if (saved !== undefined && saved !== null && isJsonObject(saved)) migrateLegacyStateKeys(saved);
-  const s: RunnerState = { ...freshRunnerState(role), ...(saved ?? {}) };
-  // The file name is the identity: a state file written by an older build (or moved by
-  // migrateLegacyRoleIds) can carry a stale `role` inside, and saveRunnerState writes
-  // statePath(root, state.role) — so letting the saved value win would save the file back
-  // under a retired id and leak a frozen copy for every later start to reload (the frozen-copy
-  // split behind BUGS.md 2026-10-23). Force the role the caller asked for, whatever the file
-  // says, so the state saves (and loads) under the name it was asked for.
-  // (Retired-name-ok: legacy role id read from an old state file.)
-  s.role = role;
+/** Heal the top-level scalar numeric fields of a merged state in place: every count, duration,
+ * epoch-ms stamp, amount and the per-pair daily spend map heals to its empty/zero repair, and
+ * the optional stamps/streaks heal by the absent-stays-absent guard. So "which scalar numbers
+ * does a load repair to 0?" has one home. */
+function healScalarNumbers(s: RunnerState): void {
   s.runs = healNumber(s.runs, 0);
   s.commits = healNumber(s.commits, 0);
   s.nextRunAt = healNumber(s.nextRunAt, 0);
@@ -127,7 +111,20 @@ export function loadRunnerState(root: string, role: string): RunnerState {
   healOptionalNumber(s, "streakAcked");
   healOptionalNumber(s, "unreviewFailures");
   healOptionalNumber(s, "parkedSince");
+}
+
+/** Reject an unknown skipReason in place: a saved value outside the vocabulary is dropped, so a
+ * hand-edited enumerated field cannot schedule a pause reason the reviewers do not know. So
+ * "which enumerated field is rejected when unknown?" reads from one helper. */
+function healVocabulary(s: RunnerState): void {
   if (s.skipReason !== undefined && !SKIP_REASONS.includes(s.skipReason)) delete s.skipReason;
+}
+
+/** Heal the nested scheduling/review records in place: each validated record's numeric fields
+ * repair to 0, lastReview.reasons rebuilds to its string entries, a torn mainRedRetry reads as
+ * none, and a legacy "landing" conflictHandback reason renames to "merge". So "which nested
+ * records are validated and how?" is answered by name. */
+function healNestedRecords(s: RunnerState): void {
   // The nested scheduling records carry the same numeric class — epoch-ms stamps, recovery
   // counts, and retry/review counts — and are read by comparison or arithmetic
   // (`ctx.now - claim.at > CLAIM_IDLE_MAX_MS`, `prior.count + 1`, `attempts + 1`), so a
@@ -191,6 +188,13 @@ export function loadRunnerState(root: string, role: string): RunnerState {
       v.count = healNumber(v.count, 0);
       if (typeof v.headline !== "string") delete v.headline;
     });
+}
+
+/** Drop the one-shot markers when torn in place: mergeFlakeExcused must be a string, and a torn
+ * imageReroute scalar is dropped with its tier repaired to a known tier so a corrupt tier cannot
+ * route a rerouted run to a phantom seam. So "which one-shot markers are dropped when torn?" has
+ * one home. */
+function healOneShotMarkers(s: RunnerState): void {
   if (s.mergeFlakeExcused !== undefined && typeof s.mergeFlakeExcused !== "string")
     delete s.mergeFlakeExcused;
   // The image-reroute marker is a one-shot nested record consumed by the next run; a torn
@@ -203,6 +207,33 @@ export function loadRunnerState(root: string, role: string): RunnerState {
         ? healed
         : undefined;
   }
+}
+
+/** Load the runner's persisted state; never throws — a missing or unreadable file yields a
+ * fresh state, fields absent from an older file fall back to defaults, and a numeric field
+ * (top-level or nested) that is present but not a finite non-negative number is healed to 0,
+ * a nested record that is present but not a plain object is dropped, and lastReview.reasons is
+ * rebuilt to its string entries. The load is the one
+ * read boundary for the state file (readJsonFile returns an unchecked cast), so healing here
+ * keeps a hand-edited string, null, or negative out of the schedulers and the dashboards'
+ * arithmetic instead of relying on each reader to guard it. Optional fields that are absent
+ * stay absent, so an older state file's shape is preserved. */
+export function loadRunnerState(root: string, role: string): RunnerState {
+  const saved = readJsonFile<Partial<RunnerState>>(statePath(root, role));
+  if (saved !== undefined && saved !== null && isJsonObject(saved)) migrateLegacyStateKeys(saved);
+  const s: RunnerState = { ...freshRunnerState(role), ...(saved ?? {}) };
+  // The file name is the identity: a state file written by an older build (or moved by
+  // migrateLegacyRoleIds) can carry a stale `role` inside, and saveRunnerState writes
+  // statePath(root, state.role) — so letting the saved value win would save the file back
+  // under a retired id and leak a frozen copy for every later start to reload (the frozen-copy
+  // split behind BUGS.md 2026-10-23). Force the role the caller asked for, whatever the file
+  // says, so the state saves (and loads) under the name it was asked for.
+  // (Retired-name-ok: legacy role id read from an old state file.)
+  s.role = role;
+  healScalarNumbers(s);
+  healVocabulary(s);
+  healNestedRecords(s);
+  healOneShotMarkers(s);
   return s;
 }
 
