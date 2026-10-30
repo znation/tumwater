@@ -16,6 +16,7 @@ import { scopeBases } from "../report/report-fold.js";
 import { timeAndSpend, type LossCause, type TimeSpendRow } from "./failure-time-spend.js";
 import type { HarnessEvent } from "../events/events.js";
 import { dayAt, dayKey, dayWindow, DAY_MS, formatDate } from "../text/datetime.js";
+import { sortByRoleAscending } from "../collections.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster } from "./failure-cluster.js";
 import { addTo, distinctOrdered, getOrCreate, memoSetLru, rankByCount } from "../collections.js";
@@ -656,16 +657,19 @@ function promptStatsFor(runs: HarnessEvent[]): PromptStatRow[] {
     const cacheRead = nonNegativeNumber(ev.cacheReadTokens, 0);
     acc.cacheReadSum += cacheRead;
   }
-  return [...byRole.entries()]
-    .filter(([, acc]) => acc.promptSum > 0)
-    .map(([role, acc]) => ({
-      role,
-      runs: acc.prompts.length,
-      medianPromptTokens: median(acc.prompts),
-      preEditShare: acc.preEditSum / acc.promptSum,
-      ...(acc.cacheReadSum > 0 ? { cacheReadShare: acc.cacheReadSum / acc.promptSum } : {}),
-    }))
-    .sort((a, b) => a.role.localeCompare(b.role));
+  return sortByRoleAscending(
+    [...byRole.entries()]
+      .filter(([, acc]) => acc.promptSum > 0)
+      .map(([role, acc]) => ({
+        role,
+        runs: acc.prompts.length,
+        medianPromptTokens: median(acc.prompts),
+        preEditShare: acc.preEditSum / acc.promptSum,
+        ...(acc.cacheReadSum > 0
+          ? { cacheReadShare: acc.cacheReadSum / acc.promptSum }
+          : {}),
+      })),
+  );
 }
 
 function total(counts: Partial<Record<RunResult, number>>): number {

@@ -1,4 +1,5 @@
 import { roleLabel } from "../roles/role-labels.js";
+import { sortByRoleAscending } from "../collections.js";
 import { sortEntriesByKey } from "../collections.js";
 import { pausedRoles, pausedRolesUntil, standingTeamPause } from "../team/team-state.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -27,9 +28,9 @@ import { redMainWarning } from "../baseline/main-guardrails.js";
  * (checkBudget), `maintenance quota` (checkMaintenanceQuota), and `error streaks`
  * (checkErrorStreaks), all read-only reports of holds on running. */
 export function loadRunnerStates(root: string, config: TumwaterConfig): RunnerState[] {
-  return runnerIds(config)
-    .map((id) => loadRunnerState(root, id))
-    .sort((a, b) => a.role.localeCompare(b.role));
+  return sortByRoleAscending(
+    runnerIds(config).map((id) => loadRunnerState(root, id)),
+  );
 }
 
 /** A doctor row's `not checked` outcome when tumwater.json is unreadable: the row blanks its

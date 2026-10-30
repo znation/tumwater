@@ -241,6 +241,18 @@ export function sortEntriesByKey<K extends string | undefined, T>(
   return [...entries].sort(([a], [b]) => (a ?? "").localeCompare(b ?? ""));
 }
 
+/** Sort objects with a `role` string field ascending by role — the single home of the
+ * `(a, b) => a.role.localeCompare(b.role)` step that just-sorts by role alone, shared by the
+ * runner-state rows (doctor-holds.ts's loadRunnerStates) and the per-role prompt summary
+ * (failure-data.ts's failurePerRolePromptTable), so those sites cannot drift on how roles
+ * order. This is the plain single-key form; the multi-key comparators that carry role as a
+ * secondary tiebreak (status-model.ts's sortRolesByState, failure-data.ts's failureRows, and
+ * the GUI page's browser copy gui-client-model.ts) sort by a different axis and are
+ * deliberately not routed through it. Returns a fresh sorted array; the input is never mutated. */
+export function sortByRoleAscending<T extends { role: string }>(rows: readonly T[]): T[] {
+  return [...rows].sort((a, b) => a.role.localeCompare(b.role));
+}
+
 /** rankByCount for `[key, count]` entry pairs (count first): src/report/report-render.ts's
  * rankedRoleMap, src/team/team-failure-spread.ts's strongest-kind pick, and
  * src/doctor/doctor-contention-checks.ts's check-wait and provider-wait rankings. */
