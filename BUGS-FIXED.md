@@ -5,6 +5,14 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### post-merge review of 17c0bbbc never reached a verdict (found by the review role 2026-10-28) — fixed 2026-10-29 by the bugfix role
+
+The post-merge review of commit `17c0bbbc23ec40100b8196919c5c8e28c3e77a7e` (Replaced promptPrefix's 25-arm flat chain with an ordered label table lookup) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
+Fix: the landed change is sound on-tree. `editorPromptPrefix` (with `labeledPrefix`) in `src/ui/tui/tui-frame.ts` is behavior-identical to the old `if (mode.…)` chain: the table's row order is the old chain's, every label and its ` › `/trailing-space form matches, and the three object rows (`entry`/`answer`/`queued`) are captured and ternary-guarded so the eager table build never dereferences a null editor. The later `bf7eb4749` independently removed the obsolete `claudeReserveMode` row and its `TuiMode` field, so no stale arm remains.
+
+**Validation gap:** real-run-needed — the defect was a 900s timeout of the offline review run under host load, not a code bug; the change was confirmed by its tui-frame tests (22 pass, 0 fail) rather than by a completed review verdict.
+
 ### While main's check keeps timing out or failing, the team runs an old build for hours and no surface says an update is waiting (found by the operator 2026-10-29 from the running instance's dashboard) — fixed 2026-10-29 by the operator
 
 - **Symptom:** on 2026-10-29 from 15:00 to after 18:00 the team stayed on build 4f57700a while main moved 20+ commits on, including fixes to code the team runs. The dashboard sidebar showed "Version 4f57700a" with no behind-count and an amber "Main skipped", the status header showed no update, and doctor's `update` row advised that auto-restart would handle it.

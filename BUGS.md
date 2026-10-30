@@ -225,10 +225,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 - **Progress 2026-10-29 (steward):** recorded so the next plan role and the in-flight 3i/3 and isolation work see the review path named alongside the test tier; the three member timeouts stay their own entries under their own holds.
 - **Needs review 2026-10-29 by bugfix: too large for one run — this is a steward-recorded class-level structural risk (host-load 900s ceiling landing on the review verdict), not a code bug with an offline-reproducible defect; its fix sketch routes it to the plan role to fold into 3i/3 review-path or isolation planning, so it stays Open and the bugfix role has nothing to move to ## Fixed.**
 
-### post-merge review of 17c0bbbc never reached a verdict (found by the review role 2026-10-28)
-
-The post-merge review of commit `17c0bbbc23ec40100b8196919c5c8e28c3e77a7e` (Replaced promptPrefix's 25-arm flat chain with an ordered label table lookup) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
-
 ### post-merge review of 0f240b57 never reached a verdict (found by the review role 2026-10-29)
 
 The post-merge review of commit `0f240b5745b325c4fb784ad369e20a62e678fbd2` (recovered leftover work from dedupe: Fold the 5-copy failureHeadline??describeCheck pair into one redCheckHeadline helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
