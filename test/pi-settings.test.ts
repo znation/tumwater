@@ -65,6 +65,29 @@ test("readPiDefaultModel reads as null when the saved default cannot be known", 
   );
 });
 
+test("readPiDefaultModel re-reads a rewritten settings.json (stat-keyed cache stays fresh)", () => {
+  const project = tmpdir("pi-default-stale-project-");
+  const file = writeSettings(tmpdir("pi-default-stale-"), {
+    defaultProvider: "prov",
+    defaultModel: "org/old:m",
+  });
+  assert.deepEqual(readPiDefaultModel(file, project), { provider: "prov", model: "org/old:m" });
+  // Rewrite the file with a different model: the stat key (dev/ino/mtime/size) changes, so
+  // a later read must not serve the stale saved default.
+  writeFileDeep(file, JSON.stringify({
+    defaultProvider: "prov",
+    defaultModel: "org/new:m",
+    defaultThinkingLevel: "high",
+  }));
+  assert.deepEqual(
+    readPiDefaultModel(file, project),
+    { provider: "prov", model: "org/new:m", thinking: "high" },
+    "the rewritten model and its thinking are served, not the stale pair",
+  );
+  // A third read is stable: the fresh value is cached under the new stat key.
+  assert.deepEqual(readPiDefaultModel(file, project), { provider: "prov", model: "org/new:m", thinking: "high" });
+});
+
 test("a project .pi/settings.json that names a default key makes the read null", () => {
   const settings = writeSettings(tmpdir("pi-override-settings-"), {
     defaultProvider: "prov",
