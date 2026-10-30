@@ -626,6 +626,37 @@ test("parser leaves the backend flags alone on unrelated errors", () => {
   assert.equal(mentions.backendFailureKind, undefined);
 });
 
+test("parser flags a permanent 4xx config error and never a transient or unrelated one", () => {
+  // The permanent-config-error spellings (isPermanentConfigError in pi-failure.ts) set the
+  // parser's configError flag, which the settle half uses to keep a misconfiguration from
+  // being retried as transient — the pi-seam twin of the claude/codex/opencode stream tests.
+  for (const text of [
+    "400: model_not_supported",
+    "invalid_request_error: model does not exist",
+    "401 unauthorized",
+    "403 Forbidden",
+    "404 Not Found",
+    "provider returned 400 bad request",
+  ]) {
+    const parser = new PiStreamParser();
+    parser.feed(errorLine(text) + "\n");
+    assert.equal(parser.configError, true, `${text} is a permanent config error`);
+    assert.equal(parser.transientBackend, false, `${text} is not a backend failure`);
+    assert.equal(parser.transientRateLimit, false, `${text} is not a rate limit`);
+  }
+  // A transient backend failure is its own class and must never double as a config error.
+  const backend = new PiStreamParser();
+  backend.feed(errorLine("Connection error.") + "\n");
+  assert.equal(backend.transientBackend, true);
+  assert.equal(backend.configError, false, "transient wins, config never also set");
+  // A 429 rate limit and unrelated errors are neither backend failures nor config errors.
+  for (const text of ['429 "Rate limit exceeded"', "context size has been exceeded", "boom"]) {
+    const p = new PiStreamParser();
+    p.feed(errorLine(text) + "\n");
+    assert.equal(p.configError, false, `${text} is not a permanent config error`);
+  }
+});
+
 // --- Blind image-read detection (plans/image-input.md "Detecting a blind read") ---
 // pi's read tool returns a `result` whose content holds a text block starting
 // `Read image file [<mimeType>]` (plus an `image` block when the image was processed) and,
