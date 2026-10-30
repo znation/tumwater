@@ -1,5 +1,6 @@
 import { execFile, type ChildProcess, type ExecFileOptions, type PromiseWithChild } from "node:child_process";
 import { promisify } from "node:util";
+import { errCode } from "../errno.js";
 
 /** Child-process plumbing: the harness's one execFile helper (execFileAsync), the pid-liveness
  * probe every place that decides whether a recorded pid still belongs to a live process shares
@@ -70,6 +71,30 @@ export function pidAlive(pid: number): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Deliver a SIGTERM to the numeric pid, answering how the signal reached it: "signalled"
+ * when SIGTERM was delivered, "gone" when the process died between the caller's liveness
+ * check and the signal (ESRCH) — the caller's goal is already met in that case, so it
+ * reports done instead of failing with a raw `kill ESRCH`. The pid-recycling risk that
+ * `pidAlive` accepts everywhere applies here too: an info file refreshed by the live
+ * process keeps the window small. Any other delivery error is rethrown with the pid named:
+ * a consumer seeing Node's bare "kill EPERM" cannot tell it means a process it cannot
+ * signal (recycled pid owned by another user), not a broken harness. The `stop` command's
+ * SIGTERM of the recorded orchestrator is this helper's one caller. */
+export function signalOrchestrator(pid: number): "signalled" | "gone" {
+  try {
+    process.kill(pid, "SIGTERM");
+    return "signalled";
+  } catch (err) {
+    const code = errCode(err);
+    if (code === "ESRCH") return "gone";
+    if (code === "EPERM")
+      throw new Error(
+        `stop could not signal pid ${pid} (EPERM) — it is owned by another user or the pid was recycled; kill it directly with \`kill ${pid}\``,
+      );
+    throw err;
   }
 }
 

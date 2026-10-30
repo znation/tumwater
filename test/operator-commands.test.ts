@@ -13,9 +13,8 @@ import {
   cmdResume,
   cmdStop,
   cmdWake,
-  signalOrchestrator,
 } from "../src/operator/operator-commands.js";
-import { pidAlive } from "../src/process/process.js";
+import { pidAlive, signalOrchestrator } from "../src/process/process.js";
 import { defaultConfig } from "../src/config/config.js";
 import { PAUSE_REASON_MAX } from "../src/team/team-state.js";
 import { writeJsonAtomic, writeJsonFile } from "../src/files/json-files.js";

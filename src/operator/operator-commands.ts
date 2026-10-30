@@ -11,7 +11,6 @@ import { readRunDetail } from "../run/run-detail-data.js";
 import { readRunRows } from "../history/history-data.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { agree, plural, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
-import { errCode } from "../errno.js";
 import { shortSha } from "../text/format.js";
 import { INSTANCE_ROLES } from "../roles/runner-ids.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
@@ -24,7 +23,7 @@ import {
   resumeRole,
 } from "../team/team-state.js";
 import { readOrchestratorInfo } from "../team/team-orchestrator-info.js";
-import { pidAlive } from "../process/process.js";
+import { pidAlive, signalOrchestrator } from "../process/process.js";
 import { inspectReclaimCandidates } from "../team/team-reclaim.js";
 import {
   markerApplyNote,
@@ -348,27 +347,6 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   const roles = pauseTargetRoles(root, args);
   if (roles) pauseRoleGroup(root, roles, forMs, now, reason);
   else pauseTeamGroup(root, forMs, now, reason);
-}
-
-/** Deliver the stop signal to the recorded orchestrator pid: "signalled" when SIGTERM was
- * delivered, "gone" when the process died between the caller's liveness check and the
- * signal (ESRCH) — stop's goal is already met in that case, so the caller reports it as
- * done instead of failing with a raw `kill ESRCH`. Any other delivery error is rethrown
- * with the pid named: an operator seeing Node's bare "kill EPERM" cannot tell it means a
- * process they cannot signal (recycled pid owned by another user), not a broken harness. */
-export function signalOrchestrator(pid: number): "signalled" | "gone" {
-  try {
-    process.kill(pid, "SIGTERM");
-    return "signalled";
-  } catch (err) {
-    const code = errCode(err);
-    if (code === "ESRCH") return "gone";
-    if (code === "EPERM")
-      throw new Error(
-        `stop could not signal pid ${pid} (EPERM) — it is owned by another user or the pid was recycled; kill it directly with \`kill ${pid}\``,
-      );
-    throw err;
-  }
 }
 
 /** `tumwater stop`: SIGTERM the running orchestrator, which drains its in-flight runs and
