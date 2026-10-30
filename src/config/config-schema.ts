@@ -138,9 +138,13 @@ interface ReviewConfig {
   thinking?: string;
   /** Wall-clock budget for one reviewer run, in seconds (default 900, capped by
    * runTimeoutSeconds). A review that outruns it is a failed run — commit kept, no strike —
-   * so one wedged reviewer cannot hold the merge queue for a whole authoring run. A reviewer
-   * (and the merge conflict resolver, which shares the gate's wiring) that is still making
-   * progress at the deadline receives one extension of the same length before it is killed. */
+   * so one wedged reviewer cannot hold the merge queue for a whole authoring run. On a
+   * starved host (load average above the core count) the budget stretches by the load-to-cores
+   * ratio, capped at 2×, mirroring the merge-scope check's starvation-aware deadline, so a
+   * progressing review is not killed at the 900 s wall by host load it does not control. A
+   * reviewer (and the merge conflict resolver, which shares the gate's wiring) that is still
+   * making progress at the deadline receives one extension of the same length before it is
+   * killed. */
   timeoutSeconds?: number;
 }
 
