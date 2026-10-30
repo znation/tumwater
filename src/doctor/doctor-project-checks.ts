@@ -432,7 +432,7 @@ export function checkQaCoverage(root: string, now: number = Date.now()): CheckOu
 /** How far back the `main diff rules` row looks — one day, the same 24 h trailing-day convention
  * every event-reading doctor row uses, so a diff-rule failure the main watch logged stays a
  * standing warn until a day passes. Owned here (the check that reads it). */
-const MAIN_RULE_FAILURE_WINDOW_MS = 24 * 60 * 60_000;
+const MAIN_RULE_FAILURE_WINDOW_MS = DAY_MS;
 /** The exact substring src/baseline/main-watch.ts's `watchRules` logs in its warning, so this
  * check matches a real rule failure and cannot drift from the wording the watch writes. */
 const MAIN_RULE_FAILURE_MARKER = "fails the diff rules";
@@ -466,7 +466,7 @@ export function checkMainDiffRules(root: string): CheckOutcome {
 const DROPPED_REVIEW_MARKER = "dropping the post-merge review of";
 /** How far back the `dropped post-merge reviews` row looks — one day, the same 24 h trailing-day
  * convention every event-reading doctor row uses. Owned here (the check that reads it). */
-const DROPPED_REVIEW_WINDOW_MS = 24 * 60 * 60_000;
+const DROPPED_REVIEW_WINDOW_MS = DAY_MS;
 /** The doctor's `dropped post-merge reviews` row: a `warning` the post-merge-review drain
  * (src/merge/merge-post-review-drain.ts) wrote when it dropped a review at
  * POST_REVIEW_FAILURE_LIMIT — after failed runs its commit stays on main unreviewed, and

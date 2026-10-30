@@ -12,6 +12,7 @@ import { useWorktree } from "../git/worktree-use.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildReviewPrompt } from "../prompt/gate-prompts.js";
 import { shortSha } from "../text/format.js";
+import { DAY_MS } from "../text/datetime.js";
 import { errorMessage } from "../text/text.js";
 import { revisionRoundOf } from "../git/commit-message.js";
 import { REVISION_BACKSTOP } from "../runner/runner-revision.js";
@@ -69,7 +70,7 @@ export const POST_MERGE_REJECT_WARN = 2;
 
 /** How far back the post-merge-churn rule looks — one day, the 24 h event-window convention
  * every event-reading doctor row uses. */
-export const POST_MERGE_REJECT_WINDOW_MS = 24 * 60 * 60_000;
+export const POST_MERGE_REJECT_WINDOW_MS = DAY_MS;
 
 /** Group the `afterMerge: true` `review_rejected` events of `events` by base role — the same
  * `e.type === "review_rejected" && e.afterMerge === true` test the report fold
