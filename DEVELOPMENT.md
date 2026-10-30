@@ -46,11 +46,12 @@ host, so it checks only what is nearest the change:
   lint config, the dependencies or `tsconfig.json` lints the whole tree;
 - the test files nearest the change that fit a 30 s budget (`test-runner.js --affected
   --budget=30`, selection in `test/affected-tests.ts`). It ranks the files the change can reach
-  by import distance (a changed test file first, then files that import a changed module, and
-  so on), cheapest first at each distance. It prices each file by the durations this build last
-  recorded (`dist/test/.durations.json`, 5 s for a file never timed) and passes over a file that
-  does not fit. Its first line of output says how many fit and names the left-out files nearest
-  the change: run those by hand (`npm test <name>`) when your change is about them.
+  by import distance (a changed test file first, then files that import a changed module or name
+  a CLI command that loads it, and so on), cheapest first at each distance. It prices each file
+  by the durations this build last recorded (`dist/test/.durations.json`, 5 s for a file never
+  timed) and passes over a file that does not fit. Its first line of output says how many fit
+  and names the left-out files nearest the change: run those by hand (`npm test <name>`) when
+  your change is about them.
 
 Everything else runs in the main watch's full check (`npm test`) on main's tip after the merge,
 which the team keeps running on every new head. A break that only the full suite catches lands
@@ -69,9 +70,10 @@ visible to it:
   every code change.
 - Call the CLI through `test/helpers/cli-harness.ts` with the command as a string literal
   (`cli(repo, "logs", …)`, `spawnCli(repo, ["run", …])`, `[CLI, "status"]`). A computed command
-  makes the file depend on every command. On the other side, `src/cli.ts` loads a command's
-  module with a literal `import()` in its case or in a top-level function the case calls; a
-  test in `test/affected-tests.test.ts` fails on a lazy import no command reaches.
+  makes the file depend on every command, one step further from each than a file naming it. On
+  the other side, `src/cli.ts` loads a command's module with a literal `import()` in its case or
+  in a top-level function the case calls; a test in `test/affected-tests.test.ts` fails on a
+  lazy import no command reaches.
 - Changes to `package.json`, the lockfile, `tsconfig.json` or the runner itself make every test
   file a candidate, as does any file the selector cannot map, and the budget then takes the
   cheapest. It says so in its first line of output.
