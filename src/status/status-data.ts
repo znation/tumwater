@@ -585,7 +585,15 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // run or verification) or is pinned to — threaded into the roles collector so `running`,
   // `disk` and the rows agree.
   const slots = readSlotsState(root).slots;
-  const roleRows = collectRoleRows(root, cfg, slots, modelsPath, markerSet);
+  // One merge-queue pass per poll (merge-queue.ts's stat cache keeps an unchanged queue at one
+  // stat per file) serves three consumers — the `mergeQueue` field below, the busy runner rows'
+  // surplus-eligibility check (collectRoleRows' `queued`), and the in-maintenance in-flight
+  // count (maintenanceQuotaForPoll) — so a snapshot never lists or re-reads the same queue
+  // twice, and the rows, the depth and the quota cannot straddle a concurrent enqueue/drop.
+  const queue = readMergeQueue(root);
+  const merges = queue.entries;
+  const queuedRoles = new Set(merges.map((e) => e.role));
+  const roleRows = collectRoleRows(root, cfg, slots, modelsPath, markerSet, queuedRoles);
   // Every role whose notes file runs past the read bound (status-role-notes.ts): the standing
   // twin of the doctor `role notes` row, raised as the amber role-notes-truncated alert.
   const roleNotesOverCap = collectRoleNotesOverCap(root);
@@ -600,13 +608,11 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // One read of the pending scheduled wakes feeds both the earliest and the full list, so they
   // cannot disagree.
   const wakes = scheduledWakes(root, now);
-  // One merge queue pass per poll (merge-queue.ts's stat cache keeps an unchanged queue at one
-  // stat per file) serves the depth; inFlight is the 4/5 marker only when a live orchestrator
-  // still has a queue entry for what the marker names (per change, for a batch) — the
-  // cross-check makes every crash ordering self-healing (a stale marker alone never displays,
+  // The merge queue read is hoisted above the rows collector (one pass serves the depth, the
+  // rows' surplus check, and the quota below); inFlight is the 4/5 marker only when a live
+  // orchestrator still has a queue entry for what the marker names (per change, for a batch) —
+  // the cross-check makes every crash ordering self-healing (a stale marker alone never displays,
   // and needs no cleanup pass).
-  const queue = readMergeQueue(root);
-  const merges = queue.entries;
   const mergeQueue: StatusSnapshot["mergeQueue"] = {
     depth: merges.length + queue.unreadable,
   };
@@ -653,7 +659,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     root,
     cfg.maintenancePerWorkMerge,
     roleRows,
-    new Set(merges.map((e) => e.role)),
+    queuedRoles,
     now,
   );
   return {

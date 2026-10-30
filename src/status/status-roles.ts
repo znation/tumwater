@@ -63,6 +63,7 @@ export function collectRoleRows(
   slots: ReturnType<typeof readSlotsState>["slots"],
   modelsPath: string,
   paused: ReadonlySet<string>,
+  queued: ReadonlySet<string> = queuedMergeRoles(root),
 ): StatusRoleRow[] {
   // A surplus runner (index above `instances`, from the runner pool of plans/fast-merge.md
   // "Lever 1") with nothing to show gets no row, so the table does not list idle extras.
@@ -73,7 +74,6 @@ export function collectRoleRows(
   // run after run" alert keys on, so a surplus runner the alert would report is never
   // hidden. Without these rows the role is invisible and unresumable (BUGS.md 2026-10-23),
   // and the alerts — which read the rows — cannot name it.
-  const queued = queuedMergeRoles(root);
   const roles = runnerIds(cfg).filter((r) => {
     if (instanceIndex(r) <= configuredInstances(cfg, r)) return true;
     const s = runnerStateForPoll(root, r);
