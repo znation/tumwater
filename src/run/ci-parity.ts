@@ -14,6 +14,7 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { ciParityPath } from "../paths.js";
 import { isJsonObject } from "../files/json-object.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/git.js";
 import { DAY_MS } from "../text/datetime.js";
 import * as crypto from "node:crypto";
@@ -82,17 +83,36 @@ export function recordParity(
   writeJsonAtomic(ciParityPath(root), { parity: { tip: sha, lockHash: lockHashOf(root), result, lastRunAt: now } });
 }
 
+// Stat-keyed cache (stat-cache.cachedByStat) for the lock hash: the status snapshot and
+// doctor poll it, and package-lock.json is a multi-ten-KB file that changes only on a
+// dependency edit, so an unchanged lock serves the hash from one stat instead of re-reading
+// and re-hashing the whole file every poll — the same stat-keyed contract every other
+// per-poll snapshot reader uses. Any write invalidates via dev/ino/mtime/size (the standard
+// freshness check); bounded inside cachedByStat.
+const lockHashCache = new Map<string, StatKeyedValue<string>>();
+
 /** The hash of `package-lock.json` at `root` itself — what the current tree carries. An
  * empty string when the file is missing (or unreadable) reads as an unmatched hash, so a
  * swing to "no lock file" renders stale rather than pretending nothing moved. */
 export function lockHashOf(root: string): string {
-  let file: string;
-  try {
-    file = fs.readFileSync(path.join(root, "package-lock.json"), "utf8");
-  } catch {
-    return "";
-  }
-  return crypto.createHash("sha256").update(file).digest("hex");
+  const file = path.join(root, "package-lock.json");
+  return (
+    cachedByStat(
+      lockHashCache,
+      file,
+      file,
+      () => {
+        let text: string;
+        try {
+          text = fs.readFileSync(file, "utf8");
+        } catch {
+          return null; // Missing or unreadable reads as an unmatched hash (a cache miss).
+        }
+        return crypto.createHash("sha256").update(text).digest("hex");
+      },
+      (hash) => hash,
+    ) ?? ""
+  );
 }
 
 /** The current main tip and lock hash, resolved synchronously from the ref files and the
