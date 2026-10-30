@@ -68,6 +68,19 @@ export function agree(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
 }
 
+/** The "N commit(s) behind" tail every update-available surface renders after its "update
+ * available" head: the status header's build badge (badges.ts), the event feed's build_stale
+ * line (event-format.ts), and the failure digest's build_stale line (failure-state-change.ts)
+ * each spelled the count-then-pluralize by hand — event-format and failure-state-change
+ * coercing the torn `aheadCommits` through finiteNumber to 0, badges through `?? 0` — so the
+ * plural/wording has one home and cannot drift. The count is coerced to 0 here when unusable
+ * (a non-finite or negative value reads zero, the same corrupt-field rule the other update
+ * surfaces apply), so a torn line renders "0 commits behind" rather than NaN. */
+export function commitsBehindPhrase(raw: unknown): string {
+  const n = finiteNumber(raw, 0);
+  return `${plural(n, "commit")} behind`;
+}
+
 /** The spine of every phrase naming main's tip as red — `main <short-sha> is red` — built here
  * once so the team-wide red-main warning (main-red.ts), the review gate's attribution detail
  * (review.ts), the merge check's attribution error (merge-check-failures.ts), and the redeploy

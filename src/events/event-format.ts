@@ -2,7 +2,7 @@ import { eventRole, eventRun, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
-import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
+import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, commitsBehindPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { isNonBlankString, joinWithMore, squash, textOr, truncate } from "../text/text.js";
@@ -642,7 +642,7 @@ function imageRestartEventMessage(e: HarnessEvent): string {
       // Self-hosting teams only (src/redeploy/redeploy.ts): the code main describes is not the
       // code running. Not a warning prefix — a stale build is a state, and auto-restart resolves
       // it.
-      return `update available (${plural(finiteNumber(e.aheadCommits, 0), "commit")} behind) — restarts after cooldown; work continues`;
+      return `update available (${commitsBehindPhrase(e.aheadCommits)}) — restarts after cooldown; work continues`;
     case "restart_pending":
       return `restart pending — main ${shortSha(e.head)} is green; finishing current runs (no new runs start)`;
     case "restart": {

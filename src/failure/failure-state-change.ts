@@ -7,9 +7,9 @@
  * and a roleCell-sliced role, so no unbounded field reaches the page. */
 import { truncateExample } from "./failure-cluster.js";
 import { cutSplitsSurrogatePair, isNonBlankString } from "../text/text.js";
-import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
+import { isJsonObject, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
-import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
+import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, commitsBehindPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, rolePausePhrase, roleResumePhrase, rolesPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 
 import { shortSha } from "../text/format.js";
 import { deferredReasonText, untilClockSuffix, gigabytes, windowSuffix, windowResetPhrase, backendLabel } from "../events/event-format.js";
@@ -364,7 +364,7 @@ function updateStateChange(ev: HarnessEvent): string {
       // "restarts after cooldown; work continues" beside the ahead-count prefix, so it says
       // the same thing compactly: the restart waits while work continues (cooldown scope,
       // PLANS.md 2026-10-23).
-      text = `update available (${plural(finiteNumber(ev.aheadCommits, 0), "commit")} behind) — restart waits; work continues`;
+      text = `update available (${commitsBehindPhrase(ev.aheadCommits)}) — restart waits; work continues`;
       break;
     case "restart_pending":
       text = `restart pending — main ${shortSha(ev.head)} green`;

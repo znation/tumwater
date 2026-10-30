@@ -5,7 +5,7 @@ import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from 
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { clockHm, humanAgo, humanUntil } from "../text/datetime.js";
-import { pauseReasonSuffix, plural } from "../text/phrases.js";
+import { commitsBehindPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 
 /** The status header's BADGE fragments, phrased once for both observer surfaces: the terminal
@@ -34,7 +34,7 @@ export function buildBadge(build: StatusSnapshot["build"]): string {
   if (!build) return "";
   const waiting = build.waitingForCheck;
   const stale = build.stale
-    ? ` — update available (${plural(build.aheadCommits ?? 0, "commit")} behind)`
+    ? ` — update available (${commitsBehindPhrase(build.aheadCommits)})`
     : waiting
       ? ` — update waiting: main is ${plural(waiting.aheadCommits, "commit")} ahead at ` +
         `${shortSha(waiting.head)}, and no newer commit has passed main's check yet`
