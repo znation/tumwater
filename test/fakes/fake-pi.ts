@@ -4,6 +4,7 @@ import { APPROVE_PI, assistantLine } from "../fixtures/pi-events.js";
 import { pathPrepend, readRunBlocks, RUN_MARKER, writeScript } from "./fake-commands.js";
 import { tmpdir } from "../fixtures/repo-fixtures.js";
 import path from "node:path";
+import { MODEL_CHECK_ANSWER, MODEL_CHECK_MARKER } from "../../src/model-check/model-check-probe.js";
 
 // --- The fake pi shim (fakePi/fakePiIdle/recordingFakePi/piRunResult), split out of the old
 // util.ts grab-bag ---
@@ -54,11 +55,18 @@ export const PROMPT_FROM_STDIN = [
   `done`,
 ].join("\n");
 
-/** Install a fake pi at `file` (writeScript) whose body runs after PROMPT_FROM_STDIN — the
- * one way a test writes a pi script, so every fake sees its prompt the same way. Now used only
- * inside fakePi below. */
-function writePiScript(file: string, body: string): void {
-  writeScript(file, `${PROMPT_FROM_STDIN}\n${body}`);
+/** The shell fragment every fake pi runs after PROMPT_FROM_STDIN: a model-check probe
+ * (src/model-check/model-check-probe.ts) gets the one-word answer a working model gives, and
+ * the test's own body never sees it — so a team started with the check on (`tumwater start`) runs
+ * its roles on a fake exactly as before, and no fake's marker file or prompt log counts the
+ * probe as a run. A test of the check itself installs its fake without this (fakePiNoCheck). */
+const ANSWER_MODEL_CHECK = `case "$__pi_prompt" in *"${MODEL_CHECK_MARKER}"*) printf '%s\\n' '${assistantLine(MODEL_CHECK_ANSWER)}'; exit 0;; esac`;
+
+/** Install a fake pi at `file` (writeScript) whose body runs after PROMPT_FROM_STDIN and
+ * ANSWER_MODEL_CHECK — the one way a test writes a pi script, so every fake sees its prompt the
+ * same way. Now used only inside fakePi below. */
+function writePiScript(file: string, body: string, answerCheck = true): void {
+  writeScript(file, [PROMPT_FROM_STDIN, ...(answerCheck ? [ANSWER_MODEL_CHECK] : []), body].join("\n"));
 }
 
 /** A shell fragment for fake-pi scripts: append the run's full argv (the prompt is its last
@@ -81,6 +89,14 @@ export { readRunBlocks };
 export function fakePi(script: string): () => void {
   const dir = tmpdir("fake-pi-");
   writePiScript(path.join(dir, "pi"), script);
+  return pathPrepend(dir);
+}
+
+/** fakePi without the model-check answer: the script sees the probe like any prompt, for the
+ * tests of the check itself (a fake that replies with garbage or nothing). */
+export function fakePiNoCheck(script: string): () => void {
+  const dir = tmpdir("fake-pi-");
+  writePiScript(path.join(dir, "pi"), script, false);
   return pathPrepend(dir);
 }
 

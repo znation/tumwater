@@ -44,6 +44,8 @@ import { ReclaimController } from "../team/team-reclaim.js";
 import { reapPreviousTeamOrphans } from "../doctor/doctor-orphans.js";
 import { runStartupMigrations } from "./startup-migration-steps.js";
 import { archiveAtTeamStart } from "../backlog/backlog-archive.js";
+import { ModelCheckGate, type ModelCheckProber } from "../model-check/model-check-gate.js";
+import type { ModelCheckPolicy } from "../model-check/model-check.js";
 
 const POLL_MS = 2000;
 
@@ -94,6 +96,13 @@ interface RunOptions {
   /** The `run --for` window's deadline (epoch ms), published in the info file so observers can
    * show when the team stops. The deadline timer itself lives in cmdStart. */
   stopsAt?: number;
+  /** The model check's prober (src/model-check/model-check-gate.ts): cmdStart passes
+   * runModelCheck for a long-running team; null/absent runs without the check — a `--once`
+   * round, and every in-process test that does not inject a fake. */
+  modelCheck?: ModelCheckProber | null;
+  /** The model check's retry timing (default MODEL_CHECK_POLICY) — a test seam, like
+   * fallbackBreakerPolicy. */
+  modelCheckPolicy?: ModelCheckPolicy;
 }
 
 /** How runOrchestrator ended: `restart` means dist/ now holds a newer build and the caller should
@@ -289,6 +298,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // and the shutdown still run.
   const { emit, warn } = bestEffortEventLogger(root);
   const opencodeCatalogRefresh = newOpencodeCatalogRefresh(root, {}, warn);
+  // The model check (src/model-check/model-check-gate.ts): every provider/model pair the team
+  // can run on answers one short probe before its roles run on it. Off unless the caller hands
+  // in a prober; its probes die with the full stop signal and are awaited at shutdown.
+  const modelCheck = opts.modelCheck ? new ModelCheckGate(root, opts.modelCheck, signal, opts.modelCheckPolicy) : null;
 
   const ctx: PollContext = {
     root,
@@ -315,6 +328,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     mainWatch,
     workMergedSince,
     deferredDue,
+    modelCheck,
     breakerPolicy,
     breakerNow,
     roleInFlight,
@@ -356,6 +370,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       opts.handoffMergeWindowMs ?? HANDOFF_MERGE_WINDOW_MS,
       () => internalStop.abort(),
     );
+    // A restart stops no signal the probes watch, so end them here: none outlives its
+    // generation.
+    await modelCheck?.close();
     emit({ source: TUMWATER_SOURCE, type: "orchestrator_stop", cause: stopCause });
     notifier.dispose();
     removeQuiet(infoFile);

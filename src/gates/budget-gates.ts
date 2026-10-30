@@ -316,9 +316,18 @@ export function gateRoleConfig(
  * inputs, so nothing can get stuck. */
 export function pollBudgetGate(
   state: BudgetGateState,
-  ctx: { root: string; states: RunnerState[]; liveConfig: TumwaterConfig; modelsPath: string },
+  ctx: {
+    root: string;
+    states: RunnerState[];
+    liveConfig: TumwaterConfig;
+    modelsPath: string;
+    /** Whether a pair failed its last model check (src/model-check/model-check.ts): the
+     * serving resolution steps past it like a demoted pair. Absent while the check is off. */
+    modelCheckFailed?: (pair: string) => boolean;
+  },
 ): BudgetGatePoll {
   const { root, states, liveConfig, modelsPath } = ctx;
+  const checkFailed = ctx.modelCheckFailed ?? (() => false);
   const now = Date.now();
   // One spend read serves the verdict, the transition event, and the returned figures: the
   // states are not mutated between, so all three are the same number by construction.
@@ -423,8 +432,12 @@ export function pollBudgetGate(
   // that use it: a demoted strong pair holds the strong roles beside the per-role cap set while
   // small and default keep their own pairs, instead of the team-wide pause the single-pair
   // gate produced.
+  // A pair that failed its model check is not serving either: it answered a short probe with
+  // nothing or with the wrong word, so the tier steps to its next chain step (or pauses) until a
+  // re-check passes, exactly as for a breaker demotion. A pair still being checked stays usable
+  // — the check holds its roles until the verdict.
   const usable = (p: FallbackModelConfig) =>
-    pairFreeAt(p) && fallbackServingPair(state.breakers, modelPairName(p));
+    pairFreeAt(p) && fallbackServingPair(state.breakers, modelPairName(p)) && !checkFailed(modelPairName(p));
   const servingResolved = resolveTierFallbacks(liveConfig, usable);
   // Free is not enough: the breaker demotes a fallback whose runs keep failing, and a gate
   // whose `default` (or, with review on, `strong`) tier resolves to pause is `paused`, exactly

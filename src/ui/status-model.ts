@@ -284,6 +284,9 @@ export function rolePhase(
       case "yield-gap":
         cell = `idle: waiting out its yield gap ×${yieldMultiplierFor(s)}`;
         break;
+      case "model-check":
+        cell = "waiting: model check";
+        break;
       default:
         cell = "due";
     }

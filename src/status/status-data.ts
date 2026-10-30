@@ -332,6 +332,11 @@ export interface StatusSnapshot {
    * `tumwater status` name why a provider's roles sit idle. Absent while none stands or the
    * orchestrator is not alive. */
   providerHolds?: OrchestratorInfo["providerHolds"];
+  /** The model check's pairs that are not verified (src/model-check/model-check-gate.ts), read
+   * from the running orchestrator's info file: a pair still being checked, or one that failed
+   * its probe and holds the roles on it, with the reply it gave. Absent while every pair answers,
+   * the check is off, or the orchestrator is not alive. */
+  modelChecks?: OrchestratorInfo["modelChecks"];
   /** Direct dependencies the root checkout's `node_modules` does not hold at `package-lock.json`'s
    * pin (the doctor's `root install` row); absent when none drift. */
   rootInstallDrift?: string[];
@@ -437,6 +442,16 @@ function snapshotInboxFields(
   };
 }
 
+/** The running team's model checks that are not verified, as a snapshot fragment: empty when
+ * the team is stopped or every pair answered. */
+function unverifiedModelChecks(
+  running: boolean,
+  info: ReturnType<typeof readOrchestratorInfo>,
+): Pick<StatusSnapshot, "modelChecks"> {
+  const open = running ? (info?.modelChecks ?? []).filter((c) => c.status !== "verified") : [];
+  return open.length > 0 ? { modelChecks: open } : {};
+}
+
 /** The spend/billing fields of the snapshot: the budget and the running-only chain/provider
  * holds. */
 function snapshotBudgetFields(
@@ -453,6 +468,8 @@ function snapshotBudgetFields(
     // Only while running: a stale info file beside a dead pid must not speak for a stopped
     // team, and only while a hold stands (an empty list is the same as none).
     ...(running && info?.providerHolds && info.providerHolds.length > 0 ? { providerHolds: info.providerHolds } : {}),
+    // Only the pairs that hold roles: an all-verified team reads exactly as before the check.
+    ...unverifiedModelChecks(running, info),
   };
 }
 

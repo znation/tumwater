@@ -176,6 +176,9 @@ interface TeamGatePollCtx {
   /** Pressure reclaim (plans/disk-floor.md, part 2/4). Optional so the gate's unit tests can
    * poll a disk hold without a reclaim pass; the orchestrator supplies the controller. */
   reclaim?: ReclaimController;
+  /** Whether a pair failed its last model check (src/model-check/model-check-gate.ts), read by
+   * the budget gate's serving resolution. Absent while the check is off. */
+  modelCheckFailed?: (pair: string) => boolean;
 }
 
 /** Poll every team-wide gate and alarm, advancing `states` in place. */
@@ -237,6 +240,7 @@ function pollBudgetPhase(
     states: runners.map((r) => r.state),
     liveConfig,
     modelsPath,
+    modelCheckFailed: ctx.modelCheckFailed,
   });
   // The budget wiring (demotions publish, fallback_switched event, per-runner config/cap
   // assignment, cap-reopen hand-back) lives in src/budget/budget-wiring.ts

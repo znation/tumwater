@@ -88,6 +88,11 @@ export interface RunOutcome {
    * only by those outcomes; every other resume cause is derived from state (cut-off streak,
    * restart). */
   resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute";
+  /** A `no_change` run that declared neither nothing-to-do nor a refusal and was not cut off
+   * (run-verdict.ts's warnUndeclaredNoChange): the agent replied, but not the way a working
+   * model answers its prompt. The orchestrator has the model check probe the run's pair again
+   * (src/model-check/model-check-gate.ts), since a serving fault looks exactly like this. */
+  undeclared?: boolean;
   /** The run ended on leftover recovery (runner-leftover.ts) — the leftover went on the merge
    * queue (or already was there, or could not be pinned) — without an authoring run. No model
    * ran, so the orchestrator's fallback breaker takes the run as no evidence about the backend. */

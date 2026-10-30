@@ -49,6 +49,7 @@ const STATE_CHANGE_FAMILY: Partial<
   // Provider hold and resume.
   rate_limit_hold: providerHoldStateChange,
   rate_limit_resumed: providerHoldStateChange,
+  model_check_passed: providerHoldStateChange,
   // Live-config edits.
   max_concurrent_changed: liveConfigStateChange,
   retention_changed: liveConfigStateChange,
@@ -324,6 +325,11 @@ function providerHoldStateChange(ev: HarnessEvent): string {
         rendersAsBackendFailure(ev.kind)
           ? `backend hold lifted (${backendKindPhrase(ev.kind)}) — roles run again`
           : "429 hold lifted — roles run again";
+      break;
+    case "model_check_passed":
+      // The model-check hold's lift: the failed check itself is a warning, which the digest
+      // reads with the other warnings.
+      text = `model check passed — ${field(ev.pair)} answers again`;
       break;
     default:
       return ev.type;

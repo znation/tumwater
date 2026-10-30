@@ -444,6 +444,23 @@ export function reviewRunSessionDir(root: string, role: string, runKey: string):
   return path.join(reviewSessionDir(root, role), runKey);
 }
 
+/** The model check's own run name (src/model-check/model-check-probe.ts): the stem of its raw
+ * and native logs (`.tumwater/log/_model-check.pi.jsonl`) and of its session dirs. A leading
+ * underscore, like the review sessions' `_review`, so it can never be a role id. */
+export const MODEL_CHECK_RUN_NAME = "_model-check";
+
+/** The working directory a model-check probe runs in: an empty scratch dir under the team's
+ * `.tumwater`, so a probe never runs in the primary checkout or a role's slot. */
+export function modelCheckWorkDir(root: string): string {
+  return path.join(tumwaterDir(root), "model-check");
+}
+
+/** A fresh session dir for one model-check probe, under the sessions root so the session
+ * retention prunes whatever a probe leaves behind. */
+export function modelCheckSessionDir(root: string, key: string): string {
+  return path.join(sessionsRootDir(root), MODEL_CHECK_RUN_NAME, key);
+}
+
 /** Queued human prompts awaiting pickup by a role (inbox.ts). */
 export function inboxDir(root: string): string {
   return path.join(tumwaterDir(root), "inbox");

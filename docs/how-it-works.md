@@ -349,6 +349,20 @@ never has to wait a parked check out.
   new local day), a run that started on the fallback is handed back to the primary: it is
   interrupted resumably — session and workspace edits kept — and its next run continues the
   same session on the budgeted model (`budget_handback` in the feed).
+- The model check proves every model pair the team can run on can answer before roles run on
+  it (plans/model-check.md). This covers each role's model, the reviewer's and resolver's, and
+  every fallback step. When a pair first appears (at start, after a config edit routes a seam to
+  it, or when a fallback engages), it gets one short probe, a ~230-token paragraph with a known
+  one-word answer, sent through the same backend the runs use. The probe also runs again when a
+  run on the pair ends without changes and without declaring nothing-to-do. A pair that gives no
+  reply or the wrong one holds its roles, shown as `waiting: model check` on their rows. With
+  review on, a failed reviewer pair holds every role but the director. The failure logs one
+  warning quoting the reply, raises a red alert on the dashboard and TUI, and shows on doctor's
+  `model check` row; the `over-cap model` row then says whether the fallback answered instead of
+  "serving not verified". At the cap, a fallback step that failed is skipped like a demoted one.
+  The pair is checked again after 1 minute, then at doubling intervals up to 30 minutes. Once it
+  answers, its roles run again on their own (`model_check_passed` in the feed). The check runs
+  for `tumwater start`, not for a `--once` round.
 - Model failure fallback is separate from the budget gate above, triggered by health rather
   than spend: when one role's runs fail with provider-class errors (429s, and connection,
   timeout, server, model-load, and stream-severed backend failures) three times in a row, its

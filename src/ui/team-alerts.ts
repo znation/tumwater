@@ -36,6 +36,7 @@ export function teamAlerts(
     | "rootInstallDrift"
     | "budgetPausedRoles"
     | "mainCheck"
+    | "modelChecks"
   >,
   questions: readonly string[],
   roles: readonly AlertRole[],

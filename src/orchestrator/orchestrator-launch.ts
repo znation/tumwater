@@ -17,7 +17,7 @@ import {
   startFallbackProbeAt,
   type FallbackBreakerPolicy,
 } from "../budget/fallback-breaker.js";
-import { seamHoldKey } from "../config/config-views.js"
+import { seamHoldKey, seamPairName } from "../config/config-views.js"
 import type { TeamGateStates } from "../gates/gate-polls.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
@@ -90,6 +90,10 @@ interface LaunchContext {
   /** The start gate a waiter meets at permit time: the restart hold plus the failure hold
    * for role runs (the director is exempt, as at scheduling). */
   startHeld: (role: string) => boolean;
+  /** Called with the pair a run ran on when the run ended without changes and without
+   * declaring nothing-to-do (RunOutcome.undeclared) — the model check's re-check trigger.
+   * Absent while the check is off. */
+  onUndeclaredNoChange?: (pair: string) => void;
 }
 
 /** Launch one due runner's run: reserve it, park it in the semaphore, and start it under
@@ -210,6 +214,9 @@ export function launchDueRuns(ctx: LaunchContext): void {
               ? modelPairName({ provider: seamHoldKey(cfg), model: cfg.model })
               : null;
           const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;
+          // The pair the run starts on, for the model check's re-check trigger (any role, the
+          // director included: its runs are evidence about its pair too).
+          const checkPair = ctx.onUndeclaredNoChange ? seamPairName(runner.runConfig()) : null;
           // The run's lease rides in the run-permit store for the length of the run, so an
           // idle wait inside it (a failed review's in-place retry pause) can hand the team
           // permit back and re-take it before the next attempt. The director holds no lease.
@@ -217,6 +224,7 @@ export function launchDueRuns(ctx: LaunchContext): void {
             usesSlot
               ? await withRunPermit(lease!, () => runner.run())
               : await runner.run();
+          if (checkPair !== null && outcome.undeclared) ctx.onUndeclaredNoChange?.(checkPair);
           if (ranPair !== null && ranOn !== undefined) {
             const at = breakerNow();
             const evidence = outcome.recoveredLeftover ? "skipped" : outcome.result;

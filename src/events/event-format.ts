@@ -522,6 +522,14 @@ function holdEventMessage(e: HarnessEvent): string {
     default: return textOr(e.type);
   }
 }
+/** A model_check_passed event's failed-probe count, as a suffix: none for a torn or zero
+ * count, else " after N failed checks". */
+function modelCheckFailuresSuffix(failures: unknown): string {
+  return typeof failures === "number" && failures > 0
+    ? ` after ${failures} failed ${failures === 1 ? "check" : "checks"}`
+    : "";
+}
+
 function resourceEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "disk_low":
@@ -579,6 +587,10 @@ function resourceEventMessage(e: HarnessEvent): string {
       return `waiting: ${subscriptionWindowPhrase(e)} rejected — ${backendLabel(e)} model jobs wait${windowResetPhrase(e)} (director keeps running)`;
     case "subscription_window_reset":
       return `${backendLabel(e)} subscription window reset — ${backendLabel(e)} model jobs run again`;
+    case "model_check_passed":
+      // The lift of a model-check hold, like rate_limit_resumed — no warning prefix: the failed
+      // check's own warning named the fault, and this names the pair that recovered.
+      return `model check passed: ${textOr(e.pair)} answers again${modelCheckFailuresSuffix(e.failures)} — its roles run again`;
     default: return textOr(e.type);
   }
 }
@@ -744,7 +756,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "prompt_enqueued": case "prompt_cancelled": case "prompt_edited": case "prompt_topped": case "prompt_taken": case "question_posted": case "entry_refused": case "issue_filed": return inboxEventMessage(e);
     case "budget_warning": case "budget_paused": case "budget_fallback": case "budget_resumed": case "budget_handback": case "fallback_switched": case "opencode_free_model_billed": return budgetEventMessage(e);
     case "team_paused": case "team_resumed": case "role_paused": case "role_resumed": case "role_streak_paused": case "role_cap_warning": case "role_cap_paused": case "role_cap_resumed": case "maintenance_quota_hold": case "maintenance_quota_resumed": case "bootstrap_complete": return holdEventMessage(e);
-    case "disk_low": case "disk_ok": case "disk_reclaim": case "quiet_hours_started": case "quiet_hours_ended": case "rate_limit_hold": case "rate_limit_resumed": case "subscription_window_limited": case "subscription_window_reset": return resourceEventMessage(e);
+    case "disk_low": case "disk_ok": case "disk_reclaim": case "quiet_hours_started": case "quiet_hours_ended": case "rate_limit_hold": case "rate_limit_resumed": case "subscription_window_limited": case "subscription_window_reset": case "model_check_passed": return resourceEventMessage(e);
     case "max_concurrent_changed": case "retention_changed": case "config_changed": case "model_changed": case "backend_binary": case "state_migrated": case "orchestrator_start": case "orchestrator_stop": return configEventMessage(e);
     case "image_blind": case "image_reroute": case "build_stale": case "restart_pending": case "restart": case "restart_refused": case "restart_blocked": case "restart_forced": case "supervisor_exit": return imageRestartEventMessage(e);
     case "build_check": case "dep_install": case "slot_wait": case "provider_wait": case "check_wait": return checkWaitEventMessage(e);

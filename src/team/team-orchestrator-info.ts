@@ -58,6 +58,22 @@ export interface SlotPoolSnapshot {
   waiting: number;
 }
 
+/** One provider/model pair's model check as the orchestrator publishes it
+ * (src/model-check/model-check-gate.ts): its status, the seams that run on it (role ids, plus
+ * `review`, `resolver`, `director` and `fallback:<tier>` labels), and — after a failed probe —
+ * why, the reply's excerpt, and when the next probe starts. */
+export interface ModelCheckInfo {
+  pair: string;
+  status: "checking" | "verified" | "failed";
+  seams: string[];
+  failures?: number;
+  reason?: string;
+  reply?: string;
+  detail?: string;
+  probeAt?: number;
+  checkedAt?: number;
+}
+
 export interface DiskStatus {
   freeGB: number;
   holdGB: number;
@@ -130,6 +146,11 @@ export interface OrchestratorInfo {
    * pi's default backend. Written by the orchestrator's poll whenever a hold opens or lifts;
    * absent while none stands. */
   providerHolds?: Array<{ provider?: string; until: number; kind: string }>;
+  /** Every pair the model check tracks (src/model-check/model-check-gate.ts), in the order the
+   * seams resolve: whether a probe showed it can answer, and the seams it serves. Written by
+   * the orchestrator's poll whenever a verdict or the pair set changes; absent when the check
+   * is off (a `--once` round, an in-process test without a prober). */
+  modelChecks?: ModelCheckInfo[];
 }
 
 /** Assign one field of the orchestrator info file in place, but only when the value differs
@@ -328,6 +349,31 @@ function normalizeProviderHolds(rec: Record<string, unknown>): void {
   }
 }
 
+/** One published model-check entry, or undefined for any foreign shape: a string `pair`, a
+ * known `status` and a string-list `seams` are required; each optional field is kept only when
+ * it carries the type its readers expect. */
+function parseModelCheck(v: unknown): ModelCheckInfo | undefined {
+  if (!isJsonObject(v) || typeof v.pair !== "string") return undefined;
+  if (v.status !== "checking" && v.status !== "verified" && v.status !== "failed") return undefined;
+  if (!Array.isArray(v.seams) || !v.seams.every((s) => typeof s === "string")) return undefined;
+  const out: ModelCheckInfo = { pair: v.pair, status: v.status, seams: v.seams };
+  if (isFiniteNumber(v.failures)) out.failures = v.failures;
+  if (typeof v.reason === "string") out.reason = v.reason;
+  if (typeof v.reply === "string") out.reply = v.reply;
+  if (typeof v.detail === "string") out.detail = v.detail;
+  if (isFiniteNumber(v.probeAt)) out.probeAt = v.probeAt;
+  if (isFiniteNumber(v.checkedAt)) out.checkedAt = v.checkedAt;
+  return out;
+}
+
+/** Drop a non-array `modelChecks` or keep each well-formed entry, dropping foreign ones. */
+function normalizeModelChecks(rec: Record<string, unknown>): void {
+  const checks = rec.modelChecks;
+  if (checks === undefined) return;
+  if (!Array.isArray(checks)) delete rec.modelChecks;
+  else rec.modelChecks = checks.map(parseModelCheck).filter((c) => c !== undefined);
+}
+
 /** Drop a `disk` that lacks finite numbers or a boolean `held`, or an invalid `lastReclaim`. */
 function normalizeDisk(rec: Record<string, unknown>): void {
   const disk = rec.disk;
@@ -363,6 +409,7 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
   if (rec.stopsAt !== undefined && !isFiniteNumber(rec.stopsAt)) delete rec.stopsAt;
 
   normalizeProviderHolds(rec);
+  normalizeModelChecks(rec);
   normalizeDisk(rec);
 }
 

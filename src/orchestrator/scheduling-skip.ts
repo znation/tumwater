@@ -140,6 +140,15 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
     noteSkip(root, runner, skip);
     return { skip: true };
   }
+  // The model check (src/model-check/model-check-gate.ts): a due role whose pair has not
+  // answered the probe — still being checked, or failed it — waits, recorded so its row says
+  // why. Placed after the due check so only a role that would otherwise run carries the reason;
+  // the check's re-probe lifts the hold by itself, no operator step.
+  if (scope.modelCheckHeld.has(runner.role)) {
+    if (once.active && !runner.state.running) once.settle(runner.role, "paused");
+    noteSkip(root, runner, "model-check");
+    return { skip: true };
+  }
   // Merge queue 3/5 interlock (invariant 3): a role with a QUEUED or IN-FLIGHT merge never
   // starts a run — the entry stays in the queue until its merge completes, so one check
   // covers both. Uniform over every role, director included: its prompt is not finished until it

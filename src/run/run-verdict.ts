@@ -445,6 +445,7 @@ function noChangeArm(ctx: RunVerdictContext, changed: boolean): RunOutcome | und
       result: "no_change",
       cutOff: diagnosis.cutOff || undefined,
       summary: noChangeSummary(ctx, pi, diagnosis.cutOff),
+      undeclared: (!pi.nothingToDo && !diagnosis.cutOff) || undefined,
     };
   }
   return undefined;

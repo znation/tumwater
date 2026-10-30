@@ -278,7 +278,14 @@ async function bootGenerationParts(root: string, branchArg: string | null, once:
   // A long-running team watches launchservicesd's port count (a no-op off macOS); a once round
   // is over long before a leak could matter.
   const launchServicesWatch = once ? null : new (await import("../process/launch-services.js")).LaunchServicesWatch(root);
-  return { redeploy, launchServicesWatch };
+  // A long-running team checks every model pair with one short probe before running on it
+  // (src/model-check/model-check-gate.ts); a once round runs each role once on the build it
+  // booted and leaves the check to the daemon.
+  const { runModelCheck } = await import("../model-check/model-check-probe.js");
+  const modelCheck = once
+    ? null
+    : (seam: Parameters<typeof runModelCheck>[1], signal: AbortSignal) => runModelCheck(root, seam, signal);
+  return { redeploy, launchServicesWatch, modelCheck };
 }
 
 /** Print the supervised generation's banner and subscribe to its event stream on non-json runs. */
@@ -384,7 +391,7 @@ async function runSupervisedGeneration(input: SupervisedGenerationInput): Promis
   const enabled = runnerIds(config);
   // A scoped round's role list is exactly the filter; otherwise every enabled role runs.
   const roles = roleFilter ?? enabled;
-  const { redeploy, launchServicesWatch } = await bootGenerationParts(root, branchArg, once);
+  const { redeploy, launchServicesWatch, modelCheck } = await bootGenerationParts(root, branchArg, once);
   const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
   const unsubscribe = announceGeneration(roles, mainBranch, once, json, forMs, root, build);
   // Snapshot each role's run counter so the once summary can tell this round's runs from
@@ -400,6 +407,7 @@ async function runSupervisedGeneration(input: SupervisedGenerationInput): Promis
       signal: controller.signal,
       redeploy,
       launchServicesWatch,
+      modelCheck,
       once,
       roleFilter: roleFilter ?? undefined,
       stopsAt: forMs !== null ? windowStart + forMs : undefined,

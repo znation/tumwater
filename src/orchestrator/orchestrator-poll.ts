@@ -43,6 +43,7 @@ import { pollTeamGates, type TeamGateStates } from "../gates/gate-polls.js";
 import type { ReclaimController } from "../team/team-reclaim.js";
 import { heldProviders, windowHeldProviders } from "../team/team-hold.js";
 import { workReserveCount } from "../scheduling/claims.js";
+import type { ModelCheckGate } from "../model-check/model-check-gate.js";
 
 /** The setup's constants and collaborators, fixed for the whole run. */
 export interface PollContext {
@@ -72,6 +73,9 @@ export interface PollContext {
   mainWatch: ReturnType<typeof createMainWatch>;
   workMergedSince: WorkMergedCache;
   deferredDue: Map<string, boolean>;
+  /** The model check (src/model-check/model-check-gate.ts), or null while it is off (a
+   * `--once` round, an in-process test that injects no prober). */
+  modelCheck: ModelCheckGate | null;
   breakerPolicy: FallbackBreakerPolicy;
   breakerNow: () => number;
   roleInFlight: Set<Promise<void>>;
@@ -218,6 +222,8 @@ type PollGates = ReturnType<typeof pollTeamGates> & {
   teamHeldNow: () => ReadonlySet<string | undefined>;
   reviewHeldNow: () => boolean;
   roleProviders: Map<string, string | undefined>;
+  /** The roles the model check holds this poll (empty while the check is off). */
+  modelCheckHeld: ReadonlySet<string>;
 };
 
 /** The team's gates and alarms, one poll of the family (src/gates/gate-polls.ts): the daily
@@ -234,6 +240,7 @@ export function pollGatesAndHolds(
   { liveConfig, now }: PollInputs,
 ): PollGates {
   const { root, runners, gateStates } = ctx;
+  const modelCheck = ctx.modelCheck;
   const gates = pollTeamGates(gateStates, {
     root,
     runners,
@@ -242,7 +249,13 @@ export function pollGatesAndHolds(
     now,
     info: ctx.info,
     reclaim: ctx.reclaim,
+    ...(modelCheck !== null ? { modelCheckFailed: (pair: string) => modelCheck.failed(pair) } : {}),
   });
+  // The model check (src/model-check/model-check-gate.ts), after the budget gate has assigned
+  // each runner the config its next run uses: re-key to the pairs in use, start the due
+  // probes in the background, and hold the roles whose pair has not answered.
+  const modelCheckHeld: ReadonlySet<string> =
+    modelCheck?.poll({ runners, liveConfig, roleConfig: gates.roleConfig, info: ctx.info }) ?? new Set<string>();
   // The latest poll's disk verdict, hoisted for runStartHeld's permit-time reads
   // (plans/disk-floor.md, part 1/4).
   state.diskHeld = gates.diskHeld;
@@ -277,6 +290,7 @@ export function pollGatesAndHolds(
     teamHeldNow,
     reviewHeldNow: () => liveConfig.review.enabled && teamHeldNow().has(reviewSeamKey),
     roleProviders: new Map(runners.map((r) => [r.role, r.runProvider()])),
+    modelCheckHeld,
   };
 }
 
@@ -402,7 +416,9 @@ export async function pollSchedule(
     planBacklogFull: inputs.plansFull,
     deferredDue: ctx.deferredDue,
     workMergedSince: ctx.workMergedSince,
+    modelCheckHeld: gates.modelCheckHeld,
   });
+  const modelCheck = ctx.modelCheck;
   launchDueRuns({
     root,
     reasons,
@@ -423,9 +439,15 @@ export async function pollSchedule(
     roleRunDurationsMs: ctx.roleRunDurationsMs,
     startHeld: (role) =>
       runStartHeld(state) ||
+      // The model check's LATEST verdict (the gate keeps the newest poll's held set), so a
+      // waiter parked before its pair failed does not start on it.
+      (modelCheck?.held.has(role) ?? false) ||
       (role !== DIRECTOR_ROLE
         ? gates.teamHeldNow().has(gates.roleProviders.get(role))
         : windowHeldProviders(gateStates.teamHold).has(gates.roleProviders.get(role))),
+    // A run that ended without changes and without declaring nothing-to-do is the shape a
+    // serving fault takes (2026-10-30 Flint): have the model check look at its pair again.
+    ...(modelCheck !== null ? { onUndeclaredNoChange: (pair: string) => modelCheck.suspect(pair) } : {}),
   });
 }
 

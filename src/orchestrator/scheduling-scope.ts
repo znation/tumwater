@@ -88,6 +88,11 @@ export interface SchedulingPassCtx {
   /** Per-role deferred-due memory (one-shot run_deferred events), advanced in place. */
   deferredDue: Map<string, boolean>;
   workMergedSince: WorkMergedCache;
+  /** The roles the model check holds (src/model-check/model-check-gate.ts): a due role whose
+   * next run's pair is not verified — or, with review on, any role but the director while the
+   * reviewer's pair is not — waits with the `model-check` skip reason. Absent while the check
+   * is off. */
+  modelCheckHeld?: ReadonlySet<string>;
 }
 
 /** A base role's compiled claim group (part 4/7, per-base, computed once per poll). */
@@ -127,6 +132,7 @@ export interface SchedulingScope {
   diskHeld: boolean;
   deferredDue: Map<string, boolean>;
   workMergedSince: WorkMergedCache;
+  modelCheckHeld: ReadonlySet<string>;
   queuedRoles: Set<string>;
   /** The queued roles held by the scoped interlock this poll: pre-approval, conflict-resolving,
    * or a branch already ahead of main. A queued role absent from this set falls through the
@@ -381,6 +387,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     diskHeld,
     deferredDue,
     workMergedSince,
+    modelCheckHeld: ctx.modelCheckHeld ?? new Set<string>(),
     queuedRoles,
     interlockedHold,
     pinnedDirector,

@@ -1,7 +1,7 @@
 /** The status and role-phase team alerts, in emission order: a spent budget
- * (chain/fallback/budget), disk, install, and main-red holds, roles failing run after run or
- * stuck. One of the per-domain builders split out of src/ui/team-alerts.ts; the shared types
- * and wording helpers live in team-alert-shared.ts. */
+ * (chain/fallback/budget), a failed model check, disk, install, and main-red holds, roles
+ * failing run after run or stuck. One of the per-domain builders split out of
+ * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts. */
 
 import type { StatusSnapshot } from "../status/status-data.js";
 import {
@@ -16,11 +16,13 @@ import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 import { joinWithMore, squash } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { STALL_RE } from "./run-progress-model.js";
+import { modelCheckFault } from "../model-check/model-check.js";
+import { formatClock } from "../text/datetime.js";
 
 interface StatusAlertsInput {
   snap: Pick<
     StatusSnapshot,
-    "budget" | "chain" | "disk" | "rootInstallDrift" | "budgetPausedRoles" | "mainCheck"
+    "budget" | "chain" | "disk" | "rootInstallDrift" | "budgetPausedRoles" | "mainCheck" | "modelChecks"
   >;
   roles: readonly AlertRole[];
 }
@@ -72,6 +74,32 @@ function pushSpentBudgetAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"])
             actions: [{ label: "Raise the cap", act: "budget" }],
           },
     );
+  }
+}
+
+// A provider/model pair that failed its model check (src/model-check/model-check-gate.ts): the
+// roles on it wait, so the banner names the pair, what it replied (or that it gave no reply)
+// and when it is checked again — the operator's evidence that the serving side is broken, not
+// the roles. Red: nothing on that pair runs until it answers. The re-check lifts it by itself.
+function pushModelCheckAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"]): void {
+  const failed = (snap.modelChecks ?? []).filter((c) => c.status === "failed");
+  if (failed.length) {
+    out.push({
+      key: "modelcheck",
+      tone: "red",
+      title:
+        failed.length === 1
+          ? `${failed[0]!.pair} failed its model check — runs on it wait`
+          : `${failed.length} models failed their model check — runs on them wait`,
+      detail: failed
+        .map((c) => {
+          const next = c.probeAt !== undefined ? `; checking again at ${formatClock(c.probeAt)}` : "";
+          const on = c.seams.length > 0 ? ` (${joinWithMore(c.seams, 4)})` : "";
+          return `${c.pair}${on} ${modelCheckFault(c)}${next}`;
+        })
+        .join(" · "),
+      actions: [],
+    });
   }
 }
 
@@ -170,16 +198,17 @@ function pushStuckRoleAlert(out: TeamAlert[], roles: readonly AlertRole[]): void
 }
 
 /** The status and role-phase alerts, in emission order: a spent budget
- * (chain/fallback/budget), disk, install, and main-red holds, roles failing run after run or
- * stuck. Extracted from teamAlerts (part 1/5 of the teamAlerts split) so the shared module
- * stays small; the input names exactly the fields this run reads. The caller pushes the
- * returned alerts at the position this run used to occupy, so the emitted key order is
- * unchanged. */
+ * (chain/fallback/budget), a failed model check, disk, install, and main-red holds, roles
+ * failing run after run or stuck. Extracted from teamAlerts (part 1/5 of the teamAlerts split)
+ * so the shared module stays small; the input names exactly the fields this run reads. The
+ * caller pushes the returned alerts at the position this run used to occupy, so the emitted key
+ * order is unchanged. */
 export function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
   const { snap, roles } = input;
   const out: TeamAlert[] = [];
   pushChainAlert(out, snap);
   pushSpentBudgetAlert(out, snap);
+  pushModelCheckAlert(out, snap);
   pushDiskAlert(out, snap);
   pushInstallDriftAlert(out, snap);
   pushMainRedAlert(out, snap, roles);

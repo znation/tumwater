@@ -9,6 +9,9 @@ import { modelPairName, pairDailyCost } from "../budget/budget.js";
 import { usd, usdCap } from "../text/format.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
+import type { ModelCheckInfo } from "../team/team-orchestrator-info.js";
+import { modelCheckFault } from "../model-check/model-check.js";
+import { joinWithMore } from "../text/text.js";
 
 /** The doctor's cap-fallback checks, split out of doctor-model-checks.ts (whose seam framework
  * and declared-tier/image checks stay in a module whose per-backend provider checks live in
@@ -33,13 +36,17 @@ import { okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
  * (src/budget/fallback-breaker.ts's breaker, BUGS.md 2026-09-20), so a free pair reads "serving not
  * verified" — unless the running orchestrator has published that its breaker demoted the pair
  * (`demoted`, from orchestrator.json; runDoctor passes it only while that orchestrator is alive),
- * which warns with the failure count and the next probe time. No fallbackModel configured is
+ * which warns with the failure count and the next probe time. The running team's model check
+ * (src/model-check/model-check-gate.ts, `checks` from orchestrator.json while it is alive)
+ * probes every fallback step when it starts, so its verdict replaces "serving not verified":
+ * verified, or a warning quoting what the pair replied. No fallbackModel configured is
  * informational, not a warning — plenty of teams intend to stop at the cap. `modelsPath` is
  * injectable so tests need no real pi install. */
 export function checkFallbackModel(
   root: string,
   modelsPath: string = piModelsPath(),
   demoted: FallbackDemotion | null = null,
+  checks: readonly ModelCheckInfo[] | null = null,
 ): CheckOutcome {
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;
@@ -60,6 +67,12 @@ export function checkFallbackModel(
     const name = nameOf(free);
     if (demoted)
       return warnOutcome(`${name} is priced at zero but not serving — the running team demoted it after ${demoted.failures} consecutive failed runs, so roles pause at the cap; one probe run retries it from ${formatClock(demoted.probeAt)}`);
+    const check = checks?.find((c) => c.pair === modelPairName(free));
+    if (check?.status === "failed")
+      return warnOutcome(`${name} is priced at zero but failed the running team's model check — it ${modelCheckFault(check)}; at the cap roles skip it until it answers${check.probeAt !== undefined ? ` (next check ${formatClock(check.probeAt)})` : ""}`);
+    if (check?.status === "verified")
+      return okOutcome(`${name} — priced at zero (cost n/a), answered the running team's model check`);
+    if (check?.status === "checking") return okOutcome(`${name} — priced at zero (cost n/a), model check running`);
     return okOutcome(`${name} — priced at zero (cost n/a), serving not verified`);
   }
   return warnOutcome(`${nameOf(declared)} is not priced at zero in ${modelsPath} — at the cap roles pause instead of switching`);
@@ -174,4 +187,25 @@ export async function checkFallbackChain(
   }
   const detail = fragments.join("; ");
   return down ? warnOutcome(detail) : okOutcome(detail);
+}
+
+/** The `model check` row: what the running team's model check (src/model-check/model-check-gate.ts)
+ * found for every pair it can run on — `verified` with the time, `checking`, or `failed` with the
+ * reply quoted, the seams that wait and the next check — from the info file the orchestrator
+ * publishes (`checks`, passed only while it is alive). A failed pair warns: nothing on it runs.
+ * Read-only: doctor never probes a model itself (a probe costs a model call and its reply only
+ * means something to the team that acts on it); with no team running the row says so. */
+export function checkModelChecks(running: boolean, checks: readonly ModelCheckInfo[] | null): CheckOutcome {
+  if (!running) return okOutcome("not checked — a running team checks each model pair before running on it");
+  if (checks === null || checks.length === 0) return okOutcome("off for this team (a --once round)");
+  const fragments = checks.map((c) => {
+    if (c.status === "verified")
+      return `${c.pair} — answered${c.checkedAt !== undefined ? ` ${formatClock(c.checkedAt)}` : ""}`;
+    if (c.status === "checking") return `${c.pair} — checking`;
+    const on = c.seams.length > 0 ? `; ${joinWithMore(c.seams, 6)} wait` : "";
+    const next = c.probeAt !== undefined ? `; next check ${formatClock(c.probeAt)}` : "";
+    return `${c.pair} — failed: ${modelCheckFault(c)}${on}${next}`;
+  });
+  const detail = fragments.join("; ");
+  return checks.some((c) => c.status === "failed") ? warnOutcome(detail) : okOutcome(detail);
 }

@@ -62,6 +62,7 @@ test("every phase label rolePhase renders maps to a known status on the page", (
     [rolePhase(at({ nextRunAt: now - 1_000, skipReason: "deferred-no-work" }), true), "deferred", false],
     [rolePhase(at({ nextRunAt: now - 1_000, skipReason: "instances-full" }, "feature-2"), true), "idle", false],
     [rolePhase(at({ nextRunAt: now - 1_000, skipReason: "maintenance-due-cap" }), true), "quota", false],
+    [rolePhase(at({ nextRunAt: now - 1_000, skipReason: "model-check" }), true), "modelcheck", false],
     [rolePhase(at({ nextRunAt: now - 1_000, skipReason: "yield-gap", recentOutcomes: "n".repeat(16) }), true), "idle", false],
   ];
   for (const [phase, key, live] of cases) {
