@@ -73,6 +73,11 @@ test("runsFullSuite leaves filtered runs and mere mentions of the runner alone",
     "npm install --prefix /tmp/twprefix ./tumwater-0.1.0.tgz", // packaging check, not a suite
     "echo npm test",
     "npm",
+    // a bare `npm run` with no script names no subcommand, so nothing to flag
+    "npm run",
+    // `node` with no runner entry point (flags only, or a bare version) runs nothing
+    "node --version",
+    "node",
   ]) {
     assert.ok(!runsFullSuite(command), `not flagged: ${command}`);
   }
