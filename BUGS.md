@@ -237,8 +237,6 @@ The post-merge review of commit `17c0bbbc23ec40100b8196919c5c8e28c3e77a7e` (Repl
 
 The post-merge review of commit `0f240b5745b325c4fb784ad369e20a62e678fbd2` (recovered leftover work from dedupe: Fold the 5-copy failureHeadline??describeCheck pair into one redCheckHeadline helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
 
-**Needs review 2026-10-29 by bugfix: reaching a verdict needs a real strong-tier review run of `0f240b57`, which is not offline-reproducible and times out at the 900s ceiling under host load — this member is owned by the plan role's class fix (`post-merge reviews time out at the 900s ceiling as a class`), not a bugfix code fix; the fold is complete and faithful (all five call sites use `redCheckHeadline`, which is exactly `failureHeadline(tail) ?? describeCheck(check)`), so do not close it as Fixed via an md-only edit, since the change has no code and the rejected 2026-10-29 attempt proves that reads as a re-author.**
-
 ## Fixed
 
 ## Verified
