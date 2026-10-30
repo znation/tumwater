@@ -4,7 +4,7 @@
  * report's day and --since collectors both call it without reading the clock or the log
  * again. This is main's own wall-clock red time, not any role's, so the report carries it
  * only on the team scope. */
-import { dayKey } from "../text/datetime.js";
+import { dayAt, dayKey } from "../text/datetime.js";
 import { isPassingMainCheck, isRedMain } from "../baseline/main-guardrails.js";
 import { addTo, getOrCreate } from "../collections.js";
 import { shortSha } from "../text/format.js";
@@ -31,7 +31,7 @@ function addSpell(map: Map<string, number>, start: number, end: number): void {
     // The Date constructor's month/date fields cross the local midnight (and any DST shift
     // at it) exactly as dayAt does, so an hour cannot leak into the next day.
     const d = new Date(cur);
-    const nextMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+    const nextMidnight = dayAt(-1, d).getTime();
     const segEnd = Math.min(end, nextMidnight);
     const ms = segEnd - cur;
     if (ms > 0) map.set(dayKey(cur), (map.get(dayKey(cur)) ?? 0) + ms);
