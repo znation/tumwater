@@ -99,8 +99,11 @@ doctor's merge-check median leave them out. Unset, `check.mergeCommand` falls ba
   model reviewer. Every merged change is judged once, after it lands, by the post-landing review.
   Each reviewer run is capped at `review.timeoutSeconds` (default 900, never above
   `runTimeoutSeconds`; at least 3600 while the over-cap model carries the team, since a slower
-  free model needs as many turns); a reviewer still making progress at that deadline gets one
-  extension of the same length before it is killed. One that runs over fails without a strike.
+  free model needs as many turns); under a starved host the budget stretches by the
+  load-to-cores ratio (capped at double, the merge-scope precedent), so a progressing review on
+  a loaded box is not killed at the wall by load it does not control. A reviewer still making
+  progress at that deadline gets one extension of the same length before it is killed. One that
+  runs over fails without a strike.
   An already-approved change is not judged again; its check still runs.
 - **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear. If
   main moved since the approval's check, the rebased tree is checked again inside the lock,

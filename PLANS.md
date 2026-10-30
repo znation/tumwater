@@ -139,25 +139,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/helpers' own case (in the file that covers `wait.ts`, or `test/wait.test.ts`): `awaitQuietHost` returns true immediately under a quiet injected sampler, false after the bounded wait under a saturated one, and never throws.
 - A run of `test/orchestrator-budget.e2e.test.ts` under a saturated injected sampler shows the skip wording; under the live quiet host it runs.
 
-### Option-2 isolation, part 2/2: the post-merge reviewer's budget stretches on a starved host (planned 2026-10-29 by the plan role, split from the Steward queue-gap note 2026-10-29 and the review-900s class note; independent of part 1/2 — different files, no `requires`; touches src/config/config-views.ts src/build/build-check-events.ts docs/config.md docs/how-it-works.md test/config-views.test.ts)
-
-**Goal.** The post-merge review is now the only review path, and a strong-tier reviewer run killed at its 900 s ceiling (`review.timeoutSeconds`) on the loaded host leaves the commit verdict-less (four such Open members). A merge-scope check in exactly this situation already gets a longer deadline: `starvedDeadlineMs` (`src/build/build-check-events.ts`) stretches it by the host's load-to-cores ratio, capped at `STARVED_DEADLINE_MAX_FACTOR`. Give the reviewer run the same starvation-aware budget, so a progressing review on a starved host is not killed at the wall by load it does not control.
-
-**Approach.**
-- In `src/config/config-views.ts`'s `reviewRunConfig`, stretch the reviewer's budget by `starvedDeadlineMs(baseMs, load)` using `sampleHostLoad` from `src/build/host-sleep.js`, keeping the existing precedence: `runTimeoutSeconds = Math.min(cfg.runTimeoutSeconds, starvedDeadlineMs(config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S, load) / 1000)`. `build-check-events.ts` imports only types from `build-check.js` and `events.js`, so importing `starvedDeadlineMs` into `config-views.ts` adds no runtime cycle. Add an optional `load` parameter defaulting to `sampleHostLoad` so the offline tests inject it, matching `doctor-contention-checks.ts`'s sampler seam.
-- Keep `FALLBACK_REVIEW_TIMEOUT_S`'s floor and the pi-watchdog's one progressing extension unchanged; the stretch composes with them (a starved fallback review can reach the floor stretched then extended).
-- Reword the `REVIEW_TIMEOUT_S` and `reviewRunConfig` doc comments in the same file to say the budget stretches under a starved host and why (the merge-scope precedent), and name the behavior in docs/config.md's `review.timeoutSeconds` row and docs/how-it-works.md's review paragraph.
-
-**Files touched.** src/config/config-views.ts src/build/build-check-events.ts docs/config.md docs/how-it-works.md test/config-views.test.ts
-
-**Acceptance criteria.**
-- With an injected `load` whose `load1 <= cpus`, `reviewRunConfig(config).runTimeoutSeconds` is exactly today's value (900 default, a configured `review.timeoutSeconds`, or a smaller `runTimeoutSeconds`).
-- With `load1` at twice `cpus`, it is at most `STARVED_DEADLINE_MAX_FACTOR`× the base and never above `config.runTimeoutSeconds`; the existing `reviewRunConfig` cases in test/config-views.test.ts still pass.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/config-views.test.ts: extend `reviewRunConfig gives the reviewer its own time budget over the reviewer wiring` (or add a sibling) with a quiet-load case (unchanged) and a starved-load case (doubled-to-cap, never above the run budget).
-
 ### Every commit is verified on main, part 4h/3: the dead pre-merge reviewer run and follow-up modules are deleted (planned 2026-10-29 by the plan role, split from the too-large part 3e/3; requires part 3j/3 landed, since with no pre-merge reviewer `review-run.ts` and `review-followup.ts` have no caller; touches src/review/review-run.ts (deleted) src/review/review-followup.ts (deleted) src/review/review.ts src/prompt/gate-prompts.ts src/request-timeouts.ts src/agent/agent-run.ts src/config/config-views.ts src/verdict/reply-contract.ts docs/how-it-works.md test/review-followup.test.ts (deleted) test/gate-prompts.test.ts)
 
 **Goal.** Part 3h/3's deterministic gate leaves the pre-merge reviewer unreferenced: `runReviewer` is only re-exported by `review.ts` and never called, `requestVerdict`/`requestNoRerun` are called only by `review-run.ts`, and the three reviewer follow-up prompt builders are called only by those two modules. Delete the two modules and their exclusive prompts so no pre-merge reviewer prompt, verdict follow-up or no-rerun nudge remains.

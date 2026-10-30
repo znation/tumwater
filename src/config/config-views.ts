@@ -12,6 +12,8 @@ import { modelPairName } from "../budget/budget.js";
 import { isJsonObject } from "../files/json-object.js";
 import { DIRECTOR_ROLE, roleById } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
+import { sampleHostLoad, type LoadSampler } from "../build/host-sleep.js";
+import { starvedDeadlineMs } from "../build/build-check-events.js";
 
 /** A config whose model seam has been RESOLVED — the view functions' return type: `model`
  * is the concrete selector id piArgs consumes (the tier map, if any, has been resolved to
@@ -291,7 +293,9 @@ export function resolverConfig(config: TumwaterConfig): ResolvedModelConfig {
  * the merge slot the whole queue waits on, and its only other limits were the run's budget
  * and the quiet watchdog: reviews measured 2026-09-22/23 ran 2.3 min median, 9.2 min p90 and
  * 24.6 min max, while earlier days had 1.5–3.5 h reviews. 15 min clears the ordinary review and
- * kills a wedged one in minutes instead of the run's hours. */
+ * kills a wedged one in minutes instead of the run's hours. Under a starved host the budget
+ * stretches by the load-to-cores ratio (see reviewRunConfig), so a progressing review on a
+ * loaded box is not killed at the wall by load it does not control. */
 export const REVIEW_TIMEOUT_S = 900;
 
 /** The reviewer's wall-clock floor while the budget fallback carries the team. The free model
@@ -306,14 +310,19 @@ export const FALLBACK_REVIEW_TIMEOUT_S = 3600;
 
 /** The config as seen by the gate's reviewer run: the reviewer's model wiring (reviewConfig)
  * with its own time budget — `review.timeoutSeconds`, default REVIEW_TIMEOUT_S — overriding
- * the run's. A smaller runTimeoutSeconds still wins. A still-progressing gate run gets one
- * extension of the same length (src/pi/pi-watchdogs.ts), so the effective ceiling on a large
- * diff's review is twice this budget. */
-export function reviewRunConfig(config: TumwaterConfig): ResolvedModelConfig {
+ * the run's. A smaller runTimeoutSeconds still wins. Under a starved host the budget stretches
+ * by `starvedDeadlineMs` (the merge-scope precedent in build-check-events.ts): the load-to-cores
+ * ratio caps it at double the base, so on an ordinary quiet host the value is exactly today's
+ * budget while a progressing review on a loaded box is not killed at the wall by load it does
+ * not control. A still-progressing gate run gets one extension of the same length
+ * (src/pi/pi-watchdogs.ts), so the effective ceiling on a large diff's review is twice this
+ * stretched budget. `load` defaults to `sampleHostLoad` and is injectable for offline tests. */
+export function reviewRunConfig(config: TumwaterConfig, load: LoadSampler = sampleHostLoad): ResolvedModelConfig {
   const cfg = reviewConfig(config);
+  const baseMs = (config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S) * 1000;
   return {
     ...cfg,
-    runTimeoutSeconds: Math.min(cfg.runTimeoutSeconds, config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S),
+    runTimeoutSeconds: Math.min(cfg.runTimeoutSeconds, starvedDeadlineMs(baseMs, load()) / 1000),
   };
 }
 

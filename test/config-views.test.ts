@@ -77,16 +77,37 @@ test("reviewRunConfig gives the reviewer its own time budget over the reviewer w
   const config: TumwaterConfig = defaultConfig();
   config.runTimeoutSeconds = 54_000;
   config.review.model = "strong-model";
-  const run = reviewRunConfig(config);
+  const quietLoad = () => ({ load1: 2, cpus: 8 });
+  const run = reviewRunConfig(config, quietLoad);
   assert.equal(run.runTimeoutSeconds, REVIEW_TIMEOUT_S, "the run's hours-long budget never reaches the reviewer");
   assert.equal(run.model, "strong-model", "the run keeps the reviewer's model wiring");
   assert.equal(run.quietTimeoutSeconds, config.quietTimeoutSeconds, "only the wall-clock budget changes");
 
   // A configured review.timeoutSeconds replaces the default; a smaller run budget still wins.
   config.review.timeoutSeconds = 120;
-  assert.equal(reviewRunConfig(config).runTimeoutSeconds, 120);
+  assert.equal(reviewRunConfig(config, quietLoad).runTimeoutSeconds, 120);
   config.runTimeoutSeconds = 60;
-  assert.equal(reviewRunConfig(config).runTimeoutSeconds, 60);
+  assert.equal(reviewRunConfig(config, quietLoad).runTimeoutSeconds, 60);
+});
+
+test("reviewRunConfig stretches the reviewer budget under a starved host", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.runTimeoutSeconds = 54_000;
+  config.review.model = "strong-model";
+  const quietLoad = () => ({ load1: 2, cpus: 8 });
+  const starvedLoad = () => ({ load1: 16, cpus: 8 });
+
+  // A quiet host (load1 <= cpus) leaves the budget exactly today's value.
+  assert.equal(reviewRunConfig(config, quietLoad).runTimeoutSeconds, REVIEW_TIMEOUT_S);
+  // A starved host doubles base toward the cap, never above the run budget.
+  const starved = reviewRunConfig(config, starvedLoad).runTimeoutSeconds;
+  assert.ok(starved >= REVIEW_TIMEOUT_S && starved <= REVIEW_TIMEOUT_S * 2, `starved budget ${starved}`);
+  assert.ok(starved <= config.runTimeoutSeconds, "never above the run's budget");
+
+  // A configured review.timeoutSeconds stretches the same way under starvation.
+  config.review.timeoutSeconds = 120;
+  assert.equal(reviewRunConfig(config, quietLoad).runTimeoutSeconds, 120);
+  assert.ok(reviewRunConfig(config, starvedLoad).runTimeoutSeconds > 120);
 });
 
 test("fallbackPair resolves the fallback over the top-level values", () => {
@@ -140,20 +161,21 @@ test("applyFallbackModel raises the reviewer's time budget to the fallback floor
   const config: TumwaterConfig = defaultConfig();
   config.runTimeoutSeconds = 54_000;
   config.fallbackModel = { provider: "omlx", model: "local-free" };
-  assert.equal(reviewRunConfig(config).runTimeoutSeconds, REVIEW_TIMEOUT_S, "the budgeted model keeps its own budget");
-  assert.equal(reviewRunConfig(applyFallbackModel(config)).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
+  const quiet = () => ({ load1: 2, cpus: 8 });
+  assert.equal(reviewRunConfig(config, quiet).runTimeoutSeconds, REVIEW_TIMEOUT_S, "the budgeted model keeps its own budget");
+  assert.equal(reviewRunConfig(applyFallbackModel(config), quiet).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
 
   // A configured budget below the floor is raised only on the fallback; one above it stands.
   config.review.timeoutSeconds = 120;
-  assert.equal(reviewRunConfig(config).runTimeoutSeconds, 120);
-  assert.equal(reviewRunConfig(applyFallbackModel(config)).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
+  assert.equal(reviewRunConfig(config, quiet).runTimeoutSeconds, 120);
+  assert.equal(reviewRunConfig(applyFallbackModel(config), quiet).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
   config.review.timeoutSeconds = 7200;
-  assert.equal(reviewRunConfig(applyFallbackModel(config)).runTimeoutSeconds, 7200);
+  assert.equal(reviewRunConfig(applyFallbackModel(config), quiet).runTimeoutSeconds, 7200);
   assert.equal(config.review.timeoutSeconds, 7200, "the source config is untouched");
 
   // The run's own budget still caps the reviewer, fallback or not.
   config.runTimeoutSeconds = 600;
-  assert.equal(reviewRunConfig(applyFallbackModel(config)).runTimeoutSeconds, 600);
+  assert.equal(reviewRunConfig(applyFallbackModel(config), quiet).runTimeoutSeconds, 600);
 });
 
 test("selector strings for model parse into the provider/model/thinking triple", () => {
@@ -440,7 +462,7 @@ test("applyFallbackModel with a resolved map keeps tiers and drops raw overrides
     () => true,
   );
   const out = applyFallbackModel(config, resolved);
-  assert.deepEqual(out.model, {
+  const quietLoad = () => ({ load1: 2, cpus: 8 });  assert.deepEqual(out.model, {
     small: "omlx/d:low",
     default: "omlx/d:low",
     strong: "omlx/s:high",
@@ -453,7 +475,7 @@ test("applyFallbackModel with a resolved map keeps tiers and drops raw overrides
   assert.equal(out.review.model, undefined);
   // The reviewer's time budget still rises to the fallback floor.
   assert.equal(
-    reviewRunConfig(out).runTimeoutSeconds,
+    reviewRunConfig(out, quietLoad).runTimeoutSeconds,
     FALLBACK_REVIEW_TIMEOUT_S,
   );
   // A paused tier is left out of the map (it inherits default's entry).
