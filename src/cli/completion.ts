@@ -186,8 +186,13 @@ export function configValueWords(key: string): string[] {
  * `tumwater completion --roles` there. */
 const ROLE_POSITIONAL_COMMANDS = ["role", "history", "revert"];
 
-/** Flags whose value is a file path: completion offers file names after them. */
-const PATH_FLAGS = ["--file", "--attach", "--notes-file", "--instructions-file", "--path"];
+/** Flags whose value is a file path: completion offers file names after them. Derived from the
+ * HELP text, which renders every path-valued flag as `--<flag> <path>`, so a new or renamed
+ * path flag completes the moment its help stanza does — the same drift-free source the rest of
+ * completion reads from. */
+const PATH_FLAGS = [
+  ...new Set([...HELP.matchAll(/--([a-z][a-z-]*) <path>/g)].map((m) => `--${m[1]}`)),
+];
 
 /** The constant fish value suffix for the flags whose candidates are a fixed `__tumwater_*` list:
  * `--role`, `--result`, `--type` and `--status` take comma lists, so they complete per item through
