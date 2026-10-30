@@ -9,7 +9,7 @@ import { piModelsPath } from "../pi/pi-models.js";
 import { configForStatus, queueInFlight, mainCheckForPoll, maintenanceQuotaForPoll, ciParityForPoll, type CiParityStatus, type MainCheckStatus } from "./status-polls.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { pausedRoles, pausedRolesUntil, scheduledStopAt, scheduledWakes, standingTeamPause } from "../team/team-state.js";
+import { scheduledStopAt, scheduledWakes, standingRolePause, standingTeamPause } from "../team/team-state.js";
 import {
   orchestratorAlive,
   readOrchestratorInfo,
@@ -452,7 +452,8 @@ function snapshotBudgetFields(
  * maintenance quota and bootstrap holds, and the per-role quiet windows. */
 function snapshotPauseFields(
   teamPause: ReturnType<typeof standingTeamPause>,
-  markerRoles: ReturnType<typeof pausedRoles>,
+  markerRoles: ReturnType<typeof standingRolePause>["roles"],
+  markerRolesUntil: number | undefined,
   roles: ReturnType<typeof runnerIds>,
   markerSet: Set<string>,
   capPaused: ReturnType<typeof collectBudget>["capPaused"],
@@ -494,7 +495,7 @@ function snapshotPauseFields(
         .map((l) => [l.role, cfg.quietHoursPerRole?.[baseRoleOf(l.role)] ?? ""]),
     ),
     pausedUntil: teamPause?.until,
-    pausedRolesUntil: pausedRolesUntil(root),
+    pausedRolesUntil: markerRolesUntil,
     scheduledWake: wakes[0],
     scheduledWakes: wakes.length > 0 ? wakes : undefined,
     pauseReason: teamPause?.reason,
@@ -572,7 +573,10 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   const bootstrapNow = bootstrapStatus(root, cfg);
   // One row per role id (part 5b/7): an instance role shows `feature` and `feature-2`.
   const roles = runnerIds(cfg);
-  const markerRoles = pausedRoles(root);
+  // One read of the paused-roles marker per poll serves both the set and its shared deadline
+  // (`pause --role --for` wrote it): standingRolePause returns both from the same parse, so a
+  // snapshot never reads the same marker file twice (pausedRoles + pausedRolesUntil each did).
+  const { roles: markerRoles, until: markerRolesUntil } = standingRolePause(root);
   const markerSet = new Set(markerRoles);
   // One read of the orchestrator info file per poll: it serves both the displayed pid and the
   // liveness check (passing it to orchestratorAlive skips its own re-read).
@@ -663,6 +667,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     ...snapshotPauseFields(
       teamPause,
       markerRoles,
+      markerRolesUntil,
       roles,
       markerSet,
       capPaused,
