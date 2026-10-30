@@ -88,6 +88,19 @@ export function createHealthPane(session: TuiPaneSession) {
       },
     );
   };
+  // The first-press arm every two-press Health action (Ctrl+K/S/L/B) shares: while the armed
+  // flag is still false (beginKey moves the pending arm into it between presses), record the
+  // pending arm, flash the "press … again — any other key keeps it" line, repaint and consume
+  // the key; once a second press has loaded the arm, return false so the caller runs its
+  // action. The field to arm and the flash wording are the only per-action bits, so the four
+  // arms cannot drift on the armed-state shape, the repaint, or the consume-key return.
+  const armTwoPress = (armed: boolean, message: string, arm: () => void): boolean => {
+    if (armed) return false;
+    arm();
+    session.flashMessage(message);
+    session.requestRender();
+    return true;
+  };
   const healthRefresh = (ctx: TuiPaneCtx): boolean => {
     if (!onHealthView(ctx, false)) return false;
     // Ctrl+R on the Health pane re-runs the same doctor checks in place — the terminal
@@ -166,14 +179,16 @@ export function createHealthPane(session: TuiPaneSession) {
     // re-runs the checks so the orphans row reflects the kill. A failure flashes instead of
     // killing the TUI. Ctrl+K stays the prompt-line editor's kill-line while text is typed
     // or an editor holds the line, and is unbound on every other view.
-    if (!session.armedKillOrphans) {
-      session.killOrphansArmed = true;
-      session.flashMessage(
+    if (
+      armTwoPress(
+        session.armedKillOrphans,
         "press Ctrl+K again to kill the orphaned processes the orphans check lists — any other key keeps them",
-      );
-      session.requestRender();
+        () => {
+          session.killOrphansArmed = true;
+        },
+      )
+    )
       return true;
-    }
     session.flashMessage("killing orphaned processes …");
     session.requestRender();
     healthAction(session.killOrphans(session.root), (report) => {
@@ -193,14 +208,16 @@ export function createHealthPane(session: TuiPaneSession) {
     // save-to-wherever while text is typed or an editor holds the line, and keeps its
     // quiet-hours (Activity), trailing-window (History) and min-run-interval (Transcript)
     // meanings off the Health view.
-    if (!session.armedDropBrokenPins) {
-      session.dropBrokenPinsArmed = true;
-      session.flashMessage(
+    if (
+      armTwoPress(
+        session.armedDropBrokenPins,
         "press Ctrl+S again to drop each broken refs/tumwater/ pin whose commit is gone — any other key keeps them",
-      );
-      session.requestRender();
+        () => {
+          session.dropBrokenPinsArmed = true;
+        },
+      )
+    )
       return true;
-    }
     session.flashMessage("dropping broken pins …");
     session.requestRender();
     healthAction(session.dropBrokenPins(session.root), (report) => {
@@ -238,14 +255,16 @@ export function createHealthPane(session: TuiPaneSession) {
     // the leftover-role-branches row reflects the reap. A failure flashes instead of killing
     // the TUI. Off the Health view Ctrl+L keeps the Activity fallback editor (view 0) and the
     // instructions editor on a role's Transcript.
-    if (!session.armedRetireLeftovers) {
-      session.retireLeftoversArmed = true;
-      session.flashMessage(
+    if (
+      armTwoPress(
+        session.armedRetireLeftovers,
         "press Ctrl+L again to retire every disabled role's leftover worktree, branch and merge ref — any other key keeps them",
-      );
-      session.requestRender();
+        () => {
+          session.retireLeftoversArmed = true;
+        },
+      )
+    )
       return true;
-    }
     session.flashMessage("retiring every disabled role's leftovers …");
     session.requestRender();
     healthAction(session.retireLeftovers(session.root), (report) => {
@@ -266,14 +285,16 @@ export function createHealthPane(session: TuiPaneSession) {
     // checks so the `backlog archive` row reflects the move. A failure flashes instead of
     // killing the TUI. Ctrl+B stays the prompt-line editor's line-kill (budget editor) while
     // text is typed or an editor holds the line, and is unbound on every other view.
-    if (!session.armedArchiveBacklog) {
-      session.archiveBacklogArmed = true;
-      session.flashMessage(
+    if (
+      armTwoPress(
+        session.armedArchiveBacklog,
         "press Ctrl+B again to archive the finished entries under PLANS.md ## Done and BUGS.md ## Fixed — any other key keeps them",
-      );
-      session.requestRender();
+        () => {
+          session.archiveBacklogArmed = true;
+        },
+      )
+    )
       return true;
-    }
     session.flashMessage("archiving finished backlog entries …");
     session.requestRender();
     healthAction(session.archiveBacklog(session.root), (outcome) => {
