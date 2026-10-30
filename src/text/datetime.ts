@@ -194,10 +194,11 @@ export function humanSince(sinceMs: number, now: number): string {
 }
 
 /** `humanSince`'s past-direction phrase with the ` ago` suffix: how long since an epoch-ms
- * instant, as `NS ago` — the phrase five renderers each built as `{humanSeconds(secondsSince(...))} ago`
- * (status-render.ts's ago against the real clock, role-render.ts's last-run and
- * merge-queue-render.ts's enqueue ages, inbox.ts's queued-age suffix, and doctor-notify.ts's
- * latest-failed-page age, which had inlined the clamp itself), so the clamp, the rounding,
+ * instant, as `NS ago` — the phrase five renderers each built as
+ * `{humanSeconds(secondsSince(...))} ago` (status-render.ts's ago against the real clock,
+ * role-render.ts's last-run and merge-queue-render.ts's enqueue ages, inbox.ts's queued-age
+ * suffix, and doctor-notify.ts's latest-failed-page age, which had inlined the clamp itself),
+ * so the clamp, the rounding,
  * and the " ago" wording cannot drift per consumer. Lives here beside the other time
  * phrasing so core modules (which may not import src/ui) share the same form. */
 export function humanAgo(sinceMs: number, now: number): string {
