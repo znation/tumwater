@@ -288,6 +288,22 @@ test("readOpencodeCache clone-guards each result and re-reads a rewritten file",
     "a caller's efforts-array mutation never reaches the shared cache or the next reader",
   );
 
+  // The cache-hit path must clone too, or `unpoisoned` (a hit) would be the shared entry
+  // itself. Mutate this hit's own result and verify the next hit still reads the file's value.
+  unpoisoned.models["opencode/free-m"]!.billedAt = 7;
+  unpoisoned.models["opencode/free-m"]!.efforts!.push("max");
+  const hitUnpoisoned = readOpencodeCache(root);
+  assert.equal(
+    hitUnpoisoned.models["opencode/free-m"]?.billedAt,
+    undefined,
+    "a mutation of a cache-hit result never reaches the shared cache entry",
+  );
+  assert.deepEqual(
+    hitUnpoisoned.models["opencode/free-m"]?.efforts,
+    ["low", "high"],
+    "a cache-hit result's efforts-array mutation never reaches the shared cache entry",
+  );
+
   // A rewritten file (new inode/stat) invalidates the cache and is re-read with new content.
   writeOpencodeCache(root, {
     fetchedAt: 2,
