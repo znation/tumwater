@@ -443,9 +443,21 @@ const MAIN_RULE_FAILURE_MARKER = "fails the diff rules";
  * blind spot sits on main with only this event log to say so. Reads only the `warning` event
  * the watch already writes, so the row cannot drift from the watch's wording; the most recent
  * hit names the tip and the rule. ok/warn only — it never fails a scripted pre-flight. */
+
+/** The `warning` events whose message contains `marker` — the read both marker-driven
+ * project rows (checkMainDiffRules and checkDroppedPostMergeReviews) ask for, so their
+ * filter predicate cannot drift: a warning whose message is absent (an older event) is
+ * never a hit, and the marker match is a plain substring like the watch's wording.
+ * `e.type === "warning"` gates on the literal type, mirroring the warn shape warnEvent
+ * writes. Since every hit is a `warning`, `String` on its message downstream reads safely
+ * for the events this returns. */
+function warningEventsWithMarker(events: readonly HarnessEvent[], marker: string): HarnessEvent[] {
+  return events.filter((e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(marker));
+}
+
 export function checkMainDiffRules(root: string): CheckOutcome {
   const { events } = readEventsSince(root, MAIN_RULE_FAILURE_WINDOW_MS);
-  const hits = events.filter((e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(MAIN_RULE_FAILURE_MARKER));
+  const hits = warningEventsWithMarker(events, MAIN_RULE_FAILURE_MARKER);
   if (hits.length === 0) return okOutcome("no diff-rule failure on main in the last day");
   const latest = hits[hits.length - 1]!;
   return warnOutcome(
@@ -479,7 +491,7 @@ const DROPPED_REVIEW_WINDOW_MS = DAY_MS;
  * unreviewed commit is operator signal, not a broken environment. */
 export function checkDroppedPostMergeReviews(root: string): CheckOutcome {
   const { events } = readEventsSince(root, DROPPED_REVIEW_WINDOW_MS);
-  const hits = events.filter((e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(DROPPED_REVIEW_MARKER));
+  const hits = warningEventsWithMarker(events, DROPPED_REVIEW_MARKER);
   if (hits.length === 0) return okOutcome("no post-merge review was dropped in the last day");
   const latest = hits[hits.length - 1]!;
   return warnOutcome(
