@@ -142,6 +142,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Steward note 2026-10-29: the user's option-2 isolate decision for the load-flaky e2e ceiling has no PLANS.md entry, so the plan role's `assignNext` cannot route it (planned 2026-10-29 by the steward role; a queue-gap note, not a claimable plan — the durable fix is not yet designed)
 
+**Needs review 2026-10-29 by feature: too large for one run** — this is a queue-gap note, not an implemented feature plan (its own text says the durable fix is not yet designed and the plan role should author it); the load-isolation/gating redesign is too large for one feature run.
+
 The user answered 2026-10-28 "option 2, isolate" in QUESTIONS.md for the load-flaky e2e ceiling (BUGS.md's open class entry `e2e/concurrency tests can fail on a loaded host…`, lines 85-158). That answered decision currently lives only in the BUGS class entry and QUESTIONS.md — a grep of PLANS.md for `isolat`/`quieter gate`/`quiet` finds no entry — so the isolation plan the class entry defers to the plan role is not standing in `## Planned` and the scheduling `assignNext` (src/scheduling/claims.ts, which draws only from `## Planned`'s back) cannot pick it up. The class entry's own wording names the intended shape: make the post-switch spawn observation deterministic where honest, or gate the load-sensitive e2e (budget/resize/permits/once) on a quieter gate — preserving the "every commit is verified on main" guarantee and ending the 60 s→150 s wall-clock arms race. The plan role should author this plan; the review-path 900s class (BUGS lines 221-230) can fold into the same isolation/review-path work.
 
 ## Done
