@@ -1,4 +1,4 @@
-import { parseDurationMs } from "../../cli/cli-args.js";
+import { durationLabel, parseDurationMs } from "../../cli/cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../../operator/operator-intent.js";
 import { cutSplitsSurrogatePair, gotSuffix } from "../../text/text.js";
 import { displayWidth } from "../../text/text-width.js";
@@ -236,12 +236,14 @@ export function parseBudgetInput(
   return { ok: true, value: n };
 }
 
-/** The 90d cap refusal every duration editor shares — the same over-cap arm (`ms` past
- * PAUSE_FOR_MAX_MS, the limit `pause --for`/`wake --in`/`stop --in` all admit), spelled once
- * per verb so the wording cannot drift between the four parsers. Returns the error result
- * when `ms` exceeds the cap, else null so the caller keeps its ok result. */
+/** The cap refusal every duration editor shares — the same over-cap arm (`ms` past
+ * PAUSE_FOR_MAX_MS, the limit `pause --for`/`wake --in`/`stop --in` all admit), labeled
+ * through durationLabel(PAUSE_FOR_MAX_MS) so the message can never advertise a bound the
+ * constant does not hold (the CLI surfaces already label their cap the same way), spelled
+ * once per verb so the wording cannot drift between the four parsers. Returns the error
+ * result when `ms` exceeds the cap, else null so the caller keeps its ok result. */
 function overDurationCap(ms: number, verb: string): { ok: false; error: string } | null {
-  return ms > PAUSE_FOR_MAX_MS ? fail(`${verb} is capped at 90d`) : null;
+  return ms > PAUSE_FOR_MAX_MS ? fail(`${verb} is capped at ${durationLabel(PAUSE_FOR_MAX_MS)}`) : null;
 }
 
 /** Parse a duration with parseDurationMs and apply the shared 90d cap in one step, mapping
