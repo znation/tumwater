@@ -138,23 +138,10 @@ export function reviewRetryDelayMs(ctxRetryDelayMs: number | undefined): number 
 
 /** Per-verify state shared by a review's attempts: the attempt number the `review_failed` event
  * carries, the retries still allowed, and the first attempt's green pre-check. */
-export interface ReviewRetry {
+interface ReviewRetry {
   attempt: number;
   retriesLeft: number;
   pre?: { verifiedHead?: string; knownMainFailures?: string[] };
-}
-
-/** A gate check running in a second leased checkout while the reviewer runs (Fast merge part 12).
- * `gate` settles with the pre-check's result and frees the lease; a check that did not pass
- * aborts `abort`, which stops the reviewer run. */
-export interface CheckOverlap {
-  gate: Promise<Awaited<ReturnType<typeof gateBuildPrecheck>>>;
-  abort: AbortController;
-  /** Set once the check settled. */
-  done: boolean;
-  /** The reasons of a rejection the check reached: reviewAttempt applies it through its reject
-   * path once the reviewer has stopped touching the tree. */
-  rejectedReasons?: string[];
 }
 
 /** Run the deterministic review gate over everything ahead of main in `wt` and update `state`

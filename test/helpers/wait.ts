@@ -49,7 +49,7 @@ export const liveWaitClock: WaitClock = { now: () => performance.now(), sleep };
  * whose post-switch observation depends on scheduling its child runs on time either waits
  * under the bar (and runs exactly as today) or skips naming the load instead of reddening a
  * verdict a starved host never gave it a fair chance to reach. */
-export const QUIET_HOST_WAIT_MS = 300_000;
+const QUIET_HOST_WAIT_MS = 300_000;
 
 /** The quiet-host gate a load-sensitive e2e file gates itself on: samples the host's
  * one-minute load average from `src/build/host-sleep.ts` (the same `sampleHostLoad` the
