@@ -33,9 +33,9 @@ import { DASHBOARD_ANSWERED_QUESTIONS, DASHBOARD_RECENT_FINISHED } from "../stat
 export function labeledBacklogEntries(
   root: string,
 ): Array<{ label: string; mark: string; hold: EntryHold; claimer: string | undefined } & BacklogEntry> {
-  const marks = backlogMarks(root);
-  const holds = backlogHolds(root);
   const runners = backlogInProgress(root);
+  const marks = backlogMarks(root, runners);
+  const holds = backlogHolds(root);
   return [
     ...plannedPlanEntries(root).map((e, i) => ({
       label: "plan",

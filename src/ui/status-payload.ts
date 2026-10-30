@@ -453,12 +453,12 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
   // Why each plan/bug is held (src/backlog/backlog-eligibility.ts): the same hold decision
   // the prompt's backlog index and `tumwater backlog` render, projected to the mark each
   // surface appends. Read once here, consumed as the parallel planHolds/bugHolds arrays below.
-  const marks = backlogMarks(root);
+  // Which blocked plans fold into a series row (computed before marks so credit, the same
+  // claims walk feeding both, is done once per poll — see backlogMarks' optional working arg).
+  const working = backlogInProgress(root);
+  const marks = backlogMarks(root, working);
   const holds = backlogHolds(root);
   const plans = plannedPlans(root);
-  // Which blocked plans fold into a series row: the grouping `plan --list` and the prompt's
-  // backlog index use, as a slot per plan (null for a plan that stays an ordinary row).
-  const working = backlogInProgress(root);
   const planSeries = planSeriesSlots(plans, holds, working);
   const roles = roleRows(snap, root);
   return {

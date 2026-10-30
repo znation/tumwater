@@ -316,15 +316,22 @@ export function backlogHolds(root: string): BacklogHolds {
  * `tumwater backlog` prints. A surface derives its marks from the one hold decision and the
  * one claim lookup rather than re-walking the entries. An eligible entry nobody is working on
  * renders as the empty string, so a client can append the mark without a separate check.
- * Questions carry no holds. backlogHolds alone still drives the allocator. */
-export function backlogMarks(root: string): { plans: string[]; bugs: string[] } {
+ * Questions carry no holds. backlogHolds alone still drives the allocator. A caller that
+ * already resolved the claim lookup (for the same poll's marks AND its own parallel checks,
+ * e.g. statusPayload's `working` or the TUI's `runners`) passes it as `working` so the claims
+ * walk is done once, not re-run inside both calls — the same shared single read the module's
+ * other single-home polls observe. */
+export function backlogMarks(
+  root: string,
+  working?: ReturnType<typeof backlogInProgress>,
+): { plans: string[]; bugs: string[] } {
   const holds = backlogHolds(root);
-  const working = backlogInProgress(root);
+  const inProgress = working ?? backlogInProgress(root);
   const mark = (hold: EntryHold, runner: string | null | undefined): string =>
     holdMark(hold) + inProgressMark(runner ?? null);
   return {
-    plans: holds.plans.map((h, i) => mark(h, working.plans[i])),
-    bugs: holds.bugs.map((h, i) => mark(h, working.bugs[i])),
+    plans: holds.plans.map((h, i) => mark(h, inProgress.plans[i])),
+    bugs: holds.bugs.map((h, i) => mark(h, inProgress.bugs[i])),
   };
 }
 
