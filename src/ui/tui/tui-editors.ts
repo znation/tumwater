@@ -268,10 +268,11 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const onArrow = (direction: "up" | "down"): boolean => {
     // Up/Down walk the submitted-prompt history the way readline does (tui-prompt-history.ts's
     // recall rules). The backlog pane keeps the arrows for entry browsing (its branch
-    // above already returned), and budget, pause and search modes keep them out —
-    // recalling a prompt into the cap/field text would be a paste, not a recall. No
-    // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.concurrency && !session.held.checks && !session.held.check && !session.held.slots && !session.held.model && !session.held.quiet && !session.held.interval && !session.held.roleModel && !session.held.instances && !session.held.instructions && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire && !session.held.release && !session.held.roleEnabled && !session.held.notify && !session.held.backends && !session.held.fallback) {
+    // above already returned), and any prompt-line editor (tui-editor-session.ts's
+    // `anyEditorHeld`) keeps them out — recalling a prompt into pre-filled editee text
+    // would be a paste, not a recall. No editor holds the line and no history lies in
+    // this direction: fall through to applyKey, which ignores arrows as before.
+    if (!session.anyEditorHeld()) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,

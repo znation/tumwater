@@ -320,6 +320,98 @@ test("notes edit mode keeps Up/Down from recalling history into the typed path f
   assert.equal(keys.state().input, "notes/path.md", "Down does not recall into the path field either");
 });
 
+test("role-prompt mode keeps Up/Down from recalling history into the role field", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(50, false, ["feature"]);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript
+  assert.equal(keys.state().view, 1);
+  // Seed the recall history with a submitted prompt, so Up would paste it if it reached the field.
+  for (const ch of "run the tests") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().input, "", "submitting clears the line");
+
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().rolePromptFor, "feature");
+  for (const ch of "prompt text") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "up" });
+  assert.equal(keys.state().rolePromptFor, "feature", "Up does not close the role-prompt editor");
+  assert.equal(keys.state().input, "prompt text", "Up does not recall the submitted prompt into the role field");
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().rolePromptFor, "feature", "Down does not close the role-prompt editor either");
+  assert.equal(keys.state().input, "prompt text", "Down does not recall into the role field either");
+});
+
+test("the Queued pane's in-place editor keeps Up/Down from recalling history into the typed body", () => {
+  const root = makeRoot();
+  const deferral = Date.now() + 3_600_000;
+  const file = enqueueRolePrompt(root, "clean", "clean first", deferral);
+  const base = path.basename(file);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, [], false);
+  // Seed the recall history with a submitted prompt, so Up would paste it if it reached the field.
+  for (const ch of "run the tests") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().input, "", "submitting clears the line");
+
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  keys.handleKey(undefined, { name: "down" }); // the director row
+  keys.handleKey(undefined, { name: "down" }); // the deferred clean row
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.deepEqual(keys.state().queuedEditFor, { role: "clean", file: base });
+  assert.equal(keys.state().input, "clean first");
+  keys.handleKey(undefined, { name: "up" });
+  assert.deepEqual(keys.state().queuedEditFor, { role: "clean", file: base }, "Up does not close the queued editor");
+  assert.equal(keys.state().input, "clean first", "Up does not recall the submitted prompt into the body");
+  keys.handleKey(undefined, { name: "down" });
+  assert.deepEqual(keys.state().queuedEditFor, { role: "clean", file: base }, "Down does not close the queued editor either");
+  assert.equal(keys.state().input, "clean first", "Down does not recall into the body either");
+});
+
+test("the backlog answer editor keeps Up/Down from recalling history and leaves the selection", () => {
+  const { keys, down } = entryEditRig();
+  // Seed the recall history with a submitted prompt, so Up would paste it if it reached the field.
+  for (const ch of "run the tests") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().input, "", "submitting clears the line");
+
+  down(3); // plan 1, bug 1, question 1
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  assert.notEqual(keys.state().answerFor, null);
+  const sel = keys.state().selectedEntry;
+  for (const ch of "yes maybe") keys.handleKey(ch, { name: ch === " " ? "space" : ch });
+  keys.handleKey(undefined, { name: "up" });
+  assert.notEqual(keys.state().answerFor, null, "Up does not close the answer editor");
+  assert.equal(keys.state().input, "yes maybe", "Up does not recall the submitted prompt into the answer");
+  assert.equal(keys.state().selectedEntry, sel, "the backlog pane keeps the selection");
+  keys.handleKey(undefined, { name: "down" });
+  assert.notEqual(keys.state().answerFor, null, "Down does not close the answer editor either");
+  assert.equal(keys.state().input, "yes maybe", "Down does not recall into the answer either");
+  assert.equal(keys.state().selectedEntry, sel);
+});
+
+test("the backlog entry editor keeps Up/Down from recalling history and leaves the selection", () => {
+  const { keys, down } = entryEditRig();
+  // Seed the recall history with a submitted prompt, so Up would paste it if it reached the field.
+  for (const ch of "run the tests") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().input, "", "submitting clears the line");
+
+  down(2); // plan 1, bug 1
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.notEqual(keys.state().entryEditFor, null);
+  assert.equal(keys.state().input, "Bug one");
+  const sel = keys.state().selectedEntry;
+  keys.handleKey(undefined, { name: "up" });
+  assert.notEqual(keys.state().entryEditFor, null, "Up does not close the entry editor");
+  assert.equal(keys.state().input, "Bug one", "Up does not recall the submitted prompt into the title");
+  assert.equal(keys.state().selectedEntry, sel, "the backlog pane keeps the selection");
+  keys.handleKey(undefined, { name: "down" });
+  assert.notEqual(keys.state().entryEditFor, null, "Down does not close the entry editor either");
+  assert.equal(keys.state().input, "Bug one", "Down does not recall into the title either");
+  assert.equal(keys.state().selectedEntry, sel);
+});
+
 test("history recall: a submitted prompt comes back on Up", () => {
   const root = makeRoot();
   const { keys } = makeKeys(root, () => 0);
