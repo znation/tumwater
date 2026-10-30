@@ -77,6 +77,22 @@ test("readCodexCatalog drops a model whose window is unusable, keeping the rest"
   assert.equal(catalog.get("42"), undefined, "a non-string slug is dropped");
 });
 
+test("readCodexCatalog re-reads a rewritten models_cache.json (stat-keyed cache stays fresh)", () => {
+  const home = homeWith({
+    models: [{ slug: "old", context_window: 100000, effective_context_window_percent: 50, input_modalities: ["text"] }],
+  });
+  assert.equal(readCodexCatalog(home).get("old")?.contextWindow, 50_000);
+  // Rewrite the file with a different model and a different size: the stat key
+  // (dev/ino/mtime/size) changes, so the next read must not serve the stale value.
+  writeFileDeep(codexModelsPath(home), JSON.stringify({
+    models: [{ slug: "new", context_window: 200000, effective_context_window_percent: 50, input_modalities: ["image"] }],
+  }));
+  const after = readCodexCatalog(home);
+  assert.equal(after.get("old"), undefined, "the removed model is gone");
+  assert.equal(after.get("new")?.contextWindow, 100_000);
+  assert.equal(after.get("new")?.images, true);
+});
+
 test("codexHome expands a leading tilde against the home dir and defaults to ~/.codex", () => {
   assert.equal(codexHome({}), path.join(os.homedir(), ".codex"));
   assert.equal(codexHome({ configDir: "/plain/path" }), "/plain/path");
