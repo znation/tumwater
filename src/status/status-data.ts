@@ -1,12 +1,21 @@
 import type { RunnerState } from "../runner/runner-state.js";
-import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import type { CheckPermitSnapshot, OrchestratorInfo, PermitSnapshot, SlotPoolSnapshot } from "../team/team-orchestrator-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { baseRoleOf, roleInScope, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
 import { piModelsPath } from "../pi/pi-models.js";
-import { configForStatus, queueInFlight, mainCheckForPoll, maintenanceQuotaForPoll, ciParityForPoll, buildCheckForPoll, type CiParityStatus, type MainCheckStatus } from "./status-polls.js";
+import {
+  configForStatus,
+  queueInFlight,
+  mainCheckForPoll,
+  maintenanceQuotaForPoll,
+  ciParityForPoll,
+  buildCheckForPoll,
+  slotsForPoll,
+  type CiParityStatus,
+  type MainCheckStatus,
+} from "./status-polls.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { scheduledStopAt, scheduledWakes, standingRolePause, standingTeamPause } from "../team/team-state.js";
@@ -582,8 +591,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   const info = readOrchestratorInfo(root);
   // One slots.json read per poll serves every row: the pooled slot a role leases (a running
   // run or verification) or is pinned to — threaded into the roles collector so `running`,
-  // `disk` and the rows agree.
-  const slots = readSlotsState(root).slots;
+  // `disk` and the rows agree. Stat-cached by file, so unchanged slots cost one stat per poll.
+  const slots = slotsForPoll(root);
   // One merge-queue pass per poll (merge-queue.ts's stat cache keeps an unchanged queue at one
   // stat per file) serves three consumers — the `mergeQueue` field below, the busy runner rows'
   // surplus-eligibility check (collectRoleRows' `queued`), and the in-maintenance in-flight

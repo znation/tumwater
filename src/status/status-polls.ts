@@ -7,10 +7,11 @@ import { defaultConfig, loadConfigCached } from "../config/config.js";
 import { DEFAULT_EVENT_TAIL, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/git.js";
+import { readSlotsState } from "../git/slots-state.js";
 import { detectBuildCheck, type BuildCheck } from "../build/build-check-detect.js";
 import { freshRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
-import { eventsLogPath, statePath } from "../paths.js";
+import { eventsLogPath, slotsStatePath, statePath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import {
   countMaintenanceWindow,
@@ -370,6 +371,30 @@ export function configForStatus(root: string): TumwaterConfig {
 // syscall per file per poll instead of re-reading and re-parsing JSON that hasn't moved.
 // Keyed by state-file path so distinct roots never collide; capped inside cachedByStat so many
 // short-lived roots in tests cannot grow it unbounded.
+export type SlotsForPoll = ReturnType<typeof readSlotsState>["slots"];
+
+/** Per-poll cached view of the worktree pool layout (status-data's `slots`), stat-cached by
+ * file like the other always-on snapshot readers: slots.json changes only at lease boundaries
+ * (a run or verify taking/releasing a pooled slot), so an unchanged file costs one stat per
+ * poll instead of a full read plus a JSON parse every second (status-data's snapshot used to
+ * readSlotsState the file on every poll). Bounded inside cachedByStat. */
+const slotsCache = new Map<string, StatKeyedValue<SlotsForPoll>>();
+
+/** This poll's view of the pooled worktree slots: fresh when slots.json changed since this
+ * process last read it, cached otherwise (see above). Returns a copy so each snapshot owns
+ * its data and read-modify-write callers in this process never alias a shared cached record. */
+export function slotsForPoll(root: string): SlotsForPoll {
+  return (
+    cachedByStat(
+      slotsCache,
+      slotsStatePath(root),
+      slotsStatePath(root),
+      () => readSlotsState(root).slots,
+      (slots) => slots.map((s) => ({ ...s, lease: s.lease ? { ...s.lease } : null })),
+    ) ?? []
+  );
+}
+
 const runnerStateCache = new Map<string, StatKeyedValue<RunnerState>>();
 
 /** This poll's view of one role's state: fresh when the file changed since this process last
