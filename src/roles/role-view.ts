@@ -9,7 +9,7 @@
  * fresh state, a missing queue directory an empty inbox — so the command works with the
  * team stopped and never throws on a torn repo. */
 
-import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js";
+import type { FallbackModelConfig, ModelTier, TumwaterConfig } from "../config/config-schema.js";
 import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe, parseJsonConfig } from "../config/config.js";
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
 import { queuedRolePromptCount } from "../inbox/inbox.js";
@@ -21,7 +21,7 @@ import { projectCapHit } from "../budget/budget.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { quietHoursStatus } from "../scheduling/quiet-hours.js";
 import { assembleRunPrompt } from "../run/run-prompt.js";
-import { configForRole, resolvedModelFields, reviewRunConfig, roleSeamTier } from "../config/config-views.js";
+import { configForRole, resolvedModelFields, reviewRunConfig, roleSeamTier, type ResolvedModelConfig } from "../config/config-views.js";
 import { fallbackPair } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath, seamContextWindowForRole } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
@@ -33,6 +33,7 @@ import { readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-ac
 import { readAccount } from "../agent/subscription-account.js";
 import { CONFIG_BASENAME, configPath, roleNotesPath } from "../paths.js";
 import { coverageRows, readQaCoverage, type CoverageRow } from "../run/qa-coverage.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import { filingRows, readFeedbackFilings, type FilingRow } from "../run/feedback-filings.js";
 import { readRegularTextOrNull, statOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
@@ -223,21 +224,32 @@ export function rawRoleField(root: string, roleId: string, field: string): unkno
   return obj[field];
 }
 
-/** Collect one role's inspection payload. `modelsPath` overrides pi's model definitions location
- * — a test seam, like status/status-data.ts's snapshot — consulted only when a fallback pair is
- * configured (the freeness verdict needs the definitions; nothing else does). */
-export function rolePayload(
+/** The identity/config half of the collector — "what is this role, and how is it configured?":
+ * the catalog/custom/DIRECTOR resolution (and its one unknown-role throw), the effective model
+ * wiring via configForRole, the subscription backend whose billing is in play plus that backend's
+ * account, the orchestrator chain step, the base role, and the raw per-role overrides read from
+ * the FILE (roles.<base>), each present only when the file sets it. Returns every piece the
+ * assembly spread needs, resolved through the base role so an instance id shows the overrides its
+ * runs carry. */
+function resolveRoleIdentity(
   root: string,
   typedRole: string,
-  modelsPath = piModelsPath(),
-  now: Date = new Date(),
-): RoleViewPayload {
+  cfg: TumwaterConfig,
+): {
+  role: string;
+  resolved: { title: string; find: string };
+  effective: ResolvedModelConfig;
+  billingBackend?: string;
+  account: { billing: ClaudeBilling; } | null;
+  chainStep: ChainTierInfo | null;
+  base: string;
+  minRunIntervalOverride?: number;
+  providerOverride?: string;
+  modelOverride?: string;
+  thinkingOverride?: string;
+  backendOverride?: string;
+} {
   const role = canonicalRoleId(typedRole);
-  // loadConfigSafe (not loadConfigCached's hold-last-good machinery — this is a one-shot
-  // command, not a poller): a broken or missing file degrades to the defaults, so the
-  // command still answers for built-in roles on a torn repo.
-  const { config } = loadConfigSafe(root);
-  const cfg = config ?? defaultConfig();
   const catalog = roleById(role);
   const customEntry = cfg.customRoles.find((c) => c.name === role);
   // The director is inspectable like any role but has no catalog entry: a pseudo-Role whose
@@ -272,6 +284,64 @@ export function rolePayload(
   const account = billingBackend !== undefined ? readAccount(root, billingBackend) : null;
   const info = readOrchestratorInfo(root);
   const chainStep = (orchestratorAlive(root, info) && info?.chain?.[roleSeamTier(cfg, role)]) || null;
+  const base = baseRoleOf(role);
+  // The roles.<base>.minRunIntervalSeconds override, resolved through the base role like the
+  // cap, quiet hours and instructions — an instance id shows (and can edit) the override its
+  // runs carry. Presence is judged against the FILE (rawRoleField), not the merged cfg:
+  // overlayDefaults seeds every built-in role's minRunIntervalSeconds from config.ts's catalog,
+  // so the merged value would make steward/qa/... always look overridden and the drawer's
+  // clear a no-op. undefined when unset, so the spread below drops it (the payload stays
+  // byte-identical when there is no override).
+  const rawInterval = rawRoleField(root, base, "minRunIntervalSeconds");
+  const minRunIntervalOverride = typeof rawInterval === "number" ? rawInterval : undefined;
+  // The raw provider/model/thinking/backend the FILE holds (roles.<base>), distinct from
+  // the resolved provider/model/thinking/backend fields configForRole merges with the top
+  // level — the drawer's Model overrides editor prefills from these, empty when unset.
+  // Presence is judged against the FILE (rawRoleField) like minRunIntervalOverride, so a
+  // config that relies on the top level or a tier name carries no override. Each is spread
+  // only when a string, so a file with no overrides yields a payload byte-identical to
+  // today's.
+  const providerOverrideRaw = rawRoleField(root, base, "provider");
+  const modelOverrideRaw = rawRoleField(root, base, "model");
+  const thinkingOverrideRaw = rawRoleField(root, base, "thinking");
+  const backendOverrideRaw = rawRoleField(root, base, "backend");
+  const providerOverride = typeof providerOverrideRaw === "string" ? providerOverrideRaw : undefined;
+  const modelOverride = typeof modelOverrideRaw === "string" ? modelOverrideRaw : undefined;
+  const thinkingOverride = typeof thinkingOverrideRaw === "string" ? thinkingOverrideRaw : undefined;
+  const backendOverride = typeof backendOverrideRaw === "string" ? backendOverrideRaw : undefined;
+  return {
+    role,
+    resolved,
+    effective,
+    billingBackend,
+    account,
+    chainStep,
+    base,
+    minRunIntervalOverride,
+    providerOverride,
+    modelOverride,
+    thinkingOverride,
+    backendOverride,
+  };
+}
+
+/** The model seam and fallback half — "what does this role run on and fall back to?": pi's own
+ * saved default when the seam resolves no model, the budget gate's fallback pair with its
+ * freeness verdict (priced through the same always-read opencode/claude answers the gate uses),
+ * and the resolved primary seam's context window. The freeness verdict needs the model
+ * definitions, so it is consulted only here where `modelsPath` is threaded. */
+function resolveModelSeam(
+  cfg: TumwaterConfig,
+  role: string,
+  effective: ResolvedModelConfig,
+  root: string,
+  modelsPath: string,
+): {
+  piDefault?: string;
+  fallback: FallbackModelConfig | null;
+  fallbackFree: boolean;
+  contextWindow: number | null;
+} {
   // pi's own saved default for a pi seam that resolves no model, read once beside the models
   // catalog this collector already takes as a seam (piSettingsPath). The config's `thinking`
   // wins over the default's because tumwater passes it to pi as `--thinking`, mirroring the
@@ -280,7 +350,10 @@ export function rolePayload(
     (effective.agent === undefined || effective.agent === "pi") &&
     effective.provider === undefined &&
     effective.model === undefined;
-  const piDefault = runsPiWithoutAModel ? readPiDefaultModel(piSettingsPath(modelsPath), root) : null;
+  const piDefaultRaw = runsPiWithoutAModel ? readPiDefaultModel(piSettingsPath(modelsPath), root) : null;
+  const piDefault = piDefaultRaw
+    ? formatModelSelector({ ...piDefaultRaw, thinking: effective.thinking ?? piDefaultRaw.thinking })
+    : undefined;
   // The fallback story the operator sees: the declared pair, but the price-resolved pair when
   // one exists (a map with no `default` entry borrows another tier's free pair) and the
   // freeness verdict from the same read. `fallbackFree` false keeps the declared pair visible
@@ -305,8 +378,23 @@ export function rolePayload(
   const accounts = (b: string) => (b === "claude" ? claudeFallbackAccount : null);
   const freeFallback = declaredFallback ? fallbackModelPair(cfg, modelsPath, accounts, opencodeCatalog) : null;
   const fallback = freeFallback ?? declaredFallback;
-  // One state read serves the next-run preview below.
-  const state = loadRunnerState(root, role);
+  // The resolved primary seam's declared context window. A run currently on the model
+  // fallback may use a different window, which is the fallback's own documented state.
+  const contextWindow = seamContextWindowForRole(cfg, role, root, modelsPath);
+  return { piDefault, fallback, fallbackFree: freeFallback !== null, contextWindow };
+}
+
+/** The run-outcomes+usage fold — "what did this role recently do and cost?": the single
+ * readEvents(root) call filtered once to this role's run_end events, then the outcome
+ * projection keeps the newest valid 8 while the usage fold sums the whole window, so the two
+ * per-role facts keep sharing one event-log read and cannot drift on what they cover. */
+function foldRunOutcomes(
+  root: string,
+  role: string,
+): {
+  recentOutcomes: NonNullable<RoleViewPayload["recentOutcomes"]>;
+  usage: NonNullable<RoleViewPayload["usage"]>;
+} {
   // The role's recent run outcomes, read from the event log (readEvents) so the command
   // answers with the team stopped and never touches live state. readEvents returns the log's
   // newest events in file (chronological) order, so filtering to this role's run_end events
@@ -352,34 +440,33 @@ export function rolePayload(
     },
     { tokens: 0, costUsd: 0, notionalCostUsd: 0 },
   );
+  return { recentOutcomes, usage };
+}
+
+/** The role's state around its cap and windows — "what is this role's standing?": the per-role
+ * daily cap and its forecast hit instant (from roleCapVerdicts + projectCapHit over the base
+ * role's instances, the extra sibling loadRunnerState reads living here), the note read with
+ * its save instant, and the quiet-hours windows together, since they are the role's own
+ * persisted/scheduled posture read as one block. The role's OWN state file read (for the cap's
+ * sibling set) is the one `state` already loaded by the preview helper — no second read for the
+ * role itself. */
+function roleCapNotesQuiet(
+  root: string,
+  cfg: TumwaterConfig,
+  role: string,
+  now: Date,
+  state: RunnerState,
+): {
+  dailyCap: RoleViewPayload["dailyCap"];
+  dailyCapHitAt?: number;
+  note: string | null;
+  noteSavedAt: number | null;
+  quietHours: NonNullable<RoleViewPayload["quietHours"]>;
+} {
   // The per-role daily cap, answered by the verdict the scheduler's gate shares (roleCapVerdicts)
   // over the base role's instances, so the page cannot disagree with the hold. A cap of 0
   // disables (roleCapPaused's rule) and the director is exempt, so neither carries the field.
   const base = baseRoleOf(role);
-  // The roles.<base>.minRunIntervalSeconds override, resolved through the base role like the
-  // cap, quiet hours and instructions — an instance id shows (and can edit) the override its
-  // runs carry. Presence is judged against the FILE (rawRoleField), not the merged cfg:
-  // overlayDefaults seeds every built-in role's minRunIntervalSeconds from config.ts's catalog,
-  // so the merged value would make steward/qa/... always look overridden and the drawer's
-  // clear a no-op. undefined when unset, so the spread below drops it (the payload stays
-  // byte-identical when there is no override).
-  const rawInterval = rawRoleField(root, base, "minRunIntervalSeconds");
-  const minRunIntervalOverride = typeof rawInterval === "number" ? rawInterval : undefined;
-  // The raw provider/model/thinking/backend the FILE holds (roles.<base>), distinct from
-  // the resolved provider/model/thinking/backend fields configForRole merges with the top
-  // level — the drawer's Model overrides editor prefills from these, empty when unset.
-  // Presence is judged against the FILE (rawRoleField) like minRunIntervalOverride, so a
-  // config that relies on the top level or a tier name carries no override. Each is spread
-  // only when a string, so a file with no overrides yields a payload byte-identical to
-  // today's.
-  const providerOverrideRaw = rawRoleField(root, base, "provider");
-  const modelOverrideRaw = rawRoleField(root, base, "model");
-  const thinkingOverrideRaw = rawRoleField(root, base, "thinking");
-  const backendOverrideRaw = rawRoleField(root, base, "backend");
-  const providerOverride = typeof providerOverrideRaw === "string" ? providerOverrideRaw : undefined;
-  const modelOverride = typeof modelOverrideRaw === "string" ? modelOverrideRaw : undefined;
-  const thinkingOverride = typeof thinkingOverrideRaw === "string" ? thinkingOverrideRaw : undefined;
-  const backendOverride = typeof backendOverrideRaw === "string" ? backendOverrideRaw : undefined;
   const capUsd = cfg.maxDailyCostUsdPerRole?.[base];
   let dailyCap: RoleViewPayload["dailyCap"];
   let dailyCapHitAt: number | undefined;
@@ -415,9 +502,107 @@ export function rolePayload(
     const team = quietHoursStatus(cfg.quietHours, now);
     if (team.window !== null) quietHours.push({ scope: "fleet", window: team.window, inWindow: team.inWindow }); // vocabulary-ok: persisted --json scope value
   }
-  // The resolved primary seam's declared context window. A run currently on the model
-  // fallback may use a different window, which is the fallback's own documented state.
-  const contextWindow = seamContextWindowForRole(cfg, role, root, modelsPath);
+  return { dailyCap, dailyCapHitAt, note, noteSavedAt, quietHours };
+}
+
+/** The run preview and schedule half — "what will its next run look like?": the one
+ * loadRunnerState read for this role (its own state file, shared with the cap helper's sibling
+ * set), the prompt assembled through the preview seam (read, never consumed, so an inspection
+ * costs the role nothing queued), and the schedule fields surfaced read-only from that same
+ * state. */
+function previewRun(
+  root: string,
+  cfg: TumwaterConfig,
+  role: string,
+): {
+  state: RunnerState;
+  nextPrompt: string | null;
+  schedule: {
+    nextRunAt: number;
+    backoffSeconds: number;
+    yieldMultiplier: number;
+    lastRunEndedAt?: number;
+  };
+} {
+  // One state read serves the next-run preview below.
+  const state = loadRunnerState(root, role);
+  const nextPrompt =
+    assembleRunPrompt({
+      root,
+      config: cfg,
+      role,
+      state,
+      preview: true,
+    })?.prompt ?? null;
+  
+  return {
+    state,
+    nextPrompt,
+    schedule: {
+      nextRunAt: state.nextRunAt,
+      backoffSeconds: state.backoffSeconds,
+      yieldMultiplier: yieldMultiplierFor(state),
+      ...(state.lastRunEndedAt !== undefined ? { lastRunEndedAt: state.lastRunEndedAt } : {}),
+    },
+  };
+}
+
+/** The per-role observer ledgers — "what did the observer roles record?": the qa flow-coverage
+ * block and the feedback filings block, each guarded to its canonical role id, so the
+ * qa/feedback ledgers read from one helper and every other role's payload stays byte-identical. */
+function observerLedgers(
+  role: string,
+  root: string,
+  now: Date,
+): {
+  flowCoverage?: CoverageRow[];
+  filings?: FilingRow[];
+} {
+  return {
+    // The qa observer's flow-coverage ledger (plans/observer-roles.md 2/2) — each flow's last
+    // exercise and result in the prompt block's order (never-exercised first, then
+    // stalest-first). Present only for the canonical qa id, so every other role's --json
+    // payload and Markdown render stay byte-identical. The ledger read degrades to empty
+    // coverage on a missing or torn file exactly as readQaCoverage already does.
+    ...(role === "qa" ? { flowCoverage: coverageRows(readQaCoverage(root), now.getTime()) } : {}),
+    // The feedback observer's per-install filing ledger (plans/feedback-role.md 2/2), the twin
+    // of qa's flowCoverage block above: each issue this install already filed, newest-first via
+    // the one filingRows ordering the prompt block and the operator read share. Present only for
+    // the canonical feedback id, so every other role's --json payload and Markdown render stay
+    // byte-identical. The ledger read degrades to an empty list on a missing or torn file
+    // exactly as readFeedbackFilings already does.
+    ...(role === "feedback" ? { filings: filingRows(readFeedbackFilings(root)) } : {}),
+  };
+}
+
+/** Collect one role's inspection payload. `modelsPath` overrides pi's model definitions location
+ * — a test seam, like status/status-data.ts's snapshot — consulted only when a fallback pair is
+ * configured (the freeness verdict needs the definitions; nothing else does). The collector is a
+ * thin spread of named helpers, one per concern: identity/config resolution, the model seam and
+ * fallback story, the run-outcomes+usage fold, the cap/notes/quiet-hours posture, the run preview
+ * and schedule, and the observer ledgers. Each read happens exactly once (one loadConfigSafe, one
+ * readEvents, one loadRunnerState for the role), and the helpers return exactly the pieces the
+ * assembly spread needs. */
+export function rolePayload(
+  root: string,
+  typedRole: string,
+  modelsPath = piModelsPath(),
+  now: Date = new Date(),
+): RoleViewPayload {
+  const { config } = loadConfigSafe(root);
+  const cfg = config ?? defaultConfig();
+  const identity = resolveRoleIdentity(root, typedRole, cfg);
+  const { role, resolved, effective, billingBackend, account, chainStep, base, minRunIntervalOverride, providerOverride, modelOverride, thinkingOverride, backendOverride } = identity;
+  const seam = resolveModelSeam(cfg, role, effective, root, modelsPath);
+  const { piDefault, fallback, fallbackFree, contextWindow } = seam;
+  const preview = previewRun(root, cfg, role);
+  const { state, nextPrompt, schedule } = preview;
+  const outcomes = foldRunOutcomes(root, role);
+  const { recentOutcomes, usage } = outcomes;
+  const posture = roleCapNotesQuiet(root, cfg, role, now, state);
+  const { dailyCap, dailyCapHitAt, note, noteSavedAt, quietHours } = posture;
+  const ledgers = observerLedgers(role, root, now);
+  const { flowCoverage, filings } = ledgers;
   return {
     id: role,
     title: resolved.title,
@@ -427,17 +612,10 @@ export function rolePayload(
     tier: roleTier(role),
     modelTier: roleSeamTier(cfg, role),
     ...resolvedModelFields(effective.provider, effective.model, effective.thinking),
-    ...(piDefault
-      ? {
-          piDefault: formatModelSelector({
-            ...piDefault,
-            thinking: effective.thinking ?? piDefault.thinking,
-          }),
-        }
-      : {}),
+    ...(piDefault ? { piDefault } : {}),
     backend: effective.agent ?? "pi",
     fallback,
-    fallbackFree: freeFallback !== null,
+    fallbackFree,
     ...(account !== null ? { billing: account.billing, billingBackend } : {}),
     chainStep,
     ...roleImageInfo(cfg, role, modelsPath, readPiListedModels(root)),
@@ -459,19 +637,8 @@ export function rolePayload(
     find: role === DIRECTOR_ROLE ? null : resolved.find,
     notes: note,
     noteSavedAt,
-    // The qa observer's flow-coverage ledger (plans/observer-roles.md 2/2) — each flow's last
-    // exercise and result in the prompt block's order (never-exercised first, then
-    // stalest-first). Present only for the canonical qa id, so every other role's --json
-    // payload and Markdown render stay byte-identical. The ledger read degrades to empty
-    // coverage on a missing or torn file exactly as readQaCoverage already does.
-    ...(role === "qa" ? { flowCoverage: coverageRows(readQaCoverage(root), now.getTime()) } : {}),
-    // The feedback observer's per-install filing ledger (plans/feedback-role.md 2/2), the twin
-    // of qa's flowCoverage block above: each issue this install filed, newest-first via the one
-    // filingRows ordering the prompt block and the operator read share. Present only for the
-    // canonical feedback id, so every other role's --json payload and Markdown render stay
-    // byte-identical. The ledger read degrades to an empty list on a missing or torn file
-    // exactly as readFeedbackFilings already does.
-    ...(role === "feedback" ? { filings: filingRows(readFeedbackFilings(root)) } : {}),
+    ...(flowCoverage !== undefined ? { flowCoverage } : {}),
+    ...(filings !== undefined ? { filings } : {}),
     inboxCount: queuedRolePromptCount(root, role),
     // The resolved primary seam's declared context window in tokens, or null when it cannot
     // be known (a non-pi seam, an unresolvable provider/model pair, or a model with no
@@ -479,22 +646,12 @@ export function rolePayload(
     contextWindow,
     // The preview seam: the queued prompt (if any) is read, not consumed, so an inspection
     // never costs the role its queued work — the property the run-prompt test pins.
-    nextPrompt:
-      assembleRunPrompt({
-        root,
-        config: cfg,
-        role,
-        state,
-        preview: true,
-      })?.prompt ?? null,
+    nextPrompt,
     // The role's schedule — surfaced read-only from the same persisted state rolePayload
     // already loaded for the next-run preview, so no new read path exists and the collector
     // stays one loadRunnerState per role. `lastRunEndedAt`
     // is omitted (JSON unchanged) until the role has actually run.
-    nextRunAt: state.nextRunAt,
-    backoffSeconds: state.backoffSeconds,
-    yieldMultiplier: yieldMultiplierFor(state),
-    ...(state.lastRunEndedAt !== undefined ? { lastRunEndedAt: state.lastRunEndedAt } : {}),
+    ...schedule,
     ...(quietHours.length > 0 ? { quietHours } : {}),
     ...(recentOutcomes.length > 0 ? { recentOutcomes } : {}),
     ...(usage.tokens !== 0 || usage.costUsd !== 0 || usage.notionalCostUsd !== 0 ? { usage } : {}),
