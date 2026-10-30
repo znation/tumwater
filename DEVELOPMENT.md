@@ -69,7 +69,9 @@ visible to it:
   every code change.
 - Call the CLI through `test/helpers/cli-harness.ts` with the command as a string literal
   (`cli(repo, "logs", …)`, `spawnCli(repo, ["run", …])`, `[CLI, "status"]`). A computed command
-  makes the file depend on every command.
+  makes the file depend on every command. On the other side, `src/cli.ts` loads a command's
+  module with a literal `import()` in its case or in a top-level function the case calls; a
+  test in `test/affected-tests.test.ts` fails on a lazy import no command reaches.
 - Changes to `package.json`, the lockfile, `tsconfig.json` or the runner itself make every test
   file a candidate, as does any file the selector cannot map, and the budget then takes the
   cheapest. It says so in its first line of output.

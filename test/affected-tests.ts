@@ -26,12 +26,13 @@ import path from "node:path";
  * whenever any code changes.
  *
  * The CLI is the one dependency resolved per call site. src/cli.ts imports each command's module
- * only inside that command's case, and ~70 test files reach the binary through
- * test/helpers/cli-harness.ts. Depending on the binary as a whole would select all of them for
- * nearly any change in src/. So cli.ts contributes only its static imports, and a file calling
- * the harness (`cli(dir, "logs")`, `spawnCli(dir, ["run"])`, `[CLI, "status"]`) depends on the
- * modules of the commands it names. A call whose command is not a literal, and any other path to
- * the binary, depends on every command.
+ * only inside that command's case or the handler function the case calls, and ~70 test files
+ * reach the binary through test/helpers/cli-harness.ts. Depending on the binary as a whole would
+ * select all of them for nearly any change in src/. So cli.ts contributes only its static
+ * imports, and a file calling the harness (`cli(dir, "logs")`, `spawnCli(dir, ["run"])`,
+ * `[CLI, "status"]`) depends on the modules of the commands it names, as near to them as an
+ * import. A call whose command is not a literal, and any other path to the binary, depends on
+ * every command.
  *
  * What cannot be mapped is not guessed at. A changed file that is neither code, nor named by any
  * module, nor documentation or lint configuration, and every change to the build and test
@@ -241,23 +242,47 @@ function cliCommandsUsed(text: string): Set<string> | undefined {
 }
 
 /** The modules each command of the compiled CLI dispatcher imports inside its case, keyed by
- * every label of that case (fallthrough labels share their body's imports). */
+ * every label of that case (fallthrough labels share their body's imports). A case that calls a
+ * function the dispatcher declares (`await cmdLogsCase(root, args)`) imports what that function
+ * imports, and what the functions it calls import in turn: since src/cli.ts moved each command's
+ * body into such a handler (2026-10-25), reading the case alone mapped half the commands to no
+ * module, and a change to one reached none of the tests that run it. */
 function cliCaseImports(text: string, resolve: (spec: string) => string | null): Map<string, Set<string>> {
-  const byCommand = new Map<string, Set<string>>();
-  const labels = [...text.matchAll(/\bcase\s+"([^"]+)"\s*:/g)];
-  let pending: string[] = [];
-  for (let i = 0; i < labels.length; i++) {
-    const label = labels[i]!;
-    const end = i + 1 < labels.length ? labels[i + 1]!.index : text.length;
-    const segment = text.slice(label.index + label[0].length, end);
-    pending.push(label[1]!);
-    const code = segment.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "").trim();
-    if (code === "") continue; // falls through to the next label's body
-    const modules = new Set<string>();
-    for (const m of segment.matchAll(DYNAMIC_SPECIFIER)) {
+  const code = codeOnly(text, false);
+  const bare = codeOnly(text, true);
+  // tsc emits a top-level function from column 0 and closes it with a `}` there.
+  const functionEnd = (from: number) => {
+    const close = bare.indexOf("\n}", from);
+    return close === -1 ? text.length : close;
+  };
+  const functions = new Map<string, [number, number]>();
+  for (const m of bare.matchAll(/^(?:export\s+)?(?:async\s+)?function\s+([\w$]+)\s*\(/gm)) {
+    functions.set(m[1]!, [m.index, functionEnd(m.index)]);
+  }
+  const importsOf = (start: number, end: number, modules: Set<string>, called: Set<string>) => {
+    for (const m of code.slice(start, end).matchAll(DYNAMIC_SPECIFIER)) {
       const id = resolve(m[1]!);
       if (id !== null) modules.add(id);
     }
+    for (const m of bare.slice(start, end).matchAll(/(?<![\w$.])([\w$]+)\s*\(/g)) {
+      const range = functions.get(m[1]!);
+      if (range === undefined || called.has(m[1]!)) continue;
+      called.add(m[1]!);
+      importsOf(range[0], range[1], modules, called);
+    }
+  };
+  const byCommand = new Map<string, Set<string>>();
+  const labels = [...code.matchAll(/\bcase\s+"([^"]+)"\s*:/g)];
+  let pending: string[] = [];
+  for (let i = 0; i < labels.length; i++) {
+    const label = labels[i]!;
+    // The last case ends with the function holding the switch, not in what follows it (the
+    // `main().catch(…)` call would read as running every command).
+    const end = i + 1 < labels.length ? labels[i + 1]!.index : functionEnd(label.index);
+    pending.push(label[1]!);
+    if (code.slice(label.index + label[0].length, end).trim() === "") continue; // falls through to the next label's body
+    const modules = new Set<string>();
+    importsOf(label.index + label[0].length, end, modules, new Set());
     for (const name of pending) byCommand.set(name, modules);
     pending = [];
   }
@@ -339,9 +364,19 @@ export function buildDepGraph(distRoot: string, repoRoot: string): DepGraph {
  * module's own merger.test.ts out of the budget. */
 const SCANNER_DISTANCE = 2;
 
+/** A `cli:<command>` node: it stands for the call site naming that command, so it adds no hop. A
+ * test running `cli(dir, "role")` is as near to the role command's module as a test importing
+ * it; through two hops it ranked behind dozens of cheap files and the budget left every
+ * cli-operators-role* file out of a role-command change. `cli:*` keeps its hop: an unknown
+ * command is a wider net than an import. */
+function isCommandNode(id: string): boolean {
+  return id.startsWith("cli:") && id !== ALL_CLI_COMMANDS;
+}
+
 /** What a change selects: the gating test files to run (source ids, sorted) and how far each is
- * from the change — 0 for a changed test file, 1 for a test that imports a changed file or names
- * its directory, one more per import hop beyond, and SCANNER_DISTANCE at most for a tree scanner.
+ * from the change — 0 for a changed test file, 1 for a test that imports a changed file, names
+ * its directory or runs the command that loads it, one more per import hop beyond, and
+ * SCANNER_DISTANCE at most for a tree scanner.
  * When the change cannot be mapped, `reason` names the first change that forced it and `tests`
  * is the full suite; the tests the mapped part reached keep their distance, the rest have none. */
 interface AffectedSelection {
@@ -384,7 +419,8 @@ export function selectAffected(graph: DepGraph, changed: readonly string[]): Aff
     }
   }
   // The queue stays ordered by distance: every seed (0) goes in before every directory dependent
-  // (1), and each later entry is one more than the entry that found it.
+  // (1), each later entry is one more than the entry that found it, and a command node, which adds
+  // no hop, goes in right after the entry that found it.
   const distance = new Map<string, number>();
   const queue: string[] = [];
   const visit = (id: string, d: number) => {
@@ -398,7 +434,14 @@ export function selectAffected(graph: DepGraph, changed: readonly string[]): Aff
   }
   for (let i = 0; i < queue.length; i++) {
     const id = queue[i]!;
-    for (const from of dependents.get(id) ?? []) visit(from, distance.get(id)! + 1);
+    const d = distance.get(id)!;
+    for (const from of dependents.get(id) ?? []) {
+      if (!isCommandNode(from)) visit(from, d + 1);
+      else if (!distance.has(from)) {
+        distance.set(from, d);
+        queue.splice(i + 1, 0, from);
+      }
+    }
   }
   if (codeChanged) {
     for (const scanner of graph.scanners) if (!distance.has(scanner)) distance.set(scanner, SCANNER_DISTANCE);

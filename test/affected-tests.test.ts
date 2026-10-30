@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { buildDepGraph, fitBudget, gateLintTargets, selectAffected } from "./affected-tests.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -177,6 +178,59 @@ test("the CLI binary is resolved per command at each call site", () => {
     ["test/any.test.ts", "test/direct.test.ts", "test/logs.test.ts", "test/status.test.ts", "test/wake.test.ts"],
     "the dispatcher's static imports load for every command",
   );
+});
+
+test("a command's handler function is part of its case, and running the command is as near as an import", () => {
+  const root = checkout({
+    "dist/src/cli.js": [
+      "async function runShared(root) {",
+      '    await import("./shared.js");',
+      "}",
+      "async function cmdLogsCase(root, args) {",
+      "    // cmdUnusedCase(root) in a comment is not a call",
+      "    await runShared(root);",
+      '    await (await import("./logs.js")).cmdLogs(root, args);',
+      "}",
+      "async function cmdUnusedCase(root) {",
+      '    await import("./unused.js");',
+      "}",
+      "async function main() {",
+      "    switch (command) {",
+      '        case "logs":',
+      "            await cmdLogsCase(root, args);",
+      "            break;",
+      '        case "help":',
+      "            say(HELP);",
+      "    }",
+      "}",
+      "main().catch((err) => fail(err));",
+    ].join("\n"),
+    "dist/src/logs.js": "export {};\n",
+    "dist/src/shared.js": "export {};\n",
+    "dist/src/unused.js": "export {};\n",
+    "dist/test/helpers/cli-harness.js": 'export const CLI = new URL("../../src/cli.js", import.meta.url);\n',
+    "dist/test/logs.test.js": 'import { cli } from "./helpers/cli-harness.js";\nawait cli(repo, "logs");\n',
+    "dist/test/help.test.js": 'import { cli } from "./helpers/cli-harness.js";\nawait cli(repo, "help");\n',
+    "dist/test/any.test.js": 'import { cli } from "./helpers/cli-harness.js";\nfor (const c of cmds) await cli(repo, c);\n',
+  });
+  assert.deepEqual(Object.fromEntries(select(root, ["src/logs.ts"]).distance), {
+    "test/any.test.ts": 2, // an unknown command is a wider net than an import
+    "test/logs.test.ts": 1, // runs the command whose handler imports logs
+  }, "the last case ends with main(), so main().catch(…) does not make help run every command");
+  assert.deepEqual(select(root, ["src/shared.ts"]).tests, ["test/any.test.ts", "test/logs.test.ts"], "through the helper the handler calls");
+  assert.deepEqual(select(root, ["src/unused.ts"]).tests, [], "a function no case calls belongs to no command");
+});
+
+test("every module the real CLI dispatcher imports lazily belongs to some command", () => {
+  // The one test here that reads the real tree: a dispatcher refactor that hides a command's
+  // import from cliCaseImports leaves that command's tests out of every gate, and nothing else
+  // would notice.
+  const text = fs.readFileSync(new URL("../src/cli.js", import.meta.url), "utf8");
+  const lazy = [...text.matchAll(/\bimport\(\s*"(\.[^"]+)\.js"\s*\)/g)].map((m) => path.posix.join("src", `${m[1]!}.ts`));
+  assert.ok(lazy.length > 10, "the dispatcher still imports its commands lazily");
+  const root = checkout({ "dist/src/cli.js": text });
+  const graph = buildDepGraph(path.join(root, "dist"), root);
+  assert.deepEqual([...(graph.deps.get("cli:*") ?? [])].sort(), [...new Set(lazy)].sort());
 });
 
 test("a script that locates files from its own path depends on all of src/", () => {
