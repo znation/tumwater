@@ -1,8 +1,8 @@
 import path from "node:path";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
+import { DAY_MS } from "../text/datetime.js";
 import { entryDates, entryLags, finishedArchiveOf, firstDate, lastDate, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
 import { CHECK_DECLARATION_MARKER } from "../roles/role-guidance.js";
-import { DAY_MS } from "../text/datetime.js";
 
 export type { BacklogEntry } from "./backlog-md.js";
 
