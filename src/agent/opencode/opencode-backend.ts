@@ -95,15 +95,19 @@ function catalogModelKey(model: string): string {
 
 /** Run the bounded `opencode session export <id> --standalone` spawn that both the resume
  * existence check and the reconciling export issue, under the same env/cwd and the shared
- * 10 s bound. Returns the spawn result with stdout captured (UTF-8), or null when the spawn
- * itself threw — a missing binary or an invalid option, resolved the same way both callers
- * treated a throw. The command line, env, cwd and timeout live here once, so the existence
- * check and the reconciling export cannot drift on what they run. */
+ * 10 s bound. `capture` is false for the existence check, which reads only the exit status:
+ * `stdio: "ignore"` keeps the export — which carries every message of the session — out of
+ * memory and below the default 1 MiB `maxBuffer`, whose `ENOBUFS` kill would otherwise make a
+ * large but real session read as absent and mint a fresh one. Returns the spawn result, or null
+ * when the spawn itself threw — a missing binary or an invalid option, resolved the same way
+ * both callers treated a throw. The command line, env, cwd and timeout live here once, so the
+ * existence check and the reconciling export cannot drift on what they run. */
 function runSessionExport(
   id: string,
   env: NodeJS.ProcessEnv,
   bin: string,
   cwd: string,
+  capture = true,
 ): SpawnSyncReturns<string> | null {
   try {
     return spawnSync(bin, ["session", "export", id, "--standalone"], {
@@ -111,6 +115,7 @@ function runSessionExport(
       cwd,
       timeout: EXPORT_TIMEOUT_MS,
       encoding: "utf8",
+      stdio: capture ? "pipe" : "ignore",
     });
   } catch {
     return null;
@@ -122,7 +127,7 @@ function runSessionExport(
  * Nonzero exit, a timeout, or a spawn failure all read as "no such session", which is the safe
  * direction: `--session` would otherwise silently create a missing session. */
 function opencodeSessionExists(id: string, env: NodeJS.ProcessEnv, bin: string, cwd: string): boolean {
-  const res = runSessionExport(id, env, bin, cwd);
+  const res = runSessionExport(id, env, bin, cwd, false);
   return res?.status === 0;
 }
 
