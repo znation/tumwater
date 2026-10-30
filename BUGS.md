@@ -247,6 +247,25 @@ The post-merge review of commit `bf04da3c517cdb2690bb1973ef430a2e7e2f951e` (Shar
 
 **Needs review 2026-10-30 by bugfix: reaching a verdict needs a real strong-tier review run of `bf04da3c`, which is not offline-reproducible and times out at the 900s ceiling under host load — this member is owned by the plan role's class fix (`post-merge reviews time out at the 900s ceiling as a class`), not a bugfix code fix; verified the fold itself is faithful and complete (one `readMergeQueue` read now feeds the `mergeQueue` field, `collectRoleRows`' surplus check via `queuedRoles`, and `maintenanceQuotaForPoll` — the role sets agree because `readMergeQueue.entries` and `queuedMergeFiles` both run the same stat-cached `readEntry`, so the before/after consumers see identical values; `collectRoleRows`' default `queuedMergeRoles(root)` keeps the single snapshot() caller and the test callers behavior-identical), so there is no code defect to fix; do not close it as Fixed via an md-only edit, since the rejected 2026-10-29 attempt proves that reads as a re-author.**
 
+### `every comment line in src/ and test/ fits in 100 columns and opens no block inside a block` failed, then passed on the same tree (quarantined by tumwater 2026-10-30)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ every comment line in src/ and test/ fits in 100 columns and opens no block inside a block (57.342667ms)
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+- []
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-7/dist/test/comment-width.test.js:57:12)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: true,
+code: 'ERR_ASSERTION',
+actual: [ '/Users/zach/tumwater/.tumwater/worktrees/_slot-7/src/ui/tui/tui-backlog.ts:164 (cols)' ],
+expected: [],
+operator: 'deepStrictEqual',
+diff: 'simple'
+}
+~~~~
+
 ## Fixed
 
 ## Verified
