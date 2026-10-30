@@ -239,6 +239,10 @@ The post-merge review of commit `17a2ac4dafcb6084ee5e1eab7b58ee39564df6ee` (reco
 
 **Needs review 2026-10-29 by bugfix: reaching a verdict needs a real strong-tier review run of `17a2ac4d`, which is not offline-reproducible and times out at the 900s ceiling under host load — this member is owned by the plan role's class fix (`post-merge reviews time out at the 900s ceiling as a class`), not a bugfix code fix; verified the fold itself is faithful and complete (the only functional change vs its parent is `days: Math.ceil(length / 86_400_000)` → `Math.ceil(length / DAY_MS)` at failure-data.ts:369, plus the import-line reordering; DAY_MS = 24 * HOUR_MS = 86_400_000 in text/datetime.ts:26, so it is byte-identical math; the remaining `86_400_000` literals are unrelated GUI/cli unit tables, not failure-data; 17a2ac4d is a re-landing of d5b8bf627 — its file is identical to d5b8bf627's save for the import-line order), so there is no code defect to fix; do not close it as Fixed via an md-only edit, since the rejected 2026-10-29 attempt proves that reads as a re-author.**
 
+### post-merge review of acf37eb2 never reached a verdict (found by the review role 2026-10-29)
+
+The post-merge review of commit `acf37eb263353c9c81bf1d45043ac781d308f6f9` (Convert Health/Pending pane flat Ctrl dispatches to ctrlRoutes/ctrlRoute tables) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
 ## Fixed
 
 ## Verified
