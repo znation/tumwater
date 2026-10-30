@@ -118,14 +118,10 @@ export function briefFile(root: string): string | null {
  * on-purpose bare repo. An unreadable candidate counts: a brief that cannot be read is one
  * the roles cannot use, and the underlying firstBriefText throw is caught and reported as
  * true here — same subset doctor's `brief` warn covers, minus the bare-repo state that
- * doctor deems fine. Consumer: src/status/status-data.ts's snapshot. */
+ * doctor deems fine. Thin accessor over briefStatus, so this predicate and the snapshot's
+ * shared flags share one implementation. */
 export function briefBlockMissing(root: string): boolean {
-  if (briefCandidates(root).every((candidate) => !fs.existsSync(candidate))) return false;
-  try {
-    return (readBrief(root)?.prompt ?? "") === "";
-  } catch {
-    return true;
-  }
+  return briefStatus(root).missing;
 }
 
 /** True when the resolved brief block exceeds the read cap (BRIEF_TEXT_MAX_CHARS) — the
@@ -138,27 +134,23 @@ export function briefBlockMissing(root: string): boolean {
  * a surrogate pair, while an at-cap block stays equal to it. A repo with no candidate
  * resolves null (0, false), and an unreadable candidate's readBrief throw is caught to false,
  * because briefBlockMissing already raises `no-brief` for that state; an empty block stays
- * briefBlockMissing's (its resolved length is 0). Consumer: src/status/status-data.ts's
- * snapshot. */
+ * briefBlockMissing's (its resolved length is 0). Thin accessor over briefStatus, so this
+ * predicate and the snapshot's shared flags share one implementation. */
 export function briefBlockOverCap(root: string): boolean {
-  try {
-    return (readBrief(root)?.prompt.length ?? 0) > BRIEF_TEXT_MAX_CHARS;
-  } catch {
-    return false;
-  }
+  return briefStatus(root).overCap;
 }
 
 /** The always-on brief degraded-state flags, derived from ONE candidate scan and ONE file
- * read — the per-second status snapshot's `noBrief`/`briefTruncated` fields. The two standalone
- * functions (briefBlockMissing, briefBlockOverCap) each call readBrief, which re-lists both
- * candidates and re-reads the whole brief file; snapshot() invoked them both every poll, so the
- * file — which changes only when a role edits it — was read twice per second in each observer
- * process. briefStatus is the twin of readBrief's promise (briefFile + readBriefText derive
- * from one scan); the two flags share one read here, and each flag reuses exactly the derived
- * value's predicate so the shared and standalone paths cannot disagree. `missing` is true when
- * a candidate exists but none resolves a non-empty block (or the resolving read threw);
- * `overCap` true when the resolved block exceeds the cap. A repo with no candidate at all is
- * neither (both false). */
+ * read — the per-second status snapshot's `noBrief`/`briefTruncated` fields, and the single
+ * implementation of both predicates: the standalone briefBlockMissing/briefBlockOverCap
+ * accessors delegate here, so the shared and standalone paths cannot disagree. The snapshot
+ * used to call those two accessors, each calling readBrief — which re-lists both candidates
+ * and re-reads the whole brief file — twice per poll, on a file that changes only when a role
+ * edits it. briefStatus is the degraded-state twin of readBrief's promise (briefFile +
+ * readBriefText derive from one scan): the two flags share one read, and each flag applies the
+ * value's own predicate. `missing` is true when a candidate exists but none resolves a
+ * non-empty block (or the resolving read threw); `overCap` true when the resolved block
+ * exceeds the cap. A repo with no candidate at all is neither (both false). */
 export function briefStatus(root: string): { missing: boolean; overCap: boolean } {
   if (briefCandidates(root).every((candidate) => !fs.existsSync(candidate))) {
     return { missing: false, overCap: false };

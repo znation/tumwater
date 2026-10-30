@@ -348,14 +348,14 @@ export interface StatusSnapshot {
   noDeclaredCheck?: boolean;
   /** True when a brief candidate file exists but none resolves to a usable prompt block —
    * the marker-less file, the unreadable candidate, or a marked block with no text
-   * (src/brief/brief.ts's briefBlockMissing) — the doctor `brief` row's marker-less,
+   * (src/brief/brief.ts's briefStatus.missing) — the doctor `brief` row's marker-less,
    * unreadable and empty-block warning state. Present only in that state, so the always-on
    * amber `no-brief` alert surfaces the silent state on `tumwater status`, the dashboard and
    * the TUI; absent otherwise (including the bare pre-init repo), so the surfaces render
    * exactly as before. */
   noBrief?: boolean;
   /** True when the resolved brief block exceeds the read cap (src/brief/brief.ts's
-   * briefBlockOverCap) — the doctor `brief` row's over-cap warning state, the warning tune
+   * briefStatus.overCap) — the doctor `brief` row's over-cap warning state, the warning tune
    * extractPrompt truncates every run's prompt with. Present only in that state (the
    * always-on amber `brief-truncated` alert surfaces it on `tumwater status`, the dashboard
    * and the TUI); absent otherwise (at-cap, under-cap, empty and marker-less-keep-
