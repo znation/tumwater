@@ -696,7 +696,7 @@ export function helpTopic(command: string, help: string = HELP): string | null {
  * --cancel 2 --help`), never prose. bug/plan's valued flags are `--cancel`, `--edit`,
  * `--file`, `--release` and `--top`. */
 const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
-  prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach", "--top"],
+  prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach", "--top", "--grep"],
   init: ["--branch", "--template", "--file"],
   bug: ["--cancel", "--edit", "--file", "--release", "--top"],
   plan: ["--cancel", "--edit", "--file", "--release", "--top"],
