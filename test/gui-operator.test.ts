@@ -402,7 +402,7 @@ test("POST /api/pause with forSeconds writes a timed pause and rejects bad durat
   assert.equal(res.status, 400);
   assert.match(
     ((await res.json()) as { error: string }).error,
-    /capped at 7776000 seconds \(90 days\) \(got 7862400\)/,
+    /capped at 90d \(got 7862400\)/,
   );
   assert.equal((readJson(pausedPath(repo)) as { until: number }).until, marker.until, "rejected bodies leave the deadline");
 
