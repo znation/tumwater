@@ -111,7 +111,7 @@ export function daysBetween(fromKey: string, toKey: string): number {
     const [y = 0, m = 1, d = 1] = key.split("-").map(Number);
     return Date.UTC(y, m - 1, d);
   };
-  return Math.round((utc(toKey) - utc(fromKey)) / 86_400_000);
+  return Math.round((utc(toKey) - utc(fromKey)) / DAY_MS);
 }
 
 /** The `MM-DD` half of a `YYYY-MM-DD` day key (dayKey/formatDate): the redundant year

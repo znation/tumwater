@@ -9,6 +9,7 @@
 
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { CLAIM_IDLE_MAX_MS, listedKeys } from "./claims.js";
+import { HOUR_MS } from "../text/datetime.js";
 
 /** A work-instance claim needing the operator's attention, named the way the doctor's
  * `parallel instances` row names it: the instance id, the backlog file its entry lives under,
@@ -43,7 +44,7 @@ export function staleClaimEntries(root: string, ids: readonly string[], now = Da
         file: claim.file,
         title: claim.title,
         kind: "idle",
-        hours: Math.round((now - claim.at) / 3_600_000),
+        hours: Math.round((now - claim.at) / HOUR_MS),
       });
     }
   }

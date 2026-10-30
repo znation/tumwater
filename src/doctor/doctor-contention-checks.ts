@@ -19,7 +19,7 @@ import { commitExists, deleteRefIfAt, listBranches, refSha, refsUnder } from "..
 import { readSlotsState } from "../git/slots-state.js";
 import { eventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
-import { DAY_MS } from "../text/datetime.js";
+import { DAY_MS, HOUR_MS } from "../text/datetime.js";
 import { shortSha } from "../text/format.js";
 import { errorMessage, joinParts, textOr } from "../text/text.js";
 import { rankCountEntries } from "../collections.js";
@@ -89,7 +89,7 @@ export function staleWorkspacePins(root: string, now = Date.now()): StaleWorkspa
  * clause renders it through textOr like the row always did, so a malformed pin can never
  * print nothing where the phrase expects a role. */
 function stalePinPhrase(pin: StaleWorkspacePin): string {
-  return `${textOr(pin.role)} pinned on ${pin.dir} for ${Math.round(pin.ageMs / 3_600_000)}h`;
+  return `${textOr(pin.role)} pinned on ${pin.dir} for ${Math.round(pin.ageMs / HOUR_MS)}h`;
 }
 
 /** Directory names under the worktrees root that the pool no longer owns: a legacy per-role

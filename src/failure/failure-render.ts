@@ -8,7 +8,7 @@ import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-da
 import type { LossCause, SpendCell } from "./failure-time-spend.js";
 import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
-import { boundedWindowLine, clockHm, dayKey, dayLabel, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
+import { HOUR_MS, boundedWindowLine, clockHm, dayKey, dayLabel, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { eventTypeLabel } from "../events/event-labels.js";
@@ -112,7 +112,7 @@ function spendCell(cell: SpendCell): string {
  * from shortSpanPhrase's minutes-or-seconds (an event-feed phrase), because a summed 8-hour
  * timeout episode must not read as "480m". */
 function hoursPhrase(ms: number): string {
-  return `${(ms / 3_600_000).toFixed(1)} h`;
+  return `${(ms / HOUR_MS).toFixed(1)} h`;
 }
 
 /** Render the digest as bounded Markdown. Byte bound: for a given team the tables grow only with

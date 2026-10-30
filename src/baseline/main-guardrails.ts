@@ -14,7 +14,7 @@
 
 import { readEventsSince } from "../events/event-window.js";
 import { loadQuarantine } from "../review/known-flakes.js";
-import { DAY_MS, clockHm, humanAgo } from "../text/datetime.js";
+import { DAY_MS, HOUR_MS, clockHm, humanAgo } from "../text/datetime.js";
 import { shortSha } from "../text/format.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { plural } from "../text/phrases.js";
@@ -219,5 +219,5 @@ export function guardrailWarnings(root: string, now: number = Date.now()): strin
 function redDurationPhrase(ms: number): string {
   const minutes = Math.round(ms / 60_000);
   if (minutes < 24 * 60) return `${minutes} min`;
-  return `${Math.round(ms / 3_600_000)} h`;
+  return `${Math.round(ms / HOUR_MS)} h`;
 }

@@ -4,6 +4,7 @@ import type { CompileResult } from "../build/build-stage.js";
 import type { HarnessEventInput } from "../events/events.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
 import { shortSha } from "../text/format.js";
+import { HOUR_MS } from "../text/datetime.js";
 import { mainRedPhrase } from "../text/phrases.js";
 import {
   type AutoRestartRecord,
@@ -664,7 +665,7 @@ export class Redeployer {
     if (this.lastRestartFailureAt === null || this.lastRestartFailureAt < since) return;
     if (this.lastEscalationAt !== null && now - this.lastEscalationAt < STALE_ESCALATE_EVERY_MS) return;
     this.lastEscalationAt = now;
-    const hours = Math.max(1, Math.round((now - since) / 3_600_000));
+    const hours = Math.max(1, Math.round((now - since) / HOUR_MS));
     this.warn(
       `an update has waited ~${hours} h to install (running ${shortSha(this.build.sha)}, ${this.staleness?.aheadCommits ?? 0} commits behind main) while update attempts keep failing — the stuck version itself is the problem, not any one commit`,
     );

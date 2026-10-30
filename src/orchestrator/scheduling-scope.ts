@@ -9,6 +9,7 @@ import type { RoleRunner } from "../runner/runner.js";
 import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
+import { HOUR_MS } from "../text/datetime.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
 import { hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "../runner/runner-state.js";
@@ -289,7 +290,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
         warnEventBestEffort(
           root,
           r.role,
-          `released "${title}", which a stopped instance was working on (idle ${Math.round(CLAIM_IDLE_MAX_MS / 3_600_000)}h)`,
+          `released "${title}", which a stopped instance was working on (idle ${Math.round(CLAIM_IDLE_MAX_MS / HOUR_MS)}h)`,
         );
       }
     }
