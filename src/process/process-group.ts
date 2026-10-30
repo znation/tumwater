@@ -4,7 +4,15 @@ import { spawn, type ChildProcess } from "node:child_process";
 // result carries the caller's run record (BuildCheckRun), and no runtime cycle is created —
 // build/build-check.ts imports this module's runtime values, this file imports only the type.
 import type { BuildCheckRun } from "../build/build-check.js";
-import { captureCappedOutput, releaseChildHandles, signalTree, withoutLaunchServicesCheckIn } from "./process.js";
+import {
+  captureCappedOutput,
+  KILL_GRACE_MS,
+  releaseChildHandles,
+  signalTree,
+  withoutLaunchServicesCheckIn,
+} from "./process.js";
+
+export { KILL_GRACE_MS };
 import { errCode } from "../errno.js";
 
 /** The detached process-group runner: runScriptGroup starts a command in its own process
@@ -26,8 +34,10 @@ import { errCode } from "../errno.js";
  * runBuildCheck's killGraceMs parameter (build/build-check.ts), which tests shrink — pinning that
  * the escalation is armed on timeout (never at spawn: a healthy run that merely outlasts the
  * grace period must run to completion), that a surviving grandchild is taken down before the
- * run settles, and that a tree the SIGTERM already took down does not wait out the grace. */
-export const KILL_GRACE_MS = 10_000;
+ * run settles, and that a tree the SIGTERM already took down does not wait out the grace.
+ * Defined (and owned) in process.ts, where terminateChild's group kill and the run-marker
+ * sweep's orphan kill share the same value; re-exported here so the build boundary names the
+ * one it grants without importing a new module. */
 
 /** What one runScriptGroup attempt observed — enough for runBuildCheck to classify the
  * outcome exactly as execFile's rejection used to: how the process ended (exit code or

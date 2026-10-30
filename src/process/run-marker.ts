@@ -14,7 +14,7 @@ import path from "node:path";
 
 import type { PiRunKind } from "../pi/pi-event-line.js";
 import { agree, plural } from "../text/phrases.js";
-import { execFileAsync, withoutLaunchServicesCheckIn } from "./process.js";
+import { execFileAsync, KILL_GRACE_MS, withoutLaunchServicesCheckIn } from "./process.js";
 
 /** Every lookup normally finishes in well under a second; a wedged one must not hang
  * its caller — the same ceiling process-table.ts's probe lookups carry. */
@@ -263,7 +263,7 @@ export async function sweepRunMarker(marker: string): Promise<number> {
           // Already gone.
         }
       }
-    }, 10_000).unref();
+    }, KILL_GRACE_MS).unref();
   }
   return signaled;
 }

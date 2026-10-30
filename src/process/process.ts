@@ -111,8 +111,17 @@ export async function identityAlive(id: ProcessIdentity): Promise<boolean> {
   return now !== null && now.start === id.start;
 }
 
+/** SIGTERM → SIGKILL escalation window: how long a SIGTERM is given to take a process tree
+ * down before whatever survived is SIGKILLed. The one value behind every harness escalation
+ * — terminateChild's group kill here, the run-marker sweep's orphan kill, and the detached
+ * process-group runner (whose own `KILL_GRACE_MS` re-exports it, process-group.ts) — so a
+ * team-wide teardown, an end-of-run sweep, and a timed-out build check all grant the same
+ * grace and the literal cannot drift between them. 10 s is enough for a well-behaved tree to
+ * exit on SIGTERM; a SIGTERM-trapping straggler is SIGKILLed after it. */
+export const KILL_GRACE_MS = 10_000;
+
 /** Terminate a detached child and everything it started: SIGTERM to the process group now,
- * escalating to SIGKILL after 10 s if any of it is still alive. The child is spawned detached
+ * escalating to SIGKILL after KILL_GRACE_MS if any of it is still alive. The child is spawned detached
  * (its own process group leader — runPi does this for pi), so a negative PID reaches every
  * tool-call grandchild — which a single-PID kill leaves orphaned to launchd — while the
  * harness's own group is never in the blast radius. Shared by the run-timeout,
@@ -128,7 +137,7 @@ export async function identityAlive(id: ProcessIdentity): Promise<boolean> {
  * to cover what the SIGTERM already covers, and a finished harness process is not kept alive
  * by it. */
 export function terminateChild(child: ChildProcess): void {
-  if (signalTree(child, "SIGTERM")) setTimeout(() => signalTree(child, "SIGKILL"), 10_000).unref();
+  if (signalTree(child, "SIGTERM")) setTimeout(() => signalTree(child, "SIGKILL"), KILL_GRACE_MS).unref();
 }
 
 /** Signal the child's whole process group, falling back to the child alone when the group is
