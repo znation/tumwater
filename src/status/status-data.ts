@@ -24,7 +24,7 @@ import { collectRoleNotesOverCap, type RoleNoteOverCap } from "./status-role-not
 import { collectBudget } from "./status-budget.js";
 import { collectRootInstallDrift } from "./status-install.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
-import { briefBlockMissing, briefBlockOverCap } from "../brief/brief.js";
+import { briefStatus } from "../brief/brief.js";
 import { principlesBlockOverCap } from "../prompt/principles.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
@@ -511,13 +511,17 @@ function snapshotHealthFields(
   mergeQueue: StatusSnapshot["mergeQueue"],
   roleNotesOverCap: RoleNoteOverCap[],
 ): Partial<StatusSnapshot> {
+  // The brief's two degraded flags from ONE scan/read (brief.briefStatus): the always-on
+  // `no-brief` and `brief-truncated` amber alerts, read once per poll rather than twice
+  // re-reading the whole brief file.
+  const brief = briefStatus(root);
   return {
     mergeQueue,
     mainCheck: mainCheckForPoll(root, cfg),
     ciParity: ciParityForPoll(root, cfg),
     noDeclaredCheck: detectBuildCheck(root, cfg) === null ? true : undefined,
-    noBrief: briefBlockMissing(root) ? true : undefined,
-    briefTruncated: briefBlockOverCap(root) ? true : undefined,
+    noBrief: brief.missing ? true : undefined,
+    briefTruncated: brief.overCap ? true : undefined,
     ...(roleNotesOverCap.length > 0 ? { roleNotesOverCap } : {}),
     principlesTruncated: principlesBlockOverCap(root) ? true : undefined,
   };

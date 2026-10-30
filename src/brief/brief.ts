@@ -148,6 +148,30 @@ export function briefBlockOverCap(root: string): boolean {
   }
 }
 
+/** The always-on brief degraded-state flags, derived from ONE candidate scan and ONE file
+ * read — the per-second status snapshot's `noBrief`/`briefTruncated` fields. The two standalone
+ * functions (briefBlockMissing, briefBlockOverCap) each call readBrief, which re-lists both
+ * candidates and re-reads the whole brief file; snapshot() invoked them both every poll, so the
+ * file — which changes only when a role edits it — was read twice per second in each observer
+ * process. briefStatus is the twin of readBrief's promise (briefFile + readBriefText derive
+ * from one scan); the two flags share one read here, and each flag reuses exactly the derived
+ * value's predicate so the shared and standalone paths cannot disagree. `missing` is true when
+ * a candidate exists but none resolves a non-empty block (or the resolving read threw);
+ * `overCap` true when the resolved block exceeds the cap. A repo with no candidate at all is
+ * neither (both false). */
+export function briefStatus(root: string): { missing: boolean; overCap: boolean } {
+  if (briefCandidates(root).every((candidate) => !fs.existsSync(candidate))) {
+    return { missing: false, overCap: false };
+  }
+  let prompt = "";
+  try {
+    prompt = readBrief(root)?.prompt ?? "";
+  } catch {
+    return { missing: true, overCap: false }; // Unreadable — the briefBlockMissing subset.
+  }
+  return { missing: prompt === "", overCap: prompt.length > BRIEF_TEXT_MAX_CHARS };
+}
+
 /** The project's brief text, extracted from the resolved brief file's managed section —
  * TUMWATER.md when it exists with markers, else README.md (plans/portability.md §7a/7). The
  * closing marker is searched for only AFTER the opening one: an end marker mentioned in prose
