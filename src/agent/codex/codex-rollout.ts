@@ -192,7 +192,7 @@ function rateLimitLines(lastRateLimits: Json | undefined): string[] {
 /** The model this turn switched to when its `turn_context.model` differs from what the run
  * requested (finding 24): the model itself, else undefined for no switch. */
 function switchedToModel(model: string | undefined, requestedModel: string): string | undefined {
-  return model !== undefined && requestedModel !== undefined && model !== requestedModel ? model : undefined;
+  return model !== undefined && model !== requestedModel ? model : undefined;
 }
 
 /** Assemble the reading's canonical `run_usage`, `billing` and up-to-two `rate_limit` lines
