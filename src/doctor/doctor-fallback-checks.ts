@@ -1,8 +1,8 @@
 import { loadConfigForCheck } from "./doctor-model-checks.js";
 import { fallbackPair, tierChainSteps } from "../config/config-fallbacks.js";
-import { fallbackModelPair, piModelsPath, piPairFree, piProviderBaseUrl, readPiProviders } from "../pi/pi-models.js";
+import { fallbackModelPair, piModelsPath, piPairFree, piProviderBaseUrl, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import type { FallbackModelConfig } from "../config/config-schema.js";
-import { readClaudeAccount } from "../agent/claude/claude-account.js";
+import { readClaudeAccount, type ClaudeAccount } from "../agent/claude/claude-account.js";
 import { formatClock } from "../text/datetime.js";
 import { loadRunnerStates } from "./doctor-holds.js";
 import { modelPairName, pairDailyCost } from "../budget/budget.js";
@@ -85,6 +85,63 @@ const isLocalUrl = (url: string): boolean => {
   }
 };
 
+/** Which URL this step probes, and did it answer. A provider that names a backend other than
+ * pi (claude today; opencode from part 2) never asks pi for a base URL or runs pi's price
+ * probe — only a pi step may. Returns the step's backend-ness, the resolved base URL and
+ * whether a local pi step answered; a non-local or non-pi step never probes (up stays null). */
+async function resolveStepProbe(
+  modelsPath: string,
+  pair: FallbackModelConfig,
+  probe: (url: string) => Promise<boolean>,
+): Promise<{ nonPiBackend: boolean; base: string | null; up: boolean | null }> {
+  const nonPiBackend = pair.backend !== undefined && pair.backend !== "pi";
+  const base = !nonPiBackend && pair.provider ? piProviderBaseUrl(modelsPath, pair.provider) : null;
+  const local = base !== null && isLocalUrl(base);
+  const up = local ? await probe(`${base}/models`) : null;
+  return { nonPiBackend, base, up };
+}
+
+/** The claude step's billing display: extra usage when the step follows an earlier claude
+ * model, else the persisted account's billing answer (or unknowns when the account is absent). */
+function claudeVerdict(extra: boolean | undefined, account: ClaudeAccount | null): string {
+  return extra ? "extra usage" : (account?.billing ?? "billing unknown");
+}
+
+/** Why this step is not runnable now (or is, when no arm fires): the five-way verdict, and
+ * whether the chain is down. The `up === false` arm is the only one that marks the chain down.
+ * `accounts` prices a free/claude pair for the one claude account held by the caller. */
+function stepVerdict(
+  pair: FallbackModelConfig,
+  ctx: {
+    up: boolean | null;
+    base: string | null;
+    cap: number | undefined;
+    spent: number;
+    providers: Map<string, PiModelDef[]> | null;
+    accounts: (backend: string) => ClaudeAccount | null;
+  },
+): { verdict: string; down: boolean } {
+  const { up, base, cap, spent, providers, accounts } = ctx;
+  if (up === false) {
+    return { verdict: `not running (GET ${base}/models failed)`, down: true };
+  } else if (cap !== undefined && spent >= cap) {
+    return { verdict: `cap reached (${usd(spent)}/${usdCap(cap)})`, down: false };
+  } else if (pair.backend !== undefined && pair.backend !== "pi") {
+    return { verdict: `claude ${claudeVerdict(pair.extraUsage, accounts("claude"))}`, down: false };
+  } else if (piPairFree(providers, pair, accounts)) {
+    return { verdict: up ? "free · server up" : "free", down: false };
+  }
+  return {
+    verdict: cap !== undefined ? `priced, ${usd(spent)}/${usdCap(cap)} today` : "priced, team cap only",
+    down: false,
+  };
+}
+
+/** One chain fragment's line: the tier, the 1-based step number and the step's pair and verdict. */
+function chainFragment(tier: string, step: number, pair: FallbackModelConfig, verdict: string): string {
+  return `${tier} ${step + 1}: ${pair.provider ?? "?"}/${pair.model ?? "?"} — ${verdict}`;
+}
+
 /** The `fallback chain` check: one fragment per step of every tier's chain saying whether the
  * step can run now — a local pi server that does not answer (warn), a step whose own daily cap is
  * spent, a free pair, a claude step with its billing, or a priced pair. Reads config, pi's
@@ -108,28 +165,12 @@ export async function checkFallbackChain(
   let down = false;
   const fragments: string[] = [];
   for (const { tier, step, pair } of steps) {
-    // A provider that names a backend other than pi (claude today; opencode from part 2) never
-    // asks pi for a base URL or runs pi's price probe — only a pi step may.
-    const nonPiBackend = pair.backend !== undefined && pair.backend !== "pi";
-    const base = !nonPiBackend && pair.provider ? piProviderBaseUrl(modelsPath, pair.provider) : null;
-    const local = base !== null && isLocalUrl(base);
-    const up = local ? await probe(`${base}/models`) : null;
+    const { base, up } = await resolveStepProbe(modelsPath, pair, probe);
     const cap = pair.maxDailyCostUsd;
     const spent = cap !== undefined ? pairDailyCost(states, modelPairName(pair), now) : 0;
-    let verdict: string;
-    if (up === false) {
-      down = true;
-      verdict = `not running (GET ${base}/models failed)`;
-    } else if (cap !== undefined && spent >= cap) {
-      verdict = `cap reached (${usd(spent)}/${usdCap(cap)})`;
-    } else if (nonPiBackend) {
-      verdict = `claude ${pair.extraUsage ? "extra usage" : (account?.billing ?? "billing unknown")}`;
-    } else if (piPairFree(providers, pair, accounts)) {
-      verdict = up ? "free · server up" : "free";
-    } else {
-      verdict = cap !== undefined ? `priced, ${usd(spent)}/${usdCap(cap)} today` : "priced, team cap only";
-    }
-    fragments.push(`${tier} ${step + 1}: ${pair.provider ?? "?"}/${pair.model ?? "?"} — ${verdict}`);
+    const { verdict, down: isDown } = stepVerdict(pair, { up, base, cap, spent, providers, accounts });
+    down ||= isDown;
+    fragments.push(chainFragment(tier, step, pair, verdict));
   }
   const detail = fragments.join("; ");
   return down ? warnOutcome(detail) : okOutcome(detail);
