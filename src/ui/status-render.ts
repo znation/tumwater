@@ -516,8 +516,8 @@ export function renderStatusSpans(
 ): { lines: StatusLine[]; roles: StatusRoleRow[] } {
   const lines: StatusLine[] = [];
   // One clock read per render, shared by the timed-pause badge's countdown and every row's
-  // next-run cell — a per-site Date.now() could tick over // retired-name-ok
-  // between them and disagree with itself.
+  // next-run cell — a per-site Date.now() could tick over between them and
+  // disagree with itself. // retired-name-ok: event-loop tick
   const now = Date.now();
   lines.push(statusHeaderLine(root, snap, now));
   lines.push([]);
