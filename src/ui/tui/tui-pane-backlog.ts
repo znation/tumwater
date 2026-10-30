@@ -5,7 +5,7 @@ import { entryKey, plansReleasedBy, releasedPartsNote } from "../../backlog/back
 import { plannedPlanEntries } from "../../backlog/backlog.js";
 import { allLiveClaims } from "../../runner/runner-state-load.js";
 import { requestWake } from "../../operator/operator-intent.js";
-import { isOpenBacklogLabel, moveEntrySelection, pageMarkdownBody, visibleBacklogIndexes, type labeledBacklogEntries } from "./tui-backlog.js";
+import { isOpenBacklogLabel, moveEntrySelection, pageMarkdownBody, visibleBacklogIndexes, clampSelection, type labeledBacklogEntries } from "./tui-backlog.js";
 import { arrowDir, pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { guardError } from "./tui-guard.js";
@@ -295,7 +295,7 @@ export function createBacklogPane(
       // view ignores these keys as today (applyKey drops them).
       if (selectedEntry !== null && !ctx.es.answerFor && !ctx.es.entryEditFor) {
         const entries = session.flat();
-        const sel = entries.length > 0 ? Math.min(selectedEntry, entries.length - 1) : null;
+        const sel = entries.length > 0 ? clampSelection(selectedEntry, entries.length) : null;
         const body = sel === null ? "" : entries[sel]!.body;
         entryScroll = pageMarkdownBody(entryScroll, body, session.entryBudget, page);
       }

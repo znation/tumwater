@@ -13,7 +13,7 @@ import { eventMatchesGrep, eventResult, formatEvent } from "../../events/event-f
 import { eventTypeLabel } from "../../events/event-labels.js";
 import { eventTypeTally } from "../../events/event-tally.js";
 import type { HarnessEvent } from "../../events/events.js";
-import { backlogLines, entryBodyWindow, browsableBacklogEntries, isOpenBacklogLabel, planListLines } from "./tui-backlog.js";
+import { backlogLines, entryBodyWindow, browsableBacklogEntries, isOpenBacklogLabel, planListLines, clampSelection } from "./tui-backlog.js";
 import { answeredQuestionSummaries } from "../../backlog/backlog-question-answer.js";
 import { DASHBOARD_ANSWERED_QUESTIONS, recentFinished } from "../status-payload.js";
 import { donePlanEntries, DONE_DATE_RE, entryMatches, FIXED_DATE_RE, fixedBugEntries } from "../../backlog/backlog.js";
@@ -198,7 +198,7 @@ function backlogBody(_pane: Extract<TuiView, { kind: "backlog" }>, opts: PaneBod
   });
   // A stale selection (an entry removed since the last render) clamps to the last; no
   // entries at all falls back to list mode.
-  const sel = state.selectedEntry === null || flat.length === 0 ? null : Math.min(state.selectedEntry, flat.length - 1);
+  const sel = state.selectedEntry === null || flat.length === 0 ? null : clampSelection(state.selectedEntry, flat.length);
   if (sel === null) {
     // List mode: section headings stand out, empty sections read dim. Keeps the HEAD of the
     // list when it overflows — file order is newest-first, unlike events which keep the tail.
@@ -316,7 +316,7 @@ function queuedBody(pane: Extract<TuiView, { kind: "queued" }>, opts: PaneBodyOp
   // own note either way.
   const sel = state.selectedQueued === null || state.queuedRows.length === 0
     ? null
-    : Math.min(state.selectedQueued, state.queuedRows.length - 1);
+    : clampSelection(state.selectedQueued, state.queuedRows.length);
   if (sel !== null) {
     const row = state.queuedRows[sel]!;
     const win = entryBodyWindow(row.text, state.paneScroll, entryBudget, width);

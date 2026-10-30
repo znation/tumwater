@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   backlogLines,
   browsableBacklogEntries,
+  clampSelection,
   entryBodyWindow,
   labeledBacklogEntries,
   moveEntrySelection,
@@ -60,6 +61,14 @@ test("backlogLines with nothing at all is a single self-explanatory line", () =>
 
 // Entry browsing in the project-status pane: the
 // cursor math and body rendering are pure, so they are pinned here without a TTY.
+
+test("clampSelection clamps a stale selection to the last item and nulls on empty", () => {
+  assert.equal(clampSelection(0, 3), 0);
+  assert.equal(clampSelection(5, 3), 2); // stale index past the new count
+  assert.equal(clampSelection(null, 3), null); // no selection yet
+  assert.equal(clampSelection(0, 0), null); // emptied list
+  assert.equal(clampSelection(null, 0), null);
+});
 
 test("moveEntrySelection opens the first entry on down and the last on up from list mode", () => {
   assert.equal(moveEntrySelection(3, null, "down"), 0);

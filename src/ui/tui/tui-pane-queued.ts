@@ -1,7 +1,7 @@
 import { listWideScope, queuedListRows, queuedRowsMatching, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
 import { movePromptToTop } from "../../inbox/inbox-top.js";
-import { moveEntrySelection } from "./tui-backlog.js";
+import { moveEntrySelection, clampSelection } from "./tui-backlog.js";
 import { arrowDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { guardError } from "./tui-guard.js";
@@ -40,7 +40,7 @@ export function createQueuedPane(
     session.paneCache = renderQueuedList(queuedRows, session.now());
     selectedQueued = selectedQueued === null || queuedRows.length === 0
       ? null
-      : Math.min(selectedQueued, queuedRows.length - 1);
+      : clampSelection(selectedQueued, queuedRows.length);
     session.paneScroll = 0;
   };
 
