@@ -1,8 +1,8 @@
 /** Shared pieces of the team ALERT model (src/ui/team-alerts.ts): the alert data types,
  * the `TeamAlert`/`AlertRole` shapes every builder returns or reads, and the small
  * composition helpers the per-domain builder modules (team-alert-{status,backlog,
- * merge,tail}.ts) share, so the wording they reuse cannot drift between
- * modules. Split from team-alerts.ts when its four builders moved to their own files. */
+ * tail}.ts) share, so the wording they reuse cannot drift between
+ * modules. Split from team-alerts.ts when its three builders moved to their own files. */
 
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { STALL_RE, duration } from "./run-progress-model.js";
