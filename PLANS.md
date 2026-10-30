@@ -10,6 +10,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Previously held 2**
 
+**Needs review 2026-10-29 by feature: too large for one run** — the `main_red` verdict removal alone ripples across ~35 src/ files (beyond the files-touched list: run-outcome.ts, tone.ts, gui-client-model.ts, failure-time-spend/render/data/state-change.ts, event-labels/notify/format/events.ts, cli-start-summary.ts, fallback-breaker.ts, runner-state + runner-state-load.ts, runner-leftover.ts, runner-recovery.ts, orchestrator-poll.ts, review.ts + review-precheck.ts, status-polls.ts, doctor-holds.ts, run-finalize.ts, run-prompt.ts, report-*.ts, pending-prompt.ts, baseline/main-red.ts, main-guardrails.ts, main-baseline.ts, main-watch.ts, redeployer.ts, build-check-*.ts, config.ts, merge-verify.ts, merge-queue.ts) and 39 test files; the entry's files-touched list names only 12 src files. The batch/stack/bisect deletion (merge-to-main.ts + merge-batch.ts + merge-stack.ts + merge-drain.ts + merge-core.ts + tests) is a separable piece; removing the `main_red` verdict from RunResult (with its state/poll/doctor/gui/events/failure/report/runner ripples) is another. The plan role should split 3f/3 along those lines.
+
 **Needs review 2026-10-29 by feature: too large for one run**
 
 **Goal.** With the watch verifying every new tip, the checks that stood in front of a landing are redundant. Delete the merge slot's in-lock build re-check and the batch check with its largest-passing-prefix bisect, so a merge is: rebase onto the tip, take the fast-forward under the merge lock. A broken commit then sits on main between its landing and the watch's fix, which is the `ci` healer's job.
