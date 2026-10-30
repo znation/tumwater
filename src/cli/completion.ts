@@ -188,11 +188,9 @@ const ROLE_POSITIONAL_COMMANDS = ["role", "history", "revert"];
 
 /** Flags whose value is a file path: completion offers file names after them. Derived from the
  * HELP text, which renders every path-valued flag as `--<flag> <path>`, so a new or renamed
- * path flag completes the moment its help stanza does — the same drift-free source the rest of
- * completion reads from. */
-const PATH_FLAGS = [
-  ...new Set([...HELP.matchAll(/--([a-z][a-z-]*) <path>/g)].map((m) => `--${m[1]}`)),
-];
+ * path flag completes the moment its help stanza does — matching completion's drift-free-by-design
+ * claim — instead of needing a hand-edited list. Sorted for a stable script, like the other flag lists. */
+const PATH_FLAGS = distinctOrdered([...HELP.matchAll(/--([a-z][a-z-]*) <path>/g)].map((m) => `--${m[1]!}`));
 
 /** The constant fish value suffix for the flags whose candidates are a fixed `__tumwater_*` list:
  * `--role`, `--result`, `--type` and `--status` take comma lists, so they complete per item through
