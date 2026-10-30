@@ -7,6 +7,7 @@ import { applyMergeOutcome, ERROR_STREAK_WARN } from "../run/run-apply.js";
 import { observeAccount } from "../agent/subscription-account.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
 import { mergeStatePath } from "../paths.js";
@@ -127,17 +128,44 @@ export function writeMergeMarker(root: string, marker: MergeInFlight & { stage: 
   writeJsonAtomic(mergeStatePath(root), marker);
 }
 
+// Per-root in-flight-marker cache (stat-cache.cachedByStat), keyed by state-file path: the
+// status observers (status/TUI/GUI) poll the marker every second, and the pipeline rewrites it
+// atomically (tmp+rename) at each merge stage and per-change status transition, so an unchanged
+// marker serves every poll from one stat instead of a full read + JSON parse per observer per
+// second. An atomic write changes dev/ino/mtime/size, so it invalidates exactly like every other
+// cachedByStat consumer (readOrchestratorInfo and the rest). Only observers read through this
+// cache; the merge path's own read-modify-write (updateMergeChange) also goes through it and
+// mutates the returned clone, so a write never poisons a later poll.
+const mergeMarkerCache = new Map<string, StatKeyedValue<MergeInFlight>>();
+
 /** Read the in-flight merge marker; null when missing or unreadable. Never throws —
  * observers poll it every second, and a torn write (a crash mid-write) must not take them
- * down (the readOrchestratorInfo precedent). */
+ * down (the readOrchestratorInfo precedent). Stat-cached per file (above): a steady-state
+ * poll costs one stat instead of re-reading and re-parsing a marker that only changes at
+ * merge transitions. Returns a deep-ish copy so each caller owns its data — the merge path
+ * mutates the records it finds before rewriting, and an aliased shared cache entry must not
+ * poison a later poll. */
 export function readMergeMarker(root: string): MergeInFlight | null {
-  const marker = readJsonFile<MergeInFlight>(mergeStatePath(root));
-  if (!marker || typeof marker.role !== "string") return marker;
-  const out = { ...marker, role: canonicalRoleId(marker.role) };
-  if (Array.isArray(marker.changes)) {
-    out.changes = marker.changes.map((c) => (c && typeof c.role === "string" ? { ...c, role: canonicalRoleId(c.role) } : c));
-  }
-  return out;
+  const file = mergeStatePath(root);
+  return cachedByStat(
+    mergeMarkerCache,
+    file,
+    file,
+    () => {
+      const marker = readJsonFile<MergeInFlight>(file);
+      if (!marker || typeof marker.role !== "string") return marker;
+      const out = { ...marker, role: canonicalRoleId(marker.role) };
+      if (Array.isArray(marker.changes)) {
+        out.changes = marker.changes.map((c) => (c && typeof c.role === "string" ? { ...c, role: canonicalRoleId(c.role) } : c));
+      }
+      return out;
+    },
+    (m) => ({
+      ...m,
+      role: m.role,
+      ...(Array.isArray(m.changes) ? { changes: m.changes.map((c) => ({ ...c })) } : {}),
+    }),
+  );
 }
 
 /** Rewrite the marker after one of its records changed: re-point the top level at the first

@@ -19,6 +19,7 @@ import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbo
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { enqueueMerge, queuedMergeFiles } from "../src/merge/merge-queue.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { withCountedReads } from "./helpers/fs-faults.js";
 
 test("snapshot carries queued director prompts as truncated previews, fresh per poll", async () => {
   const repo = makeRepo();
@@ -270,6 +271,44 @@ test("snapshot's director inbox deliverability advances with its pinned clock", 
   assert.equal(deferred.inboxPrompts.length, 1);
   // At the deferred time itself (deliverableAt is `at <= now`), it counts.
   assert.equal(snapshot(repo, undefined, until).inbox, 1);
+});
+
+// The in-flight marker is stat-cached per poll (src/merge/merge-slot.ts): an unchanged marker
+// serves every observer's snapshot from one stat, not a re-read + JSON parse each second, and
+// a republished (atomic tmp+rename) marker is re-read on the next poll — the same stat-keyed
+// contract the orchestrator-info cache pins in status-data.test.ts.
+test("snapshot serves an unchanged in-flight merge marker from the stat-keyed cache", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "merge marker cache test");
+  const startedAt = Date.now();
+  writeOrchestratorMarker(repo, ["clean"]);
+  enqueueMerge(repo, { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: Date.now() });
+  writeJsonFile(mergeStatePath(repo), {
+    role: "clean",
+    sha: "abc1234",
+    summary: "tidy something",
+    startedAt,
+  });
+  assert.equal(snapshot(repo).mergeQueue.inFlight?.sha, "abc1234"); // first read populates the cache
+
+  withCountedReads(
+    (reads) => {
+      const snap = snapshot(repo);
+      assert.equal(snap.mergeQueue.inFlight?.role, "clean");
+      assert.equal(reads(), 0); // unchanged marker — no re-read of the in-flight file at all
+    },
+    (file) => typeof file === "string" && file.endsWith(`${path.sep}state${path.sep}merging.json`),
+  );
+
+  // A republished marker (the merge path rewrote it via tmp+rename) is re-read, not served stale.
+  writeJsonFile(mergeStatePath(repo), {
+    role: "clean",
+    sha: "abc1234",
+    summary: "tidy something",
+    startedAt: Date.now(),
+    stage: "merging",
+  });
+  assert.equal(snapshot(repo).mergeQueue.inFlight?.stage, "merging");
 });
 
 // --- pausedUntil: the team marker's standing timed-pause deadline (PLANS.md 2026-09-25) ---
