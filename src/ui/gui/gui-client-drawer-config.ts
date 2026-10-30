@@ -16,6 +16,10 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
   // String.raw template).
   function drawerConfigHtml(view, role) {
     const pair = (p, m) => [p, m].filter(Boolean).join("/");
+    // One coercion home for the loosely-typed spend/cap fields: a foreign shape reads as 0,
+    // never NaN — the same scalar-guard rule the report-chart region's num helper applies, so
+    // the drawer's Spend and Daily cap rows cannot drift from the payload's intent.
+    const num = (x) => Number(x) || 0;
     // A fallback pair's label, mirroring role-render.ts's fallbackPairLabel so the drawer's
     // Budget fallback row names a non-pi backend's namespace the same way the CLI's fallback
     // lines do: a non-pi backend with a model reads <backend>/<model>, else <provider>/<model>,
@@ -182,9 +186,9 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
     // all-zero usage is absent on the payload, so this row never renders for a never-costly role.
     if (view.usage && typeof view.usage === "object") {
       const u = view.usage;
-      const real = Number(u.costUsd) || 0;
-      const tokens = Number(u.tokens) || 0;
-      const notional = Number(u.notionalCostUsd) || 0;
+      const real = num(u.costUsd);
+      const tokens = num(u.tokens);
+      const notional = num(u.notionalCostUsd);
       let spend = fmtUsd(real) + " · " + fmtTokens(tokens) + " tokens";
       if (notional !== 0) spend += " · " + fmtUsd(notional) + " notional";
       rows.push(kvRow("Spend", spend));
@@ -200,7 +204,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
       const dc = view.dailyCap && typeof view.dailyCap === "object" ? view.dailyCap : null;
       const editing = capEditing && capEditing.role === role;
       const capBody = dc
-        ? fmtUsd(Number(dc.spentUsd) || 0) + " of " + fmtUsd(Number(dc.capUsd) || 0) + " spent today (" + (dc.over ? "holding now — no new runs until local midnight" : "not holding") + ")" +
+        ? fmtUsd(num(dc.spentUsd)) + " of " + fmtUsd(num(dc.capUsd)) + " spent today (" + (dc.over ? "holding now — no new runs until local midnight" : "not holding") + ")" +
           (Array.isArray(dc.roleIds) && dc.roleIds.length > 1 ? " · shared by " + dc.roleIds.join(", ") : "") +
           (typeof view.dailyCapHitAt === "number" ? " · ~cap at " + clockHm(view.dailyCapHitAt) : "")
         : "no cap";
