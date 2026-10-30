@@ -64,11 +64,11 @@ test("an all-rejected batch returns a defined result for every request without t
 test("a green batch stacks every approved change, fast-forwards main once, and logs per-change events", async () => {
   const { root, shas, states, wiringFor } = await batchFixture(["alpha", "beta"]);
   // No pre-merge reviewer verdict: each change's approval is the gate's deterministic green
-  // build pre-check (review.afterMerge acts on a pre-check that passed).
+  // build pre-check, and every merged commit is reviewed after landing (part 3d/3).
   declareCheck(root, "#!/bin/sh\necho ok\n");
   const mainBefore = mainSha(root);
 
-  const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor, undefined, afterMergeConfig(["alpha", "beta"]));
+  const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor, undefined, afterMergeConfig());
 
   assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
   assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes merged on main");
@@ -104,7 +104,7 @@ test("a batch stacks every commit of a multi-commit pin, not its head alone", as
   // orphan the work beneath it — the stack must pick the whole range from main to that head.
   const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
   declareCheck(root, "#!/bin/sh\necho ok\n");
-  const config = afterMergeConfig(["alpha", "beta"]);
+  const config = afterMergeConfig();
   sh(root, "git", "checkout", "--detach", shas.alpha!);
   fs.writeFileSync(path.join(root, "more.txt"), "more by alpha\n");
   sh(root, "git", "add", "more.txt");
@@ -187,7 +187,7 @@ test("an abort during a gate build check settles the batch aborted with nothing 
       `if [ "$n" -eq 2 ]; then touch '${announce}'; i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done; fi\n` +
       `echo ok\n`,
   );
-  const config = afterMergeConfig(["alpha", "beta"]);
+  const config = afterMergeConfig();
   const mainBefore = mainSha(root);
   const controller = new AbortController();
   // Fire the abort the moment beta's gate build check is in flight — the merge is stopped at a

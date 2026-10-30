@@ -7,7 +7,7 @@
   "thrashTurns": 40,
   "thrashMinutes": 30,
   "autoRestart": true,
-  "review": { "enabled": true, "exemptPaths": ["*.md", "docs/**"], "afterMerge": ["bugfix", "clean", "coverage", "dedupe", "organize", "readme"] },
+  "review": { "enabled": true, "exemptPaths": ["*.md", "docs/**"] },
   "customRoles": [],
   "roles": {
     "steward": { "enabled": true, "minRunIntervalSeconds": 21600 },

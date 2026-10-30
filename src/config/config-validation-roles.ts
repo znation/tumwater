@@ -1,6 +1,6 @@
 /** The per-role and cross-field section rules of tumwater.json validation: the `customRoles`
- * collect-and-check block, the `roles.<id>` entry block, `review.afterMerge`'s name check,
- * the per-role daily cost caps and quiet hours, and the `idleBackoff`
+ * collect-and-check block, the `roles.<id>` entry block, the per-role daily cost caps and
+ * quiet hours, and the `idleBackoff`
  * cross-field pair. Extracted from the single validateConfig gate (config-validation.ts) so a
  * per-role or cross-field edit lands as a per-theme diff instead of a whole-gate one; this
  * module runs once, at the gate's end, after every other section has appended its problems,
@@ -8,7 +8,7 @@
  * in config-field-checks.ts; the helpers passed in are the closures the gate binds once (the
  * problems-bound checkers and the shared model-triple sequence), and the
  * cross-cutting `customNames` set — collected in the customRoles block, consumed by the
- * roles.<id>, afterMerge, cap and quiet-hour blocks — is owned here, so validateConfig
+ * roles.<id>, cap and quiet-hour blocks — is owned here, so validateConfig
  * passes no set across the boundary. */
 
 import {
@@ -18,7 +18,7 @@ import {
   ROLE_ENTRY_KEYS,
   ROLE_INSTRUCTIONS_MAX_CHARS,
 } from "./config-schema.js";
-import { DIRECTOR_ROLE, allRoleIds } from "../roles/roles.js";
+import { allRoleIds } from "../roles/roles.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
 import { isJsonObject } from "../files/json-object.js";
 import { isNonBlankString } from "../text/text.js";
@@ -89,8 +89,8 @@ interface RolesCrossFieldHelpers {
 }
 
 /** Validate the per-role and cross-field sections that close the gate: `customRoles`, the
- * `roles.<id>` entries, `review.afterMerge`'s role names, the per-role caps and quiet hours,
- * and the `idleBackoff` cross-field pair,
+ * `roles.<id>` entries, the per-role caps and quiet hours, and the `idleBackoff`
+ * cross-field pair,
  * each appended to `problems` in the order the gate produced. The single call site in
  * validateConfig is the point where these problems were appended, so the order across the
  * whole pass is unchanged. */
@@ -101,7 +101,6 @@ export function validateRolesAndCrossField(
 ): void {
   const customNames = validateCustomRoles(r, problems, helpers);
   validateRoleEntries(r, problems, helpers, customNames);
-  validateReviewAfterMerge(r, problems, customNames);
   validatePerRoleCostCaps(r, problems, customNames);
   validatePerRoleQuietHours(r, problems, customNames);
   validateIdleBackoff(r, problems);
@@ -216,23 +215,6 @@ function validateRoleEntries(
         }
       }
     }
-  }
-}
-
-/** Validate `review.afterMerge`'s role names: a typo'd id would silently keep that role
- * reviewed before merging; the director is refused because its changes always merge on a
- * review first. */
-function validateReviewAfterMerge(
-  r: Record<string, unknown>,
-  problems: string[],
-  customNames: ReadonlySet<string>,
-): void {
-  if (isJsonObject(r.review) && Array.isArray(r.review.afterMerge)) {
-    r.review.afterMerge.forEach((id: unknown, i) => {
-      if (typeof id !== "string" || id.trim() === "") return; // Already reported by checkStringArray.
-      if (id === DIRECTOR_ROLE) problems.push(`review.afterMerge[${i}] must not be "${DIRECTOR_ROLE}" — its changes are always reviewed before merging`);
-      else checkKnownRoleId("review.afterMerge", id, customNames, problems);
-    });
   }
 }
 

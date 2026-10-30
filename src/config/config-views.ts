@@ -212,14 +212,6 @@ export function roleSeamTier(config: TumwaterConfig, role: string): ModelTier {
   return roleById(role)?.tier ?? "default";
 }
 
-/** Whether the review gate reviews this role's commits AFTER they merge (review.afterMerge
- * lists the role's base id). One home for the membership test the review gate (review.ts's
- * reviewAttempt) and the role view (`tumwater role <id>` / the dashboard role drawer) share,
- * so an operator reading one surface sees the same answer every consumer enforces. Pure, no I/O. */
-export function reviewedAfterMerge(config: TumwaterConfig, role: string): boolean {
-  return (config.review.afterMerge ?? []).includes(baseRoleOf(role));
-}
-
 /** The config as seen by one role: role-level provider/model/thinking overrides applied
  * over the top-level values, plus the per-role minRunIntervalSeconds (a slow clock for
  * roles that should act rarely) falling back to the global value when unset. The role's

@@ -270,12 +270,10 @@ export function runBatch(
   );
 }
 
-/** A config that approves the given roles on the deterministic green build pre-check alone
- * (review.afterMerge), so a batch test can merge without reading a pre-merge reviewer verdict. */
-export function afterMergeConfig(roles: string[]): TumwaterConfig {
-  const cfg = defaultConfig();
-  cfg.review = { ...cfg.review, afterMerge: roles };
-  return cfg;
+/** A default config for a batch test, so a batch can merge on the deterministic green build
+ * pre-check alone (the pre-merge reviewer is gone, part 3d/3). */
+export function afterMergeConfig(): TumwaterConfig {
+  return defaultConfig();
 }
 
 // A test that cares WHICH verify does what keys its reviewer on the change under review, and one

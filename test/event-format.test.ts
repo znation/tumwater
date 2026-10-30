@@ -363,7 +363,7 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
 test("formatEvent names the after-merge tier on the review lines", () => {
   const head = "0123456789abcdef";
 
-  // A review.afterMerge role's events carry afterMerge: true (written by reviewMergedCommit,
+  // A post-merge review's events carry afterMerge: true (written by reviewMergedCommit,
   // src/review/post-merge-review.ts); the feed must say so — the unchanged pre-merge shapes are
   // pinned by the review-gate test above. === true is the discriminator, so a hand-edited
   // non-boolean field never fabricates the tier.

@@ -333,9 +333,9 @@ test("buildReviewPrompt always says tumwater is running the project's check", ()
   assert.equal([...withCheck.matchAll(/VERDICT:/g)].length, 2);
 });
 
-// A post-merge review (review.afterMerge) judges a commit already on main, so a finding it can
-// repair IS the work: the prompt tells the reviewer to make the minimal fix in the worktree and
-// end with a FIX: line — but only for that caller. Every pre-merge caller's prompt is unchanged.
+// A post-merge review judges a commit already on main, so a finding it can repair IS the work:
+// the prompt tells the reviewer to make the minimal fix in the worktree and end with a FIX:
+// line — but only for that caller. Every pre-merge caller's prompt is unchanged.
 test("buildReviewPrompt's fix-forward clause and FIX: line reach only the post-merge caller", () => {
   const pre = buildReviewPrompt("diff body");
   assert.ok(!pre.includes("repair IS the work"), "no fix-forward clause for a pre-merge reviewer");

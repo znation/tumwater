@@ -1,7 +1,7 @@
 /**
  * The dashboard's POST config/budget command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):
- * config-set, config-unset, budget, role-cap, role-review-after-merge, role-enable,
+ * config-set, config-unset, budget, role-cap, role-enable,
  * role-disable, and
  * notify-test — the
  * post-handler layer onto
@@ -9,7 +9,6 @@
  * own `res`.
  */
 import { setConfigKey, setDailyBudgetUsd, setRoleModelFields, unsetConfigKey } from "../config/config-write.js";
-import { loadConfigSafe } from "../config/config.js";
 import { checkDailyBudgetUsd, checkMinRunInterval } from "../config/config-keys.js";
 import { testNotifyHook } from "../cli/cli-notify-command.js";
 import { rejectBadRole, requireConfigKey, requireRoleField, requireStringField } from "./gui-args.js";
@@ -86,64 +85,6 @@ export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerR
   const result = setConfigKey(root, "maxDailyCostUsdPerRole." + baseRole, JSON.stringify(value));
   if (!result.ok) return configKeyError(res, "maxDailyCostUsdPerRole." + baseRole, result);
   sendJson(res, 200, { ok: true, role: baseRole, maxDailyCostUsd: value as number, ...unchangedFlag(result) });
-}
-
-/** Handle POST /api/role-review-after-merge: the role drawer's Review row button moves one role
- * in or out of review.afterMerge — the browser twin of `tumwater role <id>
- * --review-after-merge`/`--clear-review-after-merge` (the CLI's just-landed write, the amber
- * role-cap alert's remedy on the surface the alert appears on). Same body discipline as
- * /api/role-cap (readPostBody → 400 malformed/non-object, 413 oversized); the body carries the
- * desired membership `afterMerge: true|false` (400 `afterMerge must be true or false`
- * otherwise), and the role id maps to its base role's membership (baseRoleOf) exactly as the
- * CLI's `--review-after-merge` branch does. An unknown id is refused up front (rejectBadRole
- * on the base id, the mirror of the CLI's requireKnownRole) because a no-op or clear write
- * skips validateConfig's known-role refusal — setConfigKey's section branch returns unchanged
- * and writes nothing when the candidate equals the resolved list, so without it a bogus id
- * would answer 200 on a clear. The whole-list value rides the same setConfigKey core `config
- * set review.afterMerge <json>` uses, so validateConfig owns the string-array shape and the
- * `review.afterMerge must not be "director"` refusal — no explicit director branch, matching
- * the CLI. A no-op write (already in the asked-for state) answers unchanged and leaves
- * tumwater.json byte-identical. */
-export async function handleRoleReviewAfterMerge(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature", "afterMerge": true}');
-  if (!body) return;
-  const role = requireRoleField(res, body);
-  if (role === null) return;
-  const want = body.afterMerge;
-  if (typeof want !== "boolean") {
-    badRequest(res, "afterMerge must be true or false");
-    return;
-  }
-  const base = baseRoleOf(role);
-  // An unknown base id is refused up front — the mirror of the CLI's requireKnownRole. A
-  // no-op or clear write returns the list unchanged and setConfigKey skips validateConfig
-  // (the known-role check a real write gets for free), so without this guard a bogus id
-  // would answer 200 on the clear path (same reason handleRoleQuietHours's clear arm carries
-  // rejectBadRole). The stored list holds base ids, so the base id is screened — as
-  // validateConfig's checkKnownRoleId screens the written list — letting an instance id
-  // like feature-2 map to its known base and pass.
-  if (rejectBadRole(root, res, base)) return;
-  // The CLI's own computation, list-for-list: the whole value lands through the same
-  // setConfigKey core so validateConfig owns the string-array shape and the director
-  // refusal, and the write is atomic.
-  const list = loadConfigSafe(root).config?.review.afterMerge ?? [];
-  const has = list.includes(base);
-  const next = has === want ? list : want ? [...list, base] : list.filter((r) => r !== base);
-  const result = setConfigKey(root, "review.afterMerge", JSON.stringify(next));
-  if (!result.ok) return configKeyError(res, "review.afterMerge", result);
-  sendJson(res, 200, {
-    ok: true,
-    role: base,
-    afterMerge: want,
-    message: result.unchanged
-      ? want
-        ? `${base}: already in review.afterMerge, so tumwater.json was not written`
-        : `${base}: not in review.afterMerge, so nothing was cleared`
-      : want
-        ? `${base}: added to review.afterMerge`
-        : `${base}: removed from review.afterMerge`,
-    ...unchangedFlag(result),
-  });
 }
 
 /** Handle POST /api/role-interval: the role drawer's min run interval editor sets or clears

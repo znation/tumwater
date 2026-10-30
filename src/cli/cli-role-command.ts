@@ -66,11 +66,6 @@ const INSTANCES_SPEC = { names: ["--instances"], value: true, valueName: "<n>" }
 const ENABLE_SPEC = { names: ["--enable"] };
 const DISABLE_SPEC = { names: ["--disable"] };
 
-/** `role`'s review-after-merge write flags: add the role to, or remove it from,
- * review.afterMerge (written for the base id). */
-const REVIEW_AFTER_MERGE_SPEC = { names: ["--review-after-merge"] };
-const CLEAR_REVIEW_AFTER_MERGE_SPEC = { names: ["--clear-review-after-merge"] };
-
 /** `role`'s model-triple write flags: clear the field, or set it, written to
  * roles.<base>.provider/.model/.thinking. model and provider take an id; thinking takes a
  * pi `--thinking` level (off|minimal|low|medium|high|xhigh|max). */
@@ -198,7 +193,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     if (next?.startsWith("--"))
       fail(`${flag} needs a value (the next token ${JSON.stringify(next)} is a flag, not a value)`);
   }
-  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_INSTANCES_SPEC, INSTANCES_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC, CLEAR_BACKEND_SPEC, BACKEND_SPEC, REVIEW_AFTER_MERGE_SPEC, CLEAR_REVIEW_AFTER_MERGE_SPEC]);
+  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_INSTANCES_SPEC, INSTANCES_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC, CLEAR_BACKEND_SPEC, BACKEND_SPEC]);
   refuseTeamWorkspace(root);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
@@ -233,9 +228,6 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const backendWrite = clearBackend || rest.includes("--backend");
   const enable = rest.includes("--enable");
   const disable = rest.includes("--disable");
-  const reviewAfterMerge = rest.includes("--review-after-merge");
-  const clearReviewAfterMerge = rest.includes("--clear-review-after-merge");
-  const reviewAfterMergeWrite = reviewAfterMerge || clearReviewAfterMerge;
   const writes: string[] = [];
   if (notesWrite) writes.push("notes");
   if (instructionsWrite) writes.push("instructions");
@@ -249,7 +241,6 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (backendWrite) writes.push("backend");
   if (enable) writes.push("enable");
   if (disable) writes.push("disable");
-  if (reviewAfterMergeWrite) writes.push("review-after-merge");
   if (writes.length > 1)
     fail(`${writes.join(" and ")} writes cannot share one invocation`);
   if (notesWrite) {
@@ -438,36 +429,6 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     const result = setConfigKey(root, `roles.${base}.enabled`, enable ? "true" : "false");
     if (!result.ok) fail(result.error);
     say(`${base}: ${state}`);
-    return;
-  }
-  // The review-after-merge write: the one command the post-merge churn row's remedy
-  // needs — add the role to, or remove it from, review.afterMerge for the base id, the
-  // membership test reviewedAfterMerge shares. The whole-list value lands through the same
-  // setConfigKey core `config set review.afterMerge <json>` uses, so validateConfig owns the
-  // string-array shape, the known-role-id check and the `review.afterMerge must not be
-  // "director"` refusal, and the write is atomic. A role already in the asked-for state is
-  // reported as such and the file is left alone (the section branch compares the value
-  // against the resolved list, so a no-op reports unchanged and writes nothing).
-  if (reviewAfterMergeWrite) {
-    if (reviewAfterMerge && clearReviewAfterMerge)
-      fail("give --review-after-merge or --clear-review-after-merge, not both");
-    if (rest.includes("--json")) fail("--json does not apply to a review-after-merge write");
-    requireKnownRole(root, id);
-    const base = baseRoleOf(id);
-    const list = loadConfigSafe(root).config?.review.afterMerge ?? [];
-    const has = list.includes(base);
-    const next = has === reviewAfterMerge ? list : reviewAfterMerge ? [...list, base] : list.filter((r) => r !== base);
-    const result = setConfigKey(root, "review.afterMerge", JSON.stringify(next));
-    if (!result.ok) fail(result.error);
-    say(
-      result.unchanged
-        ? reviewAfterMerge
-          ? `${base}: already in review.afterMerge, so tumwater.json was not written`
-          : `${base}: not in review.afterMerge, so nothing was cleared`
-        : reviewAfterMerge
-          ? `${base}: added to review.afterMerge`
-          : `${base}: removed from review.afterMerge`,
-    );
     return;
   }
   // The unknown-role answer (exit 1, unknownRoleMessage's wording) lives in the

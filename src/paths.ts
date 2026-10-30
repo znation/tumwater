@@ -193,8 +193,8 @@ export function mergeStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "merging.json");
 }
 
-/** Merged commits awaiting their review after merging (src/review/post-merge-review.ts), for roles
- * listed in `review.afterMerge`: `{ pending: PostReview[] }`. Runtime state, never committed. */
+/** Merged commits awaiting their review after merging (src/review/post-merge-review.ts):
+ * `{ pending: PostReview[] }`. Runtime state, never committed. */
 export function postReviewPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "post-review.json");
 }

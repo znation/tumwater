@@ -1527,7 +1527,7 @@ test("checkPostMergeChurn warns on a day's post-merge rejection burst and stays 
   assert.match(out.detail, /bugfix/);
   assert.match(out.detail, /clean/);
   assert.doesNotMatch(out.detail, /coverage/);
-  assert.match(out.detail, /\`review\.afterMerge\`/);
+  assert.doesNotMatch(out.detail, /review\.afterMerge/, "the churn remedy no longer names the retired key");
 
   // One post-merge rejection stays under POST_MERGE_REJECT_WARN.
   const single = readyRepo();

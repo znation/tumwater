@@ -297,7 +297,6 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     checkKnownKeys(o, REVIEW_KEYS, "review", problems);
     checkBoolean(o, "review.", "enabled");
     checkStringArray(o, "review.", "exemptPaths");
-    checkStringArray(o, "review.", "afterMerge");
     // An exemption pattern is matched against a repo-relative path (exemptions.ts), so a
     // pattern shaped like something git never emits can never match: the diff it was meant
     // to exempt gets a model review anyway, and the operator never learns the pattern was

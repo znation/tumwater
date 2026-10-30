@@ -757,12 +757,12 @@ test("section keys set, unset and parse one field of a fixed-shape section", () 
   assert.equal(fs.readFileSync(file, "utf8"), before, "a rejected value leaves the file byte-identical");
 
   const seeded = defaultConfig();
-  (seeded as unknown as Record<string, unknown>).review = { enabled: true, afterMerge: ["qa"] };
+  (seeded as unknown as Record<string, unknown>).review = { enabled: true };
   saveConfig(dir, seeded);
   assert.ok(setConfigKey(dir, "review.model", "x").ok);
   assert.deepEqual(
-    { e: rawFile().review?.enabled, a: rawFile().review?.afterMerge, m: rawFile().review?.model },
-    { e: true, a: ["qa"], m: "x" },
+    { e: rawFile().review?.enabled, m: rawFile().review?.model },
+    { e: true, m: "x" },
   );
 
   const b = defaultConfig();
@@ -780,10 +780,9 @@ test("section keys set, unset and parse one field of a fixed-shape section", () 
 });
 
 // Fast merge "Defaults" (parts 6/14, 14/14): the mergeCommand default — fall back to the gate
-// command — is a reading-time fallback in mergeCommandOf, never a key in the file. Unlike
-// afterMerge (which IS a default in defaultConfig().review and so gets expanded by any config
-// write, like every other default), an absent mergeCommand stays absent because it is not a
-// default at all. An unrelated-key write must therefore leave an absent check.mergeCommand out.
+// command — is a reading-time fallback in mergeCommandOf, never a key in the file, so an
+// absent mergeCommand stays absent because it is not a default at all. An unrelated-key write
+// must therefore leave an absent check.mergeCommand out.
 test("an unrelated-key write leaves an absent check.mergeCommand absent", () => {
   const dir = tmpdir();
   saveConfig(dir, {

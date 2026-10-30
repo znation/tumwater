@@ -277,8 +277,8 @@ never has to wait a parked check out.
   how long main has had no passing full check, the sha it has been red since, and its newest
   failing test.
 - Every change now merges with no reviewer run before it — the gate is deterministic (see
-  **Review.**) — and a role listed in `review.afterMerge` is additionally reviewed after
-  merging: its change passes the deterministic rejects and the gate check, then merges. The `merged` commit
+  **Review.**) — and is reviewed after merging: its change passes the deterministic rejects and
+  the gate check, then merges. The `merged` commit
   is recorded in `.tumwater/state/post-review.json`, and the merge poll runs one review at a time
   over `git diff <commit>^ <commit>` when a permit is free (`review_start`, `review_verdict` and
   `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection never reverts:
@@ -286,8 +286,7 @@ never has to wait a parked check out.
   records a finding it cannot repair, the commit stays on main with the reviewer's reasons read as
   that recorded finding. A review that ends three times with no verdict is dropped with a warning.
   Two or more post-merge rejections in a day raise `tumwater doctor`'s `post-merge churn` row
-  naming each role — the reviewer-fix signal to narrow
-  `review.afterMerge` for the noisy role or raise the authoring bar.
+  naming each role — the reviewer-fix signal to raise the authoring bar.
   While the reviewer's provider stands under a failure hold, or its strong tier is unresolvable
   under the review gate, the hold parks only the post-merge review queue: no role start, verify
   or landing waits on the reviewer. Every role keeps authoring and its approved/queued changes
@@ -562,7 +561,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   `tumwater diff --overlaps` (`GET /api/diff?overlaps=1[&role=<ids>][&path=<path>]`; clicking a listed file shows each role's change to it, `GET /api/diff?role=<id>&path=<path>`, the twin of `diff --role --path`; its Role picker keeps only the files the chosen role holds, each still naming every holder, the `diff --overlaps --role` twin, and its Folder picker keeps only the files at or under the chosen directory, the `diff --overlaps --path` twin), and shows a role's full unmerged patch in its drawer (its Stat only toggle shows the diffstat instead, `GET /api/diff?role=<id>&stat=1`, the twin of `diff --role --stat`), which also lists that role's waiting merges
   under their whole-queue positions, mirroring `tumwater queue --role <id>`. It also paints the
   post-merge review queue as a Post-merge reviews card mirroring `tumwater reviews` with a Role picker that keeps only the chosen role's entries, the `tumwater reviews --role` twin, and a State picker that keeps only the chosen states — waiting, failing, rejected, each entry counted in the first state it matches — the `tumwater reviews --status` twin — the merged
-  commits `review.afterMerge` put aside for post-merge review, each row naming the wait since the
+  commits put aside for post-merge review, each row naming the wait since the
   commit was queued for review (`<age> ago`, omitted for an entry an older file wrote without a
   timestamp) matching `tumwater queue`'s age, each with its rejected (stays on main with the reviewer's reasons) or failed-review status, and each row a two-click Accept posting
   `POST /api/post-review-accept`, the browser twin of `tumwater reviews --accept <n>` (which names

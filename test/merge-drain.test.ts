@@ -126,10 +126,8 @@ test("a full dedupe cache never wedges the drain: every already-merged entry sti
 });
 
 test("every merged role queues a post-landing review, whatever its role", async () => {
-  // A "changed" merge from a role NOT listed in review.afterMerge (improve) queues a PostReview
-  // for its commit — part 3g makes review-after-landing a property of every change, not of the
-  // review.afterMerge role list. improve is absent from the default list, so its pre-merge gate
-  // still runs the model reviewer (the APPROVE shim) and the merge then queues the review.
+  // A "changed" merge from improve queues a PostReview for its commit — part 3g makes
+  // review-after-landing a property of every change, whatever the role.
   const root = makeRepo();
   const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, "code.txt"), "work\n"), "work by improve", { reset: true });
   await setRef(root, mergeRefName("improve"), sha);
@@ -152,7 +150,7 @@ test("every merged role queues a post-landing review, whatever its role", async 
     }
   });
   const queued = readPostReviews(root);
-  assert.equal(queued.length, 1, "a merge from a role absent from review.afterMerge queues a PostReview");
+  assert.equal(queued.length, 1, "a merged role queues a PostReview for its commit");
   assert.equal(queued[0]!.role, "improve");
   assert.equal(queued[0]!.commit, sha, "the review names the merged commit");
 

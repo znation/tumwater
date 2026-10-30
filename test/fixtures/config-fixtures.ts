@@ -36,5 +36,5 @@ export interface TeamConfigFile {
   roles: { feature: RoleKeys; director: RoleKeys };
   quietHoursPerRole: { feature: unknown };
   maxDailyCostUsdPerRole: { feature: unknown };
-  review?: { enabled?: unknown; afterMerge?: string[]; exemptPaths?: unknown };
+  review?: { enabled?: unknown; exemptPaths?: unknown };
 }

@@ -24,7 +24,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { GateRunsPi } from "../runner/runner-pi.js";
 import { parseVerdict } from "./review-verdict.js";
 
-/** A merged commit of a role listed in `review.afterMerge`, waiting for its review
+/** A merged commit, waiting for its review after merging
  * (.tumwater/state/post-review.json). `rejected` holds the reviewer's recorded reasons once it
  * rejected the commit. */
 
@@ -63,8 +63,7 @@ interface PostMergeRejection {
 /** The bar a day's post-merge rejections must reach before the doctor's `post-merge churn` row
  * fires: one post-merge rejection is the tiering's ordinary cost,
  * two in a day is a role whose already-landed changes keep being turned back — the
- * reviewer-fix signal for an operator to narrow `review.afterMerge` or raise the
- * authoring bar. */
+ * reviewer-fix signal for an operator to raise the authoring bar. */
 
 export const POST_MERGE_REJECT_WARN = 2;
 
@@ -77,8 +76,8 @@ export const POST_MERGE_REJECT_WINDOW_MS = DAY_MS;
  * (src/report/report-fold.ts `postMergeRejectionsByRole`) applies, so the churn row and the
  * report cannot disagree on which rejections are post-merge. The key is the event's base role
  * (`baseRoleOf(eventRole(ev))`), not the raw source: an event's `source` is the runner id
- * (`bugfix-2`), and both the row's remedy ("narrow `review.afterMerge`") and the scoped
- * report are keyed by base role, so one base role's churn must read as one row. Pre-merge
+ * (`bugfix-2`), and both the row's remedy and the scoped report are keyed by base role, so
+ * one base role's churn must read as one row. Pre-merge
  * rejections and other event types contribute nothing. */
 export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostMergeRejection[] {
   const byRole = new Map<string, number>();

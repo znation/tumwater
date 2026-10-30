@@ -112,9 +112,8 @@ export interface MergePipeline {
   verifying: Map<string, InFlightMerge>;
   approved: Map<string, ApprovedMerge>;
   merge: InFlightMerge | null;
-  /** The one post-merge review in flight (src/merge/merge-post-review-drain.ts), for a
-   * commit of a role listed in review.afterMerge. It holds a permit but no role, queue entry
-   * or the merge slot. */
+  /** The one post-merge review in flight (src/merge/merge-post-review-drain.ts). It holds a
+   * permit but no role, queue entry or the merge slot. */
   postReview: InFlightMerge | null;
 }
 

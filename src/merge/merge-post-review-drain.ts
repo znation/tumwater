@@ -22,7 +22,7 @@ import { mergeToMain } from "./merge-to-main.js";
 import { MERGE_TIER, resolveAuthor, VERIFY_TIER } from "./merge-verify.js";
 import type { RunResult } from "../run/run-outcome.js";
 
-/** One poll of the post-merge reviews (review.afterMerge): a rejected-and-not-fixed commit is
+/** One poll of the post-merge reviews: a rejected-and-not-fixed commit is
  * answered by the reviewer's own landed fix (Forward, never back 1/6) — never by a revert — and
  * the next unreviewed commit starts its review when a permit is free right now. One review at a
  * time; starts a task and returns. */

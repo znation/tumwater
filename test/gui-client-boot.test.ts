@@ -446,31 +446,7 @@ test("cap-edit opens the cap editor, cap-save posts the parsed cap, cap-discard 
   assert.deepEqual(events, ["stop"]);
 });
 
-test("review-toggle posts the opposite membership and reloads the drawer", () => {
-  const posts: unknown[] = [];
-  const events: string[] = [];
-  const make = (view: object) => clientScope<{ runAct(a: string, b: string): void }>(
-    ["run-act"], ["runAct"],
-    {
-      drawerRole: { role: "clean", state: "ok", view },
-      loadDrawerRole: (r: string) => events.push(`load ${r}`),
-      postAction: (path: string, body: unknown, done: (d: unknown) => string) => {
-        posts.push([path, body]);
-        const msg = done({ message: "clean: added to review.afterMerge" });
-        events.push(msg);
-      },
-    },
-  );
-  // An after-merge role: the toggle posts the opposite (before merge, afterMerge false).
-  const after = make({ reviewedAfterMerge: true });
-  after.runAct("review-toggle", "clean");
-  assert.deepEqual(posts[0], ["/api/role-review-after-merge", { role: "clean", afterMerge: false }]);
-  assert.deepEqual(events.slice(-2), ["load clean", "clean: added to review.afterMerge"]);
-  // A before-merge role posts afterMerge true.
-  const before = make({});
-  before.runAct("review-toggle", "clean");
-  assert.deepEqual(posts[1], ["/api/role-review-after-merge", { role: "clean", afterMerge: true }]);
-});
+
 
 test("instructions-edit opens the editor, instructions-save posts the textarea, instructions-discard posts nothing", () => {
   const posts: unknown[] = [];

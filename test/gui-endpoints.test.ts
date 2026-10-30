@@ -8,7 +8,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { runNotFoundLastMessage } from "../src/run/run-detail.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleRun, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleReviewAfterMerge, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { rootInstallResyncLines, type RootInstallResync } from "../src/build/dep-install.js";
 import { renderRunDetail } from "../src/run/run-detail-render.js";
 import { readRunDetail, type RunDetail } from "../src/run/run-detail-data.js";
@@ -1190,77 +1190,6 @@ test("handleRoleCap rejects a bad value, the director, an unknown role, and a mi
   assert.equal(noRole.captured.status, 400);
   const noValue = await serveRoleCap(root, { role: "feature" });
   assert.equal(noValue.captured.status, 400);
-});
-
-function serveRoleReviewAfterMerge(root: string, body: unknown) {
-  return captureJson((res) => handleRoleReviewAfterMerge(fakeReq(JSON.stringify(body)), res, root));
-}
-
-// POST /api/role-review-after-merge: the role drawer's Review row button, the browser twin of
-// `tumwater role <id> --review-after-merge`/`--clear-review-after-merge`. An unknown id is
-// refused up front (rejectBadRole, the mirror of the CLI's requireKnownRole) because a no-op or
-// clear write skips validateConfig's known-role check and would otherwise answer 200; the
-// whole-list value rides the CLI's own setConfigKey core, so validateConfig owns the
-// string-array shape and the director refusal; a role already in the asked-for state is
-// reported unchanged and the file is left byte-identical.
-test("handleRoleReviewAfterMerge moves the role in and out of review.afterMerge", async () => {
-  const root = tmpdir();
-  writeJsonFile(configPath(root), {});
-  // The default review.afterMerge lists clean (not feature): add feature, clear clean.
-  const add = await serveRoleReviewAfterMerge(root, { role: "feature", afterMerge: true });
-  assert.equal(add.captured.status, 200);
-  assert.deepEqual(add.data, { ok: true, role: "feature", afterMerge: true, message: "feature: added to review.afterMerge" });
-  const onDisk = readJson(configPath(root)) as { review: { afterMerge: string[] } };
-  assert.deepEqual(onDisk.review.afterMerge, ["bugfix", "clean", "coverage", "dedupe", "organize", "readme", "feature"]);
-  // A repeat add answers unchanged and leaves the file byte-identical.
-  const beforeBytes = fs.readFileSync(configPath(root), "utf8");
-  const again = await serveRoleReviewAfterMerge(root, { role: "feature", afterMerge: true });
-  assert.equal(again.captured.status, 200);
-  assert.equal((again.data as { unchanged?: boolean }).unchanged, true);
-  assert.match((again.data as { message: string }).message, /already in review\.afterMerge/);
-  assert.equal(fs.readFileSync(configPath(root), "utf8"), beforeBytes);
-  // Clearing clean removes it while every other id keeps its order.
-  const clear = await serveRoleReviewAfterMerge(root, { role: "clean", afterMerge: false });
-  assert.equal(clear.captured.status, 200);
-  assert.deepEqual(clear.data, { ok: true, role: "clean", afterMerge: false, message: "clean: removed from review.afterMerge" });
-  const after2 = (readJson(configPath(root)) as { review: { afterMerge: string[] } }).review.afterMerge;
-  assert.deepEqual(after2, ["bugfix", "coverage", "dedupe", "organize", "readme", "feature"]);
-  // A bare instance id writes its base role's id.
-  const inst = await serveRoleReviewAfterMerge(root, { role: "feature-2", afterMerge: true });
-  assert.equal(inst.captured.status, 200);
-  assert.equal((inst.data as { role: string }).role, "feature");
-  // The director is refused with validateConfig's review.afterMerge wording, writing nothing.
-  const dirBytes = fs.readFileSync(configPath(root), "utf8");
-  const dir = await serveRoleReviewAfterMerge(root, { role: "director", afterMerge: true });
-  assert.equal(dir.captured.status, 400);
-  assert.match((dir.data as { error: string }).error, /review\.afterMerge/);
-  assert.equal(fs.readFileSync(configPath(root), "utf8"), dirBytes);
-  // An unknown id is refused on both arms — the no-op/clear path included, where the write
-  // would otherwise return the list unchanged and skip validateConfig, answering 200.
-  const bogusAdd = await serveRoleReviewAfterMerge(root, { role: "nope", afterMerge: true });
-  assert.equal(bogusAdd.captured.status, 400);
-  assert.match((bogusAdd.data as { error: string }).error, /unknown role/);
-  const bogusClear = await serveRoleReviewAfterMerge(root, { role: "nope", afterMerge: false });
-  assert.equal(bogusClear.captured.status, 400);
-  assert.match((bogusClear.data as { error: string }).error, /unknown role/);
-  assert.equal(fs.readFileSync(configPath(root), "utf8"), dirBytes);
-});
-
-test("handleRoleReviewAfterMerge refuses a bad afterMerge, a missing role, and a malformed body", async () => {
-  const root = tmpdir();
-  writeJsonFile(configPath(root), {});
-  const bytes = fs.readFileSync(configPath(root), "utf8");
-  // A missing afterMerge is a 400.
-  const noMerge = await serveRoleReviewAfterMerge(root, { role: "feature" });
-  assert.equal(noMerge.captured.status, 400);
-  assert.match((noMerge.data as { error: string }).error, /afterMerge must be true or false/);
-  // A non-boolean afterMerge is a 400.
-  const nonBool = await serveRoleReviewAfterMerge(root, { role: "feature", afterMerge: "yes" });
-  assert.equal(nonBool.captured.status, 400);
-  // An empty role is a 400.
-  const emptyRole = await serveRoleReviewAfterMerge(root, { role: "", afterMerge: true });
-  assert.equal(emptyRole.captured.status, 400);
-  assert.equal(fs.readFileSync(configPath(root), "utf8"), bytes, "a refused write leaves the file unchanged");
 });
 
 function serveRoleInstructions(root: string, body: unknown) {

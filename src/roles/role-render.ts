@@ -275,12 +275,6 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
           : "no"
         : "unknown";
   lines.push(`- Images: ${images}`);
-  // Whether the review gate reviews this role's commits after they merge (role-view.ts's
-  // reviewedAfterMerge). Present only while review.enabled is on and review.afterMerge lists
-  // the role's base id — a pre-merge-reviewed role or a gate-off config omits the line.
-  if (p.reviewedAfterMerge) {
-    lines.push(`- Review: after merge (a rejected change stays on main with the reviewer's recorded reasons)`);
-  }
   if (p.fallback) {
     const pair = fallbackPairLabel(p.fallback, backendDefault(p));
     lines.push(`- Over-cap model: ${pair} (${p.fallbackFree ? "free" : "priced"})`);

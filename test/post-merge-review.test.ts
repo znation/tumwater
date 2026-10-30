@@ -25,41 +25,35 @@ import { isMergedInto, setRef } from "../src/git/git.js";
 import { sleep } from "./helpers/wait.js";
 import { UNSTARTABLE_GIT_ARG } from "./helpers/git-faults.js";
 
-test("review.afterMerge accepts known base role ids and rejects the director and unknown ids", () => {
-  // The widened default (reviewer-as-regular-role part 1/4): the post-merge list now carries
-  // the low-blast-radius maintenance roles alongside the original trio, so a fresh project
-  // (and the gitignored live config, which inherits the default) gets the tiering.
-  assert.deepEqual(defaultConfig().review.afterMerge, ["bugfix", "clean", "coverage", "dedupe", "organize", "readme"]);
-  assert.doesNotThrow(() => validateConfig({ review: { afterMerge: ["bugfix", "clean", "coverage", "dedupe", "organize", "readme"] } }));
-  assert.throws(() => validateConfig({ review: { afterMerge: ["director"] } }), /review\.afterMerge\[0\] must not be "director"/);
-  assert.throws(() => validateConfig({ review: { afterMerge: ["cleen"] } }), /review\.afterMerge\.cleen is not a known role/);
-  assert.throws(() => validateConfig({ review: { afterMerge: [""] } }), /review\.afterMerge\[0\] must not be blank/);
+test("review.afterMerge is removed: the default carries no list and a config naming it is refused", () => {
+  // The retired key is gone from the default: every merged commit is now reviewed (part 3d/3).
+  assert.equal("afterMerge" in defaultConfig().review, false);
+  // A hand-written config that still names it is refused by name, exactly as the retired
+  // maxConcurrentPerProvider key was — it is gone, not tolerated.
+  assert.throws(() => validateConfig({ review: { afterMerge: ["bugfix"] } }), /unknown key "afterMerge" in review/);
 });
 
-test("the tracked tumwater.example.json carries the widened afterMerge default", () => {
-  // The example (not defaultConfig() alone) is what seedConfig overlays onto a fresh project, so
-  // it must not drift from the widened default: a fresh project inherits the tiering from BOTH.
+test("the tracked tumwater.example.json carries no afterMerge", () => {
   const example = JSON.parse(fs.readFileSync(path.join(process.cwd(), "tumwater.example.json"), "utf8")) as {
-    review?: { afterMerge?: string[] };
+    review?: Record<string, unknown>;
   };
-  assert.deepEqual(example.review?.afterMerge, defaultConfig().review.afterMerge);
+  assert.equal("afterMerge" in (example.review ?? {}), false, "the example never names the retired key");
 });
 
 test("all roles pass the gate with no reviewer run before the merge", async () => {
   // The pre-merge gate is deterministic (part 3h/3): with the reviewer gone before the merge,
-  // both a listed and an unlisted role pass the gate with the pi-run marker absent and no
-  // `review_start`; the post-review queueing the afterMerge list feeds is covered below.
+  // every role passes the gate with the pi-run marker absent and no `review_start`; the
+  // post-merge review that follows is covered below.
   const { root, wt } = await gateFixture();
-  const config = { ...defaultConfig(), review: { ...defaultConfig().review, afterMerge: ["improve"] } };
   const marker = piRanMarker();
   await withReviewerStub(marker, async () => {
-    const { result } = await reviewGate(root, wt, { config });
+    const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     assert.ok(!fs.existsSync(marker), "the reviewer must not run before the merge");
     assert.equal(eventsOfType(root, "review_start").length, 0);
-    const second = await reviewGate(root, wt); // an unlisted role, too
+    const second = await reviewGate(root, wt);
     assert.equal(second.result.decision, "approved");
-    assert.ok(!fs.existsSync(marker), "an unlisted role's change also passes with no reviewer run");
+    assert.ok(!fs.existsSync(marker), "a second role's change also passes with no reviewer run");
     assert.equal(eventsOfType(root, "review_start").length, 0);
   });
 });
@@ -181,9 +175,8 @@ test("a listed role's change merges with no review before it, then is queued and
   const sha = pinnedCommit(root, "improve");
   await setRef(root, mergeRefName("improve"), sha);
   enqueueMerge(root, entry("improve", sha));
-  const config = { ...defaultConfig(), review: { ...defaultConfig().review, afterMerge: ["improve"] } };
   await withPi(APPROVE(), async () => {
-    const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"], undefined, config), { config });
+    const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
     await pumpUntil(
       ctx,
       pipeline,
@@ -198,17 +191,17 @@ test("a listed role's change merges with no review before it, then is queued and
   });
 });
 
-/** Merges a commit from a role absent from `review.afterMerge` (improve) that touches `file`;
- * returns the root once the merge drained. Part 3g/3 makes review-after-landing a property of
- * every change rather than of the afterMerge list, so the exempt and disabled gates are what
- * these cases hold against, whatever the role. */
+/** Merges a commit from `improve` that touches `file`; returns the root once the merge
+ * drained. Part 3g/3 makes review-after-landing a property of every change rather than of an
+ * afterMerge list, so the exempt and disabled gates are what these cases hold against,
+ * whatever the role. */
 async function mergeListed(file: string, review: { enabled: boolean }): Promise<string> {
   const root = makeRepo();
   const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, file), "work\n"), "work by improve", { reset: true });
   await setRef(root, mergeRefName("improve"), sha);
   enqueueMerge(root, entry("improve", sha));
   const base = defaultConfig();
-  const config = { ...base, review: { ...base.review, ...review, afterMerge: [] } };
+  const config = { ...base, review: { ...base.review, ...review } };
   await withPi(APPROVE(), async () => {
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"], undefined, config), { config });
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the merge");
@@ -536,7 +529,7 @@ test("postMergeRejectionCounts folds instance runner ids into their base role", 
     { ts: 3, source: "bugfix-5", type: "review_rejected", afterMerge: true },
     { ts: 4, source: "clean", type: "review_rejected", afterMerge: true },
   ];
-  // One base role's churn is one row, matching `review.afterMerge`'s base-role keys and the
+  // One base role's churn is one row, matching the base-role keys and the
   // alert's "narrow the noisy role" remedy, instead of splitting `bugfix`/`bugfix #2`/`bugfix #5`.
   assert.deepEqual(postMergeRejectionCounts(events), [
     { role: "bugfix", count: 3 },

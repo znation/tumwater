@@ -184,25 +184,23 @@ test("role writes report a broken tumwater.json instead of crashing on it", asyn
   fs.writeFileSync(path.join(repo, "tumwater.json"), broken);
   const instFile = path.join(repo, "inst.md");
   fs.writeFileSync(instFile, "keep me");
-  // The model-triple and review-after-merge branches resolve the role against a built-in
-  // default config on a failed load (`loadConfigSafe(root).config ?? defaultConfig()` /
-  // `config?.review.afterMerge ?? []`), so a valid id still resolves and the write reaches the
-  // config core, whose parse failure is what the operator is owed — the same `?? defaultConfig`
-  // / `?? []` fallback the cap and instances branches take, covered here so a broken file
-  // cannot crash these four branches either.
+  // The model-triple branches resolve the role against a built-in default config on a failed
+  // load (`loadConfigSafe(root).config ?? defaultConfig()`), so a valid id still resolves and
+  // the write reaches the config core, whose parse failure is what the operator is owed — the
+  // same `?? defaultConfig` fallback the cap and instances branches take, covered here so a
+  // broken file cannot crash these three branches either.
   for (const args of [
     ["feature", "--cap", "5"], // the shared six-hold set path (writeRoleConfigKey)
     ["feature", "--clear-cap"], // the shared six-hold unset path
     ["feature", "--enable"], // the enable/disable write
     ["feature", "--instructions-file", instFile], // the instructions set path
     ["feature", "--clear-instructions"], // the instructions unset path (its own `!result.ok` fail)
-    // The model triple and review-after-merge branches fall back to defaultConfig on a
-    // failed load (their own `?? defaultConfig()`/`?? []` arms, not the shared six-hold
-    // path), so they must hit that fallback before the config core reports the parse error.
+    // The model triple branches fall back to defaultConfig on a failed load (their own
+    // `?? defaultConfig()` arm, not the shared six-hold path), so they must hit that
+    // fallback before the config core reports the parse error.
     ["feature", "--provider", "openai"], // provider branch's defaultConfig fallback
     ["feature", "--model", "gpt-5"], // model branch's defaultConfig fallback
     ["feature", "--thinking", "high"], // thinking branch's defaultConfig fallback
-    ["feature", "--review-after-merge"], // review-after-merge branch's `?? []` fallback
   ] as const) {
     const r = await cli(repo, "role", ...args);
     assert.equal(r.code, 1, args.join(" "));

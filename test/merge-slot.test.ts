@@ -551,10 +551,10 @@ test("a queued merge's record names each phase while it runs: the gate's check, 
   // Every observation point appends the marker's stage as the observers would read it: the
   // project's declared check runs the verification's gate pre-check, then the merge's in-lock
   // re-check. With no pre-merge reviewer, the deterministic gate approves on the green pre-check
-  // (review.afterMerge). The check itself moves main by a code file, so the in-lock re-check has
-  // a rebased tree to verify — the merge step's own long phase, which names itself a build check
-  // too. (An empty or doc-only move would leave the verified tree's bytes, plus at most
-  // exempt paths, and the re-check would rightly be skipped.)
+  // and every merged commit is reviewed after landing (part 3d/3). The check itself moves main
+  // by a code file, so the in-lock re-check has a rebased tree to verify — the merge step's own
+  // long phase, which names itself a build check too. (An empty or doc-only move would leave the
+  // verified tree's bytes, plus at most exempt paths, and the re-check would rightly be skipped.)
   const rec = path.join(tmpdir(), "stages");
   const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${mergeStatePath(root)}' | head -n 1`;
   // Run 1 of the declared check is the gate pre-check, run 2 the merge's in-lock re-check, so the
@@ -564,7 +564,6 @@ test("a queued merge's record names each phase while it runs: the gate's check, 
   const checkCount = path.join(root, ".checkcount");
   const config = {
     ...defaultConfig(),
-    review: { ...defaultConfig().review, afterMerge: ["improve"] },
     check: {
       command: `${checkRunNumber(checkCount)}if [ "$n" -eq 1 ]; then echo moved >> '${root}/main-moved.txt'; git -C '${root}' add main-moved.txt; git -C '${root}' commit -q -m 'main moves under the merge'; fi; echo "check:$(${stageOf})" >> '${rec}'`,
     },

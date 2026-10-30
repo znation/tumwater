@@ -184,7 +184,7 @@ interface PriorReviewPrompt {
  * revision of a previously rejected change (plans/revise-rejected.md part 2/2): it names the round
  * and shows the prior objections plus the interdiff so the re-review checks each one first.
  * Omitted, the prompt is unchanged from a fresh change's. `postMerge` marks the post-merge review
- * of a commit already on main (review.afterMerge): a finding the reviewer can repair is the work —
+ * of a commit already on main: a finding the reviewer can repair is the work —
  * it makes the minimal fix in the worktree, leaves the edit, and ends with the verdict line plus a
  * `FIX:` line — so the instruction and the repair rule render only for that caller, and every other
  * (pre-merge) caller's prompt is byte-identical. */

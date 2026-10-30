@@ -133,23 +133,15 @@ test("renderRoleMarkdown prints the Instances line only when a count is configur
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS)), /- Instances:/);
 });
 
-test("the role view names after-merge review only while review.afterMerge covers the role", () => {
+test("the role view renders no review-after-merge row or fields", () => {
   const dir = root();
-  // The default review.afterMerge lists bugfix (not feature): the role view names it.
-  assert.equal(rolePayload(dir, "bugfix", NO_MODELS).reviewedAfterMerge, true);
-  assert.equal(rolePayload(dir, "feature", NO_MODELS).reviewedAfterMerge, undefined);
-  assert.equal(rolePayload(dir, "feature", NO_MODELS).reviewEnabled, true);
-  assert.match(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS)), /- Review: after merge/);
-  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /- Review:/);
-  // A config that moves the membership flips both answers.
-  writeConfig(dir, { review: { afterMerge: ["feature"] } });
-  assert.equal(rolePayload(dir, "feature", NO_MODELS).reviewedAfterMerge, true);
-  assert.equal(rolePayload(dir, "bugfix", NO_MODELS).reviewedAfterMerge, undefined);
-  // A review gate disabled leaves the field absent even when afterMerge lists the role.
-  writeConfig(dir, { review: { enabled: false, afterMerge: ["bugfix"] } });
-  assert.equal(rolePayload(dir, "bugfix", NO_MODELS).reviewedAfterMerge, undefined);
-  assert.equal(rolePayload(dir, "bugfix", NO_MODELS).reviewEnabled, undefined);
+  // The retired afterMerge review tier is gone: no role's payload carries the control fields
+  // and no render names a Review row.
+  const payload = rolePayload(dir, "bugfix", NO_MODELS) as unknown as Record<string, unknown>;
+  assert.equal(payload.reviewedAfterMerge, undefined);
+  assert.equal(payload.reviewEnabled, undefined);
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS)), /- Review:/);
+  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /- Review:/);
 });
 
 test("the payload carries the raw model-triple overrides only when the file sets them", () => {

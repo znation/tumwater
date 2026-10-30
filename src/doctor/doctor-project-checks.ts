@@ -280,7 +280,7 @@ export function checkPostMergeChurn(root: string): CheckOutcome {
   return warnOutcome(
     `${plural(churn.count, "post-merge review rejection")} in the last day (${churn.roles
       .map((r) => `${roleLabel(r.role)} ×${r.count}`)
-      .join(", ")}) — each commit had already reached main and stays there with the reviewer's reasons; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
+      .join(", ")}) — each commit had already reached main and stays there with the reviewer's reasons; raise the authoring bar`,
   );
 }
 

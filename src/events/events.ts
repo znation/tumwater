@@ -63,7 +63,7 @@ export interface HarnessEvent {
     | "counters_reset"
     | "run_aborted" // a user-initiated abort killed one role's in-flight run (tumwater abort)
     | "resume" // the interrupted run's session is picked back up; carries cause (restart|cut-off|hung-tool|timeout|budget-resumed|handoff)
-    | "review_start" // carries head; model when one is configured — the reviewer's selector string; revision (round) when the merge is a revision (plans/revise-rejected.md part 2/2); afterMerge true on a review of an already merged commit (review.afterMerge); resumed true when the run continues a timed-out reviewer's session (PLANS.md, review-retry part 3/3)
+    | "review_start" // carries head; model when one is configured — the reviewer's selector string; revision (round) when the merge is a revision (plans/revise-rejected.md part 2/2); afterMerge true on a review of an already merged commit; resumed true when the run continues a timed-out reviewer's session (PLANS.md, review-retry part 3/3)
     | "review_verdict" // approved; carries durationMs of the reviewer run; afterMerge true when the commit was already merged
     | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran; afterMerge true when the commit was already merged
     | "review_failed" // a reviewer run or its verdict failed; carries head, message, durationMs, and attempt (1-based: the reviewer run within the verify — a failed run is retried in place twice before the attempt ends review_error)

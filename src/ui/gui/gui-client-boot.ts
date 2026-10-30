@@ -383,12 +383,6 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       const thinking = thinkingBox ? thinkingBox.value.trim() : "";
       const backend = backendBox ? backendBox.value.trim() : "";
       postAction("/api/role-model", { role: arg, provider, model, thinking, backend }, settingDone(() => { modelEditing = null; }, "Model overrides updated"));
-    } else if (act === "review-toggle") {
-      const after = drawerRole?.view?.reviewedAfterMerge === true;
-      postAction("/api/role-review-after-merge", { role: arg, afterMerge: !after }, (d) => {
-        loadDrawerRole(arg);
-        return d && d.message ? d.message : "Review tier updated";
-      });
     } else if (act === "mention") {
       const { file, index } = entryRef(arg);
       const title = entryTitleAt(file, index);

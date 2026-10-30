@@ -197,7 +197,7 @@ test("an approved change merges while an earlier queue entry is still verifying"
 test("mergeStartHeld holds only the no-role drain under a reviewer hold", () => {
   assert.equal(mergeStartHeld(true, true, "feature"), true, "a restart/disk hold holds a role");
   assert.equal(mergeStartHeld(false, true, "feature"), false, "no role start is held by the reviewer");
-  assert.equal(mergeStartHeld(false, true, "dedupe"), false, "every role drains while the reviewer is held — no afterMerge exemption exists");
+  assert.equal(mergeStartHeld(false, true, "dedupe"), false, "every role drains while the reviewer is held — no exemption exists");
   assert.equal(mergeStartHeld(false, true, undefined), true, "the no-role verdict stays held (what drainPostReviews and mergeApproved read)");
   assert.equal(mergeStartHeld(true, false, "dedupe"), true, "a restart/disk hold still holds every role");
 });

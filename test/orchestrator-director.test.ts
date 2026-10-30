@@ -180,16 +180,15 @@ test("director: a team pause holds role runs but not the director's queued promp
 
 test("merge queue interlock: a role with a queued merge starts no run until the merge ends", async () => {
   const repo = await makeFastRepo("merge queue interlock test", ["clean"]);
-  // Opt clean into a post-landing merge so no pre-merge reviewer verdict drives the outcome; the
-  // merge's own run is then its parked conflict-resolution pi run — the queued change conflicts
-  // with main on rebase, and the resolver (session tumwater-clean-1-conflict) parks until the
-  // test releases it. The interlock relief (scheduling-skip.ts) holds a post-merge role while its
-  // queued merge is conflict-resolving, so a due, ready clean must not start a run until the
-  // merge's own run finishes.
+  // Every merge lands on the deterministic gate and is reviewed after landing (part 3d/3), so
+  // no pre-merge reviewer verdict drives the outcome; the merge's own run is then its parked
+  // conflict-resolution pi run — the queued change conflicts with main on rebase, and the
+  // resolver (session tumwater-clean-1-conflict) parks until the test releases it. The interlock
+  // relief (scheduling-skip.ts) holds a role while its queued merge is conflict-resolving, so a
+  // due, ready clean must not start a run until the merge's own run finishes.
   const cfg = loadConfig(repo);
   saveConfig(repo, {
     ...cfg,
-    review: { ...cfg.review, afterMerge: ["clean"] },
     // A long post-run gap keeps clean's first run the only one the test counts: its own
     // interlock-run happens once, after the queued merge ends.
     roles: { ...cfg.roles, clean: { ...cfg.roles.clean!, minRunIntervalSeconds: 300 } },
@@ -272,15 +271,14 @@ test("restart hand-off: an in-flight merge outliving its deadline is aborted, no
   const repo = await makeFastRepo("restart hand-off abort test", ["clean"]);
   // Fast merge "Defaults" merges clean on its gate alone and reviews it AFTER it lands; this test
   // pins the restart hand-off aborting an IN-FLIGHT merge, held this time by a parked gate build
-  // check rather than a pre-merge reviewer — and no longer by review.afterMerge: []. The check
-  // parks only on the change's tree (it touches the marker and sleeps where the queued change's
-  // interlock-note.txt is checked out; on main's tree it exits 0), so the verify's gate pre-check
-  // holds the merge in flight for the hand-off's abort (part 4e/3) to stop it.
+  // check. The check parks only on the change's tree (it touches the marker and sleeps where the
+  // queued change's interlock-note.txt is checked out; on main's tree it exits 0), so the
+  // verify's gate pre-check holds the merge in flight for the hand-off's abort (part 4e/3) to
+  // stop it.
   const cfg = loadConfig(repo);
   const parked = path.join(tmpdir(), "handoff-abort-parked");
   saveConfig(repo, {
     ...cfg,
-    review: { ...cfg.review, afterMerge: ["clean"] },
     check: { command: `if [ -f interlock-note.txt ]; then touch '${parked}'; sleep 60; fi` },
   });
   // If the parked check ever fails to park (its alpha flake mode), the merge would proceed past
