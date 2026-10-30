@@ -18,7 +18,11 @@ new variable tumwater honors there too. It keeps a run's `TUMWATER_RUN` mark, so
 sweep reaps a suite the run started, and it makes itself the owner of every node process in the
 suite, so killing the runner (`kill $PID`) stops node --test and its workers too. The e2e tier stays out of the gating suite because its
 wall-clock waits are not load-proof, and it runs its files one at a time (`--test-concurrency=1` on
-node 20.10+), so each waits against a quiet host rather than competing with its siblings. Coverage runs go through the runner too (`npm run
+node 20.10+), so each waits against a quiet host rather than competing with its siblings. The load-sensitive e2e files (`orchestrator-budget`,
+`orchestrator-resize`, `orchestrator-permits`, `orchestrator-once`) gate themselves on that quiet host too: each waits up to ~5 min
+(via `awaitQuietHost`) for the host's load-to-cores ratio to drop to <= 1, and when the host stays saturated defers itself with a skip
+naming the load rather than fail a verdict a starved host never gave it a fair chance to reach (PLANS.md option-2 isolation). Coverage
+runs go through the runner too (`npm run
 test:coverage`), never raw `node --test` or a tree compiled elsewhere — the fakes resolve their
 shim relative to `dist/` inside the checkout. The root `vitest.config.mjs` is a tripwire, not a
 config: it makes `npx vitest` refuse to start here (BUGS.md 2026-10-05). Non-npm projects can

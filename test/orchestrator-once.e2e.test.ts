@@ -19,10 +19,16 @@ import { fastConfig, makeFastRepo, onceRound } from "./fixtures/orchestrator-fix
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, withIdlePi, withPi } from "./fakes/fake-pi.js";
+import { awaitQuietHost } from "./helpers/wait.js";
 import { cli } from "./helpers/cli-harness.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
-test("once: a team where every role finds nothing to do exits on its own, one run each", async () => {
+test("once: a team where every role finds nothing to do exits on its own, one run each", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once round test", ["clean", "dedupe"]);
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
@@ -32,7 +38,12 @@ test("once: a team where every role finds nothing to do exits on its own, one ru
   });
 });
 
-test("once: a round that produces a change merges it before exiting", async () => {
+test("once: a round that produces a change merges it before exiting", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once merge test", ["clean"]);
   const before = mainSha(repo);
   // Author run: make a change and finish. Review run (its prompt carries VERDICT): approve.
@@ -55,7 +66,12 @@ test("once: a round that produces a change merges it before exiting", async () =
   );
 });
 
-test("once: a role in error backoff is skipped and does not run, and the round still ends", async () => {
+test("once: a role in error backoff is skipped and does not run, and the round still ends", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once backoff test", ["clean"]);
   // Persisted backoff: nextRunAt in the future with backoffSeconds raised — once mode
   // honors a backoff deadline (it overrides only the min-run-interval clock, and the
@@ -79,7 +95,12 @@ test("once: a role in error backoff is skipped and does not run, and the round s
   });
 });
 
-test("once: a team under a standing pause settles every role as paused, runs nothing, and still exits", async () => {
+test("once: a team under a standing pause settles every role as paused, runs nothing, and still exits", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once paused test", ["clean"]);
   pauseTeam(repo);
   const restore = fakePiIdle();
@@ -102,7 +123,12 @@ test("once: a team under a standing pause settles every role as paused, runs not
   }
 });
 
-test("once: a round started right after a productive daemon run still runs the role", async () => {
+test("once: a round started right after a productive daemon run still runs the role", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once fresh clock test", ["clean"]);
   // State exactly as a just-finished productive daemon run leaves it: the min-interval
   // clock is a full interval away (scheduleAtMinInterval) and backoffSeconds is 0. The
@@ -125,7 +151,12 @@ test("once: a round started right after a productive daemon run still runs the r
   });
 });
 
-test("once: a deferrable role with an open backlog is deferred and does not block exit", async () => {
+test("once: a deferrable role with an open backlog is deferred and does not block exit", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once deferral test", ["clean"]);
   // An open backlog (PLANS.md ## Planned) plus a no_change history defers clean's due run —
   // in once mode that deferral is the role's round answer, not something to wait out.
@@ -149,7 +180,12 @@ test("once: a deferrable role with an open backlog is deferred and does not bloc
   });
 });
 
-test("once: the CLI prints a per-role summary line and exits 0", async () => {
+test("once: the CLI prints a per-role summary line and exits 0", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once cli test", ["clean"]);
   await withIdlePi(async () => {
     const r = await cli(repo, "run", "--once");
@@ -158,7 +194,12 @@ test("once: the CLI prints a per-role summary line and exits 0", async () => {
   });
 });
 
-test("once: the summary reports a deferred role as deferred, not idle", async () => {
+test("once: the summary reports a deferred role as deferred, not idle", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = makeRepo();
   await initProject(repo, "once summary deferral test");
   saveConfig(repo, fastConfig(["clean"]));
@@ -183,7 +224,12 @@ test("once: the summary reports a deferred role as deferred, not idle", async ()
   });
 });
 
-test("once: a once round refuses to start while a daemon holds the orchestrator", async () => {
+test("once: a once round refuses to start while a daemon holds the orchestrator", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = makeRepo();
   await initProject(repo, "once daemon guard");
   // Record a live pid (this test process) as the running orchestrator — two writers to main
@@ -200,7 +246,12 @@ test("once: a once round refuses to start while a daemon holds the orchestrator"
   }
 });
 
-test("once: a typo'd flag fails fast with the unknown-argument wording", async () => {
+test("once: a typo'd flag fails fast with the unknown-argument wording", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = makeRepo();
   await initProject(repo, "once flag guard");
   await withPi("exit 0", async () => {
@@ -213,7 +264,12 @@ test("once: a typo'd flag fails fast with the unknown-argument wording", async (
 
 // --- Scoped once rounds (`run --once --role <id>`, PLANS.md 2026-09-25) ---
 
-test("once --role: a scoped round runs only the named role", async () => {
+test("once --role: a scoped round runs only the named role", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once scoped test", ["clean", "dedupe"]);
   await withIdlePi(async () => {
     const exit = await onceRound(repo, "clean");
@@ -223,7 +279,12 @@ test("once --role: a scoped round runs only the named role", async () => {
   });
 });
 
-test("once --role: a scoped round that produces a change merges it before exiting", async () => {
+test("once --role: a scoped round that produces a change merges it before exiting", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once scoped merge test", ["clean", "dedupe"]);
   const before = mainSha(repo);
   // Author run: make a change and finish. Review run (its prompt carries VERDICT): approve.
@@ -243,7 +304,12 @@ test("once --role: a scoped round that produces a change merges it before exitin
   );
 });
 
-test("once --role: the CLI scopes the round — banner and summary name only that role", async () => {
+test("once --role: the CLI scopes the round — banner and summary name only that role", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once scoped cli test", ["clean", "dedupe"]);
   await withIdlePi(async () => {
     const r = await cli(repo, "run", "--once", "--role", "clean");
@@ -256,7 +322,12 @@ test("once --role: the CLI scopes the round — banner and summary name only tha
   });
 });
 
-test("once --role: an unknown role fails fast with the shared wording, and a disabled one names how to enable it", async () => {
+test("once --role: an unknown role fails fast with the shared wording, and a disabled one names how to enable it", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once scoped invalid test", ["clean"]); // dedupe is disabled
   await withPi("exit 0", async () => {
     const unknown = await cli(repo, "run", "--once", "--role", "nope");
@@ -272,7 +343,12 @@ test("once --role: an unknown role fails fast with the shared wording, and a dis
   });
 });
 
-test("once --role: --role without --once fails with its own message", async () => {
+test("once --role: --role without --once fails with its own message", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once scoped daemon test", ["clean"]);
   await withPi("exit 0", async () => {
     const r = await cli(repo, "run", "--role", "clean");
@@ -282,7 +358,12 @@ test("once --role: --role without --once fails with its own message", async () =
   });
 });
 
-test("once --role: a custom role id is a valid target", async () => {
+test("once --role: a custom role id is a valid target", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once scoped custom test", ["clean"]);
   const config = loadConfig(repo);
   config.customRoles.push({ name: "docs-sync", task: "Keep the docs current." });
@@ -295,7 +376,12 @@ test("once --role: a custom role id is a valid target", async () => {
   });
 });
 
-test("once: a merge_blocked change is re-queued by the pipeline and merges with no second run", async () => {
+test("once: a merge_blocked change is re-queued by the pipeline and merges with no second run", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = await makeFastRepo("once requeue test", ["clean"]);
   const counter = path.join(tmpdir("requeue-count-"), "n");
   const config = loadConfig(repo);

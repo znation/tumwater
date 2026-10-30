@@ -16,7 +16,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { awaitSettledRun, FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { makeRepo, seedOpenBug, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { waitFor } from "./helpers/wait.js";
+import { awaitQuietHost, waitFor } from "./helpers/wait.js";
 import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 
 function readOrder(runDir: string): string[] {
@@ -27,7 +27,12 @@ function readOrder(runDir: string): string[] {
   }
 }
 
-test("a merge's reviewer run takes the same maxConcurrent permit as a role run", async () => {
+test("a merge's reviewer run takes the same maxConcurrent permit as a role run", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   // BUGS.md 2026-09-18: the merge drain ran its reviewer outside the author semaphore, so
   // maxConcurrent + 1 merge + 1 director was the real ceiling and a single-GPU backend saw
   // four streams. With one permit, a merge in flight and a role run must never overlap.
@@ -97,7 +102,12 @@ test("a merge's reviewer run takes the same maxConcurrent permit as a role run",
   }
 });
 
-test("a work-role run that becomes due later jumps ahead of maintenance waiters parked in an earlier poll", async () => {
+test("a work-role run that becomes due later jumps ahead of maintenance waiters parked in an earlier poll", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   // Cross-poll slot inversion (BUGS.md 2026-09-12): with one slot, the startup poll admits
   // bugfix first and parks clean + dedupe behind it. When bugfix becomes due again (~1s idle
   // backoff) while clean is still in flight, its acquire must jump ahead of the maintenance
@@ -139,7 +149,12 @@ test("a work-role run that becomes due later jumps ahead of maintenance waiters 
   }
 });
 
-test("the director's run starts immediately while every maxConcurrent slot is busy", async () => {
+test("the director's run starts immediately while every maxConcurrent slot is busy", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   // The director never queues behind the author semaphore: a user prompt starts right away
   // even when all slots are held (orchestrator-launch.ts's usesSlot — only role runs
   // acquire). With one permit and clean's run holding it for ~5s, the director's run must

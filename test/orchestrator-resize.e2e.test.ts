@@ -14,7 +14,7 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { censusHoldFragment, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { mergeWork, makeRepo, seedOpenBug, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { waitFor } from "./helpers/wait.js";
+import { awaitQuietHost, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 /** A fake pi that records how many runs were in flight during its run, holds its census slot
@@ -34,7 +34,12 @@ function concurrencyRecordingFakePi(runDir: string): () => void {
   return fakePi(script);
 }
 
-test("a live maxConcurrent edit resizes the cap without a restart", async () => {
+test("a live maxConcurrent edit resizes the cap without a restart", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = makeRepo();
   await initProject(repo, "live maxConcurrent test");
   // THREE fast-running roles and ONE slot: with three roles competing for one permit, steady

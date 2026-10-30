@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Option-2 isolation, part 1/2: the load-sensitive e2e files wait for a quiet host instead of flaking on a starved one (planned 2026-10-29 by the plan role, split from the Steward queue-gap note 2026-10-29 and the user's option-2 isolate decision; independent of part 2/2 — different files, no `requires`; touches test/helpers/wait.ts test/orchestrator-budget.e2e.test.ts test/orchestrator-resize.e2e.test.ts test/orchestrator-permits.e2e.test.ts test/orchestrator-once.e2e.test.ts DEVELOPMENT.md) — done 2026-10-29 by the feature role
+
+**Goal.** Under host load the load-sensitive e2e files (`orchestrator-budget`, `orchestrator-resize`, `orchestrator-permits`, `orchestrator-once`) can no longer schedule the post-switch child runs their 60 s/150 s waits bound, so the tier goes red on a merely busy machine and the ci role files a bug per member. The record shows more wall-clock bound is a dead end (two 60 s→150 s lengthenings each failed) and that running the tier apart from the full suite is already true and still red. Take the user's option 2 directly — gate these files on a quieter host: a load-sensitive e2e file starts once the host's load-to-cores ratio is at or below the bar the class verified at, and records a deferred (skipped) outcome naming the load when the host stays saturated through a bounded wait, instead of failing a verdict it never had a fair chance to reach.
+
+**Approach.**
+- Add `awaitQuietHost(t, waitMs)` to `test/helpers/wait.ts`: it samples `sampleHostLoad` from `src/build/host-sleep.js` (already the one host-load sampler `doctor-contention-checks.ts` and `build-check-scoped.ts` read), returns `true` at once when `load1 <= cpus`, and otherwise polls every few seconds up to `waitMs` (a named constant, default ~5 min) before returning `false`. It takes an injectable sampler defaulting to `sampleHostLoad`, like the doctor's `load` seam, so a test can pin it offline.
+- The plan makes deferral explicit, not silent: at the top of each load-sensitive e2e file, `if (!(await awaitQuietHost(t, QUIET_HOST_WAIT_MS))) { t.skip(`host load ${load.load1} on ${load.cpus} cores: e2e deferred, not a verdict`); return; }`. This is dynamic and load-conditioned — the file still runs whenever the host allows — not the static known-flaky exemption list option 3 named.
+- The files keep their existing 150 s/60 s wall-clock waits: on a host at or below the bar those holds were verified sufficient, so no bound changes.
+- `DEVELOPMENT.md`'s test tier note records the quiet-host precondition beside the e2e serialization note (`docs/how-it-works.md` is left to part 2/2's review paragraph, so the two parts do not edit one file).
+
+**Files touched.** test/helpers/wait.ts test/orchestrator-budget.e2e.test.ts test/orchestrator-resize.e2e.test.ts test/orchestrator-permits.e2e.test.ts test/orchestrator-once.e2e.test.ts DEVELOPMENT.md
+
+**Acceptance criteria.**
+- With an injected sampler reporting `load1 > cpus` for the whole wait, each load-sensitive e2e file skips with a reason naming the load and the tier reports a skip (not a failure); with `load1 <= cpus` the helper returns at once and the file runs exactly as today.
+- No load-sensitive e2e file gains a longer wall-clock bound; the only change to their waits is the precondition.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/helpers' own case (in the file that covers `wait.ts`, or `test/wait.test.ts`): `awaitQuietHost` returns true immediately under a quiet injected sampler, false after the bounded wait under a saturated one, and never throws.
+- A run of `test/orchestrator-budget.e2e.test.ts` under a saturated injected sampler shows the skip wording; under the live quiet host it runs.
+
 ### Option-2 isolation, part 2/2: the post-merge reviewer's budget stretches on a starved host (planned 2026-10-29 by the plan role, split from the Steward queue-gap note 2026-10-29 and the review-900s class note; independent of part 1/2 — different files, no `requires`; touches src/config/config-views.ts src/build/build-check-events.ts docs/config.md docs/how-it-works.md test/config-views.test.ts) — done 2026-10-29 by the feature role
 
 **Goal.** The post-merge review is now the only review path, and a strong-tier reviewer run killed at its 900 s ceiling (`review.timeoutSeconds`) on the loaded host leaves the commit verdict-less (four such Open members). A merge-scope check in exactly this situation already gets a longer deadline: `starvedDeadlineMs` (`src/build/build-check-events.ts`) stretches it by the host's load-to-cores ratio, capped at `STARVED_DEADLINE_MAX_FACTOR`. Give the reviewer run the same starvation-aware budget, so a progressing review on a starved host is not killed at the wall by load it does not control.

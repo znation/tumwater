@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { waitFor, waitForFile } from "./helpers/wait.js";
+import { awaitQuietHost, waitFor, waitForFile } from "./helpers/wait.js";
 import { fakeClock } from "./fakes/time.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -27,4 +27,30 @@ test("waitForFile's deadline is the injected clock's", async () => {
   const missing = path.join(tmpdir(), "wait-for-file-missing");
   await assert.rejects(waitForFile(missing, 100, clock), /timed out waiting for/);
   assert.ok(clock.now() > 100, `the injected clock crossed the budget; saw ${clock.now()}`);
+});
+
+test("awaitQuietHost returns immediately under a quiet injected sampler", async () => {
+  const clock = fakeClock();
+  const result = await awaitQuietHost(300_000, () => ({ load1: 1, cpus: 4 }), clock);
+  assert.ok(result.quiet);
+  assert.equal(result.load1, 1);
+  assert.equal(clock.now(), 0, "a quiet host must not spend the wait budget");
+});
+
+test("awaitQuietHost defers after the bounded wait under a saturated injected sampler", async () => {
+  const clock = fakeClock();
+  const result = await awaitQuietHost(100_000, () => ({ load1: 8, cpus: 4 }), clock);
+  assert.ok(!result.quiet, "a host saturated for the whole wait must defer, never run starved");
+  assert.ok(clock.now() >= 100_000, `the bounded wait must elapse; saw ${clock.now()}`);
+  assert.equal(result.cpus, 4);
+});
+
+test("awaitQuietHost returns once the injected sampler crosses to quiet", async () => {
+  const clock = fakeClock();
+  let load = 8;
+  const result = await awaitQuietHost(100_000, () => ({ load1: load, cpus: 4 }), clock);
+  assert.ok(!result.quiet);
+  load = 2;
+  const second = await awaitQuietHost(100_000, () => ({ load1: load, cpus: 4 }), clock);
+  assert.ok(second.quiet, "a host that drops below the bar at any point runs");
 });

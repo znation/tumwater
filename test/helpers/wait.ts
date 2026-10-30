@@ -1,9 +1,10 @@
 /** Wait-for-something helpers shared across the test suite: polling (waitFor, waitForFile,
- * waitForLogLines), the settle-within-a-budget check (within), and the logical clock for
- * runPi's watchdog (watchdogClock). Split from the old util.ts grab-bag, whose shared name
- * made these unfindable. */
+ * waitForLogLines), the settle-within-a-budget check (within), the logical clock for
+ * runPi's watchdog (watchdogClock), and the quiet-host gate (awaitQuietHost). Split from the
+ * old util.ts grab-bag, whose shared name made these unfindable. */
 import type { TestContext } from "node:test";
 import fs from "node:fs";
+import { sampleHostLoad, type LoadSampler } from "../../src/build/host-sleep.js";
 
 /** The real setTimeout, captured when this module loads — before any test installs node:test
  * mock timers — so the wait helpers below keep polling in real time under a test that mocks
@@ -42,6 +43,37 @@ export interface WaitClock {
 
 /** The live host's `WaitClock`: what every deadline wait below uses unless a test injects one. */
 export const liveWaitClock: WaitClock = { now: () => performance.now(), sleep };
+
+/** How long a load-sensitive e2e file waits, in real time, for the host to drop to a quiet
+ * load before deferring itself (option-2 isolation, PLANS.md 2026-10-29 part 1/2). A file
+ * whose post-switch observation depends on scheduling its child runs on time either waits
+ * under the bar (and runs exactly as today) or skips naming the load instead of reddening a
+ * verdict a starved host never gave it a fair chance to reach. */
+export const QUIET_HOST_WAIT_MS = 300_000;
+
+/** The quiet-host gate a load-sensitive e2e file gates itself on: samples the host's
+ * one-minute load average from `src/build/host-sleep.ts` (the same `sampleHostLoad` the
+ * doctor's contention check and the build check read) and returns true at once when
+ * `load1 <= cpus`. Under a higher load it polls every few seconds up to `waitMs`, then
+ * returns false — the caller defers the file rather than run it starved. The sampler is
+ * injectable (like the doctor's `load` seam) so a test can pin it offline; the wait is real
+ * time by default, but a test may inject `test/fakes/time.ts`'s `fakeClock` to make the
+ * bounded deferral deterministic. */
+export async function awaitQuietHost(
+  waitMs = QUIET_HOST_WAIT_MS,
+  sample: LoadSampler = sampleHostLoad,
+  clock: WaitClock = liveWaitClock,
+): Promise<{ quiet: boolean; load1: number; cpus: number }> {
+  for (;;) {
+    const { load1, cpus } = sample();
+    if (load1 <= cpus) return { quiet: true, load1, cpus };
+    // Sample again a few seconds out, bounded by waitMs: the caller would rather defer than
+    // hold the host in view past its patience. A saturated host never quite crosses, so the
+    // loop spends the whole wait and returns quiet:false.
+    if (clock.now() > waitMs) return { quiet: false, load1, cpus };
+    await clock.sleep(5_000);
+  }
+}
 
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the
  * condition is true, so a generous budget costs nothing on the success path and buys only

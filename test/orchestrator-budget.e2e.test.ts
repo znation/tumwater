@@ -24,14 +24,19 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { awaitSettledRun, fastConfig, runRepoOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { mergeWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
-import { sleep, waitFor } from "./helpers/wait.js";
+import { awaitQuietHost, sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 const FAST_POLL_MS = 100;
 
 // --- Daily cost budget gate (plans/daily-cost-budget.md) ---
 
-test("a reached daily cap pauses role runs but not the director; raising the cap resumes", async () => {
+test("a reached daily cap pauses role runs but not the director; raising the cap resumes", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = makeRepo();
   await initProject(repo, "budget gate e2e test");
   // Tiny cap: exactly one fake run's cost. After clean's first run the team has spent
@@ -98,7 +103,12 @@ test("a reached daily cap pauses role runs but not the director; raising the cap
 // that is ALREADY at cap when the orchestrator starts, and it holds main-moved wakes while
 // paused — both are "no run starts" guarantees, so they assert absence across several polls.
 
-test("startup with spend already at the cap starts no role runs", async () => {
+test("startup with spend already at the cap starts no role runs", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = makeRepo();
   await initProject(repo, "budget startup test");
   // Tiny cap: the pre-seeded window ($1) already reaches it before any run runs.
@@ -129,7 +139,12 @@ test("startup with spend already at the cap starts no role runs", async () => {
   }
 });
 
-test("a main-moved wake while budget-paused stays blocked", async () => {
+test("a main-moved wake while budget-paused stays blocked", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = makeRepo();
   await initProject(repo, "budget main-move test");
   // Tiny cap: clean's startup run spends $1 >= $0.50 and pauses the team.
@@ -192,7 +207,12 @@ function fallbackConfig(
   return config;
 }
 
-test("a reached cap switches roles to the free fallback model instead of stopping them", async () => {
+test("a reached cap switches roles to the free fallback model instead of stopping them", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = makeRepo();
   await initProject(repo, "budget fallback e2e test");
   // Tiny cap: exactly one fake run's cost, so clean's startup run closes the gate.
@@ -273,7 +293,12 @@ test("a reached cap switches roles to the free fallback model instead of stoppin
   }
 });
 
-test("a fallback pi cannot price at zero is refused and the team pauses as before", async () => {
+test("a fallback pi cannot price at zero is refused and the team pauses as before", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = makeRepo();
   await initProject(repo, "budget fallback refusal test");
   // Names a model pi's definitions do not list: unverifiable, so it must never engage — a
@@ -303,7 +328,12 @@ test("a fallback pi cannot price at zero is refused and the team pauses as befor
 // The fallback breaker (BUGS.md 2026-09-20): a free pair is not a usable fallback when its
 // backend cannot serve. On 2026-09-19 oMLX, priced at zero and up but pinned at its Metal
 // ceiling, failed 33 of 33 fallback runs for an hour instead of the team pausing.
-test("a free fallback whose runs keep failing is demoted to a pause, then probed back once it serves", async () => {
+test("a free fallback whose runs keep failing is demoted to a pause, then probed back once it serves", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = makeRepo();
   await initProject(repo, "budget fallback breaker test");
   const config = fallbackConfig(["clean"]);
@@ -397,7 +427,12 @@ test("a free fallback whose runs keep failing is demoted to a pause, then probed
   }
 });
 
-test("budget_resumed hands the in-flight fallback runs back to the primary", async () => {
+test("budget_resumed hands the in-flight fallback runs back to the primary", async (t) => {
+  const host = await awaitQuietHost();
+  if (!host.quiet) {
+    t.skip(`host load ${host.load1} on ${host.cpus} cores: e2e deferred, not a verdict`);
+    return;
+  }
   const repo = makeRepo();
   await initProject(repo, "budget handback e2e test");
   const config = fallbackConfig(["clean"]);

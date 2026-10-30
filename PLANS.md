@@ -118,27 +118,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The before/after row and key counts, and the deletions' measurement premise, are in the part's PLANS-DONE entry.
 - `npm run test:gate` passes.
 
-### Option-2 isolation, part 1/2: the load-sensitive e2e files wait for a quiet host instead of flaking on a starved one (planned 2026-10-29 by the plan role, split from the Steward queue-gap note 2026-10-29 and the user's option-2 isolate decision; independent of part 2/2 — different files, no `requires`; touches test/helpers/wait.ts test/orchestrator-budget.e2e.test.ts test/orchestrator-resize.e2e.test.ts test/orchestrator-permits.e2e.test.ts test/orchestrator-once.e2e.test.ts DEVELOPMENT.md)
-
-**Goal.** Under host load the load-sensitive e2e files (`orchestrator-budget`, `orchestrator-resize`, `orchestrator-permits`, `orchestrator-once`) can no longer schedule the post-switch child runs their 60 s/150 s waits bound, so the tier goes red on a merely busy machine and the ci role files a bug per member. The record shows more wall-clock bound is a dead end (two 60 s→150 s lengthenings each failed) and that running the tier apart from the full suite is already true and still red. Take the user's option 2 directly — gate these files on a quieter host: a load-sensitive e2e file starts once the host's load-to-cores ratio is at or below the bar the class verified at, and records a deferred (skipped) outcome naming the load when the host stays saturated through a bounded wait, instead of failing a verdict it never had a fair chance to reach.
-
-**Approach.**
-- Add `awaitQuietHost(t, waitMs)` to `test/helpers/wait.ts`: it samples `sampleHostLoad` from `src/build/host-sleep.js` (already the one host-load sampler `doctor-contention-checks.ts` and `build-check-scoped.ts` read), returns `true` at once when `load1 <= cpus`, and otherwise polls every few seconds up to `waitMs` (a named constant, default ~5 min) before returning `false`. It takes an injectable sampler defaulting to `sampleHostLoad`, like the doctor's `load` seam, so a test can pin it offline.
-- The plan makes deferral explicit, not silent: at the top of each load-sensitive e2e file, `if (!(await awaitQuietHost(t, QUIET_HOST_WAIT_MS))) { t.skip(`host load ${load.load1} on ${load.cpus} cores: e2e deferred, not a verdict`); return; }`. This is dynamic and load-conditioned — the file still runs whenever the host allows — not the static known-flaky exemption list option 3 named.
-- The files keep their existing 150 s/60 s wall-clock waits: on a host at or below the bar those holds were verified sufficient, so no bound changes.
-- `DEVELOPMENT.md`'s test tier note records the quiet-host precondition beside the e2e serialization note (`docs/how-it-works.md` is left to part 2/2's review paragraph, so the two parts do not edit one file).
-
-**Files touched.** test/helpers/wait.ts test/orchestrator-budget.e2e.test.ts test/orchestrator-resize.e2e.test.ts test/orchestrator-permits.e2e.test.ts test/orchestrator-once.e2e.test.ts DEVELOPMENT.md
-
-**Acceptance criteria.**
-- With an injected sampler reporting `load1 > cpus` for the whole wait, each load-sensitive e2e file skips with a reason naming the load and the tier reports a skip (not a failure); with `load1 <= cpus` the helper returns at once and the file runs exactly as today.
-- No load-sensitive e2e file gains a longer wall-clock bound; the only change to their waits is the precondition.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/helpers' own case (in the file that covers `wait.ts`, or `test/wait.test.ts`): `awaitQuietHost` returns true immediately under a quiet injected sampler, false after the bounded wait under a saturated one, and never throws.
-- A run of `test/orchestrator-budget.e2e.test.ts` under a saturated injected sampler shows the skip wording; under the live quiet host it runs.
-
 ### Every commit is verified on main, part 4i/3: the pre-merge reviewer's resume state and its event vocabulary are deleted (planned 2026-10-29 by the plan role, split from the too-large part 3e/3; part 4h/3, which deleted the modules that read and produce the resume marker, has landed; touches src/runner/runner-state.ts src/runner/runner-state-load.ts src/review/review.ts src/run/run-apply.ts src/failure/failure-cluster.ts src/events/events.ts src/events/event-format.ts test/runner-state.test.ts test/run-apply.test.ts test/failure-cluster.test.ts test/event-format.test.ts)
 
 **Goal.** After part 4h/3 nothing reads `RunnerState.reviewResume` or `approvedPatchIds`, nothing produces the `review_start` `resumed` flag, and no run reports the "continues this review" timeout wording. Delete the resume state and the vocabulary built on it.
