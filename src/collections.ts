@@ -192,6 +192,16 @@ export function lowerMedian(values: number[]): number {
   return sorted[Math.floor((sorted.length - 1) / 2)] as number;
 }
 
+/** The lower median and the maximum of a positive-value set, or null when it is empty: the
+ * shared reduction every doctor "how long did X take" row performs on its positive samples
+ * (doctor-project-checks.ts's checkDurationPhrase and doctor-backlog.ts's mergeWaitPhrase each
+ * spelled the empty-guard then lowerMedian + Math.max by hand), so the median/max pair and the
+ * nothing-to-report rule cannot drift between them. */
+export function medianAndMax(values: readonly number[]): { median: number; max: number } | null {
+  if (values.length === 0) return null;
+  return { median: lowerMedian([...values]), max: Math.max(...values) };
+}
+
 /** Ascending string comparator by UTF-16 code unit — the locale-independent order a bare `.sort()`
  * uses, unlike `localeCompare` (which `rankByCount` uses for its tiebreak). Used directly by
  * src/cli/cli-start-summary.ts, src/cli/completion.ts, src/cli/cli-log-commands.ts,

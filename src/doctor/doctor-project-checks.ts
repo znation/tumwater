@@ -21,7 +21,7 @@ import { STATE_DIR, eventsArchivePath, eventsLogPath } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gates.js";
 import { DAY_MS, dayKey } from "../text/datetime.js";
 import { errorMessage } from "../text/text.js";
-import { lowerMedian } from "../collections.js";
+import { medianAndMax } from "../collections.js";
 import { formatGB, shortSha } from "../text/format.js";
 import { eventLogState, readEventsSince, type EventLogState } from "../events/event-window.js";
 import { EVENTS_KEEP, type HarnessEvent } from "../events/events.js";
@@ -198,10 +198,9 @@ export function checkDurationPhrase(events: readonly HarnessEvent[]): string | u
     .filter(isPassingFullCheck)
     .map((e) => finiteNumber(e.durationMs, 0))
     .filter((ms) => ms > 0);
-  if (durations.length === 0) return undefined;
-  const median = lowerMedian(durations);
-  const slowest = Math.max(...durations);
-  return `passing merge checks in the last 24h took ${trailingDayMedianPhrase(median, slowest, "slowest", durations.length, "run")}`;
+  const pair = medianAndMax(durations);
+  if (pair === null) return undefined;
+  return `passing merge checks in the last 24h took ${trailingDayMedianPhrase(pair.median, pair.max, "slowest", durations.length, "run")}`;
 }
 
 /** Declared project check — names what the review gate's deterministic pre-check, the

@@ -8,7 +8,7 @@ import { humanSeconds, humanSince, HOUR_MS, DAY_MS } from "../text/datetime.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventsSince } from "../events/event-window.js";
 import { finiteNumber } from "../files/json-object.js";
-import { distinctOrdered, lowerMedian } from "../collections.js";
+import { distinctOrdered, medianAndMax } from "../collections.js";
 import { agree, plural, trailingDayMedianPhrase } from "../text/phrases.js";
 import { queuedMerges, unreadableMergeQueueFiles } from "../merge/merge-queue.js";
 import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
@@ -305,10 +305,9 @@ export function mergeWaitPhrase(events: readonly HarnessEvent[]): string | undef
     .filter((e) => e.type === "merge_done")
     .map((e) => finiteNumber(e.queuedMs, 0))
     .filter((ms) => ms > 0);
-  if (waits.length === 0) return undefined;
-  const median = lowerMedian(waits);
-  const longest = Math.max(...waits);
-  return `merges in the last 24h waited ${trailingDayMedianPhrase(median, longest, "longest", waits.length, "merge")}`;
+  const pair = medianAndMax(waits);
+  if (pair === null) return undefined;
+  return `merges in the last 24h waited ${trailingDayMedianPhrase(pair.median, pair.max, "longest", waits.length, "merge")}`;
 }
 
 /** The dirty tracked backlog/brief files in the primary checkout, factored out of
