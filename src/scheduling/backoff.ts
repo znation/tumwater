@@ -81,12 +81,12 @@ const YIELD_RESET_RECENT = 10;
 const YIELD_DOUBLE_STEP = 5;
 
 /** The multiplier on a scalable role's minRunIntervalSeconds gap its recent yield earns:
- * 1 while any of the last 10 counted runs merged, otherwise doubling per 5 further empty
- * runs — 10 empties ×2, 15 ×4, 20 ×8 — capped at 8. `recent` is the ring's chars, oldest
- * first, as pushYieldOutcome recorded them. Pure; unit-tested beside the other ladder math.
- * A merge inside the last 10 resets the multiplier to 1 even when older empties remain in
- * the ring: one merge is the evidence the role's clock should trust, and the ring's older
- * half only matters once the merge has aged out of the recent window. */
+ * 1 while any of the last YIELD_RESET_RECENT counted runs merged, otherwise doubling per
+ * YIELD_DOUBLE_STEP further empty runs — 10 empties ×2, 15 ×4, 20 ×8 — capped at 8.
+ * `recent` is the ring's chars, oldest first, as pushYieldOutcome recorded them. Pure;
+ * unit-tested beside the other ladder math. The reset window and the double step share this
+ * module's single YIELD_RING (20) as their shaping constants, so the ladder reads off named
+ * thresholds instead of bare counts. */
 export function yieldMultiplier(recent: string[]): number {
   if (recent.slice(-YIELD_RESET_RECENT).includes(YIELD_MERGE)) return 1;
   const empty = recent.filter((c) => c !== YIELD_MERGE).length;
