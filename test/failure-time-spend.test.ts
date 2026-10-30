@@ -549,7 +549,7 @@ test("a rebased review_error merge prices under its review_failed message, not t
     { ts: at(0, 10), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 0.5 }, // retired-name-ok: legacy event field in a fixture
     // The rebased head B is what the reviewer failed; the pin and the outcome still name A.
     { ts: at(0, 11), loop: "bugfix", type: "review_failed", head: head("b"), // retired-name-ok: legacy event field in a fixture
-      message: "timed out after 900s while still making progress — the commit is kept; the next attempt continues this review" },
+      message: "timed out after 900s while still making progress — the commit is kept; the next attempt reviews it from scratch" },
     { ts: at(0, 12), loop: "bugfix", type: "merge_failed", commit: head("a"), result: "review_error", durationMs: 60_000 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const data = collectFailureReport(root, 1);
