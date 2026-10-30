@@ -13,6 +13,7 @@ import { listWideScope, queuedListRows } from "../inbox/inbox.js";
 import { intQuery, rejectBadRole, roleListQuery } from "./gui-args.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import { typoSuffix } from "../text/suggest.js";
+import { gotSuffix } from "../text/text.js";
 import type http from "node:http";
 /** The /api/backlog `file` values and the open-section reader each addresses — one table so
  * the on-demand dispatch and the "valid values" list in both 400s cannot drift apart. A Map,
@@ -96,7 +97,7 @@ function diffPathParam(res: http.ServerResponse, rawPath: string | null): { path
   if (rawPath === null) return { path: undefined };
   const path = normalizeDiffPath(rawPath);
   if (path === null) {
-    badRequest(res, "path takes a repo-relative path such as src/cli.ts (as overlaps lists it)");
+    badRequest(res, `path takes a repo-relative path such as src/cli.ts (as overlaps lists it)${gotSuffix(rawPath)}`);
     return null;
   }
   return { path };

@@ -25,6 +25,7 @@ import { readMergeQueue, type MergeQueueView } from "../merge/merge-queue.js";
 import { renderMergeQueue, scopeMergeQueue } from "../merge/merge-queue-render.js";
 import { mergeHoldsSha, type MergeInFlight } from "../merge/merge-slot.js";
 import { shortSha } from "../text/format.js";
+import { gotSuffix } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { orchestratorAlive } from "../team/team-orchestrator-info.js";
 import { queueInFlight } from "../status/status-polls.js";
@@ -136,7 +137,8 @@ function diffPathArg(args: string[]): string | undefined {
   const raw = flagValue(args, "--path");
   if (raw === null || raw === undefined) return undefined;
   const norm = normalizeDiffPath(raw);
-  if (norm === null) fail("diff --path takes a repo-relative path such as src/cli.ts (as diff --overlaps prints it)");
+  if (norm === null)
+    fail(`diff --path takes a repo-relative path such as src/cli.ts (as diff --overlaps prints it)${gotSuffix(raw)}`);
   return norm;
 }
 
