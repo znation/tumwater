@@ -26,7 +26,7 @@ export interface RunTrailSelection {
 /** The pane's row selection over the seam, fixed by the pane so the trail reads the same rows
  * without owning the selection: the same collector the pane's own cache uses, returning the
  * run at `index` (the pane-scoped newest-first set) for `loadTrail`. */
-export type RunTrailSelectPaneRows = (
+type RunTrailSelectPaneRows = (
   sinceMs: number | null,
   resultClass: HistoryResultClass | null,
   role: string | null,
@@ -38,7 +38,7 @@ export type RunTrailSelectPaneRows = (
 
 /** The shared deps the pane wires the trail into: the seam the trail borrows the pane's row
  * selection and recompute over. */
-export interface RunTrailDeps {
+interface RunTrailDeps {
   /** The pane's current row selection the trail reads and (the window step) writes. */
   selection: RunTrailSelection;
   /** The pane's row selection closure (`selectPaneRows`), so `loadTrail` reads the same rows
@@ -52,7 +52,7 @@ export interface RunTrailDeps {
 }
 
 /** The run-trail snapshot slice the pane's `state()` reports. */
-export interface RunTrailSnapshot {
+interface RunTrailSnapshot {
   trailMode: boolean;
   trailIndex: number;
   trailCache: string | null;

@@ -371,7 +371,7 @@ export function configForStatus(root: string): TumwaterConfig {
 // syscall per file per poll instead of re-reading and re-parsing JSON that hasn't moved.
 // Keyed by state-file path so distinct roots never collide; capped inside cachedByStat so many
 // short-lived roots in tests cannot grow it unbounded.
-export type SlotsForPoll = ReturnType<typeof readSlotsState>["slots"];
+type SlotsForPoll = ReturnType<typeof readSlotsState>["slots"];
 
 /** Per-poll cached view of the worktree pool layout (status-data's `slots`), stat-cached by
  * file like the other always-on snapshot readers: slots.json changes only at lease boundaries
