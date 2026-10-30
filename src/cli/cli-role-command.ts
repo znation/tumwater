@@ -185,9 +185,9 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // "unknown argument: y") instead of naming the actual slip. Refuse up front with the flag's
   // own needs-a-value wording — the same spirit as `config set`'s flag-looking-value guard.
   // Only a `--` (double-dash) token reads as a flag: a single-dash token like `-1` is a
-  // negative-number value that must reach the setters' own bound checks, and the file flags'
-  // `-` stdin value is not in this set at all.
-  for (const flag of ["--provider", "--model", "--thinking", "--backend", "--cap", "--min-run-interval", "--instances", "--quiet-hours"]) {
+  // negative-number value that must reach the setters' own bound checks, and a single-dash
+  // `-` stdin value (the file flags' `-`) is left to the readers.
+  for (const flag of ["--provider", "--model", "--thinking", "--backend", "--cap", "--min-run-interval", "--instances", "--quiet-hours", "--notes-file", "--instructions-file"]) {
     const at = rest.indexOf(flag);
     const next = at >= 0 ? rest[at + 1] : undefined;
     if (next?.startsWith("--"))
