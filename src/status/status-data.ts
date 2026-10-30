@@ -6,7 +6,7 @@ import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { baseRoleOf, roleInScope, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
 import { piModelsPath } from "../pi/pi-models.js";
-import { configForStatus, queueInFlight, mainCheckForPoll, maintenanceQuotaForPoll, ciParityForPoll, type CiParityStatus, type MainCheckStatus } from "./status-polls.js";
+import { configForStatus, queueInFlight, mainCheckForPoll, maintenanceQuotaForPoll, ciParityForPoll, buildCheckForPoll, type CiParityStatus, type MainCheckStatus } from "./status-polls.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { scheduledStopAt, scheduledWakes, standingRolePause, standingTeamPause } from "../team/team-state.js";
@@ -23,7 +23,6 @@ import { collectInboxes } from "./status-inbox.js";
 import { collectRoleNotesOverCap, type RoleNoteOverCap } from "./status-role-notes.js";
 import { collectBudget } from "./status-budget.js";
 import { collectRootInstallDrift } from "./status-install.js";
-import { detectBuildCheck } from "../build/build-check-detect.js";
 import { briefStatus } from "../brief/brief.js";
 import { principlesBlockOverCap } from "../prompt/principles.js";
 
@@ -520,7 +519,7 @@ function snapshotHealthFields(
     mergeQueue,
     mainCheck: mainCheckForPoll(root, cfg),
     ciParity: ciParityForPoll(root, cfg),
-    noDeclaredCheck: detectBuildCheck(root, cfg) === null ? true : undefined,
+    noDeclaredCheck: buildCheckForPoll(root, cfg) === null ? true : undefined,
     noBrief: brief.missing ? true : undefined,
     briefTruncated: brief.overCap ? true : undefined,
     ...(roleNotesOverCap.length > 0 ? { roleNotesOverCap } : {}),
