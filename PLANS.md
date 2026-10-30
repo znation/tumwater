@@ -6,6 +6,34 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
+### Every commit is verified on main, part 3f/3: the merge slot runs no in-lock gate check and no batch check — a merge is a rebase and a fast-forward (planned 2026-10-24 by the operator, split from the held part 3/3; requires part 4i/3 landed, since the gate-scope checks lose their producers once the pre-merge reviewer is gone; split 2026-10-29 by the plan role — the `main_red` verdict removal this entry used to bundle is now part 4j/3 and part 4k/3, so this part deletes only the merge-side checks and the pin machinery they fed; touches src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/merge/merge-drain.ts src/merge/merge-core.ts src/merge/merge-check-failures.ts src/merge/merge-requeue.ts src/review/review-precheck.ts src/runner/runner-leftover.ts docs/how-it-works.md docs/invariants.md test/merge-to-main.test.ts test/merger-batch.test.ts test/merger-bisect.test.ts test/merger-check.test.ts test/merger-errors.test.ts test/merger.test.ts test/merge-requeue.test.ts test/review-precheck.test.ts test/runner-leftover.test.ts)
+
+**Previously held 2**
+
+**Goal.** With the watch verifying every new tip, the checks that stood in front of a landing are redundant. Delete the merge slot's in-lock build re-check and the batch check with its largest-passing-prefix bisect, so a merge is: rebase onto the tip, take the fast-forward under the merge lock. A broken commit then sits on main between its landing and the watch's fix, which is the `ci` healer's job.
+
+**Approach.**
+- Delete the in-lock re-check from the merge path (`src/merge/merge-to-main.ts`'s `verifyMerge`, called from `mergeApprovedChangeIn`): the `runScopedBuildCheck`/`mergeCommand` run, its `merge_blocked` cause, and the `main_red` result it returned for a red main. The fast-forward, the conflict resolver, the dirty-checkout refusal and the `MERGE_CONFLICT_LIMIT` hand-back stay (a conflicted tree cannot be landed).
+- Delete the batch path from `mergeApproved` (`src/merge/merge-batch.ts`): the shared scope-`batch` check, its `BATCH_RESTACK_ATTEMPTS` re-stack and its per-pick bisect/fallback, and whatever in `merge-stack.ts` only that path used. `merge-drain.ts`'s `startMerge` calls the one-change `mergeApprovedChange` (`src/merge/merge-core.ts`) instead of `mergeApproved`, so every approved change merges one at a time through the now-check-free path.
+- The gate-scope check producers go: `review-precheck.ts`'s build-check reject and `merge-check-failures.ts`'s `merge_blocked`/`review_rejected`/`main_red` attribution lose their callers.
+- The `main_red` pin machinery goes with the in-lock verdict that produced it: the merge-side `main_red` result (`merge-core.ts`), `requeueMainRedPin` (`merge-requeue.ts`) and `runner-leftover.ts`'s `main_red_wait` leftover outcome. This part deliberately leaves the `RunResult` member `main_red` and every status/doctor/UI/report reader of it in place — parts 4j/3 and 4k/3 remove those once no merge can produce the verdict.
+- Keep the two rules part 3h/3 left pre-merge (secret leaks and protected edits) and the refusals that are not quality verdicts: the dirty-checkout pre-flight (`merge-to-main.ts`), a rebase conflict and its hand-back, a lost fast-forward race, and the startup/redeploy stage check.
+- Docs: docs/how-it-works.md's merge paragraph says a merge is a rebase and a fast-forward; docs/invariants.md's merge-check guarantees are re-pointed to the watch.
+
+**Files touched.** src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/merge/merge-drain.ts src/merge/merge-core.ts src/merge/merge-check-failures.ts src/merge/merge-requeue.ts src/review/review-precheck.ts src/runner/runner-leftover.ts docs/how-it-works.md docs/invariants.md test/merge-to-main.test.ts test/merger-batch.test.ts test/merger-bisect.test.ts test/merger-check.test.ts test/merger-errors.test.ts test/merger.test.ts test/merge-requeue.test.ts test/review-precheck.test.ts test/runner-leftover.test.ts
+
+**Acceptance criteria.**
+- A merge runs no build check: the merge slot's per-change work is the rebase, the commit and the fast-forward, and the only pre-merge refusals left are a dirty or conflicted tree, a secret leak and a protected edit.
+- `mergeApproved` has no batch/stack/bisect path; `merge-drain.ts` merges every approved change through the one-change `mergeApprovedChange`.
+- No merge produces `main_red`; `requeueMainRedPin` is gone and `runner-leftover.ts` has no `main_red_wait` outcome. The `RunResult` member `main_red` and its status/doctor/UI/report readers remain for parts 4j/3 and 4k/3.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/merge-to-main.test.ts: `a merge runs no gate command` — with a declared check, no build-check run starts and the fast-forward lands; the dirty-checkout and conflict cases stay.
+- test/merger-batch.test.ts / test/merger-bisect.test.ts / test/merger-check.test.ts: the batch/stack/bisect cases are dropped; one-change merges still land.
+- test/merge-requeue.test.ts: `requeueMainRedPin is gone`; the surviving retry cases stay.
+- test/runner-leftover.test.ts: the `main_red_wait` cases go; the surviving leftover cases stay.
+
 ### Every commit is verified on main, part 3f/3: the merge slot's in-lock gate check and batch path go — a merge is a rebase and a fast-forward (planned 2026-10-24 by the operator, split 2026-10-29 by the plan role from the held part 3f/3 after feature found it too large for one run: this is the merge-mechanics half, sibling to part 4j/3, which removes the `main_red` verdict this part stops producing; requires part 4i/3 landed, since the gate-scope checks lose their producers once the pre-merge reviewer is gone; touches src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/merge/merge-drain.ts src/merge/merge-core.ts src/merge/merge-check-failures.ts src/merge/merge-requeue.ts src/review/review-precheck.ts src/runner/runner-leftover.ts docs/how-it-works.md docs/invariants.md test/merge-to-main.test.ts test/merge-verify.test.ts test/merge-stack.test.ts test/merger-restack.test.ts test/merge-requeue.test.ts)
 
 **Goal.** With the watch verifying every new tip, the checks that stood in front of a landing are redundant. Delete the merge slot's in-lock build re-check and the batch check with its largest-passing-prefix bisect, so a merge is: rebase onto the tip, take the fast-forward under the merge lock. A broken commit then sits on main between its landing and the watch's fix, which is the `ci` healer's job. The `main_red` verdict this path produced is left in the union for part 4j/3 to delete.
@@ -111,4 +139,47 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Every doctor row name in doctor-check-names.ts resolves to a check that reads a mechanism that still exists; no row reports a path nothing writes.
 - The before/after row and key counts, and the deletions' measurement premise, are in the part's PLANS-DONE entry.
 - `npm run test:gate` passes.
+
+### Every commit is verified on main, part 4j/3: the `main_red` run-result verdict is removed from the status, doctor, UI and report surfaces (planned 2026-10-29 by the plan role, split from the too-large part 3f/3; requires part 3f/3 landed, so no merge produces the verdict; touches src/ui/tone.ts src/events/event-labels.ts src/ui/gui/gui-client-model.ts src/failure/failure-data.ts src/failure/failure-time-spend.ts src/failure/failure-render.ts src/cli/cli-start-summary.ts src/status/status-polls.ts src/ui/status-model.ts src/doctor/doctor-holds.ts src/inbox/pending-prompt.ts src/review/review.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/runner/runner-state.ts src/budget/fallback-breaker.ts src/events/event-notify.ts src/baseline/main-red.ts test/attribute-red-check.test.ts test/budget.test.ts test/doctor-holds.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts test/gui-client.test.ts test/status-model.test.ts test/status-render-cells.test.ts test/status-render.test.ts test/team-alerts.test.ts)
+
+**Goal.** With part 3f/3 removing every merge that could produce a `main_red` run result, the surfaces that read or render it describe a state that cannot occur. Delete them, leaving the `RunResult` member for part 4k/3 to remove last, so this part can merge on its own without a compile-forced sweep of the run/runner plumbing.
+
+**Approach.**
+- Remove the verdict from the display tables: `resultTone`'s `case "main_red"` and `"main_red"` in `PROBLEM_RESULTS` (src/ui/tone.ts), `main_red: "main's check is failing"` from `RUN_RESULT_LABELS` (src/events/event-labels.ts), `main_red: "red"` from the dashboard's `RESULT_TONES` (src/ui/gui/gui-client-model.ts), `main_red: 9` from `RESULT_ORDER` (src/failure/failure-render.ts), `"main_red"` from `CLUSTERED_RESULTS` (src/failure/failure-time-spend.ts), the `ev.result === "main_red"` clause (src/failure/failure-data.ts) and `"main_red"` from the start-summary list (src/cli/cli-start-summary.ts).
+- Delete the status/doctor readers: `heldByMainRed` and `mainCheckRecovered` (src/status/status-polls.ts), the `main red` label branch and its import (`src/ui/status-model.ts`), and the held-code-role list inside `checkMainRed` (`src/doctor/doctor-holds.ts`). The unheld red-main warning (`redMainWarning`) and the `main_red_hold` event machinery stay.
+- The `RunResult` member `main_red` (`src/run/run-outcome.ts`) stays, as do `runner-recovery.ts`'s producer and the run/runner/review plumbing — part 4k/3 removes them.
+- Refresh comments that name the verdict as a live status: `src/ui/status-model.ts`, `src/inbox/pending-prompt.ts`, `src/review/review.ts`, `src/run/run-finalize.ts`, `src/run/run-prompt.ts`, `src/orchestrator/orchestrator-poll.ts`, `src/merge/merge-verify.ts`, `src/merge/merge-queue.ts`, `src/runner/runner-state.ts`, `src/budget/fallback-breaker.ts`, `src/events/event-notify.ts`, `src/baseline/main-red.ts`.
+
+**Files touched.** src/ui/tone.ts src/events/event-labels.ts src/ui/gui/gui-client-model.ts src/failure/failure-data.ts src/failure/failure-time-spend.ts src/failure/failure-render.ts src/cli/cli-start-summary.ts src/status/status-polls.ts src/ui/status-model.ts src/doctor/doctor-holds.ts src/inbox/pending-prompt.ts src/review/review.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/runner/runner-state.ts src/budget/fallback-breaker.ts src/events/event-notify.ts src/baseline/main-red.ts test/attribute-red-check.test.ts test/budget.test.ts test/doctor-holds.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts test/gui-client.test.ts test/status-model.test.ts test/status-render-cells.test.ts test/status-render.test.ts test/team-alerts.test.ts
+
+**Acceptance criteria.**
+- No status, doctor, UI, failure or CLI surface reads or renders the `main_red` verdict: `heldByMainRed` and `mainCheckRecovered` are gone, and `grep -rnE '\bmain_red\b' src/ui src/status src/doctor src/failure src/cli src/events src/inbox src/budget` finds no verdict reference (`main_red_hold` still matches nothing under `\bmain_red\b` and stays).
+- The `RunResult` member `main_red` still exists (part 4k/3 removes it), so the tree compiles without the run/runner sweep.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/doctor-holds.test.ts / test/status-model.test.ts / test/status-render.test.ts / test/status-render-cells.test.ts / test/team-alerts.test.ts: the held-by-main-red cases go; the unheld red-main warning cases stay.
+- test/attribute-red-check.test.ts / test/budget.test.ts / test/failure-render.test.ts / test/failure-time-spend.test.ts / test/gui-client.test.ts: the `main_red` rows/labels/tone cases go; the surviving result cases stay.
+
+### Every commit is verified on main, part 4k/3: the `main_red` union member and the run/runner plumbing that names it are removed (planned 2026-10-29 by the plan role, split from the too-large part 3f/3; requires part 4j/3 landed, so no surface still reads the verdict; touches src/run/run-outcome.ts src/runner/runner-recovery.ts src/run/run-apply.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-state.ts src/events/event-notify.ts src/inbox/pending-prompt.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/budget/fallback-breaker.ts src/baseline/main-red.ts test/run-outcome.test.ts test/run-apply.test.ts test/run-finalize.test.ts test/runner-recovery.test.ts test/runner-red-main.test.ts test/merge-pipeline-2.test.ts test/merger.test.ts)
+
+**Goal.** The `main_red` run result no longer has a producer (part 3f/3) or a reader (part 4j/3), so the union member itself is dead vocabulary. Remove it and let the compiler name any site still constructing or narrowing it.
+
+**Approach.**
+- Remove `| "main_red"` and its doc comment from `RunResult` (src/run/run-outcome.ts). Deleting the member makes every remaining construction or `result === "main_red"` narrowing a compile error, which is the work list.
+- Remove the last producer: `runner-recovery.ts`'s recovered-`main_red` return, now that part 3f/3 deleted the `main_red_wait` leftover it served. Fix any surviving switch/type-narrowing the compiler flags (run-apply, run-finalize and the run prompt), keeping each site's non-`main_red` behavior.
+- Refresh the comments that still name the verdict as a live outcome in `src/runner/runner-state.ts`, `src/runner/runner-recovery.ts`, `src/run/run-finalize.ts`, `src/run/run-prompt.ts`, `src/orchestrator/orchestrator-poll.ts`, `src/events/event-notify.ts`, `src/inbox/pending-prompt.ts`, `src/review/review.ts`, `src/merge/merge-verify.ts`, `src/merge/merge-queue.ts`, `src/budget/fallback-breaker.ts` and `src/baseline/main-red.ts`.
+
+**Files touched.** src/run/run-outcome.ts src/runner/runner-recovery.ts src/run/run-apply.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-state.ts src/events/event-notify.ts src/inbox/pending-prompt.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/budget/fallback-breaker.ts src/baseline/main-red.ts test/run-outcome.test.ts test/run-apply.test.ts test/run-finalize.test.ts test/runner-recovery.test.ts test/runner-red-main.test.ts test/merge-pipeline-2.test.ts test/merger.test.ts
+
+**Acceptance criteria.**
+- `RunResult` has no `main_red` member, and `grep -rnE '\bmain_red\b' src/` prints nothing (the `main_red_hold` event and its machinery stay; `\bmain_red\b` does not match `main_red_hold`).
+- No code path returns or narrows on a `main_red` run result; the compiler is clean.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/run-outcome.test.ts: the `main_red` membership case goes; the surviving `RunResult` cases stay.
+- test/runner-recovery.test.ts / test/runner-red-main.test.ts: the recovered-`main_red` cases go; the surviving recovery cases stay.
+- test/run-apply.test.ts / test/run-finalize.test.ts / test/merge-pipeline-2.test.ts / test/merger.test.ts: drop the `main_red` assertions; the surviving cases stay.
+
 ## Done
