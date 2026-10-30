@@ -129,16 +129,23 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
     return roleStackChart(data, "commitsByRole", (n) => plural(n, "commit"), countAxis, true);
   }
 
+  // One number's Non/NaN → 0 coercions: the report rows' scalar fields arrive as both numbers
+  // and (on the server or hand-built rows) strings, and the chart builders read each field
+  // repeatedly (once for the bar's value, again for its hover title), so the single home keeps
+  // the "Number(x) || 0" guard from drifting between the value and the title — a day that
+  // omits a field must render a 0-height bar, never a NaN one.
+  const num = (x) => Number(x) || 0;
+
   // The day's work vs maintenance commits, from workCommits/maintenanceCommits (the same split
   // foldUsageEvent's totals carry): work (feature/bugfix/director) at the bottom, maintenance
   // (code-maintenance/readme) above. This shows only the tiered counts — plan, steward,
   // observer and custom/legacy roles are untiered and count toward the total commits chart
-  // alone, so the two tiers need not sum to chartCommits. The Number(...) || 0 guard covers
-  // older or hand-built report rows that omit the fields.
+  // alone, so the two tiers need not sum to chartCommits. The num guard covers older or
+  // hand-built report rows that omit the fields.
   function chartCommitTiers(data) {
     return reportSvg(data.series, (d) => [
-      { value: Number(d.workCommits) || 0, color: "#10b981", title: d.date + ": " + plural(Number(d.workCommits) || 0, "work commit") },
-      { value: Number(d.maintenanceCommits) || 0, color: "#94a3b8", title: d.date + ": " + plural(Number(d.maintenanceCommits) || 0, "maintenance commit") },
+      { value: num(d.workCommits), color: "#10b981", title: d.date + ": " + plural(num(d.workCommits), "work commit") },
+      { value: num(d.maintenanceCommits), color: "#94a3b8", title: d.date + ": " + plural(num(d.maintenanceCommits), "maintenance commit") },
     ], countAxis, true);
   }
 
@@ -147,7 +154,7 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // chip in the bar's color. Shared by the duration-median charts so the field/color/label
   // triple cannot drift.
   function medianBarChart(data, field, color, label) {
-    return reportSvg(data.series, (d) => [{ value: Number(d[field]) || 0, color, title: d.date + ": " + fmtSpan(Number(d[field]) || 0) + " median " + label }],
+    return reportSvg(data.series, (d) => [{ value: num(d[field]), color, title: d.date + ": " + fmtSpan(num(d[field])) + " median " + label }],
       (v) => fmtSpan(v), false);
   }
 
@@ -159,14 +166,14 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // The day's failed full-suite checks, from checkFailures; a day without one keeps its empty
   // slot, as chartCheckMedian does.
   function chartCheckFailures(data) {
-    return reportSvg(data.series, (d) => [{ value: Number(d.checkFailures) || 0, color: "#ef4444", title: d.date + ": " + plural(Number(d.checkFailures) || 0, "red merge check") }],
+    return reportSvg(data.series, (d) => [{ value: num(d.checkFailures), color: "#ef4444", title: d.date + ": " + plural(num(d.checkFailures), "red merge check") }],
       countAxis, true);
   }
   // Main's red wall-clock per day, from mainRedMs (the same main_check/main_red_hold rule G1
   // uses): the span main had no passing full check; a day without one keeps its empty slot,
   // like the median charts; the red color reads beside the red-check-count chart it follows.
   function chartMainRedMs(data) {
-    return reportSvg(data.series, (d) => [{ value: Number(d.mainRedMs) || 0, color: "#dc2626", title: d.date + ": " + fmtSpan(Number(d.mainRedMs) || 0) + " main red" }],
+    return reportSvg(data.series, (d) => [{ value: num(d.mainRedMs), color: "#dc2626", title: d.date + ": " + fmtSpan(num(d.mainRedMs)) + " main red" }],
       (v) => fmtSpan(v), false);
   }
 
@@ -195,7 +202,7 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // backlogLagMedianDays (whole days from each finished plan or bug's filing stamp to its
   // done/fixed stamp). Whole-day values, so a plain Nd label is exact.
   function chartBacklogLagMedian(data) {
-    return reportSvg(data.series, (d) => [{ value: Number(d.backlogLagMedianDays) || 0, color: "#0891b2", title: d.date + ": " + (Number(d.backlogLagMedianDays) || 0) + "d median backlog lag" }],
+    return reportSvg(data.series, (d) => [{ value: num(d.backlogLagMedianDays), color: "#0891b2", title: d.date + ": " + num(d.backlogLagMedianDays) + "d median backlog lag" }],
       (v) => Math.round(v) + "d", false);
   }
 
@@ -285,7 +292,7 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
 
   // The day's output tokens, per role, the dashboard twin of the CLI "Tokens by role" line.
   function chartTokensByRole(data) {
-    return roleStackChart(data, "tokensByRole", (n) => fmtTokens(Number(n) || 0) + " output tokens", (v) => fmtTokens(Math.round(v)), true);
+    return roleStackChart(data, "tokensByRole", (n) => fmtTokens(num(n)) + " output tokens", (v) => fmtTokens(Math.round(v)), true);
   }
 
   // The day's prompt tokens, per role, the browser twin of the report's "Prompt tokens by
@@ -293,14 +300,14 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // chartTokensByRole, so a role keeps its palette color and legend order from
   // reportRoleOrder.
   function chartPromptTokensByRole(data) {
-    return roleStackChart(data, "promptTokensByRole", (n) => fmtTokens(Number(n) || 0) + " prompt tokens", (v) => fmtTokens(Math.round(v)), true);
+    return roleStackChart(data, "promptTokensByRole", (n) => fmtTokens(num(n)) + " prompt tokens", (v) => fmtTokens(Math.round(v)), true);
   }
 
   // The day's cache-read prompt tokens, per role, the browser twin of the report's "Prompt
   // tokens by role" line's cache-read share — the same shape over cacheReadTokensByRole with
   // the " cached prompt tokens" label, keeping the same palette order and count axis.
   function chartCacheReadTokensByRole(data) {
-    return roleStackChart(data, "cacheReadTokensByRole", (n) => fmtTokens(Number(n) || 0) + " cached prompt tokens", (v) => fmtTokens(Math.round(v)), true);
+    return roleStackChart(data, "cacheReadTokensByRole", (n) => fmtTokens(num(n)) + " cached prompt tokens", (v) => fmtTokens(Math.round(v)), true);
   }
 
   // The API-equivalent (notional) spend of subscription runs, per role, on the same axis as
@@ -441,8 +448,8 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // them); a day with neither keeps its empty slot.
   function chartBacklogItems(data) {
     return reportSvg(data.series, (d) => [
-      { value: Number(d.featuresDone) || 0, color: "#6366f1", title: d.date + ": " + plural(Number(d.featuresDone) || 0, "feature") + " done" },
-      { value: Number(d.bugsFixed) || 0, color: "#ef4444", title: d.date + ": " + plural(Number(d.bugsFixed) || 0, "bug") + " fixed" },
+      { value: num(d.featuresDone), color: "#6366f1", title: d.date + ": " + plural(num(d.featuresDone), "feature") + " done" },
+      { value: num(d.bugsFixed), color: "#ef4444", title: d.date + ": " + plural(num(d.bugsFixed), "bug") + " fixed" },
     ], countAxis, true);
   }
   // True when some day carries a map under field with an own value above zero; both counts
@@ -521,8 +528,8 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // neither carries an empty slot, and zero segments draw no rect.
   function chartBacklogItemsOpened(data) {
     return reportSvg(data.series, (d) => [
-      { value: Number(d.plansAdded) || 0, color: "#6366f1", title: d.date + ": " + plural(Number(d.plansAdded) || 0, "plan") + " added" },
-      { value: Number(d.bugsFiled) || 0, color: "#ef4444", title: d.date + ": " + plural(Number(d.bugsFiled) || 0, "bug") + " filed" },
+      { value: num(d.plansAdded), color: "#6366f1", title: d.date + ": " + plural(num(d.plansAdded), "plan") + " added" },
+      { value: num(d.bugsFiled), color: "#ef4444", title: d.date + ": " + plural(num(d.bugsFiled), "bug") + " filed" },
     ], countAxis, true);
   }
   // True when some day carries a feature or bug count; the gate for the backlog chart, whose
