@@ -52,6 +52,7 @@
  * rejected. */
 
 import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
+import type { Dirent } from "node:fs";
 import { extname, join } from "node:path";
 import { readTextOrNull, statOrNull, walkFiles } from "../files/files.js";
 import {
@@ -214,6 +215,15 @@ function unwrapSymbol(span: string): string {
   return out;
 }
 
+/** Whether a walked file is a markdown document — the one extension class the source haystack
+ * excludes (the BUGS.md entry names its own symbols, so a doc haystack would back a false
+ * claim). Shared by sourceHaystack and its stat signature so the two cannot drift on what
+ * counts as a source file. */
+function isDocPath(entry: Dirent): boolean {
+  const docExts = new Set([".md", ".markdown"]);
+  return docExts.has(extname(entry.name).toLowerCase());
+}
+
 /** The tree's code text: every non-documentation tracked-source-shaped file under src/,
  * test/, and scripts/, plus package.json and tsconfig.json, concatenated. The walk is
  * language-neutral — markdown is the one thing excluded, not a fixed source-extension list
@@ -224,9 +234,8 @@ function unwrapSymbol(span: string): string {
  * a false one. */
 export function sourceHaystack(root: string): string {
   const parts: string[] = [];
-  const docExts = new Set([".md", ".markdown"]);
   walkSourceFiles(root, (p, entry) => {
-    if (docExts.has(extname(entry.name).toLowerCase())) return;
+    if (isDocPath(entry)) return;
     try {
       if (statSync(p).isFile()) parts.push(readFileSync(p, "utf8"));
     } catch {
@@ -280,13 +289,12 @@ export function cachedSourceHaystack(root: string): string {
  * byte consistent shape, never stale text. */
 function sourceHaystackSignature(root: string): string {
   const sigs: string[] = [];
-  const docExts = new Set([".md", ".markdown"]);
   const add = (p: string): void => {
     const st = statOrNull(p);
     if (st?.isFile()) sigs.push(`${p}:${st.mtimeMs}:${st.size}`);
   };
   walkSourceFiles(root, (p, entry) => {
-    if (docExts.has(extname(entry.name).toLowerCase())) return;
+    if (isDocPath(entry)) return;
     add(p);
   });
   for (const file of ["package.json", "tsconfig.json"]) add(join(root, file));
