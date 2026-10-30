@@ -346,18 +346,30 @@ function stripRoleModels(
   );
 }
 
+/** Whether a seam keeps its own model in a fallback view: handed the resolved seam and the tier
+ * it sits at (a tier's own primary, a role's roleSeamTier, the reviewer's tier). The cap passes
+ * free-ness and ignores the tier; a model-check move keeps every seam but a moved tier's own
+ * primary, which needs the tier. */
+type SeamKeeps = (seam: { agent?: string; provider?: string; model?: string }, tier: ModelTier) => boolean;
+
+/** A role or reviewer entry a fallback view keeps, made to resolve as it did: the view clears
+ * the legacy top-level `provider` (its `model` becomes a tier map), so a bare-id pin that was
+ * parsed under that provider names it itself. */
+function keptEntry<T extends { provider?: string; model?: string }>(config: TumwaterConfig, e: T): T {
+  const bare = e.model !== undefined && !isTierName(e.model) && e.provider === undefined;
+  return bare && config.provider !== undefined ? { ...e, provider: config.provider } : e;
+}
+
 /** Every `roles.<id>` entry with its model seam stripped, except a seam `free` calls free — a
  * subscription claude role keeps its own model through the cap rather than moving to the
  * fallback (plans/agent-backends.md "Free-ness"). With `keepTierNames`, an entry whose model is
  * a tier name is left untouched: the resolved tier map now serves that tier itself, so the
  * reference stays valid (stripping it would lose the role's tier). */
-function freeRoleModels(
-  config: TumwaterConfig,
-  free?: (seam: { agent?: string; provider?: string; model?: string }) => boolean,
-): TumwaterConfig["roles"] {
+function freeRoleModels(config: TumwaterConfig, free?: SeamKeeps): TumwaterConfig["roles"] {
   return Object.fromEntries(
     Object.entries(config.roles).map(([id, rc]) => {
-      if (rc && free?.(withModelOverrides(config, roleSeamTier(config, id), rc))) return [id, rc];
+      const tier = roleSeamTier(config, id);
+      if (rc && free?.(withModelOverrides(config, tier, rc), tier)) return [id, keptEntry(config, rc)];
       return [id, isTierName(rc?.model) ? stripBackend(rc) : stripModel(rc)];
     }),
   );
@@ -459,11 +471,13 @@ function legacyPairConfig(config: TumwaterConfig, pair: FallbackModelConfig): Tu
  * subscription claude seam is never moved (`free`): the gate passes one predicate over the
  * resolved seam, so a free tier keeps its own primary in the map — with the ambient thinking
  * level it resolved with — a free role keeps its own override, and a free reviewer keeps its own
- * model, while every priced seam still lands on its tier's fallback pair. */
+ * model, while every priced seam still lands on its tier's fallback pair. The model check's move
+ * (budget-fallback-view.ts) reuses the same rewrite with a predicate that keeps every seam but a
+ * moved tier's own primary. */
 export function applyFallbackModel(
   config: TumwaterConfig,
   resolved?: TierFallbackMap,
-  free?: (seam: { agent?: string; provider?: string; model?: string }) => boolean,
+  free?: SeamKeeps,
 ): TumwaterConfig {
   if (resolved) {
     const model: Partial<Record<ModelTier, string | ModelSelectorEntry>> = {};
@@ -473,7 +487,7 @@ export function applyFallbackModel(
       // seam has cleared, plus the ambient thinking level `topTierSelector` alone omits. A moved
       // seam gets its pair selector, which already carries that ambient level.
       const seam = withModelOverrides(config, tier, {});
-      if (free?.(seam)) {
+      if (free?.(seam, tier)) {
         const own = freeTierEntry(config, tier, seam);
         if (own !== undefined) model[tier] = own;
         continue;
@@ -483,13 +497,14 @@ export function applyFallbackModel(
       const cap = resolved[tier].pair?.maxDailyCostUsd;
       if (cap !== undefined) stepCaps[modelPairName(resolved[tier].pair)] = cap;
     }
+    const reviewTier = isTierName(config.review.model) ? config.review.model : "strong";
     return {
       ...config,
       ...(Object.keys(stepCaps).length > 0 ? { fallbackStepCaps: stepCaps } : {}),
       provider: undefined,
       model,
       thinking: undefined,
-      review: free?.(reviewConfig(config)) ? config.review : fallbackReview(config.review),
+      review: free?.(reviewConfig(config), reviewTier) ? keptEntry(config, config.review) : fallbackReview(config.review),
       roles: freeRoleModels(config, free),
     };
   }

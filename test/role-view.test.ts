@@ -647,6 +647,18 @@ test("the role view names the fallback step a live orchestrator moved the role's
   assert.equal(p.chainStep?.step, 2);
   assert.match(renderRoleMarkdown(p), /- Running on fallback 2 of 3 \(window used up, resets 17:40\)/);
   assert.match(inspectMarkdownLines(p)[0] ?? "", /^- Running on fallback 2 of 3/);
+
+  // A model-check move names the failed primary at step 1, and the unverified step past it.
+  writeOrchestratorMarker(dir, [], { chain: { default: { pair: "p/m", step: 1, of: 2, reason: "model-check" } } });
+  assert.match(
+    renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)),
+    /- Running on fallback 1 of 2 \(primary failed its model check\)$/m,
+  );
+  writeOrchestratorMarker(dir, [], { chain: { default: { pair: "p/m", step: 2, of: 2, reason: "model-check" } } });
+  assert.match(
+    renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)),
+    /- Running on fallback 2 of 2 \(previous step has not passed its model check\)$/m,
+  );
 });
 
 // A pi author with a claude reviewer (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7):

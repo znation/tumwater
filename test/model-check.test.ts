@@ -26,7 +26,7 @@ import {
 import { ModelCheckGate } from "../src/model-check/model-check-gate.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { defaultConfig } from "../src/config/config.js";
-import { configForRole, type ResolvedModelConfig } from "../src/config/config-views.js";
+import { configForRole, reviewConfig, seamPairName, type ResolvedModelConfig } from "../src/config/config-views.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
@@ -35,7 +35,10 @@ import { readOrchestratorInfo, writeOrchestratorInfo } from "../src/team/team-or
 import { checkFallbackModel, checkModelChecks } from "../src/doctor/doctor-fallback-checks.js";
 import { teamAlerts } from "../src/ui/team-alerts.js";
 import { rolePhase } from "../src/ui/status-model.js";
-import { pollBudgetGate, newBudgetGateState } from "../src/gates/budget-gates.js";
+import { gateRoleConfig, pollBudgetGate, newBudgetGateState } from "../src/gates/budget-gates.js";
+import { newTeamGateStates, pollTeamGates } from "../src/gates/gate-polls.js";
+import { BYTES_PER_GB } from "../src/gates/disk-gates.js";
+import { chainFragments } from "../src/ui/badges.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { readyRepo } from "./fixtures/doctor-fixtures.js";
@@ -283,6 +286,201 @@ test("a failed fallback step is skipped by the budget gate's chain at the cap", 
   });
   assert.equal(failedA.servingResolved.default.pair?.model, "b", "the chain steps past the failed pair");
   assert.equal(failedA.gate, "fallback");
+});
+
+/** A runner as the budget wiring reads and writes it, whose next run follows the config the
+ * wiring assigned. */
+function wiredRunner(role: string, config: TumwaterConfig): RoleRunner {
+  const r = {
+    role,
+    config,
+    budgetFallbackActive: false,
+    state: freshRunnerState(role),
+    runConfig: () => configForRole(r.config, role),
+    runProvider: () => undefined,
+    runModelPair: () => null,
+    handBackRun: () => {},
+  };
+  return r as unknown as RoleRunner;
+}
+
+/** The pair a runner's next run lands on. */
+const runPair = (r: RoleRunner): string => `${r.runConfig().provider}/${r.runConfig().model}`;
+
+test("below the cap, a tier whose primary failed runs on its verified fallback, and moves back once the primary answers", () => {
+  const root = tmpdir("model-check-move-");
+  const modelsPath = writeModelsFile(root, JSON.stringify({ providers: {} }));
+  const config = teamConfig();
+  config.fallback = { default: "omlx/qwen" };
+  const runners = ["feature", "plan"].map((r) => wiredRunner(r, config));
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: 0, roles: ["feature", "plan"] };
+  const verdicts: Record<string, "verified" | "failed"> = { "hf/deepseek": "verified", "flintrunner/flint": "failed" };
+  const states = newTeamGateStates(config);
+  const poll = () =>
+    pollTeamGates(states, {
+      root,
+      runners,
+      liveConfig: config,
+      modelsPath,
+      now: Date.now(),
+      info,
+      sampleFree: () => 100 * BYTES_PER_GB,
+      modelCheckFailed: (pair) => verdicts[pair] === "failed",
+      modelCheckVerified: (pair) => verdicts[pair] === "verified",
+    });
+  const switched = () => eventsOfType(root, "fallback_switched").map((e) => e.tiers);
+
+  // The fallback has not answered yet: nothing moves, the default tier stays held on flint.
+  let gates = poll();
+  assert.equal(gates.roleConfig, config);
+  assert.deepEqual([...gates.checkMoved], []);
+  assert.equal(runPair(runners[0]!), "flintrunner/flint");
+  assert.deepEqual(switched(), []);
+
+  // It answers: default (and small, which inherits default's model) move to it; strong keeps
+  // its primary, and so do the reviewer and the strong-tier role.
+  verdicts["omlx/qwen"] = "verified";
+  gates = poll();
+  assert.deepEqual([...gates.checkMoved], ["small", "default"]);
+  assert.equal(gates.gate, "open");
+  assert.deepEqual(runners.map(runPair), ["omlx/qwen", "hf/deepseek"]);
+  assert.equal(seamPairName(reviewConfig(gates.roleConfig)), "hf/deepseek");
+  assert.ok(runners.every((r) => !r.budgetFallbackActive), "the image-reroute regime stays the cap's");
+  const moved = { pair: "omlx/qwen", step: 1, of: 1, reason: "model-check" };
+  assert.deepEqual(info.chain, { small: moved, default: moved });
+  assert.equal(chainFragments(info.chain), "small → omlx/qwen (model check) · default → omlx/qwen (model check)");
+  const to = { from: null, to: "omlx/qwen", reason: "model-check" };
+  assert.deepEqual(switched(), [{ small: to, default: to }]);
+  poll();
+  assert.equal(switched().length, 1, "an unchanged move logs nothing more");
+
+  // flint answers a re-check: both tiers move back, and the chain empties.
+  verdicts["flintrunner/flint"] = "verified";
+  gates = poll();
+  assert.equal(gates.roleConfig, config);
+  assert.deepEqual([...gates.checkMoved], []);
+  assert.deepEqual(runners.map(runPair), ["flintrunner/flint", "hf/deepseek"]);
+  assert.equal(info.chain, undefined);
+  const back = { from: "omlx/qwen", to: null, reason: "available" };
+  assert.deepEqual(switched()[1], { small: back, default: back });
+});
+
+test("the model check keeps probing a moved tier's primary, so the tier moves back when it answers", async () => {
+  const root = makeRepo();
+  const modelsPath = writeModelsFile(tmpdir("model-check-loop-"), JSON.stringify({ providers: {} }));
+  const config = teamConfig();
+  config.fallback = { default: "omlx/qwen" };
+  const runners = ["feature", "plan"].map((r) => wiredRunner(r, config));
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: ["feature", "plan"] };
+  let now = 2_000_000;
+  const { prober, asked, answer } = manualProber();
+  const gate = new ModelCheckGate(root, prober, new AbortController().signal, POLICY, () => now);
+  const budget = newBudgetGateState(config);
+  // One orchestrator poll: the budget gate assigns each runner its config, then the check polls.
+  const cycle = () => {
+    const view = pollBudgetGate(budget, {
+      root,
+      states: runners.map((r) => r.state),
+      liveConfig: config,
+      modelsPath,
+      modelCheckFailed: (pair) => gate.failed(pair),
+      modelCheckVerified: (pair) => gate.verified(pair),
+    });
+    for (const r of runners) r.config = gateRoleConfig(r.role, config, view.roleConfig);
+    return gate.poll({ runners, liveConfig: config, roleConfig: view.roleConfig, checkMoved: view.checkMoved, info });
+  };
+
+  cycle();
+  answer("hf/deepseek", { ok: true });
+  answer("omlx/qwen", { ok: true });
+  answer("flintrunner/flint", { ok: false, reason: "wrong answer", reply: "salad" });
+  await gate.settled();
+  // The poll after the verdicts moves feature to qwen, so nothing waits; flint stays checked
+  // under its tier's primary label, failed and on its back-off.
+  assert.deepEqual([...cycle()], []);
+  assert.equal(runPair(runners[0]!), "omlx/qwen");
+  const flint = readOrchestratorInfo(root)?.modelChecks?.find((c) => c.pair === "flintrunner/flint");
+  assert.deepEqual([flint?.status, flint?.seams], ["failed", ["primary:small", "primary:default"]]);
+  assert.deepEqual([...cycle()], [], "the next poll keeps the move (flint is not forgotten and re-checked)");
+  assert.equal(asked.length, 3);
+
+  // The back-off elapses: flint is probed again, answers, and the next poll moves feature back.
+  now += POLICY.retryMs;
+  cycle();
+  assert.deepEqual(asked.slice(3), ["flintrunner/flint"]);
+  answer("flintrunner/flint", { ok: true });
+  await gate.settled();
+  assert.deepEqual([...cycle()], []);
+  assert.equal(runPair(runners[0]!), "flintrunner/flint");
+  assert.deepEqual(eventsOfType(root, "model_check_passed").map((e) => e.pair), ["flintrunner/flint"]);
+});
+
+test("a check move keeps a role pinned to its own pair, also a bare id under the legacy provider", () => {
+  const root = makeRepo();
+  const modelsPath = writeModelsFile(tmpdir("model-check-pin-"), JSON.stringify({ providers: {} }));
+  const config = defaultConfig();
+  config.provider = "flintrunner";
+  config.model = "flint";
+  config.fallback = "omlx/qwen";
+  config.roles = { ...config.roles, docs: { enabled: true, model: "other" } };
+  const p = pollBudgetGate(newBudgetGateState(config), {
+    root,
+    states: [],
+    liveConfig: config,
+    modelsPath,
+    modelCheckFailed: (pair) => pair === "flintrunner/flint",
+    modelCheckVerified: (pair) => pair === "omlx/qwen",
+  });
+  assert.deepEqual([...p.checkMoved], ["small", "default", "strong"]);
+  assert.equal(seamPairName(configForRole(p.roleConfig, "feature")), "omlx/qwen");
+  assert.equal(seamPairName(configForRole(p.roleConfig, "docs")), "flintrunner/other", "the pin keeps its provider");
+});
+
+test("at the cap, a free primary that failed moves to a verified free step past a priced one", () => {
+  const root = makeRepo();
+  const free = { input: 0, output: 0 };
+  const modelsPath = writeModelsFile(
+    tmpdir("model-check-cap-"),
+    JSON.stringify({
+      providers: {
+        flintrunner: { models: [{ id: "flint", cost: free }] },
+        omlx: { models: [{ id: "qwen", cost: free }] },
+        paid: { models: [{ id: "x", cost: { input: 1, output: 1 } }] },
+      },
+    }),
+  );
+  const config = teamConfig();
+  config.maxDailyCostUsd = 0.000001;
+  config.fallback = { default: ["paid/x", "omlx/qwen"] };
+  const states = [{ ...freshRunnerState("feature"), dayStamp: todayStamp(), dayCostUsd: 5 }];
+  const verified = new Set(["omlx/qwen", "paid/x", "hf/deepseek"]);
+  const p = pollBudgetGate(newBudgetGateState(config), {
+    root,
+    states,
+    liveConfig: config,
+    modelsPath,
+    modelCheckFailed: (pair) => pair === "flintrunner/flint",
+    modelCheckVerified: (pair) => verified.has(pair),
+  });
+  assert.equal(p.onFallback, true);
+  assert.deepEqual([...p.checkMoved], ["small", "default"], "strong's priced primary is the cap's to move");
+  assert.equal(seamPairName(configForRole(p.roleConfig, "feature")), "omlx/qwen");
+  // The step before qwen is priced, so the cap — not the check — is why default skips it.
+  assert.deepEqual(p.chain.default, { pair: "omlx/qwen", step: 2, of: 2, reason: "cap", returnsAt: p.chain.default?.returnsAt });
+  assert.equal(p.chain.strong?.pair, "omlx/qwen");
+
+  // Without a verified free step the failed primary keeps its tier: held, not moved.
+  verified.delete("omlx/qwen");
+  const held = pollBudgetGate(newBudgetGateState(config), {
+    root,
+    states,
+    liveConfig: config,
+    modelsPath,
+    modelCheckFailed: (pair) => pair === "flintrunner/flint",
+    modelCheckVerified: (pair) => verified.has(pair),
+  });
+  assert.deepEqual([...held.checkMoved], []);
+  assert.equal(seamPairName(configForRole(held.roleConfig, "feature")), "flintrunner/flint");
 });
 
 test("doctor's model check row and over-cap row read the running team's verdicts", () => {

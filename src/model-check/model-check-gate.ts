@@ -6,7 +6,7 @@
  * (src/gates/gate-polls.ts) and polled after it, once the budget gate has assigned each
  * runner the config its next run uses. */
 
-import type { TumwaterConfig } from "../config/config-schema.js";
+import type { ModelTier, TumwaterConfig } from "../config/config-schema.js";
 import {
   pairOverrides,
   resolverConfig,
@@ -30,6 +30,7 @@ import {
   modelCheckFailed,
   modelCheckFault,
   modelCheckHolds,
+  modelCheckVerified,
   recordModelCheck,
   rekeyModelChecks,
   startModelCheck,
@@ -50,19 +51,23 @@ interface PairUse {
 
 /** One poll's inputs: the runners (their configs already assigned by the budget gate), the
  * live config the chain steps come from, the config merges review under (the budget view),
- * and the info file the block is published in. */
+ * the tiers the budget gate moved off a primary that failed this check, and the info file the
+ * block is published in. */
 interface ModelCheckPollInput {
   runners: readonly RoleRunner[];
   liveConfig: TumwaterConfig;
   roleConfig: TumwaterConfig;
+  checkMoved?: ReadonlySet<ModelTier>;
   info: OrchestratorInfo;
 }
 
 /** Every pair the team can run on now, keyed by pair name: each enabled runner's next run
  * (its runConfig, which names the budget fallback during a cap episode), the reviewer and the
- * conflict resolver under the config merges use, and every step of every tier's fallback chain
+ * conflict resolver under the config merges use, every step of every tier's fallback chain
  * — so a fallback is checked before the cap engages it, and the doctor can say whether it
- * answers. */
+ * answers — and the own primary of each tier the budget gate moved for a failed check
+ * (`primary:<tier>`): no runner names it any more, but it must stay checked, failed and on its
+ * back-off, so the tier moves back once it answers instead of being forgotten and retried. */
 function pairsInUse(input: ModelCheckPollInput, runSeams: ReadonlyMap<RoleRunner, ResolvedModelConfig>): Map<string, PairUse> {
   const { liveConfig, roleConfig } = input;
   const out = new Map<string, PairUse>();
@@ -78,6 +83,7 @@ function pairsInUse(input: ModelCheckPollInput, runSeams: ReadonlyMap<RoleRunner
   for (const { tier, step, pair } of tierChainSteps(liveConfig)) {
     add(step === 0 ? `fallback:${tier}` : `fallback:${tier}#${step}`, withModelOverrides(liveConfig, tier, pairOverrides(pair)));
   }
+  for (const tier of input.checkMoved ?? []) add(`primary:${tier}`, withModelOverrides(liveConfig, tier, {}));
   return out;
 }
 
@@ -128,6 +134,12 @@ export class ModelCheckGate {
   /** Whether the pair failed its last probe — the budget gate's chain steps past it. */
   failed(pair: string): boolean {
     return modelCheckFailed(this.checks, pair);
+  }
+
+  /** Whether the pair answered its last probe — the only step the budget gate moves a tier
+   * whose primary failed onto. */
+  verified(pair: string): boolean {
+    return modelCheckVerified(this.checks, pair);
   }
 
   /** A run on `pair` ended without changes and without declaring nothing-to-do: re-check the

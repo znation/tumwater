@@ -9,16 +9,18 @@ import { orchestratorStatePath } from "../paths.js";
 import { tryOrWarn, TUMWATER_SOURCE } from "../events/events.js";
 
 /** Why the position before a tier's active chain step cannot run. */
-type ChainReason = "window" | "reserve" | "cap" | "step-cap" | "overage" | "demoted";
+type ChainReason = "window" | "reserve" | "cap" | "step-cap" | "overage" | "demoted" | "model-check";
 
 /** Where one tier runs while the budget gate has it off its primary (budget-gates.ts's
- * chainInfo): `step` of `of` in the supplying tier's chain, 1-based. */
+ * chainInfo): `step` of `of` in the supplying tier's chain, 1-based. A tier whose primary
+ * failed its model check reads `model-check`, at any spend. */
 export interface ChainTierInfo {
   pair: string;
   step: number;
   of: number;
   reason: ChainReason;
-  /** When the blocked position returns (epoch ms); absent for `demoted` and `overage`. */
+  /** When the blocked position returns (epoch ms); absent for `demoted`, `overage` and
+   * `model-check`. */
   returnsAt?: number;
   spentUsd?: number;
   capUsd?: number;

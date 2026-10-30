@@ -167,9 +167,12 @@ function fallbackPairLabel(
   return backendDefault;
 }
 
-/** Why a tier moved down its fallback chain, as the role view words it. */
-function chainReasonPhrase(reason: ChainTierInfo["reason"]): string {
+/** Why a tier moved down its fallback chain, as the role view words it. A model-check move names
+ * the primary at step 1 and the previous step past it. */
+function chainReasonPhrase(reason: ChainTierInfo["reason"], step: number): string {
   switch (reason) {
+    case "model-check":
+      return step === 1 ? "primary failed its model check" : "previous step has not passed its model check";
     case "window":
       return "window used up";
     case "reserve":
@@ -191,7 +194,7 @@ function chainStepLine(p: RoleViewPayload): string | null {
   const c = p.chainStep;
   if (!c) return null;
   const resets = c.returnsAt !== undefined ? `, resets ${clockHm(c.returnsAt)}` : "";
-  return `- Running on fallback ${c.step} of ${c.of} (${chainReasonPhrase(c.reason)}${resets})`;
+  return `- Running on fallback ${c.step} of ${c.of} (${chainReasonPhrase(c.reason, c.step)}${resets})`;
 }
 
 /** One recent run outcome as a Markdown bullet line — `<time> · <result> · <span> —

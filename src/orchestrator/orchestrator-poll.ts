@@ -249,13 +249,25 @@ export function pollGatesAndHolds(
     now,
     info: ctx.info,
     reclaim: ctx.reclaim,
-    ...(modelCheck !== null ? { modelCheckFailed: (pair: string) => modelCheck.failed(pair) } : {}),
+    ...(modelCheck !== null
+      ? {
+          modelCheckFailed: (pair: string) => modelCheck.failed(pair),
+          modelCheckVerified: (pair: string) => modelCheck.verified(pair),
+        }
+      : {}),
   });
   // The model check (src/model-check/model-check-gate.ts), after the budget gate has assigned
-  // each runner the config its next run uses: re-key to the pairs in use, start the due
-  // probes in the background, and hold the roles whose pair has not answered.
+  // each runner the config its next run uses: re-key to the pairs in use (the primaries of the
+  // tiers it moved included), start the due probes in the background, and hold the roles whose
+  // pair has not answered.
   const modelCheckHeld: ReadonlySet<string> =
-    modelCheck?.poll({ runners, liveConfig, roleConfig: gates.roleConfig, info: ctx.info }) ?? new Set<string>();
+    modelCheck?.poll({
+      runners,
+      liveConfig,
+      roleConfig: gates.roleConfig,
+      checkMoved: gates.checkMoved,
+      info: ctx.info,
+    }) ?? new Set<string>();
   // The latest poll's disk verdict, hoisted for runStartHeld's permit-time reads
   // (plans/disk-floor.md, part 1/4).
   state.diskHeld = gates.diskHeld;

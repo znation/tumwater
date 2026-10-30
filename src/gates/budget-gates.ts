@@ -68,13 +68,16 @@ export interface BudgetGateState {
   from: TumwaterConfig | null;
   /** The view roles run under while a fallback is engaged (the fallback gate, or its
    * breaker-demoted pause): the free pair installed top-level and every per-role/reviewer
-   * model override dropped, so no seam can reach a priced model. */
+   * model override dropped, so no seam can reach a priced model. Also installed below the cap
+   * while a tier whose primary failed its model check runs on a verified step; then only that
+   * tier's own primary seams move. */
   fallbackConfig: TumwaterConfig;
   /** The used-up window and the cap flag the cached `fallbackConfig` was derived under
    * (`""`/`"c"`): the view differs between a window move below the cap and a cap episode, so a
    * change in either re-derives it beside a changed live config. With the window move gone
    * (part 5d/6) only the cap flag remains, kept in the same key slot so the view re-derives on
-   * a cap crossing beside a changed live config. */
+   * a cap crossing beside a changed live config. The resolved pairs follow it, and the model
+   * check's moves after them while there are any. */
   fromKey: string;
   /** Whether this episode's 80%-of-cap warning has fired (budgetWarning): edge-triggered like
    * the transitions — set when the warning logs, reset whenever spend falls back below the
@@ -141,6 +144,9 @@ interface BudgetGatePoll {
   directorConfig: TumwaterConfig;
   /** Where each tier this poll moved off its primary runs (chainInfo); empty when none moved. */
   chain: Partial<Record<ModelTier, ChainTierInfo>>;
+  /** The tiers moved off a primary that failed its model check (budget-fallback-view.ts), at
+   * any spend: the model check keeps probing those primaries so the tiers can move back. */
+  checkMoved: ReadonlySet<ModelTier>;
 }
 
 /** The inputs the warning-and-transition half of the budget gate logs from: everything
@@ -313,7 +319,9 @@ export function gateRoleConfig(
  * Resume is live — raising/disabling the cap (reloaded
  * live each poll), fixing the fallback, or crossing local midnight re-evaluates this on the
  * next poll — and the one piece of state, the fallback breaker, is re-keyed by the same
- * inputs, so nothing can get stuck. */
+ * inputs, so nothing can get stuck. Apart from the cap, a tier whose own primary failed its
+ * model check runs on a verified step of its chain while it has one, and moves back once a
+ * re-check of the primary answers (budget-fallback-view.ts, plans/model-check.md). */
 export function pollBudgetGate(
   state: BudgetGateState,
   ctx: {
@@ -324,10 +332,14 @@ export function pollBudgetGate(
     /** Whether a pair failed its last model check (src/model-check/model-check.ts): the
      * serving resolution steps past it like a demoted pair. Absent while the check is off. */
     modelCheckFailed?: (pair: string) => boolean;
+    /** Whether a pair answered its last model check: a tier whose primary failed moves only to
+     * a verified step. Absent while the check is off, so nothing moves. */
+    modelCheckVerified?: (pair: string) => boolean;
   },
 ): BudgetGatePoll {
   const { root, states, liveConfig, modelsPath } = ctx;
   const checkFailed = ctx.modelCheckFailed ?? (() => false);
+  const checkVerified = ctx.modelCheckVerified ?? (() => false);
   const now = Date.now();
   // One spend read serves the verdict, the transition event, and the returned figures: the
   // states are not mutated between, so all three are the same number by construction.
@@ -439,6 +451,10 @@ export function pollBudgetGate(
   const usable = (p: FallbackModelConfig) =>
     pairFreeAt(p) && fallbackServingPair(state.breakers, modelPairName(p)) && !checkFailed(modelPairName(p));
   const servingResolved = resolveTierFallbacks(liveConfig, usable);
+  // Where a tier whose own primary failed its model check runs instead, at any spend: the
+  // serving resolution narrowed to steps the check has verified, so the move never lands on a
+  // pair that has not answered yet. A tier with no verified step stays held on its primary.
+  const checkResolved = resolveTierFallbacks(liveConfig, (p) => usable(p) && checkVerified(modelPairName(p)));
   // Free is not enough: the breaker demotes a fallback whose runs keep failing, and a gate
   // whose `default` (or, with review on, `strong`) tier resolves to pause is `paused`, exactly
   // as with no fallback at all (budgetGate, part 5c/8).
@@ -478,6 +494,9 @@ export function pollBudgetGate(
     accounts,
     priceResolved,
     servingResolved,
+    checkResolved,
+    checkFailed,
+    checkVerified,
     chainPairs,
     pairNames,
     reached,

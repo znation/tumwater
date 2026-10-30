@@ -45,9 +45,24 @@ each of them in seconds.
   while the reviewer's pair is not verified, because no change can merge without a review. The
   start gate reads the latest verdict, so a run parked for a permit does not start on a pair
   that failed meanwhile. In-flight runs finish.
-- **Fallback**: at the cap, the budget gate's serving resolution skips a chain step that failed
-  its check, the same way it skips a demoted step. Below the cap a failed tier is held; it does
-  not move to its chain (see Not covered).
+- **Fallback** (`budget-fallback-view.ts`, added 2026-10-30): a tier whose own primary failed
+  its check runs on the first step that the check has verified, from its own chain or one it may
+  borrow (`BORROW_ORDER`). This applies at any spend. At the cap it covers a tier the cap leaves
+  on its primary (a free one), since the cap already moves the priced tiers.
+  - Only that tier's own primary seams move. The other tiers keep their primaries, and a role or
+    reviewer pinned to another pair keeps its pin. When the reviewer's tier moves, its timeout
+    floor rises to `FALLBACK_REVIEW_TIMEOUT_S`, as at the cap.
+  - The `chain` block names the move with reason `model-check`. The badge reads
+    `default → omlx/qwen (model check)`, and the role view reads "primary failed its model
+    check". `fallback_switched` logs the move.
+  - The check keeps probing the failed primary on its back-off, under the seam label
+    `primary:<tier>`, because no runner names it any more. Once it answers, the next poll moves
+    the tier back, and `fallback_switched` reads `available`. Runs already on the step finish
+    there.
+  - With no verified step, the tier stays held on its primary.
+  - The image-reroute regime (`budgetFallbackActive`) stays the cap's alone.
+  - At the cap, the budget gate's serving resolution also skips a chain step that failed its
+    check, the same way it skips a demoted step.
 - **Surfaces**: one `warning` event when a pair enters `failed`, naming the pair, the reply
   excerpt, the seams that wait and the next check. One `model_check_passed` event when a failed
   pair answers again. The orchestrator publishes `modelChecks` in `orchestrator.json`. The
@@ -59,9 +74,13 @@ each of them in seconds.
 
 ## Not covered (follow-ups)
 
-- Below the cap, a tier whose primary failed its check is held rather than moved to a configured
-  fallback chain step. Moving it would extend the budget view's below-cap path
-  (`budget-fallback-view.ts` installs a fallback view only at the cap).
+- At the cap, a tier the cap moves still runs on a step that failed its check. The serving
+  resolution steps past the step, and so do the `chain` block and the pause set. But the view
+  roles run under is built from the price-only resolution, so the roles run on the failed step
+  and wait there. Found 2026-10-30 while adding the move above. A breaker demotion splits the
+  same way by design, because its half-open probe runs on the demoted pair.
+- The director keeps the live config, so a director whose primary failed waits rather than
+  moving.
 - A run already in flight on a pair that then fails its check runs to its end. It could be
   handed back resumably, like the budget reopen's `budget_handback`.
 - Probe cost is not charged to any role's daily window. A probe costs a few hundred tokens.

@@ -1,4 +1,4 @@
-import type { TumwaterConfig } from "../config/config-schema.js";
+import type { ModelTier, TumwaterConfig } from "../config/config-schema.js";
 import type { BudgetGate } from "../budget/budget.js";
 import { applyBudgetGateWiring, budgetPausedSubjects } from "../budget/budget-wiring.js";
 import {
@@ -151,6 +151,9 @@ interface TeamGatePoll {
   priceResolved: TierFallbackMap;
   /** Whether the cap is reached this poll: the budget hold only holds while it is. */
   budgetActive: boolean;
+  /** The tiers moved off a primary that failed its model check (budget-fallback-view.ts): the
+   * model check keeps probing those primaries so the tiers move back once one answers. */
+  checkMoved: ReadonlySet<ModelTier>;
   /** The roles (the director excluded) whose own `quietHoursPerRole` window holds right now:
    * a stateless verdict recomputed every poll beside `capPaused` — no event, no bookkeeping
    * (the pause marker is anonymous and must never masquerade as an operator's schedule). */
@@ -179,6 +182,9 @@ interface TeamGatePollCtx {
   /** Whether a pair failed its last model check (src/model-check/model-check-gate.ts), read by
    * the budget gate's serving resolution. Absent while the check is off. */
   modelCheckFailed?: (pair: string) => boolean;
+  /** Whether a pair answered its last model check: a tier whose primary failed moves only to a
+   * verified step. Absent while the check is off. */
+  modelCheckVerified?: (pair: string) => boolean;
 }
 
 /** Poll every team-wide gate and alarm, advancing `states` in place. */
@@ -204,6 +210,7 @@ export function pollTeamGates(
     servingResolved: budget.servingResolved,
     priceResolved: budget.priceResolved,
     budgetActive: budget.budgetActive,
+    checkMoved: budget.checkMoved,
     roleQuietHeld: quietDisk.roleQuietHeld,
     quietNow: quietDisk.quietNow,
     diskHeld: quietDisk.diskHeld,
@@ -235,12 +242,14 @@ function pollBudgetPhase(
     servingResolved,
     budgetActive,
     chain,
+    checkMoved,
   } = pollBudgetGate(states.budget, {
     root,
     states: runners.map((r) => r.state),
     liveConfig,
     modelsPath,
     modelCheckFailed: ctx.modelCheckFailed,
+    modelCheckVerified: ctx.modelCheckVerified,
   });
   // The budget wiring (demotions publish, fallback_switched event, per-runner config/cap
   // assignment, cap-reopen hand-back) lives in src/budget/budget-wiring.ts
@@ -283,6 +292,7 @@ function pollBudgetPhase(
     servingResolved,
     priceResolved,
     budgetActive,
+    checkMoved,
   };
 }
 

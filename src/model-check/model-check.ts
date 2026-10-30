@@ -147,6 +147,12 @@ export function modelCheckFailed(map: ModelCheckMap, pair: string): boolean {
   return map[pair]?.status === "failed";
 }
 
+/** Whether the pair answered its last probe — the one state a tier whose primary failed may be
+ * moved onto (budget-fallback-view.ts). */
+export function modelCheckVerified(map: ModelCheckMap, pair: string): boolean {
+  return map[pair]?.status === "verified";
+}
+
 /** What a failed probe says about the pair, in words: the reply it got (quoted) or that none
  * came back (with the run's own error). Shared by the warning, the doctor row and the alert. */
 export function modelCheckFault(c: { reason?: string; reply?: string; detail?: string }): string {

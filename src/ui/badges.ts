@@ -140,7 +140,9 @@ export function bootstrapBadge(bootstrap: StatusSnapshot["bootstrap"]): string {
 
 /** The tiers' fallback steps as badge text, ` · `-joined without a leading separator:
  * `default → DeepSeek-V4-Flash $3.10/$5 until 17:40`, one fragment per tier in MODEL_TIERS
- * order. Empty when the block is absent or empty. */
+ * order. A tier the model check moved says so — `default → omlx/qwen (model check)` — since it
+ * sits in the budget badge but has nothing to do with spend. Empty when the block is absent or
+ * empty. */
 export function chainFragments(chain: StatusSnapshot["chain"]): string {
   const out: string[] = [];
   for (const tier of MODEL_TIERS) {
@@ -148,7 +150,8 @@ export function chainFragments(chain: StatusSnapshot["chain"]): string {
     if (!t) continue;
     const money = t.spentUsd !== undefined && t.capUsd !== undefined ? ` ${usd(t.spentUsd)}/${usdCap(t.capUsd)}` : "";
     const until = t.returnsAt !== undefined ? ` until ${clockHm(t.returnsAt)}` : "";
-    out.push(`${tier} → ${t.pair}${money}${until}`);
+    const check = t.reason === "model-check" ? " (model check)" : "";
+    out.push(`${tier} → ${t.pair}${money}${until}${check}`);
   }
   return out.join(" · ");
 }

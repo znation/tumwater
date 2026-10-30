@@ -103,7 +103,8 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       const t = chain[tier];
       const money = t.spentUsd !== undefined && t.capUsd !== undefined ? " " + fmtUsd(t.spentUsd) + "/" + fmtCap(t.capUsd) : "";
       const until = t.returnsAt !== undefined ? " until " + clockHm(t.returnsAt) : "";
-      return "<span class='side-card-value window-line'>" + esc(tier + " → " + t.pair + money + until) + "</span>";
+      const check = t.reason === "model-check" ? " (model check)" : "";
+      return "<span class='side-card-value window-line'>" + esc(tier + " → " + t.pair + money + until + check) + "</span>";
     }).join("");
   }
   function windowLine(w, block, chain) {

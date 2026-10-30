@@ -95,6 +95,34 @@ test("chainInfo names overage only for an extra-usage Claude step on an account 
   assert.equal(info(pi, { account: account("rejected") }).default?.reason, "cap");
 });
 
+test("chainInfo names model-check for a tier moved off a failed primary, with no return time", () => {
+  // Step 1 runs because the primary failed its check, not because of the cap.
+  const first = piTwoStep();
+  first.resolution = { pair: { provider: "free", model: "qwen-free", maxDailyCostUsd: 1 }, from: null };
+  const moved = info(first, { checkMoved: new Set(["default"]), isPriced: () => false });
+  assert.deepEqual(moved.default, { pair: "free/qwen-free", step: 1, of: 2, reason: "model-check" });
+  // The same position without the check move reads as the cap's.
+  assert.equal(info(first, { isPriced: () => false }).default?.reason, "cap");
+  // Step 2 of a check-moved tier: the step before it has not answered its check yet.
+  const second = info(piTwoStep(), { checkMoved: new Set(["default"]), modelCheckVerified: () => false });
+  assert.deepEqual(second.default, { pair: "free/llama-free", step: 2, of: 2, reason: "model-check" });
+  // Once that step is verified, what still keeps the tier off it is its own spent cap.
+  const capped = info(piTwoStep(), {
+    checkMoved: new Set(["default"]),
+    modelCheckVerified: () => true,
+    spend: { "free/qwen-free": 1 },
+  });
+  assert.equal(capped.default?.reason, "step-cap");
+});
+
+test("chainInfo names model-check for a cap-moved tier whose previous step failed its check", () => {
+  const failed = info(piTwoStep(), { modelCheckFailed: (pair) => pair === "free/qwen-free" });
+  assert.equal(failed.default?.reason, "model-check");
+  assert.equal("returnsAt" in (failed.default ?? {}), false);
+  // A previous step still being checked is no reason at the cap: there it stays a candidate.
+  assert.equal(info(piTwoStep(), { modelCheckVerified: () => false }).default?.reason, "cap");
+});
+
 test("chainInfo lists only moved tiers, and prices a step only when it is priced", () => {
   const unpriced = info(claudePrimary(), { isPriced: () => false }).default;
   assert.ok(unpriced);
