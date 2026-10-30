@@ -1,3 +1,295 @@
+/** The flag-detection prelude of `cmdRole`'s write path: the `clearX`/`busyX` booleans for
+ * every per-role write field, the `writes[]` list naming each flag that fired, and the
+ * refusal that hands both set and clear (or two different set) flags `writes cannot share one
+ * invocation` rather than letting the first dispatch branch silently win. Returns the flags
+ * and each write's derived value, so the caller spreads them into the per-role write helpers
+ * and `cmdRole` itself becomes only the dispatch. The needs-a-value guard and
+ * rejectUnknownArgs stay in the caller, before this runs. */
+function parseWriteFlags(rest: string[]): {
+  clear: boolean;
+  notesFile: string | null | undefined;
+  clearInst: boolean;
+  instFile: string | null | undefined;
+  clearQuiet: boolean;
+  window: string;
+  clearCap: boolean;
+  cap: string;
+  clearInterval: boolean;
+  secs: string;
+  clearInstances: boolean;
+  n: string;
+  providerWrite: boolean;
+  clearProvider: boolean;
+  modelWrite: boolean;
+  clearModel: boolean;
+  thinkingWrite: boolean;
+  clearThinking: boolean;
+  backendWrite: boolean;
+  clearBackend: boolean;
+  enable: boolean;
+  disable: boolean;
+  notesWrite: boolean;
+  instructionsWrite: boolean;
+  quietWrite: boolean;
+  capWrite: boolean;
+  intervalWrite: boolean;
+  instancesWrite: boolean;
+} {
+  const clear = rest.includes("--clear-notes");
+  const notesFile = flagValue(rest, "--notes-file");
+  const clearInst = rest.includes("--clear-instructions");
+  const instFile = flagValue(rest, "--instructions-file");
+  const clearQuiet = rest.includes("--clear-quiet-hours");
+  const clearCap = rest.includes("--clear-cap");
+  const clearInterval = rest.includes("--clear-min-run-interval");
+  const clearInstances = rest.includes("--clear-instances");
+  const clearProvider = rest.includes("--clear-provider");
+  const clearModel = rest.includes("--clear-model");
+  const clearThinking = rest.includes("--clear-thinking");
+  const clearBackend = rest.includes("--clear-backend");
+  const notesWrite = clear || rest.includes("--notes-file");
+  const instructionsWrite = clearInst || rest.includes("--instructions-file");
+  const quietWrite = clearQuiet || rest.includes("--quiet-hours");
+  const capWrite = clearCap || rest.includes("--cap");
+  const intervalWrite = clearInterval || rest.includes("--min-run-interval");
+  const instancesWrite = clearInstances || rest.includes("--instances");
+  const providerWrite = clearProvider || rest.includes("--provider");
+  const modelWrite = clearModel || rest.includes("--model");
+  const thinkingWrite = clearThinking || rest.includes("--thinking");
+  const backendWrite = clearBackend || rest.includes("--backend");
+  const enable = rest.includes("--enable");
+  const disable = rest.includes("--disable");
+  const writes: string[] = [];
+  if (notesWrite) writes.push("notes");
+  if (instructionsWrite) writes.push("instructions");
+  if (quietWrite) writes.push("quiet-hours");
+  if (instancesWrite) writes.push("instances");
+  if (capWrite) writes.push("cap");
+  if (intervalWrite) writes.push("min-run-interval");
+  if (providerWrite) writes.push("provider");
+  if (modelWrite) writes.push("model");
+  if (thinkingWrite) writes.push("thinking");
+  if (backendWrite) writes.push("backend");
+  if (enable) writes.push("enable");
+  if (disable) writes.push("disable");
+  if (writes.length > 1)
+    fail(`${writes.join(" and ")} writes cannot share one invocation`);
+  return {
+    clear,
+    notesFile,
+    clearInst,
+    instFile,
+    clearQuiet,
+    window: flagValue(rest, "--quiet-hours") ?? "",
+    clearCap,
+    cap: flagValue(rest, "--cap") ?? "",
+    clearInterval,
+    secs: flagValue(rest, "--min-run-interval") ?? "",
+    clearInstances,
+    n: flagValue(rest, "--instances") ?? "",
+    providerWrite,
+    clearProvider,
+    modelWrite,
+    clearModel,
+    thinkingWrite,
+    clearThinking,
+    backendWrite,
+    clearBackend,
+    enable,
+    disable,
+    notesWrite,
+    instructionsWrite,
+    quietWrite,
+    capWrite,
+    intervalWrite,
+    instancesWrite,
+  };
+}
+
+/** `role`'s notes write: clear the note, or replace it from a file (`-` for stdin). The
+ * director has no notes, so that refusal lives here. */
+function writeNotes(root: string, rest: string[], id: string, clear: boolean, file: string | null | undefined): void {
+  rejectSetClearAndJson(rest, "--notes-file", "--clear-notes", "a notes write");
+  if (id === DIRECTOR_ROLE) fail("the director has no notes");
+  requireKnownRole(root, id);
+  const text = clear ? "" : readPromptFileArg(file || fail("--notes-file needs a path"));
+  try {
+    say(`${id}: ${saveRoleNote(roleNotesPath(root, id), text)}`);
+  } catch (err) {
+    fail(errorMessage(err));
+  }
+}
+
+/** `role`'s instructions-override write: the file-shaped twin of the notes flags, but the
+ * value lands in roles.<base>.instructions (run-prompt reads config.roles[base]) through the
+ * same setConfigKey/unsetConfigKey core `config set`/`config unset` use, so validateConfig
+ * enforces the 4096-char cap and the write is atomic. The director is allowed here (its
+ * override reaches its own runs), unlike the notes branch's director refusal. The one write
+ * writeRoleConfigKey does not serve, because an empty file value is a legitimate write, not
+ * a clear. */
+function writeInstructions(root: string, rest: string[], id: string, clearInst: boolean, instFile: string | null | undefined): void {
+  rejectSetClearAndJson(rest, "--instructions-file", "--clear-instructions", "an instructions write");
+  requireKnownRole(root, id);
+  const base = baseRoleOf(id);
+  if (clearInst) {
+    const result = unsetConfigKey(root, `roles.${base}.instructions`);
+    if (!result.ok) fail(result.error);
+    say(`${base}: instructions cleared`);
+  } else {
+    const text = readPromptFileArg(instFile || fail("--instructions-file needs a path"));
+    const result = setConfigKey(root, `roles.${base}.instructions`, JSON.stringify(text));
+    if (!result.ok) fail(result.error);
+    say(`${base}: instructions saved (${text.length} chars)`);
+  }
+}
+
+/** `role`'s quiet-hours write: the third write kind, the terminal twin of `config set
+ * quietHoursPerRole.<base> <window>`. The window lands in quietHoursPerRole.<base> through
+ * the same setConfigKey/unsetConfigKey core `config set`/`config unset` use, so checkQuietHours (with
+ * the typed key as its label) and validateConfig own validation and the write is atomic.
+ * The director is exempt — its quietHoursPerRole.director entry is inert (the gate and
+ * doctor both exempt it), like the notes branch's director refusal. */
+function writeQuietHours(root: string, rest: string[], id: string, clear: boolean, window: string): void {
+  rejectSetClearAndJson(rest, "--quiet-hours", "--clear-quiet-hours", "a quiet-hours write");
+  requireKnownRole(root, id);
+  if (id === DIRECTOR_ROLE) fail("the director has no quiet hours");
+  const base = baseRoleOf(id);
+  writeRoleConfigKey(root, base, clear, window, `quietHoursPerRole.${base}`, "quiet hours", (v) => JSON.stringify(v), (v) => v);
+}
+
+/** `role`'s daily-cap write: the terminal twin of `config set maxDailyCostUsdPerRole.<base>
+ * <usd>`, the two remaining per-role holds' write the dashboard and the TUI already own.
+ * The value lands in maxDailyCostUsdPerRole.<base> through the same
+ * setConfigKey/unsetConfigKey core `config set`/`config unset` use, so checkDailyBudgetUsd
+ * (with the typed key as its label) and validateConfig own validation and the write is
+ * atomic. The director is exempt — it has no cap, like the notes and quiet-hours branches'
+ * director refusals. */
+function writeDailyCap(root: string, rest: string[], id: string, clear: boolean, cap: string): void {
+  rejectSetClearAndJson(rest, "--cap", "--clear-cap", "a cap write");
+  requireKnownRole(root, id);
+  if (id === DIRECTOR_ROLE) fail("the director has no daily cap");
+  const base = baseRoleOf(id);
+  const cfgKey = `maxDailyCostUsdPerRole.${base}`;
+  // Shape, before the write: a spelling that is not a plain decimal but that JSON.parse
+  // would still read as a non-negative USD amount (an exponent like "1e2" → 100) would
+  // otherwise sail past both plainDecimalToJson (which only rewrites JSON-unparseable
+  // spellings like `05`) and checkDailyBudgetUsd's non-negative check and silently write
+  // the misread — the same silent misread the TUI Ctrl+B budget editor and the GUI cap
+  // drawer now reject. Every non-exponent spelling JSON reads as a non-negative USD is
+  // already a plain decimal, so the exponent form is exactly the silent-write set; hex,
+  // negative and non-numeric spellings fall through to the write path, whose
+  // validateConfig message names the key.
+  if (isExponentSpelling(cap.trim()))
+    fail(`${cfgKey} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation`);
+  writeRoleConfigKey(root, base, clear, cap, cfgKey, "daily cap", (v) => plainDecimalToJson(v) ?? v, (v) => v);
+}
+
+/** `role`'s min-run-interval write: the terminal twin of `config set
+ * roles.<base>.minRunIntervalSeconds <seconds>`, the fourth per-role hold's write. The
+ * value lands in roles.<base>.minRunIntervalSeconds through the same
+ * setConfigKey/unsetConfigKey core `config set`/`config unset` use, so validateConfig's
+ * roles.<id>.minRunIntervalSeconds DURATION_NON_NEGATIVE check owns validation and the
+ * write is atomic. Unlike the notes/quiet-hours/cap branches there is no director refusal:
+ * the director runs on the same clock. */
+function writeMinRunInterval(root: string, rest: string[], id: string, clear: boolean, secs: string): void {
+  rejectSetClearAndJson(rest, "--min-run-interval", "--clear-min-run-interval", "a min-run-interval write");
+  requireKnownRole(root, id);
+  const base = baseRoleOf(id);
+  const cfgKey = `roles.${base}.minRunIntervalSeconds`;
+  // Shape, before the write: a spelling that is not a plain decimal but that JSON.parse
+  // would still read as a non-negative second count (an exponent like "1e2" → 100) would
+  // otherwise sail past both plainDecimalToJson (which only rewrites JSON-unparseable
+  // spellings like `05`) and validateConfig's non-negative check and silently write the
+  // misread — the same silent misread the TUI Ctrl+S editor and the GUI interval drawer
+  // now reject. Every non-exponent spelling JSON reads as a non-negative count is already a
+  // plain decimal, so the exponent form is exactly the silent-write set; hex, negative and
+  // non-numeric spellings fall through to the write path, whose validateConfig message
+  // names the key.
+  if (isExponentSpelling(secs.trim()))
+    fail(`${cfgKey} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation`);
+  writeRoleConfigKey(root, base, clear, secs, cfgKey, "min run interval", (v) => plainDecimalToJson(v) ?? v, (v) => `${v}s`);
+}
+
+/** `role`'s instances write: the terminal twin of `config set roles.<base>.instances <n>`, the
+ * last per-role hold's write. The count lands in roles.<base>.instances through the same
+ * setConfigKey/unsetConfigKey core `config set`/`config unset` use, so validateConfig's
+ * roles.<id>.instances INSTANCE_COUNT check owns the bound and the write is atomic. As
+ * with min run interval there is no director (or non-instance-role) refusal of its own:
+ * validateConfig's `!INSTANCE_ROLES.has(id)` branch answers for the director and every
+ * custom role, and an unset/empty value clears the key. */
+function writeInstances(root: string, rest: string[], id: string, clear: boolean, n: string): void {
+  rejectSetClearAndJson(rest, "--instances", "--clear-instances", "an instances write");
+  const loaded = loadConfigSafe(root);
+  const cfg = loaded.config ?? defaultConfig();
+  if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+  const base = baseRoleOf(id);
+  const cfgKey = `roles.${base}.instances`;
+  // Shape, before the write: a spelling that is not a plain integer but that JSON.parse
+  // would still read as a 1–8 count (an exponent like "2e0" → 2) would otherwise sail past
+  // both plainDecimalToJson and validateConfig's INSTANCE_COUNT integer check and silently
+  // write the misread — the same silent misread the cap and min-run-interval writes refuse.
+  // Every non-exponent spelling that JSON reads as an integer in range is already a plain
+  // integer, so the exponent form is exactly the silent-write set; every exponent — in range
+  // or out ("9e0" → 9 too) — is refused here, while fractional, hex, negative and plain
+  // out-of-range integer spellings fall through to the write path, whose validateConfig
+  // message names the key.
+  if (isExponentSpelling(n.trim()))
+    fail(`${cfgKey} must be a plain integer from 1 to 8 — no exponent notation`);
+  // An absent count already means 1 (instanceCount's default), so asking for 1 is a no-op —
+  // but only for a role that may split; any other role falls through to validateConfig's refusal.
+  // A tumwater.json that fails to load is no basis for "already": fall through to the failure.
+  if (loaded.config && !clear && n.trim() === "1" && INSTANCE_ROLES.has(base) && cfg.roles[base]?.instances === undefined) {
+    say(`${base}: instances is already 1, so tumwater.json was not written`);
+    return;
+  }
+  writeRoleConfigKey(root, base, clear, n, `roles.${base}.instances`, "instances", (v) => v, (v) => v);
+}
+
+/** `role`'s model-writing branch — provider, model, thinking or backend — one row of the
+ * shared shape: each lands the role's field in roles.<base>.<field> (the terminal twin of
+ * `config set roles.<base>.<field> <value>` and `config unset`) through the same
+ * setConfigKey/unsetConfigKey core, so validateConfig owns the id — checkModelTripleField
+ * ("tier-name" shape: model accepts a tier name, thinking a THINKING_LEVELS level) for the
+ * provider/model/thinking fields that configForRole resolves through seamOverrides,
+ * checkEntryBackend for backend (`pi`, `claude`, `opencode` or `codex`, refusing an unknown
+ * one and a model that cannot pair with it) — and each write is atomic. No director
+ * refusal: each is accepted exactly as --min-run-interval is, and an instance id writes its
+ * base role's key. Every row calls writeRoleConfigKey with the same JSON-encode/identity
+ * shaping, differing only in the flag spellings, the key field and the noun the
+ * confirmation line names. The caller's table keeps the four rows byte-identical and
+ * dispatches exactly one of them. */
+function writeModelField(root: string, rest: string[], id: string, flag: string, clearFlag: string, clear: boolean, field: string, noun: string): void {
+  rejectSetClearAndJson(rest, flag, clearFlag, `a ${noun} write`);
+  requireKnownRole(root, id);
+  const base = baseRoleOf(id);
+  const value = flagValue(rest, flag) ?? "";
+  writeRoleConfigKey(root, base, clear, value, `roles.${base}.${field}`, noun, (v) => JSON.stringify(v), (v) => v);
+}
+
+/** `role`'s enable/disable write: the scoped write for the enabled state `tumwater role <id>`
+ * already renders, the terminal twin of `config set roles.<base>.enabled true|false`. The
+ * value lands in roles.<base>.enabled through the same setConfigKey core config set uses, so
+ * validateConfig's checkBoolean (the roles.<id>. prefix) owns the type and the write stays
+ * atomic and applies live. The director cannot be disabled: with it disabled runnerIds omits
+ * it and no role dequeues the operator's inbox, so that refusal is explicit (enabling stays
+ * allowed). knownRoleIds holds every catalog and custom role whether or not it is enabled, so
+ * a currently-disabled id resolves; an instance id writes its base role's key. A role already
+ * in the asked-for state is reported as such and the file is left alone. */
+function writeEnableDisable(root: string, rest: string[], id: string, enable: boolean, disable: boolean): void {
+  if (rest.includes("--json")) fail("--json does not apply to an enable/disable write");
+  requireKnownRole(root, id);
+  if (disable && id === DIRECTOR_ROLE) fail("the director cannot be disabled");
+  const base = baseRoleOf(id);
+  const state = enable ? "enabled" : "disabled";
+  if (loadConfigSafe(root).config?.roles[base]?.enabled === enable) {
+    say(`${base}: already ${state}`);
+    return;
+  }
+  const result = setConfigKey(root, `roles.${base}.enabled`, enable ? "true" : "false");
+  if (!result.ok) fail(result.error);
+  say(`${base}: ${state}`);
+}
+
 /** `tumwater role <id>`'s command body, split out of cli-query-commands.ts so that module
  * keeps only the read-only query commands (status, diff, queue, backlog). cli.ts's dispatcher
  * routes to cmdRole here exactly as it routes cmdStatus to cli-query-commands or cmdConfig to
@@ -204,182 +496,29 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const id = canonicalRoleId(typedId);
   if (positional !== null && flagId !== null && flagId !== positional)
     fail("give the role id once — as the positional or as --role <id>, not both");
-  const clear = rest.includes("--clear-notes");
-  const notesFile = flagValue(rest, "--notes-file");
-  const clearInst = rest.includes("--clear-instructions");
-  const instFile = flagValue(rest, "--instructions-file");
-  const clearQuiet = rest.includes("--clear-quiet-hours");
-  const clearCap = rest.includes("--clear-cap");
-  const clearInterval = rest.includes("--clear-min-run-interval");
-  const clearInstances = rest.includes("--clear-instances");
-  const clearProvider = rest.includes("--clear-provider");
-  const clearModel = rest.includes("--clear-model");
-  const clearThinking = rest.includes("--clear-thinking");
-  const clearBackend = rest.includes("--clear-backend");
-  const notesWrite = clear || rest.includes("--notes-file");
-  const instructionsWrite = clearInst || rest.includes("--instructions-file");
-  const quietWrite = clearQuiet || rest.includes("--quiet-hours");
-  const capWrite = clearCap || rest.includes("--cap");
-  const intervalWrite = clearInterval || rest.includes("--min-run-interval");
-  const instancesWrite = clearInstances || rest.includes("--instances");
-  const providerWrite = clearProvider || rest.includes("--provider");
-  const modelWrite = clearModel || rest.includes("--model");
-  const thinkingWrite = clearThinking || rest.includes("--thinking");
-  const backendWrite = clearBackend || rest.includes("--backend");
-  const enable = rest.includes("--enable");
-  const disable = rest.includes("--disable");
-  const writes: string[] = [];
-  if (notesWrite) writes.push("notes");
-  if (instructionsWrite) writes.push("instructions");
-  if (quietWrite) writes.push("quiet-hours");
-  if (instancesWrite) writes.push("instances");
-  if (capWrite) writes.push("cap");
-  if (intervalWrite) writes.push("min-run-interval");
-  if (providerWrite) writes.push("provider");
-  if (modelWrite) writes.push("model");
-  if (thinkingWrite) writes.push("thinking");
-  if (backendWrite) writes.push("backend");
-  if (enable) writes.push("enable");
-  if (disable) writes.push("disable");
-  if (writes.length > 1)
-    fail(`${writes.join(" and ")} writes cannot share one invocation`);
-  if (notesWrite) {
-    rejectSetClearAndJson(rest, "--notes-file", "--clear-notes", "a notes write");
-    if (id === DIRECTOR_ROLE) fail("the director has no notes");
-    requireKnownRole(root, id);
-    const text = clear ? "" : readPromptFileArg(notesFile || fail("--notes-file needs a path"));
-    try {
-      say(`${id}: ${saveRoleNote(roleNotesPath(root, id), text)}`);
-    } catch (err) {
-      fail(errorMessage(err));
-    }
+  const flags = parseWriteFlags(rest);
+  if (flags.notesWrite) {
+    writeNotes(root, rest, id, flags.clear, flags.notesFile);
     return;
   }
-  // The instructions-override write: the file-shaped twin of the notes flags, but the value
-  // lands in roles.<base>.instructions (run-prompt reads config.roles[base]) through the
-  // same setConfigKey/unsetConfigKey core `config set`/`config unset` use, so validateConfig
-  // enforces the 4096-char cap and the write is atomic. The director is allowed here (its
-  // override reaches its own runs), unlike the notes branch's director refusal.
-  if (instructionsWrite) {
-    rejectSetClearAndJson(rest, "--instructions-file", "--clear-instructions", "an instructions write");
-    requireKnownRole(root, id);
-    const base = baseRoleOf(id);
-    if (clearInst) {
-      const result = unsetConfigKey(root, `roles.${base}.instructions`);
-      if (!result.ok) fail(result.error);
-      say(`${base}: instructions cleared`);
-    } else {
-      const text = readPromptFileArg(instFile || fail("--instructions-file needs a path"));
-      const result = setConfigKey(root, `roles.${base}.instructions`, JSON.stringify(text));
-      if (!result.ok) fail(result.error);
-      say(`${base}: instructions saved (${text.length} chars)`);
-    }
+  if (flags.instructionsWrite) {
+    writeInstructions(root, rest, id, flags.clearInst, flags.instFile);
     return;
   }
-  // The quiet-hours write: the third write kind, the terminal twin of `config set
-  // quietHoursPerRole.<base> <window>`. The window lands in quietHoursPerRole.<base> through
-  // the same setConfigKey/unsetConfigKey core config set/unset use, so checkQuietHours (with
-  // the typed key as its label) and validateConfig own validation and the write is atomic.
-  // The director is exempt — its quietHoursPerRole.director entry is inert (the gate and
-  // doctor both exempt it), like the notes branch's director refusal.
-  if (quietWrite) {
-    rejectSetClearAndJson(rest, "--quiet-hours", "--clear-quiet-hours", "a quiet-hours write");
-    requireKnownRole(root, id);
-    if (id === DIRECTOR_ROLE) fail("the director has no quiet hours");
-    const base = baseRoleOf(id);
-    const window = flagValue(rest, "--quiet-hours") ?? "";
-    writeRoleConfigKey(root, base, clearQuiet, window, `quietHoursPerRole.${base}`, "quiet hours", (v) => JSON.stringify(v), (v) => v);
+  if (flags.quietWrite) {
+    writeQuietHours(root, rest, id, flags.clearQuiet, flags.window);
     return;
   }
-  // The daily-cap write: the terminal twin of `config set maxDailyCostUsdPerRole.<base>
-  // <usd>`, the two remaining per-role holds' write the dashboard and the TUI already own.
-  // The value lands in maxDailyCostUsdPerRole.<base> through the same
-  // setConfigKey/unsetConfigKey core `config set`/`config unset` use, so checkDailyBudgetUsd
-  // (with the typed key as its label) and validateConfig own validation and the write is
-  // atomic. The director is exempt — it has no cap, like the notes and quiet-hours branches'
-  // director refusals.
-  if (capWrite) {
-    rejectSetClearAndJson(rest, "--cap", "--clear-cap", "a cap write");
-    requireKnownRole(root, id);
-    if (id === DIRECTOR_ROLE) fail("the director has no daily cap");
-    const base = baseRoleOf(id);
-    const cfgKey = `maxDailyCostUsdPerRole.${base}`;
-    const cap = flagValue(rest, "--cap") ?? "";
-    // Shape, before the write: a spelling that is not a plain decimal but that JSON.parse
-    // would still read as a non-negative USD amount (an exponent like "1e2" → 100) would
-    // otherwise sail past both plainDecimalToJson (which only rewrites JSON-unparseable
-    // spellings like `05`) and checkDailyBudgetUsd's non-negative check and silently write
-    // the misread — the same silent misread the TUI Ctrl+B budget editor and the GUI cap
-    // drawer now reject. Every non-exponent spelling JSON reads as a non-negative USD is
-    // already a plain decimal, so the exponent form is exactly the silent-write set; hex,
-    // negative and non-numeric spellings fall through to the write path, whose
-    // validateConfig message names the key.
-    if (isExponentSpelling(cap.trim()))
-      fail(`${cfgKey} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation`);
-    writeRoleConfigKey(root, base, clearCap, cap, cfgKey, "daily cap", (v) => plainDecimalToJson(v) ?? v, (v) => v);
+  if (flags.capWrite) {
+    writeDailyCap(root, rest, id, flags.clearCap, flags.cap);
     return;
   }
-  // The min-run-interval write: the terminal twin of `config set
-  // roles.<base>.minRunIntervalSeconds <seconds>`, the fourth per-role hold's write. The
-  // value lands in roles.<base>.minRunIntervalSeconds through the same
-  // setConfigKey/unsetConfigKey core `config set`/`config unset` use, so validateConfig's
-  // roles.<id>.minRunIntervalSeconds DURATION_NON_NEGATIVE check owns validation and the
-  // write is atomic. Unlike the notes/quiet-hours/cap branches there is no director refusal:
-  // the director runs on the same clock.
-  if (intervalWrite) {
-    rejectSetClearAndJson(rest, "--min-run-interval", "--clear-min-run-interval", "a min-run-interval write");
-    requireKnownRole(root, id);
-    const base = baseRoleOf(id);
-    const cfgKey = `roles.${base}.minRunIntervalSeconds`;
-    const secs = flagValue(rest, "--min-run-interval") ?? "";
-    // Shape, before the write: a spelling that is not a plain decimal but that JSON.parse
-    // would still read as a non-negative second count (an exponent like "1e2" → 100) would
-    // otherwise sail past both plainDecimalToJson (which only rewrites JSON-unparseable
-    // spellings like `05`) and validateConfig's non-negative check and silently write the
-    // misread — the same silent misread the TUI Ctrl+S editor and the GUI interval drawer
-    // now reject. Every non-exponent spelling JSON reads as a non-negative count is already a
-    // plain decimal, so the exponent form is exactly the silent-write set; hex, negative and
-    // non-numeric spellings fall through to the write path, whose validateConfig message
-    // names the key.
-    if (isExponentSpelling(secs.trim()))
-      fail(`${cfgKey} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation`);
-    writeRoleConfigKey(root, base, clearInterval, secs, cfgKey, "min run interval", (v) => plainDecimalToJson(v) ?? v, (v) => `${v}s`);
+  if (flags.intervalWrite) {
+    writeMinRunInterval(root, rest, id, flags.clearInterval, flags.secs);
     return;
   }
-  // The instances write: the terminal twin of `config set roles.<base>.instances <n>`, the
-  // last per-role hold's write. The count lands in roles.<base>.instances through the same
-  // setConfigKey/unsetConfigKey core `config set`/`config unset` use, so validateConfig's
-  // roles.<id>.instances INSTANCE_COUNT check owns the bound and the write is atomic. As
-  // with min run interval there is no director (or non-instance-role) refusal of its own:
-  // validateConfig's `!INSTANCE_ROLES.has(id)` branch answers for the director and every
-  // custom role, and an unset/empty value clears the key.
-  if (instancesWrite) {
-    rejectSetClearAndJson(rest, "--instances", "--clear-instances", "an instances write");
-    const loaded = loadConfigSafe(root);
-    const cfg = loaded.config ?? defaultConfig();
-    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
-    const base = baseRoleOf(id);
-    const cfgKey = `roles.${base}.instances`;
-    const n = flagValue(rest, "--instances") ?? "";
-    // Shape, before the write: a spelling that is not a plain integer but that JSON.parse
-    // would still read as a 1–8 count (an exponent like "2e0" → 2) would otherwise sail past
-    // both plainDecimalToJson and validateConfig's INSTANCE_COUNT integer check and silently
-    // write the misread — the same silent misread the cap and min-run-interval writes refuse.
-    // Every non-exponent spelling that JSON reads as an integer in range is already a plain
-    // integer, so the exponent form is exactly the silent-write set; every exponent — in range
-    // or out ("9e0" → 9 too) — is refused here, while fractional, hex, negative and plain
-    // out-of-range integer spellings fall through to the write path, whose validateConfig
-    // message names the key.
-    if (isExponentSpelling(n.trim()))
-      fail(`${cfgKey} must be a plain integer from 1 to 8 — no exponent notation`);
-    // An absent count already means 1 (instanceCount's default), so asking for 1 is a no-op —
-    // but only for a role that may split; any other role falls through to validateConfig's refusal.
-    // A tumwater.json that fails to load is no basis for "already": fall through to the failure.
-    if (loaded.config && !clearInstances && n.trim() === "1" && INSTANCE_ROLES.has(base) && cfg.roles[base]?.instances === undefined) {
-      say(`${base}: instances is already 1, so tumwater.json was not written`);
-      return;
-    }
-    writeRoleConfigKey(root, base, clearInstances, n, `roles.${base}.instances`, "instances", (v) => v, (v) => v);
+  if (flags.instancesWrite) {
+    writeInstances(root, rest, id, flags.clearInstances, flags.n);
     return;
   }
   // The model-writing branches — provider, model, thinking and backend — are one shape: each
@@ -394,41 +533,17 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // writeRoleConfigKey with the same JSON-encode/identity shaping, differing only in the flag
   // spellings, the key field and the noun the confirmation line names — one table, one body.
   for (const { flag, clearFlag, write, clear, field, noun } of [
-    { flag: "--provider", clearFlag: "--clear-provider", write: providerWrite, clear: clearProvider, field: "provider", noun: "provider" },
-    { flag: "--model", clearFlag: "--clear-model", write: modelWrite, clear: clearModel, field: "model", noun: "model" },
-    { flag: "--thinking", clearFlag: "--clear-thinking", write: thinkingWrite, clear: clearThinking, field: "thinking", noun: "thinking" },
-    { flag: "--backend", clearFlag: "--clear-backend", write: backendWrite, clear: clearBackend, field: "backend", noun: "backend" },
+    { flag: "--provider", clearFlag: "--clear-provider", write: flags.providerWrite, clear: flags.clearProvider, field: "provider", noun: "provider" },
+    { flag: "--model", clearFlag: "--clear-model", write: flags.modelWrite, clear: flags.clearModel, field: "model", noun: "model" },
+    { flag: "--thinking", clearFlag: "--clear-thinking", write: flags.thinkingWrite, clear: flags.clearThinking, field: "thinking", noun: "thinking" },
+    { flag: "--backend", clearFlag: "--clear-backend", write: flags.backendWrite, clear: flags.clearBackend, field: "backend", noun: "backend" },
   ]) {
     if (!write) continue;
-    rejectSetClearAndJson(rest, flag, clearFlag, `a ${noun} write`);
-    requireKnownRole(root, id);
-    const base = baseRoleOf(id);
-    const value = flagValue(rest, flag) ?? "";
-    writeRoleConfigKey(root, base, clear, value, `roles.${base}.${field}`, noun, (v) => JSON.stringify(v), (v) => v);
+    writeModelField(root, rest, id, flag, clearFlag, clear, field, noun);
     return;
   }
-  // The enable/disable write: the scoped write for the enabled state `tumwater role <id>`
-  // already renders, the terminal twin of `config set roles.<base>.enabled true|false`. The
-  // value lands in roles.<base>.enabled through the same setConfigKey core config set uses, so
-  // validateConfig's checkBoolean (the roles.<id>. prefix) owns the type and the write stays
-  // atomic and applies live. The director cannot be disabled: with it disabled runnerIds omits
-  // it and no role dequeues the operator's inbox, so that refusal is explicit (enabling stays
-  // allowed). knownRoleIds holds every catalog and custom role whether or not it is enabled, so
-  // a currently-disabled id resolves; an instance id writes its base role's key. A role already
-  // in the asked-for state is reported as such and the file is left alone.
-  if (enable || disable) {
-    if (rest.includes("--json")) fail("--json does not apply to an enable/disable write");
-    requireKnownRole(root, id);
-    if (disable && id === DIRECTOR_ROLE) fail("the director cannot be disabled");
-    const base = baseRoleOf(id);
-    const state = enable ? "enabled" : "disabled";
-    if (loadConfigSafe(root).config?.roles[base]?.enabled === enable) {
-      say(`${base}: already ${state}`);
-      return;
-    }
-    const result = setConfigKey(root, `roles.${base}.enabled`, enable ? "true" : "false");
-    if (!result.ok) fail(result.error);
-    say(`${base}: ${state}`);
+  if (flags.enable || flags.disable) {
+    writeEnableDisable(root, rest, id, flags.enable, flags.disable);
     return;
   }
   // The unknown-role answer (exit 1, unknownRoleMessage's wording) lives in the
