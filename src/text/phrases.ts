@@ -193,6 +193,22 @@ export function rolesPhrase(
   return list.length > 0 ? list.join(", ") : fallback;
 }
 
+/** The trailing-day median-and-extreme clause every doctor timing row renders — `… median, …
+ * slowest|longest (N unit)` — the one home of that bucketing, shared by the `check` row's
+ * checkDurationPhrase ("passing merge checks … took … slowest") and the `merge queue` row's
+ * mergeWaitPhrase ("merges … waited … longest"), so the `shortSpanPhrase` median/extreme shape
+ * cannot drift between them. Each caller supplies its own verbed prefix ("took"/"waited", the
+ * one differing word) and the extreme's label and unit. */
+export function trailingDayMedianPhrase(
+  medianMs: number,
+  extremeMs: number,
+  extreme: string,
+  n: number,
+  unit: string,
+): string {
+  return `${shortSpanPhrase(medianMs)} median, ${shortSpanPhrase(extremeMs)} ${extreme} (${plural(n, unit)})`;
+}
+
 /** The `$<spent> of $<cap>` fragment every budget-transition event renders — the one home of that
  * phrasing, shared by the event feed (event-format.ts) and the failure digest's Team state changes
  * lines (src/failure/failure-state-change.ts), so a budget transition reads the same on both

@@ -26,7 +26,7 @@ import { formatGB, shortSha } from "../text/format.js";
 import { eventLogState, readEventsSince, type EventLogState } from "../events/event-window.js";
 import { EVENTS_KEEP, type HarnessEvent } from "../events/events.js";
 import { finiteNumber } from "../files/json-object.js";
-import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
+import { agree, plural, shortSpanPhrase, trailingDayMedianPhrase } from "../text/phrases.js";
 import { andMore } from "./doctor-backlog.js";
 import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
 import { POST_MERGE_REJECT_WINDOW_MS, postMergeChurn } from "../review/post-merge-review.js";
@@ -201,7 +201,7 @@ export function checkDurationPhrase(events: readonly HarnessEvent[]): string | u
   if (durations.length === 0) return undefined;
   const median = lowerMedian(durations);
   const slowest = Math.max(...durations);
-  return `passing merge checks in the last 24h took ${shortSpanPhrase(median)} median, ${shortSpanPhrase(slowest)} slowest (${plural(durations.length, "run")})`;
+  return `passing merge checks in the last 24h took ${trailingDayMedianPhrase(median, slowest, "slowest", durations.length, "run")}`;
 }
 
 /** Declared project check — names what the review gate's deterministic pre-check, the
