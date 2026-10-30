@@ -292,6 +292,12 @@ test("unknown event types fall through to the bare type name", () => {
   assert.equal(describeStateChange(ev({ type: "mystery_event" })), "mystery_event");
 });
 
+test("an excluded type with no family renders its raw type name", () => {
+  // run_end is a real event type but is deliberately excluded from STATE_CHANGE_TYPES, so it
+  // has no family; the lookup falls back to the bare type the same way an unknown type does.
+  assert.equal(describeStateChange(ev({ type: "run_end" })), "run_end");
+});
+
 test("free fields are sliced to 24 chars and the whole line to 72", () => {
   // One hand-edited or future payload field cannot blow the digest's byte bound: the field is
   // cut first, then the assembled line.

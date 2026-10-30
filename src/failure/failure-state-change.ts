@@ -27,44 +27,58 @@ import { deferredReasonText, untilClockSuffix, gigabytes, windowSuffix, windowRe
  * selfcheck role's load-bearing rule asks it to
  * judge — whether the harness's RESPONSE to a failure was wrong (plans/telemetry-role.md) —
  * so they sit beside the outcomes rather than being dropped. */
-export const STATE_CHANGE_TYPES = new Set<string>([
-  "budget_paused",
-  "budget_fallback",
-  "budget_resumed",
-  "team_paused",
-  "team_resumed",
-  "role_paused",
-  "role_resumed",
-  "role_streak_paused",
-  "role_cap_paused",
-  "role_cap_resumed",
-  "rate_limit_hold",
-  "rate_limit_resumed",
-  "max_concurrent_changed",
-  "retention_changed",
-  "config_changed",
-  "build_stale",
-  "restart_pending",
-  "restart",
-  "restart_refused",
-  "restart_blocked",
-  "run_deferred",
-  "orchestrator_start",
-  "orchestrator_stop",
-  "supervisor_exit",
-  "disk_low",
-  "disk_ok",
-  "quiet_hours_started",
-  "quiet_hours_ended",
-  "maintenance_quota_hold",
-  "maintenance_quota_resumed",
-  "subscription_window_limited",
-  "subscription_window_reset",
-  "model_changed",
-  "bootstrap_complete",
-  "fallback_switched",
-  "budget_handback",
-]);
+const STATE_CHANGE_FAMILY: Partial<
+  Record<HarnessEvent["type"], (ev: HarnessEvent) => string>
+> = {
+  // Budget and window reopening.
+  budget_paused: budgetStateChange,
+  budget_fallback: budgetStateChange,
+  budget_resumed: budgetStateChange,
+  // Pauses and resumes of teams, roles and caps.
+  team_paused: pauseStateChange,
+  team_resumed: pauseStateChange,
+  role_paused: pauseStateChange,
+  role_resumed: pauseStateChange,
+  role_streak_paused: pauseStateChange,
+  role_cap_paused: pauseStateChange,
+  role_cap_resumed: pauseStateChange,
+  // Model and fallback wiring.
+  model_changed: modelStateChange,
+  fallback_switched: modelStateChange,
+  budget_handback: modelStateChange,
+  // Provider hold and resume.
+  rate_limit_hold: providerHoldStateChange,
+  rate_limit_resumed: providerHoldStateChange,
+  // Live-config edits.
+  max_concurrent_changed: liveConfigStateChange,
+  retention_changed: liveConfigStateChange,
+  config_changed: liveConfigStateChange,
+  // Self-hosted redeploys.
+  build_stale: updateStateChange,
+  restart_pending: updateStateChange,
+  restart: updateStateChange,
+  restart_refused: updateStateChange,
+  restart_blocked: updateStateChange,
+  // Need-based deferrals and gate holds/lifts.
+  run_deferred: waitStateChange,
+  disk_low: waitStateChange,
+  disk_ok: waitStateChange,
+  quiet_hours_started: waitStateChange,
+  quiet_hours_ended: waitStateChange,
+  maintenance_quota_hold: waitStateChange,
+  maintenance_quota_resumed: waitStateChange,
+  subscription_window_limited: waitStateChange,
+  subscription_window_reset: waitStateChange,
+  // Orchestrator lifecycle.
+  orchestrator_start: lifecycleStateChange,
+  orchestrator_stop: lifecycleStateChange,
+  supervisor_exit: lifecycleStateChange,
+  bootstrap_complete: lifecycleStateChange,
+};
+
+/** The event types the digest replays, derived from STATE_CHANGE_FAMILY's keys so the filter
+ * set can never drift from the dispatch. */
+export const STATE_CHANGE_TYPES = new Set<string>(Object.keys(STATE_CHANGE_FAMILY));
 
 /** The event types the digest deliberately does not replay, one per EVENT_TYPE_LABELS key that
  * is not a STATE_CHANGE_TYPES member. Together with STATE_CHANGE_TYPES it partitions
@@ -436,52 +450,8 @@ function lifecycleStateChange(ev: HarnessEvent): string {
  * read as complete or stand mid-word where a key or value should be; the render adds the
  * timestamp and a roleCell-sliced role, so no unbounded field reaches the page. */
 export function describeStateChange(ev: HarnessEvent): string {
-  switch (ev.type) {
-    case "budget_paused":
-    case "budget_fallback":
-    case "budget_resumed":
-      return truncateExample(budgetStateChange(ev), STATE_CHANGE_MAX);
-    case "team_paused":
-    case "team_resumed":
-    case "role_paused":
-    case "role_resumed":
-    case "role_streak_paused":
-    case "role_cap_paused":
-    case "role_cap_resumed":
-      return truncateExample(pauseStateChange(ev), STATE_CHANGE_MAX);
-    case "model_changed":
-    case "fallback_switched":
-    case "budget_handback":
-      return truncateExample(modelStateChange(ev), STATE_CHANGE_MAX);
-    case "rate_limit_hold":
-    case "rate_limit_resumed":
-      return truncateExample(providerHoldStateChange(ev), STATE_CHANGE_MAX);
-    case "max_concurrent_changed":
-    case "retention_changed":
-    case "config_changed":
-      return truncateExample(liveConfigStateChange(ev), STATE_CHANGE_MAX);
-    case "build_stale":
-    case "restart_pending":
-    case "restart":
-    case "restart_refused":
-    case "restart_blocked":
-      return truncateExample(updateStateChange(ev), STATE_CHANGE_MAX);
-    case "run_deferred":
-    case "disk_low":
-    case "disk_ok":
-    case "quiet_hours_started":
-    case "quiet_hours_ended":
-    case "maintenance_quota_hold":
-    case "maintenance_quota_resumed":
-    case "subscription_window_limited":
-    case "subscription_window_reset":
-      return truncateExample(waitStateChange(ev), STATE_CHANGE_MAX);
-    case "orchestrator_start":
-    case "orchestrator_stop":
-    case "supervisor_exit":
-    case "bootstrap_complete":
-      return truncateExample(lifecycleStateChange(ev), STATE_CHANGE_MAX);
-    default:
-      return truncateExample(ev.type, STATE_CHANGE_MAX);
-  }
+  return truncateExample(
+    STATE_CHANGE_FAMILY[ev.type]?.(ev) ?? ev.type,
+    STATE_CHANGE_MAX,
+  );
 }
