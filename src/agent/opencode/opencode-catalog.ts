@@ -10,6 +10,7 @@
 import { spawnSync } from "node:child_process";
 import { isJsonObject, validEntries } from "../../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
+import { cachedByStat, type StatKeyedValue } from "../../files/stat-cache.js";
 import { errorMessage } from "../../text/text.js";
 import { DAY_MS } from "../../text/datetime.js";
 import { opencodeModelsPath } from "../../paths.js";
@@ -55,6 +56,27 @@ export interface OpencodeCatalogCache {
   fetchedAt: number;
   cliVersion?: string;
   models: Record<string, OpencodeCatalogModel>;
+}
+
+/** Per-catalog cache of the parsed catalog, keyed by the models.json path: the status
+ * snapshot and the budget gate both poll it every second while the file changes only when a
+ * refresh re-fetches models.dev — and it grows with the models.dev catalog — so an
+ * unchanged file costs one stat per poll instead of a re-read plus a JSON.parse and a
+ * validation of the whole file (the same stat-keyed contract readOpencodeCache's siblings
+ * readCodexCatalog, readPiProviders and readMergeQueue already use). Any write invalidates
+ * via dev/ino/mtime/size (stat-cache.cachedByStat's freshness check). */
+const catalogCache = new Map<string, StatKeyedValue<OpencodeCatalogCache>>();
+
+/** A structural copy of a parsed catalog, so a caller that mutates its own result (e.g.
+ * observeOpencodeRun sets `billedAt` on an entry) never reaches the shared cache entry; the
+ * next poll re-derives from the file. The entries are plain data (`efforts` arrays included)
+ * so a shallow model-object spread suffices. */
+function cloneCache(cache: OpencodeCatalogCache): OpencodeCatalogCache {
+  const models: Record<string, OpencodeCatalogModel> = {};
+  for (const [key, entry] of Object.entries(cache.models)) {
+    models[key] = entry.efforts !== undefined ? { ...entry, efforts: [...entry.efforts] } : { ...entry };
+  }
+  return { fetchedAt: cache.fetchedAt, cliVersion: cache.cliVersion, models };
 }
 
 /** An injectable catalog GET: takes the URL and timeout bound and returns the parsed JSON body,
@@ -225,15 +247,27 @@ function isOpencodeCatalogModel(value: unknown): value is OpencodeCatalogModel {
  * fills the file in. Entries that are not well-formed catalog models are dropped, so a foreign
  * entry reads as a model missing from the cache — not free. */
 export function readOpencodeCache(root: string): OpencodeCatalogCache {
-  const existing = readJsonFile<Partial<OpencodeCatalogCache>>(opencodeModelsPath(root));
-  if (existing !== null && typeof existing.fetchedAt === "number" && isJsonObject(existing.models)) {
-    return {
-      fetchedAt: existing.fetchedAt,
-      cliVersion: typeof existing.cliVersion === "string" ? existing.cliVersion : undefined,
-      models: validEntries(existing.models, isOpencodeCatalogModel),
-    };
-  }
-  return { fetchedAt: 0, models: {} };
+  const file = opencodeModelsPath(root);
+  const cached = cachedByStat(
+    catalogCache,
+    file,
+    file,
+    () => {
+      // readJsonFile is the shared "missing or torn reads as no data" policy; a torn write
+      // or a malformed file reads as an empty cache (fetchedAt 0), exactly as before.
+      const existing = readJsonFile<Partial<OpencodeCatalogCache>>(file);
+      if (existing !== null && typeof existing.fetchedAt === "number" && isJsonObject(existing.models)) {
+        return {
+          fetchedAt: existing.fetchedAt,
+          cliVersion: typeof existing.cliVersion === "string" ? existing.cliVersion : undefined,
+          models: validEntries(existing.models, isOpencodeCatalogModel),
+        };
+      }
+      return { fetchedAt: 0, models: {} };
+    },
+    cloneCache,
+  );
+  return cached ?? { fetchedAt: 0, models: {} };
 }
 
 /** Persist the catalog cache atomically under `.tumwater/state/`. */
