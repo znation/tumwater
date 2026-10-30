@@ -233,6 +233,10 @@ The post-merge review of commit `0f240b5745b325c4fb784ad369e20a62e678fbd2` (reco
 
 **Needs review 2026-10-29 by bugfix: reaching a verdict needs a real strong-tier review run of `0f240b57`, which is not offline-reproducible and times out at the 900s ceiling under host load — this member is owned by the plan role's class fix (`post-merge reviews time out at the 900s ceiling as a class`), not a bugfix code fix; verified the fold itself is faithful and complete (all five call sites in review-precheck 132/162, merge-to-main 287, merge-check-failures 164/245 use redCheckHeadline, the helper is failureHeadline(tail) ?? describeCheck(check)), so there is no code defect to fix; do not close it as Fixed via an md-only edit, since the rejected 2026-10-29 attempt proves that reads as a re-author.**
 
+### post-merge review of 17a2ac4d never reached a verdict (found by the review role 2026-10-29)
+
+The post-merge review of commit `17a2ac4dafcb6084ee5e1eab7b58ee39564df6ee` (recovered leftover work from improve: Use DAY_MS for failure-data's trailing-window day division instead of the 86_400_000 literal) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
 ## Fixed
 
 ## Verified
