@@ -256,6 +256,10 @@ The post-merge review of commit `acf37eb263353c9c81bf1d45043ac781d308f6f9` (Conv
 
 The post-merge review of commit `bf04da3c517cdb2690bb1973ef430a2e7e2f951e` (Share one merge-queue read per status snapshot instead of two) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
 
+- **Progress 2026-10-30 (bugfix):** not reproduced — reaching a verdict needs a real strong-tier review run. Verified the fold itself is faithful and complete: one `readMergeQueue` read (status-data.ts:592) now feeds the `mergeQueue` field, `collectRoleRows`' surplus-eligibility check via `queuedRoles` (status-data.ts:594–595), and `maintenanceQuotaForPoll` (status-data.ts:657–664). The role sets agree because `readMergeQueue.entries` and `queuedMergeFiles` both run the same stat-cached `readEntry` (merge-queue.ts), so before/after consumers see identical values; `collectRoleRows`' new default `queued = queuedMergeRoles(root)` (status-roles.ts:66) keeps the single snapshot() caller and all test callers behavior-identical. No code defect.
+
+**Needs review 2026-10-30 by bugfix: reaching a verdict needs a real strong-tier review run of `bf04da3c`, which is not offline-reproducible and times out at the 900s ceiling under host load — this member is owned by the plan role's class fix (`post-merge reviews time out at the 900s ceiling as a class`), not a bugfix code fix; verified the fold itself is faithful and complete (one `readMergeQueue` read now feeds the `mergeQueue` field, `collectRoleRows`' surplus check via `queuedRoles`, and `maintenanceQuotaForPoll` — the role sets agree because `readMergeQueue.entries` and `queuedMergeFiles` both run the same stat-cached `readEntry`, so the before/after consumers see identical values; `collectRoleRows`' default `queuedMergeRoles(root)` keeps the single snapshot() caller and the test callers behavior-identical), so there is no code defect to fix; do not close it as Fixed via an md-only edit, since the rejected 2026-10-29 attempt proves that reads as a re-author.**
+
 ## Fixed
 
 ## Verified
