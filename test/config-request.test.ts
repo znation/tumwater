@@ -169,7 +169,7 @@ test("applyConfigRequest survives structurally malformed requests without throwi
 
   writeRequest(wt, "not json at all");
   result = await applyConfigRequest(root, wt);
-  assert.ok(result?.error, "unparseable JSON surfaces as an error string");
+  assert.ok(result?.error?.includes("config request is not valid JSON"), JSON.stringify(result));
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 
   writeRequest(wt, { customRoles: "everything" });

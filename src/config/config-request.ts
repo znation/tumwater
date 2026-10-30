@@ -176,7 +176,16 @@ function parseConfigRequest(
   raw: string,
   ignored: string[],
 ): { entries: unknown[] | undefined; check: unknown } {
-  const unnormalized: unknown = JSON.parse(raw);
+  // A malformed request's JSON.parse SyntaxError is named as a config request so a role that
+  // staged garbage reads where it went wrong (the parser's position report is kept); the
+  // isJsonObject throw below owns the "not an object" wording, so only a true parse failure
+  // takes this path.
+  let unnormalized: unknown;
+  try {
+    unnormalized = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`config request is not valid JSON: ${errorMessage(err)}`);
+  }
   if (!isJsonObject(unnormalized))
     throw new Error(`config request must be a JSON object (got ${show(unnormalized)})`);
   // Old key spellings read as the new ones; a request setting both fails with the pair named.
