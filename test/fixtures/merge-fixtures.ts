@@ -22,16 +22,18 @@ import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { MergeEntry } from "../../src/merge/merge-queue.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeRoleRunner } from "./runner-fixtures.js";
-import { pinOffMain, tmpdir } from "./repo-fixtures.js";
+import { mainSha, makeRepo, pinOffMain, tmpdir } from "./repo-fixtures.js";
+import { fakePi } from "../fakes/fake-pi.js";
 import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 
-/** Shared fixtures for the merge-drain tests — merge-drain.test.ts and
- * merge-pipeline.test.ts, which node --test runs as parallel processes (top-level tests
+/** Shared fixtures for the merge-drain tests — merge-drain.test.ts, merge-pipeline.test.ts and
+ * merge-pipeline-2.test.ts, which node --test runs as parallel processes (top-level tests
  * within one file run one after another). The pipeline context and poll loop the drain is
- * driven through, queue-shaped pinned commits, the per-role reviewer shim, and the row the
- * status observers render: until now the two slices carried byte-identical copies of all of
- * it — they build on this module instead. merger.test.ts's trio shares merger-fixtures.ts
- * (BatchContext wiring, a different shape), not this. */
+ * driven through, queue-shaped pinned commits, the per-role reviewer shim, a pipeline whose
+ * merge slot is held busy, and the row the status observers render: until now the slices
+ * carried byte-identical copies of all of it — they build on this module instead. The
+ * merger*.test.ts family shares merger-fixtures.ts (BatchContext wiring, a different shape),
+ * not this. */
 
 export const APPROVE = (reply = "the work looks right") => reviewerPi(`VERDICT: approve\n${reply}`);
 
@@ -119,11 +121,18 @@ export function pump(ctx: MergePipelineContext, p: MergePipeline): { stop: () =>
 /** The queue is empty and no verification or merge is running. */
 export const drained = (root: string, p: MergePipeline) => () => queueDepth(root) === 0 && mergeTasks(p).length === 0;
 
-/** Every task still settling — parked verifications included — for a test's cleanup. A busySlot
- * stand-in never settles, so it is skipped: a test that fails before freeing its slot then
- * reports the failure instead of hanging in its finally. */
+/** Every task still settling — parked verifications and the post-merge review included — for a
+ * test's cleanup. A busySlot stand-in never settles, so it is skipped: a test that fails before
+ * freeing its slot then reports the failure instead of hanging in its finally. The post-merge
+ * review starts its pi after the merge that queued it, so a cleanup that restored the fake pi
+ * without waiting for it ran the real pi binary past the test's end, holding its file's worker
+ * open for minutes. */
 export const allTasks = (p: MergePipeline) =>
-  [...p.verifying.values(), ...(p.merge && !standIns.has(p.merge) ? [p.merge] : [])].map((t) => t.promise);
+  [
+    ...p.verifying.values(),
+    ...(p.merge && !standIns.has(p.merge) ? [p.merge] : []),
+    ...(p.postReview ? [p.postReview] : []),
+  ].map((t) => t.promise);
 
 /** Pin and enqueue one change per role, every pin before any enqueue (a pin's `git add -A`
  * would sweep an already-written queue file into the next pin). */
@@ -164,6 +173,21 @@ export function busySlot(): InFlightMerge {
   const slot = { promise: new Promise<void>(() => {}), controller: new AbortController(), roles: [], userAborted: false };
   standIns.add(slot);
   return slot;
+}
+
+/** The fixture the busy-merge-slot tests in merge-pipeline.test.ts and merge-pipeline-2.test.ts
+ * share: an alpha+beta queue on a real repo, a merge config whose check is a no-op, the fake
+ * approver, and a pipeline whose merge slot is held busy so both verifications stack up before
+ * any merge. `restore` must run in the caller's finally, after its tasks settle. */
+export async function busyMergePipeline() {
+  const root = makeRepo();
+  await queueChanges(root, ["alpha", "beta"]);
+  const mainBefore = mainSha(root);
+  const config = { ...defaultConfig(), check: { command: "true" } };
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"], undefined, config), { config });
+  pipeline.merge = busySlot();
+  return { root, mainBefore, restore, ctx, pipeline };
 }
 
 /** A role's row as the observers render it (snapshot → mergeForRole → rolePhase). The

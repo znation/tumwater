@@ -9,8 +9,7 @@ import type { ProcessProbe } from "../src/process/process-table.js";
 import { renderDoctor, renderDoctorProblems, problemsOnly } from "../src/doctor/doctor-render.js";
 import { helpTopic } from "../src/cli/help.js";
 import { initProject } from "../src/init/init.js";
-import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeMalformedJson, writeConfig } from "./fixtures/repo-fixtures.js";
-import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { pathPrepend } from "./fakes/fake-commands.js";
 import { cli, cliWithEnv, CLI_COMPLETION_TIMEOUT_MS } from "./helpers/cli-harness.js";
@@ -18,15 +17,17 @@ import { diskHermeticRepo, fakeBins, hermeticHostBins, noProcesses, readyRepo } 
 import { BYTES_PER_GB } from "../src/gates/disk-gates.js";
 
 // Composition and CLI-wiring coverage for src/doctor/doctor.ts: runDoctor's fixed check order,
-// header,
-// verdict counting, and corrupt-config resilience, renderDoctor's rendering, and the `tumwater
-// doctor` CLI contract pinned through main() (no readiness gate, --json payload, exit codes).
+// header, verdict counting, and corrupt-config resilience, renderDoctor's rendering, and the
+// `tumwater doctor` CLI contract pinned through main() (no readiness gate, --json payload, exit
+// codes). The reap flags that act before the report live in doctor-reap.test.ts
+// (--kill-orphans, --commit-backlog, --resync-install) and doctor-reap-refs.test.ts
+// (--drop-broken-pins, --retire-leftovers), split off so each file fits the gate's 30 s budget.
 // The individual checks' ok/fail/warn branches are unit-covered in test/doctor-checks.test.ts
 // (it pins src/doctor/doctor-checks.ts, src/doctor/doctor-project-checks.ts and
-// src/doctor/doctor-contention-checks.ts), the
-// model-readiness checks in
+// src/doctor/doctor-contention-checks.ts), the model-readiness checks in
 // test/doctor-model-checks.test.ts, the orphan check in test/doctor-orphans.test.ts, and the
 // fixtures all three files share live in test/fixtures/doctor-fixtures.ts.
+
 test("runDoctor composes the full report — fixed check order, not-running header, ready verdict", async () => {
   const root = readyRepo();
   // An npm check so the report's all-ok sweep below holds — a repo with neither a configured
@@ -414,7 +415,6 @@ test("doctor --json keeps the exit-code contract: fail checks exit 1 with no pro
   assert.match(report.verdict, /2 problems/);
 });
 
-
 test("doctor rejects unknown arguments", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli doctor args");
@@ -541,63 +541,6 @@ test("doctor <check>... runs the named checks and rejects an unknown name", asyn
   assert.match(typo.stderr, /unknown check "orphan" — did you mean `orphans`\?/);
 });
 
-test("doctor --kill-orphans reports an unreadable process table, then the report; with --json it is the report's orphanKill field", async () => {
-  // The no-ps PATH keeps the scan off the host's real table: a real scan could kill another
-  // agent's leaked process.
-  const env = { PATH: gitOnlyBinDir() };
-  const r = await cliWithEnv(tmpdir(), env, ["doctor", "--kill-orphans"]);
-  assert.match(r.stdout, /^could not scan the process table — .*; nothing killed\n\n/);
-  assert.match(r.stdout, /warn\s+orphans\s+could not scan the process table/);
-  assert.equal(r.code, 1, "exit follows the report's verdict");
-  const json = await cliWithEnv(tmpdir(), env, ["doctor", "--kill-orphans", "--json"]);
-  assert.equal(json.code, 1);
-  const doc = JSON.parse(json.stdout);
-  assert.ok(typeof doc.orphanKill.error === "string" && doc.orphanKill.error.length > 0);
-  assert.equal(doc.checks.find((c: { name: string }) => c.name === "orphans").level, "warn");
-  const prob = JSON.parse((await cliWithEnv(tmpdir(), env, ["doctor", "--kill-orphans", "--problems", "--json"])).stdout);
-  assert.ok(prob.orphanKill.error);
-  assert.ok(!prob.checks.some((c: { level: string }) => c.level === "ok"));
-  const plain = JSON.parse((await cliWithEnv(tmpdir(), env, ["doctor", "--json"])).stdout);
-  assert.ok(!("orphanKill" in plain));
-});
-
-test("doctor --commit-backlog commits a dirty backlog file before the report; with --json it is the report's backlogCommit field", async () => {
-  const repo = await diskHermeticRepo("cli doctor commit backlog");
-  fs.appendFileSync(path.join(repo, "PLANS.md"), "edit\n");
-  const json = await cli(repo, "doctor", "--commit-backlog", "--json");
-  const doc = JSON.parse(json.stdout);
-  assert.deepEqual(doc.backlogCommit.committed, ["PLANS.md"]);
-  assert.equal(doc.checks.find((c: { name: string }) => c.name === "uncommitted backlog").level, "ok");
-  assert.equal(sh(repo, "git", "status", "--porcelain", "--", "PLANS.md"), "");
-  fs.appendFileSync(path.join(repo, "PLANS.md"), "edit2\n");
-  const r = await cli(repo, "doctor", "--commit-backlog");
-  assert.match(r.stdout, /^committed PLANS\.md on main\n/m);
-  assert.ok(r.stdout.indexOf("committed PLANS.md on main") < r.stdout.indexOf("uncommitted backlog"));
-  const plain = JSON.parse((await cli(repo, "doctor", "--json")).stdout);
-  assert.ok(!("backlogCommit" in plain));
-});
-
-test("doctor combines two reap flags under --json in payload order (resyncInstall before backlogCommit)", async () => {
-  // doctorPayload appends the optional keys in the closure chain's original order — leftoverRetire,
-  // brokenPinDrop, resyncInstall, backlogCommit, orphanKill — so a combined --json run must keep
-  // resyncInstall ahead of backlogCommit even though the other keys are absent. This pins the byte
-  // order that a payload-level diff (or a consumer that reads keys) would otherwise depend on.
-  const repo = await diskHermeticRepo("cli doctor combined reap");
-  fs.appendFileSync(path.join(repo, "PLANS.md"), "edit\n");
-  const json = await cli(repo, "doctor", "--resync-install", "--commit-backlog", "--json");
-  const doc = JSON.parse(json.stdout);
-  assert.equal(doc.resyncInstall.attempted, false);
-  assert.equal(doc.resyncInstall.ok, true);
-  assert.deepEqual(doc.resyncInstall.packages, []);
-  assert.deepEqual(doc.backlogCommit.committed, ["PLANS.md"]);
-  const keys = Object.keys(doc);
-  assert.ok(keys.includes("resyncInstall") && keys.includes("backlogCommit"));
-  assert.ok(
-    keys.indexOf("resyncInstall") < keys.indexOf("backlogCommit"),
-    `resyncInstall must precede backlogCommit in the --json payload (key order: ${keys.join(",")})`,
-  );
-});
-
 test("the run-to-completion CLI capture grants doctor a cold-start completion budget", () => {
   // Doctor defers its whole report until every check completes, so its run-to-completion
   // capture can see a long stdout-less stretch under full-suite load; a tight execFile timeout
@@ -609,94 +552,6 @@ test("the run-to-completion CLI capture grants doctor a cold-start completion bu
     CLI_COMPLETION_TIMEOUT_MS >= 60_000,
     `completion budget ${CLI_COMPLETION_TIMEOUT_MS}ms is under the 60s cold-CLI-start runway`,
   );
-});
-
-test("doctor --resync-install is accepted and reports nothing to do without a lockfile", async () => {
-  // A bare repo (no package-lock.json) pins nothing, so the re-sync has nothing to do; a
-  // `.tumwater` dir lets the merge lock acquire (a real project always has one).
-  const repo = makeRepo();
-  fs.mkdirSync(path.join(repo, ".tumwater"), { recursive: true });
-  const json = await cli(repo, "doctor", "--resync-install", "--json");
-  const doc = JSON.parse(json.stdout);
-  assert.equal(doc.resyncInstall.attempted, false);
-  assert.equal(doc.resyncInstall.ok, true);
-  assert.deepEqual(doc.resyncInstall.packages, []);
-  assert.equal(doc.resyncInstall.pinned, false);
-  const r = await cli(repo, "doctor", "--resync-install");
-  assert.match(r.stdout, /^no package-lock\.json to match — nothing to re-sync\n/m);
-  assert.ok(r.stdout.indexOf("nothing to re-sync") < r.stdout.indexOf("tumwater doctor — not running"));
-  // Without the flag the doctor payload is unchanged — no resyncInstall field.
-  const plain = JSON.parse((await cli(repo, "doctor", "--json")).stdout);
-  assert.ok(!("resyncInstall" in plain));
-});
-
-test("doctor --resync-install on a matched root says the tree already matches the lockfile", async () => {
-  const repo = makeRepo();
-  fs.mkdirSync(path.join(repo, ".tumwater"), { recursive: true });
-  fs.mkdirSync(path.join(repo, "node_modules", "ink"), { recursive: true });
-  fs.writeFileSync(path.join(repo, "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: { "": { name: "proj", dependencies: { ink: "7.1.1" } }, "node_modules/ink": { version: "7.1.1" } } }));
-  fs.writeFileSync(path.join(repo, "node_modules/ink/package.json"), JSON.stringify({ name: "ink", version: "7.1.1" }));
-  const json = await cli(repo, "doctor", "--resync-install", "--json");
-  const doc = JSON.parse(json.stdout);
-  assert.equal(doc.resyncInstall.attempted, false);
-  assert.equal(doc.resyncInstall.pinned, true);
-  const r = await cli(repo, "doctor", "--resync-install");
-  assert.match(r.stdout, /^node_modules already matches package-lock\.json — nothing to re-sync\n/m);
-});
-
-test("doctor --drop-broken-pins starts the report without a blank line when no pins are broken", async () => {
-  const r = await cli(makeRepo(), "doctor", "--drop-broken-pins");
-  assert.doesNotMatch(r.stdout, /^\n/);
-});
-
-test("doctor --drop-broken-pins drops the row's broken pins before the report", async () => {
-  const seed = () => {
-    const repo = makeRepo();
-    writeFileDeep(path.join(repo, ".git", "refs", "tumwater", "merge", "broken"), `${"2".repeat(40)}\n`);
-    return repo;
-  };
-  const repo = seed();
-  const r = await cli(repo, "doctor", "--drop-broken-pins");
-  assert.match(r.stdout, /^1 dropped broken pin: refs\/tumwater\/merge\/broken names [0-9a-f]{8}\n\n/);
-  assert.equal(fs.existsSync(path.join(repo, ".git", "refs", "tumwater", "merge", "broken")), false, "the broken pin's ref is gone");
-  const repoJson = seed();
-  const json = await cli(repoJson, "doctor", "--drop-broken-pins", "--json");
-  const doc = JSON.parse(json.stdout);
-  assert.deepEqual(doc.brokenPinDrop, { dropped: [{ ref: "refs/tumwater/merge/broken", sha: "2".repeat(40) }], failed: [] });
-  assert.equal(doc.checks.find((c: { name: string }) => c.name === "tumwater pins").level, "ok");
-  // Without the flag the ref and the row stay as the check found them, and no drop is printed.
-  const repoPlain = seed();
-  const plain = await cli(repoPlain, "doctor");
-  assert.doesNotMatch(plain.stdout, /^1 dropped broken pin/);
-  assert.equal(fs.existsSync(path.join(repoPlain, ".git", "refs", "tumwater", "merge", "broken")), true);
-  const plainJson = JSON.parse((await cli(repoPlain, "doctor", "--json")).stdout);
-  assert.equal(plainJson.checks.find((c: { name: string }) => c.name === "tumwater pins").level, "fail");
-  assert.ok(!("brokenPinDrop" in plainJson));
-});
-
-test("doctor --retire-leftovers retires before the report and --json carries leftoverRetire", async () => {
-  const seed = () => {
-    const repo = makeRepo();
-    writeConfig(repo, { roles: { feature: { enabled: false } } });
-    sh(repo, "git", "branch", "tumwater/feature");
-    return repo;
-  };
-  const repo = seed();
-  const r = await cli(repo, "doctor", "--retire-leftovers");
-  assert.match(r.stdout, /^retired feature: the branch \(tumwater\/feature\)\n\n/);
-  assert.equal(sh(repo, "git", "branch").includes("tumwater/feature"), false, "feature's branch is gone");
-  const repoJson = seed();
-  const json = await cli(repoJson, "doctor", "--retire-leftovers", "--json");
-  const doc = JSON.parse(json.stdout);
-  assert.deepEqual(doc.leftoverRetire, { retired: [{ role: "feature", removed: ["branch"] }], failed: [] });
-  // Without the flag the branch and the row stay as found, and no retire line prints.
-  const repoPlain = seed();
-  const plain = await cli(repoPlain, "doctor");
-  assert.doesNotMatch(plain.stdout, /^retired feature/);
-  assert.equal(sh(repoPlain, "git", "branch").includes("tumwater/feature"), true, "the branch stays without the flag");
-  const plainJson = JSON.parse((await cli(repoPlain, "doctor", "--json")).stdout);
-  assert.equal(plainJson.checks.find((c: { name: string }) => c.name === "leftover role branches").level, "warn");
-  assert.ok(!("leftoverRetire" in plainJson));
 });
 
 test("runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through", async () => {

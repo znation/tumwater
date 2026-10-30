@@ -3542,7 +3542,7 @@ repairable and land for the main watch.
 **Binds.** `src/merge/merge-check-failures.ts` (`MERGE_CHECK_FAILURE_LIMIT`, `pinKept`,
 `keepPinOrAttribute`, `mergeCheckRed`, `mergeBlocked`).
 
-**Pinned by.** `test/merger.test.ts` — "a single merge's red in-lock check retries once, then
+**Pinned by.** `test/merger-check.test.ts` — "a single merge's red in-lock check retries once, then
 rejects on a green main", "a single merge's red in-lock check retries once, then keeps its pin as
 main_red" and "a repairable false-fix md-only change merges through the real merge flow".
 
@@ -3564,7 +3564,7 @@ a red that fails only main's known failures. Both keep the pin.
 
 **Binds.** `src/merge/merge-check-failures.ts` (`attributeRedCheck`).
 
-**Pinned by.** `test/merger.test.ts` — "an unverified red in-lock check — the run timed out — keeps
+**Pinned by.** `test/merger-check.test.ts` — "an unverified red in-lock check — the run timed out — keeps
 the pin without a strike"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref and
 records no strike for an unverified red" and "attributeRedCheck keeps the ref, with no strike, for a
 red that fails only main's known failures".
@@ -3578,7 +3578,7 @@ the merged pin's. `attributeRedCheck` excuses a known-flaky headline once per he
 **Binds.** `src/merge/merge-check-failures.ts` (`noteMergeRetryPassed`, `attributeRedCheck`),
 `RunnerState.mergeFlakeExcused`.
 
-**Pinned by.** `test/merger.test.ts` — "a kept-for-re-merge red merge check logs a warning naming
+**Pinned by.** `test/merger-check.test.ts` — "a kept-for-re-merge red merge check logs a warning naming
 the failing test", "a red merge check that passes on its kept-pin retry logs a merge-check flake
 warning" and "a stale red strike of another pin is not recorded as a flake when a different pin
 merges"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref once for a
@@ -3663,7 +3663,7 @@ on without a re-run.
 **Binds.** `src/review/known-flakes.ts` (`quarantineTests`, `onlyQuarantined`).
 
 **Pinned by.** `test/known-flakes.test.ts` — "quarantine: a new test is added once, a repeat
-counts, and only-quarantined needs every test listed"; `test/merger.test.ts` — "a red in-lock merge check whose immediate re-run
+counts, and only-quarantined needs every test listed"; `test/merger-check.test.ts` — "a red in-lock merge check whose immediate re-run
 passes merges and quarantines the failing test"; `test/main-watch.test.ts` — "a red whose
 confirming re-run passes quarantines the failing tests and files one BUGS.md entry on main" and "a
 red naming only quarantined tests is recorded passed and starts no culprit".
@@ -4542,7 +4542,7 @@ index, rather than skipping the preserve".
 
 **Binds.** `src/merge/merge-check-failures.ts` (`rejectChange`, `attributeRedCheck`), `src/merge/merge-requeue.ts` (`requeueKeptChange`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
 
-**Pinned by.** `test/merger.test.ts` — "an unwritable state file during a red merge check's attribution still settles its verdict (green main)" and "an unwritable state file during a red merge check's attribution still settles its verdict (red main)"; `test/merge-requeue.test.ts` — "a main_red re-queue whose state save fails still queues the change" and "a main_red pin whose state save fails still records the re-queue and warns"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref for a red that fails only main's known failures when the state save fails", "attributeRedCheck keeps the ref for an unverified red when the state save fails" and "attributeRedCheck keeps the ref for a known-flake red when the state save fails".
+**Pinned by.** `test/merger-check.test.ts` — "an unwritable state file during a red merge check's attribution still settles its verdict (green main)" and "an unwritable state file during a red merge check's attribution still settles its verdict (red main)"; `test/merge-requeue.test.ts` — "a main_red re-queue whose state save fails still queues the change" and "a main_red pin whose state save fails still records the re-queue and warns"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref for a red that fails only main's known failures when the state save fails", "attributeRedCheck keeps the ref for an unverified red when the state save fails" and "attributeRedCheck keeps the ref for a known-flake red when the state save fails".
 
 ## Red-main healer: a heal prompt that cannot be queued never fails the gate
 

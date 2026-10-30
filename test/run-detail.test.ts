@@ -546,7 +546,7 @@ test("history --result/--model followed by another flag names the forgotten valu
   // operator did NOT write --last when they did. The shared flag-looking-value guard refuses
   // up front, naming the slip. The listing form's silent case -- `history --role bugfix
   // --model --last` treating "--last" as a model filter and exiting 0 showing nothing -- is
-  // covered in cli-history-filtering.test.ts, where the role flag routes to that form.
+  // covered in cli-history-model.test.ts, where the role flag routes to that form.
   const repo = makeRepo();
   await initProject(repo, "run result flag value");
   const byResult = await cli(repo, "history", "bugfix", "--result", "--last");

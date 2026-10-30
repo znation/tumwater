@@ -150,3 +150,25 @@ export function warningMessages(root: string): string[] {
 export function harnessWarnings(root: string): HarnessEvent[] {
   return eventsOfType(root, "warning").filter((e) => e.source === "tumwater");
 }
+
+/** A mixed log of several event types, seeded directly into events.jsonl, that the `logs` filter
+ * tests (cli-logs-filtering.test.ts, cli-logs-type.test.ts) share: the events are
+ * distinguishable by their rendered lines, and review_rejected's rendering ("review rejected")
+ * paraphrases its type id, which is what makes type-id matching worth testing separately.
+ * COMMIT_A and COMMIT_B are the commits its merge_failed and review_rejected events name. */
+export const COMMIT_A = "abc1234567890ef";
+export const COMMIT_B = "def4567890abcdef";
+
+export function seedMixedLog(repo: string): void {
+  const now = Date.now();
+  const file = eventsLogPath(repo);
+  const events = [
+    { ts: now - 6000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 5000, loop: "feature", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 4000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy error handling"], durationMs: 1200 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 3000, loop: "bugfix", type: "run_start", run: 2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 2000, loop: "bugfix", type: "run_end", run: 2, result: "refused", summary: "nothing to do" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 1000, loop: "bugfix", type: "merge_failed", commit: COMMIT_B, result: "build_check", durationMs: 900 }, // retired-name-ok: legacy event field in a fixture
+  ];
+  writeLogLines(file, events);
+}

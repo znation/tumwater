@@ -17,7 +17,7 @@ import { spawnLiveChild, stopChild } from "./helpers/child-process.js";
 // The team-facing operator-command CLI tests (reset-counters, wake, stop, config), split
 // from cli-operators.test.ts so node --test runs them in parallel processes — each test
 // spawns the CLI, so the file is CPU-bound on its own. cli-operators.test.ts keeps the
-// abort and pause/resume families.
+// abort and pause/resume families (and lists the role and revert files split off since).
 
 // --- logs/reset-counters/abort --role: user-defined role targets ---
 

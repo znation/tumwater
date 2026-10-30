@@ -15,12 +15,13 @@ import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { mainSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
 
-/** First slice of the merge-drain suite (merge-pipeline.test.ts carries the rest, and
- * merge-drain-verify.test.ts the verification-permit tests) — split so node --test runs the slices
- * in parallel processes: top-level tests within one file run sequentially, while each test FILE
- * gets its own process. The slices are balanced by measured per-test duration (~10.6s vs ~6.9s
- * at 2026-10-04 — this file holds the one ~10.5s dedupe-cache stress test alone, so the split's
- * balance point is that test); keep the files roughly equal when moving tests between them. */
+/** First slice of the merge-drain suite (merge-pipeline.test.ts and merge-pipeline-2.test.ts
+ * carry the rest, and merge-drain-verify.test.ts the verification-permit tests) — split so
+ * node --test runs the slices in parallel processes: top-level tests within one file run
+ * sequentially, while each test FILE gets its own process. The slices are balanced by measured
+ * per-test duration (~10.6s vs ~6.9s at 2026-10-04 — this file holds the one ~10.5s
+ * dedupe-cache stress test alone, so the split's balance point is that test); keep the files
+ * roughly equal when moving tests between them. */
 // Unit coverage for src/merge/merge-drain.ts — the scheduler seam between the durable merge
 // queue and the merge pipeline (land-queue speed 2c): the dedupe against main and torn-head
 // recovery, the verify stage (one verification per queued change, each on a shared maxConcurrent

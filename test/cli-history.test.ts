@@ -13,9 +13,11 @@ import { seededHistoryRepo } from "./fixtures/history-fixtures.js";
 // The `history` command's core end-to-end views: CLI smoke runs over the shared fixed
 // multi-role log (fixtures/history-fixtures.ts) — the pattern test/cli-logs.test.ts uses: the
 // table's alignment, one row per completed run, --role and its scan-window growth, -n
-// validation, --json, and the unknown-flag/empty-log/help edges. The window-and-filter halves
-// (--since, --grep) live in cli-history-filtering.test.ts, split the way cli-logs.test.ts
-// keeps itself apart from cli-logs-filtering.test.ts so node --test runs the two in parallel.
+// validation, --json, and the unknown-flag/empty-log/help edges. The window-and-filter views
+// (--since, --grep, --until) live in cli-history-filtering.test.ts, and --result/--summary and
+// --model in cli-history-result.test.ts and cli-history-model.test.ts, split the way
+// cli-logs.test.ts keeps itself apart from cli-logs-filtering.test.ts so node --test runs them
+// in parallel.
 // The runRows collector's own unit cases live beside readRunRows in test/history-data.test.ts;
 // the direct in-process cmdHistory views in cli-history-views.test.ts.
 

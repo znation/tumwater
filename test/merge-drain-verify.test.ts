@@ -29,7 +29,7 @@ process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
 
 /** Second slice of the merge-drain suite — the verification-permit and merge-slot tests beside
  * merge-drain.test.ts (which carries the dedupe tests, including the one ~10.5s stress
- * test) and merge-pipeline.test.ts — split so node --test runs the slices in parallel
+ * test) and merge-pipeline(-2).test.ts — split so node --test runs the slices in parallel
  * processes: top-level tests within one file run sequentially, while each test FILE gets its
  * own process. The slices are balanced by measured per-test duration (~6.9s vs ~10.6s at
  * 2026-10-04); keep them roughly equal when moving tests between the files. */
@@ -103,6 +103,9 @@ test("a verification runs in a pooled slot (purpose vet while it works, no lease
     async () => {
       const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role], undefined, config), { config });
       await pumpUntil(ctx, pipeline, drained(root, pipeline), "the change to merge");
+      // The merged change's post-merge review is still running; settle it inside withPi, or it
+      // starts the real pi once the fake is gone.
+      await Promise.allSettled(allTasks(pipeline));
       const cwd = fs.readFileSync(path.join(flags, "cwd"), "utf8").trim();
       assert.match(path.basename(cwd), /^_slot-\d+$/, "the verification's check ran in a pooled slot");
       assert.equal(fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${role}`)), false, "no _land-<role> was created for the verification");

@@ -1,8 +1,8 @@
-/** The seeded event log the `history` CLI tests share: a fixed multi-role log with a usage-less
- * row, a paired run, and an unpaired run_end. Both test/cli-history.test.ts (the core views)
- * and test/cli-history-filtering.test.ts (the --since/--grep views) read it, so the exact rows
- * those two files assert against cannot drift. Each test seeds relative to its own clock only
- * where the view under test is a window (that seed stays local to its file). */
+/** The seeded event logs the `history` CLI tests share: a fixed multi-role log with a usage-less
+ * row, a paired run, and an unpaired run_end. test/cli-history.test.ts (the core views) and the
+ * filter views split from it (cli-history-filtering.test.ts, cli-history-result.test.ts,
+ * cli-history-model.test.ts) read it, so the exact rows those files assert against cannot
+ * drift. A window view seeds relative to its own clock instead (seedWindowedHistory). */
 import { initProject } from "../../src/init/init.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
@@ -20,4 +20,18 @@ export async function seededHistoryRepo(): Promise<string> {
     { ts: 1787222760000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "pi unreachable" }, // retired-name-ok: legacy event field in a fixture
   ]);
   return repo;
+}
+
+/** Seed run pairs at fixed ages before `now` (the pattern cli-logs-filtering.test.ts uses for
+ * --since): one 2-day-old run_end outside any sane window, then a clean run (start 50m,
+ * end 45m) and a feature run (start 30m, end 10m) inside a 1h window. */
+export function seedWindowedHistory(repo: string, now = Date.now()): void {
+  const age = (ms: number) => now - ms;
+  writeEvents(repo, [
+    { ts: age(2 * 86_400_000), loop: "feature", type: "run_end", run: 1, result: "changed", summary: "old work" }, // retired-name-ok: legacy event field in a fixture
+    { ts: age(50 * 60_000), loop: "clean", type: "run_start", run: 2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: age(45 * 60_000), loop: "clean", type: "run_end", run: 2, result: "no_change", summary: "tidied" }, // retired-name-ok: legacy event field in a fixture
+    { ts: age(30 * 60_000), loop: "feature", type: "run_start", run: 3 }, // retired-name-ok: legacy event field in a fixture
+    { ts: age(10 * 60_000), loop: "feature", type: "run_end", run: 3, result: "changed", summary: "new work", tokens: 1200, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
+  ]);
 }

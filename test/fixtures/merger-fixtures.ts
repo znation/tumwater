@@ -19,12 +19,12 @@ import { runPi } from "../../src/pi/pi.js";
 import { assistantLine, leasedRoleShell } from "./pi-events.js";
 import { ensureParentDir } from "../../src/files/files.js";
 
-/** Shared fixtures for the merge tests — merger.test.ts, merger-restack.test.ts and
- * merger-bisect.test.ts,
- * split from one file so node --test runs the three in parallel processes (top-level tests
- * within a file run one after another; each file gets its own process, and its own PATH for
- * fakePi's global swap). Contexts and wiring built the way the merge drain builds
- * them, pinned-change repos in the queue shape the pipeline reads, and reviewer/check shims. */
+/** Shared fixtures for the merge tests — merger.test.ts and the slices split from it
+ * (merger-check, merger-batch, merger-restack, merger-bisect, merger-fallback), split from one
+ * file so node --test runs them in parallel processes (top-level tests within a file run one
+ * after another; each file gets its own process, and its own PATH for fakePi's global swap).
+ * Contexts and wiring built the way the merge drain builds them, pinned-change repos in the
+ * queue shape the pipeline reads, and reviewer/check shims. */
 
 export const ROLE = "improve";
 export const REF = mergeRefName(ROLE);
