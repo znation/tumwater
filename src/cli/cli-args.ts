@@ -4,6 +4,7 @@ import { knownRoleIdsCached } from "../config/config.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import { gotSuffix, parsePositiveInt, splitCommaList } from "../text/text.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
+import { HOUR_MS, DAY_MS } from "../text/datetime.js";
 
 /** CLI argument parsing and validation, shared by every command in cli.ts. The execution
  * layer calls these before running a command, so a bad flag fails fast with an actionable
@@ -283,8 +284,11 @@ export function parsePortFlag(raw: string | undefined): number {
   return n;
 }
 
-/** Milliseconds per unit, the multiplier parseDurationFlag's regex group is applied to. */
-const UNIT_MS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
+/** Milliseconds per unit, the multiplier parseDurationFlag's regex group is applied to.
+ * The hour and day multipliers are HOUR_MS / DAY_MS (text/datetime.ts's shared units, the
+ * convention that records why no two sites may spell them differently); second and minute
+ * keep their own literals as there is no shared MINUTE_MS/SECOND_MS constant to fold onto. */
+const UNIT_MS = { s: 1_000, m: 60_000, h: HOUR_MS, d: DAY_MS } as const;
 
 /** The position of each unit in the descending order a composite duration must follow
  * (d → h → m → s), so `30m1h` and `1h30m1h` fail instead of parsing to a surprising total. */
