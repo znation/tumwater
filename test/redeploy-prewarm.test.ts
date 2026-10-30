@@ -83,7 +83,7 @@ test("within the cooldown a second stale episode is deferred: no hold, status ca
   const warnings = warningEvents(events);
   assert.equal(warnings.length, 1, "one warning for the whole cooldown episode, not one per head");
   assert.match(String(warnings[0]!.message), /cooldown until/);
-  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart", "warning"]);
+  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_pending", "restart", "warning"]);
 });
 
 test("during the cooldown the deferred head's check and compile prewarm, so the lapse reaches the swap on its first poll", async () => {
@@ -102,7 +102,7 @@ test("during the cooldown the deferred head's check and compile prewarm, so the 
   assert.deepEqual(f.calls.compile, [HEAD_B, HEAD_C], "a green verdict prewarms the staged compile");
   f.compiled(true);
   await settle();
-  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart", "warning"], "the prewarm logs no state transitions of its own");
+  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_pending", "restart", "warning"], "the prewarm logs no state transitions of its own");
   assert.equal(
     await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS),
     "hold",
@@ -122,7 +122,7 @@ test("a hold that adopts the prewarmed compile still logs restart_pending once a
   // BUGS.md 2026-10-16: the adopted compile skipped the only branch that logged the hold, so a
   // 10-minute drain ended in aborted runs with nothing before them in the event log.
   const f = fakeDeps();
-  const { r, types } = harness(f.deps);
+  const { r, events, types } = harness(f.deps);
   const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
   await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000);
   f.green(true);
@@ -135,6 +135,27 @@ test("a hold that adopts the prewarmed compile still logs restart_pending once a
   assert.equal(await r.poll(HEAD_C, busy, true, swappedAt + RESTART_COOLDOWN_MS), "hold");
   assert.equal(await r.poll(HEAD_C, busy, true, swappedAt + RESTART_COOLDOWN_MS + 10), "hold");
   assert.equal(types().filter((t) => t === "restart_pending").length, before + 1, "one restart_pending for the hold");
+  // The hold opens straight in the drain — the check and compile came from the cooldown — and
+  // says so (2026-10-30: a hold that adopts a pre-warmed compile is announced, with its step).
+  const pending = events.filter((e) => e.type === "restart_pending").at(-1)!;
+  assert.deepEqual([pending.head, pending.stage, pending.runs, pending.prewarmed], [HEAD_C, "finishing", 2, true]);
+  assert.deepEqual(r.status().restartHold, { stage: "finishing", since: swappedAt + RESTART_COOLDOWN_MS, runs: 2 });
+});
+
+test("a hold that adopts a prewarmed compile still running opens in the compile step and says it was prewarmed", async () => {
+  const f = fakeDeps();
+  const { r, events } = harness(f.deps);
+  const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
+  await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000);
+  f.green(true);
+  await settle();
+  await r.poll(HEAD_C, IDLE, true, swappedAt + 61 * 60_000); // the prewarm's compile starts
+  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS), "hold");
+  assert.deepEqual(r.status().restartHold, { stage: "compiling", since: swappedAt + RESTART_COOLDOWN_MS });
+  const pending = events.filter((e) => e.type === "restart_pending" && e.head === HEAD_C);
+  assert.deepEqual(pending.map((e) => [e.stage, e.prewarmed]), [["compiling", true]], "no checking step: the verdict was in hand");
+  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 10), "hold", "still compiling");
+  assert.equal(events.filter((e) => e.type === "restart_pending" && e.head === HEAD_C).length, 1, "the same step logs once");
 });
 
 test("a prewarmed green check that could not run is not adopted — the episode re-runs it", async () => {

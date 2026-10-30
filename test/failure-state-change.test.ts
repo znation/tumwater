@@ -240,6 +240,19 @@ test("build_stale and the restart quartet render shas and the refusal reason", (
     describeStateChange(ev({ type: "restart_pending", head: "1234567890abcdef" })),
     "restart pending — main 12345678 green",
   );
+  // Each step the hold enters (2026-10-30); a stage-less event above predates them.
+  assert.equal(
+    describeStateChange(ev({ type: "restart_pending", head: "1234567890abcdef", stage: "checking" })),
+    "restart pending — checking main 12345678",
+  );
+  assert.equal(
+    describeStateChange(ev({ type: "restart_pending", head: "1234567890abcdef", stage: "compiling" })),
+    "restart pending — compiling 12345678",
+  );
+  assert.equal(
+    describeStateChange(ev({ type: "restart_pending", head: "1234567890abcdef", stage: "finishing", runs: 4 })),
+    "restart pending — finishing 4 runs",
+  );
   assert.equal(describeStateChange(ev({ type: "restart", to: "abcdef1234567890" })), "restarting onto update abcdef12");
   assert.equal(
     describeStateChange(ev({ type: "restart_refused", to: "abcdef1234567890", reason: "startup gate failed" })),

@@ -23,7 +23,7 @@ test("a compile that never ran is a rejection, not a verdict: retried instead of
   f.compiled(false, "could not start the compile: spawn mirror ENOENT", true);
   await settle();
   assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "dropped, not blocked: nothing was verified about the tree");
-  assert.deepEqual(types(), ["build_stale", "restart_pending", "warning"]);
+  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_pending", "warning"]);
   assert.match(String(events.at(-1)!.message), /the update could not start: /);
   assert.equal(r.status().restartBlocked, undefined, "no latch: repairing the environment must be enough");
   assert.equal(await r.poll(HEAD_B, IDLE, true), "hold", "the next poll re-attempts without main moving");
@@ -41,8 +41,9 @@ test("a rejected compile warns once per head, not once per retry", async () => {
   // per attempt would flood the digest exactly as the latched ENOENT cluster did (64 in a day).
   // The dedupe key is the head: the same head's repeated rejection stays quiet; a new head that
   // also cannot compile is a new episode and warns again (BUGS.md 2026-09-28). The same key
-  // holds the state stream quiet: a retry re-enters "compiling" without ever leaving it, so a
-  // second restart_pending per head would pin the digest's newest transition there forever.
+  // holds the state stream quiet: a retry re-enters "checking" and "compiling" without ever
+  // leaving the hold, so a restart_pending per retry would pin the digest's newest transition
+  // there forever — each head logs each step once (checking, then compiling).
   const pending = (head: string) => events.filter((e) => e.type === "restart_pending" && e.head === head).length;
   const f = fakeDeps();
   const { r, events } = harness(f.deps);
@@ -59,15 +60,15 @@ test("a rejected compile warns once per head, not once per retry", async () => {
   };
   await rejectOnce(HEAD_B);
   assert.equal(warnings().length, 1);
-  assert.equal(pending(HEAD_B), 1);
+  assert.equal(pending(HEAD_B), 2);
   assert.match(String(warnings()[0]!.message), /the update could not start: /);
   await rejectOnce(HEAD_B);
   assert.equal(warnings().length, 1, "the same head's repeated rejection warns once, not per attempt");
-  assert.equal(pending(HEAD_B), 1, "and its in-progress state event is logged once, not once per doomed retry");
+  assert.equal(pending(HEAD_B), 2, "and its in-progress state events are logged once per step, not once per doomed retry");
   assert.deepEqual(f.calls.compile, [HEAD_B, HEAD_B], "and the compile was still re-attempted for the head");
   await rejectOnce(HEAD_C);
   assert.equal(warnings().length, 2, "a different head is a new episode and warns again");
-  assert.equal(pending(HEAD_C), 1, "the new head's compile start is a fresh state event");
+  assert.equal(pending(HEAD_C), 2, "the new head's hold and compile start are fresh state events");
   assert.match(String(warnings().at(-1)!.message), /the update could not start: /);
 });
 
@@ -108,7 +109,7 @@ test("a thrown green check is a 'could not run': drop, warn once, retry — no l
   assert.equal(await r.poll(HEAD_B, IDLE, true), "hold");
   await settle(); // the rejection lands in the tracked slot
   assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "a thrown check ends the hold without a verdict");
-  assert.deepEqual(events.map((e) => e.type), ["build_stale", "warning"]);
+  assert.deepEqual(events.map((e) => e.type), ["build_stale", "restart_pending", "warning"]);
   assert.match(
     String(events.at(-1)!.message),
     /green check of bbbbbbbb could not run: baseline check blew up/,
@@ -144,7 +145,8 @@ test("a green check that fails once and then recovers still reaches the swap: th
   assert.equal(checks, 2);
   assert.deepEqual(f.calls.compile, [HEAD_B]);
   assert.deepEqual(f.calls.swap, [HEAD_B]);
-  assert.deepEqual(events.map((e) => e.type), ["build_stale", "warning", "restart_pending", "restart"]);
+  // The retry's check step is the one the first episode already announced: logged once.
+  assert.deepEqual(events.map((e) => e.type), ["build_stale", "restart_pending", "warning", "restart_pending", "restart"]);
 });
 
 test("a thrown compile is a rejection, not a verdict: its error text rides the warning, nothing is latched", async () => {
@@ -166,7 +168,7 @@ test("a thrown compile is a rejection, not a verdict: its error text rides the w
   assert.equal(await r.poll(HEAD_B, IDLE, true), "hold", "compile runs in the background");
   await settle(); // the rejection lands in the tracked slot
   assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "dropped, not blocked: nothing was verified about the tree");
-  assert.deepEqual(events.map((e) => e.type), ["build_stale", "restart_pending", "warning"]);
+  assert.deepEqual(events.map((e) => e.type), ["build_stale", "restart_pending", "restart_pending", "warning"]);
   assert.match(String(events.at(-1)!.message), /the update to bbbbbbbb could not be built: tsc exploded — retrying on the next poll/);
   assert.equal(r.status().restartBlocked, undefined, "no latch: repairing the environment must be enough");
   assert.equal(await r.poll(HEAD_B, IDLE, true), "hold", "the next poll re-attempts without main moving");

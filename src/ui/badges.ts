@@ -4,8 +4,8 @@ import { MODEL_TIERS } from "../config/config-schema.js";
 import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
-import { clockHm, humanAgo, humanUntil } from "../text/datetime.js";
-import { commitsBehindPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
+import { clockHm, humanAgo, humanSince, humanUntil } from "../text/datetime.js";
+import { commitsBehindPhrase, pauseReasonSuffix, plural, restartHoldPhrase, restartHoldStagePhrase } from "../text/phrases.js";
 import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 
 /** The status header's BADGE fragments, phrased once for both observer surfaces: the terminal
@@ -23,14 +23,14 @@ import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
  * A stale build also says what auto-restart is doing about it: a cooldown-deferred restart
  * (the reason literally opens with "cooldown until …") scopes the wait to the redeploy — the
  * team keeps running the stale build, so the badge reads "work continues" and keeps the
- * deadline; `restart pending` (the drain that precedes the swap, which actually holds new runs
- * and merges) resolves itself; `restart BLOCKED` never will until main moves. Telling them apart
- * at a glance is the whole point (see BuildStatus.restartBlocked). A build that is current against
- * the newest commit that passed main's check, while main's tip has moved its code on, says the
- * update waits for that check (BuildStatus.waitingForCheck) — otherwise nothing tells the
- * operator why the team stays on an old build. Empty when the dist carries no stamp. Shared by
- * the TUI/status header and the GUI's. */
-export function buildBadge(build: StatusSnapshot["build"]): string {
+ * deadline; a pending restart HOLDS new runs, says which step it waits on and for how long
+ * (restartHoldText), and resolves itself; `restart BLOCKED` never will until main moves. Telling
+ * them apart at a glance is the whole point (see BuildStatus.restartBlocked). A build that is
+ * current against the newest commit that passed main's check, while main's tip has moved its code
+ * on, says the update waits for that check (BuildStatus.waitingForCheck) — otherwise nothing
+ * tells the operator why the team stays on an old build. Empty when the dist carries no stamp.
+ * Shared by the TUI/status header and the GUI's. */
+export function buildBadge(build: StatusSnapshot["build"], now = Date.now()): string {
   if (!build) return "";
   const waiting = build.waitingForCheck;
   const stale = build.stale
@@ -44,9 +44,30 @@ export function buildBadge(build: StatusSnapshot["build"]): string {
       ? ` — restarts after cooldown; work continues (${build.restartBlocked})`
       : `; restart blocked: ${build.restartBlocked}`
     : build.restartPending
-      ? " — restarts when idle"
+      ? ` — ${restartHoldText(build, now) ?? "restart pending"}`
       : "";
   return `, build ${shortSha(build.sha)}${stale}${restart}`;
+}
+
+/** A self-redeploy's hold as one sentence — `holding new runs: checking main 21b55874 before
+ * restarting (5m)`, the parenthetical how long the hold has been in that step — or null when no
+ * hold is published (BuildStatus.restartHold; an older orchestrator, or a pending restart that
+ * is not holding because auto-restart is off). The build badge carries it, and the payload ships
+ * it to the GUI sidebar's hold row, so the two cannot drift. Without it a team held behind a
+ * 5–15 minute check of main showed every role idle beside "restarts when idle" (2026-10-30). */
+export function restartHoldText(build: StatusSnapshot["build"], now: number): string | null {
+  const hold = build?.restartPending ? build.restartHold : undefined;
+  if (!hold) return null;
+  return restartHoldPhrase(hold.stage, build?.checkedHead, hold.runs, humanSince(hold.since, now));
+}
+
+/** An idle role's state cell while a self-redeploy holds new runs: `waiting: update — checking
+ * main 21b55874`. No elapsed time — the header badge carries it — so the cell does not tick
+ * while nothing about the role changes. Undefined when no hold is published. */
+export function restartHoldRolePhase(build: StatusSnapshot["build"]): string | undefined {
+  const hold = build?.restartPending ? build.restartHold : undefined;
+  if (!hold) return undefined;
+  return `waiting: update — ${restartHoldStagePhrase(hold.stage, build?.checkedHead, hold.runs)}`;
 }
 
 /** The counts fragment of main's check, phrased once for every surface that renders it:

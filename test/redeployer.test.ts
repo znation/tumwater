@@ -107,10 +107,12 @@ test("the happy path: hold through the green check and compile, then restart whe
   await settle();
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 2, directorInFlight: 0 }, true), "hold", "green: the compile starts");
   assert.deepEqual(f.calls.compile, [HEAD_B]);
-  assert.deepEqual(types(), ["build_stale", "restart_pending"]);
+  // One restart_pending as the hold begins (checking main) and one as the compile starts.
+  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_pending"]);
   f.compiled(true);
   await settle();
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 2, directorInFlight: 0 }, true), "hold", "compiled but runs still in flight");
+  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_pending", "restart_pending"], "the drain is a step of its own");
   assert.deepEqual(f.calls.swap, []);
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "restart", "idle: swap and go");
   assert.deepEqual(f.calls.swap, [HEAD_B]);
@@ -119,6 +121,64 @@ test("the happy path: hold through the green check and compile, then restart whe
   assert.equal(restart.from, BUILD.sha);
   assert.equal(restart.to, HEAD_B);
   assert.equal(restart.abortedRuns, 0);
+});
+
+test("a hold publishes which step holds new runs and since when, and logs each step once", async () => {
+  // 2026-10-30: a resumed team sat behind a 5–15 minute check of main with every role idle and
+  // only "restarts when idle" in the header, and nothing in the feed until the compile started.
+  // status() now names the step (BuildStatus.restartHold) and each step entered logs one
+  // restart_pending carrying its stage.
+  const f = fakeDeps();
+  const { r, events } = harness(f.deps);
+  const t0 = 1_000_000;
+  const busy = { roleInFlight: 2, directorInFlight: 1 };
+  assert.equal(await r.poll(HEAD_B, busy, true, t0), "hold");
+  assert.deepEqual(r.status(t0).restartHold, { stage: "checking", since: t0 });
+  assert.equal(await r.poll(HEAD_B, busy, true, t0 + 60_000), "hold");
+  assert.deepEqual(r.status().restartHold, { stage: "checking", since: t0 }, "a step keeps the time it began");
+  f.green(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, busy, true, t0 + 5 * 60_000), "hold");
+  assert.deepEqual(r.status().restartHold, { stage: "compiling", since: t0 + 5 * 60_000 });
+  f.compiled(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, busy, true, t0 + 7 * 60_000), "hold");
+  assert.deepEqual(
+    r.status().restartHold,
+    { stage: "finishing", since: t0 + 7 * 60_000, runs: 3 },
+    "role and director runs both hold the swap",
+  );
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 1, directorInFlight: 0 }, true, t0 + 8 * 60_000), "hold");
+  assert.deepEqual(
+    r.status().restartHold,
+    { stage: "finishing", since: t0 + 7 * 60_000, runs: 1 },
+    "the count follows the drain; the step's start does not move",
+  );
+  assert.deepEqual(
+    events.filter((e) => e.type === "restart_pending").map((e) => [e.stage, e.head, e.runs, e.prewarmed]),
+    [
+      ["checking", HEAD_B, undefined, undefined],
+      ["compiling", HEAD_B, undefined, undefined],
+      ["finishing", HEAD_B, 3, undefined],
+    ],
+    "one event per step entered, not one per poll",
+  );
+  assert.equal(await r.poll(HEAD_B, IDLE, true, t0 + 9 * 60_000), "restart");
+});
+
+test("a hold that ends takes its step off status: a red verdict, a moved main's fresh check", async () => {
+  const f = fakeDeps();
+  const { r } = harness(f.deps);
+  assert.equal(await r.poll(HEAD_B, IDLE, true, 1_000), "hold");
+  assert.equal(r.status().restartHold?.stage, "checking");
+  f.green(false);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, IDLE, true, 2_000), "none");
+  assert.equal(r.status().restartHold, undefined, "blocked: nothing is held any more");
+  assert.equal(await r.poll(HEAD_C, IDLE, true, 3_000), "hold");
+  assert.deepEqual(r.status().restartHold, { stage: "checking", since: 3_000 }, "the new head's hold starts its own step");
+  assert.equal(await r.poll(HEAD_C, IDLE, false, 4_000), "none");
+  assert.equal(r.status().restartHold, undefined, "auto-restart switched off mid-hold: no hold is claimed");
 });
 
 test("the drain cap aborts in-flight runs: restart anyway, counting them", async () => {
@@ -240,7 +300,8 @@ test("a red main blocks the restart for that head with one warning; a moved main
   f.green(false);
   await settle();
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
-  assert.deepEqual(types(), ["build_stale", "restart_blocked", "warning"]);
+  // The hold began (and said so) while the check ran; the red verdict ends it.
+  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_blocked", "warning"]);
   assert.match(String(events.at(-1)!.message), /is red — holding the restart/);
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none", "blocked: no second green check for the same head");
   assert.deepEqual(f.calls.green, [HEAD_B]);
@@ -253,7 +314,11 @@ test("a red main blocks the restart for that head with one warning; a moved main
   assert.equal(r.status().restartBlocked, undefined, "the new head starts clean");
   assert.equal(r.status().restartPending, true);
   assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C]);
-  assert.deepEqual(types(), ["build_stale", "restart_blocked", "warning"], "still stale relative to the same build: no second build_stale");
+  assert.deepEqual(
+    types(),
+    ["build_stale", "restart_pending", "restart_blocked", "warning", "restart_pending"],
+    "still stale relative to the same build: no second build_stale, and the new head's hold says so",
+  );
 });
 
 test("a failed compile keeps the old build running and warns once", async () => {
@@ -266,7 +331,7 @@ test("a failed compile keeps the old build running and warns once", async () => 
   f.compiled(false, "tsc exited 2: src/x.ts(1,1): error TS1005");
   await settle();
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
-  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_blocked", "warning"]);
+  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_pending", "restart_blocked", "warning"]);
   assert.match(String(events.at(-1)!.message), /the update to bbbbbbbb failed to build — staying on version aaaaaaaa: tsc exited 2/);
   assert.equal(r.status().restartBlocked, "the update to bbbbbbbb failed to build");
   assert.deepEqual(f.calls.swap, []);
@@ -663,9 +728,9 @@ test("a toolchain-broken suite leaves no latched block: the skip reads as green 
   assert.equal(await r.poll(head, IDLE, true), "hold");
   // The real check runs a full `npm run` — poll as the orchestrator would until the green
   // check settles and the compile starts. Pre-fix the second poll answered "none" with a
-  // latched "main is red" instead of ever reaching restart_pending.
+  // latched "main is red" instead of ever reaching the compile.
   const started = Date.now();
-  while (!events.some((e) => e.type === "restart_pending")) {
+  while (!events.some((e) => e.type === "restart_pending" && e.stage === "compiling")) {
     assert.equal(await r.poll(head, IDLE, true), "hold", "no block while the green check settles");
     if (Date.now() - started > 60_000) throw new Error("green check did not settle in time");
     await settle();

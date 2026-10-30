@@ -60,6 +60,8 @@ test("the gate is asked again right before the swap: a successor that stops boot
     },
   });
   const { r, types } = harness(f.deps, true, 60_000);
+  // One restart_pending per step the hold entered: checking main, compiling, finishing runs.
+  const HOLD_STEPS = ["restart_pending", "restart_pending", "restart_pending"];
   const busy = { roleInFlight: 1, directorInFlight: 0 };
   let t = 1_000_000;
   assert.equal(await r.poll(HEAD_B, busy, true, t), "hold");
@@ -75,13 +77,13 @@ test("the gate is asked again right before the swap: a successor that stops boot
   problem = NOT_INITIALIZED_MESSAGE;
   assert.equal(await r.poll(HEAD_B, IDLE, true, (t += 10)), "none", "drained, but the successor could not boot: no swap");
   assert.deepEqual(f.calls.swap, []);
-  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_refused"]);
+  assert.deepEqual(types(), ["build_stale", ...HOLD_STEPS, "restart_refused"]);
 
   // While it stays unbootable nothing is held and no episode restarts: no green check, no event.
   assert.equal(await r.poll(HEAD_B, busy, true, (t += 10)), "none");
   assert.equal(await r.poll(HEAD_B, busy, true, (t += 10)), "none");
   assert.equal(f.calls.green.length, 1);
-  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_refused"]);
+  assert.deepEqual(types(), ["build_stale", ...HOLD_STEPS, "restart_refused"]);
 
   // Repaired: a fresh, full episode — with a drain of its own, not the refused one's clock.
   problem = null;

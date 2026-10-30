@@ -1,4 +1,4 @@
-import type { BuildInfo, BuildStaleness, BuildStatus } from "../build/build-info.js";
+import type { BuildInfo, BuildStaleness, BuildStatus, RestartHold, RestartHoldStage } from "../build/build-info.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
 import type { CompileResult } from "../build/build-stage.js";
 import type { HarnessEventInput } from "../events/events.js";
@@ -54,6 +54,11 @@ export function bestEffortLog(log: (event: RedeployEvent) => void): (event: Rede
   };
 }
 
+/** The runs a drain waits for: role and director runs alike hold the restart back. */
+function runsInFlight(inFlight: InFlightCounts): number {
+  return inFlight.roleInFlight + inFlight.directorInFlight;
+}
+
 /** The redeploy state machine — one per orchestrator process. `poll` is called every scheduler
  * cycle with main's current head and how many role/director runs are in flight, and returns what
  * to do; it never throws and never awaits anything slower than a git query. */
@@ -85,13 +90,17 @@ export class Redeployer {
    * compile — neither is a verdict about the tree) — one warning per episode, mirroring
    * checkFailedHead. */
   private compileFailedHead: string | null = null;
-  /** The head whose compile start already logged `restart_pending` — one in-progress state
-   * event per head, not one per doomed retry: a rejection drops the episode and the next poll
-   * starts a fresh one, which would otherwise re-emit "compiling" on every poll while the
-   * environment stays broken (BUGS.md 2026-09-28). Cleared when an episode ends in a state
-   * other than compiling (a refusal or a completed restart), so a later episode for the same
-   * head is a real transition again. */
-  private pendingLoggedHead: string | null = null;
+  /** The hold stages that already logged `restart_pending` for one head — one in-progress state
+   * event per head and stage, not one per doomed retry: a rejection drops the episode and the
+   * next poll starts a fresh one, which would otherwise re-emit "checking" and "compiling" on
+   * every poll while the environment stays broken (BUGS.md 2026-09-28). Cleared when an episode
+   * ends in a state other than a hold (a refusal or a completed restart), so a later episode for
+   * the same head is a real transition again. */
+  private loggedHold: { head: string; stages: Set<RestartHoldStage> } | null = null;
+  /** The stage the current hold is in and when it entered it — status() publishes it as
+   * BuildStatus.restartHold, so a held team says what it is waiting on instead of showing every
+   * role idle (2026-10-30). Null whenever poll is not holding. */
+  private holdStage: RestartHold | null = null;
   /** A head whose restart was blocked (red main, compile failure, swap error): no retry until
    * main moves — the warning was logged once. */
   private blockedHead: string | null = null;
@@ -200,8 +209,10 @@ export class Redeployer {
       // that gap is what let a blocked restart sit unnoticed while the team ran on stale
       // code (BUGS.md). Mutually exclusive by construction — block() clears the pending head,
       // and an episode cannot start inside the cooldown, so no two branches can hold at once.
-      if (this.pendingHead === this.lastHead) s.restartPending = true;
-      else if (this.blockedHead === this.lastHead && this.blockedReason) s.restartBlocked = this.blockedReason;
+      if (this.pendingHead === this.lastHead) {
+        s.restartPending = true;
+        if (this.holdStage) s.restartHold = { ...this.holdStage };
+      } else if (this.blockedHead === this.lastHead && this.blockedReason) s.restartBlocked = this.blockedReason;
       // Inside the post-restart cooldown the team deliberately keeps running on the stale build
       // — say so with a deadline, through the same channel as a refused restart
       // (BUGS.md 2026-09-11).
@@ -311,9 +322,9 @@ export class Redeployer {
     if (cooldown !== null) return cooldown;
     const start = await this.startEpisode(mainHead, inFlight, now);
     if (start !== null) return start;
-    const green = this.greenStage(mainHead, now);
+    const green = this.greenStage(mainHead, now, inFlight);
     if (green !== null) return green;
-    const compile = this.compileStage(mainHead, now);
+    const compile = this.compileStage(mainHead, now, inFlight);
     if (compile !== null) return compile;
     return this.drainAndSwap(mainHead, inFlight, now);
   }
@@ -437,18 +448,40 @@ export class Redeployer {
       // lapse reaches the swap directly instead of paying green-check + compile from zero.
       this.green = this.probes.adoptGreen(mainHead);
       this.compiled = this.probes.adoptCompile(mainHead);
-      // An adopted compile skips the `!this.compiled` branch below, the only other place the
-      // hold is announced, so say it here or the episode logs nothing until `restart`.
-      if (this.compiled) this.logRestartPending(mainHead);
-      return "hold";
+      // Announce the hold the moment it begins, in the stage the adopted verdicts put it in: the
+      // check of main can take 5–15 minutes, and a hold that logged nothing until its compile
+      // started left a resumed team idle with no word of why (2026-10-30). An adopted compile
+      // skips compileStage's start, so the event says it came from the pre-warm.
+      return this.hold(mainHead, this.openingStage(), now, runsInFlight(inFlight), this.compiled !== null);
     }
     return null;
   }
 
+  /** The stage a hold opens in, from the verdicts the episode adopted: a check still running
+   * (or one the next poll will drop or block on) is `checking`; a green check with no finished
+   * compile is `compiling` (compileStage starts one on the next poll when none was adopted); an
+   * adopted compile that already finished leaves only the drain. */
+  private openingStage(): RestartHoldStage {
+    if (!this.green?.done || this.green.error || this.green.result !== true) return "checking";
+    return this.compiled?.done ? "finishing" : "compiling";
+  }
+
+  /** Hold new runs in `stage`: record the stage and when it began for status(), and log
+   * `restart_pending` on entering it (once per head and stage — see loggedHold). `runs` is the
+   * in-flight count a drain waits on, refreshed on every poll. */
+  private hold(mainHead: string, stage: RestartHoldStage, now: number, runs: number, prewarmed = false): "hold" {
+    if (this.holdStage?.stage !== stage) {
+      this.holdStage = { stage, since: now };
+      this.logHoldStage(mainHead, stage, runs, prewarmed);
+    }
+    if (stage === "finishing") this.holdStage.runs = runs;
+    return "hold";
+  }
+
   /** The green check: hold while it is unresolved, drop the episode when it could not run, block
    * when it returns a red verdict. Returns null (proceed to compile) only on a green verdict. */
-  private greenStage(mainHead: string, now: number): RedeployAction | null {
-    if (!this.green?.done) return "hold";
+  private greenStage(mainHead: string, now: number, inFlight: InFlightCounts): RedeployAction | null {
+    if (!this.green?.done) return this.hold(mainHead, "checking", now, runsInFlight(inFlight));
     // A REJECTED check is not a verdict: it could not run (git broke inside the mirror worktree,
     // or the check itself threw), so it says nothing about the tree. Drop the pending head — no
     // blockedHead, no latched "main is red" — warn once per episode, and let the next poll
@@ -474,13 +507,13 @@ export class Redeployer {
   /** The compile stage: kick off (or hold on) the staged build, and on a verdict block or drop the
    * episode when the tree failed to build. Returns null (proceed to drain) only on a successful
    * compile. */
-  private compileStage(mainHead: string, now: number): RedeployAction | null {
+  private compileStage(mainHead: string, now: number, inFlight: InFlightCounts): RedeployAction | null {
     if (!this.compiled) {
-      this.compiled = this.probes.adoptCompile(mainHead) ?? track(this.deps.compile(mainHead));
-      this.logRestartPending(mainHead);
-      return "hold";
+      const adopted = this.probes.adoptCompile(mainHead);
+      this.compiled = adopted ?? track(this.deps.compile(mainHead));
+      return this.hold(mainHead, "compiling", now, runsInFlight(inFlight), adopted !== null);
     }
-    if (!this.compiled.done) return "hold";
+    if (!this.compiled.done) return this.hold(mainHead, "compiling", now, runsInFlight(inFlight));
     const c = this.compiled.result;
     if (!c?.ok) {
       const detail = c?.detail ?? this.compiled.error ?? "compile threw";
@@ -525,8 +558,9 @@ export class Redeployer {
     // an explicit human prompt and outranks the redeploy — while one is in flight the hold has no
     // time cap: no swap and no abort until it finishes. The per-run watchdogs already bound how
     // long one run can take, so this cannot hang the team beyond what a single run can do.
-    if (inFlight.directorInFlight > 0) return "hold";
-    if (inFlight.roleInFlight > 0 && now - this.drainSince < this.drainWindowMs) return "hold";
+    if (inFlight.directorInFlight > 0) return this.hold(mainHead, "finishing", now, runsInFlight(inFlight));
+    if (inFlight.roleInFlight > 0 && now - this.drainSince < this.drainWindowMs)
+      return this.hold(mainHead, "finishing", now, runsInFlight(inFlight));
     // Ask the startup gate once more, right before the point of no return: the environment can
     // change during a long drain — a merge already in flight when the hold began can still
     // delete tumwater.json (the 2026-09-22 incident's own cause). Refused, the episode is
@@ -572,8 +606,8 @@ export class Redeployer {
       abortedRuns: inFlight.roleInFlight,
       finishWindowMs: this.drainWindowMs,
     });
-    // The state stream left "compiling"; a later episode for this same head is a new transition.
-    this.pendingLoggedHead = null;
+    // The state stream left the hold; a later episode for this same head is a new transition.
+    this.loggedHold = null;
     return "restart";
   }
 
@@ -582,21 +616,27 @@ export class Redeployer {
    * poll that is not a `hold` goes through here. */
   private endDrain(): "none" {
     this.drainSince = 0;
+    this.holdStage = null;
     return "none";
   }
 
-  // Once per head, not once per episode: a rejected compile drops the episode and the next
-  // poll starts a fresh one, and a state stream that re-enters "compiling" it never left
-  // is noise on top of the missing terminal event (BUGS.md 2026-09-28).
-  private logRestartPending(mainHead: string): void {
-    if (this.pendingLoggedHead === mainHead) return;
-    this.pendingLoggedHead = mainHead;
+  // Once per head and stage, not once per episode: a rejected compile drops the episode and
+  // the next poll starts a fresh one, and a state stream that re-enters a stage it never left
+  // is noise on top of the missing terminal event (BUGS.md 2026-09-28). `prewarmed` marks a
+  // stage entered with the cooldown's pre-warmed compile adopted rather than started here.
+  private logHoldStage(mainHead: string, stage: RestartHoldStage, runs: number, prewarmed: boolean): void {
+    if (this.loggedHold?.head !== mainHead) this.loggedHold = { head: mainHead, stages: new Set() };
+    if (this.loggedHold.stages.has(stage)) return;
+    this.loggedHold.stages.add(stage);
     this.log({
       source: TUMWATER_SOURCE,
       type: "restart_pending",
       build: this.build.sha,
       head: mainHead,
       aheadCommits: this.staleness?.aheadCommits ?? 0,
+      stage,
+      ...(stage === "finishing" ? { runs } : {}),
+      ...(prewarmed ? { prewarmed: true } : {}),
     });
   }
 
@@ -618,9 +658,9 @@ export class Redeployer {
       this.refusedReason = reason;
       this.log({ source: TUMWATER_SOURCE, type: "restart_refused", from: this.build.sha, to: head, reason });
     }
-    // The state stream left "compiling" via the refusal event; a later episode for the same
+    // The state stream left the hold via the refusal event; a later episode for the same
     // head — the gate re-asked after the environment was repaired — is a new transition.
-    this.pendingLoggedHead = null;
+    this.loggedHold = null;
     return this.endDrain();
   }
 
@@ -628,6 +668,7 @@ export class Redeployer {
     this.pendingHead = null;
     this.green = null;
     this.compiled = null;
+    this.holdStage = null;
   }
 
   /** Refuse the restart for `head` until main moves: `reason` is the short form status()

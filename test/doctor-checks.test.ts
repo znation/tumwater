@@ -852,6 +852,16 @@ test("checkBuild reports an unstamped dist, a foreign harness, a matching build,
   const pending = await checkBuild(repo, here, undefined, { ...running, restartPending: true });
   assert.match(pending.detail, /auto-restart is under way/);
   assert.doesNotMatch(pending.detail, /npm run build/);
+  // A held team: doctor names the step the hold is in, like the build badge (2026-10-30).
+  const held = await checkBuild(repo, here, undefined, {
+    ...running,
+    restartPending: true,
+    restartHold: { stage: "checking", since: Date.now() - 6 * 60_000 },
+  });
+  assert.match(
+    held.detail,
+    new RegExp(`auto-restart is under way — holding new runs: checking main ${head.slice(0, 8)} before restarting \\(6m\\)$`),
+  );
   const blocked = await checkBuild(repo, here, undefined, { ...running, restartBlocked: "main deadbeef is red" });
   assert.equal(blocked.level, "warn");
   assert.match(blocked.detail, /auto-restart is BLOCKED \(main deadbeef is red\) and will not retry until main moves/);

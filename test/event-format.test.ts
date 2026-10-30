@@ -610,8 +610,22 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   assert.match(stale, /update available \(12 commits behind\) — restarts after cooldown; work continues/);
   assert.doesNotMatch(stale, /warning/, "staleness is a state, not a warning");
 
+  // A stage-less restart_pending predates the hold-begin event: it was logged as the compile
+  // started, so it keeps its old line.
   const pending = formatEvent({ ts: 0, source: "tumwater", type: "restart_pending", head: "b".repeat(40) } as never);
   assert.match(pending, /restart pending — main bbbbbbbb is green; finishing current runs/);
+  // One line per step the hold enters (2026-10-30), in the build badge's words.
+  const step = (fields: object) =>
+    formatEvent({ ts: 0, source: "tumwater", type: "restart_pending", head: "b".repeat(40), ...fields } as never);
+  assert.match(step({ stage: "checking" }), /restart pending — holding new runs: checking main bbbbbbbb before restarting$/);
+  assert.match(step({ stage: "compiling" }), /restart pending — holding new runs: compiling bbbbbbbb before restarting$/);
+  assert.match(step({ stage: "finishing", runs: 2 }), /restart pending — holding new runs: finishing 2 runs before restarting$/);
+  assert.match(
+    step({ stage: "compiling", prewarmed: true }),
+    /holding new runs: compiling bbbbbbbb before restarting \(pre-warmed during the cooldown\)$/,
+    "a hold that adopted the cooldown's compile says so",
+  );
+  assert.match(step({ stage: "finishing", runs: "x" }), /holding new runs: finishing current runs before restarting$/, "a torn count");
 
   const restart = formatEvent({
     ts: 0, source: "tumwater", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: 5 * 60_000, abortedRuns: 2,

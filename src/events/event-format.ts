@@ -2,7 +2,7 @@ import { eventRole, eventRun, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
-import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, commitsBehindPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
+import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, commitsBehindPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, restartHoldStagePhrase, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { isNonBlankString, joinWithMore, squash, textOr, truncate } from "../text/text.js";
@@ -644,7 +644,14 @@ function imageRestartEventMessage(e: HarnessEvent): string {
       // it.
       return `update available (${commitsBehindPhrase(e.aheadCommits)}) — restarts after cooldown; work continues`;
     case "restart_pending":
-      return `restart pending — main ${shortSha(e.head)} is green; finishing current runs (no new runs start)`;
+      // A self-redeploy holding new runs, one line per step it enters (BuildStatus.restartHold):
+      // the step phrase is the build badge's own (restartHoldStagePhrase). A stage-less event
+      // predates the hold-begin event and was logged as the compile started.
+      if (e.stage === undefined)
+        return `restart pending — main ${shortSha(e.head)} is green; finishing current runs (no new runs start)`;
+      return `restart pending — holding new runs: ${restartHoldStagePhrase(e.stage, e.head, e.runs)} before restarting${
+        e.prewarmed === true ? " (pre-warmed during the cooldown)" : ""
+      }`;
     case "restart": {
       const aborted = finiteNumber(e.abortedRuns, 0);
       return `restarting onto update ${shortSha(e.to)} (finished current work in ${minutes(e.finishedMs)}m${

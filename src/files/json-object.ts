@@ -66,7 +66,8 @@ export function finiteNumber<T>(value: unknown, fallback: T): number | T {
  * pi-extension/context-budget.ts's
  * contextNote (usedTokens, usedWindow → null), pi-extension/context-shake.ts's percentOf
  * (tokens, contextWindow → null), merge/merge-queue.ts's isMergeEntry (run, enqueuedAt,
- * revisionRound → null), git/slots-state.ts's isSlotLease (since, pid → null); and
+ * revisionRound → null), git/slots-state.ts's isSlotLease (since, pid → null),
+ * text/phrases.ts's restartHoldStagePhrase (a drain's run count → null); and
  * agent/claude/claude-stream.ts's canonicalUsage (each wire usage
  * number → 0) and its result/retry/rate-limit reads (api_error_status, attempt,
  * maxAttempts, error_status, resetsAt, utilization, total_cost_usd → undefined). */

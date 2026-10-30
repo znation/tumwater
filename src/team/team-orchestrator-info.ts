@@ -1,5 +1,5 @@
 import type { ModelTier } from "../config/config-schema.js";
-import type { BuildStatus } from "../build/build-info.js";
+import { type BuildStatus, type RestartHold, RESTART_HOLD_STAGES } from "../build/build-info.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
@@ -236,10 +236,22 @@ function parseBuild(v: unknown): BuildStatus | undefined {
   if (typeof v.checkedHead === "string") build.checkedHead = v.checkedHead;
   if (typeof v.restartPending === "boolean") build.restartPending = v.restartPending;
   if (typeof v.restartBlocked === "string") build.restartBlocked = v.restartBlocked;
+  const hold = parseRestartHold(v.restartHold);
+  if (hold) build.restartHold = hold;
   const waiting = v.waitingForCheck;
   if (isJsonObject(waiting) && typeof waiting.head === "string" && isFiniteNumber(waiting.aheadCommits))
     build.waitingForCheck = { head: waiting.head, aheadCommits: waiting.aheadCommits };
   return build;
+}
+
+/** The published self-redeploy hold, or undefined for any foreign shape: a known stage and a
+ * finite `since`; a `runs` that is not a finite number is dropped (the render reads "current
+ * runs") rather than dropping the hold. */
+function parseRestartHold(v: unknown): RestartHold | undefined {
+  if (!isJsonObject(v) || !isFiniteNumber(v.since)) return undefined;
+  const stage = RESTART_HOLD_STAGES.find((s) => s === v.stage);
+  if (!stage) return undefined;
+  return { stage, since: v.since, ...(isFiniteNumber(v.runs) ? { runs: v.runs } : {}) };
 }
 
 /** The published permit snapshot, or undefined for any foreign shape. */

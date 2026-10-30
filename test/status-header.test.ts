@@ -151,8 +151,25 @@ test("the header names the running build and flags a stale one", () => {
   assert.match(headerOf(renderStatus("/tmp/x", stale)), /build aaaaaaaa — update available \(7 commits behind\)/);
   // A stale build also says what auto-restart made of it: pending resolves itself, BLOCKED
   // never will until main moves, and only the second one needs an operator (BUGS.md).
+  // A pending restart HOLDS new runs: the badge names the step and how long it has lasted, so a
+  // held team is not mistaken for a stuck one (2026-10-30). A pending restart that publishes no
+  // step (an older orchestrator, or auto-restart switched off mid-hold) claims no hold.
   const pending = { ...stale.build, restartPending: true };
-  assert.match(buildBadge(pending), /update available \(7 commits behind\) — restarts when idle$/);
+  assert.match(buildBadge(pending), /update available \(7 commits behind\) — restart pending$/);
+  const now = 10 * 60_000;
+  const held = (restartHold: object) => buildBadge({ ...pending, restartHold } as typeof pending, now);
+  assert.match(
+    held({ stage: "checking", since: now - 5 * 60_000 }),
+    /behind\) — holding new runs: checking main bbbbbbbb before restarting \(5m\)$/,
+  );
+  assert.match(held({ stage: "compiling", since: now - 90_000 }), /— holding new runs: compiling bbbbbbbb before restarting \(2m\)$/);
+  assert.match(held({ stage: "finishing", since: now - 30_000, runs: 3 }), /— holding new runs: finishing 3 runs before restarting \(30s\)$/);
+  assert.match(held({ stage: "finishing", since: now, runs: 1 }), /— holding new runs: finishing 1 run before restarting \(0s\)$/);
+  assert.match(
+    headerOf(renderStatus("/tmp/x", { ...stale, build: { ...pending, restartHold: { stage: "checking", since: Date.now() } } })),
+    /build aaaaaaaa — update available \(7 commits behind\) — holding new runs: checking main bbbbbbbb before restarting \(0s\)/,
+    "the TUI/status header carries the hold",
+  );
   // A cooldown-deferred restart is the plan's whole point: the redeploy waits, the team does
   // not — the badge says "work continues" and keeps the deadline, while a genuinely blocked
   // restart (red main here) keeps the plain wording (PLANS.md 2026-10-23).

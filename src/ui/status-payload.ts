@@ -11,7 +11,7 @@ import { contextShareLabel } from "../text/format.js";
 import { queueEntryMergeLabel } from "../merge/merge-queue-render.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
-import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, permitsBadge, checksBadge, quietBadge, restartHoldText, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts } from "./team-alerts.js";
@@ -175,7 +175,12 @@ function headerFields(root: string, snap: ReturnType<typeof snapshot>, now: numb
     // string the TUI/status table renders. Sent display-ready (like phase and events) because
     // the page is browser JS that cannot import TypeScript, and this multi-branch text must
     // not be re-derived client-side where it could drift from the TUI header.
-    buildBadge: buildBadge(snap.build),
+    buildBadge: buildBadge(snap.build, now),
+    // A self-redeploy's hold as the sidebar's own row (badges.ts's restartHoldText, the same
+    // sentence the build badge ends with): `holding new runs: checking main 21b55874 before
+    // restarting (5m)`. Null when no hold stands — a held team otherwise showed every role idle
+    // with the reason buried in the version row's tooltip (2026-10-30).
+    restartHoldBadge: restartHoldText(snap.build, now),
     // The header's daily-cost-budget badge preformatted through badges.ts's budgetBadge —
     // the same string the TUI/status table renders (n/a for an all-free team; `· no cap`
     // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.

@@ -154,6 +154,27 @@ test("readOrchestratorInfo drops nested fields with a foreign shape and keeps we
   assert.equal(ok?.providerHolds, undefined, "a non-array providerHolds drops");
 });
 
+test("readOrchestratorInfo keeps a well-formed restartHold and drops a foreign one", () => {
+  // BuildStatus.restartHold (2026-10-30): the step a self-redeploy's hold is in. A foreign stage
+  // or since drops the hold; a foreign run count drops only the count (the render reads
+  // "current runs").
+  const root = tmpdir();
+  const file = orchestratorStatePath(root);
+  ensureParentDir(file);
+  const build = { sha: "abcdef012345", builtAt: 100, stale: true, aheadCommits: 2, checkedHead: "0123456789ab", restartPending: true };
+  const read = (restartHold: unknown) => {
+    fs.writeFileSync(file, JSON.stringify({ pid: process.pid, startedAt: 1, roles: [], build: { ...build, restartHold } }));
+    return readOrchestratorInfo(root)?.build;
+  };
+  assert.deepEqual(read({ stage: "finishing", since: 5, runs: 2 })?.restartHold, { stage: "finishing", since: 5, runs: 2 });
+  assert.deepEqual(read({ stage: "checking", since: 5 })?.restartHold, { stage: "checking", since: 5 });
+  assert.deepEqual(read({ stage: "finishing", since: 5, runs: "two" })?.restartHold, { stage: "finishing", since: 5 });
+  assert.equal(read({ stage: "napping", since: 5 })?.restartHold, undefined, "an unknown stage drops");
+  assert.equal(read({ stage: "checking", since: "now" })?.restartHold, undefined, "a foreign since drops");
+  assert.equal(read("checking")?.restartHold, undefined, "a scalar drops");
+  assert.equal(read("checking")?.restartPending, true, "the rest of the build stays");
+});
+
 test("readOrchestratorInfo round-trips a well-formed providerHolds and drops foreign entries", () => {
   const root = tmpdir();
   const file = orchestratorStatePath(root);

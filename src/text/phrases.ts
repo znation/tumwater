@@ -1,5 +1,5 @@
 import path from "node:path";
-import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
+import { finiteNumber, isJsonObject, nonNegativeNumber, stringList } from "../files/json-object.js";
 import { squash } from "./text.js";
 import { shortSha, usd } from "./format.js";
 
@@ -79,6 +79,29 @@ export function agree(n: number, one: string, many: string): string {
 export function commitsBehindPhrase(raw: unknown): string {
   const n = finiteNumber(raw, 0);
   return `${plural(n, "commit")} behind`;
+}
+
+/** What a self-redeploy's hold is waiting on (BuildStatus.restartHold's stage), in the words
+ * every surface shares — `checking main 21b55874`, `compiling 21b55874`, `finishing 3 runs` —
+ * so the build badge and the held roles' rows (badges.ts), doctor's build row, the event feed's
+ * restart_pending line and the failure digest cannot drift. Torn fields degrade like
+ * commitsBehindPhrase's: an unknown stage reads as the check, and an unusable run count as
+ * "current runs". */
+export function restartHoldStagePhrase(stage: unknown, head: unknown, runs?: unknown): string {
+  if (stage === "compiling") return `compiling ${shortSha(head)}`;
+  if (stage === "finishing") {
+    const n = nonNegativeNumber(runs, null);
+    return n === null ? "finishing current runs" : `finishing ${plural(n, "run")}`;
+  }
+  return `checking main ${shortSha(head)}`;
+}
+
+/** The held team's whole sentence — `holding new runs: checking main 21b55874 before restarting
+ * (5m)` — around restartHoldStagePhrase, `elapsed` being how long the hold has been in that step
+ * (the caller's humanSince: datetime.ts imports this module, so it cannot be imported back). The
+ * build badge (badges.ts's restartHoldText) and doctor's build row both say it. */
+export function restartHoldPhrase(stage: unknown, head: unknown, runs: unknown, elapsed: string): string {
+  return `holding new runs: ${restartHoldStagePhrase(stage, head, runs)} before restarting (${elapsed})`;
 }
 
 /** The spine of every phrase naming main's tip as red — `main <short-sha> is red` — built here

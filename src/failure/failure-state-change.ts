@@ -9,7 +9,7 @@ import { truncateExample } from "./failure-cluster.js";
 import { cutSplitsSurrogatePair, isNonBlankString } from "../text/text.js";
 import { isJsonObject, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
-import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, commitsBehindPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, rolePausePhrase, roleResumePhrase, rolesPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
+import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, commitsBehindPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, restartHoldStagePhrase, rolePausePhrase, roleResumePhrase, rolesPhrase, rendersAsBackendFailure, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 
 import { shortSha } from "../text/format.js";
 import { deferredReasonText, untilClockSuffix, gigabytes, windowSuffix, windowResetPhrase, backendLabel } from "../events/event-format.js";
@@ -367,7 +367,11 @@ function updateStateChange(ev: HarnessEvent): string {
       text = `update available (${commitsBehindPhrase(ev.aheadCommits)}) — restart waits; work continues`;
       break;
     case "restart_pending":
-      text = `restart pending — main ${shortSha(ev.head)} green`;
+      // The step the hold entered (restartHoldStagePhrase, the badge's words) — a stage-less
+      // event predates the hold-begin event and was logged as the compile started.
+      text = ev.stage === undefined
+        ? `restart pending — main ${shortSha(ev.head)} green`
+        : `restart pending — ${restartHoldStagePhrase(ev.stage, ev.head, ev.runs)}`;
       break;
     case "restart":
       text = `restarting onto update ${shortSha(ev.to)}`;

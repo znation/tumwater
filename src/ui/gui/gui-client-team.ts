@@ -58,6 +58,13 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
               : waiting ? " · update waits for main's check" : ""),
           localizeInstants(("Running version" + (d.buildBadge || "").replace(/^, build/, "")).trim()));
       }
+      // A self-redeploy holding new runs: its own row, so a held team says what it waits on
+      // (the payload's preformatted restartHoldBadge — badges.ts's restartHoldText, the sentence
+      // the TUI header's build badge ends with) instead of leaving it in the tooltip above.
+      if (d.restartHoldBadge) {
+        rows += row("blue", icon("clock"), esc(capitalize(d.restartHoldBadge)),
+          "No new run starts until the update is checked, compiled and swapped in; runs already under way finish first.");
+      }
       if (d.mainCheck) {
         // Main's newest merge-scope check (status-model's mainCheckBadge): green, red, or — a
         // skipped check — unverified.

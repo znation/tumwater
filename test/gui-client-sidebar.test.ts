@@ -127,6 +127,22 @@ test("a build waiting for main's check reads amber with no restart button", () =
   assert.doesNotMatch(panels.statuschips!, /data-act/, "a forced restart would land on the same build, so no button");
 });
 
+// A self-redeploy holding new runs gets its own row (2026-10-30): the payload's preformatted
+// restartHoldBadge, upcased, so the step and its age read beside the version instead of hiding in
+// its tooltip. No badge, no row.
+test("a held team's sidebar names the hold's step in a row of its own", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  renderSidebar({
+    running: true,
+    pid: 123,
+    build: { sha: "a".repeat(40), stale: true, aheadCommits: 4, restartPending: true },
+    restartHoldBadge: "holding new runs: checking main bbbbbbbb before restarting (5m)",
+  });
+  assert.match(panels.statuschips!, /class='row t-blue'[^>]*><i:clock>Holding new runs: checking main bbbbbbbb before restarting \(5m\)/);
+  renderSidebar({ running: true, pid: 123, build: { sha: "a".repeat(40), stale: true, aheadCommits: 4 }, restartHoldBadge: null });
+  assert.doesNotMatch(panels.statuschips!, /Holding new runs/);
+});
+
 // The disk floor (plans/disk-floor.md, part 4/4): the sidebar renders the payload's
 // preformatted diskBadge — the same string the TUI/status header carries — so the hold reads
 // the same on both dashboards. An empty badge (no disk block, or comfortable space) leaves

@@ -85,7 +85,7 @@ messages, and agent prompts. Each row is a rule a reviewer can check.
 | Disk / bootstrap / maintenance / 429 / backend / claude-window hold | **waiting** ("waiting: low disk", "waiting: maintenance allowance used") |
 | "paused" | Only for a pause you set |
 | "main is red", "main red" | **main's check is failing** |
-| "Build abc · 3 behind", STALE, "self-redeploys", "generation N" | **Update available (3 commits behind) — restarts when idle**, **restart N** |
+| "Build abc · 3 behind", STALE, "self-redeploys", "generation N" | **Update available (3 commits behind)**, and while the restart holds new runs **holding new runs: checking main abc before restarting (5m)** (roles: **waiting: update — checking main abc**), **restart N** |
 | "build" | Only the project's build outputs |
 | "Scheduling tier: 0 (work)" | **Priority: work** |
 | status table column `gen` (tokens the last run generated) | **output** |

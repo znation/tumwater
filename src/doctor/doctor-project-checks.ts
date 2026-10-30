@@ -19,14 +19,14 @@ import { dirEntryNames, statOrNull } from "../files/files.js";
 import { refSha } from "../git/git.js";
 import { STATE_DIR, eventsArchivePath, eventsLogPath } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gates.js";
-import { DAY_MS, dayKey } from "../text/datetime.js";
+import { DAY_MS, dayKey, humanSince } from "../text/datetime.js";
 import { errorMessage } from "../text/text.js";
 import { medianAndMax } from "../collections.js";
 import { formatGB, shortSha } from "../text/format.js";
 import { eventLogState, readEventsSince, type EventLogState } from "../events/event-window.js";
 import { EVENTS_KEEP, type HarnessEvent } from "../events/events.js";
 import { finiteNumber } from "../files/json-object.js";
-import { agree, plural, shortSpanPhrase, trailingDayMedianPhrase } from "../text/phrases.js";
+import { agree, plural, restartHoldPhrase, shortSpanPhrase, trailingDayMedianPhrase } from "../text/phrases.js";
 import { andMore } from "./doctor-backlog.js";
 import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../review/known-flakes.js";
 import { POST_MERGE_REJECT_WINDOW_MS, postMergeChurn } from "../review/post-merge-review.js";
@@ -321,10 +321,15 @@ export async function checkBuild(
   const stale = await buildStaleness(root, info.sha, mainHead);
   if (!stale) return okOutcome(`dist/ from ${sha}`);
   if (stale.stale) {
+    // The step a hold is in, so an operator asking doctor why every role is idle reads it too.
+    const hold = running?.restartHold;
+    const held = hold
+      ? ` — ${restartHoldPhrase(hold.stage, running?.checkedHead, hold.runs, humanSince(hold.since, Date.now()))}`
+      : "";
     const next = running?.restartBlocked
       ? `; auto-restart is BLOCKED (${running.restartBlocked}) and will not retry until main moves or the block clears`
       : running?.restartPending
-        ? "; auto-restart is under way"
+        ? `; auto-restart is under way${held}`
         : running?.waitingForCheck
           ? `; auto-restart waits for a commit that passes main's check — none newer than ` +
             `${shortSha(running.checkedHead ?? info.sha)} has yet (the main's check row says why)`

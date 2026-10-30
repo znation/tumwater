@@ -441,6 +441,18 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.buildBadge, buildBadge(stamp), "one home for the badge text");
   assert.match(payload.buildBadge, /build aaaaaaaa — update available \(7 commits behind\); restart blocked: main cccccccc is red$/);
+  assert.equal((payload as { restartHoldBadge?: unknown }).restartHoldBadge, null, "no hold: no hold row");
+
+  // A held team (2026-10-30): the build badge ends with the hold's step, and the sidebar's own
+  // row gets the same sentence.
+  const held = {
+    sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 7, checkedHead: "b".repeat(40),
+    restartPending: true, restartHold: { stage: "checking", since: Date.now() },
+  };
+  writeOrchestratorMarker(repo, ["clean"], { build: held });
+  const heldPayload = statusPayload(repo) as { buildBadge: string; restartHoldBadge: string | null };
+  assert.equal(heldPayload.restartHoldBadge, "holding new runs: checking main bbbbbbbb before restarting (0s)");
+  assert.ok(heldPayload.buildBadge.endsWith(` — ${heldPayload.restartHoldBadge}`), "the badge and the row say the same thing");
 });
 
 // The operator pause on the GUI surface: /api/status — and

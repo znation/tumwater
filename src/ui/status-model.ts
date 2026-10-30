@@ -17,6 +17,7 @@ import {
   workingDetail,
 } from "./run-progress-model.js";
 import { mergeChanges, MERGE_STAGE_LABELS, type MergeChange } from "../merge/merge-slot.js";
+import { restartHoldRolePhase } from "./badges.js";
 
 /** The status DISPLAY MODEL: the role's cycle position (the phase ladder), its merge cell,
  * and its per-role row derivation (the header badges live next door in badges.ts, the
@@ -125,6 +126,7 @@ export function rolePhase(
   bootstrapHeld = false,
   maintenanceQuotaHold?: string,
   pausedUntilMs?: number,
+  restartHold?: string,
 ): string {
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven merge label: only a role whose change record was
@@ -203,6 +205,12 @@ export function rolePhase(
   // the budget pause (ROLE_RANK_RULES). In-flight runs keep their live detail above, exactly
   // as under every autonomous gate.
   if (diskHeld) return "waiting: low disk";
+  // A self-redeploy holding new runs (BuildStatus.restartHold): no role starts until the update
+  // is checked, compiled and swapped in, so an idle role names that wait and its step —
+  // preformatted by badges.ts's restartHoldRolePhase — instead of reading as an ordinary idle
+  // while the whole team stands still (2026-10-30). Ranked after the disk floor: that one
+  // needs the operator, this one ends on its own.
+  if (restartHold) return restartHold;
   // New-project bootstrap (plans/work-ratio.md, part 2/2): the idle role is held until enough
   // plans are Done. The literal label names the reason, like the gates above.
   if (bootstrapHeld) return "waiting: bootstrap";
@@ -360,6 +368,9 @@ export function roleRowCells(
     // (in `pausedRoles`) and not under a team-wide pause, matching the GUI's phaseDetail
     // guard, so the team pause (whose countdown rides the header badge) never double-appends.
     snap.paused || !snap.pausedRunners.includes(s.role) ? undefined : snap.pausedRolesUntil,
+    // The self-redeploy's hold (BuildStatus.restartHold): an idle role reads `waiting: update —
+    // <step>` while no new run may start.
+    restartHoldRolePhase(snap.build),
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }

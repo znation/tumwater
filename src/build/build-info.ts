@@ -97,6 +97,11 @@ export interface BuildStatus {
    * draining in-flight runs (src/redeploy/redeployer.ts). The stale build is about to be
    * replaced. */
   restartPending?: boolean;
+  /** Which step of the self-redeploy is HOLDING new runs while `restartPending` stands, and since
+   * when. Absent when no hold stands (and from an orchestrator that predates the field). Without
+   * it a team held behind a 5–15 minute check of main showed every role idle and only "restarts
+   * when idle" in the header, which read as a stuck team (2026-10-30). */
+  restartHold?: RestartHold;
   /** Why the self-redeploy onto `checkedHead` was REFUSED — a red main, a failed compile, a
    * failed swap. Set instead of `restartPending`, and the important half: the team then keeps
    * running the stale build with no retry until main moves, which a bare `stale: true` cannot
@@ -111,6 +116,21 @@ export interface BuildStatus {
    * is main's tip. Without it a team whose main checks kept timing out ran an old build for
    * hours with nothing on any surface saying an update was waiting (BUGS.md 2026-10-29). */
   waitingForCheck?: { head: string; aheadCommits: number };
+}
+
+/** The steps a self-redeploy holds new runs through, in order: main's check of the target head
+ * has not answered yet, the staged build of it is compiling, then the built update waits while
+ * the runs already in flight finish. */
+export const RESTART_HOLD_STAGES = ["checking", "compiling", "finishing"] as const;
+export type RestartHoldStage = (typeof RESTART_HOLD_STAGES)[number];
+
+/** BuildStatus.restartHold: the step a self-redeploy's hold is in. */
+export interface RestartHold {
+  stage: RestartHoldStage;
+  /** When the hold entered this stage (epoch ms). */
+  since: number;
+  /** The in-flight runs the drain waits for, role and director runs together — `finishing` only. */
+  runs?: number;
 }
 
 /** How far the running build is behind `mainHead`. */

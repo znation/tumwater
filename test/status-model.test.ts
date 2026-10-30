@@ -902,6 +902,35 @@ test("rolePhase reads waiting: low disk for idle roles while the disk floor hold
   assert.equal(rolePhase(s, false, undefined, false, null, false, undefined, undefined, false, undefined, true), "stopped");
 });
 
+// A self-redeploy holding new runs (BuildStatus.restartHold): every idle role names the hold and
+// the step it is in, instead of reading as an ordinary idle while the whole team stands still
+// (2026-10-30). In-flight runs keep their detail — the drain waits for them — and the disk floor,
+// which needs the operator, outranks it.
+test("rolePhase and roleRowCells read waiting: update with the hold's step while a self-redeploy holds", () => {
+  const s = freshRunnerState("feature");
+  const hold = "waiting: update — checking main bbbbbbbb";
+  const phase = (state: typeof s, diskHeld: boolean) =>
+    rolePhase(state, true, undefined, false, null, false, undefined, undefined, false, undefined, diskHeld, false, undefined, undefined, hold);
+  assert.equal(phase(s, false), hold);
+  assert.equal(roleRank(hold), 3, "a hold ranks with the other waiting states");
+  assert.equal(phase(s, true), "waiting: low disk", "the disk floor names itself first");
+  const running = freshRunnerState("feature");
+  running.running = true;
+  assert.equal(phase(running, false), "working", "a run the drain waits for keeps its live label");
+
+  const snap = snapshotWith([{ role: "feature" }]);
+  snap.running = true;
+  const build = { sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 3, checkedHead: "b".repeat(40), restartPending: true };
+  snap.build = { ...build, restartHold: { stage: "checking", since: Date.now() - 60_000 } };
+  assert.equal(roleRowCells(snap, tmpdir(), s).phase, hold);
+  snap.build = { ...build, restartHold: { stage: "compiling", since: Date.now() } };
+  assert.equal(roleRowCells(snap, tmpdir(), s).phase, "waiting: update — compiling bbbbbbbb");
+  snap.build = { ...build, restartHold: { stage: "finishing", since: Date.now(), runs: 2 } };
+  assert.equal(roleRowCells(snap, tmpdir(), s).phase, "waiting: update — finishing 2 runs");
+  snap.build = build;
+  assert.ok(!roleRowCells(snap, tmpdir(), s).phase.startsWith("waiting: update"), "no published step: no hold claimed");
+});
+
 // New-project bootstrap (plans/work-ratio.md, part 2/2): an idle held role reads
 // `waiting: bootstrap` — the team gate's own wording, ranked with the waiting: low disk. In-flight
 // runs keep their detail, and a stopped orchestrator still reads stopped.

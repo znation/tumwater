@@ -85,7 +85,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   image_blind: "image not seen",
   image_reroute: "image sent to another model",
   build_stale: "update available",
-  restart_pending: "update waits for idle",
+  restart_pending: "update holding new runs",
   restart: "restarted onto update",
   restart_refused: "update refused",
   restart_blocked: "update blocked",

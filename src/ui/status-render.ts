@@ -265,7 +265,7 @@ function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): Stat
   // empty unless the team marker's deadline stands in the future, so a role-only or
   // indefinite pause keeps today's header byte-identical.
   const running: StatusSpan[] = snap.running
-    ? [{ text: "running", tone: "green" }, { text: ` (pid ${snap.pid}` }, ...badgeSpans(buildBadge(snap.build), snap.build?.stale || snap.build?.waitingForCheck ? "yellow" : undefined), { text: ")" }]
+    ? [{ text: "running", tone: "green" }, { text: ` (pid ${snap.pid}` }, ...badgeSpans(buildBadge(snap.build, now), snap.build?.stale || snap.build?.waitingForCheck ? "yellow" : undefined), { text: ")" }]
     : [{ text: "not running — start with `tumwater start`", tone: "dim" }];
   return [
     { text: "tumwater", tone: "brand" },
