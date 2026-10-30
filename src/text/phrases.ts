@@ -333,7 +333,7 @@ export function describeToolCall(toolName: string, args: unknown): string {
  * parenthesized remainder, shared by the reviewer suite-rerun warning (review/suite-rerun.ts) and
  * the stage self-check's missing-path and lost-final-newline findings (run/stage-path-checks.ts
  * and run/stage-prose-checks.ts),
- * so the three cannot drift on the spacing or the parenthesized form. The other remainder
+ * so the four cannot drift on the spacing or the parenthesized form. The other remainder
  * phrasings keep their own wording: the failure digest's bare `+N more` role list and its `_+N
  * more …_` lines (failure/failure-render.ts), doctor's `and N more` (doctor/doctor-orphans.ts),
  * the TUI alert pointer (ui/tui/tui-frame.ts), and the review-reject reasons, whose extra clause

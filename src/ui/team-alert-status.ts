@@ -11,7 +11,7 @@ import {
 import { chainFragments } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
-import { agree, plural } from "../text/phrases.js";
+import { agree, moreSuffix, plural } from "../text/phrases.js";
 import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 import { joinWithMore, squash } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
@@ -115,7 +115,7 @@ function pushMainRedAlert(out: TeamAlert[], snap: StatusAlertsInput["snap"], rol
     const redDetail = snap.mainCheck?.red;
     let detail = "Code roles keep authoring on top of a red main; the ci healer owns the failing check.";
     if (redDetail) {
-      const more = redDetail.failingTests.length > 1 ? ` (+${redDetail.failingTests.length - 1} more)` : "";
+      const more = moreSuffix(redDetail.failingTests.length - 1);
       const blamed = redDetail.culprit?.runner
         ? `; the main watch blames ${roleLabel(redDetail.culprit.runner)}'s merge ${shortSha(redDetail.culprit.commit)}`
         : "";
