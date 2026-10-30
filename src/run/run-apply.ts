@@ -354,13 +354,13 @@ export function applyMergeOutcome(
       s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
       const lastReasons = s.lastReview?.verdict === "reject" || s.lastReview?.verdict === "reverted" ? s.lastReview.reasons : undefined;
       s.lastError = `review rejected: ${firstReason(lastReasons).slice(0, 200)}`;
-    // Past the warn bar the re-author backs off on the error ladder instead of the minimum
-    // interval the queued run scheduled: the fast first retries stay — the rejected branch's
-    // design intent, letting the author address the recorded reasons at once — but a
-    // non-converging author slows down instead of re-authoring at full price all day. The
-    // rung derives from the streak (not from backoffSeconds, which every queued run zeroes
-    // on its way out, pinning a state-derived ladder at its first rung), and never pulls
-    // nextRunAt earlier than the already-scheduled minimum interval.
+      // Past the warn bar the re-author backs off on the error ladder instead of the minimum
+      // interval the queued run scheduled: the fast first retries stay — the rejected branch's
+      // design intent, letting the author address the recorded reasons at once — but a
+      // non-converging author slows down instead of re-authoring at full price all day. The
+      // rung derives from the streak (not from backoffSeconds, which every queued run zeroes
+      // on its way out, pinning a state-derived ladder at its first rung), and never pulls
+      // nextRunAt earlier than the already-scheduled minimum interval.
       const streak = s.consecutiveErrors;
       if (streak >= ERROR_STREAK_WARN) {
         const rung = Math.min(
