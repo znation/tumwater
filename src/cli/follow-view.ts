@@ -62,7 +62,17 @@ export async function followView(frameText: () => string | Promise<string>, seam
   await new Promise<void>((resolve) => {
     const timer = setInterval(() => {
       if (painting) return;
-      const result = frameText();
+      let result;
+      try {
+        result = frameText();
+      } catch {
+        // A sync frame (status, backlog, report) may throw the same transient failure as an
+        // async one — a snapshot lift, a momentarily unreadable file — and a throw out of a
+        // setInterval callback is an uncaught exception that kills the whole interactive
+        // follow, while the identical failure a tick later (async path) is skipped. Skip this
+        // repaint and retry on the next tick, the same policy the async path applies.
+        return;
+      }
       if (result instanceof Promise) {
         painting = true;
         void result
@@ -73,7 +83,13 @@ export async function followView(frameText: () => string | Promise<string>, seam
           });
         return;
       }
-      paint(result);
+      // A sync frame's paint is guarded like its read above: a paint that throws (a broken
+      // stdout mid-follow) is skipped and retried, never fatal.
+      try {
+        paint(result);
+      } catch {
+        // Transient — retry on the next tick, like the async path.
+      }
     }, interval);
     startParentDeathWatch(() => {
       clearInterval(timer);

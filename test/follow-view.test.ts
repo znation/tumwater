@@ -59,3 +59,67 @@ test("followView rides through a first-frame failure and repaints on the next ti
     cap.restore();
   }
 });
+
+// A SYNC frame (status, backlog, report all pass sync frameText reads) that throws on a
+// repaint tick must be skipped and retried like the async path's `.catch`, not thrown out of
+// the setInterval callback as an uncaught exception that kills the whole interactive follow —
+// before the guard, the identical transient failure was skipped a tick later (async) but fatal
+// on a sync tick, a different outcome for the same failure depending only on the read's sync/async
+// shape. This test pins the sync read (and its paint) to the same skip-and-retry policy.
+test("followView rides through a sync frame throw on a tick and repaints on the next", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  // The runner sets TUMWATER_SUPERVISOR_PID (see its suiteEnv), so followView's parent watch
+  // compares the polling ppid against that expected pid. Match it so the watch stays down
+  // across the throwing and recovered ticks, then flip it to end the follow; when the runner
+  // did not set it, any distinct ppid keeps the watch down until flipped.
+  const expected = process.env.TUMWATER_SUPERVISOR_PID
+    ? Number(process.env.TUMWATER_SUPERVISOR_PID)
+    : 4242;
+  const parent = { value: expected };
+  let calls = 0;
+  let done = false;
+  let failure: unknown = null;
+  const cap = captureStdout();
+  const promise = followView(
+    () => {
+      calls += 1;
+      if (calls === 1) return Promise.resolve("frame1");
+      if (calls === 2) throw new Error("transient sync read failure"); // the sync-path fault
+      return `frame${calls}`;
+    },
+    { ppid: () => parent.value, intervalMs: 5, tty: false },
+  ).then(
+    () => (done = true),
+    (err: unknown) => {
+      failure = err;
+      done = true;
+    },
+  );
+  try {
+    // Let the first-paint chain settle so the repaint interval and parent-death poll register.
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    // Tick 1 (parent still alive): the sync read throws before painting — it must be skipped,
+    // not thrown out of the setInterval callback. Tick 2: the sync read recovers and paints
+    // frame3. Only then flip the parent and tick once more for the death-watch to end it.
+    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
+    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
+    parent.value = 1;
+    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
+    await promise;
+    await Promise.resolve();
+    assert.ok(done, "follow resolves even though a sync frame threw on a tick");
+    assert.equal(failure, null, "a sync tick throw never rejects the follow");
+    assert.ok(calls >= 3, "the follow retried the frame after the sync throw");
+    assert.match(cap.out(), /frame3/, "the recovered sync frame is painted");
+  } finally {
+    parent.value = 1;
+    t.mock.timers.tick(5); // retired-name-ok: node:test mock clock
+    try {
+      await promise;
+    } catch {
+      // Rejection already recorded above.
+    }
+    t.mock.timers.reset();
+    cap.restore();
+  }
+});
