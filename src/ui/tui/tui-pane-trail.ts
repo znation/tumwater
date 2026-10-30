@@ -64,7 +64,7 @@ interface RunTrailSnapshot {
 /** The History pane's run-trail subsystem (src/ui/tui/tui.tsx, view roleIds.length + 4), split
  * out of the createHistoryPane monolith (the landed per-arm-createHistoryPane split) so the
  * trail's state and its read/arm functions stop sharing one closure with the pane's row and
- * window/filter selection. It closes over the trail's 14 state variables and implements the
+ * window/filter selection. It closes over the trail's 13 state variables and implements the
  * trail reads and the Ctrl+N/Ctrl+L/Ctrl+P/Ctrl+R/Ctrl+W/Ctrl+V arms, returning a small
  * surface the pane wires into its `handleKey`. Session-owned bits stay in the session:
  * `session.paneScroll`/`session.armedRevert`/`session.revertArmed`/`session.flashMessage`/

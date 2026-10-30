@@ -43,7 +43,7 @@ export function historyWindowBounds(
  * window back by its own length (the `history --since --until` window) and Ctrl+S returns to
  * the trailing window. Split out of the pane-navigation monolith; it owns the pane's
  * window/result/model/summary/scope/search state and the arms that touch them, while the
- * run-trail subsystem (its 14 state vars and the read/arm functions that serve it) lives in
+ * run-trail subsystem (its 13 state vars and the read/arm functions that serve it) lives in
  * the dedicated tui-pane-trail.ts module wired in below through a small seam. */
 export function createHistoryPane(
   session: TuiPaneSession,
