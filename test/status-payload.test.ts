@@ -965,5 +965,5 @@ test("refreshOrphanAlert raises none on a clean host", async () => {
   const root = makeRepo();
   const { probe } = fakeProbe([]);
   assert.equal(await refreshOrphanAlert(root, probe), null);
-  assert.equal(orphanAlertFromScan({ rows: [], orphans: [], marks: new Map<number, string[]>(), cwdProblem: null }), null);
+  assert.equal(orphanAlertFromScan({ rows: [], orphans: [], marks: new Map<number, string[]>(), cwdProblem: null, liveOwned: [] }), null);
 });

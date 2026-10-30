@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkOrphans, killOrphans, markRootToken, orphanKillLines, parseEtimeMs, reapAttributableOrphans, reapPreviousTeamOrphans, rootToken, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
+import { checkOrphans, findOrphans, killOrphans, markRootToken, orphanFailDetail, orphanKillLines, parseEtimeMs, reapAttributableOrphans, reapPreviousTeamOrphans, rootToken, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
 import { dueForOrphanReap, newPollState, ORPHAN_REAP_INTERVAL_MS } from "../src/orchestrator/orchestrator-poll.js";
 import { runDoctor } from "../src/doctor/doctor.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
@@ -499,6 +499,93 @@ test("reapAttributableOrphans returns 0 and logs nothing on an unreadable table 
   assert.equal(await reapAttributableOrphans(root, broken, brokenSignals), 0);
   assert.deepEqual(brokenSent, []);
   assert.deepEqual(readEvents(root).filter((e) => e.type === "warning"), []);
+});
+
+test("spares a parentless tree whose descendant carries a live run's mark (ci run 62), reap and alert alike", async () => {
+  const root = readyRepo();
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "_slot-7"), { recursive: true });
+  const wt = path.join(fs.realpathSync(root), ".tumwater", "worktrees", "_slot-7");
+  const live = process.pid;
+  // A tool call's `( … ) &` subshell: reparented to PID 1, its argv names the worktree, and
+  // macOS hides /bin/bash's own environment — so this root's mark is unreadable — while its
+  // node child (npm test) carries the run's LIVE mark.
+  const probe = fakeProbe(
+    [
+      { pid: 99726, etime: "01:00:00", command: `cd ${root}/.tumwater/worktrees/_slot-7 && SCR=$(mktemp -d) && (npm test > \"$SCR/out\" 2>&1) & echo $!` },
+      { pid: 99727, ppid: 99726, etime: "01:00:00", command: "node dist/test/test-runner.js" },
+      // A genuinely dead leak with no live descendant: still an orphan that gets reaped.
+      { pid: 99800, etime: "01:00:00", command: `node ${root}/.tumwater/worktrees/_slot-7/stray.js` },
+    ],
+    { 99726: wt },
+    { 99727: `${live}-aaaa` },
+  ).probe;
+  const scan = await findOrphans(root, probe);
+  assert.ok("rows" in scan, "scan succeeded");
+  assert.deepEqual(scan.orphans.map((r) => r.pid), [99800], "the live run's tree is left out of the orphan set");
+  assert.deepEqual(scan.liveOwned.map((r) => r.pid), [99726], "the live tree is reported as live-owned");
+  const signals = fakeSignals().signals;
+  assert.equal(await reapAttributableOrphans(root, probe, signals), 1, "reaps only the dead leak");
+  const events = readEvents(root).filter((e) => e.type === "warning");
+  assert.match(String((events[0] as { message?: string }).message), /reaped 1 orphaned process: pid 99800/);
+  assert.doesNotMatch(String((events[0] as { message?: string }).message), /99726/);
+});
+
+test("findOrphans spares a live-marked tree in the read marks of its descendants, and still reaps a dead-harness child's tree", async () => {
+  const root = readyRepo();
+  const dead = 999_999_999;
+  const live = process.pid;
+  // A live-marked descendant: the tree is spared.
+  const liveProbe = fakeProbe(
+    [
+      { pid: 2001, command: `node ${root}/.tumwater/worktrees/_slot-a/run.js` },
+      { pid: 2002, ppid: 2001, command: "node child.js" },
+    ],
+    {},
+    { 2002: `${live}-xxx` },
+  ).probe;
+  const liveScan = await findOrphans(root, liveProbe);
+  assert.ok("rows" in liveScan);
+  assert.deepEqual(liveScan.orphans, []);
+  // A dead-marked or unmarked descendant: still an orphan, reaped as today.
+  const deadProbe = fakeProbe(
+    [
+      { pid: 2003, etime: "01:00:00", command: `node ${root}/.tumwater/worktrees/_slot-b/run.js` },
+      { pid: 2004, ppid: 2003, etime: "01:00:00", command: "node child.js" },
+    ],
+    {},
+    { 2004: `${dead}-xx` },
+  ).probe;
+  const deadScan = await findOrphans(root, deadProbe);
+  assert.ok("rows" in deadScan);
+  assert.deepEqual(deadScan.orphans.map((r) => r.pid), [2003]);
+  const unmarkedProbe = fakeProbe(
+    [{ pid: 2005, etime: "01:00:00", command: `node ${root}/.tumwater/worktrees/_slot-c/run.js` }],
+    {},
+  ).probe;
+  const unmarkedScan = await findOrphans(root, unmarkedProbe);
+  assert.ok("rows" in unmarkedScan);
+  assert.deepEqual(unmarkedScan.orphans.map((r) => r.pid), [2005]);
+});
+
+test("orphanFailDetail notes a spared live tree so the operator sees why it is not orphaned", async () => {
+  const root = readyRepo();
+  const live = process.pid;
+  const probe = fakeProbe(
+    [
+      { pid: 3001, etime: "01:00:00", command: `node ${root}/.tumwater/worktrees/_slot-d/run.js` },
+      { pid: 3002, ppid: 3001, command: "node child.js" },
+      // A real orphan alongside, so the row still fails.
+      { pid: 3003, etime: "01:00:00", command: `node ${root}/.tumwater/worktrees/_slot-e/leak.js` },
+    ],
+    {},
+    { 3002: `${live}-xx` },
+  ).probe;
+  const scan = await findOrphans(root, probe);
+  assert.ok("rows" in scan);
+  const detail = orphanFailDetail(root, scan);
+  assert.ok(detail);
+  assert.match(detail, /1 parentless tree left alone \(a live run's own command: pid 3001/);
+  assert.match(detail, /pid 3003/);
 });
 
 test("dueForOrphanReap fires at and after the interval, never before, from literal times", () => {

@@ -98,7 +98,7 @@ function descendantPids(children: Map<number, number[]>, pid: number): number[] 
  * can stage a scan (a fake probe's) the same way `checkOrphans` reads it, without re-deriving the
  * orphan set — the alert and the doctor row cannot drift on what is an orphan. */
 export type OrphanScan =
-  | { rows: ProcessRow[]; orphans: ProcessRow[]; marks: Map<number, string[]>; cwdProblem: string | null }
+  | { rows: ProcessRow[]; orphans: ProcessRow[]; marks: Map<number, string[]>; cwdProblem: string | null; liveOwned: ProcessRow[] }
   | { error: string };
 
 /** A mark's harness is dead (true), alive (false), or the mark names no harness (null — a torn
@@ -220,7 +220,37 @@ export async function findOrphans(root: string, probe: ProcessProbe): Promise<Or
     const cwd = cwds.get(r.pid);
     return (cwd !== undefined && isUnder(cwd, dirs)) || relativeArgvIsOurs(r.command, cwd, root, dirs);
   });
-  return { rows, orphans, marks, cwdProblem };
+  // Spare a parentless tree a LIVE run still owns: read the marks of an orphan's descendants
+  // as well as its root, and drop the whole tree when any of them names a live harness. A
+  // tool call's own `( … ) &` subshell is reparented to PID 1 the moment its bash exits, and
+  // macOS hides /bin/bash's environment, so the root's own mark is unreadable — and its argv
+  // settles it before byMark ever reads a mark — while the children (node, sleep, npm) carry
+  // the run's live mark. That run's end-of-run sweep kills the marked descendants when the run
+  // folds and the subshell then exits, so this tree is not a leak (BUGS.md, ci run 62). A tree
+  // with only dead, or no readable, marks stays listed and reaped as today. The reap builds on
+  // this set, so sparing an orphan spares its whole tree from killTrees.
+  const children = childrenOf(rows);
+  const descOfOrphans = distinctOrdered(orphans.flatMap((r) => descendantPids(children, r.pid)));
+  const unasked = descOfOrphans.filter((p) => !ask.includes(p));
+  let descMarks = new Map<number, string[]>();
+  if (unasked.length > 0) {
+    try {
+      descMarks = await probe.runMarkers(unasked);
+    } catch {
+      // Best-effort per the probe contract; a live-tree spare that cannot read its marks just
+      // judges nothing, and argv/cwd keep the check standing on their own.
+    }
+  }
+  const allMarks = new Map(marks);
+  for (const [pid, ms] of descMarks) if (!allMarks.has(pid)) allMarks.set(pid, ms);
+  const liveMarked = new Set<number>();
+  for (const [pid, ms] of allMarks) if (ms.some((m) => harnessGone(m) === false)) liveMarked.add(pid);
+  const spare = new Set<number>();
+  for (const r of orphans)
+    if ([r.pid, ...descendantPids(children, r.pid)].some((p) => liveMarked.has(p)))
+      for (const p of [r.pid, ...descendantPids(children, r.pid)]) spare.add(p);
+  const liveOwned = orphans.filter((r) => spare.has(r.pid));
+  return { rows, orphans: orphans.filter((r) => !spare.has(r.pid)), marks: allMarks, cwdProblem, liveOwned };
 }
 
 /** Orphaned worktree processes — the detector half of the grandchild-leak fix (BUGS.md
@@ -265,8 +295,8 @@ export async function findOrphans(root: string, probe: ProcessProbe): Promise<Or
  * the feed (src/ui/alert-feeds.ts) can stage a scan and get exactly the row's message. */
 export function orphanFailDetail(root: string, scan: OrphanScan): string | null {
   if ("error" in scan) return null;
-  const { rows, orphans, marks, cwdProblem } = scan;
-  if (orphans.length === 0) return null;
+  const { rows, orphans, marks, cwdProblem, liveOwned } = scan;
+  if (orphans.length === 0 && liveOwned.length === 0) return null;
   const children = childrenOf(rows);
   const listed = orphans.slice(0, ORPHANS_LISTED_MAX).map((r) => {
     const n = descendantPids(children, r.pid).length;
@@ -277,9 +307,19 @@ export function orphanFailDetail(root: string, scan: OrphanScan): string | null 
     const marked = mark !== undefined ? ` (run ${mark}; tumwater ${mark.split("-")[0]} exited)` : "";
     return `pid ${r.pid} (age ${r.etime}, cpu ${r.time}${tree}) ${shownCommand(r.command, root)}${marked}`;
   });
+  const liveListed = liveOwned.slice(0, ORPHANS_LISTED_MAX).map((r) => {
+    const n = descendantPids(children, r.pid).length;
+    const tree = n > 0 ? `, +${plural(n, "descendant")}` : "";
+    return `pid ${r.pid} (age ${r.etime}, cpu ${r.time}${tree}) ${shownCommand(r.command, root)}`;
+  });
   const more = orphans.length - listed.length;
+  const liveMore = liveOwned.length - liveListed.length;
   const count = `${plural(orphans.length, "orphaned process", "orphaned processes")} (PPID 1)`;
-  return `${count}: ${listed.join("; ")}${more > 0 ? `; and ${more} more` : ""}` +
+  const live =
+    liveOwned.length === 0
+      ? ""
+      : `; ${plural(liveOwned.length, "parentless tree", "parentless trees")} left alone (a live run's own command: ${liveListed.join("; ")}${liveMore > 0 ? `; and ${liveMore} more` : ""})`;
+  return `${count}: ${listed.join("; ")}${more > 0 ? `; and ${more} more` : ""}${live}` +
       " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans, or the TUI Health tab's Ctrl+K pressed twice) kills each with its descendants" +
       (cwdProblem !== null ? ` (process cwds unreadable — ${cwdProblem}; argv matched only)` : "");
 }
