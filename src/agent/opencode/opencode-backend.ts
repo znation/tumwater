@@ -18,7 +18,7 @@
  * notes path in its environment (the `tumwater-notes` command on PATH reads it), as the pi and
  * claude adapters do. */
 
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { ensureParentDir } from "../../files/files.js";
@@ -93,22 +93,37 @@ function catalogModelKey(model: string): string {
   return opencodeModelKey(model);
 }
 
+/** Run the bounded `opencode session export <id> --standalone` spawn that both the resume
+ * existence check and the reconciling export issue, under the same env/cwd and the shared
+ * 10 s bound. Returns the spawn result with stdout captured (UTF-8), or null when the spawn
+ * itself threw — a missing binary or an invalid option, resolved the same way both callers
+ * treated a throw. The command line, env, cwd and timeout live here once, so the existence
+ * check and the reconciling export cannot drift on what they run. */
+function runSessionExport(
+  id: string,
+  env: NodeJS.ProcessEnv,
+  bin: string,
+  cwd: string,
+): SpawnSyncReturns<string> | null {
+  try {
+    return spawnSync(bin, ["session", "export", id, "--standalone"], {
+      env,
+      cwd,
+      timeout: EXPORT_TIMEOUT_MS,
+      encoding: "utf8",
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** Run `opencode session export <id> --standalone` (the same database the run used, bounded at
  * 10 s) and return whether it reported success — the existence check that decides a resume.
  * Nonzero exit, a timeout, or a spawn failure all read as "no such session", which is the safe
  * direction: `--session` would otherwise silently create a missing session. */
 function opencodeSessionExists(id: string, env: NodeJS.ProcessEnv, bin: string, cwd: string): boolean {
-  try {
-    const res = spawnSync(bin, ["session", "export", id, "--standalone"], {
-      env,
-      cwd,
-      timeout: EXPORT_TIMEOUT_MS,
-      stdio: "ignore",
-    });
-    return res.status === 0;
-  } catch {
-    return false;
-  }
+  const res = runSessionExport(id, env, bin, cwd);
+  return res?.status === 0;
 }
 
 /** Run the reconciling export after a successful run and return its two canonical lines
@@ -116,18 +131,8 @@ function opencodeSessionExists(id: string, env: NodeJS.ProcessEnv, bin: string, 
  * timeout, a nonzero exit, unparseable or malformed output — returns `[]`, and the caller
  * (afterRun) reports `opencode_usage_partial` so the run keeps its streamed numbers. */
 function opencodeExport(result: { id: string; env: NodeJS.ProcessEnv; bin: string; cwd: string }): string[] {
-  let res;
-  try {
-    res = spawnSync(result.bin, ["session", "export", result.id, "--standalone"], {
-      env: result.env,
-      cwd: result.cwd,
-      timeout: EXPORT_TIMEOUT_MS,
-      encoding: "utf8",
-    });
-  } catch {
-    return [];
-  }
-  if (res.status !== 0 || !res.stdout) return [];
+  const res = runSessionExport(result.id, result.env, result.bin, result.cwd);
+  if (res?.status !== 0 || !res.stdout) return [];
   let parsed: unknown;
   try {
     parsed = JSON.parse(res.stdout);
