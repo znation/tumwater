@@ -98,7 +98,7 @@ export function inFlightDetail(head: string, p: LiveProgress | null): string {
   if (p.unansweredReply) {
     const { waitedMs, attempts } = p.unansweredReply;
     parts.push(`no model reply for ${duration(waitedMs)}${attempts > 1 ? ` (${attempts} attempts)` : ""}`);
-  } else if (p.quietMs >= 300_000 && !hasOpenBuffered) {
+  } else if (p.quietMs >= 5 * 60_000 && !hasOpenBuffered) {
     parts.push(`no agent output for ${duration(p.quietMs)}`);
   }
   return parts.join(" · ");
