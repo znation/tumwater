@@ -77,7 +77,7 @@ test("a pi author and a claude reviewer run in one team and the change merges on
         assert.ok(fs.existsSync(nativeLogPath(repo, "feature", "claude")), "the reviewer's claude native log");
         // The author's run-start event names its own selector; the reviewer's surviving run is the
         // post-landing review, which judges the already-on-main commit (afterMerge: true). No
-        // assertion counts a pre-merge reviewer run — part 3h/3 removes it.
+        // assertion counts a pre-merge reviewer run — part 3h/3 removed it.
         const run = readEvents(repo).find((e) => e.type === "run_start");
         const postReview = readEvents(repo).find(
           (e) => e.type === "review_start" && (e as { afterMerge?: boolean }).afterMerge === true,

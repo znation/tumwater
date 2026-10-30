@@ -103,7 +103,7 @@ test("the gate's verdict is durable on disk before the run's end save", async ()
 
 test("a rejected merge merges nothing: role worktree clean at main, ref deleted, reasons recorded", async () => {
   // Re-pointed (part 3p/3): the rejection is deterministic — the change rewrites the brief block,
-  // which briefEditReason rejects before any check or reviewer runs (part 3h/3 will remove the
+  // which briefEditReason rejects before any check runs (part 3h/3 removed the pre-merge
   // reviewer). A brief-block edit is one of the three findings part 3m/3 keeps in the gate's
   // narrowed scope, so unlike a conflict marker this trigger survives that narrowing. The
   // bookkeeping is unchanged; the recorded reason is the diff rule's own finding, asserted only
@@ -143,7 +143,7 @@ test("a rejected merge merges nothing: role worktree clean at main, ref deleted,
 
 test("an abort before the gate returns aborted and keeps the ref", async () => {
   // Re-pointed (part 3z/3): the abort is observed before the gate ever starts, so it is fully
-  // deterministic — no fake pi run is needed and none will survive part 3h/3's removal of the
+  // deterministic — no fake pi run is needed and none survived part 3h/3's removal of the
   // pre-merge reviewer. The abort bookkeeping (nothing merged, pin kept for the next run's
   // recovery) is unchanged.
   const { root, sha } = await pinnedFixture();
@@ -190,7 +190,7 @@ test("a conflicting merge gets one resolution run and then merges", async () => 
 // non-approval outcome these cases reach deterministically: a REJECT (the verdict is final —
 // the pin is deleted, nothing merges). Re-pointed (part 4a/3): the rejection is now the
 // deterministic gate's — the resolution rewrites the brief block, which briefEditReason rejects
-// before any reviewer run — so the cases drive no model reviewer and survive the reviewer's
+// before any reviewer run — so the cases drive no model reviewer and survived the reviewer's
 // removal in part 3h/3 (a brief-block edit is one of the three findings the part 3m/3
 // narrowing keeps in the gate's scope). The reviewer's no-parseable-verdict retry path dies
 // with the reviewer and is retired.
@@ -198,7 +198,7 @@ test("a conflicting merge gets one resolution run and then merges", async () => 
 test("a resolution the re-review rejects deletes the pin and merges nothing", async () => {
   // Re-pointed (part 4a/3): the re-review now rejects on a deterministic diff-rule finding —
   // the resolution rewrites the brief block, which briefEditReason rejects before any reviewer
-  // run (part 3h/3 removes the reviewer). A brief-block edit is one of the three findings the
+  // run (part 3h/3 removed the reviewer). A brief-block edit is one of the three findings the
   // part 3m/3 narrowing keeps in the gate's scope, so the trigger survives it. The re-review
   // bookkeeping is unchanged: the pin is deleted, review_rejected is logged, the resolved
   // change owes one revision and its rejected ref keeps the head the re-review judged.

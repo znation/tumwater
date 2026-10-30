@@ -425,7 +425,7 @@ test("an unmergeable leftover is retried on the next run and keeps its merge pin
 // keep, not discard, a pre-merge review failure used to leave. Re-pointed to a deterministic gate
 // rejection (a conflicting re-apply leaves unresolved conflict markers, so the merge ends
 // `merge_conflict` and the pin survives) so the case no longer drives the pre-merge reviewer. The
-// reviewer-run fake below only approves so the merge can reach the conflict; part 3h/3 removes
+// reviewer-run fake below only approves so the merge can reach the conflict; part 3h/3 removed
 // that run and the approve goes unused.
 test("a failed gate keeps the recovered pinned commit for the next run's retry", async () => {
   const repo = await initializedRepo();

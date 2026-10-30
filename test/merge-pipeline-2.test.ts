@@ -287,9 +287,9 @@ for (const headVerdict of ["reject", "approve"] as const) {
     // The check command is the deterministic gate's only stage observer, and the head's verdict:
     // the reject case fails the declared check on alpha's tree, so its gate resolves on the
     // pre-check (a deterministic rejection never shows as reviewing) and alpha's record leaves
-    // build-check at once; the approve case's gate resolves on a passed check. The model reviewer
-    // still approves a passed pre-check (until part 3h/3), but it records no stage, so the rec
-    // holds only the pre-check's own build-check lines either way.
+    // build-check at once; the approve case's gate resolves on a passed check. The gate's
+    // approval records no stage (the pre-merge reviewer that once would have is gone, part
+    // 3h/3), so the rec holds only the pre-check's own build-check lines either way.
     const checkRecord = `echo "check:$(${stagesOf})" >> '${rec}'`;
     const config = {
       ...defaultConfig(),
