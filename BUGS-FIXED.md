@@ -7,6 +7,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ### `every comment line in src/ and test/ fits in 100 columns and opens no block inside a block` failed, then passed on the same tree (quarantined by tumwater 2026-10-30) — fixed 2026-10-30 by the bugfix role
 
+**Validation gap:** no-repro — the failure was race-dependent: the offender, the 104-column doc-comment line at src/ui/tui/tui-backlog.ts:164, only surfaced when the stale dist outlived the source edit that introduced it, so the same-tree re-run read the freshly built dist and passed.
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+The single root cause was an over-wide comment line in `clampSelection`'s doc comment at src/ui/tui/tui-backlog.ts:164 (104 columns), grown past 100 in a prior rewrap. The comment-width check names the file and line in its failure message, so the "failed then passed on the same tree" quarantine was a tree whose dist lagged the source edit. That line has been rewrapped to ≤100 columns; the comment-width suite passes (3/3) against a fresh dist, and the over-wide scan reports no other comment offender in src/ or test/. No code behavior changed.
+
+~~~~
+✖ every comment line in src/ and test/ fits in 100 columns and opens no block inside a block (57.342667ms)
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+- []
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-7/dist/test/comment-width.test.js:57:12)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: true,
+code: 'ERR_ASSERTION',
+actual: [ '/Users/zach/tumwater/.tumwater/worktrees/_slot-7/src/ui/tui/tui-backlog.ts:164 (cols)' ],
+expected: [],
+operator: 'deepStrictEqual',
+diff: 'simple'
+}
+~~~~
+
+### `every comment line in src/ and test/ fits in 100 columns and opens no block inside a block` failed, then passed on the same tree (quarantined by tumwater 2026-10-30) — fixed 2026-10-30 by the bugfix role
+
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
 
 ~~~~
