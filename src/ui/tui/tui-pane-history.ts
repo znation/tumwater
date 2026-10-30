@@ -1,8 +1,7 @@
-import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
+import { SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
 import { betweenWindow } from "../../cli/cli-args.js";
 import {
   HISTORY_DEFAULT_RUNS,
-  HISTORY_MAX_RUNS,
   historyClass,
   readRunRows,
   readRunRowsSince,
@@ -16,17 +15,10 @@ import {
 } from "../../history/history-data.js";
 import { renderModelSummary, renderSummary } from "../../history/history-render.js";
 import { historyPaneText } from "./tui-history.js";
-import { guardError } from "./tui-guard.js";
-import { readRunDetail, type RunDetail } from "../../run/run-detail-data.js";
-import { renderRunDetail, runTranscriptLines } from "../../run/run-detail-render.js";
-import { revertFollowUp, runRevertSha } from "../../operator/operator-revert.js";
-import { shortSha } from "../../text/format.js";
-import { plural } from "../../text/phrases.js";
-import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
-import { flashReject } from "./tui-guard.js";
-import { paneAtHead, nextInCycle, cycleLabel, steppedWindowBounds, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPaneSession } from "./tui-pane-session.js";
+import { nextInCycle, cycleLabel, steppedWindowBounds, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPaneSession } from "./tui-pane-session.js";
+import { createRunTrail, type RunTrailSelection } from "./tui-pane-trail.js";
 
 /** The bounds `readRunRowsSince` reads for a trailing window of `windowMs` stepped `step` window
  * lengths back: step 0 (or no window) is the trailing window, step k the window (k+1)*len to k*len
@@ -50,7 +42,9 @@ export function historyWindowBounds(
  * merged change), each with its cache and body window. With the trail off, Ctrl+P steps the
  * window back by its own length (the `history --since --until` window) and Ctrl+S returns to
  * the trailing window. Split out of the pane-navigation monolith; it owns the pane's
- * window/result/model/summary/scope/search/trail state and the arms that touch them. */
+ * window/result/model/summary/scope/search state and the arms that touch them, while the
+ * run-trail subsystem (its 14 state vars and the read/arm functions that serve it) lives in
+ * the dedicated tui-pane-trail.ts module wired in below through a small seam. */
 export function createHistoryPane(
   session: TuiPaneSession,
 ) {
@@ -82,46 +76,6 @@ export function createHistoryPane(
   // Session-only like the window/result/role/search, so the next Ctrl+T into History
   // computes the cache with it.
   let historySummary: HistorySummaryGroup | null = null;
-  // Ctrl+N on the History pane swaps the row list for the newest completed run's full event
-  // trail (renderRunDetail over readRunDetail) — the same text `tumwater run --last` and
-  // the dashboard's History drill-down serve. Session-only like the other pane snapshots:
-  // computed once on entry and only re-windowed each frame.
-  // Ctrl+P steps the trail back one run: trailIndex is the shown run's 0-based newest-first
-  // position in the pane's selection (scope, window, search, outcome class; 0 = newest), reset
-  // to 0 whenever the trail opens, closes or follows a scope or filter change.
-  let trailMode = false;
-  let trailIndex = 0;
-  let trailCache: string | null = null;
-  // Ctrl+R cycles the shown run's agent transcript off -> plain -> prompts -> off, the terminal
-  // twin of `history <role> <n> --transcript [--prompt]`. trailCache is composed from the parts
-  // below (detail, stat, transcript, in `tumwater run`'s order) for the run in trailRun.
-  let trailTranscript: "off" | "plain" | "prompts" = "off";
-  // The transcript search (`/` while it shows); set only while trailTranscript !== "off".
-  let trailGrep: string | null = null;
-  let trailText = "";
-  let trailStat: string | null = null;
-  // Whether the trail shows the run's commit patch (Ctrl+W), and the patch once it resolves.
-  let trailPatch = false;
-  let trailPatchText: string | null = null;
-  let trailTranscriptText: string | null = null;
-  let trailRun: { role: string; run: number; detail: RunDetail } | null = null;
-  let reverting = false; // a revert preview or commit is in flight; a held Ctrl+V starts no second
-  let trailGen = 0; // bumped at every trail read or reset; a stat resolution applies only to its own gen
-
-  /** Drop the on-screen run trail and its snapshot: the shared teardown the pane's three
-   * History-only exits run — the Ctrl+N toggle-off arm, the Ctrl+L newest-failure jump, and
-   * the pane's reset on a view cycle. It bumps trailGen so an in-flight stat resolution from
-   * the closed trail cannot repaint the pane. */
-  const dropTrail = (): void => {
-    trailGen++;
-    trailMode = false;
-    trailCache = null;
-    trailIndex = 0;
-    trailTranscript = "off";
-    trailPatch = false;
-    trailPatchText = null;
-    trailGrep = null;
-  };
 
   /** The pane's row selection: scope, then window, then search, then outcome class — the order
    * `tumwater history` applies them. Returns the raw read's coverage flag, the count after the
@@ -231,117 +185,6 @@ export function createHistoryPane(
     return (header ? header + "\n" : "") + body + (sinceMs !== null && !covered ? "\n" + SPARSE_WINDOW_NOTE : "");
   };
 
-  // Re-read the pane-scoped newest completed run into trailCache for an on-screen trail
-  // (Ctrl+N), so the trail cannot keep showing a retired role's run after Ctrl+G or a roster
-  // change drops the History scope. The reader throw is caught and flashed rather than escaping
-  // a key or sync path, the same guard the initial Ctrl+N entry uses.
-  // Append the run commit's per-file stat to the trail text once it resolves — the join
-  // `tumwater run --stat` uses. Applies only while the trail is still on and no read or reset
-  // bumped trailGen since the request, so an older run's stat never overwrites a newer view.
-  const composeTrail = (): void => {
-    trailCache = [trailText, trailStat, trailPatchText, trailTranscriptText].filter((part) => part !== null).join("\n\n");
-  };
-
-  // Read the shown run's transcript at the chosen level into trailTranscriptText (null when off
-  // or on a throw, which is flashed): the two outputs `tumwater history --transcript` prints.
-  const loadTranscript = (): void => {
-    trailTranscriptText = null;
-    const run = trailRun;
-    if (run === null || trailTranscript === "off") return;
-    guardError(session, () => {
-      const { found, note } = runTranscriptLines(session.root, run.role, run.run, run.detail, {
-        includePrompts: trailTranscript === "prompts",
-        grep: trailGrep ?? undefined,
-      });
-      trailTranscriptText = found.length > 0 ? found.join("\n") : note;
-    });
-  };
-
-  // Resolve one async trail part (the run commit's stat or patch) through the session, and, if
-  // the trail is still current (`trailMode`, not superseded by a newer `trailGen`, and `keep`
-  // still true), fold its text in. Shared by the stat and patch loaders so the staleness guard
-  // and the flash/render on both error and success cannot drift between them.
-  const loadTrailPart = (
-    call: () => Promise<string>,
-    keep: boolean,
-    set: (value: string) => void,
-  ): void => {
-    const gen = trailGen;
-    void call().then(
-      (value) => {
-        if (!trailMode || !keep || gen !== trailGen) return;
-        set(value);
-        composeTrail();
-        session.requestRender();
-      },
-      (err: unknown) => {
-        if (!trailMode || !keep || gen !== trailGen) return;
-        session.flashError(err);
-        session.requestRender();
-      },
-    );
-  };
-
-  const loadTrailStat = (detail: RunDetail): void =>
-    loadTrailPart(() => session.runStat(session.root, detail), true, (stat) => {
-      trailStat = stat;
-    });
-
-  const loadTrailPatch = (detail: RunDetail): void =>
-    loadTrailPart(() => session.runPatch(session.root, detail), trailPatch, (patch) => {
-      trailPatchText = patch;
-    });
-
-  /** Re-read the pane's `index`-th newest completed run (its scope, window, search and outcome
-   * class, as the rows show them) into trailCache, appending the run commit's per-file stat
-   * once it resolves — the reader both the initial Ctrl+N toggle and the scope-change refreshes
-   * share, so the trail cannot keep showing a retired role's run after Ctrl+G or a roster change
-   * drops the History scope.
-   * `index` is the 0-based newest-first position to read (Ctrl+P steps it). Returns true when a
-   * run actually rendered (the caller turns the trail on); a scope holding none leaves
-   * trailCache null and, when `onEmpty` is given, runs it (the Ctrl+N toggle's
-   * "no completed runs to inspect" flash) so the user learns why nothing changed. The reader
-   * throw is caught and flashed rather than escaping a key or sync path — the guard the two
-   * original readers each carried. */
-  const loadTrail = (onEmpty: (() => void) | null, index = 0): boolean => {
-    trailGen++;
-    try {
-      const unfiltered = historyWindow === null && historyResult === null && historyGrep === null && historyModel === null;
-      const limit = unfiltered ? index + 1 : HISTORY_MAX_RUNS;
-      const row = selectPaneRows(historyWindow, historyResult, historyRole, historyGrep, historyModel, limit, historyStep).filtered[index];
-      if (row === undefined) {
-        if (onEmpty !== null) onEmpty();
-        return false;
-      }
-      const detail = readRunDetail(session.root, row.role, row.run);
-      trailStat = null;
-      trailPatchText = null;
-      trailTranscriptText = null;
-      trailRun = detail === null ? null : { role: row.role, run: row.run, detail };
-      if (detail === null) {
-        trailCache = null;
-      } else {
-        trailText = renderRunDetail(detail);
-        loadTranscript();
-        composeTrail();
-        loadTrailStat(detail);
-        if (trailPatch) loadTrailPatch(detail);
-      }
-      trailIndex = index;
-      return true;
-    } catch (err) {
-      trailCache = null;
-      session.flashError(err);
-      return false;
-    }
-  };
-
-  /** Re-read the trail after a scope change (Ctrl+G advances, a roster drop prunes the role):
-   * refresh the cache from the new scope, or clear it when the scope now holds no run. */
-  const refreshTrail = (): void => {
-    if (!loadTrail(null)) trailCache = null;
-  };
-
   /** Recompute the History pane's cached body if it is the current view, re-entering at its
    * head; true when it painted (the "history" arm of the shared refresh the panes and the
    * roster sync share). */
@@ -352,247 +195,60 @@ export function createHistoryPane(
     return true;
   };
 
-  const applySearch = (pattern: string | null): void => {
-    // Apply a finished History search on the pane: set the grep, recompute the cached rows now
-    // (the pane is showing), and re-enter at the body's head — the leaf the search editor's
-    // Enter calls through its applyHistorySearch dep.
-    if (trailMode && trailTranscript !== "off") {
-      // The transcript is showing: the search narrows its entries, the run rows stay as they are.
-      trailGrep = pattern;
-      loadTranscript();
-      composeTrail();
-      session.paneScroll = 0;
-      return;
-    }
-    historyGrep = pattern;
-    if (trailMode) refreshTrail();
-    session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historyModel, historySummary, historyStep);
-    session.paneScroll = 0;
+  // The row selection the run-trail subsystem borrows: live getters over the same closure
+  // vars (and a setter for the Ctrl+P window step), so a scope or filter change the trail
+  // re-reads matches whatever the pane currently holds.
+  const selection: RunTrailSelection = {
+    get window() {
+      return historyWindow;
+    },
+    get result() {
+      return historyResult;
+    },
+    get role() {
+      return historyRole;
+    },
+    get grep() {
+      return historyGrep;
+    },
+    get model() {
+      return historyModel;
+    },
+    get step() {
+      return historyStep;
+    },
+    set step(v: number) {
+      historyStep = v;
+    },
   };
 
-  // The second Ctrl+V: commit the revert of `sha` through the same core the CLI calls and flash
-  // the CLI's lines joined with "; ".
-  const revertRun = (sha: string): void => {
-    reverting = true;
-    session.flashMessage(`reverting ${shortSha(sha)} …`);
-    void session.revertCommit(session.root, sha).then(
-      (r) => {
-        if (!r.ok) {
-          session.flashMessage(r.error);
-          return;
-        }
-        const followUp = revertFollowUp(r.subject);
-        session.flashMessage(`reverted ${shortSha(sha)}: main is now ${shortSha(r.headSha)}${followUp === null ? "" : `; ${followUp}`}`);
-      },
-      flashReject(session),
-    ).finally(() => {
-      reverting = false;
-      session.armedRevert = null;
-      session.requestRender();
-    });
-  };
+  const trail = createRunTrail(session, {
+    selection,
+    selectPaneRows,
+    resetToNewestFailure() {
+      // The Ctrl+L newest-failure jump clears every filter the operator left set — role scope,
+      // trailing window, search, model, summary — and recomputes the pane.
+      historyRole = null;
+      historyResult = "problems";
+      historyWindow = null;
+      historyStep = 0;
+      historyGrep = null;
+      historyModel = null;
+      historySummary = null;
+      recompute();
+    },
+    recompute,
+  });
 
-  // The first Ctrl+V: preview the revert and arm the second press only when it applies cleanly
-  // to a clean checkout. A trail closed or stepped since (trailGen) gets no stale arm.
-  const previewRun = (sha: string): void => {
-    reverting = true;
-    const gen = trailGen;
-    session.flashMessage(`previewing the revert of ${shortSha(sha)} …`);
-    void session.previewRevert(session.root, sha).then(
-      (p) => {
-        if (gen !== trailGen) return;
-        if (!p.ok) session.flashMessage(p.error);
-        else if (!p.applies) session.flashMessage(`would conflict on ${p.primary} (HEAD ${shortSha(p.head)}); nothing was written`);
-        else if (p.dirty)
-          session.flashMessage("the checkout has staged or unstaged changes, so tumwater revert would refuse until they are committed or stashed; nothing was written");
-        else {
-          session.revertArmed = p.sha;
-          session.flashMessage(`press Ctrl+V again to revert ${shortSha(p.sha)} ${p.subject} (${plural(p.paths.length, "file")}) on ${p.primary} — any other key cancels`);
-        }
-      },
-      flashReject(session),
-    ).finally(() => {
-      reverting = false;
-      session.requestRender();
-    });
-  };
-
-  // One named arm per History key, so a key's rule is found by name instead of by scanning one
-  // long dispatch body (the same move as the landed resolveRunVerdict split). Each arm reads the
-  // same closure locals the old inline arm read, in the same order, and returns the same boolean.
-  const historyTrailToggle = (ctx: TuiPaneCtx): boolean => {
-    // On the History pane Ctrl+N swaps the row list for one run's full event trail instead
-    // (the CLI's `tumwater run --last` text). Routed here only for the History view, ahead
-    // of the transcript pane's notes/change arm; a non-History view falls through to it.
-    if (session.view !== session.roleIds.length + 4) return false;
-    if (!promptLineFree(ctx.es)) {
-      // The transcript guard would consume the key; keep Ctrl+N consumed on the History view.
-      session.requestRender();
-      return true;
-    }
-    if (trailMode) {
-      // Toggle the trail off (Ctrl+N on the trail view): drop the trail snapshot. The
-      // trailGen bump keeps an in-flight stat from the old trail from repainting.
-      dropTrail();
-    } else {
-      // Toggle the trail on: read the pane-scoped newest completed run. A scope holding
-      // none flashes (loadTrail's onEmpty) and leaves the rows; one holding a run turns
-      // the trail on (a log holding none is the only path that does not).
-      const filtered = historyWindow !== null || historyResult !== null || historyGrep !== null || historyModel !== null;
-      const empty = filtered ? "no completed runs match the pane's filters" : "no completed runs to inspect";
-      if (loadTrail(() => session.flashMessage(empty))) trailMode = true;
-    }
-    paneAtHead(session);
-    return true;
-  };
-
-  const historyNewestFailure = (ctx: TuiPaneCtx): boolean => {
-    // Ctrl+L on the History pane (mnemonic: the **l**atest failing run) resets the pane to
-    // the team-wide problems scope and opens the trail — the terminal twin of the dashboard
-    // History view's Newest failure button and `tumwater history --last --result problems`
-    // (newestRunRow(root, null, ["problems"], null)). It clears every filter the operator
-    // left set — role scope, trailing window, search, model, summary — and the trail, so a
-    // second press re-jumps to the newest failure. Routed here only for the History view;
-    // every other view keeps its own Ctrl+L meaning (Health's retire-leftovers ahead of this
-    // router, Activity's fallback editor and a Transcript's instructions editor in the
-    // editors).
-    if (session.view !== session.roleIds.length + 4) return false;
-    if (!promptLineFree(ctx.es)) {
-      // The editor would consume the key; keep Ctrl+L consumed on the History view.
-      session.requestRender();
-      return true;
-    }
-    historyRole = null;
-    historyResult = "problems";
-    historyWindow = null;
-    historyStep = 0;
-    historyGrep = null;
-    historyModel = null;
-    historySummary = null;
-    // Drop any on-screen trail the way Ctrl+N's toggle-off arm does (the gen bump keeps an
-    // in-flight stat from the old trail from repainting).
-    dropTrail();
-    recompute();
-    // historyWindow null + historyResult "problems": loadTrail reads
-    // readRunRows(root, HISTORY_MAX_RUNS, null) and takes .filtered[0] — the newest failing
-    // run of any role, exactly what the dashboard's Newest failure button and the CLI open.
-    if (loadTrail(() => session.flashMessage("no failing run in the scanned window"))) trailMode = true;
-    paneAtHead(session);
-    return true;
-  };
-
-  const historyStepBack = (ctx: TuiPaneCtx): boolean => {
-    // Ctrl+P steps an on-screen trail back to the next older run in the pane's scope,
-    // wrapping to the newest after the oldest. Anywhere else it falls through (false) to the
-    // Activity caps and Transcript pause editors' routing.
-    if (session.view !== session.roleIds.length + 4) return false;
-    if (!trailMode) {
-      // Trail off: step the window back one window length, wrapping to the trailing window once
-      // the next window would start past the 7-day cap `history --since` rides.
-      if (promptLineFree(ctx.es)) {
-        if (historyWindow === null) {
-          session.flashMessage("pick a window with Ctrl+S to step back through earlier windows");
-        } else if ((historyStep + 2) * historyWindow <= LOGS_SINCE_MAX_MS) {
-          historyStep += 1;
-          recompute();
-        } else {
-          historyStep = 0;
-          session.flashMessage(
-            "oldest window reached; back to the last " + cycleLabel(HISTORY_WINDOWS, historyWindow),
-          );
-          recompute();
-        }
-      }
-      session.requestRender();
-      return true;
-    }
-    if (promptLineFree(ctx.es)) {
-      const next =trailIndex + 1;
-      if (!(next < HISTORY_MAX_RUNS && loadTrail(null, next))) {
-        loadTrail(null, 0);
-        session.flashMessage("oldest run reached; back to the newest");
-      }
-      session.paneScroll = 0;
-    }
-    session.requestRender();
-    return true;
-  };
-
-  const historyTranscriptCycle = (ctx: TuiPaneCtx): boolean => {
-    // Ctrl+R cycles the trail's agent transcript: off -> plain -> prompts -> off. Anywhere
-    // else (no History view, no trail) it falls through to the other panes' Ctrl+R arms. The
-    // run is unchanged, so trailGen stays and an in-flight stat still lands on it.
-    if (session.view !== session.roleIds.length + 4 || !trailMode) return false;
-    if (promptLineFree(ctx.es)) {
-      trailTranscript = trailTranscript === "off" ? "plain" : trailTranscript === "plain" ? "prompts" : "off";
-      if (trailTranscript === "off") trailGrep = null;
-      loadTranscript();
-      composeTrail();
-      session.paneScroll = 0;
-    }
-    session.requestRender();
-    return true;
-  };
-
-  const historyPatchToggle = (ctx: TuiPaneCtx): boolean => {
-    // Ctrl+W on a run trail shows or hides the shown run's full commit patch below its stat:
-    // the terminal twin of `tumwater history <role> <n> --patch`. Off the History view it
-    // falls through to the other panes' Ctrl+W arms.
-    if (session.view !== session.roleIds.length + 4) return false;
-    if (!promptLineFree(ctx.es)) {
-      session.requestRender();
-      return true;
-    }
-    if (!trailMode || trailRun === null) {
-      session.flashMessage("open a run's trail with Ctrl+N to show its patch");
-      session.requestRender();
-      return true;
-    }
-    trailPatch = !trailPatch;
-    if (trailPatch) {
-      loadTrailPatch(trailRun.detail);
-    } else {
-      // The bump keeps an in-flight patch from repainting; it also drops an in-flight stat.
-      trailGen++;
-      trailPatchText = null;
-      if (trailStat === null) loadTrailStat(trailRun.detail);
-      composeTrail();
-    }
-    paneAtHead(session);
-    return true;
-  };
-
-  const historyRevertArm = (ctx: TuiPaneCtx): boolean => {
-    // Ctrl+V on a run trail reverts the shown run's merged change: the terminal twin of
-    // `tumwater revert <role> <n>` and the dashboard History drill-down's Revert. The first
-    // press previews (previewRevert) and arms only a clean, applying revert; a second press
-    // right after commits it through revertMergedCommit, and any other key disarms it.
-    if (session.view !== session.roleIds.length + 4) return false;
-    if (promptLineFree(ctx.es)) {
-      if (!trailMode || trailRun === null) {
-        session.flashMessage("open a run's trail with Ctrl+N to revert its change");
-      } else if (reverting) {
-        session.flashMessage("a revert is already running");
-      } else {
-        const found = runRevertSha(trailRun.role, trailRun.run, trailRun.detail);
-        if (!found.ok) session.flashMessage(found.error);
-        else if (session.armedRevert === found.sha) revertRun(found.sha);
-        else previewRun(found.sha);
-      }
-    }
-    session.requestRender();
-    return true;
-  };
-
-  // The History view's cycle handlers share one close: after they mutate the pane's session
-  // filter/window/scope, any open trail follows the change (a scope or filter change re-reads
-  // the new selection's newest run), the rows/cache are recomputed, and a render is requested.
-  // Folding the tail keeps the four handlers from drifting on which steps run — a filter
-  // change must refresh the trail and re-read rows the same way every time. Returns true so
-  // each handler reports it handled the key up the aggregator. Ctrl+Y toggles only the summary
-  // view (rows never re-follow a closed trail), so it passes withTrail=false.
+  /** The History pane's cycle handlers share one close: after they mutate the pane's session
+   * filter/window/scope, any open trail follows the change (a scope or filter change re-reads
+   * the new selection's newest run), the rows/cache are recomputed, and a render is requested.
+   * Folding the tail keeps the four handlers from drifting on which steps run — a filter
+   * change must refresh the trail and re-read rows the same way every time. Returns true so
+   * each handler reports it handled the key up the aggregator. Ctrl+Y toggles only the summary
+   * view (rows never re-follow a closed trail), so it passes withTrail=false. */
   const commitHistoryChange = (withTrail = true): boolean => {
-    if (withTrail && trailMode) refreshTrail();
+    if (withTrail && trail.snapshot().trailMode) trail.refreshTrail();
     recompute();
     session.requestRender();
     return true;
@@ -670,24 +326,13 @@ export function createHistoryPane(
     return commitHistoryChange(false);
   };
 
-  const historyTrailPage = (page: "up" | "down"): boolean => {
-    if (trailMode) {
-      // Within-body scroll in the run-trail view: PgDn/PgUp page the cached trail Markdown,
-      // clamped at both ends, exactly like the notes/change and usage/failures panes.
-      session.paneScroll = pageMarkdownBody(session.paneScroll, trailCache, session.eventBudget, page);
-      session.requestRender();
-      return true;
-    }
-    return false;
-  };
-
   const ctrlRoutes: Record<string, (ctx: TuiPaneCtx) => boolean> = {
-    n: historyTrailToggle,
-    l: historyNewestFailure,
-    p: historyStepBack,
-    r: historyTranscriptCycle,
-    w: historyPatchToggle,
-    v: historyRevertArm,
+    n: trail.trailToggle,
+    l: trail.newestFailure,
+    p: trail.stepBack,
+    r: trail.transcriptCycle,
+    w: trail.patchToggle,
+    v: trail.revertArm,
     g: historyScopeCycle,
     s: historyWindowCycle,
     o: historyResultCycle,
@@ -706,7 +351,7 @@ export function createHistoryPane(
     const ctrl = ctrlRoute(key, ctx);
     if (ctrl !== null) return ctrl;
     const page = pageDir(key.name);
-    if (page !== null) return historyTrailPage(page);
+    if (page !== null) return trail.page(page);
     return false;
   };
 
@@ -715,7 +360,7 @@ export function createHistoryPane(
     enter: recompute,
     reset() {
       // A cycle away leaves the run trail (which is History-only) and drops its snapshot too.
-      dropTrail();
+      trail.dropTrail();
       session.revertArmed = null;
       session.armedRevert = null;
     },
@@ -728,11 +373,24 @@ export function createHistoryPane(
         recompute();
         // The retired scope may have been feeding an on-screen trail: re-read it from the
         // team so the pane and the tab strip cannot name a role the roster no longer has.
-        if (trailMode) refreshTrail();
+        if (trail.snapshot().trailMode) trail.refreshTrail();
       }
     },
-    applySearch,
+    applySearch(pattern: string | null) {
+      // Apply a finished History search on the pane: set the grep, recompute the cached rows
+      // now (the pane is showing), and re-enter at the body's head — the leaf the search
+      // editor's Enter calls through its applyHistorySearch dep.
+      if (trail.applyTrailSearch(pattern ?? "")) {
+        // The transcript is showing: the trail narrowed its entries; the run rows stay.
+        return;
+      }
+      historyGrep = pattern;
+      if (trail.snapshot().trailMode) trail.refreshTrail();
+      session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historyModel, historySummary, historyStep);
+      session.paneScroll = 0;
+    },
     state() {
+      const snap = trail.snapshot();
       return {
         historyRole,
         historySince: historyWindow === null ? null : cycleLabel(HISTORY_WINDOWS, historyWindow),
@@ -741,12 +399,12 @@ export function createHistoryPane(
         historyGrep,
         historyModel,
         historySummary,
-        trailMode,
-        trailIndex,
-        trailCache,
-        trailTranscript,
-        trailPatch,
-        trailGrep,
+        trailMode: snap.trailMode,
+        trailIndex: snap.trailIndex,
+        trailCache: snap.trailCache,
+        trailTranscript: snap.trailTranscript,
+        trailPatch: snap.trailPatch,
+        trailGrep: snap.trailGrep,
       };
     },
   } satisfies TuiPaneModule & { applySearch(pattern: string | null): void };
