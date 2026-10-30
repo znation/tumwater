@@ -121,8 +121,8 @@ export async function identityAlive(id: ProcessIdentity): Promise<boolean> {
 export const KILL_GRACE_MS = 10_000;
 
 /** Terminate a detached child and everything it started: SIGTERM to the process group now,
- * escalating to SIGKILL after KILL_GRACE_MS if any of it is still alive. The child is spawned detached
- * (its own process group leader — runPi does this for pi), so a negative PID reaches every
+ * escalating to SIGKILL after KILL_GRACE_MS if any of it is still alive. The child is spawned
+ * detached (its own process group leader — runPi does this for pi), so a negative PID reaches every
  * tool-call grandchild — which a single-PID kill leaves orphaned to launchd — while the
  * harness's own group is never in the blast radius. Shared by the run-timeout,
  * quiet-watchdog, and harness-shutdown kills, and by the sweep every run gets once pi exits
