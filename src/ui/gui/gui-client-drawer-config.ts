@@ -193,7 +193,6 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
       if (notional !== 0) spend += " · " + fmtUsd(notional) + " notional";
       rows.push(kvRow("Spend", spend));
     }
-    // The per-role daily cap (rolePayload's dailyCap), worded like role-render.ts's Daily cap line.
     // The per-role daily cap (rolePayload's dailyCap), worded like role-render.ts's Daily cap
     // line. Shown for every non-director role — always, cap or not — because the "Set a cap"/
     // "Edit cap" control is the end of the amber role-cap alert's path: the alert's remedy
