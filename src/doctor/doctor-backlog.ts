@@ -4,7 +4,7 @@ import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
 import { shortSha } from "../text/format.js";
 import { readPostReviews, POST_REVIEW_FAILURE_LIMIT } from "../review/post-merge-review.js";
-import { humanSeconds, secondsSince, HOUR_MS, DAY_MS } from "../text/datetime.js";
+import { humanSeconds, humanSince, HOUR_MS, DAY_MS } from "../text/datetime.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventsSince } from "../events/event-window.js";
 import { finiteNumber } from "../files/json-object.js";
@@ -147,7 +147,7 @@ export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome 
     }
     return phrase ? { ...out, detail: `${out.detail} · ${phrase}` } : out;
   };
-  const stale = staleQueuedMergeRows(root, now).map((e) => ({ ...e, age: humanSeconds(secondsSince(now - e.waitedMs, now)) }));
+  const stale = staleQueuedMergeRows(root, now).map((e) => ({ ...e, age: humanSince(now - e.waitedMs, now) }));
   const [first, ...rest] = stale;
   if (!first)
     return withWait(okOutcome(`no merge-queue entry has waited more than ${humanSeconds(MERGE_QUEUE_STALE_MS / 1000)} to start`));
@@ -291,7 +291,7 @@ export function checkStalePrompts(root: string, now: number): CheckOutcome {
   const [first, ...rest] = stale;
   if (!first) return okOutcome("no queued prompt has waited more than 1 day for a role to dequeue it");
   const more = andMore(rest, (p) => `${p.role} #${p.position}`);
-  return warnOutcome(`inbox prompt for ${roleLabel(first.role)} #${first.position} has waited ${humanSeconds(secondsSince(first.queuedAtMs, now))} — ` +
+  return warnOutcome(`inbox prompt for ${roleLabel(first.role)} #${first.position} has waited ${humanSince(first.queuedAtMs, now)} — ` +
     "the role is not dequeuing it (paused, disabled, or failing); resume or enable it, or drop the prompt with " +
     `\`tumwater prompt --cancel ${first.position} --role ${first.role}\`${more}`);
 }

@@ -184,15 +184,24 @@ export function humanUntil(atMs: number, now: number): string {
   return humanSeconds(secondsUntil(atMs, now));
 }
 
-/** `humanUntil`'s past-direction twin: how long since an epoch-ms instant, as `NS ago` —
- * the past-direction phrase five renderers each built as `{humanSeconds(secondsSince(...))} ago`
+/** Human duration since a past epoch-ms instant, as a bare span — "how long ago" without
+ * the ` ago` wording: the `humanUntil` past-direction twin, collapsing the four sites that
+ * spelled the two-step `humanSeconds(secondsSince(...))` composition out (merge-queue-render.ts's
+ * merge and stage elapseds and doctor-backlog.ts's stale-queue and inbox-prompt waits), so the
+ * s/m/h/d bucketing cannot drift per consumer. Lives here beside the other time phrasing. */
+export function humanSince(sinceMs: number, now: number): string {
+  return humanSeconds(secondsSince(sinceMs, now));
+}
+
+/** `humanSince`'s past-direction phrase with the ` ago` suffix: how long since an epoch-ms
+ * instant, as `NS ago` — the phrase five renderers each built as `{humanSeconds(secondsSince(...))} ago`
  * (status-render.ts's ago against the real clock, role-render.ts's last-run and
  * merge-queue-render.ts's enqueue ages, inbox.ts's queued-age suffix, and doctor-notify.ts's
  * latest-failed-page age, which had inlined the clamp itself), so the clamp, the rounding,
  * and the " ago" wording cannot drift per consumer. Lives here beside the other time
  * phrasing so core modules (which may not import src/ui) share the same form. */
 export function humanAgo(sinceMs: number, now: number): string {
-  return `${humanSeconds(secondsSince(sinceMs, now))} ago`;
+  return `${humanSince(sinceMs, now)} ago`;
 }
 
 /** A compact age clamped at zero and floored to whole units — `12m`, `4h`, `6d` — the bare

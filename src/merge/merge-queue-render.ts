@@ -4,7 +4,7 @@
  * collected view and a `now` instant — no I/O, no clock reads — so the age it prints can be
  * pinned by a test. */
 
-import { humanAgo, humanSeconds, secondsSince, secondsUntil } from "../text/datetime.js";
+import { humanAgo, humanSeconds, humanSince, secondsUntil } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
 import { filterKeepPositions } from "../collections.js";
@@ -23,9 +23,9 @@ export function queueEntryMergeLabel(sha: string, inFlight: MergeInFlight | unde
   if (!change || change.status === "done") return "";
   if (change.status === "approved") return "approved, waiting to merge";
   let label = "merging";
-  if (change.startedAt) label += ` ${humanSeconds(secondsSince(change.startedAt, now))}`;
+  if (change.startedAt) label += ` ${humanSince(change.startedAt, now)}`;
   if (change.stage) label += ` · ${MERGE_STAGE_LABELS[change.stage]}`;
-  if (change.stageSince !== undefined) label += ` ${humanSeconds(secondsSince(change.stageSince, now))}`;
+  if (change.stageSince !== undefined) label += ` ${humanSince(change.stageSince, now)}`;
   return label;
 }
 

@@ -1684,10 +1684,10 @@ zero-pads to two digits and leaves longer numbers alone".
 ### INV-Z4: an age or a countdown is whole seconds and never negative
 
 **Guarantee.** `secondsSince` and `secondsUntil` round to whole seconds and clamp at zero. A future
-instant reads 0 ago, and a passed deadline reads 0 until. `humanUntil` and `humanAgo` are
-`humanSeconds` over them, with `humanAgo` adding ` ago`.
+instant reads 0 ago, and a passed deadline reads 0 until. `humanUntil` and `humanSince` are
+`humanSeconds` over them, with `humanAgo` adding ` ago` to `humanSince`.
 
-**Binds.** `src/text/datetime.ts` (`secondsSince`, `secondsUntil`, `humanUntil`, `humanAgo`).
+**Binds.** `src/text/datetime.ts` (`secondsSince`, `secondsUntil`, `humanUntil`, `humanSince`, `humanAgo`).
 
 **Pinned by.** `test/datetime.test.ts` — "humanUntil renders how-long-until an instant in one call"
 and "secondsSince and secondsUntil round to whole seconds and never go negative, and humanAgo reads
