@@ -11,6 +11,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Previously held 2**
 
+**Needs review 2026-10-29 by feature: too large for one run**
+
 **Goal.** With the watch verifying every new tip, the checks that stood in front of a landing are redundant. Delete the merge slot's in-lock build re-check and the batch check with its largest-passing-prefix bisect, so a merge is: rebase onto the tip, take the fast-forward under the merge lock. A broken commit then sits on main between its landing and the watch's fix, which is the `ci` healer's job.
 
 **Approach.**
