@@ -226,8 +226,8 @@ export function checkErrorStreaks(root: string, config: TumwaterConfig | undefin
 }
 
 /** The `main red` check: the row lists the runs the merge-side `main_red` pin ended — a red
- * main is still recorded as the `main_red` outcome that ended those runs until parts 3d/3–3f/3
- * land — and warns when main has been red over RED_MAIN_WARN_MS even with no role held (the
+ * main is still recorded as the `main_red` outcome that ended those runs until part 3f/3
+ * lands — and warns when main has been red over RED_MAIN_WARN_MS even with no role held (the
  * guardrail, G1). Read-only: it asks heldByMainRed, the predicate the status phase's `main red`
  * label reads, so the two cannot disagree on the held runs, and redMainWarning over the event
  * trail, so both phrases can appear in one row. A warn, not a fail: a red main does not stop

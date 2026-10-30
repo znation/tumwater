@@ -110,8 +110,8 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
     },
   },
   {
-    // A retired role id on an old line reads as the role's current id. The table is empty
-    // until a switch part adds a row, so this changes nothing yet.
+    // A retired role id on an old line reads as the role's current id. The table grows a row
+    // per retired role as future switch parts rename; a row already present applies here.
     name: "legacy-role-ids",
     apply(ev) {
       const e = ev as Record<string, unknown>;
