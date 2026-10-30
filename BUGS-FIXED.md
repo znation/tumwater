@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `every comment line in src/ and test/ fits in 100 columns and opens no block inside a block` failed, then passed on the same tree (quarantined by tumwater 2026-10-30) — fixed 2026-10-30 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ every comment line in src/ and test/ fits in 100 columns and opens no block inside a block (57.342667ms)
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+- []
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-7/dist/test/comment-width.test.js:57:12)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: true,
+code: 'ERR_ASSERTION',
+actual: [ '/Users/zach/tumwater/.tumwater/worktrees/_slot-7/src/ui/tui/tui-backlog.ts:164 (cols)' ],
+expected: [],
+operator: 'deepStrictEqual',
+diff: 'simple'
+}
+~~~~
+
+**Validation gap:** none — the existing comment-width test reproduces the failure deterministically: it reported `tui-backlog.ts:164 (cols)`, a 104-column comment; rewrapping it fixes the check.
+
 ### The orphan check counts a live run's own backgrounded command as an orphan, and the automatic reaper kills it mid-run: ci run 62's `npm test` was reaped 18 minutes into the run (found by operator session 2026-10-30 from the dashboard's orphans alert) — fixed 2026-10-30 by the bugfix role
 
 - **Symptom:** late on 2026-10-29 the dashboard raised `1 orphaned process are burning CPU (PPID 1)` for `pid 88886 (age 05:05, cpu 0:00.00, +8 descendants) /bin/bash -c cd .tumwater/worktrees/_slot-9 && SCR=$(mktemp -d) && echo "$SCR"…`. That pid was not a leak. It was coverage run 858 (23:37:38 to 00:06:24), which ran `cd …/_slot-9 && SCR=$(mktemp -d) && echo "$SCR" && (npm run test:coverage > "$SCR/coverage.log" 2>&1; echo "DONE rc=$?" >> "$SCR/coverage.log") & echo "started $!"`, got back `started 88886` and was polling the log. The job ended on its own before the reaper reached it. ci run 62 was not so lucky. It ran from 17:51:25 to 18:33:06 on 2026-10-29 and started a backgrounded `npm test` in `_slot-7` as pid 99726. At 18:09:02 the orchestrator logged `reaped 1 orphaned process: pid 99726 (+7 descendants) /bin/bash -c cd .tumwater/worktrees/_slot-7 && SCRATCH=$(cat /tmp/ci-scratch-7.…`, with the run still live. The run ended `aborted`; whether the reap caused that is not established. The reaper logged 6 reaps between 2026-10-28 20:00 and 2026-10-29 18:09. Four of the other five were also `/bin/bash -c cd .tumwater/worktrees/_slot-N && …` tool commands, with +5 to +7 descendants; three of those began `SCRATCH=`. Their transcripts have rotated out, so whether those runs were live is unknown.

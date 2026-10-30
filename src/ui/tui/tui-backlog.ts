@@ -161,10 +161,10 @@ export function visibleBacklogIndexes(
 /** Clamp a list selection to the last item when it is stale (the list shrank between
  * renders), or to null when there is no selection or the list is empty — the guarded
  * `… === null || xs.length === 0 ? null : Math.min(sel, xs.length - 1)` form the main
- * pane's backlog and queued arms (tui-pane.ts), the queued pane's refresh (tui-pane-queued.ts), and the
- * backlog pane's page arm (tui-pane-backlog.ts) all spell by hand, so a stale selection can
- * never land past the new end or on an emptied list in any of them. Pure, so it is
- * unit-testable without a TTY. */
+ * pane's backlog and queued arms (tui-pane.ts), the queued pane's refresh
+ * (tui-pane-queued.ts), and the backlog pane's page arm (tui-pane-backlog.ts) all spell by
+ * hand, so a stale selection can never land past the new end or on an emptied list in any
+ * of them. Pure, so it is unit-testable without a TTY. */
 export function clampSelection(selected: number | null, length: number): number | null {
   if (selected === null || length === 0) return null;
   return Math.min(selected, length - 1);
