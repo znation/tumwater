@@ -147,6 +147,15 @@ interface WaitContention {
   detail: string;
 }
 
+/** The leading wait-summary clause every `*_wait` contention row shares — the wait count, the
+ * total and the longest span over the trailing day. Only the verb naming the waited-for thing
+ * differs between the three rows ("to start", "for a provider slot", "for a check slot"), so
+ * this single home keeps the shared wording — the same `plural("wait")`/`shortSpanPhrase`
+ * bucketing — from drifting between them. Each row appends its own bucket/knob tail after it. */
+function waitDetail(count: number, verb: string, totalMs: number, longestMs: number): string {
+  return `${plural(count, "wait")} ${verb} in the last 24h, ${shortSpanPhrase(totalMs)} total, longest ${shortSpanPhrase(longestMs)}`;
+}
+
 /** The `slot_wait` half of checkWorktreePool's rule: whether the window's waits cross
  * SLOT_WAIT_WARN_TOTAL_MS and the pool row's exact detail clause — the wait count, total and
  * longest spans (naming the role and whether it was a check or a run), and, on a warn, the
@@ -156,9 +165,7 @@ function slotWaitContention(waits: readonly HarnessEvent[], slotCount: number): 
   const { count, totalMs, longestMs, longest } = sumWaits(waits);
   const contended = totalMs >= SLOT_WAIT_WARN_TOTAL_MS;
   const purpose = longest.purpose === "verify" ? "check" : "run";
-  const detail = `${plural(count, "wait")} to start in the last 24h, ${shortSpanPhrase(totalMs)} total, longest ${shortSpanPhrase(
-    longestMs,
-  )} (${textOr(longest.role)} ${purpose})${contended ? ` — raise worktreeSlots above ${slotCount}` : ""}`;
+  const detail = `${waitDetail(count, "to start", totalMs, longestMs)} (${textOr(longest.role)} ${purpose})${contended ? ` — raise worktreeSlots above ${slotCount}` : ""}`;
   return { warn: contended, detail };
 }
 
@@ -189,7 +196,7 @@ function providerWaitContention(waits: readonly HarnessEvent[], config: Tumwater
     ranked.length === 1
       ? `(${bucketLabel(ranked[0]!.key)})`
       : `(${cells[0]}, also ${cells.slice(1).join(", ")})`;
-  let detail = `${plural(count, "wait")} for a provider slot in the last 24h, ${shortSpanPhrase(totalMs)} total, longest ${shortSpanPhrase(longestMs)} ${parenthetical}`;
+  let detail = `${waitDetail(count, "for a provider slot", totalMs, longestMs)} ${parenthetical}`;
   const contended = totalMs >= PROVIDER_WAIT_WARN_TOTAL_MS;
   // The one configurable bound is the team total, so a warn names `maxConcurrent` to raise —
   // but only for a team-cap wait, the only kind that bound can affect (a keyed-only wait from
@@ -219,7 +226,7 @@ function checkWaitContention(
       perKind.set(kind, (perKind.get(kind) ?? 0) + waited);
     }
   }
-  let detail = `${plural(count, "wait")} for a check slot in the last 24h, ${shortSpanPhrase(totalMs)} total, longest ${shortSpanPhrase(longestMs)}`;
+  let detail = waitDetail(count, "for a check slot", totalMs, longestMs);
   if (perKind.size > 0) {
     const ranked = rankCountEntries(perKind);
     detail += ` (behind ${ranked.map(([kind, ms]) => `${kind} ${shortSpanPhrase(ms)}`).join(", ")})`;
