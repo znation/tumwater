@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   EXAMPLE_MAX,
   RUN_TIMEOUT_KEY,
-  RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY,
   clusterMessages,
   normalizeClusterKey,
   poolTimeoutKey,
@@ -117,16 +116,6 @@ test("poolTimeoutKey pools the progressing-timeout variant into the plain key", 
   );
   assert.notEqual(reviewProgressing, plain);
   assert.equal(poolTimeoutKey(reviewProgressing), RUN_TIMEOUT_KEY);
-  // The resumed review's wording is its own cause: the next
-  // attempt continues the timed-out session rather than re-reviewing from scratch, so it keeps
-  // a row distinct from both the from-scratch review timeout and the plain run timeout.
-  const reviewResumed = normalizeClusterKey(
-    "timed out after 900s while still making progress — the commit is kept; the next attempt continues this review",
-  );
-  assert.equal(reviewResumed, RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY);
-  assert.notEqual(reviewResumed, reviewProgressing);
-  assert.notEqual(reviewResumed, plain);
-  assert.equal(poolTimeoutKey(reviewResumed), RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY);
   assert.equal(poolTimeoutKey("some other cause"), "some other cause");
 });
 
@@ -195,18 +184,17 @@ test("clusterMessages pools both run-timeout shapes into one cluster", () => {
   assert.match(pooled.example, /^timed out after 900s/);
 });
 
-test("clusterMessages keeps a resumed review's timeout separate from a from-scratch re-review", () => {
+test("clusterMessages pools the review run's reworded from-scratch timeout into the plain row", () => {
   const { clusters, hiddenClusters } = clusterMessages(
     [
       {
         message:
-          "timed out after 900s while still making progress — the commit is kept; the next attempt continues this review",
+          "timed out after 900s while still making progress — the commit is kept; the next attempt reviews it from scratch",
         role: "feature",
         ts: 1,
       },
       {
-        message:
-          "timed out after 900s while still making progress — the commit is kept; the next attempt reviews it from scratch",
+        message: "timed out after 900s",
         role: "bugfix",
         ts: 2,
       },
@@ -214,13 +202,10 @@ test("clusterMessages keeps a resumed review's timeout separate from a from-scra
     10,
   );
   assert.equal(hiddenClusters, 0);
-  assert.equal(clusters.length, 2);
-  // The from-scratch wording still clusters where it always did — the pooled plain run-timeout
-  // row; the resumed wording stands as its own cause.
-  assert.deepEqual(
-    clusters.map((c) => c.key).sort(),
-    [RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY, RUN_TIMEOUT_KEY].sort(),
-  );
+  assert.equal(clusters.length, 1);
+  // The review from-scratch wording clusters into the pooled plain run-timeout row: one cause,
+  // one knob.
+  assert.deepEqual(clusters.map((c) => c.key), [RUN_TIMEOUT_KEY]);
 });
 
 test("clusterMessages keys a keyPrefix separately from the bare message", () => {

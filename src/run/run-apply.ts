@@ -179,9 +179,6 @@ export function applyRunOutcome(
     // applyMergeOutcome increments it when the change actually merges. The phase-clear above
     // (`result !== "aborted"`) covers both.
     if (outcome.result === "changed") s.commits += 1;
-    // A merged change's patch-id approval has done its job: the same patch authored again
-    // later (after a revert, say) is a new change and gets its own review.
-    if (outcome.result === "changed") s.approvedPatchIds = undefined;
     // The role committed new work, so the note about its discarded change has been delivered.
     s.conflictDiscard = undefined;
     s.backoffSeconds = 0;
@@ -321,7 +318,6 @@ export function applyMergeOutcome(
     // merge, like a no_change run, leaves the prior value standing (PLANS.md "Each loop's
     // last-landed age").
     s.lastMergedAt = Date.now();
-    s.approvedPatchIds = undefined; // see applyRunOutcome
     // A merge supersedes a stale rejection: a model-reviewed merge has already overwritten
     // lastReview with its approve, but a review-exempt (or review-disabled) merge records no
     // verdict, so a stale reject would otherwise ride every later run prompt (BUGS.md
@@ -350,7 +346,6 @@ export function applyMergeOutcome(
     // (src/team/team-polls.ts) already read. No new machinery, no new constants: the warn
     // bar and the breaker bar are ERROR_STREAK_WARN and ERROR_STREAK_BREAKER themselves.
     if (s.revision === undefined) {
-      s.approvedPatchIds = undefined; // the chain ended: nothing queued is still approved
       s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
       const lastReasons = s.lastReview?.verdict === "reject" || s.lastReview?.verdict === "reverted" ? s.lastReview.reasons : undefined;
       s.lastError = `review rejected: ${firstReason(lastReasons).slice(0, 200)}`;

@@ -12,15 +12,6 @@ import { tryOrWarn } from "../events/events.js";
  * backoff.ts; the generic file helpers are src/files/files.ts and the JSON convention itself is
  * src/files/json-files.ts. */
 
-/** How many times a progressing-timeout review may be resumed before the next attempt
- * reviews the change from scratch (RunnerState.reviewResume). The budget bounds a reviewer that
- * keeps timing out mid-progress, so a wedged review converges to a fresh run instead of
- * resuming the same session forever. */
-export const REVIEW_RESUME_LIMIT = 2;
-
-/** Approved patch-ids a runner remembers (RunnerState.approvedPatchIds). */
-export const APPROVED_PATCH_IDS_MAX = 8;
-
 /** Persisted per-runner state in .tumwater/state/<role>.json. */
 export interface RunnerState {
   role: string;
@@ -168,22 +159,10 @@ export interface RunnerState {
   /** Branch HEAD that passed review most recently. Leftover commits at exactly this HEAD
    * merge without re-review (a merge_blocked retry must not burn another review run). */
   lastApprovedHead?: string;
-  /** git/git.ts patchIds (the change's own lines, no context) of the diffs the reviewer approved,
-   * oldest first, at most APPROVED_PATCH_IDS_MAX. A head carrying any of them (a rebase onto a
-   * moved main, a requeue, a restart) reuses the approval: no second model review, though the
-   * gate's build pre-check still runs. Cleared when the change merges or is finally rejected. */
-  approvedPatchIds?: string[];
   /** Consecutive failed reviews of the SAME branch HEAD (reset when the reviewed HEAD
    * changes or a review succeeds). Past the limit the leftover is discarded with a warning,
    * so a misconfigured reviewer cannot wedge a runner re-reviewing one commit forever. */
   unreviewFailures?: number;
-  /** The reviewer session a progressing-timeout review left for the next attempt: the
-   * patch-id it was judging (only the same diff may resume), the per-run session directory to
-   * `--continue` in, how many resumes have already been attempted, and when the marker was
-   * written. Set when a review run hits its time budget while still making progress; cleared
-   * by any verdict, any other failure, a discard, or a merge. Absent for a runner with no
-   * timed-out review, so existing state files read unchanged. */
-  reviewResume?: { patchId: string; sessionDir: string; attempts: number; at: number };
   /** Consecutive merges of the SAME pinned sha that ended `merge_conflict` — each one a failed
    * conflict-resolution run. Keyed by sha: a pin that rebased cleanly onto a moved main is a new
    * attempt and starts fresh. At MERGE_CONFLICT_LIMIT leftover recovery stops re-queuing: it

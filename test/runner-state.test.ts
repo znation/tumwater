@@ -351,19 +351,6 @@ test("loadRunnerState drops a nested record that is not a plain object, keeping 
   assert.equal(s.claim?.key, "k");
 });
 
-test("approvedPatchIds survive a save and load; an older single id folds in; junk entries drop", () => {
-  const dir = tmpdir();
-  const file = statePath(dir, "approved");
-  ensureParentDir(file);
-  fs.writeFileSync(file, JSON.stringify({ role: "approved", approvedPatchIds: ["a", 3, "b"] }));
-  assert.deepEqual(loadRunnerState(dir, "approved").approvedPatchIds, ["a", "b"]);
-  fs.writeFileSync(file, JSON.stringify({ role: "approved", lastApprovedPatchId: "old" }));
-  const s = loadRunnerState(dir, "approved");
-  assert.deepEqual(s.approvedPatchIds, ["old"]);
-  assert.equal("lastApprovedPatchId" in s, false);
-  assert.equal(loadRunnerState(dir, "fresh").approvedPatchIds, undefined);
-});
-
 test("loadRunnerState drops a mainRedRetry with a foreign-typed waitingSince", () => {
   const dir = tmpdir();
   const file = statePath(dir, "parked");
@@ -374,37 +361,6 @@ test("loadRunnerState drops a mainRedRetry with a foreign-typed waitingSince", (
 
   fs.writeFileSync(file, JSON.stringify({ role: "parked", mainRedRetry: { ...retry, waitingSince: 9 } }));
   assert.equal(loadRunnerState(dir, "parked").mainRedRetry?.waitingSince, 9);
-});
-
-test("loadRunnerState heals and validates the reviewResume marker", () => {
-  const dir = tmpdir();
-  const file = statePath(dir, "resume");
-  ensureParentDir(file);
-  // The two strings key the marker to a session to resume; without both it names nothing, so a
-  // malformed marker is dropped rather than left to throw in sessionResumable.
-  fs.writeFileSync(
-    file,
-    JSON.stringify({
-      role: "resume",
-      reviewResume: { patchId: 7, sessionDir: ["x"], attempts: 1, at: 2 },
-    }),
-  );
-  assert.equal(loadRunnerState(dir, "resume").reviewResume, undefined);
-
-  // A well-formed marker keeps its patch-id and session dir, and its numeric fields heal like
-  // every other persisted count/stamp.
-  fs.writeFileSync(
-    file,
-    JSON.stringify({
-      role: "resume",
-      reviewResume: { patchId: "p", sessionDir: "d", attempts: "2", at: null },
-    }),
-  );
-  const s = loadRunnerState(dir, "resume");
-  assert.equal(s.reviewResume?.patchId, "p");
-  assert.equal(s.reviewResume?.sessionDir, "d");
-  assert.equal(s.reviewResume?.attempts, 0);
-  assert.equal(s.reviewResume?.at, 0);
 });
 
 test("loadRunnerState recovers from torn or non-object JSON", () => {

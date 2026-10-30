@@ -293,23 +293,6 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
   );
   assert.match(startRevision, /reviewing 01234567 \(revision 2\) before merge$/);
 
-  // A resumed review continues a timed-out reviewer's
-  // session; the flag switches the verb so the feed reads it as a resume, not a fresh run.
-  // The revision and model suffixes append exactly as they do on a from-scratch review.
-  const startResumed = formatEvent(
-    { ts: 0, source: "feature", type: "review_start", head, resumed: true } as never,
-  );
-  assert.match(startResumed, /review resumed 01234567 before merge$/);
-  const startResumedRevision = formatEvent(
-    { ts: 0, source: "feature", type: "review_start", head, resumed: true, revision: 3 } as never,
-  );
-  assert.match(startResumedRevision, /review resumed 01234567 \(revision 3\) before merge$/);
-  // An explicit false — or an absent flag — still reads as a fresh review.
-  const startNotResumed = formatEvent(
-    { ts: 0, source: "feature", type: "review_start", head, resumed: false } as never,
-  );
-  assert.match(startNotResumed, /reviewing 01234567 before merge$/);
-
   // Approvals carry reason = verdict.reasons[0], which is undefined when the reviewer gave
   // none: the suffix must vanish, not print "— undefined".
   const bareApproval = formatEvent({ ts: 0, source: "feature", type: "review_verdict", head } as never);
@@ -369,10 +352,6 @@ test("formatEvent names the after-merge tier on the review lines", () => {
   // non-boolean field never fabricates the tier.
   const start = formatEvent({ ts: 0, source: "feature", type: "review_start", head, afterMerge: true } as never);
   assert.match(start, /feature\s+reviewing 01234567 after merge$/);
-  const startResumed = formatEvent(
-    { ts: 0, source: "feature", type: "review_start", head, afterMerge: true, resumed: true } as never,
-  );
-  assert.match(startResumed, /review resumed 01234567 after merge$/);
 
   const approval = formatEvent(
     { ts: 0, source: "feature", type: "review_verdict", head, afterMerge: true, reason: "ok" } as never,

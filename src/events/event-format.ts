@@ -346,15 +346,12 @@ function afterMergeSuffix(e: HarnessEvent): string {
 function reviewEventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "review_start": {
-      // A resumed review continues a timed-out reviewer's session (PLANS.md, review-retry part
-      // 3/3). The verb names that, because a bare "reviewing" line reads as a from-scratch run;
-      // the revision and model suffixes are unchanged and independent of the flag.
       // afterMerge is the tier flag reviewMergedCommit writes for a post-merge review; the
       // lineage pins review_start/review_verdict/review_rejected to the same discriminator.
       const tier = e.afterMerge === true ? " after merge" : " before merge";
       const revision = e.revision !== undefined ? ` (revision ${textOr(e.revision)})` : "";
       const model = e.model !== undefined ? ` on ${textOr(e.model)}` : "";
-      return `${e.resumed ? "review resumed" : "reviewing"} ${shortSha(e.head)}${revision}${tier}${model}`;
+      return `reviewing ${shortSha(e.head)}${revision}${tier}${model}`;
     }
     case "review_verdict":
       return `review approved ${shortSha(e.head)}${afterMergeSuffix(e)}${e.reason ? ` — ${textOr(e.reason)}` : ""}${elapsed(e.durationMs)}`;

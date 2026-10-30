@@ -92,29 +92,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The before/after row and key counts, and the deletions' measurement premise, are in the part's PLANS-DONE entry.
 - `npm run test:gate` passes.
 
-### Every commit is verified on main, part 4i/3: the pre-merge reviewer's resume state and its event vocabulary are deleted (planned 2026-10-29 by the plan role, split from the too-large part 3e/3; part 4h/3, which deleted the modules that read and produce the resume marker, has landed; touches src/runner/runner-state.ts src/runner/runner-state-load.ts src/review/review.ts src/run/run-apply.ts src/failure/failure-cluster.ts src/events/events.ts src/events/event-format.ts test/runner-state.test.ts test/run-apply.test.ts test/failure-cluster.test.ts test/event-format.test.ts)
-
-**Goal.** After part 4h/3 nothing reads `RunnerState.reviewResume` or `approvedPatchIds`, nothing produces the `review_start` `resumed` flag, and no run reports the "continues this review" timeout wording. Delete the resume state and the vocabulary built on it.
-
-**Approach.**
-- `src/runner/runner-state.ts`: remove `reviewResume`, `REVIEW_RESUME_LIMIT`, `approvedPatchIds` and `APPROVED_PATCH_IDS_MAX` with their doc comments; keep `lastApprovedHead`, which `review.ts`'s deterministic same-head dedupe still reads.
-- `src/runner/runner-state-load.ts`: remove the `approvedPatchIds`/legacy `lastApprovedPatchId` healing block and the `reviewResume` healing block, dropping the imports they leave unused.
-- `src/review/review.ts`: remove the now-dead `state.reviewResume = undefined;` writes.
-- `src/run/run-apply.ts`: remove the `approvedPatchIds = undefined` writes and their comments.
-- `src/failure/failure-cluster.ts`: remove `RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY`, its `TIMEOUT_POOL` entry and the comment block; `review-run.ts` was its only producer.
-- `src/events/event-format.ts`: `reviewEventMessage`'s `review_start` arm always renders "reviewing" (the `e.resumed` ternary goes); `src/events/events.ts`: drop the `resumed true when …` clause from the `review_start` comment.
-- Drop the resume-state, patch-id and resumed-flag cases from `test/runner-state.test.ts`, `test/run-apply.test.ts`, `test/failure-cluster.test.ts` and `test/event-format.test.ts`.
-
-**Acceptance criteria.**
-- `grep -rnE "reviewResume|REVIEW_RESUME_LIMIT|APPROVED_PATCH_IDS_MAX|RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY|approvedPatchIds" src/ test/` prints nothing.
-- A `review_start` event has no `resumed` flag and its message always reads `reviewing <sha>`.
-- `lastApprovedHead` and the deterministic same-head dedupe are untouched.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/runner-state.test.ts: the `approvedPatchIds` load case and the `reviewResume` heal/validate case go; the surviving heal cases stay green.
-- test/event-format.test.ts: the `review_start` `resumed` cases go; the `afterMerge` and `revision` cases stay.
-
 ### `onArrow`'s 22-term held-editor guard is replaced by the shared `anyEditorHeld()` predicate, so the prompt-history recall guard can never omit an editor the way its flat flag list already omits `rolePromptFor`, `queued`, `answer` and `entry` (planned 2026-10-29 by the plan role; continues the landed one-registry conversion family — `session.anyEditorHeld(...)` and `HOLDER_SUBJECTS` in `src/ui/tui/tui-editor-session.ts` are the single held-editor registry every other prompt-line guard already reads, and the flat list here is a hand-copied second copy; independent in file of every `## Planned` entry — before this entry `grep -c 'tui-editors' PLANS.md`, `grep -c 'anyEditorHeld' PLANS.md` and `grep -c 'tui-editor-session' PLANS.md` all print 0, so no heading or touches list in `PLANS.md` names `src/ui/tui/tui-editors.ts` or the symbol (the blocked `Every commit is verified on main` parts edit src/review, src/orchestrator, src/runner, src/merge, src/baseline, src/status, src/doctor, src/config, src/cli, src/roles, src/ui/status-model.ts, src/gui, src/events, src/failure, src/run, src/prompt and src/request-timeouts.ts; the blocked `Subtract` parts edit src/merge, src/orchestrator, src/config, src/roles, src/doctor, src/budget, src/gates, src/events, src/failure, src/team and docs, never `src/ui/tui/tui-editors.ts`; the in-flight `Every commit is verified on main` parts 4h/3 and 4i/3 take `src/review/review-run.ts`, `src/runner/runner-state.ts` and their siblings, and Option-2 isolation part 1/2 takes `test/helpers/wait.ts`); no finished plan replaces this guard — the three `PLANS-DONE.md` headings naming `onArrow` are the model, fallback and provider-caps editor plans, each extending the flat flag list with its own flag, the drift this plan ends; `docs/invariants.md` names no symbol or path of either file (`grep -cE 'tui-editors|anyEditorHeld' docs/invariants.md` prints 0), so it stays unchanged; touches src/ui/tui/tui-editors.ts test/tui-keys.test.ts)
 
 **Goal.** `onArrow` (an arrow in `src/ui/tui/tui-editors.ts`, which the eslint one-shot reports at complexity 25) decides whether Up/Down recall a submitted prompt from history or fall through to `applyKey` by hand-writing a 22-term `!session.held.a && !session.held.b && …` conjunction. That conjunction is exactly `HOLDER_SUBJECTS` (20 flags) plus `pause` and `search`, so it silently omits `rolePromptFor`, `queued`, `answer` and `entry`: a new held flag must be added to the list by hand, and the four already-omitted ones leave a held editor unprotected wherever no pane consumes the arrow first (e.g. the role-prompt editor on a transcript view: `routeArrow` consults only the backlog, Pending and queued panes, so Up recalls a prompt over the role field). The fix is to read the one registry: recall only when no editor is held.

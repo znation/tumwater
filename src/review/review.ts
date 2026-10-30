@@ -183,7 +183,6 @@ async function reviewAttempt(
 ): Promise<GateResult> {
   const { root, role, wt, mainBranch, config } = ctx;
   if (!config.review.enabled) {
-    state.reviewResume = undefined;
     return { decision: "exempt" };
   }
 
@@ -195,7 +194,6 @@ async function reviewAttempt(
   // either way), discard the branch by resetting it to main, and log review_rejected.
   const reject = async (reasons: string[], durationMs?: number): Promise<GateResult> => {
     recordReview(state, "reject", reasons, head);
-    state.reviewResume = undefined;
     state.unreviewFailures = 0;
     await resetWorktreeToMain(wt, mainBranch);
     logEventBestEffort(root, {
@@ -210,7 +208,6 @@ async function reviewAttempt(
 
   // Already reviewed this exact HEAD (e.g. a merge_blocked retry): do not burn another run.
   if (state.lastApprovedHead === head) {
-    state.reviewResume = undefined;
     return { decision: "approved" };
   }
 
@@ -231,7 +228,6 @@ async function reviewAttempt(
   const [firstFinding] = await diffRuleReasons(wt, baseRev, files, role, exempt, "gate");
   if (firstFinding !== undefined) return reject([firstFinding]);
   if (exempt) {
-    state.reviewResume = undefined;
     return { decision: "exempt" };
   }
 
@@ -247,14 +243,12 @@ async function reviewAttempt(
   if (!retry.pre) {
     const pre = await gateBuildPrecheck(ctx, state, head, reject);
     if (pre.resolved) {
-      state.reviewResume = undefined;
       return pre.resolved;
     }
     retry.pre = { verifiedHead: pre.verifiedHead, knownMainFailures: pre.knownMainFailures };
   }
   // A passing pre-check approves: the gate runs no model reviewer, and every merge is judged
   // once, after it lands, by the post-landing review (part 3g/3, reviewMergedCommit).
-  state.reviewResume = undefined;
   state.lastApprovedHead = head;
   return { decision: "approved", verifiedHead: retry.pre.verifiedHead };
 }

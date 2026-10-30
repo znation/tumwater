@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { RunnerState } from "./runner-state.js";
-import { APPROVED_PATCH_IDS_MAX, freshRunnerState, SKIP_REASONS } from "./runner-state.js";
+import { freshRunnerState, SKIP_REASONS } from "./runner-state.js";
 import path from "node:path";
 import { dirEntryNames } from "../files/files.js";
 import { readJsonFile } from "../files/json-files.js";
@@ -128,23 +128,6 @@ export function loadRunnerState(root: string, role: string): RunnerState {
   healOptionalNumber(s, "unreviewFailures");
   healOptionalNumber(s, "parkedSince");
   if (s.skipReason !== undefined && !SKIP_REASONS.includes(s.skipReason)) delete s.skipReason;
-  // The one-id field an older state file carries folds into the list.
-  const legacy = (saved as { lastApprovedPatchId?: unknown } | null)?.lastApprovedPatchId;
-  delete (s as { lastApprovedPatchId?: unknown }).lastApprovedPatchId;
-  if (s.approvedPatchIds !== undefined || typeof legacy === "string") {
-    const ids = [...(Array.isArray(s.approvedPatchIds) ? s.approvedPatchIds : []), ...(typeof legacy === "string" ? [legacy] : [])];
-    s.approvedPatchIds = ids.filter((id): id is string => typeof id === "string").slice(-APPROVED_PATCH_IDS_MAX);
-  }
-  if (s.reviewResume !== undefined) {
-    const r = healRecord(s.reviewResume, (v) => {
-      v.attempts = healNumber(v.attempts, 0);
-      v.at = healNumber(v.at, 0);
-    });
-    // A marker without the two strings it keys on names no session to resume, so a malformed
-    // one is dropped here rather than left to throw in sessionResumable.
-    s.reviewResume =
-      r && typeof r.patchId === "string" && typeof r.sessionDir === "string" ? r : undefined;
-  }
   // The nested scheduling records carry the same numeric class — epoch-ms stamps, recovery
   // counts, and retry/review counts — and are read by comparison or arithmetic
   // (`ctx.now - claim.at > CLAIM_IDLE_MAX_MS`, `prior.count + 1`, `attempts + 1`), so a

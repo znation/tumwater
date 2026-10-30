@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 4i/3: the pre-merge reviewer's resume state and its event vocabulary are deleted (planned 2026-10-29 by the plan role, split from the too-large part 3e/3; part 4h/3, which deleted the modules that read and produce the resume marker, has landed; touches src/runner/runner-state.ts src/runner/runner-state-load.ts src/review/review.ts src/run/run-apply.ts src/failure/failure-cluster.ts src/events/events.ts src/events/event-format.ts test/runner-state.test.ts test/run-apply.test.ts test/failure-cluster.test.ts test/event-format.test.ts) — done 2026-10-29 by the feature role
+
+**Goal.** After part 4h/3 nothing reads `RunnerState.reviewResume` or `approvedPatchIds`, nothing produces the `review_start` `resumed` flag, and no run reports the "continues this review" timeout wording. Delete the resume state and the vocabulary built on it.
+
+**Approach.**
+- `src/runner/runner-state.ts`: remove `reviewResume`, `REVIEW_RESUME_LIMIT`, `approvedPatchIds` and `APPROVED_PATCH_IDS_MAX` with their doc comments; keep `lastApprovedHead`, which `review.ts`'s deterministic same-head dedupe still reads.
+- `src/runner/runner-state-load.ts`: remove the `approvedPatchIds`/legacy `lastApprovedPatchId` healing block and the `reviewResume` healing block, dropping the imports they leave unused.
+- `src/review/review.ts`: remove the now-dead `state.reviewResume = undefined;` writes.
+- `src/run/run-apply.ts`: remove the `approvedPatchIds = undefined` writes and their comments.
+- `src/failure/failure-cluster.ts`: remove `RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY`, its `TIMEOUT_POOL` entry and the comment block; `review-run.ts` was its only producer.
+- `src/events/event-format.ts`: `reviewEventMessage`'s `review_start` arm always renders "reviewing" (the `e.resumed` ternary goes); `src/events/events.ts`: drop the `resumed true when …` clause from the `review_start` comment.
+- Drop the resume-state, patch-id and resumed-flag cases from `test/runner-state.test.ts`, `test/run-apply.test.ts`, `test/failure-cluster.test.ts` and `test/event-format.test.ts`.
+
+**Acceptance criteria.**
+- `grep -rnE "reviewResume|REVIEW_RESUME_LIMIT|APPROVED_PATCH_IDS_MAX|RUN_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY|approvedPatchIds" src/ test/` prints nothing.
+- A `review_start` event has no `resumed` flag and its message always reads `reviewing <sha>`.
+- `lastApprovedHead` and the deterministic same-head dedupe are untouched.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/runner-state.test.ts: the `approvedPatchIds` load case and the `reviewResume` heal/validate case go; the surviving heal cases stay green.
+- test/event-format.test.ts: the `review_start` `resumed` cases go; the `afterMerge` and `revision` cases stay.
+
 ### Every commit is verified on main, part 3d/3: `review.afterMerge` and every surface that sets or shows it are deleted (planned 2026-10-24 by the operator, split from the held part 3/3; requires part 3j/3 landed, since the key no longer changes behavior; touches src/config/config-schema.ts src/config/config-validation.ts src/config/config-views.ts src/config/config.ts src/review/post-merge-review.ts src/cli/cli-role-command.ts src/cli/help.ts src/roles/role-view.ts src/roles/role-render.ts src/gui/gui-config-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-drawer-config.ts src/ui/gui/gui-client-boot.ts docs/config.md docs/cli.md test/config.test.ts test/role-view.test.ts test/gui-endpoints.test.ts test/gui-client-drawer.test.ts) — done 2026-10-29 by the feature role
 
 **Previously held 2**

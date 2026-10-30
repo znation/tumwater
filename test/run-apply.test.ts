@@ -196,13 +196,11 @@ test("applyRunOutcome records the outcome and schedules a changed run at the rol
   s.running = true;
   s.phase = "review"; // set around the gate's run — must not linger after the run
   s.commits = 4;
-  s.approvedPatchIds = ["p1"]; // a leftover-recovery merge's approval, spent once it merges
   const cfg = testConfig();
   const before = Date.now();
   applyRunOutcome(s, cfg, "feature", { result: "changed", summary: "did it" });
   assert.equal(s.running, false);
   assert.equal(s.phase, undefined);
-  assert.equal(s.approvedPatchIds, undefined);
   assert.equal(s.lastResult, "changed");
   assert.equal(s.lastSummary, "did it");
   const endedAt = s.lastRunEndedAt;
@@ -261,14 +259,11 @@ test("applyMergeOutcome folds the merge's result into the authoring state", () =
   // A merged change counts the commit the run queued and clears the gate's phase marker.
   const s = freshRunnerState("feature");
   s.phase = "review";
-  s.approvedPatchIds = ["p1"];
   applyMergeOutcome(s, "changed", change);
   assert.equal(s.lastResult, "changed");
   assert.equal(s.commits, 1);
   assert.ok(s.lastMergedAt !== undefined && s.lastMergedAt <= Date.now(), "a changed merge stamps lastMergedAt");
   assert.equal(s.phase, undefined);
-  // The merged patch's approval is spent: the same patch authored again is a new change.
-  assert.equal(s.approvedPatchIds, undefined);
 
   // A fresh role starts with no last-merged stamp: the age reads "never" until it merges.
   assert.equal(freshRunnerState("feature").lastMergedAt, undefined);
@@ -277,16 +272,12 @@ test("applyMergeOutcome folds the merge's result into the authoring state", () =
   // retry rides next-run leftover recovery, so the state just has to show the failure.
   for (const result of ["rejected", "review_error", "merge_conflict", "merge_blocked", "error"] as const) {
     const n = freshRunnerState("feature");
-    n.approvedPatchIds = ["p1"];
     n.lastMergedAt = 12345; // a prior merge's stamp
     applyMergeOutcome(n, result, change);
     assert.equal(n.lastResult, result);
     assert.equal(n.commits, 0, `${result} merges nothing on main`);
     assert.equal(n.lastMergedAt, 12345, `${result} leaves the prior last-merged stamp`);
     assert.equal(n.phase, undefined);
-    // Nothing merged, so the approval stands: a re-merge whose rebase leaves the patch alone reuses
-    // it.
-    assert.deepEqual(n.approvedPatchIds, result === "rejected" ? undefined : ["p1"], `${result} keeps the patch-id approval unless the rejection is final`);
   }
 
   // An aborted merge keeps the marker: a shutdown mid-review must re-review the pinned work
