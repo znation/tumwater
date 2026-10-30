@@ -213,8 +213,10 @@ test("a mode switch settles the recall state: the draft survives, role text neve
     tui.key(undefined, "r", { ctrl: true });
     assert.equal(tui.lines().at(-1), "clean ›");
     for (const ch of "role text") tui.key(ch, ch);
-    tui.key(undefined, "up"); // recall inside role mode: the shared history serves the role line too
-    assert.equal(tui.lines().at(-1), "clean › p1");
+    // Role mode holds the line, so Up/Down history recall is guarded out (anyEditorHeld —
+    // the same rule tui-keys.test.ts pins); the line stays on the role draft instead.
+    tui.key(undefined, "up");
+    assert.equal(tui.lines().at(-1), "clean › role text");
     tui.key(undefined, "escape");
     assert.equal(tui.lines().at(-1), "director › director draft", "the saved draft, not the recalled entry");
 
