@@ -9,7 +9,7 @@
  * two, free of I/O: --file's readFileSync is the one read in the CLI's arg layer. */
 
 import fs from "node:fs";
-import { failOverDurationCap, parseBranchFlag, parseDurationFlag, parsePositionFlag, rejectRepeatFlag } from "./cli-args.js";
+import { failOverDurationCap, parseBranchFlag, parseDurationFlag, parsePositionFlag, rejectFlagLookingValue, rejectRepeatFlag } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import {
   type FlagSpec,
@@ -462,12 +462,17 @@ function assertPromptQueueOnlyFlags(scan: PromptScan): void {
  * with the missing-value refusal, verbatim. */
 function parsePromptAttachments(args: string[], attachFlags: number[]): { attachPaths: string[]; attachClaims: number[] } {
   // Each --attach pair claims the flag and its value; a trailing flag with no value names the
-  // flag here, like --cancel's missing-value wording, before any queue write.
-  const attachPaths = attachFlags.map((i) => args[i + 1] as string);
+  // flag here, like --cancel's missing-value wording, before any queue write. A `--`-shaped
+  // token in the value slot is the operator's slip (`--attach --role qa`), so it is refused up
+  // front with rejectFlagLookingValue's shared wording — the same guard history's
+  // --result/--model and role <id>'s write flags apply — instead of failing deep in image
+  // reading with a misleading message about a path nobody intended.
   const attachClaims = attachFlags.flatMap((i) => [i, i + 1]);
   for (const i of attachFlags) {
     if (args[i + 1] === undefined) fail(`--attach needs a path (e.g. \`--attach shot.png\`)`);
+    rejectFlagLookingValue("--attach", args[i + 1]);
   }
+  const attachPaths = attachFlags.map((i) => args[i + 1] as string);
   return { attachPaths, attachClaims };
 }
 

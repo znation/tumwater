@@ -48,6 +48,18 @@ test("prompt --at without a value fails with parseDurationFlag's message", async
   assert.equal(inboxSize(repo), 0, "the flag pair was not baked into queued content");
 });
 
+test("prompt --attach refuses a flag-looking value instead of taking it as the path", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt attach flag-looking value");
+  // --attach claims the next token as its path; a `--` token in that slot is a dropped value
+  // (`--attach --role qa fix`), so it must name the slip up front rather than fail deep in
+  // image reading with a misleading "cannot read attached image"/"unsupported image type".
+  const r = await cli(repo, "prompt", "--attach", "--role", "qa", "fix the layout");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--attach needs a value \(the next token "--role" is a flag, not a value\)/);
+  assert.equal(inboxSize(repo), 0, "the flag pair was not baked into queued content");
+});
+
 // --top's strictness surface, mirroring --cancel's: it is a position mode, so it refuses the
 // other queue modes as mutually exclusive, the queue-only flags as meaningless, and any stray
 // positional as prompt text it has no use for.
