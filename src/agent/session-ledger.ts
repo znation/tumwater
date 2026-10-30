@@ -222,6 +222,28 @@ export function pruneSessionLedgers(sessionsRoot: string, days: number): number 
  * session export measured 0.18 s live, so 10 s is a generous bound on a slow or wedged CLI. */
 const SESSION_DELETE_TIMEOUT_MS = 10_000;
 
+/** Run one bounded headless CLI session delete (`bin args…`) under `env`, best-effort: a
+ * spawn that throws (a missing binary, an unwritable env) returns false without throwing, so
+ * a failed delete never fails the prune. Shared by the OpenCode and Codex session purges below
+ * so neither drift on the 10 s bound, the status-0 success rule, or the swallow policy. */
+function sessionDeleteSucceeds(
+  bin: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv | undefined,
+): boolean {
+  try {
+    const res = spawnSync(bin, args, {
+      env,
+      timeout: SESSION_DELETE_TIMEOUT_MS,
+      stdio: "ignore",
+    });
+    return res.status === 0;
+  } catch {
+    // Best effort: an unwritable env or a missing binary must not fail the prune.
+    return false;
+  }
+}
+
 /** The options the retention pass resolves for the OpenCode session purge (part 7/7): the
  * binary and environment (OPENCODE_DB) are per team root, resolved by the caller (retention)
  * exactly as a run's invocation resolves them — so the deletes hit the same database the runs
@@ -253,16 +275,8 @@ export function pruneOpencodeSessions(
       if (!file.endsWith(SESSION_LEDGER_FILE)) return;
       for (const record of readSessions(path.dirname(file))) {
         if (record.agent !== "opencode" || record.at >= cutoff) continue;
-        try {
-          const res = spawnSync(opts.bin!, ["session", "delete", record.id, "--standalone"], {
-            env: opts.env,
-            timeout: SESSION_DELETE_TIMEOUT_MS,
-            stdio: "ignore",
-          });
-          if (res.status === 0) deleted += 1;
-        } catch {
-          // Best effort: an unwritable env or a missing binary must not fail the prune.
-        }
+        if (sessionDeleteSucceeds(opts.bin!, ["session", "delete", record.id, "--standalone"], opts.env))
+          deleted += 1;
       }
     });
   }
@@ -329,18 +343,8 @@ export function pruneCodexSessions(
   });
   for (const id of expired) {
     if (live.has(id)) continue;
-    if (opts.bin !== undefined) {
-      try {
-        const res = spawnSync(opts.bin, ["delete", "--force", id], {
-          env: opts.env,
-          timeout: SESSION_DELETE_TIMEOUT_MS,
-          stdio: "ignore",
-        });
-        if (res.status === 0) deleted += 1;
-      } catch {
-        // Best effort: an unwritable env or a missing binary must not fail the prune.
-      }
-    }
+    if (opts.bin !== undefined && sessionDeleteSucceeds(opts.bin, ["delete", "--force", id], opts.env))
+      deleted += 1;
     // Fallback: unlink the home's rollout for this session so neither the ledger line nor
     // its file outlives the window. A real `codex delete` removes the rollout itself, so a
     // successful delete has nothing left to unlink; a failed or skipped delete does, and
