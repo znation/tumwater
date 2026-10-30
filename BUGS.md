@@ -215,8 +215,6 @@ the spawned runner under --coverage ends with node's coverage table and leaves t
 
 ### post-merge review of 6407b7d6 never reached a verdict (found by the review role 2026-10-28)
 
-**Needs review 2026-10-29 by bugfix: too large for one run** — the underlying diff is a faithful byte-identical fold (the dedicated run-verdict suite passes 20/20 here; no code defect), so this is a review-completion timeout on the host-loaded review path — the same infra/process class the steward entry above names, owned by the plan role per that sketch; a bugfix run has nothing offline to implement or verify. The entry stays Open as review-role verdict/plan-role infra concern, not Fixed.
-
 ### Post-merge reviews time out at the 900s ceiling as a class — three in one day, each siloed into its own entry, so none surfaces that the review verdict is now the fragile step under host load (found by the steward role 2026-10-29)
 
 **Needs review 2026-10-29 by bugfix: too large for one run** — the fix is an infra/process decision (isolate the strong-tier review run from the loaded host, raise/relax the 900s ceiling with a retry path, or gate reviews off the loaded window) owned by the plan role per the entry's own sketch, with no offline-reproducible code defect a bugfix run can implement and verify; fold it into the pending 3i/3 review-path or isolation planning.
