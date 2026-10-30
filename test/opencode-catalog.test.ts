@@ -258,6 +258,46 @@ test("opencodeModelKey maps a bare gateway id and keeps a routed provider key", 
   assert.equal(opencodeModelKey("opencode-go/deepseek-v4.1-flash"), "opencode-go/deepseek-v4.1-flash");
 });
 
+test("readOpencodeCache clone-guards each result and re-reads a rewritten file", () => {
+  const root = tmpdir("opencode-clone-");
+  writeOpencodeCache(root, {
+    fetchedAt: 1,
+    models: { "opencode/free-m": { free: true, efforts: ["low", "high"] } },
+  });
+
+  // Two reads of the unchanged file are served from the stat-keyed cache (one stat per poll).
+  const first = readOpencodeCache(root);
+  const second = readOpencodeCache(root);
+  assert.equal(second.fetchedAt, 1);
+  assert.deepEqual(second.models["opencode/free-m"]?.efforts, ["low", "high"]);
+
+  // Mutating one caller's result (observeOpencodeRun sets billedAt; a read may push to
+  // efforts) must not poison the shared cache entry: the next read is a clone, so it is
+  // unaffected and a later poll re-derives from the file.
+  first.models["opencode/free-m"]!.billedAt = 99;
+  first.models["opencode/free-m"]!.efforts!.push("max");
+  const unpoisoned = readOpencodeCache(root);
+  assert.equal(
+    unpoisoned.models["opencode/free-m"]?.billedAt,
+    undefined,
+    "a caller's billedAt mutation never reaches the shared cache or the next reader",
+  );
+  assert.deepEqual(
+    unpoisoned.models["opencode/free-m"]?.efforts,
+    ["low", "high"],
+    "a caller's efforts-array mutation never reaches the shared cache or the next reader",
+  );
+
+  // A rewritten file (new inode/stat) invalidates the cache and is re-read with new content.
+  writeOpencodeCache(root, {
+    fetchedAt: 2,
+    models: { "opencode/free-m": { free: true } },
+  });
+  const reread = readOpencodeCache(root);
+  assert.equal(reread.fetchedAt, 2, "a rewritten catalog is re-read, not a stale cached value");
+  assert.equal(reread.models["opencode/free-m"]?.efforts, undefined);
+});
+
 test("readOpencodeCache drops a foreign catalog entry and keeps the valid ones", () => {
   const root = tmpdir("opencode-foreign-");
   const ok = { free: true, context: 1000, efforts: ["high"], extra: 1 };
