@@ -33,6 +33,44 @@ interface MainCulprit {
   tip: string;
 }
 
+/** checkMainBaseline's result and its baseline verdict, derived from the imported check (the
+ * baseline interfaces are not exported from main-baseline.ts). */
+type BaselineCheck = Awaited<ReturnType<typeof checkMainBaseline>>;
+type MainBaseline = NonNullable<BaselineCheck["baseline"]>;
+
+/** The main_check event payload for a settled verdict: the baseline sha and status, the run
+ * duration (0 when nothing ran), the covered-commit count, and, on a red, the failing tests and
+ * the quarantined-only marker. */
+function mainCheckEvent(
+  baseline: MainBaseline,
+  red: boolean,
+  quarantined: readonly string[] | null,
+  covered: number,
+  durationMs: number,
+): {
+  source: typeof TUMWATER_SOURCE;
+  type: "main_check";
+  sha: string;
+  status: "failed" | "passed";
+  durationMs: number;
+  covered: number;
+  failingTests?: string[];
+  quarantined?: readonly string[];
+  inherited?: boolean;
+} {
+  return {
+    source: TUMWATER_SOURCE,
+    type: "main_check",
+    sha: baseline.sha,
+    status: red ? "failed" : "passed",
+    durationMs,
+    covered,
+    ...(red ? { failingTests: baseline.failingTests ?? [] } : {}),
+    ...(quarantined ? { quarantined } : {}),
+    ...(baseline.inheritedFrom !== undefined ? { inherited: true } : {}),
+  };
+}
+
 /** The main watch: after main's head moves, run the full check on the new tip in the `_gate-main`
  * mirror and record the verdict — a `main_check` event, and the failing tests on the red baseline
  * (which persists beside the greens). The watch checks every new red tip, so the newest head is
@@ -178,17 +216,11 @@ export function createMainWatch(
       }
     };
 
-    if (!detectBuildCheck(root, config)) {
-      // No declared build check: nothing to watch for a build red, but the diff rules still run on
-      // the tip. The build-red path below is what never runs here.
-      await withMainTipWorktree(root, mainBranch, async (wt) => {
-        await watchRules(wt, lastWatched, await headOf(wt));
-      });
-      lastWatched = mainHead; // no declared check: nothing else to watch until main moves
-      return;
-    }
-    await withMainTipWorktree(root, mainBranch, async (wt) => {
-      const started = Date.now();
+    /** Run the declared build check on main's tip, re-running a red once and quarantining a flake
+     * whose re-run turns green. Returns the check's result and whether any run actually executed
+     * (false for a cache hit, a skip, or a sleep-spanned run). `config` and `root` are captured
+     * from `watchOnce`. */
+    async function runBaselineCheck(wt: string): Promise<{ check: BaselineCheck; ran: boolean }> {
       let ran = false;
       const onRun = baselineCheckLogger(root, TUMWATER_SOURCE);
       const hook: typeof onRun = (run) => {
@@ -202,46 +234,39 @@ export function createMainWatch(
         // A red the same tree's confirming re-run turns green is a flake: quarantine its tests.
         if (check.baseline?.status === "green") quarantineTests(root, first.failingTests, (first.failingTests ?? []).join("\n"));
       }
-      const baseline = check.baseline;
-      const previous = lastWatched;
-      // A skipped or sleep-spanned run made no verdict: the head still counts as watched, so the
-      // next poll does not start another run for it — but the diff rules still run on this tip.
-      if (!baseline) {
-        const tip = await headOf(wt);
-        await watchRules(wt, previous, tip);
-        return void (lastWatched = tip);
-      }
-      lastWatched = baseline.sha;
+      return { check, ran };
+    }
+
+    /** The covered-commit count for a main_check event: the first-parent commits between the
+     * previous and new watched heads, or 1 when there is no previous head. */
+    async function countCovered(wt: string, previous: string | undefined, sha: string): Promise<number> {
+      if (previous === undefined) return 1;
+      const counted = Number(((await gitTry(wt, "rev-list", "--first-parent", "--count", `${previous}..${sha}`)) ?? "").trim());
+      return Number.isFinite(counted) && counted > 0 ? counted : 1;
+    }
+
+    /** Settle the verdict for a checked baseline: distinguish quarantined-only reds, record
+     * main's known failures, count the covered commits, and log the main_check event. Returns
+     * whether the tip settled red (a red naming tests that are not all quarantined). */
+    async function recordMainCheck(
+      wt: string,
+      baseline: MainBaseline,
+      previous: string | undefined,
+      ran: boolean,
+      started: number,
+    ): Promise<boolean> {
       // A red naming only quarantined tests counts as green: no redeploy hold.
       const quarantined = baseline.status === "red" ? onlyQuarantined(root, baseline.failingTests) : null;
       const red = baseline.status === "red" && !quarantined;
       knownFailures.set(root, red ? (baseline.failingTests ?? []) : []);
-      const counted =
-        previous === undefined
-          ? 1
-          : Number(((await gitTry(wt, "rev-list", "--first-parent", "--count", `${previous}..${baseline.sha}`)) ?? "").trim());
-      logEventBestEffort(root, {
-        source: TUMWATER_SOURCE,
-        type: "main_check",
-        sha: baseline.sha,
-        status: red ? "failed" : "passed",
-        durationMs: ran ? Date.now() - started : 0,
-        covered: Number.isFinite(counted) && counted > 0 ? counted : 1,
-        ...(red ? { failingTests: baseline.failingTests ?? [] } : {}),
-        ...(quarantined ? { quarantined } : {}),
-        ...(baseline.inheritedFrom !== undefined ? { inherited: true } : {}),
-      });
-      // The diff rules judge the tip whether the build is green or red; the build-red path below
-      // names the whole tip as the culprit, so the two red kinds are judged independently.
-      await watchRules(wt, previous, baseline.sha);
-      // A settled non-red verdict (a green, or a red naming only quarantined tests) clears the
-      // heal-dedup key, so a failing set that returns after a green main is healed again. A
-      // settled red verdict below does NOT clear it: the heal-dedup key stays set while main
-      // is red.
-      if (!red) {
-        clearHealKeyOnGreen();
-        return;
-      }
+      const covered = await countCovered(wt, previous, baseline.sha);
+      logEventBestEffort(root, mainCheckEvent(baseline, red, quarantined, covered, ran ? Date.now() - started : 0));
+      return red;
+    }
+
+    /** Name a settled red tip as the culprit: its merging runner, the main_culprit event, and
+     * the onCulprit callback with the tip and its failing tests. */
+    function reportCulprit(baseline: MainBaseline): void {
       // The newest head is the culprit ("Every commit is verified on main, part 2/3"): the watch
       // checks each new red tip, so whatever it found belongs to the head it checked. Once per red
       // head — lastWatched already holds it, so a later poll does not attribute it again — name
@@ -259,6 +284,43 @@ export function createMainWatch(
         failingTests: baseline.failingTests ?? [],
         tip: baseline.sha,
       });
+    }
+
+    if (!detectBuildCheck(root, config)) {
+      // No declared build check: nothing to watch for a build red, but the diff rules still run on
+      // the tip. The build-red path below is what never runs here.
+      await withMainTipWorktree(root, mainBranch, async (wt) => {
+        await watchRules(wt, lastWatched, await headOf(wt));
+      });
+      lastWatched = mainHead; // no declared check: nothing else to watch until main moves
+      return;
+    }
+    await withMainTipWorktree(root, mainBranch, async (wt) => {
+      const started = Date.now();
+      const { check, ran } = await runBaselineCheck(wt);
+      const baseline = check.baseline;
+      const previous = lastWatched;
+      // A skipped or sleep-spanned run made no verdict: the head still counts as watched, so the
+      // next poll does not start another run for it — but the diff rules still run on this tip.
+      if (!baseline) {
+        const tip = await headOf(wt);
+        await watchRules(wt, previous, tip);
+        return void (lastWatched = tip);
+      }
+      lastWatched = baseline.sha;
+      const red = await recordMainCheck(wt, baseline, previous, ran, started);
+      // The diff rules judge the tip whether the build is green or red; the build-red path below
+      // names the whole tip as the culprit, so the two red kinds are judged independently.
+      await watchRules(wt, previous, baseline.sha);
+      // A settled non-red verdict (a green, or a red naming only quarantined tests) clears the
+      // heal-dedup key, so a failing set that returns after a green main is healed again. A
+      // settled red verdict below does NOT clear it: the heal-dedup key stays set while main
+      // is red.
+      if (!red) {
+        clearHealKeyOnGreen();
+        return;
+      }
+      reportCulprit(baseline);
     });
   }
 
