@@ -341,6 +341,14 @@ function currentHead(root: string): Promise<string | null> {
   return refSha(root, "HEAD");
 }
 
+/** `shortSha(tip) @ lock shortSha(lockHash)` — the covered-tip naming the `ci parity` row
+ * repeats in every verdict wording (failed, current, stale, stale-and-stalled), each spelling the
+ * same `@ lock` fragment by hand. One home so the fragment cannot drift across the row's four
+ * renderings. */
+function tipLockPhrase(tip: string, lockHash: string): string {
+  return `${shortSha(tip)} @ lock ${shortSha(lockHash)}`;
+}
+
 /** The doctor's `ci parity` row: does the full suite cover main's current tip? Reads the
  * CI-parity ledger (src/run/ci-parity.ts) — the operator surface answering "is main verified by
  * CI?" — and reports whether the last run covered the current main tip @ lock. Missing ledger
@@ -365,14 +373,12 @@ export function checkCiParity(
   const age = shortSpanPhrase(Math.max(0, now - entry.lastRunAt));
   if (entry.result === "failed") {
     return warnOutcome(
-      `the last CI run failed covering ${shortSha(entry.tip)} @ lock ${shortSha(
-        entry.lockHash,
-      )} ${age} ago — the ci role must fix or file what it found before the next green run`,
+      `the last CI run failed covering ${tipLockPhrase(entry.tip, entry.lockHash)} ${age} ago — the ci role must fix or file what it found before the next green run`,
     );
   }
   if (parityIsCurrent(entry, tip, lockHash)) {
     return okOutcome(
-      `current — CI covered main at ${shortSha(tip)} @ lock ${shortSha(lockHash)}, passed ${age} ago`,
+      `current — CI covered main at ${tipLockPhrase(tip, lockHash)}, passed ${age} ago`,
     );
   }
   // A stale verdict is normal right after a merge (main moves and the ci role runs on its own
@@ -382,19 +388,11 @@ export function checkCiParity(
   // stands.
   if (ciParityStalled({ state: "stale", lastRunAt: entry.lastRunAt }, now)) {
     return warnOutcome(
-      `stale and stalled — the last run covered ${shortSha(entry.tip)} @ lock ${shortSha(
-        entry.lockHash,
-      )} ${age} ago (${entry.result}); main is now ${shortSha(tip)} @ lock ${shortSha(
-        lockHash,
-      )} — no full-suite run has covered a tip in over ${CI_PARITY_STALE_MS / DAY_MS} days, so the ci role is disabled, paused, or unable to record`,
+      `stale and stalled — the last run covered ${tipLockPhrase(entry.tip, entry.lockHash)} ${age} ago (${entry.result}); main is now ${tipLockPhrase(tip, lockHash)} — no full-suite run has covered a tip in over ${CI_PARITY_STALE_MS / DAY_MS} days, so the ci role is disabled, paused, or unable to record`,
     );
   }
   return okOutcome(
-    `stale — the last run covered ${shortSha(entry.tip)} @ lock ${shortSha(
-      entry.lockHash,
-    )} (${entry.result}, ${age} ago); main is now ${shortSha(tip)} @ lock ${shortSha(
-      lockHash,
-    )}, so the ci role has not yet covered this tip`,
+    `stale — the last run covered ${tipLockPhrase(entry.tip, entry.lockHash)} (${entry.result}, ${age} ago); main is now ${tipLockPhrase(tip, lockHash)}, so the ci role has not yet covered this tip`,
   );
 }
 
