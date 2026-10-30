@@ -6,6 +6,11 @@ import { changeBaseRev, gitLines } from "./git.js";
 import { git, gitTry } from "./git-run.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
 
+/** The one cap on a fetched change diff, shared by the repo-relative patch (aheadOfMainDiff,
+ * revisionInterdiff) and the view half's uncommitted patch (change-data.ts) so neither side
+ * of a reviewed change can print unbounded text and one bound is all they agree on. */
+export const DIFF_MAX_BYTES = 200_000;
+
 /** Git's C-quoting short escapes (its `sq_lookup` table) and the byte each decodes to. The
  * mapping was a nine-case switch that repeated `bytes += …; break;` per entry; keeping it as
  * data lets the decoder below handle the octal and literal fallbacks in one place. */
@@ -153,7 +158,7 @@ function splitDiffByFile(diff: string): string[] {
 export async function aheadOfMainDiff(
   wt: string,
   mainBranch: string,
-  maxBytes = 200_000,
+  maxBytes = DIFF_MAX_BYTES,
   pathspec: string[] = [],
 ): Promise<string> {
   const range = `${mainBranch}...HEAD`;
@@ -188,7 +193,7 @@ export async function revisionInterdiff(
   mainBranch: string,
   priorSha: string,
   head: string,
-  maxBytes = 200_000,
+  maxBytes = DIFF_MAX_BYTES,
 ): Promise<string> {
   try {
     const priorBase = await changeBaseRev(wt, mainBranch, priorSha);

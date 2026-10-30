@@ -10,7 +10,7 @@
 import { knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { aheadOfMain, branchExists, countCommitsInRange, currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
-import { aheadOfMainDiff, aheadOfMainFiles, changedFiles } from "../git/git-diff.js";
+import { aheadOfMainDiff, aheadOfMainFiles, changedFiles, DIFF_MAX_BYTES } from "../git/git-diff.js";
 import { compareCodeUnits } from "../collections.js";
 import { isAbsolute } from "node:path";
 import { branchName } from "../paths.js";
@@ -130,10 +130,6 @@ export async function collectRoleChanges(root: string, roles: string[], opts: { 
   const views = await Promise.all(roles.map((role) => collectRoleChangeAt(root, role, scope, opts)));
   return { mainBranch: scope.mainBranch, roles: views };
 }
-
-/** The uncommitted patch's cap, matching aheadOfMainDiff's — one shared bound so neither
- * half of the view can print unbounded text. */
-const DIFF_MAX_BYTES = 200_000;
 
 /** Collect the change the role holds: both halves of the view, or a degraded state
  * when the worktree or the base branch is missing. Never throws on a degraded team — a
