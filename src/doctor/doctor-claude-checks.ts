@@ -80,6 +80,14 @@ async function claudeAuthProbe(
   return parseClaudeAuthStatus(result.stdout);
 }
 
+/** The warn verdict both auth-driven claude rows return when `claude auth status` could not
+ * run or its reply was unreadable — the one home of the wording so checkClaudeAuth and
+ * checkAnthroApiKey cannot drift on the unreadable-probe message. Each caller makes its own
+ * solitary `claudeAuthProbe` call and branches on null through it. */
+function claudeAuthUnreadable(): CheckOutcome {
+  return warnOutcome("could not check — `claude auth status` did not run or its output was unreadable");
+}
+
 /** claude credential readiness (plans/agent-backends.md "Every seam, checked"): a claude seam
  * whose login is gone fails every run before it can work, so doctor runs `claude auth status`
  * under the scrubbed run environment and fails when it reports `loggedIn: false`. An ok detail
@@ -95,8 +103,7 @@ export async function checkClaudeAuth(
   const config = claudeCheckBase(root);
   if ("level" in config) return config;
   const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
-  if (auth === null)
-    return warnOutcome("could not check — `claude auth status` did not run or its output was unreadable");
+  if (auth === null) return claudeAuthUnreadable();
   if (!auth.loggedIn)
     return failOutcome("claude reports logged in: false — run `claude auth login`");
   const subscription = claudeAuthUsesSubscription(auth);
@@ -125,8 +132,7 @@ export async function checkAnthroApiKey(
   const apiKey = env.ANTHROPIC_API_KEY;
   if (apiKey === undefined || apiKey === "") return okOutcome("no ANTHROPIC_API_KEY set");
   const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
-  if (auth === null)
-    return warnOutcome("could not check — `claude auth status` did not run or its output was unreadable");
+  if (auth === null) return claudeAuthUnreadable();
   if (!auth.loggedIn || !claudeAuthUsesSubscription(auth))
     return okOutcome("ANTHROPIC_API_KEY is set, but claude reports no claude.ai login");
   return warnOutcome(
