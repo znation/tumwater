@@ -239,7 +239,7 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
         if (openMs >= bufferedStallMs) {
           warnedStalledCalls.add(call.id);
           deps.onStallWarning?.(
-            `tool call stalled: ${call.label} — no exit for ${Math.round(openMs / 60_000)}m`,
+            `tool call stalled: ${call.label} — no exit for ${silenceLabel(openMs)}`,
           );
         }
         continue;
