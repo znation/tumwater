@@ -4,7 +4,7 @@ import { dailyCost } from "../budget/budget.js";
 import type { LiveProgress } from "./progress-data.js";
 import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, contextShareLabel, usd } from "../text/format.js";
-import { formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
+import { DAY_MS, formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, ciParityBadge, ciParityTone, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, roleRowCells, onErrorStreak, sortRolesByState } from "./status-model.js";
@@ -39,7 +39,7 @@ export function lastRunCell(ts: number | undefined): string {
   if (!ts) return "-";
   const d = new Date(ts);
   let s = formatTime(d);
-  if (Date.now() - ts > 86_400_000) s = `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${s}`;
+  if (Date.now() - ts > DAY_MS) s = `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${s}`;
   return `${s} · ${ago(ts)}`;
 }
 
