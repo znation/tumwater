@@ -74,6 +74,11 @@ export function pushYieldOutcome(s: RunnerState, result: RunResult): void {
 }
 
 const YIELD_MAX = 8;
+/** How many recent counted runs the reset window spans — a merge anywhere in the last 10
+ * keeps the multiplier at 1, and the same 10 empties are what start the doubling. */
+const YIELD_RESET_RECENT = 10;
+/** How many further empty runs double the multiplier again (10→×2, 15→×4, 20→×8). */
+const YIELD_DOUBLE_STEP = 5;
 
 /** The multiplier on a scalable role's minRunIntervalSeconds gap its recent yield earns:
  * 1 while any of the last 10 counted runs merged, otherwise doubling per 5 further empty
@@ -83,10 +88,10 @@ const YIELD_MAX = 8;
  * the ring: one merge is the evidence the role's clock should trust, and the ring's older
  * half only matters once the merge has aged out of the recent window. */
 export function yieldMultiplier(recent: string[]): number {
-  if (recent.slice(-10).includes(YIELD_MERGE)) return 1;
+  if (recent.slice(-YIELD_RESET_RECENT).includes(YIELD_MERGE)) return 1;
   const empty = recent.filter((c) => c !== YIELD_MERGE).length;
-  if (empty < 10) return 1;
-  return Math.min(YIELD_MAX, 2 ** (Math.floor((empty - 10) / 5) + 1));
+  if (empty < YIELD_RESET_RECENT) return 1;
+  return Math.min(YIELD_MAX, 2 ** (Math.floor((empty - YIELD_RESET_RECENT) / YIELD_DOUBLE_STEP) + 1));
 }
 
 /** The yield multiplier a runner's state earns: the role's recent-yield multiplier when
