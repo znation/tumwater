@@ -1,6 +1,6 @@
 import { durationLabel, parseDurationMs } from "../../cli/cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../../operator/operator-intent.js";
-import { cutSplitsSurrogatePair, gotSuffix } from "../../text/text.js";
+import { cutSplitsSurrogatePair, gotSuffix, isPlainDecimal } from "../../text/text.js";
 import { displayWidth } from "../../text/text-width.js";
 
 /** Pure prompt-line editing for the TUI (src/ui/tui/tui.tsx): the line editor, its display window,
@@ -229,7 +229,7 @@ export function parseBudgetInput(
   // number of 0 or more, at most …") because a 25-digit run IS such a number. A single
   // message would mislead: "1e2" is rejected as shape, yet would be told it is not a number
   // of 0 or more.
-  if (!/^\d*\.?\d+$/.test(t))
+  if (!isPlainDecimal(t))
     return fail(`budget must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation${gotSuffix(text)}`);
   if (!Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER)
     return fail(`budget must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}${gotSuffix(text)}`);

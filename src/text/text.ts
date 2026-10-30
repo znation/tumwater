@@ -273,8 +273,28 @@ export function parseNonNegativeInt(raw: string): number | null {
  * shape's honest statement: one home for the predicate the config writer, the TUI team-key
  * editor, the per-role instances editor, and the CLI role writes' local helper each
  * hand-rolled. */
+/** Whether a string is a plain decimal literal — a run of digits with an optional
+ * fractional part (`25`, `12.34`, `.5`, `300`), at least one digit. The one home of the
+ * shape rule behind parseDecimalInt's plain-decimal policy: `Number()` would otherwise also
+ * read hex (`0x10` → 16) and exponent (`1e2` → 100) spellings as numbers no operator
+ * means when typing a count or dollar amount, so every numeric-write surface (the CLI role
+ * writes' plainDecimalToJson, the TUI budget and min-run-interval editors, the GUI budget
+ * and interval drawers) admits only this literal spelling. Returns false for an empty
+ * string and for notation outside the literal rule (signs, exponent, hex, whitespace). */
+export function isPlainDecimal(raw: string): boolean {
+  return /^\d*\.?\d+$/.test(raw);
+}
+
+/** Whether a string is an exponent spelling of a number ("1e2", "2.5E-3", "4e1") rather
+ * than a plain decimal: a run of digits Number() represents exactly. `Number()` would read an
+ * exponent spelling as a real number ("1e2" → 100), which is why every integer-writing
+ * surface refuses it — JSON.parse would silently read it past an integer validator — while
+ * the plain-decimal rule above admits only the literal spelling. The two shapes are mutually
+ * exclusive (a plain decimal has no `e`), so the plain-decimal exclusion builds on
+ * isPlainDecimal: one home for the predicate the config writer, the TUI team-key editor,
+ * the per-role instances editor, and the CLI role writes each apply. */
 export function isExponentSpelling(raw: string): boolean {
-  return !/^\d*\.?\d+$/.test(raw) && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(raw);
+  return !isPlainDecimal(raw) && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(raw);
 }
 
 /** The shared over-long-text message: `<subject> is <n> chars — shorten it to at most <max>`,

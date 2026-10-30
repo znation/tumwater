@@ -18,7 +18,7 @@ import { renderRoleMarkdown } from "../roles/role-render.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
-import { errorMessage, isExponentSpelling } from "../text/text.js";
+import { errorMessage, isExponentSpelling, isPlainDecimal } from "../text/text.js";
 import { readPromptFileArg } from "./cli-command-args.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
@@ -48,7 +48,7 @@ const CAP_SPEC = { names: ["--cap"], value: true, valueName: "<usd>" };
  * text that is not a plain decimal, so the caller leaves it untouched (the config validator
  * owns the rest). */
 function plainDecimalToJson(raw: string): string | null {
-  return /^\d*\.?\d+$/.test(raw) ? String(Number(raw)) : null;
+  return isPlainDecimal(raw) ? String(Number(raw)) : null;
 }
 
 /** `role`'s min-run-interval write flags: clear it, or set it to a second count (0 is

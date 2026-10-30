@@ -1,7 +1,7 @@
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
 import { checkMinRunInterval } from "../../config/config-keys.js";
 import { rawRoleField } from "../../roles/role-view.js";
-import { gotSuffix } from "../../text/text.js";
+import { gotSuffix, isPlainDecimal } from "../../text/text.js";
 import type { TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 import { createRoleKeyEditor } from "./tui-editor-role-key.js";
@@ -45,7 +45,7 @@ export function createIntervalEditor(session: TuiEditorSession): TuiEditorModule
       // bounds wording below, names cfgKey so a rejected entry tells which per-role key the
       // editor was about to write — and STAY in edit mode (negative and non-numeric text hit
       // this shape arm too, so the operator sees one consistent message).
-      if (!/^\d*\.?\d+$/.test(text)) {
+      if (!isPlainDecimal(text)) {
         return {
           ok: false,
           error: `${cfgKey} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation${gotSuffix(text)}`,
