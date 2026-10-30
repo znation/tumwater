@@ -116,9 +116,9 @@ const KNOWN_EFFORTS: ReadonlySet<string> = new Set(Object.values(EFFORT_BY_THINK
 /** Map a thinking level to the Codex `model_reasoning_effort` it means, gated by the model's own
  * catalog. `levels` is the model's `supported_reasoning_levels` (design finding 14), which the
  * codex catalog (part 8/9) supplies; when the caller has no catalog it passes `undefined`, and
- * the result is returned unclamped. An unknown thinking level returns `undefined` (no effort flag) —
- * the level simply has no Codex effort, unlike a thinking level that maps but the model does not
- * support, which is also `undefined`. */
+ * the result is returned unclamped. An unknown thinking level returns `undefined` (no effort
+ * flag) — the level simply has no Codex effort, unlike a thinking level that maps but the model
+ * does not support, which is also `undefined`. */
 export function codexEffort(thinking: string, levels?: readonly string[]): string | undefined {
   if (!Object.hasOwn(EFFORT_BY_THINKING, thinking)) return undefined;
   const result = EFFORT_BY_THINKING[thinking] as string;
