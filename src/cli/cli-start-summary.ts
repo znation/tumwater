@@ -1,9 +1,10 @@
 /** `tumwater start`'s exit-summary half: the machinery that turns a finished round or window
  * into its summary — the `--once` one-line report and its `--json` document, and the `--for`
  * window summary table and report. `src/cli/cli-start.ts` keeps `cmdStart` (the boot and the
- * run loop), the window's deadline and scheduled-stop watchdogs, the `--gui` child plan, and
- * the supervisor half; this module holds only the reporting that a `start`'s exit prints, so
- * the largest command module is no longer also the home of every way a run's tally is shaped.
+ * run loop), the window's deadline and scheduled-stop watchdogs, and the invocation guards;
+ * the supervisor half lives in `src/cli/cli-start-supervisor.ts`; this module holds only the
+ * reporting that a `start`'s exit prints, so the largest command module is no longer also the
+ * home of every way a run's tally is shaped.
  * `parseRunWindow` keeps `--for`'s shape and ceiling rules together with the window summary
  * they feed. */
 import { compareCodeUnits } from "../collections.js";

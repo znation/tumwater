@@ -16,8 +16,8 @@ import { childEnv } from "../process/process.js";
  * role-cap-gates.ts and disk-gates.ts, src/baseline/main-red.ts, src/team/team-polls.ts,
  * merge-slot.ts, merge-questions.ts,
  * src/redeploy/redeployer.ts). `supervisor_exit` is logged by the supervisor after the
- * orchestrator is gone, so src/cli/cli-start.ts pages it directly with notifyTeamDown; events
- * appended by
+ * orchestrator is gone, so src/cli/cli-start-supervisor.ts pages it directly with notifyTeamDown;
+ * events appended by
  * operator CLI commands go straight to the file and are out of scope by design.
  *
  * One knob, an opinionated fixed allowlist, no per-event selection — a command that can post

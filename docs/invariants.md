@@ -378,8 +378,8 @@ crash guard tripped), it runs the `notify` command from tumwater.json once, with
 throttle; a missing or invalid tumwater.json or an absent `notify` pages nothing and never throws.
 A once round's `ONCE_FAILED_EXIT_CODE` is an asked-for ending and pages nothing.
 
-**Binds.** `src/events/event-notify.ts` (`notifyTeamDown`) and `src/cli/cli-start.ts`
-(`superviseRunCommand`'s `onTeamDown`).
+**Binds.** `src/events/event-notify.ts` (`notifyTeamDown`) and
+`src/cli/cli-start-supervisor.ts` (`superviseStartCommand`'s `onTeamDown`).
 
 **Pinned by.** `test/cli-start-shutdown.test.ts` — "a team that goes down unasked runs the notify
 hook once"; `test/event-notify.test.ts` — the `notifyTeamDown` tests; `test/supervisor.test.ts` — "a

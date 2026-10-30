@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ONCE_FAILURE_RESULTS, armDeadlineTimer, dashboardChildEnv, guiChildPlan, inheritedWindowStart, onceFailures, onceReport, onceSummary, parseRunWindow, renderOnceSummary, windowReport, windowSummary, type WindowReport } from "../src/cli/cli-start.js";
+import { ONCE_FAILURE_RESULTS, armDeadlineTimer, inheritedWindowStart, onceFailures, onceReport, onceSummary, parseRunWindow, renderOnceSummary, windowReport, windowSummary, type WindowReport } from "../src/cli/cli-start.js";
+import { dashboardChildEnv, guiChildPlan } from "../src/cli/cli-start-supervisor.js";
 import { summarizeRunRows, type RunRow } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
