@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { deleteRefIfAt, refSha } from "../git/git.js";
-import { gitTry, runGit } from "../git/git-run.js";
+import { runGit } from "../git/git-run.js";
 import { branchName, mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../paths.js";
 import type { MigrationNotes } from "../orchestrator/startup-migrations.js";
 import { errorMessage } from "../text/text.js";
@@ -68,7 +68,11 @@ export async function migrateLegacyRoleIds(root: string, legacy: Readonly<Record
         const sha = await refSha(root, from);
         if (sha === null) return null;
         if ((await refSha(root, to)) !== null) return `kept ${from} and ${to}: both exist`;
-        if ((await gitTry(root, "update-ref", to, sha)) === null) throw new Error(`update-ref ${to} failed`);
+        // runGit, not gitTry: a failure here is reported verbatim into notes.failed, and gitTry
+        // would swallow the cause (git's stderr and exit code), leaving a bare `update-ref ${to}
+        // failed` with no reason to act on — the sibling branch move above propagates the same
+        // GitError through runGit, so this stays in family.
+        await runGit(root, ["update-ref", to, sha]);
         await deleteRefIfAt(root, from, sha);
         return `moved ${from} to ${to}`;
       });
