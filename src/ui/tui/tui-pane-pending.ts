@@ -2,7 +2,7 @@ import { readMergeQueue, queuedMergeFiles, type MergeEntry, type MergeQueueView 
 import { renderMergeQueue, revisionNote, retryNote, scopeMergeQueue } from "../../merge/merge-queue-render.js";
 import { cancelQueuedMerge } from "../../merge/merge-cancel.js";
 import { moveQueuedMergeToTop } from "../../merge/merge-top.js";
-import { mergeChanges } from "../../merge/merge-slot.js";
+import { mergeHoldsSha } from "../../merge/merge-slot.js";
 import { orchestratorAlive } from "../../team/team-orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
 import { renderChangeOverlaps, renderRoleChanges, renderTeamChange } from "../../change/change-render.js";
@@ -237,7 +237,7 @@ export function createPendingPane(session: TuiPaneSession) {
   // the caller aborts; otherwise false.
   const guardMergeInFlight = (row: { entry: MergeEntry; position: number }): boolean => {
     const inFlight = queueInFlight(session.root, lastQueue?.entries ?? [], orchestratorAlive(session.root));
-    if (inFlight && (inFlight.sha === row.entry.sha || mergeChanges(inFlight).some((c) => c.sha === row.entry.sha))) {
+    if (inFlight && mergeHoldsSha(inFlight, row.entry.sha)) {
       session.flashMessage(`merge #${row.position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(row.entry.sha)}\``);
       session.requestRender();
       return true;

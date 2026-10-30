@@ -313,6 +313,16 @@ export function mergeChanges(marker: MergeInFlight): MergeChange[] {
       ];
 }
 
+/** True when the in-flight marker names `sha` among the changes it holds — either as its
+ * top-level `sha` (the first change in the stack) or in one of its per-change records, via
+ * mergeChanges so both marker generations read through the same eye. The one guard behind
+ * cancel/top/reorder actions so each caller's "is this merge about to drain" check cannot
+ * drift from the others' — identical spellings lived in cli-query-commands.ts (cancel and
+ * top) and tui-pane-pending.ts (the pending pane's reorder/cancel guard). */
+export function mergeHoldsSha(marker: MergeInFlight, sha: string): boolean {
+  return marker.sha === sha || mergeChanges(marker).some((c) => c.sha === sha);
+}
+
 /** True when a persisted `changes` entry is a record the pipeline and the observers can act on:
  * a role, sha and summary string and one of the three statuses. A hand-edited, torn, or foreign
  * entry (a `null`/scalar, or one missing `status`) is dropped by mergeChanges rather than read

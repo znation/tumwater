@@ -23,7 +23,7 @@ import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, 
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
 import { readMergeQueue, type MergeQueueView } from "../merge/merge-queue.js";
 import { renderMergeQueue, scopeMergeQueue } from "../merge/merge-queue-render.js";
-import { mergeChanges, type MergeInFlight } from "../merge/merge-slot.js";
+import { mergeHoldsSha, type MergeInFlight } from "../merge/merge-slot.js";
 import { shortSha } from "../text/format.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { orchestratorAlive } from "../team/team-orchestrator-info.js";
@@ -208,7 +208,7 @@ async function cmdQueueCancel(root: string, args: string[]): Promise<void> {
   const view = readMergeQueue(root);
   const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
   const target = view.entries[position - 1];
-  if (inFlight && target && (target.sha === inFlight.sha || mergeChanges(inFlight).some((c) => c.sha === target.sha))) {
+  if (inFlight && target && mergeHoldsSha(inFlight, target.sha)) {
     fail(`queue entry ${position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(target.sha)}\``);
   }
   const outcome: CancelQueuedOutcome = await cancelQueuedMerge(root, position);
@@ -247,7 +247,7 @@ async function cmdQueueTop(root: string, args: string[]): Promise<void> {
   const view = readMergeQueue(root);
   const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
   const target = view.entries[position - 1];
-  if (inFlight && target && (target.sha === inFlight.sha || mergeChanges(inFlight).some((c) => c.sha === target.sha))) {
+  if (inFlight && target && mergeHoldsSha(inFlight, target.sha)) {
     fail(`queue entry ${position} is being merged right now — it's already heading into the merge, so there's nothing to top`);
   }
   const outcome: TopQueuedOutcome = moveQueuedMergeToTop(root, position);
