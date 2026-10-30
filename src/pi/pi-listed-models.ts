@@ -1,4 +1,5 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { piListedModelsPath } from "../paths.js";
 
 /** What `pi --list-models` last said about image input, per `provider/model`. */
@@ -36,8 +37,27 @@ export function parsePiModelImages(stdout: string): Record<string, boolean> | nu
   return images;
 }
 
+/** Per-poll cache of the parsed listing, keyed by file path: the status snapshot reads it once
+ * per poll through collectRoleRows (src/status/status-roles.ts) while the file changes only when
+ * doctor runs `pi --list-models` and rewrites it, so an unchanged file costs one stat per poll
+ * instead of a re-read plus JSON.parse. Any write invalidates via dev/ino/mtime/size
+ * (stat-cache.cachedByStat, same freshness check as the other polled files); a missing or
+ * malformed file yields null and is not cached, so a mid-edit broken file recovers on the next
+ * poll exactly like before. */
+const listedCache = new Map<string, StatKeyedValue<PiListedModels>>();
+
 /** The saved listing, or null when the file is missing, torn, or has no `images` object. */
 export function readPiListedModels(root: string): PiListedModels | null {
+  return cachedByStat(
+    listedCache,
+    piListedModelsPath(root), // Keyed by path so distinct roots and test files never collide.
+    piListedModelsPath(root),
+    () => readPiListedModelsUncached(root),
+    (listed) => ({ ...listed, images: { ...listed.images } }),
+  );
+}
+
+function readPiListedModelsUncached(root: string): PiListedModels | null {
   const saved = readJsonFile<Partial<PiListedModels>>(piListedModelsPath(root));
   const images = saved?.images;
   if (typeof images !== "object" || images === null || Array.isArray(images)) return null;
