@@ -52,6 +52,16 @@ export async function handleDoctor(
 ): Promise<void> {
   sendJson(res, 200, await run(root));
 }
+// One value per curated key: the two dotted instance keys read through the `roles` map with
+// their resolved default (unset means 1, the same default runnerIds reads); every other key
+// is a top-level record entry, null when the file leaves it unset.
+function settingsValue(config: Record<string, unknown>, key: string): unknown {
+  if (key === "roles.feature.instances" || key === "roles.bugfix.instances") {
+    const roles = (config.roles ?? {}) as Record<string, { instances?: number }>;
+    return roles[key.split(".")[1] as string]?.instances ?? 1;
+  }
+  return config[key] ?? null;
+}
 /** Handle GET /api/config: the Settings view's resolved values for exactly
  * EDITABLE_CONFIG_KEYS — read through the same load path `tumwater config get` uses
  * (loadConfigSafe, defaults merged in), so the page shows what the team would actually
@@ -65,7 +75,7 @@ export function handleConfig(res: http.ServerResponse, root: string): void {
   }
   const record = config as unknown as Record<string, unknown>;
   const out: Record<string, unknown> = {};
-  for (const key of EDITABLE_CONFIG_KEYS) out[key] = record[key] ?? null;
+  for (const key of EDITABLE_CONFIG_KEYS) out[key] = settingsValue(record, key);
   sendJson(res, 200, out);
 }
 /** Handle GET /api/retire: the Settings view's "Disabled roles" card — every configured,

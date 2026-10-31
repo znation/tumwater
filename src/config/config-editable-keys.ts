@@ -12,6 +12,10 @@
  * maxConcurrentChecks, worktreeSlots) joined the set because
  * tumwater doctor's own contention checks name them for the operator to raise
  * (checkWorktreePool, checkCheckContention); the per-role maps and
+ * customRoles still stay CLI/director territory — with one user-directed exception: the two
+ * instance roles' counts (`roles.feature.instances`, `roles.bugfix.instances`) also live here,
+ * because the dashboard is where the operator sets how many feature and bugfix runs happen at
+ * once (2026-10-31). The rest of the per-role maps and
  * customRoles still stay CLI/director territory. The browser side mirrors the set for its labels
  * (ui/gui/gui-client-settings.ts's SETTINGS_KEYS), a manual copy; the GET /api/config test
  * pins the served key set to this list, and the settings test pins the browser copy's keys
@@ -25,6 +29,11 @@ export const EDITABLE_CONFIG_KEYS = [
   // The run-concurrency knobs tumwater doctor's contention checks name for the operator to
   // raise (checkCheckContention) — grouped so the Settings card that shows the advice can apply it.
   "maxConcurrent",
+  // The two instance roles' counts: how many feature/bugfix runs may run at once
+  // (src/roles/runner-ids.ts's runnerIds). The only per-role keys in this set — validateConfig
+  // accepts `instances` for feature and bugfix only.
+  "roles.feature.instances",
+  "roles.bugfix.instances",
   "maxConcurrentChecks",
   "worktreeSlots",
   "quietHours",

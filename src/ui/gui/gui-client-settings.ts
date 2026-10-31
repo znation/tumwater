@@ -34,6 +34,10 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     ["fallback", "Fallback (free at the spend cap)"],
     ["maxDailyCostUsd", "Daily spend cap (USD)"],
     ["maxConcurrent", "Max concurrent runs"],
+    // The two instance roles' counts (roles.feature/bugfix.instances, 1–8): how many
+    // feature/bugfix runs may run at once — the role drawer and TUI edit the same fields.
+    ["roles.feature.instances", "Feature role instances"],
+    ["roles.bugfix.instances", "Bugfix role instances"],
     ["maxConcurrentChecks", "Max concurrent checks"],
     ["worktreeSlots", "Worktree slots"],
     ["quietHours", "Quiet hours"],
@@ -293,7 +297,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // config-set CLI path and the TUI team-key editors refuse — so refuse it here, naming
   // the row and leaving the field as typed. A non-exponent invalid still goes to the
   // server, whose validateConfig names the key.
-  const PLAIN_INTEGER_KEYS = ["maxConcurrent", "maxConcurrentChecks", "worktreeSlots"];
+  const PLAIN_INTEGER_KEYS = ["maxConcurrent", "roles.feature.instances", "roles.bugfix.instances", "maxConcurrentChecks", "worktreeSlots"];
   // The one delegated submit listener for the panel: save the row's key with the field's
   // current text, and flash the outcome — "Saved <key>" on 200 (with the old value when the
   // key was unset before), the server's message otherwise. No polling, no repaint: the

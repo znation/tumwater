@@ -1014,12 +1014,15 @@ function serveConfigUnset(root: string, body: unknown) {
 
 test("handleConfig returns exactly the curated keys, resolved values with null for unset", async () => {
   const root = tmpdir();
-  writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00", customRoles: [{ name: "watch", task: "watch" }], check: { command: "npm test" } });
+  writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00", customRoles: [{ name: "watch", task: "watch" }], check: { command: "npm test" }, roles: { feature: { instances: 3 }, bugfix: { instances: 2 } } });
   const { captured, data } = await serveConfig(root);
   assert.equal(captured.status, 200);
   assert.equal(captured.contentType, "application/json");
   assert.deepEqual(Object.keys(data as Record<string, unknown>).sort(), [...EDITABLE_CONFIG_KEYS].sort());
   const cfg = data as Record<string, unknown>;
+  // The two instance-role counts resolve through the roles map to their configured values.
+  assert.equal(cfg["roles.feature.instances"], 3);
+  assert.equal(cfg["roles.bugfix.instances"], 2);
   assert.equal(cfg.model, "gpt-5");
   assert.equal(cfg.quietHours, "23:00-07:00");
   assert.equal(cfg.provider, null);
@@ -1041,6 +1044,10 @@ test("handleConfig returns exactly the curated keys, resolved values with null f
   assert.equal(cfg.worktreeSlots, null);
   // customRoles is deliberately not served: the panel's reach is the curated set.
   assert.equal("customRoles" in cfg, false);
+  // A file that leaves the instance counts unset serves their resolved default (1), not null.
+  const instancesUnset = await serveConfig(unsetRoot);
+  assert.equal((instancesUnset.data as Record<string, unknown>)["roles.feature.instances"], 1);
+  assert.equal((instancesUnset.data as Record<string, unknown>)["roles.bugfix.instances"], 1);
 });
 
 test("handleConfig answers 500 with validateConfig's message on a broken tumwater.json", async () => {
@@ -1122,6 +1129,53 @@ test("handleConfigSet writes the declared check and refuses an invalid one byte-
   assert.equal("check" in afterUnset, false);
   const servedAfterUnset = await serveConfig(root);
   assert.equal((servedAfterUnset.data as Record<string, unknown>).check, null);
+});
+
+test("handleConfigSet/Unset round-trip the instance-role counts and refuse out-of-range values byte-identically", async () => {
+  const root = tmpdir();
+  // Set through the dotted key; the file gains the role's instances field and GET serves it.
+  const ok = await serveConfigSet(root, { key: "roles.feature.instances", value: 3 });
+  assert.equal(ok.captured.status, 200);
+  // The file never held the key, so the 200 body omits oldValue (JSON.stringify drops undefined).
+  assert.deepEqual(ok.data, { ok: true, key: "roles.feature.instances", value: 3 });
+  const served = (r: string) => (async () => (await serveConfig(r)).data as Record<string, unknown>)();
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.deepEqual((onDisk.roles as Record<string, unknown>).feature, { instances: 3 });
+  assert.equal((await served(root))["roles.feature.instances"], 3);
+  const okBugfix = await serveConfigSet(root, { key: "roles.bugfix.instances", value: 2 });
+  assert.equal(okBugfix.captured.status, 200);
+  assert.equal((await served(root))["roles.bugfix.instances"], 2);
+  // Out-of-range and malformed values get the shared validator's 400 and leave the file
+  // byte-identical — the whole-candidate validateConfig (INSTANCE_COUNT 1–8) owns the bound.
+  const before = fs.readFileSync(configPath(root), "utf8");
+  const tooHigh = await serveConfigSet(root, { key: "roles.feature.instances", value: 9 });
+  assert.equal(tooHigh.captured.status, 400);
+  assert.match((tooHigh.data as { error: string }).error, /instances/);
+  const tooLow = await serveConfigSet(root, { key: "roles.feature.instances", value: 0 });
+  assert.equal(tooLow.captured.status, 400);
+  const notInteger = await serveConfigSet(root, { key: "roles.feature.instances", value: 1.5 });
+  assert.equal(notInteger.captured.status, 400);
+  const notANumber = await serveConfigSet(root, { key: "roles.feature.instances", value: "abc" });
+  assert.equal(notANumber.captured.status, 400);
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "the refused writes leave the file byte-identical");
+  // An exponent spelling arrives as a quoted string (the endpoint JSON-stringifies the body's
+  // value), so the validator's integer check rejects it — the file stays byte-identical.
+  const exponent = await serveConfigSet(root, { key: "roles.feature.instances", value: "3e0" });
+  assert.equal(exponent.captured.status, 400);
+  assert.match((exponent.data as { error: string }).error, /1 to 8/);
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), before);
+  // Instances for a role other than feature/bugfix are refused by the same validator, and the
+  // curated set never exposes any other role's instances.
+  const other = await serveConfigSet(root, { key: "roles.qa.instances", value: 2 });
+  assert.equal(other.captured.status, 400);
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), before);
+  // Unset removes the field from the file; GET then serves the resolved default (1).
+  const unset = await serveConfigUnset(root, { key: "roles.feature.instances" });
+  assert.equal(unset.captured.status, 200);
+  assert.deepEqual(unset.data, { ok: true, key: "roles.feature.instances", oldValue: 3 });
+  const afterUnset = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal("instances" in ((afterUnset.roles as Record<string, Record<string, unknown>>).feature ?? {}), false);
+  assert.equal((await served(root))["roles.feature.instances"], 1);
 });
 
 test("handleBudget refuses a finite-but-unrepresentable cap with the shared screen's message", async () => {

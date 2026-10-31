@@ -51,7 +51,7 @@ function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
 
 test("renderSettings renders one row per curated key, esc'd, with the key's config name shown", () => {
   const { renderSettings, SETTINGS_KEYS } = settingsScope();
-  const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, maxConcurrent: 6, worktreeSlots: 9, quietHours: null, notify: undefined, backends: { pi: { bin: "pi" } }, check: { command: "npm test" } });
+  const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, maxConcurrent: 6, "roles.feature.instances": 3, "roles.bugfix.instances": 2, worktreeSlots: 9, quietHours: null, notify: undefined, backends: { pi: { bin: "pi" } }, check: { command: "npm test" } });
   // The browser list is a hand copy of the server constant; pin key and order to it so the
   // two cannot drift — an added editable key must appear here too.
   assert.deepEqual(SETTINGS_KEYS.map(([key]) => key), [...EDITABLE_CONFIG_KEYS]);
@@ -75,6 +75,11 @@ test("renderSettings renders one row per curated key, esc'd, with the key's conf
   // the object key as compact JSON (esc'd), exactly as backends does.
   assert.match(html, /id='set-maxConcurrent' value='6'/);
   assert.match(html, /id='set-worktreeSlots' value='9'/);
+  // The two instance-role rows render under their labels, beside the run-concurrency rows.
+  assert.match(html, /<label for='set-roles\.feature\.instances'>Feature role instances<span class='settings-key'>roles\.feature\.instances<\/span><\/label>/);
+  assert.match(html, /<label for='set-roles\.bugfix\.instances'>Bugfix role instances<span class='settings-key'>roles\.bugfix\.instances<\/span><\/label>/);
+  assert.match(html, /id='set-roles\.feature\.instances' value='3'/);
+  assert.match(html, /id='set-roles\.bugfix\.instances' value='2'/);
   assert.match(html, /id='set-quietHours' value=''/);
   assert.match(html, /id='set-notify' value=''/);
   // An object value renders as compact JSON (esc'd), so it can round-trip through the field.
@@ -152,6 +157,25 @@ test("saveSetting posts the row's key and value and flashes the outcome", async 
   await saveSetting(form);
   assert.deepEqual(posts, [{ path: "/api/config-set", body: { key: "model", value: "gpt-5" } }]);
   assert.deepEqual(flashes, ["Saved model (was unset)"]);
+  // A dotted instance-role key posts its own dotted key with the parsed number.
+  const postsInstances: Array<{ path: string; body: unknown }> = [];
+  const { saveSetting: saveInstances } = settingsScope({
+    postJson: async (path: string, body: unknown) => {
+      postsInstances.push({ path, body });
+      return { ok: true, key: "roles.feature.instances", value: 3, oldValue: 1 };
+    },
+    showFlash: () => {},
+  });
+  await saveInstances({ dataset: { key: "roles.feature.instances" }, querySelector: () => ({ value: "3" }) });
+  assert.deepEqual(postsInstances, [{ path: "/api/config-set", body: { key: "roles.feature.instances", value: 3 } }]);
+  // An exponent spelling on an instance row is refused in the browser, naming the key.
+  const exponentFlashes: string[] = [];
+  const { saveSetting: saveExponent } = settingsScope({
+    postJson: async () => ({ ok: true }),
+    showFlash: (msg: string) => void exponentFlashes.push(msg),
+  });
+  await saveExponent({ dataset: { key: "roles.feature.instances" }, querySelector: () => ({ value: "2e1" }) });
+  assert.deepEqual(exponentFlashes, ["error: roles.feature.instances must be a plain integer — no exponent notation"]);
   // A reply flagged unchanged flashes the no-op wording.
   const { saveSetting: saveSame } = settingsScope({
     postJson: async () => ({ ok: true, key: "model", value: "gpt-5", oldValue: "gpt-5", unchanged: true }),
