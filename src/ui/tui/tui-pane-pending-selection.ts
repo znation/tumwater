@@ -26,7 +26,7 @@ type PendingRow =
 /** The render half's data the selection reads to rebuild rows: re-read each press so a cancel,
  * accept, or top acts on the queue the pane is showing, and the rows follow the Ctrl+G role
  * scope / Ctrl+O review-state filter the pane owns. */
-export interface PendingSelectionInputs {
+interface PendingSelectionInputs {
   lastQueue: MergeQueueView | null;
   lastReviews: PostReview[];
   roleScope: string | null;
@@ -37,7 +37,7 @@ export interface PendingSelectionInputs {
  * live data (`inputs`), its one scoped review traversal (`scopedReviews`), its in-place
  * refresh (`refresh`, called after a settled cancel/accept/top so the pane re-reads the queue),
  * and its view/prompt guard (`onPendingView`, which every selection arm reports through). */
-export interface PendingSelectionDeps {
+interface PendingSelectionDeps {
   inputs(): PendingSelectionInputs;
   scopedReviews(): {
     entries: readonly PostReview[];
