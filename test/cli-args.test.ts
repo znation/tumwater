@@ -7,6 +7,7 @@ import {
   parseCountFlag,
   parseDurationFlag,
   parsePortFlag,
+  parsePositionFlag,
   parseRoleFlag,
   parseRoleListFlag,
 } from "../src/cli/cli-args.js";
@@ -56,6 +57,28 @@ test("parseCountFlag's optional max caps the value with the shared wording", () 
   const r = expectFail(() => parseCountFlag("--days", "91", 90));
   assert.equal(r.code, 1);
   assert.match(r.stderr, /tumwater: --days must be between 1 and 90 \(got "91"\)/);
+});
+
+test("parseCountFlag refuses a flag-looking value as a slipped flag, not a malformed count", () => {
+  // `logs -n --json` (or any `--`-token) is a rival flag in the count's slot, never a
+  // count — refuse it with rejectFlagLookingValue's shared wording instead of reporting
+  // the dropped flag as a malformed count ("got \"--json\""). A single-dash token stays a
+  // malformed count, so `-5` still reads as the positive-integer error.
+  const r = expectFail(() => parseCountFlag("-n", "--json"));
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /-n needs a value \(the next token "--json" is a flag, not a value\)/);
+  const neg = expectFail(() => parseCountFlag("-n", "-5"));
+  assert.match(neg.stderr, /-n needs a positive integer \(got "-5"\)/);
+});
+
+test("parsePositionFlag refuses a flag-looking value as a slipped flag, not a malformed position", () => {
+  // The position twin carries the same guard: `--cancel --json` names its own slipped
+  // flag rather than reporting "(got \"--json\")" as a bad position number.
+  const r = expectFail(() => parsePositionFlag("--cancel", "--json", "--cancel 2"));
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--cancel needs a value \(the next token "--json" is a flag, not a value\)/);
+  const neg = expectFail(() => parsePositionFlag("--cancel", "-2", "--cancel 2"));
+  assert.match(neg.stderr, /--cancel needs a positive integer \(got "-2"\)/);
 });
 
 // --- flagValue ---

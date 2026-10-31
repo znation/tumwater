@@ -162,6 +162,12 @@ export function parseModelFlag(args: string[], missingValueError: string): { res
  * scanned window). */
 export function parseCountFlag(flag: string, raw: string | undefined, max?: number): number {
   if (raw === undefined) fail(`${flag} needs a value`);
+  // A `--`-token in the count's slot is the operator's slipped value (`logs -n --json`, a
+  // `--cancel --json`), never a count — counts never start with `-`, so refuse it up front
+  // with rejectFlagLookingValue's shared wording instead of reporting the dropped flag as a
+  // malformed count ("got \"--json\""). A single-dash token like `-5` is a malformed count
+  // and still reads as one. The sibling parsePositionFlag applies the same guard.
+  rejectFlagLookingValue(flag, raw);
   const n = parsePositiveInt(raw);
   if (n === null) fail(`${flag} needs a positive integer${gotSuffix(raw)}`);
   if (max !== undefined && n > max)
@@ -179,6 +185,10 @@ export function parseCountFlag(flag: string, raw: string | undefined, max?: numb
  * drift to Number() at one site. */
 export function parsePositionFlag(flag: string, raw: string | undefined, example: string): number {
   if (raw === undefined) fail(`${flag} needs a position number (e.g. \`${example}\`)`);
+  // The same slipped-`--`-flag guard parseCountFlag applies: a position never starts with
+  // `-`, so `--cancel --json` (or any `--`-token) names its own slipped flag rather than
+  // reporting "(got \"--json\")" as a malformed position number.
+  rejectFlagLookingValue(flag, raw);
   const n = parsePositiveInt(raw);
   if (n === null) fail(`${flag} needs a positive integer${gotSuffix(raw)}`);
   return n;
