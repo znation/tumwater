@@ -26,8 +26,11 @@ import { diffRuleReasons } from "../review/diff-rules.js";
 
 /** What the main watch hands to `onCulprit` for a red tip: the red head it was found at (`tip`)
  * and the failing tests that made it red — exactly the fields ci's red-main heal prompt needs
- * (src/baseline/main-red.ts mainRedHealPrompt). Forward, never back, part 4/6: a red main heals
- * forward and is never reverted, so this holds nothing a revert would need. */
+ * (src/baseline/main-red.ts mainRedHealPrompt). `commit` is the culprit itself — the commit that
+ * OPENED the red (the first red tip since the last green), not the newest red tip: a doc-exempt
+ * tip that lands after the red opened cannot have changed the suite, so re-naming it as culprit
+ * would blame it in the G1 phrase and the heal prompt. Forward, never back, part 4/6: a red main
+ * heals forward and is never reverted, so this holds nothing a revert would need. */
 interface MainCulprit {
   commit: string;
   failingTests: string[];
@@ -77,11 +80,15 @@ function mainCheckEvent(
 
 /** The main watch: after main's head moves, run the full check on the new tip in the `_gate-main`
  * mirror and record the verdict — a `main_check` event, and the failing tests on the red baseline
- * (which persists beside the greens). The watch checks every new red tip, so the newest head is
- * the culprit for what it finds: on a red tip it logs a `main_culprit` event naming that head
- * (with its merging runner when a recent merged event names one). No run, gate or merge waits on
- * it; the culprit goes to the optional `onCulprit` callback, which the orchestrator wires to ci's
- * heal prompt (Forward, never back, part 4/6): a red main is healed forward, never reverted.
+ * (which persists beside the greens). The watch checks every new red tip, but the CULPRIT for an
+ * ongoing red is the commit that opened it — the first red tip since the last green: a doc-exempt
+ * tip that lands after the red opened cannot have changed the suite, so re-naming it would blame
+ * a merge that did not break the check in the G1 phrase and ci's heal prompt. On a red tip it
+ * logs a `main_culprit` event naming the opener (with its merging runner when a recent merged
+ * event names one), and a green closes the spell, so the next red names its own opener. No run,
+ * gate or merge waits on it; the culprit goes to the optional `onCulprit` callback, which the
+ * orchestrator wires to ci's heal prompt (Forward, never back, part 4/6): a red main is healed
+ * forward, never reverted.
  *
  * One watch run is in flight at a time, and it covers every commit since the last watched head; a
  * head that moves during a run is watched next, so the full check runs at most once per main
@@ -100,6 +107,15 @@ interface MainWatch {
 
 /** The failing tests of each root's newest watch verdict, keyed by root. */
 const knownFailures = new Map<string, string[]>();
+
+/** The commit each root's red spell was opened at, keyed by root — the tip of the first red
+ * verdict since the last green. It stays the named culprit while the spell is open: a later tip
+ * re-checks red (the red never inherits across a doc commit) but did not open it, so it is not
+ * re-attributed. A green verdict clears it, so a red that opens after a green names its own
+ * opener. In-memory only: a restart mid-red loses the spell's opener, and the next settled red
+ * tip then names itself as culprit — the pre-fix behaviour, and a bounded one (one tip per
+ * restart, since a spell's later tips inherit the red and settle without a re-run). */
+const redSpellOpeners = new Map<string, string>();
 
 /** Main's known failures: the failing tests of the watch's newest verdict — main's tip, or the
  * nearest tip it checked while the newest head waits — and every quarantined flaky test
@@ -284,23 +300,34 @@ export function createMainWatch(
       return red;
     }
 
-    /** Name a settled red tip as the culprit: its merging runner, the main_culprit event, and
-     * the onCulprit callback with the tip and its failing tests. */
+    /** Name a settled red tip's spell as the culprit: the merging runner, the main_culprit
+     * event, and the onCulprit callback with the tip and its failing tests. The commit named is
+     * the one that OPENED the red — the first red tip since the last green — not the newest red
+     * tip: a doc-exempt tip that lands after the red opened cannot have changed the suite, so
+     * blaming it would name a merge in the G1 phrase (src/baseline/main-guardrails.ts) and the
+     * ci heal prompt (src/baseline/main-red.ts) that did not break anything. The opener is named
+     * once per spell with the tip's failing tests and, when the newest merged event names the
+     * opener, its runner; while the spell is open a later tip re-settling red re-attributes
+     * nothing. */
     function reportCulprit(baseline: MainBaseline): void {
-      // The newest head is the culprit ("Every commit is verified on main, part 2/3"): the watch
-      // checks each new red tip, so whatever it found belongs to the head it checked. Once per red
-      // head — lastWatched already holds it, so a later poll does not attribute it again — name
-      // the tip with its own failing tests and, when the newest merged event names it, its runner.
-      const runner = mergingRoleOf(root, baseline.sha);
+      // A red spell that is already open keeps its opener named: the first red tip since the
+      // last green caused the red, so a later tip re-settling red (a doc-exempt tip cannot
+      // change the suite, and a code tip does not open a SECOND spell until a green closed the
+      // first) is not re-attributed — no new event, no new heal prompt (the heal dedup already
+      // re-queues when the failing set returns after a green).
+      if (redSpellOpeners.has(root)) return;
+      const culprit = baseline.sha;
+      redSpellOpeners.set(root, culprit);
+      const runner = mergingRoleOf(root, culprit);
       logEventBestEffort(root, {
         source: TUMWATER_SOURCE,
         type: "main_culprit",
-        commit: baseline.sha,
+        commit: culprit,
         ...(runner !== undefined ? { runner } : {}),
         failingTests: baseline.failingTests ?? [],
       });
       onCulprit?.({
-        commit: baseline.sha,
+        commit: culprit,
         failingTests: baseline.failingTests ?? [],
         ...(baseline.failingTestFiles ? { failingTestFiles: baseline.failingTestFiles } : {}),
         tip: baseline.sha,
@@ -339,6 +366,7 @@ export function createMainWatch(
       // is red.
       if (!red) {
         clearHealKeyOnGreen();
+        redSpellOpeners.delete(root); // a green closes the red spell; the next red names its own opener
         return;
       }
       reportCulprit(baseline);

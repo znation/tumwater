@@ -267,6 +267,49 @@ function mainRedCulpritClause(sha: string): string {
   return `The watch named ${shortSha(sha)} as the commit that turned it red`;
 }
 
+test("a doc-exempt tip that lands after a red keeps the opener as the named culprit", async () => {
+  const { root } = culpritFixture();
+  const watch = createMainWatch(root, "main");
+  await watchAt(watch, root); // the seed commit G: green, cached
+  const b = change(root, "bad.txt", "b"); // the tip that opens the red
+  logEvent(root, { source: "improve", type: "merged", commit: b, summary: "breaks a test" });
+  await watchAt(watch, root);
+  const doc = change(root, "README.md", "docs"); // a doc-only tip after the red opened
+  await watchAt(watch, root);
+  const culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 1, "the re-check names the culprit once, for the spell");
+  assert.equal(culprits[0]?.commit, b, "the opener stays the named culprit, not the doc-exempt tip");
+  assert.equal(culprits[0]?.runner, "improve", "the runner is the one that merged the opener");
+  assert.deepEqual(culprits[0]?.failingTests, ["first", "second", "third"]);
+  const checks = eventsOfType(root, "main_check");
+  assert.equal(checks.length, 3, "seed green, red tip, doc re-check");
+  assert.equal(checks[2]?.sha, doc, "the re-check settled on the doc tip");
+  assert.equal(checks[2]?.status, "failed");
+});
+
+test("a settled green closes the red spell, so the next red names its own opener", async () => {
+  const flag = path.join(tmpdir(), "red");
+  const script = `if [ -f ${flag} ]; then ${FAILING_OUTPUT}; exit 1; fi; echo ok`;
+  const { root } = baselineFixture("improve", script);
+  const watch = createMainWatch(root, "main");
+  await watchAt(watch, root); // the seed commit: green (no flag)
+  fs.writeFileSync(flag, ""); // the failure goes live
+  change(root, "a.txt", "a"); // the tip that opens the red
+  await watchAt(watch, root);
+  fs.rmSync(flag); // the failure goes away
+  change(root, "b.txt", "g"); // the tip that turns main green
+  await watchAt(watch, root);
+  assert.equal(eventsOfType(root, "main_check")[2]?.status, "passed", "the green tip settled");
+  assert.equal(eventsOfType(root, "main_culprit").length, 1);
+  fs.writeFileSync(flag, ""); // the failure returns on a NEW red
+  const c = change(root, "c.txt", "c");
+  await watchAt(watch, root);
+  const culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 2, "the reopened red names its own culprit");
+  assert.equal(culprits[1]?.commit, c, "the new spell's opener is named, not the old one");
+  assert.equal(eventsOfType(root, "main_check")[3]?.status, "failed");
+});
+
 test("a red tip with no merged event is named without a runner", async () => {
   const { root } = culpritFixture();
   const watch = createMainWatch(root, "main");

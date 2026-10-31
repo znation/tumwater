@@ -141,13 +141,17 @@ function redFailingTest(newest: HarnessEvent): string | undefined {
 }
 
 /** The blame clause naming the merge the main watch blamed, when the newest `culprit` in the
- * window blames the same sha the phrase names. Owns the blame clause. */
-function redBlameClause(culprit: HarnessEvent | undefined, newest: HarnessEvent): string {
+ * window names the spell's opener or its newest red. Owns the blame clause. */
+function redBlameClause(culprit: HarnessEvent | undefined, startEv: HarnessEvent, newest: HarnessEvent): string {
   // The blame names the merge the main watch blamed for the red — the same `main_culprit`
   // commit-equals-tip rule the dashboard alert uses (status-polls only publishes a blame whose
   // commit is the derived tip sha), so a red the watch did not blame never borrows another
   // head's culprit. A culprit naming another commit, or none, leaves the phrase as today.
-  const shouldBlame = culprit !== undefined && culprit.commit === newest.sha;
+  // The watch names the commit that OPENED the red (its first red tip since the last green)
+  // even when a later tip re-checks red, so the match accepts the spell's opener as well as the
+  // newest red tip: the opener is what the watch blames for the ongoing spell, and a
+  // pre-fix log that named the newest tip instead still matches its own newest red.
+  const shouldBlame = culprit !== undefined && (culprit.commit === newest.sha || culprit.commit === startEv.sha);
   return shouldBlame
     ? typeof culprit.runner === "string" && culprit.runner.length > 0
       ? `; the main watch blames ${roleLabel(culprit.runner)}'s merge ${shortSha(culprit.commit)}`
@@ -161,7 +165,7 @@ function redBlameClause(culprit: HarnessEvent | undefined, newest: HarnessEvent)
  * ignored; a pass (including one naming only quarantined tests, recorded passed) ends the red.
  * The phrase names how long main has had no passing full check, the sha it has been red since,
  * its clock time, the newest red's first failing test when one is named, and — when the newest
- * `main_culprit` in the window blames the same sha the phrase names — the merge the main watch
+ * `main_culprit` in the window names the spell's opener or its newest red tip — the merge the main watch
  * blamed (`; the main watch blames <role>'s merge <sha>`, or `; the main watch blames merge
  * <sha>` when no runner is named), the one rule the dashboard alert and this phrase share.
  * Returns null when main is green, or red for RED_MAIN_WARN_MS or less. The per-job work is
@@ -174,7 +178,7 @@ export function redMainWarning(events: readonly HarnessEvent[], now: number): st
   const duration = redSpellDuration(spell);
   const head = `main has had no passing full check for ${duration}: red since ${shortSha(spell.startEv.sha)} at ${clockHm(spell.startEv.ts)}`;
   const failing = redFailingTest(spell.newest);
-  const blame = redBlameClause(window.culprit, spell.newest);
+  const blame = redBlameClause(window.culprit, spell.startEv, spell.newest);
   return failing ? `${head} — ${squash(failing, 120)}${blame}` : `${head}${blame}`;
 }
 

@@ -3320,6 +3320,28 @@ output-tail clauses only when it has them.
 the short SHA"; `test/main-red-heal.test.ts` — "mainRedHealPrompt with a
 culprit names it and adds the failing and tail clauses only when it has them".
 
+### INV-AZ4: an ongoing red keeps the commit that opened it as its named culprit
+
+**Guarantee.** The main watch's `main_culprit` names the commit that OPENED the red — the first
+red tip since the last green — not the newest red tip: while a red spell is open, a tip that
+re-settles red (a doc-exempt tip that cannot change the suite, or a code tip that does not open a
+second spell) logs no new culprit and re-queues no heal prompt; the opener's `main_culprit`
+stays the one blame. A settled green closes the spell, so the next red names its own opener.
+The G1 clause and the dashboard red detail publish a blame whose commit is the spell's opener or
+its newest red tip, so a red re-checked on a later tip keeps naming the opener instead of
+dropping or moving its blame.
+
+**Binds.** `src/baseline/main-watch.ts` (`reportCulprit`, the `redSpellOpeners` map),
+`src/baseline/main-guardrails.ts` (`redBlameClause`), `src/status/status-polls.ts`
+(`scanMainCheck`'s `spellOpener`, `mainCheckForPoll`'s red detail).
+
+**Pinned by.** `test/main-watch.test.ts` — "a doc-exempt tip that lands after a red keeps the
+opener as the named culprit" and "a settled green closes the red spell, so the next red names its
+own opener"; `test/main-guardrails.test.ts` — "a culprit that names the spell's opener blames the
+opener, not the newest tip"; `test/status-polls.test.ts` — "a main_culprit naming the open
+spell's opener carries red detail even when it is not the newest tip" and "a main_culprit whose
+spell a later passing check closed carries no red detail".
+
 ## Maintenance allowance: maintenance merges stop at the rolling-day allowance, counted from the event log
 
 `src/gates/maintenance-quota-gates.ts` caps code-maintenance merges in a rolling 24 h window:

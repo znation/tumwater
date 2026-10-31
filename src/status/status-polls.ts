@@ -4,6 +4,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { isMergeChange, readMergeMarker, type MergeInFlight } from "../merge/merge-slot.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
 import { defaultConfig, loadConfigCached } from "../config/config.js";
+import { isPassingMainCheck } from "../baseline/main-guardrails.js";
 import { DEFAULT_EVENT_TAIL, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/git.js";
@@ -105,9 +106,15 @@ interface MainCheckScan {
   mergeDoneBeforeCommit?: string;
   /** The newest merged commit after the check's ts — the sha the check verified. */
   mergeDoneAfterCommit?: string;
-  /** The newest main_culprit event in the tail — the main watch's blame for the newest red
-   * tip (src/baseline/main-watch.ts). Collected in the same single pass as the check. */
+  /** The newest main_culprit event in the tail — the main watch's blame for the red it named
+   * (src/baseline/main-watch.ts). Collected in the same single pass as the check. */
   culprit?: HarnessEvent;
+  /** The oldest main_culprit since the newest passing full main_check in the tail — the opener
+   * of the red spell still open at the tail's end, or undefined when the tail's end is green
+   * (a passing check closed the spell) or no main_culprit is in the tail. The watch names the
+   * spell's OPENER as culprit even after later tips re-check red, so the red detail is
+   * published for that commit while its spell is open, not only when it is the newest tip. */
+  spellOpener?: HarnessEvent;
 }
 
 /** Per-root scan cache (stat-cache.cachedByStat): both dashboards poll snapshot every second,
@@ -128,6 +135,7 @@ function scanMainCheck(root: string): MainCheckScan {
   // finds the check instead of a second full scan of the window below.
   let mergeDone: HarnessEvent[] = [];
   let culprit: HarnessEvent | undefined;
+  let opener: HarnessEvent | undefined;
   const grewFull = mainCheckGrewFull.has(root);
   // A set note means the previous scan reached the cap without finding a check, so start
   // there: starting at DEFAULT_EVENT_TAIL would only re-read (and re-parse on a cache miss)
@@ -142,17 +150,23 @@ function scanMainCheck(root: string): MainCheckScan {
     check = undefined;
     mergeDone = [];
     culprit = undefined;
-    // One pass collects all three facts the derivation needs: the newest merge-scope check,
-    // every merged event, and the newest main_culprit blame. The merges are re-read against
-    // the check's ts below — a pass over the merges alone, not a second pass over every
-    // event in the window.
+    opener = undefined;
+    // One pass collects all four facts the derivation needs: the newest merge-scope check,
+    // every merged event, the newest main_culprit blame, and the spell opener — the oldest
+    // main_culprit still open at the tail's end (a passing full main_check after it closed
+    // its spell, so the next culprit in the tail is a new spell's opener). The merges are
+    // re-read against the check's ts below — a pass over the merges alone, not a second pass
+    // over every event in the window.
     for (const e of events) {
       if (e.type === "build_check" && isFullCheckScope(e.scope, e.full)) {
         check = e;
       } else if (e.type === "merge_done" && typeof e.ts === "number") {
         mergeDone.push(e);
+      } else if (e.type === "main_check" && isPassingMainCheck(e)) {
+        opener = undefined; // a passing full main check closes the open red spell
       } else if (e.type === "main_culprit") {
         culprit = e;
+        if (opener === undefined) opener = e; // the oldest main_culprit since the last pass
       }
     }
     // Found, the log is shorter than the window (nothing older exists to find), or the cap
@@ -164,8 +178,10 @@ function scanMainCheck(root: string): MainCheckScan {
   if (mainCheckGrewFull.size >= MAIN_CHECK_FULL_SET_MAX) mainCheckGrewFull.clear();
   if (check) mainCheckGrewFull.delete(root);
   else mainCheckGrewFull.add(root);
+  // The loop's last pass over the FINAL tail left `opener` current: an earlier window's value
+  // was reset before its own scan, and the break exits with the final tail's result.
   if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) {
-    return { ...(culprit ? { culprit } : {}) };
+    return { ...(culprit ? { culprit } : {}), ...(opener ? { spellOpener: opener } : {}) };
   }
   let mergeDoneAfter: HarnessEvent | undefined;
   let mergeDoneBefore: HarnessEvent | undefined;
@@ -176,6 +192,7 @@ function scanMainCheck(root: string): MainCheckScan {
   return {
     check,
     ...(culprit ? { culprit } : {}),
+    ...(opener ? { spellOpener: opener } : {}),
     ...(typeof mergeDoneAfter?.commit === "string" ? { mergeDoneAfterCommit: mergeDoneAfter.commit } : {}),
     ...(typeof mergeDoneBefore?.commit === "string" ? { mergeDoneBeforeCommit: mergeDoneBefore.commit } : {}),
   };
@@ -195,6 +212,7 @@ function mainCheckScanFor(root: string): MainCheckScan {
         ...v,
         ...(v.check ? { check: { ...v.check } } : {}),
         ...(v.culprit ? { culprit: { ...v.culprit } } : {}),
+        ...(v.spellOpener ? { spellOpener: { ...v.spellOpener } } : {}),
       }),
     ) ?? { check: undefined }
   );
@@ -230,15 +248,19 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
   const sha = scan.mergeDoneAfterCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneBeforeCommit;
   const counts = asTestCounts(check.counts);
   // The red evidence names the failing test and the merge the main watch blamed — and that
-  // data lives only on the main_culprit event (the main watch's verdict on the red tip; the
-  // build_check event itself carries no failing tests), attributed only when the verdict's
-  // commit is exactly the sha this poll derived, so a newer build_check failure can't borrow
-  // a blame the watch wrote for a different head. A passing/skipped check, or a failing one
-  // whose tip the watch hasn't blamed, keeps today's exact MainCheckStatus shape (no `red`).
+  // data lives only on the main_culprit event (the main watch's verdict on the red; the
+  // build_check event itself carries no failing tests), attributed only when the verdict
+  // names the tip this poll derived or the opener of the red spell still open at the tail's
+  // end (spellOpener — the watch names the spell's opener as culprit even after a later tip
+  // re-checks red, so an ongoing red keeps its blame instead of dropping it), so a newer
+  // build_check failure can't borrow a blame the watch wrote for another head or a closed
+  // spell. A passing/skipped check, or a failing one whose tip the watch hasn't blamed,
+  // keeps today's exact MainCheckStatus shape (no `red`).
   let red: MainCheckStatus["red"] | undefined;
   if (check.status === "failed" && sha !== undefined && scan.culprit && typeof scan.culprit.commit === "string") {
     const c = scan.culprit;
-    if (c.commit === sha) {
+    const openerCommit = scan.spellOpener && typeof scan.spellOpener.commit === "string" ? scan.spellOpener.commit : undefined;
+    if (c.commit === sha || (openerCommit !== undefined && c.commit === openerCommit)) {
       const failing =
         Array.isArray(c.failingTests) && typeof c.failingTests[0] === "string"
           ? c.failingTests.filter((f): f is string => typeof f === "string")

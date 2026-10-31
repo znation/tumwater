@@ -139,6 +139,23 @@ test("redMainWarning: a matching culprit with no runner appends the merge withou
   assert.match(out!, /the main watch blames merge abcdef12/);
 });
 
+test("redMainWarning: a culprit that names the spell's opener blames the opener, not the newest tip", () => {
+  const now = 1_000_000_000_000;
+  const OPENER = "abcdef1234567890"; // the commit that opened the red
+  const DOCTIP = "9999999999999999"; // a later doc-exempt tip that re-checked red
+  const events = [
+    ev({ type: "main_check", ts: now - 31 * MIN, sha: OPENER, status: "failed", durationMs: 120_000, failingTests: ["test/one.test.ts"] }),
+    ev({ type: "main_culprit", ts: now - 30 * MIN, commit: OPENER, runner: "organize" }),
+    ev({ type: "main_check", ts: now - 13 * MIN, sha: DOCTIP, status: "failed", durationMs: 120_000, failingTests: ["test/one.test.ts"] }),
+    ev({ type: "main_culprit", ts: now - 12 * MIN, commit: OPENER, runner: "organize" }), // the watch re-settled the doc tip, still naming the opener
+  ];
+  const out = redMainWarning(events, now);
+  assert.ok(out, "an ongoing 31-min red warns");
+  assert.match(out!, /red since abcdef12 at/);
+  assert.match(out!, /the main watch blames organize's merge abcdef12/, "the opener is blamed, not the doc-exempt tip");
+  assert.doesNotMatch(out!, /99999999/);
+});
+
 test("redMainWarning: a culprit for another commit or none leaves the phrase unchanged", () => {
   const now = 1_000_000_000_000;
   const S = "abcdef1234567890";

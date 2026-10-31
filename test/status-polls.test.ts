@@ -84,12 +84,28 @@ test("mainCheckForPoll carries red detail from the main_culprit verdict matching
   assert.deepEqual(result?.red, { failingTests: ["a", "b"], culprit: { commit: tip, runner: "feature" } });
 });
 
-test("a main_culprit for a different head carries no red detail", () => {
+test("a main_culprit naming the open spell's opener carries red detail even when it is not the newest tip", () => {
   const root = makeRepo();
+  // The watch names the opener of the red, not the newest tip: a doc-exempt tip landed after
+  // the red opened, so the derived tip sha differs from the blamed commit. The blame still
+  // publishes — the red is ongoing and the opener caused it.
   writeEvents(root, [
     { source: "merge", type: "build_check", scope: "merge", status: "failed", script: "npm test", durationMs: 1, ts: 1_000 },
-    // A newer merge-scope failure with a blame the watch wrote for a different head: no red.
     { source: "tumwater", type: "main_culprit", commit: sha("c"), runner: "feature", failingTests: ["a"], ts: 2_000 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.status, "failed");
+  assert.deepEqual(result?.red, { failingTests: ["a"], culprit: { commit: sha("c"), runner: "feature" } });
+});
+
+test("a main_culprit whose spell a later passing check closed carries no red detail", () => {
+  const root = makeRepo();
+  // The blame's spell was closed by a passing full main_check after it: the derived tip is a
+  // different head and the opener is gone, so the stale blame is not borrowed onto the red.
+  writeEvents(root, [
+    { source: "merge", type: "build_check", scope: "merge", status: "failed", script: "npm test", durationMs: 1, ts: 1_000 },
+    { source: "tumwater", type: "main_culprit", commit: sha("c"), runner: "feature", failingTests: ["a"], ts: 2_000 },
+    { source: "tumwater", type: "main_check", sha: sha("d"), status: "passed", durationMs: 120_000, ts: 3_000 },
   ]);
   const result = mainCheckForPoll(root, configForStatus(root));
   assert.equal(result?.status, "failed");
