@@ -78,6 +78,25 @@ test("a .tumwater directory or a symlink inside the worktree does not let a prim
   assert.ok(viaLink?.includes(`Write ${path.join(wt, "src", "a.ts")} instead`), viaLink ?? "");
 });
 
+test("a broken symlink inside the worktree whose target escapes is refused, not read as its own location", () => {
+  const { root, wt } = team();
+  // The write/create case: the link's target does not exist yet, so realpathSync cannot follow
+  // it. The write would still follow the link, so the guard must resolve the link's target —
+  // not the link's location inside the checkout — and refuse the escape.
+  const outside = path.join(root, "outside", "pwned.txt");
+  const link = path.join(wt, "link");
+  fs.symlinkSync(path.relative(path.dirname(link), outside), link);
+  const refusal = strayWriteRefusal(link, wt);
+  assert.ok(refusal, "a broken symlink pointing outside the checkout must be refused");
+  assert.match(refusal, /outside this run's worktree/);
+  // Same when the target names another run's checkout.
+  const otherLink = path.join(wt, "to-other");
+  fs.symlinkSync(path.join("..", "_slot-2", "src", "a.ts"), otherLink); // points at _slot-2/src/a.ts
+  const otherRefusal = strayWriteRefusal(otherLink, wt);
+  assert.ok(otherRefusal, "a broken symlink into another checkout must be refused");
+  assert.match(otherRefusal, /another checkout \(_slot-2\)/);
+});
+
 test("the pi extension blocks a stray edit or write and lets other tools and in-worktree writes run", () => {
   const { root, wt } = team();
   let handler: ((event: object, ctx?: { cwd?: unknown }) => unknown) | undefined;

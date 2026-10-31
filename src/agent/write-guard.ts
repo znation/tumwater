@@ -36,23 +36,58 @@ function isWithin(p: string, dir: string): boolean {
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
-/** `p` with its longest existing prefix resolved through realpath, so a symlink, a `/tmp` that is
- * `/private/tmp`, or a path typed in the wrong case on a case-insensitive disk compares as the
- * file it reaches. The part that does not exist yet (a file a write would create) is appended
- * unchanged. */
+/** `p` with its symlinks resolved as the file it reaches: each component is peeled and a
+ * symlink is followed to its target, so a symlinked checkout or a `/tmp` that is `/private/tmp`
+ * compares as the path it reaches. The not-yet-existing tail (a file a write would create) is
+ * appended unchanged. A broken symlink — target absent, the write/create case, where
+ * `realpathSync` throws ENOENT and the old longest-existing-prefix walk read the link as its
+ * own location inside the checkout — is followed to its target instead: the write would follow
+ * it, so the guard must see where it points. */
 function realish(p: string): string {
-  let existing = p;
-  const rest: string[] = [];
-  for (;;) {
+  // Peel the path component by component, exactly as `realpath` does: a regular component is
+  // kept, a symlink is replaced by the components its target resolves to, and the first absent
+  // component ends the walk, so a not-yet-existing tail is appended unchanged. Replacing the
+  // link with its target — instead of keeping the link's own path — is what catches a broken
+  // symlink: its target is absent (the write/create case, where `realpathSync` throws ENOENT
+  // and the old longest-existing-prefix walk read the link as its location inside the
+  // checkout), yet the write would still follow it, so the guard must see where it points. A
+  // depth bound stops a symlink cycle (a → b → a) from looping instead of escaping through the
+  // tail.
+  let q = path.resolve(p).split(path.sep).filter(Boolean);
+  const out: string[] = [];
+  let depth = 0;
+  while (q.length > 0) {
+    const part = q[0] as string; // the loop's length check guarantees a first component
+    const here = path.join(path.sep, ...out, part);
+    let st: fs.Stats;
     try {
-      return path.join(fs.realpathSync.native(existing), ...rest);
+      st = fs.lstatSync(here);
     } catch {
-      const parent = path.dirname(existing);
-      if (parent === existing) return p;
-      rest.unshift(path.basename(existing));
-      existing = parent;
+      out.push(part, ...q.slice(1)); // absent: this and the rest are the not-yet-existing tail
+      break;
+    }
+    if (!st.isSymbolicLink()) {
+      out.push(part);
+      q = q.slice(1);
+    } else if (depth++ > 100) {
+      out.push(part, ...q.slice(1)); // cycle: give up rather than loop
+      break;
+    } else {
+      let raw: string;
+      try {
+        raw = fs.readlinkSync(here); // a relative target is relative to the link's dir
+      } catch {
+        out.push(part, ...q.slice(1)); // unreadable: treat as the not-yet-existing tail
+        break;
+      }
+      // The target, absolute-resolved, becomes the whole remaining path to peel: the link's
+      // own directory is dropped and replaced by wherever the link points.
+      const target = path.isAbsolute(raw) ? raw : path.resolve(path.join(path.sep, ...out), raw);
+      q = [...target.split(path.sep).filter(Boolean), ...q.slice(1)];
+      out.length = 0;
     }
   }
+  return path.join(path.sep, ...out);
 }
 
 /** A tool's path argument as pi's tools resolve it (pi `resolveToCwd`): a leading `@` dropped,
