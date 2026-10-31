@@ -4,7 +4,7 @@
  * collected view and a `now` instant — no I/O, no clock reads — so the age it prints can be
  * pinned by a test. */
 
-import { humanAgo, humanSeconds, humanSince, secondsUntil } from "../text/datetime.js";
+import { humanAgo, humanSince, humanUntil } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
 import { filterKeepPositions } from "../collections.js";
@@ -51,7 +51,7 @@ export function retryNote(entry: Pick<MergeEntry, "retry" | "notBefore" | "retry
   let note = `re-queued after ${entry.retry}`;
   if ((entry.retryCount ?? 0) > 1) note += ` · ×${entry.retryCount}`;
   if (entry.notBefore !== undefined && entry.notBefore > now) {
-    note += ` · eligible in ${humanSeconds(secondsUntil(entry.notBefore, now))}`;
+    note += ` · eligible in ${humanUntil(entry.notBefore, now)}`;
   }
   return note;
 }
