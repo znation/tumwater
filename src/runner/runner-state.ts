@@ -225,18 +225,6 @@ export interface RunnerState {
    * `waitingSince` is the ms epoch of the first poll that saw main moved with no cached verdict
    * for its head. */
   mainRedRetry?: { head: string; entry: Omit<MergeEntry, "sha">; waitingSince?: number };
-  /** Consecutive merges of one patch (git/git.ts patchId, stable across a clean rebase) whose
-   * in-lock check went red on the rebased tree. At merge-check-failures.ts's
-   * MERGE_CHECK_FAILURE_LIMIT the red is attributed through main's own verdict instead of
-   * re-queued as merge_blocked again. `headline` is the failing test's headline, set only by a
-   * red merge check (never by a cross-check block), so a retry that passes can be recorded as
-   * a flake. */
-  mergeCheckFailures?: { patchId: string; count: number; headline?: string };
-  /** The normalized failure headline (normalizeClusterKey) that merge-check-failures.ts's
-   * attributeRedCheck last excused as a known flake for this role's pinned change: the pin is
-   * kept once per headline, and a repeat of the same headline is attributed. Cleared when the
-   * change merges or is rejected. */
-  mergeFlakeExcused?: string;
   /** Tokens the model generated in this runner's current or last completed run — a per-run
    * window (runner-run.ts resets it at run start), not a lifetime total. */
   generatedTokens: number;

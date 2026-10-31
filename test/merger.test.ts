@@ -398,7 +398,6 @@ test("the merge checkout is shared, kept detached, and persists at a terminal ou
       // shared checkout persists for the next merge.
       assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "a single merge fast-forwards with no in-lock check");
       assert.equal(await refSha(root, REF), null, "the pin is gone after merging");
-      assert.equal(state.mergeCheckFailures, undefined, "no strike: no in-lock check ran");
       assert.ok(fs.existsSync(mergeWt), "_merge persists at the terminal outcome");
       assert.equal(
         fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${ROLE}`)),

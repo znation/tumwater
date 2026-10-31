@@ -448,10 +448,8 @@ test("applyMergeOutcome counts consecutive merge conflicts per pinned sha", () =
   for (const result of ["changed", "rejected"] as const) {
     const n = freshRunnerState("feature");
     n.mergeConflicts = { sha: "aaa", count: 2 };
-    n.mergeCheckFailures = { patchId: "p1", count: 1 };
     applyMergeOutcome(n, result, { sha: "aaa", summary: "x" });
     assert.equal(n.mergeConflicts, undefined, `${result} clears the streak`);
-    assert.equal(n.mergeCheckFailures, undefined, `${result} clears the red-merge-check streak`);
   }
 });
 

@@ -68,7 +68,6 @@ test("a single merge with a red declared check still fast-forwards — no in-loc
 
   assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "no in-lock check: the change merges");
   assert.equal(await refSha(root, REF), null, "the pin is gone — the change merged");
-  assert.equal(state.mergeCheckFailures, undefined, "no strike: no check ran");
   assert.equal(calls.length, 0, "no model run");
   assert.notEqual(mainSha(root), tip, "the change reached main for the main watch");
 });
@@ -116,7 +115,6 @@ test("a repairable false-fix md-only change merges through the real merge flow",
   assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "the false-fix md-only change merges");
   assert.notEqual(mainSha(root), mainBefore, "the change reached main for the main watch");
   assert.equal(await refSha(root, REF), null, "the pin is gone — the change merged");
-  assert.equal(state.mergeCheckFailures, undefined, "no strike: nothing blocked");
   assert.equal(calls.length, 0, "no model run — no resolver, no reviewer");
 });
 

@@ -19,8 +19,8 @@ import { allRoleIds } from "../roles/roles.js";
  * absent, foreign, NaN/±Infinity, or negative). Every numeric field on RunnerState — top-level or
  * inside one of the nested records below — is a count, a duration, an epoch-ms stamp, or an
  * amount, so zero is the only sensible repair; the `run-usage.ts` and `budget.ts` writers floor
- * the same three quantities they own. A guard count (mergeConflicts, mergeCheckFailures,
- * unreviewFailures) heals to 0 like the rest: a corrupt strike tally re-accumulates from the
+ * the same three quantities they own. A guard count (mergeConflicts, unreviewFailures) heals
+ * to 0 like the rest: a corrupt strike tally re-accumulates from the
  * next attempt, the same "the field is unusable, start the count over" repair the top-level heal
  * already gives the error streak. */
 function healNumber(value: unknown, fallback: number): number {
@@ -63,10 +63,7 @@ const LEGACY_STATE_KEYS: Readonly<Record<string, string>> = {
   ticks: "runs", // retired-name-ok: legacy name
   lastTickStartedAt: "lastRunStartedAt", // retired-name-ok: legacy name
   lastTickEndedAt: "lastRunEndedAt", // retired-name-ok: legacy name
-  // retired-name-ok:start old state keys
-  landingCheckFailures: "mergeCheckFailures", // vocabulary-ok: legacy state key read from old files
-  lastLandedAt: "lastMergedAt", // vocabulary-ok: legacy state key read from old files
-  // retired-name-ok:end
+  lastLandedAt: "lastMergedAt" // retired-name-ok: legacy state key read from old files
 };
 
 /** Apply LEGACY_STATE_KEYS to a parsed state object in place. */
@@ -76,6 +73,13 @@ function migrateLegacyStateKeys(saved: Record<string, unknown>): void {
   // to load it into — no reader consumes it — drop both here so a later save writes neither.
   delete saved.landingReviewError; // retired-name-ok: legacy state key read from old files
   delete saved.mergeReviewError;
+  // The red-merge-check bookkeeping is gone (parts 4l/3 and 4m/3): a state file may still
+  // name the old (landingCheckFailures) or recent (mergeCheckFailures) key and the flake
+  // excuse, and with no field to load them into — no reader consumes them — drop all three
+  // here so a later save writes none of them.
+  delete saved.landingCheckFailures; // retired-name-ok: legacy state key read from old files
+  delete saved.mergeCheckFailures;
+  delete saved.mergeFlakeExcused;
   for (const [oldKey, newKey] of Object.entries(LEGACY_STATE_KEYS)) {
     if (!(oldKey in saved)) continue;
     if (!(newKey in saved)) saved[newKey] = saved[oldKey];
@@ -124,7 +128,7 @@ function healVocabulary(s: RunnerState): void {
 
 /** Heal every nested scheduling/recovery record of a persisted state in place: lastReview,
  * claim, revision, the torn retry record mainRedRetry, mergeConflicts, conflictDiscard,
- * conflictHandback (with the legacy "landing" → "merge" rename), and mergeCheckFailures. Each
+ * conflictHandback (with the legacy "landing" → "merge" rename). Each
  * is a plain object whose numeric slots heal to 0; a present non-object is dropped and an
  * absent record stays absent — "which nested records are validated and how?" is answered by
  * name here. */
@@ -187,20 +191,12 @@ function healNestedRecords(s: RunnerState): void {
       healOptionalNumber(v, "round");
       if ((v.reason as string) === "landing") v.reason = "merge"; // vocabulary-ok: legacy state value read from old files
     });
-  if (s.mergeCheckFailures !== undefined)
-    s.mergeCheckFailures = healRecord(s.mergeCheckFailures, (v) => {
-      v.count = healNumber(v.count, 0);
-      if (typeof v.headline !== "string") delete v.headline;
-    });
 }
 
-/** Heal the two one-shot markers of a persisted state in place: a torn mergeFlakeExcused
- * scalar is dropped (the marker is a string read for the next run's flake), and imageReroute
- * is dropped unless it is a plain object whose tier names a known seam — "which one-shot
- * markers are dropped when torn?" has one home. */
+/** Heal the one-shot marker of a persisted state in place: imageReroute is dropped unless it
+ * is a plain object whose tier names a known seam — "which one-shot markers are dropped when
+ * torn?" has one home. */
 function healOneShotMarkers(s: RunnerState): void {
-  if (s.mergeFlakeExcused !== undefined && typeof s.mergeFlakeExcused !== "string")
-    delete s.mergeFlakeExcused;
   // The image-reroute marker is a one-shot nested record consumed by the next run; a torn
   // scalar is dropped (its consumers read/mutate fields), and the tier is repaired to a
   // known tier name so a corrupt tier cannot route a rerouted run to a phantom seam.

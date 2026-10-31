@@ -6,23 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Every commit is verified on main, part 3f/3: the merge-check runner-state fields are removed (the residual scope of the split part) — a merge is a rebase and a fast-forward (planned 2026-10-30 by the plan role, narrowing the once-too-large part 3f/3 after its in-lock half split out as part 4l/3 (landed) and its batch/stack half as part 4m/3 (in flight); "requires part 4m/3 landed", so `src/merge/merge-check-failures.ts` and its last readers of the two fields are gone; touches src/runner/runner-state.ts src/runner/runner-state-load.ts src/run/run-apply.ts docs/glossary.md docs/invariants.md test/runner-state.test.ts test/run-apply.test.ts test/streak-gates.test.ts test/merger.test.ts test/merger-check.test.ts)
-
-**Goal.** Part 4l/3 removed the in-lock check and part 4m/3 deletes the batch path and `src/merge/merge-check-failures.ts`, the module that wrote `RunnerState.mergeCheckFailures` and `RunnerState.mergeFlakeExcused`. The two per-change fields, their state-load migration/healing, and `applyMergeOutcome`'s resets then name a mechanism nothing runs. Delete them so the persisted state, its loader and the merge-outcome handler carry no dead merge-check bookkeeping; this is the last scope of part 3f/3.
-
-**Approach.**
-- Delete the `mergeCheckFailures` and `mergeFlakeExcused` field declarations and their doc comments from `src/runner/runner-state.ts`.
-- In `src/runner/runner-state-load.ts`, retire the legacy keys rather than migrate them: remove `landingCheckFailures: "mergeCheckFailures"` from `LEGACY_STATE_KEYS` and, beside the existing retired `landingReviewError` deletes in `migrateLegacyStateKeys`, `delete saved.landingCheckFailures`, `delete saved.mergeCheckFailures` and `delete saved.mergeFlakeExcused` (with the same retired-name comments), so an old file's keys are dropped on load and not written back. Delete the `mergeCheckFailures` heal block in `healNestedRecords`, the `mergeFlakeExcused` branch in `healOneShotMarkers` (leaving the `imageReroute` branch), and the `mergeCheckFailures` mention in `healNumber`'s doc comment.
-- In `src/run/run-apply.ts`, delete the `changeGone` block that sets `s.mergeCheckFailures`/`s.mergeFlakeExcused` to undefined and the comment above it; `mergeConflicts` and `conflictHandback` keep their resets.
-- Docs: drop `landingCheckFailures`/`mergeCheckFailures` from docs/glossary.md's legacy state-key row; remove any docs/invariants.md text still naming the two fields after 4m/3 (the merge-check-failures INV section goes with the module in 4m/3).
-- Tests: in test/runner-state.test.ts remove the heal cases/assertions for the two fields; in test/run-apply.test.ts remove the `changeGone` red-merge-check streak case; in test/streak-gates.test.ts remove the `mergeFlakeExcused` case (its whole subject is gone); in test/merger.test.ts and test/merger-check.test.ts drop the `state.mergeCheckFailures` assertions from the no-in-lock-check cases, keeping the merge behavior assertions.
-
-**Acceptance criteria.**
-- `grep -rn 'mergeCheckFailures\|mergeFlakeExcused\|landingCheckFailures' src/ test/ docs/` names none, and `RunnerState` declares neither field.
-- A persisted state carrying any of the three keys loads with them absent and the next save does not write them back (pinned by test/runner-state.test.ts).
-- `applyMergeOutcome` clears only `mergeConflicts` and `conflictHandback` on `changed`/`rejected`; no test asserts a merge-check reset.
-- `npm run test:gate` passes.
-
 ### Subtract, part 3/6: The merge queue becomes a lock and a fast-forward (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 3; requires Every commit is verified on main part 3f/3 landed; touches src/merge src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts src/orchestrator/scheduling-scope.ts src/runner/runner-run.ts src/status/status-data.ts src/doctor/doctor-contention-checks.ts src/concurrency/check-permit.ts docs/how-it-works.md docs/invariants.md test/merger-restack.test.ts test/merge-backlog-conflicts.test.ts test/worktree-pool.test.ts)
 
 **Goal.** A change lands as `pin → rebase onto main → fast-forward under the merge lock`. The queue, its stage machine, the coalesced batch check with its prefix bisect, the re-queue, the entry drop limits and the scheduling interlock are gone, because nothing about landing can fail any more: verification moved after the merge (part 3f/3), and a break is an ordinary open bug owned by the author.

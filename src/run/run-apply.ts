@@ -368,7 +368,6 @@ export function applyMergeOutcome(
     }
   }
   // A merge or a rejection is the end of the change's life; a merge_conflict keeps its pin.
-  // The per-change markers below all clear on this one outcome set, so name it once.
   const changeGone = result === "changed" || result === "rejected";
   // The conflict streak counts failed resolutions of one pinned sha; a merge or a rejection
   // ends that pin's life. Every other outcome kept the pin as it was, so its count stands.
@@ -377,11 +376,6 @@ export function applyMergeOutcome(
     s.mergeConflicts = { sha: change.sha, count: prior + 1 };
   } else if (changeGone) {
     s.mergeConflicts = undefined;
-  }
-  // Likewise the red-merge-check streak (keyed by patch-id): its change is gone either way.
-  if (changeGone) {
-    s.mergeCheckFailures = undefined;
-    s.mergeFlakeExcused = undefined;
   }
   // A hand-back ends with its change's life too: once the resolved change merges or is rejected,
   // a later change gets its own one-hand-back budget (PLANS.md "Robust conflict landing, part

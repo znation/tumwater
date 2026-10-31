@@ -273,7 +273,6 @@ test("loadRunnerState heals corrupt numeric fields inside nested records", () =>
       mergeConflicts: { sha: "abc", count: "many" },
       conflictDiscard: { sha: "abc", summary: "s", attempts: -3, at: {} },
       conflictHandback: { sha: "abc", at: "later", round: -4, reason: "landing", applied: false }, // vocabulary-ok: legacy state value read from old files
-      mergeCheckFailures: { patchId: "p", count: [1] },
     }),
   );
   const s = loadRunnerState(dir, "nested");
@@ -287,7 +286,6 @@ test("loadRunnerState heals corrupt numeric fields inside nested records", () =>
   assert.equal(s.conflictHandback?.at, 0);
   assert.equal(s.conflictHandback?.round, 0);
   assert.equal(s.conflictHandback?.reason, "merge", "an old build's merge reason loads as merge");
-  assert.equal(s.mergeCheckFailures?.count, 0);
 });
 
 test("loadRunnerState heals a foreign-typed lastReview.reasons to an empty list", () => {
@@ -334,8 +332,6 @@ test("loadRunnerState drops a nested record that is not a plain object, keeping 
       mergeConflicts: null,
       conflictDiscard: true,
       conflictHandback: 0,
-      mergeCheckFailures: "none",
-      mergeFlakeExcused: 7,
       claim: { file: "BUGS.md", key: "k", title: "t", at: 42, source: "staged" }, // real record kept
     }),
   );
@@ -345,8 +341,6 @@ test("loadRunnerState drops a nested record that is not a plain object, keeping 
   assert.equal(s.mergeConflicts, undefined);
   assert.equal(s.conflictDiscard, undefined);
   assert.equal(s.conflictHandback, undefined);
-  assert.equal(s.mergeCheckFailures, undefined);
-  assert.equal("mergeFlakeExcused" in s, false);
   assert.equal(s.claim?.at, 42, "a valid record keeps its real values");
   assert.equal(s.claim?.key, "k");
 });
@@ -481,7 +475,7 @@ test("loadRunnerState keeps `runs` and drops `ticks` when a file holds both", ()
   assert.equal("ticks" in s, false); // retired-name-ok: legacy name
 });
 
-test("loadRunnerState maps the five legacy tick and merge keys, healing each as before", () => {
+test("loadRunnerState maps the legacy tick and merge keys and drops the retired merge-check keys", () => {
   const dir = tmpdir();
   const file = statePath(dir, "qa");
   ensureParentDir(file);
@@ -494,7 +488,9 @@ test("loadRunnerState maps the five legacy tick and merge keys, healing each as 
       // retired-name-ok:start old state keys
       lastLandedAt: -5, // vocabulary-ok: legacy state key read from old files
       landingReviewError: { sha: "abc", selector: "bad/model", message: "boom" }, // vocabulary-ok: legacy state key read from old files
-      landingCheckFailures: 3, // vocabulary-ok: legacy state key read from old files
+      landingCheckFailures: 3, // retired-name-ok: legacy state key read from old files
+      mergeCheckFailures: 2,
+      mergeFlakeExcused: "the flaky test",
       // retired-name-ok:end
     }),
   );
@@ -502,13 +498,13 @@ test("loadRunnerState maps the five legacy tick and merge keys, healing each as 
   assert.equal(s.lastRunStartedAt, 100);
   assert.equal(s.lastRunEndedAt, 200);
   assert.equal(s.lastMergedAt, 0);
-  // The pre-merge reviewer-config hold is gone (part 3j/3): the legacy landingReviewError still
+  // The pre-merge reviewer-config hold is gone (part 3j/3): the legacy landingReviewError
   // loads without throwing, and the load drops both it and any recent-name key, so the save
-  // below writes neither and no field or reader consumes the value.
-  assert.equal(s.mergeCheckFailures, undefined);
+  // below writes neither. The red-merge-check keys are retired the same way (parts 4l/3 and
+  // 4m/3): they load without throwing and the next save writes none of them.
   saveRunnerState(dir, s);
   const onDisk = readJson<Record<string, unknown>>(file);
-  for (const old of ["lastTickStartedAt", "lastTickEndedAt", "lastLandedAt", "landingReviewError", "landingCheckFailures"]) // retired-name-ok: legacy name
+  for (const old of ["lastTickStartedAt", "lastTickEndedAt", "lastLandedAt", "landingReviewError", "landingCheckFailures", "mergeCheckFailures", "mergeFlakeExcused"]) // retired-name-ok: legacy name
     assert.equal(old in onDisk, false);
   assert.equal(onDisk.lastRunEndedAt, 200);
 });

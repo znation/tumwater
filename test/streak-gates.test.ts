@@ -234,13 +234,3 @@ test("pollStreakGate: instance 1 of a multi-instance role pauses under its own k
   assert.deepEqual(again, []);
   assert.equal(streakEvents(root).length, 1, "a second poll logs nothing more");
 });
-
-test("applyMergeOutcome clears mergeFlakeExcused when the change merges or is rejected, keeps it when blocked", () => {
-  const change = { sha: "b".repeat(40), summary: "keep the flake excuse per pin" };
-  for (const [result, kept] of [["changed", false], ["rejected", false], ["merge_blocked", true]] as const) {
-    const s = freshRunnerState("coverage");
-    s.mergeFlakeExcused = "the flaky test";
-    applyMergeOutcome(s, result, change);
-    assert.equal(s.mergeFlakeExcused !== undefined, kept, `${result}: excuse ${kept ? "kept" : "cleared"}`);
-  }
-});
