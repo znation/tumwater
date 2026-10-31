@@ -1,4 +1,5 @@
 import { setRoleModelFields } from "../../config/config-write.js";
+import { typoSuffix } from "../../text/suggest.js";
 import { rawRoleField } from "../../roles/role-view.js";
 import type { TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
@@ -34,9 +35,12 @@ export function parseRoleModelLine(line: string): ParseRoleModelLine {
     const key = eq === -1 ? "model" : token.slice(0, eq);
     const value = eq === -1 ? token : token.slice(eq + 1);
     if (key !== "provider" && key !== "model" && key !== "thinking")
+      // A near-miss key gets the same did-you-mean hint `history --result`/`logs --type`
+      // give their closed vocabularies, so `provder=` reads "did you mean `provider`?"
+      // instead of a flat list that names no fix.
       return {
         ok: false,
-        error: `unknown key ${key}: only provider, model and thinking are accepted`,
+        error: `unknown key ${key}: only provider, model and thinking are accepted${typoSuffix(key, ["provider", "model", "thinking"])}`,
       };
     if (value === "") return { ok: false, error: `${key}= needs a value` };
     if (fields[key] !== "")

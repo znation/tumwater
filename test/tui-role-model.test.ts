@@ -159,6 +159,12 @@ test("parseRoleModelLine reads back the pre-fill it formats", () => {
     ok: false,
     error: "the model may be given only once (a bare token or model=, not both or twice)",
   });
+  // A near-miss key gets the same did-you-mean hint the other closed vocabularies give, so
+  // a typo names its word instead of a flat list that names no fix.
+  const typo = parseRoleModelLine("provder=strong");
+  assert.ok(!typo.ok);
+  assert.match(typo.error, /unknown key provder: only provider, model and thinking are accepted.*did you mean `provider`\?/);
+  assert.equal(parseRoleModelLine("foo=strong").ok, false);
 });
 
 // The prompt-line editors share one line, so the role-model editor must not enter while another
