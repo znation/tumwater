@@ -1,5 +1,6 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { removeIfPresent, removeQuiet } from "../files/files.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
@@ -49,6 +50,32 @@ interface PauseMarker {
   reason?: string;
 }
 
+/** The parsed body of one marker/state file, keyed by the file's own stat — the same
+ * stat-keyed contract cachedByStat gives every observer that polls a slowly-changing file.
+ * The three pause/stop markers are read fresh (read + parse) by the orchestrator's per-cycle
+ * gate poll and by every per-second status snapshot; none changes faster than an operator
+ * command, so an unchanged marker now costs one stat instead of a read + JSON.parse each poll.
+ * Writes go through writeJsonAtomic's tmp+rename (or writeJsonFile's plain overwrite), both of
+ * which bump dev/ino/mtime/size, so a refresh invalidates exactly like any edit. Time-based
+ * expiry is NOT cached here: only the raw body is, and each caller re-applies its own
+ * `Date.now()` comparison on a per-call clone, so an expired `until` still reads as unpaused
+ * on the very poll it lapses. Bounded inside cachedByStat. */
+const markerBodyCache = new Map<string, StatKeyedValue<Record<string, unknown>>>();
+
+/** Serve `file`'s parsed JSON-object body from markerBodyCache: null when the file is missing,
+ * unreadable, or not a plain object — the same no-data policy as readJsonFile — and a fresh
+ * per-call object (a shallow copy) so callers can fold/mutate the result without poisoning a
+ * later poll (standingMarker deletes `until`/`reason` off its result). Never throws. */
+function readMarkerBody(file: string): Record<string, unknown> | null {
+  return cachedByStat(
+    markerBodyCache,
+    file,
+    file,
+    () => readJsonFile<object>(file) as Record<string, unknown> | null,
+    (body) => ({ ...body }),
+  );
+}
+
 /** The reason cap every writer of a pause reason shares (chars): one constant so the CLI
  * path and any later GUI path cannot drift on how long an operator note may be — a writer
  * that wants to state the reason reads it back trimmed by this same cap, never its own. */
@@ -73,7 +100,7 @@ export const PAUSE_REASON_MAX = 200;
  * never lapses with its countdown rendered `Infinityd`. The team stays stopped — a corrupt
  * deadline must not resume it — but it no longer claims a deadline no clock can reach. */
 function standingMarker(path: string): PauseMarker | null {
-  const m = readJsonFile<PauseMarker>(path);
+  const m = readMarkerBody(path) as PauseMarker | null;
   if (!m || typeof m.at !== "number") return null;
   const until = finiteNumber(m.until, undefined);
   if (until !== undefined && until <= Date.now()) return null;
@@ -163,12 +190,10 @@ export function scheduleStop(root: string, untilMs: number): void {
 /** The scheduled stop's deadline (epoch ms), or undefined. Never throws: a missing, unreadable,
  * or non-finite marker reads as no stop scheduled. */
 export function scheduledStopAt(root: string): number | undefined {
-  try {
-    const body = readJsonFile<{ until?: unknown }>(scheduledStopPath(root));
-    return typeof body?.until === "number" && Number.isFinite(body.until) ? body.until : undefined;
-  } catch {
-    return undefined;
-  }
+  const body = readMarkerBody(scheduledStopPath(root)) as { until?: unknown } | null;
+  return body === null || typeof body.until !== "number" || !Number.isFinite(body.until)
+    ? undefined
+    : body.until;
 }
 
 /** Drop the scheduled stop; returns whether a marker was there (resumeTeam's contract). */
@@ -217,7 +242,7 @@ export function scheduledWakes(root: string, now: number): { roles: string[]; at
 }
 
 function readPausedRoles(path: string): { roles: string[]; until?: number } {
-  const state = readJsonFile<{ roles: unknown; at: number; until?: number }>(path);
+  const state = readMarkerBody(path) as { roles: unknown; at: number; until?: number } | null;
   if (!state) return { roles: [] };
   // A non-finite `until` is ignored, the same wrong-shape read standingMarker applies: the
   // set stays paused, but on no deadline, so a corrupt value cannot expire the roles it was
