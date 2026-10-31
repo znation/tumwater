@@ -201,6 +201,40 @@ test("every documented value-taking npm/node flag and prefix word is honored", (
   }
 });
 
+test("npm's alias tables for test, run-script, and ci all count as the spelled names", () => {
+  // NPM_TEST/NPM_RUN/NPM_CI mirror npm's own alias tables so `npm t` and `npm run-script test`
+  // read the same as their spelled forms — a reviewer who types an alias still re-runs the full
+  // suite. Each alias must behave exactly like its spelled twin: unfiltered it is flagged, the
+  // same filter and value-flag rules apply, and for ci a dry run still installs nothing. Only
+  // `t`, `run-script` and `ci` were pinned before; the other table members were untested.
+  for (const command of [
+    "npm tst",
+    "npm t --silent 2>&1 | tail -3",
+    "npm --prefix /tmp/rev tst",
+    "npm tst --prefix /tmp/rev", // a value flag's value is not a filter
+    "npm rum test",
+    "npm urn test 2>&1 | tail -6",
+    "npm --prefix /tmp/rev rum test",
+    "npm clean-install --no-audit --no-fund",
+    "npm install-clean",
+    "npm --prefix /tmp/rev clean-install --silent",
+    "npm isntall-clean",
+    "npm ic",
+  ]) {
+    assert.ok(runsFullSuite(command), `flagged: ${command}`);
+  }
+  for (const command of [
+    "npm tst gui", // an alias is filtered exactly like `npm test gui`
+    "npm urn test merge",
+    "npm rum build",
+    "npm clean-install --dry-run",
+    "npm install-clean --dry-run --no-audit",
+    "npm ic --dry-run",
+  ]) {
+    assert.ok(!runsFullSuite(command), `not flagged: ${command}`);
+  }
+});
+
 test("an unterminated trailing value or redirect falls back to empty without misreading", () => {
   // A value-taking flag or bare redirect at the very end of a line leaves nothing for its
   // value/target, and the word scans must read that as the empty fallback, not crash. A
