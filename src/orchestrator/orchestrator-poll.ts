@@ -13,7 +13,7 @@ import { reviewHoldKey, pollDeferralInputs, pollRunnerReasons } from "./orchestr
 import { launchDueRuns } from "./orchestrator-launch.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { branchHead, currentBranch } from "../git/git.js";
-import { queuedMergeFiles, queuedMergeRoles } from "../merge/merge-queue.js";
+import { queuedMergeFiles } from "../merge/merge-queue.js";
 import { requeueMainRedPin } from "../merge/merge-requeue.js";
 import { drainMergeQueue, settleAbortedApproved } from "../merge/merge-drain.js";
 import { abortableMerges, mergeTasks, type MergePipeline } from "../merge/merge-pipeline.js";
@@ -405,8 +405,6 @@ export async function pollSchedule(
   const reasons = await pollRunnerReasons({
     root,
     runners,
-    mainBranch: ctx.mainBranch,
-    merges: ctx.merges,
     once: ctx.once,
     now,
     mainHead,
@@ -477,7 +475,6 @@ export function pollReserveAndExit(ctx: PollContext, state: PollState, { liveCon
   const reserve = workReserveCount(root, runners, {
     maxConcurrent: liveConfig.maxConcurrent,
     enabled: new Set(runners.filter((r) => runnerEnabled(r.config, r.role)).map((r) => r.role)),
-    queuedMergeRoles: queuedMergeRoles(root),
     instancesOf: (base) => liveConfig.roles[base]?.instances ?? 1,
   });
   semaphore.setReserve(reserve);

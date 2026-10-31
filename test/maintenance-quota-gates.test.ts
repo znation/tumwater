@@ -188,12 +188,12 @@ test("pollMaintenanceQuotaGate computes the allowance verdict and logs one hold 
   ]);
   const state = newMaintenanceQuotaGateState();
   const observers = [
-    { role: "clean", enabled: true, running: false, hasQueuedMerge: false },
-    { role: "dedupe", enabled: true, running: false, hasQueuedMerge: false },
-    { role: "readme", enabled: true, running: false, hasQueuedMerge: false },
-    { role: "feature", enabled: true, running: false, hasQueuedMerge: false },
-    { role: "plan", enabled: true, running: false, hasQueuedMerge: false },
-    { role: "clean-2", enabled: false, running: false, hasQueuedMerge: false },
+    { role: "clean", enabled: true, running: false },
+    { role: "dedupe", enabled: true, running: false },
+    { role: "readme", enabled: true, running: false },
+    { role: "feature", enabled: true, running: false },
+    { role: "plan", enabled: true, running: false },
+    { role: "clean-2", enabled: false, running: false },
   ];
   // allowance = 2 * 10 + 12 = 32, maint = 32, inFlight = 0 -> held at the boundary. The
   // disabled clean-2 and the work/neither feature and plan do not move `used`.
@@ -222,18 +222,19 @@ test("pollMaintenanceQuotaGate computes the allowance verdict and logs one hold 
   );
 });
 
-test("a run in progress and a queued merge both count as in flight toward the used figure", () => {
+test("running maintenance roles count as in flight toward the used figure", () => {
   const root = tmpdir();
   const now = Date.now();
   // allowance = 0 * work + 12; 10 merged + 2 in flight = 12 -> held at the boundary.
+  // A queued merge is not an in-flight run: only a running role counts.
   writeEvents(
     root,
     Array.from({ length: 10 }, (_, i) => ({ ts: now - HOUR, loop: "clean", type: "merged", commit: `c${i}` })), // retired-name-ok: legacy event field in a fixture
   );
   const state = newMaintenanceQuotaGateState();
   const observers = [
-    { role: "clean", enabled: true, running: true, hasQueuedMerge: false },
-    { role: "dedupe", enabled: true, running: false, hasQueuedMerge: true },
+    { role: "clean", enabled: true, running: true },
+    { role: "dedupe", enabled: true, running: true },
   ];
   assert.deepEqual(pollMaintenanceQuotaGate(root, state, observers, 0, now), {
     allowance: 12,

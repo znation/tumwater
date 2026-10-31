@@ -45,7 +45,6 @@ import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../team/team-failure-s
 import type { RoleRunner } from "../runner/runner.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, instancePauseKey, runnerEnabled } from "../roles/runner-ids.js";
-import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
@@ -334,12 +333,11 @@ function pollHoldGates(states: TeamGateStates, ctx: TeamGatePollCtx) {
 
   // The maintenance allowance (plans/work-ratio.md, part 1b/4): code-maintenance merges in a
   // rolling 24 h window are capped at `maintenancePerWorkMerge × work + MAINTENANCE_DAILY_FLOOR`.
-  // The gate counts the window, adds the maintenance roles already in flight (running or
-  // holding a queued merge, so six concurrent permits cannot overshoot), and logs the one
+  // The gate counts the window, adds the maintenance roles already in flight (running, so six
+  // concurrent permits cannot overshoot), and logs the one
   // hold/resume event per transition. Enabled only: a disabled role has no runs to count. The
   // scheduling pass spends the returned headroom one due maintenance role at a time, beside
   // capPaused, with the fresh-wake/queued-prompt override the need-based deferral honors.
-  const queuedRoles = queuedMergeRoles(root);
   const maintenanceQuota = pollMaintenanceQuotaGate(
     root,
     states.quota,
@@ -347,7 +345,6 @@ function pollHoldGates(states: TeamGateStates, ctx: TeamGatePollCtx) {
       role: r.role,
       enabled: runnerEnabled(r.config, r.role),
       running: r.state.running === true,
-      hasQueuedMerge: queuedRoles.has(r.role),
     })),
     liveConfig.maintenancePerWorkMerge,
     now,

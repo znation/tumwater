@@ -696,13 +696,11 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   );
   // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
   // gate folds, over the same event log, so the dashboards show the hold the scheduler
-  // enforces. `merges` is the one merge queue snapshot read above, so in-flight maintenance
-  // merges count once here and in mergeQueue.
+  // enforces.
   const maintenanceQuota = maintenanceQuotaForPoll(
     root,
     cfg.maintenancePerWorkMerge,
     roleRows,
-    queuedRoles,
     now,
   );
   return {

@@ -80,7 +80,6 @@ test("claimReleaseReason releases left, ineligible, disabled-idle, paused-idle a
     listedKeys: new Set(["plan a"]),
     eligibleKeys: new Set(["plan a"]),
     now: 1000,
-    hasQueuedMerge: false,
     enabled: true,
     paused: false,
   };
@@ -111,22 +110,19 @@ test("claimReleaseReason releases left, ineligible, disabled-idle, paused-idle a
   );
 });
 
-test("an idle extra with a revision, a queued merge, a resume or a run in progress keeps its claim", () => {
+test("an idle extra with a revision, a resume or a run in progress keeps its claim", () => {
   const ctx = {
     listedKeys: new Set(["plan a"]),
     eligibleKeys: new Set(["plan a"]),
     now: claimA.at + CLAIM_IDLE_MAX_MS + 1,
-    hasQueuedMerge: false,
     enabled: false,
     paused: false,
   };
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { revision: { sha: "x", round: 1, at: 1 } })), ctx), null);
-  assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA })), { ...ctx, hasQueuedMerge: true }), null);
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { resumePending: true })), ctx), null);
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { running: true })), ctx), null);
   const paused = { ...ctx, paused: true };
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { revision: { sha: "x", round: 1, at: 1 } })), paused), null);
-  assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA })), { ...paused, hasQueuedMerge: true }), null);
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { resumePending: true })), paused), null);
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { running: true })), paused), null);
 });
@@ -212,18 +208,14 @@ test("workReserveCount withholds permits only while a claim role is idle with wo
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "PLANS.md"), PLANNED);
   const idle = runner("feature", state());
-  const opts = { maxConcurrent: 6, enabled: new Set(["feature"]), queuedMergeRoles: new Set<string>() };
+  const opts = { maxConcurrent: 6, enabled: new Set(["feature"]) };
   // One idle feature with two eligible entries: min(floor(6/3), 1) = 1.
   assert.equal(workReserveCount(repo, [idle], opts), 1);
   // Floor(cap/3) bounds the count.
   assert.equal(workReserveCount(repo, [idle], { ...opts, maxConcurrent: 3 }), 1);
-  // A work role that is running or merging has nothing to reserve for.
+  // A work role that is running has nothing to reserve for.
   assert.equal(
     workReserveCount(repo, [runner("feature", state(undefined, { running: true }))], opts),
-    0,
-  );
-  assert.equal(
-    workReserveCount(repo, [idle], { ...opts, queuedMergeRoles: new Set(["feature"]) }),
     0,
   );
   // A disabled role reserves nothing.
@@ -236,7 +228,6 @@ test("workReserveCount caps at a third of maxConcurrent and counts claim holders
   const opts = {
     maxConcurrent: 6,
     enabled: new Set(["feature", "feature-2"]),
-    queuedMergeRoles: new Set<string>(),
   };
   // Two idle instances and two eligible entries: both reserve, capped at floor(6/3) = 2.
   assert.equal(workReserveCount(repo, [runner("feature", state()), runner("feature-2", state())], opts), 2);

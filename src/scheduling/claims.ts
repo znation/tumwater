@@ -86,8 +86,6 @@ interface ClaimReleaseCtx {
   /** The keys eligibleEntries found (listed, not blocked/refused/needs-review). */
   eligibleKeys: ReadonlySet<string>;
   now: number;
-  /** The runner has a queued or in-flight merge. */
-  hasQueuedMerge: boolean;
   /** The runner's role id is enabled in config (`runnerEnabled`, so a lowered `instances`
    * disables the surplus runner). */
   enabled: boolean;
@@ -101,19 +99,16 @@ interface ClaimReleaseCtx {
 export type ClaimReleaseReason = "left" | "ineligible" | "disabled" | "paused" | "stale";
 
 /** Why a runner must drop its claim, or null when it keeps it. A runner is idle when it is not
- * running, has no queued merge, no outstanding revision and no pending resume; `disabled`,
- * `paused` and `stale` only release an idle runner, while a claim whose entry left or turned
- * ineligible is released outright (there is nothing left to do). */
+ * running, has no outstanding revision and no pending resume; `disabled`, `paused` and `stale`
+ * only release an idle runner, while a claim whose entry left or turned ineligible is released
+ * outright (there is nothing left to do). */
 export function claimReleaseReason(
   runner: ClaimRunner,
   ctx: ClaimReleaseCtx,
 ): ClaimReleaseReason | null {
   const claim = runner.state.claim;
   if (!claim) return null;
-  const idle =
-    !runner.state.running &&
-    !ctx.hasQueuedMerge &&
-    !hasOutstandingWork(runner.state);
+  const idle = !runner.state.running && !hasOutstandingWork(runner.state);
   if (!ctx.listedKeys.has(claim.key)) return "left";
   if (!ctx.eligibleKeys.has(claim.key)) return "ineligible";
   if (!ctx.enabled && idle) return "disabled";
@@ -156,9 +151,9 @@ export async function stagedMovedEntries(
 /** How many permits to withhold from tier ≥ 1 acquirers this poll so a work role that has work
  * to take can claim one without waiting out a maintenance run (plans/parallel-work-instances.md
  * "Priority headroom", part 7/7). Only the claim-taking roles (feature, bugfix) count: an idle
- * one — not running, with no queued merge — counts when it either holds an eligible claim or
- * its base role still has an unclaimed eligible entry. Returns min(floor(maxConcurrent / 3),
- * the count), so an entirely busy work tier reserves nothing. */
+ * one — not running — counts when it either holds an eligible claim or its base role still has
+ * an unclaimed eligible entry. Returns min(floor(maxConcurrent / 3), the count), so an entirely
+ * busy work tier reserves nothing. */
 export function workReserveCount(
   root: string,
   runners: readonly ClaimRunner[],
@@ -166,8 +161,6 @@ export function workReserveCount(
     maxConcurrent: number;
     /** The role ids the live config enables (runnerEnabled). */
     enabled: ReadonlySet<string>;
-    /** The role ids with a queued or in-flight merge. */
-    queuedMergeRoles: ReadonlySet<string>;
     /** The base role's `instances`: the most runs writing code at once. A role may hold twice as
      * many runner ids, so idle runners reserve only the places not already taken by running
      * ones. Defaults to no limit. */
@@ -199,7 +192,7 @@ export function workReserveCount(
   const running = new Map<string, number>();
   for (const r of runners) {
     const base = baseRoleOf(r.role);
-    if (INSTANCE_ROLES.has(base) && r.state.running && !opts.queuedMergeRoles.has(r.role)) {
+    if (INSTANCE_ROLES.has(base) && r.state.running) {
       running.set(base, (running.get(base) ?? 0) + 1);
     }
   }
@@ -208,7 +201,7 @@ export function workReserveCount(
     const base = baseRoleOf(r.role);
     if (!INSTANCE_ROLES.has(base)) continue;
     if (!opts.enabled.has(r.role)) continue;
-    if (r.state.running || opts.queuedMergeRoles.has(r.role)) continue;
+    if (r.state.running) continue;
     const eligible = eligibleFor(base);
     const holdsClaim = r.state.claim !== undefined && eligible.has(r.state.claim.key);
     const hasFreeEntry = [...eligible].some((k) => !(heldByBase.get(base)?.has(k) ?? false));

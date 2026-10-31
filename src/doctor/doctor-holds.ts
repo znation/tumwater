@@ -6,7 +6,6 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
 import { budgetReached, budgetWarning, teamDailyCost } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
-import { readMergeQueue } from "../merge/merge-queue.js";
 import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota-gates.js";
 import { heldByMainRed, mainCheckForPoll, maintenanceQuotaForPoll } from "../status/status-polls.js";
 import type { RunnerState } from "../runner/runner-state.js";
@@ -133,9 +132,9 @@ export function checkBudget(
 /** The `maintenance quota` check: rolling-24 h maintenance merges against the allowance
  * (`maintenancePerWorkMerge` per work merge + the daily floor), naming the maintenance roles held
  * when it is full. Read-only and built on the same verdict the scheduler and status use
- * (maintenanceQuotaForPoll). Only a live team's running roles and merge queue count as in flight,
- * since a dead team's leftover `running` flag and queue drain nothing. A held allowance is a warn
- * because it stops a whole tier. */
+ * (maintenanceQuotaForPoll). Only a live team's running roles count as in flight, since a dead
+ * team's leftover `running` flag drains nothing. A held allowance is a warn because it stops a
+ * whole tier. */
 export function checkMaintenanceQuota(
   root: string,
   config: TumwaterConfig | undefined,
@@ -144,8 +143,7 @@ export function checkMaintenanceQuota(
 ): CheckOutcome {
   if (config === undefined) return uncheckedConfigOutcome();
   const runners = loadRunnerStates(root, config).map((s) => ({ role: s.role, running: aliveTeam && s.running === true }));
-  const queued = aliveTeam ? new Set(readMergeQueue(root).entries.map((e) => e.role)) : new Set<string>();
-  const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkMerge, runners, queued, now);
+  const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkMerge, runners, now);
   if (held.length > 0) {
     return warnOutcome(
       `allowance reached — ${used}/${allowance} maintenance merges in the last 24h; held until the window rolls under: ${[...held].sort().join(", ")}`,

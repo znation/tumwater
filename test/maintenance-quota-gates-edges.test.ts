@@ -21,9 +21,9 @@ test("the in-flight figure skips disabled and work roles, and a legacy dry merge
   writeEvents(root, [{ ts: now - HOUR, loop: "dry", type: "merged", commit: "d" }]); // retired-name-ok: legacy event field in a fixture
   assert.deepEqual(countMaintenanceWindow(root, newMaintenanceWindowCounter(), now), { work: 0, maint: 1 });
   const observers = [
-    { role: "clean", enabled: true, running: true, hasQueuedMerge: false },
-    { role: "dedupe", enabled: false, running: true, hasQueuedMerge: true },
-    { role: "feature", enabled: true, running: true, hasQueuedMerge: false },
+    { role: "clean", enabled: true, running: true },
+    { role: "dedupe", enabled: false, running: true },
+    { role: "feature", enabled: true, running: true },
   ];
   // 1 merged maintenance + the enabled clean instance; the disabled and work roles add nothing.
   assert.deepEqual(

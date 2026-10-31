@@ -748,16 +748,16 @@ eligible", "entryHold resolves a <Series> parts a/n and b/n clause to the named 
 
 **Guarantee.** `claimReleaseReason` returns `left` or `ineligible` whatever the runner is doing. It
 returns `disabled`, `paused` (own instance id paused while the base role is not) or `stale` (idle
-past `CLAIM_IDLE_MAX_MS`) only for an idle runner: one that is not running and has no queued merge
-and no outstanding work. Pausing the whole base role keeps every claim. A released claim is saved
-before the runner runs again.
+past `CLAIM_IDLE_MAX_MS`) only for an idle runner: one that is not running and has no outstanding
+work. Pausing the whole base role keeps every claim. A released claim is saved before the runner
+runs again.
 
 **Binds.** `src/scheduling/claims.ts` (`claimReleaseReason`, `CLAIM_IDLE_MAX_MS`),
 `src/runner/runner-state.ts` (`hasOutstandingWork`).
 
 **Pinned by.** `test/claims.test.ts` — "claimReleaseReason releases left, ineligible,
-disabled-idle, paused-idle and stale-idle claims" and "an idle extra with a revision, a queued
-merge, a resume or a run in progress keeps its claim"; `test/orchestrator-scheduling.test.ts` — "a
+disabled-idle, paused-idle and stale-idle claims" and "an idle extra with a revision, a resume or a
+run in progress keeps its claim"; `test/orchestrator-scheduling.test.ts` — "a
 claimed entry that merges releases the claim on the next poll", "pausing one instance releases its
 claim so a sibling can take the entry", "pausing the whole feature role keeps every instance's
 claim" and "a released claim is saved to disk before the runner runs again".
@@ -3330,13 +3330,14 @@ logs transitions, and `countMaintenanceWindow` counts `merged` events from the e
 
 **Guarantee.** The allowance is `maintenancePerWorkMerge × work merges + MAINTENANCE_DAILY_FLOOR`
 over the trailing 24 h, and the gate holds while merged maintenance plus enabled maintenance roles
-in flight reach it. Disabled roles and work roles add nothing to the in-flight figure.
+in flight (running a role run) reach it. Disabled roles, work roles and a queued merge add nothing
+to the in-flight figure — the queue is not a scheduling gate.
 
 **Binds.** `src/gates/maintenance-quota-gates.ts` (`maintenanceQuota`, `pollMaintenanceQuotaGate`).
 
 **Pinned by.** `test/maintenance-quota-gates.test.ts` — "maintenanceQuota computes the allowance, used,
-and held verdict", "the floor keeps the allowance at 12 when no work merged", "a run in progress
-and a queued merge both count as in flight toward the used figure"; `test/maintenance-quota-gates-edges.test.ts`
+and held verdict", "the floor keeps the allowance at 12 when no work merged", "running maintenance
+roles count as in flight toward the used figure"; `test/maintenance-quota-gates-edges.test.ts`
 — "the in-flight figure skips disabled and work roles, and a legacy dry merge counts as maintenance".
 
 ### INV-BA2: the window counts merges by tier and a vanished log never drops them

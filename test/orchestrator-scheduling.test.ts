@@ -18,11 +18,9 @@ import { statePath } from "../src/paths.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
 import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
-import { newMergePipeline, type ApprovedMerge, type InFlightMerge } from "../src/merge/merge-pipeline.js";
-import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { setRef } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
-import { initializedRepo, initializedWorktree, commitIn, mainSha, tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
+import { initializedRepo, mainSha, tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { eventsOfType, unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
@@ -60,8 +58,6 @@ function schedulingCtx(root: string, runners: readonly RoleRunner[], roleProvide
   return {
     root,
     runners,
-    mainBranch: "main",
-    merges: newMergePipeline(),
     once: new OnceRound([], false),
     now: T0 + 10_000,
     mainHead: "",
@@ -155,7 +151,7 @@ test("a subscription-window hold stops the director too, while a 429-storm hold 
   assert.equal((await pollRunnerReasons(storm)).has(runners[0]!), true, "429 hold: director keeps running");
 });
 
-test("a director holding a kept merge pin with an empty inbox is due as leftover, unless its pin is already queued", async () => {
+test("a director holding a kept merge pin with an empty inbox is due as leftover, queued pin or not", async () => {
   const repo = await initializedRepo();
   const runners = [fakeRunner("director", defaultConfig())];
   const roleProviders = new Map<string, string | undefined>();
@@ -166,8 +162,14 @@ test("a director holding a kept merge pin with an empty inbox is due as leftover
   const due = await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders));
   assert.equal(due.get(runners[0]!), "leftover");
 
+  // The queue is not a scheduling gate: a queued pin is offered the leftover reason like any
+  // other unmerged pin, so the authoring run is admitted.
   enqueueMerge(repo, { role: "director", sha, run: 1, summary: "kept", enqueuedAt: Date.now() });
-  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(runners[0]!), false, "a queued pin is the interlock's to hold");
+  assert.equal(
+    (await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).get(runners[0]!),
+    "leftover",
+    "a queued pin is still owed the authoring run",
+  );
 });
 
 test("a director whose pin sits at the conflict cap awaiting hand-back is not offered leftover", async () => {
@@ -623,7 +625,7 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
   const gate = pollMaintenanceQuotaGate(
     root,
     newMaintenanceQuotaGateState(),
-    runners.map((r) => ({ role: r.role, enabled: true, running: false, hasQueuedMerge: false })),
+    runners.map((r) => ({ role: r.role, enabled: true, running: false })),
     0,
     now,
   );
@@ -908,99 +910,15 @@ function claimFor(key: string): NonNullable<RoleRunner["state"]["claim"]> {
   return { file: "PLANS.md", key, title: key, at: Date.now(), source: "assigned" };
 }
 
-test("a runner waiting on its queued change holds no place: a second runner starts on the next entry", async () => {
+test("a role with a queued change is admitted on the next poll: the queue is not a scheduling gate", async () => {
   const root = await initializedRepo();
-  fs.writeFileSync(path.join(root, "PLANS.md"), fourPlansDoc());
-  const config = twoFeatureInstances();
-  const [feature, feature2, feature3, feature4] = featureRunners(config) as [RoleRunner, RoleRunner, RoleRunner, RoleRunner];
-  feature.state.claim = claimFor("alpha");
-  enqueueMerge(root, { role: "feature", sha: mainSha(root), run: 1, summary: "waits", enqueuedAt: Date.now() });
-  const providers = new Map(["feature", "feature-2", "feature-3", "feature-4"].map((id) => [id, undefined]));
-  const reasons = await pollRunnerReasons(schedulingCtx(root, [feature, feature2, feature3, feature4], providers));
-  assert.equal(reasons.has(feature), false, "the interlock still skips the waiting runner");
-  assert.equal(reasons.has(feature2), true);
-  assert.equal(reasons.has(feature3), true, "two runs are allowed while the first runner waits");
-  assert.equal(reasons.has(feature4), false, "no third run starts while two are running");
-  const keys = [feature2, feature3].map((r) => r.state.claim?.key);
-  assert.equal(new Set([...keys, feature.state.claim?.key]).size, 3, "no two runners hold one claim");
-  assert.equal(keys.includes("alpha"), false, "the new runs take other entries than the waiting one");
-});
-
-// Interlock relief (parts 1-3/4, now team-wide per part 3i/3): the queued/in-flight merge
-// interlock is scoped to the stages that actually race a role's branch (an approved-and-waiting
-// or in-flight-merge queued change no longer parks the author). No role waits on a reviewer, so
-// the relief holds for every role — a role is held only while its queued change is in a held
-// stage. feature (a pre-merge role) approved-and-waiting is admitted; bugfix is still pre-approval.
-
-test("interlock relief: a queued role is admitted once its change is approved; a queued role still pre-approval stays skipped", async () => {
-  const { root } = await initializedWorktree("bugfix"); // the bugfix branch exists at main
-  const bugfix = fakeRunner("bugfix", defaultConfig());
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
   const feature = fakeRunner("feature", defaultConfig());
-  const providers = new Map([
-    ["bugfix", undefined],
-    ["feature", undefined],
-  ]);
-  const sha = mainSha(root);
-  enqueueMerge(root, { role: "feature", sha, run: 1, summary: "approved", enqueuedAt: Date.now() });
-  enqueueMerge(root, { role: "bugfix", sha, run: 1, summary: "verifying", enqueuedAt: Date.now() });
-
-  const ctx = schedulingCtx(root, [bugfix, feature], providers);
-  ctx.merges.approved.set("feature", {} as unknown as ApprovedMerge); // approved-and-waiting
-  ctx.merges.verifying.set("bugfix", {} as InFlightMerge); // still pre-approval
-  const reasons = await pollRunnerReasons(ctx);
-  assert.equal(reasons.has(feature), true, "an approved queued change no longer parks a pre-merge role's author");
-  assert.equal(reasons.has(bugfix), false, "a role with a queued change still pre-approval stays skipped");
-});
-
-test("interlock relief: a queued role is admitted while its change is in the merge's fast-forward", async () => {
-  const { root } = await initializedWorktree("bugfix"); // the bugfix branch exists at main
-  const bugfix = fakeRunner("bugfix", defaultConfig());
-  const sha = mainSha(root);
-  enqueueMerge(root, { role: "bugfix", sha, run: 1, summary: "merging", enqueuedAt: Date.now() });
-
-  const ctx = schedulingCtx(root, [bugfix], new Map([["bugfix", undefined]]));
-  ctx.merges.merge = { roles: ["bugfix"] } as InFlightMerge; // in the merge's fast-forward, approved already
-  assert.equal((await pollRunnerReasons(ctx)).has(bugfix), true, "an in-flight-merge queued change no longer parks the author");
-});
-
-test("interlock relief: a queued role is held in a pre-approval or conflict-resolving stage, or not yet picked up", async () => {
-  const repo = await initializedRepo();
-  const bugfix = fakeRunner("bugfix", defaultConfig());
-  const providers = new Map([["bugfix", undefined]]);
-  const sha = mainSha(repo);
-
-  // Not yet picked up: queued, in no pipeline set, so held from its stage (no branch query).
-  enqueueMerge(repo, { role: "bugfix", sha, run: 1, summary: "queued", enqueuedAt: Date.now() });
-  assert.equal(
-    (await pollRunnerReasons(schedulingCtx(repo, [bugfix], providers))).has(bugfix),
-    false,
-    "a queued-but-unpicked change stays held",
+  enqueueMerge(root, { role: "feature", sha: mainSha(root), run: 1, summary: "waits", enqueuedAt: Date.now() });
+  const reasons = await pollRunnerReasons(
+    schedulingCtx(root, [feature], new Map([["feature", undefined]])),
   );
-
-  // Verifying (pre-approval).
-  const verifying = schedulingCtx(repo, [bugfix], providers);
-  verifying.merges.verifying.set("bugfix", {} as InFlightMerge);
-  assert.equal((await pollRunnerReasons(verifying)).has(bugfix), false, "a verifying queued change stays held");
-
-  // Resolving a conflict: approved, but the live marker says the resolver is mid-run.
-  const resolving = schedulingCtx(repo, [bugfix], providers);
-  resolving.merges.approved.set("bugfix", {} as unknown as ApprovedMerge);
-  writeMergeMarker(repo, { role: "bugfix", sha, summary: "resolving", startedAt: Date.now(), stage: "resolving" });
-  assert.equal((await pollRunnerReasons(resolving)).has(bugfix), false, "a conflict-resolving queued change stays held");
-});
-
-test("interlock relief: a queued role is held while its branch is already ahead of main", async () => {
-  const { root, wt } = await initializedWorktree("bugfix");
-  // A prior relief run held a commit on the role's branch: it sits ahead of main, so even an
-  // approved queued change must not let the author start (a fresh run would race that commit).
-  fs.writeFileSync(path.join(wt, "held.txt"), "held\n");
-  commitIn(wt, "held relief commit");
-  const bugfix = fakeRunner("bugfix", defaultConfig());
-  const sha = mainSha(root);
-  enqueueMerge(root, { role: "bugfix", sha, run: 1, summary: "approved", enqueuedAt: Date.now() });
-  const ctx = schedulingCtx(root, [bugfix], new Map([["bugfix", undefined]]));
-  ctx.merges.approved.set("bugfix", {} as unknown as ApprovedMerge);
-  assert.equal((await pollRunnerReasons(ctx)).has(bugfix), false, "a role whose branch is ahead of main does not start");
+  assert.equal(reasons.has(feature), true, "a queued change no longer parks the author");
 });
 
 test("running runners count against instances, and admissions in one poll count too", async () => {

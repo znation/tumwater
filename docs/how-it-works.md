@@ -186,14 +186,10 @@ never has to wait a parked check out.
   entry back and a sibling takes it; pausing the whole role keeps every claim.
 - `maxConcurrent` caps parallel runs and approvals together. Merges go first, then
   work roles (feature, bugfix, plan), then maintenance roles.
-- **Merge interlock.** A role with a queued change does not start a new run while the
-  pipeline is still resolving how that change lands: its entry is pre-approval (verifying,
-  or not yet picked up), in a conflict or main-red hold, or its branch is already ahead of
-  main — a fresh run would race it, and its rejection must reach the author's next prompt.
-  The hold lasts only while the queued change is in a held stage — once it is approved and
-  waiting for the merge slot, or the merge is in flight, the role is admitted again, because
-  its branch is reset to main every run and a queued approved change never blocks it. The
-  relief is team-wide: no role waits on a reviewer.
+- **No merge interlock.** A role with a queued or in-flight change still authors on the next
+  poll: the merge queue is not a scheduling gate, so landing never holds authoring. A fresh run
+  resets the role's branch to main, and a second commit by a role with a waiting pin stays on its
+  own branch (`heldOnBranch`), so it cannot collide with the change that is landing.
 - **One bound.** `maxConcurrent` is the only concurrency bound: a run whose admission waits
   30 s or more because the team is busy logs a `provider_wait` event, and `tumwater doctor`'s
   "provider contention" row sums the last 24 h and warns at 10 minutes. Every wait is a

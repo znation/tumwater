@@ -165,13 +165,12 @@ function refreshFromReadable(
 }
 
 /** One enabled role as the quota gate reads it: whether a maintenance-tier run is in flight
- * (mid-run or holding a queued merge). Only the two in-flight facts matter; the tier is
- * derived from the role here, so the caller passes every runner unchanged. */
+ * (mid-run). The tier is derived from the role here, so the caller passes every runner
+ * unchanged. A queued merge is not an in-flight run — the queue is not a scheduling gate. */
 interface MaintenanceQuotaObservation {
   role: string;
   enabled: boolean;
   running: boolean;
-  hasQueuedMerge: boolean;
 }
 
 /** The gate's cross-poll memory: the same instant-shaped window memo as `countMaintenanceWindow`
@@ -208,7 +207,7 @@ export function pollMaintenanceQuotaGate(
   for (const o of observers) {
     if (!o.enabled) continue;
     if (commitTier(baseRoleOf(o.role)) !== "maintenance") continue;
-    if (o.running || o.hasQueuedMerge) inFlight++;
+    if (o.running) inFlight++;
   }
   const verdict = maintenanceQuota({ work, maint, inFlight, perWorkMerge });
   if (verdict.held !== state.prevHeld) {

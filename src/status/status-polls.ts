@@ -423,15 +423,14 @@ const maintenanceCounters = new Map<string, ReturnType<typeof newMaintenanceWind
 
 /** The maintenance allowance verdict as an observer sees it for this poll (status-data's
  * `maintenanceQuota` field): the rolling-window counts over the same event log the gate reads,
- * plus the enabled maintenance roles currently in flight (running a role run or holding a queued
- * merge, so the `used` figure matches the gate's). `held` names the enabled maintenance role
- * ids the scheduler holds while `used >= allowance`. Pure read — unlike the gate it logs nothing
- * and keeps no hold edge, so it can run in the TUI/GUI process every second. */
+ * plus the enabled maintenance roles currently in flight (running a role run, so the `used`
+ * figure matches the gate's). `held` names the enabled maintenance role ids the scheduler holds
+ * while `used >= allowance`. Pure read — unlike the gate it logs nothing and keeps no hold edge,
+ * so it can run in the TUI/GUI process every second. */
 export function maintenanceQuotaForPoll(
   root: string,
   perWorkMerge: number,
   runners: readonly { role: string; running?: boolean }[],
-  queuedMergeRoles: ReadonlySet<string>,
   now: number,
 ): { allowance: number; used: number; held: string[] } {
   let counter = maintenanceCounters.get(root);
@@ -445,7 +444,7 @@ export function maintenanceQuotaForPoll(
   for (const runner of runners) {
     if (commitTier(runner.role) !== "maintenance") continue;
     maintenanceRoles.push(runner.role);
-    if (runner.running || queuedMergeRoles.has(runner.role)) inFlight++;
+    if (runner.running) inFlight++;
   }
   const verdict = maintenanceQuota({ work, maint, inFlight, perWorkMerge });
   return { allowance: verdict.allowance, used: verdict.used, held: verdict.held ? maintenanceRoles : [] };
