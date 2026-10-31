@@ -3532,19 +3532,21 @@ by patch-id.
 
 ### INV-BF1: one patch's failures keep the pin under the limit and blame the change at it
 
-**Guarantee.** One patch's red in-lock check keeps the pin (`merge_blocked`) under
+**Guarantee.** One patch's red batch check keeps the pin (`merge_blocked`) under
 `MERGE_CHECK_FAILURE_LIMIT`. At the limit the failure is blamed on the change: a red check through
 `attributeRedCheck`, with the pin deleted and the strike cleared. The deterministic cross-check
 block sink `mergeBlocked` is unchanged and still pinned by INV-BF2, but the merge path no longer
 produces cross-check blocks — since part 3m/3 a false fix claim and a broken backlog structure are
-repairable and land for the main watch.
+repairable and land for the main watch. Since part 4l/3 the in-lock merge check is gone (a merge is
+a rebase and a fast-forward), so `attributeRedCheck` serves only the batch path's attribution,
+which 4m/3 deletes with the module.
 
 **Binds.** `src/merge/merge-check-failures.ts` (`MERGE_CHECK_FAILURE_LIMIT`, `pinKept`,
-`keepPinOrAttribute`, `mergeCheckRed`, `mergeBlocked`).
+`keepPinOrAttribute`, `mergeBlocked`).
 
-**Pinned by.** `test/merger-check.test.ts` — "a single merge's red in-lock check retries once, then
-rejects on a green main", "a single merge's red in-lock check retries once, then keeps its pin as
-main_red" and "a repairable false-fix md-only change merges through the real merge flow".
+**Pinned by.** `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref once for a
+known-flake red, then attributes a repeat" and "attributeRedCheck keeps the ref and records no
+strike for an unverified red".
 
 ### INV-BF2: strikes are counted per patch-id
 
@@ -3564,24 +3566,18 @@ a red that fails only main's known failures. Both keep the pin.
 
 **Binds.** `src/merge/merge-check-failures.ts` (`attributeRedCheck`).
 
-**Pinned by.** `test/merger-check.test.ts` — "an unverified red in-lock check — the run timed out — keeps
-the pin without a strike"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref and
+**Pinned by.** `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref and
 records no strike for an unverified red" and "attributeRedCheck keeps the ref, with no strike, for a
 red that fails only main's known failures".
 
 ### INV-BF4: a first strike warns, and a passing retry is a flake only for the same pin
 
-**Guarantee.** A red merge check's first strike logs a warning naming the failing test. A retry that
-then passes logs a `MERGE_FLAKY_WARNING_PREFIX` flake, but only when the stored strike's patch-id is
-the merged pin's. `attributeRedCheck` excuses a known-flaky headline once per headline per pin.
+**Guarantee.** `attributeRedCheck` excuses a known-flaky headline once per headline per pin.
 
-**Binds.** `src/merge/merge-check-failures.ts` (`noteMergeRetryPassed`, `attributeRedCheck`),
+**Binds.** `src/merge/merge-check-failures.ts` (`attributeRedCheck`),
 `RunnerState.mergeFlakeExcused`.
 
-**Pinned by.** `test/merger-check.test.ts` — "a kept-for-re-merge red merge check logs a warning naming
-the failing test", "a red merge check that passes on its kept-pin retry logs a merge-check flake
-warning" and "a stale red strike of another pin is not recorded as a flake when a different pin
-merges"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref once for a
+**Pinned by.** `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref once for a
 known-flake red, then attributes a repeat".
 
 ## Team hold: two roles failing alike on one provider hold that provider, and the hold re-opens by itself
@@ -3656,15 +3652,14 @@ hold stops the director too, while a 429-storm hold still exempts it".
 ### INV-BI1: a flake that passed on a re-run quarantines each failing test it names, and a failure naming only quarantined tests goes on without a re-run
 
 **Guarantee.** A check that failed and then passed on the same tree quarantines each failing test
-it names, at the gate's re-run, the in-lock merge check's re-run and main-watch's confirming
+it names, at the gate's re-run and main-watch's confirming
 re-run. A test already listed counts another flake. A failure naming only quarantined tests goes
 on without a re-run.
 
 **Binds.** `src/review/known-flakes.ts` (`quarantineTests`, `onlyQuarantined`).
 
 **Pinned by.** `test/known-flakes.test.ts` — "quarantine: a new test is added once, a repeat
-counts, and only-quarantined needs every test listed"; `test/merger-check.test.ts` — "a red in-lock merge check whose immediate re-run
-passes merges and quarantines the failing test"; `test/main-watch.test.ts` — "a red whose
+counts, and only-quarantined needs every test listed"; `test/main-watch.test.ts` — "a red whose
 confirming re-run passes quarantines the failing tests and files one BUGS.md entry on main" and "a
 red naming only quarantined tests is recorded passed and starts no culprit".
 
@@ -3703,7 +3698,7 @@ releases nothing, even a filed test".
 ### INV-BI5: a failed quarantine write warns and never throws out of the check that passed
 
 **Guarantee.** `quarantineTests` never throws on a failed store write. It warns once per failed
-call, records nothing, and returns `[]`, so the gate's re-run, the in-lock merge check's re-run and
+call, records nothing, and returns `[]`, so the gate's re-run and main-watch's confirming re-run
 main-watch's confirming re-run go on with their passing result.
 
 **Binds.** `src/review/known-flakes.ts` (`quarantineTests`).
@@ -3982,12 +3977,12 @@ per file".
 
 **Guarantee.** `aheadOfMainFiles` and `aheadOfMainDiff` (its capped `--stat` read included) throw
 when `git diff` fails. Read as empty, the file list was vacuously review-exempt, so the gate
-skipped its reviewer and the in-lock re-check its build check, and the reviewer judged an empty
+skipped its reviewer, and the reviewer judged an empty
 diff. `tumwater diff`'s role and overlap views catch the error and show no ahead-of-main change.
 
 **Binds.** `src/git/git-diff.ts` (`aheadOfMainFiles`, `aheadOfMainDiff`); their deciding caller
-`src/review/review.ts` and `src/merge/merge-to-main.ts`
-(`verifyMerge`); the views in `src/change/change-data.ts` (`collectRoleChange`,
+`src/review/review.ts`;
+the views in `src/change/change-data.ts` (`collectRoleChange`,
 `collectChangeOverlaps`).
 
 **Pinned by.** `test/git-diff.test.ts` — "aheadOfMainFiles and aheadOfMainDiff throw when git
@@ -4538,11 +4533,11 @@ index, rather than skipping the preserve".
 
 ### INV-CM1: a red merge check attributed while role-state saves fail still deletes a rejected pin and logs review_rejected, or returns main_red with the pin kept, warning once per failed save
 
-**Guarantee.** The sinks of a red in-lock merge check persist the role's state best-effort: a failed save (full disk, EACCES) warns instead of throwing, so a rejected change loses its pin and logs review_rejected, and a main-red change returns main_red with its pin kept. Every sink now has a failing-save test of its own: the reject and main-red saves, `attributeRedCheck`'s unverified, known-failures and known-flake saves, and the `requeueKeptChange` re-queue save.
+**Guarantee.** The sinks of a red batch merge check persist the role's state best-effort: a failed save (full disk, EACCES) warns instead of throwing, so a rejected change loses its pin and logs review_rejected, and a main-red change returns main_red with its pin kept. Every sink now has a failing-save test of its own: the reject and main-red saves, `attributeRedCheck`'s unverified, known-failures and known-flake saves, and the `requeueKeptChange` re-queue save. Since part 4l/3 the in-lock merge check is gone; this INV now pins only the batch-path attribution, which 4m/3 deletes with the module.
 
 **Binds.** `src/merge/merge-check-failures.ts` (`rejectChange`, `attributeRedCheck`), `src/merge/merge-requeue.ts` (`requeueKeptChange`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
 
-**Pinned by.** `test/merger-check.test.ts` — "an unwritable state file during a red merge check's attribution still settles its verdict (green main)" and "an unwritable state file during a red merge check's attribution still settles its verdict (red main)"; `test/merge-requeue.test.ts` — "a main_red re-queue whose state save fails still queues the change" and "a main_red pin whose state save fails still records the re-queue and warns"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref for a red that fails only main's known failures when the state save fails", "attributeRedCheck keeps the ref for an unverified red when the state save fails" and "attributeRedCheck keeps the ref for a known-flake red when the state save fails".
+**Pinned by.** `test/merge-requeue.test.ts` — "a main_red re-queue whose state save fails still queues the change" and "a main_red pin whose state save fails still records the re-queue and warns"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref for a red that fails only main's known failures when the state save fails", "attributeRedCheck keeps the ref for an unverified red when the state save fails" and "attributeRedCheck keeps the ref for a known-flake red when the state save fails".
 
 ## Red-main healer: a heal prompt that cannot be queued never fails the gate
 
@@ -4579,7 +4574,7 @@ index, rather than skipping the preserve".
 
 ### INV-CT1: handleRefusal never throws on a failed note merge, and the refusal path waits MERGE_LOCK_WAIT_MS for merge.lock
 
-**Guarantee.** `handleRefusal` catches a note merge that throws (a lock timeout, `cannot acquire lock`): it records `state.lastError` as "refusal note merge failed: <error>", logs no `entry_refused`, and still returns the "refused" outcome with the note commit, which stays on the branch for leftover recovery. The refusal path's merge waits `MERGE_LOCK_WAIT_MS` (15 minutes) for `merge.lock` rather than `withLock`'s 120 s default, because a merge holds the lock through its in-lock check; the merge queue's own callers set no `lockTimeoutMs` and keep the default.
+**Guarantee.** `handleRefusal` catches a note merge that throws (a lock timeout, `cannot acquire lock`): it records `state.lastError` as "refusal note merge failed: <error>", logs no `entry_refused`, and still returns the "refused" outcome with the note commit, which stays on the branch for leftover recovery. The refusal path's merge waits `MERGE_LOCK_WAIT_MS` (15 minutes) for `merge.lock` rather than `withLock`'s 120 s default; the merge queue's own callers set no `lockTimeoutMs` and keep the default.
 
 **Binds.** `src/verdict/refusal.ts` (`handleRefusal`), `src/runner/runner-outcome.ts` (`mergePhase`) and `src/merge/merge-to-main.ts` (`tryMerge`, `MergeContext.lockTimeoutMs`).
 

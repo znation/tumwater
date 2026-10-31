@@ -167,8 +167,7 @@ export function detectBuildCheck(
  * it is a non-blank string, else undefined — off. Opt-in: when no `mergeCommand` is declared, a
  * project that sets one merges on it, not the full check (mergeCommandOf's fallback, PLANS.md
  * "Fast merge" "Defaults"). One reading shared by runScopedBuildCheck (which runs it at scope
- * "gate") and merge-to-main.ts's verifyMerge (which must then never treat the gate's green as the
- * full check's), so the two cannot disagree about whether it is on. */
+ * "gate") and the stack lander (src/merge/merge-stack.ts), so the two cannot disagree about whether it is on. */
 export function gateCommandOf(config?: CheckConfigSlice): string | undefined {
   const g = config?.check?.gateCommand;
   return isNonBlankString(g) ? g : undefined;

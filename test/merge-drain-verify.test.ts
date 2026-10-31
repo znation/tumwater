@@ -65,9 +65,8 @@ test("mergeBatchMax caps each merge's stack, read from the live config at each d
       checks.map((e) => [e.source, e.scope]),
       [
         ["alpha", "batch"],
-        ["gamma", "merge"],
       ],
-      "one shared check for the stack of two, then gamma's own in-lock re-check on the main they moved",
+      "one shared check for the stack of two; gamma's single merge (part 4l/3: a merge is a rebase and a fast-forward) runs no in-lock merge check",
     );
     assert.deepEqual(eventsOfType(root, "merged").map((e) => e.source), roles);
   } finally {

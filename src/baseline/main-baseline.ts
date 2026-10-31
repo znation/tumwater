@@ -234,12 +234,9 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
 }
 
 /** Record a green baseline verdict for `sha` WITHOUT running anything. The callers are the merge
- * path (src/merge/merge-to-main.ts's verifyMerge) and the stack lander
+ * path (src/merge/merge-to-main.ts's mergeToMain) and the stack lander
  * (src/merge/merge-stack.ts' mergeStack) — both call it only after their fast-forward SUCCEEDED,
- * with the exact SHA that just became main: verifyMerge with the POST-rebase head in two cases —
- * its own in-lock re-check just ran this project's declared check green on that tree, or the
- * rebase was a no-op so the review gate's pre-check (which runs outside the merge lock) had
- * already run green on exactly this tree — and mergeStack with the stacked tip when a
+ * with the exact SHA that just became main: the stack lander with the stacked tip when a
  * scope-`batch` check ran green on exactly it (a skipped check seeds nothing, and neither does a
  * merge_blocked stack or a doc-only re-stack that merged without a check of its own). Seeding
  * here means that once the merge completes — main now points at this very SHA — the next fresh
@@ -256,10 +253,9 @@ export function noteGreenBaseline(sha: string): void {
 }
 
 /** Record an INHERITED green for `sha` (MainBaseline.inheritedFrom): a tree no check ran on, whose
- * only difference from the green-verified `from` is in review-exempt paths. The caller is
- * merge-to-main.ts's verifyMerge, after it skipped the in-lock check because main moved
- * under the gate-verified head only by doc commits. It seeds the head about to become main, as
- * verifyMerge's own noteGreenBaseline calls do. If the fast-forward then fails, the entry is
+ * only difference from the green-verified `from` is in review-exempt paths. It seeds the head
+ * about to become main, as
+ * noteGreenBaseline calls do. If the fast-forward then fails, the entry is
  * still true of that tree and simply never consulted. It never displaces an observed verdict: a
  * check that actually ran on this tree knows more than the carry-over. */
 export function noteInheritedGreen(sha: string, from: string): void {
@@ -610,8 +606,8 @@ async function runBaselineOnce(
 }
 
 /** Is main green at the mirror worktree's HEAD? The merge path seeds a green verdict for every
- * merged code SHA (noteGreenBaseline — its in-lock post-rebase re-check, or the gate's pre-check
- * when the rebase was a no-op), so the common case is a cache hit. A head that only added doc
+ * merged code SHA (noteGreenBaseline — the stack lander's scope-`batch` check on the merged tip,
+ * or a no-op gate pre-check, so the common case is a cache hit. A head that only added doc
  * commits on top of such a SHA inherits its green (checkMainBaseline's inheritedGreen). The
  * redeployer's cooldown pre-warm asks this for every new head, and those doc heads were most of the
  * harness's baseline runs (247 of 319 over 2026-10-02..12). Otherwise the project's declared check

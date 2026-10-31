@@ -40,7 +40,6 @@ export function makeCtx(
       root,
       role: "improve",
       mainBranch: "main",
-      exemptPaths: ["*.md", "docs/**"],
       config: defaultConfig(),
       runNumber: 7,
       runPi: async (wt, prompt, session, config) => {

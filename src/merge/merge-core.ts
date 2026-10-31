@@ -1,4 +1,4 @@
-import { deleteRef, headOf, patchId, setRef } from "../git/git.js";
+import { deleteRef, headOf, setRef } from "../git/git.js";
 import { mergeRefName, mergeWorktreePath, rejectedRefName, reviewRunSessionDir } from "../paths.js";
 import { tryLeaseSlot } from "../git/worktree-pool.js";
 import { slotCount } from "../config/config.js";
@@ -6,7 +6,6 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { mergeToMain } from "./merge-to-main.js";
 import { rebaseOntoMain } from "./merge-git.js";
-import { mergeCheckRed, noteMergeRetryPassed } from "./merge-check-failures.js";
 import { reviewAheadOfMain, type GateResult, type ReviewContext } from "../review/review.js";
 import { logEventBestEffort } from "../events/events.js";
 import type { GateRunsPi, PiRunWiring } from "../runner/runner-pi.js";
@@ -16,8 +15,6 @@ import { priorObjectionNumber } from "../review/review-verdict.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { shortSha } from "../text/format.js";
 import { setMergeStage } from "./merge-slot.js";
-import type { BuildCheckOutcome } from "../build/build-check.js";
-import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunResult } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
@@ -376,17 +373,14 @@ export async function recordRejectedChange(
  * exact-sha `lastApprovedHead` short-circuit misses, and every such merge paid a second build
  * check and model review of a change it had already approved (BUGS.md 2026-09-23). Here a clean
  * rebase of the approved head is accepted as-is: mergeToMain's own in-lock rebase moves it onto
- * main's tip, and because the pre-merge head it captures is the approved `req.sha`,
- * verifyMerge runs one bounded scope-`merge` check whenever that rebase rewrote anything
- * (and skips only for the exact bytes the gate judged, seeding the red-main baseline when
- * `req.verifiedHead` names them). A conflicting rebase gets mergeToMain's resolver — the rule for
+ * main's tip and fast-forwards. A conflicting rebase gets mergeToMain's resolver — the rule for
  * a pin whose pre-gate rebase conflicted. `lastApprovedHead` is neither read nor widened: the
  * caller vouches for `req.sha` (only changes the gate approved or exempted are merged). Owns
  * the merge ref's lifecycle from here: deleted on merge, KEPT on every non-terminal outcome
  * (aborted, merge_conflict, merge_blocked) for the next run's leftover recovery. An abort that has
  * already fired returns "aborted" before anything starts, ref kept — the merge's step-boundary
  * stop (BUGS.md 2026-09-23): with no gate here, nothing else on this path would notice it
- * before the in-lock check and the merge. Never throws for a failed merge: git-level failures
+ * before the merge. Never throws for a failed merge: git-level failures
  * propagate like any other failure. */
 export async function mergeApprovedChange(ctx: MergerContext, req: MergeRequest): Promise<RunResult> {
   if (ctx.signal().aborted) return "aborted";
@@ -397,20 +391,14 @@ export async function mergeApprovedChange(ctx: MergerContext, req: MergeRequest)
 
 async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Promise<RunResult> {
   const wt = await ensureDetachedWorktree(ctx.root, mergeWorktreePath(ctx.root), req.sha);
-  const pinPatch = await patchId(wt, ctx.mainBranch, req.sha).catch(() => null);
-  let red: { check: BuildCheck; outcome: BuildCheckOutcome } | undefined;
   const result = await mergeToMain(
     {
       root: ctx.root,
       role: req.role,
       mainBranch: ctx.mainBranch,
-      exemptPaths: ctx.config.review.exemptPaths,
       config: ctx.config,
       runNumber: req.runNumber,
       runPi: ctx.runPi,
-      onMergeCheckRed: (check, outcome) => {
-        red = { check, outcome };
-      },
       recheckResolved: async (resolvedWt) => {
         if (ctx.signal().aborted) return { verdict: "retry" };
         // A resolved diff that left the reviewed change's lines goes back through the same gate
@@ -432,7 +420,7 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
         saveRunnerStateBestEffort(ctx.root, ctx.state);
         if (gate.aborted) return { verdict: "retry" };
         if (gate.decision === "approved" || gate.decision === "exempt") {
-          return { verdict: "approved", verifiedHead: gate.verifiedHead };
+          return { verdict: "approved" };
         }
         if (gate.decision === "rejected") {
           // A rejection here is a gate rejection too: send the resolved change back to its
@@ -465,14 +453,11 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
     },
     wt,
     req.summary,
-    req.verifiedHead,
   );
   if (result === "changed") {
     await deleteRef(ctx.root, mergeRefName(req.role)); // merged: the pin has done its job
-    noteMergeRetryPassed(ctx, req.role, pinPatch);
     return result;
   }
-  if (result === "merge_blocked" && red) return mergeCheckRed(ctx, req.role, wt, red);
   // merge_conflict / merge_blocked: keep the ref — the next run's recovery re-merges it.
   // (The deterministic cross-check blocks — fix-claim and backlog structure — no longer come
   // through here: since part 3m/3 they are repairable and land for the main watch.)

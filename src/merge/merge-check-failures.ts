@@ -9,7 +9,7 @@ import { mainTipVerdict } from "../baseline/main-red.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { mainRedNotMine } from "../text/phrases.js";
 import { normalizeClusterKey } from "../failure/failure-cluster.js";
-import { MERGE_FLAKY_WARNING_PREFIX, isKnownFlake } from "../review/known-flakes.js";
+import { isKnownFlake } from "../review/known-flakes.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -20,9 +20,9 @@ import type { MergerContext } from "./merge-core.js";
  * the merge is attributed instead of retried: the first red keeps the pin for one more
  * attempt — a load flake gets its retry, as the gate's pre-check gets one (PLANS.md land-queue
  * 1/3) — and the second is judged by main's own verdict at its tip (attributeRedCheck). Without
- * a limit a change whose gate passes but whose merge check fails (a cheaper check.gateCommand
+ * a limit a change whose gate passes but whose batch check fails (a cheaper check.gateCommand
  * than the full check) would re-queue as merge_blocked forever, its role never authoring. */
-export const MERGE_CHECK_FAILURE_LIMIT = 2;
+const MERGE_CHECK_FAILURE_LIMIT = 2;
 
 /** Whether a deterministic failure keeps its pin for one more re-merge instead of being
  * attributed to the change: always when the patch-id could not be read (it cannot be matched
@@ -57,8 +57,8 @@ async function tallyCheckFailure(
   return { head, patch, count };
 }
 
-/** The shared re-merge rule of the two deterministic-block paths below (mergeCheckRed and
- * mergeBlocked): tally the strike on this patch (tallyCheckFailure), then either keep the
+/** The shared re-merge rule of the two deterministic-block paths below (mergeBlocked and
+ * attributeRedCheck's batch call): tally the strike on this patch (tallyCheckFailure), then either keep the
  * pin for one more attempt — merge_blocked with `reason` named in lastError — or hand the head
  * to the caller's terminal sink `attribute`. Both paths decide keep-vs-attribute through
  * pinKept, so the MERGE_CHECK_FAILURE_LIMIT rule has one home. */
@@ -100,16 +100,15 @@ async function rejectChange(
 }
 
 /** The one-line reason a red check's lastError carries: checkFailureReasons' first entry (it
- * always returns at least one). Shared by the blocked-merge paths below — mergeCheckRed's
- * two branches and attributeRedCheck's unverified branch — so the "name the red by its first
- * reason" rule has one home while the full reason list stays where a whole review needs it
- * (attributeRedCheck's reject reasons). */
+ * always returns at least one). Shared by attributeRedCheck's branches — so the "name the red
+ * by its first reason" rule has one home while the full reason list stays where a whole review
+ * needs it (attributeRedCheck's reject reasons). */
 function firstCheckReason(red: { check: BuildCheck; outcome: BuildCheckOutcome }): string {
   return checkFailureReasons(red.check, red.outcome)[0]!;
 }
 
 /** Keep the pin when a red check fails only main's known failures (onlyKnownMainFailures): not
- * the change's failure and not a strike, so recovery's re-merge — whose verifyMerge lets such a
+ * the change's failure and not a strike, so recovery's re-merge — whose gate lets such a
  * check through — lands it. Null when the red names a test outside the known set. */
 function keepForKnownFailures(
   ctx: { root: string },
@@ -126,63 +125,6 @@ function keepForKnownFailures(
   return "merge_blocked";
 }
 
-/** A merge blocked because its in-lock check went red on the rebased tree (merge-to-main.ts's
- * verifyMerge). The count is keyed by the patch-id; under MERGE_CHECK_FAILURE_LIMIT the
- * pin is kept (merge_blocked) for recovery's re-merge; at the limit the red is attributed like
- * any single-change red. The other merge_blocked causes — a fast-forward that fails on a dirty
- * primary checkout, or main moving under the ff — are never the change's fault and never
- * counted. An unverified red made no verdict about the tree — the run spanned a host sleep
- * (BUGS.md 2026-09-30) — so it is not a strike against the patch: the pin stays for the next
- * attempt and the lastError names the sleep instead of a test failure. */
-export async function mergeCheckRed(
-  ctx: MergerContext,
-  role: string,
-  wt: string,
-  red: { check: BuildCheck; outcome: BuildCheckOutcome },
-): Promise<RunResult> {
-  if (unverifiedTreeOutcome(red.outcome)) {
-    ctx.state.lastError = `merge failed: ${firstCheckReason(red)}`;
-    return "merge_blocked";
-  }
-  const kept = keepForKnownFailures(ctx, role, "merge check", red, ctx.state);
-  if (kept) return kept;
-  const reason = firstCheckReason(red);
-  let attributed = false;
-  const result = await keepPinOrAttribute(ctx, wt, reason, (head) => {
-    attributed = true;
-    return attributeRedCheck(ctx, role, head, "merge check", red, ctx.state);
-  });
-  // The first red of a patch's in-lock check is exactly the retry that exists for load flakes,
-  // so it is the ONE signal that could name a flaky test after the fact — and lastError, the
-  // only place this reason is written, is overwritten by the leftover-recovery run a second
-  // later (BUGS.md 2026-10-14). Log it as a warning so the failure digest and a later audit can
-  // name the flaky test; the second red at MERGE_CHECK_FAILURE_LIMIT is attributed through
-  // review_rejected, whose reasons are already durable.
-  if (result === "merge_blocked" && !attributed) {
-    warnEventBestEffort(ctx.root, role, `merge check failed (kept for one retry): ${reason}`);
-    if (ctx.state.mergeCheckFailures) {
-      ctx.state.mergeCheckFailures.headline = redCheckHeadline(red.check, red.outcome.outputTail);
-    }
-  }
-  return result;
-}
-
-/** Record a merge check that failed and then passed on its kept-pin retry as a flake, in the
- * form the gate's pre-check uses (MERGE_FLAKY_WARNING_PREFIX), so the gate's known-flake memory,
- * doctor's `flaky checks` and the run prompt's flake note count it (PLANS.md 2026-10-16). Reads
- * the headline mergeCheckRed stored on the strike record only when its patch-id is the merged
- * pin's (a stale strike of a discarded pin must not be logged); a pin that was never red (or
- * only cross-check blocked) has none and logs nothing. Call before the strike is cleared. */
-export function noteMergeRetryPassed(
-  ctx: MergerContext,
-  role: string,
-  pinPatch: string | null,
-): void {
-  const strike = ctx.state.mergeCheckFailures;
-  const headline = strike?.patchId === pinPatch ? strike?.headline : undefined;
-  if (headline) warnEventBestEffort(ctx.root, role, MERGE_FLAKY_WARNING_PREFIX + headline);
-}
-
 /** A merge blocked by a deterministic cross-check — a property of the tree ahead of main,
  * not a flaky run. The block is counted like a red merge check, keyed by the same patch-id:
  * under MERGE_CHECK_FAILURE_LIMIT the pin is kept for one recovery re-merge — main may have
@@ -192,9 +134,8 @@ export function noteMergeRetryPassed(
  * cross-check on every re-resolve pays a fresh conflict-resolver run each run, forever
  * (BUGS.md 2026-10-02: five resolver sessions for one fix-claim-blocked pin). Since part 3m/3
  * the merge path no longer produces cross-check blocks (a fix claim and a broken backlog
- * structure are repairable and land for the main watch), so nothing in the in-lock path calls
- * this today; it stays as the strike-counting sink, still pinned by INV-BF2 and retired with
- * the queue by 3f/3. */
+ * structure are repairable and land for the main watch), so nothing calls this today; it stays
+ * as the strike-counting sink, still pinned by INV-BF2 and retired with the queue by 4m/3. */
 export async function mergeBlocked(
   ctx: MergerContext,
   role: string,
@@ -207,8 +148,7 @@ export async function mergeBlocked(
 }
 
 /** Attribute a check that went red over ONE change's tree after its verify approved it — a batch
- * bisect's last step (merge-batch.ts), or a single merge's in-lock check at
- * MERGE_CHECK_FAILURE_LIMIT — by the gate's rule: ask main's own
+ * bisect's last step (merge-batch.ts) — by the gate's rule: ask main's own
  * verdict at its current tip (mainTipVerdict — usually a cache hit, since every merge seeds
  * the SHA it moved main to). Main green → the change broke the check: rejected deterministically
  * — reasons in lastReview for the author's next run, the strike count reset, ref deleted,

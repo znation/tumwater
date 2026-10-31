@@ -92,8 +92,8 @@ async function assembleStack(
 /** True when the tree at `to` differs from the tree at `from` only in review-exempt paths —
  * the gate's own doc-only test (isExemptDiff over config.review.exemptPaths). A re-stack whose
  * new commits from main were doc-only rebuilds the checked tree with nothing but doc bytes
- * changed, and a doc-only delta cannot break the build: the reasoning verifyMerge
- * (src/merge/merge-to-main.ts) applies when it lets a moved doc-only merge through with no
+ * changed, and a doc-only delta cannot break the build: the reasoning the gate's
+ * exempt arm applies when it lets a moved doc-only change through with no
  * check. Since part 3m/3 that arm runs no cross-check, and neither does this delta — a false
  * fix claim and a broken backlog structure are repairable by a later commit and reported by
  * the main watch, and this delta is commits main already merged through their own gate, not a
@@ -127,14 +127,14 @@ export type StackOutcome =
  * won, up to BATCH_RESTACK_ATTEMPTS times, and a re-stack whose tree is the checked tree plus
  * doc-only commits skips its re-check (exemptTreeDelta). A stack whose whole delta ahead of
  * its assembly base is review-exempt skips the check too — a doc-only delta cannot break the
- * build (the reasoning verifyMerge's exempt arm applies). Since part 3m/3 that arm runs no
+ * build (the reasoning the gate's exempt arm applies). Since part 3m/3 that arm runs no
  * cross-check and neither does this skip: a false fix claim and a broken backlog structure are
  * repairable by a later commit and reported by the main watch, so the doc-only stack merges on
  * the exemption for the watch to report on main's tip.
  * A primary checkout on main that holds uncommitted or untracked files the stack changes
  * returns `blocked` before any check runs, with no re-stack.
  * On `landed` every entry's ref is deleted and the red-main baseline is seeded with the tip
- * when a check PASSED on exactly it — a skipped check seeds nothing, like verifyMerge's
+ * when a check PASSED on exactly it — a skipped check seeds nothing, like the gate's
  * exempt arm. The check's events log under the first entry's role. */
 export async function mergeStack(ctx: MergeScopeContext, wtPath: string, entries: readonly StackEntry[]): Promise<StackOutcome> {
   // Hold the merge checkout from before assembleStack (its reset is part of the use) through
@@ -171,7 +171,7 @@ async function mergeStackIn(ctx: MergeScopeContext, wtPath: string, entries: rea
     const docOnlyRestack = checkedTip !== null && (await exemptTreeDelta(ctx.root, checkedTip, tip, exemptPaths));
     if (!docOnlyRestack) {
       // The stack's own delta ahead of its assembly base — main here is the tip assembleStack
-      // stacked on — decides like verifyMerge does: doc-only cannot break the build, so no
+      // stacked on — decides like the gate's exempt arm does: doc-only cannot break the build, so no
       // check runs (a doc-only stack, or a bisect's size-1 doc-only remainder, merges on the
       // exemption instead of paying a suite run no code change asked for).
       const stackFiles = await treeDiffFiles(ctx.root, base, tip);
@@ -197,7 +197,7 @@ async function mergeStackIn(ctx: MergeScopeContext, wtPath: string, entries: rea
           checkWaitStage(ctx.root, roles),
         );
         for (const e of entries) setMergeStage(ctx.root, e.role, "merging");
-        // Failing only main's known failures is not a red stack (verifyMerge's rule): the ff goes
+        // Failing only main's known failures is not a red stack (the gate's rule): the ff goes
         // ahead, and no green seeds for a tree that did not pass.
         const knownOnly = check !== null && check.outcome.status === "failed" &&
           !unverifiedTreeOutcome(check.outcome) &&
@@ -212,7 +212,7 @@ async function mergeStackIn(ctx: MergeScopeContext, wtPath: string, entries: rea
       // A PASSED stack check ran on exactly the future main tip — seed the red-main
       // baseline after (not before) the successful ff, so a merge_blocked stack seeds
       // nothing; a skipped check seeds nothing either (skips never seed), and neither does
-      // a doc-only re-stack (like verifyMerge's exempt arm: nothing ran on this tip).
+      // a doc-only re-stack (like the gate's exempt arm: nothing ran on this tip).
       if (seed !== undefined) noteGreenBaseline(seed);
       for (const e of entries) await deleteRef(ctx.root, mergeRefName(e.role));
       return { kind: "landed" }; // vocabulary-ok: persisted state value or event type, renamed by a later series

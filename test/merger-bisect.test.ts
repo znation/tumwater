@@ -100,7 +100,7 @@ test("a stack check that fails only main's known failures merges the whole stack
 
 // ── A stack whose delta ahead of its assembly base is doc-only pays no check ────────────
 // A doc-only delta cannot break the build — the gate skips its pre-check for one, and
-// verifyMerge's exempt arm skips its in-lock re-check (BUGS.md 2026-09-30: a docs-only
+// the batch stack's exempt-tree arm skips its check (BUGS.md 2026-09-30: a docs-only
 // change batched with others, or left alone as a bisect's last step, paid a full suite run
 // and could be rejected on its failure).
 

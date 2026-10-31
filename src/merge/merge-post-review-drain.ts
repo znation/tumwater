@@ -170,7 +170,6 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
           role: entry.role,
           mainBranch: ctx.mainBranch,
           config: ctx.liveConfig,
-          exemptPaths: ctx.liveConfig.review.exemptPaths,
           runNumber: author.state.runs,
           runPi,
           // A conflict resolution of the reviewer's fix is resolver-authored bytes the reviewer

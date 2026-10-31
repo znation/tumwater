@@ -9,7 +9,6 @@ import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
 import { readSlotsState } from "../src/git/slots-state.js";
 import { mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
-import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { assertClean, headSha, mainSha, pinOffMain, sh, tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";
@@ -390,20 +389,20 @@ test("the merge checkout is shared, kept detached, and persists at a terminal ou
     reviewerPi("VERDICT: approve"),
     async () => {
       const { root, sha } = await pinnedFixture();
-      // Main moves after the pin so the in-lock rebase rewrites the tree and the merge check
-      // runs; the first red is non-terminal (kept), the second hits the failure limit and is
-      // attributed against main's own (green) verdict, so it rejects terminally.
-      const tip = advanceMain(root, `main-per-role-${process.pid}-${Date.now()}.txt`, "main moves on\n");
-      noteGreenBaseline(tip);
+      // Re-pointed (part 4l/3): there is no in-lock merge check — a merge is a rebase and a
+      // fast-forward — so the first call merges outright ("changed", terminal) and the pin
+      // goes; what this case pins is the shared `_merge` checkout: kept detached and persisted
+      // at the terminal outcome for the next merge to reuse.
       const state = freshRunnerState(ROLE);
       const { ctx } = makeCtx(root, state);
-      ctx.config = { ...ctx.config, check: { command: "echo 'error: planted merge failure'; exit 1" } };
       const mergeWt = mergeWorktreePath(root);
 
-      // Non-terminal: the first red keeps the pin for a re-merge; the merge checkout persists.
-      assert.equal(await mergeApprovedChange(ctx, request(sha)), "merge_blocked", "the first red keeps the pin for one retry");
-      assert.equal(await refSha(root, REF), sha, "the pin names the original pinned sha");
-      assert.ok(fs.existsSync(mergeWt), "_merge exists after a non-terminal outcome");
+      // Terminal: a single merge (no in-lock check) fast-forwards and deletes the pin; the
+      // shared checkout persists for the next merge.
+      assert.equal(await mergeApprovedChange(ctx, request(sha)), "changed", "a single merge fast-forwards with no in-lock check");
+      assert.equal(await refSha(root, REF), null, "the pin is gone after merging");
+      assert.equal(state.mergeCheckFailures, undefined, "no strike: no in-lock check ran");
+      assert.ok(fs.existsSync(mergeWt), "_merge persists at the terminal outcome");
       assert.equal(
         fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${ROLE}`)),
         false,
@@ -417,13 +416,6 @@ test("the merge checkout is shared, kept detached, and persists at a terminal ou
         detached = true; // a detached HEAD makes symbolic-ref exit nonzero
       }
       assert.ok(detached, "_merge is detached (rebasing never moves a role branch)");
-
-      // Terminal: at the failure limit a green main rejects the change — the pin goes, the
-      // shared checkout stays for the next merge.
-      assert.equal(await mergeApprovedChange(ctx, request(sha)), "rejected", "at the failure limit a green main rejects");
-      assert.equal(await refSha(root, REF), null, "the pin is gone on rejection");
-      assert.ok(fs.existsSync(mergeWt), "_merge persists at the terminal rejection");
-      assert.equal(mainSha(root), tip, "nothing merged");
     },
   );
 });

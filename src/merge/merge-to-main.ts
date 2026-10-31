@@ -1,7 +1,6 @@
 import { openQuestions } from "../backlog/backlog.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { changeBaseRev, commitMessage, headOf } from "../git/git.js";
-import { aheadOfMainFiles, treeDiffFiles } from "../git/git-diff.js";
 import { resolvedDiffDiverges } from "./merge-diff.js";
 import {
   conflictedFileHunks,
@@ -17,20 +16,12 @@ import {
 } from "./merge-git.js";
 import { resolveBacklogInsertConflicts } from "./merge-backlog-conflicts.js";
 import { abortSync } from "../git/worktree.js";
-import type { BuildCheckOutcome } from "../build/build-check.js";
-import { runScopedBuildCheck } from "../build/build-check-scoped.js";
-import { type BuildCheck, detectBuildCheck, gateCommandOf, mergeCommandOf } from "../build/build-check-detect.js";
-import { onlyKnownMainFailures } from "../baseline/main-watch.js";
-import { unverifiedTreeOutcome } from "../build/build-check-events.js";
-import { redCheckHeadline } from "../build/build-check-report.js";
-import { MERGE_FLAKY_WARNING_PREFIX, quarantineTests } from "../review/known-flakes.js";
-import { noteGreenBaseline, noteInheritedGreen } from "../baseline/main-baseline.js";
-import { isExemptDiff } from "../review/exemptions.js";
+import { detectBuildCheck } from "../build/build-check-detect.js";
 import { withLock } from "../concurrency/lock.js";
 import { buildConflictPrompt } from "../prompt/gate-prompts.js";
 import { mergeLockDir } from "../paths.js";
 import { logNewQuestions } from "./merge-questions.js";
-import { checkWaitStage, setMergeStage } from "./merge-slot.js";
+import { setMergeStage } from "./merge-slot.js";
 import { syncRootInstall } from "../build/dep-install.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { resolverConfig } from "../config/config-views.js";
@@ -48,82 +39,62 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
  * keeps the run lifecycle around it — because this is a self-contained concern with its own flow
  * (lock → rebase → ff-merge → conflict retry) and its own git surface; the only things it
  * borrows from the runner are identity (root/mainBranch), `role` for events and session naming
- * only, the current run number for session naming, the live config and its review-exemption
- * patterns (the in-lock re-check), and the runner's shared pi wiring so a conflict-resolution run
- * folds into the same run counters as an authoring run. */
+ * only, the current run number for session naming, and the runner's shared pi wiring so a
+ * conflict-resolution run folds into the same run counters as an authoring run. */
 
 /** MergeContext: what mergeToMain needs from its owning runner (merge-core.ts's MergerContext is
  * the merger's, a different shape): identity (root, main branch), the role for events
  * and session naming only — the merge code never re-derives it into a branch — plus the run
- * number that names the conflict-resolution session, the live config and its review-exemption
- * patterns (the in-lock re-check), and the runner's shared pi runner (role config, session dir,
- * raw log, transient-timeout retry) with usage folded into the run counters — every pi run of a
- * run merges there exactly once. */
+ * number that names the conflict-resolution session, and the runner's shared pi runner (role
+ * config, session dir, raw log, transient-timeout retry) with usage folded into the run counters
+ * — every pi run of a run merges there exactly once. */
 export interface MergeContext extends RunsPi {
   root: string;
   role: string;
   mainBranch: string;
-  /** The live config — the in-lock re-check detects the project's declared check through
-   * it (plans/portability.md §6/7), exactly as the review gate's pre-check does. */
+  /** The live config — the conflict resolver detects the project's declared check through it
+   * (plans/portability.md §6/7), exactly as the review gate's pre-check does. */
   config: TumwaterConfig;
-  /** The review gate's exemption patterns (config.review.exemptPaths) — the in-lock re-check
-   * skips doc-only deltas with exactly the same test the gate applies. */
-  exemptPaths: string[];
   /** The current run number (names the conflict-resolution pi session). */
   runNumber: number;
   /** How long to wait for merge.lock; defaults to withLock's. */
   lockTimeoutMs?: number;
-  /** Told when the in-lock check went red on the rebased tree — the one merge_blocked cause
-   * that is the change's own (merge-check-failures.ts counts it toward
-   * MERGE_CHECK_FAILURE_LIMIT); a failed fast-forward never calls it. */
-  onMergeCheckRed?(check: BuildCheck, outcome: BuildCheckOutcome): void;
   /** The gate, re-run over a conflict resolution's tree: a resolution whose diff ahead of main
    * is not a subset of the diff the reviewer approved has authored bytes the reviewer never
    * judged (BUGS.md 2026-10-01: a resolver restored code main had deliberately reverted, and
    * the build check alone waved it onto main). mergeToMain calls this once, only on the conflict
    * path, only when the resolved diff diverges, with the worktree sitting on the resolved head;
-   * an "approved" verdict (with the head the re-review's pre-check ran green on, when it ran
-   * one) proceeds to the merge — whose in-lock re-check then skips the redundant build check
-   * the re-review just ran; "rejected" is terminal for the pin (the closure owns the ref and
+   * "rejected" is terminal for the pin (the closure owns the ref and
    * the reject bookkeeping); "retry" keeps the ref for recovery's re-merge (an aborted or
-   * under-cap-failed reviewer is not a verdict about the tree). Optional: without it a
-   * resolution merges on the in-lock build check alone (the pre-fix behavior, and what tests
-   * exercise). */
+   * under-cap-failed reviewer is not a verdict about the tree). Optional: without it no
+   * re-rejection happens. */
   recheckResolved?(wt: string): Promise<{
     verdict: "approved" | "rejected" | "retry";
-    verifiedHead?: string;
   }>;
 }
 
 /** Merge the worktree branch on main under the shared merge lock: rebase it onto main (keeping
- * history linear), verify the rebased tree when it differs from what was reviewed, and
- * fast-forward. On conflict, makes one pi-driven resolution attempt
+ * history linear) and fast-forward. On conflict, makes one pi-driven resolution attempt
  * (outside the lock) before giving up. A routine conflict is normal operation, not a warning:
  * success merges as an ordinary `merged` event and failure surfaces via the run's merge_conflict
  * result — no separate log line for the hand-off itself. A merged diff that adds entries under
  * QUESTIONS.md's ## Open also emits one `question_posted` per new heading alongside the `merged`
- * event, so `tumwater logs` shows what the team is asking for (plans/questions-outbox.md).
- * `verifiedHead` is the head the review gate's pre-check just ran green on
- * (GateResult.verifiedHead) — when the rebase turns out to be a no-op it names the exact tree
- * about to merge, so the in-lock re-check can both skip and seed the baseline from it; pass
- * undefined when no fresh green observation was made (exempt diff, review disabled,
- * already-approved early return). */
+ * event, so `tumwater logs` shows what the team is asking for (plans/questions-outbox.md). */
 export async function mergeToMain(
   ctx: MergeContext,
   wt: string,
   summary: string,
-  verifiedHead?: string,
 ): Promise<RunResult> {
   // The branch tip before ANY rebase of this merge. Captured once here — not per tryMerge —
   // because the conflict-retry path rebases twice: after pi resolves, the second attempt's
   // rebase is a no-op even though its tree (the resolution) was never checked.
   const preMergeHead = await headOf(wt, "HEAD");
-  const first = await tryMerge(ctx, wt, summary, verifiedHead);
+  const first = await tryMerge(ctx, wt, summary);
   if (first !== "merge_conflict") return first;
   if (!(await resolveConflict(ctx, wt, preMergeHead))) return "merge_conflict";
   // A resolution whose diff ahead of main introduces lines the reviewed change never added, or
   // removes lines the reviewed change never removed, has left the reviewer's scope: those bytes
-  // were never judged, and the in-lock build check cannot judge intent (BUGS.md 2026-10-01: a
+  // were never judged (BUGS.md 2026-10-01: a
   // resolver restored 158 lines main had deliberately reverted). Re-run the gate over the
   // resolved tree before anything merges; a resolution that stays inside the reviewed change's
   // lines — including one that drops branch edits main superseded — re-merges with no extra run.
@@ -131,9 +102,9 @@ export async function mergeToMain(
     const recheck = await ctx.recheckResolved(wt);
     if (recheck.verdict === "rejected") return "rejected";
     if (recheck.verdict === "retry") return "merge_conflict";
-    return tryMerge(ctx, wt, summary, recheck.verifiedHead ?? verifiedHead);
+    return tryMerge(ctx, wt, summary);
   }
-  return tryMerge(ctx, wt, summary, verifiedHead);
+  return tryMerge(ctx, wt, summary);
 }
 
 /** Emit one `question_posted` event per entry QUESTIONS.md's ## Open gained since `before`,
@@ -142,7 +113,6 @@ async function tryMerge(
   ctx: MergeContext,
   wt: string,
   summary: string,
-  verifiedHead?: string,
 ): Promise<RunResult> {
   return withLock(mergeLockDir(ctx.root), async () => {
     // Capture the Open questions before the rebase so a merged diff that posts new ones can
@@ -151,23 +121,17 @@ async function tryMerge(
     // reaches the post-ff code, so nothing double-emits.
     const before = openQuestions(ctx.root);
     if (!(await rebaseOntoMain(wt, ctx.mainBranch))) return "merge_conflict";
-    // The gate's pre-check ran OUTSIDE this lock against the head as it stood then; a rebase
-    // that rewrote anything means the tree about to merge is new bytes (BUGS.md 2026-09-08).
-    // Re-verify exactly what will become main before fast-forwarding.
-    // The worktree's POST-REBASE HEAD: fetched once and used for both the re-check and the
-    // fast-forward. A branch ref tracks its own tip through the rebase (so this is
-    // behavior-preserving for role branches), but a pinned bare sha does not move when git
+    // The worktree's POST-REBASE HEAD: a pinned bare sha does not move when git
     // rebase rewrites it — ff'ing main to the original pin would fail as merge_blocked whenever
     // main moved between commit and merge, which under concurrency is the common case (review
-    // runs outside this lock).
+    // runs outside this lock). A branch ref tracks its own tip through the rebase, so this is
+    // behavior-preserving for role branches.
     const target = await headOf(wt, "HEAD");
     const dirty = await primaryCheckoutBlockers(ctx.root, ctx.mainBranch, target);
     if (dirty !== null) {
       warnEventBestEffort(ctx.root, ctx.role, `merge blocked: ${overwriteBlockedReason(dirty)}`);
       return "merge_blocked";
     }
-    if (!(await verifyMerge(ctx, wt, target, verifiedHead)))
-      return "merge_blocked";
     const mainBefore = await headOf(ctx.root, ctx.mainBranch);
     const ffFailure = await ffMainToOrWhy(ctx.root, target, ctx.mainBranch);
     if (ffFailure !== null) {
@@ -198,146 +162,6 @@ async function tryMerge(
     await syncRootInstall(ctx.root, ctx.role);
     return "changed";
   }, ctx.lockTimeoutMs);
-}
-
-/** Verify the exact tree about to reach main — the post-rebase head (BUGS.md 2026-09-08: the
- * gate's pre-check ran outside this lock against a head the rebase may have rewritten, so the
- * bytes that become main were never run through a check). Returns false only when the project's
- * declared check FAILS on the rebased tree; every other outcome merges. Since part 3m/3 no
- * other finding refuses a diff here: a conflict resolution that duplicates or drops a `## `
- * section heading, or a false fix claim, is repairable by a later commit, so it lands and the
- * main watch reports it on main's tip after the merge. Skips:
- * - a no-op rebase whose exact tree the gate verified (`rebasedHead === verifiedHead`): main
- *   did not move under us, so the merge tree is byte-identical to what the gate's pre-check
- *   already ran green. Seed the red-main baseline with the SHA that becomes main: every role's
- *   next fresh run then hits the cache instead of re-running the full suite on an
- *   already-verified tree. A no-op rebase the gate did NOT verify — its pre-check was skipped
- *   (a timeout, a killed run) — falls through and runs the merge-scope check, which fails
- *   closed on the same timeout; an exempt diff or a project with no declared check falls
- *   through to its own arm below. Taken (Fast merge "Defaults") whenever a `check.mergeCommand`
- *   resolves — to its own value or, when absent, to `check.gateCommand`. In the fallback case
- *   (no separate `mergeCommand`) the in-lock command IS the gate command the gate already ran
- *   green on the rebased head, so the in-lock run would add nothing; with a separate
- *   `check.mergeCommand` the gate's green was the gate command, not the merge one. Either way
- *   it skips and seeds nothing (the main watch decides main's verdict).
- * - doc-only delta ahead of main (the gate's own exemption test): cannot break the build.
- * - a code change whose rebased tree differs from the gate-verified one only in exempt paths
- *   (onlyExemptDriftFromVerified): main moved under the review by doc commits alone, so the
- *   bytes about to merge are the verified ones plus a delta that same rule exempts.
- * - no declared check at all: nothing to run, exactly like the gate skipping its pre-check.
- * An environmental skip (no npm / broken toolchain) warns and proceeds — deliberately NOT
- * fail-closed, so a broken toolchain that would fail every check regardless of the tree
- * (BUGS.md 2026-09-15) cannot wedge every merge behind the merge lock. A TIMEOUT is not
- * environmental here: the tree is unverified, so runScopedBuildCheck remaps it to a failed
- * check and the merge rejects (BUGS.md: an unverified merge must not reach main). */
-async function verifyMerge(
-  ctx: MergeContext,
-  wt: string,
-  rebasedHead: string,
-  verifiedHead?: string,
-): Promise<boolean> {
-  // Trust only the tree the gate actually verified. The identity means the in-lock rebase was
-  // a no-op on exactly the head the pre-check ran green on (a real conflict resolution's
-  // re-review sets verifiedHead to the resolved head, and that second rebase is then a no-op).
-  // A no-op rebase the gate never verified — its pre-check timed out or was killed and left
-  // GateResult.verifiedHead undefined — falls through and runs the merge-scope check, which
-  // fails closed on the same timeout. With a check.gateCommand or check.mergeCommand
-  // configured (Fast merge "Defaults": the lock runs the gate command when mergeCommand is
-  // absent): in the fallback case (no separate `mergeCommand`) the in-lock command IS the gate
-  // command the gate already ran green on the rebased head, so the verified no-op rebase adds
-  // nothing — skip it; with a separate `mergeCommand` the gate's green was the gate command.
-  // Either way it seeds nothing — a cheaper command's green never seeds the baseline: main's
-  // verdicts come from the main watch's full check on the tip.
-  if (rebasedHead === verifiedHead && mergeCommandOf(ctx.config) !== undefined) return true;
-  if (rebasedHead === verifiedHead && gateCommandOf(ctx.config) === undefined) {
-    noteGreenBaseline(rebasedHead);
-    return true;
-  }
-  const files = await aheadOfMainFiles(wt, ctx.mainBranch);
-  // An exempt (md-only) diff cannot break the build and — since part 3m/3 — carries no finding
-  // this merge must refuse: a false fix claim and a broken backlog structure are repairable by
-  // a later commit, so they land for the main watch to report on main's tip. The old rationale —
-  // "must not wave through an md-only edit the gate would have rejected" — is gone with the
-  // gate's narrowing: the gate no longer rejects those findings.
-  if (isExemptDiff(files, ctx.exemptPaths)) return true;
-  if (await onlyExemptDriftFromVerified(ctx, wt, rebasedHead, verifiedHead)) return true;
-  // The run itself (build_check event, environmental-skip warning) lives in
-  // runScopedBuildCheck, shared with the review gate's pre-check. The merge cell names the
-  // check (or its wait for a permit) while it runs, then the merge again for the ff.
-  setMergeStage(ctx.root, ctx.role, "build-check");
-  const runMergeCheck = () =>
-    runScopedBuildCheck(
-      ctx.root,
-      ctx.role,
-      "merge",
-      wt,
-      ctx.config,
-      undefined,
-      undefined,
-      undefined,
-      checkWaitStage(ctx.root, [ctx.role]),
-    );
-  let check = await runMergeCheck();
-  if (check?.outcome.status === "failed" && !unverifiedTreeOutcome(check.outcome) && !onlyKnownMainFailures(ctx.root, check.outcome.failingTests)) {
-    // One immediate re-run of the same tree: a pass makes the failed run a flake. The change
-    // merges and each test the failed run named is quarantined.
-    const failed = check.outcome;
-    const retry = await runMergeCheck();
-    if (retry?.outcome.status === "passed") {
-      warnEventBestEffort(ctx.root, ctx.role, `${MERGE_FLAKY_WARNING_PREFIX}${redCheckHeadline(check.check, failed.outputTail)}`);
-      quarantineTests(ctx.root, failed.failingTests, failed.outputTail);
-      check = retry;
-    }
-  }
-  setMergeStage(ctx.root, ctx.role, "merging");
-  if (!check) return true; // No declared check: nothing to run, exactly like the gate skipping its pre-check.
-  if (check.outcome.status === "failed") {
-    // Failing only what main already fails is not a red change: the fast-forward goes ahead, with
-    // no strike and no green seeded for a tree that did not pass.
-    const known = unverifiedTreeOutcome(check.outcome) ? null : onlyKnownMainFailures(ctx.root, check.outcome.failingTests);
-    if (known) {
-      warnEventBestEffort(ctx.root, ctx.role, `merge check fails only main's known failures: ${known.join(", ")}`);
-      return true;
-    }
-    ctx.onMergeCheckRed?.(check.check, check.outcome);
-    return false;
-  }
-  if (check.outcome.status === "skipped") return true; // No npm / broken toolchain — the helper already warned.
-  // Green on exactly the tree that becomes main: seed it so the next run's red-main baseline
-  // check is a cache hit instead of one redundant full-suite run.
-  // A mergeCommand green is not the full check's: main's verdict comes from the main watch.
-  if (mergeCommandOf(ctx.config) === undefined) noteGreenBaseline(rebasedHead);
-  return true;
-}
-
-/** True, after seeding the red-main baseline, when the tree about to merge differs from the tree
- * the gate's pre-check ran green on (`verifiedHead`) only in review-exempt paths. That is the usual
- * shape of "main moved under the review" here: 43% of main's commits are doc-only (plan, readme
- * and qa merge them all day), and 165 of 750 in-lock checks over 2026-10-02..12 re-ran the full
- * suite, holding the merge lock, for a tree that differed from its verified one by markdown
- * alone. The exempt-diff rule above already lets such a delta merge with no check at all, so the
- * same rule covers drift on top of a verified tree. An identical tree (empty drift, a rebase
- * that only rewrote SHAs) is the verified bytes themselves and seeds an observed green. Any
- * other drift seeds an inherited one, which attribution re-checks before trusting
- * (main-baseline.ts's observedOnly). Not taken without a verified head (the pre-check was skipped
- * or never ran). With an in-lock command configured (a gate or merge command — Fast merge
- * "Defaults": the lock runs the gate command when mergeCommand is absent) the drift merges
- * without a seed: the main watch decides main's verdict.
- * A git failure means "not proven" and the check runs. */
-async function onlyExemptDriftFromVerified(
-  ctx: MergeContext,
-  wt: string,
-  rebasedHead: string,
-  verifiedHead: string | undefined,
-): Promise<boolean> {
-  if (verifiedHead === undefined) return false;
-  if (gateCommandOf(ctx.config) !== undefined && mergeCommandOf(ctx.config) === undefined) return false;
-  const drift = await treeDiffFiles(wt, verifiedHead, rebasedHead);
-  if (drift === null || !isExemptDiff(drift, ctx.exemptPaths)) return false;
-  if (mergeCommandOf(ctx.config) !== undefined) return true; // no seed: the watch decides main's verdict
-  if (drift.length === 0) noteGreenBaseline(rebasedHead);
-  else noteInheritedGreen(rebasedHead, verifiedHead);
-  return true;
 }
 
 /** Continue a stopped rebase, aborting it when it stops again on a second conflict, and
@@ -373,9 +197,9 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
     // commit. One attempt per run.
     return continueOrAbortRebase(wt);
   }
-  // The prompt names the project's own check, detected the way the in-lock re-check detects it,
-  // as the one verifyMerge runs on the resolution — so the resolver neither guesses a runner
-  // (BUGS.md 2026-10-05) nor re-runs the check itself while the merge slot waits on it.
+  // The prompt names the project's own check, detected the way the review pre-check detects it
+  // — so the resolver neither guesses a runner (BUGS.md 2026-10-05) nor re-runs the check
+  // itself while the merge slot waits on it.
   const check = detectBuildCheck(wt, ctx.config) ?? undefined;
   // Show both sides' intent: the change's own commit message and the main commits that touched
   // a conflicted file since the merge-base. The

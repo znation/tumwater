@@ -76,18 +76,13 @@ and one serial merge step merges them, so other roles keep running while a chang
   main's check failing is not the change's failure, so its pin is kept for a later retry and the
   failure goes to ci. Optionally, `check.gateCommand` names a cheaper check (say, only the
   tests a diff touches) that this per-change step runs instead. It is off by default; tumwater's
-  own team sets it to `npm run test:gate`. With a gate command set, the in-lock check is that
-  gate command, unless `check.mergeCommand` names a cheaper check instead, or `""` opts back
-  into the full check in the lock (Fallback: Fast merge, "Defaults"). Optionally,
-`check.mergeCommand` names a cheaper check for that in-lock step (lint, compile and the change's
-affected tests). A merge whose rebased head the gate verified then runs nothing in the lock, and
-a green of the cheaper command never seeds main's verdict. The main watch runs the full check on
-main's tip after the merge: a break it finds queues the red-main heal prompt, and the ci note
-read the watch's verdict instead of starting a full check (no verdict yet reads as green); the
-gate's re-attribution of a repeated failure still runs main's check fresh, as it does unset. Its in-lock `build_check` events carry `full: false`, so reports and
-doctor's merge-check median leave them out. Unset, `check.mergeCommand` falls back to
-`check.gateCommand`; with neither key set, every merge runs the full check.
-  `check.timeoutSeconds` (default 300) bounds every check, the detected `npm test` included.
+  own team sets it to `npm run test:gate`. `check.timeoutSeconds` (default 300) bounds every
+  check, the detected `npm test` included.
+
+  The per-change verify gate is the only check a merge depends on: since part 4l/3 the merge
+  itself runs no in-lock build re-check (a merge is a rebase and a fast-forward — see below).
+  The main watch runs the full check on main's tip after a merge: a break it finds queues the
+  red-main heal prompt for the `ci` healer.
 - **Review.** The pre-merge gate is deterministic — the diff rules, the exempt fast path and
   the build pre-check: it rejects, md-only diffs included, an edit to the brief's prompt block
   or to PRINCIPLES.md from any role but the director and steward, and a change that newly writes
@@ -105,13 +100,13 @@ doctor's merge-check median leave them out. Unset, `check.mergeCommand` falls ba
   progress at that deadline gets one extension of the same length before it is killed. One that
   runs over fails without a strike.
   An already-approved change is not judged again; its check still runs.
-- **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear. If
-  main moved since the approval's check, the rebased tree is checked again inside the lock,
-  unless it differs from the checked one only in review-exempt paths: doc commits on main don't
-  trigger a full re-run. Main's own verdict carries over doc-only commits the same way, so the
-  main's-check-failing test and the update's passing check run the suite once per code change,
-  not once per doc merge. Attributing a failing check to a change still runs main's suite for
-  real. The merge-side steps (a stack and its bisect, the conflict resolver, the post-resolve
+- **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear. A
+  merge is a rebase and a fast-forward: no in-lock build re-check runs, because the pre-merge
+  verify gate judged the tree before it reached the merge slot and the main watch verifies every
+  new tip after it lands (a broken commit sits on main between its landing and the watch's fix,
+  which is the `ci` healer's job). The conflict resolver and the re-review of a resolution that
+  left the reviewed change's lines still run. The merge-side steps (a stack and its bisect, the
+  conflict resolver, the post-resolve
   re-review) run in one dedicated `_merge` workspace, reserved outside the pool so an approval
   waiting for a workspace can never deadlock behind the merge lock.
 - **Batching.** When several changes are queued, each is reviewed alone, then up to
@@ -126,9 +121,7 @@ doctor's merge-check median leave them out. Unset, `check.mergeCommand` falls ba
   take at most `maxConcurrent` − 1 of those permits (at least one), so a deep queue always leaves
   one for authoring. A change that fails approval frees its author at once, and the merge step
   merges approved changes in queue order, up to `mergeBatchMax` per stack, without waiting on a
-  slower review ahead of them. An approved change whose base moved is checked again before it
-  merges; a change whose merge check fails twice is judged by main's own check, like a failing
-  pipeline check.
+  slower review ahead of them.
 
 Errors keep the commit for re-review, up to three strikes. `tumwater abort --role <id>`
 discards a role's in-flight merge and stops the change's gate build check mid-run — an abort

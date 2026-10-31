@@ -34,7 +34,6 @@ async function mergePhase(ctx: RunnerRunContext, wt: string, summary: string): P
       root: ctx.root,
       role: ctx.role,
       mainBranch: ctx.mainBranch,
-      exemptPaths: ctx.config.review.exemptPaths,
       config: ctx.config,
       runNumber: ctx.state.runs,
       lockTimeoutMs: MERGE_LOCK_WAIT_MS,

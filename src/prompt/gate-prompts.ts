@@ -89,8 +89,8 @@ function listsHunks(files: readonly (string | ConflictedFile)[]): boolean {
  * resolved check, as the run prompt threads it — is named so the resolver knows which command
  * the harness will run (told only to keep the tests passing, the 2026-10-04 resolver guessed
  * `npx vitest run` in a node:test repo, BUGS.md 2026-10-05), and the rules tell it not to run
- * that check itself: merge-to-main.ts's verifyMerge runs it on the resolved tree before
- * anything merges, and the resolver runs inside the merge slot, so its own copy of the run held
+ * that check itself: the merge path does not re-run the build check (a merge is a rebase and a
+ * fast-forward since part 4l/3), and the resolver runs inside the merge slot, so its own copy of the run held
  * every queued merge. On 2026-10-12 the resolvers' own suite runs were 86% of their wall time
  * (951 of 1,104 s over seven runs; one spent 6 min re-testing a tree identical to main).
  * Undefined keeps the generic sentence and adds no such rule: with no declared check the

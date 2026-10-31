@@ -298,10 +298,9 @@ export async function mergeApproved(
     // outcome (the rest keep entry + ref for the next merge). Each request merges its approved
     // head (the synced pin its verify judged, not the bare pin) — no second gate, so no model run:
     // re-gating would rebase onto the main the earlier entries just moved, and the rewritten
-    // sha misses the approved short-circuit. main is not left red unchecked — mergeToMain's in-lock
-    // rebase + verifyMerge re-check every change whose tree differs from the one its verify
-    // judged (with check.mergeCommand set, by that cheaper command; the main watch runs the full
-    // check after the merge). Only the change being merged reads `merging`; the rest are back to
+    // sha misses the approved short-circuit. main is not left red unchecked — merge-to-main's in-lock
+    // rebase fast-forwards each change whose tree differs from the one its verify
+    // judged. Only the change being merged reads `merging`; the rest are back to
     // awaiting their turn, and each one merged is done.
     for (let s = mergeDoneCount; s < approved.length; s++) report(s, "approved");
     for (let s = mergeDoneCount; s < approved.length; s++) {

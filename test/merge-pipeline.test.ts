@@ -377,9 +377,8 @@ test("a red stack merges its passing prefix, rejects the change red alone, and m
         ["batch", "failed"],
         ["batch", "passed"],
         ["batch", "failed"],
-        ["merge", "passed"],
       ],
-      "the whole stack, alpha's prefix, beta alone on top of it, then gamma's in-lock re-check",
+      "the whole stack, alpha's prefix, then beta alone on top of it; gamma's single merge (part 4l/3: a merge is a rebase and a fast-forward) runs no in-lock merge check",
     );
     const beta = loadRunnerState(root, "beta");
     assert.equal(beta.lastResult, "rejected");
