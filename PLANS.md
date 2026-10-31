@@ -6,36 +6,14 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Subtract, part 3/6: The merge queue becomes a lock and a fast-forward (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 3; requires Every commit is verified on main part 3f/3 landed; touches src/merge src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts src/orchestrator/scheduling-scope.ts src/runner/runner-run.ts src/status/status-data.ts src/doctor/doctor-contention-checks.ts src/concurrency/check-permit.ts docs/how-it-works.md docs/invariants.md test/merger-restack.test.ts test/merge-backlog-conflicts.test.ts test/worktree-pool.test.ts)
-
-**Needs review 2026-10-30 by feature: too large for one run**
-
-**Goal.** A change lands as `pin → rebase onto main → fast-forward under the merge lock`. The queue, its stage machine, the coalesced batch check with its prefix bisect, the re-queue, the entry drop limits and the scheduling interlock are gone, because nothing about landing can fail any more: verification moved after the merge (part 3f/3), and a break is an ordinary open bug owned by the author.
-
-**Approach.**
-- Delete the queue and its stages: src/merge/merge-queue.ts, merge-queue-render.ts, merge-requeue.ts, merge-cancel.ts, merge-pipeline.ts, merge-slot.ts, merge-drain.ts, merge-batch.ts, merge-stack.ts, and the `.tumwater/merge-queue/` directory with its `uncommitted backlog`-style checks.
-- `merge-core.ts` and `merge-to-main.ts` keep the pin read, the rebase, the merge lock and the fast-forward; the conflict-resolution pi run stays as the one non-deterministic step. `MERGE_CONFLICT_LIMIT` and the entry attempt/drop limits go: a conflict whose resolution fails comes back as a `**Needs review …**` note naming the conflict (the two surviving holds' vocabulary).
-- Delete the scheduling interlock: `queuedRoles` (orchestrator-scheduling.ts), its legs in scheduling-skip.ts and scheduling-scope.ts, and `mergeStartHeld`'s merge half (orchestrator-poll.ts). A role whose change is merging authors its next run, as plans/interlock-relief.md's per-role tiering intended for the low-blast-radius roles only.
-- Delete the check permit with the in-lock and batch checks it served (src/concurrency/check-permit.ts) and the three contention rows and the `capacity bottleneck` alert (part 1d/6 removes the alert; doctor-contention-checks.ts keeps `slot_wait`/`provider_wait` only if part 4/6 has not yet removed the pool).
-- docs/how-it-works.md's merge-pipeline section and docs/invariants.md's cross-process invariants (INV-CT1 and the merge-slot guarantees) say what replaces the queue: one lock, linear history, and the post-landing check.
-
-**Files touched.** src/merge src/orchestrator/orchestrator-poll.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts src/orchestrator/scheduling-scope.ts src/runner/runner-run.ts src/status/status-data.ts src/doctor/doctor-contention-checks.ts src/doctor/doctor-check-names.ts src/concurrency/check-permit.ts docs/how-it-works.md docs/invariants.md test/merger-restack.test.ts test/merge-backlog-conflicts.test.ts test/worktree-pool.test.ts
-
-**Acceptance criteria.**
-- A code change's log path from run end to main is `merge_queued → merged`, with no stage events and no second check run; `build_check` events per merged commit are 1 (the post-landing one).
-- Two roles land back to back with no interlock: the second role's run starts while the first's merge is in flight, and neither waits on the other's check.
-- A conflicting change comes back to its author as one `**Needs review …**` note; nothing is dropped from a queue, because there is no queue.
-- No `.tumwater/merge-queue/` directory is written; the doctor's `stale merge-queue entries` and `merge-queue files` rows are deleted (doctor-check-names.ts) rather than left to warn about a path nothing writes.
-- `npm run test:gate` passes.
-
-### Subtract, part 4/6: One runner per role — the instance claims and the worktree pool go (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 4, and its measurement gate; requires Subtract part 3/6 landed; touches src/config/config-schema.ts src/config/config.ts src/config/config-validation.ts src/roles/runner-ids.ts src/scheduling/claims.ts src/scheduling/claim-entries.ts src/backlog/backlog-index.ts src/git/worktree-pool.ts src/git/worktree-pool-startup.ts src/git/slots-state.ts src/git/worktree-use.ts src/git/slot-salvage.ts src/doctor/doctor-contention-checks.ts src/ui/status-payload.ts docs/config.md test/worktree-pool.test.ts test/retention.test.ts)
+### Subtract, part 4/6: One runner per role — the instance claims and the worktree pool go (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes", stroke 4, and its measurement gate; requires Subtract part 3g/7 landed; touches src/config/config-schema.ts src/config/config.ts src/config/config-validation.ts src/roles/runner-ids.ts src/scheduling/claims.ts src/scheduling/claim-entries.ts src/backlog/backlog-index.ts src/git/worktree-pool.ts src/git/worktree-pool-startup.ts src/git/slots-state.ts src/git/worktree-use.ts src/git/slot-salvage.ts src/doctor/doctor-contention-checks.ts src/ui/status-payload.ts docs/config.md test/worktree-pool.test.ts test/retention.test.ts)
 
 **Needs review 2026-10-31 by the director:** the 2026-10-31 request to expose feature and bugfix concurrency under Settings keeps the `roles.<role>.instances` mechanism — its runners, claims and multiple worktrees — that this part deletes; re-plan only the worktree-pool work that can land without removing that instance mechanism, or withdraw this part.
 
 **Goal.** One runner id per role and one persistent checkout per role. `instances`, the instance claims and the slot pool existed to keep a role authoring while its own change merged (fast-merge measured 60% of role time waiting); with landing in minutes that wait is not the constraint, and the pool's own costs — slot waits, pins, stale claims, salvage — go with it.
 
 **Approach.**
-- **Measure first, and record it.** Before changing code, read the day report and the log for the week after part 3/6 landed: end-of-run → on main p50/mean/p90 (`merge_done`), `slot_wait` count and total, and red-main minutes (`main_check`/`main_red_hold`). If p90 is at or under ~15 minutes with one runner per role, proceed; if not, hold this part with a `**Needs review …**` note quoting the numbers instead of deleting capacity on a prediction.
+- **Measure first, and record it.** Before changing code, read the day report and the log for the week after Subtract parts 3a/7–3g/7 landed: end-of-run → on main p50/mean/p90 (`merge_done`), `slot_wait` count and total, and red-main minutes (`main_check`/`main_red_hold`). If p90 is at or under ~15 minutes with one runner per role, proceed; if not, hold this part with a `**Needs review …**` note quoting the numbers instead of deleting capacity on a prediction.
 - Delete the `instances` key (config-schema.ts, config.ts, docs/config.md) and `INSTANCE_ROLES`; `runnerIds` (src/roles/runner-ids.ts) returns the configured roles, one runner each.
 - Delete the claims (src/scheduling/claims.ts, src/scheduling/claim-entries.ts) and their readers (backlog-index.ts's live-claim marks, status-payload.ts's instance pool, the `parallel instances` doctor row); a role claims an entry by working on it in the run that picked it up.
 - Delete the pool (src/git/worktree-pool.ts, worktree-pool-startup.ts, slots-state.ts, worktree-use.ts, slot-salvage.ts) and the `slot_wait` event; a role keeps one worktree through src/git/worktree.ts's ensureWorktree, which already self-heals a dead registration.
@@ -177,6 +155,154 @@ _None yet._
 - `npm run test:gate` passes.
 
 **Tests.** New `test/director-request.test.ts` against temp root/worktree dirs: absent file null; a valid file queues the composed text and deletes the file; empty, over-cap and injected-throw paths return an error and still delete it. `test/run-verdict.test.ts`: a bugfix run with the file consumes it before a dirty/staging outcome and warns nothing, while a feature run with the same file leaves it. `test/prompt-roles.test.ts`: the bugfix find text names `.tumwater-director-request.md`, puts the director handoff before the needs-review note, and keeps the note as the last resort. `test/backlog-eligibility.test.ts`: `isPlanStalled` is false for a by-director note. Run those files, then the project's gate, and confirm green.
+
+### Subtract, part 3a/7: The scheduler stops interlocking a role on its queued merge (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6 into seven independently mergeable parts; design in plans/subtract.md "The six strokes", stroke 3; requires Every commit is verified on main part 3f/3 landed; touches src/orchestrator/orchestrator-poll.ts src/orchestrator/scheduling-skip.ts src/orchestrator/scheduling-scope.ts src/scheduling/claims.ts src/gates/gate-polls.ts src/status/status-polls.ts docs/how-it-works.md test/claims.test.ts test/orchestrator-scheduling.test.ts test/gate-polls.test.ts test/status-polls.test.ts)
+
+**Goal.** A role whose change is queued or pinned is admitted for its next run, so landing never holds authoring. Today `queuedRoles` (from `queuedMergeRoles`) blocks that role in scheduling-skip.ts, scheduling-scope.ts, claims.ts and gate-polls.ts, and `mergeStartHeld`'s merge arm in orchestrator-poll.ts holds role starts while a merge is in flight. Remove that interlock; run-stage's `heldOnBranch` one-pin cap in src/run/run-stage.ts stays, so a role still cannot write a second pin while its first waits.
+
+**Approach.**
+- Delete the `queuedRoles` field and every `hasQueuedMerge`/`queuedRoles.has(...)` branch from `SchedulingScope` (scheduling-scope.ts) and scheduling-skip.ts; the merge queue remains a merge-side fact only.
+- In claims.ts, stop excluding `queuedMergeRoles` from instance-claim candidates; keep every other admission rule.
+- In gate-polls.ts and status-polls.ts, drop the queued-merge roles from their in-flight inputs while keeping their run/in-flight counts.
+- In orchestrator-poll.ts, remove the merge half of `mergeStartHeld` (the `reviewHeld`/role arm), leaving the restart/disk `runStartHeld` gate and the post-review hold.
+- docs/how-it-works.md's Scheduling section says a role authors while its previous change waits, and the queue is not a scheduling gate.
+
+**Files touched.** src/orchestrator/orchestrator-poll.ts src/orchestrator/scheduling-skip.ts src/orchestrator/scheduling-scope.ts src/scheduling/claims.ts src/gates/gate-polls.ts src/status/status-polls.ts docs/how-it-works.md test/claims.test.ts test/orchestrator-scheduling.test.ts test/gate-polls.test.ts test/status-polls.test.ts
+
+**Acceptance criteria.**
+- A role with a queued or pinned change is a candidate in the scheduler and claims path on the next poll; `grep -rn 'hasQueuedMerge\|queuedRoles' src/orchestrator src/scheduling src/gates src/status` finds no scheduling/claim use.
+- `mergeStartHeld` no longer takes a role's merge into account; the run start gate and the reviewer hold still do.
+- A second commit by a role with a waiting pin still stays on the branch (`heldOnBranch` unchanged).
+- The merge pipeline keeps draining queued changes; no merge behavior changes.
+- `npm run test:gate` passes.
+
+**Tests.** Update test/orchestrator-scheduling.test.ts (a queued role is admitted), test/claims.test.ts (a queued-merge role remains a claim candidate), test/gate-polls.test.ts and test/status-polls.test.ts (the queued-role input is gone; the surviving counts are unchanged). Run those files and the gate.
+
+### Subtract, part 3b/7: The pre-merge verify stops running the project's build check (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3a/7 landed; touches src/review/review.ts src/review/review-precheck.ts src/merge/merge-core.ts src/merge/merge-batch.ts src/merge/merge-verify.ts docs/how-it-works.md docs/invariants.md test/review.test.ts test/review-precheck.test.ts test/review-precheck-watch.test.ts test/merge-pipeline-watch.test.ts)
+
+**Goal.** A merge's verify judges the diff's deterministic rules and nothing else: it runs no build check, so main has exactly one full check per merged commit, the main watch's post-landing one. Remove `gateBuildPrecheck` and the `verifiedHead`/`knownMainFailures` hand-off it carries; keep `diffRuleReasons`'s three hard rejects (brief block, PRINCIPLES edit, secret leak) and the md-only exempt path.
+
+**Approach.**
+- Delete src/review/review-precheck.ts in whole — its only export is `gateBuildPrecheck` and its only caller is review.ts. `reviewAttempt` in review.ts returns `{ decision: "approved" }` after the diff rules and before any build run; remove its `pre`/`retry.pre` fields, its check-slot lease, its flake/quarantine branches and its `verifiedHead` result field.
+- Remove `verifiedHead` from `MergeRequest` (merge-core.ts), `VerifyVerdict`/`verifyRequestIn` (merge-batch.ts), `ApprovedMerge` (merge-pipeline.ts), `startVerify` (merge-verify.ts) and the red-baseline seed it feeds.
+- The `merge_red`/`main_red` attribution paths that read the pre-check's result stay for the Every commit is verified on main 4j/3–4k/3 parts to remove; this part deletes only the pre-check call and its result field.
+- docs/how-it-works.md's Review section says the pre-merge gate is the deterministic diff rules only; docs/invariants.md re-points the build-check bindings from the verify to the main watch.
+
+**Files touched.** src/review/review.ts src/review/review-precheck.ts src/merge/merge-core.ts src/merge/merge-batch.ts src/merge/merge-verify.ts docs/how-it-works.md docs/invariants.md test/review.test.ts test/review-precheck.test.ts test/review-precheck-watch.test.ts test/merge-pipeline-watch.test.ts
+
+**Acceptance criteria.**
+- A verify of an ordinary change emits no `build_check` event and starts no pi/check run; it approves on the diff rules alone. A diff editing the brief block, PRINCIPLES.md or a credential is still rejected before it merges.
+- `grep -rn 'gateBuildPrecheck\|verifiedHead' src/` prints nothing.
+- The main watch's post-landing `build_check` still runs for every merged tip; the pre-check's tests are deleted or re-pointed to the watch, never left asserting a mechanism that is gone.
+- `npm run test:gate` passes.
+
+**Tests.** test/review.test.ts: the approved path approves without a check, the three diff-rule rejects stay. test/review-precheck.test.ts and test/review-precheck-watch.test.ts: delete the pre-check cases (the whole subject is gone) and keep the watch cases that now own build verification. test/merge-pipeline-watch.test.ts: drop the `verifiedHead` seeding assertions. Run those files and the gate.
+
+### Subtract, part 3c/7: The queue's verify stage collapses into the merge step (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3b/7 landed; touches src/merge/merge-drain.ts src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-pipeline.ts src/merge/merge-core.ts src/merge/merge-slot.ts docs/how-it-works.md docs/invariants.md test/merge-drain.test.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merger.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts)
+
+**Goal.** A queued entry goes straight from the queue to the merge step: no separate verify task, no `approved`/`verifying` map, no stage events. `drainMerge` takes the head entry, runs the deterministic diff-rule gate in the merge worktree, and calls `mergeApprovedChange`; a rejected entry is settled as today. The durable queue still orders entries and the pin still carries the commit.
+
+**Approach.**
+- Delete src/merge/merge-verify.ts and src/merge/merge-batch.ts; move the tier constants still needed by merge-drain/merge-post-review-drain (`MERGE_TIER`, `resolveAuthor`) beside the drain.
+- In merge-core.ts, keep `reviewPinnedChange`'s deterministic gate as a small `reviewQueuedChange(ctx, req, wt, state)` without the approval/stage bookkeeping; call it from `mergeApprovedChangeIn` before `mergeToMain`. A rejected result deletes the pin and returns `rejected`; a diff-rule approval proceeds to the merge.
+- In merge-drain.ts, delete `drainMergeQueue`'s `drainVerify` leg and the `p.approved`/`p.verifying` handling; `drainMerge` starts the next queued entry directly. In merge-pipeline.ts, remove `verifying`/`approved` and their types; keep `InFlightMerge`, abort, guard and outcome plumbing. In merge-slot.ts, remove the verify stage records and `checkWaitStage`/`resolveWaitStage` hooks, keeping the merge in-flight marker the operator surfaces read.
+- Keep `drainPostReviews` and the post-merge review path untouched.
+- docs/how-it-works.md's Parallel approval and Merge sections describe the one-step drain; docs/invariants.md re-points the verify-stage bindings to the merge step.
+
+**Files touched.** src/merge/merge-drain.ts src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-pipeline.ts src/merge/merge-core.ts src/merge/merge-slot.ts docs/how-it-works.md docs/invariants.md test/merge-drain.test.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merger.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts
+
+**Acceptance criteria.**
+- One queued entry produces `merge_queued → merged` with no verify-start/approved stage event; a merge is a rebase and a fast-forward through `mergeApprovedChange`.
+- A queued diff that edits the brief block, PRINCIPLES.md or a credential is rejected before it merges; every other queued diff merges without a second review.
+- `grep -rn 'drainVerify\|startVerify\|verifyRequest\|MERGE_TIER\|VERIFY_TIER' src/merge` prints only the moved constants if any, never a verify stage.
+- test/merge-drain-verify.test.ts is deleted with its subject; the surviving merge-drain/pipeline tests assert the one-step drain.
+- `npm run test:gate` passes.
+
+**Tests.** Delete test/merge-drain-verify.test.ts. Update test/merge-drain.test.ts, test/merge-pipeline.test.ts, test/merge-pipeline-2.test.ts, test/merge-pipeline-seams.test.ts and test/merger.test.ts to drive an entry from queue to merge without the verify/approved map; update the fixtures' `mergeHead` to the same path. Run those files and the gate.
+
+### Subtract, part 3d/7: `tumwater queue`, its cancel/top keys and the browser queue controls go (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3c/7 landed; touches src/cli/cli-query-commands.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/ui/tui/tui-pane-pending.ts src/ui/tui/tui-pane-pending-selection.ts src/ui/tui/tui-pane-transcript.ts src/merge/merge-cancel.ts src/merge/merge-top.ts src/merge/merge-queue-render.ts docs/cli.md test/cli-queue.test.ts test/cli-queue-follow.test.ts test/gui-queue-cancel.test.ts test/gui-queue-top.test.ts test/merge-cancel.test.ts test/merge-top.test.ts test/tui-pane-pending.test.ts test/tui-operator-keys.test.ts)
+
+**Goal.** The operator stops steering a queue that becomes a lock and a fast-forward: delete the `tumwater queue` command, its `--cancel` and `--top` flags, the GUI Merge queue card's Cancel/Move-to-top handlers, the TUI pending pane's queue rows and keys, and the three modules that implement cancel/top/queue rendering. The queue reader itself stays for status, doctor and the CLI surfaces this part does not own until part 3f.
+
+**Approach.**
+- Delete src/merge/merge-cancel.ts, src/merge/merge-top.ts and src/merge/merge-queue-render.ts; remove `cmdQueue`, `cmdQueueCancel`, `cmdQueueTop` and the queue view from src/cli/cli-query-commands.ts and their command/help/completion entries.
+- Remove `handleQueueCancel`/`handleQueueTop` and their `/api/queue-cancel`/`/api/queue-top` routes from src/gui/gui-operator-commands.ts and gui-server.ts; delete the dashboard Merge queue card's Cancel/Move-to-top controls.
+- Remove the merge-queue rows, labels and Ctrl keys from tui-pane-pending.ts, tui-pane-pending-selection.ts and tui-pane-transcript.ts; keep the post-merge-review rows, which are a separate mechanism.
+- docs/cli.md drops `queue`, `queue --cancel` and `queue --top`; no other docs change here.
+
+**Files touched.** src/cli/cli-query-commands.ts src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/ui/tui/tui-pane-pending.ts src/ui/tui/tui-pane-pending-selection.ts src/ui/tui/tui-pane-transcript.ts src/merge/merge-cancel.ts src/merge/merge-top.ts src/merge/merge-queue-render.ts docs/cli.md test/cli-queue.test.ts test/cli-queue-follow.test.ts test/gui-queue-cancel.test.ts test/gui-queue-top.test.ts test/merge-cancel.test.ts test/merge-top.test.ts test/tui-pane-pending.test.ts test/tui-operator-keys.test.ts
+
+**Acceptance criteria.**
+- `tumwater queue` and its `--cancel`/`--top` flags are gone from the parser, help, completion and docs; `grep -rn 'moveQueuedMergeToTop\|cancelQueuedMerge\|renderMergeQueue' src/` prints nothing.
+- Neither dashboard nor TUI offers a queue cancel/top control, and no TUI key binds one.
+- The queue reader (`readMergeQueue`), the post-merge-review views and the doctor/status queue reads still work.
+- `npm run test:gate` passes.
+
+**Tests.** Delete test/cli-queue.test.ts, test/cli-queue-follow.test.ts, test/gui-queue-cancel.test.ts, test/gui-queue-top.test.ts, test/merge-cancel.test.ts and test/merge-top.test.ts with their subjects; trim test/tui-pane-pending.test.ts and test/tui-operator-keys.test.ts to the surviving post-review rows and keys. Run the surviving touched files and the gate.
+
+### Subtract, part 3e/7: A run's merge pin is merged directly, without a queue entry (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3d/7 landed; touches src/run/run-stage.ts src/runner/runner-leftover.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-core.ts docs/how-it-works.md test/run-stage.test.ts test/runner-leftover.test.ts test/orchestrator-merge-pin.test.ts)
+
+**Goal.** New work stops writing a durable queue entry: a run pins its commit by `refs/tumwater/landing/<role>` and the orchestrator merges that pin on a poll. The queue reader still drains files an older build left, so the two paths coexist until part 3f deletes the queue.
+
+**Approach.**
+- In run-stage.ts, replace the `enqueueMerge` block with the pin only: after `pinAndReset`, log `merge_queued` with the commit and summary and end the run `queued` exactly as today; `heldOnBranch` still checks an existing pin. Remove the queue-entry construction from the fresh path; keep the revision trailer on the commit so a recovered pin still carries its round.
+- In runner-leftover.ts, replace the `enqueueMerge` call with the same pin-only return (`{ kind: "pinned", sha, summary }`): adopt an unpinned branch tip into the merge ref as today, but write no queue file. Keep stale/dangling pin cleanup, the conflict hand-back and `MERGE_CONFLICT_LIMIT`.
+- Add the pin merge to orchestrator-poll.ts: for each runner with `hasUnmergedPin` and no in-flight merge, read `recoveredMetadata` for the pinned sha and call the merge path (`mergeApprovedChange`) under the existing merge lock; a merged pin is deleted, a conflicting pin is kept for the existing leftover/conflict hand-back path, and a pin main already contains is dropped.
+- docs/how-it-works.md's Merge section says a pin is the waiting state; the durable queue is legacy input only.
+
+**Files touched.** src/run/run-stage.ts src/runner/runner-leftover.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-core.ts docs/how-it-works.md test/run-stage.test.ts test/runner-leftover.test.ts test/orchestrator-merge-pin.test.ts
+
+**Acceptance criteria.**
+- A fresh run that commits writes a pin and no `.tumwater/merge-queue/` file; its log path is still `merge_queued → merged` and its change reaches main without a second check.
+- A pin left by a crash or an earlier build is merged on the next poll; a pin whose commit main already contains is deleted without merging.
+- A conflicting pin is kept once and hands back to its author at `MERGE_CONFLICT_LIMIT`, not retried forever.
+- Old queue files still drain through the pre-3e path until part 3f removes it.
+- `npm run test:gate` passes.
+
+**Tests.** New test/orchestrator-merge-pin.test.ts: a pin is merged on a poll, a stale pin is dropped, a conflict keeps the pin and records the streak. test/run-stage.test.ts: a committed run pins and enqueues nothing. test/runner-leftover.test.ts: recovery adopts a tip into the pin and writes no queue file. Run those files and the gate.
+
+### Subtract, part 3f/7: The durable merge queue and its status/doctor readers go (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3e/7 landed; touches src/merge/merge-queue.ts src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-slot.ts src/merge/merge-requeue.ts src/status/status-data.ts src/status/status-roles.ts src/status/status-polls.ts src/doctor/doctor-backlog.ts src/doctor/doctor-check-names.ts src/doctor/doctor-holds.ts src/gates/gate-polls.ts src/scheduling/once-round.ts src/events/event-notify.ts docs/how-it-works.md test/merge-queue.test.ts test/merge-requeue.test.ts test/merge-slot.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/doctor-checks.test.ts test/status-data.test.ts test/status-roles.test.ts test/once-round.test.ts)
+
+**Goal.** With part 3e writing no queue file, the queue, its pipeline, slot and requeue modules are dead state. Delete them and re-point every reader at the pin/in-flight marker: status shows a role's waiting pin, the doctor drops the two merge-queue rows, and `once --once` waits on no in-flight merge instead of an empty queue directory.
+
+**Approach.**
+- Delete src/merge/merge-queue.ts, merge-drain.ts, merge-pipeline.ts, merge-slot.ts and merge-requeue.ts; move the one in-flight marker type/reader the new pin path and post-review drain still need into a small module beside merge-core.ts, and delete `.tumwater/merge-queue/` handling (`mergeQueueDir`, `legacyLandQueueDir`, the startup migration step) from src/paths.ts and startup-migration-steps.ts.
+- status-data.ts's `readMergeQueue` block and `queuedRoles` become the pin/in-flight set; status-roles.ts and status-polls.ts read that set. Delete the queue header badge, the queue depth and the per-role queued row that name a now-nonexistent directory.
+- doctor-backlog.ts loses `checkStaleQueuedMerges` and `checkMergeQueueFiles`; doctor-check-names.ts drops `stale merge-queue entries` and `merge-queue files`; doctor-holds.ts reads the in-flight/pin set instead of the queue.
+- gate-polls.ts and scheduling/once-round.ts read the in-flight/pin state for their `queued` counts instead of `queuedMergeRoles`/`queuedMerges`; once-round's `queuedMerges: number` becomes the pin count.
+- events/event-notify.ts drops notifications that name queue files (`unreadable queue files`, `merge-queue file`), keeping `merge_queued`/`merged`.
+- docs/how-it-works.md removes the queue directory, stages and queue doctor rows, describing pins and the in-flight marker instead.
+
+**Files touched.** src/merge/merge-queue.ts src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-slot.ts src/merge/merge-requeue.ts src/status/status-data.ts src/status/status-roles.ts src/status/status-polls.ts src/doctor/doctor-backlog.ts src/doctor/doctor-check-names.ts src/doctor/doctor-holds.ts src/gates/gate-polls.ts src/scheduling/once-round.ts src/events/event-notify.ts src/paths.ts src/orchestrator/startup-migration-steps.ts docs/how-it-works.md test/merge-queue.test.ts test/merge-requeue.test.ts test/merge-slot.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/doctor-checks.test.ts test/status-data.test.ts test/status-roles.test.ts test/once-round.test.ts
+
+**Acceptance criteria.**
+- `grep -rn 'merge-queue\|mergeQueue\|queuedMerges\|readMergeQueue\|mergeQueueDir' src/` finds no live queue path; `docs/how-it-works.md` names no queue directory or stage.
+- `tumwater status` shows each waiting role's pin and in-flight merge; the doctor's `stale merge-queue entries` and `merge-queue files` rows are gone rather than warning about a path nothing writes.
+- `once --once` treats a waiting pin as unsettled work and exits only after its merge settles, the same way it treated a non-empty queue.
+- No module imports a deleted merge-queue/merge-drain/merge-slot/merge-requeue file; the compiler is clean.
+- `npm run test:gate` passes.
+
+**Tests.** Delete test/merge-queue.test.ts, test/merge-requeue.test.ts, test/merge-slot.test.ts and the queue-specific cases in test/merge-pipeline*.test.ts; update test/status-data.test.ts, test/status-roles.test.ts, test/doctor-checks.test.ts and test/once-round.test.ts to pins/in-flight. Run those files and the gate.
+
+### Subtract, part 3g/7: Docs and invariants say one lock, linear history and a post-landing check (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3f/7 landed; touches docs/how-it-works.md docs/invariants.md docs/glossary.md README.md test/invariants-doc.test.ts test/merge-backlog-conflicts.test.ts)
+
+**Goal.** The live prose and the invariant bindings describe the landing that exists after parts 3a–3f: a pin, a rebase under the merge lock, a fast-forward, and the main watch's post-landing check. No sentence promises queue stages, an approval step or a pre-merge check.
+
+**Approach.**
+- Sweep the queue vocabulary out of docs/how-it-works.md, docs/invariants.md and docs/glossary.md: merge queue, queue stage, verify/approval stage, batch/bisect (already gone), retry/requeue, queue depth and queue cancel/top.
+- In docs/invariants.md, drop or re-scope every binding to a deleted module (`merge-queue`, `merge-verify`, `merge-batch`, `merge-slot` stages, `merge-requeue`) and state the surviving guarantees: one merge writer under one lock, linear history, a deleted pin on merge and a post-landing check per commit. Keep the conflict-hand-back and review-gate bindings that still have code.
+- README's status line stays as is; remove any queue wording elsewhere in README.
+- Re-check docs/invariants.md's file-to-test bindings: every remaining binding names a file and a test that still exist; the invariants-doc test enforces it.
+
+**Files touched.** docs/how-it-works.md docs/invariants.md docs/glossary.md README.md test/invariants-doc.test.ts test/merge-backlog-conflicts.test.ts
+
+**Acceptance criteria.**
+- `grep -rniE 'merge queue|queue stage|verify stage|approval stage|requeue|queue depth' docs/ README.md` finds no claim about a mechanism parts 3a–3f deleted (the archive files PLANS-DONE.md and BUGS-FIXED.md are excluded by construction).
+- Every docs/invariants.md binding that names a merge module names a file and a test that still exist; deleted-module INVs are gone, not re-pointed.
+- The surviving prose says: a change is pinned, merged by rebase and fast-forward under the merge lock, and checked on main after it lands.
+- `npm run test:gate` passes.
+
+**Tests.** Run test/invariants-doc.test.ts and test/merge-backlog-conflicts.test.ts whole, then the project's gate, and confirm green.
 
 ### Settings gains controls for how many feature and bugfix runs happen at once, backed by the existing `roles.<role>.instances` (planned 2026-10-31 by the director; the user asked for GUI control over bugfix and feature concurrency under Settings, and this reuses the existing per-role instance mechanism instead of adding a second knob — `roles.feature.instances` and `roles.bugfix.instances` already run 1–8 parallel runners (`runnerIds` in src/roles/runner-ids.ts), the role drawer and TUI already edit them through `POST /api/role-instances`, and the global `maxConcurrent` still caps every run; independent in file of every `## Planned` entry — no open heading touches src/config/config-editable-keys.ts, src/gui/gui-admin-endpoints.ts, src/ui/gui/gui-client-settings.ts, test/gui-endpoints.test.ts or test/gui-client-settings.test.ts, and the Subtract parts touch src/config/config-schema.ts, src/config/config.ts, src/config/config-validation.ts and src/roles/runner-ids.ts, never these files; touches src/config/config-editable-keys.ts src/gui/gui-admin-endpoints.ts src/ui/gui/gui-client-settings.ts docs/config.md test/gui-endpoints.test.ts test/gui-client-settings.test.ts)
 
