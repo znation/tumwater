@@ -321,22 +321,30 @@ export async function checkBuild(
   const stale = await buildStaleness(root, info.sha, mainHead);
   if (!stale) return okOutcome(`dist/ from ${sha}`);
   if (stale.stale) {
-    // The step a hold is in, so an operator asking doctor why every role is idle reads it too.
-    const hold = running?.restartHold;
-    const held = hold
-      ? ` — ${restartHoldPhrase(hold.stage, running?.checkedHead, hold.runs, humanSince(hold.since, Date.now()))}`
-      : "";
-    const next = running?.restartBlocked
-      ? `; auto-restart is BLOCKED (${running.restartBlocked}) and will not retry until main moves or the block clears`
-      : running?.restartPending
-        ? `; auto-restart is under way${held}`
-        : running?.waitingForCheck
-          ? `; auto-restart waits for a commit that passes main's check — none newer than ` +
-            `${shortSha(running.checkedHead ?? info.sha)} has yet (the main's check row says why)`
-          : "; run `npm run build` and restart `tumwater start` (auto-restart does this for a running team)";
-    return warnOutcome(`dist/ from ${sha} is stale — main has ${plural(stale.aheadCommits, "later commit")} touching ${STALE_INPUTS_LABEL}${next}`);
+    return warnOutcome(`dist/ from ${sha} is stale — main has ${plural(stale.aheadCommits, "later commit")} touching ${STALE_INPUTS_LABEL}${staleBuildRestartPhrase(running, info)}`);
   }
   return okOutcome(`dist/ from ${sha}, matches main`);
+}
+
+/** The one home of the doctor's stale-build restart-state phrase: why auto-restart is not
+ * bringing a running team up to date, read from one list. Returns the `next` chain naming the
+ * restart state an operator asking doctor why every role is idle would look for — the ` — …`
+ * hold tail embedded in its pending branch, the step a hold is in, so an operator asking why
+ * every role is idle reads it too. */
+function staleBuildRestartPhrase(running: BuildStatus | null, info: BuildInfo): string {
+  const hold = running?.restartHold;
+  const held = hold
+    ? ` — ${restartHoldPhrase(hold.stage, running?.checkedHead, hold.runs, humanSince(hold.since, Date.now()))}`
+    : "";
+  const next = running?.restartBlocked
+    ? `; auto-restart is BLOCKED (${running.restartBlocked}) and will not retry until main moves or the block clears`
+    : running?.restartPending
+      ? `; auto-restart is under way${held}`
+      : running?.waitingForCheck
+        ? `; auto-restart waits for a commit that passes main's check — none newer than ` +
+          `${shortSha(running.checkedHead ?? info.sha)} has yet (the main's check row says why)`
+        : "; run `npm run build` and restart `tumwater start` (auto-restart does this for a running team)";
+  return next;
 }
 
 /** The primary checkout's HEAD sha, or null when it cannot be resolved (no repo) —
