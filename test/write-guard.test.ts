@@ -142,7 +142,7 @@ test("the hook claude runs denies a stray write with the refusal as its reason a
   assert.equal(JSON.parse(moved.stdout).hookSpecificOutput.permissionDecision, "deny");
 });
 
-test("the opencode plugin denies an edit decision for a stray path and leaves every other decision alone", async () => {
+test("the opencode plugin denies an edit or write decision for a stray path and leaves every other decision alone", async () => {
   const { root, wt } = team();
   const stray = path.join(root, "src", "a.ts");
   let hook: ((event: Record<string, unknown>) => void) | undefined;
@@ -162,6 +162,16 @@ test("the opencode plugin denies an edit decision for a stray path and leaves ev
   const inside = { action: "edit", resources: [path.join(wt, "src", "a.ts")], effect: "allow" };
   hook(inside);
   assert.equal(inside.effect, "allow");
+  // A `write` action (create or overwrite a file) writes the same `resources` and must be guarded
+  // like an `edit`: a new file a `../` climb points at the primary checkout or another slot is
+  // exactly the stray-write the guard exists to refuse (open code-config keeps `write` allowed
+  // beside `edit` for parity with pi's write tool).
+  const writeStray = { action: "write", resources: [stray], effect: "allow" };
+  hook(writeStray);
+  assert.deepEqual(writeStray, { action: "write", resources: [stray], effect: "deny", message: strayWriteRefusal(stray, wt) });
+  const writeInside = { action: "write", resources: [path.join(wt, "src", "new.ts")], effect: "allow" };
+  hook(writeInside);
+  assert.equal(writeInside.effect, "allow");
   // OpenCode also asks external_directory and read for paths outside the worktree; reads stay open.
   for (const action of ["external_directory", "read"]) {
     const other = { action, resources: [stray], effect: "allow" };

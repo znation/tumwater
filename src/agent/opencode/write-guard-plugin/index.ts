@@ -4,11 +4,12 @@
  *
  * OpenCode 2.x has no hook that blocks a tool from running. It has a permission `evaluate` hook
  * that may turn a decision to `deny` with a `message`, which reaches the model as the tool's error
- * while the run goes on. Every file-writing tool asks for the `edit` action with the absolute
- * paths it writes as `resources`, and the hook runs under `--auto` too, since `--auto` only
- * answers what would otherwise be asked. Checked live on opencode 2.1.0 on 2026-10-23. A
- * configured plugin path must be a directory, which is why this is `index.js` in a directory of
- * its own.
+ * while the run goes on. The file-writing tools ask for the `edit` action (edit in place) and the
+ * `write` action (create or overwrite a file — a new path a `../` climb can point outside the
+ * checkout) with the absolute paths they write as `resources`, and the hook runs under `--auto`
+ * too, since `--auto` only answers what would otherwise be asked. Checked live on opencode 2.1.0
+ * on 2026-10-23. A configured plugin path must be a directory, which is why this is `index.js` in
+ * a directory of its own.
  *
  * The plugin's context names the run's directory (`location.directory`, the worktree OpenCode
  * runs in), which is the run directory the rule reads its checkout from. A failure of its own
@@ -30,10 +31,12 @@ interface PluginContext {
   permission: { hook(name: "evaluate", callback: (event: EvaluateEvent) => void): unknown };
 }
 
-/** Deny an `edit` decision whose resources include a stray path from a run in `runDir`, naming
- * the first such path's refusal. Every other decision is left as it is. Exported for tests. */
+/** Deny an `edit` or `write` decision whose resources include a stray path from a run in
+ * `runDir`, naming the first such path's refusal. Every other decision is left as it is. Exported
+ * for tests. */
+const FILE_WRITE_ACTIONS = new Set(["edit", "write"]);
 export function guardEvaluate(event: EvaluateEvent, runDir: string): void {
-  if (event.action !== "edit" || !Array.isArray(event.resources)) return;
+  if (!FILE_WRITE_ACTIONS.has(event.action as string) || !Array.isArray(event.resources)) return;
   for (const resource of event.resources) {
     if (typeof resource !== "string" || resource === "") continue;
     const refusal = strayWriteRefusal(resource, runDir);
