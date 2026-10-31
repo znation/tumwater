@@ -253,6 +253,10 @@ The post-merge review of commit `bf04da3c517cdb2690bb1973ef430a2e7e2f951e` (Shar
 - **Reproduce:** it passes when the test runs alone (`node dist/test/test-runner.js "e2e#an entry whose sha main already holds"` and a standalone copy both pass), and passed the full 89-test e2e tier at both the previous green tip 80c8d139 and this tip's initial full e2e run. But when the entire `orchestrator-3.e2e.test.ts` file runs in one process it is intermittent: three clean runs of `test-runner.js e2e orchestrator-3` gave fail, pass, fail (and earlier runs failed repeatedly), always on this one test. Host load was low (≈1–3), so it is not the load-stretched wall-clock class.
 - **Suspected cause:** the module-level `mergedIntoMainCache` in `src/merge/merge-verify.ts` is shared across every test in the one process and keyed by `${root}`+ sha. The dedup path computes `mainHead` per poll and caches a verdict, so a stale `{head, merged:false}` verdict recorded for the same root+head during the window between the real merge's fast-forward and the stale entry's drop can make `mergedIntoMain` return false and send the stale entry through verification → a second merge. `git diff --name-only 80c8d13 5b948a3d -- src/merge test/orchestrator-3.e2e.test.ts` is empty — no merge/drain/test source changed since the last green run, so this is a pre-existing intermittent interference flake, not a regression of any commit on the way to 5b948a3 (derived from the ci role 2026-10-30).
 
+### post-merge review of a3bdcf86 never reached a verdict (found by the review role 2026-10-30)
+
+The post-merge review of commit `a3bdcf864cce41c5e9417155a98e972df1300e50` (Share the change-diff cap as one exported DIFF_MAX_BYTES constant) never reached a verdict: no parseable VERDICT line in the reviewer's reply. It stays on main as ordinary unreviewed backlog work.
+
 ## Fixed
 
 ## Verified
