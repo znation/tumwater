@@ -441,6 +441,50 @@ test("the digest names every gate hold and lift", () => {
   }
 });
 
+test("the digest names every gate lift and reset the same way it names the holds", () => {
+  // The counterpart lifts/resets of the gate lines above — quiet hours ended, the
+  // maintenance allowance reopened, a subscription window reset, and the model check passed -
+  // were untested beside their holds, so a regression in one lift's wording could land
+  // silently. Each mirrors the hold line's field read (window suffix, maint/allowance pair,
+  // backend label), keeping the pair in step.
+  assert.equal(
+    describeStateChange(ev({ type: "quiet_hours_ended", window: "23:00-07:00" })),
+    "quiet hours ended (23:00-07:00)",
+  );
+  assert.equal(describeStateChange(ev({ type: "quiet_hours_ended" })), "quiet hours ended");
+  assert.equal(
+    describeStateChange(ev({ type: "maintenance_quota_resumed", maint: 3, allowance: 4 })),
+    "maintenance allowance reopened — 3/4 in 24h",
+  );
+  // A torn maintenance_quota_resumed renders empty cells, never "undefined".
+  const tornResumed = describeStateChange(ev({ type: "maintenance_quota_resumed" }));
+  assert.equal(tornResumed, "maintenance allowance reopened — / in 24h");
+  assert.doesNotMatch(tornResumed, /NaN|undefined/);
+  assert.equal(
+    describeStateChange(ev({ type: "subscription_window_reset" })),
+    "claude window reset — model jobs run again",
+  );
+  // The backend label names the backend an event explicitly configured.
+  assert.equal(
+    describeStateChange(ev({ type: "subscription_window_reset", backend: "codex" })),
+    "codex window reset — model jobs run again",
+  );
+  assert.equal(
+    describeStateChange(ev({ type: "model_check_passed", pair: "deepseek-v4 → claude" })),
+    "model check passed — deepseek-v4 → claude answers again",
+  );
+  assert.equal(
+    describeStateChange(ev({ type: "model_check_passed" })),
+    "model check passed —  answers again",
+  );
+  for (const line of [
+    describeStateChange(ev({ type: "quiet_hours_ended", window: "23:00-07:00" })),
+    describeStateChange(ev({ type: "subscription_window_reset" })),
+  ]) {
+    assert.ok(line.length <= 72, `under the cap: ${line}`);
+  }
+});
+
 test("the digest names a tier fallback switch and the budget hand-back", () => {
   // A tier slid onto its fallback pair: the digest names the move beside the pause/hold ones.
   assert.equal(
