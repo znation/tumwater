@@ -43,7 +43,7 @@ process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
 // count (`rev-list` sees a 4th commit).
 const skipPostReview = `for a in "$@"; do case "$a" in tumwater-review-*-post-*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`;
 
-test("mergeBatchMax caps each merge's stack, read from the live config at each drain", async () => {
+test("every approved change merges one at a time through mergeApprovedChange, no shared stack check", async () => {
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
   await queueChanges(root, roles);
@@ -53,22 +53,17 @@ test("mergeBatchMax caps each merge's stack, read from the live config at each d
   pipeline.merge = busySlot();
   try {
     await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 3, "all three to be approved");
-    ctx.liveConfig = { ...config, mergeBatchMax: 2 }; // a live edit, as the scheduler hands it over
     pipeline.merge = null;
     await drainMergeQueue(ctx, pipeline);
-    assert.deepEqual(mergeTasks(pipeline).flatMap((t) => t.roles), ["alpha", "beta"], "the first merge stacks two, in queue order");
-    assert.deepEqual([...pipeline.approved.keys()], ["gamma"], "the third waits for the next merge");
+    assert.deepEqual(mergeTasks(pipeline).flatMap((t) => t.roles), roles, "one merge whose record names every approved role, in queue order");
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to drain");
 
+    // A merge is a rebase and a fast-forward (parts 4l/3 and 4m/3): no shared scope-`batch`
+    // stack check and no in-lock merge check — every approved change merges one at a time
+    // through mergeApprovedChange.
     const checks = readEvents(root).filter((e) => e.type === "build_check" && e.scope !== "gate");
-    assert.deepEqual(
-      checks.map((e) => [e.source, e.scope]),
-      [
-        ["alpha", "batch"],
-      ],
-      "one shared check for the stack of two; gamma's single merge (part 4l/3: a merge is a rebase and a fast-forward) runs no in-lock merge check",
-    );
-    assert.deepEqual(eventsOfType(root, "merged").map((e) => e.source), roles);
+    assert.deepEqual(checks, [], "no shared batch check and no in-lock merge check run");
+    assert.deepEqual(eventsOfType(root, "merged").map((e) => e.source), roles, "one merged event per change, in queue order");
   } finally {
     await Promise.allSettled(allTasks(pipeline));
     restore();

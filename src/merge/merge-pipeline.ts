@@ -79,7 +79,7 @@ export interface MergePipelineContext {
   semaphore: Semaphore;
   /** Live runners, searched first when resolving a merge's author. */
   runners: RoleRunner[];
-  /** The live config: supplies `mergeBatchMax` and the director's budget-exempt config. */
+  /** The live config: supplies the director's budget-exempt config. */
   liveConfig: TumwaterConfig;
   /** The derived config non-director roles run under (the fallback view). */
   roleConfig: TumwaterConfig;
@@ -103,9 +103,9 @@ export interface MergePipelineContext {
  *   permit (a verification still waiting for its permit is `parked`). Any verdict but an approval
  *   writes its outcome at once and frees its author.
  * - `approved`: the approved changes waiting to merge, still queued.
- * - `merge`: the one task that writes main — every approved change up to mergeBatchMax, in queue
- *   order, through mergeApproved (a stack of two or more shares one check and one fast-forward).
- *   It never waits for an unapproved queue head.
+ * - `merge`: the one task that writes main — every approved change, in queue
+ *   order, one at a time through mergeApprovedChange (a rebase and a fast-forward, no shared
+ *   check). It never waits for an unapproved queue head.
  * A role is in at most one of them: its one queued change is approved, then waits, then merges, so
  * a verification and a merge never touch the same worktree or ref. */
 export interface MergePipeline {

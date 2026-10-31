@@ -160,7 +160,7 @@ test("holdPhrase clamps an unreadable or negative hold to 0s and adds the relaps
 // --- mainRedPhrase / mainRedNotMine (main's red-tip naming) ---
 
 // mainRedPhrase is the spine of every "main <short-sha> is red" warning, shared by the team-wide
-// red-main banner (main-red.ts), the review gate, the merge check (merge-check-failures.ts), and
+// red-main banner (main-red.ts), the review gate, and
 // the redeploy hold (redeployer.ts). shortSha slices to at most 8 chars and a non-string reads as
 // the "?" textOr fallback.
 test("mainRedPhrase names main by its short sha", () => {

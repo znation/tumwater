@@ -3525,61 +3525,6 @@ Open lines" and "renderBacklogIndexBlock re-reads a Done section whose stat chan
 `test/backlog-index-edges.test.ts` — "renderBacklogIndexBlock takes the newest five closed entries
 from the live section first, then its archive".
 
-## Merge strikes: a merge that keeps failing is blamed on its change after two strikes of the same patch, and only a judged failure of a readable patch is a strike
-
-`src/merge/merge-check-failures.ts` owns the strike store on `RunnerState.mergeCheckFailures`, keyed
-by patch-id.
-
-### INV-BF1: one patch's failures keep the pin under the limit and blame the change at it
-
-**Guarantee.** One patch's red batch check keeps the pin (`merge_blocked`) under
-`MERGE_CHECK_FAILURE_LIMIT`. At the limit the failure is blamed on the change: a red check through
-`attributeRedCheck`, with the pin deleted and the strike cleared. The deterministic cross-check
-block sink `mergeBlocked` is unchanged and still pinned by INV-BF2, but the merge path no longer
-produces cross-check blocks — since part 3m/3 a false fix claim and a broken backlog structure are
-repairable and land for the main watch. Since part 4l/3 the in-lock merge check is gone (a merge is
-a rebase and a fast-forward), so `attributeRedCheck` serves only the batch path's attribution,
-which 4m/3 deletes with the module.
-
-**Binds.** `src/merge/merge-check-failures.ts` (`MERGE_CHECK_FAILURE_LIMIT`, `pinKept`,
-`keepPinOrAttribute`, `mergeBlocked`).
-
-**Pinned by.** `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref once for a
-known-flake red, then attributes a repeat" and "attributeRedCheck keeps the ref and records no
-strike for an unverified red".
-
-### INV-BF2: strikes are counted per patch-id
-
-**Guarantee.** A pin whose patch-id cannot be read never stores a strike and is never blamed by
-count. A stored strike on another patch does not add to the new one.
-
-**Binds.** `src/merge/merge-check-failures.ts` (`tallyCheckFailure`).
-
-**Pinned by.** `test/merge-check-strikes.test.ts` — "mergeBlocked keeps a pin whose patch-id cannot
-be read on every attempt and stores no strike" and "mergeBlocked starts a new patch's count at one
-when the stored strike belongs to another patch".
-
-### INV-BF3: a red that judged nothing is not a strike
-
-**Guarantee.** A red check that judged nothing (an unverified tree) is not a strike, and neither is
-a red that fails only main's known failures. Both keep the pin.
-
-**Binds.** `src/merge/merge-check-failures.ts` (`attributeRedCheck`).
-
-**Pinned by.** `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref and
-records no strike for an unverified red" and "attributeRedCheck keeps the ref, with no strike, for a
-red that fails only main's known failures".
-
-### INV-BF4: a red that is a known flake is excused once per headline per pin
-
-**Guarantee.** `attributeRedCheck` excuses a known-flaky headline once per headline per pin.
-
-**Binds.** `src/merge/merge-check-failures.ts` (`attributeRedCheck`),
-`RunnerState.mergeFlakeExcused`.
-
-**Pinned by.** `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref once for a
-known-flake red, then attributes a repeat".
-
 ## Team hold: two roles failing alike on one provider hold that provider, and the hold re-opens by itself
 
 `teamHold` in `src/team/team-hold.ts` steps one provider's `TeamHold` per poll from the recent
@@ -3788,67 +3733,6 @@ Only git's own answer, a missing object or a conflict no settler resolves, drops
 reporting a diff that no longer applies" and "a revision whose re-apply git could not start keeps
 the revision and its ref for the next run".
 
-## Batch merge: a stack merges as one fast-forward on its own check, and only a full check that passed on exactly the merged tip seeds main's baseline
-
-`mergeStack` in `src/merge/merge-stack.ts` cherry-picks a batch of approved changes onto main's tip,
-checks the combined tree once, and fast-forwards main through the captured shas (`ffStackToMain`).
-
-### INV-BJ1: one batch check covers the whole stack, and a green stack fast-forwards main once
-
-**Guarantee.** One scope-`batch` check covers the whole stack. A green stack fast-forwards main once
-through the captured shas, logs one `merged` event per change, and deletes each change's merge ref.
-
-**Binds.** `src/merge/merge-stack.ts` (`mergeStack`, `ffStackToMain`).
-
-**Pinned by.** `test/merger-bisect.test.ts` — "a stack whose every change passes still takes exactly
-one batch check"; `test/merge-stack.test.ts` — "ffStackToMain fast-forwards main through the whole
-stack in one ff with per-change events".
-
-### INV-BJ2: a fast-forward lost to a moved main re-stacks a bounded number of times, and a lost race merges nothing
-
-**Guarantee.** A fast-forward lost to a moved main re-stacks on the new tip, up to
-`BATCH_RESTACK_ATTEMPTS` times. A re-stack whose tree adds only review-exempt changes to the checked
-tree skips its re-check. A race lost on every attempt, a primary checkout dirty in the stack's
-files, and a stop before an attempt all keep every ref and merge nothing.
-
-**Binds.** `src/merge/merge-stack.ts` (`mergeStack`, `BATCH_RESTACK_ATTEMPTS`).
-
-**Pinned by.** `test/merger-restack.test.ts` — "a fast-forward lost to a doc-only commit re-stacks
-without a second batch check", "a batch that loses the fast-forward race on every attempt keeps
-every ref as merge_blocked", "an abort between re-stack attempts stops the batch: aborted, refs
-kept, nothing merges" and "a batch whose files are dirty in the primary checkout is blocked before
-its check"; `test/merge-stack.test.ts` — "ffStackToMain returns merge_blocked when main diverged
-under the stack, with no events".
-
-### INV-BJ3: a stack whose whole delta is review-exempt runs no check and no cross-check
-
-**Guarantee.** A stack whose whole delta is review-exempt runs no check. Since part 3m/3 it also
-runs no cross-check: a false fix claim and a broken backlog structure are repairable by a later
-commit, so they land and the main watch reports them on main's tip rather than sending the stack to
-the one-at-a-time fallback.
-
-**Binds.** `src/merge/merge-stack.ts` (`mergeStack`).
-
-**Pinned by.** `test/merger-bisect.test.ts` — "a stack whose every change is doc-only merges with no
-batch check" and "a doc-only stack that breaks backlog structure merges as one, for the main watch".
-
-### INV-BJ4: only a full batch check that passed on exactly the merged tip seeds main's baseline
-
-**Guarantee.** After a merge, `mergeStack` seeds the merged tip green only when the batch check's
-status is `"passed"` and there is no in-lock command (`mergeCommandOf` is undefined — no gate or
-merge command; Fast merge "Defaults": an absent `check.mergeCommand` falls back to
-`check.gateCommand`, so a batch check run on the gate command is just as non-full). A doc-only stack
-(no check ran), a stack whose failures are all main's known failures, and an in-lock-command green
-seed nothing, so the main watch checks that tip itself.
-
-**Binds.** `src/merge/merge-stack.ts` (`mergeStack`), `src/baseline/main-baseline.ts`
-(`noteGreenBaseline`).
-
-**Pinned by.** `test/merge-stack-seed.test.ts` — "a stack whose batch check passed seeds the merged
-tip green", "a stack that fails only main's known failures merges but seeds nothing", "a doc-only
-stack runs no check and seeds nothing" and "a stack merged on check.mergeCommand runs it as a
-non-full batch check and seeds nothing".
-
 ## Staging self-check: each git-level finding stops at its cap, and a check that cannot run adds nothing
 
 ### INV-BK1: a finding names at most ten paths, files or hits, and a change emits at most ten stale-reference findings
@@ -3941,8 +3825,7 @@ identical trees. It passes `--no-renames`, so a file moved from `src/` to `docs/
 old and its new path. `exemptTreeDelta` treats null as not exempt, so an unreadable diff is never
 review-exempt and a code-to-docs move never reads as a docs-only delta.
 
-**Binds.** `src/git/git-diff.ts` (`treeDiffFiles`); `src/merge/merge-stack.ts`
-(`exemptTreeDelta`).
+**Binds.** `src/git/git-diff.ts` (`treeDiffFiles`, `aheadOfMainFiles`).
 
 **Pinned by.** `test/git-diff-paths.test.ts` — "treeDiffFiles is null for an unknown commit and
 empty for identical trees" and "treeDiffFiles lists a moved file under both its old and its new
@@ -4515,7 +4398,7 @@ index, rather than skipping the preserve".
 
 **Guarantee.** The role-state saves inside a merge's verify (the phase and the two `recheckResolved` saves, the verdict save) are best-effort: a failed write (full disk, EACCES) logs a "could not save the role's state" warning instead of throwing, so the reviewer's usage still folds, a rejected pin is still deleted and `review_rejected` is still logged. The merge write-back saves the same in-memory state later.
 
-**Binds.** `src/merge/merge-core.ts` (`reviewPinnedChange`, `mergeApprovedChangeIn`'s `recheckResolved` and its `saveRunnerStateBestEffort` calls), `src/merge/merge-check-failures.ts` (`saveRunnerStateBestEffort`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
+**Binds.** `src/merge/merge-core.ts` (`reviewPinnedChange`, `mergeApprovedChangeIn`'s `recheckResolved` and its `saveRunnerStateBestEffort` calls), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
 
 **Pinned by.** `test/merger.test.ts` — "an unwritable state file mid-review still folds the reviewer runs and settles a rejected re-review" (covers the phase, verdict and `recheckResolved` saves).
 
@@ -4528,16 +4411,6 @@ index, rather than skipping the preserve".
 **Binds.** `src/runner/runner.ts` (`runContext`), `src/runner/runner-run.ts` (`runPhase`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
 
 **Pinned by.** `test/runner-state.test.ts` — "an unwritable state file cannot reject a run or turn it into an error (skip …)", which drives a full run with a failing state-file write and asserts it resolves with its own result and warns.
-
-## Merge check attribution: a failed state save never fails the verdict
-
-### INV-CM1: a red merge check attributed while role-state saves fail still settles its verdict
-
-**Guarantee.** The sinks of a red batch merge check persist the role's state best-effort: a failed save (full disk, EACCES) warns instead of throwing, so a rejected change loses its pin and logs review_rejected, and a main-red change returns main_red with its pin kept. Every sink now has a failing-save test of its own: the reject and main-red saves, `attributeRedCheck`'s unverified, known-failures and known-flake saves, and the `requeueKeptChange` re-queue save. Since part 4l/3 the in-lock merge check is gone; this INV now pins only the batch-path attribution, which 4m/3 deletes with the module.
-
-**Binds.** `src/merge/merge-check-failures.ts` (`rejectChange`, `attributeRedCheck`), `src/merge/merge-requeue.ts` (`requeueKeptChange`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
-
-**Pinned by.** `test/merge-requeue.test.ts` — "a main_red re-queue whose state save fails still queues the change" and "a main_red pin whose state save fails still records the re-queue and warns"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref for a red that fails only main's known failures when the state save fails", "attributeRedCheck keeps the ref for an unverified red when the state save fails" and "attributeRedCheck keeps the ref for a known-flake red when the state save fails".
 
 ## Red-main healer: a heal prompt that cannot be queued never fails the gate
 

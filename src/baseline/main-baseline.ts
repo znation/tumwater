@@ -233,12 +233,10 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
   return seen.length < 2 && !seen.includes(wt);
 }
 
-/** Record a green baseline verdict for `sha` WITHOUT running anything. The callers are the merge
- * path (src/merge/merge-to-main.ts's mergeToMain) and the stack lander
- * (src/merge/merge-stack.ts' mergeStack) — both call it only after their fast-forward SUCCEEDED,
- * with the exact SHA that just became main: the stack lander with the stacked tip when a
- * scope-`batch` check ran green on exactly it (a skipped check seeds nothing, and neither does a
- * merge_blocked stack or a doc-only re-stack that merged without a check of its own). Seeding
+/** Record a green baseline verdict for `sha` WITHOUT running anything. The caller is the merge
+ * path (src/merge/merge-to-main.ts's mergeToMain), called only after its fast-forward SUCCEEDED,
+ * with the exact SHA that just became main.
+ * Seeding
  * here means that once the merge completes — main now points at this very SHA — the next fresh
  * run's checkMainBaseline is a cache hit instead of re-running the full suite on an
  * already-verified tree: for tumwater itself that saves one redundant `npm test` (~1 min) per

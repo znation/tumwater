@@ -25,9 +25,10 @@ import { mainSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
 // Unit coverage for src/merge/merge-drain.ts — the scheduler seam between the durable merge
 // queue and the merge pipeline (land-queue speed 2c): the dedupe against main and torn-head
 // recovery, the verify stage (one verification per queued change, each on a shared maxConcurrent
-// permit), and the merge slot (every approved change, stacked), with the abort and shutdown rules
+// permit), and the merge slot (every approved change, one at a time), with the abort and
+// shutdown rules
 // and the marker records the observers read. The review gate's pi runs are real subprocesses behind
-// the fake shim, exactly as merger.test.ts drives verifyRequest and mergeApproved directly.
+// the fake shim, exactly as merger.test.ts drives verifyRequest and the one-change merge directly.
 
 test("an empty queue drains nothing", async () => {
   const root = makeRepo();

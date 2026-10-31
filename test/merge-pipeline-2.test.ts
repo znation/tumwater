@@ -323,14 +323,13 @@ for (const headVerdict of ["reject", "approve"] as const) {
           : ["check:alpha=merging/build-check"];
       const verifies = [...alphaChecks, `check:${alphaAfter}beta=merging/build-check`];
       if (headVerdict === "reject") {
-        assert.deepEqual(seen, verifies, "a one-change merge goes through on its own: no stack check, no re-check on an unmoved main");
+        assert.deepEqual(seen, verifies, "a rejected verification leaves build-check; nothing merges");
         assert.equal(loadRunnerState(root, "alpha").lastResult, "rejected");
       } else {
-        assert.deepEqual(
-          seen,
-          [...verifies, "check:alpha=merging/build-check,beta=merging/build-check"],
-          "the shared stack check runs under build-check on every stacked change",
-        );
+        // Both verifies pass their gate; with the batch path gone (part 4m/3) each approved
+        // change then merges one at a time through mergeApprovedChange — no shared stack check
+        // runs, so no further build-check stage line is recorded.
+        assert.deepEqual(seen, verifies, "each approved change merges one at a time: no shared stack check");
         assert.equal(loadRunnerState(root, "alpha").lastResult, "changed");
       }
       assert.equal(loadRunnerState(root, "beta").lastResult, "changed");

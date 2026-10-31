@@ -64,8 +64,8 @@ export interface MergeRequest {
 /** The repo scope every merge step reads from its caller: the worktree root, the branch
  * merges fast-forward, the live config, and the task's abort signal (harness shutdown or a
  * deliberate `abort --role` for any of the task's roles), fresh per call. MergerContext,
- * ReviewGateContext, and merge-batch.ts's BatchContext extend it, and merge-stack.ts's
- * mergeStack accepts it directly, so the scope's shape has one home. */
+ * ReviewGateContext, and merge-batch.ts's BatchContext extend it, so the scope's shape has
+ * one home. */
 export interface MergeScopeContext {
   root: string;
   mainBranch: string;
@@ -366,9 +366,9 @@ export async function recordRejectedChange(
   state.revision = { sha: rejectedHead, round: nextRound, at: Date.now(), reasonCounts: counts };
 }
 
-/** Merge a head that already passed its OWN gate in its verify — the merge slot's one-change merge
- * and each merge of an abandoned stack's one-at-a-time fallback (merge-batch.ts's mergeApproved)
- * — without a second gate. Re-gating would rebase first, and by then main has usually moved (a
+/** Merge a head that already passed its OWN gate in its verify — the merge slot's one-change merge,
+ * the one way an approved change merges now (the batch/stack path is gone, part 4m/3) — without a
+ * second gate. Re-gating would rebase first, and by then main has usually moved (a
  * fallback's earlier entries just merged): the rebase rewrites the approved sha, the gate's
  * exact-sha `lastApprovedHead` short-circuit misses, and every such merge paid a second build
  * check and model review of a change it had already approved (BUGS.md 2026-09-23). Here a clean

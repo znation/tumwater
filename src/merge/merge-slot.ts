@@ -19,8 +19,8 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** The merge pipeline's bookkeeping (merge queue 3/5 and 4/5), split out of the drain
  * (merge-drain.ts, which schedules the verifications and the merge) so it lives separate from the
- * merge mechanics themselves (merge-core.ts and merge-batch.ts: review gate, rebase, stack,
- * ff-merge). This module owns the 4/5 in-flight marker — one record per change being verified,
+ * merge mechanics themselves (merge-core.ts and merge-batch.ts: review gate, rebase, verify).
+ * This module owns the 4/5 in-flight marker — one record per change being verified,
  * approved, or merged — the per-merge usage accounting, and the write-back that folds every
  * outcome into the authoring role's state and drops its queue entry. A merge's pi runs charge
  * to the authoring runner (foldMergeUsage). */
@@ -278,7 +278,7 @@ export function removeMergeChange(root: string, role: string): void {
  * around its conflict resolver run (`resolving`, then `merging`), merge-core.ts's
  * reviewPinnedChange once the gate returns (`merging`, whatever it decided — a finished
  * reviewer's last turns must not sit in the cell accruing a false `no pi output` flag while the
- * change waits for its merge), and merge-stack.ts around a stack's shared check. It stages
+ * change waits for its merge). It stages
  * `role`'s own record — every concurrent verification advances its own change's cell. A no-op for a
  * role with no record (a gate run outside the pipeline, as the unit tests drive it). Only the stage
  * changes: sha and startedAt are what the snapshot cross-check and the merge's elapsed read. */

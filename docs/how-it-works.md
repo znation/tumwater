@@ -104,15 +104,13 @@ and one serial merge step merges them, so other roles keep running while a chang
   merge is a rebase and a fast-forward: no in-lock build re-check runs, because the pre-merge
   verify gate judged the tree before it reached the merge slot and the main watch verifies every
   new tip after it lands (a broken commit sits on main between its landing and the watch's fix,
-  which is the `ci` healer's job). The conflict resolver and the re-review of a resolution that
-  left the reviewed change's lines still run. The merge-side steps (a stack and its bisect, the
+  which is the `ci` healer's job). Every approved change merges one at a time, in queue order,
+  through `mergeApprovedChange` — a rebase onto main's tip then the fast-forward, with no shared
+  batch check and no per-change in-lock check. The conflict resolver and the re-review of a resolution that
+  left the reviewed change's lines still run. The merge-side steps (the one-change merges, the
   conflict resolver, the post-resolve
   re-review) run in one dedicated `_merge` workspace, reserved outside the pool so an approval
   waiting for a workspace can never deadlock behind the merge lock.
-- **Batching.** When several changes are queued, each is reviewed alone, then up to
-  `mergeBatchMax` (default 3) merge together under one check. A failing batch merges its longest
-  passing prefix and checks the rest again. A change that fails on its own is rejected, unless
-  main's check is failing too, in which case its pin is kept for later.
 - **Parallel approval.** Each queued change is rebased, checked and reviewed in a workspace
   leased from the shared pool (`.tumwater/worktrees/_slot-<n>`; the pool holds `worktreeSlots`
   checkouts, default `maxConcurrent` + 1), several at once. An approval counts as active work: it
@@ -120,8 +118,7 @@ and one serial merge step merges them, so other roles keep running while a chang
   merges never add streams to the provider beyond `maxConcurrent` plus the director. Approvals
   take at most `maxConcurrent` − 1 of those permits (at least one), so a deep queue always leaves
   one for authoring. A change that fails approval frees its author at once, and the merge step
-  merges approved changes in queue order, up to `mergeBatchMax` per stack, without waiting on a
-  slower review ahead of them.
+  merges approved changes in queue order, without waiting on a slower review ahead of them.
 
 Errors keep the commit for re-review, up to three strikes. `tumwater abort --role <id>`
 discards a role's in-flight merge and stops the change's gate build check mid-run — an abort

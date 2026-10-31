@@ -31,21 +31,18 @@ import {
 process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
 
 // Unit coverage for the two halves of a merge — merge-batch.ts's verifyRequest (checkout in
-// _land-<role>, rebase onto main, merge-core.ts's review gate) and mergeApproved (the merge: one
-// change through mergeApprovedChange, or a stack with one check, one fast-forward, the re-stack,
-// 3d's prefix bisect and the one-at-a-time fallback) — driven here in queue order exactly as the
+// _land-<role>, rebase onto main, merge-core.ts's review gate) and the one-change merge through
+// mergeApprovedChange (a rebase and a fast-forward) — driven here in queue order exactly as the
 // merge pipeline runs them (merge-drain.ts). The reviewer run is a real pi subprocess behind
 // the fake shim; merge-to-main.ts's conflict resolver goes through the wiring's runPi, which is
 // stubbed.
 //
 // Split so node --test runs the slices in parallel processes and each fits the gate's 30 s
 // budget: this file holds the verify and single-change merges (approval, rejection, abort,
-// conflict resolution, the rebase onto main); merger-check.test.ts the pre-check and in-lock
-// merge check verdicts (retries, flakes, false-fix md-only changes); merger-batch.test.ts the
-// batch basics, aborts and the per-change status hook; merger-restack.test.ts the re-stack on a
-// moved main; merger-bisect.test.ts the red-stack bisect; merger-fallback.test.ts the
-// one-at-a-time fallback. Shared fixtures live in test/fixtures/merger-fixtures.ts. Keep each
-// slice well under the budget in measured duration when moving tests between them.
+// conflict resolution, the rebase onto main); merger-check.test.ts the pre-check verdicts
+// (retries, flakes, false-fix md-only changes). Shared fixtures live in
+// test/fixtures/merger-fixtures.ts. Keep each slice well under the budget in measured duration
+// when moving tests between them.
 
 test("an approved merge merges on main and deletes the ref", async () => {
   // The merge's bookkeeping rides the deterministic gate, not the pre-merge reviewer: a passing

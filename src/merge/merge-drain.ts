@@ -1,4 +1,4 @@
-import { mergeApproved, type BatchRoleWiring } from "./merge-batch.js";
+import { mergeApprovedChange, type MergerContext } from "./merge-core.js";
 import { removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
 import { withRunPermit } from "../concurrency/run-permit.js";
 import { dropMerge, entryRevisionFields, queuedMergeFiles } from "./merge-queue.js";
@@ -78,8 +78,8 @@ export async function settleAbortedApproved(root: string, p: MergePipeline): Pro
   }
 }
 
-/** Start the merge when the slot is free and something is approved: every approved change, up to
- * mergeBatchMax, in queue order among the approved — an unapproved entry ahead of them in the queue
+/** Start the merge when the slot is free and something is approved: every approved change, in
+ * queue order among the approved — an unapproved entry ahead of them in the queue
  * (a slow review) does not hold them back. An approved change whose queue entry is gone is
  * forgotten (nothing in-process drops one; defensive). */
 export function drainMerge(ctx: MergePipelineContext, p: MergePipeline): void {
@@ -96,24 +96,22 @@ export function drainMerge(ctx: MergePipelineContext, p: MergePipeline): void {
     const v = p.approved.get(q.entry.role);
     return v?.file === q.file ? [v] : [];
   });
-  picks.splice(ctx.liveConfig.mergeBatchMax);
   if (picks.length === 0) return;
   for (const v of picks) p.approved.delete(v.entry.role);
   p.merge = startMerge(ctx, p, picks);
 }
 
-/** The merge task — main's one writer in the pipeline: merge `picks` through mergeApproved on
- * main's current tip — one change through mergeApprovedChange, two or more as one stack with one
- * scope-`batch` check, one fast-forward, and 3d's largest-passing-prefix bisect — with no second
- * review. An approved change whose main moved since its verification is re-checked on the tree that
- * merges (the in-lock re-check, or the stack's check), so an approval that outlived its base never
- * merges unverified. Each defined result is written back and its entry dropped; an unattempted
- * change (behind a bisect's attributed one) goes back to `approved` for the next merge. A plumbing
- * throw keeps every entry queued, but unapproved: each is verified afresh from its pin next poll. A
- * user abort of any merged role stops the whole stack, and every change it had not merged ends
- * "aborted" with its pin discarded; a shutdown keeps the pins. The task takes no permit of its
- * own — its only model run is mergeToMain's conflict resolver, which takes a shared permit at
- * MERGE_TIER for the run's length, outside the merge lock. */
+/** The merge task — main's one writer in the pipeline: merge `picks` one change at a time,
+ * each through mergeApprovedChange (a rebase onto main's tip then the fast-forward under the
+ * merge lock), with no second review and no shared stack check — a merge is a rebase and a
+ * fast-forward. Each defined result is written back and its entry dropped; a change whose merge
+ * leaves it non-terminal (a resolver conflict, a loss to main) keeps entry + ref for the next
+ * merge, or is re-queued by settleMergeOutcome. A plumbing throw keeps every entry queued, but
+ * unapproved: each is verified afresh from its pin next poll. A user abort of any merged role
+ * stops the merge, and every change it had not merged ends "aborted" with its pin discarded; a
+ * shutdown keeps the pins. The task takes no permit of its own — its only model run is
+ * mergeToMain's conflict resolver, which takes a shared permit at MERGE_TIER for the run's
+ * length, outside the merge lock. */
 function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: ApprovedMerge[]): InFlightMerge {
   const { root, mainBranch, signal, roleConfig, semaphore } = ctx;
   const merge: InFlightMerge = {
@@ -123,48 +121,52 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
     userAborted: false,
   };
   const detachShutdown = abortOnShutdown(signal, merge.controller);
-  const wiring = new Map<string, BatchRoleWiring>(
-    picks.map((v) => [
-      v.entry.role,
-      {
-        state: v.author.state,
-        foldUsage: v.foldUsage,
-        runGatePi: (opts) => v.author.runGatePi(opts),
-        runPi: async (w, prompt, s, cfg) => {
-          // A parked resolver names its wait (resolve-wait, then resolving once granted) the way
-          // a parked check does (withCheckPermit): on 2026-10-12 one waited 2.5 min for a permit
-          // with the merge queue behind it, reading as "merging". The resolution waits on the
-          // one team total (maxConcurrent) like any other MERGE_TIER run
-          // (plans/provider-concurrency.md §4). canLeaseAtOnce is acquireLease's own fast path
-          // decided synchronously, so a free permit shows no wait; MERGE_TIER ignores the
-          // maintenance reserve.
-          const hooks = resolveWaitStage(root, v.entry.role);
-          if (!semaphore.canLeaseAtOnce(MERGE_TIER)) hooks.waiting();
-          const lease = await semaphore.acquireLease(MERGE_TIER);
-          hooks.granted();
-          try {
-            // The resolver's lease rides in the run-permit store for its run, so an idle
-            // pause inside it (a failed review's in-place retry) re-takes the same permit.
-            return await withRunPermit(lease, () => v.author.runMergePi(w, prompt, s, cfg));
-          } finally {
-            lease.release();
-          }
-        },
-      },
-    ]),
-  );
+  // Each change's MergerContext, resolved from its authoring runner: the live state, the role's
+  // usage fold and shared pi wiring (the resolver's permit rides in the run-permit store for its
+  // run, so an idle pause inside it re-takes the same team permit).
+  const mergerCtxOf = (v: ApprovedMerge): MergerContext => ({
+    root,
+    mainBranch,
+    config: roleConfig,
+    state: v.author.state,
+    foldUsage: v.foldUsage,
+    runGatePi: (opts) => v.author.runGatePi(opts),
+    runPi: async (w, prompt, s, cfg) => {
+      // A parked resolver names its wait (resolve-wait, then resolving once granted) the way
+      // a parked check does (withCheckPermit): on 2026-10-12 one waited 2.5 min for a permit
+      // with the merge queue behind it, reading as "merging". The resolution waits on the
+      // one team total (maxConcurrent) like any other MERGE_TIER run
+      // (plans/provider-concurrency.md §4). canLeaseAtOnce is acquireLease's own fast path
+      // decided synchronously, so a free permit shows no wait; MERGE_TIER ignores the
+      // maintenance reserve.
+      const hooks = resolveWaitStage(root, v.entry.role);
+      if (!semaphore.canLeaseAtOnce(MERGE_TIER)) hooks.waiting();
+      const lease = await semaphore.acquireLease(MERGE_TIER);
+      hooks.granted();
+      try {
+        // The resolver's lease rides in the run-permit store for its run, so an idle
+        // pause inside it (a failed review's in-place retry) re-takes the same permit.
+        return await withRunPermit(lease, () => v.author.runMergePi(w, prompt, s, cfg));
+      } finally {
+        lease.release();
+      }
+    },
+    signal: () => merge.controller.signal,
+    reviewHeld: () => ctx.startHeld(),
+  });
   const task = (async () => {
-    let results: Array<RunResult | undefined>;
-    let threw = false;
-    // The commit each merged role produced, from its `merged` event: the post-merge review of
-    // every merged role is queued once the change settles as merged.
+    // Each change's terminal outcome: `undefined` means the merge did not reach it (a plumbing
+    // throw, or a change stopped short) and it keeps its entry for the next merge.
+    const results: Array<RunResult | undefined> = picks.map(() => undefined);
+    const settled = new Set<number>();
+    // A `merged` event names the commit each role produced, identified by its `source`: the
+    // post-merge review of every merged role is queued once the change settles as merged.
     const mergedCommits = new Map<string, string>();
     const unsubscribe = subscribeEvents((e) => {
       if (e.type === "merged" && typeof e.commit === "string") mergedCommits.set(e.source, e.commit);
     });
-    // A result reaches settleMergeOutcome the moment mergeApproved finalizes it, not after the
-    // whole batch; this set lets the end-of-batch loop skip what is already written back.
-    const settled = new Set<number>();
+    // A result reaches settleMergeOutcome the moment its merge finalizes it — a change whose
+    // merge is already final settles before a later change's conflict resolver returns.
     const settleOne = async (s: number, result: RunResult): Promise<void> => {
       const v = picks[s]!;
       settled.add(s);
@@ -174,66 +176,64 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
       }
       await settleMergeOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file, mainBranch);
     };
-    try {
-      results = await mergeApproved(
-        {
-          root,
-          mainBranch,
-          config: roleConfig,
-          signal: () => merge.controller.signal,
-          onChangeStatus: (role, status) => setMergeChangeStatus(root, role, status),
-          onResult: settleOne,
-          runGatePi: (opts) => picks[0]!.author.runGatePi(opts),
-          reviewHeld: () => ctx.startHeld(),
-        },
-        picks.map((v) => ({
-          role: v.entry.role,
-          sha: v.sha,
-          runNumber: v.entry.run,
-          summary: v.entry.summary,
-          body: v.entry.body,
-          highFriction: v.entry.highFriction,
-          ...entryRevisionFields(v.entry),
-          ...(v.verifiedHead !== undefined ? { verifiedHead: v.verifiedHead } : {}),
-        })),
-        (role) => wiring.get(role)!,
-      );
-    } catch (err) {
-      threw = true;
-      results = picks.map(() => undefined);
-      const head = picks[0]!.author;
-      head.state.lastError = errorMessage(err);
-      // The catch exists to keep every entry queued and unapproved when mergeApproved throws. A
-      // throw out of this write — an unwritable state file — must not skip the settle loop
-      // and the finally that frees the merge slot, or the pipeline wedges with p.merge set
-      // forever; the write is bookkeeping a later save retries, so warn and keep going.
+    for (let s = 0; s < picks.length; s++) {
+      const v = picks[s]!;
+      const { role } = v.entry;
+      if (merge.userAborted) {
+        // A user abort between merges stops the run at its next step boundary: the roles it had
+        // not merged end "aborted" here (their pins discarded in the finally).
+        results[s] = "aborted";
+        continue;
+      }
+      setMergeChangeStatus(root, role, "merging");
       try {
-        saveRunnerState(root, head.state);
-      } catch (writeErr) {
-        warnEventBestEffort(
-          root,
-          TUMWATER_SOURCE,
-          `the merge error for ${head.state.role} could not be saved: ${errorMessage(writeErr)}`,
+        results[s] = await mergeApprovedChange(
+          mergerCtxOf(v),
+          {
+            role,
+            sha: v.sha,
+            runNumber: v.entry.run,
+            summary: v.entry.summary,
+            body: v.entry.body,
+            highFriction: v.entry.highFriction,
+            ...entryRevisionFields(v.entry),
+            ...(v.verifiedHead !== undefined ? { verifiedHead: v.verifiedHead } : {}),
+          },
         );
+        await settleOne(s, results[s]!);
+      } catch (err) {
+        // A plumbing throw keeps every entry queued and unapproved: this change's merge did not
+        // complete, the message rides on its role's state, and the next poll re-verifies every
+        // not-yet-settled change from its surviving pin. (The changes already settled above keep
+        // their outcomes.)
+        v.author.state.lastError = errorMessage(err);
+        // The catch exists to keep every entry queued and unapproved when a merge throws. A
+        // throw out of this write — an unwritable state file — must not skip the settle loop
+        // and the finally that frees the merge slot, or the pipeline wedges with p.merge set
+        // forever; the write is bookkeeping a later save retries, so warn and keep going.
+        try {
+          saveRunnerState(root, v.author.state);
+        } catch (writeErr) {
+          warnEventBestEffort(
+            root,
+            TUMWATER_SOURCE,
+            `the merge error for ${role} could not be saved: ${errorMessage(writeErr)}`,
+          );
+        }
+        break;
       }
     }
+    // The roles the merge stopped short of (a throw on s, or roles behind it) keep their
+    // queue entries and pins for the next poll — each is verified afresh from its pin then;
+    // clear their marker records so no role reads as still "merging". A user abort stopping
+    // the run instead settles every unsettled role as "aborted" and discards its pin in the
+    // finally below.
+    for (let s = 0; s < picks.length; s++) {
+      if (settled.has(s)) continue; // already written back
+      if (merge.userAborted) await settleOne(s, "aborted");
+      else removeMergeChange(root, picks[s]!.entry.role);
+    }
     try {
-      for (let s = 0; s < picks.length; s++) {
-        const v = picks[s]!;
-        const { role } = v.entry;
-        if (settled.has(s)) continue; // already written back through onResult
-        const result = results[s] ?? (merge.userAborted ? "aborted" : undefined);
-        if (result === undefined && !threw) {
-          p.approved.set(role, v);
-          setMergeChangeStatus(root, role, "approved");
-          continue;
-        }
-        if (result !== undefined) {
-          await settleOne(s, result);
-        } else {
-          removeMergeChange(root, role);
-        }
-      }
     } finally {
       unsubscribe();
       detachShutdown();

@@ -129,8 +129,7 @@ export async function syncRootInstall(
   const r = await syncInstall(root, install);
   if (!r) return;
   // Best-effort: the root install already ran and the ff that prompted it already moved main, so an
-  // unwritable feed must not reject the merge that awaited this (merge-to-main.ts's tryMerge,
-  // merge-stack.ts's ffStackToMain).
+  // unwritable feed must not reject the merge that awaited this (merge-to-main.ts's tryMerge).
   logEventBestEffort(root, {
     source: role,
     type: "dep_install",

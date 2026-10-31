@@ -1,14 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { MergeRequest, MergerContext } from "../../src/merge/merge-core.js";
-import { mergeApproved, verifyRequest, type BatchContext, type BatchRoleWiring } from "../../src/merge/merge-batch.js";
+import { mergeApprovedChange } from "../../src/merge/merge-core.js";
+import { verifyRequest, type BatchRoleWiring } from "../../src/merge/merge-batch.js";
 import { setRef } from "../../src/git/git.js";
 import { ensureWorktree } from "../../src/git/worktree.js";
 import { mergeRefName } from "../../src/paths.js";
 import { defaultConfig } from "../../src/config/config.js";
-import { freshRunnerState } from "../../src/runner/runner-state.js";
-import { readEvents } from "../../src/events/event-read.js";
-import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { RunResult } from "../../src/run/run-outcome.js";
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
 import type { RunnerState } from "../../src/runner/runner-state.js";
@@ -16,7 +14,6 @@ import { projManifest, writeScript } from "../fakes/fake-commands.js";
 import { mainSha, makeRepo, pinOffMain, sh } from "./repo-fixtures.js";
 import { piRunResult } from "../fakes/fake-pi.js";
 import { runPi } from "../../src/pi/pi.js";
-import { assistantLine, leasedRoleShell } from "./pi-events.js";
 import { ensureParentDir } from "../../src/files/files.js";
 
 /** Shared fixtures for the merge tests — merger.test.ts and the slices split from it
@@ -106,13 +103,13 @@ export function batchWiring(ctx: MergerContext): BatchRoleWiring {
 }
 
 /** Merge one pinned change the way the pipeline does — its verify, then (approved) a one-change
- * merge — over one MergerContext's wiring, returning the outcome the pipeline writes back. */
+ * merge through mergeApprovedChange — over one MergerContext's wiring, returning the outcome the
+ * pipeline writes back. */
 export async function verifyAndMerge(ctx: MergerContext, req: MergeRequest): Promise<RunResult> {
   const w = batchWiring(ctx);
   const v = await verifyRequest(ctx, req, w);
   if (v.kind === "result") return v.result;
-  const [result] = await mergeApproved(ctx, [{ ...req, sha: v.sha, ...(v.verifiedHead ? { verifiedHead: v.verifiedHead } : {}) }], () => w);
-  return result!;
+  return mergeApprovedChange(ctx, { ...req, sha: v.sha, ...(v.verifiedHead ? { verifiedHead: v.verifiedHead } : {}) });
 }
 
 /** Shell that numbers this check run into `$n`, atomically: `mkdir` either creates
@@ -121,42 +118,6 @@ export async function verifyAndMerge(ctx: MergerContext, req: MergeRequest): Pro
  * file does. Runs number 1, 2, … in start order. */
 export const checkRunNumber = (base: string): string =>
   `n=1\nwhile ! mkdir '${base}'.$n 2>/dev/null; do n=$((n+1)); done\n`;
-
-/** A repo where every listed role has a single-commit pin based on main — the queue shape
- * the pipeline reads. One separate file per role by default so cherry-picks apply
- * cleanly; `edit` overrides the per-role change (the conflict test rewrites one line).
- * File-internal: only this module's batchFixture composes it into a test fixture. */
-async function batchPinnedFixture(
-  roles: string[],
-  edit?: (root: string, role: string) => void,
-  seed?: (root: string) => void,
-): Promise<{ root: string; shas: Record<string, string> }> {
-  const root = makeRepo();
-  // Files every pin's diff is measured against (a seeded backlog the changes edit) go on main
-  // before the pins, so each pin stays a single clean commit on top of them.
-  if (seed) {
-    seed(root);
-    sh(root, "git", "add", "-A");
-    sh(root, "git", "commit", "-m", "seed the fixture");
-  }
-  const shas: Record<string, string> = {};
-  for (const role of roles) {
-    // Each pin stands alone on main (independent branches, not a stack): the batch's
-    // cherry-pick and the fallback's rebase then actually rewrite the second change.
-    const sha = pinOffMain(
-      root,
-      (d) => {
-        if (edit) edit(d, role);
-        else fs.appendFileSync(path.join(d, `${role}.txt`), `work by ${role}\n`);
-      },
-      `work by ${role}`,
-      { reset: true },
-    );
-    shas[role] = sha;
-    await setRef(root, mergeRefName(role), sha);
-  }
-  return { root, shas };
-}
 
 /** Declare the project's build check the way detectBuildCheck finds it: an install
  * signature (package.json + node_modules) at the root, the tool in node_modules/.bin. The
@@ -171,145 +132,10 @@ export function declareCheck(root: string, toolBody: string): void {
   );
 }
 
-export function makeBatchCtx(root: string, config?: TumwaterConfig, controller?: AbortController): BatchContext {
-  return {
-    root,
-    mainBranch: "main",
-    config: config ?? defaultConfig(),
-    signal: () => (controller ?? new AbortController()).signal,
-    runGatePi: async (opts) => runPi(opts),
-    reviewRetries: 0,
-    reviewRetryDelayMs: 0,
-  };
-}
-
-/** Per-role wiring resolved the way the drain resolves its authors: a live state object per
- * role, usage recorded per role, and the shared runPi stub (with an optional resolver) for
- * the one-at-a-time fallback merges. File-internal: only this module's batch fixture uses it. */
-function makeWiring(
-  states: Record<string, RunnerState>,
-  resolve?: (wt: string) => void,
-): { wiringFor: (role: string) => BatchRoleWiring; folded: Map<string, PiRunResult[]>; calls: PiCall[] } {
-  const folded = new Map<string, PiRunResult[]>();
-  const calls: PiCall[] = [];
-  const wiringFor = (role: string): BatchRoleWiring => ({
-    state: states[role]!,
-    foldUsage: (run) => folded.set(role, [...(folded.get(role) ?? []), run]),
-    runPi: async (wt, prompt, session) => {
-      calls.push({ wt, prompt, session });
-      resolve?.(wt);
-      return piResult();
-    },
-    runGatePi: async (opts) => runPi(opts),
-  });
-  return { wiringFor, folded, calls };
-}
-
-/** A batch test's whole fixture in one call: one pinned change per role (the queue shape the
- * drain reads), a live state per role, and the per-role wiring to merge them — the setup every
- * batch test below otherwise spells out as batchPinnedFixture + states + makeWiring. `edit`
- * and `resolve` pass through to the fixture and wiring. */
-export async function batchFixture<R extends string>(
-  roles: R[],
-  opts: {
-    edit?: (root: string, role: string) => void;
-    resolve?: (wt: string) => void;
-    seed?: (root: string) => void;
-  } = {},
-): Promise<{
-  root: string;
-  shas: Record<string, string>;
-  states: Record<R, RunnerState>;
-  wiringFor: (role: string) => BatchRoleWiring;
-  folded: Map<string, PiRunResult[]>;
-  calls: PiCall[];
-}> {
-  const { root, shas } = await batchPinnedFixture(roles, opts.edit, opts.seed);
-  const states = Object.fromEntries(roles.map((role) => [role, freshRunnerState(role)])) as Record<R, RunnerState>;
-  return { root, shas, states, ...makeWiring(states, opts.resolve) };
-}
-
-/** Verify `requests` one after another, in queue order, then merge every approved one as the
- * pipeline's merge slot does (mergeApproved): each request's result, `undefined` when the merge
- * left it unattempted. A verify's own verdict is final for its request, exactly as the pipeline
- * writes it back at once; only the approved ones reach the merge. */
-export async function verifyThenMerge(
-  ctx: BatchContext,
-  requests: MergeRequest[],
-  wiringFor: (role: string) => BatchRoleWiring,
-): Promise<Array<{ req: MergeRequest; result?: RunResult }>> {
-  const results: Array<{ req: MergeRequest; result?: RunResult }> = requests.map((req) => ({ req }));
-  const approved: Array<{ at: number; req: MergeRequest }> = [];
-  for (const [at, req] of requests.entries()) {
-    const v = await verifyRequest(ctx, req, wiringFor(req.role));
-    if (v.kind === "result") results[at]!.result = v.result;
-    else approved.push({ at, req: { ...req, sha: v.sha, ...(v.verifiedHead ? { verifiedHead: v.verifiedHead } : {}) } });
-  }
-  if (approved.length === 0) return results;
-  const merged = await mergeApproved(ctx, approved.map((v) => v.req), wiringFor);
-  merged.forEach((result, s) => {
-    if (result !== undefined) results[approved[s]!.at]!.result = result;
-  });
-  return results;
-}
-
-/** The standard verify-and-merge over a fixture's pinned changes, in `roles` order — the
- * makeBatchCtx + one-request-per-role call every batch test otherwise spells out. */
-export function runBatch(
-  root: string,
-  shas: Record<string, string>,
-  roles: string[],
-  wiringFor: (role: string) => BatchRoleWiring,
-  controller?: AbortController,
-  config?: TumwaterConfig,
-) {
-  return verifyThenMerge(
-    makeBatchCtx(root, config, controller),
-    roles.map((role) => request(shas[role]!, { role })),
-    wiringFor,
-  );
-}
-
-/** A default config for a batch test, so a batch can merge on the deterministic green build
- * pre-check alone (the pre-merge reviewer is gone, part 3d/3). */
-export function afterMergeConfig(): TumwaterConfig {
-  return defaultConfig();
-}
-
-// A test that cares WHICH verify does what keys its reviewer on the change under review, and one
-// that cares about order waits on an event rather than guessing a sleep long enough for a
-// loaded host.
-
-/** A counting build check: `$n` is the invocation's 1-based number (checkRunNumber) — runs 1
- * and 2 are the two verifies' gate pre-checks, run 3 is the stack's first shared check — and `body`
- * runs before the check
- * passes (or fails, if `body` exits nonzero). */
-export function countingCheck(root: string, body: string): void {
-  const count = path.join(root, ".checkcount");
-  declareCheck(root, `#!/bin/sh\n${checkRunNumber(count)}${body}\necho ok\n`);
-}
-
-/** Shell that merges one commit on main from inside a running check — the primary checkout
- * sits on main, so a commit there is main moving under the batch. `line` is single-quoted
- * into the script, so it must not contain a quote itself. */
-export const commitOnMain = (root: string, file: string, line: string): string =>
-  `echo '${line}' >> ${path.join(root, file)} && git -C ${root} add ${file} && git -C ${root} commit -q -m 'concurrent ${file}'`;
-
 /** Shell that parks the check until the test drops `release` (bounded at 60 s, so a broken
  * test can never hang the suite), after first announcing itself through `started`. */
 export const parkUntil = (started: string, release: string): string =>
   `touch ${started}; i=0; while [ ! -f ${release} ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done`;
-
-export const batchChecks = (root: string) =>
-  readEvents(root).filter((e) => e.type === "build_check" && e.scope === "batch");
-
-/** A check that passes its first `gates` runs (the verifies' gate pre-checks, which all run
- * before any batch check) and afterwards runs `after` — which sees `$n`, and the invoking
- * worktree as `$INIT_CWD` (npm runs the script at the package root). */
-export function checkAfterGates(root: string, gates: number, after: string): void {
-  const count = path.join(root, ".checkcount");
-  declareCheck(root, `#!/bin/sh\n${checkRunNumber(count)}if [ "$n" -gt ${gates} ]; then ${after}; fi\necho ok\n`);
-}
 
 /** Advance main past the fixture's pins with one commit touching only `file` — the "pins
  * based on an older main" shape: the queue's pins were taken before other merges moved
@@ -319,31 +145,4 @@ export function advanceMain(root: string, file: string, content: string): string
   sh(root, "git", "add", file);
   sh(root, "git", "commit", "-m", `main moves: ${file}`);
   return mainSha(root);
-}
-
-/** A reviewer shim that answers per change: `replies[role]` for the review running under that
- * role's pooled-lease, an approval for every other role. */
-export const perRoleReviewerPi = (replies: Record<string, string>): string =>
-  [
-    leasedRoleShell(),
-    `r='${assistantLine("VERDICT: approve")}'`,
-    ...Object.entries(replies).map(([role, reply]) => `case "$role" in "${role}") r='${assistantLine(reply)}';; esac`),
-    `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$r"; exit 0;; esac; done`,
-  ].join("\n");
-
-/** A verify-and-merge run with the merge's status hook recorded as `role:status`, in call order —
- * the reports the pipeline mirrors into each change's marker record once it merges. */
-export async function runBatchRecorded(
-  root: string,
-  shas: Record<string, string>,
-  roles: string[],
-  wiringFor: (role: string) => BatchRoleWiring,
-): Promise<{ results: Array<RunResult | undefined>; seen: string[] }> {
-  const seen: string[] = [];
-  const results = await verifyThenMerge(
-    { ...makeBatchCtx(root), onChangeStatus: (role, status) => seen.push(`${role}:${status}`) },
-    roles.map((role) => request(shas[role]!, { role })),
-    wiringFor,
-  );
-  return { results: results.map((r) => r.result), seen };
 }

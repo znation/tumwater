@@ -129,7 +129,7 @@ test("a settled merge detaches its shutdown listener: the long-lived stop signal
   });
 });
 
-test("changes approved while the merge slot is busy merge as one stack: one shared check, one fast-forward", async () => {
+test("changes approved while the merge slot is busy merge one at a time: no shared check, one fast-forward each", async () => {
   const { root, mainBefore, restore, ctx, pipeline } = await busyMergePipeline();
   try {
     await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 2, "both changes to be approved");
@@ -138,9 +138,9 @@ test("changes approved while the merge slot is busy merge as one stack: one shar
     assert.deepEqual(
       mergeTasks(pipeline).flatMap((t) => t.roles),
       ["alpha", "beta"],
-      "one merge, whose record names every stacked role, in queue order",
+      "one merge, whose record names every approved role, in queue order",
     );
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the stack to merge");
+    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the changes to merge");
 
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes merged on main");
     for (const role of ["alpha", "beta"]) {
@@ -148,9 +148,9 @@ test("changes approved while the merge slot is busy merge as one stack: one shar
       assert.equal(await refSha(root, mergeRefName(role)), null, `${role}'s ref was deleted`);
     }
     assert.equal(readMergeMarker(root), null, "the marker was cleared");
-    const checks = eventsOfType(root, "build_check");
-    assert.equal(checks.filter((e) => e.scope === "batch").length, 1, "ONE shared check over the stacked tree");
-    assert.equal(checks.filter((e) => e.scope === "merge").length, 0, "and no per-change in-lock re-check");
+    // A merge is a rebase and a fast-forward (parts 4l/3 and 4m/3): no shared scope-`batch`
+    // stack check and no per-change in-lock re-check.
+    assert.equal(eventsOfType(root, "build_check").filter((e) => e.scope === "batch" || e.scope === "merge").length, 0, "no shared batch check and no in-lock merge check");
     assert.deepEqual(
       eventsOfType(root, "merged").map((e) => e.source),
       ["alpha", "beta"],
@@ -343,15 +343,15 @@ test("a change settled early in a batch writes back before a slower batch-mate's
   }
 });
 
-test("a red stack merges its passing prefix, rejects the change red alone, and merges the one behind it next", async () => {
-  // PLANS.md land-queue 3d through the pipeline: beta breaks the suite only on top of alpha (its
-  // own verification passed — an interaction the stack check exists to catch). The bisect merges
-  // alpha on its own green check, attributes beta's red through main's baseline (a cache hit:
-  // alpha's prefix seeded it) and rejects it with no pi run, and leaves gamma unattempted — back to
-  // approved, so the next merge merges it, re-checked on the main alpha moved.
+test("approved changes merge one at a time: the shared stack check and bisect are gone, every change lands", async () => {
+  // PLANS.md 4m/3 through the pipeline: with the batch path deleted a merge is a rebase and a
+  // fast-forward, one change at a time through mergeApprovedChange — no shared scope-`batch`
+  // check and no largest-passing-prefix bisect. Even a change that breaks the suite only on top
+  // of an earlier change's merge is no longer held back by a merge-time check (the watch owns
+  // main's health); the interaction a stack check once caught simply lands.
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
-  const shas = await queueChanges(root, roles);
+  await queueChanges(root, roles);
   const mainBefore = mainSha(root);
   const config = {
     ...defaultConfig(),
@@ -367,46 +367,21 @@ test("a red stack merges its passing prefix, rejects the change red alone, and m
 
     assert.deepEqual(
       sh(root, "git", "log", "--reverse", "--format=%s", `${mainBefore}..main`).split("\n"),
-      ["work by alpha", "work by gamma"],
-      "alpha's prefix, then gamma on the next merge",
+      ["work by alpha", "work by beta", "work by gamma"],
+      "every approved change lands, in queue order",
     );
-    const checks = readEvents(root).filter((e) => e.type === "build_check" && e.scope !== "gate");
-    assert.deepEqual(
-      checks.map((e) => [e.scope, e.status]),
-      [
-        ["batch", "failed"],
-        ["batch", "passed"],
-        ["batch", "failed"],
-      ],
-      "the whole stack, alpha's prefix, then beta alone on top of it; gamma's single merge (part 4l/3: a merge is a rebase and a fast-forward) runs no in-lock merge check",
+    // No merge-time scope-`batch` or `merge` check runs: each change's own verification's gate
+    // pre-check was the only build check it saw.
+    assert.equal(
+      readEvents(root).filter((e) => e.type === "build_check" && e.scope !== "gate").length,
+      0,
+      "no shared batch check and no in-lock merge check ran at merge time",
     );
-    const beta = loadRunnerState(root, "beta");
-    assert.equal(beta.lastResult, "rejected");
-    assert.match(beta.lastReview!.reasons[0]!, /: planted failure: beta breaks the suite$/);
-    assert.deepEqual(eventsOfType(root, "review_rejected").map((e) => e.source), ["beta"]);
-    // Part 3s/3: the pre-merge reviewer stops at part 3h/3, so the review_start count can no
-    // longer pin the three verifications' pre-merge reviews. The landing review still runs
-    // (afterMerge: true) — alpha and gamma each land, so each queues exactly one; beta is rejected
-    // and lands nothing. Wait for them to start so the count does not race the drain it no longer
-    // controls.
-    await pumpUntil(
-      ctx,
-      pipeline,
-      () => eventsOfType(root, "review_start").filter((e) => e.afterMerge === true).length === 2,
-      "the landed changes to queue their post-merge reviews",
-      30_000,
-    );
-    assert.deepEqual(
-      eventsOfType(root, "review_start").filter((e) => e.afterMerge === true).map((e) => String(e.source)).sort(),
-      ["alpha", "gamma"],
-      "each landed change queues exactly one post-merge review; the rejected change gets none",
-    );
-    assert.equal(await refSha(root, mergeRefName("beta")), null, "the rejection deleted beta's pin");
-    assert.equal(await isMergedInto(root, shas.beta!, "main"), false);
+    for (const role of roles) assert.equal(await refSha(root, mergeRefName(role)), null, `${role}'s ref was deleted`);
     assert.deepEqual(
       readEvents(root).filter((e) => e.type === "merge_done" || e.type === "merge_failed").map((e) => `${e.source}:${String(e.result)}`),
-      ["alpha:changed", "beta:rejected", "gamma:changed"],
-      "each outcome written once, gamma's only after its own merge",
+      ["alpha:changed", "beta:changed", "gamma:changed"],
+      "each change landed",
     );
     assert.equal(readMergeMarker(root), null);
   } finally {
