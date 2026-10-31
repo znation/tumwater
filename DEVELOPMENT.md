@@ -248,8 +248,10 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/team/`: team-wide state (`team-state.ts` — the pause markers and their writers), the
   provider/kind hold, the team polls, the failure spread and error-storm alarms, and the
   worktree reclaim pass (`reclaim.ts`).
-- `src/scheduling/`: scheduling primitives — per-role waits between runs, the quiet-hours parser,
-  multi-instance claims, and the `--once` round.
+- `src/scheduling/`: scheduling policy — per-role waits between runs (backoff), the quiet-hours
+  parser, multi-instance claims, the `--once` round, and the poll's per-runner pass: the shared
+  scope precompute (`scope.ts`), the skip decision (`skip.ts`), and the post-gate admission
+  tail (`admit.ts`).
 - `src/verdict/`: the agent reply contract — the NOTHING_TO_DO and REFUSED sentinels, the
   SUMMARY/WHY/RISK/VERIFIED block, the review VERDICT line, and the refusal and fix-claim
   readers.

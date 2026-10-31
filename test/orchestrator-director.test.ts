@@ -184,7 +184,7 @@ test("merge queue interlock: a role with a queued merge starts no run until the 
   // no pre-merge reviewer verdict drives the outcome; the merge's own run is then its parked
   // conflict-resolution pi run — the queued change conflicts with main on rebase, and the
   // resolver (session tumwater-clean-1-conflict) parks until the test releases it. The interlock
-  // relief (scheduling-skip.ts) holds a role while its queued merge is conflict-resolving, so a
+  // relief (scheduling/skip.ts) holds a role while its queued merge is conflict-resolving, so a
   // due, ready clean must not start a run until the merge's own run finishes.
   const cfg = loadConfig(repo);
   saveConfig(repo, {

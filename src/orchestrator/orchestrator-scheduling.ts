@@ -17,18 +17,18 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { eligibleEntries } from "../backlog/backlog-eligibility.js";
 import { planBacklogFull } from "../scheduling/claims.js";
-import { admitRunner } from "./scheduling-admit.js";
-import { skipRunner } from "./scheduling-skip.js";
+import { admitRunner } from "../scheduling/admit.js";
+import { skipRunner } from "../scheduling/skip.js";
 import {
   buildSchedulingScope,
   noteSkip,
   type SchedulingPassCtx,
   type SchedulingScope,
-} from "./scheduling-scope.js";
+} from "../scheduling/scope.js";
 
 /** Decide which runners are due this poll. Mutates `deferredDue` (and once-mode settlement)
  * as its only side effects; returns the reason per admitted runner. The once-per-poll
- * precompute lives on the scope scheduling-scope.ts's buildSchedulingScope builds (the
+ * precompute lives on the scope scheduling/scope.ts's buildSchedulingScope builds (the
  * merge-queue snapshot, director pin, per-base claim groups, gate predicates and admission
  * state); this per-runner loop reads them all through it. */
 export async function pollRunnerReasons(
@@ -38,12 +38,12 @@ export async function pollRunnerReasons(
   const { root, writing, reasons } = scope;
   for (const runner of scope.ordered) {
     // The WHY-due policy: every gate that decides this runner is due or skipped, and the
-    // once/deferral bookkeeping that travels with them, lives in scheduling-skip.ts's
-    // skipRunner. What follows is only the claim-admission tail (part 3/3, scheduling-admit.ts).
+    // once/deferral bookkeeping that travels with them, lives in scheduling/skip.ts's
+    // skipRunner. What follows is only the claim-admission tail (part 3/3, scheduling/admit.ts).
     const verdict = await skipRunner(scope, runner);
     if (verdict.skip) continue;
     const reason = verdict.reason;
-    // Post-gate admission (part 3/3, scheduling-admit.ts): the stand-down turn-down and the
+    // Post-gate admission (part 3/3, scheduling/admit.ts): the stand-down turn-down and the
     // parallel-work-instance claim assignment, after every skip gate has admitted this runner.
     // Returns "skipped" having recorded its skip reason and settled its once answer; "admitted"
     // runs the binder: the final noteSkip, the reasons entry and the writing increment.

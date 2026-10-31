@@ -1,4 +1,4 @@
-/** One poll's scheduling-scope precompute, built by orchestrator-scheduling.ts's
+/** One poll's per-runner scope precompute, built by orchestrator-scheduling.ts's
  * pollRunnerReasons: the shared pass context and the values computed once per poll before the
  * per-runner loop — the merge-queue snapshot, the director pin, per-base claim groups, the
  * gate predicates, and the mutable admission state (quota counter, ordered runners, eligible
@@ -6,8 +6,8 @@
  * scope. */
 import { increment } from "../collections.js";
 import type { RoleRunner } from "../runner/runner.js";
-import type { OnceRound } from "../scheduling/once-round.js";
-import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
+import type { OnceRound } from "./once-round.js";
+import type { WorkMergedCache } from "./work-merged-cache.js";
 import { DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import { HOUR_MS } from "../text/datetime.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota-gates.js";
@@ -27,7 +27,7 @@ import {
   heldKeys,
   listedKeys,
   type ClaimReleaseReason,
-} from "../scheduling/claims.js";
+} from "./claims.js";
 
 /** One poll's gate verdicts and context, exactly the local view the poll body holds when
  * the scheduling pass runs (TeamGatePoll's fields beside the pass's own inputs). */
@@ -215,7 +215,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   // (a prior relief run's held commit). An approved-and-waiting or in-flight-merge queued
   // change no longer parks the author. The relief applies team-wide — no role waits on a
   // reviewer — so every queued role is held only while it is in interlockedHold;
-  // scheduling-skip.ts skips a queued role unless it is absent from that set.
+  // scheduling/skip.ts skips a queued role unless it is absent from that set.
   const interlockedHold = new Set<string>();
   if (queuedRoles.size > 0) {
     const marker = readMergeMarker(root);

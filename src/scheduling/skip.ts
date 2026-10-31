@@ -2,17 +2,17 @@
  * orchestrator-scheduling.ts so the WHY-due policy reads on its own screen: every gate that
  * decides a runner is due or skipped, and the once/deferral bookkeeping that travels with
  * them. Part 2/3 of the pollRunnerReasons split; reads the shared pass context and admission
- * state from scheduling-scope.ts's SchedulingScope. Part 3/3 lifts the admit tail
- * (scheduling-admit.ts) that follows a skip:false verdict. */
+ * state from scope.ts's SchedulingScope. Part 3/3 lifts the admit tail (admit.ts) that
+ * follows a skip:false verdict. */
 import type { RoleRunner } from "../runner/runner.js";
 import { logEventBestEffort } from "../events/events.js";
 import { baseRoleOf, configuredInstances, runnerPaused } from "../roles/runner-ids.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
-import { deferRunReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
+import { deferRunReason, isEligible, type DeferReason } from "./scheduling.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { freshlyWoken } from "../runner/runner-state.js";
 import { MERGE_CONFLICT_LIMIT } from "../runner/runner-leftover.js";
-import { noteSkip, type SchedulingScope } from "./scheduling-scope.js";
+import { noteSkip, type SchedulingScope } from "./scope.js";
 
 /** A runner's skip verdict under the per-runner gates: `skip: true` when a gate declined the
  * run (its once/deferral/noteSkip bookkeeping already happened), or `skip: false` with the
@@ -22,11 +22,10 @@ type SkipVerdict =
   | { skip: false; reason: string };
 
 /** Decide whether this runner is due this poll, running every skip gate and the once/deferral
- * bookkeeping against scheduling-scope.ts's scope. Returns skip:true when a gate declined the
- * run, and skip:false with the due reason otherwise (the admit tail in scheduling-admit.ts
- * consumes the reason). Mutates the shared scope —
- * deferredDue, quotaAdmitted, once-mode settlement — and writes skip reasons as its only
- * side effects. */
+ * bookkeeping against scope.ts's scope. Returns skip:true when a gate declined the run, and
+ * skip:false with the due reason otherwise (the admit tail in admit.ts consumes the reason).
+ * Mutates the shared scope — deferredDue, quotaAdmitted, once-mode settlement — and writes skip
+ * reasons as its only side effects. */
 export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Promise<SkipVerdict> {
   const {
     root,

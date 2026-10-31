@@ -221,7 +221,7 @@ test("an entry whose sha main already holds is dropped at the drain without a me
   // the model reviewer), so the dedup is asserted through the merge_done count alone. Part 3g/3
   // still queues a post-merge review for the merge that lands here and the fake settles it.
   const did = path.join(tmpdir(), "dedup-did");
-  // The merge-queue interlock relief (scheduling-skip.ts) lets `clean` author again once its
+  // The merge-queue interlock relief (scheduling/skip.ts) lets `clean` author again once its
   // first change is in-flight, so a second author run may start in a fresh pooled slot before
   // the first merge lands hello.txt on main. `echo hello > hello.txt` must therefore run on the
   // first run only — unconditional it would make a second run create the file in a clean slot

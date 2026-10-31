@@ -686,7 +686,7 @@ busy base runner with no claim holds the group. `eligibleEntries` drops an entry
 base role, but keeps the queried base's own claims.
 
 **Binds.** `src/scheduling/claims.ts` (`assignNext`, `heldKeys`), `src/backlog/backlog-eligibility.ts`
-(`eligibleEntries`), `src/orchestrator/scheduling-admit.ts` (the scheduling poll's admit tail that calls
+(`eligibleEntries`), `src/scheduling/admit.ts` (the scheduling poll's admit tail that calls
 `assignNext`).
 
 **Pinned by.** `test/claims.test.ts` — "assignNext takes the first free entry in file order" and
@@ -1273,7 +1273,7 @@ an instance role's bare id) `<role>-1`. A `<role>-1` pause therefore stops insta
 siblings.
 
 **Binds.** `src/roles/runner-ids.ts` (`instancePauseKey`, `runnerPaused`); callers include
-`src/orchestrator/scheduling-skip.ts` (`runnerPaused`).
+`src/scheduling/skip.ts` (`runnerPaused`).
 
 **Pinned by.** `test/runner-ids.test.ts` — "instancePauseKey and runnerPaused give instance 1 its
 own pause key only while the role has siblings".
@@ -4065,10 +4065,10 @@ window are pruned, waiting or kept".
 and the poll goes on with the in-memory state; the next successful save writes it.
 
 **Binds.** `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`),
-`src/orchestrator/scheduling-scope.ts` (`noteSkip`),
-`src/orchestrator/scheduling-skip.ts` (the skip path's `noteSkip` calls),
+`src/scheduling/scope.ts` (`noteSkip`),
+`src/scheduling/skip.ts` (the skip path's `noteSkip` calls),
 `src/orchestrator/orchestrator-scheduling.ts` (`pollRunnerReasons`) and
-`src/orchestrator/scheduling-admit.ts` (`admitRunner`'s skip paths).
+`src/scheduling/admit.ts` (`admitRunner`'s skip paths).
 
 **Pinned by.** `test/orchestrator-scheduling.test.ts` — "a skip reason that cannot be saved warns and
 leaves the poll running" and "a claim release that cannot be saved warns and leaves the poll running";

@@ -6,14 +6,14 @@
  * reads on its own screen; orchestrator-scheduling.ts's loop owns the binder: the final
  * `noteSkip(root, runner, undefined)`, the `reasons` entry and the `writing` increment when an
  * admitted runner actually starts. */
-import { assignNext } from "../scheduling/claims.js";
+import { assignNext } from "./claims.js";
 import { eligibleEntries, type EligibleEntry } from "../backlog/backlog-eligibility.js";
 import { logEventBestEffort } from "../events/events.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { freshlyWoken, hasOutstandingWork } from "../runner/runner-state.js";
 import { BUGFIX_ROLE } from "../roles/roles.js";
 import { baseRoleOf, instanceIndex } from "../roles/runner-ids.js";
-import { noteSkip, type SchedulingScope } from "./scheduling-scope.js";
+import { noteSkip, type SchedulingScope } from "./scope.js";
 
 /** Decide a runner's post-gate admission. `reason` is the runner's due reason — the
  * `skipRunner` verdict's reason, itself `isEligible`'s — which the stand-down block keyed on
