@@ -199,8 +199,12 @@ interface HistoryFiltering {
 /** Validate `--by`'s value and its `--summary` requirement; return whether the grouping is by
  * model (false for `role`). One home for "can this `--by` proceed, and does it group by model?" */
 function historySummaryGroup(q: HistoryQuery): boolean {
-  // `--by role|model` picks how --summary groups its lines (role by default).
-  const byRaw = flagValue(q.rest, "--by");
+  // `--by role|model` picks how --summary groups its lines (role by default). A `--`-token
+  // in the value slot is the operator's slipped value (`--by --json`): refuse it up front
+  // with rejectFlagLookingValue's shared wording — the same guard --result and --model
+  // apply — instead of misreading the next flag as a `--by` value and reporting it as a
+  // bad grouping ("must be one of role, model (got \"--json\")").
+  const byRaw = rejectFlagLookingValue("history --by", flagValue(q.rest, "--by"));
   let byModel = false;
   if (q.rest.includes("--by")) {
     if (!byRaw) return fail(HISTORY_BY_VALUE_ERROR);

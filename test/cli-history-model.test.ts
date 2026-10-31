@@ -97,6 +97,14 @@ test("history --summary --by model tallies runs per model", async () => {
   const bare = await cli(repo, "history", "--summary", "--by");
   assert.notEqual(bare.code, 0);
   assert.match(bare.stderr, /history --by needs role or model/);
+  // A flag-looking value is a slipped value, not a bad grouping: `--by --json` must name
+  // the slip with the shared needs-a-value wording (the same guard --result/--model
+  // apply), not misread `--json` as a `--by` grouping and report "must be one of
+  // role, model (got \"--json\")".
+  const flagged = await cli(repo, "history", "--summary", "--by", "--json");
+  assert.notEqual(flagged.code, 0);
+  assert.match(flagged.stderr, /history --by needs a value \(the next token \"--json\" is a flag, not a value\)/);
+  assert.doesNotMatch(flagged.stderr, /must be one of role, model/);
 });
 
 function writeModelFixture(repo: string): void {
