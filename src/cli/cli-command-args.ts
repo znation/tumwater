@@ -112,8 +112,11 @@ function readPromptFile(file: string): string {
  * shared by every `--file`-taking parser — init, prompt's edit and enqueue branches, plan/bug
  * add and edit (fileAndAnnounce / editAndAnnounce), and the questions command — so the wording
  * cannot drift between them. The flag token itself is claimed by each parser's stray-argument
- * accounting; this helper only owns the value. */
+ * accounting; this helper only owns the value. A flag-shaped token (`--file --json`) is
+ * refused up front via rejectFlagLookingValue instead of being read as a path that fails deep
+ * with a misleading "cannot read prompt file" about a flag nobody intended as a file. */
 export function promptFileValue(file: string | undefined): string {
+  rejectFlagLookingValue("--file", file);
   if (!file) fail("--file needs a path");
   return file;
 }

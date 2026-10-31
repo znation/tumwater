@@ -70,6 +70,9 @@ test("parseInitArgs --file validation: missing path, duplicates, stray positiona
   // Trailing --file with no path.
   assert.match(expectFail(() => parseInitArgs(["--file"])).stderr, /--file needs a path/);
 
+  // A flag-shaped value is a dropped flag, not a path.
+  assert.match(expectFail(() => parseInitArgs(["--file", "--branch", "x"])).stderr, /--file needs a value \(the next token "--branch" is a flag, not a value\)/);
+
   // A doubled --file used to silently use the first file.
   const dup = expectFail(() => parseInitArgs(["--file", a, "--file", a]));
   assert.match(dup.stderr, /--file may only be given once/);
@@ -368,6 +371,9 @@ test("parsePromptArgs --file: reads the file as the prompt, composes with --role
 
   // A missing value fails by name, like init's.
   assert.match(expectFail(() => parsePromptArgs(["--file"])).stderr, /--file needs a path/);
+
+  // A flag-shaped value is a dropped flag, not a path — refused up front, not read.
+  assert.match(expectFail(() => parsePromptArgs(["--file", "--role", "qa"])).stderr, /--file needs a value \(the next token "--role" is a flag, not a value\)/);
 
   // An unreadable path names the file and its role as the prompt source.
   const missing = expectFail(() => parsePromptArgs(["--file", path.join(dir, "nope.md")]));
