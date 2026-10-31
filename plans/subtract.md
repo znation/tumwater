@@ -64,7 +64,7 @@ stroke; that is where the simplification compounds.
 The live series ("Every commit is verified on main", PLANS.md parts 3d/3–3x/3) and
 [post-merge-fix-forward.md](post-merge-fix-forward.md) own this. It deletes the pre-merge
 reviewer, the `review.afterMerge` tier, the in-lock check and the batch check (part 3f/3). Parts
-3/6 and 4/6 below are sequels to it, not rivals.
+Parts 3a/7–3g/7 and 4/6 below are sequels to it, not rivals.
 
 ### 2. One hold vocabulary: `Refused` and `Needs review`
 
@@ -207,7 +207,7 @@ the check cheaper or land less often, both of which this plan's strokes push tow
 | --- | --- | --- |
 | 1a–1e/6 Only a stopped team asks for a person | the amber/blue/gray alert builders, split into five sub-plans: 1a the dashboard's doctor link, 1b the staleness/notify/queue banners, 1c the review/check banners, 1d the status/tail banners, 1e the backlog staleness/structure banners | 1b: Subtract parts 1a/6 and 2a/6–2c/6; 1d: Subtract part 1c/6; the rest chain part-by-part |
 | 2a–2c/6 One hold vocabulary | 2a: Needs replan; 2b: Waiting for the next failure; 2c: the held counters and the operator-held threshold | 2b requires 2a; 2c requires 2b |
-| 3/6 The queue becomes a lock and a fast-forward | the queue stages, the batch check and bisect, the requeue, the drop limits, the interlock | Every commit is verified on main part 3f/3 |
+| 3a–3g/7 A pin becomes a lock and a fast-forward | split into seven sub-plans: 3a the scheduling interlock, 3b the pre-merge check, 3c the verify stage, 3d `tumwater queue` and its controls, 3e the pin-directed merge, 3f the durable queue and its readers, 3g the docs and invariants | 3a requires Every commit is verified on main part 3f/3; 3b–3g chain part-by-part |
 | 4/6 One runner per role | instance claims, the worktree pool, `instances` | Subtract parts 3a/7–3g/7 |
 | 5a–5d/6 One model per role | 5a the image-capability probe, 5b the per-provider caps, 5c the model-failure fallback episode (the budget fallback's removal, also once part of 5c, was withdrawn 2026-10-28), 5d the subscription-window carve-outs; 5e the tier map — withdrawn 2026-10-28 | 5b requires 5a; 5c requires 5b; 5d requires 5c |
 | 6/6 The sweep | the rows, keys, aliases and docs the five parts left behind | — |
@@ -246,7 +246,7 @@ replaces the mechanism, not that it was wrong.
 
 - **Main is red more often.** Stroke 3 is only safe after stroke 1 and the live series land the
   "red main stops nobody" note and the fix-forward owner; otherwise this trades queue waits for a
-  stopped team. Parts 3/6 and 4/6 therefore carry that requirement in their headings and bodies.
+  stopped team. Parts 3a/7–3g/7 and 4/6 therefore carry that requirement in their headings and bodies.
 - **A deletion that outruns its measurement.** Strokes 4 and 5 remove capacity on a prediction.
   The measurement table above is the guard, and part 6/6's sweep is where a wrong deletion shows
   up as a missing row.
