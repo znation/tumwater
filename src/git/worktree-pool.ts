@@ -13,7 +13,8 @@
 
 import path from "node:path";
 import { loadConfig, slotCount } from "../config/config.js";
-import { slotWorktreePath, isCanonicalSlotDir } from "../paths.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
+import { slotWorktreePath, isCanonicalSlotDir, slotsStatePath } from "../paths.js";
 import { readSlotsState, slotForDir, updateSlotsState, type SlotPurpose } from "./slots-state.js";
 import { salvageSlotLeftovers } from "./slot-salvage.js";
 import { beginWorktreeUse } from "./worktree-use.js";
@@ -289,11 +290,34 @@ async function acquire(
 
 /** The pool's live state for observers (status, TUI, dashboard): slots leased by this process out
  * of the configured budget, and the leases waiting for one. A lease held by another pid is dead
- * (see `SlotLease`), so it is not counted. `wakeWaiters` empties the waiter set before woken
- * waiters re-register, so `waiting` can read low for one turn; observers poll, so the next poll
- * corrects it. */
+ * (see `SlotLease`), so it is not counted. The leased count rides the stat cache (see below);
+ * `wakeWaiters` empties the waiter set before woken waiters re-register, so `waiting` can read
+ * low for one turn; observers poll, so the next poll corrects it. */
+// Per-poll leased-count cache (stat-cache.cachedByStat): the orchestrator publishes the pool's
+// live state every poll (slotPoolSnapshot), and slots.json changes only at a lease boundary —
+// a run or verify taking or releasing a pooled slot — so an unchanged file costs one stat per
+// poll instead of a full read plus a JSON parse every 2s for the process's whole lifetime.
+// Bounded inside cachedByStat; a write invalidates via dev/ino/mtime/size like every other
+// stat-keyed reader (status-polls.ts's slotsForPoll caches the same file for the dashboards).
+const poolStateCache = new Map<string, StatKeyedValue<number>>();
+
+/** The pool's live state for observers (status, TUI, dashboard): slots leased by this process out
+ * of the configured budget, and the leases waiting for one. A lease held by another pid is dead
+ * (see `SlotLease`), so it is not counted. The leased count rides the stat cache (see above);
+ * `wakeWaiters` empties the waiter set before woken waiters re-register, so `waiting` can read
+ * low for one turn; observers poll, so the next poll corrects it. */
 export function slotPoolSnapshot(root: string): { leased: number; limit: number; waiting: number } {
-  const leased = readSlotsState(root).slots.filter((s) => s.lease !== null && s.lease.pid === process.pid).length;
+  const leased =
+    cachedByStat(
+      poolStateCache,
+      slotsStatePath(root),
+      slotsStatePath(root),
+      () =>
+        readSlotsState(root).slots.filter(
+          (s) => s.lease !== null && s.lease.pid === process.pid,
+        ).length,
+      (n) => n,
+    ) ?? 0;
   return { leased, limit: liveCount(root), waiting: waiters.get(rootKey(root))?.size ?? 0 };
 }
 
