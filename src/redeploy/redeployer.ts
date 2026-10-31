@@ -222,7 +222,7 @@ export class Redeployer {
         const { until, urgent } = this.effectiveCooldownUntil(now);
         if (now < until)
           s.restartBlocked =
-            `cooldown until ${new Date(until).toISOString()}` +
+            this.cooldownPhrase(until) +
             (urgent ? ` (the running version's own commit fails its check — cut to ${RESTART_URGENT_COOLDOWN_MIN} min)` : "");
         else if (this.refusedReason !== null) s.restartBlocked = `the update could not start: ${this.refusedReason}`;
       }
@@ -248,6 +248,12 @@ export class Redeployer {
   /** When the current post-restart cooldown expires (epoch ms), or 0 when none is running. */
   private cooldownUntil(): number {
     return this.lastAutoRestartAt !== null ? this.lastAutoRestartAt + RESTART_COOLDOWN_MS : 0;
+  }
+
+  /** The published cooldown reason's opening phrase. Its literal `cooldown until ` prefix is a
+   * contract: ui/badges.ts keys the build-stale alert off it with a startsWith check. */
+  private cooldownPhrase(untilMs: number): string {
+    return `cooldown until ${new Date(untilMs).toISOString()}`;
   }
 
   /** Arm the operator's forced restart (the dashboard's build-stale alert's refresh button):
@@ -396,7 +402,7 @@ export class Redeployer {
       if (this.cooldownWarnedUntil !== cooldownUntil) {
         this.cooldownWarnedUntil = cooldownUntil;
         this.warn(
-          `auto-restart of ${shortSha(mainHead)} deferred — cooldown until ${new Date(cooldownUntil).toISOString()}` +
+          `auto-restart of ${shortSha(mainHead)} deferred — ${this.cooldownPhrase(cooldownUntil)}` +
             (urgent
               ? ` (the running version ${shortSha(this.build.sha)} fails its check — the cooldown is cut to ${RESTART_URGENT_COOLDOWN_MIN} min)`
               : ` (at most one completed restart per ${RESTART_COOLDOWN_HOURS} h)`),
