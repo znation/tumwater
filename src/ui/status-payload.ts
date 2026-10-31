@@ -15,6 +15,7 @@ import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainChe
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts } from "./team-alerts.js";
+import { configForStatus } from "../status/status-polls.js";
 import { readPostReviews } from "../review/post-merge-review.js";
 import { getOrphanAlert } from "./alert-feeds.js";
 
@@ -438,7 +439,8 @@ function alertFields(root: string, snap: ReturnType<typeof snapshot>, questions:
   return {
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), getOrphanAlert(root)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), getOrphanAlert(root),
+      { snap, config: configForStatus(root), root }),
   };
 }
 

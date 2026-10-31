@@ -15,16 +15,34 @@
 import type { StatusSnapshot } from "../status/status-data.js";
 import type { OrphanAlert } from "./status-payload.js";
 import type { RefusedEntry } from "../backlog/backlog-eligibility.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import type { AlertRole, TeamAlert } from "./team-alert-shared.js";
 import { buildStatusAlerts } from "./team-alert-status.js";
 import { buildBacklogAlerts } from "./team-alert-backlog.js";
+import { buildStandingAlerts } from "./team-alert-standings.js";
 import { buildTailAlerts } from "./team-alert-tail.js";
 
 export type { TeamAlert, AlertRole } from "./team-alert-shared.js";
 
+/** The standing doctor-twin alerts' inputs (team-alert-standings.ts): the observer's
+ * last-known-good config and the project root the six rows read. Optional so a caller that
+ * holds neither (a test that exercises only the other arms) raises no standing alerts —
+ * the pre-fix rendering, never a false one.
+ */
+export interface StandingAlertInputs {
+  snap: Pick<
+    StatusSnapshot,
+    "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "principlesTruncated"
+  >;
+  config: TumwaterConfig;
+  root: string;
+}
+
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
- * main, roles failing run after run, roles that look stuck, disk and install drift, open
- * questions, refused entries, orphaned processes, and a stopped team.
+ * main, roles failing run after run, roles that look stuck, disk and install drift, the six
+ * standing doctor twins (no-check, no-brief, brief-truncated, role-notes-truncated,
+ * instance-pool, principles-truncated), open questions, refused entries, orphaned processes,
+ * and a stopped team.
  */
 export function teamAlerts(
   snap: Pick<
@@ -43,9 +61,11 @@ export function teamAlerts(
   _now: number,
   refused: readonly RefusedEntry[] = [],
   orphans: OrphanAlert | null = null,
+  standings: StandingAlertInputs | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles }));
+  if (standings) out.push(...buildStandingAlerts(standings));
   out.push(...buildBacklogAlerts({ questions, refused }));
   out.push(...buildTailAlerts({ snap, orphans }));
 

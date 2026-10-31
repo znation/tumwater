@@ -1253,6 +1253,31 @@ state.
 stat-keyed cache without re-reading" (it pins the cache hit and the per-poll copy) and
 "runnerStateForPoll yields a fresh state for a role with no state file".
 
+### INV-T6: each standing doctor-twin alert is gated by its snapshot flag and worded by its doctor row
+
+**Guarantee.** The six standing amber alerts — no-check, no-brief, brief-truncated,
+role-notes-truncated, instance-pool, principles-truncated — are raised by
+`buildStandingAlerts` (team-alert-standings.ts) only when their snapshot flag stands
+(`noDeclaredCheck`, `noBrief`, `briefTruncated`, a non-empty `roleNotesOverCap`, or
+`principlesTruncated`; instance-pool by the configured pool itself, `smallPoolProblems`),
+and each alert's detail is the warn sentence of the doctor row it twins (checkBuildCheck,
+checkBrief, checkRoleNotes, smallPoolProblems, checkPrinciples) — so the rendered alert and
+the `tumwater doctor` row cannot disagree on the trigger, the caps, or the remedy, and all
+three surfaces (`tumwater status`'s banners, the dashboard's `alerts`, the TUI's attention
+lines) show them from the one `teamAlerts` source. A caller that passes no standing inputs
+raises none of them (the pre-alert rendering), never a false one.
+
+**Binds.** `src/ui/team-alert-standings.ts` (`buildStandingAlerts`),
+`src/ui/team-alerts.ts` (`teamAlerts`' `standings` argument),
+`src/ui/status-render.ts` (`renderStatus`), `src/ui/tui/tui.tsx`, `src/ui/status-payload.ts`
+(`alertFields`) — the three call sites that pass `{ snap, config, root }`.
+
+**Pinned by.** `test/team-alerts.test.ts` — "the standing amber alerts raise from the
+snapshot's raw flags, worded like their doctor rows" (each flag raises its amber alert with
+the row's own wording; the flag gates it) and "tumwater status prints the standing no-check
+banner from the snapshot's flag"; `test/status-payload.test.ts` — the raw-flag suites (they
+assert the payload's `alerts` carry the twin key in each state).
+
 ## Runner ids: only feature and bugfix split, and everything about a role resolves through its base
 
 A base role may run several runner ids (`feature`, `feature-2`, `bugfix-3`, …), each keying its own

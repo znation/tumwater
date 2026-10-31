@@ -1,8 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
+import { defaultConfig } from "../src/config/config.js";
+import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
+import { roleNotesPath } from "../src/paths.js";
+import { PRINCIPLES_MAX_CHARS } from "../src/prompt/principles.js";
+import { BRIEF_TEXT_MAX_CHARS, PROMPT_END, PROMPT_START } from "../src/brief/brief.js";
+import { renderStatus } from "../src/ui/status-render.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
+import { snapshotWith } from "./fixtures/status-fixtures.js";
+import type { StatusSnapshot } from "../src/status/status-data.js";
+
+type StandingFlags = Pick<
+  StatusSnapshot,
+  "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "principlesTruncated"
+>;
 
 // team-alerts.ts's teamAlerts: what needs the operator, phrased once for the dashboard's alert
 // banners and the TUI's attention lines.
@@ -304,6 +320,92 @@ test("refused entries raise a standing amber alert right after the questions ale
   const both = teamAlerts(base, ["Q? (asked 2026-10-14)"], [], now, [{ file: "bugs", index: 0, title: "A" }]);
   assert.deepEqual(both.map((a) => a.key), ["questions", "refused"]);
   assert.deepEqual(teamAlerts(base, [], [], now), []);
+});
+
+// The standing doctor-twin alerts (docs/cli.md's `tumwater status` row): a snapshot whose raw
+// flag stands raises the standing amber alert on the one shared source — the status banner, the
+// dashboard and the TUI all render it from teamAlerts. Pre-fix the raw --json key stood with no
+// rendered alert on any surface (BUGS.md 2026-10-31).
+test("the standing amber alerts raise from the snapshot's raw flags, worded like their doctor rows", () => {
+  const root = makeRepo();
+  const config = defaultConfig();
+  const raise = (flags: StandingFlags) => {
+    const snap = { ...base, ...flags };
+    return teamAlerts(snap, [], [], Date.now(), undefined, null, { snap, config, root });
+  };
+  const has = (flags: StandingFlags, key: string) => raise(flags).find((a) => a.key === key);
+
+  // no-check: a fresh repo declares no build check — the doctor row's warn is the alert's detail.
+  const noCheck = has({ noDeclaredCheck: true }, "no-check");
+  assert.ok(noCheck, "a noDeclaredCheck snapshot raises the standing no-check alert");
+  assert.equal(noCheck?.tone, "amber");
+  assert.match(noCheck?.detail ?? "", /plan role will plan this project's check and the feature role declare it/);
+  assert.ok(!has({}, "no-check"), "a check-declared snapshot raises nothing");
+
+  // no-brief: a marker-less README is the silent state doctor warns on.
+  fs.writeFileSync(path.join(root, "README.md"), "# p\n\nNo prompt block here.\n");
+  const noBrief = has({ noBrief: true }, "no-brief");
+  assert.ok(noBrief, "a noBrief snapshot raises the standing no-brief alert");
+  assert.equal(noBrief?.tone, "amber");
+  assert.match(noBrief?.detail ?? "", /no tumwater:prompt markers/);
+  assert.ok(!has({}, "no-brief"), "the flag gates the alert: no flag, no alert");
+
+  // brief-truncated: an over-cap block truncates every role's prompt at the read cap.
+  fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}\n${"x".repeat(BRIEF_TEXT_MAX_CHARS + 1)}\n${PROMPT_END}\n`);
+  const truncated = has({ briefTruncated: true }, "brief-truncated");
+  assert.ok(truncated, "a briefTruncated snapshot raises the standing brief-truncated alert");
+  assert.equal(truncated?.tone, "amber");
+  assert.match(truncated?.detail ?? "", /over the 4096-character read cap/);
+  fs.writeFileSync(path.join(root, "README.md"), `# p\n\n${PROMPT_START}\nA brief.\n${PROMPT_END}\n`);
+  assert.ok(!has({ briefTruncated: false }, "brief-truncated"), "a resolved brief raises nothing");
+
+  // role-notes-truncated: an over-bound note reaches the role's prompt as only its head.
+  fs.mkdirSync(path.dirname(roleNotesPath(root, "clean")), { recursive: true });
+  fs.writeFileSync(roleNotesPath(root, "clean"), "x".repeat(ROLE_NOTES_MAX_BYTES + 1));
+  const notes = has({ roleNotesOverCap: [{ role: "clean", chars: ROLE_NOTES_MAX_BYTES + 1 }] }, "role-notes-truncated");
+  assert.ok(notes, "a roleNotesOverCap snapshot raises the standing role-notes-truncated alert");
+  assert.equal(notes?.tone, "amber");
+  assert.match(notes?.title ?? "", /1 role note over the 4096-character read bound/);
+  assert.match(notes?.detail ?? "", /clean \(4097\)/);
+
+  // instance-pool: the trigger is the CONFIGURED pool — a multi-instance role above 1 while
+  // worktreeSlots sits below maxConcurrent — read from the config, so it stands even on a
+  // stopped team where no slotPool snapshot exists.
+  const poolSnap = { ...base };
+  const withPool = (mutate: (c: ReturnType<typeof defaultConfig>) => void) => {
+    const poolConfig = defaultConfig();
+    mutate(poolConfig);
+    return teamAlerts(poolSnap, [], [], Date.now(), undefined, null, { snap: poolSnap as StatusSnapshot, config: poolConfig, root });
+  };
+  const pool = withPool((c) => {
+    c.roles["feature"] = { enabled: true, instances: 3 };
+    c.worktreeSlots = 3; // below maxConcurrent 6
+  }).find((a) => a.key === "instance-pool");
+  assert.ok(pool, "a small pool with a multi-instance role raises the standing instance-pool alert");
+  assert.equal(pool?.tone, "amber");
+  assert.match(pool?.detail ?? "", /feature run instances but worktreeSlots 3 is below maxConcurrent 6/);
+  // The default pool (unset worktreeSlots = maxConcurrent + 1) never contends.
+  assert.ok(!withPool((c) => { c.roles["feature"] = { enabled: true, instances: 3 }; }).some((a) => a.key === "instance-pool"), "a default pool raises nothing");
+  // A single-instance role never contends, however small the pool.
+  assert.ok(!withPool((c) => { c.worktreeSlots = 3; }).some((a) => a.key === "instance-pool"), "no multi-instance role: nothing");
+
+  // principles-truncated: an over-cap PRINCIPLES.md truncates every role's <principles> block.
+  fs.writeFileSync(path.join(root, "PRINCIPLES.md"), "x".repeat(PRINCIPLES_MAX_CHARS + 1));
+  const prin = has({ principlesTruncated: true }, "principles-truncated");
+  assert.ok(prin, "a principlesTruncated snapshot raises the standing principles-truncated alert");
+  assert.equal(prin?.tone, "amber");
+  assert.match(prin?.detail ?? "", /over the 4000-character prompt cap/);
+  fs.rmSync(path.join(root, "PRINCIPLES.md"));
+  assert.ok(!has({ principlesTruncated: false }, "principles-truncated"), "no PRINCIPLES.md raises nothing");
+});
+
+// The same alerts on the CLI surface: renderStatus composes the banners from the snapshot's
+// raw flags, so `tumwater status` prints what docs/cli.md promises — not only --json.
+test("tumwater status prints the standing no-check banner from the snapshot's flag", () => {
+  const root = makeRepo();
+  const flagged = { ...snapshotWith([{ role: "clean" }]), noDeclaredCheck: true };
+  assert.match(renderStatus(root, flagged as StatusSnapshot), /No build check declared/);
+  assert.doesNotMatch(renderStatus(root, snapshotWith([{ role: "clean" }])), /No build check declared/);
 });
 
 test("root install drift raises one amber install alert naming up to five packages", () => {
