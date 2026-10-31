@@ -12,7 +12,7 @@ import { formatEvent } from "../events/event-format.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSpanPhrase } from "../text/phrases.js";
-import { shortSha, contextShareLabel, compactTokens } from "../text/format.js";
+import { shortSha, contextShareLabel, compactTokens, wholePercent } from "../text/format.js";
 import { piLogPath } from "../paths.js";
 import { readRunTranscript } from "../ui/transcript-run.js";
 import { gitTry } from "../git/git-run.js";
@@ -85,7 +85,7 @@ function runPromptCell(d: RunDetail): string | null {
   const prompt = d.promptTokens ?? 0;
   const cached = Math.min(d.cacheReadTokens ?? 0, prompt);
   if (prompt <= 0) return null;
-  return cached > 0 ? `prompt ${compactTokens(prompt)} tok (${Math.round((100 * cached) / prompt)}% cached)` : `prompt ${compactTokens(prompt)} tok`;
+  return cached > 0 ? `prompt ${compactTokens(prompt)} tok (${wholePercent(cached, prompt)}% cached)` : `prompt ${compactTokens(prompt)} tok`;
 }
 
 /** The run's pre-edit prompt-token share, the `… before first edit` signal a cost-only header

@@ -12,7 +12,7 @@
 import type { ReportData, ReportDay, ReportTotals } from "./report-types.js";
 import { addTo, rankCountEntries, sortByValueDesc } from "../collections.js";
 import { foldBaseRoles } from "./report-fold.js";
-import { compactTokens, usd } from "../text/format.js";
+import { compactTokens, usd, wholePercent } from "../text/format.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { monthDay, reportWindow } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
@@ -64,7 +64,7 @@ export function promptTokensLine(prompt: [string, number][], cache: [string, num
     .filter(([, n]) => n > 0)
     .map(([role, n]) => {
       const c = cacheByRole.get(role) ?? 0;
-      return `${role} — ${compactTokens(n)}${c > 0 ? ` (${Math.round((100 * c) / n)}% cached)` : ""}`;
+      return `${role} — ${compactTokens(n)}${c > 0 ? ` (${wholePercent(c, n)}% cached)` : ""}`;
     });
   return `**Prompt tokens by role:** ${cells.length === 0 ? "-" : cells.join(" · ")}`;
 }

@@ -40,16 +40,26 @@ export function compactTokens(n: number): string {
   return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
+/** A numerator's share of its denominator as a whole percent — `Math.round((100 * part) /
+ * whole)`, floor-free rounded. The single home of the whole-percent share so the peak-ctx
+ * share (contextShareLabel), the usage report's `% cached` cell, and the `history` header's
+ * `% cached` share all round identically. Callers must keep each rendering's whole>-0 guard
+ * (and the omit-when-zero convention) at their own site, so a zero/unknown denominator is
+ * never fed here. */
+export function wholePercent(part: number, whole: number): number {
+  return Math.round((100 * part) / whole);
+}
+
 /** A peak context reading its share of the role's declared context window (`110.0k (84%)`) —
  * the single home of the share format so the status table's `peak ctx` cell, the GUI/`status
  * --json` role payload, the dashboard role drawer, and the `history <role> <n>` summary header
  * all render a peak against a window identically. When the window is unknown
  * (null/undefined/0) or the peak is 0 there is no meaningful share, so it returns exactly
  * `compactTokens(peakTokens)` — the bare peak today's surfaces print. The percentage is
- * floor-free rounded: `Math.round((100 * peak) / window)`. */
+ * floor-free rounded via wholePercent, the shared whole-percent home. */
 export function contextShareLabel(peakTokens: number, windowTokens?: number | null): string {
   if (!windowTokens || !peakTokens) return compactTokens(peakTokens);
-  return `${compactTokens(peakTokens)} (${Math.round((100 * peakTokens) / windowTokens)}%)`;
+  return `${compactTokens(peakTokens)} (${wholePercent(peakTokens, windowTokens)}%)`;
 }
 /** The abbreviated form of a commit hash for human-facing text — its first 8 characters.
  * The single home of this format: the event feed's merged/review lines and the review gate's
