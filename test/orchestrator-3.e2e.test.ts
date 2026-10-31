@@ -221,18 +221,28 @@ test("an entry whose sha main already holds is dropped at the drain without a me
   // the model reviewer), so the dedup is asserted through the merge_done count alone. Part 3g/3
   // still queues a post-merge review for the merge that lands here and the fake settles it.
   const did = path.join(tmpdir(), "dedup-did");
+  // The merge-queue interlock relief (scheduling-skip.ts) lets `clean` author again once its
+  // first change is in-flight, so a second author run may start in a fresh pooled slot before
+  // the first merge lands hello.txt on main. `echo hello > hello.txt` must therefore run on the
+  // first run only — unconditional it would make a second run create the file in a clean slot
+  // and merge a spurious second change (inflating merge_done to 2), and it overwrites
+  // lastResult to no_change when the run legitimately settles nothing, which the old
+  // `lastResult === "changed"` wait anchored on — the intermittent flake this test once
+  // reported (fixed 2026-10-30). On later runs the script only settles (nothing-to-do).
   const restore = fakePi(
     [
       APPROVE_PI,
-      `if [ -f '${did}' ]; then printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'; else touch '${did}'; printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'; fi`,
-      `echo hello > hello.txt`,
+      `if [ -f '${did}' ]; then printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'; else touch '${did}'; echo hello > hello.txt; printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'; fi`,
     ].join("\n"),
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // One real change merges end to end…
+    // One real change merges end to end. hello.txt reaches the PRIMARY repo only via the merge's
+    // fast-forward (its ff writes the file into the primary checkout), so its presence there is
+    // the faithful "merged to main" signal — unlike lastResult, which a later no_change run
+    // overwrites and would otherwise make this wait flaky.
     await waitFor(
-      () => loadRunnerState(repo, "clean").lastResult === "changed" && fs.existsSync(path.join(repo, "hello.txt")),
+      () => fs.existsSync(path.join(repo, "hello.txt")),
       "the change to merge on main",
     );
     // …and the crash-between-ff-and-drop residue is simulated: the same sha re-enqueued.
