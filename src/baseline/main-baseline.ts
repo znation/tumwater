@@ -368,6 +368,17 @@ export function watchVerifiesMain(root: string, config?: CheckConfigSlice): bool
   return detectBuildCheck(root, config) !== null && mergeCommandOf(config) !== undefined;
 }
 
+/** The first-parent walk `newestGreenAboveBuild` runs, keyed by (worktree, tip). The walk is a
+ * `git rev-list` spawn (~10 ms measured, 64-commit bound) and it runs on every orchestrator poll
+ * while self-redeploy is on — but its list is fixed per tip (main is only ever fast-forwarded,
+ * so a tip's ancestor list never changes) and its ANSWER is re-derived from `baselineCache` on
+ * every call, not cached here. Caching only the list, and re-deriving the answer each poll, makes
+ * a poll whose tip has not moved cost zero git spawns, while a moved tip or a new verdict still
+ * changes the answer the very next poll. Bounded like `baselineCache`: tips are never reused,
+ * so an entry is dead once a newer tip supersedes it. */
+const redeployWalkCache = new Map<string, string[]>();
+const REDEPLOY_WALK_CACHE_MAX = 32;
+
 /** The newest first-parent commit below `tip`, down to and through `buildSha`, with a green
  * cached verdict — the walk+scan redeployTarget's watched and un-watched branches share. Only
  * their fallback differs: `notOnHistory` when `buildSha` is not on the first-parent walk at all
@@ -375,7 +386,16 @@ export function watchVerifiesMain(root: string, config?: CheckConfigSlice): bool
  * green (watched keeps the build; un-watched keeps `tip`). Never throws: a git failure leaves
  * the walk empty, so the fallback answers. */
 async function newestGreenAboveBuild(wt: string, tip: string, buildSha: string, notOnHistory: string, onHistoryNone: string): Promise<string> {
-  const walk = await firstParentWalk(wt, tip, REDEPLOY_WALK_MAX);
+  const key = `${wt}\u0000${tip}`;
+  let walk = redeployWalkCache.get(key);
+  if (walk === undefined) {
+    walk = await firstParentWalk(wt, tip, REDEPLOY_WALK_MAX);
+    if (redeployWalkCache.size >= REDEPLOY_WALK_CACHE_MAX) {
+      const oldest = redeployWalkCache.keys().next().value;
+      if (oldest !== undefined) redeployWalkCache.delete(oldest);
+    }
+    redeployWalkCache.set(key, walk);
+  }
   const buildAt = walk.indexOf(buildSha);
   if (buildAt === -1) return notOnHistory;
   for (const sha of walk.slice(0, buildAt)) {
