@@ -56,12 +56,39 @@ function healRecord<T extends object>(value: T | undefined, heal: (v: T) => void
   return value;
 }
 
-/** Heal the ten top-level scalar counters — the numeric stamps/streaks (runs, commits,
- * nextRunAt, backoffSeconds, generatedTokens, peakContextTokens, totalCostUsd, dayCostUsd)
- * and the per-pair daily spend map. Every one of these is read by arithmetic or comparison,
- * so a foreign or negative value is healed to 0 (or `{}` for the map) rather than left to
- * skew a budget or schedule. */
-function healScalarCounters(s: RunnerState): void {
+/** Keys an older build wrote, mapped to their current names. loadRunnerState copies the old key's
+ * value to the new key when the new key is absent and always drops the old key, so a file holding
+ * both keeps the new value and the next save writes only current keys. */
+const LEGACY_STATE_KEYS: Readonly<Record<string, string>> = {
+  ticks: "runs", // retired-name-ok: legacy name
+  lastTickStartedAt: "lastRunStartedAt", // retired-name-ok: legacy name
+  lastTickEndedAt: "lastRunEndedAt", // retired-name-ok: legacy name
+  // retired-name-ok:start old state keys
+  landingCheckFailures: "mergeCheckFailures", // vocabulary-ok: legacy state key read from old files
+  lastLandedAt: "lastMergedAt", // vocabulary-ok: legacy state key read from old files
+  // retired-name-ok:end
+};
+
+/** Apply LEGACY_STATE_KEYS to a parsed state object in place. */
+function migrateLegacyStateKeys(saved: Record<string, unknown>): void {
+  // The pre-merge reviewer-config hold is gone (part 3j/3): a state file may still name it under
+  // either its old (landingReviewError) or its recent (mergeReviewError) key, and with no field
+  // to load it into — no reader consumes it — drop both here so a later save writes neither.
+  delete saved.landingReviewError; // retired-name-ok: legacy state key read from old files
+  delete saved.mergeReviewError;
+  for (const [oldKey, newKey] of Object.entries(LEGACY_STATE_KEYS)) {
+    if (!(oldKey in saved)) continue;
+    if (!(newKey in saved)) saved[newKey] = saved[oldKey];
+    delete saved[oldKey];
+  }
+}
+
+/** Heal every scalar numeric field of a persisted state in place: the eight non-optional
+ * top-level counts (runs … dayCostUsd), the per-pair dayCostByPair map, and the optional
+ * stamps and streaks through parkedSince. All are counts, durations, epoch-ms stamps, or
+ * amounts, so each heals to 0, and an absent optional stays absent — "which scalar numbers
+ * does a load heal to 0?" reads by name here. */
+function healScalarNumbers(s: RunnerState): void {
   s.runs = healNumber(s.runs, 0);
   s.commits = healNumber(s.commits, 0);
   s.nextRunAt = healNumber(s.nextRunAt, 0);
@@ -71,15 +98,6 @@ function healScalarCounters(s: RunnerState): void {
   s.totalCostUsd = healNumber(s.totalCostUsd, 0);
   s.dayCostUsd = healNumber(s.dayCostUsd, 0);
   if (s.dayCostByPair !== undefined) s.dayCostByPair = healPairCosts(s.dayCostByPair);
-}
-
-/** Heal the optional stamps and streaks — every field that goes through healOptionalNumber, so
- * an absent field stays absent (an older state file's shape is preserved) while a present
- * corrupt value heals to 0. The breaker's excused-streak ack is a count like the others — a
- * corrupt value (a negative, NaN, or foreign type) would otherwise silently defeat or mistime
- * the breaker's bar on the next poll, so it heals to 0 (a fresh ack) the same way the error
- * streak itself does. */
-function healOptionalStampsAndStreaks(s: RunnerState): void {
   healOptionalNumber(s, "lastRunStartedAt");
   healOptionalNumber(s, "lastRunEndedAt");
   healOptionalNumber(s, "lastMergedAt");
@@ -88,24 +106,33 @@ function healOptionalStampsAndStreaks(s: RunnerState): void {
   healOptionalNumber(s, "quietKillStreak");
   healOptionalNumber(s, "consecutiveErrors");
   healOptionalNumber(s, "noChangeStreak");
+  // The breaker's excused-streak ack is a count like the others — a corrupt value (a negative,
+  // NaN, or foreign type) would otherwise silently defeat or mistime the breaker's bar on the
+  // next poll, so it heals to 0 (a fresh ack) the same way the error streak itself does.
   healOptionalNumber(s, "streakAcked");
   healOptionalNumber(s, "unreviewFailures");
   healOptionalNumber(s, "parkedSince");
 }
 
-/** Close the skip-reason vocabulary: a saved value that is not in SKIP_REASONS is dropped, so a
- * foreign reason cannot read as a real turn-away or deferral to the next poll's eligibility. */
-function healSkipReason(s: RunnerState): void {
+/** The one enumerated field a load rejects: a skipReason outside SKIP_REASONS is dropped (a
+ * foreign reason would otherwise send a scheduler an instruction it never wrote — the unknown
+ * value then reads as "not skipped" because skipReason is absent). "Which enumerated field is
+ * rejected when unknown?" reads from here. */
+function healVocabulary(s: RunnerState): void {
   if (s.skipReason !== undefined && !SKIP_REASONS.includes(s.skipReason)) delete s.skipReason;
 }
 
-/** Heal the nested scheduling records. They carry the same numeric class as the top-level
- * fields — epoch-ms stamps, recovery counts, and retry/review counts — and are read by
- * comparison or arithmetic (`ctx.now - claim.at > CLAIM_IDLE_MAX_MS`, `prior.count + 1`,
- * `attempts + 1`), so a foreign value there is healed the same way. A torn record (a string,
- * number, null, or array where a plain object belongs) is dropped to undefined, so property
- * access on it reads undefined where the mutation would throw. */
+/** Heal every nested scheduling/recovery record of a persisted state in place: lastReview,
+ * claim, revision, the torn retry record mainRedRetry, mergeConflicts, conflictDiscard,
+ * conflictHandback (with the legacy "landing" → "merge" rename), and mergeCheckFailures. Each
+ * is a plain object whose numeric slots heal to 0; a present non-object is dropped and an
+ * absent record stays absent — "which nested records are validated and how?" is answered by
+ * name here. */
 function healNestedRecords(s: RunnerState): void {
+  // The nested scheduling records carry the same numeric class — epoch-ms stamps, recovery
+  // counts, and retry/review counts — and are read by comparison or arithmetic
+  // (`ctx.now - claim.at > CLAIM_IDLE_MAX_MS`, `prior.count + 1`, `attempts + 1`), so a
+  // foreign value there is healed the same way the top-level fields are.
   if (s.lastReview !== undefined)
     s.lastReview = healRecord(s.lastReview, (v) => {
       v.at = healNumber(v.at, 0);
@@ -167,10 +194,10 @@ function healNestedRecords(s: RunnerState): void {
     });
 }
 
-/** Heal the two one-shot markers — a torn marker must not survive to be consumed by a later
- * run, because its consumer reads or mutates fields. The merge-flake excusal is a string, so
- * a non-string is dropped; the image-reroute marker is a nested record whose tier is repaired
- * to a known tier name so a corrupt tier cannot route a rerouted run to a phantom seam. */
+/** Heal the two one-shot markers of a persisted state in place: a torn mergeFlakeExcused
+ * scalar is dropped (the marker is a string read for the next run's flake), and imageReroute
+ * is dropped unless it is a plain object whose tier names a known seam — "which one-shot
+ * markers are dropped when torn?" has one home. */
 function healOneShotMarkers(s: RunnerState): void {
   if (s.mergeFlakeExcused !== undefined && typeof s.mergeFlakeExcused !== "string")
     delete s.mergeFlakeExcused;
@@ -183,33 +210,6 @@ function healOneShotMarkers(s: RunnerState): void {
       healed && (healed.tier === "small" || healed.tier === "default" || healed.tier === "strong")
         ? healed
         : undefined;
-  }
-}
-
-/** Keys an older build wrote, mapped to their current names. loadRunnerState copies the old key's
- * value to the new key when the new key is absent and always drops the old key, so a file holding
- * both keeps the new value and the next save writes only current keys. */
-const LEGACY_STATE_KEYS: Readonly<Record<string, string>> = {
-  ticks: "runs", // retired-name-ok: legacy name
-  lastTickStartedAt: "lastRunStartedAt", // retired-name-ok: legacy name
-  lastTickEndedAt: "lastRunEndedAt", // retired-name-ok: legacy name
-  // retired-name-ok:start old state keys
-  landingCheckFailures: "mergeCheckFailures", // vocabulary-ok: legacy state key read from old files
-  lastLandedAt: "lastMergedAt", // vocabulary-ok: legacy state key read from old files
-  // retired-name-ok:end
-};
-
-/** Apply LEGACY_STATE_KEYS to a parsed state object in place. */
-function migrateLegacyStateKeys(saved: Record<string, unknown>): void {
-  // The pre-merge reviewer-config hold is gone (part 3j/3): a state file may still name it under
-  // either its old (landingReviewError) or its recent (mergeReviewError) key, and with no field
-  // to load it into — no reader consumes it — drop both here so a later save writes neither.
-  delete saved.landingReviewError; // retired-name-ok: legacy state key read from old files
-  delete saved.mergeReviewError;
-  for (const [oldKey, newKey] of Object.entries(LEGACY_STATE_KEYS)) {
-    if (!(oldKey in saved)) continue;
-    if (!(newKey in saved)) saved[newKey] = saved[oldKey];
-    delete saved[oldKey];
   }
 }
 
@@ -234,9 +234,8 @@ export function loadRunnerState(root: string, role: string): RunnerState {
   // says, so the state saves (and loads) under the name it was asked for.
   // (Retired-name-ok: legacy role id read from an old state file.)
   s.role = role;
-  healScalarCounters(s);
-  healOptionalStampsAndStreaks(s);
-  healSkipReason(s);
+  healScalarNumbers(s);
+  healVocabulary(s);
   healNestedRecords(s);
   healOneShotMarkers(s);
   return s;
