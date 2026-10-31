@@ -1,6 +1,6 @@
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
+import { failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
 import { errorMessage, splitCommaList } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./operator-retire.js";
@@ -263,6 +263,10 @@ function pauseFlags(args: string[]): { forMs: number | undefined; reason: string
   // so the confirmation line, the marker, and every single-line surface carry the same text
   // — a raw newline in the flag's value would otherwise break the header's one-line badge.
   const reasonRaw = flagValue(args, "--reason");
+  // A flag-shaped token in the reason slot is a rival flag, not a reason — refuse it up
+  // front with the shared rejectFlagLookingValue wording, rather than silently writing the
+  // literal text (e.g. `pause --reason --json` paused with the reason "--json").
+  rejectFlagLookingValue("pause --reason", reasonRaw);
   if (reasonRaw !== null && (reasonRaw === undefined || reasonRaw.trim() === ""))
     fail(REASON_VALUE_ERROR);
   const reason = normalizePauseReason(reasonRaw ?? undefined);

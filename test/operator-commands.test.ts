@@ -605,6 +605,15 @@ test("cmdPause --reason on a standing pause stays the no-op and keeps the standi
   assert.equal(marker.reason, "first why", "only a fresh pause or a --for overwrite applies a reason");
 });
 
+test("cmdPause --reason refuses a flag-shaped value instead of writing it as text", async () => {
+  // `pause --reason --json` would otherwise take "--json" as the reason and pause with
+  // the literal text, masking that the operator meant a flag. It must refuse up front.
+  const root = tmpdir();
+  const stderr = await expectFailAsync(() => cmdPause(root, ["--reason", "--json"]));
+  assert.match(stderr, /pause --reason needs a value \(the next token "--json" is a flag, not a value\)/);
+  assert.ok(!fs.existsSync(pausedPath(root)), "no team pause was recorded");
+});
+
 test("cmdPause --role --reason fails fast and writes no role marker", async () => {
   const root = tmpdir();
   const stderr = await expectFailAsync(() => cmdPause(root, ["--role", "clean", "--reason", "why"]));
