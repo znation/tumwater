@@ -148,6 +148,80 @@ test("suiteRerunWarning names the first full-suite run and counts the rest; filt
   assert.match(long, /…$/);
 });
 
+test("every documented value-taking npm/node flag and prefix word is honored", () => {
+  // The other value-taking npm flags a copied-tree reviewer reaches for (the ones the
+  // 2026-09-29 test above exercises for --prefix/-C/cache/registry) must not read their
+  // value as the subcommand, and their value must never leak through as a filter.
+  for (const command of [
+    "npm --workspace /tmp/rev test",
+    "npm -w /tmp/rev test",
+    "npm --userconfig /tmp/c test",
+    "npm --globalconfig /tmp/g test",
+    "npm --loglevel verbose test",
+    "npm --omit dev test",
+    "npm --prefix /tmp/rev test --omit dev",
+  ]) {
+    assert.ok(runsFullSuite(command), `flagged: ${command}`);
+  }
+  // The same flags after the subcommand are still skipped, so their values are not filters.
+  for (const command of ["npm test --workspace /tmp/rev", "npm test --omit dev"]) {
+    assert.ok(runsFullSuite(command), `flagged: ${command}`);
+  }
+  // The remaining value-taking node flags before the runner entry point stay skipped.
+  for (const command of [
+    "node --stack-size 4096 dist/test/test-runner.js",
+    "node --require ./trace.js dist/test/test-runner.js",
+    "node --conditions node dist/test/test-runner.js",
+    "node --cpu-prof-dir /tmp/p dist/test/test-runner.js",
+    "node --eval \"launch()\" dist/test/test-runner.js",
+  ]) {
+    assert.ok(runsFullSuite(command), `flagged: ${command}`);
+  }
+  // Every other PREFIX_WORDS member, not just `time`/`env`/`do`, is skipped before the
+  // command so the suite run that follows is still seen.
+  for (const command of [
+    "command npm test",
+    "! npm test",
+    "exec npm test",
+    "nohup npm test",
+    "then npm test",
+    "else npm test",
+    "command node dist/test/test-runner.js",
+  ]) {
+    assert.ok(runsFullSuite(command), `flagged: ${command}`);
+  }
+
+  // The no-subcommand path (a bare value-taking npm flag with nowhere for a subcommand, or
+  // node flags with no runner entry point) flags nothing rather than crashing or over-reading.
+  for (const command of ["npm --prefix /tmp/rev", "npm --silent", "node --eval \"x\"", "node --max-old-space-size"]) {
+    assert.ok(!runsFullSuite(command), `not flagged: ${command}`);
+  }
+});
+
+test("an unterminated trailing value or redirect falls back to empty without misreading", () => {
+  // A value-taking flag or bare redirect at the very end of a line leaves nothing for its
+  // value/target, and the word scans must read that as the empty fallback, not crash. A
+  // trailing bare redirect still runs the full suite (`npm test >`), and a trailing value
+  // flag still runs the full suite unfiltered (`npm test --prefix`), so both are flagged;
+  // a line made of only a value flag or only a prefix word is command-less and is not.
+  for (const command of [
+    "npm test >", // bare redirect with no target: the suite still runs
+    "npm test --prefix", // value flag with no value: the suite still runs unfiltered
+  ]) {
+    assert.ok(runsFullSuite(command), `flagged: ${command}`);
+  }
+  for (const command of [
+    "npm --prefix", // only a value flag, no subcommand to run
+    "npm --silent", // only an npm flag, no subcommand at all
+    "node --eval", // only a node flag, no runner entry point
+    "env", // a sole prefix word with no command
+    "command",
+    "env CI=1",
+  ]) {
+    assert.ok(!runsFullSuite(command), `not flagged: ${command}`);
+  }
+});
+
 test("suiteRerunWarning tolerates malformed args instead of throwing", () => {
   for (const args of [undefined, null, "npm test", 5, { command: 7 }, {}]) {
     assert.equal(suiteRerunWarning([{ toolName: "bash", args }]), undefined);
