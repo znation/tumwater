@@ -15,12 +15,51 @@ const STALE_MS = 10 * 60_000;
  * to break. */
 const NO_PID_GRACE_MS = 5_000;
 
-/** Remove the lock dir, ignoring races (it may already be gone or unremovable). */
+/** Remove a dir no other process can reach by its path — a temp or a moved-aside lock instance —
+ * ignoring races (it may already be gone or unremovable). Never call it on a live lock path:
+ * removeLockInstance is the only safe way to take a lock dir out of its path. */
 function rmLockDir(dir: string): void {
   try {
     removeTree(dir);
   } catch {
     // The next acquire attempt sorts it out.
+  }
+}
+
+/** The infix a lock instance's moved-aside path carries (`<lock>.removing.<pid>.<n>`). Dots,
+ * not a `-<n>` tail, so a reader that lists `.tumwater/state/` cannot take it for a role
+ * instance id (runner-state-load.ts parses a trailing `-<n>` as one). */
+const REMOVING_INFIX = ".removing.";
+let removingSeq = 0;
+
+/** Take the lock instance at `dir` out of the lock path, deleting it only when `isTarget` says
+ * the moved instance is the one the caller meant (its own lock on release, the instance judged
+ * stale on a break). The instance is moved aside by one atomic rename before anything inside it
+ * is touched. Deleting it in place lost writes: a recursive remove empties the dir before it
+ * removes it, rename(2) — the publish step — replaces an EMPTY directory, so a waiter could
+ * publish its lock into that window, and the remove then deleted the waiter's live lock while
+ * the waiter ran its section; a third writer acquired and two read-modify-writes overlapped
+ * (BUGS.md 2026-10-23, `simultaneous cross-process pauseRole calls all survive in the marker`;
+ * 8 looping writers lost up to 14 of 12,000 locked increments). Moved aside, the lock path is
+ * either the instance or absent, never an empty dir. A moved instance that is not the target
+ * (a successor published after the caller's check) is renamed back; that fails only if yet
+ * another writer published in the microseconds between, and the moved dir is then left for
+ * sweepStaleTemps. */
+function removeLockInstance(dir: string, isTarget: (moved: string) => boolean): void {
+  const moved = `${dir}${REMOVING_INFIX}${process.pid}.${removingSeq++}`;
+  try {
+    fs.renameSync(dir, moved);
+  } catch {
+    return; // Already gone, or unmovable: the next acquire sorts it out.
+  }
+  if (isTarget(moved)) {
+    rmLockDir(moved);
+    return;
+  }
+  try {
+    fs.renameSync(moved, dir);
+  } catch {
+    // A third writer published meanwhile; sweepStaleTemps clears the moved dir once it is old.
   }
 }
 
@@ -62,17 +101,43 @@ export function readLockPid(dir: string): number | null {
  *   because the pid read threw before the age check ran in the old structure — and every
  *   merge would time out forever until a human deleted the dir by hand. */
 export function classifyLock(dir: string): LockState {
+  return readLock(dir).state;
+}
+
+/** classifyLock's verdict plus the identity of the instance it judged — its inode, mtime and
+ * recorded pid, none of which a rename changes — so a breaker can tell that instance apart
+ * from a successor published at the same path after the read (the judged holder released and
+ * exited, so its pid reads dead, and a new holder took the path). */
+interface LockReading {
+  state: LockState;
+  ino?: number;
+  mtimeMs?: number;
+  pid?: number | null;
+}
+
+function readLock(dir: string): LockReading {
   let stat: fs.Stats;
   try {
     stat = fs.statSync(dir);
   } catch {
-    return "absent"; // No lock dir — nothing held, nothing stale.
+    return { state: "absent" }; // No lock dir — nothing held, nothing stale.
   }
   const ageMs = Date.now() - stat.mtimeMs;
-  if (ageMs > STALE_MS) return "stale";
   const pid = readLockPid(dir);
-  if (pid === null) return ageMs > NO_PID_GRACE_MS ? "stale" : "live"; // Orphaned vs mid-creation.
-  return pidAlive(pid) ? "live" : "stale";
+  const identity = { ino: stat.ino, mtimeMs: stat.mtimeMs, pid };
+  if (ageMs > STALE_MS) return { state: "stale", ...identity };
+  if (pid === null) return { state: ageMs > NO_PID_GRACE_MS ? "stale" : "live", ...identity }; // Orphaned vs mid-creation.
+  return { state: pidAlive(pid) ? "live" : "stale", ...identity };
+}
+
+/** True when the dir at `moved` is the instance `judged` read: same inode, mtime and pid. */
+function isJudgedInstance(moved: string, judged: LockReading): boolean {
+  try {
+    const stat = fs.statSync(moved);
+    return stat.ino === judged.ino && stat.mtimeMs === judged.mtimeMs && readLockPid(moved) === judged.pid;
+  } catch {
+    return false;
+  }
 }
 
 /** Name the lock's holder for the timeout message: the pid its pid file records, or a note
@@ -84,8 +149,13 @@ function lockHolderNote(dir: string): string {
   return pid === null ? " (no readable pid file)" : ` (held by pid ${pid})`;
 }
 
+/** Break the lock at `dir` when it reads stale — only the instance that read stale. Breaking
+ * whatever sat at the path lost writes too: a waiter read a holder's pid, the holder released
+ * and exited (a one-shot CLI pause does exactly that), a successor published, and the waiter's
+ * dead-pid verdict then deleted the successor's live lock. */
 function tryBreakStale(dir: string): void {
-  if (classifyLock(dir) === "stale") rmLockDir(dir);
+  const judged = readLock(dir);
+  if (judged.state === "stale") removeLockInstance(dir, (moved) => isJudgedInstance(moved, judged));
 }
 
 /** Release a lock dir only while it is still ours — the pid file naming our process is the
@@ -97,7 +167,7 @@ function tryBreakStale(dir: string): void {
  * classify rules (dead pid, no-pid grace, age) clean up on a later acquire. */
 function releaseOwnedLock(dir: string): void {
   if (readLockPid(dir) !== process.pid) return;
-  rmLockDir(dir);
+  removeLockInstance(dir, (moved) => readLockPid(moved) === process.pid);
 }
 
 /** The ledger-facing release primitive: the same releaseOwnedLock every mutex exits with, but
@@ -189,15 +259,16 @@ export function tryClaimLockDir(dir: string): boolean {
 }
 
 /** Remove `.acquiring-*` temp dirs left beside a lock by a creator that crashed before its
- * rename — the one remnant atomic publication can leave. Only dirs older than STALE_MS are
- * touched, far beyond any scheduling stall, so a live creator's in-flight temp is never
- * removed. */
+ * rename, and `.removing.*` dirs a remover crashed before deleting (or could not rename back,
+ * removeLockInstance) — the remnants the rename-in, rename-out protocol can leave. Only dirs
+ * older than STALE_MS are touched, far beyond any scheduling stall, so a live creator's
+ * in-flight temp is never removed. */
 function sweepStaleTemps(dir: string): void {
   const parent = path.dirname(dir);
-  const prefix = `${path.basename(dir)}.acquiring-`;
+  const prefixes = [`${path.basename(dir)}.acquiring-`, `${path.basename(dir)}${REMOVING_INFIX}`];
   // No parent to sweep reads empty; the acquire's own mkdir reports the real cause.
   for (const name of dirEntryNames(parent)) {
-    if (!name.startsWith(prefix)) continue;
+    if (!prefixes.some((prefix) => name.startsWith(prefix))) continue;
     const candidate = path.join(parent, name);
     try {
       if (Date.now() - fs.statSync(candidate).mtimeMs > STALE_MS) rmLockDir(candidate);

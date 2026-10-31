@@ -527,3 +527,82 @@ test("releaseOwnedLockDir leaves a dir carrying another pid", async () => {
   assert.ok(fs.existsSync(dir), "a robbed holder must not delete its successor's slot dir");
   assert.equal(readLockPid(dir), pid, "the successor's pid file is untouched");
 });
+
+/** Publish a successor's lock at `lock` the way acquireStep does — a temp dir holding `pid`,
+ * renamed onto the lock path — and report whether the rename landed. */
+function publishSuccessor(lock: string, pid: number): boolean {
+  const tmp = `${lock}.acquiring-${pid}`;
+  fs.mkdirSync(tmp);
+  fs.writeFileSync(path.join(tmp, "pid"), String(pid));
+  try {
+    fs.renameSync(tmp, lock);
+    return true;
+  } catch {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    return false;
+  }
+}
+
+test("a release never empties the lock in place, so a waiter publishing mid-release keeps its lock", async () => {
+  // BUGS.md 2026-10-23 (`simultaneous cross-process pauseRole calls all survive in the marker`):
+  // the release deleted the lock dir where it stood. A recursive remove empties the dir first,
+  // and rename(2) replaces an EMPTY directory, so a waiter's publish could land in that window
+  // — and the remove then deleted the waiter's live lock, letting a third writer in mid-section.
+  // Replayed here by emptying whichever pid-holding dir a remove targets, then publishing a
+  // waiter's lock at the lock path, before the real remove runs.
+  const pid = await sleeperPid();
+  const lock = path.join(tmpdir(), "release-window.lock");
+  let published = false;
+  const undo = patchFsMethod("rmSync", (orig) => ((target: string, opts: unknown) => {
+    const pidFile = path.join(target, "pid");
+    if (!published && fs.existsSync(pidFile)) {
+      fs.unlinkSync(pidFile); // the remove's first step: the dir is now empty
+      published = publishSuccessor(lock, pid);
+    }
+    return orig(target, opts);
+  }) as never);
+  try {
+    withSyncLock(lock, () => {});
+  } finally {
+    undo();
+  }
+  assert.ok(published, "the waiter's publish landed during the release");
+  assert.equal(readLockPid(lock), pid, "the waiter's lock survives the release that raced it");
+});
+
+test("a stale break spares a successor that took the lock after the stale read", async () => {
+  // The same bug's other half: a waiter read a holder's pid, the holder released and exited
+  // (a one-shot CLI pause does), a successor published, and the waiter's dead-pid verdict then
+  // deleted the successor's live lock. Replayed by publishing the successor at the moment the
+  // waiter probes the dead pid. The successor must outlive the waiter's whole timeout, or its
+  // own pid would read dead and be broken fairly.
+  const successor = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"]);
+  const pid = await new Promise<number>((resolve) => successor.on("spawn", () => resolve(successor.pid!)));
+  const lock = path.join(tmpdir(), "break-window.lock");
+  fs.mkdirSync(lock);
+  fs.writeFileSync(path.join(lock, "pid"), "999999999"); // a holder that has since exited
+  const realKill = process.kill;
+  let swapped = false;
+  process.kill = ((target: number, signal?: string | number) => {
+    if (target === 999999999 && !swapped) {
+      swapped = true;
+      fs.rmSync(lock, { recursive: true, force: true }); // the dead holder's own release
+      publishSuccessor(lock, pid);
+    }
+    return realKill.call(process, target, signal);
+  }) as typeof process.kill;
+  let ran = false;
+  try {
+    assert.throws(() => withSyncLock(lock, () => {
+      ran = true;
+    }, 300), /timed out after 0\.3s waiting for lock/);
+  } finally {
+    process.kill = realKill;
+    successor.kill();
+  }
+  assert.ok(swapped, "the successor published between the stale read and the break");
+  assert.ok(!ran, "the waiter never entered while the successor held the lock");
+  assert.equal(readLockPid(lock), pid, "the successor's lock survives the stale break");
+  const leftovers = fs.readdirSync(path.dirname(lock)).filter((n) => n !== path.basename(lock));
+  assert.deepEqual(leftovers, [], "the moved-aside instance went back, leaving no remnant");
+});
