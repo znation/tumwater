@@ -157,26 +157,31 @@ function shownCommand(command: string, root: string): string {
   return truncate(cut.reduce((c, rt) => c.split(`${rt}/`).join(""), command), ORPHAN_COMMAND_MAX);
 }
 
-/** The detection half of checkOrphans, shared with killOrphans so the check and the kill cannot
- * disagree about the set. Exported so the always-on orphan alert feed (src/ui/alert-feeds.ts)
- * runs the exact same scan the doctor row reads — the alert and the row cannot drift on the
- * orphan set. */
-export async function findOrphans(root: string, probe: ProcessProbe): Promise<OrphanScan> {
-  const roots = rootSpellings(root);
-  let rows: ProcessRow[];
-  try {
-    rows = await probe.list();
-  } catch (err) {
-    return { error: errorMessage(err) };
-  }
-  const dirs = roots.map(worktreesDir);
-  // Never doctor itself, should it be run parentless from a worktree's build.
-  const parentless = rows.filter((r) => r.ppid === 1 && r.pid !== process.pid);
+/** Which rows of the table could be orphans at all: the parentless processes — reparented to
+ * PID 1 — excluding doctor itself, should it be run parentless from a worktree's build. */
+function gatherParentless(rows: ProcessRow[]): ProcessRow[] {
+  return rows.filter((r) => r.ppid === 1 && r.pid !== process.pid);
+}
+
+/** Which of the parentless processes a cwd or a run mark still has to settle: those whose argv
+ * names an absolute path under this repo's dirs are this repo's by argv (`byArgv`); the rest
+ * this user can inspect — the same uid (or any, for root) — go on the `ask` list. */
+function settleByArgv(parentless: ProcessRow[], dirs: string[]): { byArgv: Set<number>; ask: number[] } {
   const byArgv = new Set(parentless.filter((r) => argvNamesDir(r.command, dirs)).map((r) => r.pid));
   const uid = process.getuid?.();
   const ask = parentless
     .filter((r) => !byArgv.has(r.pid) && (uid === undefined || uid === 0 || r.uid === uid))
     .map((r) => r.pid);
+  return { byArgv, ask };
+}
+
+/** The evidence a scan gathers for the unsettled parentless set: each one's cwd and run marks,
+ * best-effort per the probe contract. An unreadable cwd set records `cwdProblem` (argv still
+ * carries the check alone); unreadable marks stay empty (`marks`) and argv + cwd cover it. */
+async function askCwdsAndMarks(
+  ask: number[],
+  probe: ProcessProbe
+): Promise<{ cwds: Map<number, string>; cwdProblem: string | null; marks: Map<number, string[]> }> {
   let cwds = new Map<number, string>();
   let cwdProblem: string | null = null;
   if (ask.length > 0) {
@@ -194,17 +199,25 @@ export async function findOrphans(root: string, probe: ProcessProbe): Promise<Or
       // Best-effort per the probe contract: argv and cwd still carry the check alone.
     }
   }
-  const ours = rootToken(root);
+  return { cwds, cwdProblem, marks };
+}
+
+/** Which dead-marked parentless processes are this checkout's: a process whose every mark names
+ * a dead harness, and is this repo's only when no mark names a different root — a token that is
+ * present and not `ours` proves another checkout's harness stamped it, and signalling it would
+ * break the "never signal a process not attributable" rule (BUGS.md, "Reap the doctor's orphans,
+ * part 1/3"). A rootless mark keeps today's report — whatever started it, nothing else reaps it. */
+function deadMarkedBy(
+  marks: Map<number, string[]>,
+  parentless: ProcessRow[],
+  byArgv: Set<number>,
+  ours: string | null
+): Set<number> {
   const byMark = new Set<number>();
   for (const r of parentless) {
     if (byArgv.has(r.pid)) continue;
     const rMarks = marks.get(r.pid) ?? [];
     const verdicts = rMarks.map(harnessGone);
-    // A dead-marked process is this checkout's only when no mark names a different root: a
-    // token that is present and not `ours` proves another checkout's harness stamped that
-    // process, and signalling it would break the "never signal a process not attributable"
-    // rule (BUGS.md, "Reap the doctor's orphans, part 1/3"). A rootless mark keeps today's
-    // report — whatever started it, nothing else will reap it.
     if (
       verdicts.length > 0 &&
       verdicts.every((v) => v === true) &&
@@ -215,20 +228,44 @@ export async function findOrphans(root: string, probe: ProcessProbe): Promise<Or
     )
       byMark.add(r.pid);
   }
-  const orphans = parentless.filter((r) => {
+  return byMark;
+}
+
+/** Which parentless processes are this repo's orphans once all evidence is in: argv-settled or
+ * dead-mark-settled, or whose cwd lies under this repo's dirs, or whose relative argv names a
+ * worktree this repo owns (relativeArgvIsOurs) — resolved against the cwd where that can be. */
+function orphansFrom(
+  parentless: ProcessRow[],
+  byArgv: Set<number>,
+  byMark: Set<number>,
+  cwds: Map<number, string>,
+  dirs: string[],
+  root: string
+): ProcessRow[] {
+  return parentless.filter((r) => {
     if (byArgv.has(r.pid) || byMark.has(r.pid)) return true;
     const cwd = cwds.get(r.pid);
     return (cwd !== undefined && isUnder(cwd, dirs)) || relativeArgvIsOurs(r.command, cwd, root, dirs);
   });
-  // Spare a parentless tree a LIVE run still owns: read the marks of an orphan's descendants
-  // as well as its root, and drop the whole tree when any of them names a live harness. A
-  // tool call's own `( … ) &` subshell is reparented to PID 1 the moment its bash exits, and
-  // macOS hides /bin/bash's environment, so the root's own mark is unreadable — and its argv
-  // settles it before byMark ever reads a mark — while the children (node, sleep, npm) carry
-  // the run's live mark. That run's end-of-run sweep kills the marked descendants when the run
-  // folds and the subshell then exits, so this tree is not a leak (BUGS.md, ci run 62). A tree
-  // with only dead, or no readable, marks stays listed and reaped as today. The reap builds on
-  // this set, so sparing an orphan spares its whole tree from killTrees.
+}
+
+/** The live-run-tree spare that turns the candidate orphans into the final `OrphanScan`: read
+ * the marks of an orphan's descendants as well as its root, and drop the whole tree when any of
+ * them names a live harness. A tool call's own `( … ) &` subshell is reparented to PID 1 the
+ * moment its bash exits, and macOS hides /bin/bash's environment, so the root's own mark is
+ * unreadable — and its argv settles it before byMark ever reads a mark — while the children
+ * (node, sleep, npm) carry the run's live mark. That run's end-of-run sweep kills the marked
+ * descendants when the run folds and the subshell then exits, so this tree is not a leak
+ * (BUGS.md, ci run 62). A tree with only dead, or no readable, marks stays listed and reaped as
+ * today. The reap builds on this set, so sparing an orphan spares its whole tree from killTrees. */
+async function spareLiveOwned(
+  orphans: ProcessRow[],
+  rows: ProcessRow[],
+  marks: Map<number, string[]>,
+  ask: number[],
+  probe: ProcessProbe,
+  cwdProblem: string | null
+): Promise<OrphanScan> {
   const children = childrenOf(rows);
   const descOfOrphans = distinctOrdered(orphans.flatMap((r) => descendantPids(children, r.pid)));
   const unasked = descOfOrphans.filter((p) => !ask.includes(p));
@@ -251,6 +288,28 @@ export async function findOrphans(root: string, probe: ProcessProbe): Promise<Or
       for (const p of [r.pid, ...descendantPids(children, r.pid)]) spare.add(p);
   const liveOwned = orphans.filter((r) => spare.has(r.pid));
   return { rows, orphans: orphans.filter((r) => !spare.has(r.pid)), marks: allMarks, cwdProblem, liveOwned };
+}
+
+/** The detection half of checkOrphans, shared with killOrphans so the check and the kill cannot
+ * disagree about the set. Exported so the always-on orphan alert feed (src/ui/alert-feeds.ts)
+ * runs the exact same scan the doctor row reads — the alert and the row cannot drift on the
+ * orphan set. */
+export async function findOrphans(root: string, probe: ProcessProbe): Promise<OrphanScan> {
+  const roots = rootSpellings(root);
+  let rows: ProcessRow[];
+  try {
+    rows = await probe.list();
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  const dirs = roots.map(worktreesDir);
+  const parentless = gatherParentless(rows);
+  const { byArgv, ask } = settleByArgv(parentless, dirs);
+  const { cwds, cwdProblem, marks } = await askCwdsAndMarks(ask, probe);
+  const ours = rootToken(root);
+  const byMark = deadMarkedBy(marks, parentless, byArgv, ours);
+  const orphans = orphansFrom(parentless, byArgv, byMark, cwds, dirs, root);
+  return spareLiveOwned(orphans, rows, marks, ask, probe, cwdProblem);
 }
 
 /** Orphaned worktree processes — the detector half of the grandchild-leak fix (BUGS.md
