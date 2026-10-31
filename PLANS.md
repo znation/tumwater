@@ -174,4 +174,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/runner-recovery.test.ts / test/runner-red-main.test.ts: the recovered-`main_red` cases go; the surviving recovery cases stay.
 - test/run-apply.test.ts / test/run-finalize.test.ts / test/merge-pipeline-2.test.ts / test/merger.test.ts: drop the `main_red` assertions; the surviving cases stay.
 
+_None yet._
+
 ## Done
