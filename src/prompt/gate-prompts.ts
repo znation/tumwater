@@ -90,19 +90,18 @@ function listsHunks(files: readonly (string | ConflictedFile)[]): boolean {
  * the harness will run (told only to keep the tests passing, the 2026-10-04 resolver guessed
  * `npx vitest run` in a node:test repo, BUGS.md 2026-10-05), and the rules tell it not to run
  * that check itself: the merge path does not re-run the build check (a merge is a rebase and a
- * fast-forward since part 4l/3), and the resolver runs inside the merge slot, so its own copy of the run held
- * every queued merge. On 2026-10-12 the resolvers' own suite runs were 86% of their wall time
- * (951 of 1,104 s over seven runs; one spent 6 min re-testing a tree identical to main).
- * Undefined keeps the generic sentence and adds no such rule: with no declared check the
- * harness verifies nothing. `intent` — this branch's own
- * commit message and the main commits that touched the conflicted files since the merge-base —
- * shows the resolver what both sides meant instead of only the markers; omitted, the prompt is
- * unchanged. A file given with its conflict hunks' line ranges (conflictedFileHunks) is listed
- * with them, and the rules then send the resolver to those ranges: told only to grep the
- * markers, the 2026-10-17..19 resolvers still opened the conflicted PLANS.md at line 1, one
- * tool-output-capped read after another, while every queued merge waited. A plain path lists
- * the file alone. `today` pins the date line (prompt.ts's dateLine) for tests; omitted, it is
- * the local day. */
+ * fast-forward since part 4l/3), and the resolver runs inside the merge slot, so its own copy of
+ * the run held every queued merge. On 2026-10-12 the resolvers' own suite runs were 86% of their
+ * wall time (951 of 1,104 s over seven runs; one spent 6 min re-testing a tree identical to
+ * main). Undefined keeps the generic sentence and adds no such rule: with no declared check the
+ * harness verifies nothing. `intent` — this branch's own commit message and the main commits
+ * that touched the conflicted files since the merge-base — shows the resolver what both sides
+ * meant instead of only the markers; omitted, the prompt is unchanged. A file given with its
+ * conflict hunks' line ranges (conflictedFileHunks) is listed with them, and the rules then send
+ * the resolver to those ranges: told only to grep the markers, the 2026-10-17..19 resolvers still
+ * opened the conflicted PLANS.md at line 1, one tool-output-capped read after another, while
+ * every queued merge waited. A plain path lists the file alone. `today` pins the date line
+ * (prompt.ts's dateLine) for tests; omitted, it is the local day. */
 export function buildConflictPrompt(
   roleId: string,
   files: readonly (string | ConflictedFile)[],

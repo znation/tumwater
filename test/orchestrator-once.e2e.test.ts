@@ -385,20 +385,22 @@ test("once: a merge_blocked change is re-queued by the pipeline and merges with 
   const repo = await makeFastRepo("once requeue test", ["clean"]);
   const counter = path.join(tmpdir("requeue-count-"), "n");
   const config = loadConfig(repo);
-  // Invocation 1 is the review gate's pre-check, 2 the in-lock merge check, and 3 the merge
-  // check's one immediate flake re-run — the first attempt's three invocations. The gate's own
-  // pre-check moves main (once, via `bump`), so the merge's rebase is not a no-op and the
-  // in-lock merge check runs. It is red twice (2 and 3), so the immediate re-run does not pass
-  // the red as a flake and merge; the change is re-queued as merge_blocked. The re-queued
-  // attempt's pre-check (4) is green. With the pre-merge gate's reviewer gone (part 3h/3), the
-  // check command itself stages the main movement that used to ride the reviewer's VERDICT, so
-  // the rebase is still not a no-op and the in-lock merge check still runs.
-  const bump =
-    `[ -f '${counter}.bumped' ] || { touch '${counter}.bumped'; ` +
+  // A merge is a rebase and a fast-forward with no in-lock check (part 4l/3), so what still
+  // blocks one is the primary checkout: an untracked file there that the fast-forward would
+  // overwrite (primaryCheckoutBlockers). The check command is the gate's pre-check, and every
+  // invocation is green. Invocation 1, the first attempt's, plants an untracked hello.txt (the
+  // file the change adds) in the primary checkout, so that attempt is merge_blocked and the
+  // pipeline re-queues the kept pin. It also moves main (`bump`): the re-queued attempt's rebase
+  // then yields a new head, which the gate cannot approve on lastApprovedHead, so its pre-check
+  // runs again. That invocation (2) removes the planted file, and the retry merges.
+  const plantAndBump =
+    `echo stray > '${repo}/hello.txt'; ` +
     `echo bump > '${repo}/bump.txt'; git -C '${repo}' add bump.txt; ` +
-    `git -C '${repo}' -c user.name=t -c user.email=t@t commit -q -m bump; }`;
+    `git -C '${repo}' -c user.name=t -c user.email=t@t commit -q -m bump`;
   config.check = {
-    command: `${bump}\nn=$(cat '${counter}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${counter}'; [ $n -lt 2 ] || [ $n -gt 3 ]`,
+    command:
+      `n=$(cat '${counter}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${counter}'\n` +
+      `if [ $n -eq 1 ]; then ${plantAndBump}; else rm -f '${repo}/hello.txt'; fi`,
   };
   saveConfig(repo, config);
   await withPi(
@@ -412,6 +414,11 @@ test("once: a merge_blocked change is re-queued by the pipeline and merges with 
       const types = events.map((e) => e.type);
       const failed = events.findIndex((e) => e.type === "merge_failed");
       assert.equal(events[failed]!.result, "merge_blocked", "the first merge attempt was blocked");
+      assert.ok(
+        events.slice(0, failed).some((e) =>
+          e.type === "warning" && /^merge blocked: .*untracked: hello\.txt/.test(String(e.message))),
+        "the file planted in the primary checkout is what blocked it",
+      );
       const done = events.findIndex((e) => e.type === "merge_done");
       assert.ok(done > failed, "the change merged after the blocked attempt");
       assert.equal(

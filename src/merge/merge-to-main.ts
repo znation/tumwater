@@ -29,8 +29,8 @@ import type { RunResult } from "../run/run-outcome.js";
 import type { RunsPi } from "../runner/runner-pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 
-/** Merge a change on main: rebase onto main (keeping history linear), re-verify the rebased tree
- * with the project's declared check when main moved under it, fast-forward, and — when the rebase
+/** Merge a change on main: rebase onto main (keeping history linear), fast-forward with no
+ * in-lock check (part 4l/3: the main watch checks the tip after it lands), and — when the rebase
  * conflicts — one pi-driven resolution attempt before giving up. The merge is
  * worktree-parameterized: whatever `wt` holds at its HEAD after the rebase is what merges — a role
  * branch (whose ref tracks its own tip through the rebase) or a detached merger worktree pinned at
