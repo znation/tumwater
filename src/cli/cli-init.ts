@@ -38,8 +38,12 @@ function printTemplateCatalog(): void {
 function printInitIntro(result: Awaited<ReturnType<typeof initProject>>): void {
   if (result.template !== "blank") say(`template: ${result.template}`);
   if (result.adopted) {
+    // "an existing repo" claims a repo init did not create itself, so it is only true when the
+    // repo pre-existed; when init seeds the repo in the same run, the thing adopted is the
+    // README.md, not a repo.
+    const what = result.repoInitialized ? "the existing README.md" : "an existing repo";
     say(
-      `${result.dryRun ? "would adopt" : "adopting"} an existing repo: the project brief goes in TUMWATER.md and README.md is left untouched`,
+      `${result.dryRun ? "would adopt" : "adopting"} ${what}: the project brief goes in TUMWATER.md and README.md is left untouched`,
     );
   }
 }

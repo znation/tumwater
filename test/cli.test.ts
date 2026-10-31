@@ -194,6 +194,33 @@ test("init --dry-run prints the file lists and exits 0 without writing; --adopt 
   assert.equal(readBriefText(repo), "Adopt me.");
 });
 
+test("init on a non-repo with a README.md adopts the README without claiming an existing repo", async () => {
+  // A README.md without the tumwater markers drives the adoption path (the brief goes to
+  // TUMWATER.md and README.md is left untouched) even when the directory is not a git repo
+  // yet — but init then seeds the repo itself, so the adoption banner must not claim an
+  // "existing repo" in the same run that says "initialized a new git repository".
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "README.md"), "# theirs\n");
+  const r = await cli(dir, "init", "Build a thing.");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /initialized a new git repository on branch main/);
+  assert.match(r.stdout, /the project brief goes in TUMWATER\.md and README\.md is left untouched/);
+  assert.doesNotMatch(r.stdout, /existing repo/);
+  assert.equal(fs.readFileSync(path.join(dir, "README.md"), "utf8"), "# theirs\n");
+  assert.ok(fs.existsSync(path.join(dir, "TUMWATER.md")));
+  assert.ok(fs.existsSync(path.join(dir, ".git")));
+  assert.equal(readBriefText(dir), "Build a thing.");
+
+  // The dry run of the same case makes the same pair of contradictory lines.
+  const dryDir = tmpdir();
+  fs.writeFileSync(path.join(dryDir, "README.md"), "# theirs\n");
+  const dry = await cli(dryDir, "init", "Build a thing.", "--dry-run");
+  assert.equal(dry.code, 0, dry.stderr);
+  assert.match(dry.stdout, /would initialize a new git repository on branch main/);
+  assert.doesNotMatch(dry.stdout, /existing repo/);
+  assert.deepEqual(fs.readdirSync(dryDir), ["README.md"], "the dry run wrote nothing");
+});
+
 test("init --dry-run in a fresh directory previews the repo seeding and writes nothing", async () => {
   // The adopt dry run above covers an existing repo; this is the other half of the preview —
   // a bare directory, where the run would `git init` — and it is the branch the operator sees

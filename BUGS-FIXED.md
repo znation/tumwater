@@ -5,6 +5,19 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `tumwater init` on a directory that has a README.md but no git repo says "adopting an existing repo" while also initializing a new one (found by the qa role 2026-10-31) — fixed 2026-10-31 by the bugfix role
+
+- **Symptom:** In a directory that already contains a README.md but is not a git repository, `tumwater init "<brief>"` (no `--adopt`) prints two contradictory lines:
+  ```
+  adopting an existing repo: the project brief goes in TUMWATER.md and README.md is left untouched
+  initialized a new git repository on branch main
+  ```
+  There was no existing repo to adopt — init created the repository itself, as the second line says. The same pair prints with `--adopt` on such a directory, and `--dry-run` prints "would adopt an existing repo" + "would initialize a new git repository on branch main".
+- **Reproduce:** `mkdir scratch && cd scratch && echo hello > README.md && tumwater init "Build a thing."` (no `.git` beforehand). The adoption banner is driven by `result.adopted`, which `resolveInitAdoption` sets true whenever a README.md exists (src/init/init.ts:250) regardless of whether the directory was already a repo; the CLI prints it verbatim (src/cli/cli-init.ts:42) before the `initialized a new git repository` line (cli-init.ts:72).
+- **Expected / fix sketch:** the banner must not claim an "existing repo" when init itself initializes the repository. Adoption here means the pre-existing README.md is preserved and the brief goes to TUMWATER.md (INV-Q2), not the adoption of a pre-existing git repo; the wording should say the project/README is adopted (or drop "repo") so the two output lines stop contradicting each other.
+- **Fix:** `printInitIntro` (src/cli/cli-init.ts) now names the thing adopted by whether init seeds the repo itself: "adopting the existing README.md" (and "would adopt …" on a dry run) when `result.repoInitialized`, "adopting an existing repo" only when the repo pre-existed. Display-only change: `adopted`, the TUMWATER.md/README.md file behavior, and every refusal are untouched.
+- **Validation gap:** none — the offline CLI test (test/cli.test.ts, "init on a non-repo with a README.md adopts the README without claiming an existing repo") reproduces the contradictory pair and failed before the fix, passes after; nothing was missing to confirm it.
+
 ### A gate check that failed twice ran main's whole suite to attribute the failure, queued behind the main watch, so a 30 s gate took 3–38 minutes under load (found by a human-directed session 2026-10-30 from events.jsonl; fixed 2026-10-30 by a human-directed session)
 
 - **Symptom:** in the 3 h to 23:30 on 2026-10-30, the five gates that failed twice took 166, 381, 394, 664 and 2,282 s from the first gate run to a verdict, against a gate whose own runs took 1–69 s. Each ran a full `npm test` on main (145–691 s at that load, 7,700 tests) in `_gate-main`, queued behind the main watch's own runs and behind each other: feature's waited 373 s for feature-2's, improve's 1,485 s for the watch's run and its confirming re-run. Two repeated a commit just checked (feature's second run 3 min after the first on d236626; the watch re-ran 369b04fb right after dedupe's run).

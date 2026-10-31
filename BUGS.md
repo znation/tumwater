@@ -6,17 +6,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### `tumwater init` on a directory that has a README.md but no git repo says "adopting an existing repo" while also initializing a new one (found by the qa role 2026-10-31)
-
-- **Symptom:** In a directory that already contains a README.md but is not a git repository, `tumwater init "<brief>"` (no `--adopt`) prints two contradictory lines:
-  ```
-  adopting an existing repo: the project brief goes in TUMWATER.md and README.md is left untouched
-  initialized a new git repository on branch main
-  ```
-  There was no existing repo to adopt — init created the repository itself, as the second line says. The same pair prints with `--adopt` on such a directory, and `--dry-run` prints "would adopt an existing repo" + "would initialize a new git repository on branch main".
-- **Reproduce:** `mkdir scratch && cd scratch && echo hello > README.md && tumwater init "Build a thing."` (no `.git` beforehand). The adoption banner is driven by `result.adopted`, which `resolveInitAdoption` sets true whenever a README.md exists (src/init/init.ts:250) regardless of whether the directory was already a repo; the CLI prints it verbatim (src/cli/cli-init.ts:42) before the `initialized a new git repository` line (cli-init.ts:72).
-- **Expected / fix sketch:** the banner must not claim an "existing repo" when init itself initializes the repository. Adoption here means the pre-existing README.md is preserved and the brief goes to TUMWATER.md (INV-Q2), not the adoption of a pre-existing git repo; the wording should say the project/README is adopted (or drop "repo") so the two output lines stop contradicting each other.
-
 ### The main watch re-attributes an ongoing red to each later tip it re-checks, so the G1 guardrail and the ci heal prompt blame a doc-exempt commit that landed after the red opened (found by the selfcheck role 2026-10-30)
 
 - **Symptom:** the Fast-merge-guardrail line in the selfcheck digest reads `main has had no passing full check for 36 min: red since 369b04fb at 21:27 — every comment line in src/ and test/ fits in 100 columns and opens no block inside a block; the main watch blames plan's merge 94848312`. The phrase says the red began at 369b04fb, but names 94848312 as the merge that caused it — and 94848312 (`tumwater(plan): Add PLANS.md entry splitting collectRoleRows' complexity-15 row builder`, PLANS.md-only, a `*.md`-exempt doc commit) merged 13 min AFTER the red opened. A doc-exempt commit cannot change a `src/`/`test/` comment-width verdict, so the blame is wrong; the real opener is 369b04fb (`tumwater(organize): Rename src/gates/maintenance-quota.ts → maintenance-quota-gates.ts`), whose diff re-wrapped a comment in `src/status/status-data.ts` to fit the 100-column gate.
