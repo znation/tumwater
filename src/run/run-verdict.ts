@@ -214,7 +214,7 @@ function timeoutArm(ctx: RunVerdictContext): RunOutcome | undefined {
 }
 
 /** The subscription-window-rejected decision: a hold, arming the resume so the kept worktree
- * and session survive the wait until `resetsAt` (plans/agent-backends.md §8, part 6c/6e). */
+ * and session survive the wait until `resetsAt` (plans/agent-backends.md §8, parts 6c/7 and 6e/7). */
 function subscriptionRejectedArm(ctx: RunVerdictContext): RunOutcome | undefined {
   const { pi, state: s } = ctx;
   // A subscription claude run the usage window rejected is a hold, not a run failure: the
