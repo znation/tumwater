@@ -225,6 +225,42 @@ test("a codex login using an API key refuses the gate with the fix named", async
   });
 });
 
+test("an invalid branch name is refused as a name, not read as a missing branch", async () => {
+  // check-ref-format --branch refuses shapes that can never hold a branch (a space, a
+  // .lock suffix) — branchExists reads each as a merely-missing branch, whose message
+  // ("branch bad name does not exist (branches: main)") sends the operator hunting for a
+  // typo when the name's shape is the problem. The gate applies the same preflight init.ts
+  // applies before `git init -b`, so both entry points refuse with the same wording; the
+  // --branch flag and the configured baseBranch name themselves in their messages.
+  const repo = makeRepo();
+  await initProject(repo, "startup gate invalid branch name");
+  await withPi("exit 0", async () => {
+    assert.match(
+      String(await runStartupProblem(repo, "bad name")),
+      /--branch "bad name" is not a valid git branch name/,
+    );
+    const file = path.join(repo, "tumwater.json");
+    const saved = fs.readFileSync(file, "utf8");
+    const cfg = readJson(file) as Record<string, unknown>;
+    cfg.baseBranch = "main.lock";
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    try {
+      assert.match(
+        String(await runStartupProblem(repo, null)),
+        /baseBranch "main\.lock" is not a valid git branch name/,
+      );
+    } finally {
+      fs.writeFileSync(file, saved);
+    }
+    // A valid name that simply has no branch keeps the missing-branch verdict: the
+    // preflight must not shadow branchExists's "(branches: …)" list.
+    assert.equal(
+      await runStartupProblem(repo, "release/2.0"),
+      "branch release/2.0 does not exist (branches: main)",
+    );
+  });
+});
+
 test("a named branch in a repo with no local branches reports an empty branch list", async () => {
   // The empty-list half of resolveMainBranch's verdict: commits can exist with no branch
   // holding any (everything detached), and then the only honest error lists no alternatives.

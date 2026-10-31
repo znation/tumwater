@@ -4,7 +4,7 @@ import { loadConfigSafe } from "../config/config.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { findOnPath } from "../files/files.js";
-import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
+import { GIT_MISSING_MESSAGE, gitTry } from "../git/git-run.js";
 import { branchesPhrase, branchExists, currentBranch, hasCommits, isGitRepo } from "../git/git.js";
 import {
   DETACHED_HEAD_MESSAGE,
@@ -291,6 +291,25 @@ async function resolveMainBranch(
 ): Promise<{ mainBranch: string } | { problem: string }> {
   const explicit = branchArg ?? config.baseBranch ?? null;
   if (explicit !== null) {
+    // Validate the name with git's own rule before the existence check: check-ref-format
+    // --branch refuses spaces, "..", "@{", and .lock-suffixed names — shapes that can never
+    // hold a branch — and branchExists would read each of them as a merely-missing branch,
+    // whose message ("branch bad name does not exist (branches: main)") sends the operator
+    // hunting for a typo when the name's shape is the problem. The same preflight init.ts
+    // applies to --branch before `git init -b` (which would abort after creating .git), so
+    // both entry points refuse an invalid name with the same wording.
+    if ((await gitTry(root, "check-ref-format", "--branch", explicit)) === null) {
+      const namedBy =
+        branchArg !== null
+          ? `--branch ${JSON.stringify(explicit)}`
+          : `baseBranch ${JSON.stringify(explicit)}`;
+      return {
+        problem:
+          `${namedBy} is not a valid git branch name — pick a name like main, trunk, or ` +
+          `release/2.0 (git's rules: no spaces, colons, or ~^?*[ characters; no ` +
+          `leading/trailing slash or double slash; not a dotted or .lock-suffixed component)`,
+      };
+    }
     if (!(await branchExists(root, explicit))) {
       const existing = await branchesPhrase(root);
       return { problem: `branch ${explicit} does not exist (branches: ${existing})` };
