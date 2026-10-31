@@ -95,6 +95,23 @@ test("a change kept for the watch is re-queued as timed out once MAIN_RED_VERDIC
   assert.equal(state.mainRedRetry, undefined);
 });
 
+test("a kept record without a waitingSince starts its wait on the first uncovered poll", async () => {
+  const { root, base, state } = await keptForWatch();
+  // A record from before the waitingSince field: it names the commit it waits on but has no
+  // start time (runner-state-load keeps such a record), so its wait cannot have elapsed yet.
+  delete state.mainRedRetry!.waitingSince;
+  const t0 = 1_000_000;
+  await requeueMainRedPin(root, "main", state, base, t0);
+  assert.equal(queuedMerges(root).length, 0, "no verdict covers the base: nothing is queued yet");
+  assert.equal(state.mainRedRetry?.waitingSince, t0, "the first uncovered poll starts the wait");
+  // A later poll before the wait has elapsed still holds the pin.
+  await requeueMainRedPin(root, "main", state, base, t0 + MAIN_RED_VERDICT_WAIT_MS - 1);
+  assert.equal(queuedMerges(root).length, 0, "the wait has not elapsed");
+  await requeueMainRedPin(root, "main", state, base, t0 + MAIN_RED_VERDICT_WAIT_MS);
+  assert.equal(queuedMerges(root)[0]?.watchWait, "timed_out", "after the wait it re-queues as timed out");
+  assert.equal(state.mainRedRetry, undefined);
+});
+
 test("a later re-queue drops the entry's watchWait", async () => {
   const root = makeRepo();
   const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, "a.txt"), "a\n"), "add a");
