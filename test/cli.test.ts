@@ -243,6 +243,30 @@ test("init --dry-run in a fresh directory previews the repo seeding and writes n
   assert.deepEqual(fs.readdirSync(named), []);
 });
 
+test("init on a README.md directory with no git repo does not claim an existing repo", async () => {
+  // Regression for BUGS.md: a README.md without a git repo is adopted for its README (the brief
+  // goes to TUMWATER.md), but init also seeds a fresh git repo — so the banner must not call the
+  // repo "existing" while the next line says init just created it.
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "README.md"), "# mine\n");
+
+  // Dry run: the preview pairs the adoption line with "would initialize a new git repository".
+  const dry = await cli(dir, "init", "Build a thing.", "--dry-run");
+  assert.equal(dry.code, 0, dry.stderr);
+  assert.match(dry.stdout, /would initialize a new git repository on branch main/);
+  assert.match(dry.stdout, /TUMWATER\.md and README\.md is left untouched/);
+  assert.doesNotMatch(dry.stdout, /would adopt an existing repo/);
+
+  // Real run: same contradiction, real tenses.
+  const r = await cli(dir, "init", "Build a thing.");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /initialized a new git repository on branch main/);
+  assert.match(r.stdout, /TUMWATER\.md and README\.md is left untouched/);
+  assert.doesNotMatch(r.stdout, /adopting an existing repo/);
+  assert.equal(fs.readFileSync(path.join(dir, "README.md"), "utf8"), "# mine\n");
+  assert.equal(readBriefText(dir), "Build a thing.");
+});
+
 test("init --template names the seeded template in its report and creates its starter dirs", async () => {
   // The catalog ids are pinned by init-templates.test.ts; this is the CLI printer's half — the
   // `template: <id>` line only cmdInit prints, with `--template` reaching it through parseInitArgs
