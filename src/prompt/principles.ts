@@ -1,5 +1,6 @@
 import path from "node:path";
 import { readRegularTextOrNull } from "../files/files.js";
+import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { truncateWithNote } from "../text/text.js";
 
 /** Cap on the PRINCIPLES.md text injected into every prompt, so a runaway file cannot blow up
@@ -17,14 +18,32 @@ export function readPrinciples(root: string): string {
   return truncateWithNote(readRegularTextOrNull(file)?.trim() ?? "", PRINCIPLES_MAX_CHARS, "PRINCIPLES.md");
 }
 
+// Per-root stat cache (stat-cache.cachedTextByStat): the TUI and GUI call this predicate on
+// every per-second snapshot() poll, but PRINCIPLES.md changes only on the rare
+// director/steward edit, a fresh init, or a clone — so an unchanged file serves each poll
+// from one stat instead of re-listating and re-reading it whole. Any write invalidates
+// through the same dev/ino/mtime/size freshness check; keyed by root so distinct repos never
+// collide. Bounded inside cachedTextByStat.
+const principlesOverCapCache = new Map<string, StatKeyedValue<boolean>>();
+
 /** True when PRINCIPLES.md's trimmed text exceeds the prompt cap, so every run's <principles>
  * block carries only its head plus a truncation marker — the always-on amber twin of the doctor
  * `principles` row's over-cap warn, surfaced on `tumwater status`, the dashboard and the TUI
  * without a doctor run. Uses the doctor row's own predicate (raw.trim().length >
  * PRINCIPLES_MAX_CHARS), so the alert and the doctor row cannot disagree. Missing, unreadable
  * (the directory-in-place case readPrinciples degrades to "") and at-or-under-cap files are all
- * false. */
+ * false. The verdict is stat-cached per root (never per call) so the per-second snapshot polls
+ * do not re-read a file that barely changes; readPrinciples stays uncached, since a run must
+ * always see the file's current text. */
 export function principlesBlockOverCap(root: string): boolean {
-  const raw = readRegularTextOrNull(path.join(root, "PRINCIPLES.md"));
-  return raw !== null && raw.trim().length > PRINCIPLES_MAX_CHARS;
+  const file = path.join(root, "PRINCIPLES.md");
+  return (
+    cachedTextByStat(
+      principlesOverCapCache,
+      file,
+      file,
+      (raw) => raw.trim().length > PRINCIPLES_MAX_CHARS,
+      (overCap) => overCap,
+    ) ?? false
+  );
 }
