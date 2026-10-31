@@ -481,12 +481,13 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
   const scope = clientScope<{
     budgetCardHtml(b: object, blocks?: object[], only?: boolean): string;
     windowLinesHtml(blocks: object[], only?: boolean): string;
+    renderBudgetBadge(d: object): void;
     parseBudgetField(raw: string): { ok: true; value: number } | { ok: false; error: string };
     saveBudget(): Promise<void>;
     pauseControlHtml(d: object): string;
     setTeamPause(paused: boolean, forSeconds?: number, reason?: string): Promise<void>;
     stopControlHtml(d: object | null): string;
-  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control", "stop-control"], ["budgetCardHtml", "parseBudgetField", "saveBudget", "pauseControlHtml", "setTeamPause", "windowLinesHtml", "stopControlHtml"], {
+  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control", "stop-control"], ["budgetCardHtml", "parseBudgetField", "saveBudget", "pauseControlHtml", "setTeamPause", "windowLinesHtml", "renderBudgetBadge", "stopControlHtml"], {
     document: { addEventListener: () => {}, createElement: () => ({ setAttribute() {}, remove() {} }) },
     $: (id: string) => els[id] ?? null,
     paintPanel: (id: string, html: string) => { panels[id] = html; return true; },
@@ -550,7 +551,6 @@ test("the spend card renders the subscription window in place of or beside the d
     label: "Claude",
     windows: [{ type: "five_hour", status: "allowed_warning", resetsAt, utilization: 0.64 }],
     primary: { type: "five_hour", status: "allowed_warning", resetsAt, utilization: 0.64 },
-    heldUntil: null,
   };
   const only = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false, fallback: null }, [block], true);
   assert.doesNotMatch(only, /id='budgetbadge'/, "a subscription-only team has no cap editor");
@@ -566,19 +566,20 @@ test("the spend card renders the subscription window in place of or beside the d
   assert.match(mixed, /\$4\.09 <small>of \$15<\/small>/);
   assert.match(mixed, /Claude 5h · 64% · resets in 4h 12m/);
 
-  const heldAt = new Date(2026, 9, 10, 14, 30).getTime();
+  // No window holds or moves a seam (Subtract part 5u/6): a rejected window reads red and
+  // names its reset, never a "jobs wait" claim.
   const rejected = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, [{
     backend: "claude",
     label: "Claude",
-    windows: [{ type: "five_hour", status: "rejected", heldAt, utilization: 1 }],
-    primary: { type: "five_hour", status: "rejected", heldAt, utilization: 1 },
-    heldUntil: heldAt,
+    windows: [{ type: "five_hour", status: "rejected", resetsAt, utilization: 1 }],
+    primary: { type: "five_hour", status: "rejected", resetsAt, utilization: 1 },
   }], false);
-  assert.match(rejected, /class='side-card-value window-line t-red'>Claude 5h · 100% · Claude model jobs wait until 14:30/);
+  assert.match(rejected, /class='side-card-value window-line t-red'>Claude 5h · 100% · resets in 4h 12m/);
+  assert.doesNotMatch(rejected, /wait|held/);
 
   const meterOf = (utilization?: number) => {
     const w = { type: "five_hour", status: "allowed", resetsAt, ...(utilization === undefined ? {} : { utilization }) };
-    return scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false }, [{ backend: "claude", label: "Claude", windows: [w], primary: w, heldUntil: null }], true);
+    return scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false }, [{ backend: "claude", label: "Claude", windows: [w], primary: w }], true);
   };
   assert.match(meterOf(0.64), /Claude 5h · 64% · resets in 4h 12m[\s\S]*class='meter'><span style='width:64%'>/);
   assert.match(meterOf(1.2), /style='width:100%'/, "over-full clamps the bar");
@@ -587,17 +588,42 @@ test("the spend card renders the subscription window in place of or beside the d
   assert.doesNotMatch(unreported, /meter/, "no meter without a reported utilization");
 });
 
+// The regression a codex team saw after Subtract part 5x/6: the payload's window blocks never
+// reached the card, so a subscription team read "Free models". renderBudgetBadge must hand the
+// payload's subscriptionWindows/subscriptionOnly to the card.
+test("renderBudgetBadge shows a codex subscription's windows instead of Free models", () => {
+  const { scope, panels } = operatorScope();
+  const resetsAt = Date.now() + (2 * 3600 + 30) * 1000;
+  const five = { type: "five_hour", status: "allowed", resetsAt, utilization: 0.37 };
+  const week = { type: "seven_day", status: "allowed", resetsAt: resetsAt + 3 * 86_400_000, utilization: 0.12 };
+  const budget = { spentUsd: 0, capUsd: 0, capHitAt: null, free: true, fallback: null };
+  scope.renderBudgetBadge({
+    budget,
+    subscriptionWindows: [{ backend: "codex", label: "Codex", windows: [five, week], primary: five }],
+    subscriptionOnly: true,
+  });
+  const card = panels.budgetwrap ?? "";
+  assert.match(card, /subscription window/);
+  assert.match(card, /Codex 5h · 37% · resets in 2h 0m/);
+  assert.match(card, /Codex 7d · 12% · resets in 3d 2h/);
+  assert.doesNotMatch(card, /Free models/);
+
+  // A subscription account that has reported no window yet keeps the plain free card.
+  scope.renderBudgetBadge({ budget, subscriptionOnly: true });
+  assert.match(panels.budgetwrap ?? "", /Free models/);
+});
+
 test("the window card lists the shortest window first while primary stays the most constrained", () => {
   const { scope } = operatorScope();
   const week = { type: "seven_day", status: "allowed_warning", utilization: 0.9 };
   const five = { type: "five_hour", status: "allowed", utilization: 0.2 };
-  const html = scope.windowLinesHtml([{ backend: "claude", label: "Claude", windows: [week, five], primary: week, heldUntil: null }], true);
+  const html = scope.windowLinesHtml([{ backend: "claude", label: "Claude", windows: [week, five], primary: week }], true);
   assert.ok(html.includes("Claude 5h") && html.indexOf("Claude 5h") < html.indexOf("Claude 7d"), "5h renders above 7d");
 });
 
 test("the window card draws a meter from reported utilization and says when usage is unreported", () => {
   const { scope } = operatorScope();
-  const win = (w: object) => [{ backend: "claude", label: "Claude", windows: [w], primary: w, heldUntil: null }];
+  const win = (w: object) => [{ backend: "claude", label: "Claude", windows: [w], primary: w }];
   const reported = scope.windowLinesHtml(win({ type: "five_hour", status: "allowed", utilization: 0.64 }), true);
   assert.match(reported, /Claude 5h · 64%/);
   assert.match(reported, /class='meter'><span style='width:64%'>/);
@@ -614,12 +640,12 @@ test("the window card lists one line per subscription block under its own label"
   const week = { type: "seven_day", status: "allowed", utilization: 0.31 };
   const five = { type: "five_hour", status: "allowed", utilization: 0.6 };
   const html = scope.windowLinesHtml([
-    { backend: "claude", label: "Claude", windows: [five], primary: five, heldUntil: null },
-    { backend: "sub", label: "Sub", windows: [week], primary: week, heldUntil: null },
+    { backend: "claude", label: "Claude", windows: [five], primary: five },
+    { backend: "codex", label: "Codex", windows: [week], primary: week },
   ], true);
   assert.match(html, /Claude 5h/);
-  assert.match(html, /Sub 7d/);
-  assert.ok(html.indexOf("Claude 5h") < html.indexOf("Sub 7d"), "each block's line renders under its own label");
+  assert.match(html, /Codex 7d/);
+  assert.ok(html.indexOf("Claude 5h") < html.indexOf("Codex 7d"), "each block's line renders under its own label");
 });
 
 test("the cap editor refuses text the browser rejected instead of silently removing the cap", async () => {

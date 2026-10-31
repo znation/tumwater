@@ -184,7 +184,7 @@ function headerFields(root: string, snap: ReturnType<typeof snapshot>, now: numb
     // The header's daily-cost-budget badge preformatted through badges.ts's budgetBadge —
     // the same string the TUI/status table renders (n/a for an all-free team; `· no cap`
     // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
-    budgetBadge: budgetBadge(snap.budget, snap.chain),
+    budgetBadge: budgetBadge(snap.budget, snap.chain, snap.subscriptionWindows, snap.subscriptionOnly, now),
     // The disk floor (plans/disk-floor.md, part 4/4): the raw block is machine-readable for
     // `status --json`, and the header badge is preformatted through badges.ts's diskBadge —
     // the same string the TUI/status header renders. Omitted (not null) when no orchestrator
@@ -308,7 +308,7 @@ function inboxFields(snap: ReturnType<typeof snapshot>) {
 }
 
 /** Budget and pause/scheduling state (status-payload.ts's field-group split): the daily
- * budget, the fallback chain, operator/per-role pauses, the
+ * budget, its subscription windows, the fallback chain, operator/per-role pauses, the
  * cap/maintenance holds, scheduled wakes, quiet hours, and the quiet badge. */
 function budgetAndPauseFields(snap: ReturnType<typeof snapshot>) {
   return {
@@ -316,6 +316,14 @@ function budgetAndPauseFields(snap: ReturnType<typeof snapshot>) {
     // reported) — machine-readable for `status --json`; the display-ready header badge is
     // the preformatted `budgetBadge`.
     budget: snap.budget,
+    // The per-backend subscription-window blocks (part 3a/9), absent on a team with no
+    // subscription backend reporting a window — raw for `status --json` and the GUI's spend
+    // card, which lists every window of every block (the preformatted budgetBadge above folds
+    // only the most constrained one into the header).
+    ...(snap.subscriptionWindows && snap.subscriptionWindows.length > 0 ? { subscriptionWindows: snap.subscriptionWindows } : {}),
+    // The team-global free-ness answer (part 3a/9): the spend card reads it to decide whether
+    // the window lines stand alone (every seam free) or beside the daily spend.
+    subscriptionOnly: snap.subscriptionOnly,
     // Each tier's fallback step (fallback chain part 7c/7), raw for the GUI side card.
     ...(snap.chain ? { chain: snap.chain } : {}),
     // Operator pause (`tumwater pause` marker present): every idle role's phase reads

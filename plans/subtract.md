@@ -138,6 +138,15 @@ says so once, in doctor and in the report.
 What stroke 5 still deletes: the image probe, the per-provider caps, the model-failure fallback
 episode, and the subscription-window carve-outs (part 5d/6, which also drops the used-up-window
 trigger that moved a tier to its fallback before the cap).
+
+**Amended 2026-10-30 (user):** the subscription usage-window **display** stays. Part 5x/6
+removed it with the window carve-outs, and a codex team's spend card then read "Free models" for
+a subscription with 5-hour and weekly limits. It was restored: the per-backend
+`subscriptionWindows` blocks on the snapshot and `status --json`, the header badge fragment and
+its tone, the dashboard's spend card, and the role view's Billing window. It is display only.
+The carve-outs stay deleted: no window holds, moves or reserves a seam, and the display makes no
+"jobs wait" claim. A later part must not delete the display as a leftover of the window
+carve-outs.
 **Gate on measurement.**
 
 ### 6. Only a stopped team asks for a person

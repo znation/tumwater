@@ -18,6 +18,7 @@ import {
   type ClaudeAccount,
 } from "../src/agent/claude/claude-account.js";
 import { claudeAccountPath } from "../src/paths.js";
+import { windowEntries, windowLabel } from "../src/agent/subscription-account.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
@@ -87,7 +88,8 @@ test("readClaudeAccount: a reset window drops its overage flags, an open one kee
 
 test("readClaudeAccount drops a non-finite utilization instead of keeping Infinity", () => {
   // utilization is healed like the observedAt/resetsAt stamps: a hand-edited or torn file's
-  // `1e999` parses to Infinity, which would poison any consumer's utilization reading.
+  // `1e999` parses to Infinity, which would render as `Infinity%` and make the
+  // windowEntries comparator return NaN.
   const root = tmpdir();
   writeFileDeep(claudeAccountPath(root),
     '{"billing":"subscription","observedAt":1000,"windows":{"five_hour":{"status":"allowed","utilization":1e999,"observedAt":1000}}}',
@@ -288,6 +290,77 @@ test("seedClaudeAccount probes auth under a team config dir's CLAUDE_CONFIG_DIR"
       "the seed probed auth under the expanded team config dir",
     );
   });
+});
+
+test("windowEntries orders most constrained first by status severity", () => {
+  const entries = windowEntries(account({
+    windows: {
+      seven_day: { status: "allowed", observedAt: 1 },
+      reset: { status: "reset", observedAt: 1 },
+      five_hour: { status: "rejected", resetsAt: 9_000, observedAt: 1 },
+      warning: { status: "allowed_warning", observedAt: 1 },
+    },
+  }));
+  assert.deepEqual(
+    entries.map((e) => e.type),
+    ["five_hour", "warning", "seven_day", "reset"],
+    "rejected > allowed_warning > allowed > reset",
+  );
+  assert.equal(entries[0]?.resetsAt, 9_000, "the window entry keeps its own fields");
+});
+
+test("windowEntries breaks ties by utilization, then reset time, then type name", () => {
+  // Same status (allowed_warning), differing utilization: higher utilization first, and a
+  // missing reading sorts below any number.
+  const byUtil = windowEntries(account({
+    windows: {
+      low: { status: "allowed_warning", utilization: 0.4, observedAt: 1 },
+      high: { status: "allowed_warning", utilization: 0.9, observedAt: 1 },
+      none: { status: "allowed_warning", observedAt: 1 },
+    },
+  }));
+  assert.deepEqual(byUtil.map((e) => e.type), ["high", "low", "none"]);
+
+  // Same status and utilization: the earlier reset sorts first.
+  const byReset = windowEntries(account({
+    windows: {
+      later: { status: "rejected", utilization: 0.5, resetsAt: 9_000, observedAt: 1 },
+      earlier: { status: "rejected", utilization: 0.5, resetsAt: 8_000, observedAt: 1 },
+    },
+  }));
+  assert.deepEqual(byReset.map((e) => e.type), ["earlier", "later"]);
+
+  // Identical readings: the type name decides, deterministically.
+  const byName = windowEntries(account({
+    windows: {
+      zebra: { status: "allowed", utilization: 0.5, resetsAt: 9_000, observedAt: 1 },
+      alpha: { status: "allowed", utilization: 0.5, resetsAt: 9_000, observedAt: 1 },
+    },
+  }));
+  assert.deepEqual(byName.map((e) => e.type), ["alpha", "zebra"]);
+});
+
+test("windowEntries: empty account lists empty, prototype-key window listed as an entry", () => {
+  assert.deepEqual(windowEntries(account()), []);
+  // `setWindow` stores a `__proto__` rate-limit type as an own entry via defineProperty, so an
+  // object literal cannot reproduce it — define it the same way the writer does.
+  const proto = account();
+  Object.defineProperty(proto.windows, "__proto__", {
+    value: { status: "rejected", observedAt: 1 },
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+  const entries = windowEntries(proto);
+  assert.deepEqual(entries.map((e) => e.type), ["__proto__"], "a prototype-key window is an own entry");
+});
+
+test("windowLabel spells the claude and codex window types compactly", () => {
+  assert.equal(windowLabel("five_hour"), "5h");
+  assert.equal(windowLabel("seven_day"), "7d");
+  assert.equal(windowLabel("one_week"), "1w");
+  // codex's non-standard window length (codex-stream.ts windowTypeName) falls back to words.
+  assert.equal(windowLabel("120_minute"), "120 minute");
 });
 
 test("seedClaudeAccount: a failed account write returns null instead of throwing", () => {

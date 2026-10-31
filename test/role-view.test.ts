@@ -551,11 +551,13 @@ test("a claude model job's role view names its billing and subscription window",
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.billing, "subscription");
   assert.equal(p.billingBackend, "claude");
-  assert.match(renderRoleMarkdown(p), /- Billing: subscription/m);
+  assert.equal(p.billingWindow, "five_hour");
+  assert.match(renderRoleMarkdown(p), /- Billing: subscription \(5h window\)/m);
 
   writeClaudeAccount(dir, { billing: "api", observedAt: Date.now(), windows: {} });
   const api = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(api.billing, "api");
+  assert.equal(api.billingWindow, undefined);
   assert.equal(api.billingBackend, "claude");
   assert.match(renderRoleMarkdown(api), /- Billing: API/m);
 
@@ -579,7 +581,8 @@ test("a codex subscription account renders Codex window labels", () => {
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.billingBackend, "codex");
   assert.equal(p.billing, "subscription");
-  assert.match(renderRoleMarkdown(p), /- Billing: subscription/m);
+  assert.equal(p.billingWindow, "seven_day");
+  assert.match(renderRoleMarkdown(p), /- Billing: subscription \(Codex 7d window\)/m);
 
   // A codex window hold words the chain's window reason.
   const returnsAt = new Date(2026, 9, 16, 17, 40).getTime();
@@ -676,7 +679,7 @@ test("a pi role with a claude reviewer shows claude billing; a pi reviewer does 
   assert.equal(p.backend, "pi", "the role's own model job is pi");
   assert.equal(p.billing, "subscription", "the claude reviewer's billing is shown");
   assert.equal(p.billingBackend, "claude", "the claude reviewer's backend is named");
-  assert.match(renderRoleMarkdown(p), /- Billing: subscription/m);
+  assert.match(renderRoleMarkdown(p), /- Billing: subscription \(5h window\)/m);
 
   // A pi reviewer leaves the role view without a billing line.
   writeConfig(dir, { review: { enabled: true, model: "pi-prov/m" } });

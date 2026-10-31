@@ -3,7 +3,8 @@
  * "Billing" and §8 "The subscription usage window"). Persisted at
  * `.tumwater/state/<backend>-account.json` (plan design grounds/codex-backend.md "Groundwork:
  * the subscription account is per backend", item 1), written only by the orchestrator process,
- * so the sibling parts read one answer instead of re-deriving it per surface.
+ * so the free-ness rule and the window displays read one answer instead of re-deriving it per
+ * surface.
  *
  * The file is a cache, never a source of truth: a run that reports billing overwrites it, and a
  * missing or unreadable file reads as "no subscription". `resetsAt` is stored as epoch
@@ -68,6 +69,68 @@ export function subscriptionWindowRejected(
     run.billing === "subscription" &&
     (run.rateWindows ?? []).some((w) => w.status === "rejected" && w.isUsingOverage !== true)
   );
+}
+
+/** One window entry with its `rateLimitType` attached (the record key), as every display of
+ * the subscription window needs it. */
+type SubscriptionWindowEntry = SubscriptionWindow & { type: string };
+
+/** One subscription backend's window block on a status poll (part 3a/9): the backend's display
+ * name and its windows most-constrained-first, with `primary` the one the header badge shows.
+ * Display only: since Subtract part 5u/6 no window holds or moves a seam, so the block carries
+ * no hold deadline — a rejected window simply reads `limited` until it resets. */
+export interface SubscriptionWindowBlock {
+  /** The backend id (`"claude"`, `"codex"` …). */
+  backend: string;
+  /** Its display name (backendDisplayName): `"Claude"`, `"Codex"`. */
+  label: string;
+  windows: SubscriptionWindowEntry[];
+  primary: SubscriptionWindowEntry;
+}
+
+/** Status severity for ordering: a rejected window limits, an allowed_warning nears its limit,
+ * every other reading (allowed/ok) rides at the bottom, and a reset one no longer limits. */
+const WINDOW_RANK: Record<string, number> = { rejected: 3, allowed_warning: 2, reset: 0 };
+
+/** The window type as a compact label: `five_hour` → `5h`, `seven_day` → `7d`; an unknown
+ * type falls back to its words with underscores as spaces. The one home of the window spelling
+ * the status badge and the role view share (the browser dashboard keeps its inline copy). */
+export function windowLabel(type: string): string {
+  const m = /^(\w+)_(hour|day|week)$/.exec(type);
+  if (!m) return type.replace(/_/g, " ");
+  const words: Record<string, string> = { one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10" };
+  const unit = m[2] === "hour" ? "h" : m[2] === "day" ? "d" : "w";
+  const word = m[1] ?? "";
+  return `${words[word] ?? word}${unit}`;
+}
+
+/** The fraction of a subscription usage window consumed (0–1) as a whole-number percent: a
+ * `0.64` utilization reads `64`. The one node-side home of the fraction→percent conversion
+ * (the browser dashboard's own window line is embedded client-side and keeps its inline copy). */
+export function utilizationPct(utilization: number): number {
+  return Math.round(utilization * 100);
+}
+
+/** Order two window entries by the windowEntries rule: status severity, then the reported
+ * utilization (a missing reading sorts below any number), then the earlier reset, then the
+ * type name. Exported so a list of per-backend blocks can be ordered by their primary entry
+ * the same way windowEntries orders one account's windows (part 3a/9). */
+export function compareWindowEntries(a: SubscriptionWindowEntry, b: SubscriptionWindowEntry): number {
+  const rank = (WINDOW_RANK[b.status] ?? 1) - (WINDOW_RANK[a.status] ?? 1);
+  if (rank !== 0) return rank;
+  const util = (b.utilization ?? -1) - (a.utilization ?? -1);
+  if (util !== 0) return util;
+  const reset = (a.resetsAt ?? Number.POSITIVE_INFINITY) - (b.resetsAt ?? Number.POSITIVE_INFINITY);
+  if (reset !== 0) return reset;
+  return a.type.localeCompare(b.type);
+}
+
+/** The account's windows as a list, most constrained first (by compareWindowEntries). Empty
+ * when the account reported none. */
+export function windowEntries(account: SubscriptionAccount): SubscriptionWindowEntry[] {
+  return Object.entries(account.windows)
+    .map(([type, w]) => ({ type, ...w }))
+    .sort((a, b) => compareWindowEntries(a, b));
 }
 
 /** The parsed raw body of one backend's account file, keyed by that file's own stat — the same
@@ -139,7 +202,8 @@ function readWindow(
   const resetsAt = finiteNumber(value.resetsAt, Number.NaN);
   const resets = Number.isFinite(resetsAt);
   // utilization heals like the two stamps above: JSON's `1e999` parses to Infinity, and a
-  // non-finite fraction would poison any consumer's utilization read.
+  // non-finite fraction would render as `Infinity%` in the badges and poison the
+  // windowEntries comparator (Infinity - Infinity is NaN).
   const utilization = finiteNumber(value.utilization, undefined);
   const reset = resets && resetsAt <= now;
   const window: SubscriptionWindow = {

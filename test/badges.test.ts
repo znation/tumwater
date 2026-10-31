@@ -5,7 +5,8 @@
  * travels with the per-role display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, chainBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
+import { budgetBadge, chainBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
+import type { SubscriptionWindowBlock } from "../src/agent/subscription-account.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
   // One home for the badge string (renderStatus's header and the payload's preformatted
@@ -231,6 +232,100 @@ test("diskBadge leaves the last reclaim to the Activity log, held or recovered",
     "",
     "a recovered disk shows nothing, whatever the last reclaim freed",
   );
+});
+
+// The subscription usage-window fragment (plans/agent-backends.md §8, plans/codex-backend.md
+// part 3b/9): the window replaces the daily spend on a team whose every seam is free and joins
+// it on a mixed one. The reset clock is built from a LOCAL Date, so the expected text holds in
+// any test timezone.
+test("budgetBadge renders the subscription window in place of or beside the daily spend", () => {
+  const at = (h: number, m: number) => new Date(2026, 9, 10, h, m).getTime();
+  const now = at(10, 18);
+  const block = (over: Partial<SubscriptionWindowBlock> = {}): SubscriptionWindowBlock => ({
+    backend: "codex",
+    label: "Codex",
+    windows: [{ type: "five_hour", status: "allowed", resetsAt: at(14, 30), utilization: 0.64, observedAt: 0 }],
+    primary: { type: "five_hour", status: "allowed", resetsAt: at(14, 30), utilization: 0.64, observedAt: 0 },
+    ...over,
+  });
+  const free = { spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null };
+  assert.equal(
+    budgetBadge(free, undefined, [block()], true, now),
+    " · Codex 5h · 64% · resets in 4h 12m",
+    "every seam free: the window replaces the n/a spend",
+  );
+  assert.equal(
+    budgetBadge(free, undefined, [block({
+      primary: { type: "five_hour", status: "allowed_warning", resetsAt: at(14, 30), observedAt: 0 },
+    })], true, now),
+    " · Codex 5h · near limit · resets in 4h 12m",
+    "no utilization: the status word stands in",
+  );
+  // Nothing holds or moves a seam on a rejected window (Subtract part 5u/6), so the badge
+  // names only the reset — never a "jobs wait" claim.
+  const rejected = budgetBadge(free, undefined, [block({
+    primary: { type: "five_hour", status: "rejected", resetsAt: at(15, 0), utilization: 1, observedAt: 0 },
+  })], true, now);
+  assert.equal(rejected, " · Codex 5h · 100% · resets in 4h 42m", "rejected: the reset, no hold wording");
+  assert.doesNotMatch(rejected, /wait|held|fallback/);
+  assert.equal(
+    budgetBadge(free, undefined, [block({
+      primary: { type: "five_hour", status: "rejected", resetsAt: at(15, 0), observedAt: 0 },
+    })], true, now),
+    " · Codex 5h · limited · resets in 4h 42m",
+    "rejected without a utilization reads limited",
+  );
+  assert.equal(
+    budgetBadge(free, undefined, [block({
+      primary: { type: "five_hour", status: "allowed", isUsingOverage: true, utilization: 0.8, observedAt: 0 },
+    })], true, now),
+    " · Codex 5h · 80% · overage",
+    "the overage marker rides while the account spends into overage",
+  );
+  assert.equal(
+    budgetBadge(free, undefined, [block({ primary: { type: "five_hour", status: "reset", observedAt: 0 } })], true, now),
+    " · Codex 5h · reset",
+    "a past window reads reset and names no clock",
+  );
+  const sevenDay = (resetsAt: number) => block({
+    primary: { type: "seven_day", status: "allowed", resetsAt, utilization: 0.14, observedAt: 0 },
+  });
+  assert.equal(
+    budgetBadge(free, undefined, [sevenDay(new Date(2026, 9, 15, 13, 18).getTime())], true, now),
+    " · Codex 7d · 14% · resets in 5d 3h",
+    "a 7d window days out reads as days, not a bare clock",
+  );
+  assert.equal(
+    budgetBadge(free, undefined, [sevenDay(now - 5_000)], true, now),
+    " · Codex 7d · 14% · resets now",
+    "a deadline already past reads now",
+  );
+  // Mixed: the daily-spend line plus the window line.
+  assert.equal(
+    budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: null, free: false, fallback: null }, undefined, [block()], false, now),
+    " · budget: $12.34/$50 today · Codex 5h · 64% · resets in 4h 12m",
+    "mixed: both the daily spend and the window",
+  );
+  // No window block yet (no codex run has reported one): the all-free team keeps its n/a badge.
+  assert.equal(budgetBadge(free, undefined, [], true, now), " · budget: n/a");
+  // The tone: red at rejected, yellow near the limit, none otherwise. Reads blocks[0].
+  assert.equal(subscriptionWindowTone([block({ primary: { type: "five_hour", status: "rejected", observedAt: 0 } })]), "red");
+  assert.equal(subscriptionWindowTone([block({ primary: { type: "five_hour", status: "allowed_warning", observedAt: 0 } })]), "yellow");
+  assert.equal(subscriptionWindowTone([block()]), undefined);
+  assert.equal(subscriptionWindowTone(undefined), undefined);
+});
+
+// Part 3b/9: the badge reads the leading block's own label, so a multi-backend team names the
+// window under the backend it belongs to. blocks[0] is already most-constrained-first.
+test("budgetBadge reads the leading subscription block under its own backend label", () => {
+  const at = (h: number, m: number) => new Date(2026, 9, 10, h, m).getTime();
+  const resetsAt = at(14, 30);
+  const win = (type: string, utilization: number) => ({ type, status: "allowed", resetsAt, utilization, observedAt: 0 });
+  const codex: SubscriptionWindowBlock = { backend: "codex", label: "Codex", windows: [win("seven_day", 0.4)], primary: win("seven_day", 0.4) };
+  const claude: SubscriptionWindowBlock = { backend: "claude", label: "Claude", windows: [win("five_hour", 0.6)], primary: win("five_hour", 0.6) };
+  const budget = { spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null };
+  assert.equal(budgetBadge(budget, undefined, [codex, claude], true, at(10, 18)), " · Codex 7d · 40% · resets in 4h 12m");
+  assert.match(budgetBadge(budget, undefined, [claude, codex], true, at(10, 18)), /^ · Claude 5h/);
 });
 
 test("budgetBadge's fallback label with no pair halves is pi's default", () => {

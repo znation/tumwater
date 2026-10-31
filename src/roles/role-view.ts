@@ -30,7 +30,7 @@ import { roleImageInfo } from "../agent/image-input.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
-import { readAccount } from "../agent/subscription-account.js";
+import { readAccount, windowEntries } from "../agent/subscription-account.js";
 import { CONFIG_BASENAME, configPath, roleNotesPath } from "../paths.js";
 import { coverageRows, readQaCoverage, type CoverageRow } from "../run/qa-coverage.js";
 import type { RunnerState } from "../runner/runner-state.js";
@@ -89,6 +89,9 @@ export interface RoleViewPayload {
    * 6d/7): "subscription" or "api" from the account file, absent for a pi seam or when no
    * account read exists. */
   billing?: ClaudeBilling;
+  /** The primary subscription window's type (`five_hour`), present only for a subscription
+   * reading that reported a window — the renderer's "(Codex 5h window)". */
+  billingWindow?: string;
   /** Whether the role's own model reads images (plans/image-input.md "Surfaces", part 5/5):
    * true / false / null (unknown), always present so the role page and the status rows share
    * one capability answer. */
@@ -241,6 +244,7 @@ function resolveRoleConfig(
   effective: ResolvedModelConfig;
   billingBackend?: string;
   account: { billing: ClaudeBilling } | null;
+  billingWindow?: string;
   chainStep: ChainTierInfo | null;
   base: string;
 } {
@@ -277,10 +281,20 @@ function resolveRoleConfig(
     cfg.review.enabled && reviewAgent !== undefined && reviewAgent !== "pi" ? reviewAgent : undefined;
   const billingBackend = roleBackend ?? reviewBackend;
   const account = billingBackend !== undefined ? readAccount(root, billingBackend) : null;
+  const billingWindow = account?.billing === "subscription" ? windowEntries(account)[0]?.type : undefined;
   const info = readOrchestratorInfo(root);
   const chainStep = (orchestratorAlive(root, info) && info?.chain?.[roleSeamTier(cfg, role)]) || null;
   const base = baseRoleOf(role);
-  return { role, resolved, effective, billingBackend, account, chainStep, base };
+  return {
+    role,
+    resolved,
+    effective,
+    billingBackend,
+    account,
+    ...(billingWindow !== undefined ? { billingWindow } : {}),
+    chainStep,
+    base,
+  };
 }
 
 /** The raw per-role override fields — "what does the role's FILE override on its own?": the
@@ -629,6 +643,7 @@ function assemblePayload(params: {
   fallbackFree: boolean;
   account: { billing: ClaudeBilling } | null;
   billingBackend?: string;
+  billingWindow?: string;
   chainStep: ChainTierInfo | null;
   modelsPath: string;
   minRunIntervalOverride?: number;
@@ -667,6 +682,7 @@ function assemblePayload(params: {
     fallbackFree,
     account,
     billingBackend,
+    billingWindow,
     chainStep,
     modelsPath,
     minRunIntervalOverride,
@@ -702,6 +718,7 @@ function assemblePayload(params: {
     fallback,
     fallbackFree,
     ...(account !== null ? { billing: account.billing, billingBackend } : {}),
+    ...(billingWindow !== undefined ? { billingWindow } : {}),
     chainStep,
     ...roleImageInfo(cfg, role, modelsPath, readPiListedModels(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,
@@ -763,7 +780,7 @@ export function rolePayload(
   const { config } = loadConfigSafe(root);
   const cfg = config ?? defaultConfig();
   const identity = resolveRoleConfig(root, typedRole, cfg);
-  const { role, resolved, effective, billingBackend, account, chainStep, base } = identity;
+  const { role, resolved, effective, billingBackend, account, billingWindow, chainStep, base } = identity;
   const { piDefault } = resolvePiDefault(root, modelsPath, effective);
   const { fallback, fallbackFree } = resolveFallbackStory(cfg, modelsPath, root);
   const preview = previewRun(root, cfg, role);
@@ -787,6 +804,7 @@ export function rolePayload(
     fallbackFree,
     account,
     billingBackend,
+    billingWindow,
     chainStep,
     modelsPath,
     minRunIntervalOverride,

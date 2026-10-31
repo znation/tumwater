@@ -10,6 +10,8 @@ import { opencodeModelsPath } from "../src/paths.js";
 import { loadConfig } from "../src/config/config.js";
 import { spentRunnerState } from "./fixtures/runner-fixtures.js";
 import { saveRunnerState } from "../src/runner/runner-state.js";
+import { writeAccount } from "../src/agent/subscription-account.js";
+import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { LOCAL_FREE_MODELS_JSON, writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
 
 // The budget collector folds the spend/billing block from the shared reads (config, rows,
@@ -93,7 +95,75 @@ test("a foreign entry in the opencode catalog cache leaves collectBudget standin
 
 // The per-backend subscription window blocks (part 3a/9): one entry per subscription backend
 // the enabled seams route to, ordered most-constrained-first, each with backend/label/windows/
-// primary/heldUntil — the shared model the 3b–3e display parts consume.
+// primary — the shared model the header badge, the GUI spend card and `status --json` show.
+test("collectBudget carries one subscription-window block per subscription backend in use (part 3a/9)", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "status multi-backend windows");
+  // All default roles route to claude; the feature role rides codex.
+  writeConfig(repo, { backend: "claude", model: "claude-sonnet-5-5" });
+  const cfg = loadConfig(repo);
+  cfg.roles.feature = { enabled: true, backend: "codex", model: "gpt-5.5-codex" };
+  const modelsFile = writeModelsFile(tmpdir("status-multibackend-"), LOCAL_FREE_MODELS_JSON);
+  const now = new Date(2026, 9, 1, 12, 0, 0).getTime();
+  const resetsAt = now + 3_600_000;
+  // codex's rejected window is the tighter constraint; claude's is only a warning.
+  writeAccount(repo, "codex", {
+    billing: "subscription",
+    observedAt: now,
+    windows: {
+      five_hour: { status: "rejected", resetsAt, utilization: 1, observedAt: now },
+      seven_day: { status: "allowed", resetsAt: now + 5 * 86_400_000, utilization: 0.3, observedAt: now },
+    },
+  });
+  writeClaudeAccount(repo, {
+    billing: "subscription",
+    observedAt: now,
+    windows: { five_hour: { status: "allowed_warning", resetsAt, utilization: 0.64, observedAt: now } },
+  });
+  const snap = snapshot(repo, modelsFile, now);
+  const got = collectBudget(
+    repo,
+    cfg,
+    snap.roles,
+    snap.roles.map((l) => l.role),
+    false,
+    readOrchestratorInfo(repo),
+    modelsFile,
+    now,
+  );
+  assert.equal(got.subscriptionWindows.length, 2, "one block per subscription backend in use");
+  assert.deepEqual(
+    got.subscriptionWindows.map((b) => b.backend),
+    ["codex", "claude"],
+    "blocks order most-constrained-first, primary tie broken by backend",
+  );
+  const codex = got.subscriptionWindows[0]!;
+  assert.equal(codex.label, "Codex", "the block labels the backend by its display name");
+  assert.deepEqual(codex.windows.map((w) => w.type), ["five_hour", "seven_day"], "every window, tightest first");
+  assert.equal(codex.primary.status, "rejected");
+  assert.equal("heldUntil" in codex, false, "no window holds a seam, so the block names no hold");
+  const claude = got.subscriptionWindows[1]!;
+  assert.equal(claude.backend, "claude");
+  assert.equal(claude.label, "Claude");
+  assert.equal(claude.primary.utilization, 0.64);
+});
+
+test("a codex-only subscription team reads every seam free and carries its window block", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "status codex-only windows");
+  writeConfig(repo, { backend: "codex", model: "gpt-5.5-codex" });
+  const modelsFile = writeModelsFile(tmpdir("status-codexonly-"), LOCAL_FREE_MODELS_JSON);
+  const now = new Date(2026, 9, 1, 12, 0, 0).getTime();
+  writeAccount(repo, "codex", {
+    billing: "subscription",
+    observedAt: now,
+    windows: { five_hour: { status: "allowed", resetsAt: now + 3_600_000, utilization: 0.2, observedAt: now } },
+  });
+  const snap = snapshot(repo, modelsFile, now);
+  assert.equal(snap.subscriptionOnly, true, "a subscription codex seam is free, so every seam is");
+  assert.deepEqual(snap.subscriptionWindows?.map((b) => b.label), ["Codex"]);
+});
+
 test("snapshot carries the orchestrator's chain block only while it is alive", async () => {
   const repo = makeRepo();
   await initProject(repo, "chain block");

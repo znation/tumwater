@@ -1,4 +1,5 @@
 import type { TestCounts } from "../build/build-check-counts.js";
+import { utilizationPct, windowLabel, type SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
 import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
@@ -138,6 +139,54 @@ export function bootstrapBadge(bootstrap: StatusSnapshot["bootstrap"]): string {
   return ` · bootstrap: ${bootstrap.plansDone}/${bootstrap.untilPlansDone} plans done`;
 }
 
+/** One window status as its badge word when no utilization was reported. */
+function windowStatusWord(status: string): string {
+  if (status === "allowed_warning") return "near limit";
+  if (status === "rejected") return "limited";
+  return status === "reset" ? "reset" : "ok";
+}
+
+/** How far off a window's reset is, two units wide: `4h 12m`, `5d 3h`, `37m`. A clock time
+ * alone cannot tell a 7d window resetting Monday from one resetting tonight. */
+function untilReset(resetsAt: number, now: number): string {
+  const minutes = Math.floor((resetsAt - now) / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+/** The subscription usage-window fragment (plans/agent-backends.md §8, plans/codex-backend.md
+ * part 3b/9): `· Codex 5h · 64% · resets in 4h 12m` (`resets now` once the deadline is under a
+ * minute away), with the status word when no `utilization` was reported and an `overage`
+ * marker while the account spends into overage; a reset reading names no reset. Reads the
+ * most-constrained block (`blocks[0]`, already most-constrained-first), rendering under that
+ * backend's own display label. A rejected window says only that it is limited and when it
+ * resets: nothing holds or moves a seam on it (Subtract part 5u/6), so the badge makes no
+ * claim about jobs waiting. The one home of the string, so the TUI header and the payload's
+ * preformatted badge cannot drift. */
+function subscriptionWindowBadge(blocks: SubscriptionWindowBlock[], now: number): string {
+  const block = blocks[0]!;
+  const w = block.primary;
+  const parts = [`${block.label} ${windowLabel(w.type)}`];
+  parts.push(typeof w.utilization === "number" ? `${utilizationPct(w.utilization)}%` : windowStatusWord(w.status));
+  if (w.isUsingOverage === true) parts.push("overage");
+  if (w.status !== "reset" && typeof w.resetsAt === "number") {
+    parts.push(w.resetsAt - now < 60_000 ? "resets now" : `resets in ${untilReset(w.resetsAt, now)}`);
+  }
+  return ` · ${parts.join(" · ")}`;
+}
+
+/** The window fragment's tone, for the header badge: a rejected window is red, an
+ * allowed_warning amber, anything else no tone. Reads the most-constrained block
+ * (`blocks[0]`), so a multi-backend team's tone follows its tightest window. */
+export function subscriptionWindowTone(blocks: SubscriptionWindowBlock[] | undefined): "red" | "yellow" | undefined {
+  if (!blocks || blocks.length === 0) return undefined;
+  if (blocks[0]!.primary.status === "rejected") return "red";
+  if (blocks[0]!.primary.status === "allowed_warning") return "yellow";
+  return undefined;
+}
+
 /** The tiers' fallback steps as badge text, ` · `-joined without a leading separator:
  * `default → DeepSeek-V4-Flash $3.10/$5 until 17:40`, one fragment per tier in MODEL_TIERS
  * order. A tier the model check moved says so — `default → omlx/qwen (model check)` — since it
@@ -181,12 +230,22 @@ export function chainBadge(chain: StatusSnapshot["chain"]): string {
  * no-forecast state stays byte-identical to the pre-projection badge. The `no cap` branch
  * needs no forecast slot: a disabled cap never carries a capHitAt (projectCapHit returns null
  * for capUsd <= 0), and the fallback fragment only stands once the cap IS reached — the one
- * state where the forecast is itself null — so the fragments can never compete for the line. */
+ * state where the forecast is itself null — so the fragments can never compete for the line.
+ * The subscription windows (`windows`, the snapshot's `subscriptionWindows`) join the badge as
+ * the most-constrained block's fragment; on a team whose every seam is free (`only`) and that
+ * has a window block, the window stands IN PLACE of the spend — a subscription has no priced
+ * spend for a dollar figure (or `n/a`) to report, and "n/a" would read as if usage were
+ * unlimited. An all-free team without a window block keeps ` · budget: n/a`. */
 export function budgetBadge(
   budget: StatusSnapshot["budget"],
   chain?: StatusSnapshot["chain"],
+  windows?: SubscriptionWindowBlock[],
+  only = false,
+  now = Date.now(),
 ): string {
-  const window = chainBadge(chain);
+  const blocks = windows && windows.length > 0 ? windows : undefined;
+  const window = (blocks ? subscriptionWindowBadge(blocks, now) : "") + chainBadge(chain);
+  if (only && blocks) return window;
   if (budget.free) return ` · budget: n/a${window}`;
   // Only while the fallback is actually carrying the team (plans/fallback-model.md): the cap
   // is spent, so the dollar figure alone would read like a stopped team. Naming the model

@@ -2,7 +2,8 @@ import { joinParts } from "../text/text.js";
 import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, usd } from "../text/format.js";
 import { clockHm, formatAge, formatTimestamp, humanAgo, nextRunPhrase, secondsUntil } from "../text/datetime.js";
-import { backendDefaultLabel } from "../agent/backend-traits.js";
+import { windowLabel } from "../agent/subscription-account.js";
+import { backendDefaultLabel, backendDisplayName } from "../agent/backend-traits.js";
 import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
@@ -267,12 +268,28 @@ function fallbackStepLines(p: RoleViewPayload): string[] {
   return lines;
 }
 
+/** The backend-and-window label the role view shows beside a subscription billing:
+ * `backendDisplayName(billingBackend)` beside `windowLabel(windowType)` — "Codex 7d" for a
+ * codex subscription (plans/codex-backend.md part 3c/9), so a reader knows whose window it
+ * is. Claude keeps its bare window type ("5h"). */
+function billingWindowLabel(billingBackend: string | undefined, windowType: string): string {
+  const backend =
+    billingBackend !== undefined && billingBackend !== "claude" ? backendDisplayName(billingBackend) : "";
+  return [backend, windowLabel(windowType)].filter(Boolean).join(" ");
+}
+
 /** The claude seam's billing line (plans/agent-backends.md §7/§8, PLANS.md part 6d/7), guarded
  * on `p.billing` and `API` for an api seam — absent on a pi seam, so its role view is
- * byte-identical to before. One home for "which subscription seam pays for this role?". */
+ * byte-identical to before. A subscription that reported a usage window names its most
+ * constrained one: `- Billing: subscription (Codex 5h window)`. One home for "which
+ * subscription seam pays for this role?". */
 function billingLine(p: RoleViewPayload): string[] {
   if (!p.billing) return [];
-  return [`- Billing: ${p.billing === "api" ? "API" : p.billing}`];
+  const window =
+    p.billing === "subscription" && p.billingWindow
+      ? ` (${billingWindowLabel(p.billingBackend, p.billingWindow)} window)`
+      : "";
+  return [`- Billing: ${p.billing === "api" ? "API" : p.billing}${window}`];
 }
 
 /** The unconditional `- Min run interval:` line. One home for "how often does this role run at

@@ -94,9 +94,6 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   function windowPct(w) {
     return Math.round(w.utilization * 100);
   }
-  function chainMoved(chain) {
-    return Object.values(chain || {}).some((t) => t.reason === "window" || t.reason === "reserve");
-  }
   // One line per tier off its primary, the same text as badges.ts's chainFragments.
   function chainLinesHtml(chain) {
     return ["small", "default", "strong"].filter((tier) => chain && chain[tier]).map((tier) => {
@@ -107,13 +104,14 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       return "<span class='side-card-value window-line'>" + esc(tier + " → " + t.pair + money + until + check) + "</span>";
     }).join("");
   }
-  function windowLine(w, block, chain) {
+  function windowLine(w, block) {
     const parts = [block.label + " " + windowLabel(w.type)];
     const word = windowWord(w.status);
     parts.push(typeof w.utilization === "number" ? windowPct(w) + "%" : word === "ok" ? "ok · usage not reported" : word);
     if (w.isUsingOverage) parts.push("overage");
-    if (w.status === "rejected" && block.heldUntil != null) parts.push((chainMoved(chain) ? "on fallback until " : block.label + " model jobs wait until ") + clockHm(block.heldUntil));
-    else if (w.status !== "reset" && typeof w.resetsAt === "number") parts.push(windowResets(w.resetsAt));
+    // No window holds or moves a seam (Subtract part 5u/6), so a rejected window names only
+    // its reset, like badges.ts's window fragment.
+    if (w.status !== "reset" && typeof w.resetsAt === "number") parts.push(windowResets(w.resetsAt));
     return parts.join(" · ");
   }
   function windowLineTone(w) {
@@ -126,16 +124,16 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     // One window line per block, its windows shortest-first (5h above 7d), whatever order
     // the server ranks severity in; an unlabelled type sorts last, then by type name. A copy,
     // so block.windows keeps its order.
-    return blocks.map((block) => blockLinesHtml(block, chain)).join("") + chainLinesHtml(chain);
+    return blocks.map((block) => blockLinesHtml(block)).join("") + chainLinesHtml(chain);
   }
-  function blockLinesHtml(block, chain) {
+  function blockLinesHtml(block) {
     const hours = (w) => {
       const m = /^(\d+)([hdw])$/.exec(windowLabel(w.type));
       return m ? Number(m[1]) * (m[2] === "h" ? 1 : m[2] === "d" ? 24 : 168) : Infinity;
     };
     const shortestFirst = block.windows.slice().sort((a, b) => (hours(a) === hours(b) ? (a.type < b.type ? -1 : a.type > b.type ? 1 : 0) : hours(a) < hours(b) ? -1 : 1));
     return shortestFirst.map((w) => {
-      const line = "<span class='side-card-value window-line" + windowLineTone(w) + "'>" + esc(windowLine(w, block, chain)) + "</span>";
+      const line = "<span class='side-card-value window-line" + windowLineTone(w) + "'>" + esc(windowLine(w, block)) + "</span>";
       if (typeof w.utilization !== "number") return line;
       const pct = Math.min(100, windowPct(w));
       return line + meterBar(windowLineTone(w), pct);
@@ -154,7 +152,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     // actually exists; an all-free subscription-only team (only and free, no windows) falls
     // through to the "Free models" spend card below so it never renders an empty window card.
     if (only && blocks && blocks.length > 0) {
-      return "<div class='side-card' title='Subscription usage windows — a rejected window pauses model jobs on that backend until it resets'>" +
+      return "<div class='side-card' title='Subscription usage windows — how much of each window the team has used, and when it resets'>" +
         "<span class='side-card-label'>" + icon("clock") + "subscription window</span>" + windowLinesHtml(blocks, only, chain) + "</div>";
     }
     if (b.free) {
@@ -173,9 +171,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   function renderBudgetBadge(d) {
     if (budgetEditing) return; // the open editor owns the slot until save or cancel
     const b = d && d.budget;
-    // The subscription-window block and its only flag no longer ride the status payload
-    // (Subtract 5x/6); the window card is dormant, so the budget card renders chain only.
-    paintPanel("budgetwrap", b ? budgetCardHtml(b, undefined, undefined, d && d.chain) : "");
+    paintPanel("budgetwrap", b ? budgetCardHtml(b, d && d.subscriptionWindows, d && d.subscriptionOnly, d && d.chain) : "");
   }
   function openBudgetEditor() {
     const b = lastStatus && lastStatus.budget;

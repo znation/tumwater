@@ -104,7 +104,10 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
       rows.push(kvRow("Budget fallback", fallbackLabel(view.fallback, "") + " (" + (view.fallbackFree ? "free" : "priced") + ")"));
     }
     if (view.billing !== undefined) {
-      rows.push(kvRow("Billing", view.billing === "api" ? "API" : view.billing));
+      // The most constrained window's type through the spend card's own windowLabel (same
+      // page script): "subscription (5h window)".
+      const window = view.billing === "subscription" && view.billingWindow ? " (" + windowLabel(view.billingWindow) + " window)" : "";
+      rows.push(kvRow("Billing", (view.billing === "api" ? "API" : view.billing) + window));
     }
     // The min run interval (rolePayload's minRunIntervalSeconds), worded like role-render.ts's
     // Min run interval line, plus a control to set/clear the per-role override — the last

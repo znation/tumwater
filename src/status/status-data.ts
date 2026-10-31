@@ -4,6 +4,7 @@ import type { CheckPermitSnapshot, OrchestratorInfo, PermitSnapshot, SlotPoolSna
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { baseRoleOf, roleInScope, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
+import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import {
   configForStatus,
@@ -161,6 +162,16 @@ export interface StatusSnapshot {
    * live orchestrator's info file (fallback chain part 7c/7); absent when none moved or the
    * orchestrator is not alive. */
   chain?: OrchestratorInfo["chain"];
+  /** One subscription-window block per subscription backend in use (plans/codex-backend.md
+   * "Groundwork: the subscription account is per backend" item 3, part 3a/9), each carrying the
+   * backend's own windows most-constrained-first — the claude 5h/7d and codex 5h/7d usage
+   * readings the header badge, the GUI spend card and `status --json` show. Present only when at
+   * least one subscription backend in use reported a window; `subscriptionOnly` is true when
+   * every paying seam is free (the windows replace the daily-spend badge rather than just
+   * joining it). Display only: no window holds or moves a seam (Subtract part 5u/6). */
+  subscriptionWindows?: SubscriptionWindowBlock[];
+  /** True when every paying seam is free (see `subscriptionWindows`). */
+  subscriptionOnly: boolean;
   /** True while the operator has paused the team (`tumwater pause` marker present): every
    * idle role runner's state cell reads `paused`. Fresh per poll like `questions` — no cache,
    * because a 2-second-stale pause flag would mislead an operator mid-resume. */
@@ -453,10 +464,12 @@ function unverifiedModelChecks(
   return open.length > 0 ? { modelChecks: open } : {};
 }
 
-/** The spend/billing fields of the snapshot: the budget and the running-only chain/provider
- * holds. */
+/** The spend/billing fields of the snapshot: the budget, the per-backend subscription windows
+ * and the running-only chain/provider holds. */
 function snapshotBudgetFields(
   budget: ReturnType<typeof collectBudget>["budget"],
+  subscriptionWindows: ReturnType<typeof collectBudget>["subscriptionWindows"],
+  subscriptionOnly: ReturnType<typeof collectBudget>["subscriptionOnly"],
   running: boolean,
   info: ReturnType<typeof readOrchestratorInfo>,
 ): Partial<StatusSnapshot> {
@@ -465,6 +478,10 @@ function snapshotBudgetFields(
     // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,
     // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
     budget,
+    // One window block per subscription backend in use, raw for `status --json` and the
+    // window displays; omitted when no subscription backend reported a window.
+    ...(subscriptionWindows.length > 0 ? { subscriptionWindows } : {}),
+    subscriptionOnly,
     ...(running && info?.chain && Object.keys(info.chain).length > 0 ? { chain: info.chain } : {}),
     // Only while running: a stale info file beside a dead pid must not speak for a stopped
     // team, and only while a hold stands (an empty list is the same as none).
@@ -667,7 +684,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // The spend/billing block (status-budget.ts): the budget object, the per-backend
   // subscription windows and the team-global free-ness answer, and the two per-role pause
   // verdicts, all from one readPiProviders and one readAccount per backend in use per poll.
-  const { budget, budgetPausedRoles, capPaused } = collectBudget(
+  const { budget, subscriptionWindows, subscriptionOnly, budgetPausedRoles, capPaused } = collectBudget(
     root,
     cfg,
     roleRows,
@@ -695,7 +712,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       { inbox, inboxPrompts, inboxFiles, inboxQueuedAt, inboxNotBefore, roleInbox, roleInboxPrompts },
     ),
     roles: roleRows,
-    ...snapshotBudgetFields(budget, running, info),
+    ...snapshotBudgetFields(budget, subscriptionWindows, subscriptionOnly, running, info),
     ...snapshotPauseFields(
       teamPause,
       markerRoles,

@@ -1,12 +1,13 @@
 import type { RunnerState } from "../runner/runner-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
+import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import { dailyCost } from "../budget/budget.js";
 import type { LiveProgress } from "./progress-data.js";
 import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, contextShareLabel, usd } from "../text/format.js";
 import { DAY_MS, formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, ciParityBadge, ciParityTone, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, ciParityBadge, ciParityTone, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, roleRowCells, onErrorStreak, sortRolesByState } from "./status-model.js";
 import { runProgress } from "./run-progress-model.js";
 import { eventTypeLabel } from "../events/event-labels.js";
@@ -190,8 +191,15 @@ function badgeSpans(badge: string, tone?: StatusSpan["tone"]): StatusSpan[] {
   return [{ text: sep }, { text: badge.slice(sep.length), ...(tone ? { tone } : {}) }];
 }
 
-/** The daily budget badge's tone: yellow from 85% of the cap, red once it is spent. */
-function budgetTone(budget: StatusSnapshot["budget"]): Tone | undefined {
+/** The daily budget badge's tone: yellow from 85% of the cap, red once it is spent; the
+ * subscription window's own severity (amber near its limit, red when rejected) wins when it
+ * stands in or beside the daily spend. */
+function budgetTone(
+  budget: StatusSnapshot["budget"],
+  windows?: SubscriptionWindowBlock[],
+): Tone | undefined {
+  const window = subscriptionWindowTone(windows);
+  if (window !== undefined) return window;
   if (budget.free || !(budget.capUsd > 0)) return undefined;
   const share = budget.spentUsd / budget.capUsd;
   return share >= 1 ? "red" : share >= 0.85 ? "yellow" : undefined;
@@ -275,7 +283,7 @@ function statusHeaderLine(root: string, snap: StatusSnapshot, now: number): Stat
     ...badgeSpans(mergeBadge(snap.mergeQueue), "blue"),
     ...(snap.inbox ? [{ text: ` · inbox: ${snap.inbox}` }] : []),
     ...(snap.questions ? badgeSpans(` · questions: ${snap.questions}`, "magenta") : []),
-    ...badgeSpans(budgetBadge(snap.budget, snap.chain), budgetTone(snap.budget)),
+    ...badgeSpans(budgetBadge(snap.budget, snap.chain, snap.subscriptionWindows, snap.subscriptionOnly, now), budgetTone(snap.budget, snap.subscriptionWindows)),
     // The disk floor (plans/disk-floor.md, part 4/4): `disk 8.2 GB free — holding new work`
     // while the hold is on, or the bare reading below the reclaim threshold. Empty in every
     // comfortable or unmeasured state, so an unaffected header stays byte-identical.
