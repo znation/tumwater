@@ -114,6 +114,61 @@ export function tierModel(config: TumwaterConfig, tier: ModelTier): ModelSelecto
   return topTierSelector(config, tier);
 }
 
+/** One seam's own-selector resolution: a role's own `model` parses into the
+ * provider/model/thinking triple a selector carries, under the section's own provider if it
+ * set one, else the top-level provider (the legacy meaning). Absent a `model`, there is no
+ * own selector. */
+function parseOwnModelSelector(
+  config: TumwaterConfig,
+  o: { provider?: string; model?: string; backend?: string; thinking?: string },
+): ModelSelector | undefined {
+  return o.model !== undefined ? parseModelSelector(o.model, o.provider ?? config.provider) : undefined;
+}
+
+/** Whether a role with no own `model` inherits the tier's model: it does only when it names no
+ * backend at all, or the tier already routes there. A role's `model` without `backend` routes
+ * by the legacy rules, never by the tier entry's backend. */
+function inheritsTierModel(
+  tier: ModelTier,
+  top: TopTier,
+  o: { provider?: string; model?: string; backend?: string; thinking?: string },
+  configBackend: string,
+): boolean {
+  return (
+    o.model === undefined &&
+    (o.backend === undefined ||
+      routeModel(top.sel?.provider, top.sel?.model, configBackend, tier, top.backend).agent === o.backend)
+  );
+}
+
+/** The effective provider/model/thinking resolve — fold the tier's thinking level, the own or
+ * inherited selector, the backend, and the routed result into the triple the caller spreads. */
+function resolveEffectiveModel(
+  config: TumwaterConfig,
+  tier: ModelTier,
+  top: TopTier,
+  o: { provider?: string; model?: string; backend?: string; thinking?: string },
+  configBackend: string,
+  ownSel: ModelSelector | undefined,
+  inherit: boolean,
+): { provider?: string; model?: string; thinking?: string; agent: string } {
+  // The tier's thinking level rides every path but a backend-only role whose tier routes elsewhere.
+  const topThinking = o.model === undefined && !inherit ? undefined : (top.sel?.thinking ?? top.thinking);
+  const topSel = inherit ? top.sel : undefined;
+  const backend = o.model !== undefined ? o.backend : inherit ? top.backend : o.backend;
+  const provider = ownSel ? ownSel.provider : (o.provider ?? topSel?.provider ?? config.provider);
+  const model = ownSel ? ownSel.model : topSel?.model;
+  // The routed backend decides whether the provider half survives: a pi provider name is kept,
+  // a backend namespace such as `claude` is dropped (that backend takes no provider).
+  const routed = routeModel(provider, model, configBackend, tier, backend);
+  return {
+    provider: routed.agent === "pi" ? provider : undefined,
+    model: routed.model,
+    thinking: o.thinking ?? ownSel?.thinking ?? topThinking ?? config.thinking,
+    agent: routed.agent,
+  };
+}
+
 /** Apply a sub-config's optional provider/model/thinking overrides over the top-level
  * values — the one place that fallback lives, so adding an override field touches only
  * this. Every string `model` — the top level's and a section's — is a selector
@@ -138,32 +193,19 @@ export function withModelOverrides(
   // The top-level model resolves at the seam's tier: a string form is the default tier's
   // selector; a map form takes the tier's entry, else `default`'s.
   const top = resolveTopTier(config, tier);
-  const ownSel =
-    o.model !== undefined ? parseModelSelector(o.model, o.provider ?? config.provider) : undefined;
+  const ownSel = parseOwnModelSelector(config, o);
   const configBackend = config.backend ?? "pi";
-  // A role's own `backend` binds only to its own model; alone it inherits the tier's model only
-  // when the tier already routes there, else the backend's tier default fills in. A role's
-  // `model` without `backend` routes by the legacy rules, never by the tier entry's backend.
-  const inherit =
-    o.model === undefined &&
-    (o.backend === undefined ||
-      routeModel(top.sel?.provider, top.sel?.model, configBackend, tier, top.backend).agent === o.backend);
-  // The tier's thinking level rides every path but a backend-only role whose tier routes elsewhere.
-  const topThinking = o.model === undefined && !inherit ? undefined : (top.sel?.thinking ?? top.thinking);
-  const topSel = inherit ? top.sel : undefined;
-  const backend = o.model !== undefined ? o.backend : inherit ? top.backend : o.backend;
-  const provider = ownSel ? ownSel.provider : (o.provider ?? topSel?.provider ?? config.provider);
-  const model = ownSel ? ownSel.model : topSel?.model;
-  // The routed backend decides whether the provider half survives: a pi provider name is kept,
-  // a backend namespace such as `claude` is dropped (that backend takes no provider).
-  const routed = routeModel(provider, model, configBackend, tier, backend);
-  return {
-    ...config,
-    provider: routed.agent === "pi" ? provider : undefined,
-    model: routed.model,
-    thinking: o.thinking ?? ownSel?.thinking ?? topThinking ?? config.thinking,
-    agent: routed.agent,
-  };
+  const inherit = inheritsTierModel(tier, top, o, configBackend);
+  const { provider, model, thinking, agent } = resolveEffectiveModel(
+    config,
+    tier,
+    top,
+    o,
+    configBackend,
+    ownSel,
+    inherit,
+  );
+  return { ...config, provider, model, thinking, agent };
 }
 
 /** A fallback pair as withModelOverrides' overrides: always an explicit backend (a pi pair is pi
