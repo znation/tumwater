@@ -8,9 +8,9 @@ import { hasFollowFlag } from "../cli/cli-flag-specs.js";
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventsLogPath } from "../paths.js";
-import { gotSuffix, splitCommaList, splitCommaListUnique } from "../text/text.js";
+import { splitCommaList, splitCommaListUnique } from "../text/text.js";
 import { trimToLast } from "../collections.js";
-import { typoSuffix } from "../text/suggest.js";
+import { oneOfMessage } from "../text/suggest.js";
 
 /** Parse a `--model` value: a comma list of model selectors, deduplicated in first-seen order.
  * A missing, empty or all-commas value fails with HISTORY_MODEL_VALUE_ERROR; selectors have no
@@ -68,7 +68,7 @@ export function parseHistoryResultList(raw: string | undefined): HistoryResultCl
   for (const piece of pieces) {
     const cls = parseHistoryResultClass(piece);
     if (cls === null)
-      fail(`history --result must be one of ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(", ")}${gotSuffix(piece)}${typoSuffix(piece, Object.values(HISTORY_RESULT_FLAG_NAMES))}`);
+      fail(`history --result ${oneOfMessage(Object.values(HISTORY_RESULT_FLAG_NAMES))(piece)}`);
     if (!parsed.includes(cls)) parsed.push(cls);
   }
   return parsed;
@@ -209,7 +209,7 @@ function historySummaryGroup(q: HistoryQuery): boolean {
   if (q.rest.includes("--by")) {
     if (!byRaw) return fail(HISTORY_BY_VALUE_ERROR);
     if (!(HISTORY_SUMMARY_GROUPS as readonly string[]).includes(byRaw)) {
-      fail(`history --by must be one of ${HISTORY_SUMMARY_GROUPS.join(", ")}${gotSuffix(byRaw)}${typoSuffix(byRaw, [...HISTORY_SUMMARY_GROUPS])}`);
+      fail(`history --by ${oneOfMessage(HISTORY_SUMMARY_GROUPS)(byRaw)}`);
     }
     if (!q.rest.includes("--summary")) fail("history --by needs --summary (it picks how the summary groups runs)");
     byModel = byRaw === "model";

@@ -3,7 +3,9 @@
  * presentational — depends on node built-ins alone — and home to the Levenshtein distance,
  * the suggestion threshold, and the " — did you mean `x`?" annotation in exactly one place
  * instead of drifting per consumer. (Generic string shaping — collapse, truncate, parse —
- * lives in text.ts.) */
+ * lives in text.ts; oneOfMessage composes text.ts's gotSuffix onto this layer's hint.) */
+
+import { gotSuffix } from "./text.js";
 
 /** Levenshtein edit distance between two short tokens (command names, config keys — a
  * handful of chars, so the two-row DP table is trivially cheap). */
@@ -74,4 +76,18 @@ export function didYouMean(suggestion: string | null): string {
  * suggestCommand, which derives the candidate list from the help text.) */
 export function typoSuffix(input: string, candidates: readonly string[]): string {
   return didYouMean(suggestClosest(input, candidates));
+}
+
+/** The full "must be one of …" refusal for an unknown token against accepted `candidates`:
+ * the valid-list wording plus the `got` suffix and, for a string near miss, the did-you-mean
+ * hint. One home for the three-part composition so the five one-of sites — the CLI's
+ * `reviews --status` (cli-review-commands.ts) and `history --result`/`--by` (history.ts),
+ * and the GUI's `result=` class query (gui-history-endpoints.ts) and config-key validator
+ * (gui-args.ts) — cannot let the wording or the pairing drift. (config-validation's
+ * thinking/backend problems stay separate: they differ in phrasing, use the truncating
+ * show() stringifier, and carry no did-you-mean.) */
+export function oneOfMessage(candidates: readonly string[]): (v: unknown) => string {
+  const list = candidates.join(", ");
+  return (v: unknown) =>
+    `must be one of ${list}${gotSuffix(v)}${typeof v === "string" ? typoSuffix(v, candidates) : ""}`;
 }

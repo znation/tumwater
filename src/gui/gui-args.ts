@@ -14,8 +14,8 @@ import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../events/event-window.js"
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { queueFileNameProblem } from "../inbox/inbox-cancel.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { oneOfMessage, typoSuffix } from "../text/suggest.js";
 import { gotSuffix, parseNonNegativeInt, parsePositiveInt, splitCommaListUnique } from "../text/text.js";
-import { typoSuffix } from "../text/suggest.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import type http from "node:http";
 
@@ -242,7 +242,7 @@ export function requireConfigKey(
 ): string | null {
   const key = body.key;
   if (typeof key !== "string" || !(EDITABLE_CONFIG_KEYS as readonly string[]).includes(key)) {
-    badRequest(res, `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${gotSuffix(key)}${typeof key === "string" ? typoSuffix(key, EDITABLE_CONFIG_KEYS) : ""}`);
+    badRequest(res, `key ${oneOfMessage(EDITABLE_CONFIG_KEYS)(key)}`);
     return null;
   }
   return key;

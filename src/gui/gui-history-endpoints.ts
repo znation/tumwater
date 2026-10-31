@@ -33,8 +33,8 @@ import { resolveRevertTarget } from "../operator/operator-revert.js";
 import { rolePayload } from "../roles/role-view.js";
 import { clampCount, intQuery, rejectBadRole, sinceMsQuery, untilMsQuery } from "./gui-args.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
-import { typoSuffix } from "../text/suggest.js";
-import { gotSuffix, splitCommaList, splitCommaListUnique } from "../text/text.js";
+import { oneOfMessage } from "../text/suggest.js";
+import { splitCommaList, splitCommaListUnique } from "../text/text.js";
 import { newestRunRow, runNotFoundLastMessage, runNotFoundMessage } from "../run/run-detail.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N[&grep=<text>]: rendered transcript lines for a role's
@@ -68,7 +68,7 @@ function resultClassesQuery(q: URLSearchParams, res: http.ServerResponse): Histo
   for (const piece of splitCommaList(q.get("result") ?? "")) {
     const cls = parseHistoryResultClass(piece);
     if (cls === null) {
-      badRequest(res, `result must be one of ${names.join(", ")}${gotSuffix(piece)}${typoSuffix(piece, names)}`);
+      badRequest(res, `result ${oneOfMessage(names)(piece)}`);
       return null;
     }
     if (!classes.includes(cls)) classes.push(cls);

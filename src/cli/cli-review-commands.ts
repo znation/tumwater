@@ -25,8 +25,8 @@ import {
 import { roleInScope } from "../roles/runner-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
-import { gotSuffix, splitCommaList } from "../text/text.js";
-import { typoSuffix } from "../text/suggest.js";
+import { splitCommaList } from "../text/text.js";
+import { oneOfMessage } from "../text/suggest.js";
 
 /** The missing-value wording of `reviews --status` (shared by the gate's statusFlagSpec and
  * parseStatusFlag's own fail, so the two cannot drift). */
@@ -43,7 +43,7 @@ function parseReviewStatusList(raw: string): PostReviewState[] {
   const out: PostReviewState[] = [];
   for (const piece of pieces) {
     if (!(POST_REVIEW_STATES as readonly string[]).includes(piece))
-      fail(`reviews --status must be one of ${spellings.join(", ")}${gotSuffix(piece)}${typoSuffix(piece, spellings)}`);
+      fail(`reviews --status ${oneOfMessage(spellings)(piece)}`);
     if (!out.includes(piece as PostReviewState)) out.push(piece as PostReviewState);
   }
   return out;
