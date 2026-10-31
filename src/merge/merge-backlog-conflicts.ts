@@ -209,33 +209,38 @@ function settleBlock(base: string, ours: string, theirs: string): string | null 
   return ours === base ? theirs : null;
 }
 
-/** Settle the shared entry `key` for one merge pass (see mergeSectionEntries): the entry's
- * text, null on a same-entry conflict, or undefined when the entry is dropped (the change
- * deleted a main-unchanged entry). The three rule branches — a brand new entry, an entry the
- * change deleted, or an entry both sides edited — fold to one result. */
-function settleOursEntry(
-  key: string,
-  o: string,
-  b: string | undefined,
-  t: string | undefined,
-): { key: string; text: string } | null | undefined {
-  if (b === undefined) {
-    if (t !== undefined && t !== o) return null;
-    return { key, text: o };
+/** Merge one section's entries (see mergeBacklogEntries), or null on a same-entry conflict. */
+/** Pass 1: settle every change-side entry against base and theirs. Resolves a same-key edit
+ * with `settleBlock`, bails (false → null) when both sides added the same entry differently or
+ * main edited what the change deleted. */
+function settleOursEntries(
+  ours: ParsedBacklog["sections"][number]["entries"],
+  baseBy: Map<string, string>,
+  theirsBy: Map<string, string>,
+  result: { key: string; text: string }[],
+): boolean {
+  for (const { key, text: o } of ours) {
+    const b = baseBy.get(key);
+    const t = theirsBy.get(key);
+    if (b === undefined) {
+      if (t !== undefined && t !== o) return false;
+      result.push({ key, text: o });
+    } else if (t === undefined) {
+      if (o !== b) return false; // main edited what the change deleted
+    } else {
+      const settled = settleBlock(b, o, t);
+      if (settled === null) return false;
+      result.push({ key, text: settled });
+    }
   }
-  if (t === undefined) {
-    return o !== b ? null : undefined; // main edited what the change deleted
-  }
-  const settled = settleBlock(b, o, t);
-  return settled === null ? null : { key, text: settled };
+  return true;
 }
 
-/** Reject a deletion pass (see mergeSectionEntries) when the change edited an entry main
- * deleted: an entry main deleted stays deleted, unless the change edited it. */
+/** Pass 2: an entry main deleted stays deleted, unless the change edited it — then bail. */
 function keepOurDeletions(
   base: ParsedBacklog["sections"][number]["entries"],
-  theirsBy: Map<string, string>,
   oursKeys: Set<string>,
+  theirsBy: Map<string, string>,
 ): boolean {
   for (const { key, text: b } of base) {
     const t = theirsBy.get(key);
@@ -244,12 +249,12 @@ function keepOurDeletions(
   return true;
 }
 
-/** Place each of `theirs`' additions into `result` after its nearest surviving predecessor,
- * falling back to the front when no earlier entry survives. */
+/** Pass 3: order-insert each change-side addition after its nearest surviving predecessor in
+ * `result`, or at the front when none survives. */
 function placeTheirAdditions(
-  theirs: ParsedBacklog["sections"][number]["entries"],
   baseBy: Map<string, string>,
   oursKeys: Set<string>,
+  theirs: ParsedBacklog["sections"][number]["entries"],
   result: { key: string; text: string }[],
 ): void {
   for (let i = 0; i < theirs.length; i++) {
@@ -267,9 +272,6 @@ function placeTheirAdditions(
   }
 }
 
-/** Merge one section's entries (see mergeBacklogEntries), or null on a same-entry conflict.
- * Three passes run in order — settle the shared entries, keep our deletions, place their
- * additions — each in its own helper (settleOursEntry, keepOurDeletions, placeTheirAdditions). */
 function mergeSectionEntries(
   base: ParsedBacklog["sections"][number]["entries"],
   ours: ParsedBacklog["sections"][number]["entries"],
@@ -279,13 +281,9 @@ function mergeSectionEntries(
   const theirsBy = new Map(theirs.map((e) => [e.key, e.text]));
   const oursKeys = new Set(ours.map((e) => e.key));
   const result: { key: string; text: string }[] = [];
-  for (const { key, text: o } of ours) {
-    const settled = settleOursEntry(key, o, baseBy.get(key), theirsBy.get(key));
-    if (settled === null) return null;
-    if (settled !== undefined) result.push(settled);
-  }
-  if (!keepOurDeletions(base, theirsBy, oursKeys)) return null;
-  placeTheirAdditions(theirs, baseBy, oursKeys, result);
+  if (!settleOursEntries(ours, baseBy, theirsBy, result)) return null;
+  if (!keepOurDeletions(base, oursKeys, theirsBy)) return null;
+  placeTheirAdditions(baseBy, oursKeys, theirs, result);
   return result;
 }
 
