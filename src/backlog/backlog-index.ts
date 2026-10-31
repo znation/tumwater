@@ -21,7 +21,7 @@ import {
 } from "./backlog-index-data.js";
 import { stripEntryStamp } from "./backlog-structure.js";
 import { entryHoldAgainst, holdMark } from "./backlog-eligibility.js";
-import { plannedPartKeys } from "./backlog-parts.js";
+import { entryKey, plannedPartKeys } from "./backlog-parts.js";
 import { plannedPlanEntries } from "./backlog.js";
 
 /** Max characters an index title keeps before a trailing ellipsis, so one very long BUGS.md
@@ -158,7 +158,7 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
     // plan) — BUGS.md and QUESTIONS.md sections keep every entry on its own line.
     const rows: IndexRow[] = entries.map((e) => {
       const hold = entryHoldAgainst({ title: e.title, body: e.body }, plannedParts);
-      const key = collapseWhitespace(stripEntryStamp(e.title)).toLowerCase();
+      const key = entryKey(e.title);
       return {
         start: e.start,
         end: e.end,
