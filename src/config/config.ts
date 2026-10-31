@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { TumwaterConfig, RoleConfig } from "./config-schema.js";
+import type { TumwaterConfig, RoleConfig, BackendConfig } from "./config-schema.js";
 import type { ResolvedModelConfig } from "./config-views.js";
 import { allRoleIds } from "../roles/roles.js";
 import { runnerIds } from "../roles/runner-ids.js";
@@ -153,6 +153,21 @@ export function defaultConfig(): ResolvedModelConfig {
   };
 }
 
+/** Clone each `backends.<id>` entry so the result owns its data — the two backends clone sites
+ * (overlayDefaults merges onto base, cloneConfig deep-clones a loaded config) each spelled the
+ * same per-entry `{ ...a, ...(a.args ? { args: [...a.args] } : {}) }` by hand, so the args-array
+ * copy rule could not drift between them. Absent stays absent. */
+function cloneBackends(
+  backends: Record<string, BackendConfig> | undefined,
+): Record<string, BackendConfig> {
+  return Object.fromEntries(
+    Object.entries(backends ?? {}).map(([id, a]) => [
+      id,
+      { ...a, ...(a.args ? { args: [...a.args] } : {}) },
+    ]),
+  );
+}
+
 /** The worktree pool's slot budget (plans/worktree-pool.md, "Config"): the explicit
  * `worktreeSlots` when set, else `maxConcurrent + 1` so the default tracks the model cap.
  * Read live at each lease in src/git/worktree-pool.ts; a value below `maxConcurrent` is allowed
@@ -176,12 +191,7 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
     // Clone each backend entry (and its args array) so the result owns its data like every
     // other section. The legacy agentBin/piArgs stay beside it; resolvedBackendConfig picks
     // between them.
-    backends: Object.fromEntries(
-      Object.entries(cfg.backends ?? base.backends ?? {}).map(([id, a]) => [
-        id,
-        { ...a, ...(a.args ? { args: [...a.args] } : {}) },
-      ]),
-    ),
+    backends: cloneBackends(cfg.backends ?? base.backends),
     // Absent stays absent: no fallback = today's pause behavior.
     ...(cfg.fallbackModel ? { fallbackModel: { ...cfg.fallbackModel } } : {}),
     customRoles: (cfg.customRoles ?? []).map((c) => ({ ...c })),
@@ -271,9 +281,7 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
   return {
     ...c,
     piArgs: [...c.piArgs],
-    backends: Object.fromEntries(
-      Object.entries(c.backends ?? {}).map(([id, a]) => [id, { ...a, ...(a.args ? { args: [...a.args] } : {}) }]),
-    ),
+    backends: cloneBackends(c.backends),
     idleBackoff: { ...c.idleBackoff },
     review: { ...c.review },
     ...(c.fallbackModel ? { fallbackModel: { ...c.fallbackModel } } : {}),
