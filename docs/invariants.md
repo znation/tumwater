@@ -642,8 +642,9 @@ Outside that mode a cached-red tip falls back to the newest older green; with no
 red tip stays the target and is blocked alone. An older commit with no green verdict is never a
 fallback, and the verdict cache holds only full-check verdicts.
 
-**Binds.** `src/baseline/main-baseline.ts` (`redeployTarget`, `watchVerifiesMain`),
-`src/orchestrator/orchestrator-poll.ts` (`pollRedeploy`), `src/redeploy/redeployer.ts`.
+**Binds.** `src/redeploy/redeploy-target.ts` (`redeployTarget`),
+`src/baseline/main-baseline.ts` (`watchVerifiesMain`), `src/orchestrator/orchestrator-poll.ts`
+(`pollRedeploy`), `src/redeploy/redeployer.ts`.
 
 **Pinned by.** `test/redeploy-wiring.test.ts` — "redeployTarget picks main's newest green commit
 newer than the running build, never a red or unverified-green one", "redeployTarget never

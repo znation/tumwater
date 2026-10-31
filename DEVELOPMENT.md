@@ -260,9 +260,11 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   exemptions, and known flakes.
 - `src/baseline/`: the pristine-main baseline check and the red-main detection that verifies
   main itself and feeds the merge-side `main_red` pin and the `ci` healer hand-off, with no
-  authoring block.
+  authoring block; it also holds `watchVerifiesMain`, the main-watch mode predicate the review
+  pre-check and the redeploy target share.
 - `src/redeploy/`: the update path — the staleness policy, the probes that decide a
-  safe restart, and the production redeployer.
+  safe restart, the commit the redeployer runs (`redeploy-target.ts`, the target selection over
+  the baseline's verdict cache), and the production redeployer.
 - `src/doctor/`: the `tumwater doctor` pre-flight checks and their shared report contract.
 - `src/inbox/`: the inbox — the director's and per-role inboxes, image attachments,
   submit/edit/cancel, and the inbox-backed `prompt` command body.

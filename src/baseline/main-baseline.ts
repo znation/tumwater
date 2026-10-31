@@ -15,7 +15,7 @@ import { isExemptDiff } from "../review/exemptions.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
-import { baselineVerdictsPath, mirrorWorktreePath } from "../paths.js";
+import { baselineVerdictsPath } from "../paths.js";
 import { memoSetLru } from "../collections.js";
 
 /** The team-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
@@ -27,7 +27,9 @@ import { memoSetLru } from "../collections.js";
  * (`mainRedHealNote`), the merge path's `mainTipVerdict`, redeploy's re-verify, and the
  * main watch's green clear — not an authoring block; merge-to-main.ts seeds a green
  * here after a post-rebase re-check; redeploy.ts re-verifies a red here before it strands the
- * team on a stale build. */
+ * team on a stale build. Choosing WHICH commit self-redeploy runs (`redeployTarget`) moved to
+ * src/redeploy/redeploy-target.ts with the rest of the redeploy policy; it reads `baselineCache`
+ * (exported here, written only here). */
 
 // ── Main baseline (main baseline) ────────────────────────────────────────────────────────
 // The review gate verifies worktree = main + changes before every merge; this checks MAIN
@@ -88,7 +90,10 @@ interface MainBaselineCheck {
   unverified?: boolean;
 }
 
-/** Team-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is cold
+/** Team-shared verdict cache, keyed by main SHA. Exported read-only to the one consumer outside
+ * this module that decides redeploy's target from it (src/redeploy/redeploy-target.ts's
+ * `redeployTarget`); writes stay here — `rememberBaseline`, `noteGreenBaseline` and
+ * `noteInheritedGreen` — so the cache's write policy has one home. In-memory only: after a restart the cache is cold
  * and one re-check per red SHA happens — cheap and deterministic, mirroring the budget gate's
  * stateless resume. Entries come from two sources: checkMainBaseline's own runs, and
  * noteGreenBaseline seeding a green verdict for a SHA that just became main
@@ -110,7 +115,7 @@ interface MainBaselineCheck {
  * not opt-in only: a red carries the worktrees that observed it (`redFrom`) and is re-run by the
  * next DIFFERENT worktree to consult it, so a single environmental red can no longer block every
  * role until main moves — see shouldRerunRed. */
-const baselineCache = new Map<string, MainBaseline>();
+export const baselineCache = new Map<string, MainBaseline>();
 
 /** Safety cap so the per-process verdict cache can never grow unbounded: it is keyed by every
  * merged code SHA and a red entry carries the failed run's output tail, so a team running for
@@ -272,7 +277,7 @@ const INHERIT_WALK_MAX = 64;
  * first-parent scans in this module share, spelled the same on purpose so a change to the walk
  * shape (the bound, the `--first-parent` flag) lands once. `inheritedGreen` and `watchedBaseline`
  * walk a commit's ancestors (`${sha}^` / `${tip}^`, the commit itself excluded);
- * `newestGreenAboveBuild` walks `tip` itself and down. Never throws: a git failure is an empty
+ * `newestObservedBaseline` walks `tip` itself and down. Never throws: a git failure is an empty
  * list, and every caller already treats that as a no-inheritance / no-verdict answer. */
 async function firstParentWalk(wt: string, ref: string, max: number): Promise<string[]> {
   return gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${max}`, ref));
@@ -354,9 +359,6 @@ export async function newestObservedBaseline(wt: string, tip: string): Promise<M
   return null;
 }
 
-/** How many first-parent commits below main's tip redeployTarget looks at. */
-const REDEPLOY_WALK_MAX = 64;
-
 /** True when the main watch (src/baseline/main-watch.ts) verifies main — the configs where no
  * merge seeds a green verdict (`watchedBaseline`'s doc) and the watch has a check to run: a
  * declared check and a `check.mergeCommand` (or its gate-command fallback) in effect. In this
@@ -366,74 +368,6 @@ const REDEPLOY_WALK_MAX = 64;
  * to null, which is also false. */
 export function watchVerifiesMain(root: string, config?: CheckConfigSlice): boolean {
   return detectBuildCheck(root, config) !== null && mergeCommandOf(config) !== undefined;
-}
-
-/** The first-parent walk `newestGreenAboveBuild` runs, keyed by (worktree, tip). The walk is a
- * `git rev-list` spawn (~10 ms measured, 64-commit bound) and it runs on every orchestrator poll
- * while self-redeploy is on — but its list is fixed per tip (main is only ever fast-forwarded,
- * so a tip's ancestor list never changes) and its ANSWER is re-derived from `baselineCache` on
- * every call, not cached here. Caching only the list, and re-deriving the answer each poll, makes
- * a poll whose tip has not moved cost zero git spawns, while a moved tip or a new verdict still
- * changes the answer the very next poll. Bounded like `baselineCache`: tips are never reused,
- * so an entry is dead once a newer tip supersedes it. */
-const redeployWalkCache = new Map<string, string[]>();
-const REDEPLOY_WALK_CACHE_MAX = 32;
-
-/** The newest first-parent commit below `tip`, down to and through `buildSha`, with a green
- * cached verdict — the walk+scan redeployTarget's watched and un-watched branches share. Only
- * their fallback differs: `notOnHistory` when `buildSha` is not on the first-parent walk at all
- * (the caller keeps today's answer, `tip`), `onHistoryNone` when it is but nothing above it is
- * green (watched keeps the build; un-watched keeps `tip`). Never throws: a git failure leaves
- * the walk empty, so the fallback answers. */
-async function newestGreenAboveBuild(wt: string, tip: string, buildSha: string, notOnHistory: string, onHistoryNone: string): Promise<string> {
-  const key = `${wt}\u0000${tip}`;
-  let walk = redeployWalkCache.get(key);
-  if (walk === undefined) {
-    walk = await firstParentWalk(wt, tip, REDEPLOY_WALK_MAX);
-    if (redeployWalkCache.size >= REDEPLOY_WALK_CACHE_MAX) {
-      const oldest = redeployWalkCache.keys().next().value;
-      if (oldest !== undefined) redeployWalkCache.delete(oldest);
-    }
-    redeployWalkCache.set(key, walk);
-  }
-  const buildAt = walk.indexOf(buildSha);
-  if (buildAt === -1) return notOnHistory;
-  for (const sha of walk.slice(0, buildAt)) {
-    if (baselineCache.get(sha)?.status === "green") return sha;
-  }
-  return onHistoryNone;
-}
-
-/** The commit self-redeploy should run: main's newest first-parent commit with a green full-check
- * verdict in the cache (observed or inherited) that is newer than the running build `buildSha`,
- * looking at most REDEPLOY_WALK_MAX commits down from `tip`.
- *
- * With `watched` false (the default, a project whose main the watch does not verify), a tip the
- * cache has no verdict for is the target as is — the redeployer checks it. A tip whose cached red
- * was observed in the redeployer's mirror worktree (mirrorWorktreePath of `wt`) falls back to the
- * newest older green above the build. Any other red may be another worktree's environmental one,
- * which the redeployer re-verifies; a build that is not a first-parent ancestor of `tip`, or no
- * green, also leaves the tip the target, and the redeployer blocks that commit alone.
- *
- * With `watched` true (watchVerifiesMain), the watch supplies the verdicts and the redeployer only
- * reads them: walk `tip`'s first-parent history down to `buildSha` and return the first commit
- * whose cached verdict is green — a cached red is walked past, never targeted. With no green
- * above the build, target `buildSha` itself, so buildStaleness reads it as not stale and no
- * episode, hold or pre-warm starts until the watch calls a newer commit green. A build that is
- * not a first-parent ancestor of `tip` keeps today's answer (`tip`, which the redeployer
- * checks), as does `watched` false. Every target `watched` picks has a cached green, so
- * mainIsGreen on it is a cache hit and the redeployer starts no suite.
- * The cache holds only full-check verdicts, so a cheaper command's green never makes a commit
- * deployable.
- * Never throws: a git failure leaves the tip as the target. */
-export async function redeployTarget(wt: string, tip: string, buildSha: string, watched = false): Promise<string> {
-  if (watched) {
-    if (tip === "") return tip;
-    return newestGreenAboveBuild(wt, tip, buildSha, tip, buildSha);
-  }
-  const red = baselineCache.get(tip);
-  if (tip === "" || red?.status !== "red" || !(red.redFrom ?? []).includes(mirrorWorktreePath(wt))) return tip;
-  return newestGreenAboveBuild(wt, tip, buildSha, tip, tip);
 }
 
 /** Verify main's own build/test suite at `wt`'s HEAD — which must be pristine main (the caller
