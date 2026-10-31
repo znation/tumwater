@@ -34,8 +34,10 @@ export const KNOWN_FLAKE_WINDOW_MS = DAY_MS;
  * the writer and reader cannot drift over the separator. */
 export const FLAKY_WARNING_PREFIX = "gate check failed then passed on retry — flaky: ";
 
-/** The prefix merge-check-failures.ts writes when an in-lock merge check that failed passes on
- * its kept-pin retry — the merge-side twin of FLAKY_WARNING_PREFIX, read by the same consumers. */
+/** The merge-side twin of FLAKY_WARNING_PREFIX. Its writer — the in-lock merge check that logged
+ * it when a failed check passed on its kept-pin retry — is gone (parts 4l/3 and 4m/3 removed the
+ * in-lock merge check and merge-check-failures.ts), so no live src writer remains; flakeCounts
+ * still folds this prefix from the event log (historical events), and the tests pin it. */
 export const MERGE_FLAKY_WARNING_PREFIX = "merge check failed then passed on retry — flaky: ";
 
 /** The normalized cluster keys of every flake warning in `events` — the shared extraction

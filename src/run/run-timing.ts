@@ -167,8 +167,8 @@ type HandoffMergeOutcome = "finished" | "aborted" | "abandoned";
  * merge's roles), so the feed says why `restarting onto build …` is not yet followed by
  * `orchestrator stopped`. Past `windowMs` the merge is stopped the way the drain gives up on role
  * runs: `abort` fires the harness's internal stop, which kills its pi runs at once and makes it
- * stop at its next step boundary (merge-core.ts, merge-batch.ts, and merge-stack.ts check the
- * signal before every gate, every approved merge, and each of a stack's check attempts), and a
+ * stop at its next step boundary (merge-core.ts and merge-batch.ts check the signal before every
+ * gate and every approved merge), and a
  * warning names what was still awaited. An aborted merge records `aborted` like any shutdown
  * abort — pins kept, entries dropped, marker removed — for its roles' leftover recovery on the
  * new build. One still running a window after the abort (a step wedged past its own bound) is left

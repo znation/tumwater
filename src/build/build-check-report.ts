@@ -140,10 +140,9 @@ export function describeCheck(check: BuildCheck): string {
 
 /** The single-line headline of a red check — the failureHeadline when the tail has one to
  * offer (a test name or marker plus a non-framing message), else the check's describeCheck
- * command name — the name the gate, merge, and review warnings print for a failed check.
+ * command name — the name the gate and review warnings print for a failed check.
  * One definition for every red that names itself to a human: review-precheck's two
- * flake/failure warnings, merge-to-main's merge-retry quarantine warning, and
- * merge-check-failures's kept-pin headline record and attributeRedCheck absent-tail headline.
+ * flake/failure warnings.
  */
 export function redCheckHeadline(check: BuildCheck, tail: readonly string[] | undefined): string {
   return failureHeadline(tail) ?? describeCheck(check);

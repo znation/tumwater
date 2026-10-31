@@ -18,9 +18,8 @@ import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
  * unverified remapping, and the skip warning — is a separate concern and lives in
  * build-check-scoped.ts. Reading the runner's summary counts — parseTestCounts/TestCounts — is pure
  * parsing with its own importers and lives in build-check-counts.ts. runScopedBuildCheck
- * (build-check-scoped.ts) is the shared detect → run → build_check event → skip-warning sequence of
- * the gate's pre-check (review.ts, via review-precheck.ts), the merge path's in-lock re-check
- * (merge-to-main.ts), and the stacked path's coalesced scope-"batch" check (merge-stack.ts). The
+ * (build-check-scoped.ts) is the detect → run → build_check event → skip-warning sequence the
+ * gate's pre-check (review.ts, via review-precheck.ts) runs. The
  * red-main hand-off (`mainRedHealNote`, main-red.ts) and the merge path's
  * mainTipVerdict reuse this same detection and execution from
  * main-baseline.ts to verify main itself once per SHA. The detached process-group

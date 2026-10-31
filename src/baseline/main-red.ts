@@ -155,8 +155,8 @@ export function queueCulpritHeal(
  * that paid for it, with its duration — the gate's build_check sibling, so both halves of the
  * team's deterministic verification are priced in the feed. The one logger for every baseline
  * check this module runs — the ci handoff, the main watch, and mainTipVerdict's tip
- * check (which review.ts's gate and merge-check-failures.ts's attributeRedCheck reach
- * through it) — so the event's shape cannot drift between them. */
+ * check (which the review pre-check reaches through it) — so the event's shape cannot drift
+ * between them. */
 export function baselineCheckLogger(
   root: string,
   role: string,

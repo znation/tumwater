@@ -106,8 +106,8 @@ export function restartHoldPhrase(stage: unknown, head: unknown, runs: unknown, 
 
 /** The spine of every phrase naming main's tip as red — `main <short-sha> is red` — built here
  * once so the team-wide red-main warning (main-red.ts), the review gate's attribution detail
- * (review.ts), the merge check's attribution error (merge-check-failures.ts), and the redeploy
- * hold's block reason (src/redeploy/redeployer.ts) cannot drift over how main's red is worded. Each
+ * (review.ts, via mainRedNotMine), and the redeploy hold's block reason (src/redeploy/redeployer.ts)
+ * cannot drift over how main's red is worded. Each
  * caller appends its own consequence — the gate's "— not this change's failure", the hold's "
  * — holding the restart until main is green". */
 export function mainRedPhrase(sha: unknown): string {
@@ -115,10 +115,9 @@ export function mainRedPhrase(sha: unknown): string {
 }
 
 /** The main-red attribution detail — main's redness is not this change's failure — the review
- * pre-check's reject detail (review-precheck.ts) and the merge check's lastError
- * (merge-check-failures.ts) both build as mainRedPhrase plus the consequence suffix. One
- * home beside mainRedPhrase so the two attribution surfaces cannot drift over the wording
- * their tests pin. The other mainRedPhrase callers keep their own consequences: main-red.ts
+ * pre-check's reject detail (review-precheck.ts) builds it as mainRedPhrase plus the consequence
+ * suffix. One home beside mainRedPhrase so the gate's attribution wording cannot drift from the
+ * spine its tests pin. The other mainRedPhrase callers keep their own consequences: main-red.ts
  * names the failing script and its action, src/redeploy/redeployer.ts holds the restart. */
 export function mainRedNotMine(sha: unknown): string {
   return `${mainRedPhrase(sha)} — not this change's failure`;
