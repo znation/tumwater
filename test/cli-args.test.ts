@@ -113,6 +113,12 @@ test("parsePortFlag accepts the full valid range and rejects out-of-range values
     assert.equal(r.code, 1);
     assert.match(r.stderr, /--port must be an integer between 1 and 65535 \(got .+\)/);
   }
+
+  // A slipped next flag (`gui --port --json`) is refused with the shared flag-looking-value
+  // wording, not reported as a malformed number.
+  const slipped = expectFail(() => parsePortFlag("--json"));
+  assert.equal(slipped.code, 1);
+  assert.match(slipped.stderr, /--port needs a value \(the next token "--json" is a flag, not a value\)/);
 });
 
 // --- parseRoleFlag ---

@@ -289,6 +289,12 @@ export function parseRoleListFlag(args: string[], validIds?: string[]): string[]
  * cannot be opened; out-of-range values only fail later via Node's raw RangeError. */
 export function parsePortFlag(raw: string | undefined): number {
   if (raw === undefined) fail("--port needs a value");
+  // A `--`-token in the slot is the operator's slipped next flag (`gui --port --json`),
+  // never a port number — a port never starts with `-` — so refuse it up front with
+  // rejectFlagLookingValue's shared wording, the same guard history's --result/--model/--by
+  // and the count/position/duration/role flag homes apply, instead of reporting the next
+  // flag as a malformed number.
+  rejectFlagLookingValue("--port", raw);
   const n = parsePositiveInt(raw);
   if (n === null || n > 65535)
     fail(`--port must be an integer between 1 and 65535${gotSuffix(raw)}`);
