@@ -34,6 +34,92 @@ export function historyWindowBounds(
   return { sinceMs: b.sinceMs, untilMs: b.untilMs ?? null };
 }
 
+/** The History pane's header block: the role first, then the window/result/search labels — the
+ * role is the coarsest cut, and a role-only read (no window, no class) still prints its scope
+ * line above the rows. `windowMs` null is the newest-N read and prints no window line; step 0 is
+ * the trailing window (its `HISTORY_WINDOWS` label), step k the window (k+1)*len to k*len ago
+ * (`betweenWindow`). `resultClass` null is no result filter, so only a class the session holds
+ * names itself (cycleLabel(HISTORY_RESULTS, null) is the "all" label). */
+function historyPaneHeader(
+  windowMs: number | null,
+  resultClass: HistoryResultClass | null,
+  role: string | null,
+  grep: string | null,
+  model: string | null,
+  step: number,
+): string {
+  // null when no class is active, so the header/empty-body paths only name a result filter the
+  // session actually holds (cycleLabel(HISTORY_RESULTS, null) is the "all" label).
+  const resultLabel = resultClass === null ? null : cycleLabel(HISTORY_RESULTS, resultClass);
+  return [
+    ...(role === null ? [] : ["role: " + role]),
+    ...(windowMs === null
+      ? []
+      : step > 0
+        ? ["window: " + betweenWindow((step + 1) * windowMs, step * windowMs)]
+        : ["window: last " + (cycleLabel(HISTORY_WINDOWS, windowMs) ?? "default")]),
+    ...(resultLabel === null ? [] : ["result: " + resultLabel]),
+    ...(model === null ? [] : ["model: " + model]),
+    ...(grep === null ? [] : ["search: " + grep]),
+  ].join("\n");
+}
+
+/** The History pane's body for the rows a read selected: the session Summary toggle (Ctrl+Y)
+ * swaps the row list for the same per-role tally the CLI's `history --summary` and the dashboard
+ * History view print (summarizeRunRows → renderSummary), folded over exactly the rows the
+ * window/scope/result/search selected, so the three surfaces cannot disagree. The non-empty guard
+ * matters: renderSummary always prints a header, so without it an empty read would bypass the
+ * pane's no-rows / no-runs wording (an empty read falls through to historyPaneText's "" and the
+ * empty-state body names the filter that emptied the set). */
+function historyPaneBodyChoice(
+  rows: RunRow[],
+  summary: HistorySummaryGroup | null,
+): string {
+  return summary === "role" && rows.length > 0
+    ? renderSummary(summarizeRunRows(rows))
+    : summary === "model" && rows.length > 0
+      ? renderModelSummary(summarizeRunRowsByModel(rows))
+      : historyPaneText(rows);
+}
+
+/** The History pane's assembled cache for a non-empty read: the header prefixed to the body
+ * when present, then the same sparse-window note every windowed render prints (SPARSE_WINDOW_NOTE)
+ * when the read cannot prove full coverage. */
+function historyPaneFinal(
+  header: string,
+  body: string,
+  windowMs: number | null,
+  covered: boolean,
+): string {
+  return (header ? header + "\n" : "") + body + (windowMs !== null && !covered ? "\n" + SPARSE_WINDOW_NOTE : "");
+}
+
+/** The History pane's empty-state body for a read whose row list came back empty, prefixed
+ * with the header. The model names itself when it emptied a set the class admitted
+ * (`afterResult > 0`); the class names itself only when it emptied a set grep admitted
+ * (`afterGrep > 0`) — the CLI's condition and the dashboard's `hasRows` draw the same line — so
+ * an empty log or window keeps the pane's own no-runs note instead of blaming a filter that
+ * removed nothing. A pattern that admitted nothing names itself next, with the CLI's wording. An
+ * empty read with neither filter returns "" so the pane keeps its own note, and a role-only
+ * empty read returns "" too (the CLI's empty-state wording does not name --role), so the pane
+ * never grows a lone `role:` header. */
+function historyPaneEmptyBody(
+  header: string,
+  resultClass: HistoryResultClass | null,
+  afterGrep: number,
+  afterResult: number,
+  model: string | null,
+  grep: string | null,
+): string {
+  if (model !== null && afterResult > 0) return header + "\nno runs on model \"" + model + "\"";
+  if (resultClass !== null && afterGrep > 0) {
+    const resultLabel = resultClass === null ? null : cycleLabel(HISTORY_RESULTS, resultClass);
+    return header + "\nno runs with result \"" + resultLabel + "\"";
+  }
+  if (grep !== null) return header + "\nno runs matching \"" + grep + "\"";
+  return "";
+}
+
 /** The History pane (view roleIds.length + 4) of the TUI (src/ui/tui/tui.tsx): the session
  * window (Ctrl+S), outcome filter (Ctrl+O), model filter (Ctrl+X), summary toggle (Ctrl+Y),
  * exact-role scope (Ctrl+G), free-text search (`/`), the one-press newest-failure jump
@@ -140,49 +226,10 @@ export function createHistoryPane(
       HISTORY_DEFAULT_RUNS,
       step,
     );
-    // The session Summary toggle (Ctrl+Y) swaps the row list for the same per-role tally the CLI's
-    // `history --summary` and the dashboard History view print (summarizeRunRows → renderSummary),
-    // folded over exactly the rows the window/scope/result/search selected, so the three surfaces
-    // cannot disagree. The non-empty guard matters: renderSummary always prints a header, so
-    // without it an empty read would bypass the pane's no-rows / no-runs wording below.
-    const body =
-      summary === "role" && filtered.length > 0
-        ? renderSummary(summarizeRunRows(filtered))
-        : summary === "model" && filtered.length > 0
-          ? renderModelSummary(summarizeRunRowsByModel(filtered))
-          : historyPaneText(filtered);
-    // null when no class is active, so the header/empty-body paths below only name a result
-    // filter the session actually holds (cycleLabel(HISTORY_RESULTS, null) is the "all" label).
-    const resultLabel = resultClass === null ? null : cycleLabel(HISTORY_RESULTS, resultClass);
-    // The role first, then the window/result/search labels: the role is the coarsest cut, and a
-    // role-only read (no window, no class) still prints its scope line above the rows.
-    const header = [
-      ...(role === null ? [] : ["role: " + role]),
-      ...(sinceMs === null
-        ? []
-        : step > 0
-          ? ["window: " + betweenWindow((step + 1) * sinceMs, step * sinceMs)]
-          : ["window: last " + (cycleLabel(HISTORY_WINDOWS, sinceMs) ?? "default")]),
-      ...(resultLabel === null ? [] : ["result: " + resultLabel]),
-      ...(model === null ? [] : ["model: " + model]),
-      ...(grep === null ? [] : ["search: " + grep]),
-    ].join("\n");
-    if (!body) {
-      // The class names itself only when it emptied a set grep admitted (`afterGrep > 0`) — the
-      // CLI's condition and the dashboard's `hasRows` draw the same line — so an empty log or
-      // window keeps the pane's own no-runs note instead of blaming a filter that removed
-      // nothing. A pattern that admitted nothing names itself next, with the CLI's wording. An
-      // empty read with neither filter returns "" so the pane keeps its own note, and an
-      // role-only empty read returns "" too (the CLI's empty-state wording does not name --role),
-      // so the pane never grows a lone `role:` header.
-      if (model !== null && afterResult > 0) return header + "\nno runs on model \"" + model + "\"";
-      if (resultClass !== null && afterGrep > 0) {
-        return header + "\nno runs with result \"" + resultLabel + "\"";
-      }
-      if (grep !== null) return header + "\nno runs matching \"" + grep + "\"";
-      return "";
-    }
-    return (header ? header + "\n" : "") + body + (sinceMs !== null && !covered ? "\n" + SPARSE_WINDOW_NOTE : "");
+    const body = historyPaneBodyChoice(filtered, summary);
+    const header = historyPaneHeader(sinceMs, resultClass, role, grep, model, step);
+    if (!body) return historyPaneEmptyBody(header, resultClass, afterGrep, afterResult, model, grep);
+    return historyPaneFinal(header, body, sinceMs, covered);
   };
 
   /** Recompute the History pane's cached body if it is the current view, re-entering at its
