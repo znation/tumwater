@@ -13,7 +13,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { DIRECTOR_ROLE, roleById } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { sampleHostLoad, type LoadSampler } from "../build/host-sleep.js";
-import { starvedDeadlineMs } from "../build/build-check-events.js";
+import { starvedDeadlineMs, diffScaledMs } from "../build/build-check-events.js";
 
 /** A config whose model seam has been RESOLVED — the view functions' return type: `model`
  * is the concrete selector id piArgs consumes (the tier map, if any, has been resolved to
@@ -328,8 +328,9 @@ export function resolverConfig(config: TumwaterConfig): ResolvedModelConfig {
  * and the quiet watchdog: reviews measured 2026-09-22/23 ran 2.3 min median, 9.2 min p90 and
  * 24.6 min max, while earlier days had 1.5–3.5 h reviews. 15 min clears the ordinary review and
  * kills a wedged one in minutes instead of the run's hours. Under a starved host the budget
- * stretches by the load-to-cores ratio (see reviewRunConfig), so a progressing review on a
- * loaded box is not killed at the wall by load it does not control. */
+ * stretches by the load-to-cores ratio, and a large reviewed diff stretches it again by the
+ * diff's size (see reviewRunConfig), so a progressing review on a loaded box or over a large
+ * diff is not killed at the wall by load or diff it does not control. */
 export const REVIEW_TIMEOUT_S = 900;
 
 /** The reviewer's wall-clock floor while the budget fallback carries the team. The free model
@@ -346,17 +347,27 @@ export const FALLBACK_REVIEW_TIMEOUT_S = 3600;
  * with its own time budget — `review.timeoutSeconds`, default REVIEW_TIMEOUT_S — overriding
  * the run's. A smaller runTimeoutSeconds still wins. Under a starved host the budget stretches
  * by `starvedDeadlineMs` (the merge-scope precedent in build-check-events.ts): the load-to-cores
- * ratio caps it at double the base, so on an ordinary quiet host the value is exactly today's
- * budget while a progressing review on a loaded box is not killed at the wall by load it does
- * not control. A still-progressing gate run gets one extension of the same length
- * (src/pi/pi-watchdogs.ts), so the effective ceiling on a large diff's review is twice this
- * stretched budget. `load` defaults to `sampleHostLoad` and is injectable for offline tests. */
-export function reviewRunConfig(config: TumwaterConfig, load: LoadSampler = sampleHostLoad): ResolvedModelConfig {
+ * ratio caps it at double the base. A large reviewed diff stretches it again by `diffScaledMs`
+ * (build-check-events.ts): a diff above the reference (`REVIEW_DIFF_REFERENCE_BYTES`) is
+ * proportionally more to read, so a progressing review of a large diff is not killed at the
+ * 2× load cap by the diff it does not control. Both stretches are bounded (each capped at 2×
+ * the base, and the product never exceeds the run's own budget), so a wedged run is still
+ * killed in a bounded wall — the quiet watchdog (src/pi/pi-watchdogs.ts) kills a run that stops
+ * making progress, and a still-progressing one gets one extension of the same length. `load`
+ * defaults to `sampleHostLoad` and is injectable for offline tests; `diffBytes` is the reviewed
+ * diff's size in bytes (0 → no diff-size stretch, so existing callers and the offline load-seam
+ * tests are unchanged). */
+export function reviewRunConfig(
+  config: TumwaterConfig,
+  load: LoadSampler = sampleHostLoad,
+  diffBytes = 0,
+): ResolvedModelConfig {
   const cfg = reviewConfig(config);
   const baseMs = (config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S) * 1000;
+  const stretched = starvedDeadlineMs(baseMs, load()) * (diffScaledMs(baseMs, diffBytes) / baseMs);
   return {
     ...cfg,
-    runTimeoutSeconds: Math.min(cfg.runTimeoutSeconds, starvedDeadlineMs(baseMs, load()) / 1000),
+    runTimeoutSeconds: Math.min(cfg.runTimeoutSeconds, stretched / 1000),
   };
 }
 

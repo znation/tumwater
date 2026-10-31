@@ -3,6 +3,7 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { compareCodeUnits } from "../collections.js";
 import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir, reviewFixRef } from "../paths.js";
 import { reviewRunConfig } from "../config/config-views.js";
+import { sampleHostLoad } from "../build/host-sleep.js";
 import { logEventBestEffort, TUMWATER_SOURCE, tryOrWarn } from "../events/events.js";
 import { isJsonObject } from "../files/json-object.js";
 import { git, gitCouldNotStart, gitTry } from "../git/git-run.js";
@@ -221,7 +222,6 @@ export async function reviewMergedCommit(
 ): Promise<PostReviewOutcome> {
   const { commit, role } = entry;
   try {
-    const reviewCfg = reviewRunConfig(config);
     const startedAt = Date.now();
     const fixRef = reviewFixRef(commit);
     // The whole review — the detached checkout, the reviewer run, and (on a repair) the status
@@ -238,6 +238,11 @@ export async function reviewMergedCommit(
       const wt = await ensureDetachedWorktree(root, postReviewWorktreePath(root), commit);
       await setRef(root, fixRef, commit);
       const diff = await git(wt, "diff", `${commit}^`, commit);
+      // The reviewer's wall-clock budget tracks the diff it must read: the budget stretches with
+      // host load and with the diff's size (reviewRunConfig), so a progressing review of a large
+      // diff is not killed at the load-only 2× cap. The bytes are the diff's actual UTF-8 size —
+      // the unit DIFF_MAX_BYTES (the reference) is priced in.
+      const reviewCfg = reviewRunConfig(config, sampleHostLoad, Buffer.byteLength(diff, "utf8"));
       logEventBestEffort(root, { source: role, type: "review_start", head: commit, afterMerge: true });
       const pi = await runGatePi({
         cwd: wt,

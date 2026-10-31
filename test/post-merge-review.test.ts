@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
+import { REVIEW_TIMEOUT_S } from "../src/config/config-views.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { drainPostReviews } from "../src/merge/merge-post-review-drain.js";
@@ -265,6 +266,48 @@ test("a later failed run replaces the recorded last failure reason", async () =>
   const kept = readPostReviews(root).at(0)!;
   assert.equal(kept.failures, 2);
   assert.match(kept.lastFailure ?? "", /^git diff .* failed/, "the later run's reason replaces the old detail");
+});
+
+test("a post-merge review of a large diff runs under a larger budget than a small one", async () => {
+  // The recurring verdict-less-by-timeout gap: a progressing review of a large diff was killed
+  // at the load-only 2× cap. The reviewer's wall-clock budget now tracks the diff's size as
+  // well as host load (reviewRunConfig's diffBytes), so a large diff's run receives a larger
+  // runTimeoutSeconds than a small one's. Asserted through the config the reviewer run is
+  // handed, offline — no real run, no host load.
+  const root = makeRepo();
+  // A diff well above the reference (DIFF_MAX_BYTES, 200,000 bytes).
+  const big = "x".repeat(500_000);
+  fs.writeFileSync(path.join(root, "big.txt"), big);
+  sh(root, "git", "add", "--", "big.txt");
+  sh(root, "git", "commit", "-m", "add big");
+  const commit = headSha(root);
+  const captured: { runTimeoutSeconds?: number }[] = [];
+  const runner = fakeRunner("improve", "VERDICT: approve\n1. fine");
+  const orig = runner.runGatePi;
+  runner.runGatePi = (opts) => {
+    captured.push({ runTimeoutSeconds: opts.config?.runTimeoutSeconds });
+    return orig.call(runner, opts);
+  };
+  const ctx = {
+    root,
+    mainBranch: "main",
+    liveConfig: defaultConfig(),
+    runners: [runner],
+    semaphore: new Semaphore(2),
+    signal: new AbortController().signal,
+    startHeld: () => false,
+  } as unknown as MergePipelineContext;
+  addPostReview(root, { commit, role: "improve", summary: "add big" });
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(captured.length, 1, "the reviewer ran once");
+  const budget = captured[0]!.runTimeoutSeconds;
+  assert.ok(budget !== undefined, "the run was handed a reviewer budget");
+  assert.ok(budget > REVIEW_TIMEOUT_S, "a large diff's budget exceeds the reference budget");
+  assert.ok(budget <= REVIEW_TIMEOUT_S * 2, "the diff stretch stays capped at double the base");
+  // The entry still settles on the approving verdict, so the larger budget changed nothing else.
+  assert.equal(readPostReviews(root).length, 0);
 });
 
 test("a post-merge review git could not start keeps its entry without counting a failed run", async () => {

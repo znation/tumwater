@@ -1,4 +1,5 @@
 import { tierChainSteps } from "../src/config/config-fallbacks.js";
+import { REVIEW_DIFF_REFERENCE_BYTES } from "../src/build/build-check-events.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
@@ -108,6 +109,30 @@ test("reviewRunConfig stretches the reviewer budget under a starved host", () =>
   config.review.timeoutSeconds = 120;
   assert.equal(reviewRunConfig(config, quietLoad).runTimeoutSeconds, 120);
   assert.ok(reviewRunConfig(config, starvedLoad).runTimeoutSeconds > 120);
+});
+
+test("reviewRunConfig stretches the reviewer budget with the reviewed diff's size", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.runTimeoutSeconds = 54_000;
+  config.review.model = "strong-model";
+  const quietLoad = () => ({ load1: 2, cpus: 8 });
+  const starvedLoad = () => ({ load1: 16, cpus: 8 });
+
+  // A zero or small diff (at or under the reference) never stretches: exactly today's value.
+  assert.equal(reviewRunConfig(config, quietLoad, 0).runTimeoutSeconds, REVIEW_TIMEOUT_S);
+  assert.equal(reviewRunConfig(config, quietLoad, 1).runTimeoutSeconds, REVIEW_TIMEOUT_S);
+  assert.equal(reviewRunConfig(config, quietLoad, REVIEW_DIFF_REFERENCE_BYTES).runTimeoutSeconds, REVIEW_TIMEOUT_S);
+
+  // A diff above the reference stretches even on a quiet host, capped at the base.
+  const large = reviewRunConfig(config, quietLoad, REVIEW_DIFF_REFERENCE_BYTES * 4).runTimeoutSeconds;
+  assert.ok(large > REVIEW_TIMEOUT_S, "a large diff on a quiet host stretches the budget");
+  assert.ok(large <= REVIEW_TIMEOUT_S * 2, "the diff stretch is capped at double the base");
+
+  // A large diff on a starved host stretches more than the load-only stretch for the same load.
+  const loadOnly = reviewRunConfig(config, starvedLoad, 0).runTimeoutSeconds;
+  const loadAndDiff = reviewRunConfig(config, starvedLoad, REVIEW_DIFF_REFERENCE_BYTES * 4).runTimeoutSeconds;
+  assert.ok(loadAndDiff > loadOnly, "the diff term buys wall beyond the load-only stretch");
+  assert.ok(loadAndDiff <= config.runTimeoutSeconds, "never above the run's budget");
 });
 
 test("fallbackPair resolves the fallback over the top-level values", () => {

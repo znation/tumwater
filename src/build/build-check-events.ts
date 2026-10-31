@@ -12,6 +12,7 @@ import { type HarnessEvent, type HarnessEventInput, logEventBestEffort } from ".
 import type { ParkedBehind } from "../concurrency/check-permit.js";
 import type { BuildCheckOutcome, BuildCheckRun, BuildSkipReason } from "./build-check.js";
 import { hostLoadStarved } from "./host-sleep.js";
+import { DIFF_MAX_BYTES } from "../git/git-diff.js";
 
 /** The scopes named in a build_check event logged from runScopedBuildCheck. The red-main
  * baseline names its own ("baseline") from main-red.ts, because the one-run-per-SHA cache and
@@ -172,6 +173,26 @@ const STARVED_DEADLINE_MAX_FACTOR = 2;
 export function starvedDeadlineMs(baseMs: number, load: { load1: number; cpus: number }): number {
   if (!hostLoadStarved(load)) return baseMs;
   return Math.round(baseMs * Math.min(load.load1 / load.cpus, STARVED_DEADLINE_MAX_FACTOR));
+}
+
+/** The reference diff a reviewer's budget is priced against: the diff the reviewer reads in
+ * full. `DIFF_MAX_BYTES` (src/git/git-diff.ts) is the cap the change-data surfaces truncate a
+ * diff to, so a diff at or under it is what the reviewer expects to read; a diff above it is
+ * proportionally more to read, and the budget stretches by that ratio (diffScaledMs). */
+export const REVIEW_DIFF_REFERENCE_BYTES = DIFF_MAX_BYTES;
+
+/** The diff-size stretch of a reviewer's wall-clock budget (build-check-events.ts's
+ * starvedDeadlineMs covers host load; this covers the diff's size). At or under the reference
+ * diff the budget is `baseMs` itself — the ordinary case, byte-identical to a load-only stretch
+ * with the diff term at 1 — so a small-diff review is never given more wall than today. Above
+ * it the factor grows linearly with the diff's size against the reference, capped at
+ * STARVED_DEADLINE_MAX_FACTOR (the same cap the load stretch uses), so a runaway diff cannot
+ * turn a wedged review into an unbounded wait: the stretch is bounded, and the quiet watchdog
+ * still kills a run that stops making progress within the wall. `diffBytes <= 0` is treated as
+ * the reference (factor 1): a diff of unknown or zero size never stretches the budget. */
+export function diffScaledMs(baseMs: number, diffBytes: number): number {
+  if (!(diffBytes > REVIEW_DIFF_REFERENCE_BYTES)) return baseMs;
+  return Math.round(baseMs * Math.min(diffBytes / REVIEW_DIFF_REFERENCE_BYTES, STARVED_DEADLINE_MAX_FACTOR));
 }
 
 /** The note an on-time deadline kill carries when the host was starved: the load average
