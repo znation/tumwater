@@ -4,7 +4,9 @@
  * events, and the `modelChecks` block observers read from the info file. The state machine it
  * drives is model-check.ts. Held in memory by the orchestrator beside the gate family
  * (src/gates/gate-polls.ts) and polled after it, once the budget gate has assigned each
- * runner the config its next run uses. */
+ * runner the config its next run uses. Each poll also acts on the runs in flight whose model
+ * request has gone unanswered (RoleRunner.unansweredRunPair): their pair is re-checked, and
+ * once it fails the run is handed back resumably. */
 
 import type { ModelTier, TumwaterConfig } from "../config/config-schema.js";
 import {
@@ -108,17 +110,19 @@ export class ModelCheckGate {
     this.signal = AbortSignal.any([signal, this.stop.signal]);
   }
 
-  /** One poll: re-key the map to the pairs in use, start every due probe, and return (and keep
-   * for the start gate) the roles that wait — each runner whose next run's pair is not
-   * verified, and every role but the director while the reviewer's pair is not (no change can
-   * merge without a review, and the director's prompt outranks the wait as it outranks every
-   * autonomous gate). Publishes the `modelChecks` block when it changed. */
+  /** One poll: re-key the map to the pairs in use, act on the runs waiting on an unanswered
+   * model request (unansweredRuns), start every due probe, and return (and keep for the start
+   * gate) the roles that wait — each runner whose next run's pair is not verified, and every
+   * role but the director while the reviewer's pair is not (no change can merge without a
+   * review, and the director's prompt outranks the wait as it outranks every autonomous gate).
+   * Publishes the `modelChecks` block when it changed. */
   poll(input: ModelCheckPollInput): ReadonlySet<string> {
     const now = this.now();
     const runSeams = new Map<RoleRunner, ResolvedModelConfig>();
     for (const r of input.runners) if (runnerEnabled(r.config, r.role)) runSeams.set(r, r.runConfig());
     this.uses = pairsInUse(input, runSeams);
     this.checks = rekeyModelChecks(this.checks, [...this.uses.keys()], now);
+    this.unansweredRuns(input.runners);
     if (!this.signal.aborted) for (const pair of dueModelChecks(this.checks, now)) this.launch(pair);
     const reviewPair = input.liveConfig.review.enabled ? seamPairName(reviewConfig(input.roleConfig)) : null;
     const reviewHolds = reviewPair !== null && modelCheckHolds(this.checks[reviewPair]);
@@ -142,10 +146,37 @@ export class ModelCheckGate {
     return modelCheckVerified(this.checks, pair);
   }
 
-  /** A run on `pair` ended without changes and without declaring nothing-to-do: re-check the
-   * pair (rate-limited by the policy); the next poll starts the probe. */
+  /** A run on `pair` gave evidence the pair may have stopped answering properly — it ended
+   * without changes and without declaring nothing-to-do, it failed before any reply, or its
+   * request is waiting unanswered: re-check the pair (rate-limited by the policy); the next
+   * poll starts the probe. */
   suspect(pair: string): void {
     this.checks = suspectModelCheck(this.checks, pair, this.now(), this.policy);
+  }
+
+  /** The runs in flight whose model request has waited toolCallStallSeconds unanswered: each
+   * suspects its pair, every poll while it waits — suspectModelCheck's rate limit makes that
+   * one probe per suspectMinMs, so a hang the probe does not reproduce is looked at again
+   * while it lasts. Once the pair has failed, the run is handed back resumably (session and
+   * worktree kept, resume cause "model-check"): it is producing nothing, and it holds a team
+   * slot for as long as the backend keeps it waiting (2 h a run on 2026-10-29). It resumes on
+   * whatever its tier runs on next: the verified step the tier moves to, or the same pair once
+   * it answers again. A run whose requests are being answered is not handed back, even on a
+   * pair that failed its probe: it finishes, as every in-flight run did before
+   * (plans/model-check.md "In-flight runs"). */
+  private unansweredRuns(runners: readonly RoleRunner[]): void {
+    for (const r of runners) {
+      const pair = r.unansweredRunPair();
+      if (pair === null) continue;
+      this.suspect(pair);
+      if (this.failed(pair) && r.handBackRun("model-check")) {
+        warnEventBestEffort(
+          this.root,
+          r.role,
+          `run handed back: its model request to ${pair} is unanswered and the pair failed its model check — the run resumes on a pair that answers`,
+        );
+      }
+    }
   }
 
   /** Abort the probes in flight and wait for them to settle — the shutdown's last step, so no

@@ -24,7 +24,7 @@ import {
   type ModelCheckPolicy,
 } from "../src/model-check/model-check.js";
 import { ModelCheckGate } from "../src/model-check/model-check-gate.js";
-import type { PiRunResult } from "../src/pi/pi-run-result.js";
+import { endedBeforeAnyReply, type PiRunResult } from "../src/pi/pi-run-result.js";
 import { defaultConfig } from "../src/config/config.js";
 import { configForRole, reviewConfig, seamPairName, type ResolvedModelConfig } from "../src/config/config-views.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
@@ -133,9 +133,27 @@ test("the state machine: new pairs are due, verdicts verify or back off, suspici
   assert.equal(rekeyModelChecks(map, ["a/x", "b/y"], 900_000)["b/y"]?.status, "checking");
 });
 
-/** A runner as the gate reads it: id, config, state, and the config its next run uses. */
-function runner(role: string, config: TumwaterConfig): RoleRunner {
-  return { role, config, state: freshRunnerState(role), runConfig: () => configForRole(config, role) } as unknown as RoleRunner;
+/** A runner as the gate reads it: id, config, state, the config its next run uses, and the
+ * in-flight run's unanswered request (`waitingOn`), with the hand-backs it took (`handBacks`). */
+function runner(role: string, config: TumwaterConfig, waitingOn: string | null = null) {
+  const handBacks: string[] = [];
+  let handed = false;
+  return Object.assign(
+    {
+      role,
+      config,
+      state: freshRunnerState(role),
+      runConfig: () => configForRole(config, role),
+      unansweredRunPair: () => waitingOn,
+      handBackRun: (cause: string) => {
+        if (handed) return false;
+        handed = true;
+        handBacks.push(cause);
+        return true;
+      },
+    } as unknown as RoleRunner,
+    { handBacks },
+  );
 }
 
 /** A team on a local default tier and a hosted strong tier, with review on. */
@@ -264,6 +282,66 @@ test("the gate re-checks a suspected pair, follows a config edit, and aborts its
   await closed;
 });
 
+test("a run waiting on an unanswered request re-checks its pair at the suspicion rate and is handed back once it fails", async () => {
+  const root = makeRepo();
+  const config = teamConfig();
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: [] };
+  let now = 7_000_000;
+  const { prober, asked, answer } = manualProber();
+  const gate = new ModelCheckGate(root, prober, new AbortController().signal, POLICY, () => now);
+  const hung = runner("feature", config, "flintrunner/flint");
+  const busy = runner("plan", config); // its requests are answered
+  const poll = () => gate.poll({ runners: [hung, busy], liveConfig: config, roleConfig: config, info });
+  poll();
+  answer("flintrunner/flint", { ok: true });
+  answer("hf/deepseek", { ok: true });
+  await gate.settled();
+
+  // Within suspectMinMs of the pair's last check the wait is noted but probes nothing; past it,
+  // one probe, and no second while it is in flight.
+  poll();
+  assert.equal(asked.length, 2);
+  now += POLICY.suspectMinMs;
+  poll();
+  poll();
+  assert.deepEqual(asked.slice(2), ["flintrunner/flint"]);
+
+  // The probe passes (the hang is not the probe's): the run keeps waiting, untouched, and is
+  // looked at again a suspicion interval later.
+  answer("flintrunner/flint", { ok: true });
+  await gate.settled();
+  assert.deepEqual([...poll()], []);
+  assert.deepEqual(hung.handBacks, []);
+  now += POLICY.suspectMinMs;
+  poll();
+  assert.deepEqual(asked.slice(3), ["flintrunner/flint"]);
+
+  // This time it fails: the waiting run is handed back once, with a warning naming it; a run on
+  // a pair that still answers is left alone.
+  answer("flintrunner/flint", { ok: false, reason: "no reply", reply: "", detail: "no answer within 300s" });
+  await gate.settled();
+  poll();
+  poll();
+  assert.deepEqual(hung.handBacks, ["model-check"]);
+  assert.deepEqual(busy.handBacks, []);
+  const handedBack = warningEvents(readEvents(root)).filter((e) => String(e.message).startsWith("run handed back"));
+  assert.deepEqual(handedBack.map((e) => e.source), ["feature"]);
+});
+
+test("endedBeforeAnyReply: a failure with no reply counts; a reply, a 429, a refused request, a cap or an abort does not", () => {
+  const failed = { ok: false, producedAssistantContent: false, contextExceeded: false, transientRateLimit: false };
+  assert.equal(endedBeforeAnyReply(result({ ...failed, errorMessage: "connect ECONNREFUSED" })), true);
+  assert.equal(endedBeforeAnyReply(result({ ...failed, quietKilled: true })), true, "no reply before the quiet kill");
+  assert.equal(endedBeforeAnyReply(result({ ...failed, timedOut: true })), true, "no reply before the deadline");
+  assert.equal(endedBeforeAnyReply(result({ ...failed, ok: true })), false, "a run that finished");
+  assert.equal(endedBeforeAnyReply(result({ ...failed, producedAssistantContent: true })), false, "the model replied");
+  assert.equal(endedBeforeAnyReply(result({ ...failed, aborted: true })), false, "tumwater stopped it");
+  assert.equal(endedBeforeAnyReply(result({ ...failed, transientRateLimit: true })), false, "a 429 is an answer");
+  assert.equal(endedBeforeAnyReply(result({ ...failed, contextExceeded: true })), false, "the request was refused");
+  assert.equal(endedBeforeAnyReply(result({ ...failed, resumeMissing: true })), false, "the session was gone");
+  assert.equal(endedBeforeAnyReply(result({ ...failed, budgetCapped: true })), false, "its own cap ended it");
+});
+
 test("a failed fallback step is skipped by the budget gate's chain at the cap", () => {
   const root = makeRepo();
   const modelsPath = writeModelsFile(
@@ -299,7 +377,8 @@ function wiredRunner(role: string, config: TumwaterConfig): RoleRunner {
     runConfig: () => configForRole(r.config, role),
     runProvider: () => undefined,
     runModelPair: () => null,
-    handBackRun: () => {},
+    unansweredRunPair: () => null,
+    handBackRun: () => false,
   };
   return r as unknown as RoleRunner;
 }

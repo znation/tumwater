@@ -18,7 +18,7 @@ import {
 import { PiStreamParser } from "../src/pi/pi-stream.js";
 import { claudeTranslator } from "../src/agent/claude/claude-stream.js";
 import { NO_LAUNCH_SERVICES_CHECK_IN, withoutLaunchServicesCheckIn } from "../src/process/process.js";
-import { messageUpdateHasContent, toolUpdateHasContent } from "../src/pi/pi-event-line.js";
+import { messageUpdateHasContent, toolUpdateHasContent, type PendingReply } from "../src/pi/pi-event-line.js";
 import { startPiWatchdogs } from "../src/pi/pi-watchdogs.js";
 import { defaultConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
@@ -342,13 +342,14 @@ const requestStartLine = JSON.stringify({
 
 /** Run a fake pi that sends one model request, prints `after` (lines), then hangs; advance the
  * logical clock 30 s (past the 2 s stall threshold, then the 5 s quiet kill) and return the run
- * result and the warnings. */
+ * result, the warnings, and the onUnansweredReply calls in order. */
 async function withUnansweredRequest(t: TestContext, after: string[]) {
   const dir = tmpdir();
   const config = defaultConfig();
   config.quietTimeoutSeconds = 5;
   config.toolCallStallSeconds = 2;
   const warnings: string[] = [];
+  const waits: boolean[] = [];
   const clock = watchdogClock(t);
   const result = await withPi(
     [
@@ -357,18 +358,24 @@ async function withUnansweredRequest(t: TestContext, after: string[]) {
       `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
     ].join("\n"),
     async () => {
-      const opts = runPiFixture(dir, { config, onStallWarning: (message) => warnings.push(message) });
+      const opts = runPiFixture(dir, {
+        config,
+        onStallWarning: (message) => warnings.push(message),
+        onUnansweredReply: (waiting) => waits.push(waiting),
+      });
       const run = runPi(opts);
       await waitForLogLines(opts.rawLogFile, after.length > 0 ? "message_update" : "message_start");
       clock.advance(30_000);
       return run;
     },
   );
-  return { result, warnings };
+  return { result, warnings, waits };
 }
 
 test("a model request the provider never answers warns once, naming the provider and model", async (t) => {
-  const { result, warnings } = await withUnansweredRequest(t, []);
+  const { result, warnings, waits } = await withUnansweredRequest(t, []);
+  // The warning's structured twin: true when it fires, false when the run settles still waiting.
+  assert.deepEqual(waits, [true, false]);
   assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog, not the warning");
   assert.equal(warnings.length, 1, "one warning per unanswered wait — not one per interval tick");
   assert.match(
@@ -379,8 +386,42 @@ test("a model request the provider never answers warns once, naming the provider
 
 test("a model request answered by a content-bearing delta raises no unanswered warning", async (t) => {
   const answer = JSON.stringify({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "Reading" } });
-  const { warnings } = await withUnansweredRequest(t, [answer]);
+  const { warnings, waits } = await withUnansweredRequest(t, [answer]);
   assert.deepEqual(warnings, [], "the provider answered; a later silence is the quiet watchdog's business");
+  assert.deepEqual(waits, [], "nothing waited past the threshold");
+});
+
+test("onUnansweredReply pairs each warned wait with its end: the reply arriving, then the run settling", (t) => {
+  // The model check reads the wait's end to know a run is no longer stuck (RoleRunner.
+  // unansweredRunPair): a reply that lands after the warning ends it at the next check, and a
+  // fresh unanswered request opens and reports a wait of its own.
+  const clock = watchdogClock(t);
+  let pending: PendingReply | undefined = { since: Date.now(), target: "local/flint", attempts: 1 };
+  const waits: boolean[] = [];
+  const wd = startPiWatchdogs({
+    progressCount: () => 0,
+    openToolCalls: () => [],
+    pendingReply: () => pending,
+    runTimeoutMs: 3_600_000,
+    quietMs: 0,
+    stallMs: 2_000,
+    kill: () => {},
+    onUnansweredReply: (waiting) => waits.push(waiting),
+  });
+  // Stopped on every path: the deadline is a real one-hour timer.
+  t.after(() => wd.stop());
+  clock.advance(3_000);
+  assert.deepEqual(waits, [true]);
+  pending = undefined; // the model answered
+  clock.advance(1_000);
+  assert.deepEqual(waits, [true, false]);
+  pending = { since: Date.now(), target: "local/flint", attempts: 1 };
+  clock.advance(3_000);
+  assert.deepEqual(waits, [true, false, true], "a new unanswered request reports its own wait");
+  wd.stop();
+  assert.deepEqual(waits, [true, false, true, false], "settling ends the open wait");
+  wd.stop();
+  assert.equal(waits.length, 4, "a second stop reports nothing");
 });
 
 test("the parser keeps one pending reply across pi's retries and clears it when the model answers", () => {

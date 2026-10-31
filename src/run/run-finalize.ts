@@ -61,6 +61,9 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
   // below names it — even though runOnce cleared `lastError` so it never latched onto
   // `run_end` (BUGS.md 2026-09-21).
   if (deps.recoveryFailure !== undefined) outcome.recoveryFailure = deps.recoveryFailure;
+  // The run's last authoring agent run failed before its model replied: the orchestrator has
+  // the model check look at the run's pair again (RunOutcome.unanswered).
+  if (usage.endedUnanswered) outcome.unanswered = true;
   // A main_red run's cause is written for that result (src/baseline/main-red.ts), not a leftover
   // merge failure: fold it onto the state here so `run_end` logs it like every other
   // failure's and the digest can itemize what the Outcome table's main_red cells mean

@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { RunOutcome } from "../run/run-outcome.js";
+import type { HandBackCause, RunOutcome } from "../run/run-outcome.js";
 import type { BackendFailureKind, PiRunOptions } from "../pi/pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { saveRunnerState, saveRunnerStateBestEffort, zeroCounters, type RunnerState } from "./runner-state.js";
@@ -70,13 +70,13 @@ export class RoleRunner {
    * to main, no director-prompt requeue, "user_aborted" result with normal backoff. Cleared
    * at the next run start so a stale request can never leak into a later run. */
   private userAborted = false;
-  /** Set by handBackRun() when a budget-reopened handback lands mid-run: it aborts the
-   * run WITHOUT the user-abort flag, so finishAbortedRun takes its shutdown branch (pi
-   * session and worktree edits kept) and the run ends `aborted` — but with a named resume
-   * cause, so the resumed session's bridge prompt says the run moved back to the primary
-   * model instead of claiming a harness restart. Cleared at the next run start, like
-   * userAborted. */
-  private handedBack = false;
+  /** Set by handBackRun() when a handback lands mid-run (the budget reopened, or the run's
+   * pair failed the model check while it waited on a reply): it aborts the run WITHOUT the
+   * user-abort flag, so finishAbortedRun takes its shutdown branch (pi session and worktree
+   * edits kept) and the run ends `aborted` — but with this as its resume cause, so the resumed
+   * session's bridge prompt says why instead of claiming a harness restart. Cleared at the
+   * next run start, like userAborted. */
+  private handedBack?: HandBackCause;
   /** The provider/model pair this run's config resolved to at run start (configForRole):
    * what the in-flight run is running on. The orchestrator's budget-gate poll reads it via
    * runModelPair() to hand fallback runs back when the budget reopens (PLANS.md 2026-09-30); with
@@ -84,6 +84,12 @@ export class RoleRunner {
    * resolve to, since different roles may run on different pairs.
    * Transient — never persisted — and captured fresh at every run start. */
   private runPair?: { provider?: string; model?: string };
+  /** The pair (seamPairName) an authoring agent run of the in-flight run is waiting on: its
+   * model request has gone unanswered for toolCallStallSeconds and is still open. Set and
+   * cleared by the agent run's watchdog (PiRunOptions.onUnansweredReply), which always clears
+   * it when the agent run settles; the orchestrator's model check reads it through
+   * unansweredRunPair. Transient, never persisted. */
+  private waitingPair?: string;
   /** Whether the budget gate currently has the team on its free fallback pairs (src/gates/
    * budget-gates.ts onFallback, set alongside `config` by the orchestrator's poll): an
    * image reroute may then look only among the free fallback pairs, never a priced primary
@@ -129,6 +135,9 @@ export class RoleRunner {
       foldMergeUsage: (run, provider, pair) => this.foldMergeUsage(run, provider, pair),
       runNumber: () => this.state.runs,
       sleep: this.sleep,
+      replyWait: (pair, waiting) => {
+        this.waitingPair = waiting ? pair : undefined;
+      },
     });
     // A persisted running flag means the previous process died mid-run WITHOUT the
     // graceful-abort bookkeeping (crash, kill -9, power loss). The interruption looks the
@@ -179,17 +188,28 @@ export class RoleRunner {
     this.runAbort.abort();
   }
 
-  /** Hand this runner's in-flight run back to the primary model after the budget gate reopens
-   * (PLANS.md 2026-09-30): abort the per-run controller WITHOUT the user-abort flag, so
-   * finishAbortedRun takes its shutdown branch — pi session and worktree edits kept — and
-   * the run ends `aborted`, which applyRunOutcome schedules to resume promptly. The
-   * orchestrator calls this on every runner whose runModelPair() still matches the fallback
-   * pair the gate just left; a run started on the primary (and the director) keeps running.
-   * No-op when no run is running, like abortRun. */
-  handBackRun(): void {
-    if (!this.state.running) return;
-    this.handedBack = true;
+  /** Hand this runner's in-flight run back resumably: abort the per-run controller WITHOUT the
+   * user-abort flag, so finishAbortedRun takes its shutdown branch — pi session and worktree
+   * edits kept — and the run ends `aborted` with `cause` as its resume cause, which
+   * applyRunOutcome schedules to resume promptly. Two callers: the budget gate reopening
+   * (PLANS.md 2026-09-30) hands back every runner whose runModelPair() still matches the
+   * fallback pair it just left ("budget-resumed"; a run started on the primary, and the
+   * director, keeps running), and the model check hands back a run waiting on an unanswered
+   * request once its pair fails a re-check ("model-check", plans/model-check.md). No-op when no
+   * run is running, like abortRun, or when this run was already handed back; returns whether
+   * this call handed it back. */
+  handBackRun(cause: HandBackCause = "budget-resumed"): boolean {
+    if (!this.state.running || this.handedBack !== undefined) return false;
+    this.handedBack = cause;
     this.runAbort.abort();
+    return true;
+  }
+
+  /** The pair the in-flight run's model request is waiting on, unanswered for
+   * toolCallStallSeconds (null when idle or answered): the orchestrator's model check re-checks
+   * it, and hands the run back once the pair fails (src/model-check/model-check-gate.ts). */
+  unansweredRunPair(): string | null {
+    return this.state.running ? (this.waitingPair ?? null) : null;
   }
 
   /** The provider/model pair the in-flight run is running on (null when idle): the
@@ -359,8 +379,8 @@ export class RoleRunner {
       setRunPair: (pair) => {
         self.runPair = pair;
       },
-      setHandedBack: (value) => {
-        self.handedBack = value;
+      setHandedBack: (cause) => {
+        self.handedBack = cause;
       },
       resetRunAbort: () => {
         self.runAbort = new AbortController();

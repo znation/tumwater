@@ -82,9 +82,11 @@ export interface RunnerState {
    * cap, so the next run hands the kept worktree off to the fallback seam (part 7a/7);
    * "image-reroute" when an authoring run read an image its model cannot see and the next
    * run hands the kept worktree off to an image-capable peer tier (plans/image-input.md
-   * part 4/5). Cleared with resumePending at run start; absent for restart/cut-off resumes,
-   * whose causes are derived. */
-  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute";
+   * part 4/5); "model-check" when the model check handed back a run waiting on an unanswered
+   * model request once its pair failed a re-check (plans/model-check.md), so the bridge says
+   * the model stopped answering. Cleared with resumePending at run start; absent for
+   * restart/cut-off resumes, whose causes are derived. */
+  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute" | "model-check";
   /** Queue file holding the user prompt a resume-owning run re-queued: the interrupted pi
    * session still owns that request in its context, so the resume must reclaim exactly this
    * file as its own user prompt — the resume's fulfillment consumes it, and only its failure

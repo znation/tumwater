@@ -1,5 +1,5 @@
 import type { BackendFailureKind } from "../pi/pi.js";
-import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
+import { endedBeforeAnyReply, runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import type { RateWindow } from "../pi/pi-stream.js";
 import type { ClaudeBilling } from "../agent/claude/claude-account.js";
 import type { RunnerState } from "../runner/runner-state.js";
@@ -71,6 +71,11 @@ export class RunUsage {
   preEditPromptTokens = 0;
   /** True once an authoring run has reported a first edit; the pre-edit counter freezes. */
   private editSeen = false;
+  /** The latest authoring agent run of THIS run failed before its model replied at all
+   * (endedBeforeAnyReply): finalizeRun sets RunOutcome.unanswered from it, and the model check
+   * re-checks the run's pair. The latest one decides, so a transient retry that got its answer
+   * clears the first attempt's. Reset at run start. */
+  endedUnanswered = false;
   /** This role's most recent pi run that ended on a provider 429 — author run, retry,
    * reviewer or merge run alike, since every one folds through fold — with the provider's
    * Retry-After hint when it sent one. The orchestrator reads it every poll as this role's
@@ -109,6 +114,7 @@ export class RunUsage {
     this.cacheReadTokens = 0;
     this.preEditPromptTokens = 0;
     this.editSeen = false;
+    this.endedUnanswered = false;
     this.providerCost = new Map();
   }
 
@@ -123,6 +129,7 @@ export class RunUsage {
     this.foldPromptTokens(run, authoring);
     this.turns += run.turns;
     this.foldEpisodes(run, provider);
+    if (authoring) this.endedUnanswered = endedBeforeAnyReply(run);
   }
 
   /** Grow the role's lifetime totals on `s` from this run: its generated tokens and the real

@@ -457,9 +457,11 @@ export async function pollSchedule(
       (role !== DIRECTOR_ROLE
         ? gates.teamHeldNow().has(gates.roleProviders.get(role))
         : windowHeldProviders(gateStates.teamHold).has(gates.roleProviders.get(role))),
-    // A run that ended without changes and without declaring nothing-to-do is the shape a
-    // serving fault takes (2026-10-30 Flint): have the model check look at its pair again.
-    ...(modelCheck !== null ? { onUndeclaredNoChange: (pair: string) => modelCheck.suspect(pair) } : {}),
+    // A run that ended without changes and without declaring nothing-to-do (2026-10-30 Flint),
+    // or failed before its model replied (2026-10-29 deepinfra), is the shape a serving fault
+    // takes: have the model check look at its pair again. A run still waiting on its reply
+    // reaches the check sooner, through the check's own poll (RoleRunner.unansweredRunPair).
+    ...(modelCheck !== null ? { suspectPair: (pair: string) => modelCheck.suspect(pair) } : {}),
   });
 }
 

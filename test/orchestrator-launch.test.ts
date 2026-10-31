@@ -358,3 +358,26 @@ test("a wake event that cannot be logged still starts the due run", async () => 
   await settle(c);
   assert.equal(c.roleInFlight.size, 0, "the run finished");
 });
+
+test("a run that ended undeclared or before any reply suspects the pair it started on; others do not", async () => {
+  // The model check's end-of-run trigger (plans/model-check.md): the launch pass hands the pair
+  // runConfig named at start to suspectPair, for an undeclared no_change and for a run that
+  // failed before its model replied; a plain failure and a declared result say nothing about it.
+  const suspected: string[] = [];
+  const outcomes: RunOutcome[] = [
+    { result: "no_change", undeclared: true },
+    { result: "error", unanswered: true },
+    { result: "error" },
+    { result: "no_change" },
+  ];
+  const runners = outcomes.map((o, i) =>
+    fakeRunner(`r${i}`, async () => o, { roles: {}, provider: "local", model: `m${i}` }),
+  );
+  const c = ctx({
+    reasons: new Map(runners.map((r) => [r, "scheduled"])),
+    suspectPair: (pair) => suspected.push(pair),
+  });
+  launchDueRuns(c);
+  await settle(c);
+  assert.deepEqual(suspected.sort(), ["local/m0", "local/m1"]);
+});

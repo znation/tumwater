@@ -22,12 +22,13 @@ import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-co
  * hands off to the fallback seam (plans/agent-backends.md §7, part 7a/7), or the newest author
  * session belongs to another agent (plans/agent-backends.md "Sessions") — a handoff runs a
  * fresh session over the interrupted run's uncommitted worktree. */
-export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff" | "rate-limit" | "budget-capped" | "image-reroute" | "salvaged";
+export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff" | "rate-limit" | "budget-capped" | "image-reroute" | "salvaged" | "model-check";
 
-/** The shared closing paragraph of the four resume bridges that hand the same task back
- * unchanged (restart, hung-tool, budget-resumed, rate-limit): finish or redo what you started
- * rather than picking a new one. Kept in one place so the wording cannot drift between causes —
- * the cut-off and timeout bridges deliberately phrase their own finish instructions instead. */
+/** The shared closing paragraph of the five resume bridges that hand the same task back
+ * unchanged (restart, hung-tool, budget-resumed, rate-limit, model-check): finish or redo what
+ * you started rather than picking a new one. Kept in one place so the wording cannot drift
+ * between causes — the cut-off and timeout bridges deliberately phrase their own finish
+ * instructions instead. */
 const CONTINUE_TASK_BRIDGE = `Continue the SAME task you were working on and finish it. If the work so far turns out to be
 unusable, redo it — but stay on this task rather than picking a new one.`;
 
@@ -73,7 +74,15 @@ reset. Your worktree is exactly as you left it, and this session carries everyth
 far. The window has since reset, and tumwater is continuing this session now.
 
 ${CONTINUE_TASK_BRIDGE}`
-              : `Tumwater was restarted while you (the "${roleId}" role) were mid-run. Your worktree
+              : cause === "model-check"
+                ? `Your previous run as the "${roleId}" role waited on a model reply that never came, and
+tumwater's model check then found that model was not answering, so tumwater stopped the run. It
+is continuing this session now on a model that passes the check: the same one once it answers
+again, or a fallback model until then. Your worktree is exactly as you left it, and this session
+carries everything you did so far.
+
+${CONTINUE_TASK_BRIDGE}`
+                : `Tumwater was restarted while you (the "${roleId}" role) were mid-run. Your worktree
 is exactly as you left it, and this session carries everything you did so far. A tool call that
 was executing when the restart hit may not have finished — verify its effect before relying on it.
 

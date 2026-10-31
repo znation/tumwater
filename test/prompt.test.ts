@@ -662,7 +662,7 @@ test("the three endings are one shared list, used by fresh and resumed runs alik
   const runText = buildRunPrompt({ role: roleById("bugfix")! });
   assert.ok(runText.includes(REPLY_ENDINGS), "run prompt carries the shared list");
   assert.ok(buildDirectorPrompt("x").includes(REPLY_ENDINGS), "director prompt carries it");
-  for (const cause of ["restart", "cut-off", "hung-tool", "timeout", "budget-resumed"] as const) {
+  for (const cause of ["restart", "cut-off", "hung-tool", "timeout", "budget-resumed", "model-check"] as const) {
     const resume = buildResumePrompt("clean", cause);
     assert.ok(resume.trimEnd().endsWith(REPLY_ENDINGS.trimEnd()), `${cause} bridge ends with the shared list`);
   }

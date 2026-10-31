@@ -147,3 +147,22 @@ export interface PiRunResult {
 export function runCostIsReal(run: Pick<PiRunResult, "billing" | "usedOverage">): boolean {
   return run.billing !== "subscription" || run.usedOverage === true;
 }
+
+/** Whether a run failed before its model replied at all: no assistant message carried text or a
+ * tool call, and tumwater did not stop it (aborted), the provider did not just say "later" (a
+ * 429, which the team-wide rate-limit hold answers), the request itself was not refused (its
+ * context too large, its session gone) and no per-run budget cap ended it. What is left — no
+ * reply before a watchdog fired, a refused connection, a server error, an empty stream — is
+ * how a pair that stopped answering ends a run, so the model check re-checks the run's pair
+ * (RunOutcome.unanswered, src/model-check/model-check-gate.ts). */
+export function endedBeforeAnyReply(run: PiRunResult): boolean {
+  return (
+    !run.ok &&
+    !run.producedAssistantContent &&
+    !run.aborted &&
+    !run.transientRateLimit &&
+    !run.contextExceeded &&
+    run.resumeMissing !== true &&
+    run.budgetCapped !== true
+  );
+}

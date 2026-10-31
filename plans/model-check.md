@@ -38,13 +38,50 @@ each of them in seconds.
   A pair seen for the first time is probed at once: at startup, after a config edit routes a
   seam to it, or when a budget fallback engages it. A pair that leaves use is forgotten. A
   failed pair is probed again after 1 minute, then the wait doubles up to 30 minutes. A
-  verified pair is probed again when a run on it ends `no_change` without declaring
-  nothing-to-do (`RunOutcome.undeclared`), at most every 10 minutes.
+  verified pair is probed again, at most every 10 minutes, when a run on it gives evidence it may
+  have stopped answering properly (see Suspicion).
+- **Suspicion** (added 2026-10-30, after the 2026-10-29 deepinfra hang held plan about 2 h a run):
+  three run shapes re-check the pair the run is on.
+  - The run ends `no_change` without declaring nothing-to-do (`RunOutcome.undeclared`): the
+    Flint word-salad shape.
+  - The run's last authoring agent run failed before its model replied at all
+    (`RunOutcome.unanswered`, from `endedBeforeAnyReply` in `pi-run-result.ts`, set by
+    `finalizeRun`). A 429, a refused request (context too large, session gone), a per-run
+    budget cap and tumwater's own abort do not count: the provider answered, or tumwater
+    stopped the run. The launch pass passes both outcome flags to the gate through
+    `LaunchContext.suspectPair`.
+  - A run's model request is still unanswered after `toolCallStallSeconds`, the watchdog's
+    `model request unanswered` warning. A run that waits like this may not end for hours, so
+    this does not wait for the outcome. The watchdog reports the wait and its end through
+    `PiRunOptions.onUnansweredReply`. For the role's own authoring agent runs, `RunnerPi` passes
+    it to the runner, which publishes `RoleRunner.unansweredRunPair()`. The gate's poll reads
+    that pair from every runner and suspects it on every poll while the wait lasts. The rate
+    limit makes that one probe per 10 minutes, so a hang the probe does not reproduce is
+    checked again while it lasts. The runner never sees the gate. Merge and review runs, which
+    the merge slot runs outside any role run, do not report a wait.
 - **Holds**: a due role waits (skip reason `model-check`, shown as `waiting: model check`) while
   its next run's pair is not verified. With review on, every role but the director also waits
   while the reviewer's pair is not verified, because no change can merge without a review. The
   start gate reads the latest verdict, so a run parked for a permit does not start on a pair
-  that failed meanwhile. In-flight runs finish.
+  that failed meanwhile. In-flight runs finish, except a run that is waiting on an unanswered
+  request (see In-flight runs).
+- **In-flight runs** (decided 2026-10-30): when a pair fails its check, a run on it that is
+  waiting on an unanswered request (`unansweredRunPair` names the pair) is handed back
+  resumably. `RoleRunner.handBackRun("model-check")` keeps its session and worktree edits, and
+  the run ends `aborted` with resume cause `model-check`. The role resumes the session on its
+  next run, on whatever its tier runs on then. That is the verified step the tier moves to (see
+  Fallback), or else the same pair once it answers again, with the role held until it does. The
+  bridge says the model stopped answering. The gate logs one warning per hand-back
+  (`run handed back: …`). The director is handed back the same way; its prompt returns to the
+  inbox, as on any abort.
+  - Why: such a run produces nothing. On 2026-10-29 pi waited out its 30-minute idle timeout
+    and retried three times, so the run held a team slot for about 2 h. Ending it loses no
+    work, and the resume starts as soon as the tier runs on a verified pair, not when the
+    backend gives up on a request.
+  - Not handed back: a run on a failed pair whose requests are being answered. A probe failing
+    while the run's own requests get replies is weak grounds for cutting real work. A run on a
+    pair giving salad, the Flint shape, ends by itself soon enough with an undeclared
+    `no_change`. Its session would be full of salad, so a resume would carry that forward.
 - **Fallback** (`budget-fallback-view.ts`, added 2026-10-30): a tier whose own primary failed
   its check runs on the first step that the check has verified, from its own chain or one it may
   borrow (`BORROW_ORDER`). This applies at any spend. At the cap it covers a tier the cap leaves
@@ -81,8 +118,17 @@ each of them in seconds.
   same way by design, because its half-open probe runs on the demoted pair.
 - The director keeps the live config, so a director whose primary failed waits rather than
   moving.
-- A run already in flight on a pair that then fails its check runs to its end. It could be
-  handed back resumably, like the budget reopen's `budget_handback`.
+- A run in flight on a pair that fails its check, and whose requests are being answered, runs
+  to its end (see In-flight runs).
+- The 2026-10-29 hang was keyed on the opening of pi's stock system prompt. The probe goes
+  through pi with that same opening, so it reproduces that hang. A hang keyed on something only
+  role prompts carry would pass the probe. The waiting run then keeps waiting, and its pair is
+  re-checked every 10 minutes while the wait lasts.
+- The mid-run wait is pi-only: the claude, opencode and codex translators emit no
+  `message_start`, so on those backends only a run that ends before any reply re-checks its
+  pair.
+- Merge and review runs report no unanswered wait. A reviewer pair that stops answering is
+  re-checked only through the role-run shapes.
 - Probe cost is not charged to any role's daily window. A probe costs a few hundred tokens.
 - Verdicts are in memory only, so every restart (including self-redeploys) re-checks every pair
   and holds the roles for the probe's few seconds.

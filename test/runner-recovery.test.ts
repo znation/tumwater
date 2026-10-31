@@ -77,7 +77,7 @@ test("finishAbortedRunPhase discards the request and the work on an explicit use
   const { ctx, pending } = makeCtx(root);
   pending.record("please do x");
 
-  const outcome = await finishAbortedRunPhase(ctx, "please do x", wt, true, false);
+  const outcome = await finishAbortedRunPhase(ctx, "please do x", wt, true, undefined);
   assert.deepEqual(outcome, { result: "user_aborted" });
   assert.equal(pending.get(), null, "the abort is the answer: the request is dropped, not requeued");
   assert.equal(inboxSize(root, "improve"), 0);
@@ -90,7 +90,7 @@ test("finishAbortedRunPhase requeues the prompt for resume on a plain shutdown",
   pending.record("please do x");
 
   // No worktree is touched on this arm — only the prompt is handed back for a resumed session.
-  const outcome = await finishAbortedRunPhase(ctx, "please do x", path.join(root, "unused"), false, false);
+  const outcome = await finishAbortedRunPhase(ctx, "please do x", path.join(root, "unused"), false, undefined);
   assert.deepEqual(outcome, { result: "aborted" });
   assert.equal(inboxSize(root, "improve"), 1, "the shutdown requeues the unfulfilled request");
 });
@@ -100,7 +100,7 @@ test("finishAbortedRunPhase names a budget handback as the resume cause", async 
   const { ctx, pending } = makeCtx(root);
   pending.record("please do x");
 
-  const outcome = await finishAbortedRunPhase(ctx, "please do x", path.join(root, "unused"), false, true);
+  const outcome = await finishAbortedRunPhase(ctx, "please do x", path.join(root, "unused"), false, "budget-resumed");
   assert.deepEqual(outcome, { result: "aborted", resumeCause: "budget-resumed" });
   assert.equal(inboxSize(root, "improve"), 1);
 });

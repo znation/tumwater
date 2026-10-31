@@ -6,8 +6,8 @@
  * appears — startup, a config edit that routes a seam to it, a budget fallback engaging it — and
  * a failed pair is checked again on a doubling back-off until it answers, so the roles it holds
  * resume on their own. A verified pair is checked again only on suspicion (suspectModelCheck): a
- * run on it ended without changes and without declaring nothing-to-do, the shape a serving
- * fault takes. */
+ * run on it ended without changes and without declaring nothing-to-do, failed before its model
+ * replied, or is waiting on a request left unanswered — the shapes a serving fault takes. */
 
 import type { ModelCheckVerdict } from "./model-check-probe.js";
 
@@ -119,9 +119,10 @@ export function recordModelCheck(
   });
 }
 
-/** A run on a verified pair ended the way a serving fault ends: schedule a re-check now, unless
- * one is already due or in flight, or the pair was checked within the policy's suspectMinMs. The
- * pair stays verified (its roles keep running) until the re-check says otherwise. */
+/** A run on a verified pair ended, or is waiting, the way a serving fault does: schedule a
+ * re-check now, unless one is already due or in flight, or the pair was checked within the
+ * policy's suspectMinMs. The pair stays verified (its roles keep running) until the re-check
+ * says otherwise. */
 export function suspectModelCheck(
   map: ModelCheckMap,
   pair: string,

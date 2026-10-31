@@ -44,6 +44,11 @@ export type RunResult =
   /** Nothing to run (e.g. director with an empty inbox). */
   | "skipped";
 
+/** Why the orchestrator handed an in-flight run back resumably (RoleRunner.handBackRun): the
+ * budget reopened while it ran on a fallback pair, or its pair failed the model check while it
+ * waited on an unanswered model request. Each is the run's resume cause. */
+export type HandBackCause = "budget-resumed" | "model-check";
+
 /** The outcome of one full run: its result plus what the harness learned from it.
  * Consumed by the orchestrator's dashboards and by run-apply.ts's post-run
  * scheduling (applyRunOutcome). */
@@ -84,15 +89,22 @@ export interface RunOutcome {
    * API-billed claude run cut off at its per-run budget cap ends `aborted` with
    * "budget-capped", whose handoff carries the kept worktree to the fallback (part 7a/7);
    * an image-blind run with an image-capable peer tier ends `aborted` with "image-reroute",
-   * whose handoff carries the kept worktree to that tier (plans/image-input.md part 4/5). Set
-   * only by those outcomes; every other resume cause is derived from state (cut-off streak,
+   * whose handoff carries the kept worktree to that tier (plans/image-input.md part 4/5); a run
+   * the model check handed back while it waited on an unanswered model request ends `aborted`
+   * with "model-check", whose bridge says the model stopped answering (plans/model-check.md).
+   * Set only by those outcomes; every other resume cause is derived from state (cut-off streak,
    * restart). */
-  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute";
+  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute" | "model-check";
   /** A `no_change` run that declared neither nothing-to-do nor a refusal and was not cut off
    * (run-verdict.ts's warnUndeclaredNoChange): the agent replied, but not the way a working
    * model answers its prompt. The orchestrator has the model check probe the run's pair again
    * (src/model-check/model-check-gate.ts), since a serving fault looks exactly like this. */
   undeclared?: boolean;
+  /** The run's last authoring agent run failed before its model replied at all
+   * (pi-run-result.ts's endedBeforeAnyReply, set by finalizeRun): the orchestrator has the
+   * model check probe the run's pair again, as for `undeclared`. A run whose request is still
+   * unanswered mid-run reaches the check sooner, through RoleRunner.unansweredRunPair. */
+  unanswered?: boolean;
   /** The run ended on leftover recovery (runner-leftover.ts) — the leftover went on the merge
    * queue (or already was there, or could not be pinned) — without an authoring run. No model
    * ran, so the orchestrator's fallback breaker takes the run as no evidence about the backend. */

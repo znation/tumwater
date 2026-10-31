@@ -91,9 +91,10 @@ interface LaunchContext {
    * for role runs (the director is exempt, as at scheduling). */
   startHeld: (role: string) => boolean;
   /** Called with the pair a run ran on when the run ended without changes and without
-   * declaring nothing-to-do (RunOutcome.undeclared) — the model check's re-check trigger.
-   * Absent while the check is off. */
-  onUndeclaredNoChange?: (pair: string) => void;
+   * declaring nothing-to-do (RunOutcome.undeclared), or failed before its model replied at all
+   * (RunOutcome.unanswered) — the model check's re-check trigger. Absent while the check is
+   * off. */
+  suspectPair?: (pair: string) => void;
 }
 
 /** Launch one due runner's run: reserve it, park it in the semaphore, and start it under
@@ -216,7 +217,7 @@ export function launchDueRuns(ctx: LaunchContext): void {
           const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;
           // The pair the run starts on, for the model check's re-check trigger (any role, the
           // director included: its runs are evidence about its pair too).
-          const checkPair = ctx.onUndeclaredNoChange ? seamPairName(runner.runConfig()) : null;
+          const checkPair = ctx.suspectPair ? seamPairName(runner.runConfig()) : null;
           // The run's lease rides in the run-permit store for the length of the run, so an
           // idle wait inside it (a failed review's in-place retry pause) can hand the team
           // permit back and re-take it before the next attempt. The director holds no lease.
@@ -224,7 +225,7 @@ export function launchDueRuns(ctx: LaunchContext): void {
             usesSlot
               ? await withRunPermit(lease!, () => runner.run())
               : await runner.run();
-          if (checkPair !== null && outcome.undeclared) ctx.onUndeclaredNoChange?.(checkPair);
+          if (checkPair !== null && (outcome.undeclared || outcome.unanswered)) ctx.suspectPair?.(checkPair);
           if (ranPair !== null && ranOn !== undefined) {
             const at = breakerNow();
             const evidence = outcome.recoveredLeftover ? "skipped" : outcome.result;

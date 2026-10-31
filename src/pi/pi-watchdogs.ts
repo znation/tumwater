@@ -35,6 +35,10 @@ interface PiWatchdogDeps {
   /** Receives each stall warning: a tool call silent (or open) past its threshold, or a model
    * request unanswered past stallMs. Warns only; the quiet watchdog still owns the kill. */
   onStallWarning?: (message: string) => void;
+  /** The unanswered-request warning's structured twin: true when it fires, false once that
+   * wait ends (the model answered, or the run settled with the request still open). The model
+   * check acts on it (src/model-check/model-check-gate.ts); the warning text stays for people. */
+  onUnansweredReply?: (waiting: boolean) => void;
 }
 
 /** The flags the run's close handler and finish() read back, plus the feed and teardown
@@ -74,6 +78,9 @@ interface WatchdogState {
   timedOutProgressing: boolean;
   quietKilled: boolean;
   timeoutBudgetMs: number;
+  /** The start (PendingReply.since) of the unanswered stretch the warning last named, until
+   * that stretch ends; undefined when none is open. */
+  replyWaitSince?: number;
   checkpoint?: ReturnType<typeof setTimeout>;
   timeout?: ReturnType<typeof setTimeout>;
   quietCheck?: ReturnType<typeof setInterval>;
@@ -257,17 +264,23 @@ function startQuietWatch(state: WatchdogState, deps: PiWatchdogDeps): void {
   // timeout and retries, and each retry is progress to the quiet watchdog, so nothing else
   // names the hang for hours. Like the stall warning it only warns: a slow local prefill can
   // legitimately run this long, and pi's own timeout still owns each attempt. One warning per
-  // unanswered stretch, keyed by its start, not one per retry.
-  let warnedReplySince: number | undefined;
+  // unanswered stretch, keyed by its start, not one per retry. A stretch that has since ended
+  // (the model answered, or a new request opened another) reports its end before a new one is
+  // judged, so onUnansweredReply's true/false pairs up.
   const warnUnansweredReply = () => {
     const pending = deps.pendingReply?.();
-    if (!pending || pending.since === warnedReplySince) return;
+    if (state.replyWaitSince !== undefined && pending?.since !== state.replyWaitSince) {
+      state.replyWaitSince = undefined;
+      deps.onUnansweredReply?.(false);
+    }
+    if (!pending || pending.since === state.replyWaitSince) return;
     const waitedMs = Date.now() - pending.since;
     if (waitedMs < deps.stallMs) return;
-    warnedReplySince = pending.since;
+    state.replyWaitSince = pending.since;
     deps.onStallWarning?.(
       `model request unanswered: ${pending.target || "model"} — no reply for ${silenceLabel(waitedMs)}`,
     );
+    deps.onUnansweredReply?.(true);
   };
   const checkEveryMs = deps.quietMs > 0 ? deps.quietMs : deps.stallMs;
   state.quietCheck =
@@ -339,6 +352,11 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
       clearTimeout(state.timeout);
       clearTimeout(state.checkpoint);
       if (state.quietCheck) clearInterval(state.quietCheck);
+      // The run settled: nothing waits on its reply any more.
+      if (state.replyWaitSince !== undefined) {
+        state.replyWaitSince = undefined;
+        deps.onUnansweredReply?.(false);
+      }
     },
   };
 }

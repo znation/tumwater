@@ -1,4 +1,4 @@
-import type { RunOutcome } from "../run/run-outcome.js";
+import type { HandBackCause, RunOutcome } from "../run/run-outcome.js";
 import type { RunnerState } from "./runner-state.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { aheadOfMain, headOf, setRef } from "../git/git.js";
@@ -31,13 +31,13 @@ interface RecoveryContext {
  * agent-run boundary within the run — or, for a run that reaches no further agent run,
  * completes normally and the abort had no effect; re-issuing is the remedy.
  * `userAborted`/`handedBack` are read from the runner's live flags: an explicit abort discards
- * the request; a budget handback names its resume cause; a plain shutdown requeues the prompt. */
+ * the request; a handback names its resume cause; a plain shutdown requeues the prompt. */
 export async function finishAbortedRunPhase(
   ctx: RecoveryContext,
   userPrompt: string | null,
   wt: string,
   userAborted: boolean,
-  handedBack: boolean,
+  handedBack: HandBackCause | undefined,
 ): Promise<RunOutcome> {
   if (userAborted) {
     // An explicit abort discards the request itself too: clear the dequeued prompt here —
@@ -53,9 +53,10 @@ export async function finishAbortedRunPhase(
   // prompt rides the resume that follows (mid-review the fresh recovery dequeues it like any
   // other run instead — the flag is cleared and never reclaimed there).
   ctx.pending.requeueForResume(ctx.state, userPrompt);
-  // A budget handback is an interruption with a named cause: the resumed session's bridge
-  // prompt says the run was moved back to the primary model, not that the harness restarted.
-  return handedBack ? { result: "aborted", resumeCause: "budget-resumed" } : { result: "aborted" };
+  // A handback is an interruption with a named cause: the resumed session's bridge prompt says
+  // the run was moved back to the primary model, or that its model stopped answering — not
+  // that the harness restarted.
+  return handedBack ? { result: "aborted", resumeCause: handedBack } : { result: "aborted" };
 }
 
 /** Pin `sha` by this role's merge ref and free the worktree (plans/merge-queue.md invariant

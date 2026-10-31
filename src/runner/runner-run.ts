@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { RunOutcome } from "../run/run-outcome.js";
+import type { HandBackCause, RunOutcome } from "../run/run-outcome.js";
 import type { RunnerState } from "./runner-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { branchExists, deleteRef, commitMessage, changeBaseRev, headOf } from "../git/git.js";
@@ -83,7 +83,7 @@ export interface RunnerRunContext {
   readonly recoveryFailure: string | undefined;
   setRecoveryFailure(message: string | undefined): void;
   setRunPair(pair: { provider?: string; model?: string } | undefined): void;
-  setHandedBack(value: boolean): void;
+  setHandedBack(cause: HandBackCause | undefined): void;
   /** A fresh per-run abort controller and a cleared user-abort flag. */
   resetRunAbort(): void;
   /** A run's pipeline entry: the runner's `runOnce` (test-overridable). */
@@ -226,7 +226,7 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
   // (src/gates/budget-gates.ts) compares against, so a run on a claude fallback is handed
   // back when the budget gate reopens (PLANS.md "Mixed claude + pi fleets, part 2/4").
   ctx.setRunPair({ provider: seamHoldKey(cfg), model: cfg.model });
-  ctx.setHandedBack(false);
+  ctx.setHandedBack(undefined);
   s.runs += 1;
   // gen / peak ctx are per-run windows, not lifetime totals (user decision 2026-08-25):
   // reset before the start-of-run save so a working runner's columns grow live from 0 and

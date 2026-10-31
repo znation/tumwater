@@ -110,6 +110,10 @@ interface RunnerPiHost {
    * instead of living through it (a hint-less 429 waits a real minute). Unset means the
    * real clock via sleepFor. */
   sleep?(ms: number): Promise<void>;
+  /** An authoring agent run's model request on `pair` (seamPairName of the agent run's seam)
+   * has waited toolCallStallSeconds for its reply (`waiting` true), or that wait ended (false):
+   * the runner keeps it for the orchestrator's model check (RoleRunner.unansweredRunPair). */
+  replyWait?(pair: string, waiting: boolean): void;
 }
 
 /** The pi-invocation plumbing of one role's runner, extracted from RoleRunner
@@ -168,6 +172,12 @@ export class RunnerPi {
       // the same (BUGS.md 2026-10-29). The dashboards derive their own flags from the raw log,
       // so only the harness event needs wiring here.
       onStallWarning: (message) => this.host.warn(message),
+      // The same wait, structured, for the model check (plans/model-check.md): only the role's
+      // own authoring runs report it — a merge or review run is not this run's evidence, and the
+      // merge slot runs them outside any run.
+      ...(kind === "author"
+        ? { onUnansweredReply: (waiting: boolean) => this.host.replyWait?.(seamPairName(resolved), waiting) }
+        : {}),
       onLeftoversSwept: (message) => this.host.warn(message),
       // The translator's unmapped-native-type and cost_unknown warnings reach the event feed
       // as their own warning events, once per agent run.

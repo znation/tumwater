@@ -257,7 +257,9 @@ function runEventMessage(e: HarnessEvent): string {
               ? "handing the blind-read run off to a fresh session on an image-capable model (same workspace, uncommitted edits kept)"
               : e.cause === "salvaged"
                 ? "handing the work an earlier run left unsaved to a fresh session"
-                : "resuming the run a shutdown interrupted (same agent session and workspace)") + restored
+                : e.cause === "model-check"
+                  ? "resuming the run stopped while its model did not answer, on a model that passes its model check (same workspace)"
+                  : "resuming the run a shutdown interrupted (same agent session and workspace)") + restored
       );
     }
     case "wake":

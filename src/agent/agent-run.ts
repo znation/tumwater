@@ -122,6 +122,11 @@ export interface PiRunOptions {
    * still counts down (the dashboards derive their own flags from the raw log, so only the
    * event needs wiring). */
   onStallWarning?: (message: string) => void;
+  /** The unanswered-request warning's structured twin (pi-watchdogs.ts): called with true when
+   * a model request has waited toolCallStallSeconds for its reply, and with false once that
+   * wait ends — the reply arrived, or the run settled. Authoring runs wire it to the model
+   * check's re-check (src/runner/runner-pi.ts). */
+  onUnansweredReply?: (waiting: boolean) => void;
   /** Called once after the end-of-run sweep when a run tumwater did not kill left marked
    * processes running, with the warning naming the run kind and the count signaled. */
   onLeftoversSwept?: (message: string) => void;
@@ -237,6 +242,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       extendOnProgress: opts.kind === "gate",
       kill: () => terminateChild(child),
       onStallWarning: opts.onStallWarning,
+      onUnansweredReply: opts.onUnansweredReply,
     });
 
     let aborted = false;
