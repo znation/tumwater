@@ -177,8 +177,8 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 ## Layout
 
 - `src/runner/runner.ts`: the runner class and its lifecycle/public surface. `src/runner/runner-pi.ts`
-  holds its pi-run plumbing, `runner-run.ts` the run pipeline phases, `runner-recovery.ts` the
-  abort/pin/recovery phases, and `runner-fallback.ts` the model-fallback fold.
+  holds its pi-run plumbing, `runner-run.ts` the run pipeline phases, and `runner-recovery.ts`
+  the abort/pin/recovery phases.
 - `src/orchestrator/orchestrator.ts`: the scheduler; `src/orchestrator/orchestrator-launch.ts`
   holds its launch pass (admitting due roles to their runs).
 - `src/agent/`: the backend-neutral agent runner (`agent-run.ts` — the spawn, the
@@ -247,7 +247,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   failure hold (`gate-polls.ts` polls them).
 - `src/team/`: team-wide state (`team-state.ts` — the pause markers and their writers), the
   provider/kind hold, the team polls, the failure spread and error-storm alarms, and the
-  worktree reclaim pass (`reclaim.ts`).
+  worktree reclaim pass (`team-reclaim.ts`).
 - `src/scheduling/`: scheduling policy — per-role waits between runs (backoff), the quiet-hours
   parser, multi-instance claims, the `--once` round, and the poll's per-runner pass: the shared
   scope precompute (`scope.ts`), the skip decision (`skip.ts`), and the post-gate admission
@@ -271,7 +271,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   and the TUI's controls.
 - `src/backlog/`: the BUGS/PLANS/QUESTIONS markdown — the stat-cached readers, the text
   reader/writer, its structure, its renderer, and its eligibility marks; the QUESTIONS.md
-  reader/writer core (`question-answer.ts`) sits here, shared by the CLI's `questions` command
+  reader/writer core (`backlog-question-answer.ts`) sits here, shared by the CLI's `questions` command
   body, the TUI's answer box, and the dashboard's POST route.
 - `src/brief/`: the project brief — the managed prompt/status sections, reading the
   brief back out (`brief.ts`), and the shared writer that replaces it under the primary lock
