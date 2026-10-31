@@ -41,7 +41,6 @@ import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
-import { checkRunNumber } from "./fixtures/merger-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
@@ -557,15 +556,10 @@ test("a queued merge's record names each phase while it runs: the gate's check, 
   // verified tree's bytes, plus at most exempt paths, and the re-check would rightly be skipped.)
   const rec = path.join(tmpdir(), "stages");
   const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${mergeStatePath(root)}' | head -n 1`;
-  // Run 1 of the declared check is the gate pre-check, run 2 the merge's in-lock re-check, so the
-  // check moves main only on run 1: a second main move under the merge would leave the merge's
-  // fast-forward target behind main and block it (the gate's own pre-check already moved main once
-  // here so the in-lock re-check has a rebased tree to verify).
-  const checkCount = path.join(root, ".checkcount");
   const config = {
     ...defaultConfig(),
     check: {
-      command: `${checkRunNumber(checkCount)}if [ "$n" -eq 1 ]; then echo moved >> '${root}/main-moved.txt'; git -C '${root}' add main-moved.txt; git -C '${root}' commit -q -m 'main moves under the merge'; fi; echo "check:$(${stageOf})" >> '${rec}'`,
+      command: `echo "check:$(${stageOf})" >> '${rec}'`,
     },
   };
   const author = makeRoleRunner(root, "improve", config);
@@ -575,8 +569,8 @@ test("a queued merge's record names each phase while it runs: the gate's check, 
   assert.equal(result, "changed", `the merge succeeds: ${author.state.lastError ?? ""}`);
   assert.deepEqual(
     fs.readFileSync(rec, "utf8").trim().split("\n"),
-    ["check:build-check", "check:build-check"],
-    "the gate pre-check and the in-lock re-check each ran under their own stage",
+    ["check:build-check"],
+    "the gate pre-check ran under the build-check stage; the merge runs no in-lock check",
   );
   assert.equal(readMergeMarker(root), null, "the marker is removed after the outcome");
 });

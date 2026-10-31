@@ -3570,7 +3570,7 @@ a red that fails only main's known failures. Both keep the pin.
 records no strike for an unverified red" and "attributeRedCheck keeps the ref, with no strike, for a
 red that fails only main's known failures".
 
-### INV-BF4: a first strike warns, and a passing retry is a flake only for the same pin
+### INV-BF4: a red that is a known flake is excused once per headline per pin
 
 **Guarantee.** `attributeRedCheck` excuses a known-flaky headline once per headline per pin.
 
@@ -4531,7 +4531,7 @@ index, rather than skipping the preserve".
 
 ## Merge check attribution: a failed state save never fails the verdict
 
-### INV-CM1: a red merge check attributed while role-state saves fail still deletes a rejected pin and logs review_rejected, or returns main_red with the pin kept, warning once per failed save
+### INV-CM1: a red merge check attributed while role-state saves fail still settles its verdict
 
 **Guarantee.** The sinks of a red batch merge check persist the role's state best-effort: a failed save (full disk, EACCES) warns instead of throwing, so a rejected change loses its pin and logs review_rejected, and a main-red change returns main_red with its pin kept. Every sink now has a failing-save test of its own: the reject and main-red saves, `attributeRedCheck`'s unverified, known-failures and known-flake saves, and the `requeueKeptChange` re-queue save. Since part 4l/3 the in-lock merge check is gone; this INV now pins only the batch-path attribution, which 4m/3 deletes with the module.
 

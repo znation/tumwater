@@ -286,9 +286,8 @@ never has to wait a parked check out.
   keep draining. The post-merge review queue holds only where that gate's no-role form holds — a
   restart or disk hold, or a hold on the reviewer's provider — and never on the unresolvable
   strong tier, which never reaches the post-merge review queue.
-- A test that fails and then passes on the same tree is quarantined at once: the gate's re-run, a
-  red in-lock merge check's one immediate re-run (the change then merges), and the watch's
-  confirming re-run each add the failing tests the failed run named to
+- A test that fails and then passes on the same tree is quarantined at once: the gate's re-run and
+the watch's confirming re-run each add the failing tests the failed run named to
   `.tumwater/state/quarantine.json` (newest 100). A quarantined test counts as a known failure
   everywhere: a gate or merge check failing only known tests goes on, the watch records a red
   naming only quarantined tests as passed (`quarantined: [tests]`) with no culprit, and such a red
