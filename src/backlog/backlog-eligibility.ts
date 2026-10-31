@@ -81,8 +81,9 @@ export function needsReviewNote(body: string): string | null {
  * entry for selfcheck to lift when the cluster fails again (selfcheck step 4) and which no
  * role can act on until then, and for the director's user fallback ("by director: …", the
  * director-request handoff's final park) — the director has already reviewed the entry and the
- * park names what the user must decide, so it is not plan-role work either. entryHold returns "needs-review" for every such note (all of
- * them park the entry), so the doctor's `stalled entries` row (checkStalledEntries) — the
+ * park names what the user must decide, so it is not plan-role work either. entryHold returns
+ * "needs-review" for every such note (all of them park the entry), so the doctor's `stalled
+ * entries` row (checkStalledEntries) — the
  * stalled-with-the-plan-role surface — classifies by this agreed subset, keeping the bugfix
  * parks out of the plan-role blame. Reads the note's text after the NEEDS_REVIEW_PREFIX once,
  * so the row cannot disagree on which notes the plan role clears; the eligibility mark

@@ -188,8 +188,9 @@ function deriveCheckMovedTiers(a: BudgetFallbackViewInput, capMoved: ReadonlySet
 
 /** Derive the fallback view for one poll from the verdict half's already-resolved inputs
  * (`priceResolved`, `servingResolved`, `checkResolved`, `checkFreeResolved`, `chainPairs`,
- * `pairNames`) and the `reached` flag and the shared reads (`state`, `config`, `accounts`, `providers`, `catalog`),
- * writing the cross-poll view state (`from`/`fromKey`/`fallbackConfig`) and returning the view
+ * `pairNames`) and the `reached` flag and the shared reads (`state`, `config`, `accounts`,
+ * `providers`, `catalog`), writing the cross-poll view state (`from`/`fromKey`/
+ * `fallbackConfig`) and returning the view
  * fields pollBudgetGate hands back. The view is installed at the cap, and below it while a tier
  * the model check moved runs on its verified step; `onFallback` (the image-reroute regime) stays
  * the cap's alone. The director always keeps the live config (part 5d/6): with the window move
