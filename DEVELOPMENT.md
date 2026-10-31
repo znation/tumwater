@@ -245,6 +245,12 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/gates/`: the scheduler's admission gates — daily budget, disk floor, quiet hours,
   pause, startup/readiness, per-role caps, the maintenance quota, error streaks, and the team
   failure hold (`gate-polls.ts` polls them).
+- `src/model-check/`: the per-provider/model-pair liveness check — `model-check.ts` (the
+  per-pair state: checked, failing, and the doubling back-off that re-checks a failed pair until
+  it answers), `model-check-probe.ts` (the probe — one short prompt with a known one-word answer,
+  sent through the same backend path its runs take), and `model-check-gate.ts` (the per-poll wiring
+  held beside the gate family: which pairs the team can run on, the probes it launches, the roles
+  held while a pair is unchecked or failed, and the `modelChecks` block observers read).
 - `src/team/`: team-wide state (`team-state.ts` — the pause markers and their writers), the
   provider/kind hold, the team polls, the failure spread and error-storm alarms, and the
   worktree reclaim pass (`team-reclaim.ts`).
@@ -294,6 +300,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/roles/`: the role catalog, its role ids, per-role guidance, and the per-role views the
   CLI and dashboards read.
 - Top-level modules: `src/cli.ts` (the dispatcher), `src/paths.ts` (repo layout constants),
-  `src/version.ts`, `src/project-name.ts`, `src/collections.ts`, `src/errno.ts`, and
-  `src/request-timeouts.ts`.
+  `src/version.ts`, `src/project-name.ts`, `src/collections.ts`, `src/errno.ts`,
+  `src/request-timeouts.ts`, and `src/notes-cli.ts` (the second `bin` entry, `tumwater-notes` —
+  the command carrier for writing a role's note).
 - `test/`: unit tests.
