@@ -12,6 +12,7 @@ import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor
 import {
   claudeSeamsInUse,
   loadConfigForCheck,
+  seamStandDown,
   versionFromProbe,
   seamedModels,
 } from "./doctor-model-checks.js";
@@ -37,7 +38,7 @@ import {
 function claudeCheckBase(root: string): TumwaterConfig | CheckOutcome {
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;
-  if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
+  if (!claudeSeamsInUse(config)) return seamStandDown("claude");
   return config;
 }
 
@@ -201,7 +202,7 @@ export async function checkClaudeVersion(
   const config = claudeCheckBase(root);
   if ("level" in config) return config;
   const seams = seamedModels(config, "claude");
-  if (seams.length === 0) return okOutcome("no model jobs run on claude");
+  if (seams.length === 0) return seamStandDown("claude");
   const floors = claudeVersionFloors(seams);
   const result = await claudeProbe(config, ["--version"], pathEnv, timeoutMs);
   const found = versionFromProbe(result);

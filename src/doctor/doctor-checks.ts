@@ -37,7 +37,7 @@ import { formatBytes } from "../text/format.js";
 import { BRIEF_TEXT_MAX_CHARS, briefFile, promptBlockOf, readBrief } from "../brief/brief.js";
 import { plural } from "../text/phrases.js";
 import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gates.js";
-import { claudeSeamsInUse, loadConfigForCheck, minVersionOutcome, opencodeSeamsInUse, versionFromProbe, piSeamsInUse } from "./doctor-model-checks.js";
+import { claudeSeamsInUse, loadConfigForCheck, minVersionOutcome, opencodeSeamsInUse, seamStandDown, versionFromProbe, piSeamsInUse } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS, boundedProbe } from "./doctor-probe.js";
 import { childEnv } from "../process/process.js";
@@ -308,7 +308,7 @@ export async function checkOpencodeVersion(
 ): Promise<CheckOutcome> {
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;
-  if (!opencodeSeamsInUse(config)) return okOutcome("no model jobs run on opencode");
+  if (!opencodeSeamsInUse(config)) return seamStandDown("opencode");
   const resolved = opencodeBackend.resolveBin(config);
   const result = await boundedProbe(
     resolved.bin,
@@ -334,7 +334,7 @@ export function checkClaudeTranscripts(
   env: NodeJS.ProcessEnv = process.env,
 ): CheckOutcome {
   if (!config) return noConfigOutcome();
-  if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
+  if (!claudeSeamsInUse(config)) return seamStandDown("claude");
   const configDir = resolvedBackendConfig(config, "claude").configDir;
   const dir = path.join(claudeConfigDir(env, homeDir, configDir), "projects");
   let slugs: string[];

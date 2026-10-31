@@ -167,6 +167,14 @@ export function piSeamsInUse(config: TumwaterConfig): boolean {
   return seamsInUse(config).some((s) => s.agent === "pi");
 }
 
+/** The ok stand-down a backend's readiness row earns when no seam routes to that backend —
+ * `no model jobs run on <agent>`. One home for the phrase, shared by the claude and opencode
+ * rows (doctor-checks.ts, doctor-claude-checks.ts, doctor-opencode-checks.ts) so the wording
+ * cannot drift between them. */
+export function seamStandDown(agent: string): CheckOutcome {
+  return okOutcome(`no model jobs run on ${agent}`);
+}
+
 /** The parsed pi model definitions read by readPiProviders — a map of provider name to its
  * declared models, or null when the definitions file could not be read. Module-private so the
  * per-job helpers need not re-spell the mapped type. */

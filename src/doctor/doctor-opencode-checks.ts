@@ -14,6 +14,7 @@ import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor
 import {
   loadConfigForCheck,
   opencodeSeamsInUse,
+  seamStandDown,
   seamedModels,
 } from "./doctor-model-checks.js";
 
@@ -247,7 +248,7 @@ export async function checkOpencode(
 ): Promise<CheckOutcome> {
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;
-  if (!opencodeSeamsInUse(config)) return okOutcome("no model jobs run on opencode");
+  if (!opencodeSeamsInUse(config)) return seamStandDown("opencode");
   const rows = await collectOpencodeModelRows(
     readOpencodeCache(root),
     seamedModels(config, "opencode"),
