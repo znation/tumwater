@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledEntries, checkStrandedPlans, checkValidationGaps, fixClaimProblems, planDependencyProblem } from "../src/doctor/doctor-backlog-plans.js";
-import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, failureMentions, quotedTestName } from "../src/doctor/doctor-backlog-bugs.js";
+import { checkHeldBugs, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, failureMentions, quotedTestName } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkMergeQueueFiles, checkPostReviews, atRiskPostReviews, atRiskPostReviewsPhrase, POST_REVIEW_AT_RISK_FAILURES, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, skippedMergeQueueFiles, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
 import type { DirtyBacklogFiles } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
@@ -556,6 +556,36 @@ test("checkStaleBugs ignores refused, undated, fresh and fixed bugs, and a missi
   fs.writeFileSync(path.join(dir, "BUGS.md"),
     `## Open\n\n### Refused (found by bugfix ${daysAgoStamp(9)})\n\n**Refused 2026-10-10 by bugfix: not a bug**\n\n### Undated heading\n\n### Fresh (found by bugfix ${daysAgoStamp(0)})\n\n## Fixed\n\n### Old (found by bugfix ${daysAgoStamp(20)})\n`);
   assert.deepEqual(checkStaleBugs(dir), ok);
+});
+
+test("checkHeldBugs warns when every open bug is held, counting each kind of hold", () => {
+  // 2026-10-30: every open bug carried a bugfix wait note, so all six bugfix runners stood down
+  // for hours while checkStaleBugs and checkStalledEntries — which both skip those notes — said
+  // nothing.
+  const dir = tmpdir("doctor-held-bugs-");
+  fs.writeFileSync(path.join(dir, "PLANS.md"), "## Planned\n\n### Disk floor, part 1/2: first (planned 2026-10-20)\n\nbody\n");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    "## Open\n\n### Flake one\n\n**Needs review 2026-10-26 by bugfix: the next failure names the line**\n\n" +
+    "### Flake two\n\n**Needs review 2026-10-28 by bugfix: the next failure names the signal**\n\n" +
+    "### Not a bug\n\n**Refused 2026-10-20 by bugfix: working as intended**\n\n" +
+    "### Waits (found by bugfix 2026-10-21; requires Disk floor 1/2 landed)\n\nbody\n\n## Fixed\n\n### Old\n\nbody\n");
+  const out = checkHeldBugs(dir);
+  assert.equal(out.level, "warn");
+  assert.equal(out.detail,
+    "every one of the 4 open bugs in BUGS.md is held (2 by a Needs review note, 1 by a Refused note, 1 by a planned prerequisite), " +
+    "so the bugfix role skips every run and hunts for no new bug — list them with `tumwater bug --list` and lift each note that " +
+    "no longer applies with `tumwater bug --release <n>`");
+});
+
+test("checkHeldBugs reads ok while any open bug is free, with none open, and with no BUGS.md", () => {
+  assert.deepEqual(checkHeldBugs(tmpdir("doctor-held-bugs-none-")), { level: "ok", detail: "no BUGS.md — nothing to verify" });
+  const empty = tmpdir("doctor-held-bugs-empty-");
+  fs.writeFileSync(path.join(empty, "BUGS.md"), "## Open\n\n## Fixed\n\n### Old\n\n**Needs review 2026-10-01 by bugfix: x**\n");
+  assert.deepEqual(checkHeldBugs(empty), { level: "ok", detail: "no open bug, so the bugfix role hunts for one" });
+  const dir = tmpdir("doctor-held-bugs-free-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    "## Open\n\n### Parked\n\n**Needs review 2026-10-26 by bugfix: the next failure names the line**\n\n### Free\n\nbody\n");
+  assert.deepEqual(checkHeldBugs(dir), { level: "ok", detail: "1 of 2 open bugs is free for the bugfix role" });
 });
 
 // checkStaleQueuedMerges — a change that has sat in the durable merge queue too long without

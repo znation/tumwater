@@ -247,6 +247,8 @@ test("the search guidance says a small, clearly useful change clears the bar", (
 
 test("bugfix find asks for a Needs review note and selfcheck find deletes it on a recurrence", () => {
   assert.ok(oneLine(roleById("bugfix")!.find).includes("**Needs review <YYYY-MM-DD> by bugfix: <what the next failure's message"));
+  // A dropped post-merge review never runs again, so a wait note on its entry could never lift.
+  assert.ok(oneLine(roleById("bugfix")!.find).includes("`post-merge review of <sha> never reached a verdict` entry has no next failure"));
   const selfcheck = oneLine(roleById("selfcheck")!.find);
   assert.ok(selfcheck.includes("**Needs review …**"));
   assert.ok(selfcheck.includes("delete the note line"));

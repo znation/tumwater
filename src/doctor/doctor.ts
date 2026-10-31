@@ -70,7 +70,7 @@ import {
 import { backendQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkPlanDependencies, checkStalledEntries, checkStrandedPlans, checkValidationGaps } from "./doctor-backlog-plans.js";
-import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions } from "./doctor-backlog-bugs.js";
+import { checkHeldBugs, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions } from "./doctor-backlog-bugs.js";
 import { checkMergeQueueFiles, checkPostReviews, checkStaleQueuedMerges, checkStalePrompts, checkUncommittedBacklog } from "./doctor-backlog.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
@@ -219,6 +219,7 @@ export async function runDoctor(
     { name: "plan dependencies", run: () => checkPlanDependencies(root) },
     { name: "stale questions", run: () => checkStaleQuestions(root) },
     { name: "stale bugs", run: () => checkStaleBugs(root) },
+    { name: "held bugs", run: () => checkHeldBugs(root) },
     { name: "regressed fixes", run: () => checkRegressedFixes(root) },
     { name: "stale merge-queue entries", run: () => checkStaleQueuedMerges(root, Date.now()) },
     { name: "merge-queue files", run: () => checkMergeQueueFiles(root) },

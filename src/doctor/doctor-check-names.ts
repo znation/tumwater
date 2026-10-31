@@ -71,6 +71,7 @@ export const DOCTOR_CHECK_NAMES = [
   "plan dependencies",
   "stale questions",
   "stale bugs",
+  "held bugs",
   "regressed fixes",
   "stale merge-queue entries",
   "merge-queue files",

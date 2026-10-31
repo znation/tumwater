@@ -3,7 +3,7 @@ import { truncate } from "../text/text.js";
 import { plural, agree } from "../text/phrases.js";
 import { ageInDays, filingDate, fixedBugEntries, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { questionFilingDate } from "../backlog/backlog-question-answer.js";
-import { needsReviewNote, refusalNote } from "../backlog/backlog-eligibility.js";
+import { entryHoldAgainst, needsReviewNote, refusalNote } from "../backlog/backlog-eligibility.js";
 import { plannedPartKeys, plansWaitingOn, prerequisitesMerged } from "../backlog/backlog-parts.js";
 import { lastDate } from "../backlog/backlog-md.js";
 import { formatTimestamp } from "../text/datetime.js";
@@ -69,6 +69,37 @@ export function checkStaleBugs(root: string): CheckOutcome {
   const more = andMore(rest, (b) => `#${b.position} ${quoteHeading(b.title)}`);
   return warnOutcome(`BUGS.md bug #${first.position} ${quoteHeading(first.title)} has waited ${first.days} d for a fix${more} — ` +
       `no role is fixing it: check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``);
+}
+
+/** Held bugs — BUGS.md `## Open` has entries but every one is held (a Needs-review or Refused
+ * note, or a prerequisite still planned), so the bugfix role skips every run (scheduling-admit.ts
+ * standDownForNoWork) and does not hunt for latent bugs either, which it does only when `## Open`
+ * is empty. checkStaleBugs and checkStalledEntries both leave out the bugfix role's own
+ * wait-for-the-next-failure notes, so without this row a backlog of them idles every bugfix
+ * runner while nothing says so (2026-10-30: 16 of 16 open bugs held, six runners idle for hours).
+ * Holds are judged by entryHoldAgainst, the rule the scheduler applies. A warn, never a fail. */
+export function checkHeldBugs(root: string): CheckOutcome {
+  const doc = readBacklogChecked(root, "BUGS.md");
+  if (typeof doc !== "string") return doc;
+  const open = openBugEntries(root);
+  if (open.length === 0) return okOutcome("no open bug, so the bugfix role hunts for one");
+  const parts = plannedPartKeys(plannedPlanEntries(root));
+  const holds = open.map((entry) => entryHoldAgainst(entry, parts));
+  const free = holds.filter((hold) => hold === null).length;
+  if (free > 0) {
+    return okOutcome(`${free} of ${plural(open.length, "open bug")} ${agree(free, "is", "are")} free for the bugfix role`);
+  }
+  const review = holds.filter((hold) => hold === "needs-review").length;
+  const refused = holds.filter((hold) => hold === "refused").length;
+  const waiting = open.length - review - refused;
+  const counts = [
+    review > 0 ? `${review} by a Needs review note` : "",
+    refused > 0 ? `${refused} by a Refused note` : "",
+    waiting > 0 ? `${waiting} by a planned prerequisite` : "",
+  ].filter((c) => c !== "").join(", ");
+  return warnOutcome(`every one of the ${plural(open.length, "open bug")} in BUGS.md is held (${counts}), so the bugfix role ` +
+      `skips every run and hunts for no new bug — list them with \`tumwater bug --list\` and lift each note that no longer ` +
+      `applies with \`tumwater bug --release <n>\``);
 }
 
 /** The first span between straight double quotes in a bug heading that is at least 12

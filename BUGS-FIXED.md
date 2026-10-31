@@ -5,6 +5,55 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### post-merge review of 6407b7d6 never reached a verdict (found by the review role 2026-10-28) — fixed 2026-10-30 by the operator
+
+The post-merge review of commit `6407b7d67f7c9889df53fde798306f4630790d3d` (Fold run-verdict's three unfulfilled-error blocking into one unfulfilledError helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
+**Fix:** `unfulfilledError` in `src/run/run-verdict.ts` does exactly what `timeoutArm` and both `imageBlindArm` exits did inline: set `lastError`, re-queue the prompt, and end the run as an error, with the same message strings. Behavior is unchanged.
+**Validation gap:** real-run-needed — the post-merge review run never produced a verdict on the loaded host, so the commit was checked by reading its diff against main instead.
+
+### post-merge review of 0f240b57 never reached a verdict (found by the review role 2026-10-29) — fixed 2026-10-30 by the operator
+
+The post-merge review of commit `0f240b5745b325c4fb784ad369e20a62e678fbd2` (recovered leftover work from dedupe: Fold the 5-copy failureHeadline??describeCheck pair into one redCheckHeadline helper) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
+**Fix:** `redCheckHeadline` in `src/build/build-check-report.ts` returns `failureHeadline(tail) ?? describeCheck(check)`, and the five call sites in `src/review/review-precheck.ts`, `src/merge/merge-to-main.ts` and `src/merge/merge-check-failures.ts` swap that inline pair for it with the same arguments. Behavior is unchanged.
+**Validation gap:** real-run-needed — the post-merge review run never produced a verdict on the loaded host, so the commit was checked by reading its diff against main instead.
+
+### post-merge review of 17a2ac4d never reached a verdict (found by the review role 2026-10-29) — fixed 2026-10-30 by the operator
+
+The post-merge review of commit `17a2ac4dafcb6084ee5e1eab7b58ee39564df6ee` (recovered leftover work from improve: Use DAY_MS for failure-data's trailing-window day division instead of the 86_400_000 literal) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
+**Fix:** The commit only reorders the `DAY_MS` import in `src/failure/failure-data.ts`. The division change it describes had already landed in d5b8bf627, and `DAY_MS` is 86,400,000 ms, so nothing changed.
+**Validation gap:** real-run-needed — the post-merge review run never produced a verdict on the loaded host, so the commit was checked by reading its diff against main instead.
+
+### post-merge review of acf37eb2 never reached a verdict (found by the review role 2026-10-29) — fixed 2026-10-30 by the operator
+
+The post-merge review of commit `acf37eb263353c9c81bf1d45043ac781d308f6f9` (Convert Health/Pending pane flat Ctrl dispatches to ctrlRoutes/ctrlRoute tables) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
+**Fix:** The `ctrlRoutes` tables in `src/ui/tui/tui-pane-health.ts` and `src/ui/tui/tui-pane-pending.ts` map the same letters to the same handlers as the old `if` chains. Pending's Ctrl+X, Ctrl+A and Ctrl+V now run before the arrow and Escape checks, which cannot change the result because those key names never overlap. The new guard in `routeCtrlK` matches the only way it is reached, the Ctrl+K row of `src/ui/tui/tui-panes.ts`'s table.
+**Validation gap:** real-run-needed — the post-merge review run never produced a verdict on the loaded host, so the commit was checked by reading its diff against main instead.
+
+### post-merge review of bf04da3c never reached a verdict (found by the review role 2026-10-30) — fixed 2026-10-30 by the operator
+
+The post-merge review of commit `bf04da3c517cdb2690bb1973ef430a2e7e2f951e` (Share one merge-queue read per status snapshot instead of two) never reached a verdict: timed out after 900s. It stays on main as ordinary unreviewed backlog work.
+
+**Fix:** `snapshot` in `src/status/status-data.ts` now calls `readMergeQueue` once, before `collectRoleRows`, and passes the queued roles to both `collectRoleRows` and `maintenanceQuotaForPoll`. `collectRoleRows` falls back to `queuedMergeRoles` for its other callers. The values are the same; there is one read instead of two.
+**Validation gap:** real-run-needed — the post-merge review run never produced a verdict on the loaded host, so the commit was checked by reading its diff against main instead.
+
+### post-merge review of a3bdcf86 never reached a verdict (found by the review role 2026-10-30) — fixed 2026-10-30 by the operator
+
+The post-merge review of commit `a3bdcf864cce41c5e9417155a98e972df1300e50` (Share the change-diff cap as one exported DIFF_MAX_BYTES constant) never reached a verdict: no parseable VERDICT line in the reviewer's reply. It stays on main as ordinary unreviewed backlog work.
+
+**Fix:** `DIFF_MAX_BYTES` (200,000) is now exported once from `src/git/git-diff.ts` and used by `aheadOfMainDiff`, `revisionInterdiff` and `src/change/change-data.ts`, which had kept its own copy of the same value. Behavior is unchanged.
+**Validation gap:** real-run-needed — the post-merge review run never produced a verdict on the loaded host, so the commit was checked by reading its diff against main instead.
+
+### post-merge review of 3b682bed never reached a verdict (found by the selfcheck role 2026-10-30) — fixed 2026-10-30 by the operator
+
+The post-merge review of commit `3b682bed7a6b36182d2c4ba5af4c655447c11fe1` (Point the swap-repair import scan at the moved supervisor module) never reached a verdict: timed out after 900s, 21 times across 2026-10-29 → 10-30 (the digest's per-role warning cluster "post-merge review of 3b682bed failed (timed out after 900s)"). It stays on main as ordinary unreviewed backlog work. This is the class's largest-diff member yet — an organize split moving the supervisor half out of `src/cli/cli-start.ts` (270 insertions / 247 deletions, ~239 lines moved into the new `cli-start-supervisor.ts`, revision 3, per the commit body) — and it recurred across the window in which the class's starved-budget review fix (14b011ff3, "Give reviewer runs a starvation-aware budget on loaded hosts", 10-29 22:29) landed just three minutes after 3b682bed merged, so even the 2×-capped budget stretch did not stop this large diff's verdict from timing out. Same class as `6407b7d6`/`0f240b57`/`17a2ac4d`/`acf37eb2`/`bf04da3c`/`a3bdcf86`: reaching a verdict needs a real strong-tier review run and is not offline-reproducible; a bugfix or steward verifies the split is faithful and complete (the gate's swap-repair import scan now targets `cli-start-supervisor.ts`, and per the commit's self-check each named moved symbol still resolves in `src/cli/cli-start.ts` / `cli-start-supervisor.ts`).
+
+**Fix:** The lines removed from `src/cli/cli-start.ts` match the lines added in `src/cli/cli-start-supervisor.ts` apart from doc comments, imports, and `export` on `superviseStartCommand` and `GUI_TOKEN_ENV`. `src/cli/cli-start.ts` imports the new module statically, so `repairInterruptedSwap` still loads at boot. The tests follow the code: `dashboardChildEnv` and `guiChildPlan` are imported from the new module, and the build-stage scan reads it. This entry's earlier Progress note had described a3bdcf86 by mistake, so it is dropped.
+**Validation gap:** real-run-needed — the post-merge review run never produced a verdict on the loaded host, so the commit was checked by reading its diff against main instead.
+
 ### `test/orchestrator-3.e2e.test.ts` "an entry whose sha main already holds is dropped at the drain without a merge run" fails intermittently when the full orchestrator-3 file runs in one process, and passes in isolation (found by the ci role 2026-10-30) — fixed 2026-10-30 by the bugfix role
 
 - **Symptom:** running the CI workflow's e2e job (`npm run test:e2e`) against main tip 5b948a3 reports this behavioral assertion red: `AssertionError [ERR_ASSERTION]: no second merge_done event: the stale entry was deduped, not re-merged ... actual: 2, expected: 1`. The test merges one real change end to end, then re-enqueues the same sha (simulating a crash between the fast-forward and the queue drop) and asserts the drain dedups it — exactly one `merge_done` event and zero `merge_failed`. It instead observed a second `merge_done`, i.e. the stale re-enqueued entry was verified and re-merged rather than dropped.

@@ -81,6 +81,15 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
   return task;
 }
 
+/** How a dropped review's BUGS.md entry is settled, written into the entry itself. The drain
+ * settles the review, so it never runs again and no later failure can lift a bugfix
+ * wait-for-the-next-failure note: on 2026-10-29/30 seven entries were parked that way after
+ * their commits had been checked, and every open bug ended up held. */
+const DROPPED_REVIEW_CLOSE =
+  "To settle it, read the commit's diff on main: fix what is wrong, or move this entry to Fixed with a Fix paragraph " +
+  "naming what you checked. Do not park it with a Needs review note: the review never runs again, so nothing would " +
+  "lift the note.";
+
 /** File a post-merge review that is being dropped at POST_REVIEW_FAILURE_LIMIT (its commit stays
  * on main, so it becomes ordinary backlog work a role can pick up) as one BUGS.md `## Open`
  * entry in a best-effort `tumwater(operator):` commit. A skipped filing (off-base checkout or a
@@ -98,7 +107,7 @@ async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, f
           // `## `/code-fence line that would make appendBugEntryLocked call fail() and exit the
           // whole drain; folding it to one line keeps the body structurally sound, so a hostile
           // failure skips the filing via the ordinary throw path instead of killing the process.
-          body: collapseWhitespace(`The post-merge review of commit \`${entry.commit}\` (${entry.summary}) never reached a verdict: ${failure}. It stays on main as ordinary unreviewed backlog work.`),
+          body: collapseWhitespace(`The post-merge review of commit \`${entry.commit}\` (${entry.summary}) never reached a verdict: ${failure}. It stays on main as ordinary unreviewed backlog work. ${DROPPED_REVIEW_CLOSE}`),
         },
       ],
       () => "File an unreviewed post-merge commit in BUGS.md",

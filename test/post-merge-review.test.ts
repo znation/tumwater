@@ -24,6 +24,8 @@ import { mergeRefName } from "../src/paths.js";
 import { isMergedInto, setRef } from "../src/git/git.js";
 import { sleep } from "./helpers/wait.js";
 import { UNSTARTABLE_GIT_ARG } from "./helpers/git-faults.js";
+import { entryHold } from "../src/backlog/backlog-eligibility.js";
+import { openBugEntries } from "../src/backlog/backlog.js";
 
 test("review.afterMerge is removed: the default carries no list and a config naming it is refused", () => {
   // The retired key is gone from the default: every merged commit is now reviewed (part 3d/3).
@@ -478,6 +480,10 @@ test("a verdict-less review past the failure limit drops the entry, warns, and s
   assert.equal(bugs.split("### post-merge review of").length - 1, 1, "exactly one BUGS.md Open entry is filed for the dropped review");
   assert.match(bugs, new RegExp(`post-merge review of ${shortSha(commit)} never reached a verdict`), "the filed entry names the dropped commit's short sha");
   assert.match(bugs, /more/, "the filed entry's body names the reviewed commit's summary");
+  assert.match(bugs, /Do not park it with a Needs review note: the review never runs again/,
+    "the filed entry says to settle it by reading the diff, since no recurrence can lift a wait note");
+  const filed = openBugEntries(root).find((e) => e.title.startsWith("post-merge review of"))!;
+  assert.equal(entryHold(filed, []), null, "the instruction itself does not read as a hold note");
 });
 
 test("a dirty BUGS.md skips the dropped-review filing but still drops the review", async () => {

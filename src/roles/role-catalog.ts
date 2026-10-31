@@ -110,6 +110,7 @@ should not be done at all, which is the user's call to decide.`,
       and this run made its failure message name the cause next time (or found it already does),
       record a Progress note, write a **Needs review <YYYY-MM-DD> by bugfix: <what the next failure's message
       will show>** note as its own line under the heading, and end the run. Do not keep investigating without new evidence.
+      A \`post-merge review of <sha> never reached a verdict\` entry has no next failure: settle it as its body says.
    3. Fix it, and add a regression test that fails without the fix — run that test to watch it
       fail before the fix and pass after.
    4. Mark it fixed in BUGS.md — ${backlogMoveGuidance("BUGS.md", "## Open", "## Fixed", "BUGS-FIXED.md", "fixed")}
