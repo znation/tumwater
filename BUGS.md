@@ -251,6 +251,10 @@ The post-merge review of commit `bf04da3c517cdb2690bb1973ef430a2e7e2f951e` (Shar
 
 The post-merge review of commit `a3bdcf864cce41c5e9417155a98e972df1300e50` (Share the change-diff cap as one exported DIFF_MAX_BYTES constant) never reached a verdict: no parseable VERDICT line in the reviewer's reply. It stays on main as ordinary unreviewed backlog work.
 
+**Progress 2026-10-30 by the bugfix role: verified the refactor's fidelity directly — `grep 200_000 src` shows the literal exactly once (the shared `DIFF_MAX_BYTES` at git-diff.ts:12), all three sites resolve through the exported constant, and `node scripts/check-permit.mjs … git-diff change-data` passed all 31 tests — so there is no code defect; this member waits only on a real strong-tier review run.**
+
+**Needs review 2026-10-30 by bugfix: reaching a verdict needs a real strong-tier review run of `a3bdcf86`, which is not offline-reproducible — this member is owned by the plan role's class fix (`post-merge reviews time out at the 900s ceiling as a class`), not a bugfix code fix; do not close it as Fixed via an md-only edit, since the rejected 2026-10-29 attempt on the sibling entries of this class proves that reads as a re-author.**
+
 ## Fixed
 
 ## Verified
