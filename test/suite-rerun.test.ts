@@ -59,10 +59,13 @@ test("runsFullSuite leaves filtered runs and mere mentions of the runner alone",
   for (const command of [
     "npm test gui 2>&1 | tail -15", // one test file, by filter
     "rm -rf /tmp/rev-scratch && cp -R wt /tmp/rev-scratch && cd /tmp/rev-scratch && npm test pi 2>&1 | tail -15",
-    "npm test -- build-check",
+    "npm test -- build-check", // after a bare -- the script gets it as a filter
+    "npm test -- gui",
+    "npm run test -- --verbose",
     "npm run test merge",
     "cd /tmp/tw-review && node dist/test/test-runner.js orchestrator-3 2>&1 | tail -6",
     "node --test dist/test/pi.test.js 2>&1 | grep -E \"✖\"", // node's own runner on one file
+    "node dist/test/some-other.js", // a node script that is not the test runner is not a suite run
     "sed -n '1,80p' test/test-runner.ts", // reading the runner is not running it
     "pkill -f test-runner",
     "ps aux | grep -E \"cli\\.js|test-runner|npm test\" | grep -v grep", // quoted pattern is data
