@@ -24,7 +24,7 @@ import { shortSha } from "../text/format.js";
 import { errorMessage, joinParts, textOr } from "../text/text.js";
 import { rankCountEntries } from "../collections.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { sampleHostLoad, type LoadSampler } from "../build/host-sleep.js";
+import { hostLoadStarved, sampleHostLoad, type LoadSampler } from "../build/host-sleep.js";
 import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
 import { staleClaimDetail, staleClaimEntries } from "../scheduling/claim-entries.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
@@ -233,11 +233,12 @@ function checkWaitContention(
   }
   if (totalMs < CHECK_WAIT_WARN_TOTAL_MS) return { warn: false, detail };
   // The cap is only the right lever while the host can actually run more work: once the
-  // one-minute load average exceeds the core count (the same "starved" bar build-check-events
-  // uses for an on-time deadline kill), the wait is the host's own load, not an under-sized
-  // pool — so name the load and suppress the raise advice rather than telling an overloaded
-  // host to admit still more concurrent checks. The check still warns: the waits are real.
-  if (load.load1 > load.cpus) {
+  // one-minute load average exceeds the core count (the shared "starved" bar, hostLoadStarved in
+  // host-sleep.ts — the same one build-check-events uses for an on-time deadline kill), the wait
+  // is the host's own load, not an under-sized pool — so name the load and suppress the raise
+  // advice rather than telling an overloaded host to admit still more concurrent checks. The
+  // check still warns: the waits are real.
+  if (hostLoadStarved(load)) {
     detail += ` — host load average ${Math.round(load.load1)} on ${load.cpus} cores: saturated, so raising maxConcurrentChecks is not the lever`;
   } else {
     detail += ` — raise maxConcurrentChecks above ${config?.maxConcurrentChecks ?? defaultConfig().maxConcurrentChecks}`;

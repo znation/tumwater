@@ -11,6 +11,7 @@
 import { type HarnessEvent, type HarnessEventInput, logEventBestEffort } from "../events/events.js";
 import type { ParkedBehind } from "../concurrency/check-permit.js";
 import type { BuildCheckOutcome, BuildCheckRun, BuildSkipReason } from "./build-check.js";
+import { hostLoadStarved } from "./host-sleep.js";
 
 /** The scopes named in a build_check event logged from runScopedBuildCheck. The red-main
  * baseline names its own ("baseline") from main-red.ts, because the one-run-per-SHA cache and
@@ -169,7 +170,7 @@ const STARVED_DEADLINE_MAX_FACTOR = 2;
  * firing on time under the team's own load, with a passing tail at 299.97 s — the check was
  * measuring the load, not the tree (BUGS.md 2026-10-12). */
 export function starvedDeadlineMs(baseMs: number, load: { load1: number; cpus: number }): number {
-  if (!(load.cpus > 0) || !(load.load1 > load.cpus)) return baseMs;
+  if (!hostLoadStarved(load)) return baseMs;
   return Math.round(baseMs * Math.min(load.load1 / load.cpus, STARVED_DEADLINE_MAX_FACTOR));
 }
 
@@ -178,7 +179,7 @@ export function starvedDeadlineMs(baseMs: number, load: { load1: number; cpus: n
  * 300 s kill is a statement about the deadline under load, not a measured verdict on the
  * change (BUGS.md 2026-10-12). Empty when the host had a core to spare. */
 export function loadedHostPhrase(load: { load1: number; cpus: number }): string {
-  if (!(load.cpus > 0) || !(load.load1 > load.cpus)) return "";
+  if (!hostLoadStarved(load)) return "";
   return ` (host load average ${Math.round(load.load1)} on ${load.cpus} cores: the check ran starved, so the kill says nothing about the change itself)`;
 }
 

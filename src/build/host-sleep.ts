@@ -112,6 +112,16 @@ interface HostLoad {
   cpus: number;
 }
 
+/** Is the host starved — its one-minute load average above the core count? The one bar for
+ * "the team's own load, not the work": the merge-scope deadline stretch and its on-time-kill
+ * note (starvedDeadlineMs / loadedHostPhrase in build-check-events.ts) and the doctor's
+ * check-slot contention advice (doctor-contention-checks.ts) all read the host through this,
+ * so the surfaces cannot drift on what "starved" means. A core count of zero or below is not
+ * starved: there is no denominator for the ratio to exceed. */
+export function hostLoadStarved(load: HostLoad): boolean {
+  return load.cpus > 0 && load.load1 > load.cpus;
+}
+
 export type LoadSampler = () => HostLoad;
 
 export const sampleHostLoad: LoadSampler = () => ({ load1: os.loadavg()[0] ?? 0, cpus: os.cpus().length });
