@@ -6,13 +6,14 @@ import {
   configForRole,
   modelSelectorField,
   roleSeamTier,
+  type ResolvedModelConfig,
 } from "../config/config-views.js";
 import { isCustomRole } from "../config/config.js";
 import { baseRoleOf, configuredInstances, instanceIndex, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import { errorStreakAtWarn, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { hasOutstandingWork } from "../runner/runner-state.js";
-import { formatModelSelector } from "../config/config-model-selector.js";
+import { formatModelSelector, type ModelSelector } from "../config/config-model-selector.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { isJsonObject } from "../files/json-object.js";
 import { runnerStateForPoll } from "./status-polls.js";
@@ -49,6 +50,73 @@ export type StatusRoleRow = RunnerState & {
    * the `modelFromPi` convention uses), so a row without a window is byte-identical. */
   contextWindow?: number;
 };
+
+/** The leased-or-pinned pool slot a role's next run draws from, as a row's slot fields:
+ * `{ slot, slotPinned }` when a slot holds the role (leased beats pinned — a lease is the
+ * newer, stronger claim), or the empty object when the role rides no slot. One home of the
+ * slot read, so every row names the same pooled slot the scheduler would assign. */
+function resolveRowSlot(
+  slots: ReturnType<typeof readSlotsState>["slots"],
+  r: string,
+): { slot: string; slotPinned: boolean } | {} {
+  const leased = slots.find((slot) => slot.lease?.role === r);
+  const pinned = slots.find((slot) => slot.pinnedFor === r);
+  const slot = leased ?? pinned;
+  return slot ? { slot: path.basename(slot.dir), slotPinned: pinned !== undefined } : {};
+}
+
+/** The dense model-resolution cluster of a row — which model does this role name, and why?
+ * The `modelFromPi` branch when the seam runs pi and resolves no model (the operator sees
+ * which model the role runs), the `backendDefaultLabel` fallback when it resolves neither
+ * half (the same label the role page's Model line prints), and the declared-tier tag. One
+ * named home of the no-model rules, so the reason a row names its model is read here. */
+function rowModelFields(
+  eff: ResolvedModelConfig,
+  r: string,
+  cfg: TumwaterConfig,
+  piDefault: ModelSelector | null,
+  modelFromPi: boolean,
+): { model?: string; modelFromPi?: true; modelTier?: ModelTier } {
+  // A seam that runs pi and resolves neither a provider nor a model starts on pi's own saved
+  // default — name it in the row (modelFromPi) so the operator sees which model the role
+  // runs. The config's `thinking` wins over the default's because tumwater passes it to pi as
+  // `--thinking` (src/pi/pi-args.ts). Any other row is unchanged and carries no `modelFromPi`.
+  // `modelFromPi` implies `piDefault !== null` (the caller sets the flag only at that guard),
+  // so the `&& piDefault !== null` below narrows without changing behavior.
+  const fromPi =
+    modelFromPi && piDefault !== null
+      ? {
+          model: formatModelSelector({
+            ...piDefault,
+            thinking: eff.thinking ?? piDefault.thinking,
+          }),
+          modelFromPi: true as const,
+        }
+      : {};
+  // A seam that resolves neither a provider nor a model (an opencode role with no `model`, or
+  // a pi role when pi's own settings hold no readable default) names its backend's own default
+  // — the same label `tumwater role <id>`'s Model line prints, so the two surfaces cannot
+  // disagree (docs/invariants.md "Cross-surface agreement"). `eff.agent` is always set
+  // (`withModelOverrides` defaults it to `"pi"`); a claude or codex seam already carries
+  // routeModel's tier default in `eff.model`, and the `modelFromPi` branch above still wins
+  // when pi's default is readable.
+  const fallback =
+    modelFromPi || eff.provider !== undefined || eff.model !== undefined
+      ? {}
+      : { model: backendDefaultLabel(eff.agent) };
+  return {
+    ...fromPi,
+    ...fallback,
+    ...(isJsonObject(cfg.model) ? { modelTier: roleSeamTier(cfg, r) } : {}),
+  };
+}
+
+/** The role-instance marker field: `instanceOf` names the base role only when a role is a
+ * configured instance of another (runs with the base's config under an instance id), and the
+ * empty object otherwise. */
+function rowRemainderFields(baseRole: string, r: string): {} | { instanceOf: string } {
+  return baseRole === r ? {} : { instanceOf: baseRole };
+}
 
 /** One row per enabled role id (part 5b/7). `configForRole`, the leased /
  * pinned slot and the pi-default seam all resolve against the values `snapshot()` already
@@ -91,9 +159,6 @@ export function collectRoleRows(
   const listed = readPiListedModels(root);
   return roles.map((r) => {
     const base = { ...runnerStateForPoll(root, r), custom: isCustomRole(cfg, r) };
-    const leased = slots.find((slot) => slot.lease?.role === r);
-    const pinned = slots.find((slot) => slot.pinnedFor === r);
-    const slot = leased ?? pinned;
     // Every row carries the selector its config resolves to, so the dashboards show which
     // model a role rides even with a single string `model`. A tier-name `roles.<id>.model`
     // and a role selector override both resolve through configForRole — the same view the
@@ -123,30 +188,10 @@ export function collectRoleRows(
       ...modelSelectorField(eff),
       imageInput: image.imageInput,
       imageRerouteLabel: image.imageReroute,
-      ...(modelFromPi
-        ? {
-            model: formatModelSelector({
-              ...piDefault,
-              thinking: eff.thinking ?? piDefault.thinking,
-            }),
-            modelFromPi: true as const,
-          }
-        : {}),
-      // A seam that resolves neither a provider nor a model (an opencode role with no
-      // `model`, or a pi role when pi's own settings hold no readable default) names its
-      // backend's own default — the same label `tumwater role <id>`'s Model line prints, so
-      // the two surfaces cannot disagree (docs/invariants.md "Cross-surface agreement").
-      // `eff.agent` is always set (`withModelOverrides` defaults it to `"pi"`); a claude or
-      // codex seam already carries routeModel's tier default in `eff.model`, and the
-      // `modelFromPi` branch above still wins when pi's default is readable.
-      ...(modelFromPi || eff.provider !== undefined || eff.model !== undefined
-        ? {}
-        : { model: backendDefaultLabel(eff.agent) }),
-      ...(isJsonObject(cfg.model) ? { modelTier: roleSeamTier(cfg, r) } : {}),
+      ...rowModelFields(eff, r, cfg, piDefault, modelFromPi),
       ...(contextWindow !== null ? { contextWindow } : {}),
-      ...(slot ? { slot: path.basename(slot.dir), slotPinned: pinned !== undefined } : {}),
-      ...(baseRoleOf(r) === r ? {} : { instanceOf: baseRoleOf(r) }),
+      ...resolveRowSlot(slots, r),
+      ...rowRemainderFields(baseRoleOf(r), r),
     };
   });
 }
-
