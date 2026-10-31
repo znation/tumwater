@@ -63,10 +63,13 @@ export function overlapDrillHeading(index: number, total: number, path: string):
  * selected merge, Ctrl+V moves it to the front, and the post-merge review rows it appends
  * after the merges are selectable too, so Ctrl+A twice accepts the selected review — the
  * terminal twin of `tumwater reviews --accept <n>`.
- * Each key arm lives in its own named inner const below (pendingRefresh, pendingScopeCycle,
- * pendingReviewStateCycle, pendingOverlapDrill — the row-selection/action arms live in
- * tui-pane-pending-selection.ts, wired in below through a small seam), so its guard, flash
- * wording, arming state and repaint are found by name; handleKey is only the ordered dispatch. */
+ * Each render arm lives in its own named inner const below (pendingRefresh,
+ * pendingScopeCycle, pendingReviewStateCycle, pendingOverlapDrill), so its guard, flash wording,
+ * arming state and repaint are found by name; handleKey is only the ordered dispatch. The
+ * row-selection/action half (the select-cancel-accept-move arms and the row state they act on,
+ * plus the rebuild that clamps the selection) lives in the dedicated createPendingSelection
+ * module (tui-pane-pending-selection.ts), wired back in through a deps seam so the resize
+ * keeps every key's behavior byte-identical. */
 export function createPendingPane(session: TuiPaneSession) {
   // Pending is the cycle's one async collector: collectTeamChanges awaits git plumbing,
   // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
@@ -150,13 +153,19 @@ export function createPendingPane(session: TuiPaneSession) {
     const r = reviewsHead();
     return r === "" ? q : q + "\n\n" + r;
   };
-
-  // The shared Pending-pane key-arm guard: the prompt line is free (an editor would keep the
-  // key for its own view's meaning) and the Pending view (roleIds.length + 5) is current. True
-  // means the arm may run.
-  const onPendingView = (ctx: TuiPaneCtx): boolean =>
-    promptLineFree(ctx.es) && session.view === session.roleIds.length + 5;
-
+  // Re-render the whole queue body from scratch after a filter (Ctrl+G role scope, Ctrl+O
+  // review state) cycled: rebuild the rows off the current filter, drop any overlap drill,
+  // reset the composed body and the pane cache to the new content, and repaint from the top.
+  // The shared tail of the two filter-cycle arms, so both filters repaint identically.
+  const repaintQueueBody = (): void => {
+    selection.rebuild();
+    overlapIndex = -1;
+    ++drillGen;
+    head = queueAndReviews() + rosterText;
+    compose();
+    session.paneCache = base;
+    paneAtHead(session);
+  };
   const refresh = (): void => {
     // Generation guard: each refresh bumps the counter, and a resolution paints only if it
     // is the latest request's — Ctrl+R held twice, or a refresh raced with a re-entry,
@@ -192,10 +201,17 @@ export function createPendingPane(session: TuiPaneSession) {
     );
   };
 
+  // The shared Pending-pane key-arm guard: the prompt line is free (an editor would keep the
+  // key for its own view's meaning) and the Pending view (roleIds.length + 5) is current. True
+  // means the arm may run.
+  const onPendingView = (ctx: TuiPaneCtx): boolean =>
+    promptLineFree(ctx.es) && session.view === session.roleIds.length + 5;
+
   // The row-selection/action half (the select-cancel-accept-move cluster) lives in its own
-  // module, wired in through the deps seam: it owns the three row-selection variables and the
-  // Ctrl+arrow/Esc/Ctrl+X/Ctrl+A/Ctrl+V arms, borrowing the pane's render inputs, the
-  // shared scoped review traversal, the pane's refresh and the view guard.
+  // module; the pane wires the render half's data and refresh over the deps seam and borrows
+  // the arms back for handleKey. The seam reads the render half's living state lazily (via
+  // closures), so a scope or filter change the selection re-reads matches whatever the pane
+  // currently holds, exactly as the pane's own arms would have read it.
   const selection = createPendingSelection(session, {
     inputs() {
       return { lastQueue, lastReviews, roleScope, reviewState };
@@ -204,20 +220,6 @@ export function createPendingPane(session: TuiPaneSession) {
     refresh,
     onPendingView,
   });
-
-  // Re-render the whole queue body from scratch after a filter (Ctrl+G role scope, Ctrl+O
-  // review state) cycled: rebuild the rows off the current filter, drop any overlap drill,
-  // reset the composed body and the pane cache to the new content, and repaint from the top.
-  // The shared tail of the two filter-cycle arms, so both filters repaint identically.
-  const repaintQueueBody = (): void => {
-    selection.rebuild();
-    overlapIndex = -1;
-    ++drillGen;
-    head = queueAndReviews() + rosterText;
-    compose();
-    session.paneCache = base;
-    paneAtHead(session);
-  };
 
   // Ctrl+R on the Pending pane refreshes in place — the terminal twin of the dashboard
   // Pending view's Refresh button: re-read the durable merge queue and restart the
