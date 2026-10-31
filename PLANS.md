@@ -305,6 +305,32 @@ _None yet._
 
 **Tests.** No new test module: the conversion is behavior-preserving, and test/cli-help.test.ts already pins the dispatch's user-visible surface through the spawned CLI — the unknown-command failure and hint, the near-miss suggestion, `--help` not rescuing an unknown command, and the per-command help topics; test/help.test.ts pins the help listing itself and test/cli.test.ts drives the command routes. Run test/cli-help.test.ts, test/help.test.ts and test/cli.test.ts whole, then the project's gate, and confirm green. If a command-specific suite fails, the token's row is wrong; do not change a handler to make it pass.
 
+### `assemblePayload`'s complexity-23 optional-spread assembly in src/roles/role-view.ts is split into one named partial builder per field concern — identity, agent seam, overrides, role config/detail and run history — so a reader asking "which fields describe this role's model seam?" finds them in one named function instead of scanning a 30-parameter object literal (planned 2026-10-31 by the plan role; continues the landed split-large-function family — the 2026-10-30 `rolePayload` plan made this same file's collector a thin sequence of named read helpers and left this final assembly as one literal, so this splits that remainder the same way; independent in file of every `## Planned` entry — `grep -c 'src/roles/role-view.ts\|assemblePayload' PLANS.md BUGS.md` prints 0 and 0, so no heading or touches list names the file or the symbol (the blocked `Subtract` part 4/6 names `src/roles/runner-ids.ts`, a different file, and the `Every commit is verified on main` parts name no src/roles path); PLANS-DONE.md records no split of `assemblePayload` itself (`grep -nE '^### .*assemblePayload' PLANS-DONE.md` prints nothing; its two `assemblePayload` mentions are the landed `rolePayload` split naming it as the assembly helper it introduced), and docs/invariants.md binds role-view.ts only through INV-BO3's symlink-guard reader calls, which sit in the read helpers and not in this literal-shaping code; touches src/roles/role-view.ts)
+
+**Goal.** `rolePayload` now delegates its reads to named helpers, but ends by calling `assemblePayload` (src/roles/role-view.ts), a 30-parameter function whose whole body is one returned object literal. The eslint complexity one-shot reports it at 23 — the conditional spreads, not any decision, make it the largest function in the file — and the literal mixes identity, model-seam, override, config/detail and run-history facts, so "which fields belong to the seam?" or "which fields are optional and why?" is answered by scanning all of it. Split the literal into one named partial builder per field concern; no behavior change.
+
+**Approach.** All edits in src/roles/role-view.ts; no exported name changes and no new import.
+- Move the inline parameter type to a module-private `interface RolePayloadParts` above `assemblePayload`, with exactly today's fields and optionality; `assemblePayload(parts: RolePayloadParts)` takes it.
+- Add five module-private builders, each taking `parts` and returning `Partial<RoleViewPayload>`, each carrying the inline comments that describe its fields, and each preserving the current field order, values and conditional spreads:
+  - `identityFields(parts)` → `id`, `title`, `custom`, `enabled`, `paused`, `tier`, `modelTier`, the `...resolvedModelFields(...)` spread, and the `piDefault` conditional.
+  - `seamFields(parts)` → `backend`, `fallback`, `fallbackFree`, the `account`/`billing`/`billingBackend` conditional, the `billingWindow` conditional, `chainStep`, and the `...roleImageInfo(...)` spread.
+  - `overrideFields(parts)` → `minRunIntervalSeconds` and the five `minRunIntervalOverride`/`providerOverride`/`modelOverride`/`thinkingOverride`/`backendOverride` conditionals.
+  - `roleFields(parts)` → the `instances` conditional, `instructions`, `find`, `notes`, `noteSavedAt`, the `flowCoverage` and `filings` conditionals, and `inboxCount`.
+  - `runFields(parts)` → `contextWindow`, `nextPrompt`, the `...schedule` spread, and the `quietHours`/`recentOutcomes`/`usage`/`dailyCap`/`dailyCapHitAt` conditionals.
+- `assemblePayload` returns one literal that spreads those five builders in today's key order: identity, seam, overrides, role fields, run fields. The builders only shape values already in `parts`; every read stays in `rolePayload`, so the single-load-per-source property the collector's doc comment states is untouched.
+
+**Files touched.** src/roles/role-view.ts
+
+**Acceptance criteria.**
+- `rolePayload(root, typedRole, modelsPath = piModelsPath(), now = new Date())` and the exported `RoleViewPayload` interface are unchanged, and `grep -nE '^export ' src/roles/role-view.ts` matches today's exported lines (no new export).
+- `assemblePayload`'s body is the five spreads in today's order; `npx eslint --no-config-lookup -c docs/code-metrics/eslint-complexity.config.mjs 'src/roles/role-view.ts'` reports `assemblePayload` at 5 or below (it reports 23 today) and no new helper higher than today's 23.
+- The payload is byte-identical: each field keeps its position, each conditional spread stays conditional (so an absent optional field still leaves no key), and every value comes from the same `parts` field as today. test/role-view.test.ts passes unedited, as do test/gui-endpoints.test.ts and test/gui-client-drawer.test.ts, which drive the same payload through the CLI and the drawer.
+- No read is added or removed, so docs/invariants.md is unchanged and its INV-BO3 symlink-guard binding on role-view.ts still resolves to the same reader calls.
+- No edit lands outside src/roles/role-view.ts.
+- `npm run test:gate` passes.
+
+**Tests.** No new test module: the split is behavior-preserving and the existing payload assertions are the regression net. Run test/role-view.test.ts, test/gui-endpoints.test.ts and test/gui-client-drawer.test.ts whole, then the project's gate, and confirm green. If a payload key moves or disappears, a builder's field order or guard is wrong; do not change a test to make it pass.
+
 _None yet._
 
 ## Done
