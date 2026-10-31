@@ -205,12 +205,17 @@ never has to wait a parked check out.
   While a check runs or waits, `tumwater status`, the TUI header and the dashboard's team panel
   show `checks <running>/<cap>`, plus `, <n> waiting` when checks are queued.
 - A bug that bugfix cannot reproduce once it has made the failure message name the cause is
-  parked with a `**Needs review <date> by bugfix: …**` note naming what the next failure's
-  message will show. The backlog index marks the entry `[blocked: needs review]`, so bugfix skips
-  it while the cause stays unknown, and the note lifts when a new occurrence is recorded (the
-  recorder deletes the note line, which selfcheck does).
-  A bugfix run that adds a Progress note to a bug it could not reproduce writes the
-  `**Needs review …**` note naming what would make it fail as its own line in the same pass.
+  handed to the director before it is parked for the user: the bugfix run records a Progress note
+  and writes `.tumwater-director-request.md` at its worktree root holding the entry's heading,
+  every attempted reproduction, and the failure message. The harness queues it as one director
+  prompt and deletes the file before staging, so it never enters a diff (INV-B8). The director
+  then either explains or reproduces the bug (a Progress note under the entry, which stays open)
+  or, when it cannot resolve it, parks the entry with a `**Needs review <date> by director: …**`
+  note naming what the user must decide. Only when the request file cannot be written does
+  bugfix keep the old park: a `**Needs review <date> by bugfix: …**` note naming what the next
+  failure's message will show, which the backlog index marks `[blocked: needs review]` and which
+  lifts when a new occurrence is recorded (the recorder deletes the note line, which selfcheck
+  does).
 - A maintenance role whose last run did nothing is deferred until feature, bugfix, director,
   you, or another human's work merges to main (your own `tumwater brief`, `plan`, `bug` and
   `questions answer` edits count as human work), and stays deferred while PLANS.md or BUGS.md has

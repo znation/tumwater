@@ -248,6 +248,27 @@ orchestrator's poll-loop warn site) is not crashed for one listener's bug.
 **Pinned by.** `test/events.test.ts` — "a throwing event subscriber does not stop the other
 subscribers or the event write".
 
+### INV-B8: a bugfix run's director request is queued once, before staging, and never committed
+
+**Guarantee.** When a bugfix run leaves `.tumwater-director-request.md` at its worktree root
+(the cannot-reproduce handoff, role-catalog.ts's bugfix find), the run verdict consumes it in
+`resolveRunVerdict`'s bugfix block — after the abort return and before every staging path,
+beside the config-request block — and queues exactly one director prompt whose text carries the
+request body between the fixed preamble and the fixed ask, logging the `prompt_enqueued` event
+under `director`. The request file is deleted on every path — absent (no file reads null, no
+prompt), empty or whitespace-only body, over-cap body (rejected by `submitRolePrompt`'s length
+cap), and enqueue throw — so it never enters a commit's diff, a review prompt, or the project's
+history, and a re-run starts clean instead of retrying a stale request. Only a bugfix instance
+consumes the file; every other role's run leaves it untouched. A failed unlink surfaces as an
+error the run warns, so a surviving file is never silent.
+
+**Binds.** `src/inbox/director-request.ts` (`applyDirectorRequest`), `src/paths.ts`
+(`directorRequestPath`), `src/run/run-verdict.ts` (the bugfix `applyDirectorRequest` call).
+
+**Pinned by.** `test/director-request.test.ts` (absent/valid/empty/over-cap/throw paths and the
+delete-on-every-path guarantee), `test/run-verdict.test.ts` (a bugfix run consumes the file
+before a dirty/staging outcome and a feature run leaves it).
+
 ## Sibling result shapes a classifier treats alike
 
 When a classifier groups outcomes into classes, every result shape that belongs to a class must

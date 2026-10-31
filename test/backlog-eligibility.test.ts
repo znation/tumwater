@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { withoutNeedsReviewNotes, withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, eligibleEntries, entryHold, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, refusalNote, refusedEntries, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { withoutNeedsReviewNotes, withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, eligibleEntries, entryHold, holdMark, holdsBacklogReaders, inProgressMark, isPlanStalled, mergedPrerequisiteRanges, refusalNote, refusedEntries, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
 import { entryKey, plannedPartKeys, prerequisitesMerged, planDependencyProblems, plansReleasedBy, plansWaitingOn, releasedPartsNote, requiredParts, seriesPart, type PartRef } from "../src/backlog/backlog-parts.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
@@ -181,6 +181,32 @@ test("hold notes match only as their own line, and an indented note still holds"
 
 test("a body mentioning 'requires' never blocks — only the heading's clause does", () => {
   assert.equal(entryHold(entry("Foo (planned 2026-10-01)", "This requires part 1/2 landed eventually."), []), null);
+});
+
+test("isPlanStalled is false for by-bugfix and by-director notes and keeps its true results", () => {
+  // No note at all: not stalled with the plan role.
+  assert.equal(isPlanStalled(entry("Plan (planned 2026-10-01)", "body")), false);
+  // The feature role's too-large note parks with the plan role.
+  assert.equal(
+    isPlanStalled(entry("Plan (planned 2026-10-01)", "**Needs review 2026-10-07 by feature: too large for one run**")),
+    true,
+  );
+  // A final-round rejection is plan-role work too.
+  assert.equal(
+    isPlanStalled(entry("Plan (planned 2026-10-01)", "**Needs review 2026-10-07 by feature: rejected after 2 review rounds**")),
+    true,
+  );
+  // The bugfix role's wait-for-the-next-failure note is selfcheck's, not the plan role's.
+  assert.equal(
+    isPlanStalled(entry("Bug (reported 2026-10-02)", "**Needs review 2026-10-08 by bugfix: the next failure's message**")),
+    false,
+  );
+  // The director's user fallback (the director-request handoff's final park) is not plan-role
+  // work either: the director already reviewed it and the note names what the user decides.
+  assert.equal(
+    isPlanStalled(entry("Bug (reported 2026-10-02)", "**Needs review 2026-10-08 by director: user must pick a model**")),
+    false,
+  );
 });
 
 test("a Needs-review note parks the entry as needs-review at any held count", () => {

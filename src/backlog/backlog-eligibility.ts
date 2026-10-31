@@ -79,7 +79,9 @@ export function needsReviewNote(body: string): string | null {
  * which the plan role clears by splitting or replanning (role-catalog.ts `plan` find). False
  * for the bugfix role's wait-for-the-next-failure note ("by bugfix: …"), which parks the
  * entry for selfcheck to lift when the cluster fails again (selfcheck step 4) and which no
- * role can act on until then. entryHold returns "needs-review" for every such note (all of
+ * role can act on until then, and for the director's user fallback ("by director: …", the
+ * director-request handoff's final park) — the director has already reviewed the entry and the
+ * park names what the user must decide, so it is not plan-role work either. entryHold returns "needs-review" for every such note (all of
  * them park the entry), so the doctor's `stalled entries` row (checkStalledEntries) — the
  * stalled-with-the-plan-role surface — classifies by this agreed subset, keeping the bugfix
  * parks out of the plan-role blame. Reads the note's text after the NEEDS_REVIEW_PREFIX once,
@@ -88,8 +90,9 @@ export function needsReviewNote(body: string): string | null {
 export function isPlanStalled(entry: BacklogEntry): boolean {
   const note = needsReviewNote(entry.body);
   if (note === null) return false;
-  // A "by bugfix:" note is a wait for evidence that selfcheck clears, not plan-role work.
-  return !note.includes("by bugfix");
+  // A "by bugfix:" note is a wait for evidence that selfcheck clears, and a "by director:"
+  // note is the director's reviewed user fallback (INV-B8) — neither is plan-role work.
+  return !note.includes("by bugfix") && !note.includes("by director");
 }
 
 /** `lines` without any line starting with `prefix` (the same line-prefix rule hasNoteLine

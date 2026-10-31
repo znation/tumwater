@@ -504,6 +504,21 @@ test("the director routes a user ruling on a marked plan", () => {
   assert.match(prompt, /split it into independently landable sub-plans per PLAN_SIZING/);
   assert.match(prompt, /or clear the \*\*Needs review <YYYY-MM-DD> by feature: too large for one run\*\* note/);
 });
+test("the bugfix find text hands an unreproducible bug to the director before parking it for the user", () => {
+  const find = oneLine(roleById("bugfix")!.find);
+  // The request file is named, with the harness's queue-and-delete contract.
+  assert.match(find, /write `\.tumwater-director-request\.md` at your worktree root/);
+  assert.match(find, /it is queued as one director prompt and deleted before staging/);
+  // The director handoff comes before the by-bugfix needs-review note, and the note is named
+  // the last resort for when the file cannot be written.
+  assert.ok(find.indexOf("director handoff") < find.indexOf("last resort"), "the handoff is ordered before the last resort");
+  assert.match(find, /If the request file cannot be written, keep the old park/);
+  assert.match(find, /the last resort/);
+  // The skip rule: an entry with a director-handoff Progress note and no by-director
+  // needs-review note is with the director.
+  assert.match(find, /Skip an entry whose newest Progress note names a director handoff/);
+  assert.match(find, /by director: …\*\*\*? note/);
+});
 test("the bugfix role bounds its latent-bug hunt and demands a reproduction", () => {
   const find = oneLine(roleById("bugfix")!.find);
   assert.match(find, /hunt briefly for one latent bug — at most ~10 tool calls, not a tour of the codebase/);

@@ -70,6 +70,15 @@ export function configRequestPath(wt: string): string {
   return path.join(wt, ".tumwater-config-request.json");
 }
 
+/** The bugfix role's director-review request file, at its worktree root: the bugfix role
+ * writes it when it cannot reproduce an open bug, and the harness (run-verdict.ts) consumes
+ * and deletes it before any staging path — queuing one director prompt — so it never enters
+ * a diff or the project's history, the same staged-file pattern as the director's config
+ * request. */
+export function directorRequestPath(wt: string): string {
+  return path.join(wt, ".tumwater-director-request.md");
+}
+
 /** The directory every harness worktree lives under — role, merger and mirror alike. The
  * single home of the tumwaterDir + worktrees pair: every worktree path helper below joins
  * its leaf through this, so the layout moves in one place. */

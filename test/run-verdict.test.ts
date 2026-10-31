@@ -6,9 +6,10 @@ import path from "node:path";
 import { resolveRunVerdict } from "../src/run/run-verdict.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
+import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { loadConfig } from "../src/config/config.js";
-import { configRequestPath, qaCoveragePath, feedbackFilingsPath, ciParityPath } from "../src/paths.js";
+import { configRequestPath, directorRequestPath, qaCoveragePath, feedbackFilingsPath, ciParityPath } from "../src/paths.js";
 import { readQaCoverage } from "../src/run/qa-coverage.js";
 import { readCiParity } from "../src/run/ci-parity.js";
 import { readFeedbackFilings } from "../src/run/feedback-filings.js";
@@ -148,6 +149,54 @@ test("a stray config request in a non-director worktree is left alone", async ()
   // The stray file itself leaves the worktree dirty (status --porcelain sees it), so the
   // verdict is "fulfillable" — staging takes over, exactly as for any other leftover edit.
   assert.equal(outcome, null);
+});
+
+// resolveRunVerdict's director-request block (INV-B8): a bugfix run's cannot-reproduce
+// handoff file is consumed — queued as one director prompt — before every staging path, while
+// every other role's run leaves the file untouched.
+
+test("a bugfix run's director request is queued and deleted before the staging paths", async () => {
+  const { root, wt } = await initializedWorktree("bugfix");
+  fs.writeFileSync(directorRequestPath(wt), "entry heading; attempted repro; failure message");
+
+  const { ctx, warns } = makeCtx(root, wt, "bugfix");
+  const outcome = await resolveRunVerdict(ctx);
+
+  // The request was queued as one director prompt and the file is gone before staging — it
+  // can never enter a diff or a review prompt.
+  assert.equal(queuedRolePrompts(root, "director").length, 1);
+  assert.ok(queuedRolePrompts(root, "director")[0]!.includes("failure message"), "the body rides into the prompt");
+  assert.ok(!fs.existsSync(directorRequestPath(wt)), "the request file is deleted before staging");
+  // A clean consumption is silent; only rejection paths warn.
+  assert.deepEqual(warns, []);
+  // The verdict classification itself is unaffected by the consumption.
+  assert.equal(outcome?.result, "no_change");
+});
+
+test("a bugfix run's empty director request warns and is still deleted", async () => {
+  const { root, wt } = await initializedWorktree("bugfix");
+  fs.writeFileSync(directorRequestPath(wt), "  \n ");
+
+  const { ctx, warns } = makeCtx(root, wt, "bugfix");
+  await resolveRunVerdict(ctx);
+
+  assert.equal(warns.length, 1, "exactly one warning event");
+  assert.match(warns[0]!, /director request rejected: /);
+  assert.ok(!fs.existsSync(directorRequestPath(wt)), "the rejected request is deleted too");
+});
+
+test("a feature run's director request file is left alone", async () => {
+  const { root, wt } = await initializedWorktree("feature-8");
+  fs.writeFileSync(directorRequestPath(wt), "a feature run never consumes this");
+
+  const { ctx, warns } = makeCtx(root, wt, "feature-8");
+  await resolveRunVerdict(ctx);
+
+  // Only a bugfix instance consumes the file (baseRoleOf guard): the file survives and
+  // nothing was queued under director.
+  assert.ok(fs.existsSync(directorRequestPath(wt)), "the file was not consumed");
+  assert.equal(queuedRolePrompts(root, "director").length, 0);
+  assert.deepEqual(warns, []);
 });
 
 test("a clean nothing-to-do run classifies as a fulfilled no_change without requeueing", async () => {

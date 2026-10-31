@@ -107,9 +107,15 @@ should not be done at all, which is the user's call to decide.`,
       \`[blocked: …]\` (such as \`[blocked: refused]\`, for a Refused note): when every open entry is marked, there is nothing to do. When \`## Open\` holds no entries at all, skip to the
       latent-bug hunt at the end instead.
    2. Reproduce it if possible: a failing test or a scratch script. When it cannot be reproduced
-      and this run made its failure message name the cause next time (or found it already does),
-      record a Progress note, write a **Needs review <YYYY-MM-DD> by bugfix: <what the next failure's message
-      will show>** note as its own line under the heading, and end the run. Do not keep investigating without new evidence.
+      and this run made its failure message name the cause next time (or found it already does), hand it to
+      the director before parking it for the user: record a Progress note that names the director handoff,
+      write \`.tumwater-director-request.md\` at your worktree root holding the entry's heading, every
+      attempted reproduction, and the failure message (it is queued as one director prompt and deleted
+      before staging — never commit it), and end the run. Do not keep investigating without new
+      evidence. Skip an entry whose newest Progress note names a director handoff and that carries no
+      **Needs review … by director: …** note: it is with the director until the director resolves or parks it.
+      If the request file cannot be written, keep the old park: write a **Needs review <YYYY-MM-DD> by bugfix: <what the next failure's message
+      will show>** note as its own line under the heading (the last resort) and end the run.
       A \`post-merge review of <sha> never reached a verdict\` entry has no next failure: settle it as its body says.
    3. Fix it, and add a regression test that fails without the fix — run that test to watch it
       fail before the fix and pass after.

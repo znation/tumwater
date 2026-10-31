@@ -16,6 +16,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { isDirty, deleteRef } from "../git/git.js";
 import { applyConfigRequest } from "../config/config-request.js";
+import { applyDirectorRequest } from "../inbox/director-request.js";
 import { diagnoseNoChange, extractNoChangeAnswer } from "../verdict/no-change.js";
 import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../git/commit-message.js";
@@ -137,6 +138,14 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
           `config request ignored key(s): ${request.ignored.join(", ")} — only customRoles and check.command are accepted`,
         );
     }
+  }
+  // A bugfix run that could not reproduce its bug leaves a director-review request in its
+  // worktree (role-catalog.ts's bugfix find): consume it here — after the abort return and
+  // before every staging path, beside the config-request block — so the file is queued as
+  // one director prompt and deleted before it can enter a diff (INV-B8).
+  if (baseRoleOf(ctx.role) === "bugfix") {
+    const request = applyDirectorRequest(ctx.root, ctx.wt);
+    if (request !== null && "error" in request) ctx.warn(`director request rejected: ${request.error}`);
   }
   // Each decision lives in one named arm below; run them in order and short-circuit on the
   // first that applies so the verdict tree reads as a list. Every arm returns undefined to
