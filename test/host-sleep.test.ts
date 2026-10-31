@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sampleSleepClock, sleptMsBetween, type SleepSample } from "../src/build/host-sleep.js";
+import {
+  hostLoadStarved,
+  sampleSleepClock,
+  sleptMsBetween,
+  type SleepSample,
+} from "../src/build/host-sleep.js";
 
 /** Pin the platform for one test and restore it, the same pattern test/process.test.ts uses:
  * the real clocks differ per OS, but the branch logic under test runs wherever the platform
@@ -103,4 +108,24 @@ test("sampleSleepClock yields an empty sample on a platform with neither clock",
   // Neither darwin's sysctl pair nor Linux's /proc/uptime: no readable clock at all.
   const sample = await withPlatform("sunos", sampleSleepClock);
   assert.deepEqual(sample, {});
+});
+
+// Unit coverage for the shared "starved host" bar (hostLoadStarved in src/build/host-sleep.ts):
+// the deadline stretch (build-check-events.ts), the on-time-kill note, and the doctor's
+// contention advice all read the host through this one predicate, so the bar and its
+// degenerate-sample guard are pinned here rather than scattered across those surfaces.
+test("hostLoadStarved reads the bar as the load strictly above the core count", () => {
+  // The bar is strictly above: load equal to the core count is not starved.
+  assert.equal(hostLoadStarved({ load1: 8, cpus: 8 }), false);
+  assert.equal(hostLoadStarved({ load1: 0, cpus: 8 }), false);
+  assert.equal(hostLoadStarved({ load1: 9, cpus: 8 }), true);
+});
+
+test("hostLoadStarved reads a core count of zero or below as not starved at any load", () => {
+  // The cpus > 0 guard: a sample with no usable core count has no denominator for the ratio to
+  // exceed, so it must not read as saturated — a regression to the bare `load1 > cpus` would
+  // stretch deadlines and suppress the doctor's raise-cap advice on such a sample.
+  assert.equal(hostLoadStarved({ load1: 90, cpus: 0 }), false, "zero cores is not starved");
+  assert.equal(hostLoadStarved({ load1: 0, cpus: -1 }), false, "a negative core count is not starved");
+  assert.equal(hostLoadStarved({ load1: -1, cpus: 0 }), false);
 });
