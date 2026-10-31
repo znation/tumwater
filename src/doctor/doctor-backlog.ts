@@ -2,7 +2,7 @@ import { roleLabel } from "../roles/role-labels.js";
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
-import { shortSha } from "../text/format.js";
+import { joinOr, shortSha } from "../text/format.js";
 import { readPostReviews, POST_REVIEW_FAILURE_LIMIT } from "../review/post-merge-review.js";
 import { humanSeconds, humanSince, HOUR_MS, DAY_MS } from "../text/datetime.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -428,6 +428,5 @@ export function backlogCommitLines(report: BacklogCommitReport): string[] {
  * backlogCommitLines so the dashboard Health card's Commit backlog handler and the TUI Health
  * tab's Ctrl+A flash cannot drift from each other. */
 export function backlogCommitMessage(report: BacklogCommitReport): string {
-  const lines = backlogCommitLines(report);
-  return lines.length ? lines.join("; ") : "nothing to commit — every watched backlog or brief file is committed";
+  return joinOr(backlogCommitLines(report), "; ", "nothing to commit — every watched backlog or brief file is committed");
 }

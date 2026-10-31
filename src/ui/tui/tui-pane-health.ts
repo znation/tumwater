@@ -7,7 +7,7 @@ import { testNotifyHook } from "../../cli/cli-notify-command.js";
 import { resyncRootInstall, rootInstallResyncLines } from "../../build/dep-install.js";
 import { brokenPinDropLines, leftoverRetireLines } from "../../doctor/doctor-contention-checks.js";
 import { describeArchivedFile } from "../../backlog/backlog-archive.js";
-import { shortSha } from "../../text/format.js";
+import { joinOr, shortSha } from "../../text/format.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { paneAtHead, type TuiPaneSession } from "./tui-pane-session.js";
 
@@ -221,8 +221,7 @@ export function createHealthPane(session: TuiPaneSession) {
     session.flashMessage("dropping broken pins …");
     session.requestRender();
     healthAction(session.dropBrokenPins(session.root), (report) => {
-      const lines = brokenPinDropLines(report);
-      session.flashMessage(lines.length > 0 ? lines.join("; ") : "no broken pins to drop");
+      session.flashMessage(joinOr(brokenPinDropLines(report), "; ", "no broken pins to drop"));
     });
     return true;
   };
@@ -268,8 +267,7 @@ export function createHealthPane(session: TuiPaneSession) {
     session.flashMessage("retiring every disabled role's leftovers …");
     session.requestRender();
     healthAction(session.retireLeftovers(session.root), (report) => {
-      const lines = leftoverRetireLines(report);
-      session.flashMessage(lines.length > 0 ? lines.join("; ") : "no leftover roles to retire");
+      session.flashMessage(joinOr(leftoverRetireLines(report), "; ", "no leftover roles to retire"));
     });
     return true;
   };

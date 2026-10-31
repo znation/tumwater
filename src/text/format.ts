@@ -30,6 +30,16 @@ export function prependPromptNote(prompt: string, note: string): string {
   return `${note}\n\n${prompt}`;
 }
 
+/** A list joined into one string when it holds anything, else a fallback sentence — the single
+ * home of the `lines.length ? lines.join(sep) : empty` fold the operator surfaces all repeat:
+ * the change diff's `no pending changes` (change-render.ts), the backlog-commit flash's
+ * nothing-to-commit line (doctor-backlog.ts), and the TUI Health pane's `no broken pins to
+ * drop` / `no leftover roles to retire` flashes (tui-pane-health.ts). One place so the
+ * separator and the empty-wording cannot drift per consumer. */
+export function joinOr(lines: readonly string[], sep: string, empty: string): string {
+  return lines.length > 0 ? lines.join(sep) : empty;
+}
+
 /** Compact token count for tight table cells and commit trailers — bare integers below
  * 10,000, one-decimal k at and above 10,000, one-decimal M at and above 1,000,000. The single
  * home of the token display format shared by the status table's gen/peak-ctx columns and the

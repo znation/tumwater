@@ -3,6 +3,7 @@
  * role's pending work (`--role <id>`) and the team-wide roster (no --role). Pure function of the
  * collected view — no I/O, no clock reads. */
 
+import { joinOr } from "../text/format.js";
 import { plural } from "../text/phrases.js";
 import type { ChangeOverlapsView, TeamChangeView, RoleChangeView, RoleChangesView } from "./change-data.js";
 
@@ -47,7 +48,7 @@ export function renderTeamChange(view: TeamChangeView): string {
   const lines = view.roles
     .filter((r) => r.state !== "no-base" && (r.ahead > 0 || r.dirtyFiles.length > 0))
     .map((r) => `${r.role}: ${workSummary(r.ahead, r.behind, view.mainBranch, r.dirtyFiles)}`);
-  return lines.length > 0 ? lines.join("\n") : "no pending changes";
+  return joinOr(lines, "\n", "no pending changes");
 }
 
 /** Render the view as the operator-facing text `tumwater diff --role <id>` prints. */
