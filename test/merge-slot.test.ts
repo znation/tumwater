@@ -535,7 +535,7 @@ test("a foreign changes shape or a null record degrades instead of crashing a me
   assert.equal(after[0]!.status, "approved");
 });
 
-test("a queued merge's record names each phase while it runs: the gate's check, then the merge's in-lock check", async () => {
+test("a queued merge's record names the gate's pre-check stage while it runs", async () => {
   const root = makeRepo();
   // A pinned change ahead of main, exactly what a run leaves behind for the pipeline.
   const sha = pinOffMain(
@@ -547,13 +547,13 @@ test("a queued merge's record names each phase while it runs: the gate's check, 
   const entry: MergeEntry = { role: "improve", sha, run: 3, summary: "the work", enqueuedAt: Date.now() };
   enqueueMerge(root, entry);
 
-  // Every observation point appends the marker's stage as the observers would read it: the
-  // project's declared check runs the verification's gate pre-check, then the merge's in-lock
-  // re-check. With no pre-merge reviewer, the deterministic gate approves on the green pre-check
-  // and every merged commit is reviewed after landing (part 3d/3). The check itself moves main
-  // by a code file, so the in-lock re-check has a rebased tree to verify — the merge step's own
-  // long phase, which names itself a build check too. (An empty or doc-only move would leave the
-  // verified tree's bytes, plus at most exempt paths, and the re-check would rightly be skipped.)
+  // Every observation point appends the marker's stage as the observers would read it. Since
+  // part 4l/3 ("Every commit is verified on main") the merge slot's in-lock build re-check is
+  // gone: a merge is a rebase and a fast-forward, so the only build check a queued merge's
+  // record names is the verification's gate pre-check (then the fast-forward). With no pre-merge
+  // reviewer, the deterministic gate approves on the green pre-check and every merged commit is
+  // reviewed after landing (part 3d/3). The check itself moves main by a code file — the gate's
+  // pre-check judges the rebased tree and the merge's fast-forward lands it.
   const rec = path.join(tmpdir(), "stages");
   const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${mergeStatePath(root)}' | head -n 1`;
   const config = {
@@ -570,7 +570,7 @@ test("a queued merge's record names each phase while it runs: the gate's check, 
   assert.deepEqual(
     fs.readFileSync(rec, "utf8").trim().split("\n"),
     ["check:build-check"],
-    "the gate pre-check ran under the build-check stage; the merge runs no in-lock check",
+    "the gate pre-check ran under the build-check stage, and no in-lock re-check runs (part 4l/3)",
   );
   assert.equal(readMergeMarker(root), null, "the marker is removed after the outcome");
 });
