@@ -11,6 +11,7 @@ import { logEventBestEffort } from "../events/events.js";
 import { errCode } from "../errno.js";
 import { queueFileStamp, lowestStampName } from "../files/file-queue.js";
 import { queuedMergeFiles } from "./merge-queue.js";
+import { sameSha } from "../text/text.js";
 
 /** What moving the Nth queued merge to the front did: `topped` names the moved entry's role,
  * pinned sha and summary (what one `merge_topped` event logged); `already-first` when
@@ -94,7 +95,7 @@ export type TopQueuedByShaOutcome = TopQueuedOutcome | { status: "gone" };
  * otherwise it runs the same `topQueuedFile` the position variant uses. */
 export function moveQueuedMergeToTopBySha(root: string, sha: string): TopQueuedByShaOutcome {
   const files = queuedMergeFiles(root);
-  const i = files.findIndex((q) => q.entry.sha.toLowerCase() === sha.toLowerCase());
+  const i = files.findIndex((q) => sameSha(q.entry.sha, sha));
   if (i < 0) return { status: "gone" };
   return topQueuedFile(root, files, i);
 }

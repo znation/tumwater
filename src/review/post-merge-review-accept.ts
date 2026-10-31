@@ -10,6 +10,7 @@
 import { readPostReviews, settlePostReview, type PostReview } from "./post-merge-review.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { shortSha } from "../text/format.js";
+import { sameSha } from "../text/text.js";
 
 /** What accepting an un-reviewed post-merge review entry did: `accepted` names the retired
  * entry's role, commit and summary (what one `warning` event logged); `out-of-range` carries
@@ -63,7 +64,7 @@ export type AcceptPostReviewByShaOutcome = AcceptPostReviewOutcome | { status: "
  * A commit that matches none is `{ status: "gone" }` and changes nothing; otherwise it runs the
  * same `removeAcceptedEntry` the position variant shares. */
 export function acceptPostReviewBySha(root: string, sha: string): AcceptPostReviewByShaOutcome {
-  const entry = readPostReviews(root).find((e) => e.commit.toLowerCase() === sha.toLowerCase());
+  const entry = readPostReviews(root).find((e) => sameSha(e.commit, sha));
   if (!entry) return { status: "gone" };
   return removeAcceptedEntry(root, entry);
 }

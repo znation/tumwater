@@ -9,6 +9,7 @@ import { queuedMergeFiles, dropMerge, type MergeEntry } from "./merge-queue.js";
 import { mergeRefName } from "../paths.js";
 import { deleteRefIfAt } from "../git/git.js";
 import { logEventBestEffort } from "../events/events.js";
+import { sameSha } from "../text/text.js";
 
 /** What removing the Nth queued merge did: `cancelled` names the removed entry's role, pinned
  * sha and summary (what one `merge_cancelled` event logged); `out-of-range` carries the
@@ -60,7 +61,7 @@ export type CancelQueuedByShaOutcome = CancelQueuedOutcome | { status: "gone" };
  * entry whose sha matches none is `{ status: "gone" }` and changes nothing; otherwise it runs
  * the same `removeQueuedEntry` the position variant uses. */
 export async function cancelQueuedMergeBySha(root: string, sha: string): Promise<CancelQueuedByShaOutcome> {
-  const target = queuedMergeFiles(root).find((q) => q.entry.sha.toLowerCase() === sha.toLowerCase());
+  const target = queuedMergeFiles(root).find((q) => sameSha(q.entry.sha, sha));
   if (!target) return { status: "gone" };
   return removeQueuedEntry(root, target);
 }

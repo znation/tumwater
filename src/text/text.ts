@@ -110,6 +110,17 @@ export function isNonBlankString(v: unknown): v is string {
   return typeof v === "string" && v.trim() !== "";
 }
 
+/** Case-insensitive equality of two sha strings — git object ids are written in lowercase
+ * but are hexadecimal and case-insensitive, and several sites resolve a user-/GUI-supplied
+ * sha against one read from a queue file. merge-top.ts's and merge-cancel.ts's queued-merge
+ * find, post-merge-review-accept.ts's pending-review find, and gui-operator-commands.ts's
+ * in-flight-merge guard each spelled `a.toLowerCase() === b.toLowerCase()` inline, so the
+ * folded comparison cannot drift per site. Lives here (text.ts, node-built-ins only) beside
+ * the other string predicates. */
+export function sameSha(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 /** Split a comma list into its trimmed, non-empty pieces, in order — the one spelling of the
  * split-trim-drop-blanks step shared by the `--role` list flags (cli-args.ts and
  * operator-commands.ts), `logs --type`, the history `--result` and `--model` filters, and the

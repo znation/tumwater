@@ -31,7 +31,7 @@ import { shortSha } from "../text/format.js";
 import { editBriefText } from "../brief/brief-edit.js";
 import { requireStringField, validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
-import { errorMessage, gotSuffix } from "../text/text.js";
+import { errorMessage, gotSuffix, sameSha } from "../text/text.js";
 import { readPostBody, readRoleBody, readShaBody, sendRequestResult } from "./gui-endpoint-common.js";
 import { wakeInSecondsMs } from "./gui-team-commands.js";
 import type http from "node:http";
@@ -294,9 +294,8 @@ export async function handleRevert(req: http.IncomingMessage, res: http.ServerRe
 /** Refuse cancellation or reordering of a sha named by the live merge marker. */
 function rejectInFlightMerge(res: http.ServerResponse, root: string, sha: string): boolean {
   const view = readMergeQueue(root);
-  const normalized = sha.toLowerCase();
   const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  if (!inFlight || !((typeof inFlight.sha === "string" && inFlight.sha.toLowerCase() === normalized) || mergeChanges(inFlight).some((c) => c.sha.toLowerCase() === normalized)))
+  if (!inFlight || !((typeof inFlight.sha === "string" && sameSha(inFlight.sha, sha)) || mergeChanges(inFlight).some((c) => sameSha(c.sha, sha))))
     return false;
   sendJson(res, 409, { error: `this merge is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(sha)}\`` });
   return true;
