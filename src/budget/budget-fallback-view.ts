@@ -84,8 +84,8 @@ interface BudgetFallbackView {
 /** The inputs `budgetFallbackView` and its phase helpers read: the verdict half's
  * already-resolved inputs (`priceResolved`, `servingResolved`, `chainPairs`, `pairNames`), the
  * `reached` flag, the shared reads (`state`, `config`, `accounts`, `providers`, `catalog`), and
- * the model check's verdicts with the verified-only resolution (`checkResolved`), all absent
- * while the check is off. */
+ * the model check's verdicts with the verified-only resolution (`checkResolved`), the cap
+ * view's check-aware resolution (`checkFreeResolved`), all absent while the check is off. */
 interface BudgetFallbackViewInput {
   state: BudgetGateState;
   config: TumwaterConfig;
@@ -97,6 +97,13 @@ interface BudgetFallbackViewInput {
   priceResolved: TierFallbackMap;
   servingResolved: TierFallbackMap;
   checkResolved?: TierFallbackMap;
+  /** The cap view's check-aware resolution (plans/model-check.md "Fallback"): the price
+   * resolution stepped past the pairs that failed their model check, so the installed config
+   * of a cap-moved tier lands on the first free step that answered, exactly as the `chain`
+   * block and the pause set resolve it. Unlike the serving resolution it never reads the
+   * breaker, so a breaker-demoted cap pair stays installed for its half-open probe and a run
+   * parked on it. Absent while the check is off, when `priceResolved` is the cap's view. */
+  checkFreeResolved?: TierFallbackMap;
   checkFailed?: (pair: string) => boolean;
   checkVerified?: (pair: string) => boolean;
   chainPairs: FallbackModelConfig[];
@@ -143,7 +150,13 @@ function installFallbackConfig(a: BudgetFallbackViewInput, fromKey: string, chec
       ? (seam: { agent?: string; provider?: string; model?: string }, tier: ModelTier) =>
           seamFree(providers, seam, accounts, catalog) && checkKeeps(seam, tier)
       : checkKeeps;
-    state.fallbackConfig = applyFallbackModel(liveConfig, withCheckMoves(priceResolved, a.checkResolved, checkMoved), keeps);
+    // The cap's base view is the check-aware resolution while the check is on (a cap-moved
+    // tier's failed step stays out of the config its roles run under), else the price view.
+    state.fallbackConfig = applyFallbackModel(
+      liveConfig,
+      withCheckMoves(a.checkFreeResolved ?? priceResolved, a.checkResolved, checkMoved),
+      keeps,
+    );
   }
 }
 
@@ -174,8 +187,8 @@ function deriveCheckMovedTiers(a: BudgetFallbackViewInput, capMoved: ReadonlySet
 }
 
 /** Derive the fallback view for one poll from the verdict half's already-resolved inputs
- * (`priceResolved`, `servingResolved`, `checkResolved`, `chainPairs`, `pairNames`) and the
- * `reached` flag and the shared reads (`state`, `config`, `accounts`, `providers`, `catalog`),
+ * (`priceResolved`, `servingResolved`, `checkResolved`, `checkFreeResolved`, `chainPairs`,
+ * `pairNames`) and the `reached` flag and the shared reads (`state`, `config`, `accounts`, `providers`, `catalog`),
  * writing the cross-poll view state (`from`/`fromKey`/`fallbackConfig`) and returning the view
  * fields pollBudgetGate hands back. The view is installed at the cap, and below it while a tier
  * the model check moved runs on its verified step; `onFallback` (the image-reroute regime) stays
@@ -194,7 +207,18 @@ export function budgetFallbackView(a: BudgetFallbackViewInput): BudgetFallbackVi
     return rp ? modelPairName(rp) : "-";
   }).join(",");
   const checkKey = MODEL_TIERS.map((t) => (checkMoved.has(t) ? modelPairName(a.checkResolved![t].pair) : "-")).join(",");
-  const fromKey = `${reached ? "c" : ""}|${resolvedKey}${checkMoved.size > 0 ? `|${checkKey}` : ""}`;
+  // The cap view's check-aware pairs follow the price pairs when present: a check verdict
+  // failing or clearing a step changes the installed config without a price change, so the
+  // view must re-install on the next poll. Absent while the check is off, so the key is
+  // unchanged then.
+  const checkFreeKey = a.checkFreeResolved
+    ? "|" +
+      MODEL_TIERS.map((t) => {
+        const rp = a.checkFreeResolved![t].pair;
+        return rp ? modelPairName(rp) : "-";
+      }).join(",")
+    : "";
+  const fromKey = `${reached ? "c" : ""}|${resolvedKey}${checkMoved.size > 0 ? `|${checkKey}` : ""}${checkFreeKey}`;
   installFallbackConfig(a, fromKey, checkMoved);
   const chain = chainInfo({
     config: liveConfig,

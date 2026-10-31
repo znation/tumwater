@@ -562,6 +562,49 @@ test("at the cap, a free primary that failed moves to a verified free step past 
   assert.equal(seamPairName(configForRole(held.roleConfig, "feature")), "flintrunner/flint");
 });
 
+test("at the cap, a cap-moved tier steps past a free fallback step that failed its check", () => {
+  const root = makeRepo();
+  const free = { input: 0, output: 0 };
+  const modelsPath = writeModelsFile(
+    tmpdir("model-check-cap-step-"),
+    JSON.stringify({
+      providers: {
+        paid: { models: [{ id: "x", cost: { input: 1, output: 1 } }] },
+        local: { models: [{ id: "a", cost: free }, { id: "b", cost: free }] },
+      },
+    }),
+  );
+  const config = teamConfig();
+  config.model = { default: "paid/x", strong: "hf/deepseek" };
+  config.maxDailyCostUsd = 0.000001;
+  config.fallback = { default: ["local/a", "local/b"] };
+  const states = [{ ...freshRunnerState("feature"), dayStamp: todayStamp(), dayCostUsd: 5 }];
+  const state = newBudgetGateState(config);
+  const p = pollBudgetGate(state, {
+    root,
+    states,
+    liveConfig: config,
+    modelsPath,
+    modelCheckFailed: (pair) => pair === "local/a",
+  });
+  // The chain and the installed view step past the failed step together: the roles run on
+  // local/b, not wait on local/a.
+  assert.equal(p.onFallback, true);
+  assert.equal(p.chain.default?.pair, "local/b");
+  assert.equal(p.chain.default?.reason, "model-check");
+  assert.equal(seamPairName(configForRole(p.roleConfig, "feature")), "local/b");
+
+  // The failure clears: the next poll re-installs local/a on the same state.
+  const p2 = pollBudgetGate(state, {
+    root,
+    states,
+    liveConfig: config,
+    modelsPath,
+    modelCheckFailed: () => false,
+  });
+  assert.equal(seamPairName(configForRole(p2.roleConfig, "feature")), "local/a");
+});
+
 test("doctor's model check row and over-cap row read the running team's verdicts", () => {
   assert.deepEqual(checkModelChecks(false, null), {
     level: "ok",

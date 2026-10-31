@@ -111,11 +111,6 @@ each of them in seconds.
 
 ## Not covered (follow-ups)
 
-- At the cap, a tier the cap moves still runs on a step that failed its check. The serving
-  resolution steps past the step, and so do the `chain` block and the pause set. But the view
-  roles run under is built from the price-only resolution, so the roles run on the failed step
-  and wait there. Found 2026-10-30 while adding the move above. A breaker demotion splits the
-  same way by design, because its half-open probe runs on the demoted pair.
 - The director keeps the live config, so a director whose primary failed waits rather than
   moving.
 - A run in flight on a pair that fails its check, and whose requests are being answered, runs
