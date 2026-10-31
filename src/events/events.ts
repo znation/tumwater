@@ -217,9 +217,9 @@ export function logEventBestEffort(root: string, event: HarnessEventInput): void
 
 /** Log one `image_blind` event (plans/image-input.md "Detecting a blind read"): an agent read an
  * image its model cannot see — the authoring run was killed (action "fail") or a gate run merely
- * recorded the read (action "logged"). The runner and both review paths used to build this exact
- * event object themselves (source + type + run + path + model + action); it lives here so the
- * payload has one home and cannot drift between the three callers. */
+ * recorded the read (action "logged"). The runner builds this exact event object (source + type +
+ * run + path + model + action); it lives here so the payload has one home and cannot drift
+ * between the surfaces that record a blind read (the runner's authoring and gate run paths). */
 export function logBlindRead(
   root: string,
   source: string,
