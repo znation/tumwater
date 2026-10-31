@@ -377,10 +377,27 @@ export function entryLags(
 export function headingMetadata(lines: string[], start: number): { text: string; next: number } {
   const line = lines[start] ?? "";
   const meta: string[] = [line];
+  const j = collectHeadingContinuation(lines, start, meta, headingIsWrapped(line));
+  return { text: meta.join(" "), next: j };
+}
+
+/** Whether a `### ` heading line opens an unbalanced parenthetical: the only shape whose
+ * metadata runs beyond its first line. */
+function headingIsWrapped(line: string): boolean {
   // A wrapped heading's first line opens a parenthetical its continuation will close; an
   // unbalanced count is therefore the only shape that has metadata beyond the first line.
-  const wrapped =
-    (line.match(/\(/g) ?? []).length > (line.match(/\)/g) ?? []).length;
+  return (line.match(/\(/g) ?? []).length > (line.match(/\)/g) ?? []).length;
+}
+
+/** Append a wrapped `### ` heading's continuation lines to `meta`, stopping at the next entry
+ * start, the 3-line cap, or a line ending in `)`; returns the first line index not consumed. */
+function collectHeadingContinuation(
+  lines: string[],
+  start: number,
+  meta: string[],
+  wrapped: boolean,
+): number {
+  const line = lines[start] ?? "";
   let closed = line.endsWith(")");
   let j = start + 1;
   // Continuation is a heading-only concern (wrapped headings); bullets are single-line.
@@ -391,7 +408,7 @@ export function headingMetadata(lines: string[], start: number): { text: string;
     j++;
     closed = next.endsWith(")");
   }
-  return { text: meta.join(" "), next: j };
+  return j;
 }
 
 /** A `- ` line's or `### ` heading's trailing parenthetical's inner text, nesting-aware: a
