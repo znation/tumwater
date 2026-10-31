@@ -7,10 +7,10 @@
  * handback list. It no longer moves any tier for a used-up subscription window (part 5d/6): a
  * spent `maxDailyCostUsd` moves every priced tier to its free seam, and, at any spend, a tier
  * whose own primary failed its model check moves to a verified step of its chain
- * (plans/model-check.md "Fallback"). Its one entry reads the inputs pollBudgetGate's first half already resolved and
- * returns the view fields `BudgetGatePoll` carries, so pollBudgetGate keeps its call signature
- * and src/gates/gate-polls.ts's destructure of it is unchanged. The plan references the moved
- * comments carry (part 5b/8, part 5c/8, 6a/7) hold here. */
+ * (plans/model-check.md "Fallback"). Its one entry reads the inputs pollBudgetGate's first half
+ * already resolved and returns the view fields `BudgetGatePoll` carries, so pollBudgetGate keeps
+ * its call signature and src/gates/gate-polls.ts's destructure of it is unchanged. The plan
+ * references the moved comments carry (part 5b/8, part 5c/8, 6a/7) hold here. */
 
 import {
   MODEL_TIERS,
