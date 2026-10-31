@@ -246,6 +246,22 @@ export function loadRunnerState(root: string, role: string): RunnerState {
  * so a team poll's allLiveClaims does no read I/O once every claim is known. */
 const liveClaimCache = new Map<string, StatKeyedValue<{ role: string; key: string }>>();
 
+/** One stat-keyed cache of the state directory's instance listing, keyed by the directory's
+ * own stat. The per-instance claim files are stat-cached above, but every allLiveClaims pass
+ * also re-listed the state directory (readdir) to learn which instance ids exist — the one
+ * remaining per-poll readdir in the eligibility path — and a team poll runs several such
+ * passes (eligibleEntries per base, backlogInProgress, the index), each of which paid a
+ * fresh readdir of the same directory. cachedByStat keys on the directory's own stat
+ * (dev/ino/mtime/size): a listing only changes when an instance's state file is added,
+ * removed, or renamed here, so an unchanged set of instance files serves from one stat per
+ * pass. Note an instance updating its claim does NOT serve from here: the writer's atomic
+ * tmp+rename transiently adds and removes names, which bumps the directory's mtime, so such
+ * an in-place rewrite invalidates this cache and re-lists on the next pass — correct, since
+ * the claim set may have changed, and cheap (a few reads of a small dir). The idle steady
+ * state — the team at rest, the useful case — serves from one stat. Bounded inside
+ * cachedByStat so many short-lived roots in tests cannot grow it unbounded. */
+const stateDirListingCache = new Map<string, StatKeyedValue<string[]>>();
+
 /** Every runner id whose persisted claim must be considered — the built-in catalog roles
  * (allRoleIds) plus the parallel-work instance ids (feature-2, bugfix-3, …) that have a state
  * file. Instances are not in the built-in catalog, so they are enumerated from the state
@@ -256,12 +272,24 @@ const liveClaimCache = new Map<string, StatKeyedValue<{ role: string; key: strin
  * id; the named non-role files in that directory (orchestrator.json, claude-account.json, …)
  * resolve to themselves and so are skipped, as are the base roles allRoleIds already names. */
 function liveClaimRunnerIds(root: string): string[] {
+  const stateDir = path.join(root, STATE_DIR, "state");
+  // The instance ids that have a state file, cached by the directory's own stat: a fresh
+  // readdir only when a state file was added/removed/renamed (an instance created or
+  // retired), one stat otherwise. A missing or unreadable directory lists as no instances.
+  const instanceIds =
+    cachedByStat(
+      stateDirListingCache,
+      stateDir,
+      stateDir,
+      () =>
+        dirEntryNames(stateDir)
+          .map((name) => name.replace(/\.json$/, ""))
+          .filter((id) => baseRoleOf(id) !== id),
+      (ids) => [...ids], // A copy: callers may treat the result as their own.
+    ) ?? [];
   const ids = new Set(allRoleIds());
   // No state directory yet reads empty — the catalog roles (fresh, claim-less) suffice.
-  for (const name of dirEntryNames(path.join(root, STATE_DIR, "state"))) {
-    const id = name.replace(/\.json$/, "");
-    if (baseRoleOf(id) !== id) ids.add(id);
-  }
+  for (const id of instanceIds) ids.add(id);
   return [...ids];
 }
 
