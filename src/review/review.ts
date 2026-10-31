@@ -4,6 +4,7 @@ import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { changeBaseRev, headOf } from "../git/git.js";
 import { aheadOfMainFiles } from "../git/git-diff.js";
 import type { PriorReview } from "../merge/merge-queue.js";
+import type { WatchWait } from "../baseline/main-red.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../runner/runner-pi.js";
@@ -47,6 +48,10 @@ export interface ReviewContext {
    * otherwise: built from the merge entry's PriorReview and used to show the re-review what
    * the revision had to resolve. A recovery merge carries none. */
   priorReview?: PriorReview;
+  /** How this change came back after it was kept for the main watch's verdict
+   * (MergeEntry.watchWait), absent otherwise: the pre-check's attribution then does not wait a
+   * second time (main-red.ts's watchedMainVerdict). */
+  watchWait?: WatchWait;
   /** The reviewer's pi runs (the review run and the verdict follow-up), through the owning
    * runner's shared transient-retry wiring (RunnerPi.runGatePi — BUGS.md 2026-10-01: a 429 in the
    * gate gets the same retry as an authoring run). Every caller supplies it; the tests'
@@ -91,6 +96,10 @@ export interface GateResult {
    * change's failure, so its merge reports `main_red` — pin kept, no strike, and none of the
    * error streak a dead reviewer backend feeds (the batch's own attribution says the same). */
   mainRed?: boolean;
+  /** Set with `mainRed` when the main watch has not checked the commit the change was rebased
+   * onto (review-precheck.ts): that commit, so the merge pipeline re-queues the kept change
+   * once the watch's verdict covers it rather than waiting for main to turn green. */
+  awaitingWatch?: string;
   /** The pre-check's every attempt spanned a host sleep, so nothing judged the tree
    * ("failed"): not this change's failure either — its merge keeps the pin for a re-merge
    * with no strike, and the detail names the sleep (BUGS.md 2026-09-30). */

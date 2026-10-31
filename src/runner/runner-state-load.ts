@@ -172,7 +172,8 @@ function healNestedRecords(s: RunnerState): void {
       isJsonObject(s.mainRedRetry.entry) &&
       typeof s.mainRedRetry.entry.role === "string" &&
       typeof s.mainRedRetry.entry.summary === "string" &&
-      (s.mainRedRetry.waitingSince === undefined || typeof s.mainRedRetry.waitingSince === "number")
+      (s.mainRedRetry.waitingSince === undefined || typeof s.mainRedRetry.waitingSince === "number") &&
+      (s.mainRedRetry.awaitingWatch === undefined || typeof s.mainRedRetry.awaitingWatch === "string")
     )
   )
     s.mainRedRetry = undefined;

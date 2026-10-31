@@ -339,6 +339,21 @@ export async function watchedBaseline(wt: string, sha?: string): Promise<MainBas
   return null;
 }
 
+/** The newest verdict a check OBSERVED on `tip` or its first-parent ancestors — `tip` itself
+ * first, looking at most INHERIT_WALK_MAX commits down — WITHOUT running anything; null when
+ * there is none. An inherited green is walked past: no check ran on that tree, and a doc edit can
+ * break a test that reads the docs (checkMainBaseline's `observedOnly`). The review gate's
+ * attribution reads this when the main watch verifies main (main-red.ts's watchedMainVerdict):
+ * with `check.mergeCommand` in effect every observed verdict is a full check the watch or
+ * another consumer ran. Never throws: a git failure reads as no verdict. */
+export async function newestObservedBaseline(wt: string, tip: string): Promise<MainBaseline | null> {
+  for (const sha of await firstParentWalk(wt, tip, INHERIT_WALK_MAX)) {
+    const verdict = baselineCache.get(sha);
+    if (verdict && verdict.inheritedFrom === undefined) return verdict;
+  }
+  return null;
+}
+
 /** How many first-parent commits below main's tip redeployTarget looks at. */
 const REDEPLOY_WALK_MAX = 64;
 

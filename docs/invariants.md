@@ -4586,3 +4586,21 @@ instead of skipping its re-review".
 **Binds.** `src/pi/pi-watchdogs.ts` (`startDeadlineWatch`, `fireDeadline`, `graceArmed`, `extended`).
 
 **Pinned by.** `test/pi-watchdogs.test.ts` — "a deadline whose checkpoint read the same drained count resumes a run that proves progress in the grace (regression)", "a gate run's extension is one-shot: the second deadline kills it at twice the budget" and "an authoring run is not extended even while it is progressing"; `test/runner-4.test.ts` — the 3500-vs-3000 deadline pin.
+
+## Gate attribution under the main watch: no full check of the gate's own, and no verdict older than the change's base
+
+### INV-CY1: with the main watch verifying main, a twice-failed gate check is judged from the watch's verdicts, never from a full check of the gate's own
+
+**Guarantee.** When `watchVerifiesMain` holds, a pre-check that fails twice (naming no known main failure and no recorded flake) is judged from the main watch's newest observed verdict at or below main's tip. A verdict that covers the change's base — observed on that commit or on one containing it — answers at once: green rejects the change, red keeps it as `main_red`. A verdict that does not cover the base keeps the change with no strike, its `awaitingWatch` naming the base. An inherited green is never that verdict. Main's check runs for the attribution (`mainTipVerdict`) only on the retry after a timed-out wait, or on a covered retry that finds no observed verdict at all.
+
+**Binds.** `src/review/review-precheck.ts` (`gateBuildPrecheck`), `src/baseline/main-red.ts` (`watchedMainVerdict`, `watchVerdictCovering`), `src/baseline/main-baseline.ts` (`newestObservedBaseline`).
+
+**Pinned by.** `test/review-precheck-watch.test.ts` — "a twice-failed gate whose base the watch checked green is rejected with no run of main's own", "a twice-failed gate whose base the watch checked red keeps the change with no strike and no run", "a twice-failed gate the watch has not caught up with is kept, naming the commit it waits on", "after a covered wait the newest verdict answers even when main moved past it again" and "after a timed-out wait the gate runs main's check itself".
+
+### INV-CY2: a change kept for the watch is re-queued once the watch's verdict covers its base, or MAIN_RED_VERDICT_WAIT_MS after it was kept, and its gate does not wait twice
+
+**Guarantee.** `requeueMainRedPin` re-queues a `mainRedRetry` that carries `awaitingWatch` as soon as the watch's newest observed verdict at or below main's head covers that commit, whether or not main moved, and otherwise once `MAIN_RED_VERDICT_WAIT_MS` has passed since `waitingSince` (the moment it was kept). The re-queued entry carries `watchWait` (`covered` or `timed_out`) through the verify to the gate, and any later re-queue drops it.
+
+**Binds.** `src/merge/merge-requeue.ts` (`requeueKeptChange`, `requeueMainRedPin`), `src/merge/merge-core.ts`, `src/merge/merge-verify.ts`, `src/merge/merge-pipeline.ts` (`settleMergeOutcome`), `src/merge/merge-queue.ts` (`MergeEntry.watchWait`), `src/runner/runner-state.ts` (`mainRedRetry.awaitingWatch`).
+
+**Pinned by.** `test/merge-requeue-watch.test.ts` — "a change kept for the watch is re-queued once the watch checks its base, without main moving", "a verdict on a later main commit covers the base; an inherited green does not", "a change kept for the watch is re-queued as timed out once MAIN_RED_VERDICT_WAIT_MS passes" and "a later re-queue drops the entry's watchWait"; `test/merge-pipeline-watch.test.ts` — "a change the watch has not caught up with is kept, re-queued once the watch checks its base, then judged".

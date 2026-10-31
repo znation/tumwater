@@ -9,6 +9,7 @@ import { RETRIABLE_MERGE_RESULTS } from "./merge-core.js";
 import { pinnedRetrySha } from "../runner/runner-leftover.js";
 import { branchHead } from "../git/git.js";
 import { cachedBaselineVerdict } from "../baseline/main-baseline.js";
+import { watchVerdictCovering, type WatchWait } from "../baseline/main-red.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import type { RunResult } from "../run/run-outcome.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
@@ -21,7 +22,7 @@ const REVIEW_ERROR_RETRY_MS = 60_000;
  * revision fields unchanged (so the summary is not a recovery label), the pin's current `sha`,
  * and `retry` naming the result it retries. */
 function retryEntry(from: Omit<MergeEntry, "sha">, sha: string, result: string): MergeEntry {
-  const { notBefore: _notBefore, retry: _retry, ...rest } = from;
+  const { notBefore: _notBefore, retry: _retry, watchWait: _watchWait, ...rest } = from;
   return {
     ...rest,
     sha,
@@ -48,14 +49,17 @@ function enqueueRetry(root: string, entry: MergeEntry): void {
  * or `merge_conflict` result re-queues at once when its pin survives and pinnedRetrySha allows
  * it (not stale, not held, under MERGE_CONFLICT_LIMIT); a `main_red` pin is recorded on the
  * state with main's head, for requeueMainRedPin to re-queue once main moves to a head whose
- * verdict is not red. Anything else, or a pin that is gone, changes nothing — leftover recovery
- * stays the backstop. */
+ * verdict is not red. A `main_red` change its gate kept for the main watch (`awaitingWatch`, the
+ * commit it waits on) is recorded with that commit and the time it was kept, for
+ * requeueMainRedPin to re-queue once the watch's verdict covers it. Anything else, or a pin
+ * that is gone, changes nothing — leftover recovery stays the backstop. */
 export async function requeueKeptChange(
   root: string,
   mainBranch: string,
   entry: MergeEntry,
   state: RunnerState,
   result: RunResult,
+  awaitingWatch?: string,
 ): Promise<void> {
   const isMainRed = result === "main_red";
   if (!isMainRed && !RETRIABLE_MERGE_RESULTS.has(result)) return;
@@ -63,7 +67,9 @@ export async function requeueKeptChange(
   if (!sha) return;
   if (isMainRed) {
     const { sha: _sha, notBefore: _nb, retry: _r, ...rest } = entry;
-    state.mainRedRetry = { head: (await branchHead(root, mainBranch)) ?? "", entry: rest };
+    const head = (await branchHead(root, mainBranch)) ?? "";
+    state.mainRedRetry =
+      awaitingWatch === undefined ? { head, entry: rest } : { head, entry: rest, awaitingWatch, waitingSince: Date.now() };
     saveRunnerStateBestEffort(root, state);
     return;
   }
@@ -73,7 +79,8 @@ export async function requeueKeptChange(
 
 /** The longest a kept `main_red` pin waits for the main watch's verdict on a moved head before it
  * is re-queued anyway. This bounds the wait when no verdict ever arrives, for example after a
- * watch check that timed out or a restart's cold cache. */
+ * watch check that timed out or a restart's cold cache. A pin its gate kept for the watch waits
+ * at most this long from the moment it was kept. */
 export const MAIN_RED_VERDICT_WAIT_MS = 15 * 60_000;
 
 /** Re-queue a `main_red` pin once main's head differs from the one recorded when its attempt
@@ -81,7 +88,8 @@ export const MAIN_RED_VERDICT_WAIT_MS = 15 * 60_000;
  * leaves the record untouched, so a later poll asks again; no verdict starts (and saves) a wait
  * at `now`, and the pin re-queues once MAIN_RED_VERDICT_WAIT_MS has passed; green re-queues at
  * once. Re-queuing clears the record; no entry is queued when the pin is gone or held back by
- * pinnedRetrySha, or the role already has one queued. It never throws: the poll
+ * pinnedRetrySha, or the role already has one queued. A pin its gate kept for the main watch
+ * (`awaitingWatch`) follows requeueAwaitingWatch's rule instead. It never throws: the poll
  * loop calls it with no catch. */
 export async function requeueMainRedPin(
   root: string,
@@ -91,7 +99,12 @@ export async function requeueMainRedPin(
   now = Date.now(),
 ): Promise<void> {
   const kept = state.mainRedRetry;
-  if (!kept || mainHead === "" || mainHead === kept.head) return;
+  if (!kept || mainHead === "") return;
+  if (kept.awaitingWatch !== undefined) {
+    await requeueAwaitingWatch(root, mainBranch, state, mainHead, now);
+    return;
+  }
+  if (mainHead === kept.head) return;
   const verdict = cachedBaselineVerdict(mainHead);
   if (verdict === "red") return;
   if (verdict === undefined) {
@@ -102,12 +115,48 @@ export async function requeueMainRedPin(
     }
     if (now - kept.waitingSince < MAIN_RED_VERDICT_WAIT_MS) return;
   }
+  await requeueKeptPin(root, mainBranch, state);
+}
+
+/** requeueMainRedPin for a change its gate kept for the main watch (`awaitingWatch`): re-queue
+ * it once the watch's newest observed verdict at or below main's head covers the commit it
+ * waits on (main-red.ts's watchVerdictCovering), or once MAIN_RED_VERDICT_WAIT_MS has passed
+ * since it was kept. Main need not move first: the watch often catches up on the same head. The
+ * re-queued entry carries which of the two happened (MergeEntry.watchWait), so its gate does not
+ * wait again. A record without a start time (from before this field) starts its wait now. */
+async function requeueAwaitingWatch(
+  root: string,
+  mainBranch: string,
+  state: RunnerState,
+  mainHead: string,
+  now: number,
+): Promise<void> {
+  const kept = state.mainRedRetry;
+  if (kept?.awaitingWatch === undefined) return;
+  const { covers } = await watchVerdictCovering(root, mainHead, kept.awaitingWatch);
+  if (!covers) {
+    if (kept.waitingSince === undefined) {
+      state.mainRedRetry = { ...kept, waitingSince: now };
+      saveRunnerStateBestEffort(root, state);
+      return;
+    }
+    if (now - kept.waitingSince < MAIN_RED_VERDICT_WAIT_MS) return;
+  }
+  await requeueKeptPin(root, mainBranch, state, covers ? "covered" : "timed_out");
+}
+
+/** Clear the kept `main_red` record and put its pin back on the queue — unless the pin is gone,
+ * pinnedRetrySha holds it back, or the role already has an entry queued. `watchWait` marks the
+ * re-queue of a change that waited for the main watch. Never throws: a failed enqueue warns. */
+async function requeueKeptPin(root: string, mainBranch: string, state: RunnerState, watchWait?: WatchWait): Promise<void> {
+  const kept = state.mainRedRetry;
+  if (!kept) return;
   state.mainRedRetry = undefined;
   saveRunnerStateBestEffort(root, state);
   const sha = await pinnedRetrySha(root, kept.entry.role, mainBranch, state);
   if (!sha || queuedMerges(root).some((e) => e.role === kept.entry.role)) return;
   try {
-    enqueueRetry(root, retryEntry(kept.entry, sha, "main_red"));
+    enqueueRetry(root, { ...retryEntry(kept.entry, sha, "main_red"), ...(watchWait !== undefined ? { watchWait } : {}) });
   } catch (err) {
     warnEventBestEffort(root, kept.entry.role, `the kept main_red change could not be re-queued: ${errorMessage(err)}`);
   }

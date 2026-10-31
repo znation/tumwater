@@ -14,12 +14,12 @@ import { checkFailureReasons, FAILING_TESTS_MAX, redCheckHeadline } from "../bui
 import { sleptPhrase, UNVERIFIED_TREE, unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { sampleSleepClock } from "../build/host-sleep.js";
 import { recordReview } from "../run/run-apply.js";
-import { mainRedNotMine } from "../text/phrases.js";
+import { mainRedNotMine, mainUncheckedNotJudged } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { checkWaitStage, setMergeStage } from "../merge/merge-slot.js";
-import { mainTipVerdict } from "../baseline/main-red.js";
+import { mainTipVerdict, watchedMainVerdict } from "../baseline/main-red.js";
 import { onlyKnownMainFailures } from "../baseline/main-watch.js";
-import { watchedBaseline } from "../baseline/main-baseline.js";
+import { watchedBaseline, watchVerifiesMain } from "../baseline/main-baseline.js";
 import { changeBaseRev } from "../git/git.js";
 import { FLAKY_WARNING_PREFIX, isKnownFlake, quarantineTests } from "./known-flakes.js";
 
@@ -182,12 +182,26 @@ export async function gateBuildPrecheck(
       // main's check now (forceFresh): a clock- or load-sensitive test can pass on an immutable
       // SHA early and fail later, so a cached green — usually seeded by an earlier merge —
       // may no longer be true, and trusting it rejected an unrelated change (BUGS.md
-      // 2026-10-06). A shutdown already under way skips the question and fails closed like any
-      // abort.
+      // 2026-10-06). When the main watch verifies main, the gate runs no full check of its own:
+      // the watch's verdicts answer, and a change the watch has not caught up with yet is kept
+      // until it has (watchedMainVerdict). A shutdown already under way skips the question and
+      // fails closed like any abort.
       if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
-      const main = await mainTipVerdict(root, role, mainBranch, config, true);
+      const base = await changeBaseRev(wt, mainBranch, head);
+      const main = watchVerifiesMain(root, config)
+        ? await watchedMainVerdict(root, role, wt, mainBranch, config, base, ctx.watchWait)
+        : await mainTipVerdict(root, role, mainBranch, config, true);
       // A check killed by that shutdown reads as a skip, never as evidence against the author.
       if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
+      if (main.status === "awaiting") {
+        // Nothing judged this diff yet: keep it exactly as a red main does — the pin stays, no
+        // strike — and name the commit it waits on, so the merge pipeline re-queues it once the
+        // watch's verdict covers that commit (merge-requeue.ts's requeueMainRedPin).
+        const detail = mainUncheckedNotJudged(base, main.sha);
+        recordReview(state, "failed", [detail], head);
+        warnEventBestEffort(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; merge kept`);
+        return { resolved: { decision: "failed", detail, mainRed: true, awaitingWatch: base } };
+      }
       if (main.status === "red") {
         // Main fails too: not this change's failure. Leave the commit (and with it the pin) and
         // do not advance the discard counter — the transport-failure rule (BUGS.md 2026-09-20):

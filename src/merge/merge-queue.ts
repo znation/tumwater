@@ -9,6 +9,7 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import type { MigrationNotes } from "../orchestrator/startup-migrations.js";
 import { mergeQueueDir, legacyLandQueueDir } from "../paths.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
+import type { WatchWait } from "../baseline/main-red.js";
 
 /** The durable merge queue (plans/merge-queue.md 3/5): a changed run commits, pins its sha by
  * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the run ENDS, holding no
@@ -79,6 +80,12 @@ export interface MergeEntry {
    * recovery's entry; informational, not an ordering key — the filename still orders the queue
    * by the current attempt's `enqueuedAt`. */
   retryCount?: number;
+  /** Set on the pipeline's re-queue of a change its gate kept for the main watch's verdict
+   * (merge-requeue.ts's requeueMainRedPin): `covered` once the watch checked the commit its
+   * gate ran on top of, `timed_out` when it did not within MAIN_RED_VERDICT_WAIT_MS. Carried to
+   * the gate, whose attribution then does not wait again (main-red.ts's watchedMainVerdict).
+   * Absent on every other entry, and dropped when the entry is re-queued again. */
+  watchWait?: WatchWait;
 }
 
 let seq = 0;
@@ -197,7 +204,8 @@ function isMergeEntry(v: unknown): v is MergeEntry {
     (e.priorReview === undefined || isPriorReview(e.priorReview)) &&
     (e.notBefore === undefined || nonNegativeNumber(e.notBefore, null) !== null) &&
     (e.retry === undefined || typeof e.retry === "string") &&
-    (e.retryCount === undefined || nonNegativeNumber(e.retryCount, null) !== null)
+    (e.retryCount === undefined || nonNegativeNumber(e.retryCount, null) !== null) &&
+    (e.watchWait === undefined || e.watchWait === "covered" || e.watchWait === "timed_out")
   );
 }
 

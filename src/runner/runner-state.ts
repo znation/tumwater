@@ -223,8 +223,10 @@ export interface RunnerState {
    * (merge-requeue.ts requeueMainRedPin) whose head is not cached red, or once
    * MAIN_RED_VERDICT_WAIT_MS has passed with no verdict; cleared then, or when the pin is gone.
    * `waitingSince` is the ms epoch of the first poll that saw main moved with no cached verdict
-   * for its head. */
-  mainRedRetry?: { head: string; entry: Omit<MergeEntry, "sha">; waitingSince?: number };
+   * for its head. `awaitingWatch` is set when the gate kept the change because the main watch
+   * had not checked the commit it was rebased onto: that commit, re-queued once the watch's
+   * verdict covers it or MAIN_RED_VERDICT_WAIT_MS after `waitingSince` (the time it was kept). */
+  mainRedRetry?: { head: string; entry: Omit<MergeEntry, "sha">; waitingSince?: number; awaitingWatch?: string };
   /** Tokens the model generated in this runner's current or last completed run — a per-run
    * window (runner-run.ts resets it at run start), not a lifetime total. */
   generatedTokens: number;

@@ -6,6 +6,7 @@ import { mergeApprovedChange } from "../src/merge/merge-core.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
+import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { headSha, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { piRanMarker, withPi } from "./fakes/fake-pi.js";
 import {
@@ -37,8 +38,11 @@ process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
 
 test("a failing pre-check on a green main rejects the merge and spends no pi run", async () => {
   const { root, sha } = await pinnedFixture();
-  // The gate scope fails while the declared check — what main's fresh re-check runs — passes:
-  // main is green, so the change's failure is its own.
+  // The gate scope fails while main is green: with a gate command set the main watch verifies
+  // main, and its green verdict on the tip the pin is rebased onto answers the attribution — the
+  // change's failure is its own, and main's check does not run again for it.
+  const tip = advanceMain(root, `main-green-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+  noteGreenBaseline(tip);
   const marker = piRanMarker();
   // A fake pi on PATH that WOULD touch the marker if the merge path invoked it: the rejection is
   // the deterministic gate's, so pi never runs and the marker's absence is the meaningful proof of
@@ -50,6 +54,8 @@ test("a failing pre-check on a green main rejects the merge and spends no pi run
     assert.equal(await verifyAndMerge(ctx, request(sha)), "rejected");
     assert.equal(await refSha(root, REF), null, "rejected: the pin is gone");
     assert.ok(!fs.existsSync(marker), "no pi run: the check and main's verdict decided alone");
+    const baselineRuns = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "baseline");
+    assert.equal(baselineRuns.length, 0, "the watch's verdict answered: main's check did not run");
   });
 });
 

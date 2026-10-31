@@ -238,6 +238,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
                 body: entry.body,
                 highFriction: entry.highFriction,
                 ...entryRevisionFields(entry),
+                ...(entry.watchWait !== undefined ? { watchWait: entry.watchWait } : {}),
               },
               { state: author.state, foldUsage, runPi: (w, prompt, s, cfg) => author.runMergePi(w, prompt, s, cfg), runGatePi: (opts) => author.runGatePi(opts) },
             ),
@@ -265,7 +266,8 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
         setMergeChangeStatus(root, role, "approved");
       } else {
         const result = verdict.kind === "stack" ? "aborted" : verdict.result;
-        await settleMergeOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file, mainBranch);
+        const awaitingWatch = verdict.kind === "result" ? verdict.awaitingWatch : undefined;
+        await settleMergeOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file, mainBranch, awaitingWatch);
         if (verify.userAborted) await discardPinnedRefs(root, [role]);
       }
     } finally {
