@@ -18,13 +18,13 @@ export function readPrinciples(root: string): string {
   return truncateWithNote(readRegularTextOrNull(file)?.trim() ?? "", PRINCIPLES_MAX_CHARS, "PRINCIPLES.md");
 }
 
-// Per-root stat cache (stat-cache.cachedTextByStat): the TUI and GUI call this predicate on
-// every per-second snapshot() poll, but PRINCIPLES.md changes only on the rare
-// director/steward edit, a fresh init, or a clone — so an unchanged file serves each poll
-// from one stat instead of re-listating and re-reading it whole. Any write invalidates
-// through the same dev/ino/mtime/size freshness check; keyed by root so distinct repos never
-// collide. Bounded inside cachedTextByStat.
+/** Per-root stat-keyed memo of the over-cap verdict (stat-cache.cachedTextByStat, the same
+ * freshness contract the other per-poll readers keep): the status snapshot asks this every
+ * second, but PRINCIPLES.md changes only when a role edits it, so an unchanged file costs one
+ * stat per poll instead of a full read + trim of the whole file. Bounded inside cachedTextByStat
+ * so many short-lived roots in tests cannot grow it unbounded. */
 const principlesOverCapCache = new Map<string, StatKeyedValue<boolean>>();
+
 
 /** True when PRINCIPLES.md's trimmed text exceeds the prompt cap, so every run's <principles>
  * block carries only its head plus a truncation marker — the always-on amber twin of the doctor
@@ -32,9 +32,9 @@ const principlesOverCapCache = new Map<string, StatKeyedValue<boolean>>();
  * without a doctor run. Uses the doctor row's own predicate (raw.trim().length >
  * PRINCIPLES_MAX_CHARS), so the alert and the doctor row cannot disagree. Missing, unreadable
  * (the directory-in-place case readPrinciples degrades to "") and at-or-under-cap files are all
- * false. The verdict is stat-cached per root (never per call) so the per-second snapshot polls
- * do not re-read a file that barely changes; readPrinciples stays uncached, since a run must
- * always see the file's current text. */
+ * false; the verdict is served from the stat-keyed memo above, so an unchanged PRINCIPLES.md
+ * costs one stat per poll; readPrinciples stays uncached, since a run must always see the
+ * file's current text. */
 export function principlesBlockOverCap(root: string): boolean {
   const file = path.join(root, "PRINCIPLES.md");
   return (
@@ -43,7 +43,7 @@ export function principlesBlockOverCap(root: string): boolean {
       file,
       file,
       (raw) => raw.trim().length > PRINCIPLES_MAX_CHARS,
-      (overCap) => overCap,
+      (v) => v,
     ) ?? false
   );
 }

@@ -312,6 +312,15 @@ test("parseDurationFlag accepts <n><s|m|h|d> and rejects zero, negative, unit-le
   }
 });
 
+test("parseDurationFlag rejects a flag-looking value with the shared wording", () => {
+  // A `--`-token in the value slot is the operator's slipped value (`start --for --json`), never a
+  // duration — refuse it up front with rejectFlagLookingValue's shared wording instead of
+  // reporting the next flag as a malformed duration.
+  const r = expectFail(() => parseDurationFlag("start --for", "--json"));
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /start --for needs a value \(the next token "--json" is a flag, not a value\)/);
+});
+
 test("parseDurationFlag accepts composite durations in descending unit order", () => {
   assert.equal(expectOk(() => parseDurationFlag("--for", "1h30m")), 90 * 60_000);
   assert.equal(expectOk(() => parseDurationFlag("--for", "1h30m15s")), 5_415_000);
