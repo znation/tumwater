@@ -18,7 +18,7 @@ import {
   pollMaintenanceQuotaGate,
   type MaintenanceQuotaGateState,
   type MaintenanceQuotaVerdict,
-} from "./maintenance-quota.js";
+} from "./maintenance-quota-gates.js";
 import {
   newBootstrapGateState,
   pollBootstrapGate,

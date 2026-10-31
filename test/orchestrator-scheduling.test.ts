@@ -5,7 +5,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { pollRunnerReasons } from "../src/orchestrator/orchestrator-scheduling.js";
 import { mergeStartHeld } from "../src/orchestrator/orchestrator-poll.js";
-import { newMaintenanceQuotaGateState, pollMaintenanceQuotaGate } from "../src/gates/maintenance-quota.js";
+import { newMaintenanceQuotaGateState, pollMaintenanceQuotaGate } from "../src/gates/maintenance-quota-gates.js";
 import { OnceRound } from "../src/scheduling/once-round.js";
 import { pollTeamHold } from "../src/team/team-polls.js";
 import { TEAM_OPEN, heldProviders, windowHeldProviders, type TeamHold } from "../src/team/team-hold.js";

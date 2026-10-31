@@ -17,7 +17,7 @@ import {
   countMaintenanceWindow,
   maintenanceQuota,
   newMaintenanceWindowCounter,
-} from "../gates/maintenance-quota.js";
+} from "../gates/maintenance-quota-gates.js";
 import { commitTier } from "../roles/roles.js";
 import { currentCiParityState, parityIsCurrent, readCiParity } from "../run/ci-parity.js";
 

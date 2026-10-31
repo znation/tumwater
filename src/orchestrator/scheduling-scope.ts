@@ -10,7 +10,7 @@ import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import { HOUR_MS } from "../text/datetime.js";
-import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
+import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota-gates.js";
 import { baseRoleOf, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
 import { hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "../runner/runner-state.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";

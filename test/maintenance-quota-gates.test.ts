@@ -8,14 +8,14 @@ import {
   newMaintenanceQuotaGateState,
   newMaintenanceWindowCounter,
   pollMaintenanceQuotaGate,
-} from "../src/gates/maintenance-quota.js";
+} from "../src/gates/maintenance-quota-gates.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsLogPath } from "../src/paths.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { HOUR } from "./helpers/oracles.js";
 
-// Tests for src/gates/maintenance-quota.ts (Work ratio 1a/4): the pure allowance verdict and
+// Tests for src/gates/maintenance-quota-gates.ts (Work ratio 1a/4): the pure allowance verdict and
 // the rolling-24 h merged-count memo behind it. The window is instant-shaped, so fixtures seed
 // timestamps relative to Date.now() (ago-style) rather than local days.
 

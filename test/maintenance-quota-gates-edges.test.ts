@@ -6,13 +6,13 @@ import {
   newMaintenanceQuotaGateState,
   newMaintenanceWindowCounter,
   pollMaintenanceQuotaGate,
-} from "../src/gates/maintenance-quota.js";
+} from "../src/gates/maintenance-quota-gates.js";
 import { eventsLogPath } from "../src/paths.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { HOUR } from "./helpers/oracles.js";
 
-// Branches of src/gates/maintenance-quota.ts that test/maintenance-quota.test.ts leaves
+// Branches of src/gates/maintenance-quota-gates.ts that test/maintenance-quota-gates.test.ts leaves
 // unpinned: which observers count as in flight, a legacy-id merge, and a vanished events log.
 
 test("the in-flight figure skips disabled and work roles, and a legacy dry merge counts as maintenance", () => {

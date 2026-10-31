@@ -7,7 +7,7 @@ import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
 import { budgetReached, budgetWarning, teamDailyCost } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
-import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota.js";
+import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota-gates.js";
 import { heldByMainRed, mainCheckForPoll, maintenanceQuotaForPoll } from "../status/status-polls.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";

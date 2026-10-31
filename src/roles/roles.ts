@@ -87,7 +87,7 @@ export function roleTier(role: string): number {
 
 /** Work ratio 4/4: which commit tier a role's base role merges into, for the work vs maintenance
  * split the report and the "Merged today" tile show and the maintenance allowance (Work ratio
- * 1a/4, src/gates/maintenance-quota.ts) counts. The one home of the split. `work` is the
+ * 1a/4, src/gates/maintenance-quota-gates.ts) counts. The one home of the split. `work` is the
  * shipping tier (feature, bugfix, director); `maintenance` is code upkeep plus readme. Every
  * other role (plan, steward, observers, custom) is neither and counts only toward the total
  * commits. */

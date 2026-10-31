@@ -39,7 +39,7 @@ export function stringList(value: unknown): string[] {
  * abortedRuns, reserve → 0); phrases.ts's budgetPhrase (spentUsd, capUsd → 0); redeploy.ts's
  * autoRestartRecord (lastAt → null); build/build-info.ts's readBuildInfo (builtAt → 0);
  * failure/failure-state-change.ts's build_stale renderer (aheadCommits → 0);
- * gates/maintenance-quota.ts's foldLine and seed (ev.ts → null);
+ * gates/maintenance-quota-gates.ts's foldLine and seed (ev.ts → null);
  * team/team-orchestrator-info.ts's isFiniteNumber (v → undefined); team/team-state.ts's
  * standingMarker, pausedRoles, and standingRolesUntil (until → undefined);
  * operator/operator-requests.ts's consumeWakeRequest (notBeforeMs → undefined);

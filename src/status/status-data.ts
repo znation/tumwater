@@ -187,9 +187,10 @@ export interface StatusSnapshot {
   /** The maintenance allowance (plans/work-ratio.md, part 1b/4): the rolling-24 h window's
    * `allowance` and `used` (maintenance merges plus maintenance roles in flight), and the
    * enabled maintenance role ids the scheduler holds while `used >= allowance`. Computed by the
-   * same pure verdict the gate folds (maintenance-quota.ts) against this process's own memo of
-   * the event log, so an observer shows the hold the scheduler enforces. Always present, empty
-   * `held` while the gate is open — the `capPaused` shape with the figures the role cell's
+   * brings the same pure verdict the gate folds (maintenance-quota-gates.ts) against this
+   * process's own memo of the event log, so an observer shows the hold the scheduler enforces.
+   * Always present, empty `held` while the gate is open — the `capPaused` shape with the
+   * figures the role cell's
    * `held: maintenance quota <used>/<allowance>` label renders. Fresh per poll, like capPaused. */
   maintenanceQuota: { allowance: number; used: number; held: string[] };
   /** The new-project bootstrap (plans/work-ratio.md, part 2/2) while it is active: its progress

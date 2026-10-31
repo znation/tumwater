@@ -3275,7 +3275,7 @@ culprit names it and adds the failing and tail clauses only when it has them".
 
 ## Maintenance allowance: maintenance merges stop at the rolling-day allowance, counted from the event log
 
-`src/gates/maintenance-quota.ts` caps code-maintenance merges in a rolling 24 h window:
+`src/gates/maintenance-quota-gates.ts` caps code-maintenance merges in a rolling 24 h window:
 `maintenanceQuota` is the pure verdict, `pollMaintenanceQuotaGate` adds the roles in flight and
 logs transitions, and `countMaintenanceWindow` counts `merged` events from the events log.
 
@@ -3285,11 +3285,11 @@ logs transitions, and `countMaintenanceWindow` counts `merged` events from the e
 over the trailing 24 h, and the gate holds while merged maintenance plus enabled maintenance roles
 in flight reach it. Disabled roles and work roles add nothing to the in-flight figure.
 
-**Binds.** `src/gates/maintenance-quota.ts` (`maintenanceQuota`, `pollMaintenanceQuotaGate`).
+**Binds.** `src/gates/maintenance-quota-gates.ts` (`maintenanceQuota`, `pollMaintenanceQuotaGate`).
 
-**Pinned by.** `test/maintenance-quota.test.ts` — "maintenanceQuota computes the allowance, used,
+**Pinned by.** `test/maintenance-quota-gates.test.ts` — "maintenanceQuota computes the allowance, used,
 and held verdict", "the floor keeps the allowance at 12 when no work merged", "a run in progress
-and a queued merge both count as in flight toward the used figure"; `test/maintenance-quota-gate.test.ts`
+and a queued merge both count as in flight toward the used figure"; `test/maintenance-quota-gates-edges.test.ts`
 — "the in-flight figure skips disabled and work roles, and a legacy dry merge counts as maintenance".
 
 ### INV-BA2: the window counts merges by tier and a vanished log never drops them
@@ -3298,13 +3298,13 @@ and a queued merge both count as in flight toward the used figure"; `test/mainte
 folds only appended complete lines, reseeds after rotation, and a missing, vanished or non-file log
 never throws and never drops counted merges.
 
-**Binds.** `src/gates/maintenance-quota.ts` (`countMaintenanceWindow`).
+**Binds.** `src/gates/maintenance-quota-gates.ts` (`countMaintenanceWindow`).
 
-**Pinned by.** `test/maintenance-quota.test.ts` — "countMaintenanceWindow counts merged events by
+**Pinned by.** `test/maintenance-quota-gates.test.ts` — "countMaintenanceWindow counts merged events by
 tier inside the last 24 h", "a rotated log is reseeded from the live file and its archive, not
 folded from the old offset", "a torn trailing merged line is counted once, not again when its
 newline arrives", "a missing events log counts zero and seeds an empty memo";
-`test/maintenance-quota-gate.test.ts` — "a vanished or replaced events log keeps the window's
+`test/maintenance-quota-gates-edges.test.ts` — "a vanished or replaced events log keeps the window's
 counted merges and does not throw".
 
 ### INV-BA3: the gate logs one hold per transition and the scheduler spends headroom one role at a time
@@ -3313,9 +3313,9 @@ counted merges and does not throw".
 `maintenance_quota_resumed` per re-open, and the scheduler starts at most one due maintenance role
 per poll while headroom remains.
 
-**Binds.** `src/gates/maintenance-quota.ts` (`pollMaintenanceQuotaGate`).
+**Binds.** `src/gates/maintenance-quota-gates.ts` (`pollMaintenanceQuotaGate`).
 
-**Pinned by.** `test/maintenance-quota.test.ts` — "pollMaintenanceQuotaGate computes the allowance
+**Pinned by.** `test/maintenance-quota-gates.test.ts` — "pollMaintenanceQuotaGate computes the allowance
 verdict and logs one hold per transition"; `test/orchestrator-scheduling.test.ts` — "the
 allowance's in-flight headroom starts at most one of two due maintenance roles per poll".
 
