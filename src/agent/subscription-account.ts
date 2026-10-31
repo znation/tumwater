@@ -14,6 +14,7 @@
  * keeps today's shape. */
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber, isJsonObject, setOwn } from "../files/json-object.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { accountPath } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RateWindow } from "../pi/pi-stream.js";
@@ -69,6 +70,32 @@ export function subscriptionWindowRejected(
   );
 }
 
+/** The parsed raw body of one backend's account file, keyed by that file's own stat — the same
+ * stat-keyed contract cachedByStat gives every observer that polls a slowly-changing file. The
+ * account file is written only by the orchestrator on a run's billing/window report, so it
+ * changes no faster than runs; on the status snapshot path readAccount ran per backend per poll
+ * as one more readJsonFile (read + parse) alongside the already stat-cached marker reads, and
+ * budget-gates/role-view read it on other polling surfaces. Writes go through writeJsonAtomic's
+ * tmp+rename (writeAccount), which bumps dev/ino/mtime/size, so a refresh invalidates like any
+ * edit. The `now`-dependent heal is NOT cached: only the raw body is, and readAccount reapplies
+ * its window/observedAt rules against each call's own `now` on a per-call copy, so a window
+ * whose `resetsAt` lapses still reads back as reset on the very call it does. Bounded inside
+ * cachedByStat. */
+const accountBodyCache = new Map<string, StatKeyedValue<Record<string, unknown>>>();
+
+/** Serve `file`'s parsed raw JSON-object body from accountBodyCache: null when the file is
+ * missing, unreadable, torn, or not a plain object — the same no-data policy as readJsonFile —
+ * and a fresh per-call copy so readAccount's owns the object it reads fields off. Never throws. */
+function readAccountBody(file: string): Record<string, unknown> | null {
+  return cachedByStat(
+    accountBodyCache,
+    file,
+    file,
+    () => readJsonFile<object>(file) as Record<string, unknown> | null,
+    (body) => ({ ...body }),
+  );
+}
+
 /** Read the persisted account state for a backend, or null when it is absent or unreadable. A
  * file without a usable top-level `observedAt` reads as absent (the plan's torn-file rule),
  * and a window whose `resetsAt` is at or before `now` reads back with `status: "reset"` — the
@@ -78,7 +105,7 @@ export function readAccount(
   backend: string,
   now = Date.now(),
 ): SubscriptionAccount | null {
-  const doc = readJsonFile<Record<string, unknown>>(accountPath(root, backend));
+  const doc = readAccountBody(accountPath(root, backend));
   if (doc === null) return null;
   const billing =
     doc.billing === "subscription" || doc.billing === "api" ? (doc.billing) : undefined;
