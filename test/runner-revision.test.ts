@@ -2,7 +2,12 @@ import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { applyRevision, applyWithConflicts, REVISION_BACKSTOP } from "../src/runner/runner-revision.js";
+import {
+  applyRevision,
+  applyWithConflicts,
+  holdEntryAfterExhaustion,
+  REVISION_BACKSTOP,
+} from "../src/runner/runner-revision.js";
 import { CONVERGENCE_HOLD_MARKER } from "../src/roles/role-guidance.js";
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/prompt/gate-notes.js";
 import { verifyRequest } from "../src/merge/merge-batch.js";
@@ -24,6 +29,7 @@ import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { readmeTemplate } from "../src/brief/brief.js";
 import { eventsOfType, unwritableEvents } from "./fixtures/log-fixtures.js";
+import { readEvents } from "../src/events/event-read.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { commitIn, headSha, initializedWorktree, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { batchWiring, makeCtx, request, ROLE } from "./fixtures/merger-fixtures.js";
@@ -387,6 +393,49 @@ test("an exhausted chain holds the entry with the surviving objections, not a fr
   if (!holdsObjection) {
     assert.fail("the needs-review hold note is missing or lacks the surviving objection:\n" + (noteLine ?? md));
   }
+});
+
+test("a hold whose backlog write fails records a hold-failed event, not a thrown exhaustion", async () => {
+  // holdEntryAfterExhaustion is best-effort: it must never turn the terminal exhaustion into a
+  // thrown verification error. The only step that can throw is the locked read-modify-write —
+  // commitOperatorBacklogEdit swallows its own failures — so a directory where PLANS.md belongs
+  // makes readTextIfExists fail with EISDIR. The hold then reports itself with a revision
+  // hold-failed event whose message renders the throw through errorMessage (not String(err),
+  // which would prefix the Error's own message with "Error:").
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    "# Plans\n\nIntro.\n\n## Planned\n\n### The convergence plan (planned 2026-10-01)\n\nBody.\n",
+  );
+  const before = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+  const file = path.join(root, "PLANS.md");
+  fs.rmSync(file);
+  fs.mkdirSync(file); // readTextIfExists: existsSync true, readFileSync EISDIR
+  await holdEntryAfterExhaustion(root, ROLE, { file: "PLANS.md", key: entryKey("The convergence plan (planned 2026-10-01)") }, ["the standing objection"]);
+  fs.rmSync(file, { recursive: true });
+  fs.writeFileSync(file, before);
+  const events = readEvents(root).filter((e) => e.type === "revision" && e.action === "hold-failed");
+  assert.equal(events.length, 1, "the failed hold is reported with its own revision hold-failed event");
+  assert.equal(events[0]!.source, ROLE, "the event is stamped with the role that exhausted the chain");
+  assert.match(
+    String(events[0]!.message),
+    /^could not hold the entry after a final rejection: /,
+    "the message names the failure and renders the error through errorMessage",
+  );
+  assert.doesNotMatch(String(events[0]!.message), /^could not hold the entry after a final rejection: Error: /, "errorMessage strips the Error: prefix String(err) would add");
+  assert.equal(fs.readFileSync(file, "utf8"), before, "the entry is left untouched when the hold fails");
+});
+
+test("a hold of a BUGS.md claim is a no-op: no note, no event", async () => {
+  // The convergence hold is PLANS.md-only by design: a bug's hold is the bug path (a
+  // too-large note the author writes), so an exhausted bugfix chain holds nothing and logs
+  // nothing here.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "BUGS.md"), "# Bugs\n\n## Open\n\n### A bug\n\nBody.\n");
+  const before = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  await holdEntryAfterExhaustion(root, "bugfix", { file: "BUGS.md", key: "a-bug" }, ["the standing objection"]);
+  assert.equal(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), before, "the bug entry is untouched");
+  assert.equal(readEvents(root).filter((e) => e.type === "revision").length, 0, "no revision event on the bug path");
 });
 
 test("a converging chain whose revisions raise only new objections keeps revising", async () => {
