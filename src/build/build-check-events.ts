@@ -12,7 +12,6 @@ import { type HarnessEvent, type HarnessEventInput, logEventBestEffort } from ".
 import type { ParkedBehind } from "../concurrency/check-permit.js";
 import type { BuildCheckOutcome, BuildCheckRun, BuildSkipReason } from "./build-check.js";
 import { hostLoadStarved } from "./host-sleep.js";
-import { DIFF_MAX_BYTES } from "../git/git-diff.js";
 
 /** The scopes named in a build_check event logged from runScopedBuildCheck. The red-main
  * baseline names its own ("baseline") from main-red.ts, because the one-run-per-SHA cache and
@@ -175,26 +174,26 @@ export function starvedDeadlineMs(baseMs: number, load: { load1: number; cpus: n
   return Math.round(baseMs * Math.min(load.load1 / load.cpus, STARVED_DEADLINE_MAX_FACTOR));
 }
 
-/** The reference diff a reviewer's budget is priced against: the diff the reviewer reads in
- * full. `DIFF_MAX_BYTES` (src/git/git-diff.ts) is the cap the change-data surfaces truncate a
- * diff to, so a diff at or under it is what the reviewer expects to read; a diff above it is
- * proportionally more to read, and the budget stretches by that ratio (diffScaledMs). */
-export const REVIEW_DIFF_REFERENCE_BYTES = DIFF_MAX_BYTES;
+/** The reviewed diff's size against which the post-merge reviewer's wall stretches. Calibrated
+ * to the class this exists for: the largest-diff member (BUGS-FIXED.md "post-merge review of
+ * 3b682bed …", a 270/247-line split, ~41 KB of diff) timed out 21× at the 900 s wall even after
+ * the load-only stretch landed, so a diff of that size must already sit past the reference and
+ * earn the 2× factor. It is deliberately NOT the reviewer's own `DIFF_MAX_BYTES` diff cap
+ * (src/git/git-diff.ts, 200 KB): that cap bounds the prompt's text, not how many turns a
+ * strong-tier review of the diff needs, and it sits well above every diff that has timed out,
+ * so referencing it would stretch none of the class's members. */
+export const REVIEW_DIFF_REFERENCE_BYTES = 20_000;
 
-/** The diff-size stretch of a reviewer's wall-clock budget (build-check-events.ts's
- * starvedDeadlineMs covers host load; this covers the diff's size). At or under the reference
- * diff the budget is `baseMs` itself — the ordinary case, byte-identical to a load-only stretch
- * with the diff term at 1 — so a small-diff review is never given more wall than today. Above
- * it the factor grows linearly with the diff's size against the reference, capped at
- * STARVED_DEADLINE_MAX_FACTOR (the same cap the load stretch uses), so a runaway diff cannot
- * turn a wedged review into an unbounded wait: the stretch is bounded, and the quiet watchdog
- * still kills a run that stops making progress within the wall. `diffBytes <= 0` is treated as
- * the reference (factor 1): a diff of unknown or zero size never stretches the budget. */
+/** The budget the post-merge reviewer's wall gets for the reviewed diff's size: `baseMs` at or
+ * under REVIEW_DIFF_REFERENCE_BYTES (see its calibration), and above it the overage ratio capped
+ * at STARVED_DEADLINE_MAX_FACTOR — the same cap as the load stretch, so load and diff each
+ * contribute at most 2× and a wedged review's quiet-watchdog wall is untouched (it is
+ * independent of the run budget). A review of a large diff needs the diff's proportionally more
+ * turns, so a wall that ignores its size kills a progressing review before its VERDICT. */
 export function diffScaledMs(baseMs: number, diffBytes: number): number {
   if (!(diffBytes > REVIEW_DIFF_REFERENCE_BYTES)) return baseMs;
   return Math.round(baseMs * Math.min(diffBytes / REVIEW_DIFF_REFERENCE_BYTES, STARVED_DEADLINE_MAX_FACTOR));
 }
-
 /** The note an on-time deadline kill carries when the host was starved: the load average
  * beyond the core count means the check shared the machine with the rest of the team, so the
  * 300 s kill is a statement about the deadline under load, not a measured verdict on the

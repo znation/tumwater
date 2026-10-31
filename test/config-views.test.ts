@@ -123,7 +123,7 @@ test("reviewRunConfig stretches the reviewer budget with the reviewed diff's siz
   assert.equal(reviewRunConfig(config, quietLoad, 1).runTimeoutSeconds, REVIEW_TIMEOUT_S);
   assert.equal(reviewRunConfig(config, quietLoad, REVIEW_DIFF_REFERENCE_BYTES).runTimeoutSeconds, REVIEW_TIMEOUT_S);
 
-  // A diff above the reference stretches even on a quiet host, capped at the base.
+  // A diff above the reference stretches even on a quiet host, capped at double the base.
   const large = reviewRunConfig(config, quietLoad, REVIEW_DIFF_REFERENCE_BYTES * 4).runTimeoutSeconds;
   assert.ok(large > REVIEW_TIMEOUT_S, "a large diff on a quiet host stretches the budget");
   assert.ok(large <= REVIEW_TIMEOUT_S * 2, "the diff stretch is capped at double the base");
@@ -133,6 +133,39 @@ test("reviewRunConfig stretches the reviewer budget with the reviewed diff's siz
   const loadAndDiff = reviewRunConfig(config, starvedLoad, REVIEW_DIFF_REFERENCE_BYTES * 4).runTimeoutSeconds;
   assert.ok(loadAndDiff > loadOnly, "the diff term buys wall beyond the load-only stretch");
   assert.ok(loadAndDiff <= config.runTimeoutSeconds, "never above the run's budget");
+});
+
+test("reviewRunConfig stretches the reviewer budget by the diff's size as well as load", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.runTimeoutSeconds = 54_000;
+  const quietLoad = () => ({ load1: 2, cpus: 8 });
+  const starvedLoad = () => ({ load1: 16, cpus: 8 });
+
+  // A diff at or under the reference leaves the budget at the load-only stretch: at most the
+  // 2x-capped starved value, exactly today's value on a quiet host.
+  const small = REVIEW_DIFF_REFERENCE_BYTES;
+  assert.equal(reviewRunConfig(config, quietLoad, small).runTimeoutSeconds, REVIEW_TIMEOUT_S);
+  const loadOnly = reviewRunConfig(config, starvedLoad, small).runTimeoutSeconds;
+  assert.equal(loadOnly, 2 * REVIEW_TIMEOUT_S, "at the reference the size factor is 1");
+
+  // A diff past the reference stretches the budget beyond the load-only 2x cap, capped at
+  // the 4x (2x load x 2x diff) ceiling and never above the run's budget.
+  const big = 5 * REVIEW_DIFF_REFERENCE_BYTES;
+  const withDiff = reviewRunConfig(config, starvedLoad, big).runTimeoutSeconds;
+  assert.ok(withDiff > loadOnly, "a large diff's budget beats the load-only stretch");
+  assert.ok(withDiff <= 4 * REVIEW_TIMEOUT_S, `capped at 4x, got ${withDiff}`);
+  assert.ok(withDiff <= config.runTimeoutSeconds, "never above the run's budget");
+
+  // A quiet host with a small diff gives exactly today's value: the diff term buys wall
+  // only when the diff or the load asks for it.
+  assert.equal(reviewRunConfig(config, quietLoad, 0).runTimeoutSeconds, REVIEW_TIMEOUT_S);
+
+  // The class's largest-diff member (3b682bed, a 270/247-line split, ~41 KB of diff) timed
+  // out 21x at the 900 s wall; a starved host plus its diff now assigns a budget large
+  // enough for a progressing review to reach its verdict.
+  const member = reviewRunConfig(config, starvedLoad, 41_000).runTimeoutSeconds;
+  assert.ok(member > REVIEW_TIMEOUT_S, `3b682bed-shaped diff budget ${member}`);
+  assert.ok(member <= 4 * REVIEW_TIMEOUT_S);
 });
 
 test("fallbackPair resolves the fallback over the top-level values", () => {

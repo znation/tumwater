@@ -8,7 +8,7 @@ import { validateConfig } from "../src/config/config-validation.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { drainPostReviews } from "../src/merge/merge-post-review-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
-import { addPostReview, readPostReviews, POST_REVIEW_FAILURE_LIMIT, postMergeRejectionCounts } from "../src/review/post-merge-review.js";
+import { addPostReview, readPostReviews, POST_REVIEW_FAILURE_LIMIT, postMergeRejectionCounts, reviewMergedCommit } from "../src/review/post-merge-review.js";
 import type { HarnessEvent } from "../src/events/events.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
@@ -275,7 +275,7 @@ test("a post-merge review of a large diff runs under a larger budget than a smal
   // runTimeoutSeconds than a small one's. Asserted through the config the reviewer run is
   // handed, offline — no real run, no host load.
   const root = makeRepo();
-  // A diff well above the reference (DIFF_MAX_BYTES, 200,000 bytes).
+  // A diff well above REVIEW_DIFF_REFERENCE_BYTES.
   const big = "x".repeat(500_000);
   fs.writeFileSync(path.join(root, "big.txt"), big);
   sh(root, "git", "add", "--", "big.txt");
@@ -305,9 +305,67 @@ test("a post-merge review of a large diff runs under a larger budget than a smal
   const budget = captured[0]!.runTimeoutSeconds;
   assert.ok(budget !== undefined, "the run was handed a reviewer budget");
   assert.ok(budget > REVIEW_TIMEOUT_S, "a large diff's budget exceeds the reference budget");
-  assert.ok(budget <= REVIEW_TIMEOUT_S * 2, "the diff stretch stays capped at double the base");
+  assert.ok(budget <= REVIEW_TIMEOUT_S * 4, "load and diff stretches stay within the 4x ceiling");
   // The entry still settles on the approving verdict, so the larger budget changed nothing else.
   assert.equal(readPostReviews(root).length, 0);
+});
+
+// A capturing reviewer run: records the config the review hands the run and answers approve.
+type CapturingRun = (opts: { config?: { runTimeoutSeconds?: number } }) => Promise<ReturnType<typeof piRunResult>>;
+
+test("a post-merge review's budget stretches with the reviewed diff's size", async () => {
+  // makeRepo seeds one committed file, so a second commit has a parent and `git diff C^ C`
+  // succeeds. The reviewer's budget is read from the runGatePi config the review hands the
+  // run, so this pins that reviewMergedCommit feeds the actual reviewed diff's byte size
+  // into reviewRunConfig — load-robust: it holds whatever the host's load is, since a
+  // diff large enough to stretch beats the load-only 2x cap on any load.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "big.txt"), "x\n".repeat(25_000));
+  sh(root, "git", "add", "--", "big.txt");
+  sh(root, "git", "commit", "-m", "add a large file");
+  const commit = headSha(root);
+  const seen: { config?: { runTimeoutSeconds?: number } } = {};
+  const runGatePi: CapturingRun = async (opts) => {
+    seen.config = opts.config;
+    return piRunResult({ verdictText: "VERDICT: approve\n1. fine" });
+  };
+  await reviewMergedCommit(
+    root,
+    defaultConfig(),
+    { commit, role: "improve", summary: "add a large file" },
+    runGatePi as Parameters<typeof reviewMergedCommit>[3],
+    undefined,
+  );
+  const budget = seen.config?.runTimeoutSeconds;
+  assert.ok(budget !== undefined, "the reviewer run received a resolved budget");
+  assert.ok(budget! > REVIEW_TIMEOUT_S, `a large diff's budget beats the 900 s wall, got ${budget}`);
+  assert.ok(budget! <= 4 * REVIEW_TIMEOUT_S, `the budget stays within the 4x ceiling, got ${budget}`);
+});
+
+test("a post-merge review of a small diff keeps the load-only budget", async () => {
+  // The same wiring with a diff small enough not to stretch: the budget is the load-only
+  // stretch, at most the 2x cap. A quiet host gives exactly today's value; on a loaded host
+  // it stays within the 2x cap either way.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "tiny.txt"), "one line\n");
+  sh(root, "git", "add", "--", "tiny.txt");
+  sh(root, "git", "commit", "-m", "add a small file");
+  const commit = headSha(root);
+  const seen: { config?: { runTimeoutSeconds?: number } } = {};
+  const runGatePi: CapturingRun = async (opts) => {
+    seen.config = opts.config;
+    return piRunResult({ verdictText: "VERDICT: approve\n1. fine" });
+  };
+  await reviewMergedCommit(
+    root,
+    defaultConfig(),
+    { commit, role: "improve", summary: "add a small file" },
+    runGatePi as Parameters<typeof reviewMergedCommit>[3],
+    undefined,
+  );
+  const budget = seen.config?.runTimeoutSeconds;
+  assert.ok(budget !== undefined, "the reviewer run received a resolved budget");
+  assert.ok(budget! <= 2 * REVIEW_TIMEOUT_S, `a small diff's budget stays within the load-only 2x cap, got ${budget}`);
 });
 
 test("a post-merge review git could not start keeps its entry without counting a failed run", async () => {
