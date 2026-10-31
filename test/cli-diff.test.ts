@@ -447,4 +447,5 @@ test("diff --path rejects misuse with its wording", async () => {
   await bad(rel, "--role", "feature", "--path", ".");
   await bad("diff --path needs a path", "--role", "feature", "--path");
   await bad("--path may only be given once", "--role", "feature", "--path", "a", "--path", "b");
+  await bad("--path needs a value", "--role", "feature", "--path", "--json");
 });

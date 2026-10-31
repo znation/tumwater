@@ -8,7 +8,7 @@ import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { cancelQueuedMerge, type CancelQueuedOutcome } from "../merge/merge-cancel.js";
 import { moveQueuedMergeToTop, type TopQueuedOutcome } from "../merge/merge-top.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
-import { flagValue, parseGrepFlag, parseRoleListScope, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
+import { flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
 import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
@@ -132,10 +132,13 @@ export async function cmdDiff(root: string, args: string[], seams: FollowViewSea
 }
 
 /** The normalised `--path` value of `diff --role` (undefined when absent): leading `./` pieces
- * and trailing `/` characters stripped, failing on an empty, absolute or `..`-bearing result. */
+ * and trailing `/` characters stripped, failing on an empty, absolute or `..`-bearing result.
+ * A `--` token in the value slot is refused via rejectFlagLookingValue first, so `diff --role
+ * feature --path --json` names the flag instead of failing downstream as a path nobody meant. */
 function diffPathArg(args: string[]): string | undefined {
   const raw = flagValue(args, "--path");
   if (raw === null || raw === undefined) return undefined;
+  rejectFlagLookingValue("--path", raw);
   const norm = normalizeDiffPath(raw);
   if (norm === null)
     fail(`diff --path takes a repo-relative path such as src/cli.ts (as diff --overlaps prints it)${gotSuffix(raw)}`);
