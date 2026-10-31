@@ -18,6 +18,17 @@ export interface RoleNoteOverCap {
  * dashboards' once-a-second poll never re-reads an unchanged notes file. */
 const noteLengthCache = new Map<string, StatKeyedValue<number>>();
 
+/** The notes directory's listing, keyed by the directory's own stat. A notes file appears,
+ * vanishes, or is renamed only when a note is first written, cleared, or a role is added or
+ * retired — asynchronous events the next poll's stat observes — so an unchanged directory
+ * costs one stat per poll instead of re-readdir'ing it every second (the same stat-keyed
+ * listing cache liveClaimRunnerIds keeps for the runner-state directory). A note's CONTENT
+ * changing in place does not touch the directory's mtime/size (only the file's own stat),
+ * so the entry set stays served while the per-file length cache below still sees the new
+ * bytes; the atomic tmp+rename write path bumps the dir mtime transiently, which invalidates
+ * the listing like any add/remove — both correct and cheap. Bounded inside cachedByStat. */
+const notesDirListingCache = new Map<string, StatKeyedValue<string[]>>();
+
 /** Every role whose notes file runs past the read bound, in descending-char order — the
  * single home of the role-notes over-cap walk, shared by the status snapshot's
  * `collectRoleNotesOverCap` and the doctor `role notes` row
@@ -30,13 +41,26 @@ const noteLengthCache = new Map<string, StatKeyedValue<number>>();
  * write), whose callers each map to their own "nothing recorded yet" reading. Never throws. */
 export function readRoleNotesOverCap(root: string): RoleNoteOverCap[] | null {
   const notesDir = path.dirname(roleNotesPath(root, "role"));
-  let entries: readonly string[];
-  try {
-    entries = fs.readdirSync(notesDir);
-  } catch {
-    // Missing or unreadable notes dir: nothing recorded yet (the write path creates it).
-    return null;
-  }
+  // The notes dir's listing from the stat-keyed cache: a fresh readdir only when a note file
+  // was added, removed, or renamed (the same contract the queue and runner-state listings
+  // keep), one stat otherwise. A missing or unreadable directory loads null — and, like every
+  // cachedByStat caller, a dir that cannot be stat'd reads null too — so the "nothing recorded
+  // yet" reading is preserved exactly (an existing EMPTY dir loads []).
+  const entries = cachedByStat(
+    notesDirListingCache,
+    notesDir,
+    notesDir,
+    () => {
+      try {
+        return fs.readdirSync(notesDir);
+      } catch {
+        // Missing or unreadable notes dir: nothing recorded yet (the write path creates it).
+        return null;
+      }
+    },
+    (names) => [...names], // A copy: callers may treat the result as their own.
+  );
+  if (entries === null) return null;
   const over: RoleNoteOverCap[] = [];
   for (const name of entries) {
     if (!name.endsWith(".md")) continue;
