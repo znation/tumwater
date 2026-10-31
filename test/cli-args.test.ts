@@ -8,6 +8,7 @@ import {
   parseDurationFlag,
   parsePortFlag,
   parseRoleFlag,
+  parseRoleListFlag,
 } from "../src/cli/cli-args.js";
 import {
   rejectUnknownArgs,
@@ -134,6 +135,23 @@ test("parseRoleFlag accepts user-defined role names from a supplied id list", ()
   // Without a supplied list the catalog alone is authoritative — a custom name is unknown.
   const strict = expectFail(() => parseRoleFlag(["--role", "docs-sync"]));
   assert.match(strict.stderr, /unknown role: docs-sync/);
+});
+
+test("parseRoleFlag refuses a flag-looking value in the id slot as a slipped value", () => {
+  // `--role --json` (or any `--`-token) is a rival flag in the id slot, never a role id —
+  // refuse it with rejectFlagLookingValue's shared wording instead of reporting the flag as
+  // an "unknown role" that blames the wrong token.
+  const r = expectFail(() => parseRoleFlag(["--role", "--json"]));
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--role needs a value \(the next token "--json" is a flag, not a value\)/);
+});
+
+test("parseRoleListFlag refuses a flag-looking value in the comma-list id slot", () => {
+  // The comma-list twin must apply the same guard, so `logs --role --json` names the slip
+  // rather than "unknown role: --json".
+  const r = expectFail(() => parseRoleListFlag(["--role", "--json"]));
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--role needs a value \(the next token "--json" is a flag, not a value\)/);
 });
 
 // --- rejectUnknownArgs ---

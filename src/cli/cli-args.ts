@@ -261,6 +261,7 @@ export function parseRoleListScope(root: string, args: string[]): string[] | nul
 export function parseRoleListFlag(args: string[], validIds?: string[]): string[] | null {
   const typed = flagValue(args, "--role");
   if (typed === null) return null;
+  rejectFlagLookingValue("--role", typed);
   const pieces = splitCommaList(typed ?? "");
   if (pieces.length === 0) fail(ROLE_VALUE_ERROR);
   const ids = validIds ?? allRoleIds();
@@ -447,6 +448,11 @@ export function parseRoleFlag(
 ): string | null {
   const typed = flagValue(args, flag);
   if (typed === null) return null;
+  // A `--`-token in the id's slot is the operator's slipped value (`--role --json`), never a
+  // role id — role ids are bare words that never start with `-` — so refuse it up front with
+  // rejectFlagLookingValue's shared wording, the same guard history's --result/--model/--by
+  // and reviews --status apply, instead of reporting the next flag as an "unknown role".
+  rejectFlagLookingValue(flag, typed);
   if (!typed) fail(missingValue);
   const role = canonicalRoleId(typed);
   const ids = validIds ?? allRoleIds();
