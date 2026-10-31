@@ -211,8 +211,9 @@ function recentOutcomeLine(o: { ts: number; result: string; durationMs?: number;
   return line;
 }
 
-/** The identity block: the `# tumwater role:` heading and the `- Role:`/`- State:`/
- * `- Priority:`/`- Model:` lines — what this role is, and whether it is enabled. */
+/** The role's identity header block — the `# tumwater role:` heading, the Role/Custom line,
+ * and the State, Priority and Model lines. One home for "what is this role and which model
+ * runs it?". */
 function identityLines(p: RoleViewPayload): string[] {
   const lines: string[] = [`# tumwater role: ${p.id}`, ""];
   lines.push(`- ${p.custom ? "Custom role" : "Role"}: "${p.id}" (${p.title})`);
@@ -223,20 +224,24 @@ function identityLines(p: RoleViewPayload): string[] {
   return lines;
 }
 
-/** The `- Context window:` line: the resolved primary seam's declared window (the one `- Next
- * run:` previews, not the fallback — a run on the model fallback may use a different window,
- * the fallback's own documented state). `unknown` when it cannot be known (a non-pi seam, an
- * unresolvable pair, a model with no declared window). */
-function contextWindowLine(p: RoleViewPayload): string {
-  return `- Context window: ${p.contextWindow === null ? "unknown" : `${compactTokens(p.contextWindow)} tokens`}`;
+/** The single `- Context window:` line — the resolved primary seam's declared window (the one
+ * `- Next run:` previews, not the fallback — a run on the model fallback may use a different
+ * window, the fallback's own documented state). `unknown` when it cannot be known (a non-pi
+ * seam, an unresolvable pair, a model with no declared window). One home for "which window
+ * does this role's primary seam promise?". */
+function contextWindowLine(p: RoleViewPayload): string[] {
+  return [
+    `- Context window: ${p.contextWindow === null ? "unknown" : `${compactTokens(p.contextWindow)} tokens`}`,
+  ];
 }
 
 /** The `- Images:` line (plans/image-input.md "Surfaces", part 5/5): whether this role's own
  * model reads images, and — when it cannot — where a run that reads an image reroutes. Not
  * just `yes`/`no`: a text-only role that falls back names the target, so `tumwater role <id>`
  * explains the team alert without running doctor. Unknown (null) renders `unknown` rather
- * than guessing. */
-function imagesLine(p: RoleViewPayload): string {
+ * than guessing. One home for "does this role's model read images and where does a blind read
+ * reroute?". */
+function imageLine(p: RoleViewPayload): string[] {
   const images =
     p.imageInput === true
       ? "yes"
@@ -245,12 +250,12 @@ function imagesLine(p: RoleViewPayload): string {
           ? `no — reruns on ${p.imageReroute}`
           : "no"
         : "unknown";
-  return `- Images: ${images}`;
+  return [`- Images: ${images}`];
 }
 
-/** The optional over-cap pair and the fallback-step bullet, which appear back-to-back: the
- * `- Over-cap model:` line (`fallbackPairLabel(p.fallback, backendDefault(p))` with the free/
- * priced suffix) and the `chainStepLine` bullet when the role is on a fallback tier. */
+/** The `- Over-cap model:` pair line (guarded on `p.fallback`) and the `Running on fallback`
+ * chain-step bullet (guarded on a non-null `chainStepLine`). One home for "which fallback and
+ * chain step does this role run on?". */
 function fallbackStepLines(p: RoleViewPayload): string[] {
   const lines: string[] = [];
   if (p.fallback) {
@@ -262,36 +267,39 @@ function fallbackStepLines(p: RoleViewPayload): string[] {
   return lines;
 }
 
-/** The optional `- Billing:` line — the claude seam's billing (plans/agent-backends.md
- * §7/§8, PLANS.md part 6d/7): absent on a pi seam, so its role view is byte-identical to
- * before. */
+/** The claude seam's billing line (plans/agent-backends.md §7/§8, PLANS.md part 6d/7), guarded
+ * on `p.billing` and `API` for an api seam — absent on a pi seam, so its role view is
+ * byte-identical to before. One home for "which subscription seam pays for this role?". */
 function billingLine(p: RoleViewPayload): string[] {
   if (!p.billing) return [];
   return [`- Billing: ${p.billing === "api" ? "API" : p.billing}`];
 }
 
-/** The unconditional `- Min run interval:` line. Kept separate from the sibling optional
- * sections because it is unconditional and sits between Billing and Instances in the output. */
-function minRunIntervalLines(p: RoleViewPayload): string[] {
+/** The unconditional `- Min run interval:` line. One home for "how often does this role run at
+ * most?". */
+function minRunIntervalLine(p: RoleViewPayload): string[] {
   return [`- Min run interval: ${p.minRunIntervalSeconds}s`];
 }
 
-/** The optional `- Instances:` line, guarded by `p.instances !== undefined`. */
+/** The `- Instances:` line, guarded on `p.instances`. One home for "how many parallel instances
+ * does this role get?". */
 function instancesLine(p: RoleViewPayload): string[] {
-  return p.instances !== undefined ? [`- Instances: ${p.instances}`] : [];
+  if (p.instances === undefined) return [];
+  return [`- Instances: ${p.instances}`];
 }
 
-/** The unconditional `- Inbox:` line. Kept separate from `minRunIntervalLines` because they
- * are not adjacent in the output. */
+/** The unconditional `- Inbox:` line. One home for "how many messages wait in this role's
+ * inbox?". */
 function inboxLine(p: RoleViewPayload): string[] {
   return [`- Inbox: ${p.inboxCount}`];
 }
 
-/** The optional `- Spend:` line — the role's own spend over its retained event window
- * (role-view.ts's usage, summed from the same run_end events recentOutcomes reads): how much
- * the role burned on tokens and cost, with a notional suffix only when a claude-subscription
- * seam burned non-zero notional spend (plans/agent-backends.md part 6a). Absent for a
- * never-costly role, so old `tumwater role` goldens are byte-identical. */
+/** The role's own spend over its retained event window (role-view.ts's usage, summed from the
+ * same run_end events recentOutcomes reads): how much the role burned on tokens and cost,
+ * with a notional suffix only when a claude-subscription seam burned non-zero notional spend
+ * (plans/agent-backends.md part 6a). Absent for a never-costly role, so old `tumwater role`
+ * goldens are byte-identical. Guarded on `p.usage`. One home for "how much has this role
+ * burned?". */
 function spendLine(p: RoleViewPayload): string[] {
   if (!p.usage) return [];
   let spend = `- Spend: ${usd(p.usage.costUsd)} · ${compactTokens(p.usage.tokens)} tokens`;
@@ -299,9 +307,10 @@ function spendLine(p: RoleViewPayload): string[] {
   return [spend];
 }
 
-/** The optional `- Daily cap:` line — the per-role daily cap (role-view.ts's dailyCap):
- * today's spend against the cap and whether it holds the role now, with the `· shared by`
- * roles and the `· ~cap at` suffix. Absent without a cap, so old goldens are unchanged. */
+/** The per-role daily cap (role-view.ts's dailyCap): today's spend against the cap and whether
+ * it holds the role now, carrying the shared-by and ~cap-at suffixes. Absent without a cap,
+ * so old goldens are unchanged. Guarded on `p.dailyCap`. One home for "is this role held by a
+ * cap today?". */
 function dailyCapLine(p: RoleViewPayload): string[] {
   if (!p.dailyCap) return [];
   const dc = p.dailyCap;
@@ -311,13 +320,14 @@ function dailyCapLine(p: RoleViewPayload): string[] {
   return [cap];
 }
 
-/** The optional `## Recent runs` section — the role's recent run outcomes (role-view.ts's
- * recentOutcomes, read from the event log): one line per outcome so `tumwater role <id>`
- * shows what the role has been DOING, not just what it is. Absent (never run) renders nothing
- * new, so old goldens are byte-identical. */
-function recentRunsLines(p: RoleViewPayload): string[] {
+/** The role's recent run outcomes (role-view.ts's recentOutcomes, read from the event log):
+ * the `## Recent runs` heading plus one bullet per outcome, so `tumwater role <id>` shows what
+ * the role has been DOING, not just what it is. Absent (never run) renders nothing new, so old
+ * goldens are byte-identical. Guarded on a non-empty `p.recentOutcomes`. One home for "what
+ * has this role been doing?". */
+function recentRunsSection(p: RoleViewPayload): string[] {
   if (!p.recentOutcomes || p.recentOutcomes.length === 0) return [];
-  const lines = ["", "## Recent runs", ""];
+  const lines: string[] = ["", "## Recent runs", ""];
   for (const o of p.recentOutcomes) lines.push(`- ${recentOutcomeLine(o)}`);
   return lines;
 }
@@ -367,33 +377,25 @@ function scheduleLine(p: RoleViewPayload, now: number): string[] {
 export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string {
   const lines = [
     ...identityLines(p),
-    // The resolved primary seam's declared window — what this role runs on.
-    contextWindowLine(p),
-    imagesLine(p),
+    ...contextWindowLine(p),
+    ...imageLine(p),
     ...fallbackStepLines(p),
     ...billingLine(p),
-    ...minRunIntervalLines(p),
+    ...minRunIntervalLine(p),
     ...instancesLine(p),
     ...inboxLine(p),
     ...spendLine(p),
     ...dailyCapLine(p),
-    // The role's schedule (role-view.ts's nextRunAt/backoffSeconds/lastRunEndedAt, read from
-    // the same persisted state): when it may run again, and when it last did — the one
-    // place the team's `next run`/`last run` vocabulary was absent. Rendered from the
-    // injected `now`, so the lines stay a pure function of the payload.
     ...scheduleLine(p, now),
-    ...recentRunsLines(p),
+    ...recentRunsSection(p),
     "",
-  ];
-  lines.push(...fencedOrNone("Instructions override", p.instructions));
-  lines.push(...fencedOrNone("Instructions override", p.instructions));
-  lines.push(
+    ...fencedOrNone("Instructions override", p.instructions),
     ...fencedOrNone(
       "Find text",
       p.find,
       "none — the director is driven by its inbox, not by instructions",
     ),
-  );
-  lines.push(...inspectBodyLines(p, now));
+    ...inspectBodyLines(p, now),
+  ];
   return lines.join("\n").trimEnd();
 }
