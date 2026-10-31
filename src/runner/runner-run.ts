@@ -48,7 +48,8 @@ import { changedFiles } from "../git/git-diff.js";
 import { handlePiResultPhase } from "./runner-outcome.js";
 import { mainRedHealNote, namedFailures } from "../baseline/main-red.js";
 import { watchedBaseline } from "../baseline/main-baseline.js";
-import { extractCiResult, extractFlow, extractFiled } from "../verdict/reply-contract.js";
+import { extractCiResult, extractFlow, extractFiled, type CiResult, type FiledResult, type FlowResult } from "../verdict/reply-contract.js";
+import type { PiRunResult } from "../pi/pi-run-result.js";
 
 /** Everything the run-pipeline phases need from their `RoleRunner` host. The runner builds one
  * per run (before its `runOnce` override point) from its readonly fields and live config, plus
@@ -457,13 +458,13 @@ async function runWithWorktreePhase(
   /** The leased slot the run runs in; omitted by the director, which ensures its own. */
   leasedDir?: string,
 ): Promise<RunOutcome> {
-  const s = ctx.state;
-  const { priorMergeFailure, resuming, handoff, resumeCause, userPrompt } = plan;
+  const { resuming } = plan;
   // Empty only for a promptless recovery run, which ends before any use of it (see below).
   let prompt = plan.prompt ?? "";
 
   const wt = leasedDir ?? (await ensureWorktree(ctx.root, ctx.role, ctx.mainBranch));
-  if (resuming || handoff) {
+
+  if (resuming || plan.handoff) {
     // Keep the interrupted run's uncommitted edits; clear only stray merge/rebase state. A
     // handoff resumes a FRESH session over those same edits (the newest author session belongs
     // to another agent), so it preserves the worktree exactly as a resume does.
@@ -471,92 +472,135 @@ async function runWithWorktreePhase(
     logEventBestEffort(ctx.root, {
       source: ctx.role,
       type: "resume",
-      cause: resumeCause,
+      cause: plan.resumeCause,
       ...(plan.restored !== undefined ? { restored: plan.restored } : {}),
     });
   } else {
-    // Salvage a commit a previous run left unmerged (runner-leftover.ts): recovery puts it
-    // back on the merge queue, so it merges through the orchestrator's merge pipeline — the
-    // same gate as a fresh run's change, and main keeps exactly one writer (an in-run
-    // recovery merge raced the slot's batches into `merge_blocked`). A salvaged leftover
-    // ENDS the run: the role holds one merge ref, and the leftover owns it until its
-    // merge resolves. With nothing to salvage the branch holds nothing either, so the reset
-    // below leaves pristine main.
-    const recovered = await recoverLeftover({
-      root: ctx.root,
-      role: ctx.role,
-      mainBranch: ctx.mainBranch,
-      runNumber: s.runs,
-      wt,
-      mergeConflicts: s.mergeConflicts,
-      conflictHandback: s.conflictHandback,
-      mainRedRetry: s.mainRedRetry,
-    });
-    if (recovered?.kind === "handback" && plan.prompt === null) {
-      // A promptless recovery run has no authoring run to hand the pin back to: leave the pin and
-      // the conflict state exactly as they are, so the one hand-back the lineage is owed happens on
-      // the director's next prompt-driven run.
-      await resetWorktreeToMain(wt, ctx.mainBranch);
-      return { result: "skipped" };
-    }
-    if (recovered?.kind === "handback") {
-      // The pin hit the conflict cap and its lineage has not been handed back yet: keep the
-      // pin, record the hand-back, and fall through to author the resolution on current main.
-      // The apply happens below, beside the revision branch.
-      s.mergeConflicts = undefined;
-      s.conflictHandback = {
-        sha: recovered.sha,
-        at: Date.now(),
-        reason: "merge",
-        applied: false,
-      };
-      logEventBestEffort(ctx.root, { source: ctx.role, type: "conflict_handback", action: "queued", sha: recovered.sha, reason: "merge" });
-    } else if (recovered?.kind === "discarded") {
-      // The pin hit the conflict cap and is gone: nothing holds the role any more, so this
-      // run authors on a fresh main like any other — told what was dropped and why.
-      s.mergeConflicts = undefined;
-      s.conflictHandback = undefined;
-      s.conflictDiscard = { sha: recovered.sha, summary: recovered.summary, attempts: recovered.attempts, at: Date.now() };
-      prompt = appendPromptNote(prompt, buildConflictDiscardNote(recovered.summary, recovered.attempts));
-    } else if (recovered && recovered.kind !== "already_queued") {
-      // Every recovery kind ends the run here — EXCEPT `already_queued`, whose arm the
-      // scheduler admits (the interlock relief applies team-wide) and whose branch is at main:
-      // that one falls through to author below instead of ending. Every other kind,
-      // `relief_wait` (a held commit ahead of main beside a queued entry) included, ends the
-      // run.
-      return ctx.finishRecoveryRun(recovered, userPrompt, wt, priorMergeFailure);
-    }
-    await resetWorktreeToMain(wt, ctx.mainBranch);
-    // A promptless recovery run found nothing to salvage (or deleted a stale pin): it authors
-    // nothing, so it ends here rather than reach the authoring run with a null prompt.
-    if (plan.prompt === null) return { result: "skipped" };
-    // The `ci` healer's red-main hand-off (src/baseline/main-red.ts): the worktree is pristine
-    // main right now, so a red main appends a <main-red> note to this run's prompt and the
-    // healer reproduces and fixes that failure rather than hunting blind. Every other role
-    // authors on the red main unblocked — the red-main authoring block came off with the
-    // pre-merge blocks, parts 3g/3–3j/3 and 3d/3–3f/3.
-    if (ctx.baseRole === "ci") {
-      const note = await mainRedHealNote(ctx.root, ctx.role, wt);
-      if (note) prompt = appendPromptNote(prompt, note);
-    } else {
-      // Every other role proceeds on the red main, told which tests already fail (the
-      // <main-known-red> note, restored 2026-10-25): a pure read of the main watch's persisted
-      // verdict (watchedBaseline runs no check), so the block appears only when a verdict names
-      // failures and a role's start pays nothing for it. `ci` owns the repair without
-      // monopolizing it — a fix from any role lands like any other change.
-      const baseline = await watchedBaseline(wt);
-      const tests = baseline?.status === "red" ? namedFailures(baseline) : [];
-      if (tests.length > 0) prompt = appendPromptNote(prompt, buildMainKnownRedNote(tests));
-    }
+    const recovery = await recoverLeftoversForRun(ctx, plan, wt);
+    if (recovery === null) return { result: "skipped" };
+    if (recovery.action === "end") return recovery.outcome;
+    prompt = recovery.prompt;
   }
 
-  // A change handed back after its merges kept conflicting — or a persisted hand-back the
-  // author's run has not applied yet — is re-applied over current main with the conflict
-  // markers left as ordinary uncommitted edits so this run resolves them (PLANS.md "Robust
-  // conflict landing, part 2/2"). The merge ref is deleted once the diff is in the worktree.
-  // Runs before the revision branch, which applies a revision hand-back itself. A resume or
-  // handoff keeps the interrupted worktree as-is, so re-applying here would cherry-pick onto
-  // those kept edits; both skip it, exactly as before this feature for a resume.
+  prompt = (await applyConflictHandback(ctx, plan, wt, prompt)).prompt;
+
+  const piStartedAt = Date.now();
+
+  const revision = await applyRevisionOrReject(ctx, plan, wt, prompt);
+  prompt = revision.prompt;
+  const revisionRound = revision.revisionRound;
+
+  prompt = (await resendHandoffNote(ctx, plan, wt, prompt)).prompt;
+
+  const { pi, flow, filed, ci } = await authorRun(ctx, plan, cfg, wt, prompt);
+
+  return handlePiResultPhase(ctx, pi, plan.userPrompt, revisionRound, wt, flow, filed, ci, piStartedAt, cfg);
+}
+
+/** How does a run recover a leftover? A previous run may have left a commit unmerged
+ * (runner-leftover.ts): recovery puts it back on the merge queue, so it merges through the
+ * orchestrator's merge pipeline — the same gate as a fresh run's change, and main keeps exactly
+ * one writer (an in-run recovery merge raced the slot's batches into `merge_blocked`). A
+ * salvaged leftover ENDS the run: the role holds one merge ref, and the leftover owns it until
+ * its merge resolves. With nothing to salvage the branch holds nothing either, so a reset below
+ * leaves pristine main. Returns `null` for the promptless skipped ends, `"end"` carrying the
+ * outcome for every non-`already_queued` recovery, and `"continue"` carrying the prompt the run
+ * authors on (with any discard or red-main note appended). */
+async function recoverLeftoversForRun(
+  ctx: RunnerRunContext,
+  plan: RunStartPlan,
+  wt: string,
+): Promise<{ action: "end"; outcome: RunOutcome } | { action: "continue"; prompt: string } | null> {
+  const s = ctx.state;
+  let prompt = plan.prompt ?? "";
+  const recovered = await recoverLeftover({
+    root: ctx.root,
+    role: ctx.role,
+    mainBranch: ctx.mainBranch,
+    runNumber: s.runs,
+    wt,
+    mergeConflicts: s.mergeConflicts,
+    conflictHandback: s.conflictHandback,
+    mainRedRetry: s.mainRedRetry,
+  });
+  if (recovered?.kind === "handback" && plan.prompt === null) {
+    // A promptless recovery run has no authoring run to hand the pin back to: leave the pin and
+    // the conflict state exactly as they are, so the one hand-back the lineage is owed happens on
+    // the director's next prompt-driven run.
+    await resetWorktreeToMain(wt, ctx.mainBranch);
+    return null;
+  }
+  if (recovered?.kind === "handback") {
+    // The pin hit the conflict cap and its lineage has not been handed back yet: keep the
+    // pin, record the hand-back, and fall through to author the resolution on current main.
+    // The apply happens below, beside the revision branch.
+    s.mergeConflicts = undefined;
+    s.conflictHandback = {
+      sha: recovered.sha,
+      at: Date.now(),
+      reason: "merge",
+      applied: false,
+    };
+    logEventBestEffort(ctx.root, { source: ctx.role, type: "conflict_handback", action: "queued", sha: recovered.sha, reason: "merge" });
+  } else if (recovered?.kind === "discarded") {
+    // The pin hit the conflict cap and is gone: nothing holds the role any more, so this
+    // run authors on a fresh main like any other — told what was dropped and why.
+    s.mergeConflicts = undefined;
+    s.conflictHandback = undefined;
+    s.conflictDiscard = { sha: recovered.sha, summary: recovered.summary, attempts: recovered.attempts, at: Date.now() };
+    prompt = appendPromptNote(prompt, buildConflictDiscardNote(recovered.summary, recovered.attempts));
+  } else if (recovered && recovered.kind !== "already_queued") {
+    // Every recovery kind ends the run here — EXCEPT `already_queued`, whose arm the
+    // scheduler admits (the interlock relief applies team-wide) and whose branch is at main:
+    // that one falls through to author below instead of ending. Every other kind,
+    // `relief_wait` (a held commit ahead of main beside a queued entry) included, ends the
+    // run.
+    return {
+      action: "end",
+      outcome: await ctx.finishRecoveryRun(recovered, plan.userPrompt, wt, plan.priorMergeFailure),
+    };
+  }
+  await resetWorktreeToMain(wt, ctx.mainBranch);
+  // A promptless recovery run found nothing to salvage (or deleted a stale pin): it authors
+  // nothing, so it ends here rather than reach the authoring run with a null prompt.
+  if (plan.prompt === null) return null;
+  // The `ci` healer's red-main hand-off (src/baseline/main-red.ts): the worktree is pristine
+  // main right now, so a red main appends a <main-red> note to this run's prompt and the
+  // healer reproduces and fixes that failure rather than hunting blind. Every other role
+  // authors on the red main unblocked — the red-main authoring block came off with the
+  // pre-merge blocks, parts 3g/3–3j/3 and 3d/3–3f/3.
+  if (ctx.baseRole === "ci") {
+    const note = await mainRedHealNote(ctx.root, ctx.role, wt);
+    if (note) prompt = appendPromptNote(prompt, note);
+  } else {
+    // Every other role proceeds on the red main, told which tests already fail (the
+    // <main-known-red> note, restored 2026-10-25): a pure read of the main watch's persisted
+    // verdict (watchedBaseline runs no check), so the block appears only when a verdict names
+    // failures and a role's start pays nothing for it. `ci` owns the repair without
+    // monopolizing it — a fix from any role lands like any other change.
+    const baseline = await watchedBaseline(wt);
+    const tests = baseline?.status === "red" ? namedFailures(baseline) : [];
+    if (tests.length > 0) prompt = appendPromptNote(prompt, buildMainKnownRedNote(tests));
+  }
+  return { action: "continue", prompt };
+}
+
+/** How does a conflict hand-back get re-applied? A change handed back after its merges kept
+ * conflicting — or a persisted hand-back the author's run has not applied yet — is re-applied
+ * over current main with the conflict markers left as ordinary uncommitted edits so this run
+ * resolves them (PLANS.md "Robust conflict landing, part 2/2"). The merge ref is deleted once
+ * the diff is in the worktree. Runs before the revision branch, which applies a revision
+ * hand-back itself. A resume or handoff keeps the interrupted worktree as-is, so re-applying
+ * here would cherry-pick onto those kept edits; both skip it, exactly as before this feature
+ * for a resume. */
+async function applyConflictHandback(
+  ctx: RunnerRunContext,
+  plan: RunStartPlan,
+  wt: string,
+  prompt: string,
+): Promise<{ prompt: string }> {
+  const s = ctx.state;
+  const { resuming, handoff, userPrompt } = plan;
   if (
     s.conflictHandback &&
     !s.conflictHandback.applied &&
@@ -587,16 +631,25 @@ async function runWithWorktreePhase(
       logEventBestEffort(ctx.root, { source: ctx.role, type: "conflict_handback", action: "failed", sha: hb.sha, reason: hb.reason });
     }
   }
+  return { prompt };
+}
 
-  const piStartedAt = Date.now();
-  // A rejected change owes a revision (plans/revise-rejected.md): re-apply its diff to current
-  // main as uncommitted edits so this run revises it instead of authoring from scratch, and
-  // append the revision note the prompt skipped. `revisionRound` records that THIS run holds
-  // the rejected diff — set only when the revision is applied here, or a resume carries the
-  // prior attempt's already-applied edits — so the post-run handlers read the run rather than
-  // `state.revision`, which a per-role user-request run leaves set by design. A conflict (or a
-  // gone object) clears the revision, deletes the rejected ref, and falls back to the plain
-  // rejection note.
+/** How is a rejected diff revised? A rejected change owes a revision (plans/revise-rejected.md):
+ * re-apply its diff to current main as uncommitted edits so this run revises it instead of
+ * authoring from scratch, and append the revision note the prompt skipped. `revisionRound`
+ * records that THIS run holds the rejected diff — set only when the revision is applied here,
+ * or a resume carries the prior attempt's already-applied edits — so the post-run handlers read
+ * the run rather than `state.revision`, which a per-role user-request run leaves set by design.
+ * A conflict (or a gone object) clears the revision, deletes the rejected ref, and falls back to
+ * the plain rejection note. */
+async function applyRevisionOrReject(
+  ctx: RunnerRunContext,
+  plan: RunStartPlan,
+  wt: string,
+  prompt: string,
+): Promise<{ prompt: string; revisionRound: number | undefined }> {
+  const s = ctx.state;
+  const { resuming, handoff, userPrompt } = plan;
   let revisionRound: number | undefined;
   if (s.revision && ctx.role !== DIRECTOR_ROLE && userPrompt === null) {
     const { sha, round } = s.revision;
@@ -657,23 +710,49 @@ async function runWithWorktreePhase(
       }
     }
   }
-  // A handoff runs a FRESH session over the interrupted run's kept worktree. When that run had
-  // already applied a conflict hand-back, the marker-bearing files are still there but the fresh
-  // run has none of the interrupted session's context explaining them, so re-send the hand-back
-  // note (a resume keeps its session context and must not see the note twice). The revision
-  // block above covers a revision hand-back's own note; this covers every hand-back reason,
-  // including a merge hand-back with no revision. Unlike the apply path there is no index to
-  // read, so the conflicted set comes from the worktree's current marker-bearing files.
-  if (handoff && s.conflictHandback?.applied) {
+  return { prompt, revisionRound };
+}
+
+/** How does a handoff re-send its conflict note? A handoff runs a FRESH session over the
+ * interrupted run's kept worktree. When that run had already applied a conflict hand-back, the
+ * marker-bearing files are still there but the fresh run has none of the interrupted session's
+ * context explaining them, so re-send the hand-back note (a resume keeps its session context and
+ * must not see the note twice). The revision block above covers a revision hand-back's own note;
+ * this covers every hand-back reason, including a merge hand-back with no revision. Unlike the
+ * apply path there is no index to read, so the conflicted set comes from the worktree's current
+ * marker-bearing files. */
+async function resendHandoffNote(
+  ctx: RunnerRunContext,
+  plan: RunStartPlan,
+  wt: string,
+  prompt: string,
+): Promise<{ prompt: string }> {
+  const s = ctx.state;
+  if (plan.handoff && s.conflictHandback?.applied) {
     const hb = s.conflictHandback;
     const conflicted = await markerBearingFiles(wt);
     prompt = await appendHandbackNote(prompt, wt, ctx.mainBranch, hb.sha, hb.reason, conflicted);
   }
+  return { prompt };
+}
 
+/** How does the run's pi session author? Run the authoring session over the prepared worktree
+ * and prompt, fold any commit the agent made into the run's one commit (INV-H1), warn about a
+ * stray write that landed in the primary checkout, and read the result-carrying reply lines the
+ * observer roles end with. Returns everything the post-PI `handlePiResultPhase` needs, so the
+ * caller hands off unchanged. */
+async function authorRun(
+  ctx: RunnerRunContext,
+  plan: RunStartPlan,
+  cfg: ResolvedModelConfig,
+  wt: string,
+  prompt: string,
+): Promise<{ pi: PiRunResult; flow: FlowResult | null; filed: FiledResult | null; ci: CiResult | null }> {
+  const s = ctx.state;
   const runBase = await headOf(wt, "HEAD");
   // The stray-write warning only reports, so a `git status` that fails on either side skips it.
   const primaryBefore = await changedFiles(ctx.root).catch(() => null);
-  const pi = await ctx.pi.runAuthoringPi(wt, prompt, `tumwater-${ctx.role}-${s.runs}`, resuming, cfg);
+  const pi = await ctx.pi.runAuthoringPi(wt, prompt, `tumwater-${ctx.role}-${s.runs}`, plan.resuming, cfg);
   // The harness owns every commit (INV-H1): fold any the agent made into the run's one commit.
   await foldAgentCommitsSince(ctx, wt, runBase);
   // A write that landed in the primary checkout never reaches the worktree's commit, so the run
@@ -700,6 +779,5 @@ async function runWithWorktreePhase(
   // interrupted or failed run must not record a coverage it never declared. The harness
   // records it, never pi.
   const ci = ctx.baseRole === "ci" ? extractCiResult(pi.finalText) : null;
-
-  return handlePiResultPhase(ctx, pi, userPrompt, revisionRound, wt, flow, filed, ci, piStartedAt, cfg);
+  return { pi, flow, filed, ci };
 }
