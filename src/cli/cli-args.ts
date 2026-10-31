@@ -332,7 +332,7 @@ export function parseDurationMs(raw: string): number | null {
  * Exported for tests and for the pause confirmations' duration phrasing (durationLabel). */
 export function parseDurationFlag(flag: string, raw: string | undefined): number {
   if (raw === undefined) fail(`${flag} needs a value`);
-  // A `--`-token in the value slot is the operator's slipped value (`pause --for --json`),
+  // A `--`-token in the value slot is the operator's slipped value (`start --for --json`),
   // never a duration — durations never start with `-` — so refuse it up front with
   // rejectFlagLookingValue's shared wording, the same guard history's --result/--model/--by,
   // reviews --status and role-command's write flags apply, instead of misreading the next

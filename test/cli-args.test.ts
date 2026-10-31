@@ -336,6 +336,18 @@ test("parseDurationFlag rejects malformed composites: gaps, out-of-order and rep
   }
 });
 
+test("parseDurationFlag rejects a flag-looking value with the shared wording", () => {
+  // A `--`-token in the value slot is the operator's slipped value (`start --for --json`), never a
+  // duration — refuse it up front with rejectFlagLookingValue's shared wording instead of
+  // reporting the next flag as a malformed duration.
+  const r = expectFail(() => parseDurationFlag("start --for", "--json"));
+  assert.equal(r.code, 1);
+  assert.match(
+    r.stderr,
+    /start --for needs a value \(the next token "--json" is a flag, not a value\)/,
+  );
+});
+
 test("parseDurationFlag rejects a digit run past Number's range instead of parsing to Infinity", () => {
   // "9"×400 overflows Number to Infinity; returning it made the cap check render the nonsense
   // "got Infinityms" rather than the malformed-duration message naming the token.
