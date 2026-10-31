@@ -627,11 +627,8 @@ function observerLedgers(
  * and schedule, and the observer ledgers. Each read happens exactly once (one loadConfigSafe, one
  * readEvents, one loadRunnerState for the role), and the helpers return exactly the pieces the
  * assembly spread needs. */
-/** Assemble the returned `RoleViewPayload` object literal in today's key order, so the `--json`
- * document and the Markdown renderer (one shape, two surfaces) stay byte-identical. Every field
- * is spread from the named helpers' results in exactly the order `rolePayload` produces today;
- * nothing moves or disappears, so the split never changes a payload. */
-function assemblePayload(params: {
+/** The pieces `rolePayload`'s collectors resolve, passed whole to the payload builders. */
+interface AssemblePayloadParams {
   role: string;
   resolved: { title: string; find: string };
   cfg: TumwaterConfig;
@@ -669,41 +666,11 @@ function assemblePayload(params: {
   usage: NonNullable<RoleViewPayload["usage"]>;
   dailyCap: RoleViewPayload["dailyCap"];
   dailyCapHitAt?: number;
-}): RoleViewPayload {
-  const {
-    role,
-    resolved,
-    cfg,
-    root,
-    effective,
-    piDefault,
-    backend,
-    fallback,
-    fallbackFree,
-    account,
-    billingBackend,
-    billingWindow,
-    chainStep,
-    modelsPath,
-    minRunIntervalOverride,
-    providerOverride,
-    modelOverride,
-    thinkingOverride,
-    backendOverride,
-    base,
-    note,
-    noteSavedAt,
-    flowCoverage,
-    filings,
-    contextWindow,
-    nextPrompt,
-    schedule,
-    quietHours,
-    recentOutcomes,
-    usage,
-    dailyCap,
-    dailyCapHitAt,
-  } = params;
+}
+
+// The payload's identity: who the role is and where it sits in the config.
+function identityFields(p: AssemblePayloadParams): Partial<RoleViewPayload> {
+  const { role, resolved, cfg, root } = p;
   return {
     id: role,
     title: resolved.title,
@@ -712,6 +679,13 @@ function assemblePayload(params: {
     paused: runnerPaused(new Set(pausedRoles(root)), role),
     tier: roleTier(role),
     modelTier: roleSeamTier(cfg, role),
+  };
+}
+
+// The payload's model seam: the resolved seam and its fallback, billing, and image story.
+function modelFields(p: AssemblePayloadParams): Partial<RoleViewPayload> {
+  const { effective, piDefault, backend, fallback, fallbackFree, account, billingBackend, billingWindow, chainStep, cfg, role, modelsPath, root } = p;
+  return {
     ...resolvedModelFields(effective.provider, effective.model, effective.thinking),
     ...(piDefault ? { piDefault } : {}),
     backend,
@@ -722,6 +696,14 @@ function assemblePayload(params: {
     chainStep,
     ...roleImageInfo(cfg, role, modelsPath, readPiListedModels(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,
+  };
+}
+
+// The payload's role overrides: the per-role knobs and the base role's instances and
+// instructions, each present only when the config sets it.
+function overrideFields(p: AssemblePayloadParams): Partial<RoleViewPayload> {
+  const { minRunIntervalOverride, providerOverride, modelOverride, thinkingOverride, backendOverride, cfg, base, role } = p;
+  return {
     ...(minRunIntervalOverride !== undefined ? { minRunIntervalOverride } : {}),
     ...(providerOverride !== undefined ? { providerOverride } : {}),
     ...(modelOverride !== undefined ? { modelOverride } : {}),
@@ -736,6 +718,14 @@ function assemblePayload(params: {
     // the cap and quiet hours, so an instance id shows (and can edit) the override its runs
     // carry (run-prompt reads config.roles[base]); null when unset.
     instructions: cfg.roles[baseRoleOf(role)]?.instructions ?? null,
+  };
+}
+
+// The payload's role context: the search text, notes, observer ledgers, and the next-run
+// preview seam.
+function contextFields(p: AssemblePayloadParams): Partial<RoleViewPayload> {
+  const { role, resolved, note, noteSavedAt, flowCoverage, filings, contextWindow, nextPrompt, root } = p;
+  return {
     find: role === DIRECTOR_ROLE ? null : resolved.find,
     notes: note,
     noteSavedAt,
@@ -749,17 +739,47 @@ function assemblePayload(params: {
     // The preview seam: the queued prompt (if any) is read, not consumed, so an inspection
     // never costs the role its queued work — the property the run-prompt test pins.
     nextPrompt,
+  };
+}
+
+// The payload's schedule: the role's persisted run schedule and its quiet hours.
+function scheduleFields(p: AssemblePayloadParams): Partial<RoleViewPayload> {
+  const { schedule, quietHours } = p;
+  return {
     // The role's schedule — surfaced read-only from the same persisted state rolePayload
     // already loaded for the next-run preview, so no new read path exists and the collector
     // stays one loadRunnerState per role. `lastRunEndedAt`
     // is omitted (JSON unchanged) until the role has actually run.
     ...schedule,
     ...(quietHours.length > 0 ? { quietHours } : {}),
+  };
+}
+
+// The payload's usage: the run-outcome history, the token/cost fold, and the daily cap.
+function usageFields(p: AssemblePayloadParams): Partial<RoleViewPayload> {
+  const { recentOutcomes, usage, dailyCap, dailyCapHitAt } = p;
+  return {
     ...(recentOutcomes.length > 0 ? { recentOutcomes } : {}),
     ...(usage.tokens !== 0 || usage.costUsd !== 0 || usage.notionalCostUsd !== 0 ? { usage } : {}),
     ...(dailyCap ? { dailyCap } : {}),
     ...(dailyCapHitAt !== undefined ? { dailyCapHitAt } : {}),
   };
+}
+
+/** Assemble the returned `RoleViewPayload` object literal in today's key order, so the `--json`
+ * document and the Markdown renderer (one shape, two surfaces) stay byte-identical. Every field
+ * is spread from the named builders' results in exactly the order `rolePayload` produces today:
+ * `identityFields`, `modelFields`, `overrideFields`, `contextFields`, `scheduleFields`, and
+ * `usageFields`; nothing moves or disappears, so the split never changes a payload. */
+function assemblePayload(p: AssemblePayloadParams): RoleViewPayload {
+  return {
+    ...identityFields(p),
+    ...modelFields(p),
+    ...overrideFields(p),
+    ...contextFields(p),
+    ...scheduleFields(p),
+    ...usageFields(p),
+  } as RoleViewPayload;
 }
 
 /** Collect one role's inspection payload. `modelsPath` overrides pi's model definitions location
