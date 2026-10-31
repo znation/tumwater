@@ -211,8 +211,120 @@ function recentOutcomeLine(o: { ts: number; result: string; durationMs?: number;
   return line;
 }
 
+/** The identity block: the `# tumwater role:` heading and the `- Role:`/`- State:`/
+ * `- Priority:`/`- Model:` lines — what this role is, and whether it is enabled. */
+function identityLines(p: RoleViewPayload): string[] {
+  const lines: string[] = [`# tumwater role: ${p.id}`, ""];
+  lines.push(`- ${p.custom ? "Custom role" : "Role"}: "${p.id}" (${p.title})`);
+  const state = [p.enabled ? "enabled" : "disabled", p.paused ? "paused" : "not paused"].join(", ");
+  lines.push(`- State: ${state}`);
+  lines.push(`- Priority: ${p.tier === 0 ? "work" : "maintenance or observer"}`);
+  lines.push(`- Model: ${modelLine(p)} (${p.modelTier} tier)`);
+  return lines;
+}
+
+/** The `- Context window:` line: the resolved primary seam's declared window (the one `- Next
+ * run:` previews, not the fallback — a run on the model fallback may use a different window,
+ * the fallback's own documented state). `unknown` when it cannot be known (a non-pi seam, an
+ * unresolvable pair, a model with no declared window). */
+function contextWindowLine(p: RoleViewPayload): string {
+  return `- Context window: ${p.contextWindow === null ? "unknown" : `${compactTokens(p.contextWindow)} tokens`}`;
+}
+
+/** The `- Images:` line (plans/image-input.md "Surfaces", part 5/5): whether this role's own
+ * model reads images, and — when it cannot — where a run that reads an image reroutes. Not
+ * just `yes`/`no`: a text-only role that falls back names the target, so `tumwater role <id>`
+ * explains the team alert without running doctor. Unknown (null) renders `unknown` rather
+ * than guessing. */
+function imagesLine(p: RoleViewPayload): string {
+  const images =
+    p.imageInput === true
+      ? "yes"
+      : p.imageInput === false
+        ? p.imageReroute
+          ? `no — reruns on ${p.imageReroute}`
+          : "no"
+        : "unknown";
+  return `- Images: ${images}`;
+}
+
+/** The optional over-cap pair and the fallback-step bullet, which appear back-to-back: the
+ * `- Over-cap model:` line (`fallbackPairLabel(p.fallback, backendDefault(p))` with the free/
+ * priced suffix) and the `chainStepLine` bullet when the role is on a fallback tier. */
+function fallbackStepLines(p: RoleViewPayload): string[] {
+  const lines: string[] = [];
+  if (p.fallback) {
+    const pair = fallbackPairLabel(p.fallback, backendDefault(p));
+    lines.push(`- Over-cap model: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
+  }
+  const running = chainStepLine(p);
+  if (running) lines.push(running);
+  return lines;
+}
+
+/** The optional `- Billing:` line — the claude seam's billing (plans/agent-backends.md
+ * §7/§8, PLANS.md part 6d/7): absent on a pi seam, so its role view is byte-identical to
+ * before. */
+function billingLine(p: RoleViewPayload): string[] {
+  if (!p.billing) return [];
+  return [`- Billing: ${p.billing === "api" ? "API" : p.billing}`];
+}
+
+/** The unconditional `- Min run interval:` line. Kept separate from the sibling optional
+ * sections because it is unconditional and sits between Billing and Instances in the output. */
+function minRunIntervalLines(p: RoleViewPayload): string[] {
+  return [`- Min run interval: ${p.minRunIntervalSeconds}s`];
+}
+
+/** The optional `- Instances:` line, guarded by `p.instances !== undefined`. */
+function instancesLine(p: RoleViewPayload): string[] {
+  return p.instances !== undefined ? [`- Instances: ${p.instances}`] : [];
+}
+
+/** The unconditional `- Inbox:` line. Kept separate from `minRunIntervalLines` because they
+ * are not adjacent in the output. */
+function inboxLine(p: RoleViewPayload): string[] {
+  return [`- Inbox: ${p.inboxCount}`];
+}
+
+/** The optional `- Spend:` line — the role's own spend over its retained event window
+ * (role-view.ts's usage, summed from the same run_end events recentOutcomes reads): how much
+ * the role burned on tokens and cost, with a notional suffix only when a claude-subscription
+ * seam burned non-zero notional spend (plans/agent-backends.md part 6a). Absent for a
+ * never-costly role, so old `tumwater role` goldens are byte-identical. */
+function spendLine(p: RoleViewPayload): string[] {
+  if (!p.usage) return [];
+  let spend = `- Spend: ${usd(p.usage.costUsd)} · ${compactTokens(p.usage.tokens)} tokens`;
+  if (p.usage.notionalCostUsd !== 0) spend += ` · ${usd(p.usage.notionalCostUsd)} notional`;
+  return [spend];
+}
+
+/** The optional `- Daily cap:` line — the per-role daily cap (role-view.ts's dailyCap):
+ * today's spend against the cap and whether it holds the role now, with the `· shared by`
+ * roles and the `· ~cap at` suffix. Absent without a cap, so old goldens are unchanged. */
+function dailyCapLine(p: RoleViewPayload): string[] {
+  if (!p.dailyCap) return [];
+  const dc = p.dailyCap;
+  let cap = `- Daily cap: ${usd(dc.spentUsd)} of ${usd(dc.capUsd)} spent today (${dc.over ? "holding now — no new runs until local midnight" : "not holding"})`;
+  if (dc.roleIds.length > 1) cap += ` · shared by ${dc.roleIds.join(", ")}`;
+  if (p.dailyCapHitAt !== undefined) cap += ` · ~cap at ${clockHm(p.dailyCapHitAt)}`;
+  return [cap];
+}
+
+/** The optional `## Recent runs` section — the role's recent run outcomes (role-view.ts's
+ * recentOutcomes, read from the event log): one line per outcome so `tumwater role <id>`
+ * shows what the role has been DOING, not just what it is. Absent (never run) renders nothing
+ * new, so old goldens are byte-identical. */
+function recentRunsLines(p: RoleViewPayload): string[] {
+  if (!p.recentOutcomes || p.recentOutcomes.length === 0) return [];
+  const lines = ["", "## Recent runs", ""];
+  for (const o of p.recentOutcomes) lines.push(`- ${recentOutcomeLine(o)}`);
+  return lines;
+}
+
 /** One quiet-hours bullet: the window, whose it is, and whether it holds the role now — with
  * the same `quiet until <end>` text the status table uses. */
+
 function quietHoursLine(w: NonNullable<RoleViewPayload["quietHours"]>[number]): string {
   const whose = w.scope === "role" ? "own window" : "team window";
   const state = w.inWindow ? `holding now — quiet until ${quietWindowEnd(w.window)}` : "not holding now";
@@ -253,77 +365,27 @@ function scheduleLine(p: RoleViewPayload, now: number): string[] {
 /** Render one role's inspection payload as Markdown. `now` is injected (default Date.now())
  * so the schedule lines stay a pure function of the payload — the test pins a fixed clock. */
 export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string {
-  const lines: string[] = [`# tumwater role: ${p.id}`, ""];
-  lines.push(`- ${p.custom ? "Custom role" : "Role"}: "${p.id}" (${p.title})`);
-  const state = [p.enabled ? "enabled" : "disabled", p.paused ? "paused" : "not paused"].join(", ");
-  lines.push(`- State: ${state}`);
-  lines.push(`- Priority: ${p.tier === 0 ? "work" : "maintenance or observer"}`);
-  lines.push(`- Model: ${modelLine(p)} (${p.modelTier} tier)`);
-  // Context window: the resolved primary seam's declared window (the one `- Next run:`
-  // previews, not the fallback — a run on the model fallback may use a different window, the
-  // fallback's own documented state). `unknown` when it cannot be known (a non-pi seam, an
-  // unresolvable pair, a model with no declared window).
-  lines.push(`- Context window: ${p.contextWindow === null ? "unknown" : `${compactTokens(p.contextWindow)} tokens`}`);
-  // Image input (plans/image-input.md "Surfaces", part 5/5): whether this role's own model
-  // reads images, and — when it cannot — where a run that reads an image reroutes. Not just
-  // `yes`/`no`: a text-only role that falls back names the target, so `tumwater role <id>`
-  // explains the team alert without running doctor. Unknown (null) renders `unknown` rather
-  // than guessing.
-  const images =
-    p.imageInput === true
-      ? "yes"
-      : p.imageInput === false
-        ? p.imageReroute
-          ? `no — reruns on ${p.imageReroute}`
-          : "no"
-        : "unknown";
-  lines.push(`- Images: ${images}`);
-  if (p.fallback) {
-    const pair = fallbackPairLabel(p.fallback, backendDefault(p));
-    lines.push(`- Over-cap model: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
-  }
-  const running = chainStepLine(p);
-  if (running) lines.push(running);
-  // The claude seam's billing (plans/agent-backends.md §7/§8, PLANS.md part 6d/7): absent on
-  // a pi seam, so its role view is byte-identical to before.
-  if (p.billing) {
-    lines.push(`- Billing: ${p.billing === "api" ? "API" : p.billing}`);
-  }
-  lines.push(`- Min run interval: ${p.minRunIntervalSeconds}s`);
-  if (p.instances !== undefined) lines.push(`- Instances: ${p.instances}`);
-  lines.push(`- Inbox: ${p.inboxCount}`);
-  // The role's own spend over its retained event window (role-view.ts's usage, summed from the
-  // same run_end events recentOutcomes reads): how much the role burned on tokens and cost,
-  // with a notional suffix only when a claude-subscription seam burned non-zero notional spend
-  // (plans/agent-backends.md part 6a). Absent for a never-costly role, so old `tumwater role`
-  // goldens are byte-identical.
-  if (p.usage) {
-    let spend = `- Spend: ${usd(p.usage.costUsd)} · ${compactTokens(p.usage.tokens)} tokens`;
-    if (p.usage.notionalCostUsd !== 0) spend += ` · ${usd(p.usage.notionalCostUsd)} notional`;
-    lines.push(spend);
-  }
-  // The per-role daily cap (role-view.ts's dailyCap): today's spend against the cap and whether
-  // it holds the role now. Absent without a cap, so old goldens are unchanged.
-  if (p.dailyCap) {
-    const dc = p.dailyCap;
-    let cap = `- Daily cap: ${usd(dc.spentUsd)} of ${usd(dc.capUsd)} spent today (${dc.over ? "holding now — no new runs until local midnight" : "not holding"})`;
-    if (dc.roleIds.length > 1) cap += ` · shared by ${dc.roleIds.join(", ")}`;
-    if (p.dailyCapHitAt !== undefined) cap += ` · ~cap at ${clockHm(p.dailyCapHitAt)}`;
-    lines.push(cap);
-  }
-  // The role's schedule (role-view.ts's nextRunAt/backoffSeconds/lastRunEndedAt, read from
-  // the same persisted state): when it may run again, and when it last did — the one
-  // place the team's `next run`/`last run` vocabulary was absent. Rendered from the
-  // injected `now`, so the lines stay a pure function of the payload.
-  lines.push(...scheduleLine(p, now));
-  // The role's recent run outcomes (role-view.ts's recentOutcomes, read from the event log):
-  // one line per outcome so `tumwater role <id>` shows what the role has been DOING, not just
-  // what it is. Absent (never run) renders nothing new, so old goldens are byte-identical.
-  if (p.recentOutcomes && p.recentOutcomes.length > 0) {
-    lines.push("", "## Recent runs", "");
-    for (const o of p.recentOutcomes) lines.push(`- ${recentOutcomeLine(o)}`);
-  }
-  lines.push("");
+  const lines = [
+    ...identityLines(p),
+    // The resolved primary seam's declared window — what this role runs on.
+    contextWindowLine(p),
+    imagesLine(p),
+    ...fallbackStepLines(p),
+    ...billingLine(p),
+    ...minRunIntervalLines(p),
+    ...instancesLine(p),
+    ...inboxLine(p),
+    ...spendLine(p),
+    ...dailyCapLine(p),
+    // The role's schedule (role-view.ts's nextRunAt/backoffSeconds/lastRunEndedAt, read from
+    // the same persisted state): when it may run again, and when it last did — the one
+    // place the team's `next run`/`last run` vocabulary was absent. Rendered from the
+    // injected `now`, so the lines stay a pure function of the payload.
+    ...scheduleLine(p, now),
+    ...recentRunsLines(p),
+    "",
+  ];
+  lines.push(...fencedOrNone("Instructions override", p.instructions));
   lines.push(...fencedOrNone("Instructions override", p.instructions));
   lines.push(
     ...fencedOrNone(
