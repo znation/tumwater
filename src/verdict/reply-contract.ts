@@ -1,3 +1,5 @@
+import { splitCommaList } from "../text/text.js";
+
 /** The machine-detectable half of the reply contract every pi run must follow: the
  * TUMWATER_NOTHING_TO_DO sentinel a role emits when it found nothing to do, the
  * TUMWATER_REFUSED line a role emits when it declines its task, and the review gate's VERDICT
@@ -231,10 +233,7 @@ export function extractCiResult(text: string): CiResult | null {
 export function fixLine(text: string): string[] | null {
   const match = /^[ \t]*FIX:[ \t]*(.+?)[ \t]*$/m.exec(text);
   if (!match) return null;
-  const paths = match[1]!
-    .split(",")
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
+  const paths = splitCommaList(match[1]!);
   return paths.length > 0 ? paths : null;
 }
 /** The result of one `feedback` run's filing: which GitHub issue it filed, and its title. */
