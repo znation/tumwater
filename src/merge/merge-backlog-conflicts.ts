@@ -209,10 +209,10 @@ function settleBlock(base: string, ours: string, theirs: string): string | null 
   return ours === base ? theirs : null;
 }
 
-/** Merge one section's entries (see mergeBacklogEntries), or null on a same-entry conflict. */
-/** Pass 1: settle every change-side entry against base and theirs. Resolves a same-key edit
- * with `settleBlock`, bails (false → null) when both sides added the same entry differently or
- * main edited what the change deleted. */
+/** Pass 1 of mergeSectionEntries: settle every entry on main's side against the base and the
+ * change — an entry both sides added differently, an entry main edited that the change deleted,
+ * or an entry both sides edited differently each bail; settled entries are pushed into `result`.
+ * Returns false (so mergeSectionEntries returns null) on a conflict. */
 function settleOursEntries(
   ours: ParsedBacklog["sections"][number]["entries"],
   baseBy: Map<string, string>,
@@ -236,7 +236,8 @@ function settleOursEntries(
   return true;
 }
 
-/** Pass 2: an entry main deleted stays deleted, unless the change edited it — then bail. */
+/** Pass 2 of mergeSectionEntries: an entry main deleted stays deleted, unless the change edited
+ * it. Returns false (so mergeSectionEntries returns null) when it did. */
 function keepOurDeletions(
   base: ParsedBacklog["sections"][number]["entries"],
   oursKeys: Set<string>,
@@ -249,8 +250,8 @@ function keepOurDeletions(
   return true;
 }
 
-/** Pass 3: order-insert each change-side addition after its nearest surviving predecessor in
- * `result`, or at the front when none survives. */
+/** Pass 3 of mergeSectionEntries: order-insert the change's brand-new entries after their
+ * nearest surviving predecessor in `result` (or at the front when there is none). */
 function placeTheirAdditions(
   baseBy: Map<string, string>,
   oursKeys: Set<string>,
@@ -272,6 +273,7 @@ function placeTheirAdditions(
   }
 }
 
+/** Merge one section's entries (see mergeBacklogEntries), or null on a same-entry conflict. */
 function mergeSectionEntries(
   base: ParsedBacklog["sections"][number]["entries"],
   ours: ParsedBacklog["sections"][number]["entries"],
@@ -281,8 +283,12 @@ function mergeSectionEntries(
   const theirsBy = new Map(theirs.map((e) => [e.key, e.text]));
   const oursKeys = new Set(ours.map((e) => e.key));
   const result: { key: string; text: string }[] = [];
-  if (!settleOursEntries(ours, baseBy, theirsBy, result)) return null;
-  if (!keepOurDeletions(base, oursKeys, theirsBy)) return null;
+  if (
+    !settleOursEntries(ours, baseBy, theirsBy, result) ||
+    !keepOurDeletions(base, oursKeys, theirsBy)
+  ) {
+    return null;
+  }
   placeTheirAdditions(baseBy, oursKeys, theirs, result);
   return result;
 }
