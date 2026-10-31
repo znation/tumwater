@@ -6,6 +6,7 @@ import { resetWorktreeToMain } from "../git/worktree.js";
 import { resolveBacklogInsertConflicts } from "../merge/merge-backlog-conflicts.js";
 import { conflictedFiles } from "../merge/merge-git.js";
 import { formatDate } from "../text/datetime.js";
+import { errorMessage } from "../text/text.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { entryKey } from "../backlog/backlog-parts.js";
@@ -96,7 +97,7 @@ export async function holdEntryAfterExhaustion(
       source: role,
       type: "revision",
       action: "hold-failed",
-      message: `could not hold the entry after a final rejection: ${String(err)}`,
+      message: `could not hold the entry after a final rejection: ${errorMessage(err)}`,
     });
   }
 }
