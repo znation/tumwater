@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { errCode } from "../errno.js";
+import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 
 /** The directory-of-timestamped-files queue convention shared by the director's prompt inbox
  * (inbox.ts) and the durable merge queue (merge-queue.ts): one file per entry, ordered by
@@ -8,26 +9,46 @@ import { errCode } from "../errno.js";
  * would otherwise carry their own copy of the listing, naming, and ENOENT-tolerant removal
  * rules — exactly the parts that must not drift between the two. */
 
+/** Per (dir, ext) stat-keyed listing cache: the merge queue and the prompt inboxes are listed
+ * repeatedly on polled paths (the orchestrator's per-poll queue interlock, status snapshots,
+ * pullcounts), and each listing was a fresh readdir + filename sort. A directory's listing
+ * changes only when a file is added, removed, or renamed there — exactly the directory stat
+ * events (dev/ino/mtime/size) cachedByStat keys on, verified: an in-place content write does
+ * not touch the directory's own mtime/size, so unchanged entry sets serve from one stat per
+ * poll instead of re-listing and re-sorting the queue dir each time. Bounded inside
+ * cachedByStat so many short-lived roots in tests cannot grow it unbounded. */
+const listingCache = new Map<string, StatKeyedValue<string[]>>();
+
 /** Every entry file under `dir` whose name ends in `ext`, oldest first by filename sort. A
  * missing directory reads as an empty queue, like every reader in both queues. */
 export function listQueueFiles(dir: string, ext: string): string[] {
-  let entries: string[];
-  try {
-    entries = fs.readdirSync(dir);
-  } catch (err) {
-    // The "no queue here" cases — a directory removed between the caller's existence check
-    // and this read (ENOENT), or a regular file squatting at the path (ENOTDIR) — read the
-    // same empty list a missing directory does, per the contract. Any other error (EACCES:
-    // a real but unreadable directory) is a genuine failure the caller must see, never a
-    // silently empty queue that would hide queued work.
-    const code = errCode(err);
-    if (code !== "ENOENT" && code !== "ENOTDIR") throw err;
-    return [];
-  }
-  return entries
-    .filter((f) => f.endsWith(ext))
-    .sort()
-    .map((f) => path.join(dir, f));
+  return (
+    cachedByStat(
+      listingCache,
+      `${dir}\u0000${ext}`, // Per (dir, ext): distinct queue dirs and extensions never collide.
+      dir,
+      () => {
+        let entries: string[];
+        try {
+          entries = fs.readdirSync(dir);
+        } catch (err) {
+          // The "no queue here" cases — a directory removed between the caller's existence
+          // check and this read (ENOENT), or a regular file squatting at the path (ENOTDIR) —
+          // read the same empty list a missing directory does, per the contract. Any other
+          // error (EACCES: a real but unreadable directory) is a genuine failure the caller
+          // must see, never a silently empty queue that would hide queued work.
+          const code = errCode(err);
+          if (code !== "ENOENT" && code !== "ENOTDIR") throw err;
+          return [];
+        }
+        return entries
+          .filter((f) => f.endsWith(ext))
+          .sort()
+          .map((f) => path.join(dir, f));
+      },
+      (files) => [...files], // A copy: callers may treat the result as their own.
+    ) ?? []
+  );
 }
 
 /** One queue entry's filename: `<stamp>-<seq, 6 digits>-<pid><ext>`. The timestamp orders
