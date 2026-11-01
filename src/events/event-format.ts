@@ -743,30 +743,54 @@ function warningEventMessage(e: HarnessEvent): string {
   }
 }
 
+/** One family's line builder: an event's message from the event, the way <family>EventMessage
+ * builds it. The family table's values are all of these; the table is the dispatch. */
+type EventMessageFamily = (e: HarnessEvent) => string;
+
+/** The event-to-family dispatch, typed by the union so a newly added event type is a compile
+ * error until it is routed: each key maps to the <family>EventMessage builder that builds its
+ * line (runEventMessage, mergeEventMessage, reviewEventMessage, inboxEventMessage,
+ * budgetEventMessage, holdEventMessage, resourceEventMessage, configEventMessage,
+ * imageRestartEventMessage, checkWaitEventMessage, warningEventMessage), grouped by family.
+ * This is the one home of the type-to-family routing that the event feed's dispatch reads. */
+const EVENT_MESSAGE_FAMILY: Record<HarnessEvent["type"], EventMessageFamily> = {
+  // run family (runEventMessage)
+  run_start: runEventMessage, run_end: runEventMessage, run_deferred: runEventMessage, run_aborted: runEventMessage, resume: runEventMessage, wake: runEventMessage, counters_reset: runEventMessage, claim: runEventMessage, permit_reserve: runEventMessage,
+  // merge family (mergeEventMessage)
+  merged: mergeEventMessage, merge_queued: mergeEventMessage, merge_cancelled: mergeEventMessage, merge_topped: mergeEventMessage, merge_done: mergeEventMessage, merge_failed: mergeEventMessage, conflict_handback: mergeEventMessage, operator_revert: mergeEventMessage, main_check: mergeEventMessage, main_culprit: mergeEventMessage, main_red_hold: mergeEventMessage,
+  // review family (reviewEventMessage)
+  review_start: reviewEventMessage, review_verdict: reviewEventMessage, review_rejected: reviewEventMessage, review_failed: reviewEventMessage, revision: reviewEventMessage,
+  // inbox family (inboxEventMessage)
+  prompt_enqueued: inboxEventMessage, prompt_cancelled: inboxEventMessage, prompt_edited: inboxEventMessage, prompt_topped: inboxEventMessage, prompt_taken: inboxEventMessage, question_posted: inboxEventMessage, entry_refused: inboxEventMessage, issue_filed: inboxEventMessage,
+  // budget family (budgetEventMessage)
+  budget_warning: budgetEventMessage, budget_paused: budgetEventMessage, budget_fallback: budgetEventMessage, budget_resumed: budgetEventMessage, budget_handback: budgetEventMessage, fallback_switched: budgetEventMessage, opencode_free_model_billed: budgetEventMessage,
+  // hold family (holdEventMessage)
+  team_paused: holdEventMessage, team_resumed: holdEventMessage, role_paused: holdEventMessage, role_resumed: holdEventMessage, role_streak_paused: holdEventMessage, role_cap_warning: holdEventMessage, role_cap_paused: holdEventMessage, role_cap_resumed: holdEventMessage, maintenance_quota_hold: holdEventMessage, maintenance_quota_resumed: holdEventMessage, bootstrap_complete: holdEventMessage,
+  // resource family (resourceEventMessage)
+  disk_low: resourceEventMessage, disk_ok: resourceEventMessage, disk_reclaim: resourceEventMessage, quiet_hours_started: resourceEventMessage, quiet_hours_ended: resourceEventMessage, rate_limit_hold: resourceEventMessage, rate_limit_resumed: resourceEventMessage, subscription_window_limited: resourceEventMessage, subscription_window_reset: resourceEventMessage, model_check_passed: resourceEventMessage,
+  // config family (configEventMessage)
+  max_concurrent_changed: configEventMessage, retention_changed: configEventMessage, config_changed: configEventMessage, model_changed: configEventMessage, backend_binary: configEventMessage, state_migrated: configEventMessage, orchestrator_start: configEventMessage, orchestrator_stop: configEventMessage,
+  // image/restart family (imageRestartEventMessage)
+  image_blind: imageRestartEventMessage, image_reroute: imageRestartEventMessage, build_stale: imageRestartEventMessage, restart_pending: imageRestartEventMessage, restart: imageRestartEventMessage, restart_refused: imageRestartEventMessage, restart_blocked: imageRestartEventMessage, restart_forced: imageRestartEventMessage, supervisor_exit: imageRestartEventMessage,
+  // check/wait family (checkWaitEventMessage)
+  build_check: checkWaitEventMessage, dep_install: checkWaitEventMessage, slot_wait: checkWaitEventMessage, provider_wait: checkWaitEventMessage, check_wait: checkWaitEventMessage,
+  // warning family (warningEventMessage)
+  warning: warningEventMessage,
+};
+
 /** An event's message alone — formatEvent's line without the time and role columns. The GUI's
  * activity feed renders the time and role itself (relative ages, role chips), so the payload
  * ships this beside the event's type and role instead of making the page re-parse a line.
- * Dispatch only: each event family's line is built by a module-private <family>EventMessage
- * switch (runEventMessage, mergeEventMessage, reviewEventMessage, inboxEventMessage,
- * budgetEventMessage, holdEventMessage, resourceEventMessage, configEventMessage,
- * imageRestartEventMessage, checkWaitEventMessage, warningEventMessage). */
+ * Dispatch only: the family table EVENT_MESSAGE_FAMILY routes the type to the <family>EventMessage
+ * builder that builds its line, and an unrecognized type falls through to the "?" stand-in. */
 export function eventMessage(e: HarnessEvent): string {
-  switch (e.type) {
-    case "run_start": case "run_end": case "run_deferred": case "run_aborted": case "resume": case "wake": case "counters_reset": case "claim": case "permit_reserve": return runEventMessage(e);
-    case "merged": case "merge_queued": case "merge_cancelled": case "merge_topped": case "merge_done": case "merge_failed": case "conflict_handback": case "operator_revert": case "main_check": case "main_culprit": case "main_red_hold": return mergeEventMessage(e);
-    case "review_start": case "review_verdict": case "review_rejected": case "review_failed": case "revision": return reviewEventMessage(e);
-    case "prompt_enqueued": case "prompt_cancelled": case "prompt_edited": case "prompt_topped": case "prompt_taken": case "question_posted": case "entry_refused": case "issue_filed": return inboxEventMessage(e);
-    case "budget_warning": case "budget_paused": case "budget_fallback": case "budget_resumed": case "budget_handback": case "fallback_switched": case "opencode_free_model_billed": return budgetEventMessage(e);
-    case "team_paused": case "team_resumed": case "role_paused": case "role_resumed": case "role_streak_paused": case "role_cap_warning": case "role_cap_paused": case "role_cap_resumed": case "maintenance_quota_hold": case "maintenance_quota_resumed": case "bootstrap_complete": return holdEventMessage(e);
-    case "disk_low": case "disk_ok": case "disk_reclaim": case "quiet_hours_started": case "quiet_hours_ended": case "rate_limit_hold": case "rate_limit_resumed": case "subscription_window_limited": case "subscription_window_reset": case "model_check_passed": return resourceEventMessage(e);
-    case "max_concurrent_changed": case "retention_changed": case "config_changed": case "model_changed": case "backend_binary": case "state_migrated": case "orchestrator_start": case "orchestrator_stop": return configEventMessage(e);
-    case "image_blind": case "image_reroute": case "build_stale": case "restart_pending": case "restart": case "restart_refused": case "restart_blocked": case "restart_forced": case "supervisor_exit": return imageRestartEventMessage(e);
-    case "build_check": case "dep_install": case "slot_wait": case "provider_wait": case "check_wait": return checkWaitEventMessage(e);
-    case "warning": return warningEventMessage(e);
-    default:
-      // An unrecognized type is normally a newer build's string and renders as-is; a torn or
-      // hand-edited event object with no type at all must read the "?" stand-in, never
-      // String(undefined)'s literal "undefined" (parseEventLine admits any JSON object).
-      return textOr(e.type);
-  }
+  // The table is the dispatch; a known type routes to its family's line builder. An
+  // unrecognized type is normally a newer build's string and renders as-is; a torn or
+  // hand-edited event object with no type at all must read the "?" stand-in, never
+  // String(undefined)'s literal "undefined" (parseEventLine admits any JSON object), so an
+  // own-property guard sends anything the table does not know to the fallback.
+  const family = Object.hasOwn(EVENT_MESSAGE_FAMILY, e.type)
+    ? EVENT_MESSAGE_FAMILY[e.type]
+    : undefined;
+  return family !== undefined ? family(e) : textOr(e.type);
 }
