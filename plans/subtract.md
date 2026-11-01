@@ -277,6 +277,8 @@ replaces the mechanism, not that it was wrong.
   controls keep (2026-10-31). The model-tier, over-cap model, fallback
   chain and `image input` rows stay with the routing the user kept (2026-10-28).
 - One check runs per change, once, after landing: `build_check` events per merged commit fall to
-  1 (they are ≥2 today, and up to a dozen in a reject cycle).
+  1 (they are ≥2 today, and up to a dozen in a reject cycle). *Amended 2026-11-01 (user):* that
+  one check is the gate command, and the full check runs at most hourly on main's latest tip, not
+  per commit ([main-check-cadence.md](main-check-cadence.md), PLANS.md "Hourly full check").
 - The config schema loses its capacity keys and the subscription-window reserves (the tier map,
   the fallback keys and the daily cap stay); the alert tests shrink with the builders.

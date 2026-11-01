@@ -6,6 +6,84 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
+### Hourly full check, part 1/3: The main watch checks each new main commit with the gate command and runs the full check on main's latest tip at most once an hour, in a mirror of its own (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Subtract part 3b/7 landed, since that part deletes the pre-merge build check whose per-commit role this part moves onto main; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/paths.ts src/config/config-schema.ts src/config/config-validation.ts test/test-runner.ts scripts/lint-changed.mjs docs/how-it-works.md docs/config.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/test-runner-affected.test.ts test/config-validation-check.test.ts)
+
+**Goal.** Main gets two checks instead of one full check per commit (user, 2026-11-01: "relax the once per main commit (for non-gate tests) and make it more like once per hour on latest main"). Every new main head gets the gate command (`check.gateCommand`, here `npm run test:gate`) over the commits since the last head the watch checked. That is the per-commit check that gates each commit once Subtract part 3b/7 has removed the pre-merge one. The full check (`check.command`) runs on main's latest tip at most once per `check.fullIntervalMinutes` (default 60), and only when main has a code commit its newest full verdict does not cover. It runs in a mirror of its own, so no per-commit check waits behind it. This supersedes Subtract part 3b/7's "exactly one full check per merged commit" once both have landed.
+
+**Approach.**
+- Split `createMainWatch`'s single `watchOnce` (src/baseline/main-watch.ts) into a per-head check and a due full check, each with its own in-flight promise. `poll` starts each independently, and `idle()` waits for both. The diff rules (`watchRules`) stay on the per-head path, unchanged.
+- The per-head check runs the gate command in `_gate-main` with `TUMWATER_CHECK_BASE=<previous checked head>` in its environment (the tip's parent for the first head after a start).
+  - It logs `build_check` with a new scope `commit` and a `main_check` carrying that scope.
+  - A green writes nothing to the full-verdict cache: `redeployTarget` reads that cache, and only full greens may make a commit deployable.
+  - A red is handled like today's full red: confirmed by re-running only its failing tests (`rerunTests`), recorded red on that tip, its culprit named and ci's heal queued.
+- The full check runs `check.command` through `checkMainBaseline` in a new mirror worktree, `_main-full` (a `fullMainWorktreePath` beside `gateMainWorktreePath` in src/paths.ts), at the same check-permit tier the watch uses today.
+  - It is due when the newest observed full verdict's `checkedAt` plus the interval is in the past and main has a first-parent code commit above that verdict's SHA. A doc-only range still inherits green with no run.
+  - `checkedAt` is a new field on `MainBaseline`, persisted in baseline-verdicts.json; an entry without it reads as due now, so a restart within the hour starts no extra run.
+- Add `check.fullIntervalMinutes` (an integer ≥ 0, default 60) to `CheckConfig`, `CHECK_KEYS`, config-validation, docs/config.md and tumwater.example.json. `0`, or no gate command, keeps today's full run per head and no per-head gate check.
+- test/test-runner.ts's `--affected` takes its diff base from `TUMWATER_CHECK_BASE` when it is set, instead of the merge-base with `main`, which is empty on main's own tip. So does scripts/lint-changed.mjs, through `gateLintTargets`. A project's gate command that ignores the variable runs its ordinary selection.
+- docs/how-it-works.md's main watch bullet describes the two checks and their cadence. In docs/invariants.md, INV-CZ2's "at most once per main commit" becomes "at most once per `fullIntervalMinutes`". Add INV-DA1 (every new head gets the gate command over the commits since the last checked head, and its green never makes a commit deployable) and INV-DA2 (the full check runs at most once per interval, on the latest tip, in its own mirror, and never while no code commit is uncovered).
+
+**Files touched.** src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/paths.ts src/config/config-schema.ts src/config/config-validation.ts test/test-runner.ts scripts/lint-changed.mjs docs/how-it-works.md docs/config.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/test-runner-affected.test.ts test/config-validation-check.test.ts
+
+**Acceptance criteria.**
+- With a gate command and the default interval, five main commits landing within an hour produce at most five `commit`-scope checks and at most one `baseline`-scope full run. A sixth commit landing past the hour starts the next full run on the latest tip only.
+- A per-head check started while a full run is in flight runs at once in `_gate-main`; it does not wait for the `_main-full` run.
+- A commit whose only verdict is a per-head green is never `redeployTarget`'s answer.
+- A full verdict persisted 20 minutes before a restart starts no full run in the first 40 minutes after it.
+- `check.fullIntervalMinutes: 0` restores one full run per head. A config without a gate command behaves exactly as today.
+- `TUMWATER_CHECK_BASE=<sha> node dist/test/test-runner.js --affected --budget=30` on main's tip selects the tests the `<sha>..HEAD` diff reaches, not none.
+- `npm run test:gate` passes.
+
+**Tests.** test/main-watch.test.ts: the burst and past-the-hour cases with a fake clock, a per-head check that does not wait behind a slow full check, a per-head green that leaves the full-verdict cache empty, a restart with a persisted `checkedAt`, and `fullIntervalMinutes: 0`. test/test-runner-affected.test.ts: the env base selects the range's tests. test/config-validation-check.test.ts: the new key's type and bounds. Run those files and the gate.
+
+### Hourly full check, part 2/3: Main's failures are found and cleared by re-running only the failing tests — the watch bisects a red's opener, re-runs only the open failures on each new head, and starts the next full run at once when they clear (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 1/3 landed; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-red-heal.test.ts)
+
+**Goal.** With the full check hourly, one red verdict covers up to an hour of commits. Narrowing it and closing it must not cost more full runs (user, 2026-11-01: "when fixing failures, re-run only the failed tests"). A confirmed red's opener is found by bisection that re-runs only the failing tests, so `main_culprit` and ci's heal prompt name one commit. While the red is open, each new head re-runs only the open failures, never the full check. When none fail any more, the red closes as cleared and the next full run is due at once, so a healed main becomes deployable without waiting out the hour.
+
+**Approach.**
+- Bisect in `_gate-main` with `rerunTests` after a red is confirmed at tip T, in main-watch.ts beside `reportCulprit`.
+  - The range is the first-parent code commits above the newest observed full green G (`newestObservedBaseline` walked down from T).
+  - The opener C is the first commit at which any of the confirmed failing tests fails. Before naming C, confirm once that those tests fail at C and pass at C's parent.
+  - A test still unaccounted for at C (it passes there) gets its own bisect over C..T, up to `FAILING_TESTS_MAX` tests.
+  - With no G on the walk, a one-commit range, or a confirmation that does not reproduce, name T as today.
+- `reportCulprit` names C: `main_culprit.commit`, its merging runner, `redSpellOpeners` and the `onCulprit` hand-off (`commit` is C, `tip` is T).
+- While a red spell is open, the per-head check also re-runs the spell's open failing tests on each new head (one `rerun`-scope check). Then:
+  - tests that pass leave the open set;
+  - a new failure from the head's own gate command joins it, with its own bisect over the head's range;
+  - an empty set logs `main_check` `{ status: "passed", cleared: true }`, which writes no full green, calls `clearHealKeyOnGreen`, closes the spell and marks the full check due now. The next full run is brought forward once per cleared red, not repeatedly.
+- `knownMainFailures` and the `<main-known-red>` note read the open set, so a role's prompt stops naming a test that ci has already fixed.
+- docs/how-it-works.md describes bisection and clearing. docs/invariants.md adds INV-DA3 (a red's culprit is the first commit at which its failing tests fail, found by re-running only them) and INV-DA4 (an open red is narrowed and cleared by re-running only its failing tests, and a clearing brings the next full run forward once).
+
+**Files touched.** src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-red-heal.test.ts
+
+**Acceptance criteria.**
+- An hourly red at T covering eight code commits, whose failing test breaks at the third, logs one `main_culprit` naming the third commit. It takes at most five `rerun`-scope checks and no second `baseline`-scope run.
+- A red whose bisect confirmation does not reproduce names T, as today.
+- While red, a new head runs its `commit` check and one `rerun` of the open failures, and no full run. When they all pass, `main_check` is `cleared` and a full run starts though the interval has not passed. `redeployTarget` does not target the cleared head until that full run is green.
+- The heal prompt and the `<main-red>` note name C and the re-run command for its failing tests.
+- `npm run test:gate` passes.
+
+**Tests.** test/main-watch.test.ts: the eight-commit bisect against a fake check whose failure starts at one commit, the non-reproducing bisect, the per-head narrowing and clearing with the full run brought forward, and a cleared head that is not deployable. test/main-red-heal.test.ts: the heal prompt names the bisected opener. Run those files and the gate.
+
+### Hourly full check, part 3/3: Status, doctor and the dashboard say how old main's full verdict is and when the next is due (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 2/3 landed; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/status-render.test.ts test/gui-client.test.ts)
+
+**Goal.** Main's badge stops implying the newest commit was fully checked. With the full check hourly, `mainCheckForPoll`'s status reads up to an hour behind main. Every surface that shows it says which SHA it covers, how long ago it ran, and when the next run is due (or "due now" after a cleared red). The per-commit check's newest verdict is shown beside it.
+
+**Approach.**
+- `MainCheckStatus` (src/status/status-polls.ts) gains the full verdict's `checkedAt`, `nextDueAt` (derived from part 1/3's interval and part 2/3's brought-forward due mark), and the newest `commit`-scope verdict's SHA and status.
+- `mainCheckBadge` (src/ui/badges.ts) renders "full check green at abc1234, 23 min ago · next in 37 min" and a cleared red as "cleared at def5678 · full check due now". The TUI line (status-render.ts) and the dashboard card (gui-client-team.ts) use the same payload fields (status-payload.ts). No new alert or doctor row: the existing main-check row carries the text.
+- docs/how-it-works.md names what the badge shows.
+
+**Files touched.** src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/status-render.test.ts test/gui-client.test.ts
+
+**Acceptance criteria.**
+- With a full green 23 min old and a 60 min interval, `tumwater status`, the TUI and the dashboard show the covered SHA, "23 min ago" and "next in 37 min".
+- After a cleared red, they show the clearing head and "full check due now" until the brought-forward run settles.
+- No new alert builder or doctor row exists.
+- `npm run test:gate` passes.
+
+**Tests.** test/status-polls.test.ts: `nextDueAt` from the interval and from a cleared red. test/status-render.test.ts and test/gui-client.test.ts: the badge text for green, red and cleared. Run those files and the gate.
+
 ### Subtract, part 6/6: The sweep — the rows, keys and docs the five parts left behind (planned 2026-10-26 by the operator; design in plans/subtract.md "The six strokes" and "How we will know it worked"; requires Subtract part 1e/6, Subtract part 5v/6 and Subtract part 5x/6 landed, the ends of every remaining Subtract chain — a clause the operator added 2026-10-28 after feature refused this part for running ahead of them, re-pointed from part 5q/6 to part 5d/6 the same day when the user withdrew the budget-fallback removal and the tier map, and re-pointed again 2026-10-31 by the director when Subtract part 4/6 was withdrawn (the Settings concurrency controls keep `roles.<role>.instances` and the pool); touches docs/config.md docs/cli.md docs/glossary.md docs/how-it-works.md docs/invariants.md README.md DEVELOPMENT.md tumwater.example.json src/doctor/doctor-check-names.ts test/doctor-checks.test.ts test/event-format.test.ts test/retention.test.ts test/config.test.ts)
 
 **Goal.** The deletion reads as one system. Every name parts 1/6–5/6 removed is gone from the live docs, the example config, the doctor's row list, the alerts and the tests that assert them; the archive keeps the record.
@@ -184,7 +262,7 @@ _None yet._
 
 **Approach.**
 - Sweep the queue vocabulary out of docs/how-it-works.md, docs/invariants.md and docs/glossary.md: merge queue, queue stage, verify/approval stage, batch/bisect (already gone), retry/requeue, queue depth and queue cancel/top.
-- In docs/invariants.md, drop or re-scope every binding to a deleted module (`merge-queue`, `merge-verify`, `merge-batch`, `merge-slot` stages, `merge-requeue`) and state the surviving guarantees: one merge writer under one lock, linear history, a deleted pin on merge and a post-landing check per commit. Keep the conflict-hand-back and review-gate bindings that still have code.
+- In docs/invariants.md, drop or re-scope every binding to a deleted module (`merge-queue`, `merge-verify`, `merge-batch`, `merge-slot` stages, `merge-requeue`) and state the surviving guarantees: one merge writer under one lock, linear history, a deleted pin on merge and the main watch's post-landing checks as docs/how-it-works.md states their cadence at the time (amended 2026-11-01 by the operator: the Hourly full check series moves main to the gate command per commit plus the full check at most hourly, so this part must not restate "a full check per commit"). Keep the conflict-hand-back and review-gate bindings that still have code.
 - README's status line stays as is; remove any queue wording elsewhere in README.
 - Re-check docs/invariants.md's file-to-test bindings: every remaining binding names a file and a test that still exist; the invariants-doc test enforces it.
 
