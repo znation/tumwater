@@ -92,28 +92,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 _None yet._
 
-### Subtract, part 3a/7: The scheduler stops interlocking a role on its queued merge (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6 into seven independently mergeable parts; design in plans/subtract.md "The six strokes", stroke 3; requires Every commit is verified on main part 3f/3 landed; touches src/orchestrator/orchestrator-poll.ts src/scheduling/skip.ts src/scheduling/scope.ts src/scheduling/claims.ts src/gates/gate-polls.ts src/status/status-polls.ts docs/how-it-works.md test/claims.test.ts test/orchestrator-scheduling.test.ts test/gate-polls.test.ts test/status-polls.test.ts)
-
-**Goal.** A role whose change is queued or pinned is admitted for its next run, so landing never holds authoring. Today `queuedRoles` (from `queuedMergeRoles`) blocks that role in scheduling/skip.ts, scheduling/scope.ts, claims.ts and gate-polls.ts, and `mergeStartHeld`'s merge arm in orchestrator-poll.ts holds role starts while a merge is in flight. Remove that interlock; run-stage's `heldOnBranch` one-pin cap in src/run/run-stage.ts stays, so a role still cannot write a second pin while its first waits.
-
-**Approach.**
-- Delete the `queuedRoles` field and every `hasQueuedMerge`/`queuedRoles.has(...)` branch from `SchedulingScope` (scheduling/scope.ts) and scheduling/skip.ts; the merge queue remains a merge-side fact only.
-- In claims.ts, stop excluding `queuedMergeRoles` from instance-claim candidates; keep every other admission rule.
-- In gate-polls.ts and status-polls.ts, drop the queued-merge roles from their in-flight inputs while keeping their run/in-flight counts.
-- In orchestrator-poll.ts, remove the merge half of `mergeStartHeld` (the `reviewHeld`/role arm), leaving the restart/disk `runStartHeld` gate and the post-review hold.
-- docs/how-it-works.md's Scheduling section says a role authors while its previous change waits, and the queue is not a scheduling gate.
-
-**Files touched.** src/orchestrator/orchestrator-poll.ts src/scheduling/skip.ts src/scheduling/scope.ts src/scheduling/claims.ts src/gates/gate-polls.ts src/status/status-polls.ts docs/how-it-works.md test/claims.test.ts test/orchestrator-scheduling.test.ts test/gate-polls.test.ts test/status-polls.test.ts
-
-**Acceptance criteria.**
-- A role with a queued or pinned change is a candidate in the scheduler and claims path on the next poll; `grep -rn 'hasQueuedMerge\|queuedRoles' src/orchestrator src/scheduling src/gates src/status` finds no scheduling/claim use.
-- `mergeStartHeld` no longer takes a role's merge into account; the run start gate and the reviewer hold still do.
-- A second commit by a role with a waiting pin still stays on the branch (`heldOnBranch` unchanged).
-- The merge pipeline keeps draining queued changes; no merge behavior changes.
-- `npm run test:gate` passes.
-
-**Tests.** Update test/orchestrator-scheduling.test.ts (a queued role is admitted), test/claims.test.ts (a queued-merge role remains a claim candidate), test/gate-polls.test.ts and test/status-polls.test.ts (the queued-role input is gone; the surviving counts are unchanged). Run those files and the gate.
-
 ### Subtract, part 3b/7: The pre-merge verify stops running the project's build check (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3a/7 landed; touches src/review/review.ts src/review/review-precheck.ts src/merge/merge-core.ts src/merge/merge-batch.ts src/merge/merge-verify.ts docs/how-it-works.md docs/invariants.md test/review.test.ts test/review-precheck.test.ts test/review-precheck-watch.test.ts test/merge-pipeline-watch.test.ts)
 
 **Goal.** A merge's verify judges the diff's deterministic rules and nothing else: it runs no build check, so main has exactly one full check per merged commit, the main watch's post-landing one. Remove `gateBuildPrecheck` and the `verifiedHead`/`knownMainFailures` hand-off it carries; keep `diffRuleReasons`'s three hard rejects (brief block, PRINCIPLES edit, secret leak) and the md-only exempt path.
@@ -288,5 +266,3 @@ Then `historyPaneCache` becomes: `selectPaneRows(...)` into `{ covered, afterGre
 **Tests.** No new test module: the extraction is behavior-preserving and test/tui-keys.test.ts already pins the pane's cache output through its key arms (window labels, result/model/search filters, summary toggles and the per-filter empty wording). Run test/tui-keys.test.ts whole after the build, then the project's gate, and confirm green. If a case fails, a helper changed the empty-body precedence or dropped a header label; restore the moved block rather than editing the test.
 
 ## Done
-
-_None yet._

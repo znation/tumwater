@@ -5,6 +5,31 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Subtract, part 3a/7: The scheduler stops interlocking a role on its queued merge (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6 into seven independently mergeable parts; design in plans/subtract.md "The six strokes", stroke 3; requires Every commit is verified on main part 3f/3 landed; touches src/orchestrator/orchestrator-poll.ts src/scheduling/skip.ts src/scheduling/scope.ts src/scheduling/claims.ts src/gates/gate-polls.ts src/status/status-polls.ts docs/how-it-works.md test/claims.test.ts test/orchestrator-scheduling.test.ts test/gate-polls.test.ts test/status-polls.test.ts) — done 2026-10-31 by the feature role
+
+**Goal.** A role whose change is queued or pinned is admitted for its next run, so landing never holds authoring. Today `queuedRoles` (from `queuedMergeRoles`) blocks that role in scheduling/skip.ts, scheduling/scope.ts, claims.ts and gate-polls.ts, and `mergeStartHeld`'s merge arm in orchestrator-poll.ts holds role starts while a merge is in flight. Remove that interlock; run-stage's `heldOnBranch` one-pin cap in src/run/run-stage.ts stays, so a role still cannot write a second pin while its first waits.
+
+**Approach.**
+- Delete the `queuedRoles` field and every `hasQueuedMerge`/`queuedRoles.has(...)` branch from `SchedulingScope` (scheduling/scope.ts) and scheduling/skip.ts; the merge queue remains a merge-side fact only.
+- In claims.ts, stop excluding `queuedMergeRoles` from instance-claim candidates; keep every other admission rule.
+- In gate-polls.ts and status-polls.ts, drop the queued-merge roles from their in-flight inputs while keeping their run/in-flight counts.
+- In orchestrator-poll.ts, remove the merge half of `mergeStartHeld` (the `reviewHeld`/role arm), leaving the restart/disk `runStartHeld` gate and the post-review hold.
+- docs/how-it-works.md's Scheduling section says a role authors while its previous change waits, and the queue is not a scheduling gate.
+
+**Files touched.** src/orchestrator/orchestrator-poll.ts src/scheduling/skip.ts src/scheduling/scope.ts src/scheduling/claims.ts src/gates/gate-polls.ts src/status/status-polls.ts docs/how-it-works.md test/claims.test.ts test/orchestrator-scheduling.test.ts test/gate-polls.test.ts test/status-polls.test.ts
+
+**Acceptance criteria.**
+- A role with a queued or pinned change is a candidate in the scheduler and claims path on the next poll; `grep -rn 'hasQueuedMerge\|queuedRoles' src/orchestrator src/scheduling src/gates src/status` finds no scheduling/claim use.
+- `mergeStartHeld` no longer takes a role's merge into account; the run start gate and the reviewer hold still do.
+- A second commit by a role with a waiting pin still stays on the branch (`heldOnBranch` unchanged).
+- The merge pipeline keeps draining queued changes; no merge behavior changes.
+- `npm run test:gate` passes.
+
+**Tests.** Update test/orchestrator-scheduling.test.ts (a queued role is admitted), test/claims.test.ts (a queued-merge role remains a claim candidate), test/gate-polls.test.ts and test/status-polls.test.ts (the queued-role input is gone; the surviving counts are unchanged). Run those files and the gate.
+
+
+_None yet._
+
 ### `eventMessage`'s complexity-85 flat dispatch switch in src/events/event-format.ts becomes an `EVENT_MESSAGE_FAMILY` lookup table typed by the event union, so every event type's family is data the compiler checks instead of one hand-listed `case` per type (planned 2026-10-30 by the plan role; continues the landed data-table conversion family — the 2026-10-29 `describeStateChange` plan turned its 36-case switch into `STATE_CHANGE_FAMILY`, typed `Record<HarnessEvent["type"], …>` and read with a fallback (src/failure/failure-state-change.ts), and this applies the identical pattern to the event dispatcher whose per-family builders the landed `eventMessage` split already extracted; independent in file of every `## Planned` entry — `grep -n 'event-format' PLANS.md` names only the blocked `Subtract part 6/6` heading's touch list (`test/event-format.test.ts`, never the source module), `grep -n 'eventMessage\|EVENT_MESSAGE_FAMILY' PLANS.md` prints nothing before this entry, and the blocked `Every commit is verified on main` parts 4j/3 and 4k/3 edit `src/events/event-labels.ts` and `src/events/event-notify.ts` rather than this module, so no open heading or touches list names `src/events/event-format.ts`; the archived `eventMessage` headings in PLANS-DONE.md are the per-family builder split, never a lookup-table conversion (`grep -c 'EVENT_MESSAGE_FAMILY' PLANS-DONE.md` prints 0); docs/invariants.md binds this file only through `eventFeedItem`, `eventMatchesGrep` and specific event lines, naming neither `eventMessage` nor its dispatch body, so a behavior-preserving conversion leaves every binding intact; touches src/events/event-format.ts) — done 2026-10-31 by the feature role
 
 **Goal.** `eventMessage` is the one event-to-line dispatcher behind the CLI, TUI and GUI. Its body is a single switch with one `case` per event type (about eighty labels) grouped into eleven family builders (`runEventMessage`, `mergeEventMessage`, `reviewEventMessage`, `inboxEventMessage`, `budgetEventMessage`, `holdEventMessage`, `resourceEventMessage`, `configEventMessage`, `imageRestartEventMessage`, `checkWaitEventMessage`, `warningEventMessage`) and a `default` that renders an unknown type. The label list duplicates the `HarnessEvent["type"]` union by hand, the eslint one-shot reports the function at complexity 85, and a newly added event type is routed only if someone remembers to add a `case` — the union and the dispatch can drift. Make the type-to-family routing data in one table typed by the union, so adding a type without routing it is a compile error and `eventMessage` itself is a lookup plus the existing fallback.
