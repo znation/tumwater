@@ -4,7 +4,7 @@
  * section. Each comes as an exiting writer (the CLI) and a non-exiting `try…` core that refuses as
  * data (the TUI and dashboard); entry lookup and the section's file target are
  * backlog-write.ts's. */
-import { backlogTarget, findEntry, locateDashboardEntry, readEntryLines } from "./backlog-write.js";
+import { backlogTarget, findEntry, readEntryLines, withLocatedEntry } from "./backlog-write.js";
 import type { ActionableEntryRange } from "./backlog-index-data.js";
 import { withoutNeedsReviewNotes, withoutRefusalNotes } from "./backlog-eligibility.js";
 import { writeTextAtomic } from "../files/files.js";
@@ -58,10 +58,7 @@ export function tryReleaseEntry(
   expectedTitle: string,
 ): ReleaseEntryOutcome {
   const { fileName, sectionTitle } = backlogTarget(kind);
-  return withPrimaryWorktreeLock(root, () => {
-    const located = locateDashboardEntry(root, fileName, sectionTitle, n, expectedTitle);
-    if (located.status !== "ok") return located;
-    const { file, md, entry } = located;
+  return withLocatedEntry(root, fileName, sectionTitle, n, expectedTitle, ({ file, md, entry }) => {
     const lines = md.split("\n");
     const lifted = liftRefusal(lines, entry);
     if (lifted === null) return { status: "not_refused", title: entry.title };
@@ -140,10 +137,7 @@ export function tryMoveEntryToTop(
   expectedTitle: string,
 ): MoveEntryOutcome {
   const { fileName, sectionTitle } = backlogTarget(kind);
-  return withPrimaryWorktreeLock(root, () => {
-    const located = locateDashboardEntry(root, fileName, sectionTitle, n, expectedTitle);
-    if (located.status !== "ok") return located;
-    const { file, md, entry } = located;
+  return withLocatedEntry(root, fileName, sectionTitle, n, expectedTitle, ({ file, md, entry }) => {
     if (n === 1) return { status: "already_first", title: entry.title };
     const lines = md.split("\n");
     spliceEntryToTop(lines, sectionTitle, entry);

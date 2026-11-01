@@ -198,6 +198,41 @@ export function locateDashboardEntry(
   return { status: "ok", file, md, entry };
 }
 
+/** The `ok` fields of a successful locateDashboardEntry, what withLocatedEntry hands its
+ * splice the moment the position is found and its title matches. */
+export interface LocatedEntry {
+  file: string;
+  md: string;
+  entry: ActionableEntryRange;
+}
+
+/** The `gone`/`moved` refusals a title-checked lookup can answer, what every withLocatedEntry
+ * outcome is a union of. */
+export type LocatedRefusal = { status: "gone" } | { status: "moved"; title: string };
+
+/** The shared lock-and-locate prologue of the four non-exiting dashboard writers (tryCancelEntry
+ * and tryEditEntry here; tryReleaseEntry and tryMoveEntryToTop in backlog-release.ts): take the
+ * cross-process lock, locate the `n`th entry by position and expected title, and refuse as data —
+ * returning `located`'s `gone`/`moved` verbatim when the lookup fails — without writing. On a
+ * match it calls `splice` with the located file, markdown and entry and returns whatever the
+ * splice returns, so each writer keeps its own `ok`-branch outcome; the return is the union of the
+ * two refusals and `splice`'s own return, which is exactly each writer's outcome type. The
+ * `splice` runs inside the lock, the same window the inline prologue held. */
+export function withLocatedEntry<S>(
+  root: string,
+  fileName: string,
+  sectionTitle: string,
+  n: number,
+  expectedTitle: string,
+  splice: (located: LocatedEntry) => S,
+): LocatedRefusal | S {
+  return withPrimaryWorktreeLock(root, () => {
+    const located = locateDashboardEntry(root, fileName, sectionTitle, n, expectedTitle);
+    if (located.status !== "ok") return located;
+    return splice({ file: located.file, md: located.md, entry: located.entry });
+  });
+}
+
 /** The section-remove entry point, the appendEntry analogue: the same cross-process lock, so a
  * cancel and a merge's working-tree fast-forward cannot each clobber the other's
  * read-modify-write. */
@@ -257,10 +292,7 @@ export function tryCancelEntry(
   expectedTitle: string,
 ): CancelEntryOutcome {
   const { fileName, sectionTitle } = backlogTarget(kind);
-  return withPrimaryWorktreeLock(root, () => {
-    const located = locateDashboardEntry(root, fileName, sectionTitle, n, expectedTitle);
-    if (located.status !== "ok") return located;
-    const { file, md, entry } = located;
+  return withLocatedEntry(root, fileName, sectionTitle, n, expectedTitle, ({ file, md, entry }) => {
     spliceOutEntry(file, md.split("\n"), entry);
     return { status: "cancelled", file: fileName, title: entry.title };
   });
@@ -372,10 +404,7 @@ export function tryEditEntry(
   const { fileName, sectionTitle } = backlogTarget(kind);
   const title = stripEntryStamp(collapseWhitespace(rawTitle));
   const body = rawBody.replace(/\r\n?/g, "\n").trim();
-  return withPrimaryWorktreeLock(root, () => {
-    const located = locateDashboardEntry(root, fileName, sectionTitle, n, expectedTitle);
-    if (located.status !== "ok") return located;
-    const { file, md, entry } = located;
+  return withLocatedEntry(root, fileName, sectionTitle, n, expectedTitle, ({ file, md, entry }) => {
     const wrote = spliceInEditedEntry(file, md.split("\n"), entry, title, body);
     return { status: wrote ? "edited" : "unchanged", file: fileName, title };
   });
