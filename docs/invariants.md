@@ -3361,9 +3361,9 @@ dropping or moving its blame.
 `src/baseline/main-guardrails.ts` (`redBlameClause`), `src/status/status-polls.ts`
 (`scanMainCheck`'s `spellOpener`, `mainCheckForPoll`'s red detail).
 
-**Pinned by.** `test/main-watch.test.ts` — "a doc-exempt tip that lands after a red keeps the
-opener as the named culprit" and "a settled green closes the red spell, so the next red names its
-own opener"; `test/main-guardrails.test.ts` — "redMainWarning: a culprit that names the spell's
+**Pinned by.** `test/main-watch-spells.test.ts` — "a doc-exempt tip that lands after a red
+keeps the opener as the named culprit" and "a settled green closes the red spell, so the next red
+names its own opener"; `test/main-guardrails.test.ts` — "redMainWarning: a culprit that names the spell's
 opener blames the opener, not the newest tip"; `test/status-polls.test.ts` — "a main_culprit
 naming the open spell's opener carries red detail even when it is not the newest tip" and "a
 main_culprit whose spell a later passing check closed carries no red detail".
@@ -3700,9 +3700,9 @@ on without a re-run.
 **Binds.** `src/review/known-flakes.ts` (`quarantineTests`, `onlyQuarantined`).
 
 **Pinned by.** `test/known-flakes.test.ts` — "quarantine: a new test is added once, a repeat
-counts, and only-quarantined needs every test listed"; `test/main-watch.test.ts` — "a red whose
-confirming re-run passes quarantines the failing tests and files one BUGS.md entry on main" and "a
-red naming only quarantined tests is recorded passed and starts no culprit".
+counts, and only-quarantined needs every test listed"; `test/main-watch-failures.test.ts` — "a
+red whose confirming re-run passes quarantines the failing tests and files one BUGS.md entry on
+main" and "a red naming only quarantined tests is recorded passed and starts no culprit".
 
 ### INV-BI2: an empty list, or one at `FAILING_TESTS_MAX`, is neither quarantined nor counted as only quarantined
 
@@ -3732,9 +3732,9 @@ is no longer under `## Open`. An unfiled test, or any test while BUGS.md is miss
 **Binds.** `src/review/known-flakes.ts` (`markQuarantineFiled`, `releaseQuarantine`).
 
 **Pinned by.** `test/known-flakes.test.ts` — "quarantine: a filed test leaves the list once its
-entry is not under ## Open"; `test/main-watch.test.ts` — "moving a quarantined test's bug
-out of ## Open releases it"; `test/known-flakes-quarantine.test.ts` — "quarantine: a missing BUGS.md
-releases nothing, even a filed test".
+entry is not under ## Open"; `test/main-watch-failures.test.ts` — "moving a quarantined
+test's bug out of ## Open releases it"; `test/known-flakes-quarantine.test.ts` — "quarantine: a
+missing BUGS.md releases nothing, even a filed test".
 
 ### INV-BI5: a failed quarantine write warns and never throws out of the check that passed
 
@@ -4408,7 +4408,7 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 **Binds.** `src/backlog/backlog-file-bugs.ts` (`fileQuarantineBugsOnMain`).
 
-**Pinned by.** `test/main-watch.test.ts` — "a filing whose quarantine.json write failed is not filed again on the next poll".
+**Pinned by.** `test/main-watch-failures.test.ts` — "a filing whose quarantine.json write failed is not filed again on the next poll".
 
 ## OpenCode catalog seed: startup reports its failures
 
@@ -4717,4 +4717,4 @@ instead of skipping its re-review".
 
 **Binds.** `src/baseline/main-watch.ts` (`createMainWatch`), `src/baseline/main-baseline.ts` (`settleRedByRerun`), `src/build/build-check-rerun.ts` (`rerunTests`, `rerunCommandLine`), `src/build/build-check-detect.ts` (`rerunCommandOf`), `src/baseline/main-red.ts` (`queueCulpritHeal`, `mainRedHealNote`).
 
-**Pinned by.** `test/main-watch.test.ts` — "a red tip is confirmed by re-running only its failing tests: the full check runs once", "a red whose failing tests all pass when re-run alone is recorded passed and quarantined", "a re-run that reaches no verdict leaves the first red standing, with no second full run" and "a culprit's heal prompt names the command that re-runs only its failing tests".
+**Pinned by.** `test/main-watch-failures.test.ts` — "a red tip is confirmed by re-running only its failing tests: the full check runs once", "a red whose failing tests all pass when re-run alone is recorded passed and quarantined" and "a re-run that reaches no verdict leaves the first red standing, with no second full run"; `test/main-watch.test.ts` — "a culprit's heal prompt names the command that re-runs only its failing tests".

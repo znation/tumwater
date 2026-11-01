@@ -73,7 +73,7 @@ test("gate exempts a doc-only diff without running pi", async () => {
  * diff is exempted while pi never ran. Since part 3m/3 the gate's scope is the three findings a
  * later commit cannot repair, so a finding the watch reports — a conflict marker, a false fix
  * claim or a broken backlog structure — no longer refuses an md-only diff pre-merge; the main
- * watch reports it on main's tip (test/main-watch.test.ts). */
+ * watch reports it on main's tip (test/main-watch-rules.test.ts). */
 async function assertExemptWithoutReview(
   file: string,
   content: string,
@@ -96,8 +96,8 @@ test("gate exempts an md-only diff that still holds conflict markers, with no pi
   // A change handed back to its author with the markers left in place (PLANS.md "Robust
   // conflict landing, part 2/2") reaches the gate if the author's stage fix-up turn did not
   // clear them. A conflict marker is repairable by a later commit, so since part 3m/3 the gate
-  // lets it land and the main watch reports it on main's tip (test/main-watch.test.ts); the gate
-  // still exempts the md-only diff without running the reviewer.
+  // lets it land and the main watch reports it on main's tip (test/main-watch-rules.test.ts);
+  // the gate still exempts the md-only diff without running the reviewer.
   await assertExemptWithoutReview(
     "notes.md",
     "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nafter\n",
