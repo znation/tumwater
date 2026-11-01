@@ -4,7 +4,8 @@
  * verdict covering the change's base answers at once; a watch still behind that base keeps the
  * change with no strike, naming the commit it waits on; the retry after that wait decides from
  * the newest verdict, or runs main's check itself when the wait timed out. The attribution with
- * no watch (the full check in the merge lock) lives in review-precheck.test.ts. */
+ * no watch (the full check in the merge lock) lives in review-precheck.test.ts (a red main) and
+ * review-precheck-green.test.ts (a green main or none). */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
