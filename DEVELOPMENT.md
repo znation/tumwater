@@ -3,7 +3,7 @@
 ```bash
 npm install && npm run build && npm link   # build from source and put `tumwater` on PATH
 npm test                                   # lint + build + the unit suite (what the merge runs)
-npm run test:gate                          # build + lint + the nearest tests that fit 30 s
+npm run test:gate                          # build + lint + the nearest tests that fit 20 s
 npm run test:rerun -- 'merger.test#a name' # build + only the named tests (file#name filters)
 npm run lint                               # just the lint: no-floating-promises (see eslint.config.js)
 npm test merge                             # only test files whose name contains "merge"
@@ -52,8 +52,8 @@ host, so it checks only what is nearest the change:
 - the lint, over only the files the change touches (`scripts/lint-changed.mjs`). A change to the
   lint config, the dependencies or `tsconfig.json` lints the whole tree. It runs while the tests
   run (`--alongside`), and its report prints after theirs;
-- the test files nearest the change that fit a 30 s budget (`test-runner.js --affected
-  --budget=30`, selection in `test/affected-tests.ts`). It ranks the files the change can reach
+- the test files nearest the change that fit a 20 s budget (`test-runner.js --affected
+  --budget=20`, selection in `test/affected-tests.ts`). It ranks the files the change can reach
   by import distance (a changed test file first, then files that import a changed module or name
   a CLI command that loads it, and so on), cheapest first at each distance. It prices each file
   by the durations the repository's runs last recorded (`tumwater-test-durations.json` in the git
