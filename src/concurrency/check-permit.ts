@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import { defaultConfig } from "../config/config.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
+import { runOnAbort } from "../process/process.js";
 import { Semaphore } from "./semaphore.js";
 
 /** One process-wide bound on concurrent runs of the declared check (config.maxConcurrentChecks):
@@ -69,26 +70,60 @@ export interface PermitWaitHooks {
   waited?(waitedMs: number, parked: ParkedBehind): void;
 }
 
+/** A caller's way out of a wait for a permit: once `signal` has fired, a check that has to wait
+ * stops waiting and withCheckPermit returns `outcome()` without running it. Only the wait listens —
+ * a check granted a free permit runs even under a fired signal, and its own run decides what an
+ * abort means there (runScriptGroup stops a tree only on an abort that fires mid-run). */
+export interface PermitWaitAbort<T> {
+  signal: AbortSignal | undefined;
+  outcome: () => T;
+}
+
+/** Park for a permit at `tier` until it is granted (true) or `signal` fires first (false). A grant
+ * that arrives after the abort is handed straight back — a hop, never a leak — the way
+ * merge-pipeline.ts's acquireUnlessAborted gives back the team semaphore's. */
+async function acquireUnlessAborted(tier: number, signal: AbortSignal | undefined): Promise<boolean> {
+  const granted = checkPermits.acquire(tier);
+  if (!signal) {
+    await granted;
+    return true;
+  }
+  let detach = () => {};
+  const stopped = new Promise<void>((resolve) => (detach = runOnAbort(signal, resolve)));
+  await Promise.race([granted, stopped]);
+  detach();
+  // Decided on the signal, not on which promise won: a grant and an abort landing in the same
+  // tick still never spawn the aborted check.
+  if (!signal.aborted) return true;
+  void granted.then(() => checkPermits.release());
+  return false;
+}
+
 /** Run `run` under one process-wide check permit (see checkPermits), resizing the cap from the
  * live config first and releasing in a finally — a check that fails, times out, or throws still
  * gives its permit back. Reentrant (holdingPermit): called again from inside `run`, it runs the
  * inner work under the permit already held. `hooks` hear about a wait, if there is one; `label`
- * names this check to the waiters it holds up ("a check" when omitted). */
+ * names this check to the waiters it holds up ("a check" when omitted). `abort` ends a wait its
+ * signal fires during (or before) with `abort.outcome()`: a check whose caller was stopped while
+ * it queued — a merge aborted behind a full suite — never runs the suite for nothing, holding a
+ * permit other checks need. */
 export async function withCheckPermit<T>(
   config: CheckConfigSlice | undefined,
   tier: number,
   run: () => Promise<T>,
   hooks?: PermitWaitHooks,
   label?: string,
+  abort?: PermitWaitAbort<T>,
 ): Promise<T> {
   if (holdingPermit.getStore()) return run();
   checkPermits.setCapacity(checkCap(config));
   if (!checkPermits.tryAcquire()) {
+    if (abort?.signal?.aborted) return abort.outcome();
     const waitStarted = Date.now();
     // Snapshot at park time; not revised if holders change mid-wait.
     const parked = { heldBy: [...permitHolders.values()], limit: checkPermits.limit };
     hooks?.waiting();
-    await checkPermits.acquire(tier);
+    if (!(await acquireUnlessAborted(tier, abort?.signal))) return abort!.outcome();
     hooks?.granted();
     hooks?.waited?.(Date.now() - waitStarted, parked);
   }

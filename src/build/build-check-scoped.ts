@@ -117,6 +117,15 @@ async function runScopedCheckWithRetry(
       waited: (waitedMs, parked) => logCheckWaitEvent(root, role, scope, waitedMs, parked),
     },
     `${role} ${scope}`,
+    // A check whose caller was stopped (a user abort, a lapsed restart hand-off, a shutdown) while
+    // it waited for a permit settles the way a mid-run abort does, without spawning: otherwise
+    // the grant would run the whole suite for a merge that no longer exists, holding a permit
+    // other checks need. A check granted a free permit under a fired signal still runs (see
+    // PermitWaitAbort).
+    {
+      signal,
+      outcome: (): BuildCheckOutcome => ({ status: "skipped", script: checkScriptName(runCheck), skipReason: "aborted" }),
+    },
   );
   return { raw, durationMs };
 }
@@ -275,7 +284,9 @@ function warnScopedCheck(
  * `check.mergeCommand` when set, else `check.gateCommand`, else the full check — replaces it at the
  * merge and batch scopes, and those events then carry `full: false`. The red-main baseline, which
  * detects on its own, keeps running check.command. `permitWait` hears
- * about a wait for the check permit (the merge cell's "waiting for a check slot"). Never throws. */
+ * about a wait for the check permit (the merge cell's "waiting for a check slot"). `signal` firing
+ * mid-run stops the check's tree, and firing while the check waits for its permit ends the wait
+ * unspawned — both settle `skipped` with skipReason "aborted". Never throws. */
 export async function runScopedBuildCheck(
   root: string,
   role: string,

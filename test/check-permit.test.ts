@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { CHECK_TIER, checkPermitSnapshot, withCheckPermit } from "../src/concurrency/check-permit.js";
 import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
 import { readEvents } from "../src/events/event-read.js";
 import { buildCheckFixture } from "./fixtures/runner-fixtures.js";
-import { flushImmediate, sleep } from "./helpers/wait.js";
+import { flushImmediate, sleep, waitFor, within } from "./helpers/wait.js";
 
 // A held permit is module-global state, so every test must let its work finish (and any
 // rejected run hand its permit back) before the next one starts — a leaked permit would
@@ -130,6 +132,25 @@ test("a failing check still releases its permit", async () => {
   assert.equal(released, true);
 });
 
+test("a check under an already-fired abort signal never waits for a permit, but runs on a free one", async () => {
+  const cfg = { maxConcurrentChecks: 1 };
+  const abort = { signal: AbortSignal.abort(), outcome: () => "aborted" };
+  const calls: string[] = [];
+  const hooks = { waiting: () => calls.push("waiting"), granted: () => calls.push("granted") };
+  // A free permit: only the wait listens to the signal, so the check runs and reaches its own
+  // verdict (review-precheck.test.ts pins the gate's two attempts under a shutdown).
+  assert.equal(await withCheckPermit(cfg, CHECK_TIER.other, async () => "ran", hooks, undefined, abort), "ran");
+  // No free permit: it returns the abort outcome without parking at all.
+  let releaseHolder!: () => void;
+  const holder = withCheckPermit(cfg, CHECK_TIER.other, () => new Promise<void>((r) => (releaseHolder = r)));
+  await flushImmediate();
+  assert.equal(await withCheckPermit(cfg, CHECK_TIER.other, async () => "ran", hooks, undefined, abort), "aborted");
+  assert.deepEqual(calls, [], "it never parked, so no wait hooks");
+  assert.equal(checkPermitSnapshot().waiting, 0, "nothing queued behind the holder");
+  releaseHolder();
+  await holder;
+});
+
 test("a nested withCheckPermit runs under the permit already held", async () => {
   // At a cap of 1 a non-reentrant inner call could never be granted: the only permit is
   // held by the very call waiting for it. Reentrancy is what keeps this from deadlocking.
@@ -232,6 +253,58 @@ test("a check that fails or times out still releases its permit", { timeout: 30_
   }
   const passed = await runScopedBuildCheck(root, ROLE, "gate", wt, { ...one, check: { command: "true" } }, 30_000);
   assert.equal(passed!.outcome.status, "passed", "the permit came back after every failure and timeout");
+});
+
+test("a check aborted while it waits for a permit settles aborted at once and never runs (regression)", { timeout: 30_000 }, async () => {
+  // A merge aborted (a user abort, a lapsed restart hand-off, a shutdown) while its check queued
+  // behind a running suite used to take the permit once it freed and run its whole check anyway —
+  // minutes under load for a merge that no longer existed, holding a permit the gate checks and
+  // merges need (found 2026-11-01: an aborted e2e merge check ran its `sleep 60` out). The holder
+  // parks on a release file the test controls, so the queued check can only settle on its abort.
+  const { root, wt } = buildCheckFixture();
+  const one = { maxConcurrentChecks: 1 };
+  const release = path.join(root, "release-holder");
+  const ran = path.join(root, "queued-check-ran");
+  const holder = runScopedBuildCheck(
+    root,
+    ROLE,
+    "gate",
+    wt,
+    { ...one, check: { command: `while [ ! -f '${release}' ]; do sleep 0.05; done` } },
+    30_000,
+  );
+  try {
+    await waitFor(() => checkPermitSnapshot().inUse === 1, "the holder to take the only permit", 20_000);
+    const controller = new AbortController();
+    const queued = runScopedBuildCheck(
+      root,
+      "feature",
+      "gate",
+      wt,
+      { ...one, check: { command: `touch '${ran}'` } },
+      30_000,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      controller.signal,
+    );
+    await waitFor(() => checkPermitSnapshot().waiting === 1, "the second check to queue for the permit", 20_000);
+    controller.abort();
+    assert.ok(await within(queued, 10_000), "the aborted check settles while the holder still runs");
+    const r = await queued;
+    assert.equal(r!.outcome.status, "skipped");
+    assert.equal(r!.outcome.skipReason, "aborted");
+    assert.equal(r!.outcome.run, undefined, "it never spawned");
+  } finally {
+    fs.writeFileSync(release, "");
+  }
+  assert.equal((await holder)!.outcome.status, "passed");
+  // The permit the aborted wait was queued for is granted as the holder finishes, and handed
+  // straight back: a later check finds the pool empty and free.
+  await flushImmediate();
+  assert.deepEqual(checkPermitSnapshot(), { inUse: 0, limit: 1, waiting: 0 });
+  assert.ok(!fs.existsSync(ran), "the aborted check's command never ran");
 });
 
 test("the check cap resizes from each caller's live config without preempting a running check", { timeout: 10_000 }, async () => {

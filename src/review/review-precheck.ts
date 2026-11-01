@@ -118,9 +118,11 @@ export async function gateBuildPrecheck(
   // tree's verdict and not a flake: fail closed as aborted before the re-run, the quarantine
   // and the attribution — the signal fires MID-check (runScriptGroup returns an `aborted`
   // skip), and `reviewPinnedChange` settles the verify `aborted` on this result so an abort
-  // never has to wait a parked check out. A signal already aborted before the check started is
-  // caught by the `aborted` checks in the attribution path below (the check ran and reached
-  // its own verdict), so the pre-existing shutdown case keeps its two attempts.
+  // never has to wait a parked check out — nor a queued one: a check still waiting for a check
+  // permit when the signal fires never spawns, and settles `aborted` here too. A check that finds
+  // its permit free under an already-aborted signal still runs and reaches its own verdict, caught
+  // by the `aborted` checks in the attribution path below, so the pre-existing shutdown case keeps
+  // its two attempts.
   if (preCheck?.outcome.skipReason === "aborted") {
     return { resolved: { decision: "failed", aborted: true } };
   }
