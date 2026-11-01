@@ -11,6 +11,7 @@ import { findOnPath } from "../src/files/files.js";
 import { systemProcessProbe, type ProcessRow } from "../src/process/process-table.js";
 import { readJsonFile, writeJsonAtomic } from "../src/files/json-files.js";
 import { finiteNumber } from "../src/files/json-object.js";
+import { commonGitDir } from "../src/git/git.js";
 import { realGitFromXcrun } from "../src/git/xcrun-git.js";
 import { SUPERVISED_ENV, SUPERVISOR_PID_ENV } from "../src/process/supervisor.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
@@ -226,23 +227,52 @@ export function orderByDuration(files: readonly string[], durations: Readonly<Re
     .map((f) => f.file);
 }
 
-/** Where a build's per-file durations live between runs: beside the compiled tests, so a fresh
- * `npm run build` (which removes dist/) starts over from name order. */
-function durationsPath(distDir: string): string {
+/** Points the durations ledger at another file: how the runner's own tests keep their nested
+ * runs off the real one. */
+export const DURATIONS_ENV = "TUMWATER_TEST_DURATIONS";
+
+/** Where per-file durations live between runs: in the repository's shared git dir, so every
+ * worktree of the repository reads and feeds one ledger and `npm run build` (which removes
+ * dist/) keeps it. It sat beside the compiled tests until 2026-11-01, when most of the team's
+ * worktrees held 5–14 timed files after their last build: the gate priced every other file at
+ * UNTIMED_TEST_FILE_MS, fit about five, and broke the ties by name, so a merge-core change ran
+ * the docs scanners and left out merger.test.ts. A checkout whose git dir cannot be read from
+ * its files keeps the ledger beside the compiled tests. Exported for test/test-runner.test.ts. */
+export function durationsPath(distDir: string, env: NodeJS.ProcessEnv = process.env): string {
+  const override = env[DURATIONS_ENV];
+  if (override) return override;
+  const common = commonGitDir(path.dirname(path.dirname(distDir)));
+  return common === undefined ? buildDurationsPath(distDir) : path.join(common, "tumwater-test-durations.json");
+}
+
+/** The ledger's old home, beside the compiled tests. */
+function buildDurationsPath(distDir: string): string {
   return path.join(distDir, ".durations.json");
+}
+
+/** The stored durations. Until a run first writes the shared ledger, the one this build kept
+ * beside its compiled tests stands in, so the first runs after the move are not priced blind; an
+ * overridden ledger has no stand-in. Exported for test/test-runner.test.ts. */
+export function readDurations(distDir: string, env: NodeJS.ProcessEnv = process.env): Record<string, number> {
+  const file = durationsPath(distDir, env);
+  const stored = readJsonFile<Record<string, number>>(file);
+  if (stored !== null || file === buildDurationsPath(distDir) || env[DURATIONS_ENV]) return stored ?? {};
+  return readJsonFile<Record<string, number>>(buildDurationsPath(distDir)) ?? {};
 }
 
 /** Fold a run's fresh per-file durations (the durations reporter's output file) into the
  * stored ones. Files this run skipped — a filtered run — keep their old entries. A run that
- * wrote nothing (it crashed before the reporter finished) changes nothing. */
+ * wrote nothing (it crashed before the reporter finished) changes nothing. Two runs finishing at
+ * once can lose one's fresh entries to the other's write; the next run of those files restores
+ * them. */
 function recordDurations(distDir: string, freshFile: string): void {
   const fresh = readJsonFile<Record<string, number>>(freshFile);
   if (!fresh) return;
-  const stored = readJsonFile<Record<string, number>>(durationsPath(distDir)) ?? {};
+  const stored = readDurations(distDir);
   try {
     writeJsonAtomic(durationsPath(distDir), { ...stored, ...fresh });
   } catch {
-    // Ordering is an optimization: a read-only dist/ just keeps name order.
+    // Ordering and pricing are an optimization: an unwritable ledger just keeps what it had.
   }
 }
 
@@ -453,8 +483,8 @@ export function splitBudgetArgv(argv: readonly string[]): { rest: string[]; budg
 }
 
 /** What a budgeted run prices a test file the durations ledger has never timed (new, or never
- * run in this build). The suite's mean file takes about 7 s and its median 1 s, so a fresh
- * build's first gate runs a handful of files, and each run's own durations fill the ledger. */
+ * run in this repository). The suite's mean file takes about 7 s and its median 1 s, so a fresh
+ * clone's first gate runs a handful of files, and each run's own durations fill the ledger. */
 const UNTIMED_TEST_FILE_MS = 5_000;
 
 /** What a budgeted run adds to each file's price for the time node --test spends on it outside
@@ -619,7 +649,7 @@ export function buildNodeTestArgs(
  * merge-base with `ref` can reach, announced in one line. Unbudgeted, whatever cannot be decided
  * (git cannot answer, or a change the selector will not map) announces why and selects the full
  * suite, the safe answer for a pre-check. Under `budgetMs` the run keeps the nearest files that
- * fit (fitBudget), priced by this build's durations ledger; an undecidable change makes every
+ * fit (fitBudget), priced by the repository's durations ledger; an undecidable change makes every
  * file a candidate, cheapest first. The announcement names the left-out files nearest the
  * change, so an agent knows which to run by hand. */
 function affectedTestFiles(distDir: string, ref: string, budgetMs: number | undefined): TestFileSelection {
@@ -646,7 +676,7 @@ function affectedTestFiles(distDir: string, ref: string, budgetMs: number | unde
     console.log(`affected tests: ${kept.files.length} of ${full.files.length} test files reach the ${count} changed file(s) since ${ref}`);
     return kept;
   }
-  const durations = readJsonFile<Record<string, number>>(durationsPath(distDir)) ?? {};
+  const durations = readDurations(distDir);
   const costMs = (test: string) =>
     finiteNumber(durations[`${stem(test)}.js`], UNTIMED_TEST_FILE_MS) + PER_FILE_OVERHEAD_MS;
   const { run, left } = fitBudget(pick, costMs, budgetMs);
@@ -717,7 +747,7 @@ async function main(): Promise<void> {
   let status: number;
   try {
     const args = buildNodeTestArgs(
-      { ...sel, files: orderByDuration(sel.files, readJsonFile<Record<string, number>>(durationsPath(distDir)) ?? {}) },
+      { ...sel, files: orderByDuration(sel.files, readDurations(distDir)) },
       // A pure e2e tier serializes its files (one worker at a time) on a node that knows
       // --test-concurrency, so a loaded host cannot stretch one file's waits against its siblings;
       // the unit suite and a mixed selection keep today's argv.

@@ -23,10 +23,11 @@ import { stampBuild } from "../dist/src/build/build-info.js";
 
 /** Artifacts in dist/ that are not compiled sources: the build stamp, tsc's own
  * incremental-state file (present when the last compile was incremental), and the test
- * suite's per-file durations ledger (dist/test/.durations.json, written by test-runner.ts to
- * order later runs longest-first). The ledger has no `test/` source, so without it in this set
- * the prune deleted it on every `npm test` — the recorded order never outlived the run that
- * recorded it. */
+ * suite's per-file durations ledger where a checkout keeps it in dist (dist/test/.durations.json:
+ * a checkout without a readable git dir, and the stand-in test-runner.ts reads until the shared
+ * ledger in the git dir is first written). The ledger has no `test/` source, so without it in
+ * this set the prune deleted it on every `npm test` — the recorded order never outlived the run
+ * that recorded it. */
 const KEEP = new Set(["build-info.json", "tsconfig.tsbuildinfo", ".durations.json"]);
 
 function pruneDir(outDir, srcDir) {

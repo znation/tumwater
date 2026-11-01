@@ -16,12 +16,15 @@ import { waitFor } from "./helpers/wait.js";
 import { coverageRowsFromDumps, formatCoverageTable } from "./coverage-table.js";
 import {
   buildNodeTestArgs,
+  DURATIONS_ENV,
+  durationsPath,
   isE2eTier,
   nodeSupportsTestConcurrency,
   nodeSupportsTestCoverageExclude,
   noNameMatchReason,
   orderByDuration,
   parseFilter,
+  readDurations,
   repeatRuns,
   selectTestFiles,
   sharedSuiteConcurrency,
@@ -274,6 +277,39 @@ test("an all-e2e selection runs its files one at a time", () => {
   assert.ok(parallel.every((a) => !a.startsWith("--test-concurrency")));
 });
 
+test("durationsPath keeps one ledger in the repository's shared git dir for every worktree", () => {
+  const env: NodeJS.ProcessEnv = {};
+  // A primary checkout: `.git` is the shared dir itself.
+  const primary = tmpdir("ledger-primary-");
+  fs.mkdirSync(path.join(primary, ".git", "worktrees", "w"), { recursive: true });
+  const shared = path.join(primary, ".git", "tumwater-test-durations.json");
+  assert.equal(durationsPath(path.join(primary, "dist", "test"), env), shared);
+  // A linked worktree points at its own git dir, whose `commondir` names the shared one.
+  const linked = tmpdir("ledger-linked-");
+  fs.writeFileSync(path.join(linked, ".git"), `gitdir: ${path.join(primary, ".git", "worktrees", "w")}\n`);
+  fs.writeFileSync(path.join(primary, ".git", "worktrees", "w", "commondir"), "../..\n");
+  assert.equal(durationsPath(path.join(linked, "dist", "test"), env), shared);
+  // No git dir to read: the ledger stays beside the compiled tests.
+  const bare = tmpdir("ledger-bare-");
+  assert.equal(durationsPath(path.join(bare, "dist", "test"), env), path.join(bare, "dist", "test", ".durations.json"));
+  // The override wins over all of them.
+  assert.equal(durationsPath(path.join(primary, "dist", "test"), { [DURATIONS_ENV]: "/x/l.json" }), "/x/l.json");
+});
+
+test("readDurations stands the build's old ledger in until the shared one is first written", () => {
+  const root = tmpdir("ledger-read-");
+  const distDir = path.join(root, "dist", "test");
+  fs.mkdirSync(distDir, { recursive: true });
+  fs.mkdirSync(path.join(root, ".git"));
+  fs.writeFileSync(path.join(distDir, ".durations.json"), '{"old.test.js": 7}');
+  assert.deepEqual(readDurations(distDir, {}), { "old.test.js": 7 });
+  // Once a run has written the shared ledger, it alone answers.
+  fs.writeFileSync(path.join(root, ".git", "tumwater-test-durations.json"), '{"new.test.js": 3}');
+  assert.deepEqual(readDurations(distDir, {}), { "new.test.js": 3 });
+  // An overridden ledger that does not exist yet reads as empty, never as the build's old one.
+  assert.deepEqual(readDurations(distDir, { [DURATIONS_ENV]: path.join(root, "none.json") }), {});
+});
+
 test("suitesInFlight counts only this project's runner processes, self included", () => {
   const rows: Array<{ pid: number; ppid: number; uid: number; etime: string; time: string; command: string }> = [
     { pid: 1, ppid: 0, uid: 501, etime: "10:00", time: "0:05", command: "node dist/test/test-runner.js" },
@@ -516,18 +552,20 @@ test(
 const runnerPath = fileURLToPath(new URL("./test-runner.js", import.meta.url));
 
 /** The runner's env with the outer node --test's child marker removed: inheriting it would
- * make the nested node --test run think it is a test child and write nothing to stdout. */
-function runnerEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
+ * make the nested node --test run think it is a test child and write nothing to stdout. Its
+ * durations ledger is `ledger` (a fresh temp file by default), never the repository's shared
+ * one, which the team's gates price their selections by while this suite runs. */
+function runnerEnv(ledger = path.join(tmpdir("ledger-"), "durations.json")): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, [DURATIONS_ENV]: ledger };
   delete env.NODE_TEST_CONTEXT;
   return env;
 }
 
 /** Spawn dist/test/test-runner.js as a subprocess with the options every runner test needs
- * (string stdout/stderr, runnerEnv's NODE_TEST_CONTEXT strip) — the one home for the spawn
- * boilerplate, so a test states only the filter it exercises. */
-function runRunner(args: string[]): SpawnSyncReturns<string> {
-  return spawnSync(process.execPath, [runnerPath, ...args], { encoding: "utf8", env: runnerEnv() });
+ * (string stdout/stderr, runnerEnv's NODE_TEST_CONTEXT strip and temp ledger) — the one home for
+ * the spawn boilerplate, so a test states only the filter it exercises. */
+function runRunner(args: string[], env: NodeJS.ProcessEnv = runnerEnv()): SpawnSyncReturns<string> {
+  return spawnSync(process.execPath, [runnerPath, ...args], { encoding: "utf8", env });
 }
 
 // main() itself — the spawn, the filter announcement, the durations ledger, the exit code —
@@ -536,7 +574,8 @@ function runRunner(args: string[]): SpawnSyncReturns<string> {
 // well inside a run's budget.
 
 test("the spawned runner runs exactly the filtered file and exits with its result", () => {
-  const r = runRunner(["json-object"]);
+  const ledger = path.join(tmpdir("ledger-"), "durations.json");
+  const r = runRunner(["json-object"], runnerEnv(ledger));
   assert.equal(r.status, 0, `stderr: ${r.stderr}`);
   // The one-line announcement only appears on the filtered path (the unfiltered suite's
   // output stays byte-identical for the harness's build gate).
@@ -544,11 +583,9 @@ test("the spawned runner runs exactly the filtered file and exits with its resul
   // The nested node --test run really executed the file, and its summary came through.
   assert.match(r.stdout ?? "", /^ℹ\s+fail 0$/m);
   assert.match(r.stdout ?? "", /^ℹ\s+pass \d+$/m);
-  // The run folded the file's fresh duration into the ledger beside the compiled tests,
-  // so later runs of the same build order this file by its real cost.
-  const durations = readJson<Record<string, number>>(
-    path.join(path.dirname(runnerPath), "../test/.durations.json"),
-  );
+  // The run folded the file's fresh duration into the ledger, so later runs order and price
+  // this file by its real cost.
+  const durations = readJson<Record<string, number>>(ledger);
   assert.ok(
     typeof durations["json-object.test.js"] === "number" && durations["json-object.test.js"] >= 0,
     `expected a json-object.test.js duration, got ${JSON.stringify(durations)}`,
@@ -575,9 +612,10 @@ test("the spawned runner runs only the tests a #name filter matches, and fails a
 });
 
 test("the spawned runner under --coverage ends with node's coverage table and leaves the durations ledger alone", () => {
-  const durationsPath = path.join(path.dirname(runnerPath), ".durations.json");
-  const before = fs.readFileSync(durationsPath, "utf8");
-  const r = runRunner(["--coverage", "json-object"]);
+  const ledger = path.join(tmpdir("ledger-"), "durations.json");
+  const before = '{"json-object.test.js": 1}';
+  fs.writeFileSync(ledger, before);
+  const r = runRunner(["--coverage", "json-object"], runnerEnv(ledger));
   assert.equal(r.status, 0, `stderr: ${r.stderr}`);
   // The filter composed: exactly the one file ran, and node's table followed the spec output.
   assert.match(r.stdout ?? "", /^running 1 test file\(s\): json-object\.test\.ts$/m);
@@ -588,7 +626,7 @@ test("the spawned runner under --coverage ends with node's coverage table and le
   assert.doesNotMatch(r.stdout ?? "", /^ℹ test\//m);
   // Coverage skips the ledger: instrumentation slows every file, and recording the skewed
   // times would skew later runs' ordering.
-  assert.equal(fs.readFileSync(durationsPath, "utf8"), before);
+  assert.equal(fs.readFileSync(ledger, "utf8"), before);
 });
 
 test("coverageRowsFromDumps merges the raw V8 dumps with any-process semantics and names never-loaded files", () => {

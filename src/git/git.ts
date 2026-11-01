@@ -95,6 +95,15 @@ function resolveCommondir(gitdir: string): string | undefined {
   }
 }
 
+/** The shared git dir of the checkout at `dir` (the primary's `.git`, or the one a linked
+ * worktree's `commondir` names), read from files, or undefined when they cannot say. Every
+ * worktree of a repository answers the same dir, so a cache kept there is shared by all of them
+ * (test/test-runner.ts's durations ledger). */
+export function commonGitDir(dir: string): string | undefined {
+  const gitdir = resolveGitDir(dir);
+  return gitdir === undefined ? undefined : resolveCommondir(gitdir);
+}
+
 /** Whether the files-backend trust checks hold: this process's user owns both dirs, the
  * objects dir and HEAD are present, and no reftable store shadows them. */
 function filesBackendTrusted(dir: string, gitdir: string, commondir: string, uid: number): boolean {

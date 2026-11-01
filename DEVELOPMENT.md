@@ -54,8 +54,9 @@ host, so it checks only what is nearest the change:
   --budget=30`, selection in `test/affected-tests.ts`). It ranks the files the change can reach
   by import distance (a changed test file first, then files that import a changed module or name
   a CLI command that loads it, and so on), cheapest first at each distance. It prices each file
-  by the durations this build last recorded (`dist/test/.durations.json`, 5 s for a file never
-  timed) and passes over a file that does not fit. Its first line of output says how many fit
+  by the durations the repository's runs last recorded (`tumwater-test-durations.json` in the git
+  common dir, shared by every worktree, 5 s for a file never timed) and passes over a file that
+  does not fit. Its first line of output says how many fit
   and names the left-out files nearest the change: run those by hand (`npm test <name>`) when
   your change is about them.
 
@@ -149,7 +150,8 @@ plus ~700 CLI children and hundreds of npm, `ps` and fake-pi children, and macOS
 few thousand spawns a second. Roughly, a git spawn costs 8 ms of CPU, a CLI child 90 ms, and an
 `npm run` 150 ms. `test/test-runner.ts` sets the environment up for that: it puts the real git binary
 ahead of the xcode-select shim on macOS, turns off git's auto-maintenance and init templates,
-and starts files longest-first by the durations it records in `dist/test/.durations.json`.
+and starts files longest-first by the durations it records in `.git/tumwater-test-durations.json`
+(beside the compiled tests in a checkout without a readable git dir).
 
 - Prefer `makeRepo()` to building a repo with git commands: it copies a per-process template
   instead of spawning init, add and commit. Every repo it makes in one process shares a seed
