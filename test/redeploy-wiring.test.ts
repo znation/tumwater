@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { HarnessEventInput } from "../src/events/events.js";
@@ -400,6 +401,62 @@ test("redeployTarget in watch mode targets the build itself when nothing newer i
   // Running A, main A -> B (no verdict): nothing newer than the build is green, so the build
   // itself is the target — buildStaleness(a, a) then reads it as not stale and nothing starts.
   assert.equal(await redeployTarget(root, b, a, true), a, "the build itself is the target");
+});
+
+/** Chain `count` empty commits onto main in one `git fast-import` spawn (a commit spawn each would
+ * put that many forks into the gate suite) and return their shas, newest first. `tag` keeps the
+ * subjects, and so the shas, apart from every sibling test's: the baseline cache is shared
+ * process-wide. */
+function fillerCommits(root: string, count: number, tag: string): string[] {
+  const base = headSha(root);
+  let stream = "";
+  for (let i = 1; i <= count; i++) {
+    const subject = `${tag} ${i}`;
+    stream +=
+      `commit refs/heads/main\ncommitter test <test@example.com> 0 +0000\ndata ${Buffer.byteLength(subject)}\n${subject}\n` +
+      (i === 1 ? `from ${base}\n` : "");
+  }
+  execFileSync("git", ["fast-import", "--quiet"], { cwd: root, input: stream });
+  return sh(root, "git", "rev-list", "--first-parent", `--max-count=${count}`, "main").split("\n");
+}
+
+test("redeployTarget in watch mode never targets the tip when the build sits deeper than the walk", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "build.txt"), "deep below main");
+  pinnedCommit(root, "A (the running build, deep below main)");
+  const a = headSha(root);
+  // 70 commits above the build, past the 64 the walk reads: on 2026-10-30 main stayed red ~90
+  // commits past the running build, and the tip fallback had the redeployer run a full check of
+  // every new tip itself.
+  const above = fillerCommits(root, 70, "deep-walk filler");
+  const tip = above[0]!;
+
+  assert.equal(await redeployTarget(root, tip, a, true), a, "no green on the walk: the build, never the unchecked tip");
+  assert.equal(await redeployTarget(root, tip, a), tip, "un-watched, the redeployer still checks the tip itself");
+  noteGreenBaseline(above[10]!);
+  assert.equal(await redeployTarget(root, tip, a, true), above[10], "a green the watch recorded on the walk is the target");
+  assert.equal(
+    await redeployTarget(root, tip, "f".repeat(40), true),
+    above[10],
+    "a build off main's history targets the watch's green too",
+  );
+});
+
+test("redeployTarget in watch mode holds on the build while git cannot walk main, and walks again next poll", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "build.txt"), "git briefly unreadable");
+  pinnedCommit(root, "A (the running build, git briefly unreadable)");
+  const a = headSha(root);
+  const [tip] = fillerCommits(root, 3, "unreadable-walk filler");
+  noteGreenBaseline(tip!);
+  const away = `${root}-away`;
+  fs.renameSync(root, away);
+  try {
+    assert.equal(await redeployTarget(root, tip!, a, true), a, "a failed walk holds on the build and starts no check");
+  } finally {
+    fs.renameSync(away, root);
+  }
+  assert.equal(await redeployTarget(root, tip!, a, true), tip, "the failed walk was not cached: the green tip is the target");
 });
 
 test("watchVerifiesMain is true only with a declared check and a merge command in effect", async () => {

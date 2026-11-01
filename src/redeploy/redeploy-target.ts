@@ -28,29 +28,32 @@ const REDEPLOY_WALK_MAX = 64;
 const redeployWalkCache = new Map<string, string[]>();
 const REDEPLOY_WALK_CACHE_MAX = 32;
 
-/** The newest first-parent commit below `tip`, down to and through `buildSha`, with a green
- * cached verdict — the walk+scan redeployTarget's watched and un-watched branches share. Only
- * their fallback differs: `notOnHistory` when `buildSha` is not on the first-parent walk at all
- * (the caller keeps today's answer, `tip`), `onHistoryNone` when it is but nothing above it is
- * green (watched keeps the build; un-watched keeps `tip`). Never throws: a git failure leaves
- * the walk empty, so the fallback answers. */
-async function newestGreenAboveBuild(wt: string, tip: string, buildSha: string, notOnHistory: string, onHistoryNone: string): Promise<string> {
+/** The newest commit on `tip`'s first-parent walk with a green cached verdict, scanning down to
+ * `buildSha` when the walk reaches it and the whole walk when it does not — the walk+scan
+ * redeployTarget's watched and un-watched branches share, which differ only in what they do with
+ * `buildOnWalk` false. A build missing from the walk is either deeper than REDEPLOY_WALK_MAX (main
+ * kept moving while no newer commit was deployable — every walked commit is then newer than the
+ * build) or not a first-parent ancestor of `tip` at all. `green` is null when nothing scanned is
+ * green. Never throws: a git failure leaves the walk empty (`buildOnWalk` false, `green` null), and
+ * the empty walk is not cached, so the next poll asks git again. */
+async function newestGreenAboveBuild(wt: string, tip: string, buildSha: string): Promise<{ green: string | null; buildOnWalk: boolean }> {
   const key = `${wt}\u0000${tip}`;
   let walk = redeployWalkCache.get(key);
   if (walk === undefined) {
     walk = await firstParentWalk(wt, tip, REDEPLOY_WALK_MAX);
-    if (redeployWalkCache.size >= REDEPLOY_WALK_CACHE_MAX) {
-      const oldest = redeployWalkCache.keys().next().value;
-      if (oldest !== undefined) redeployWalkCache.delete(oldest);
+    // A real walk always holds `tip` itself; an empty one is a git failure, not the tip's history.
+    if (walk.length > 0) {
+      if (redeployWalkCache.size >= REDEPLOY_WALK_CACHE_MAX) {
+        const oldest = redeployWalkCache.keys().next().value;
+        if (oldest !== undefined) redeployWalkCache.delete(oldest);
+      }
+      redeployWalkCache.set(key, walk);
     }
-    redeployWalkCache.set(key, walk);
   }
   const buildAt = walk.indexOf(buildSha);
-  if (buildAt === -1) return notOnHistory;
-  for (const sha of walk.slice(0, buildAt)) {
-    if (baselineCache.get(sha)?.status === "green") return sha;
-  }
-  return onHistoryNone;
+  const above = buildAt === -1 ? walk : walk.slice(0, buildAt);
+  const green = above.find((sha) => baselineCache.get(sha)?.status === "green") ?? null;
+  return { green, buildOnWalk: buildAt !== -1 };
 }
 
 /** The `git rev-list --first-parent --max-count=<max> <ref>` read `newestGreenAboveBuild`
@@ -77,19 +80,24 @@ async function firstParentWalk(wt: string, ref: string, max: number): Promise<st
  * reads them: walk `tip`'s first-parent history down to `buildSha` and return the first commit
  * whose cached verdict is green — a cached red is walked past, never targeted. With no green
  * above the build, target `buildSha` itself, so buildStaleness reads it as not stale and no
- * episode, hold or pre-warm starts until the watch calls a newer commit green. A build that is
- * not a first-parent ancestor of `tip` keeps today's answer (`tip`, which the redeployer
- * checks), as does `watched` false. Every target `watched` picks has a cached green, so
+ * episode, hold or pre-warm starts until the watch calls a newer commit green. A build the walk
+ * does not reach is no reason to target `tip` either: the newest green on the whole walk is the
+ * target, else `buildSha`. Before that, a red main that ran 64 commits past the build turned the
+ * target into each new tip, and the redeployer ran its own full check of every one — 61 suites
+ * in the `_main` mirror from 2026-10-30 21:20 to the next restart, about 26 of them on tips the
+ * watch never needed or re-ran anyway. Every target `watched` picks has a cached green, so
  * mainIsGreen on it is a cache hit and the redeployer starts no suite.
  * The cache holds only full-check verdicts, so a cheaper command's green never makes a commit
  * deployable.
- * Never throws: a git failure leaves the tip as the target. */
+ * Never throws: a git failure leaves the tip as the target (`watched`: the build). */
 export async function redeployTarget(wt: string, tip: string, buildSha: string, watched = false): Promise<string> {
   if (watched) {
     if (tip === "") return tip;
-    return newestGreenAboveBuild(wt, tip, buildSha, tip, buildSha);
+    return (await newestGreenAboveBuild(wt, tip, buildSha)).green ?? buildSha;
   }
   const red = baselineCache.get(tip);
   if (tip === "" || red?.status !== "red" || !(red.redFrom ?? []).includes(mirrorWorktreePath(wt))) return tip;
-  return newestGreenAboveBuild(wt, tip, buildSha, tip, tip);
+  // Un-watched, a build off the walk keeps the tip: the redeployer checks it and blocks it alone.
+  const { green, buildOnWalk } = await newestGreenAboveBuild(wt, tip, buildSha);
+  return buildOnWalk ? (green ?? tip) : tip;
 }

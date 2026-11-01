@@ -637,7 +637,9 @@ the running build whose full-check verdict is green (observed or inherited), loo
 commits down. While the main watch verifies main (a declared check and a `check.mergeCommand` in
 effect), the target always carries a cached green and is never an unchecked tip; a cached red is
 walked past, and with no green newer than the build nothing is targeted (the build stays the
-target and reads fresh, so no full check starts until the watch calls a newer commit green).
+target and reads fresh, so no full check starts until the watch calls a newer commit green). That
+holds when the build sits deeper than the 64-commit walk, is off main's history, or git cannot
+walk main: the newest green on the walk is the target, else the build.
 Outside that mode a cached-red tip falls back to the newest older green; with none the unchecked
 red tip stays the target and is blocked alone. An older commit with no green verdict is never a
 fallback, and the verdict cache holds only full-check verdicts.
@@ -650,8 +652,10 @@ fallback, and the verdict cache holds only full-check verdicts.
 newer than the running build, never a red or unverified-green one", "redeployTarget never
 targets an older commit that no check has called green", "redeployTarget in watch mode targets
 the newest cached green and never an unchecked tip", "redeployTarget in watch mode targets the
-build itself when nothing newer is green", and "watchVerifiesMain is true only with a declared
-check and a merge command in effect".
+build itself when nothing newer is green", "redeployTarget in watch mode never targets the tip
+when the build sits deeper than the walk", "redeployTarget in watch mode holds on the build while
+git cannot walk main, and walks again next poll", and "watchVerifiesMain is true only with a
+declared check and a merge command in effect".
 
 ## The fallback breaker: a free fallback that cannot serve is demoted, not retried forever
 
