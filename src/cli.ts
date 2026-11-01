@@ -3,7 +3,8 @@
  * (dist/src/cli.js). main() runs the Node-floor gate from package.json's `engines.node`, answers a
  * `--help` topic before any command parses arguments or gates on a ready repo, resolves the repo
  * root from cwd (repoToplevel, falling back to cwd outside a repository), and dispatches the
- * command token. Every command imports its own module lazily, inside its case: the dispatcher
+ * command token through the COMMAND_HANDLERS table below. Every command imports its own module
+ * lazily, inside its table row: the dispatcher
  * statically loads only the argument parsing, output, repo gate and help it shares, so
  * `tumwater report` never pays for the orchestrator or ink, and `tumwater logs` never pays for
  * the status collectors. A process that starts, runs one command and exits (the CLI as the
@@ -15,6 +16,9 @@
 import { parseCountFlag, parseGrepFlag, parseModelFlag, parseResultFlag } from "./cli/cli-args.js";
 import type { LiftableHold } from "./backlog/backlog-release.js";
 import type { FiledEntry } from "./backlog/backlog-write.js";
+// Type-only: the module itself stays a lazy import in markerCommandCase — this import is
+// erased at compile time, so it adds no runtime dependency.
+import type { MarkerCommand } from "./cli/cli-marker-commands.js";
 import {
   grepFlagSpec,
   GUI_FLAG_SPECS,
@@ -399,6 +403,110 @@ async function cmdHelpCase(args: string[]): Promise<void> {
   }
 }
 
+/** One COMMAND_HANDLERS row: runs one command for the resolved repo root. The token main
+ * looked up arrives as `command`, which is how the rows the marker tokens share keep each of
+ * their own tokens. */
+type CommandHandler = (root: string, command: string, args: string[]) => Promise<void>;
+
+// The version and help alias triples each collapse to one row value, so the aliases cannot
+// drift from the command they name.
+const versionCaseRow: CommandHandler = (_root, _command, args) => cmdVersionCase(args);
+const helpCaseRow: CommandHandler = (_root, _command, args) => cmdHelpCase(args);
+
+// The seven marker tokens share one guard+dispatch shape — unknown-args rejection against
+// the command's flag set, the ready-repo gate, then the operator-commands core — so this
+// arrow holds it once instead of seven copies drifting. The table's marker keys are exactly
+// MarkerCommand's members, so the cast below is safe.
+const markerCommandCase: CommandHandler = async (root, command, args) => {
+  await (await import("./cli/cli-marker-commands.js")).runMarkerCommand(
+    root,
+    command as MarkerCommand,
+    args,
+  );
+};
+
+// The dispatch itself: one row per token main routes, in the order the switch listed them
+// before it became this table. Aliases are repeated keys; the marker tokens share one arrow.
+// A new command adds its row here and its usage stanza in help.ts.
+const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
+  init: async (root, _command, args) => {
+    // Imported lazily: cli/cli-start.ts pulls the whole team-booting subgraph (orchestrator,
+    // supervisor, redeploy, launch-services — the run path's machinery), and every other
+    // command's spawn pays module compilation for it unless the dispatch defers that load
+    // to the commands that actually boot or serve a team. cli-init.ts stays light for init.
+    await (await import("./cli/cli-init.js")).cmdInit(root, args);
+  },
+  start: (root, _command, args) => cmdStartCase(root, args),
+  run: (root, _command, args) => cmdStartCase(root, args),
+  tui: (root, _command, args) => cmdTuiCase(root, args),
+  gui: (root, _command, args) => cmdGuiCase(root, args),
+  status: async (root, _command, args) => {
+    await (await import("./cli/cli-query-commands.js")).cmdStatus(root, args);
+  },
+  config: (root, _command, args) => cmdConfigCase(root, args),
+  report: (root, _command, args) => cmdReportCase(root, args),
+  doctor: (root, _command, args) => cmdDoctorCase(root, args),
+  logs: (root, _command, args) => cmdLogsCase(root, args),
+  notify: (root, _command, args) => cmdNotifyCase(root, args),
+  history: (root, _command, args) => cmdHistoryCase(root, args),
+  tick: (root, _command, args) => runTrailCommand(root, args), // vocabulary-ok: command name stays
+  diff: async (root, _command, args) => {
+    await (await import("./cli/cli-query-commands.js")).cmdDiff(root, args);
+  },
+  queue: async (root, _command, args) => {
+    await (await import("./cli/cli-query-commands.js")).cmdQueue(root, args);
+  },
+  reviews: async (root, _command, args) => {
+    await (await import("./cli/cli-review-commands.js")).cmdReviews(root, args);
+  },
+  backlog: async (root, _command, args) => {
+    await (await import("./cli/cli-query-commands.js")).cmdBacklog(root, args);
+  },
+  quarantine: async (root, _command, args) => {
+    await (await import("./cli/cli-query-commands.js")).cmdQuarantine(root, args);
+  },
+  archive: (root, _command, args) => cmdArchiveCase(root, args),
+  bug: (root, _command, args) => cmdBugCase(root, args),
+  plan: (root, _command, args) => cmdPlanCase(root, args),
+  questions: async (root, _command, args) => {
+    await (await import("./cli/cli-question-commands.js")).cmdQuestions(root, args);
+  },
+  brief: async (root, _command, args) => {
+    await (await import("./cli/cli-brief-command.js")).cmdBrief(root, args);
+  },
+  role: async (root, _command, args) => {
+    await (await import("./cli/cli-role-command.js")).cmdRole(root, args);
+  },
+  prompt: (root, _command, args) => cmdPromptCase(root, args),
+  "reset-counters": markerCommandCase,
+  wake: markerCommandCase,
+  abort: markerCommandCase,
+  pause: markerCommandCase,
+  resume: markerCommandCase,
+  reclaim: markerCommandCase,
+  restart: markerCommandCase,
+  retire: (root, _command, args) => cmdRetireCase(root, args),
+  revert: (root, _command, args) => cmdRevertCase(root, args),
+  stop: (root, _command, args) => cmdStopCase(root, args),
+  completion: async (root, _command, args) => {
+    // Works outside a repo (no requireReadyRepo): the body lives in
+    // cli-completion-command.ts, beside its data (src/cli/completion.ts), and is imported
+    // lazily like every command body so the dispatcher never compiles the completion
+    // subgraph until `tumwater completion` is asked for.
+    await (await import("./cli/cli-completion-command.js")).cmdCompletion(root, args);
+  },
+  version: versionCaseRow,
+  "--version": versionCaseRow,
+  "-v": versionCaseRow,
+  help: helpCaseRow,
+  "--help": helpCaseRow,
+  "-h": helpCaseRow,
+};
+
+/** The CLI's entry point: the shared prelude (Node-floor gate, the `--help` topic answer,
+ * repo-root resolution) and then the COMMAND_HANDLERS table, which is the dispatch — one row
+ * per token, aliases as repeated keys, the marker tokens sharing one arrow. A new command
+ * adds its row to the table here and its usage stanza in help.ts. */
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
   // The Node-floor gate, before any command does work: package.json's engines spec is the
@@ -427,146 +535,24 @@ async function main(): Promise<void> {
   // repository the probe fails and cwd is used as before, so doctor outside a repo still
   // reports why the environment is not ready.
   const root = (await repoToplevel(process.cwd())) ?? process.cwd();
-  switch (command) {
-    case "init":
-      // Imported lazily: cli/cli-start.ts pulls the whole team-booting subgraph (orchestrator,
-      // supervisor, redeploy, launch-services — the run path's machinery), and every other
-      // command's spawn pays module compilation for it unless the dispatch defers that load
-      // to the commands that actually boot or serve a team. cli-init.ts stays light for init.
-      await (await import("./cli/cli-init.js")).cmdInit(root, args);
-      break;
-    case "start":
-    case "run":
-      await cmdStartCase(root, args);
-      break;
-    case "tui":
-      await cmdTuiCase(root, args);
-      break;
-    case "gui":
-      await cmdGuiCase(root, args);
-      break;
-    case "status":
-      await (await import("./cli/cli-query-commands.js")).cmdStatus(root, args);
-      break;
-    case "config": {
-      await cmdConfigCase(root, args);
-      break;
-    }
-    case "report": {
-      await cmdReportCase(root, args);
-      break;
-    }
-    case "doctor": {
-      await cmdDoctorCase(root, args);
-      break;
-    }
-    case "logs": {
-      await cmdLogsCase(root, args);
-      break;
-    }
-    case "notify":
-      await cmdNotifyCase(root, args);
-      break;
-    case "history": {
-      await cmdHistoryCase(root, args);
-      break;
-    }
-    case "tick": // vocabulary-ok: command name stays
-      await runTrailCommand(root, args);
-      break;
-    case "diff":
-      await (await import("./cli/cli-query-commands.js")).cmdDiff(root, args);
-      break;
-    case "queue":
-      await (await import("./cli/cli-query-commands.js")).cmdQueue(root, args);
-      break;
-    case "reviews":
-      await (await import("./cli/cli-review-commands.js")).cmdReviews(root, args);
-      break;
-    case "backlog":
-      await (await import("./cli/cli-query-commands.js")).cmdBacklog(root, args);
-      break;
-    case "quarantine":
-      await (await import("./cli/cli-query-commands.js")).cmdQuarantine(root, args);
-      break;
-    case "archive":
-      await cmdArchiveCase(root, args);
-      break;
-    case "bug": {
-      await cmdBugCase(root, args);
-      break;
-    }
-    case "plan": {
-      await cmdPlanCase(root, args);
-      break;
-    }
-    case "questions":
-      await (await import("./cli/cli-question-commands.js")).cmdQuestions(root, args);
-      break;
-    case "brief":
-      await (await import("./cli/cli-brief-command.js")).cmdBrief(root, args);
-      break;
-    case "role":
-      await (await import("./cli/cli-role-command.js")).cmdRole(root, args);
-      break;
-    case "prompt":
-      await cmdPromptCase(root, args);
-      break;
-    case "reset-counters":
-    // Fall through: the seven marker commands share one guard+dispatch shape — unknown-args
-    // rejection against the command's flag set, the ready-repo gate, then the
-    // operator-commands core — so runMarkerCommand holds it once instead of seven copies
-    // drifting. The case labels here are exactly MarkerCommand's members, which is what
-    // makes the cast below exhaustive.
-    case "wake":
-    case "abort":
-    case "pause":
-    case "resume":
-    case "reclaim":
-    case "restart": {
-      await (await import("./cli/cli-marker-commands.js")).runMarkerCommand(root, command, args);
-      break;
-    }
-    case "retire": {
-      await cmdRetireCase(root, args);
-      break;
-    }
-    case "revert": {
-      await cmdRevertCase(root, args);
-      break;
-    }
-    case "stop": {
-      await cmdStopCase(root, args);
-      break;
-    }
-    case "completion": {
-      // Works outside a repo (no requireReadyRepo): the body lives in
-      // cli-completion-command.ts, beside its data (src/cli/completion.ts), and is imported
-      // lazily like every command body so the dispatcher never compiles the completion
-      // subgraph until `tumwater completion` is asked for.
-      await (await import("./cli/cli-completion-command.js")).cmdCompletion(root, args);
-      break;
-    }
-    case "version":
-    case "--version":
-    case "-v": {
-      await cmdVersionCase(args);
-      break;
-    }
-    case "help":
-    case "--help":
-    case "-h":
-    case undefined: {
-      await cmdHelpCase(args);
-      break;
-    }
-    default: {
-      const suggestion = suggestCommand(command);
-      fail(
-        `unknown command: ${JSON.stringify(command)}${didYouMean(suggestion)} (try \`tumwater help\`)`,
-      );
-    }
+  // No token at all answers the help row directly — the old `case undefined` arm — and a
+  // token the table does not hold falls to the unknown-command failure below. The hasOwn
+  // check, not a plain lookup, keeps prototype names such as `constructor` out of the table
+  // and on that failure path.
+  if (command === undefined) {
+    await helpCaseRow(root, "", args);
+    return;
   }
+  const handler = Object.hasOwn(COMMAND_HANDLERS, command)
+    ? COMMAND_HANDLERS[command]
+    : undefined;
+  if (handler === undefined) {
+    const suggestion = suggestCommand(command);
+    fail(
+      `unknown command: ${JSON.stringify(command)}${didYouMean(suggestion)} (try \`tumwater help\`)`,
+    );
+  }
+  await handler(root, command, args);
 }
 
 main().catch((err: unknown) => {

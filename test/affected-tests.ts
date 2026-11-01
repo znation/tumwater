@@ -241,12 +241,14 @@ function cliCommandsUsed(text: string): Set<string> | undefined {
   return used;
 }
 
-/** The modules each command of the compiled CLI dispatcher imports inside its case, keyed by
- * every label of that case (fallthrough labels share their body's imports). A case that calls a
- * function the dispatcher declares (`await cmdLogsCase(root, args)`) imports what that function
- * imports, and what the functions it calls import in turn: since src/cli.ts moved each command's
- * body into such a handler (2026-10-25), reading the case alone mapped half the commands to no
- * module, and a change to one reached none of the tests that run it. */
+/** The modules each command of the compiled CLI dispatcher imports inside its case (or table
+ * row), keyed by every label of that case (fallthrough labels share their body's imports). A case
+ * or row that calls a function the dispatcher declares (`await cmdLogsCase(root, args)`) imports
+ * what that function imports, and what the functions it calls import in turn: since src/cli.ts
+ * moved each command's body into such a handler (2026-10-25), reading the case alone mapped half
+ * the commands to no module, and a change to one reached none of the tests that run it. The
+ * COMMAND_HANDLERS table (2026-10-31) is parsed the same way: each row's value is an inline arrow
+ * or a reference to a const declared in the dispatcher, and `importsOf` resolves both. */
 function cliCaseImports(text: string, resolve: (spec: string) => string | null): Map<string, Set<string>> {
   const code = codeOnly(text, false);
   const bare = codeOnly(text, true);
@@ -258,6 +260,16 @@ function cliCaseImports(text: string, resolve: (spec: string) => string | null):
   const functions = new Map<string, [number, number]>();
   for (const m of bare.matchAll(/^(?:export\s+)?(?:async\s+)?function\s+([\w$]+)\s*\(/gm)) {
     functions.set(m[1]!, [m.index, functionEnd(m.index)]);
+  }
+  // Top-level const declarations (arrow-function handlers like `markerCommandCase`): each ends
+  // where the next top-level declaration begins, so the range covers the arrow body and any
+  // import(...) it holds.
+  const consts = new Map<string, [number, number]>();
+  const constDecls = [...bare.matchAll(/^const\s+([\w$]+)\s*=/gm)];
+  for (let i = 0; i < constDecls.length; i++) {
+    const start = constDecls[i]!.index;
+    const end = i + 1 < constDecls.length ? constDecls[i + 1]!.index : text.length;
+    consts.set(constDecls[i]![1]!, [start, end]);
   }
   const importsOf = (start: number, end: number, modules: Set<string>, called: Set<string>) => {
     for (const m of code.slice(start, end).matchAll(DYNAMIC_SPECIFIER)) {
@@ -273,18 +285,66 @@ function cliCaseImports(text: string, resolve: (spec: string) => string | null):
   };
   const byCommand = new Map<string, Set<string>>();
   const labels = [...code.matchAll(/\bcase\s+"([^"]+)"\s*:/g)];
-  let pending: string[] = [];
-  for (let i = 0; i < labels.length; i++) {
-    const label = labels[i]!;
-    // The last case ends with the function holding the switch, not in what follows it (the
-    // `main().catch(…)` call would read as running every command).
-    const end = i + 1 < labels.length ? labels[i + 1]!.index : functionEnd(label.index);
-    pending.push(label[1]!);
-    if (code.slice(label.index + label[0].length, end).trim() === "") continue; // falls through to the next label's body
-    const modules = new Set<string>();
-    importsOf(label.index + label[0].length, end, modules, new Set());
-    for (const name of pending) byCommand.set(name, modules);
-    pending = [];
+  if (labels.length > 0) {
+    let pending: string[] = [];
+    for (let i = 0; i < labels.length; i++) {
+      const label = labels[i]!;
+      // The last case ends with the function holding the switch, not in what follows it (the
+      // `main().catch(…)` call would read as running every command).
+      const end = i + 1 < labels.length ? labels[i + 1]!.index : functionEnd(label.index);
+      pending.push(label[1]!);
+      if (code.slice(label.index + label[0].length, end).trim() === "") continue; // falls through to the next label's body
+      const modules = new Set<string>();
+      importsOf(label.index + label[0].length, end, modules, new Set());
+      for (const name of pending) byCommand.set(name, modules);
+      pending = [];
+    }
+  } else {
+    // Table format: the COMMAND_HANDLERS object maps each token to an inline arrow or a
+    // reference to a const handler. Parse the object's rows and attribute each row's imports
+    // to its key, the same way the case-label path does.
+    const tableDecl = /\bconst\s+COMMAND_HANDLERS\s*=\s*\{/.exec(code);
+    if (tableDecl !== null) {
+      // Find the object's closing brace by matching from the opening `{`.
+      const openBrace = tableDecl.index + tableDecl[0].length - 1;
+      let depth = 0;
+      let closeBrace = text.length;
+      for (let i = openBrace; i < text.length; i++) {
+        if (code[i] === "{") depth++;
+        else if (code[i] === "}") { depth--; if (depth === 0) { closeBrace = i + 1; break; } }
+      }
+      const bodyStart = openBrace + 1;
+      const bodyEnd = closeBrace - 1;
+      // Each row starts at a key (quoted or bare) followed by `:`.
+      const keyRe = /(?:^|,)(?:\s*)(?:"([^"]+)"|([\w$-]+))\s*:/g;
+      const keys: Array<{ name: string; colonEnd: number }> = [];
+      for (const m of code.slice(bodyStart, bodyEnd).matchAll(keyRe)) {
+        const name = m[1] ?? m[2]!;
+        keys.push({ name, colonEnd: bodyStart + m.index + m[0].length });
+      }
+      for (let i = 0; i < keys.length; i++) {
+        const { name, colonEnd } = keys[i]!;
+        // The value ends at the next top-level `,` (or the object's close for the last row):
+        // a depth-aware scan, so commas inside an inline arrow's braces stay in the value.
+        let d = 0;
+        let vEnd = bodyEnd;
+        for (let j = colonEnd; j < bodyEnd; j++) {
+          if (code[j] === "{" || code[j] === "(" || code[j] === "[") d++;
+          else if (code[j] === "}" || code[j] === ")" || code[j] === "]") d--;
+          else if (d === 0 && code[j] === ",") { vEnd = j; break; }
+        }
+        const valueText = code.slice(colonEnd, vEnd).trim();
+        const modules = new Set<string>();
+        if (/^[\w$]+$/.test(valueText)) {
+          // Bare identifier: resolve to the const declaration's range.
+          const range = consts.get(valueText);
+          if (range !== undefined) importsOf(range[0], range[1], modules, new Set());
+        } else {
+          importsOf(colonEnd, vEnd, modules, new Set());
+        }
+        byCommand.set(name, modules);
+      }
+    }
   }
   return byCommand;
 }
