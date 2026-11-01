@@ -1,10 +1,9 @@
 # Worktree pool — a fixed set of slot checkouts that ticks and vets lease
 
-**Retired 2026-10-26** by [subtract.md](subtract.md) (Subtract part 4/6): with one runner per role
-the pool has nothing to lease — each role keeps one persistent checkout through
-`ensureWorktree`, which already self-heals a dead registration. `slot_wait`, the pins and the
-salvage path go with it; [disk-floor.md](disk-floor.md)'s floor stays, since one checkout per role
-still costs disk.
+**Kept 2026-10-31:** the retirement by [subtract.md](subtract.md) (Subtract part 4/6) was
+withdrawn: the Settings concurrency controls keep `roles.<role>.instances`, and the pool gives
+those instances their concurrent checkouts. `slot_wait`, the pins and the salvage path stay;
+[disk-floor.md](disk-floor.md)'s floor still bounds them.
 
 Planned 2026-10-06 · requested by user. Shared design for the five `Worktree pool N/5` entries
 in PLANS.md. Its sibling, [disk-floor.md](disk-floor.md), bounds what each checkout may cost;

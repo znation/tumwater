@@ -1,8 +1,8 @@
 # Parallel work instances — several feature and bugfix loops, each on its own claimed entry
 
-**Retired 2026-10-26** by [subtract.md](subtract.md) (Subtract part 4/6): one runner per role, and
-the instance claims go with the second runner. The waits that motivated several instances were the
-merge pipeline's, and that pipeline is what Subtract part 3/6 deletes.
+**Kept 2026-10-31:** the retirement by [subtract.md](subtract.md) (Subtract part 4/6) was
+withdrawn, because the Settings concurrency controls keep `roles.<role>.instances` — these
+multiple runners, their claims, and the pool checkouts they lease.
 
 Planned 2026-10-07 · requested by user ("prioritize the feature loop much higher if there are
 any plans, and the bugfix loop much higher if there are any bugs"; chosen approach: run several

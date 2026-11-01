@@ -64,7 +64,7 @@ stroke; that is where the simplification compounds.
 The live series ("Every commit is verified on main", PLANS.md parts 3d/3–3x/3) and
 [post-merge-fix-forward.md](post-merge-fix-forward.md) own this. It deletes the pre-merge
 reviewer, the `review.afterMerge` tier, the in-lock check and the batch check (part 3f/3). Parts
-Parts 3a/7–3g/7 and 4/6 below are sequels to it, not rivals.
+Parts 3a/7–3g/7 below are sequels to it, not rivals.
 
 ### 2. One hold vocabulary: `Refused` and `Needs review`
 
@@ -96,7 +96,17 @@ by the author. Delete the queue's stages, the batch/bisect path, the requeue, th
 the interlock; keep the lock, the rebase and the linear-history invariant
 (`plans/merge-queue.md` invariants 2 and 5 survive; invariants 1, 3 and 6 lose their mechanism).
 
-### 4. One runner per role
+### 4. One runner per role — withdrawn 2026-10-31
+
+**Withdrawn 2026-10-31 by the director.** The 2026-10-31 request that exposed feature and
+bugfix concurrency under Settings keeps the `roles.<role>.instances` mechanism — its runners,
+claims and multiple worktrees — and the worktree pool is what gives those instances their
+concurrent checkouts (`plans/parallel-work-instances.md`: "instances lease slots, so they add no
+checkouts"). Deleting the pool therefore cannot land without deleting the instance mechanism,
+so the whole stroke is withdrawn rather than re-planned narrower. `instances`, the claims and
+the pool stay; the rest of the series continues without stroke 4.
+
+The original stroke follows for the record.
 
 `instances`, the instance claims and the worktree pool exist because a role spent most of its
 time waiting for its own change to merge (fast-merge's measurement: 60% of role time waiting).
@@ -183,7 +193,7 @@ each is gated on the same evidence, read from the report and the log after strok
 - red-main minutes: from `main_check`/`main_red_hold` (the G1 guardrail's rule,
   src/baseline/main-guardrails.ts).
 
-If p90 stays under ~15 minutes with one runner per role, stroke 4 is safe. If the checks run
+If p90 stays under ~15 minutes with one runner per role, the original stroke 4 would have been safe — but it is withdrawn (2026-10-31), and this measurement no longer gates any live part. If the checks run
 within the permit without waits, stroke 3's deletions already removed the demand and stroke 5
 changes nothing load-wise. If they do not, the answer is *not* to keep the pool — it is to make
 the check cheaper or land less often, both of which this plan's strokes push toward anyway.
@@ -208,7 +218,7 @@ the check cheaper or land less often, both of which this plan's strokes push tow
 | 1a–1e/6 Only a stopped team asks for a person | the amber/blue/gray alert builders, split into five sub-plans: 1a the dashboard's doctor link, 1b the staleness/notify/queue banners, 1c the review/check banners, 1d the status/tail banners, 1e the backlog staleness/structure banners | 1b: Subtract parts 1a/6 and 2a/6–2c/6; 1d: Subtract part 1c/6; the rest chain part-by-part |
 | 2a–2c/6 One hold vocabulary | 2a: Needs replan; 2b: Waiting for the next failure; 2c: the held counters and the operator-held threshold | 2b requires 2a; 2c requires 2b |
 | 3a–3g/7 A pin becomes a lock and a fast-forward | split into seven sub-plans: 3a the scheduling interlock, 3b the pre-merge check, 3c the verify stage, 3d `tumwater queue` and its controls, 3e the pin-directed merge, 3f the durable queue and its readers, 3g the docs and invariants | 3a requires Every commit is verified on main part 3f/3; 3b–3g chain part-by-part |
-| 4/6 One runner per role | instance claims, the worktree pool, `instances` | Subtract parts 3a/7–3g/7 |
+| 4/6 One runner per role | instance claims, the worktree pool, `instances` — **withdrawn 2026-10-31** (the Settings concurrency controls keep them) | — |
 | 5a–5d/6 One model per role | 5a the image-capability probe, 5b the per-provider caps, 5c the model-failure fallback episode (the budget fallback's removal, also once part of 5c, was withdrawn 2026-10-28), 5d the subscription-window carve-outs; 5e the tier map — withdrawn 2026-10-28 | 5b requires 5a; 5c requires 5b; 5d requires 5c |
 | 6/6 The sweep | the rows, keys, aliases and docs the five parts left behind | — |
 
@@ -228,7 +238,8 @@ replaces the mechanism, not that it was wrong.
 - [interlock-relief.md](interlock-relief.md) — stroke 3 deletes the interlock outright, so its
   per-role tiering has no subject.
 - [parallel-work-instances.md](parallel-work-instances.md), [worktree-pool.md](worktree-pool.md) —
-  stroke 4 retires both.
+  kept: stroke 4 is withdrawn (2026-10-31), because the Settings concurrency controls keep
+  `roles.<role>.instances` and the pool that gives those instances their checkouts.
 - [provider-concurrency.md](provider-concurrency.md) — stroke 5 retires the per-provider caps.
   [image-input.md](image-input.md) — partly: the probe goes, the reroute stays.
   [model-tiers.md](model-tiers.md), [fallback-model.md](fallback-model.md),
@@ -246,10 +257,10 @@ replaces the mechanism, not that it was wrong.
 
 - **Main is red more often.** Stroke 3 is only safe after stroke 1 and the live series land the
   "red main stops nobody" note and the fix-forward owner; otherwise this trades queue waits for a
-  stopped team. Parts 3a/7–3g/7 and 4/6 therefore carry that requirement in their headings and bodies.
-- **A deletion that outruns its measurement.** Strokes 4 and 5 remove capacity on a prediction.
-  The measurement table above is the guard, and part 6/6's sweep is where a wrong deletion shows
-  up as a missing row.
+  stopped team. Parts 3a/7–3g/7 therefore carry that requirement in their headings and bodies.
+- **A deletion that outruns its measurement.** Stroke 5 removes capacity on a prediction
+  (stroke 4, which would have, is withdrawn 2026-10-31). The measurement table above is the
+  guard, and part 6/6's sweep is where a wrong deletion shows up as a missing row.
 - **Losing a real signal with the noise.** A warning deleted because it was noise is gone for
   good. Each part's acceptance criteria name the condition that must still be visible *somewhere*
   (doctor or report) after the banner goes.
@@ -259,10 +270,11 @@ replaces the mechanism, not that it was wrong.
 ## How we will know it worked
 
 - The feed on a healthy team is empty; on a stopped team it names the stop and nothing else.
-- `tumwater doctor`'s row count falls: 79 rows today, and the rows stroke 2, 3, 4 and 5 delete
+- `tumwater doctor`'s row count falls: 79 rows today, and the rows stroke 2, 3 and 5 delete
   with their mechanisms (`stalled entries`, `backlog headings`, `plan dependencies`, the three
-  contention rows, `worktree pool`, `parallel instances`, `provider concurrency`, the
-  `claude window`/`codex window` rows) leave with them. The model-tier, over-cap model, fallback
+  contention rows, `provider concurrency`, the `claude window`/`codex window` rows) leave with
+  them; the `worktree pool` and `parallel instances` rows stay with the instances the Settings
+  controls keep (2026-10-31). The model-tier, over-cap model, fallback
   chain and `image input` rows stay with the routing the user kept (2026-10-28).
 - One check runs per change, once, after landing: `build_check` events per merged commit fall to
   1 (they are ≥2 today, and up to a dozen in a reject cycle).
