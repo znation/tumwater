@@ -48,7 +48,8 @@ host, so it checks only what is nearest the change:
 
 - the same compile as `npm test`;
 - the lint, over only the files the change touches (`scripts/lint-changed.mjs`). A change to the
-  lint config, the dependencies or `tsconfig.json` lints the whole tree;
+  lint config, the dependencies or `tsconfig.json` lints the whole tree. It runs while the tests
+  run (`--alongside`), and its report prints after theirs;
 - the test files nearest the change that fit a 30 s budget (`test-runner.js --affected
   --budget=30`, selection in `test/affected-tests.ts`). It ranks the files the change can reach
   by import distance (a changed test file first, then files that import a changed module or name

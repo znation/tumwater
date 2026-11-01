@@ -2447,9 +2447,11 @@ started inside the run".
 
 **Guarantee.** main() asks a non-e2e suite for `--test-concurrency=floor(parallelism / inFlight)`
 workers, where `inFlight` is the project's runner processes currently in the host's process table
-(each running suite, its own runner included) and `parallelism` is `os.availableParallelism()`,
-never below one worker. So N suites running at once each take a fair slice of the cores instead of
-every suite grabbing node's default `parallelism - 1` workers and overloading the host. The pure
+(each running suite, its own runner included, counted once: the shell and `check-permit.mjs`
+wrappers an npm script puts around a runner name it too, and are not runners) and `parallelism` is
+`os.availableParallelism()`, never below one worker. So N suites running at once each take a fair
+slice of the cores instead of every suite grabbing node's default `parallelism - 1` workers and
+overloading the host. The pure
 census and math (`suitesInFlight`, `sizeTestConcurrency`) run against a fake process table in
 tests. When node predates `--test-concurrency` (v20.10, `nodeSupportsTestConcurrency`) or the
 table cannot be read, the suite falls back to node's default concurrency — a census failure
@@ -2459,9 +2461,10 @@ time (`--test-concurrency=1`).
 **Binds.** `test/test-runner.ts` (`suitesInFlight`, `sizeTestConcurrency`, `sharedSuiteConcurrency`, main's non-e2e concurrency).
 
 **Pinned by.** `test/test-runner.test.ts` — "suitesInFlight counts only this project's runner
-processes, self included", "sizeTestConcurrency shares the cores across the suites in flight, never
-below 1" and "sharedSuiteConcurrency sizes non-e2e concurrency from a fake table, degrading on
-census failure".
+processes, self included", "suitesInFlight counts an npm-launched suite once, not once per wrapper
+naming the runner", "sizeTestConcurrency shares the cores across the suites in flight, never below
+1" and "sharedSuiteConcurrency sizes non-e2e concurrency from a fake table, degrading on census
+failure".
 
 ## Process table: the parsers skip what does not fit, cwds fails loudly, and the marker and port reads never fail
 

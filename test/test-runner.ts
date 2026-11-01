@@ -534,14 +534,22 @@ export function nodeSupportsTestConcurrency(version: string = process.versions.n
   return Number.isInteger(minor) && minor >= 10;
 }
 
-/** The project's suite runners currently in flight, read from a process table: rows whose argv
- * names this project's test runner (`dist/test/test-runner.js`). A running suite's own runner is
- * in the table, so the count is at least 1. Counting the runner processes on the host is the
- * census behind the non-e2e concurrency sizing, so N suites running at once can each take a
- * fair slice of the cores instead of every suite grabbing node's default `parallelism - 1`
- * workers. Exported pure so test/test-runner.test.ts pins the match against fixture rows. */
+/** A runner process's own argv: node (any path), its flags, then this project's runner as the
+ * script. Only the runner itself has that shape — an npm-launched suite also puts `sh -c "… node
+ * dist/test/test-runner.js …"` and `node scripts/check-permit.mjs node dist/test/test-runner.js …`
+ * in the table, and counting the bare name read every such suite as three. */
+const RUNNER_ARGV = /^(?:\S*\/)?node(?:\s+-\S+)*\s+\S*test-runner\.js(?:\s|$)/;
+
+/** The project's suite runners currently in flight, read from a process table: rows that are
+ * this project's test runner (`dist/test/test-runner.js`) itself, not a wrapper naming it. A
+ * running suite's own runner is in the table, so the count is at least 1. Counting the runner
+ * processes on the host is the census behind the non-e2e concurrency sizing, so N suites running
+ * at once can each take a fair slice of the cores instead of every suite grabbing node's default
+ * `parallelism - 1` workers. Counting the wrappers too gave a lone gate 6 workers of 18 and, with
+ * two other suites running, 2 (2026-11-01). Exported pure so test/test-runner.test.ts pins the
+ * match against fixture rows. */
 export function suitesInFlight(rows: readonly ProcessRow[]): number {
-  return rows.filter((r) => r.command.includes("test-runner.js")).length;
+  return rows.filter((r) => RUNNER_ARGV.test(r.command)).length;
 }
 
 /** How many parallel node --test workers one suite should ask for when `inFlight` suites are

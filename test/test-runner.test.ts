@@ -286,6 +286,21 @@ test("suitesInFlight counts only this project's runner processes, self included"
   assert.equal(suitesInFlight(rows), 2);
 });
 
+test("suitesInFlight counts an npm-launched suite once, not once per wrapper naming the runner", () => {
+  const row = (pid: number, command: string) => ({ pid, ppid: 1, uid: 501, etime: "0:10", time: "0:01", command });
+  // `npm run test:gate` as ps shows it: the script's shell, check-permit.mjs, then the runner
+  // (spawned by bare name, or by node's full path when the harness spawns it).
+  const rows = [
+    row(10, "npm run test:gate"),
+    row(11, "sh -c node scripts/live-checkout-guard.mjs && tsc --incremental && node scripts/check-permit.mjs node dist/test/test-runner.js --affected --budget=30"),
+    row(12, "node scripts/check-permit.mjs node dist/test/test-runner.js --affected --budget=30"),
+    row(13, "node dist/test/test-runner.js --affected --budget=30"),
+    row(14, "/opt/homebrew/Cellar/node/26.13.0/bin/node dist/test/test-runner.js orchestrator-3.e2e"),
+    row(15, "/opt/homebrew/Cellar/node/26.13.0/bin/node --test --test-concurrency=1 /w/dist/test/test-runner.test.js"),
+  ];
+  assert.equal(suitesInFlight(rows), 2);
+});
+
 test("sizeTestConcurrency shares the cores across the suites in flight, never below 1", () => {
   // 18 cores, 9 suites: 2 workers each — the whole point of sizing by in-flight count.
   assert.equal(sizeTestConcurrency(9, 18), 2);
