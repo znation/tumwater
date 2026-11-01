@@ -657,6 +657,25 @@ when the build sits deeper than the walk", "redeployTarget in watch mode holds o
 git cannot walk main, and walks again next poll", and "watchVerifiesMain is true only with a
 declared check and a merge command in effect".
 
+### INV-K2: the redeploy mirror worktree runs one green check or compile at a time
+
+**Guarantee.** Every green check and staged compile the redeployer runs — cooldown pre-warm and
+episode alike — starts through one gate, and none starts (so nothing re-points the shared `_main`
+mirror worktree) while an earlier one is unsettled, including a step whose episode a moved main
+superseded. An episode that opens meanwhile holds in its check or compile step and starts it on
+the first poll after the earlier step settles, at main's newest head.
+
+**Binds.** `src/redeploy/redeploy-probes.ts` (`MirrorSteps`, `PrewarmProbes`),
+`src/redeploy/redeployer.ts`, `src/redeploy/redeploy.ts` (the mirror both steps run in).
+
+**Pinned by.** `test/redeployer.test.ts` — "main moving during a pending restart supersedes it:
+the new head is evaluated afresh once the old compile settles" and "a superseded check keeps the
+mirror until it settles; the episode then checks only the newest head";
+`test/redeploy-prewarm.test.ts` — "an episode that opens while the pre-warm's check still runs
+waits for it, then checks only the newest head", "an episode that opens while the pre-warm's
+compile still runs starts its check only once that compile settles", and "a head that moves while
+the pre-warm's green check runs starts no second check until it settles".
+
 ## The fallback breaker: a free fallback that cannot serve is demoted, not retried forever
 
 The engaged free fallback is only worth running while it can serve. The breaker watches the runs

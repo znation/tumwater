@@ -23,6 +23,7 @@ import {
   driveToRestart,
   fakeDeps,
   harness,
+  mirrorFake,
   settle,
 } from "./fixtures/redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath } from "../src/paths.js";
@@ -365,20 +366,52 @@ test("a blocked restart leaves the state stream: a restart_blocked event beside 
   assert.equal(events.filter((e) => e.type === "restart_blocked").length, 1, "the latch means no poll re-emits it");
 });
 
-test("main moving during a pending restart supersedes it: the new head is evaluated afresh", async () => {
-  const f = fakeDeps();
-  const { r } = harness(f.deps);
-  await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true);
-  f.green(true);
+test("main moving during a pending restart supersedes it: the new head is evaluated afresh once the old compile settles", async () => {
+  // The superseded episode forgets its compile, but the compile keeps running in the mirror
+  // worktree; checking the new head out there would re-point the mirror under it.
+  const m = mirrorFake();
+  const { r } = harness(m.deps);
+  assert.equal(await r.poll(HEAD_B, IDLE, true, 1_000), "hold");
+  m.finish(true);
   await settle();
-  await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true); // compiling HEAD_B
-  assert.deepEqual(f.calls.compile, [HEAD_B]);
-  assert.equal(await r.poll(HEAD_C, { roleInFlight: 0, directorInFlight: 0 }, true), "hold", "new head: a new green check, not a swap of the old compile");
-  assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C]);
-  f.compiled(true); // HEAD_B's compile finishing late changes nothing
+  assert.equal(await r.poll(HEAD_B, IDLE, true, 2_000), "hold"); // compiling HEAD_B
+  assert.equal(await r.poll(HEAD_C, IDLE, true, 3_000), "hold", "new head: a new episode, not a swap of the old compile");
+  assert.deepEqual(r.status().restartHold, { stage: "checking", since: 3_000 }, "held in its check while the old compile runs");
+  assert.deepEqual(m.steps(), ["green b", "compile b"], "no check of the new head under the running compile");
+  m.finish(true); // HEAD_B's compile finishing late changes nothing
   await settle();
-  assert.equal(await r.poll(HEAD_C, { roleInFlight: 0, directorInFlight: 0 }, true), "hold");
-  assert.deepEqual(f.calls.swap, [], "the superseded build is never swapped in");
+  assert.equal(await r.poll(HEAD_C, IDLE, true, 4_000), "hold");
+  assert.deepEqual(m.steps(), ["green b", "compile b", "green c"], "the mirror is free: the new head's check starts");
+  m.finish(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_C, IDLE, true, 5_000), "hold", "green: the compile starts");
+  m.finish(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_C, IDLE, true, 6_000), "restart");
+  assert.deepEqual(m.calls.swap, [HEAD_C], "the superseded build is never swapped in");
+  assert.deepEqual(m.overlaps, [], "one step at a time in the mirror");
+});
+
+test("a superseded check keeps the mirror until it settles; the episode then checks only the newest head", async () => {
+  const m = mirrorFake();
+  const { r, types } = harness(m.deps);
+  assert.equal(await r.poll(HEAD_B, IDLE, true, 1_000), "hold");
+  assert.equal(await r.poll(HEAD_C, IDLE, true, 2_000), "hold");
+  assert.equal(await r.poll(HEAD_D, IDLE, true, 3_000), "hold");
+  assert.deepEqual(m.steps(), ["green b"], "neither newer head re-points the mirror under the running check");
+  m.finish(false); // HEAD_B's red is HEAD_B's alone: no pending episode adopts it
+  await settle();
+  assert.equal(await r.poll(HEAD_D, IDLE, true, 4_000), "hold");
+  assert.deepEqual(m.steps(), ["green b", "green d"], "the newest head's check; the skipped head is never checked");
+  m.finish(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_D, IDLE, true, 5_000), "hold", "green: the compile starts");
+  m.finish(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_D, IDLE, true, 6_000), "restart");
+  assert.deepEqual(m.calls.swap, [HEAD_D]);
+  assert.ok(!types().includes("restart_blocked"), "the superseded red blocks no head");
+  assert.deepEqual(m.overlaps, [], "one step at a time in the mirror");
 });
 
 test("a forced restart waives the cooldown: the deferred head starts its episode on the next poll", async () => {

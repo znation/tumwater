@@ -60,6 +60,40 @@ export function fakeDeps(over: Partial<RedeployDeps> & { stale?: BuildStaleness 
   };
 }
 
+/** fakeDeps whose green checks and compiles record themselves as steps on the one mirror worktree
+ * they share in production (redeploy.ts): `steps` lists every step in start order, and `overlaps`
+ * every step that started while an earlier one was still running — the re-point under a running
+ * suite that recorded a red against the wrong tree on 2026-10-30. `finish` settles the oldest
+ * running step: a green check with `ok`, a compile with `{ ok }`. */
+export function mirrorFake() {
+  const f = fakeDeps();
+  const steps: { step: string; done: boolean; settle: (ok: boolean) => void }[] = [];
+  const overlaps: string[] = [];
+  const start = <T>(step: string, value: (ok: boolean) => T) =>
+    new Promise<T>((resolve) => {
+      const running = steps.filter((s) => !s.done).map((s) => s.step);
+      if (running.length > 0) overlaps.push(`${step} under ${running.join(", ")}`);
+      const s = { step, done: false, settle: (ok: boolean) => ((s.done = true), resolve(value(ok))) };
+      steps.push(s);
+    });
+  const deps: RedeployDeps = {
+    ...f.deps,
+    mainGreen: (h) => start(`green ${h.slice(0, 1)}`, (ok) => ok),
+    compile: (h) => start(`compile ${h.slice(0, 1)}`, (ok) => ({ ok, detail: "" })),
+  };
+  return {
+    deps,
+    calls: f.calls,
+    overlaps,
+    steps: () => steps.map((s) => s.step),
+    finish(ok: boolean) {
+      const running = steps.find((s) => !s.done);
+      assert.ok(running, "a step is running");
+      running.settle(ok);
+    },
+  };
+}
+
 export function harness(deps: RedeployDeps, selfHosted = true, drainMaxMs?: number, restartRecord?: AutoRestartRecord) {
   const events: HarnessEventInput[] = [];
   const r = new Redeployer(BUILD, selfHosted, deps, (e) => events.push(e), drainMaxMs, restartRecord);

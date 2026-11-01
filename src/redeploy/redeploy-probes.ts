@@ -29,23 +29,60 @@ export function track<T>(promise: Promise<T>): Tracked<T> {
   return t;
 }
 
+/** The mirror worktree's steps: redeploy.ts runs every green check and staged compile in one
+ * shared checkout (`.tumwater/worktrees/_main`), checking it out at the step's head first, so a
+ * step started while another runs re-points the mirror under it. The running one then finishes
+ * on a tree it did not start on and records its verdict against the wrong SHA: on 2026-10-30 a
+ * cooldown pre-warm's suite ran on while the lapsed episode checked the mirror out at two newer
+ * heads, and logged 10 failures against a tree it never ran. Every step the pre-warm and the
+ * episode run starts here, and none starts while an earlier one is unsettled — a superseded
+ * episode's included: the episode forgets its step when main moves, this does not. A refused
+ * start returns null; the caller holds and asks again on a later poll. */
+export class MirrorSteps {
+  private running: Tracked<unknown> | null = null;
+
+  constructor(private readonly deps: Pick<RedeployDeps, "mainGreen" | "compile">) {}
+
+  /** True while a step started here has not settled. */
+  busy(): boolean {
+    return this.running !== null && !this.running.done;
+  }
+
+  /** Start `head`'s green check, or null while an earlier step still runs. */
+  green(head: string): Tracked<boolean> | null {
+    return this.start(() => this.deps.mainGreen(head));
+  }
+
+  /** Start `head`'s staged compile, or null while an earlier step still runs. */
+  compile(head: string): Tracked<CompileResult> | null {
+    return this.start(() => this.deps.compile(head));
+  }
+
+  private start<T>(step: () => Promise<T>): Tracked<T> | null {
+    if (this.busy()) return null;
+    const t = track(step());
+    this.running = t;
+    return t;
+  }
+}
+
 /** The cooldown's pre-warm probes (src/redeploy/redeployer.ts's poll runs them while the restart is
  * deferred — BUGS.md 2026-09-30): the deferred head's green check and, only after a green
  * verdict, its staged compile, once per SHA, owned here so the state machine's episode can
  * adopt whatever verdict is already in hand at the lapse. A red verdict or a "could not run"
  * shape prewarms nothing further — there is no point staging a compile for a tree the check
  * condemned — and is simply not adopted (the episode re-runs it under its own rules).
- * Skipped while an episode is pending: its own steps are the warm-up, and the mirror worktree
- * both run in must not serve two checks at once. A new head that arrives while a step is still
- * running is likewise not adopted: returning without resetting keeps the mirror pointed at the
- * head the running check (or compile) is testing, never re-pointed under it; the next poll after
- * both settle takes the newest head as today. */
+ * Skipped while an episode is pending: its own steps are the warm-up. Both start their steps
+ * through the same MirrorSteps, so neither re-points the mirror under the other's running step.
+ * A new head that arrives while a step is still running is not adopted: returning without
+ * resetting keeps probing the head the running check (or compile) is testing; the next poll
+ * after it settles takes the newest head as today. */
 export class PrewarmProbes {
   private head: string | null = null;
   private green: Tracked<boolean> | null = null;
   private compiled: Tracked<CompileResult> | null = null;
 
-  constructor(private readonly deps: Pick<RedeployDeps, "mainGreen" | "compile">) {}
+  constructor(private readonly mirror: MirrorSteps) {}
 
   /** Run the deferred head's green check, then its staged compile, once per SHA — the same
    * effects the episode itself runs, so their cost lands inside the dead window instead of
@@ -54,33 +91,33 @@ export class PrewarmProbes {
   prewarm(head: string, pending: boolean): void {
     if (pending) return;
     if (this.head !== head) {
-      // A newer head arrived while this head's green check or staged compile is still running
-      // (!done): never re-point the mirror under a running step — it may still be testing the
-      // sha it read before the reset, and a verdict recorded under that sha would not cover the
-      // tree it tested. Keep probing for the older head; the next poll after both settle adopts
-      // the newest head as today.
-      if ((this.green !== null && !this.green.done) || (this.compiled !== null && !this.compiled.done)) return;
+      // A newer head arrived while a step is still running in the mirror (see MirrorSteps): keep
+      // probing for the older head; the next poll after it settles adopts the newest head.
+      if (this.mirror.busy()) return;
       this.head = head;
       this.green = null;
       this.compiled = null;
     }
+    // A step the busy mirror refused stays null and starts on a later poll.
     if (this.green === null) {
-      this.green = track(this.deps.mainGreen(head));
+      this.green = this.mirror.green(head);
       return;
     }
     if (!this.green.done) return;
     if (this.green.error || this.green.result !== true) return;
-    if (this.compiled === null) this.compiled = track(this.deps.compile(head));
+    if (this.compiled === null) this.compiled = this.mirror.compile(head);
   }
 
   /** The pre-warm's green check for `head`, when the episode can adopt it: still running (adopt
    * and keep waiting — the lapse caught the check mid-flight) or finished with a real verdict
    * (green or red). A check that finished WITHOUT a verdict — a rejection, "could not run" — is
    * never adopted: the episode's rejection rules drop the pending head and re-run the check
-   * fresh, and adopting it would replay the same dead end on every retry (BUGS.md 2026-09-16). */
-  adoptGreen(head: string): Tracked<boolean> {
+   * fresh, and adopting it would replay the same dead end on every retry (BUGS.md 2026-09-16).
+   * Otherwise a fresh check of `head` — or null while an earlier step still runs in the mirror,
+   * when the episode holds in its check and asks again on the next poll. */
+  adoptGreen(head: string): Tracked<boolean> | null {
     const g = this.head === head ? this.green : null;
-    return g !== null && (!g.done || !g.error) ? g : track(this.deps.mainGreen(head));
+    return g !== null && (!g.done || !g.error) ? g : this.mirror.green(head);
   }
 
   /** The pre-warm's staged compile for `head`, when the episode can adopt it: still running (a

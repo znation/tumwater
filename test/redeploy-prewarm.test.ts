@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { type RedeployDeps, RESTART_COOLDOWN_MS } from "../src/redeploy/redeploy-policy.js";
-import { PrewarmProbes } from "../src/redeploy/redeploy-probes.js";
+import { MirrorSteps, PrewarmProbes } from "../src/redeploy/redeploy-probes.js";
 import { warningEvents } from "./fixtures/log-fixtures.js";
 import {
   HEAD_B,
@@ -11,6 +11,7 @@ import {
   driveToRestart,
   fakeDeps,
   harness,
+  mirrorFake,
   settle,
 } from "./fixtures/redeploy-fixtures.js";
 
@@ -34,7 +35,7 @@ test("a head that moves while the pre-warm's green check runs starts no second c
     },
     compile: async () => ({ ok: true, detail: "" }),
   };
-  const probes = new PrewarmProbes(deps);
+  const probes = new PrewarmProbes(new MirrorSteps(deps));
 
   // HEAD_B's green check starts (held); a newer head arriving while it runs must not re-point
   // the mirror under the running step, so no second check starts.
@@ -48,6 +49,50 @@ test("a head that moves while the pre-warm's green check runs starts no second c
   await settle();
   probes.prewarm(HEAD_C, false);
   assert.deepEqual(calls, [HEAD_B, HEAD_C], "the next poll after settling takes the newest head");
+});
+
+test("an episode that opens while the pre-warm's check still runs waits for it, then checks only the newest head", async () => {
+  // The 2026-10-30 22:26–22:31 shape: the cooldown pre-warm started one head's suite in the mirror
+  // worktree; the cooldown lapsed and two newer heads arrived while it ran, and the episode checked
+  // the mirror out at each of them under the running suite, which then recorded 10 failures
+  // against a tree it had not run on.
+  const m = mirrorFake();
+  const lapse = 1_000_000 + RESTART_COOLDOWN_MS;
+  const { r } = harness(m.deps, true, undefined, { lastAt: 1_000_000, record: () => {} });
+  assert.equal(await r.poll(HEAD_B, IDLE, true, lapse - 60_000), "none", "the cooldown defers; the pre-warm's check starts");
+  assert.equal(await r.poll(HEAD_C, IDLE, true, lapse), "hold", "the lapse opens the episode on a newer head");
+  assert.deepEqual(r.status(lapse).restartHold, { stage: "checking", since: lapse }, "held in its check while the pre-warm's runs");
+  assert.equal(await r.poll(HEAD_D, IDLE, true, lapse + 10), "hold", "a second newer head supersedes the waiting episode");
+  assert.deepEqual(m.steps(), ["green b"], "the mirror stays on the pre-warm's head while its check runs");
+  m.finish(false);
+  await settle();
+  assert.equal(await r.poll(HEAD_D, IDLE, true, lapse + 20), "hold");
+  assert.deepEqual(m.steps(), ["green b", "green d"], "the pre-warm settled: the newest head's check starts");
+  m.finish(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_D, IDLE, true, lapse + 30), "hold", "green: the compile starts");
+  m.finish(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_D, IDLE, true, lapse + 40), "restart");
+  assert.deepEqual(m.calls.swap, [HEAD_D]);
+  assert.deepEqual(m.overlaps, [], "one step at a time in the mirror");
+});
+
+test("an episode that opens while the pre-warm's compile still runs starts its check only once that compile settles", async () => {
+  const m = mirrorFake();
+  const lapse = 1_000_000 + RESTART_COOLDOWN_MS;
+  const { r } = harness(m.deps, true, undefined, { lastAt: 1_000_000, record: () => {} });
+  assert.equal(await r.poll(HEAD_B, IDLE, true, lapse - 60_000), "none");
+  m.finish(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, IDLE, true, lapse - 50_000), "none", "green: the pre-warm's compile starts");
+  assert.equal(await r.poll(HEAD_C, IDLE, true, lapse), "hold", "the lapse opens the episode on a newer head");
+  assert.deepEqual(m.steps(), ["green b", "compile b"], "no check of the newer head under the running compile");
+  m.finish(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_C, IDLE, true, lapse + 10), "hold");
+  assert.deepEqual(m.steps(), ["green b", "compile b", "green c"]);
+  assert.deepEqual(m.overlaps, [], "one step at a time in the mirror");
 });
 
 test("within the cooldown a second stale episode is deferred: no hold, status carries the deadline", async () => {

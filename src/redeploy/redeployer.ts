@@ -19,7 +19,7 @@ import {
   STALE_ESCALATE_AFTER_MS,
   STALE_ESCALATE_EVERY_MS,
 } from "./redeploy-policy.js";
-import { PrewarmProbes, track, type Tracked } from "./redeploy-probes.js";
+import { MirrorSteps, PrewarmProbes, track, type Tracked } from "./redeploy-probes.js";
 
 /** The self-redeploy STATE MACHINE (see redeploy-policy.ts for the policy it decides with and
  * the behavior contract both halves serve): one Redeployer per orchestrator process. The
@@ -160,6 +160,9 @@ export class Redeployer {
    * adopts is decided by the adopt helpers, not by the pre-warm. The probes themselves live in
    * src/redeploy/redeploy-probes.ts; see there. */
   private readonly probes: PrewarmProbes;
+  /** The one gate every green check and compile starts through, pre-warm and episode alike: the
+   * mirror worktree they share runs one step at a time (see MirrorSteps). */
+  private readonly mirror: MirrorSteps;
   /** The event sink, guarded so a failed write cannot throw out of `poll` or `forceRestart`
    * (see bestEffortLog). */
   private readonly log: (event: RedeployEvent) => void;
@@ -193,7 +196,8 @@ export class Redeployer {
   ) {
     this.lastAutoRestartAt = restartRecord.lastAt;
     this.log = bestEffortLog(log);
-    this.probes = new PrewarmProbes(deps);
+    this.mirror = new MirrorSteps(deps);
+    this.probes = new PrewarmProbes(this.mirror);
   }
 
   /** What orchestrator.json publishes (see BuildStatus). `now` is the same clock poll was given
@@ -366,7 +370,8 @@ export class Redeployer {
         this.forcedRestart = false;
       }
       // A moved main supersedes any restart in progress for the previous head: its compile
-      // (if running) finishes into its own staging dir and is simply never swapped in.
+      // (if running) finishes into its own staging dir and is simply never swapped in. Its
+      // running step keeps the mirror until it settles, so the new head's check waits for it.
       if (this.pendingHead !== null && this.pendingHead !== mainHead) this.clearPending();
     }
   }
@@ -451,7 +456,9 @@ export class Redeployer {
         this.drainWindowMs = typeof p75 === "number" && p75 > 0 ? p75 : this.drainMaxMs;
       }
       // Adopt the cooldown's pre-warm (BUGS.md 2026-09-30): verdicts already in hand mean the
-      // lapse reaches the swap directly instead of paying green-check + compile from zero.
+      // lapse reaches the swap directly instead of paying green-check + compile from zero. With
+      // nothing to adopt and an earlier step still running in the mirror (a pre-warm, or the
+      // superseded head's), the green is null and greenStage starts it once that settles.
       this.green = this.probes.adoptGreen(mainHead);
       this.compiled = this.probes.adoptCompile(mainHead);
       // Announce the hold the moment it begins, in the stage the adopted verdicts put it in: the
@@ -484,9 +491,11 @@ export class Redeployer {
     return "hold";
   }
 
-  /** The green check: hold while it is unresolved, drop the episode when it could not run, block
-   * when it returns a red verdict. Returns null (proceed to compile) only on a green verdict. */
+  /** The green check: start it once the mirror is free, hold while it is unresolved, drop the
+   * episode when it could not run, block when it returns a red verdict. Returns null (proceed to
+   * compile) only on a green verdict. */
   private greenStage(mainHead: string, now: number, inFlight: InFlightCounts): RedeployAction | null {
+    this.green ??= this.probes.adoptGreen(mainHead);
     if (!this.green?.done) return this.hold(mainHead, "checking", now, runsInFlight(inFlight));
     // A REJECTED check is not a verdict: it could not run (git broke inside the mirror worktree,
     // or the check itself threw), so it says nothing about the tree. Drop the pending head — no
@@ -510,13 +519,13 @@ export class Redeployer {
     return null;
   }
 
-  /** The compile stage: kick off (or hold on) the staged build, and on a verdict block or drop the
-   * episode when the tree failed to build. Returns null (proceed to drain) only on a successful
-   * compile. */
+  /** The compile stage: kick off (or hold on) the staged build — once the mirror is free — and on
+   * a verdict block or drop the episode when the tree failed to build. Returns null (proceed to
+   * drain) only on a successful compile. */
   private compileStage(mainHead: string, now: number, inFlight: InFlightCounts): RedeployAction | null {
     if (!this.compiled) {
       const adopted = this.probes.adoptCompile(mainHead);
-      this.compiled = adopted ?? track(this.deps.compile(mainHead));
+      this.compiled = adopted ?? this.mirror.compile(mainHead);
       return this.hold(mainHead, "compiling", now, runsInFlight(inFlight), adopted !== null);
     }
     if (!this.compiled.done) return this.hold(mainHead, "compiling", now, runsInFlight(inFlight));
