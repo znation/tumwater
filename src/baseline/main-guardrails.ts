@@ -165,9 +165,9 @@ function redBlameClause(culprit: HarnessEvent | undefined, startEv: HarnessEvent
  * ignored; a pass (including one naming only quarantined tests, recorded passed) ends the red.
  * The phrase names how long main has had no passing full check, the sha it has been red since,
  * its clock time, the newest red's first failing test when one is named, and — when the newest
- * `main_culprit` in the window names the spell's opener or its newest red tip — the merge the main watch
- * blamed (`; the main watch blames <role>'s merge <sha>`, or `; the main watch blames merge
- * <sha>` when no runner is named), the one rule the dashboard alert and this phrase share.
+ * `main_culprit` in the window names the spell's opener or its newest red tip — the merge the
+ * main watch blamed (`; the main watch blames <role>'s merge <sha>`, or `; the main watch blames
+ * merge <sha>` when no runner is named), the one rule the dashboard alert and this phrase share.
  * Returns null when main is green, or red for RED_MAIN_WARN_MS or less. The per-job work is
  * split into the module-private helpers `scanRedWindow`, `redSpell`, `redSpellDuration`,
  * `redFailingTest` and `redBlameClause`, one per job, so each is found by name. */

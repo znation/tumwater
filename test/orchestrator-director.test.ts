@@ -1,8 +1,8 @@
 /** Unit-tier coverage for the live orchestrator's scheduling pass
- * (src/orchestrator/orchestrator.ts) — the
- * director's two exemptions and the merge-queue interlock, contracts the gating `npm test`
- * never pinned (the same approach orchestrator-defer.test.ts takes: the block ran only in the
- * e2e tier, so the unit suite reported it uncovered even though the behavior was verified):
+ * (src/orchestrator/orchestrator.ts) — the director's two exemptions and the merge queue's place
+ * outside scheduling, contracts the gating `npm test` never pinned (the same approach
+ * orchestrator-defer.test.ts takes: the block ran only in the e2e tier, so the unit suite
+ * reported it uncovered even though the behavior was verified):
  *
  * - No permit for the director: `tumwater prompt` queues a director request and the director
  *   runs it immediately — the scheduling pass creates the director's task with no-op
@@ -12,11 +12,12 @@
  * - No team gate for the director: an operator pause (`tumwater pause`, the marker file)
  *   holds every role's next run but exempts the director — an explicit human prompt outranks
  *   the pause. The director runs while the paused role never starts one.
- * - Merge queue 3/5 interlock: a role with a queued merge starts no new run until the
- *   merge ends — the poll lists the queue once and skips that role's reservation. Pinned by
- *   prompt order: the merge's own conflict-resolution run (the queued change's rebase onto
- *   main conflicts; a session ending `-conflict` parks until the test releases it) completes
- *   before the role's own run prompt runs. No pre-merge reviewer is involved.
+ * - The merge queue is not a scheduling gate (Subtract part 3a/7, which retired merge queue
+ *   3/5's interlock): a role whose queued merge is still in flight starts its next run anyway.
+ *   Pinned by overlap: the merge's own conflict-resolution run (the queued change's rebase onto
+ *   main conflicts; a session ending `-conflict` parks until the test releases it) is parked
+ *   while the role, woken by a queued prompt, runs and settles. No pre-merge reviewer is
+ *   involved.
  * - The restart hand-off's deadline: a self-redeploy with an in-flight merge and no role
  *   run waits only handoffMergeWindowMs for it, then aborts it and exits — the drain's
  *   abort callback (the shutdown path's last resort), which only the e2e tier exercised.
@@ -178,27 +179,26 @@ test("director: a team pause holds role runs but not the director's queued promp
   }
 });
 
-test("merge queue interlock: a role with a queued merge starts no run until the merge ends", async () => {
-  const repo = await makeFastRepo("merge queue interlock test", ["clean"]);
+test("merge queue: a role whose queued merge is still resolving a conflict starts its next run anyway", async () => {
+  const repo = await makeFastRepo("merge queue scheduling test", ["clean"]);
   // Every merge lands on the deterministic gate and is reviewed after landing (part 3d/3), so
   // no pre-merge reviewer verdict drives the outcome; the merge's own run is then its parked
   // conflict-resolution pi run — the queued change conflicts with main on rebase, and the
-  // resolver (session tumwater-clean-1-conflict) parks until the test releases it. The interlock
-  // relief (scheduling/skip.ts) holds a role while its queued merge is conflict-resolving, so a
-  // due, ready clean must not start a run until the merge's own run finishes.
+  // resolver (session tumwater-clean-1-conflict) parks until the test releases it. The queue is
+  // a merge-side fact only (Subtract part 3a/7), so a clean woken while that run is parked must
+  // run and settle without waiting for its merge.
   const cfg = loadConfig(repo);
   saveConfig(repo, {
     ...cfg,
-    // A long post-run gap keeps clean's first run the only one the test counts: its own
-    // interlock-run happens once, after the queued merge ends.
+    // A long post-run gap keeps clean off its own clock after any run: only the test's queued
+    // prompt wakes it while the merge is parked.
     roles: { ...cfg.roles, clean: { ...cfg.roles.clean!, minRunIntervalSeconds: 300 } },
   });
-  // Stage clean to be due long after the orchestrator starts: a fresh role is due on poll 0
-  // (nextRunAt 0), which would author before the merge ever reaches its conflict. Deferring the
-  // first run past when the conflict-resolution run starts lets the test assert the interlock
-  // held a due, ready clean until the merge's own run ended.
+  // Keep clean's scheduled clock out of the window: a fresh role is due on poll 0 (nextRunAt
+  // 0), and a run that ends before the merge reaches its conflict would prove no overlap. The
+  // test wakes clean with a queued prompt once the conflict-resolution run is parked.
   const state = loadRunnerState(repo, "clean");
-  state.nextRunAt = Date.now() + 12_000;
+  state.nextRunAt = Date.now() + 10 * 60_000;
   saveRunnerState(repo, state);
   const log = path.join(tmpdir(), "interlock-prompts.log");
   const parked = path.join(tmpdir(), "interlock-conflict-parked");
@@ -243,25 +243,23 @@ test("merge queue interlock: a role with a queued merge starts no run until the 
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => fs.existsSync(parked), "the queued change's conflict-resolution run to be in flight");
-    // Clean is now due (its 12 s clock has run) while its merge is still parked in conflict —
-    // the interlock must keep it from starting a run.
-    await waitFor(() => Date.now() >= state.nextRunAt, "clean's first run clock to come due");
-    assert.equal(loadRunnerState(repo, "clean").runs, 0, "a due, ready clean stayed held while its merge resolved");
-    fs.writeFileSync(release, "");
-    await waitFor(() => queueDepth(repo) === 0, "the queued merge to settle and drop", 30_000);
-    await awaitSettledRun(repo, "clean", 1, "clean's first run after the interlock released it");
+    // The merge is parked in conflict and its entry is still queued; wake clean now.
+    const before = loadRunnerState(repo, "clean").runs;
+    submitRolePrompt(repo, "clean", "tidy one thing");
+    await awaitSettledRun(repo, "clean", before + 1, "clean's run while its queued merge is still resolving");
+    assert.equal(queueDepth(repo), 1, "clean's run settled while its merge was still queued and parked");
     const runs = readRunBlocks(log);
     const conflictIdx = runs.findIndex((b) => sessionOf(b).endsWith("-conflict"));
-    const runIdx = runs.findIndex(
+    const runIdx = runs.findLastIndex(
       (b) => sessionOf(b).startsWith("tumwater-clean-") && !sessionOf(b).endsWith("-conflict"),
     );
     assert.ok(conflictIdx >= 0, "the queued change's merge ran a conflict-resolution run");
-    assert.ok(runIdx >= 0, "clean eventually got its own run");
     assert.ok(
       conflictIdx < runIdx,
-      "the merge's own run finished before the role's run started — the interlock held the role back",
+      "the role's run started after its merge's own run was already parked — the queue held nothing back",
     );
-    assert.equal(loadRunnerState(repo, "clean").runs, 1, "only the post-interlock run counted");
+    fs.writeFileSync(release, "");
+    await waitFor(() => queueDepth(repo) === 0, "the queued merge to settle and drop", 30_000);
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -280,14 +278,19 @@ test("restart hand-off: an in-flight merge outliving its deadline is aborted, no
   saveConfig(repo, {
     ...cfg,
     check: { command: `if [ -f interlock-note.txt ]; then touch '${parked}'; sleep 60; fi` },
+    roles: { ...cfg.roles, clean: { ...cfg.roles.clean!, minRunIntervalSeconds: 300 } },
   });
   // If the parked check ever fails to park (its alpha flake mode), the merge would proceed past
   // the verify into a clean run — so a pi shim stays on PATH and answers idle rather than calling
   // a real model (a test never does).
   const restore = fakePiIdle();
-  // The queued change's gate check holds the merge in flight; the interlock keeps clean itself
-  // from running, so the parked check is the only work the hand-off waits on — the drain's
-  // bounded wait, then its abort callback, is what this pins.
+  // The queued change's gate check holds the merge in flight. Its queued entry no longer holds
+  // clean's own runs (Subtract part 3a/7), so a just-ran seed and the 300 s gap above keep them
+  // off: the parked check is the only work the hand-off waits on — the drain's bounded wait,
+  // then its abort callback, is what this pins.
+  const state = loadRunnerState(repo, "clean");
+  state.lastRunEndedAt = Date.now();
+  saveRunnerState(repo, state);
   enqueueMerge(repo, {
     role: "clean",
     sha: shaOnSideBranch(repo),

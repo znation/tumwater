@@ -449,7 +449,7 @@ const COMMAND_HANDLERS: Readonly<Record<string, CommandHandler>> = {
   logs: (root, _command, args) => cmdLogsCase(root, args),
   notify: (root, _command, args) => cmdNotifyCase(root, args),
   history: (root, _command, args) => cmdHistoryCase(root, args),
-  tick: (root, _command, args) => runTrailCommand(root, args), // vocabulary-ok: command name stays
+  tick: (root, _command, args) => runTrailCommand(root, args), // vocabulary-ok: command name stays // retired-name-ok: the hidden `tick` alias's command token
   diff: async (root, _command, args) => {
     await (await import("./cli/cli-query-commands.js")).cmdDiff(root, args);
   },

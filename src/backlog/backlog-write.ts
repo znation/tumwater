@@ -180,7 +180,7 @@ export function readEntryLines(
  * refuse as data without writing; on success returns the `ok` file path, raw markdown and entry
  * for the caller to splice and write its own outcome. A pure lookup, decided inside the caller's
  * lock. */
-export function locateDashboardEntry(
+function locateDashboardEntry(
   root: string,
   fileName: string,
   sectionTitle: string,
@@ -200,7 +200,7 @@ export function locateDashboardEntry(
 
 /** The `ok` fields of a successful locateDashboardEntry, what withLocatedEntry hands its
  * splice the moment the position is found and its title matches. */
-export interface LocatedEntry {
+interface LocatedEntry {
   file: string;
   md: string;
   entry: ActionableEntryRange;
@@ -208,7 +208,7 @@ export interface LocatedEntry {
 
 /** The `gone`/`moved` refusals a title-checked lookup can answer, what every withLocatedEntry
  * outcome is a union of. */
-export type LocatedRefusal = { status: "gone" } | { status: "moved"; title: string };
+type LocatedRefusal = { status: "gone" } | { status: "moved"; title: string };
 
 /** The shared lock-and-locate prologue of the four non-exiting dashboard writers (tryCancelEntry
  * and tryEditEntry here; tryReleaseEntry and tryMoveEntryToTop in backlog-release.ts): take the

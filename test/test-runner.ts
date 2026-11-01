@@ -733,9 +733,11 @@ async function main(): Promise<void> {
           : await sharedSuiteConcurrency(),
       },
     );
+    // One env for every --repeat run: suiteEnv populates `scratch` (git-templates, the git
+    // shim), so building it again in the same dir throws EEXIST.
+    const env = suiteEnv(scratch);
+    if (covDir) env.NODE_V8_COVERAGE = covDir;
     const runOnce = (): number => {
-      const env = suiteEnv(scratch);
-      if (covDir) env.NODE_V8_COVERAGE = covDir;
       const r = spawnSync(process.execPath, args, { stdio: "inherit", env, timeout: SUITE_TIMEOUT_MS });
       const killed = timedOutFailure(r);
       let status = killed !== null ? 1 : (r.status ?? 1);

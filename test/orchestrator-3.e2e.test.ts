@@ -40,7 +40,7 @@ import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { sleep, waitFor } from "./helpers/wait.js";
+import { waitFor } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 
 const FAST_POLL_MS = 100;
@@ -130,16 +130,22 @@ test("a user abort during a merge kills it and discards the pinned ref", async (
   }
 });
 
-test("a role with a queued or in-flight merge never starts a new run (interlock)", async () => {
-  // minRunInterval 0: the role is due on EVERY poll — only the interlock can hold it.
+test("a role with a queued or in-flight merge keeps running: the queue is not a scheduling gate", async () => {
+  // minRunInterval 0: the role is due on EVERY poll, and its own queued merge must not hold it
+  // (Subtract part 3a/7 retired merge queue 3/5's interlock).
   const repo = await makeFastRepo("interlock e2e test", ["clean"]);
   // Author run: first time a change, after that nothing to do. The gate check on the change's
-  // tree (hello.txt present) touches the marker and parks, holding the merge in flight through
-  // the window; main's baseline sees no hello.txt and passes at once.
-  const hang = path.join(tmpdir(), "interlock-hang");
-  const did = path.join(tmpdir(), "interlock-did");
+  // tree (hello.txt present) touches the marker and parks until released (bounded ~30 s),
+  // holding the merge in flight through the window; main's baseline sees no hello.txt and
+  // passes at once.
+  const dir = tmpdir("interlock-");
+  const hang = path.join(dir, "hang");
+  const release = path.join(dir, "release");
+  const did = path.join(dir, "did");
   const cfg = fastConfig(["clean"]);
-  cfg.check = { command: `if [ -e hello.txt ]; then touch '${hang}'; exec sleep 30; fi; exit 0` };
+  cfg.check = {
+    command: `if [ -e hello.txt ]; then touch '${hang}'; i=0; while [ ! -e '${release}' ] && [ $i -lt 600 ]; do sleep 0.05; i=$((i+1)); done; fi; exit 0`,
+  };
   saveConfig(repo, cfg);
   const restore = fakePi(
     [
@@ -150,30 +156,25 @@ test("a role with a queued or in-flight merge never starts a new run (interlock)
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // The run commits + enqueues; the merge slot picks the entry up and its reviewer hangs.
+    // The run commits + enqueues; the merge slot picks the entry up and its gate check hangs.
     await waitFor(() => runQueued(repo, "clean"), "the run to enqueue its merge");
     await waitFor(() => fs.existsSync(hang), "the merge's gate check to be in flight");
 
-    // ~10 poll cycles pass with the role due on every one — yet no second run starts: the
-    // entry stays in the queue until the merge settles, and the interlock covers both the
-    // queued and the in-flight phases with that one check.
-    await sleep(1_200);
-    assert.equal(loadRunnerState(repo, "clean").runs, 1, "no second run while its own merge is in flight");
+    // The role is due on every poll and nothing holds it: later runs start and end while its
+    // first change is still parked in the merge's gate check, and none queues a second entry.
+    await waitFor(() => loadRunnerState(repo, "clean").runs >= 3, "the role's later runs while its merge is in flight");
     assert.equal(queueDepth(repo), 1, "the entry stays queued until the merge settles");
-    // The pending change is not a completed result: the role's first run had no prior one,
-    // so the persisted last-result pair stays empty through the whole window (BUGS.md
-    // 2026-09-23 — it used to read `queued`).
-    assert.equal(loadRunnerState(repo, "clean").lastResult, undefined, "the in-flight merge is not a last result");
+    assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "the first change has not merged");
+    // The pending change is never a run's result (BUGS.md 2026-09-23 — it used to read `queued`).
+    assert.notEqual(loadRunnerState(repo, "clean").lastResult, "queued", "the in-flight merge is not a last result");
 
-    // Settle the test: a deliberate stop kills the hung merge and drops its entry.
-    const markerFile = abortRequestPath(repo, "clean");
-    writeMarker(markerFile, { at: Date.now() });
-    await waitFor(
-      () => loadRunnerState(repo, "clean").lastResult === "aborted",
-      "the aborted merge to settle",
-    );
-    assert.equal(queueDepth(repo), 0, "the entry drops with the aborted merge");
+    // Settle the test: release the parked check and let the change merge. (A deliberate stop
+    // would discard the merge, but the role's very next run recovers its still-committed change
+    // and queues it again — see the user-abort test above for the abort itself.)
+    fs.writeFileSync(release, "");
+    await waitFor(() => queueDepth(repo) === 0 && fs.existsSync(path.join(repo, "hello.txt")), "the change to merge");
   } finally {
+    fs.writeFileSync(release, ""); // never leave a check parked
     await stopOrchestrator(orch, restore);
   }
 });
@@ -221,8 +222,8 @@ test("an entry whose sha main already holds is dropped at the drain without a me
   // the model reviewer), so the dedup is asserted through the merge_done count alone. Part 3g/3
   // still queues a post-merge review for the merge that lands here and the fake settles it.
   const did = path.join(tmpdir(), "dedup-did");
-  // The merge-queue interlock relief (scheduling/skip.ts) lets `clean` author again once its
-  // first change is in-flight, so a second author run may start in a fresh pooled slot before
+  // The merge queue holds no role (Subtract part 3a/7), so `clean` authors again while its first
+  // change is in flight, and a second author run may start in a fresh pooled slot before
   // the first merge lands hello.txt on main. `echo hello > hello.txt` must therefore run on the
   // first run only — unconditional it would make a second run create the file in a clean slot
   // and merge a spurious second change (inflating merge_done to 2), and it overwrites
@@ -299,8 +300,7 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
   // nothing else drops it, so before the fix the live entry behind it never merged and
   // its role's interlock (a non-empty merge queue) held the role's runs forever.
   const repo = await makeFastRepo("torn head drain e2e test", ["clean"]);
-  // The review run approves; the role's own runs never start — the interlock holds from
-  // the first poll, because the entry is queued before the orchestrator starts.
+  // The review run approves; the role's own runs find nothing to do.
   const restore = fakePi(
     [
       APPROVE_PI,
@@ -557,21 +557,25 @@ test("an abort for one queued role stops only that role's verify and discards it
     assert.ok(fs.existsSync(path.join(repo, "clean.txt")), "clean merged on main");
     assert.ok(!fs.existsSync(path.join(repo, "dedupe.txt")), "the aborted change never did");
     assert.equal(eventsOfType(repo, "run_aborted").length, 0, "no run was in flight");
-    assert.equal(loadRunnerState(repo, "clean").runs, 0, "the interlock held: no run ever started");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "the seeded 300 s gap held: no run ever started");
     assert.equal(loadRunnerState(repo, "dedupe").runs, 0);
   } finally {
-    fs.writeFileSync(release, ""); // never leave a check parked
+    // Never leave a check parked, and keep the release file: once clean merges, main's tip holds
+    // clean.txt, so the main watch's baseline (no abort signal; it outlives stopOrchestrator)
+    // can reach the park loop after this test ends. Deleting `dir` here left it spinning to the
+    // 60 s bound on a process-wide check permit, starving the next tests' checks. The test run's
+    // scratch root is removed at exit.
+    fs.writeFileSync(release, "");
     await stopOrchestrator(orch, restore);
-    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("a role rejected in its verify runs again while another queued change is still in review", async () => {
   // BUGS.md 2026-09-23: a final verdict once kept its entry queued until a whole batch wrote
-  // back, so the interlock skipped the rejected author's due run every poll through every
-  // later review, the stack check, and the ff. clean's gate check fails on its tree and
-  // rejects; dedupe's gate check parks until released, keeping a merge in flight while the
-  // test watches clean.
+  // back, so the (since retired, Subtract part 3a/7) interlock skipped the rejected author's due
+  // run every poll through every later review, the stack check, and the ff. clean's gate check
+  // fails on its tree and rejects; dedupe's gate check parks until released, keeping a merge in
+  // flight while the test watches clean.
   const repo = await makeFastRepo("verify early drop e2e test", ["clean", "dedupe"]); // minRunInterval 0: due on every poll
   await seedMergeQueue(repo, "clean", "dedupe");
   const dir = tmpdir("early-drop-");
@@ -598,11 +602,19 @@ test("a role rejected in its verify runs again while another queued change is st
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(() => fs.existsSync(held), "dedupe's gate check to be in flight — clean's verdict is already in", 60_000);
-    // The interlock frees clean while dedupe's gate check is still parked: its due run starts.
-    await waitFor(() => loadRunnerState(repo, "clean").runs >= 1, "the rejected role's fix run to start mid-merge", 30_000);
+    await waitFor(() => fs.existsSync(held), "dedupe's gate check to be in flight", 60_000);
+    // clean's verdict lands while dedupe's gate check is still parked: its outcome is written and
+    // its entry dropped then, not when dedupe's merge settles. Its queue entry no longer holds
+    // its runs, so clean may already have run; the fix run after the verdict is the one asserted.
+    await waitFor(
+      () => readEvents(repo).some((e) => e.type === "merge_failed" && e.source === "clean") && queueDepth(repo) === 1,
+      "clean's verdict to drop its entry while dedupe's stays queued",
+      30_000,
+    );
+    const atVerdict = loadRunnerState(repo, "clean").runs;
+    await waitFor(() => loadRunnerState(repo, "clean").runs > atVerdict, "the rejected role's fix run to start mid-merge", 30_000);
     assert.ok(!fs.existsSync(release), "dedupe's merge is still in flight: its gate check never returned");
-    assert.equal(loadRunnerState(repo, "dedupe").runs, 0, "dedupe's entry is still queued, so the interlock still holds it");
+    assert.equal(queueDepth(repo), 1, "only dedupe's entry is still queued");
     assert.deepEqual(
       readEvents(repo)
         .filter((e) => e.type === "merge_failed")
@@ -623,15 +635,16 @@ test("a role rejected in its verify runs again while another queued change is st
       "clean's outcome was written once",
     );
   } finally {
-    fs.writeFileSync(release, ""); // never leave dedupe's review parked
+    // Never leave dedupe's check parked, and keep the release file for the main watch's late
+    // baseline on main's tip (it holds dedupe.txt once dedupe merges) — see the abort test above.
+    fs.writeFileSync(release, "");
     await stopOrchestrator(orch, restore);
-    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("maxConcurrent 4 verifies three queued changes at once on the live orchestrator, then merges them all", async () => {
   // Merge-queue speed 2c through the scheduler's own wiring: every verify takes one of the shared
-  // maxConcurrent permits (the authors are interlocked, so no role run holds one), verifyLimit
+  // maxConcurrent permits (no role run holds one: each is seeded below as just ran), verifyLimit
   // keeps the fourth for authoring, all three gate checks run together (each records how many
   // were in flight as it started), and the merge slot merges every change. Sampling now lives
   // in the declared check, not the reviewer run: each gate check parks ~3 s and counts its
@@ -657,6 +670,13 @@ test("maxConcurrent 4 verifies three queued changes at once on the live orchestr
   };
   saveConfig(repo, cfg);
   await seedMergeQueue(repo, ...roles);
+  // A never-run role is startup-eligible on poll one despite the 300 s gap, and its queued
+  // change no longer holds it (Subtract part 3a/7): seed each as just ran.
+  for (const role of roles) {
+    const s = loadRunnerState(repo, role);
+    s.lastRunEndedAt = Date.now();
+    saveRunnerState(repo, s);
+  }
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
@@ -686,14 +706,21 @@ test("a restart's hand-off aborts the merges that outlive its deadline instead o
   // through every one of them in silence. Bounded, the hand-off announces the wait, aborts
   // every verify when the window lapses, and exits — the pins surviving for the new build.
   const repo = await makeFastRepo("restart hand-off test", ["clean", "dedupe"]);
-  // Both roles are interlocked by their queued entries, so no role run ever starts: the drain
-  // has nothing to wait for and the restart takes effect mid-build-check — the incident's shape.
+  // Both roles are seeded as just ran under a 300 s gap (their queued entries no longer hold
+  // them, Subtract part 3a/7), so no role run ever starts: the drain has nothing to wait for and
+  // the restart takes effect mid-build-check — the incident's shape.
   await seedMergeQueue(repo, "clean", "dedupe");
+  for (const role of ["clean", "dedupe"]) {
+    const s = loadRunnerState(repo, role);
+    s.lastRunEndedAt = Date.now();
+    saveRunnerState(repo, s);
+  }
   const reviewing = path.join(tmpdir(), "handoff-reviewing");
   // Each change's gate check parks in its verify's build pre-check (one of them touches the
   // marker and sleeps 60 s), holding both merges in flight until the hand-off's lapse aborts
   // them; main's baseline sees neither change file and passes at once.
   const cfg = fastConfig(["clean", "dedupe"]);
+  cfg.minRunIntervalSeconds = 300;
   cfg.check = { command: `if [ -e clean.txt ] || [ -e dedupe.txt ]; then touch '${reviewing}'; exec sleep 60; fi; exit 0` };
   saveConfig(repo, cfg);
   const restore = fakePi(
@@ -747,7 +774,7 @@ test("a restart's drain aborts only its permit-holding role runs — the in-flig
   // aborted`, the review thrown away. And the role the drain DOES cut off here is one enabled
   // mid-run (config-live's runner creation), the second wiring the role-only stop must reach.
   const repo = await makeFastRepo("drain role-stop test", ["dedupe"]);
-  await seedMergeQueue(repo, "dedupe"); // dedupe is interlocked: its merge runs, its run never starts
+  await seedMergeQueue(repo, "dedupe"); // dedupe's merge runs; its own run never starts (below)
   const reviewing = path.join(tmpdir(), "rolestop-reviewing");
   const authoring = path.join(tmpdir(), "rolestop-authoring");
   // dedupe's gate check parks in its verify's build pre-check (touches the marker and sleeps
@@ -755,7 +782,13 @@ test("a restart's drain aborts only its permit-holding role runs — the in-flig
   // sees no dedupe.txt and passes at once.
   const cfg = fastConfig(["dedupe"]);
   cfg.check = { command: `if [ -e dedupe.txt ]; then touch '${reviewing}'; exec sleep 60; fi; exit 0` };
+  // Its queued merge no longer holds dedupe's runs (Subtract part 3a/7), so a just-ran seed and
+  // a 300 s gap keep them off: clean, enabled mid-run, is the only permit holder at the swap.
+  cfg.roles.dedupe!.minRunIntervalSeconds = 300;
   saveConfig(repo, cfg);
+  const dedupeState = loadRunnerState(repo, "dedupe");
+  dedupeState.lastRunEndedAt = Date.now();
+  saveRunnerState(repo, dedupeState);
   const restore = fakePi(
     `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done\n` +
       `touch '${authoring}'; sleep 5`,
@@ -772,7 +805,9 @@ test("a restart's drain aborts only its permit-holding role runs — the in-flig
     await waitFor(() => fs.existsSync(reviewing), "dedupe's verify gate check to be in flight");
     // Enable clean mid-run — the live-reload path, not startup — and let its run take a permit
     // BEFORE main moves: a held poll starts no run, so the permit holder must predate the hold.
-    saveConfig(repo, fastConfig(["clean", "dedupe"]));
+    const live = fastConfig(["clean", "dedupe"]);
+    live.roles.dedupe!.minRunIntervalSeconds = 300;
+    saveConfig(repo, live);
     await waitFor(() => fs.existsSync(authoring), "the mid-run role's run to hold a permit");
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the run and the verify");
     const exit = await run;

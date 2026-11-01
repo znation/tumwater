@@ -790,3 +790,11 @@ test("repeatRuns invokes the runner n times on success and stops at the first fa
   assert.deepEqual(repeatRuns(5, (i) => (seen.push(i), i === 3 ? 1 : 0)), { status: 1, runs: 3, failedAt: 3 });
   assert.deepEqual(seen, [1, 2, 3]);
 });
+
+test("the spawned runner's --repeat really runs the filtered test again", () => {
+  // Each run once rebuilt the suite env in the shared scratch dir, whose git-templates mkdir
+  // threw EEXIST on run 2: --repeat ran once and crashed instead of repeating (2026-11-01).
+  const r = runRunner(["--repeat=2", "json-object#plain object"]);
+  assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  assert.match(r.stdout, /^repeat: 2 of 2 runs passed$/m);
+});

@@ -3363,10 +3363,10 @@ dropping or moving its blame.
 
 **Pinned by.** `test/main-watch.test.ts` — "a doc-exempt tip that lands after a red keeps the
 opener as the named culprit" and "a settled green closes the red spell, so the next red names its
-own opener"; `test/main-guardrails.test.ts` — "a culprit that names the spell's opener blames the
-opener, not the newest tip"; `test/status-polls.test.ts` — "a main_culprit naming the open
-spell's opener carries red detail even when it is not the newest tip" and "a main_culprit whose
-spell a later passing check closed carries no red detail".
+own opener"; `test/main-guardrails.test.ts` — "redMainWarning: a culprit that names the spell's
+opener blames the opener, not the newest tip"; `test/status-polls.test.ts` — "a main_culprit
+naming the open spell's opener carries red detail even when it is not the newest tip" and "a
+main_culprit whose spell a later passing check closed carries no red detail".
 
 ## Maintenance allowance: maintenance merges stop at the rolling-day allowance, counted from the event log
 
