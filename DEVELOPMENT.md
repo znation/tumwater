@@ -43,10 +43,12 @@ own `dist/` or `tumwater.json`. The gui reload test in `test/cli-gui.test.ts` se
 
 The team's review gate runs `npm run test:gate` before each model review
 (`check.gateCommand` in tumwater.json), and the merge lock runs it again on the rebased tree
-(`check.mergeCommand` falls back to it). It is meant to finish in about a minute on a loaded
+(`check.mergeCommand` falls back to it). It is meant to finish in about ten seconds on a loaded
 host, so it checks only what is nearest the change:
 
-- the same compile as `npm test`;
+- the same compile as `npm test`: TypeScript 7's native compiler (`scripts/tsc.mjs`, about half
+  a second for a one-file edit). `typescript` itself stays on 5.x for the type-aware lint and the
+  harness's self-redeploy compile;
 - the lint, over only the files the change touches (`scripts/lint-changed.mjs`). A change to the
   lint config, the dependencies or `tsconfig.json` lints the whole tree. It runs while the tests
   run (`--alongside`), and its report prints after theirs;

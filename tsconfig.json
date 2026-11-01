@@ -23,7 +23,10 @@
     "allowUnusedLabels": false,
     "declaration": false,
     "sourceMap": false,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // TypeScript 7 (scripts/tsc.mjs) loads no @types package on its own: name the one the code
+    // needs. typescript-eslint's 5.x program reads the same list.
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"]
 }
