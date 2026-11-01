@@ -369,6 +369,11 @@ export function createMainWatch(
         redSpellOpeners.delete(root); // a green closes the red spell; the next red names its own opener
         return;
       }
+      // The spell's opener is blamed once: the first settled red tip since the last green names
+      // itself, and a later tip re-settling the same open red re-checks the suite without re-
+      // naming the culprit (BUGS.md 2026-10-30 mis-attribution). The map holds the open spell's
+      // opener, so a second red while the spell is still open re-checks without re-naming; a
+      // green clears the entry (above) so a later red names its own opener.
       reportCulprit(baseline);
     });
   }

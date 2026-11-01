@@ -322,6 +322,70 @@ test("a red tip with no merged event is named without a runner", async () => {
   assert.deepEqual(culprit?.failingTests, ["first", "second", "third"]);
 });
 
+test("a doc-exempt tip re-checking an open red does not re-name the culprit: the spell's opener stays blamed", async () => {
+  // The red opens at one tip and a later DOC-EXEMPT tip (its diff touches only review-exempt
+  // paths, so it cannot change the suite) re-checks the same open red: the watch re-runs the
+  // check but names the opener once, so G1 and the heal prompt keep blaming the commit that
+  // turned main red (INV-AZ4). A committed flag file in the tree flips the suite's verdict, so
+  // the red/green state is explicit per tip and the mirror checkout carries it.
+  const root = baselineFixture(
+    "improve",
+    `[ -f .red-flag ] && { ${FAILING_OUTPUT}; exit 1; }; echo ok`,
+  ).root;
+  const watch = createMainWatch(root, "main");
+  const poll = async () => {
+    watch.poll(headSha(root), false, defaultConfig());
+    await watch.idle();
+  };
+  await poll(); // the seed commit: no flag, green, cached
+  fs.writeFileSync(path.join(root, ".red-flag"), "red\n");
+  sh(root, "git", "add", "--", ".red-flag");
+  change(root, "notes.md", "doc one\n");
+  await poll();
+  const culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 1, "the first red tip is named exactly once");
+  const opener = headSha(root);
+  assert.equal(culprits[0]?.commit, opener, "the first red tip opens the spell and names itself");
+  const recheck = change(root, "notes.md", "doc one\ndoc two\n"); // a doc-exempt tip re-checking the open red
+  assert.notEqual(recheck, opener);
+  await poll();
+  const after = eventsOfType(root, "main_culprit");
+  assert.equal(after.length, 1, "the doc-exempt re-check does not re-name the culprit");
+  assert.equal(after[0]?.commit, opener, "the opener stays the blamed commit, not the later tip");
+  await poll();
+  assert.equal(eventsOfType(root, "main_culprit").length, 1, "a repeat poll does not attribute again");
+});
+
+test("a green that closes the open red lets a later red name its own opener again", async () => {
+  const root = baselineFixture(
+    "improve",
+    `[ -f .red-flag ] && { ${FAILING_OUTPUT}; exit 1; }; echo ok`,
+  ).root;
+  const watch = createMainWatch(root, "main");
+  const poll = async () => {
+    watch.poll(headSha(root), false, defaultConfig());
+    await watch.idle();
+  };
+  await poll(); // the seed commit: no flag, green, cached
+  fs.writeFileSync(path.join(root, ".red-flag"), "red\n");
+  sh(root, "git", "add", "--", ".red-flag");
+  const red1 = change(root, "notes.md", "r1\n");
+  await poll();
+  assert.equal(eventsOfType(root, "main_culprit")[0]?.commit, red1);
+  sh(root, "git", "rm", "-q", "--", ".red-flag");
+  const green1 = change(root, "notes.md", "r1\ng\n"); // removes the flag: a fresh green closes the spell
+  await poll();
+  assert.equal(eventsOfType(root, "main_culprit").length, 1, "the green clears the spell without naming");
+  fs.writeFileSync(path.join(root, ".red-flag"), "red again\n");
+  sh(root, "git", "add", "--", ".red-flag");
+  const red2 = change(root, "notes.md", "r1\ng\nr2\n");
+  await poll();
+  const culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 2, "the later red names its own opener");
+  assert.equal(culprits[1]?.commit, red2);
+  assert.notEqual(red2, green1);
+});
+
 test("a red whose breaking commit is intermediate still names the newest tip as the culprit", async () => {
   const { root } = culpritFixture();
   const watch = createMainWatch(root, "main");

@@ -3,6 +3,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { ciParityForPoll, configForStatus, liveMergeMarker, mainCheckForPoll } from "../src/status/status-polls.js";
 import { recordParity } from "../src/run/ci-parity.js";
 import { commitIn, makeRepo, mainSha } from "./fixtures/repo-fixtures.js";
@@ -96,6 +98,29 @@ test("a main_culprit naming the open spell's opener carries red detail even when
   const result = mainCheckForPoll(root, configForStatus(root));
   assert.equal(result?.status, "failed");
   assert.deepEqual(result?.red, { failingTests: ["a"], culprit: { commit: sha("c"), runner: "feature" } });
+});
+
+test("a poll whose tip re-checked the open red carries red detail blaming the spell's opener", () => {
+  // The tip this poll derives (main's head) is the doc-exempt re-check of the open red; the
+  // watch's one culprit names the OPENER (INV-AZ4). The poll's sha is the re-check, so the
+  // detail is attributed through the spell's opener — never through a verdict the watch wrote
+  // for a different head.
+  const root = makeRepo();
+  const opener = mainSha(root); // the spell's opener, named by the watch's main_culprit
+  fs.writeFileSync(path.join(root, "doc.md"), "doc re-check\n");
+  commitIn(root, "doc re-check");
+  const tip = mainSha(root); // the re-checked tip — the sha this poll derives
+  assert.notEqual(tip, opener);
+  writeEvents(root, [
+    { source: "merge", type: "build_check", scope: "merge", status: "failed", script: "npm test", durationMs: 1, ts: 1_000 },
+    { source: "tumwater", type: "main_culprit", commit: opener, runner: "feature", failingTests: ["a", "b"], ts: 2_000 },
+    // A newer merge-scope failure for the re-checked tip, after the opener's verdict:
+    { source: "merge", type: "build_check", scope: "merge", status: "failed", script: "npm test", durationMs: 1, ts: 3_000 },
+  ]);
+  const result = mainCheckForPoll(root, configForStatus(root));
+  assert.equal(result?.status, "failed");
+  assert.equal(result?.sha, tip);
+  assert.deepEqual(result?.red, { failingTests: ["a", "b"], culprit: { commit: opener, runner: "feature" } });
 });
 
 test("a main_culprit whose spell a later passing check closed carries no red detail", () => {

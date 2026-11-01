@@ -127,6 +127,25 @@ test("redMainWarning: a red the watch blamed appends the merge", () => {
   assert.match(out!, /the main watch blames feature's merge abcdef12/);
 });
 
+test("redMainWarning: a re-checked tip blames the spell's opener, not the newest red", () => {
+  // The 2026-10-30 mis-attribution: the red opened at the opener's sha; a doc-exempt tip
+  // re-checked the open red (the newest red), and the watch's one culprit names the OPENER.
+  // The phrase must pair "red since <opener>" with "blames <opener>" — never the re-check.
+  const now = 1_000_000_000_000;
+  const opener = "abcdef1234567890";
+  const recheck = "fedcba9876543210";
+  const events = [
+    ev({ type: "main_check", ts: now - 36 * MIN, sha: opener, status: "failed", durationMs: 120_000, failingTests: ["test/one.test.ts"] }),
+    ev({ type: "main_culprit", ts: now - 35 * MIN, commit: opener, runner: "feature" }),
+    ev({ type: "main_check", ts: now - 10 * MIN, sha: recheck, status: "failed", durationMs: 120_000, failingTests: ["test/one.test.ts"] }),
+  ];
+  const out = redMainWarning(events, now);
+  assert.ok(out, "a 36-min red warns");
+  assert.match(out!, /red since abcdef12 at/);
+  assert.match(out!, /the main watch blames feature's merge abcdef12/);
+  assert.doesNotMatch(out!, /blames feature's merge fedcba98/);
+});
+
 test("redMainWarning: a matching culprit with no runner appends the merge without a role", () => {
   const now = 1_000_000_000_000;
   const S = "abcdef1234567890";

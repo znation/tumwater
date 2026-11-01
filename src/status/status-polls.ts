@@ -45,7 +45,8 @@ export interface MainCheckStatus {
    * team-alert-status.ts's buildStatusAlerts; it also rides the machine-readable `status
    * --json` output through
    * status-payload.ts's wholesale spread of mainCheck): present only when `status` is
-   * "failed" and a main_culprit verdict names the very red tip this poll derived a sha for,
+   * "failed" and a main_culprit verdict names the red this poll derived a sha for — the tip
+   * itself, or the open spell's opener the tip re-checked (a doc-exempt re-check; INV-AZ4) —
    * with a well-formed failingTests list. `failingTests` is the main watch's list for that
    * tip; `culprit` is the same verdict's commit (always a string) and, when the watch named
    * one, the runner. */
