@@ -198,7 +198,7 @@ test("mergeStartHeld holds only the no-role drain under a reviewer hold", () => 
   assert.equal(mergeStartHeld(true, true, "feature"), true, "a restart/disk hold holds a role");
   assert.equal(mergeStartHeld(false, true, "feature"), false, "no role start is held by the reviewer");
   assert.equal(mergeStartHeld(false, true, "dedupe"), false, "every role drains while the reviewer is held — no exemption exists");
-  assert.equal(mergeStartHeld(false, true, undefined), true, "the no-role verdict stays held (what drainPostReviews and mergeApproved read)");
+  assert.equal(mergeStartHeld(false, true, undefined), true, "the no-role verdict stays held (what drainPostReviews and mergeApprovedChange read)");
   assert.equal(mergeStartHeld(true, false, "dedupe"), true, "a restart/disk hold still holds every role");
 });
 
@@ -226,8 +226,8 @@ test("approved entries merge while the reviewer's provider is held", async () =>
     ctx.startHeld = (role?: string) => mergeStartHeld(false, true, role);
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the approved entries to merge while the reviewer is held");
     assert.equal(queueDepth(root), 0, "the approved entries merged despite the reviewer hold");
-    // The two approved changes merge as one stack's combined commit, so the original pinned shas
-    // are branch tips, not main ancestors — assert main holds each change's content instead.
+    // Each change merges as its own commit (rebased onto main's tip), so the original pinned shas
+    // are rewritten and are not main ancestors — assert main holds each change's content instead.
     assert.equal(sh(root, "git", "show", "main:feature.txt").trim(), "work by feature", "the approved feature change merged while the reviewer's provider was held");
     assert.equal(sh(root, "git", "show", "main:dedupe.txt").trim(), "work by dedupe", "the dedupe change merged too");
   } finally {
@@ -248,8 +248,8 @@ test("a fresh entry verifies and merges while the reviewer's provider is held �
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "both fresh entries to verify and merge while the reviewer is held", 30_000);
     assert.equal(queueDepth(root), 0, "the reviewer hold parks no role — both entries drained");
     assert.equal(ctx.startHeld(), true, "the no-role startHeld (what drainPostReviews reads) is true under the reviewer hold");
-    // Both fresh changes merge as one stack's combined commit, so assert main holds each
-    // change's content rather than the pinned shas (branch tips, not ancestors).
+    // Both fresh changes merge as their own commits (each rebased onto main's tip), so assert
+    // main holds each change's content rather than the pinned shas (rewritten, not ancestors).
     assert.equal(sh(root, "git", "show", "main:feature.txt").trim(), "work by feature", "the fresh feature entry merged despite the reviewer hold");
     assert.equal(sh(root, "git", "show", "main:dedupe.txt").trim(), "work by dedupe", "the fresh dedupe entry merged too — every role drains while the reviewer is held");
   } finally {
@@ -342,8 +342,8 @@ for (const headVerdict of ["reject", "approve"] as const) {
 }
 
 // ── A plumbing throw in the merge slot ────────────────────────────────────────────────────
-// mergeApproved's first assembly attempt propagates an unexpected throw (nothing has merged), and
-// startMerge's catch is what keeps the team alive: every entry stays queued, unapproved, the
+// mergeApprovedChange's first merge attempt propagates an unexpected throw (nothing has merged),
+// and startMerge's catch is what keeps the team alive: every entry stays queued, unapproved, the
 // head author's state records the error, and the next poll re-verifies from the surviving pins.
 
 test("a plumbing throw in the merge keeps every entry queued and unapproved, records the error, and recovers on the next poll", async () => {
@@ -354,8 +354,8 @@ test("a plumbing throw in the merge keeps every entry queued and unapproved, rec
     await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 2, "both changes to be approved");
 
     // Break the merge's plumbing: the registered-worktrees home becomes a plain file, so the
-    // stack's worktree setup (the verification ran in a different pooled slot) fails hard in git —
-    // not a verdict, a throw, out of mergeApproved's first attempt.
+    // the merge's worktree setup (the verification ran in a different pooled slot) fails hard in
+    // git — not a verdict, a throw, out of mergeApprovedChange's first attempt.
     fs.rmSync(worktreesHome, { recursive: true, force: true });
     fs.writeFileSync(worktreesHome, "not a directory");
 
@@ -396,7 +396,7 @@ test("a failing state write in the merge's error path still frees the merge slot
   try {
     await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 2, "both changes to be approved");
 
-    // Break the merge's plumbing so mergeApproved throws, then break the head author's state
+    // Break the merge's plumbing so mergeApprovedChange throws, then break the head author's state
     // file so the catch's saveRunnerState throws too — the exact unwritable-state failure the
     // guard exists for. The catch must not let that second throw skip the settle loop and the
     // finally, or p.merge stays set forever and every later merge is wedged.

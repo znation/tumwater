@@ -103,7 +103,7 @@ export function drainMerge(ctx: MergePipelineContext, p: MergePipeline): void {
 
 /** The merge task — main's one writer in the pipeline: merge `picks` one change at a time,
  * each through mergeApprovedChange (a rebase onto main's tip then the fast-forward under the
- * merge lock), with no second review and no shared stack check — a merge is a rebase and a
+ * merge lock), with no second review and no shared check — a merge is a rebase and a
  * fast-forward. Each defined result is written back and its entry dropped; a change whose merge
  * leaves it non-terminal (a resolver conflict, a loss to main) keeps entry + ref for the next
  * merge, or is re-queued by settleMergeOutcome. A plumbing throw keeps every entry queued, but

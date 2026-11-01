@@ -45,15 +45,15 @@ process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
  * node --test runs the slices in parallel processes: top-level tests within one file run
  * sequentially, while each test FILE gets its own process, and each file must fit the gate's
  * 30 s budget. This slice carries the pipeline's end-to-end behaviors — torn-head recovery, the
- * merge stack and the verify permits — and merge-pipeline-2.test.ts the rest: an abort whose
- * pin is already gone, the reviewer hold, the merge cell's stage, and the failure recoveries.
- * The dedupe basics live in merge-drain.test.ts. */
+ * merge slot's one-at-a-time merges and the verify permits — and merge-pipeline-2.test.ts the rest:
+ * an abort whose pin is already gone, the reviewer hold, the merge cell's stage, and the failure
+ * recoveries. The dedupe basics live in merge-drain.test.ts. */
 // Unit coverage for src/merge/merge-drain.ts — the scheduler seam between the durable merge
 // queue and the merge pipeline (land-queue speed 2c): the dedupe against main and torn-head
 // recovery, the verify stage (one verification per queued change, each on a shared maxConcurrent
-// permit), and the merge slot (every approved change, stacked), with the abort and shutdown rules
-// and the marker records the observers read. The review gate's pi runs are real subprocesses behind
-// the fake shim, exactly as merger.test.ts drives verifyRequest and mergeApproved directly.
+// permit), and the merge slot (every approved change, one at a time), with the abort and shutdown
+// rules and the marker records the observers read. The review gate's pi runs are real subprocesses
+// behind the fake shim, exactly as merger.test.ts drives verifyRequest and mergeApprovedChange.
 
 test("a torn head is dropped with a warning and the healthy entry behind it merges", async () => {
   const root = makeRepo();

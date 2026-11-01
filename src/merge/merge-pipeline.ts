@@ -205,8 +205,8 @@ export async function discardPinnedRefs(root: string, roles: string[]): Promise<
  * record is dropped (removeMergeChange — merge-slot leaves the marker to the caller). Shared by
  * settleAbortedApproved, the verification's final-verdict branch, and the merge's per-change
  * write-back, so no settled entry can keep a stale marker or lose its outcome write. The pinned-ref
- * discard stays with the callers: only a user abort throws work away, and the merge discards its
- * whole stack at once rather than change by change. */
+ * discard stays with the callers: only a user abort throws work away, and a user abort of the
+ * merge discards the pins of every change it had not merged. */
 export async function settleMergeOutcome(
   root: string,
   entry: MergeEntry,

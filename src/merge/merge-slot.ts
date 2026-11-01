@@ -28,7 +28,7 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 /** What the pipeline is doing with one change right now. A verification opens at `rebasing` (its
  * checkout and rebase onto main) and moves through `build-check` — a deterministic check (the
  * gate's pre-check over the change's tree, its one re-run, and the attribution check of main's
- * tip behind a repeat failure, or a stack's shared check) — and `reviewing`, the adversarial
+ * tip behind a repeat failure) — and `reviewing`, the adversarial
  * reviewer's pi run, whose live turns/context/tool the dashboards read from the role's raw log;
  * `check-wait` covers any wait for a process-wide check permit (check-permit.ts) before a check
  * starts, so a queued check never reads as a running one. `resolving` is the merge's conflict
@@ -36,9 +36,8 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
  * reviewer's — and `resolve-wait` the resolver parked for its agent permit before it starts
  * (resolveWaitStage); both used to read as `merging`, so a resolver holding the whole merge
  * queue for minutes looked like a slow fast-forward (2026-10-12). `merging` is the merge slot's
- * own git steps — the stack's assembly, the in-lock re-check's rebase, and the fast-forward onto
- * main. Everything else a merge does (verdict parsing, state saves) is sub-second bookkeeping
- * between these. */
+ * own git steps — the in-lock rebase onto main's tip and the fast-forward. Everything else a
+ * merge does (verdict parsing, state saves) is sub-second bookkeeping between these. */
 type MergeStage =
   | "rebasing"
   | "check-wait"
@@ -67,11 +66,11 @@ export const MERGE_STAGE_LABELS: Record<MergeStage, string> = {
  * the marker carries, so each role's row says what the pipeline is doing with ITS change rather
  * than every row reading as one change's merge (BUGS.md 2026-09-23):
  * - `merging`: a verification or the merge is working on it right now — its checkout, rebase,
- *   gate check and review, or the merge's stack check and fast-forward —
+ *   gate check and review, or the merge's rebase and fast-forward —
  *   `merging <its elapsed> · <stage>`, the only live state (several changes hold it at once:
- *   verifications run in parallel, and a stack merges together);
- * - `approved`: its verification approved it and it waits for the merge slot (or, in an
- *   abandoned stack's one-at-a-time fallback, for its own turn) — `approved, waiting to merge`;
+ *   verifications run in parallel);
+ * - `approved`: its verification approved it and it waits for the merge slot —
+ *   `approved, waiting to merge`;
  * - `done`: the merge is finished with it — merged, attributed, or left for the next merge —
  *   and the marker shows nothing for it: its row reads its own state until the record goes.
  * A queued change whose verification is still waiting for a permit has no record at all: its row
@@ -81,8 +80,8 @@ export type MergeChangeStatus = "merging" | "approved" | "done";
 /** One change's record in the in-flight marker. `startedAt` is stamped when its verification starts
  * and kept through its merge, so its `merging <elapsed>` measures this change's own merge. `stage`
  * is this change's own MergeStage (setMergeStage): `rebasing` when its verification starts, reset
- * to `merging` each time the merge slot moves it back to `merging` (the stack's assembly, a
- * fallback's merge). Keyed by role — invariant 3 caps a role at one in-flight change. */
+ * to `merging` when the merge slot works on it. Keyed by role — invariant 3 caps a role at one
+ * in-flight change. */
 export interface MergeChange {
   role: string;
   sha: string;
@@ -342,7 +341,8 @@ export function mergeChanges(marker: MergeInFlight): MergeChange[] {
 }
 
 /** True when the in-flight marker names `sha` among the changes it holds — either as its
- * top-level `sha` (the first change in the stack) or in one of its per-change records, via
+ * top-level `sha` (the first change in `merging`, mirrored for older observers) or in one of
+ * its per-change records, via
  * mergeChanges so both marker generations read through the same eye. The one guard behind
  * cancel/top/reorder actions so each caller's "is this merge about to drain" check cannot
  * drift from the others' — identical spellings lived in cli-query-commands.ts (cancel and

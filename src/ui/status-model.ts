@@ -34,10 +34,11 @@ type MergeCell = Pick<MergeChange, "status" | "startedAt" | "stage" | "stageSinc
 /** The snapshot's in-flight merge record (merge queue 4/5) filtered to one role: this
  * role's change record while the pipeline holds it — verifying or merging it (`merge`), or
  * keeping it for the merge slot (`approved`) — and null otherwise, including once the merge is
- * `done` with it (a change that reached its outcome must not keep a live label while the rest of
- * its stack merges — BUGS.md 2026-09-23). An older generation's one-change marker reads as one
- * `merge` record (mergeChanges). The single home of the "is this role merge" filter —
- * every phase call site derives its `merge` argument through this so the filtering cannot
+ * `done` with it (a change that reached its outcome must not keep a live label while other
+ * changes in the merge task still proceed — BUGS.md 2026-09-23). An older generation's
+ * one-change marker reads as one `merge` record (mergeChanges). The single home of the
+ * "is this role merge" filter — every phase call site derives its `merge` argument through
+ * this so the filtering cannot
  * drift between them. */
 export function mergeForRole(mergeQueue: StatusSnapshot["mergeQueue"], role: string): MergeCell | null {
   if (!mergeQueue.inFlight) return null;
