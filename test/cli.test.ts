@@ -17,7 +17,7 @@ import { seedCounters } from "./fixtures/runner-fixtures.js";
 //
 // This file holds the command bodies driven end-to-end through the CLI child: `status`,
 // `init` (including the subdirectory behavior and dry runs), and `run`'s branch validation.
-// The dispatcher, help topics, and `version` live in cli-help.test.ts; the other
+// The dispatcher, help topics, and `version` live in the cli-help*.test.ts slices; the other
 // child-process CLI tests live in their command's topic file: cli-prompt-queue.test.ts
 // carries the prompt queue, cli-preflight.test.ts run's startup preflight, and the
 // argument-strictness family (cli-arg-strictness.test.ts and cli-flag-value-errors.test.ts
