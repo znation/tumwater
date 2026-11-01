@@ -104,6 +104,39 @@ function unfulfilledError(s: RunnerState, ctx: RunVerdictContext, message: strin
   return { result: "error" };
 }
 
+/** Consume the worktree's harness-mediated config request, when this role leaves one
+ * (plans/portability.md §3/7): the director (and the feature role, for a declared
+ * `check.command`) may have left a config request in its worktree. Consume it here — after
+ * the abort return (a deliberate abort still discards an unfulfilled request) and before
+ * every staging path (quiet-kill, timeout, refusal, isDirty, commitAll) — so the request
+ * file never enters a diff or a review prompt, and a quiet-killed/timeout re-run starts
+ * clean instead of losing the request to the reset. Applied names are announced by the
+ * orchestrator's ~2 s live reload (one config_changed event naming the keys); this run
+ * logs only the rejection paths. */
+async function consumeConfigRequest(ctx: RunVerdictContext): Promise<void> {
+  if (ctx.role === DIRECTOR_ROLE || baseRoleOf(ctx.role) === "feature") {
+    const request = await applyConfigRequest(ctx.root, ctx.wt);
+    if (request) {
+      if (request.error) ctx.warn(`config request rejected: ${request.error}`);
+      if (request.ignored.length)
+        ctx.warn(
+          `config request ignored key(s): ${request.ignored.join(", ")} — only customRoles and check.command are accepted`,
+        );
+    }
+  }
+}
+
+/** Consume a bugfix run's director-review request (role-catalog.ts's bugfix find): a bugfix
+ * run that could not reproduce its bug leaves one in its worktree — consume it here, after
+ * the abort return and before every staging path, beside the config-request block — so the
+ * file is queued as one director prompt and deleted before it can enter a diff (INV-B8). */
+function consumeDirectorRequest(ctx: RunVerdictContext): void {
+  if (baseRoleOf(ctx.role) === "bugfix") {
+    const request = applyDirectorRequest(ctx.root, ctx.wt);
+    if (request !== null && "error" in request) ctx.warn(`director request rejected: ${request.error}`);
+  }
+}
+
 /** Classify what the finished run left behind; null means the run is fulfillable and staging
  * should take over. Never throws: every branch returns an outcome, recording what went wrong
  * in `state.lastError` or a warning event. */
@@ -121,58 +154,68 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
   // The next run's reset discards them.
   if (pi.aborted) return ctx.finishAbortedRun();
   ctx.pending.clear();
-  // Harness-mediated config writes (plans/portability.md §3/7): the director (and the feature
-  // role, for a declared `check.command`) may have left a config request in its worktree.
-  // Consume it here — after the abort return (a deliberate abort still discards an unfulfilled
-  // request) and before every staging path (quiet-kill, timeout, refusal, isDirty, commitAll) —
-  // so the request file never enters a diff or a review prompt, and a quiet-killed/timeout
-  // re-run starts clean instead of losing the request to the reset. Applied names are
-  // announced by the orchestrator's ~2 s live reload (one config_changed event naming the
-  // keys); this run logs only the rejection paths.
-  if (ctx.role === DIRECTOR_ROLE || baseRoleOf(ctx.role) === "feature") {
-    const request = await applyConfigRequest(ctx.root, ctx.wt);
-    if (request) {
-      if (request.error) ctx.warn(`config request rejected: ${request.error}`);
-      if (request.ignored.length)
-        ctx.warn(
-          `config request ignored key(s): ${request.ignored.join(", ")} — only customRoles and check.command are accepted`,
-        );
-    }
-  }
-  // A bugfix run that could not reproduce its bug leaves a director-review request in its
-  // worktree (role-catalog.ts's bugfix find): consume it here — after the abort return and
-  // before every staging path, beside the config-request block — so the file is queued as
-  // one director prompt and deleted before it can enter a diff (INV-B8).
-  if (baseRoleOf(ctx.role) === "bugfix") {
-    const request = applyDirectorRequest(ctx.root, ctx.wt);
-    if (request !== null && "error" in request) ctx.warn(`director request rejected: ${request.error}`);
-  }
-  // Each decision lives in one named arm below; run them in order and short-circuit on the
-  // first that applies so the verdict tree reads as a list. Every arm returns undefined to
-  // fall through; a run reaches null only when none applies.
-  let arm = quietKillArm(ctx);
-  if (arm) return arm;
-  arm = progressingTimeoutArm(ctx);
-  if (arm) return arm;
-  arm = timeoutArm(ctx);
-  if (arm) return arm;
-  arm = subscriptionRejectedArm(ctx);
-  if (arm) return arm;
-  arm = budgetCappedArm(ctx);
-  if (arm) return arm;
-  arm = imageBlindArm(ctx);
-  if (arm) return arm;
-  arm = await refusalArm(ctx);
-  if (arm) return arm;
+  await consumeConfigRequest(ctx);
+  consumeDirectorRequest(ctx);
+  const early = await earlyVerdict(ctx);
+  if (early !== undefined) return early;
   const changed = await isDirty(ctx.wt);
-  arm = failedRunArm(ctx, changed);
-  if (arm) return arm;
-  arm = await revisionDropArm(ctx);
-  if (arm) return arm;
-  arm = noChangeArm(ctx, changed);
-  if (arm) return arm;
+  const late = await changedVerdict(ctx, changed);
+  if (late !== undefined) return late;
   return null;
 }
+
+/** Run the early verdict arms in the table's order and short-circuit on the first that
+ * applies so the verdict tree reads as a list: every arm decides on the run's result alone
+ * and returns undefined to fall through; undefined back here means none applied. */
+async function earlyVerdict(ctx: RunVerdictContext): Promise<RunOutcome | undefined> {
+  for (const arm of EARLY_VERDICT_ARMS) {
+    const outcome = await arm(ctx);
+    if (outcome !== undefined) return outcome;
+  }
+  return undefined;
+}
+
+/** Run the changed verdict arms in the table's order against the worktree's dirty state and
+ * short-circuit on the first that applies: every arm returns undefined to fall through; undefined
+ * back here means none applied, so the run is fulfillable and staging takes over. */
+async function changedVerdict(
+  ctx: RunVerdictContext,
+  changed: boolean,
+): Promise<RunOutcome | undefined> {
+  for (const arm of CHANGED_VERDICT_ARMS) {
+    const outcome = await arm(ctx, changed);
+    if (outcome !== undefined) return outcome;
+  }
+  return undefined;
+}
+
+/** A verdict arm: one named decision over the run's result alone. Every arm returns
+ * undefined to fall through; a run reaches null only when no arm applies. */
+type VerdictArm = (
+  ctx: RunVerdictContext,
+) => RunOutcome | undefined | Promise<RunOutcome | undefined>;
+
+/** A verdict arm that also reads whether the finished run left the worktree dirty. */
+type ChangedVerdictArm = (
+  ctx: RunVerdictContext,
+  changed: boolean,
+) => RunOutcome | undefined | Promise<RunOutcome | undefined>;
+
+/** The verdict arms that decide on the run's result alone, in the order they run.
+ * A new early verdict arm is one row here. */
+const EARLY_VERDICT_ARMS: readonly VerdictArm[] = [
+  quietKillArm,
+  progressingTimeoutArm,
+  timeoutArm,
+  subscriptionRejectedArm,
+  budgetCappedArm,
+  imageBlindArm,
+  refusalArm,
+];
+
+/** The verdict arms that read the worktree's dirty state, in the order they run.
+ * A new changed verdict arm is one row here. */
+const CHANGED_VERDICT_ARMS: readonly ChangedVerdictArm[] = [failedRunArm, revisionDropArm, noChangeArm];
 
 /** The `pi.quietKilled` decision: a hung tool call keeps the session and the worktree's edits
  * so applyRunOutcome resumes them promptly (Director runs re-queue their prompt fresh). */
