@@ -18,8 +18,8 @@ import { gateCtx, gateFixture, reviewGate, ROLE } from "./fixtures/gate-fixtures
 // PATH, covering the gate's deterministic reject and no-run branches (part 3l/3 retired the
 // reviewer-run cases); the parser's own
 // cases live in review-verdict.test.ts (exemption matching in exemptions.test.ts). The gate's
-// build pre-check slice lives in review-precheck.test.ts (extracted 2026-09-29); both files
-// share the scaffolding in fixtures/gate-fixtures.ts.
+// build pre-check lives in the review-precheck*.test.ts slices (extracted 2026-09-29, split
+// 2026-11-01), on fixtures/precheck-fixtures.ts beside the gate-fixtures.ts this file uses.
 
 
 // ── Gate orchestration (reviewAheadOfMain) ────────────────────────────────────────────────
@@ -143,7 +143,7 @@ test("gate skips the run when this exact HEAD was already approved", async () =>
 
 test("gate runs no reviewer on a shutdown, leaving the commit and no reject bookkeeping", async () => {
   // The abort path itself (a pre-check stopped by the verify's signal fails closed as
-  // aborted) is covered in review-precheck.test.ts; this case holds the gate-orchestration
+  // aborted) is covered in review-precheck-closed.test.ts; this case holds the gate-orchestration
   // invariants that survive a shutdown: no reviewer run starts, the commit stays, and no
   // rejection bookkeeping is written.
   const { root, wt } = await gateFixture();
