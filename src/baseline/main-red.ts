@@ -1,7 +1,8 @@
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { enqueueRolePrompt } from "../inbox/inbox.js";
 import { liveConfig } from "../config/config.js";
-import { mergeCommandOf } from "../build/build-check-detect.js";
+import { mergeCommandOf, rerunCommandOf } from "../build/build-check-detect.js";
+import { canRerun, rerunCommandLine, rerunTests } from "../build/build-check-rerun.js";
 import { failureHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { baselineCheckEventLogger, type BaselineCheckRun } from "../build/build-check-events.js";
 import { checkMainBaseline, newestObservedBaseline, watchedBaseline } from "./main-baseline.js";
@@ -12,7 +13,7 @@ import { errorMessage } from "../text/text.js";
 import { mainRedPhrase, plural } from "../text/phrases.js";
 import { clipToWidth } from "../text/text-width.js";
 import { shortSha } from "../text/format.js";
-import { branchHead, isMergedInto } from "../git/git.js";
+import { branchHead, headOf, isMergedInto } from "../git/git.js";
 import { gateMainWorktreePath } from "../paths.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
@@ -46,8 +47,8 @@ let lastHealKey: string | null = null;
 /** The failing tests a red verdict names, when the list is complete — non-empty and short of
  * FAILING_TESTS_MAX, which may have been cut short (the same rule as onlyKnownMainFailures).
  * Empty when it names none: main's red is then not a set of known failures, and the heal is
- * keyed to the red SHA rather than a failing set (the event reads "code merges blocked until
- * main is green"). */
+ * keyed to the red SHA rather than a failing set (the event reads "a change whose own check
+ * fails is kept until main moves"). */
 export function namedFailures(red: { failingTests?: string[] }): string[] {
   const tests = red.failingTests ?? [];
   return tests.length > 0 && tests.length < FAILING_TESTS_MAX ? tests : [];
@@ -92,7 +93,7 @@ function warnMainRedOnce(
     message:
       named.length > 0
         ? `${mainRedPhrase(red.sha)} (${plural(named.length, "failing test")}: ${clipToWidth(named[0] ?? "", 80)}${named.length > 1 ? `, +${named.length - 1} more` : ""}); changes that add no new failures still merge`
-        : redMainMessage(red, "code merges blocked until main is green"),
+        : redMainMessage(red, "a change whose own check fails is kept until main moves"),
   });
   // The ci role is the healer, and it schedules as an observer, so a red main discovered by any
   // other path could sit unrepaired until ci's own interval or a coincidental wake.
@@ -123,13 +124,33 @@ function warnMainRedOnce(
  * note is appended) and the "verify green" clause makes the run a no-op. */
 export function mainRedHealPrompt(
   sha: string,
-  detail?: { culprit: string; failingTests: readonly string[]; outputTail?: readonly string[] },
+  detail?: { culprit: string; failingTests: readonly string[]; outputTail?: readonly string[]; rerun?: string },
 ): string {
   const base = `Main was reported red at commit ${shortSha(sha)}. Verify main is green now; if it is still red, reproduce the failure and land the fix.`;
   if (!detail) return base;
   const tests = detail.failingTests.length > 0 ? ` Failing: ${detail.failingTests.join("; ")}.` : "";
+  const rerun = detail.rerun ? ` ${rerunAdvice(detail.rerun)}` : "";
   const tail = detail.outputTail && detail.outputTail.length > 0 ? ` Output tail: ${detail.outputTail.join(" | ")}` : "";
-  return `${base} The watch named ${shortSha(detail.culprit)} as the commit that turned it red.${tests}${tail}`;
+  return `${base} The watch named ${shortSha(detail.culprit)} as the commit that turned it red.${tests}${rerun}${tail}`;
+}
+
+/** The heal's one instruction about re-running: the command that runs only main's failing tests,
+ * for reproducing them and for proving the fix, instead of the whole suite. */
+function rerunAdvice(command: string): string {
+  return `Run only the failing tests, to reproduce them and again to prove the fix, with: ${command}`;
+}
+
+/** The command line that re-runs `red`'s named failures on their own (rerunCommandLine), or
+ * undefined when they cannot be re-run alone (canRerun) — the healer is then left to the full
+ * check. */
+function healRerunLine(
+  root: string,
+  config: TumwaterConfig,
+  red: { failingTests?: string[]; failingTestFiles?: Record<string, string> },
+): string | undefined {
+  const tests = namedFailures(red);
+  const command = canRerun(root, config, tests) ? rerunCommandOf(root, config) : undefined;
+  return command === undefined ? undefined : rerunCommandLine(command, tests, red.failingTestFiles);
 }
 
 /** Queue the heal prompt for ci with the culprit's detail: the one way a named red-main culprit
@@ -142,10 +163,16 @@ export function mainRedHealPrompt(
 export function queueCulpritHeal(
   root: string,
   tip: string,
-  detail: { culprit: string; failingTests: readonly string[]; outputTail?: readonly string[] },
+  detail: {
+    culprit: string;
+    failingTests: readonly string[];
+    failingTestFiles?: Record<string, string>;
+    outputTail?: readonly string[];
+  },
 ): void {
   try {
-    enqueueRolePrompt(root, "ci", mainRedHealPrompt(tip, detail));
+    const rerun = healRerunLine(root, liveConfig(root), { failingTests: [...detail.failingTests], failingTestFiles: detail.failingTestFiles });
+    enqueueRolePrompt(root, "ci", mainRedHealPrompt(tip, { ...detail, ...(rerun ? { rerun } : {}) }));
   } catch (err) {
     warnEventBestEffort(root, TUMWATER_SOURCE, `could not queue the heal prompt for ci: ${errorMessage(err)}`);
   }
@@ -189,7 +216,7 @@ export async function mainRedHealNote(root: string, role: string, wt: string): P
   if (red?.status === "green") clearHealKeyOnGreen();
   if (red?.status !== "red") return undefined;
   warnMainRedOnce(root, red, role);
-  return buildMainRedNote(red.sha, red.script, failureHeadline(red.outputTail), red.outputTail);
+  return buildMainRedNote(red.sha, red.script, failureHeadline(red.outputTail), red.outputTail, healRerunLine(wt, config, red));
 }
 
 /** What the review gate learns about main's current tip when a change's check failed twice
@@ -200,7 +227,7 @@ export async function mainRedHealNote(root: string, role: string, wt: string): P
  * rejection's reasons. */
 type MainTipVerdict =
   | { status: "green"; sha: string }
-  | { status: "red"; sha: string }
+  | { status: "red"; sha: string; failingTests?: string[] }
   | { status: "unavailable"; why: string };
 
 /** Serializes mainTipVerdict's use of its one worktree: the merge pipeline's verifies run their
@@ -293,7 +320,7 @@ async function verdictAtMainTipIn(
     if (baseline?.status === "green") return { status: "green", sha: baseline.sha };
     if (baseline?.status === "red") {
       warnMainRedOnce(root, baseline, role);
-      return { status: "red", sha: baseline.sha };
+      return { status: "red", sha: baseline.sha, failingTests: baseline.failingTests ?? [] };
     }
     return {
       status: "unavailable",
@@ -306,6 +333,52 @@ async function verdictAtMainTipIn(
   } catch (err) {
     return { status: "unavailable", why: errorMessage(err) };
   }
+}
+
+/** A gate check's named failures and the file each lives in (BuildCheckOutcome's failingTests and
+ * failingTestFiles) — what the attribution re-runs on main's tip instead of main's whole check. */
+interface FailedTests {
+  tests: readonly string[];
+  files?: Readonly<Record<string, string>>;
+}
+
+/** Main's verdict at its tip on a gate's twice-failed check, for an attribution that has to run
+ * something: when the failures name their tests and those can be re-run alone (canRerun), only
+ * they run, in the `_gate-main` mirror at main's tip — a red names the ones that fail there too,
+ * a green says none does. Otherwise, or when the re-run reaches no verdict, main's full check runs
+ * fresh (mainTipVerdict with forceFresh), as before. A re-run is no full check: it never touches
+ * the verdict cache and warns nothing. Never throws. */
+export async function mainTipFailures(
+  root: string,
+  role: string,
+  wt: string,
+  mainBranch: string,
+  config: TumwaterConfig,
+  failed?: FailedTests,
+): Promise<MainTipVerdict> {
+  const rerun = failed ? await rerunAtMainTip(root, role, wt, mainBranch, config, failed) : null;
+  return rerun ?? mainTipVerdict(root, role, mainBranch, config, true);
+}
+
+/** mainTipFailures's re-run alone: `failed`'s tests run on their own in the `_gate-main` mirror at
+ * main's tip, queued behind the gates and the main watch that share it. Null when they cannot be
+ * re-run alone (canRerun) or the re-run reaches no verdict. Never throws. */
+export async function rerunAtMainTip(
+  root: string,
+  role: string,
+  wt: string,
+  mainBranch: string,
+  config: TumwaterConfig,
+  failed: FailedTests,
+): Promise<MainTipVerdict | null> {
+  if (!canRerun(wt, config, failed.tests)) return null;
+  const rerun = await withMainTipWorktree(root, mainBranch, async (mirror) => {
+    const result = await rerunTests(root, role, mirror, config, failed.tests, failed.files);
+    return result ? { result, sha: await headOf(mirror, "HEAD") } : null;
+  }).catch(() => null);
+  if (!rerun) return null;
+  const { result, sha } = rerun;
+  return result.failing.length === 0 ? { status: "green", sha } : { status: "red", sha, failingTests: result.failing };
 }
 
 /** How a change kept for the main watch's verdict came back to the gate (MergeEntry.watchWait):
@@ -351,9 +424,10 @@ type WatchedMainVerdict = MainTipVerdict | { status: "awaiting"; sha?: string };
  * `waited` is set on the retry after such a wait, and the gate does not wait twice: after
  * `covered` the newest observed verdict answers even if main moved past it again; after
  * `timed_out` (the watch never got there — held, failing, or main's tip only carried doc commits
- * past its last observed check) main's check runs here as before (mainTipVerdict with
- * forceFresh). The same fallback answers a `covered` retry that finds no observed verdict at all.
- * A red is not warned again here: the watch that observed it reported it. Never throws. */
+ * past its last observed check) main is asked here (mainTipFailures: the gate's `failed` tests
+ * re-run alone on main's tip when they can be, else main's full check). The same fallback answers a
+ * `covered` retry that finds no observed verdict at all. A red is not warned again here: the watch
+ * that observed it reported it. Never throws. */
 export async function watchedMainVerdict(
   root: string,
   role: string,
@@ -362,13 +436,18 @@ export async function watchedMainVerdict(
   config: TumwaterConfig,
   base: string,
   waited?: WatchWait,
+  failed?: FailedTests,
 ): Promise<WatchedMainVerdict> {
-  const fallback = () => mainTipVerdict(root, role, mainBranch, config, true);
+  const fallback = () => mainTipFailures(root, role, wt, mainBranch, config, failed);
   if (waited === "timed_out") return fallback();
   const tip = await branchHead(root, mainBranch);
   if (!tip) return { status: "unavailable", why: `${mainBranch} is unreadable` };
   const { verdict, covers } = await watchVerdictCovering(wt, tip, base);
-  if (verdict && (covers || waited === "covered")) return { status: verdict.status, sha: verdict.sha };
+  if (verdict && (covers || waited === "covered")) {
+    return verdict.status === "red"
+      ? { status: "red", sha: verdict.sha, failingTests: verdict.failingTests ?? [] }
+      : { status: "green", sha: verdict.sha };
+  }
   if (waited === "covered") return fallback();
   return { status: "awaiting", ...(verdict ? { sha: verdict.sha } : {}) };
 }

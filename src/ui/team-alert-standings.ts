@@ -30,7 +30,7 @@ import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
  * trigger is the CONFIGURED pool (worktreeSlots below maxConcurrent) and instance count
  * (an instance role's instances above 1), a state the running-only slotPool snapshot does
  * not carry at all for a stopped team, and the docs promise the alert there too. */
-export interface StandingAlertsInput {
+interface StandingAlertsInput {
   snap: Pick<
     StatusSnapshot,
     "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "principlesTruncated"

@@ -501,13 +501,36 @@ async function knownRedFixture(alsoY: boolean): Promise<{ root: string; wt: stri
 }
 
 
-test("a gate failure of a known failure plus another test is handled as before", async () => {
+// A red main excuses only its own failures: a change that fails one more test is the author's to
+// fix, rejected as on a green main, instead of kept until main turns green.
+test("a gate failure of a known failure plus another test is rejected for the other test", async () => {
   const { root, wt } = await knownRedFixture(true);
   await withPi('true', async () => {
-    const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "failed");
-    assert.equal(result.mainRed, true);
+    const state = freshRunnerState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "rejected");
+    assert.equal(result.mainRed, undefined, "not kept: main's red does not explain Y");
     assert.ok(!warningMessages(root).some((m) => m.includes("known failures")));
+    const reasons = state.lastReview?.reasons ?? [];
+    assert.match(reasons.at(-1) ?? "", /^main [0-9a-f]{8} is red too, but these failures are this change's own: Y$/);
+  });
+});
+
+// A gate that names no test while main's red names its own failed outside them — a compile or lint
+// error, a crash — so it is the change's, not main's.
+test("a gate failure naming no test on a main red with named tests is rejected", async () => {
+  const { root, wt } = await knownRedFixture(false);
+  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "echo 'error TS2345: boom' >&2; exit 1" }));
+  commitIn(wt, "break the compile");
+  await withPi('true', async () => {
+    const state = freshRunnerState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "rejected");
+    assert.equal(result.mainRed, undefined);
+    assert.match(
+      state.lastReview?.reasons.at(-1) ?? "",
+      /^main [0-9a-f]{8} is red too, but this check failed outside the tests main fails, so the failure is this change's own$/,
+    );
   });
 });
 

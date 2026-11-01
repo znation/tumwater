@@ -72,16 +72,19 @@ and one serial merge step merges them, so other roles keep running while a chang
   `npm test`, else typecheck/build. A failure is re-run once; one that then passes is warned
   as a flake and proceeds; the bugfix run's prompt lists the checks excused as flakes in the last
   24 h, with their counts. A failure that repeats is attributed through main's own verdict at
-  its tip: main passing (or no verdict) rejects the change with the check's output, no model run;
-  main's check failing is not the change's failure, so its pin is kept for a later retry and the
-  failure goes to ci. Optionally, `check.gateCommand` names a cheaper check (say, only the
+  its tip: main passing (or no verdict) rejects the change with the check's output, no model run.
+  A failing main excuses only its own failures, so it never holds a change back: a change failing
+  only tests main fails too goes on, and one that fails any other test (or fails outside the
+  tests main names, such as a compile error) is rejected as on a green main, while ci repairs main
+  in parallel. Only when neither check names a test is the pin kept, and it is retried as soon as
+  main moves. Optionally, `check.gateCommand` names a cheaper check (say, only the
   tests a diff touches) that this per-change step runs instead. It is off by default; tumwater's
   own team sets it to `npm run test:gate`. With a gate command set, the main watch verifies
   main, so a repeated failure is attributed from the watch's verdicts instead of a run of main's
   own check: a verdict on the commit the change was rebased onto, or on a later one, decides at
   once; a change the watch has not reached yet is kept without a strike and re-queued as soon as
-  the watch has checked that commit (after 15 minutes without that, main's check runs for the
-  retry). `check.timeoutSeconds` (default 300) bounds every
+  the watch has checked that commit (after 15 minutes without that, main is asked for the retry:
+  only the failing tests re-run on main's tip when they can be, else main's whole check). `check.timeoutSeconds` (default 300) bounds every
   check, the detected `npm test` included.
 
   The per-change verify gate is the only check a merge depends on: since part 4l/3 the merge
@@ -255,8 +258,11 @@ never has to wait a parked check out.
   predicate. The `feedback` observer's per-install filing ledger gets the same operator read: the
   issues it filed are visible in `tumwater role feedback` and the dashboards' role detail.
 - A main watch runs the full check on main's tip in the background whenever the head moves (one run
-  at a time, covering every commit since the last watched head; a red is re-run once before it counts;
-  a doc-only tip inherits its green). It logs a `main_check` event with the failing test titles and
+  at a time, covering every commit since the last watched head, so at most once per main commit; a
+  red is confirmed once before it counts — by re-running only its failing tests when the project
+  declares a re-run command (`check.rerunCommand`, or an npm `test:rerun` script), else the whole
+  check; a doc-only tip inherits its green). The heal prompt and ci's `<main-red>` note name that
+  re-run command, so the healer reproduces and verifies only the failing tests. It logs a `main_check` event with the failing test titles and
   saves reds beside the greens in `.tumwater/state/baseline-verdicts.json`. On a red tip it also
   names that head as its own culprit — the watch checks every new tip, so the newest head carries
   whatever it found — logging a `main_culprit` event with the head, its merging runner and the
@@ -294,7 +300,7 @@ never has to wait a parked check out.
   restart or disk hold, or a hold on the reviewer's provider — and never on the unresolvable
   strong tier, which never reaches the post-merge review queue.
 - A test that fails and then passes on the same tree is quarantined at once: the gate's re-run and
-the watch's confirming re-run each add the failing tests the failed run named to
+the watch's confirming re-run each add the failing tests that passed on the re-run to
   `.tumwater/state/quarantine.json` (newest 100). A quarantined test counts as a known failure
   everywhere: a gate or merge check failing only known tests goes on, the watch records a red
   naming only quarantined tests as passed (`quarantined: [tests]`) with no culprit, and such a red

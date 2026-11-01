@@ -14,11 +14,11 @@ import { checkFailureReasons, FAILING_TESTS_MAX, redCheckHeadline } from "../bui
 import { sleptPhrase, UNVERIFIED_TREE, unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { sampleSleepClock } from "../build/host-sleep.js";
 import { recordReview } from "../run/run-apply.js";
-import { mainRedNotMine, mainUncheckedNotJudged } from "../text/phrases.js";
+import { mainRedNotMine, mainRedNotTheseFailures, mainUncheckedNotJudged } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { checkWaitStage, setMergeStage } from "../merge/merge-slot.js";
-import { mainTipVerdict, watchedMainVerdict } from "../baseline/main-red.js";
-import { onlyKnownMainFailures } from "../baseline/main-watch.js";
+import { mainTipFailures, namedFailures, rerunAtMainTip, watchedMainVerdict } from "../baseline/main-red.js";
+import { knownMainFailures, onlyKnownMainFailures } from "../baseline/main-watch.js";
 import { watchedBaseline, watchVerifiesMain } from "../baseline/main-baseline.js";
 import { changeBaseRev } from "../git/git.js";
 import { FLAKY_WARNING_PREFIX, isKnownFlake, quarantineTests } from "./known-flakes.js";
@@ -62,6 +62,23 @@ async function staleBaseFailures(
   } catch {
     return null;
   }
+}
+
+/** Whose failure a twice-failed gate check is when main is red too, from the gate's complete list
+ * of failing tests and main's (`mainFailing`; each empty when it names none or may have been cut
+ * short): `main` — every test the gate names is one main fails, or a known main failure; `own` —
+ * it fails more than main does: the named tests main does not fail, or, when the gate named no
+ * test, a failure outside main's named ones (a compile or lint error, a crash); `unknown` — main
+ * names no failure the gate's can be told apart from. A red main excuses only its own failures,
+ * so it never blocks a change on failures of the change's own. */
+type RedAttribution = { kind: "main" } | { kind: "own"; tests: string[] } | { kind: "unknown" };
+
+function attributeOnRedMain(root: string, failed: readonly string[], mainFailing: readonly string[]): RedAttribution {
+  if (failed.length === 0) return mainFailing.length > 0 ? { kind: "own", tests: [] } : { kind: "unknown" };
+  const known = new Set([...mainFailing, ...knownMainFailures(root)]);
+  const own = failed.filter((t) => !known.has(t));
+  if (own.length === 0) return { kind: "main" };
+  return mainFailing.length > 0 ? { kind: "own", tests: own } : { kind: "unknown" };
 }
 
 /** Run the gate's deterministic build pre-check. `reject` is the gate's one shared rejection
@@ -178,64 +195,87 @@ export async function gateBuildPrecheck(
       // whole queue waits on is no place for a model run (the in-slot build-fix run this
       // replaces held it for hours and never once led to a merge — PLANS.md "Land-queue
       // speed 1/3"). The question is whose failure it is, and main's own verdict at its tip
-      // answers it. A failure matching no recorded flake bypasses the per-SHA cache and runs
-      // main's check now (forceFresh): a clock- or load-sensitive test can pass on an immutable
-      // SHA early and fail later, so a cached green — usually seeded by an earlier merge —
-      // may no longer be true, and trusting it rejected an unrelated change (BUGS.md
-      // 2026-10-06). When the main watch verifies main, the gate runs no full check of its own:
+      // answers it. When the main watch verifies main, the gate runs no full check of its own:
       // the watch's verdicts answer, and a change the watch has not caught up with yet is kept
-      // until it has (watchedMainVerdict). A shutdown already under way skips the question and
-      // fails closed like any abort.
+      // until it has (watchedMainVerdict). Otherwise — or when that wait timed out — main is
+      // asked here (mainTipFailures): the failing tests alone are re-run on main's tip when they
+      // can be, else main's full check runs fresh, bypassing the per-SHA cache, because a clock-
+      // or load-sensitive test can pass on an immutable SHA early and fail later, and a cached
+      // green — usually seeded by an earlier merge — rejected an unrelated change (BUGS.md
+      // 2026-10-06). A shutdown already under way skips the question and fails closed like any
+      // abort.
       if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
       const base = await changeBaseRev(wt, mainBranch, head);
-      const main = watchVerifiesMain(root, config)
-        ? await watchedMainVerdict(root, role, wt, mainBranch, config, base, ctx.watchWait)
-        : await mainTipVerdict(root, role, mainBranch, config, true);
+      const failed = { tests: namedFailures(outcome), files: outcome.failingTestFiles };
+      let main = watchVerifiesMain(root, config)
+        ? await watchedMainVerdict(root, role, wt, mainBranch, config, base, ctx.watchWait, failed)
+        : await mainTipFailures(root, role, wt, mainBranch, config, failed);
+      // A red that names no test (main's check died before its tests ran, or its list may have
+      // been cut short) cannot be subtracted from the change's named failures: ask main's tip
+      // about just those tests instead.
+      if (main.status === "red" && namedFailures(main).length === 0 && failed.tests.length > 0) {
+        main = (await rerunAtMainTip(root, role, wt, mainBranch, config, failed)) ?? main;
+      }
       // A check killed by that shutdown reads as a skip, never as evidence against the author.
       if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
       if (main.status === "awaiting") {
-        // Nothing judged this diff yet: keep it exactly as a red main does — the pin stays, no
-        // strike — and name the commit it waits on, so the merge pipeline re-queues it once the
-        // watch's verdict covers that commit (merge-requeue.ts's requeueMainRedPin).
+        // Nothing judged this diff yet: keep it with no strike — the pin stays — and name the
+        // commit it waits on, so the merge pipeline re-queues it once the watch's verdict covers
+        // that commit (merge-requeue.ts's requeueMainRedPin).
         const detail = mainUncheckedNotJudged(base, main.sha);
         recordReview(state, "failed", [detail], head);
         warnEventBestEffort(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; merge kept`);
         return { resolved: { decision: "failed", detail, mainRed: true, awaitingWatch: base } };
       }
-      if (main.status === "red") {
-        // Main fails too: not this change's failure. Leave the commit (and with it the pin) and
-        // do not advance the discard counter — the transport-failure rule (BUGS.md 2026-09-20):
-        // nothing judged this diff. main-red.ts's healer hand-off (`mainRedHealNote`) and the
-        // bugfix handoff own the repair,
-        // and the orchestrator poll (requeueMainRedPin) re-queues the kept pin once main's head
-        // moves; leftover recovery holds it until then.
+      // Main is red too: it excuses only its own failures. A change that fails nothing main does
+      // not goes on to review exactly as a known failure does; one that fails more is judged
+      // like a change on a green main, so a red main never holds back a change for a failure of
+      // the change's own — main is healed in parallel by ci (main-red.ts's heal hand-offs).
+      const red = main.status === "red" ? attributeOnRedMain(root, failed.tests, namedFailures(main)) : null;
+      if (main.status === "red" && red?.kind === "main") {
+        warnEventBestEffort(
+          root,
+          role,
+          `gate check fails only tests main ${shortSha(main.sha)} fails too: ${failed.tests.join(", ")}; going on to review`,
+        );
+        return { knownMainFailures: [...failed.tests] };
+      }
+      if (main.status === "red" && red?.kind === "unknown") {
+        // Neither check names a test, so nothing tells this failure from main's: keep the commit
+        // (and with it the pin) and do not advance the discard counter — the transport-failure
+        // rule (BUGS.md 2026-09-20): nothing judged this diff. The orchestrator poll
+        // (requeueMainRedPin) re-queues the kept pin once main's head moves; leftover recovery
+        // holds it until then.
         const detail = mainRedNotMine(main.sha);
         recordReview(state, "failed", [detail], head);
         warnEventBestEffort(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; merge kept`);
         return { resolved: { decision: "failed", detail, mainRed: true } };
       }
-      if (main.status === "green") {
-        const stale = await staleBaseFailures(wt, mainBranch, head, main.sha, outcome.failingTests);
+      const own = red?.kind === "own" ? red.tests : outcome.failingTests;
+      if (main.status === "green" || main.status === "red") {
+        const stale = await staleBaseFailures(wt, mainBranch, head, main.sha, own);
         if (stale) {
           // Same hand-off as the known-failure branch: no verifiedHead, so the merge check on the
           // rebased tree still judges it.
           warnEventBestEffort(
             root,
             role,
-            `gate check fails only tests its base ${shortSha(stale.base)} already failed, and main ${shortSha(main.sha)} is green: ${stale.tests.join(", ")}; going on to review`,
+            `gate check fails only tests its base ${shortSha(stale.base)} already failed, and main ${shortSha(main.sha)} is ${main.status}: ${stale.tests.join(", ")}; going on to review`,
           );
-          return { knownMainFailures: stale.tests };
+          return { knownMainFailures: main.status === "red" ? [...failed.tests] : stale.tests };
         }
       }
-      // Main green: the change broke the check — rejected deterministically through the shared
-      // reject path, no pi run consumed, reasons injected into the author's next run. With no
-      // verdict for main the author's failure is still the safe default, and the reasons say
-      // the attribution could not be made.
+      // Main green, or red with fewer failures: the change broke the check — rejected
+      // deterministically through the shared reject path, no pi run consumed, reasons injected
+      // into the author's next run. With no verdict for main the author's failure is still the
+      // safe default, and the reasons say the attribution could not be made.
       return {
         resolved: await reject(
           main.status === "green"
             ? reasons
-            : [...reasons, `main's baseline was unavailable (${main.why}), so the failure is attributed to this change`],
+            : main.status === "red"
+              ? [...reasons, mainRedNotTheseFailures(main.sha, own ?? [])]
+              : [...reasons, `main's baseline was unavailable (${main.why}), so the failure is attributed to this change`],
         ),
       };
     }

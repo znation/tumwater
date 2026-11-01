@@ -65,7 +65,7 @@ test("two merges before a run cover both commits in one watch run", async () => 
   assert.equal(runsOf(counter), 2);
 });
 
-test("a red tip is re-run once, then logged failed with the failing test titles, and persists", async () => {
+test("a red tip with no re-run command is re-run once in full, then logged failed with the failing test titles, and persists", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root } = baselineFixture("improve", `echo run >> ${counter}; ${FAILING_OUTPUT}; exit 1`);
   persistBaselineVerdicts(root);
@@ -80,6 +80,63 @@ test("a red tip is re-run once, then logged failed with the failing test titles,
   assert.deepEqual(saved.reds, [
     { sha: headSha(root), script: "test", failingTests: ["first", "second", "third"] },
   ]);
+});
+
+/** A config whose re-run command is `script`: the watch confirms a red with it, appending one
+ * `#<name>` argument per failing test (the fixture's output names no test file). */
+function rerunConfig(script: string): ReturnType<typeof defaultConfig> {
+  const file = path.join(tmpdir(), "rerun.sh");
+  fs.writeFileSync(file, script);
+  return { ...defaultConfig(), check: { command: "", rerunCommand: `sh ${file}` } };
+}
+
+/** A re-run that logs its arguments to `log` and fails the named tests in `failing`. */
+function rerunScript(log: string, failing: readonly string[]): string {
+  const cases = failing.map((t) => `*#${t}) echo '✖ ${t} (1ms)'; fail=1;;`).join(" ");
+  return `echo "$@" >> ${log}\nfor a in "$@"; do case "$a" in ${cases} *) ;; esac; done\nexit \${fail:-0}\n`;
+}
+
+async function watchWith(root: string, config: ReturnType<typeof defaultConfig>): Promise<void> {
+  const watch = createMainWatch(root, "main");
+  watch.poll(headSha(root), false, config);
+  await watch.idle();
+}
+
+test("a red tip is confirmed by re-running only its failing tests: the full check runs once", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const log = path.join(tmpdir(), "rerun-args");
+  const { root } = baselineFixture("improve", `echo run >> ${counter}; ${FAILING_OUTPUT}; exit 1`);
+  await watchWith(root, rerunConfig(rerunScript(log, ["first"])));
+  assert.equal(runsOf(counter), 1, "no second full run");
+  assert.equal(fs.readFileSync(log, "utf8").trim(), "#first #second #third", "only the failing tests re-ran");
+  const checks = eventsOfType(root, "main_check");
+  assert.equal(checks[0]?.status, "failed");
+  assert.deepEqual(checks[0]?.failingTests, ["first"], "the red narrows to the test that failed again");
+  assert.deepEqual(quarantinedTests(root), ["second", "third"], "the two that passed alone are flakes");
+  assert.deepEqual(
+    eventsOfType(root, "build_check").map((e) => `${e.scope}:${e.status}`),
+    ["baseline:failed", "rerun:failed"],
+  );
+});
+
+test("a red whose failing tests all pass when re-run alone is recorded passed and quarantined", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const log = path.join(tmpdir(), "rerun-args");
+  const { root } = baselineFixture("improve", `echo run >> ${counter}; ${FAILING_OUTPUT}; exit 1`);
+  await watchWith(root, rerunConfig(rerunScript(log, [])));
+  assert.equal(runsOf(counter), 1);
+  assert.equal(eventsOfType(root, "main_check")[0]?.status, "passed");
+  assert.equal(eventsOfType(root, "main_culprit").length, 0);
+  assert.deepEqual(quarantinedTests(root), ["first", "second", "third"]);
+});
+
+test("a re-run that reaches no verdict leaves the first red standing, with no second full run", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root } = baselineFixture("improve", `echo run >> ${counter}; ${FAILING_OUTPUT}; exit 1`);
+  await watchWith(root, rerunConfig("echo 'error TS2345: boom' >&2\nexit 1\n"));
+  assert.equal(runsOf(counter), 1);
+  assert.deepEqual(eventsOfType(root, "main_check")[0]?.failingTests, ["first", "second", "third"]);
+  assert.deepEqual(quarantinedTests(root), [], "nothing passed, so nothing is a flake");
 });
 
 test("a doc-only commit on a checked head inherits green without a run", async () => {
@@ -191,6 +248,19 @@ test("the watch's onCulprit hands a red culprit straight to ci's heal queue and 
   assert.ok(prompt.includes(mainRedCulpritClause(b)), queued.join("\n"));
   assert.ok(prompt.includes("Failing: first; second; third."), prompt);
   assert.equal(eventsOfType(root, "operator_revert").length, 0, "nothing is reverted");
+});
+
+test("a culprit's heal prompt names the command that re-runs only its failing tests", async () => {
+  const { root } = culpritFixture();
+  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ check: { rerunCommand: "npm run test:rerun --" } }));
+  const watch = createMainWatch(root, "main", (culprit) => {
+    queueCulpritHeal(root, culprit.tip, { culprit: culprit.commit, failingTests: culprit.failingTests });
+  });
+  await watchAt(watch, root);
+  change(root, "bad.txt", "b");
+  await watchAt(watch, root);
+  const prompt = queuedRolePrompts(root, "ci")[0] ?? "";
+  assert.ok(prompt.includes("with: npm run test:rerun -- '#first' '#second' '#third'"), prompt);
 });
 
 function mainRedCulpritClause(sha: string): string {

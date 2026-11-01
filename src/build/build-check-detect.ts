@@ -188,6 +188,25 @@ export function mergeCommandOf(config?: CheckConfigSlice): string | undefined {
   return isNonBlankString(m) ? m : undefined;
 }
 
+/** The npm script the re-run of named tests auto-detects (rerunCommandOf). */
+const RERUN_SCRIPT = "test:rerun";
+
+/** The command that re-runs only named tests (`check.rerunCommand`, build-check-rerun.ts), or
+ * undefined — off, and its callers run the full check instead. A configured non-blank string
+ * wins; a blank one (`""`) is the explicit opt-out. Absent, a project whose check is the npm
+ * walk-up (no `check.command`) re-runs with `npm run test:rerun --` when the package.json the
+ * walk-up finds declares that script, so an npm project opts in from its own manifest. Never
+ * throws. */
+export function rerunCommandOf(startDir: string, config?: CheckConfigSlice): string | undefined {
+  const r = config?.check?.rerunCommand;
+  if (r !== undefined) return isNonBlankString(r) ? r : undefined;
+  if (isNonBlankString(config?.check?.command)) return undefined;
+  const root = walkUp(startDir, WALK_UP_LEVELS, (dir) => (hasInstall(dir) ? dir : null));
+  if (root === null) return undefined;
+  const scripts = readJsonFile<Record<string, unknown>>(path.join(root, "package.json"))?.scripts;
+  return isJsonObject(scripts) && isCheckScript(scripts, RERUN_SCRIPT) ? `npm run ${RERUN_SCRIPT} --` : undefined;
+}
+
 /** Resolve `node_modules/<rel>` by walking UP from `startDir` — the same climb detectBuildCheck
  * makes, and the same one npm's run-script PATH walk makes: a tumwater worktree has no install
  * of its own (node_modules is gitignored, so it exists only where someone ran npm install), and

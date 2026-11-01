@@ -1,7 +1,7 @@
 import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck } from "./build-check-detect.js";
 import { EXEC_MAX_BUFFER, execFileAsync } from "../process/process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "../process/process-group.js";
-import { clipBuildTail, parseFailingTests } from "./build-check-report.js";
+import { clipBuildTail, parseFailingTestFiles, parseFailingTests } from "./build-check-report.js";
 import { parseTestCounts, type TestCounts } from "./build-check-counts.js";
 import { sampleSleepClock, sleptMsBetween, type SleepSampler } from "./host-sleep.js";
 import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
@@ -71,6 +71,10 @@ export interface BuildCheckOutcome {
   /** On failure: the titles of the failing tests, parsed from the complete output before the tail
    * was clipped (parseFailingTests) — empty when the output names none. */
   failingTests?: string[];
+  /** On failure: the file each failing test lives in, keyed by its title (parseFailingTestFiles) —
+   * what a re-run of only those tests (build-check-rerun.ts) selects files by. A title whose file
+   * the output did not print is absent. */
+  failingTestFiles?: Record<string, string>;
   /** Why no verdict was reached ("skipped"). */
   skipReason?: BuildSkipReason;
   /** On a "killed" skip: the signal that stopped the check — the harness's own timeout is
@@ -316,6 +320,7 @@ async function runDeclaredCheck(
       script,
       outputTail: clipBuildTail(output),
       failingTests: parseFailingTests(output),
+      failingTestFiles: parseFailingTestFiles(output),
       run,
       counts: parseTestCounts(output),
     };

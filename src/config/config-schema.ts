@@ -206,6 +206,15 @@ export interface CheckConfig {
    * main's verdict. An absent key falls back to `gateCommand` (Fast merge "Defaults"); a blank
    * string ("") is off: every merge runs the full check. Shares `cwd` and `timeoutSeconds`. */
   mergeCommand?: string;
+  /** Optional command that re-runs only some tests: the harness appends one shell-quoted
+   * `<file>#<name>` argument per test (the failing test's title, and its file's base name without
+   * the extension; `#<name>` alone when the failure output named no file). The main watch confirms
+   * a red with it, and the review gate asks it whether a change's failing tests also fail on main,
+   * instead of re-running the full check. Absent, an npm project whose package.json declares a
+   * `test:rerun` script uses `npm run test:rerun --` (when no `command` is set); a blank string
+   * (`""`) is off, and those callers run the full check as before. Shares `cwd` and
+   * `timeoutSeconds`. */
+  rerunCommand?: string;
   /** Working directory for the command, resolved relative to the worktree root; defaults to ".". */
   cwd?: string;
   /** Hard cap on one run, in seconds; defaults to the built-in 300 s. It bounds whichever check
@@ -531,9 +540,9 @@ export const ROLE_ENTRY_KEYS = [
 export const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "backend", "thinking", "timeoutSeconds"];
 
 /** The `check` section's keys (plans/portability.md §6/7): the project's own verification
- * command, the optional cheaper gate-only command, their
- * working directory (relative to the worktree), and their timeout. */
-export const CHECK_KEYS = ["command", "gateCommand", "mergeCommand", "cwd", "timeoutSeconds"];
+ * command, the optional cheaper gate-only and merge commands, the optional command that re-runs
+ * named tests, their working directory (relative to the worktree), and their timeout. */
+export const CHECK_KEYS = ["command", "gateCommand", "mergeCommand", "rerunCommand", "cwd", "timeoutSeconds"];
 
 /** The provider/model/thinking triple every model-override section shares — top level,
  * `review`, `fallbackModel` (plans/fallback-model.md), and each `roles.<id>` entry — so one

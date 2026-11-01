@@ -282,6 +282,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     // mergeCommand likewise: an absent key falls back to the gate command (Fast merge
     // "Defaults"), and a blank string means off, which runs the full check in the merge lock.
     checkString(o, "check.", "mergeCommand");
+    // rerunCommand likewise: blank is off, and its callers fall back to the full check.
+    checkString(o, "check.", "rerunCommand");
     checkString(o, "check.", "cwd");
     checkNumber(o, "check.", "timeoutSeconds", DURATION_POSITIVE);
   });

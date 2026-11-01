@@ -3,7 +3,7 @@
  * in-flight marker, the per-merge usage accounting, and the write-back that folds an outcome
  * into the authoring role's state and drops its queue entry; this module owns the other half
  * of a settled entry — putting a kept change back on the queue itself, either at once (a
- * retriable result) or once main's head stops being red (a `main_red` pin). */
+ * retriable result) or once main's head moves on (a `main_red` pin). */
 import { enqueueMerge, queuedMerges, type MergeEntry } from "./merge-queue.js";
 import { RETRIABLE_MERGE_RESULTS } from "./merge-core.js";
 import { pinnedRetrySha } from "../runner/runner-leftover.js";
@@ -48,8 +48,8 @@ function enqueueRetry(root: string, entry: MergeEntry): void {
  * retry needs no author run (plans/fast-merge.md "Lever 1"). A `merge_blocked`, `review_error`
  * or `merge_conflict` result re-queues at once when its pin survives and pinnedRetrySha allows
  * it (not stale, not held, under MERGE_CONFLICT_LIMIT); a `main_red` pin is recorded on the
- * state with main's head, for requeueMainRedPin to re-queue once main moves to a head whose
- * verdict is not red. A `main_red` change its gate kept for the main watch (`awaitingWatch`, the
+ * state with main's head, for requeueMainRedPin to re-queue once main moves to a head with a
+ * verdict. A `main_red` change its gate kept for the main watch (`awaitingWatch`, the
  * commit it waits on) is recorded with that commit and the time it was kept, for
  * requeueMainRedPin to re-queue once the watch's verdict covers it. Anything else, or a pin
  * that is gone, changes nothing — leftover recovery stays the backstop. */
@@ -84,13 +84,15 @@ export async function requeueKeptChange(
 export const MAIN_RED_VERDICT_WAIT_MS = 15 * 60_000;
 
 /** Re-queue a `main_red` pin once main's head differs from the one recorded when its attempt
- * settled (the orchestrator poll calls this for every runner), by the head's cached verdict: red
- * leaves the record untouched, so a later poll asks again; no verdict starts (and saves) a wait
- * at `now`, and the pin re-queues once MAIN_RED_VERDICT_WAIT_MS has passed; green re-queues at
- * once. Re-queuing clears the record; no entry is queued when the pin is gone or held back by
- * pinnedRetrySha, or the role already has one queued. A pin its gate kept for the main watch
- * (`awaitingWatch`) follows requeueAwaitingWatch's rule instead. It never throws: the poll
- * loop calls it with no catch. */
+ * settled (the orchestrator poll calls this for every runner), by the head's cached verdict: a
+ * verdict — green or red — re-queues at once; no verdict starts (and saves) a wait at `now`, and
+ * the pin re-queues once MAIN_RED_VERDICT_WAIT_MS has passed. A red head no longer holds the pin:
+ * the gate judges a change on a red main by the failures main does not share
+ * (review-precheck.ts), so waiting for main to turn green would only block a change main's
+ * failures cannot explain. Re-queuing clears the record; no entry is queued when the pin is gone
+ * or held back by pinnedRetrySha, or the role already has one queued. A pin its gate kept for
+ * the main watch (`awaitingWatch`) follows requeueAwaitingWatch's rule instead. It never throws:
+ * the poll loop calls it with no catch. */
 export async function requeueMainRedPin(
   root: string,
   mainBranch: string,
@@ -105,9 +107,7 @@ export async function requeueMainRedPin(
     return;
   }
   if (mainHead === kept.head) return;
-  const verdict = cachedBaselineVerdict(mainHead);
-  if (verdict === "red") return;
-  if (verdict === undefined) {
+  if (cachedBaselineVerdict(mainHead) === undefined) {
     if (kept.waitingSince === undefined) {
       state.mainRedRetry = { ...kept, waitingSince: now };
       saveRunnerStateBestEffort(root, state);

@@ -277,7 +277,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     // A red main heals forward (Forward, never back, part 4/6): the watch's named culprit goes
     // straight to ci's heal prompt with the existing wording; nothing is reverted and no revision
     // is handed back.
-    queueCulpritHeal(root, culprit.tip, { culprit: culprit.commit, failingTests: culprit.failingTests });
+    queueCulpritHeal(root, culprit.tip, {
+      culprit: culprit.commit,
+      failingTests: culprit.failingTests,
+      ...(culprit.failingTestFiles ? { failingTestFiles: culprit.failingTestFiles } : {}),
+    });
   });
   // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's
   // deferral per role (like prevBudgetPaused/prevUserPaused, but per role), so each episode

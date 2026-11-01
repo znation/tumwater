@@ -12,8 +12,10 @@ import {
   detectBuildCheck,
   gateCommandOf,
   mergeCommandOf,
+  rerunCommandOf,
   resolveFromNodeModules,
 } from "../src/build/build-check-detect.js";
+import { rerunCommandLine } from "../src/build/build-check-rerun.js";
 
 // build-check-detect.ts is the pure-filesystem half of the build check: it decides WHERE the
 // deterministic check lives (the nearest ancestor holding both package.json and node_modules)
@@ -337,4 +339,23 @@ test("mergeCommandOf: on for a real or gate-fallback string, off for blank or ab
   assert.equal(mergeCommandOf({ check: { command: "npm test" } }), undefined);
   assert.equal(mergeCommandOf({}), undefined);
   assert.equal(mergeCommandOf(), undefined);
+});
+
+test("rerunCommandOf: a configured command wins, blank is off, and an npm test:rerun script is found", () => {
+  const withScript = installRoot({ test: "node --test", "test:rerun": "node --test" });
+  const without = installRoot({ test: "node --test" });
+  assert.equal(rerunCommandOf(without, { check: { command: "", rerunCommand: "cargo test --" } }), "cargo test --");
+  assert.equal(rerunCommandOf(withScript, { check: { command: "", rerunCommand: "" } }), undefined, "blank opts out");
+  assert.equal(rerunCommandOf(withScript), "npm run test:rerun --");
+  assert.equal(rerunCommandOf(without), undefined);
+  // A configured check.command is not the npm walk-up, so the npm script is not assumed.
+  assert.equal(rerunCommandOf(withScript, { check: { command: "make check" } }), undefined);
+});
+
+test("rerunCommandLine appends one quoted <file>#<name> filter per test, or bare #<name> when a file is unknown", () => {
+  assert.equal(
+    rerunCommandLine("npm run test:rerun --", ["it's red", "two"], { "it's red": "a.test", two: "b.test" }),
+    `npm run test:rerun -- 'a.test#it'\\''s red' 'b.test#two'`,
+  );
+  assert.equal(rerunCommandLine("npm run test:rerun --", ["one", "two"], { one: "a.test" }), "npm run test:rerun -- '#one' '#two'");
 });

@@ -4,6 +4,7 @@
 npm install && npm run build && npm link   # build from source and put `tumwater` on PATH
 npm test                                   # lint + build + the unit suite (what the merge runs)
 npm run test:gate                          # build + lint + the nearest tests that fit 30 s
+npm run test:rerun -- 'merger.test#a name' # build + only the named tests (file#name filters)
 npm run lint                               # just the lint: no-floating-promises (see eslint.config.js)
 npm test merge                             # only test files whose name contains "merge"
 npm test 'runner#resume'                   # …and inside them, only tests whose name contains "resume"
@@ -59,7 +60,13 @@ host, so it checks only what is nearest the change:
 
 Everything else runs in the main watch's full check (`npm test`) on main's tip after the merge,
 which the team keeps running on every new head. A break that only the full suite catches lands
-on main, and the watch hands it to ci's red-main heal, which fixes it forward. Reachability alone
+on main, and the watch hands it to ci's red-main heal, which fixes it forward. Main being red
+holds no change back: a change whose gate fails only tests main already fails merges, and one
+that fails anything else is handed back to its author. The full suite runs at most once per main
+commit. Every other question about main's failures re-runs only the failing tests through
+`npm run test:rerun` (the harness's `check.rerunCommand`, detected from that script): the watch
+confirming a red, the gate asking whether its failures are main's too, and the ci healer
+reproducing and checking its fix. Reachability alone
 was not enough to bound the gate: the orchestrator, merge and CLI modules import most of the
 tree, so a typical change reached a quarter of the suite and one in ten nearly all of it. Gates
 then ran 4–10 minutes under load and timed out. Some single test files take minutes on their

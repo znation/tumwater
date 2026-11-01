@@ -56,11 +56,51 @@ export function parseFailingTests(output: string): string[] {
   for (const raw of output.split("\n")) {
     const line = raw.trim();
     if (!FAILED_TEST_LINE.test(line)) continue;
-    const title = line.slice(2).replace(/ \([\d.]+m?s\)$/, "").trim();
+    const title = resultTitle(line);
     if (title !== "") titles.add(title);
     if (titles.size >= FAILING_TESTS_MAX) break;
   }
   return [...titles];
+}
+
+/** A failed test's line title: the `✖ ` mark and the trailing duration stripped. */
+function resultTitle(line: string): string {
+  return line.slice(2).replace(/ \([\d.]+m?s\)$/, "").trim();
+}
+
+/** A failure's location line in node:test's `✖ failing tests:` section, printed right above the
+ * failed test's `✖` line: `test at <file>:<line>:<col>`. */
+const FAILED_TEST_AT = /^test at (.+):\d+:\d+$/;
+
+/** The file each failing test lives in, keyed by the title parseFailingTests reports, read from the
+ * `test at <file>:<line>:<col>` line node:test's `✖ failing tests:` section prints above each
+ * failure. A file is named by its base name without the extension (`merger.test` for
+ * dist/test/merger.test.js): the form a re-run's `<file>#<name>` filter takes, the same in
+ * every worktree. A title whose location the output does not print is absent. */
+export function parseFailingTestFiles(output: string): Record<string, string> {
+  const files = new Map<string, string>();
+  let at: string | undefined;
+  for (const raw of output.split("\n")) {
+    const line = raw.trim();
+    const location = FAILED_TEST_AT.exec(line);
+    if (location) {
+      at = location[1];
+      continue;
+    }
+    if (at !== undefined && FAILED_TEST_LINE.test(line)) {
+      const title = resultTitle(line);
+      if (title !== "" && !files.has(title)) files.set(title, fileStem(at));
+    }
+    at = undefined;
+  }
+  return Object.fromEntries(files);
+}
+
+/** A test file's base name without its extension, from a path or a `file://` URL. */
+function fileStem(file: string): string {
+  const base = file.replace(/^file:\/\//, "").split(/[\\/]/).pop() ?? "";
+  const dot = base.lastIndexOf(".");
+  return dot > 0 ? base.slice(0, dot) : base;
 }
 
 /** Keep the TAIL of a build's combined output: last ≤10 meaningful lines, each via clipReason —

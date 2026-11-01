@@ -108,8 +108,18 @@ test("buildMainRedNote names the short SHA, script, and failure headline in a <m
   assert.match(note, /make main green/);
   assert.match(note, /reproduce that failure/);
   assert.match(note, /regression test/);
-  assert.match(note, /review gate's deterministic pre-check/);
+  assert.match(note, /a change that adds no failure of its own still merges/);
+  assert.match(note, /verify the failing tests pass before you finish/);
   assert.match(note, /environmental/);
+  assert.ok(!note.includes("Run only the failing tests"), "no re-run line without a re-run command");
+});
+
+test("buildMainRedNote hands the healer the command that re-runs only main's failing tests", () => {
+  const note = buildMainRedNote("abcdef1234567890", "test", "1) foo fails", undefined, "npm run test:rerun -- 'a.test#foo fails'");
+  assert.ok(
+    note.includes("Run only the failing tests — to reproduce them, and again to prove your fix — with `npm run test:rerun -- 'a.test#foo fails'`, not the whole suite."),
+    note,
+  );
 });
 
 test("buildMainRedNote degrades when the script or headline is absent", () => {

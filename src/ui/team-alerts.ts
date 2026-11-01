@@ -29,7 +29,7 @@ export type { TeamAlert, AlertRole } from "./team-alert-shared.js";
  * holds neither (a test that exercises only the other arms) raises no standing alerts —
  * the pre-fix rendering, never a false one.
  */
-export interface StandingAlertInputs {
+interface StandingAlertInputs {
   snap: Pick<
     StatusSnapshot,
     "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "principlesTruncated"

@@ -131,22 +131,24 @@ test("a main_red pin is re-queued once main's head moves, and not before", async
   assert.equal(state.mainRedRetry, undefined);
 });
 
-test("a main_red pin stays parked while main's new head is cached red", async () => {
+// A red main no longer parks a kept change until it turns green: the gate judges the change by the
+// failures main does not share, so a moved head with any verdict re-queues it.
+test("a main_red pin re-queues as soon as main moves to a head cached red", async () => {
   const { root, entry, file } = await pinnedEntry();
   const state = freshRunnerState("improve");
   await settleMergeOutcome(root, entry, state, "main_red", 5, NO_USAGE, file, "main");
-  const recorded = state.mainRedRetry;
-  assert.ok(recorded);
+  assert.ok(state.mainRedRetry);
   const red = "e".repeat(40);
   writeFileDeep(baselineVerdictsPath(root),
     JSON.stringify({ reds: [{ sha: red, script: "test", failingTests: ["t"] }] }),
   );
   persistBaselineVerdicts(root);
 
-  await requeueMainRedPin(root, "main", state, red, Date.now() + 2 * MAIN_RED_VERDICT_WAIT_MS);
-  assert.equal(queuedMerges(root).length, 0);
-  assert.equal(state.mainRedRetry?.head, recorded.head);
-  assert.equal(state.mainRedRetry?.waitingSince, undefined);
+  await requeueMainRedPin(root, "main", state, red, Date.now());
+  const queued = queuedMerges(root);
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0]?.retry, "main_red");
+  assert.equal(state.mainRedRetry, undefined);
 });
 
 test("a main_red pin waits for a moved head's verdict, then re-queues past MAIN_RED_VERDICT_WAIT_MS", async () => {

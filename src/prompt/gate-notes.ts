@@ -202,7 +202,15 @@ export function buildConflictDiscardNote(summary: string, attempts: number): str
  * the suite red, so authoring anything else first is waste. A pure function so its shape is
  * pinned in tests; script/headline are optional because a red carries a failing script, but the
  * note must still read sensibly if it is ever absent. */
-export function buildMainRedNote(sha: string, script?: string, headline?: string, tail?: readonly string[]): string {
+export function buildMainRedNote(
+  sha: string,
+  script?: string,
+  headline?: string,
+  tail?: readonly string[],
+  /** The command that re-runs only main's failing tests (main-red.ts's healRerunLine), when they
+   * can be re-run alone: the healer reproduces and verifies with it instead of the whole suite. */
+  rerun?: string,
+): string {
   const what = script
     ? `${script}${headline ? `: ${headline}` : ""}`
     : (headline ?? "the project's declared check");
@@ -218,11 +226,14 @@ export function buildMainRedNote(sha: string, script?: string, headline?: string
     output.length > 0
       ? `\nFailing check output (${output.length} lines):\n\`\`\`\n${output.join("\n")}\n\`\`\`\n`
       : "";
+  const rerunLine = rerun
+    ? `Run only the failing tests — to reproduce them, and again to prove your fix — with \`${rerun}\`, not the whole suite.\n`
+    : "";
   return `<main-red>
-main's own suite is red at ${shortSha(sha)} (${what}). Every role keeps working on the red main, but no change that leaves the suite red merges until main is green.
+main's own suite is red at ${shortSha(sha)} (${what}). Every role keeps working and merging on the red main: a change that adds no failure of its own still merges.
 This run your job is to make main green: reproduce that failure, fix it (add a regression test where one is feasible), and merge the fix.
-The review gate's deterministic pre-check runs main + your change, so a change that leaves the suite red is rejected — do not author anything else first.
-If the failure is environmental — flaky, load-sensitive, or a broken local toolchain — say so plainly in your reply rather than editing unrelated code.
+The review gate excuses failures main already has, so it will not tell you whether your fix worked: verify the failing tests pass before you finish — do not author anything else first.
+${rerunLine}If the failure is environmental — flaky, load-sensitive, or a broken local toolchain — say so plainly in your reply rather than editing unrelated code.
 ${tailBlock}</main-red>`;
 }
 

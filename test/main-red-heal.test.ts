@@ -174,3 +174,17 @@ test("mainRedHealPrompt with a culprit names it and adds the failing and tail cl
   assert.ok(!noTail.includes("Output tail"), noTail);
   assert.ok(noTail.endsWith("Failing: t1."), noTail);
 });
+
+test("mainRedHealPrompt hands the healer the command that re-runs only the failing tests", () => {
+  const prompt = mainRedHealPrompt("0123456789abcdef", {
+    culprit: "fedcba9876543210",
+    failingTests: ["t1"],
+    rerun: "npm run test:rerun -- 'a.test#t1'",
+  });
+  assert.ok(
+    prompt.includes(
+      "Failing: t1. Run only the failing tests, to reproduce them and again to prove the fix, with: npm run test:rerun -- 'a.test#t1'",
+    ),
+    prompt,
+  );
+});

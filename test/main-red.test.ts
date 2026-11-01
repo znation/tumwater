@@ -218,7 +218,7 @@ test("mainTipVerdict runs the suite over a green inherited across doc commits, a
     assert.equal(await mainRedHealNote(root, ROLE, wt), undefined, "the healer reads the green over the doc commit");
     assert.equal(runsOf(counter), 1, "without a run");
     const verdict = await mainTipVerdict(root, ROLE, "main", defaultConfig());
-    assert.deepEqual(verdict, { status: "red", sha: mainSha(root) });
+    assert.deepEqual(verdict, { status: "red", sha: mainSha(root), failingTests: [] });
     assert.equal(runsOf(counter), 2, "attribution ran the suite on the tip itself");
   } finally {
     restore();

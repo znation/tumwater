@@ -123,6 +123,14 @@ export function mainRedNotMine(sha: unknown): string {
   return `${mainRedPhrase(sha)} — not this change's failure`;
 }
 
+/** The rejection reason a gate failure carries when main is red too but the change fails more than
+ * main does (review-precheck.ts): main's red does not excuse `own`, the failures main's own check
+ * does not share — or, when the gate named no test, a failure outside main's named ones. */
+export function mainRedNotTheseFailures(sha: unknown, own: readonly string[]): string {
+  const what = own.length > 0 ? `these failures are this change's own: ${own.join(", ")}` : "this check failed outside the tests main fails, so the failure is this change's own";
+  return `${mainRedPhrase(sha)} too, but ${what}`;
+}
+
 /** The review pre-check's detail when it keeps a change for the main watch (review-precheck.ts):
  * the watch has not checked `base`, the commit the change was rebased onto, so nothing judged
  * the failure yet. `newest` is the watch's newest observed verdict, when it has one. */

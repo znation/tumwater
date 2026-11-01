@@ -307,7 +307,7 @@ function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, number>
  * redeploy.ts's redeploy mirror), which all paid the run whose timings the event carries. */
 export function buildCheckEvent(
   source: string,
-  scope: BuildCheckScope | "baseline",
+  scope: BuildCheckScope | "baseline" | "rerun",
   outcome: Pick<BuildCheckOutcome, "status" | "script" | "run" | "counts" | "install">,
   durationMs: number,
   /** True for a merge/batch run of check.mergeCommand: the event then carries `full: false`. */

@@ -1,5 +1,6 @@
 import { distinctOrdered } from "../collections.js";
-import { checkMainBaseline } from "./main-baseline.js";
+import { checkMainBaseline, settleRedByRerun } from "./main-baseline.js";
+import { canRerun, rerunTests } from "../build/build-check-rerun.js";
 import { baselineCheckLogger, clearHealKeyOnGreen, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
 import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
@@ -30,6 +31,9 @@ import { diffRuleReasons } from "../review/diff-rules.js";
 interface MainCulprit {
   commit: string;
   failingTests: string[];
+  /** The file each failing test lives in, when the failure output named it — what the heal
+   * prompt's re-run of only those tests selects files by. */
+  failingTestFiles?: Record<string, string>;
   tip: string;
 }
 
@@ -80,10 +84,11 @@ function mainCheckEvent(
  * heal prompt (Forward, never back, part 4/6): a red main is healed forward, never reverted.
  *
  * One watch run is in flight at a time, and it covers every commit since the last watched head; a
- * head that moves during a run is watched next. The run goes through checkMainBaseline, so a
- * cached verdict (every merge seeds a green) and a doc-only tip's inherited green answer without a
- * run, and a red is re-run once (`reverifyRed`) before it is final. The check queues at the merge
- * tier of the check permits. */
+ * head that moves during a run is watched next, so the full check runs at most once per main
+ * commit. The run goes through checkMainBaseline, so a cached verdict (every merge seeds a green)
+ * and a doc-only tip's inherited green answer without a run, and a red is confirmed once before it
+ * is final — by re-running only its failing tests when it can (build-check-rerun.ts), else the
+ * whole check again (`reverifyRed`). The check queues at the merge tier of the check permits. */
 interface MainWatch {
   /** Look at main's head; starts a background watch run when it is unwatched and none is in
    * flight. `held` (a restart pending, or the disk hold) starts nothing; `config` is the live
@@ -216,10 +221,14 @@ export function createMainWatch(
       }
     };
 
-    /** Run the declared build check on main's tip, re-running a red once and quarantining a flake
-     * whose re-run turns green. Returns the check's result and whether any run actually executed
-     * (false for a cache hit, a skip, or a sleep-spanned run). `config` and `root` are captured
-     * from `watchOnce`. */
+    /** Run the declared build check on main's tip, confirming a red once and quarantining a flake
+     * whose confirmation passes. A red whose failing tests can be re-run on their own (canRerun) is
+     * confirmed by re-running just those tests, so the full check runs once per tip: a test that
+     * passes there is quarantined, and the red narrows to the tests that failed again (or turns
+     * green when none did). A re-run that reaches no verdict leaves the first red standing. Without
+     * a re-run command the whole check runs again, as before. Returns the check's result and
+     * whether any full run actually executed (false for a cache hit, a skip, or a sleep-spanned
+     * run). `config` and `root` are captured from `watchOnce`. */
     async function runBaselineCheck(wt: string): Promise<{ check: BaselineCheck; ran: boolean }> {
       let ran = false;
       const onRun = baselineCheckLogger(root, TUMWATER_SOURCE);
@@ -228,12 +237,23 @@ export function createMainWatch(
         onRun(run);
       };
       let check = await checkMainBaseline(wt, config, hook, false, false, undefined, false, CHECK_TIER.merge);
-      if (check.baseline?.status === "red") {
-        const first = check.baseline;
-        check = await checkMainBaseline(wt, config, hook, true, false, undefined, false, CHECK_TIER.merge);
-        // A red the same tree's confirming re-run turns green is a flake: quarantine its tests.
-        if (check.baseline?.status === "green") quarantineTests(root, first.failingTests, (first.failingTests ?? []).join("\n"));
+      if (check.baseline?.status !== "red") return { check, ran };
+      const first = check.baseline;
+      const named = first.failingTests ?? [];
+      if (canRerun(wt, config, named)) {
+        const rerun = await rerunTests(root, TUMWATER_SOURCE, wt, config, named, first.failingTestFiles, CHECK_TIER.merge);
+        if (rerun) {
+          // Each test that failed and then passed on this same tree is a flake.
+          const passed = named.filter((t) => !rerun.failing.includes(t));
+          if (passed.length > 0) quarantineTests(root, passed, passed.join("\n"));
+          const settled = settleRedByRerun(first.sha, rerun.failing);
+          if (settled) check = { baseline: settled };
+        }
+        return { check, ran };
       }
+      check = await checkMainBaseline(wt, config, hook, true, false, undefined, false, CHECK_TIER.merge);
+      // A red the same tree's confirming re-run turns green is a flake: quarantine its tests.
+      if (check.baseline?.status === "green") quarantineTests(root, named, named.join("\n"));
       return { check, ran };
     }
 
@@ -282,6 +302,7 @@ export function createMainWatch(
       onCulprit?.({
         commit: baseline.sha,
         failingTests: baseline.failingTests ?? [],
+        ...(baseline.failingTestFiles ? { failingTestFiles: baseline.failingTestFiles } : {}),
         tip: baseline.sha,
       });
     }

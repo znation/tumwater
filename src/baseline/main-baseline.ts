@@ -53,6 +53,10 @@ interface MainBaseline {
    * build/build-check-report.ts) — empty when the output names none, absent on a verdict a
    * previous generation saved before it carried them. Unlike outputTail it is persisted. */
   failingTests?: string[];
+  /** Red only: the file each failing test lives in (BuildCheckOutcome.failingTestFiles), what a
+   * re-run of only those tests selects files by. In memory only: a red restored from disk has
+   * none, and its re-run names the tests alone. */
+  failingTestFiles?: Record<string, string>;
   /** Red only: the worktrees that have independently observed this red. A red seen in ONE
    * worktree is provisional evidence about the environment as much as the tree, so it is
    * re-verified elsewhere before it is trusted; two distinct worktrees agreeing makes it
@@ -254,6 +258,19 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
  * seed this; skips and failures leave the baseline unknown (the caller decides). */
 export function noteGreenBaseline(sha: string): void {
   rememberBaseline(sha, { status: "green", sha });
+}
+
+/** Settle `sha`'s red verdict by a re-run of only its failing tests on the same tree
+ * (build-check-rerun.ts; the main watch's confirmation, which replaced a second full run): with
+ * none failing again the SHA is promoted green, as the full re-run's green promoted it — every test
+ * has now passed on this tree — and otherwise the red narrows to the tests that failed again.
+ * Returns the settled verdict, or null when `sha` holds no red to settle. */
+export function settleRedByRerun(sha: string, failing: readonly string[]): MainBaseline | null {
+  const red = baselineCache.get(sha);
+  if (red?.status !== "red") return null;
+  const settled: MainBaseline = failing.length === 0 ? { status: "green", sha } : { ...red, failingTests: [...failing] };
+  rememberBaseline(sha, settled);
+  return settled;
 }
 
 /** Record an INHERITED green for `sha` (MainBaseline.inheritedFrom): a tree no check ran on, whose
@@ -522,6 +539,7 @@ function baselineFromOutcome(sha: string, wt: string, outcome: BuildCheckOutcome
         script: outcome.script,
         outputTail: outcome.outputTail,
         failingTests: outcome.failingTests ?? [],
+        ...(outcome.failingTestFiles ? { failingTestFiles: outcome.failingTestFiles } : {}),
         redFrom: priorRedFrom.includes(wt) ? priorRedFrom : [...priorRedFrom, wt],
       };
 }

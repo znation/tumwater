@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { BuildCheck } from "../src/build/build-check-detect.js";
 import type { BuildCheckOutcome } from "../src/build/build-check.js";
-import { checkFailureReasons, clipBuildTail, failureHeadline, parseFailingTests } from "../src/build/build-check-report.js";
+import {
+  checkFailureReasons,
+  clipBuildTail,
+  failureHeadline,
+  parseFailingTestFiles,
+  parseFailingTests,
+} from "../src/build/build-check-report.js";
 
 // build-check-report.ts's checkFailureReasons turns a red check's outcome into the machine text
 // every rejecting gate hands its author — the reason lines injected into the next-run note by
@@ -335,4 +341,25 @@ test("a red check's reasons do not repeat the test name or message the headline 
     "check failed (`npm run test`): ✖ t — AssertionError [ERR_ASSERTION]: boom",
     "actual: 1,",
   ]);
+});
+
+test("parseFailingTestFiles names each failing test's file by the location line above it", () => {
+  const output = [
+    "✖ fails one (0.3ms)",
+    "  ✖ nested fails (8.2ms)",
+    "ℹ fail 3",
+    "",
+    "✖ failing tests:",
+    "",
+    "test at dist/test/a.test.js:4:1",
+    "✖ fails one (0.3ms)",
+    "  AssertionError [ERR_ASSERTION]: 1 == 2",
+    "",
+    "test at /abs/dist/test/b.test.js:5:27",
+    "✖ nested fails (8.2ms)",
+    "",
+    "✖ no location (1ms)",
+  ].join("\n");
+  assert.deepEqual(parseFailingTestFiles(output), { "fails one": "a.test", "nested fails": "b.test" });
+  assert.deepEqual(parseFailingTestFiles("no failures here"), {});
 });
