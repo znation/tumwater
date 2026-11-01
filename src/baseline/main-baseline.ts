@@ -93,7 +93,8 @@ interface MainBaselineCheck {
 /** Team-shared verdict cache, keyed by main SHA. Exported read-only to the one consumer outside
  * this module that decides redeploy's target from it (src/redeploy/redeploy-target.ts's
  * `redeployTarget`); writes stay here — `rememberBaseline`, `noteGreenBaseline` and
- * `noteInheritedGreen` — so the cache's write policy has one home. In-memory only: after a restart the cache is cold
+ * `noteInheritedGreen` — so the cache's write policy has one home. In-memory only: after
+ * a restart the cache is cold
  * and one re-check per red SHA happens — cheap and deterministic, mirroring the budget gate's
  * stateless resume. Entries come from two sources: checkMainBaseline's own runs, and
  * noteGreenBaseline seeding a green verdict for a SHA that just became main
