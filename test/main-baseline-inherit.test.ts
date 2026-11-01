@@ -17,8 +17,8 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 // The green carry-over in src/baseline/main-baseline.ts (inheritedGreen, noteInheritedGreen):
 // a main SHA whose tree differs from a green-verified ancestor only in review-exempt paths
 // inherits the green instead of re-running the suite, and an inherited green ranks below an
-// observed one. main-baseline.test.ts covers the cache, the red re-verification policy and
-// seeding that this builds on.
+// observed one. main-baseline.test.ts covers the cache and seeding this builds on, and
+// main-baseline-reverify.test.ts the red re-verification policy.
 
 const ROLE = "improve";
 /** The defaults carry review.exemptPaths ["*.md", "docs/**"], the patterns the carry-over reads. */

@@ -148,9 +148,9 @@ export function buildCheckFixture(): { root: string; wt: string } {
 
 /** A git repo whose main is "installed" (package.json + node_modules at root) with a linked
  * worktree checked out to it — the shape checkMainBaseline expects (a pristine main HEAD) —
- * shared by main-red.test.ts and main-baseline.test.ts. `testScript` is committed to main so
- * the worktree's checkout carries it; node_modules stays untracked — the install marker
- * detectBuildCheck walks up to, gitignored in real projects. Each fixture gets its own temp
+ * shared by main-red.test.ts and the main-baseline*.test.ts slices. `testScript` is committed
+ * to main so the worktree's checkout carries it; node_modules stays untracked — the install
+ * marker detectBuildCheck walks up to, gitignored in real projects. Each fixture gets its own temp
  * dir, hence its own SHA: the gate's verdict cache and red-SHA warning state are module-level,
  * so tests must never share a HEAD. */
 /** A fake `npm` executable at the front of PATH for the duration of a test (the repo's real
