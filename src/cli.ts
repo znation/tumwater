@@ -10,7 +10,7 @@
  * the status collectors. A process that starts, runs one command and exits (the CLI as the
  * team's agents and the test suite call it, ~700 spawns a suite run) otherwise compiled all
  * 169 modules every time. The work itself lives in the command
- * modules; this file owns the shared sequence, including each case's flag rejection and its
+ * modules; this file owns the shared sequence, including each row's flag rejection and its
  * ready-repo gate. An error escaping main() funnels through its catch to fail(errorMessage(err)),
  * the CLI's one error path. */
 import { parseCountFlag, parseGrepFlag, parseModelFlag, parseResultFlag } from "./cli/cli-args.js";
