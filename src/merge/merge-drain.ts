@@ -176,6 +176,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
       }
       await settleMergeOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file, mainBranch);
     };
+    try {
     for (let s = 0; s < picks.length; s++) {
       const v = picks[s]!;
       const { role } = v.entry;
@@ -233,7 +234,6 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
       if (merge.userAborted) await settleOne(s, "aborted");
       else removeMergeChange(root, picks[s]!.entry.role);
     }
-    try {
     } finally {
       unsubscribe();
       detachShutdown();

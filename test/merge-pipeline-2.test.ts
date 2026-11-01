@@ -10,7 +10,7 @@ import {
 import { mergeStartHeld } from "../src/orchestrator/orchestrator-poll.js";
 import { consumeAbortRequests } from "../src/operator/operator-requests.js";
 import { queueDepth, queuedMergeFiles } from "../src/merge/merge-queue.js";
-import { abortRequestPath, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
+import { abortRequestPath, mergeQueueDir, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
 import { deleteRef, isMergedInto, refSha } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readMergeMarker } from "../src/merge/merge-slot.js";
@@ -423,6 +423,51 @@ test("a failing state write in the merge's error path still frees the merge slot
     );
   } finally {
     fs.rmSync(worktreesHome, { recursive: true, force: true });
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
+
+test("a throw settling an aborted merge still frees the merge slot", async () => {
+  // The settle loops run inside the merge task's try whose finally is the only place the slot
+  // is freed (p.merge = null) and shutdown is detached. The second loop settles every role a
+  // user abort left unmerged — settleOne → settleMergeOutcome → dropMerge — and dropMerge
+  // rethrows a non-ENOENT fs error (removeQueueFile). A throw there must not skip the finally,
+  // or p.merge stays set forever and every later merge on the team is wedged behind it.
+  const { root, restore, ctx, pipeline } = await busyMergePipeline();
+  try {
+    await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 2, "both changes to be approved");
+
+    pipeline.merge = null; // the busy slot frees
+    await drainMergeQueue(ctx, pipeline);
+    const merge = pipeline.merge as InFlightMerge | null;
+    assert.ok(merge, "the merge started");
+
+    // Plant the settle path's fault, then flag the user abort, both synchronously before the
+    // merge task's first await resumes: every queue file becomes a directory, so the second
+    // loop's dropMerge (fs.rmSync without recursive) throws EISDIR the moment it settles an
+    // unmerged role — the shape an ENOSPC or immutable queue file takes on disk.
+    for (const { file } of queuedMergeFiles(root)) {
+      fs.rmSync(file);
+      fs.mkdirSync(file);
+    }
+    writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
+    consumeAbortRequests(root, [], abortableMerges(pipeline));
+
+    const [settled] = await Promise.allSettled([merge.promise]);
+    assert.equal(settled?.status, "fulfilled", "the task promise settles rather than rejecting");
+    assert.equal(pipeline.merge, null, "the merge slot freed despite the settle-path throw");
+    assert.ok(
+      readEvents(root).some(
+        (e) => e.type === "warning" && String(e.message).includes("merge task"),
+      ),
+      "the settle-path failure is warned about, not swallowed",
+    );
+  } finally {
+    // Restore a usable queue directory so the settled tasks' cleanup does not fight the plant.
+    const dir = mergeQueueDir(root);
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
     await Promise.allSettled(allTasks(pipeline));
     restore();
   }
