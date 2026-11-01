@@ -6,79 +6,134 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Hourly full check, part 1/3: The main watch checks each new main commit with the gate command and runs the full check on main's latest tip at most once an hour, in a mirror of its own (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Subtract part 3b/7 landed, since that part deletes the pre-merge build check whose per-commit role this part moves onto main; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/paths.ts src/config/config-schema.ts src/config/config-validation.ts test/test-runner.ts scripts/lint-changed.mjs docs/how-it-works.md docs/config.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/test-runner-affected.test.ts test/config-validation-check.test.ts)
+### Hourly full check, part 1/4: A twice-failed gate check asks main's tip about its own failing tests at once, so the gate never waits on the main watch and never keeps a change as `main_red` (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; replaces 7344a68d8's wait for a watch verdict covering the change's base (INV-CY1/CY2), which an hourly full check would turn into a 15-minute hold on nearly every such change; touches src/review/review-precheck.ts src/review/review.ts src/baseline/main-red.ts src/baseline/main-baseline.ts src/merge/merge-core.ts src/merge/merge-batch.ts src/merge/merge-verify.ts src/merge/merge-pipeline.ts src/merge/merge-queue.ts src/merge/merge-requeue.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/text/phrases.ts docs/how-it-works.md docs/invariants.md test/review-precheck.test.ts test/review-precheck-watch.test.ts test/merge-requeue-watch.test.ts test/merge-pipeline-watch.test.ts test/merger-check.test.ts)
 
-**Goal.** Main gets two checks instead of one full check per commit (user, 2026-11-01: "relax the once per main commit (for non-gate tests) and make it more like once per hour on latest main"). Every new main head gets the gate command (`check.gateCommand`, here `npm run test:gate`) over the commits since the last head the watch checked. That is the per-commit check that gates each commit once Subtract part 3b/7 has removed the pre-merge one. The full check (`check.command`) runs on main's latest tip at most once per `check.fullIntervalMinutes` (default 60), and only when main has a code commit its newest full verdict does not cover. It runs in a mirror of its own, so no per-commit check waits behind it. This supersedes Subtract part 3b/7's "exactly one full check per merged commit" once both have landed.
+**Goal.** The pre-merge gate keeps its build check (user, 2026-11-01: "it should gate each commit"; Subtract part 3b/7, which deleted it, is withdrawn). When that check fails twice, `gateBuildPrecheck` decides on the spot whose failure it is. It asks main's tip, in `_gate-main`, about exactly what failed, and never waits for the main watch's verdict to cover the change's base:
+- **Named failing tests** are re-run alone on main's tip (`rerunAtMainTip`). Tests that fail there too are main's; any other is the change's, and the change is rejected naming those tests. When all of them are main's, the change goes on to review (`knownMainFailures`).
+- **A failure that names no test** (a compile or lint error, a crash) runs the gate command on main's tip. A pass there makes the failure the change's (rejected). A fail there too makes it main's, and the change goes on to review: a red main blocks nobody (user, 2026-10-31).
+- **No re-run verdict** (no re-run command, or a skipped run) falls back to main's full check run fresh, as `mainTipFailures` does today.
+
+No path sets `GateResult.mainRed` or `awaitingWatch` any more, so no merge settles `main_red`.
 
 **Approach.**
-- Split `createMainWatch`'s single `watchOnce` (src/baseline/main-watch.ts) into a per-head check and a due full check, each with its own in-flight promise. `poll` starts each independently, and `idle()` waits for both. The diff rules (`watchRules`) stay on the per-head path, unchanged.
-- The per-head check runs the gate command in `_gate-main` with `TUMWATER_CHECK_BASE=<previous checked head>` in its environment (the tip's parent for the first head after a start).
-  - It logs `build_check` with a new scope `commit` and a `main_check` carrying that scope.
-  - A green writes nothing to the full-verdict cache: `redeployTarget` reads that cache, and only full greens may make a commit deployable.
-  - A red is handled like today's full red: confirmed by re-running only its failing tests (`rerunTests`), recorded red on that tip, its culprit named and ci's heal queued.
-- The full check runs `check.command` through `checkMainBaseline` in a new mirror worktree, `_main-full` (a `fullMainWorktreePath` beside `gateMainWorktreePath` in src/paths.ts), at the same check-permit tier the watch uses today.
-  - It is due when the newest observed full verdict's `checkedAt` plus the interval is in the past and main has a first-parent code commit above that verdict's SHA. A doc-only range still inherits green with no run.
-  - `checkedAt` is a new field on `MainBaseline`, persisted in baseline-verdicts.json; an entry without it reads as due now, so a restart within the hour starts no extra run.
-- Add `check.fullIntervalMinutes` (an integer ≥ 0, default 60) to `CheckConfig`, `CHECK_KEYS`, config-validation, docs/config.md and tumwater.example.json. `0`, or no gate command, keeps today's full run per head and no per-head gate check.
-- test/test-runner.ts's `--affected` takes its diff base from `TUMWATER_CHECK_BASE` when it is set, instead of the merge-base with `main`, which is empty on main's own tip. So does scripts/lint-changed.mjs, through `gateLintTargets`. A project's gate command that ignores the variable runs its ordinary selection.
-- docs/how-it-works.md's main watch bullet describes the two checks and their cadence. In docs/invariants.md, INV-CZ2's "at most once per main commit" becomes "at most once per `fullIntervalMinutes`". Add INV-DA1 (every new head gets the gate command over the commits since the last checked head, and its green never makes a commit deployable) and INV-DA2 (the full check runs at most once per interval, on the latest tip, in its own mirror, and never while no code commit is uncovered).
+- In src/review/review-precheck.ts, always take the `mainTipFailures` path. Add the gate-command-on-tip question for a failure that names no test, and drop `attributeOnRedMain`'s `unknown` keep branch (both sides are now named or decided).
+- Delete the watch-wait machinery 7344a68d8 added:
+  - `watchedMainVerdict`, `watchVerdictCovering` and `WatchWait` (src/baseline/main-red.ts);
+  - `newestObservedBaseline`, if nothing else reads it (src/baseline/main-baseline.ts);
+  - `ReviewContext.watchWait`, `MergeRequest.watchWait` and `MergeEntry.watchWait`, with its queue-file validation;
+  - the `awaitingWatch` hand-off through merge-core/merge-batch/merge-verify/merge-pipeline;
+  - `mainRedRetry.awaitingWatch` and its load validation;
+  - `requeueAwaitingWatch` and `MAIN_RED_VERDICT_WAIT_MS` (src/merge/merge-requeue.ts);
+  - `mainUncheckedNotJudged` (src/text/phrases.ts).
+- Leave the now-unset `GateResult.mainRed` field and merge-core's `main_red` branch for Every commit is verified on main part 4j/3, which is re-pointed to this part.
+- docs/invariants.md: replace INV-CY1/CY2 with INV-DA1: a twice-failed gate check is attributed by asking main's tip about exactly its failures (its named tests re-run alone, else the gate command), never by waiting on the watch, and never keeps a change as `main_red`. Re-word INV-CZ1, whose "kept as `main_red`" case goes. docs/how-it-works.md's gate paragraph says the same.
 
-**Files touched.** src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts src/paths.ts src/config/config-schema.ts src/config/config-validation.ts test/test-runner.ts scripts/lint-changed.mjs docs/how-it-works.md docs/config.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/test-runner-affected.test.ts test/config-validation-check.test.ts
+**Files touched.** src/review/review-precheck.ts src/review/review.ts src/baseline/main-red.ts src/baseline/main-baseline.ts src/merge/merge-core.ts src/merge/merge-batch.ts src/merge/merge-verify.ts src/merge/merge-pipeline.ts src/merge/merge-queue.ts src/merge/merge-requeue.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/text/phrases.ts docs/how-it-works.md docs/invariants.md test/review-precheck.test.ts test/review-precheck-watch.test.ts test/merge-requeue-watch.test.ts test/merge-pipeline-watch.test.ts test/merger-check.test.ts
 
 **Acceptance criteria.**
-- With a gate command and the default interval, five main commits landing within an hour produce at most five `commit`-scope checks and at most one `baseline`-scope full run. A sixth commit landing past the hour starts the next full run on the latest tip only.
-- A per-head check started while a full run is in flight runs at once in `_gate-main`; it does not wait for the `_main-full` run.
-- A commit whose only verdict is a per-head green is never `redeployTarget`'s answer.
-- A full verdict persisted 20 minutes before a restart starts no full run in the first 40 minutes after it.
-- `check.fullIntervalMinutes: 0` restores one full run per head. A config without a gate command behaves exactly as today.
-- `TUMWATER_CHECK_BASE=<sha> node dist/test/test-runner.js --affected --budget=30` on main's tip selects the tests the `<sha>..HEAD` diff reaches, not none.
+- A change whose gate check fails twice on test X, where X passes on main's tip, is rejected after one `rerun`-scope check of X. There is no `baseline`-scope run and no wait, whether or not the watch has a verdict for the change's base.
+- If X fails on main's tip too, the change goes on to review.
+- A gate failure that names no test is rejected when main's tip passes the gate command, and goes on to review when main's tip fails it too.
+- No merge settles `main_red`. `grep -rn 'awaitingWatch\|watchWait\|MAIN_RED_VERDICT_WAIT_MS\|watchedMainVerdict\|watchVerdictCovering' src/` prints nothing.
 - `npm run test:gate` passes.
 
-**Tests.** test/main-watch.test.ts: the burst and past-the-hour cases with a fake clock, a per-head check that does not wait behind a slow full check, a per-head green that leaves the full-verdict cache empty, a restart with a persisted `checkedAt`, and `fullIntervalMinutes: 0`. test/test-runner-affected.test.ts: the env base selects the range's tests. test/config-validation-check.test.ts: the new key's type and bounds. Run those files and the gate.
+**Tests.**
+- test/review-precheck-watch.test.ts: keep it for the cases above, using its TOOL marker-file fixture; its awaiting-the-watch cases are deleted.
+- Delete test/merge-requeue-watch.test.ts and test/merge-pipeline-watch.test.ts, whose whole subject is gone.
+- test/merger-check.test.ts: the green-main case asserts one targeted re-run on main's tip instead of a seeded watch verdict.
+- test/review-precheck.test.ts: the nameless-failure cases.
+- Run those files and the gate.
 
-### Hourly full check, part 2/3: Main's failures are found and cleared by re-running only the failing tests — the watch bisects a red's opener, re-runs only the open failures on each new head, and starts the next full run at once when they clear (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 1/3 landed; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-red-heal.test.ts)
+### Hourly full check, part 2/4: The main watch runs the full check on main's latest tip at most once an hour, in a mirror of its own (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 1/4 landed, since until then a twice-failed gate waits for a watch verdict covering its base, which an hourly cadence leaves missing for up to an hour; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/paths.ts src/config/config-schema.ts src/config/config-validation.ts docs/how-it-works.md docs/config.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/config-validation-check.test.ts)
 
-**Goal.** With the full check hourly, one red verdict covers up to an hour of commits. Narrowing it and closing it must not cost more full runs (user, 2026-11-01: "when fixing failures, re-run only the failed tests"). A confirmed red's opener is found by bisection that re-runs only the failing tests, so `main_culprit` and ci's heal prompt name one commit. While the red is open, each new head re-runs only the open failures, never the full check. When none fail any more, the red closes as cleared and the next full run is due at once, so a healed main becomes deployable without waiting out the hour.
+**Goal.** The full check (`check.command`) stops running on every new main head (user, 2026-11-01: "relax the once per main commit (for non-gate tests) and make it more like once per hour on latest main"). Each change is still checked once, by the pre-merge gate's build check. The full check runs on main's latest tip at most once per `check.fullIntervalMinutes` (default 60), and only when main has a code commit its newest full verdict does not cover. It runs in a mirror of its own, so it never holds `_gate-main`, where the watch's per-head diff rules and the gate's re-runs on main's tip run. The diff rules still judge every new head.
 
 **Approach.**
-- Bisect in `_gate-main` with `rerunTests` after a red is confirmed at tip T, in main-watch.ts beside `reportCulprit`.
-  - The range is the first-parent code commits above the newest observed full green G (`newestObservedBaseline` walked down from T).
-  - The opener C is the first commit at which any of the confirmed failing tests fails. Before naming C, confirm once that those tests fail at C and pass at C's parent.
-  - A test still unaccounted for at C (it passes there) gets its own bisect over C..T, up to `FAILING_TESTS_MAX` tests.
+- Split `createMainWatch` (src/baseline/main-watch.ts) into a per-head pass and a due full check, each with its own in-flight promise. `poll` starts each independently, and `idle()` waits for both.
+  - The per-head pass keeps `watchRules` in `_gate-main` on every new head, exactly as today.
+  - The full check runs `checkMainBaseline` in a new mirror worktree, `_main-full` (a `fullMainWorktreePath` beside `gateMainWorktreePath` in src/paths.ts), at the check-permit tier the watch uses today. It confirms a red, records the verdict and reports the culprit as today.
+- The full check is due when the newest observed full verdict's `checkedAt` plus the interval is in the past and main has a first-parent code commit above that verdict's SHA. A doc-only range still inherits green with no run.
+  - `checkedAt` is a new field on `MainBaseline`, persisted in baseline-verdicts.json; an entry without it reads as due now.
+  - So a restart within the hour starts no extra run.
+- Add `check.fullIntervalMinutes` (an integer ≥ 0, default 60) to `CheckConfig`, `CHECK_KEYS`, config-validation, docs/config.md and tumwater.example.json. `0` restores a full run per new head.
+- The redeployer is unchanged: `redeployTarget`'s watched branch already targets only commits with a cached green full verdict, so the team's build follows the hourly greens.
+- docs/how-it-works.md's main watch bullet describes the cadence. In docs/invariants.md, INV-CZ2's "at most once per main commit" becomes "at most once per `fullIntervalMinutes`", and a new INV-DA2 says: the full check runs at most once per interval, on the latest tip, in its own mirror, and never while no code commit is uncovered.
+
+**Files touched.** src/baseline/main-watch.ts src/baseline/main-baseline.ts src/paths.ts src/config/config-schema.ts src/config/config-validation.ts docs/how-it-works.md docs/config.md docs/invariants.md tumwater.example.json test/main-watch.test.ts test/config-validation-check.test.ts
+
+**Acceptance criteria.**
+- Code commits landing within an hour of the newest full verdict start no full run. The first poll past the hour with an uncovered code commit starts one, on the latest tip only.
+- Every new head still gets the diff rules, and a gate's re-run on main's tip never waits for a `_main-full` run in flight.
+- A full verdict persisted 20 minutes before a restart starts no full run in the first 40 minutes after it.
+- `check.fullIntervalMinutes: 0` restores one full run per head.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/main-watch.test.ts:
+  - the within-the-hour and past-the-hour cases with a fake clock;
+  - diff rules on every head;
+  - a `_gate-main` step that does not wait behind a slow full check;
+  - a restart with a persisted `checkedAt`;
+  - `fullIntervalMinutes: 0`.
+- test/config-validation-check.test.ts: the new key's type and bounds.
+- Run those files and the gate.
+
+### Hourly full check, part 3/4: Main's failures are narrowed and cleared by re-running only the failing tests — the watch bisects a red's opener, re-runs only the open failures on each new head, and confirms a cleared red with one full run at once (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 2/4 landed; touches src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-red-heal.test.ts)
+
+**Goal.** With the full check hourly, one red verdict covers up to an hour of commits. Narrowing it and closing it must not cost more full runs (user, 2026-11-01: "when fixing failures, re-run only the failed tests"):
+- A confirmed red's opener is found by bisection that re-runs only the failing tests, so `main_culprit` and ci's heal prompt name one commit.
+- While the red is open, each new head re-runs only the open failures.
+- When none fail any more, the red closes as cleared, and one full run starts on that head at once to confirm it, so a healed main becomes deployable without waiting out the hour.
+
+**Approach.**
+- After a red is confirmed at tip T, bisect in `_gate-main` with `rerunTests`. The code lives in main-watch.ts, beside `reportCulprit`.
+  - The range is the first-parent code commits above the newest observed full green G, found by walking down from T.
+  - The opener C is the first commit at which any of the confirmed failing tests fails. Before naming C, confirm once that they fail at C and pass at C's parent.
+  - A failing test not accounted for at C (it passes there) gets its own bisect over C..T, up to `FAILING_TESTS_MAX` tests.
   - With no G on the walk, a one-commit range, or a confirmation that does not reproduce, name T as today.
-- `reportCulprit` names C: `main_culprit.commit`, its merging runner, `redSpellOpeners` and the `onCulprit` hand-off (`commit` is C, `tip` is T).
-- While a red spell is open, the per-head check also re-runs the spell's open failing tests on each new head (one `rerun`-scope check). Then:
-  - tests that pass leave the open set;
-  - a new failure from the head's own gate command joins it, with its own bisect over the head's range;
-  - an empty set logs `main_check` `{ status: "passed", cleared: true }`, which writes no full green, calls `clearHealKeyOnGreen`, closes the spell and marks the full check due now. The next full run is brought forward once per cleared red, not repeatedly.
-- `knownMainFailures` and the `<main-known-red>` note read the open set, so a role's prompt stops naming a test that ci has already fixed.
-- docs/how-it-works.md describes bisection and clearing. docs/invariants.md adds INV-DA3 (a red's culprit is the first commit at which its failing tests fail, found by re-running only them) and INV-DA4 (an open red is narrowed and cleared by re-running only its failing tests, and a clearing brings the next full run forward once).
+- `reportCulprit` names C everywhere: `main_culprit.commit`, its merging runner, `redSpellOpeners` and the `onCulprit` hand-off (`commit` C, `tip` T).
+- While a red spell is open, the per-head pass also re-runs the spell's open failing tests on each new head (one `rerun`-scope check). Tests that pass leave the open set. An empty set:
+  - logs `main_check` `{ status: "passed", cleared: true }`, which writes no full green;
+  - calls `clearHealKeyOnGreen` and closes the spell;
+  - starts a full run on that head at once, once per cleared red.
+- `knownMainFailures` and the `<main-known-red>` note read the open set, so a role's prompt stops naming a test ci already fixed.
+- docs/how-it-works.md describes bisection and clearing. docs/invariants.md gains:
+  - INV-DA3: a red's culprit is the first commit at which its failing tests fail, found by re-running only them.
+  - INV-DA4: an open red is narrowed and cleared by re-running only its failing tests, and a clearing starts one confirming full run.
 
 **Files touched.** src/baseline/main-watch.ts src/baseline/main-baseline.ts src/baseline/main-red.ts docs/how-it-works.md docs/invariants.md test/main-watch.test.ts test/main-red-heal.test.ts
 
 **Acceptance criteria.**
-- An hourly red at T covering eight code commits, whose failing test breaks at the third, logs one `main_culprit` naming the third commit. It takes at most five `rerun`-scope checks and no second `baseline`-scope run.
+- An hourly red at T covering eight code commits, whose failing test breaks at the third, logs one `main_culprit` naming the third. That takes at most five `rerun`-scope checks and no second `baseline`-scope run.
 - A red whose bisect confirmation does not reproduce names T, as today.
-- While red, a new head runs its `commit` check and one `rerun` of the open failures, and no full run. When they all pass, `main_check` is `cleared` and a full run starts though the interval has not passed. `redeployTarget` does not target the cleared head until that full run is green.
+- While red, a new head runs one `rerun` of the open failures and no full run. When they all pass, `main_check` is `cleared` and a full run starts though the hour has not passed. `redeployTarget` does not target the cleared head until that full run is green.
 - The heal prompt and the `<main-red>` note name C and the re-run command for its failing tests.
 - `npm run test:gate` passes.
 
-**Tests.** test/main-watch.test.ts: the eight-commit bisect against a fake check whose failure starts at one commit, the non-reproducing bisect, the per-head narrowing and clearing with the full run brought forward, and a cleared head that is not deployable. test/main-red-heal.test.ts: the heal prompt names the bisected opener. Run those files and the gate.
+**Tests.**
+- test/main-watch.test.ts:
+  - the eight-commit bisect against a fake check whose failure starts at one commit;
+  - the non-reproducing bisect;
+  - per-head narrowing and clearing with the confirming full run;
+  - a cleared head that is not deployable.
+- test/main-red-heal.test.ts: the heal prompt names the bisected opener.
+- Run those files and the gate.
 
-### Hourly full check, part 3/3: Status, doctor and the dashboard say how old main's full verdict is and when the next is due (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 2/3 landed; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/status-render.test.ts test/gui-client.test.ts)
+### Hourly full check, part 4/4: Status, doctor and the dashboard say how old main's full verdict is and when the next is due (planned 2026-11-01 by the operator at the user's direction; design in plans/main-check-cadence.md; requires Hourly full check part 3/4 landed; touches src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/status-render.test.ts test/gui-client.test.ts)
 
-**Goal.** Main's badge stops implying the newest commit was fully checked. With the full check hourly, `mainCheckForPoll`'s status reads up to an hour behind main. Every surface that shows it says which SHA it covers, how long ago it ran, and when the next run is due (or "due now" after a cleared red). The per-commit check's newest verdict is shown beside it.
+**Goal.** Main's badge stops implying the newest commit was fully checked. With the full check hourly, `mainCheckForPoll`'s status reads up to an hour behind main. Every surface that shows it says which SHA it covers, how long ago it ran, and when the next run is due (or "due now" after a cleared red).
 
 **Approach.**
-- `MainCheckStatus` (src/status/status-polls.ts) gains the full verdict's `checkedAt`, `nextDueAt` (derived from part 1/3's interval and part 2/3's brought-forward due mark), and the newest `commit`-scope verdict's SHA and status.
-- `mainCheckBadge` (src/ui/badges.ts) renders "full check green at abc1234, 23 min ago · next in 37 min" and a cleared red as "cleared at def5678 · full check due now". The TUI line (status-render.ts) and the dashboard card (gui-client-team.ts) use the same payload fields (status-payload.ts). No new alert or doctor row: the existing main-check row carries the text.
+- `MainCheckStatus` (src/status/status-polls.ts) gains the full verdict's `checkedAt` and `nextDueAt`. `nextDueAt` comes from part 2/4's interval and part 3/4's cleared-red start.
+- `mainCheckBadge` (src/ui/badges.ts) renders "full check green at abc1234, 23 min ago · next in 37 min". A cleared red reads "cleared at def5678 · full check running".
+- The TUI line (status-render.ts) and the dashboard card (gui-client-team.ts) use the same payload fields (status-payload.ts). No new alert or doctor row: the existing main-check row carries the text.
 - docs/how-it-works.md names what the badge shows.
 
 **Files touched.** src/status/status-polls.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-team.ts docs/how-it-works.md test/status-polls.test.ts test/status-render.test.ts test/gui-client.test.ts
 
 **Acceptance criteria.**
 - With a full green 23 min old and a 60 min interval, `tumwater status`, the TUI and the dashboard show the covered SHA, "23 min ago" and "next in 37 min".
-- After a cleared red, they show the clearing head and "full check due now" until the brought-forward run settles.
+- After a cleared red, they show the clearing head until its full run settles.
 - No new alert builder or doctor row exists.
 - `npm run test:gate` passes.
 
@@ -103,9 +158,9 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The before/after row and key counts are in the part's PLANS-DONE entry.
 - `npm run test:gate` passes.
 
-### Every commit is verified on main, part 4j/3: the `main_red` run-result verdict is removed from the status, doctor, UI and report surfaces (planned 2026-10-29 by the plan role, split from the too-large part 3f/3; requires Subtract part 3b/7 landed, so no merge produces the verdict; touches src/merge/merge-core.ts src/ui/tone.ts src/events/event-labels.ts src/ui/gui/gui-client-model.ts src/failure/failure-data.ts src/failure/failure-time-spend.ts src/failure/failure-render.ts src/cli/cli-start-summary.ts src/status/status-polls.ts src/ui/status-model.ts src/doctor/doctor-holds.ts src/inbox/pending-prompt.ts src/review/review.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/runner/runner-state.ts src/budget/fallback-breaker.ts src/events/event-notify.ts src/baseline/main-red.ts test/attribute-red-check.test.ts test/budget.test.ts test/doctor-holds.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts test/gui-client.test.ts test/status-model.test.ts test/status-render-cells.test.ts test/status-render.test.ts test/team-alerts.test.ts)
+### Every commit is verified on main, part 4j/3: the `main_red` run-result verdict is removed from the status, doctor, UI and report surfaces (planned 2026-10-29 by the plan role, split from the too-large part 3f/3; requires Hourly full check part 1/4 landed, so no merge produces the verdict (re-pointed 2026-11-01 by the operator from the withdrawn Subtract part 3b/7: the gate keeps its build check, and that part makes it decide every twice-failed check at once); touches src/merge/merge-core.ts src/ui/tone.ts src/events/event-labels.ts src/ui/gui/gui-client-model.ts src/failure/failure-data.ts src/failure/failure-time-spend.ts src/failure/failure-render.ts src/cli/cli-start-summary.ts src/status/status-polls.ts src/ui/status-model.ts src/doctor/doctor-holds.ts src/inbox/pending-prompt.ts src/review/review.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/runner/runner-state.ts src/budget/fallback-breaker.ts src/events/event-notify.ts src/baseline/main-red.ts test/attribute-red-check.test.ts test/budget.test.ts test/doctor-holds.test.ts test/failure-render.test.ts test/failure-time-spend.test.ts test/gui-client.test.ts test/status-model.test.ts test/status-render-cells.test.ts test/status-render.test.ts test/team-alerts.test.ts)
 
-**Goal.** With Subtract part 3b/7 deleting `gateBuildPrecheck`, the merge gate has no path that sets `mainRed`/`awaitingWatch`, so no merge produces a `main_red` run result. Remove the dead merge branch and the fields it read, then delete the surfaces that read or render the verdict. Leave the `RunResult` member and the recovered-pin plumbing for part 4k/3 to remove last, so this part can merge on its own without a compile-forced sweep of the run/runner plumbing.
+**Goal.** With Hourly full check part 1/4 deciding every twice-failed gate check at once (and deleting `awaitingWatch`), the merge gate has no path that sets `mainRed`, so no merge produces a `main_red` run result. Remove the dead merge branch and the fields it read, then delete the surfaces that read or render the verdict. Leave the `RunResult` member and the recovered-pin plumbing for part 4k/3 to remove last, so this part can merge on its own without a compile-forced sweep of the run/runner plumbing.
 
 **Approach.**
 - Delete the now-unreachable producer: the `mainRed` and `awaitingWatch` fields and their comments in src/review/review.ts's `GateResult` (only `gateBuildPrecheck` set them), and src/merge/merge-core.ts's `if (gate.decision === "failed" && gate.mainRed)` branch that returns `result: "main_red"` (with its comment and the `awaitingWatch` spread). The plain `gate.decision === "failed"` branch stays.
@@ -129,7 +184,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Every commit is verified on main, part 4k/3: the `main_red` union member and the run/runner plumbing that names it are removed (planned 2026-10-29 by the plan role, split from the too-large part 3f/3; requires part 4j/3 landed, so no merge produces the verdict and no surface reads it; touches src/run/run-outcome.ts src/runner/runner-recovery.ts src/merge/merge-requeue.ts src/runner/runner-leftover.ts src/runner/runner-state-load.ts src/runner/runner-run.ts src/run/run-apply.ts src/run/run-finalize.ts src/run/run-prompt.ts src/orchestrator/orchestrator-poll.ts src/runner/runner-state.ts src/events/event-notify.ts src/inbox/pending-prompt.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-queue.ts src/budget/fallback-breaker.ts src/baseline/main-red.ts test/run-outcome.test.ts test/run-apply.test.ts test/run-finalize.test.ts test/runner-recovery.test.ts test/runner-red-main.test.ts test/runner-leftover.test.ts test/merge-requeue.test.ts test/merge-pipeline-2.test.ts test/merger.test.ts)
 
-**Goal.** The `main_red` run result no longer has a producer (Subtract part 3b/7 removed the gate's `mainRed` path, whose dead branch part 4j/3 deletes; the recovered-pin return removed here is the last one) or a reader (part 4j/3), so the union member itself is dead vocabulary. Remove it and let the compiler name any site still constructing or narrowing it.
+**Goal.** The `main_red` run result no longer has a producer (Hourly full check part 1/4 removed the gate's `mainRed` path, whose dead branch part 4j/3 deletes; the recovered-pin return removed here is the last one) or a reader (part 4j/3), so the union member itself is dead vocabulary. Remove it and let the compiler name any site still constructing or narrowing it.
 
 **Approach.**
 - Remove `| "main_red"` and its doc comment from `RunResult` (src/run/run-outcome.ts). Deleting the member makes every remaining construction or `result === "main_red"` narrowing a compile error, which is the work list.
@@ -150,33 +205,13 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 _None yet._
 
-### Subtract, part 3b/7: The pre-merge verify stops running the project's build check (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3a/7 landed; touches src/review/review.ts src/review/review-precheck.ts src/merge/merge-core.ts src/merge/merge-batch.ts src/merge/merge-verify.ts docs/how-it-works.md docs/invariants.md test/review.test.ts test/review-precheck.test.ts test/review-precheck-watch.test.ts test/merge-pipeline-watch.test.ts)
+### Subtract, part 3c/7: The queue's verify stage collapses into the merge step (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Hourly full check part 1/4 landed (re-pointed 2026-11-01 by the operator: Subtract part 3b/7 is withdrawn, since the user keeps the gate's build check, so the merge step carries that check); touches src/merge/merge-drain.ts src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-pipeline.ts src/merge/merge-core.ts src/merge/merge-slot.ts docs/how-it-works.md docs/invariants.md test/merge-drain.test.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merger.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts)
 
-**Goal.** A merge's verify judges the diff's deterministic rules and nothing else: it runs no build check, so main has exactly one full check per merged commit, the main watch's post-landing one. Remove `gateBuildPrecheck` and the `verifiedHead`/`knownMainFailures` hand-off it carries; keep `diffRuleReasons`'s three hard rejects (brief block, PRINCIPLES edit, secret leak) and the md-only exempt path.
-
-**Approach.**
-- Delete src/review/review-precheck.ts in whole — its only export is `gateBuildPrecheck` and its only caller is review.ts. `reviewAttempt` in review.ts returns `{ decision: "approved" }` after the diff rules and before any build run; remove its `pre`/`retry.pre` fields, its check-slot lease, its flake/quarantine branches and its `verifiedHead` result field.
-- Remove `verifiedHead` from `MergeRequest` (merge-core.ts), `VerifyVerdict`/`verifyRequestIn` (merge-batch.ts), `ApprovedMerge` (merge-pipeline.ts), `startVerify` (merge-verify.ts) and the red-baseline seed it feeds.
-- The `merge_red`/`main_red` attribution paths that read the pre-check's result stay for the Every commit is verified on main 4j/3–4k/3 parts to remove; this part deletes only the pre-check call and its result field.
-- docs/how-it-works.md's Review section says the pre-merge gate is the deterministic diff rules only; docs/invariants.md re-points the build-check bindings from the verify to the main watch.
-
-**Files touched.** src/review/review.ts src/review/review-precheck.ts src/merge/merge-core.ts src/merge/merge-batch.ts src/merge/merge-verify.ts docs/how-it-works.md docs/invariants.md test/review.test.ts test/review-precheck.test.ts test/review-precheck-watch.test.ts test/merge-pipeline-watch.test.ts
-
-**Acceptance criteria.**
-- A verify of an ordinary change emits no `build_check` event and starts no pi/check run; it approves on the diff rules alone. A diff editing the brief block, PRINCIPLES.md or a credential is still rejected before it merges.
-- `grep -rn 'gateBuildPrecheck\|verifiedHead' src/` prints nothing.
-- The main watch's post-landing `build_check` still runs for every merged tip; the pre-check's tests are deleted or re-pointed to the watch, never left asserting a mechanism that is gone.
-- `npm run test:gate` passes.
-
-**Tests.** test/review.test.ts: the approved path approves without a check, the three diff-rule rejects stay. test/review-precheck.test.ts and test/review-precheck-watch.test.ts: delete the pre-check cases (the whole subject is gone) and keep the watch cases that now own build verification. test/merge-pipeline-watch.test.ts: drop the `verifiedHead` seeding assertions. Run those files and the gate.
-
-### Subtract, part 3c/7: The queue's verify stage collapses into the merge step (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3b/7 landed; touches src/merge/merge-drain.ts src/merge/merge-verify.ts src/merge/merge-batch.ts src/merge/merge-pipeline.ts src/merge/merge-core.ts src/merge/merge-slot.ts docs/how-it-works.md docs/invariants.md test/merge-drain.test.ts test/merge-drain-verify.test.ts test/merge-pipeline.test.ts test/merge-pipeline-2.test.ts test/merge-pipeline-seams.test.ts test/merger.test.ts test/fixtures/orchestrator-fixtures.ts test/fixtures/merger-fixtures.ts)
-
-**Goal.** A queued entry goes straight from the queue to the merge step: no separate verify task, no `approved`/`verifying` map, no stage events. `drainMerge` takes the head entry, runs the deterministic diff-rule gate in the merge worktree, and calls `mergeApprovedChange`; a rejected entry is settled as today. The durable queue still orders entries and the pin still carries the commit.
+**Goal.** A queued entry goes straight from the queue to the merge step: no separate verify task, no `approved`/`verifying` map, no stage events. `drainMerge` takes the head entry, runs the gate in the merge worktree — the deterministic diff rules and the gate's build check (`gateBuildPrecheck`, the declared gate command; user, 2026-11-01: "it should gate each commit") — and calls `mergeApprovedChange`; a rejected entry is settled as today. The durable queue still orders entries and the pin still carries the commit.
 
 **Approach.**
 - Delete src/merge/merge-verify.ts and src/merge/merge-batch.ts; move the tier constants still needed by merge-drain/merge-post-review-drain (`MERGE_TIER`, `resolveAuthor`) beside the drain.
-- In merge-core.ts, keep `reviewPinnedChange`'s deterministic gate as a small `reviewQueuedChange(ctx, req, wt, state)` without the approval/stage bookkeeping; call it from `mergeApprovedChangeIn` before `mergeToMain`. A rejected result deletes the pin and returns `rejected`; a diff-rule approval proceeds to the merge.
+- In merge-core.ts, keep `reviewPinnedChange`'s gate (the diff rules and `gateBuildPrecheck`) as a small `reviewQueuedChange(ctx, req, wt, state)` without the approval/stage bookkeeping; call it from `mergeApprovedChangeIn` before `mergeToMain`, outside the merge lock. A rejected result deletes the pin and returns `rejected`; an approval proceeds to the merge.
 - In merge-drain.ts, delete `drainMergeQueue`'s `drainVerify` leg and the `p.approved`/`p.verifying` handling; `drainMerge` starts the next queued entry directly. In merge-pipeline.ts, remove `verifying`/`approved` and their types; keep `InFlightMerge`, abort, guard and outcome plumbing. In merge-slot.ts, remove the verify stage records and `checkWaitStage`/`resolveWaitStage` hooks, keeping the merge in-flight marker the operator surfaces read.
 - Keep `drainPostReviews` and the post-merge review path untouched.
 - docs/how-it-works.md's Parallel approval and Merge sections describe the one-step drain; docs/invariants.md re-points the verify-stage bindings to the merge step.
@@ -185,7 +220,7 @@ _None yet._
 
 **Acceptance criteria.**
 - One queued entry produces `merge_queued → merged` with no verify-start/approved stage event; a merge is a rebase and a fast-forward through `mergeApprovedChange`.
-- A queued diff that edits the brief block, PRINCIPLES.md or a credential is rejected before it merges; every other queued diff merges without a second review.
+- A queued diff that edits the brief block, PRINCIPLES.md or a credential, or whose gate check fails for a test of its own, is rejected before it merges; every other queued diff merges without a second review.
 - `grep -rn 'drainVerify\|startVerify\|verifyRequest\|MERGE_TIER\|VERIFY_TIER' src/merge` prints only the moved constants if any, never a verify stage.
 - test/merge-drain-verify.test.ts is deleted with its subject; the surviving merge-drain/pipeline tests assert the one-step drain.
 - `npm run test:gate` passes.
@@ -225,7 +260,7 @@ _None yet._
 **Files touched.** src/run/run-stage.ts src/runner/runner-leftover.ts src/orchestrator/orchestrator-poll.ts src/merge/merge-core.ts docs/how-it-works.md test/run-stage.test.ts test/runner-leftover.test.ts test/orchestrator-merge-pin.test.ts
 
 **Acceptance criteria.**
-- A fresh run that commits writes a pin and no `.tumwater/merge-queue/` file; its log path is still `merge_queued → merged` and its change reaches main without a second check.
+- A fresh run that commits writes a pin and no `.tumwater/merge-queue/` file; its log path is still `merge_queued → merged` and its change reaches main after its one gate check, with no second check.
 - A pin left by a crash or an earlier build is merged on the next poll; a pin whose commit main already contains is deleted without merging.
 - A conflicting pin is kept once and hands back to its author at `MERGE_CONFLICT_LIMIT`, not retried forever.
 - Old queue files still drain through the pre-3e path until part 3f removes it.
@@ -258,11 +293,11 @@ _None yet._
 
 ### Subtract, part 3g/7: Docs and invariants say one lock, linear history and a post-landing check (planned 2026-10-31 by the plan role, splitting the 2026-10-30 too-large part 3/6; requires Subtract part 3f/7 landed; touches docs/how-it-works.md docs/invariants.md docs/glossary.md README.md test/invariants-doc.test.ts test/merge-backlog-conflicts.test.ts)
 
-**Goal.** The live prose and the invariant bindings describe the landing that exists after parts 3a–3f: a pin, a rebase under the merge lock, a fast-forward, and the main watch's post-landing check. No sentence promises queue stages, an approval step or a pre-merge check.
+**Goal.** The live prose and the invariant bindings describe the landing that exists after parts 3a–3f: a pin, a rebase under the merge lock, a fast-forward, and the main watch's post-landing full check. No sentence promises queue stages or an approval step; the pre-merge gate keeps its build check (user, 2026-11-01), so the docs keep saying so.
 
 **Approach.**
 - Sweep the queue vocabulary out of docs/how-it-works.md, docs/invariants.md and docs/glossary.md: merge queue, queue stage, verify/approval stage, batch/bisect (already gone), retry/requeue, queue depth and queue cancel/top.
-- In docs/invariants.md, drop or re-scope every binding to a deleted module (`merge-queue`, `merge-verify`, `merge-batch`, `merge-slot` stages, `merge-requeue`) and state the surviving guarantees: one merge writer under one lock, linear history, a deleted pin on merge and the main watch's post-landing checks as docs/how-it-works.md states their cadence at the time (amended 2026-11-01 by the operator: the Hourly full check series moves main to the gate command per commit plus the full check at most hourly, so this part must not restate "a full check per commit"). Keep the conflict-hand-back and review-gate bindings that still have code.
+- In docs/invariants.md, drop or re-scope every binding to a deleted module (`merge-queue`, `merge-verify`, `merge-batch`, `merge-slot` stages, `merge-requeue`) and state the surviving guarantees: one merge writer under one lock, linear history, a deleted pin on merge and the main watch's post-landing checks as docs/how-it-works.md states their cadence at the time (amended 2026-11-01 by the operator: the pre-merge gate keeps its build check, and the Hourly full check series moves main's full check to at most hourly on the latest tip, so this part must not restate "a full check per commit"). Keep the conflict-hand-back and review-gate bindings that still have code.
 - README's status line stays as is; remove any queue wording elsewhere in README.
 - Re-check docs/invariants.md's file-to-test bindings: every remaining binding names a file and a test that still exist; the invariants-doc test enforces it.
 
@@ -271,7 +306,7 @@ _None yet._
 **Acceptance criteria.**
 - `grep -rniE 'merge queue|queue stage|verify stage|approval stage|requeue|queue depth' docs/ README.md` finds no claim about a mechanism parts 3a–3f deleted (the archive files PLANS-DONE.md and BUGS-FIXED.md are excluded by construction).
 - Every docs/invariants.md binding that names a merge module names a file and a test that still exist; deleted-module INVs are gone, not re-pointed.
-- The surviving prose says: a change is pinned, merged by rebase and fast-forward under the merge lock, and checked on main after it lands.
+- The surviving prose says: a change is pinned, gated (the diff rules and the declared gate command), merged by rebase and fast-forward under the merge lock, and covered on main by the main watch's full check.
 - `npm run test:gate` passes.
 
 **Tests.** Run test/invariants-doc.test.ts and test/merge-backlog-conflicts.test.ts whole, then the project's gate, and confirm green.

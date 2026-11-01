@@ -96,6 +96,13 @@ by the author. Delete the queue's stages, the batch/bisect path, the requeue, th
 the interlock; keep the lock, the rebase and the linear-history invariant
 (`plans/merge-queue.md` invariants 2 and 5 survive; invariants 1, 3 and 6 lose their mechanism).
 
+*Amended 2026-11-01 (user: "'gate' is aptly named — it should gate each commit"):* the pre-merge
+gate keeps its build check, the declared gate command (`npm run test:gate`, targeted at ~10 s).
+Part 3b/7, which deleted it, is withdrawn. Part 3c/7's merge step runs the gate outside the lock,
+and a gate failure of the change's own is an ordinary rejection of the author's change, not a
+queue retry. Main's full check moves to at most hourly on the latest tip
+([main-check-cadence.md](main-check-cadence.md)). The rest of the stroke stands.
+
 ### 4. One runner per role — withdrawn 2026-10-31
 
 **Withdrawn 2026-10-31 by the director.** The 2026-10-31 request that exposed feature and
@@ -217,7 +224,7 @@ the check cheaper or land less often, both of which this plan's strokes push tow
 | --- | --- | --- |
 | 1a–1e/6 Only a stopped team asks for a person | the amber/blue/gray alert builders, split into five sub-plans: 1a the dashboard's doctor link, 1b the staleness/notify/queue banners, 1c the review/check banners, 1d the status/tail banners, 1e the backlog staleness/structure banners | 1b: Subtract parts 1a/6 and 2a/6–2c/6; 1d: Subtract part 1c/6; the rest chain part-by-part |
 | 2a–2c/6 One hold vocabulary | 2a: Needs replan; 2b: Waiting for the next failure; 2c: the held counters and the operator-held threshold | 2b requires 2a; 2c requires 2b |
-| 3a–3g/7 A pin becomes a lock and a fast-forward | split into seven sub-plans: 3a the scheduling interlock, 3b the pre-merge check, 3c the verify stage, 3d `tumwater queue` and its controls, 3e the pin-directed merge, 3f the durable queue and its readers, 3g the docs and invariants | 3a requires Every commit is verified on main part 3f/3; 3b–3g chain part-by-part |
+| 3a–3g/7 A pin becomes a lock and a fast-forward | split into seven sub-plans: 3a the scheduling interlock, 3b the pre-merge check (**withdrawn 2026-11-01**: the gate keeps its build check), 3c the verify stage, 3d `tumwater queue` and its controls, 3e the pin-directed merge, 3f the durable queue and its readers, 3g the docs and invariants | 3a requires Every commit is verified on main part 3f/3; 3c requires Hourly full check part 1/4 (re-pointed 2026-11-01); 3d–3g chain part-by-part |
 | 4/6 One runner per role | instance claims, the worktree pool, `instances` — **withdrawn 2026-10-31** (the Settings concurrency controls keep them) | — |
 | 5a–5d/6 One model per role | 5a the image-capability probe, 5b the per-provider caps, 5c the model-failure fallback episode (the budget fallback's removal, also once part of 5c, was withdrawn 2026-10-28), 5d the subscription-window carve-outs; 5e the tier map — withdrawn 2026-10-28 | 5b requires 5a; 5c requires 5b; 5d requires 5c |
 | 6/6 The sweep | the rows, keys, aliases and docs the five parts left behind | — |
@@ -278,7 +285,8 @@ replaces the mechanism, not that it was wrong.
   chain and `image input` rows stay with the routing the user kept (2026-10-28).
 - One check runs per change, once, after landing: `build_check` events per merged commit fall to
   1 (they are ≥2 today, and up to a dozen in a reject cycle). *Amended 2026-11-01 (user):* that
-  one check is the gate command, and the full check runs at most hourly on main's latest tip, not
-  per commit ([main-check-cadence.md](main-check-cadence.md), PLANS.md "Hourly full check").
+  one check is the gate's, before landing (the gate keeps its build check), and main's full check
+  runs at most hourly on the latest tip, not per commit
+  ([main-check-cadence.md](main-check-cadence.md), PLANS.md "Hourly full check").
 - The config schema loses its capacity keys and the subscription-window reserves (the tier map,
   the fallback keys and the daily cap stay); the alert tests shrink with the builders.
