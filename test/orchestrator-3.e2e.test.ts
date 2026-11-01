@@ -636,8 +636,9 @@ test("maxConcurrent 4 verifies three queued changes at once on the live orchestr
   // were in flight as it started), and the merge slot merges every change. Sampling now lives
   // in the declared check, not the reviewer run: each gate check parks ~3 s and counts its
   // fellow gate checks in samples.log on exactly the change's own tree. A per-change once
-  // marker (one sample each) keeps the in-lock re-check and any post-merge run from skewing
-  // the count, and main's baseline sees no change file and passes at once.
+  // marker (one sample each) keeps the main watch from skewing the count when it checks main's
+  // tip after a merge (that tip holds the change file too), and main's baseline before the
+  // merges sees no change file and passes at once.
   const repo = makeRepo();
   await initProject(repo, "verification stage e2e test");
   const roles = ["feature", "bugfix", "clean"];
