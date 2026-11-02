@@ -91,12 +91,14 @@ gate's build check, they answered: "No, keep the gate." A separate session is lo
 
 ## Series
 
-"Hourly full check", parts 1a/4–4/4 in PLANS.md:
+"Hourly full check", parts 1b/4–4/4 in PLANS.md, with its part 1a/4 split into the
+"Hourly gate restore" series:
 
 | Part | What it does | Requires |
 | --- | --- | --- |
-| 1a/4 | The gate restores its build check and asks main's tip about its own failures at once; no watch wait | — |
-| 1b/4 | The dead watch-wait and `awaitingWatch` plumbing is removed; no `main_red` producer remains | part 1a/4 |
+| Hourly gate restore 1/2 | The gate runs its build check again, rejects a twice-failed change, and keeps the pin on an abort or host sleep | — |
+| Hourly gate restore 2/2 | A twice-failed check is attributed at main's tip (named tests re-run alone, else the gate command); no watch wait | Hourly gate restore 1/2 |
+| 1b/4 | The dead watch-wait and `awaitingWatch` plumbing is removed; no `main_red` producer remains | Hourly gate restore 2/2 |
 | 2/4 | The full check runs at most hourly on the latest tip, in its own mirror | part 1b/4 |
 | 3/4 | Bisect a red's opener, re-run only the open failures on each new head, and confirm a cleared red with one full run | part 2/4 |
 | 4/4 | Status, doctor and the dashboard say how old main's full verdict is and when the next is due | part 3/4 |
