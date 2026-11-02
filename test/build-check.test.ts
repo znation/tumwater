@@ -750,7 +750,7 @@ test("a scoped check that waits for a check permit logs a check_wait and hands t
     { waiting: () => calls.push("waiting"), granted: () => calls.push("granted"), waited: () => calls.push("waited") },
   );
   await flushImmediate(); // the scoped check now parks behind the holder, recording its start time
-  t.mock.timers.tick(40_000); // the host slept 40s while it waited — past the 30s threshold
+  t.mock.timers.tick(40_000); // retired-name-ok: node:test mock clock; the host slept 40s while it waited, past the 30s threshold
   release();
   t.mock.timers.reset();
   const r = await scoped;
