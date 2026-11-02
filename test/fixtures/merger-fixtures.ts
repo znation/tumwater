@@ -52,9 +52,6 @@ export function makeCtx(
     root,
     mainBranch: "main",
     config: defaultConfig(),
-    // No in-place reviewer retries unless a test opts in: most cases count one run per verify.
-    reviewRetries: 0,
-    reviewRetryDelayMs: 0,
     state,
     runPi: async (wt, prompt, session) => {
       calls.push({ wt, prompt, session });
@@ -109,7 +106,7 @@ export async function verifyAndMerge(ctx: MergerContext, req: MergeRequest): Pro
   const w = batchWiring(ctx);
   const v = await verifyRequest(ctx, req, w);
   if (v.kind === "result") return v.result;
-  return mergeApprovedChange(ctx, { ...req, sha: v.sha, ...(v.verifiedHead ? { verifiedHead: v.verifiedHead } : {}) });
+  return mergeApprovedChange(ctx, { ...req, sha: v.sha });
 }
 
 /** Shell that numbers this check run into `$n`, atomically: `mkdir` either creates

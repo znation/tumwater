@@ -152,7 +152,6 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
       }
     },
     signal: () => merge.controller.signal,
-    reviewHeld: () => ctx.startHeld(),
   });
   const task = (async () => {
     // Each change's terminal outcome: `undefined` means the merge did not reach it (a plumbing
@@ -198,7 +197,6 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
             body: v.entry.body,
             highFriction: v.entry.highFriction,
             ...entryRevisionFields(v.entry),
-            ...(v.verifiedHead !== undefined ? { verifiedHead: v.verifiedHead } : {}),
           },
         );
         await settleOne(s, results[s]!);

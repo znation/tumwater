@@ -5,25 +5,16 @@
  * scripts these fixtures install come from fake-commands.ts. */
 import fs from "node:fs";
 import path from "node:path";
-import assert from "node:assert/strict";
 import { defaultConfig } from "../../src/config/config.js";
 import { RoleRunner } from "../../src/runner/runner.js";
 import { freshRunnerState, saveRunnerState, type RunnerState } from "../../src/runner/runner-state.js";
-import { loadRunnerState } from "../../src/runner/runner-state-load.js";
 import { recordDailyCost } from "../../src/budget/budget.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
 import { pathPrepend, projManifest, writeScript } from "../fakes/fake-commands.js";
 import { ensureParentDir } from "../../src/files/files.js";
 import { readSlotsState, updateSlotsState } from "../../src/git/slots-state.js";
-import { mergeRefName, worktreePath } from "../../src/paths.js";
-import { headMerge, queueDepth } from "../../src/merge/merge-queue.js";
-import { enqueuePrompt, inboxSize } from "../../src/inbox/inbox.js";
-import { mergeHead } from "./orchestrator-fixtures.js";
-import { declareCheck, parkUntil } from "./merger-fixtures.js";
-import { withPi } from "../fakes/fake-pi.js";
-import { assistantLine } from "./pi-events.js";
-import { waitForFile } from "../helpers/wait.js";
+import { worktreePath } from "../../src/paths.js";
 
 /** A real role runner for one role — the constructor call every runner test repeats with the
  * same `defaultConfig()` and `"main"` trailing arguments, so those stay implied here and a
@@ -54,62 +45,6 @@ export function roleWt(root: string, role: string): string {
   const released = slots.find((slot) => slot.lease === null && slot.lastRole === role);
   if (released !== undefined) return released.dir;
   return worktreePath(root, role);
-}
-
-/** Drive a director run whose merge gate is aborted while it runs: the run commits and pins
- * (result "queued"), the merge runs under its own AbortSignal, and the abort lands on the
- * merge's deterministic gate check — the fixture declares a build check that parks until
- * released, the same deterministic-check park the merge-series tests abort on, so the abort
- * needs no reviewer run and survives the pre-merge reviewer's removal. Asserts the fail-closed
- * shape a shutdown and `tumwater abort` share at the runner level — nothing merged, the pin
- * survives for next-start recovery, the queue entry is dropped, and the completed run consumed
- * the prompt — so the user-abort (runner-5.test.ts) and shutdown
- * (runner-leftover-recovery.test.ts) tests state only their framing. Only meaningful for a
- * director run, whose merge carries the gate. */
-export async function runAbortedDirectorMerge(repo: string): Promise<void> {
-  // The merge's gate is the one place a director run pays a check; declare a check that parks
-  // (touches `started`, then waits for `release`) so the test can abort mid-gate deterministically.
-  const started = path.join(repo, ".merge-check-started");
-  const release = path.join(repo, ".merge-check-release");
-  declareCheck(repo, `#!/bin/sh\n${parkUntil(started, release)}\necho ok\n`);
-  await withPi(
-    [`printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'`, `echo hello > hello.txt`].join("\n"),
-    async () => {
-      const controller = new AbortController();
-      try {
-        enqueuePrompt(repo, "ship the hello file");
-        const runner = makeRoleRunner(repo, "director");
-        const outcome = await runner.run();
-        assert.equal(outcome.result, "queued", "the run ends at the pin; the gate is the merge's");
-        const head = headMerge(repo);
-        assert.ok(head, "the merge is queued");
-        const merge = mergeHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
-        // Abort only once the merge's gate check is parked: an earlier abort hits nothing.
-        await waitForFile(started);
-        controller.abort();
-        fs.writeFileSync(release, "");
-        assert.equal(await merge, "aborted", "an abort mid-gate is an abort, not a failed review");
-
-        // Fail closed: nothing merged — the role worktree is clean at main and the pin survives
-        // the abort for next-start recovery. The queue entry is dropped; the prompt was consumed
-        // by the completed run, so recovery rides the pin, never a re-queued prompt.
-        assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
-        const pinned = sh(repo, "git", "rev-parse", "--verify", mergeRefName("director")).trim();
-        assert.ok(pinned.length === 40, "the pin survived the aborted merge");
-        assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing merged on main");
-        assert.equal(queueDepth(repo), 0, "the entry is dropped after the aborted merge");
-        assert.equal(inboxSize(repo), 0);
-        const s = loadRunnerState(repo, "director");
-        assert.equal(s.lastResult, "aborted");
-        assert.ok(!s.resumePending, "the director never resumes an author session");
-        assert.ok(s.nextRunAt > Date.now(), "recovery runs at the role's normal cadence");
-      } finally {
-        // Release any still-parked check and kill any in-flight fake pi before PATH is restored.
-        fs.writeFileSync(release, "");
-        controller.abort();
-      }
-    },
-  );
 }
 
 /** Register an existing checkout as a slot pinned for `role`: the shape an interrupted run

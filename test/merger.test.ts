@@ -6,12 +6,11 @@ import path from "node:path";
 import { MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { mergeApprovedChange } from "../src/merge/merge-core.js";
 import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
-import { readSlotsState } from "../src/git/slots-state.js";
 import { mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
-import { assertClean, headSha, mainSha, pinOffMain, sh, tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";
+import { assertClean, mainSha, pinOffMain, sh, makeRepo } from "./fixtures/repo-fixtures.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { withPi } from "./fakes/fake-pi.js";
@@ -303,82 +302,29 @@ test("an unwritable state file mid-review still folds the reviewer runs and sett
   );
 });
 
-test("a merge pinned behind main's advance is rebased onto main BEFORE the gate and merges both", async () => {
-  // PLANS.md 2026-09-21: the gate must review main's CURRENT tree. Advance main after the
-  // pin with a non-conflicting commit, then check the gate saw the rebased tree — if the
-  // gate ran on the stale pin, main's fix would not be under review and a red main would
-  // cascade through every queued merge.
-  const rec = path.join(tmpdir("merger-rec-"), "seen");
-  await withPi(
-    reviewerPi("VERDICT: approve"), // the verify's approve; the passing declared check is the deterministic gate
-    async () => {
-      const { root, sha } = await pinnedFixture();
-      // A passing declared check is the deterministic gate that survives part 3h/3's removal of
-      // the pre-merge reviewer, and it records the HEAD it ran at, so the "gate reviewed the
-      // rebased tree" assertion rides the gate, not the reviewer (part 3p/3).
-      declareCheck(root, `#!/bin/sh\ngit rev-parse HEAD >> ${rec}\necho ok\n`);
-      // Land the declared check as its own commit separate from the "fix main" commit below, so
-      // the gate's `npm run` resolves the check inside the merger worktree (the change's tree
-      // inherits it from main) instead of climbing to the bare repo — and the "fix main" commit
-      // stages only the intended fix file.
-      sh(root, "git", "add", "package.json", "node_modules");
-      sh(root, "git", "commit", "-m", "declare the project check");
-      fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
-      sh(root, "git", "add", "fix.txt");
-      sh(root, "git", "commit", "-m", "fix main");
-      const state = freshRunnerState(ROLE);
-      const { ctx } = makeCtx(root, state);
+test("a synced rebase moves the merge ref and merges both commits onto the moved main", async () => {
+  // PLANS.md 2026-09-21: a pin left behind main's advance is rebased onto main's CURRENT head
+  // before it merges, so the merge is a fast-forward of the rebased tree — main ends up holding
+  // both commits, linearly, with no merge commit and the pin deleted. Since Subtract part 3b/7
+  // the gate runs no build check, so this rebase is observed by the merge's own outcome rather
+  // than by a gate check's recorded head.
+  const { root, sha } = await pinnedFixture();
+  // Advance main past the pin with a non-conflicting commit.
+  fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
+  sh(root, "git", "add", "fix.txt");
+  sh(root, "git", "commit", "-m", "fix main");
+  const state = freshRunnerState(ROLE);
+  const { ctx } = makeCtx(root, state);
 
-      assert.equal(await verifyAndMerge(ctx, request(sha)), "changed");
+  assert.equal(await verifyAndMerge(ctx, request(sha)), "changed");
 
-      // main holds both: main's fix underneath, the rebased change on top (linear, no merge).
-      const mainHead = mainSha(root);
-      assert.notEqual(mainHead, sha, "main moved past the pin: the change was rebased onto the fix");
-      assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "seed\nthe work\n");
-      assert.equal(fs.readFileSync(path.join(root, "fix.txt"), "utf8"), "main fix\n");
-      assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "");
-      // The declared check ran in the merger worktree at the SYNCED head — the pre-check tree is
-      // exactly what became main, and the merge ref tracked it (deleted on merge here).
-      const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
-      assert.equal(seen[0], mainHead, "the gate reviewed the rebased tree, not the stale pin");
-      assert.equal(await refSha(root, REF), null, "the pin was deleted on merge");
-    },
-  );
-});
-
-test("a synced rebase moves the merge ref so a failed gate keeps the tree that can merge", async () => {
-  // The strike-cap tell compares the merger worktree's HEAD against req.sha: when the
-  // pre-gate rebase rewrote the pin, the request (and the ref) must name the synced head, or
-  // an under-cap failure would look like a strike-cap discard and delete the pinned work.
-  await withPi(
-    reviewerPi("VERDICT: approve"), // never reached: the failing declared check keeps the pin (main_red)
-    async () => {
-      const { root, sha } = await pinnedFixture();
-      // The deterministic gate: a failing declared check on a red main reports main_red and keeps
-      // the pin, so the "failed gate keeps the tree that can merge" outcome rides the gate, not a
-      // reviewer failure (part 3p/3).
-      declareCheck(root, "#!/bin/sh\necho 'error TS9001: boom' >&2\nexit 1\n");
-      fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
-      sh(root, "git", "add", "-A");
-      sh(root, "git", "commit", "-m", "fix main");
-      const state = freshRunnerState(ROLE);
-      const { ctx } = makeCtx(root, state);
-
-      assert.equal(await verifyAndMerge(ctx, request(sha)), "main_red");
-
-      // Nothing merged (main still holds the fix commit), so the synced head is not main's
-      // head — it is the rebased commit the verify's pooled slot sits at.
-      const slot = readSlotsState(root).slots.find((s) => s.lastRole === ROLE)?.dir;
-      assert.ok(slot, "the verify released the pooled slot it leased");
-      const syncedHead = headSha(slot);
-      assert.notEqual(syncedHead, sha, "the rebase rewrote the pin onto main's fix");
-      assert.equal(
-        await refSha(root, REF),
-        syncedHead,
-        "the ref tracks the rebased commit, not the stale pin",
-      );
-    },
-  );
+  // main holds both: main's fix underneath, the rebased change on top (linear, no merge).
+  const mainHead = mainSha(root);
+  assert.notEqual(mainHead, sha, "main moved past the pin: the change was rebased onto the fix");
+  assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "seed\nthe work\n");
+  assert.equal(fs.readFileSync(path.join(root, "fix.txt"), "utf8"), "main fix\n");
+  assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "", "a rebase, not a merge commit");
+  assert.equal(await refSha(root, REF), null, "the pin was deleted on merge");
 });
 
 test("the merge checkout is shared, kept detached, and persists at a terminal outcome", async () => {

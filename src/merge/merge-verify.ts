@@ -229,7 +229,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
           lease,
           () =>
             verifyRequest(
-              { root, mainBranch, config: author.config, signal: () => verify.controller.signal, runGatePi: (opts) => author.runGatePi(opts), reviewHeld: () => ctx.startHeld() },
+              { root, mainBranch, config: author.config, signal: () => verify.controller.signal, runGatePi: (opts) => author.runGatePi(opts) },
               {
                 role,
                 sha: entry.sha,
@@ -254,7 +254,6 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
           entry,
           file,
           sha: verdict.sha,
-          ...(verdict.verifiedHead !== undefined ? { verifiedHead: verdict.verifiedHead } : {}),
           startedAt,
           author,
           usage,

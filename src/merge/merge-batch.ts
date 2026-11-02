@@ -40,12 +40,12 @@ export interface BatchRoleWiring extends PiRunWiring {
 }
 
 /** One change's verify verdict: `approved` — the gate cleared (approved or exempt), so the
- * change merges at `sha` (the synced pin, which the merge ref now names), with `verifiedHead`
- * set when the gate's pre-check ran green on exactly that head; `result` — an outcome that
- * keeps the change out of the merge: rejected, review_error (`discarded` on a strike-cap
- * discard), main_red, a lost-pin "error", or aborted. */
+ * change merges at `sha` (the synced pin, which the merge ref now names); `result` — an outcome
+ * that keeps the change out of the merge: rejected, review_error (`discarded` on a strike-cap
+ * discard), main_red, a lost-pin "error", or aborted. The gate runs no build check (Subtract
+ * part 3b/7), so the verdict carries no verified-head hand-off. */
 export type VerifyVerdict =
-  | { kind: "approved"; sha: string; verifiedHead?: string }
+  | { kind: "approved"; sha: string }
   | { kind: "result"; result: RunResult; discarded?: true; awaitingWatch?: string };
 
 /** Verify one request — the whole of a verify-stage task: lease a pooled slot for the role, check
@@ -92,12 +92,9 @@ export async function verifyRequest(ctx: BatchContext, req: MergeRequest, w: Bat
 
 async function verifyRequestIn(ctx: BatchContext, req: MergeRequest, w: BatchRoleWiring, wt: string): Promise<VerifyVerdict> {
   const synced = await syncPinToMain(ctx, wt, req);
-  const outcome = await reviewPinnedChange(ctx, synced, wt, w.state, w.foldUsage);
+  const outcome = await reviewPinnedChange(ctx, synced, wt, w.state);
   if (outcome.kind === "result") return outcome;
-  // The gate's green pre-check names the head it ran on; it rides to the merge, which seeds the
-  // red-main baseline with it when nothing moved in between (mergeToMain).
-  const { verifiedHead } = outcome.gate;
-  return verifiedHead === outcome.sha
-    ? { kind: "approved", sha: outcome.sha, verifiedHead }
-    : { kind: "approved", sha: outcome.sha };
+  // The gate runs no build check (Subtract part 3b/7): an approved/exempt change merges at the
+  // head its merge ref names.
+  return { kind: "approved", sha: outcome.sha };
 }

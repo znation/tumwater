@@ -45,8 +45,6 @@ export interface ApprovedMerge extends AbortableMerge, FoldsUsage {
   file: string;
   /** The head its gate approved — the synced pin its merge ref names. */
   sha: string;
-  /** `sha` again when the gate's pre-check ran green on exactly it (VerifyVerdict). */
-  verifiedHead?: string;
   /** When its verification started: its merge_done/merge_failed event's durationMs runs from here.
    * */
   startedAt: number;

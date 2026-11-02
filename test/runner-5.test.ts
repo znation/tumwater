@@ -18,7 +18,7 @@ import { mergeRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { queueDepth } from "../src/merge/merge-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeRoleRunner, roleWt, runAbortedDirectorMerge } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
 import { assertClean, headSha, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
@@ -194,17 +194,6 @@ test("a user-aborted director run drops the prompt instead of re-queueing it", a
   });
 });
 
-test("a user-abort mid-review discards the committed work too", async () => {
-  const repo = await initializedRepo();
-  // Author run (the run prompt): make a change and finish. Review run (its prompt contains
-  // VERDICT): hang until the abort kills it — simulating `tumwater abort` while under review.
-  // Since merge queue 3/5 the gate runs in the MERGE, not the run: the abort below hits
-  // the merge's signal (the same wiring the orchestrator's pipeline hands its verifications). At
-  // the runner level an aborted merge KEEPS the pin — the drain adds the deliberate-stop ref
-  // deletion on top (pinned in the orchestrator tests). The queue entry itself is dropped:
-  // retry rides the pin, never the queue.
-  await runAbortedDirectorMerge(repo);
-});
 
 test("a failing director run re-queues the user prompt (regression)", async () => {
   const repo = await initializedRepo();
