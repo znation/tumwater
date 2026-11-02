@@ -99,10 +99,12 @@ interface BudgetFallbackViewInput {
   checkResolved?: TierFallbackMap;
   /** The cap view's check-aware resolution (plans/model-check.md "Fallback"): the price
    * resolution stepped past the pairs that failed their model check, so the installed config
-   * of a cap-moved tier lands on the first free step that answered, exactly as the `chain`
-   * block and the pause set resolve it. Unlike the serving resolution it never reads the
-   * breaker, so a breaker-demoted cap pair stays installed for its half-open probe and a run
-   * parked on it. Absent while the check is off, when `priceResolved` is the cap's view. */
+   * of a cap-moved tier lands on the first free step that has not failed, exactly as the
+   * `chain` block and the pause set resolve it. When every free step of a tier failed, its
+   * price view's step stays installed so a parked run never falls through to the priced
+   * primary. Unlike the serving resolution it never reads the breaker, so a breaker-demoted
+   * cap pair stays installed for its half-open probe and a run parked on it. Absent while the
+   * check is off, when `priceResolved` is the cap's view. */
   checkFreeResolved?: TierFallbackMap;
   checkFailed?: (pair: string) => boolean;
   checkVerified?: (pair: string) => boolean;

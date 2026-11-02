@@ -605,6 +605,36 @@ test("at the cap, a cap-moved tier steps past a free fallback step that failed i
   assert.equal(seamPairName(configForRole(p2.roleConfig, "feature")), "local/a");
 });
 
+test("at the cap, a tier keeps a free failed step installed when every free step failed its check", () => {
+  const root = makeRepo();
+  const free = { input: 0, output: 0 };
+  const modelsPath = writeModelsFile(
+    tmpdir("model-check-cap-all-failed-"),
+    JSON.stringify({
+      providers: {
+        paid: { models: [{ id: "x", cost: { input: 1, output: 1 } }] },
+        local: { models: [{ id: "a", cost: free }, { id: "b", cost: free }] },
+      },
+    }),
+  );
+  const config = teamConfig();
+  config.model = { default: "paid/x", strong: "hf/deepseek" };
+  config.maxDailyCostUsd = 0.000001;
+  config.fallback = { default: ["local/a", "local/b"] };
+  const states = [{ ...freshRunnerState("feature"), dayStamp: todayStamp(), dayCostUsd: 5 }];
+  const p = pollBudgetGate(newBudgetGateState(config), {
+    root,
+    states,
+    liveConfig: config,
+    modelsPath,
+    modelCheckFailed: (pair) => pair === "local/a" || pair === "local/b",
+  });
+  // The serving resolution pauses the tier, but the installed view keeps a free step: a parked
+  // merge must not fall through to the priced primary the cap already spent.
+  assert.equal(p.gate, "paused");
+  assert.equal(seamPairName(configForRole(p.roleConfig, "feature")), "local/a");
+});
+
 test("doctor's model check row and over-cap row read the running team's verdicts", () => {
   assert.deepEqual(checkModelChecks(false, null), {
     level: "ok",

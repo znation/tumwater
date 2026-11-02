@@ -456,14 +456,24 @@ export function pollBudgetGate(
   // pair that has not answered yet. A tier with no verified step stays held on its primary.
   const checkResolved = resolveTierFallbacks(liveConfig, (p) => usable(p) && checkVerified(modelPairName(p)));
   // The cap's installed view, check-aware: the price resolution stepped past the pairs that
-  // failed their model check, so a cap-moved tier's roles run on the first free step that
-  // answered. Unlike `usable` it never reads `fallbackServingPair`, so a breaker-demoted cap
+  // failed their model check, so a cap-moved tier's roles run on the first free step that has
+  // not failed. Unlike `usable` it never reads `fallbackServingPair`, so a breaker-demoted cap
   // pair stays installed for its half-open probe and a run parked on it. Absent while the
   // check is off.
   const checkFreeResolved =
     ctx.modelCheckFailed === undefined
       ? undefined
       : resolveTierFallbacks(liveConfig, (p) => pairFreeAt(p) && !checkFailed(modelPairName(p)));
+  if (checkFreeResolved !== undefined) {
+    // When every free step of a tier failed its check, keep the price view's step installed:
+    // the serving resolution still resolves the tier to pause, but the installed view must keep
+    // a free pair so a parked merge or probe can never fall through to the priced primary the
+    // cap already spent. Its model check holds the roles on the failed step until a re-check
+    // answers.
+    for (const tier of MODEL_TIERS) {
+      if (checkFreeResolved[tier].pair === null) checkFreeResolved[tier] = priceResolved[tier];
+    }
+  }
   // Free is not enough: the breaker demotes a fallback whose runs keep failing, and a gate
   // whose `default` (or, with review on, `strong`) tier resolves to pause is `paused`, exactly
   // as with no fallback at all (budgetGate, part 5c/8).
