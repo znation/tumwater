@@ -23,6 +23,7 @@ import {
   checkKnownKeys,
   checkObjectSection,
   show,
+  type ModelShape,
 } from "./config-field-checks.js";
 import {
   checkEntryBackend,
@@ -39,7 +40,7 @@ interface ModelBlockHelpers {
   checkModelTriple: (
     obj: Record<string, unknown>,
     prefix: string,
-    modelShape?: "selector" | "tier-map" | "tier-name",
+    modelShape?: ModelShape,
   ) => void;
   checkString: (
     obj: Record<string, unknown>,
@@ -99,7 +100,7 @@ interface FallbackBlockHelpers {
   checkModelTriple: (
     obj: Record<string, unknown>,
     prefix: string,
-    modelShape?: "selector" | "tier-map" | "tier-name",
+    modelShape?: ModelShape,
   ) => void;
   checkLegacyProvider: (provider: unknown, at: string, backend: string) => void;
   tierBackend: (tier: string) => string;

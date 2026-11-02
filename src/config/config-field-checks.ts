@@ -219,7 +219,13 @@ function checkTierMapModel(
       );
 }
 
-function whatModelMustBe(modelShape: "selector" | "tier-map" | "tier-name"): string {
+/** How `model` reads in a model-override section, per plans/model-tiers.md: "selector" (the
+ * default, e.g. the legacy `fallbackModel` object) is a plain selector string; "tier-map" (top
+ * level) also accepts a map keyed by the three tiers; "tier-name" (roles.<id>.model,
+ * review.model) also accepts a bare tier name referencing that map. */
+export type ModelShape = "selector" | "tier-map" | "tier-name";
+
+function whatModelMustBe(modelShape: ModelShape): string {
   return modelShape === "tier-map"
     ? "a model id or a map by tier (small, default, strong)"
     : modelShape === "tier-name"
@@ -232,7 +238,7 @@ function checkStringModel(
   obj: Record<string, unknown>,
   prefix: string,
   m: unknown,
-  modelShape: "selector" | "tier-map" | "tier-name",
+  modelShape: ModelShape,
 ): void {
   if (typeof m !== "string") {
     problems.push(`${prefix}model must be ${whatModelMustBe(modelShape)} (got ${show(m)})`);
@@ -281,7 +287,7 @@ export function checkModelTripleField(
   problems: string[],
   obj: Record<string, unknown>,
   prefix: string,
-  modelShape: "selector" | "tier-map" | "tier-name" = "selector",
+  modelShape: ModelShape = "selector",
 ): void {
   checkModelSiblingFields(problems, obj, prefix);
   const m = obj.model;

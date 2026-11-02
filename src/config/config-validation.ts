@@ -36,6 +36,7 @@ import {
   POSITIVE_INTEGER,
   show,
   typeName,
+  type ModelShape,
 } from "./config-field-checks.js";
 import {
   checkEntryBackend,
@@ -93,7 +94,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   const checkModelTriple = (
     obj: Record<string, unknown>,
     prefix: string,
-    modelShape?: "selector" | "tier-map" | "tier-name",
+    modelShape?: ModelShape,
   ): void => checkModelTripleField(problems, obj, prefix, modelShape);
   const checkNumber = (
     obj: Record<string, unknown>,
