@@ -121,6 +121,16 @@ on npm (`npm trust github tumwater --file release.yml --repo znation/tumwater
 --allow-publish`, package must already exist on the registry; first `npm trust`
 commands prompt for an interactive 2FA challenge).
 
+### Release notes
+
+Every release's notes are hand-written in `RELEASE_NOTES.md` at the repo root, headed
+`# tumwater <version>`: succinct bullets, one line each, grouped under `## …` headings
+(Highlights, Fixes, CLI, Build and tests), each saying what changed since the last release
+and why it matters. The Release workflow prepends them to the generated changelog. Write
+them before cutting, and re-head the file for the next version after cutting — the
+workflow refuses a tag whose notes are missing, empty, or still headed with another
+version.
+
 ## Checking rendered output by hand
 
 Two scripts run the compiled build against a seeded fake team rather than through the

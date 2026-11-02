@@ -67,12 +67,14 @@ test("the README leads with the token warning", () => {
   );
 });
 
-test("every release prepends the token warning", () => {
+test("every release prepends the token warning and the hand-written notes", () => {
   const yml = fs.readFileSync(
     new URL("../../.github/workflows/release.yml", import.meta.url),
     "utf8",
   );
   assert.ok(yml.includes("--generate-notes"), "release.yml must keep --generate-notes");
-  assert.ok(yml.includes('--notes "$RELEASE_WARNING"'), "release.yml must pass --notes with RELEASE_WARNING");
+  assert.ok(yml.includes('--notes "$notes"'), "release.yml must pass the composed --notes");
+  assert.ok(yml.includes("cat RELEASE_NOTES.md"), "release.yml must read RELEASE_NOTES.md");
   assert.ok(yml.includes("billion tokens a day or more"), "release.yml's warning must state the billion-token figure");
+  assert.ok(yml.includes("Require release notes for this tag"), "release.yml must guard the notes before publishing");
 });

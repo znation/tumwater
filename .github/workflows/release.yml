@@ -24,6 +24,15 @@ jobs:
         run: |
           git config --global user.name "tumwater release"
           git config --global user.email "release@tumwater.local"
+      # Notes are hand-written bullets in RELEASE_NOTES.md and are prepended to the generated
+      # changelog. Refuse a tag whose notes are missing, empty, or still headed with another
+      # version — so a forgotten notes update fails here in seconds instead of publishing a
+      # release that repeats the previous one's notes.
+      - name: Require release notes for this tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          test -s RELEASE_NOTES.md || { echo "RELEASE_NOTES.md is missing or empty — write the notes for ${GITHUB_REF_NAME}." >&2; exit 1; }
+          grep -qx "# tumwater $version" RELEASE_NOTES.md || { echo "RELEASE_NOTES.md must start with '# tumwater $version' — update it for ${GITHUB_REF_NAME}." >&2; exit 1; }
       - run: npm ci
       # setup-node writes `always-auth=false` into its temp .npmrc (its input default);
       # npm 11 warns "Unknown user config" on every invocation and the warning leaks into
@@ -58,4 +67,7 @@ jobs:
             > start, and watch actual spend with `tumwater report`.
         run: |
           npm pack
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --notes "$RELEASE_WARNING" tumwater-*.tgz
+          # `--notes` is prepended to the generated notes, so the warning leads and the
+          # hand-written bullets follow it, ahead of the generated Full Changelog link.
+          notes=$(printf '%s\n\n' "$RELEASE_WARNING"; cat RELEASE_NOTES.md)
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --notes "$notes" tumwater-*.tgz
