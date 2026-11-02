@@ -4,10 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { mainRedHealNote, mainRedHealPrompt, mainTipVerdict, queueCulpritHeal } from "../src/baseline/main-red.js";
 import { createMainWatch } from "../src/baseline/main-watch.js";
-import { queuedRolePrompts } from "../src/inbox/inbox.js";
+import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { shortSha } from "../src/text/format.js";
 import { roleInboxDir } from "../src/paths.js";
-import { mainRedHolds, warningMessages } from "./fixtures/log-fixtures.js";
+import { eventsOfType, mainRedHolds, warningMessages } from "./fixtures/log-fixtures.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { baselineFixture, fakeNpm } from "./fixtures/runner-fixtures.js";
 import { headSha, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -54,14 +54,91 @@ test("a failing set queues one heal prompt in any order, and queues another afte
     fs.writeFileSync(green, "");
     fs.rmSync(swap);
     newCommit();
-    // Settle a green poll of the main watch: it clears the heal key (INV-AZ2).
+    // Settle a green poll of the main watch: it clears the heal key (INV-AZ2) and drops the
+    // waiting heal prompt, whose red commit the green tip contains (INV-AZ5).
     await watchAt(watch, root);
-    assert.equal(queuedRolePrompts(root, "ci").length, 1, "green main queues nothing");
+    assert.equal(queuedRolePrompts(root, "ci").length, 0, "green main drops the waiting prompt");
 
     fs.rmSync(green);
     newCommit();
     assert.ok(await mainRedHealNote(root, "coverage", wt));
-    assert.equal(queuedRolePrompts(root, "ci").length, 2, "the set returning after green is healed again");
+    assert.equal(queuedRolePrompts(root, "ci").length, 1, "the set returning after green is healed again");
+  } finally {
+    restore();
+  }
+});
+
+test("a heal prompt for a new failing set replaces the heal prompt waiting, and other prompts stay", async () => {
+  const second = path.join(tmpdir(), "second");
+  const script = `if [ -e ${second} ]; then echo '✖ replace-beta (1ms)'; else echo '✖ replace-alpha (1ms)'; fi; exit 1`;
+  const { root, wt } = baselineFixture("coverage", script);
+  const restore = fakeNpm(script);
+  let n = 200;
+  const newCommit = (): string => {
+    fs.writeFileSync(path.join(root, "index.js"), `// ${++n}\n`);
+    sh(root, "git", "add", "-A");
+    sh(root, "git", "commit", "-q", "-m", `commit-${n}`);
+    sh(wt, "git", "reset", "--hard", "main");
+    return mainSha(root);
+  };
+  try {
+    const first = newCommit();
+    assert.ok(await mainRedHealNote(root, "coverage", wt));
+    enqueueRolePrompt(root, "ci", "Look at the e2e tier when you get a chance.");
+
+    fs.writeFileSync(second, "");
+    const next = newCommit();
+    assert.ok(await mainRedHealNote(root, "coverage", wt));
+    assert.deepEqual(
+      queuedRolePrompts(root, "ci"),
+      ["Look at the e2e tier when you get a chance.", mainRedHealPrompt(next)],
+      "the new red's prompt took the older one's place; the operator's prompt stayed",
+    );
+    const dropped = eventsOfType(root, "prompt_cancelled");
+    assert.equal(dropped.length, 1);
+    assert.equal(dropped[0]?.source, "ci");
+    assert.ok(String(dropped[0]?.preview).includes(shortSha(first)), String(dropped[0]?.preview));
+  } finally {
+    restore();
+  }
+});
+
+test("queueCulpritHeal replaces the heal prompt waiting, so a long red leaves ci one prompt", () => {
+  const { root } = baselineFixture("coverage", "echo ok");
+  for (const c of ["a", "b", "c"]) {
+    const sha = c.repeat(40);
+    queueCulpritHeal(root, sha, { culprit: sha, failingTests: [`culprit-${c}`] });
+  }
+  const queued = queuedRolePrompts(root, "ci");
+  assert.equal(queued.length, 1, queued.join("\n"));
+  assert.ok(queued[0]?.startsWith(mainRedHealPrompt("c".repeat(40))), queued.join("\n"));
+});
+
+test("a green main drops the waiting heal prompts for reds it contains and keeps the rest", async () => {
+  // The pile-up a build without the replacement left behind (2026-11-01: 69 heal prompts for one
+  // long red): ci's hand-off finding main green drops every heal prompt whose red commit the green
+  // tip contains, keeps one naming a commit main does not contain, and keeps other prompts.
+  const { root, wt } = baselineFixture("coverage", "exit 0");
+  const restore = fakeNpm("exit 0");
+  try {
+    const seed = mainSha(root);
+    fs.writeFileSync(path.join(root, "index.js"), "// green\n");
+    sh(root, "git", "add", "-A");
+    sh(root, "git", "commit", "-q", "-m", "green tip");
+    const tip = mainSha(root);
+    sh(wt, "git", "reset", "--hard", "main");
+    const elsewhere = sh(root, "git", "commit-tree", `${tip}^{tree}`, "-p", tip, "-m", "not on main");
+    enqueueRolePrompt(root, "ci", mainRedHealPrompt(seed));
+    enqueueRolePrompt(root, "ci", mainRedHealPrompt(tip, { culprit: seed, failingTests: ["drop-me"] }));
+    enqueueRolePrompt(root, "ci", "Look at the e2e tier when you get a chance.");
+    enqueueRolePrompt(root, "ci", mainRedHealPrompt(elsewhere));
+
+    assert.equal(await mainRedHealNote(root, "coverage", wt), undefined, "main is green");
+    assert.deepEqual(queuedRolePrompts(root, "ci"), [
+      "Look at the e2e tier when you get a chance.",
+      mainRedHealPrompt(elsewhere),
+    ]);
+    assert.equal(eventsOfType(root, "prompt_cancelled").length, 2);
   } finally {
     restore();
   }

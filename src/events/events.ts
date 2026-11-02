@@ -56,7 +56,7 @@ export interface HarnessEvent {
     | "orchestrator_start"
     | "orchestrator_stop" // carries cause (restart, once, signal or error); events logged before the field existed carry none
     | "prompt_enqueued"
-    | "prompt_cancelled" // a queued prompt was removed before the director ran it (tumwater prompt --cancel)
+    | "prompt_cancelled" // a queued prompt was removed before a run took it (tumwater prompt --cancel; or ci's heal prompt replaced by a newer one or dropped by a green main, src/baseline/main-red.ts)
     | "prompt_edited" // a queued prompt's text was rewritten in place (tumwater prompt --edit)
     | "prompt_topped" // a queued prompt was moved to the front of its role's inbox (tumwater prompt --top)
     | "prompt_taken" // a run dequeued a queued user prompt to run it (carries `run` and `preview`)

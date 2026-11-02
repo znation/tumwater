@@ -1,5 +1,7 @@
+import path from "node:path";
 import { baseRoleOf } from "../roles/runner-ids.js";
-import { enqueueRolePrompt } from "../inbox/inbox.js";
+import { enqueueRolePrompt, queuedRolePromptRecords } from "../inbox/inbox.js";
+import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { liveConfig } from "../config/config.js";
 import { mergeCommandOf, rerunCommandOf } from "../build/build-check-detect.js";
 import { canRerun, rerunCommandLine, rerunTests } from "../build/build-check-rerun.js";
@@ -41,7 +43,8 @@ let lastMainRedSha: string | null = null;
  * names, or the red SHA when the red names none. Two red commits with the same failing set send
  * one heal prompt, not one per commit; a green main observed by the ci handoff
  * (`mainRedHealNote`) or the main watch (`clearHealKeyOnGreen`) clears it, so a set that
- * returns after green is healed again. */
+ * returns after green is healed again. The key is per process; what bounds ci's inbox across
+ * restarts is queueHealPrompt's replacement of a waiting heal prompt. */
 let lastHealKey: string | null = null;
 
 /** The failing tests a red verdict names, when the list is complete — non-empty and short of
@@ -67,7 +70,8 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
  * lastMainRedSha) so the ci handoff (`mainRedHealNote`) and mainTipVerdict share one guard:
  * whichever observes the red first logs it, the other stays silent. `foundBy` is the role
  * whose path verified the red — when that role is not ci itself, one prompt is enqueued to
- * ci's own inbox so the healer runs on the orchestrator's next poll instead of waiting out
+ * ci's own inbox (replacing a heal prompt already waiting there, queueHealPrompt) so the
+ * healer runs on the orchestrator's next poll instead of waiting out
  * its own interval or deferral; ci finding its own red skips the enqueue because its running
  * run already carries the note and IS the heal (and enqueuing from inside it would queue a
  * second run). A queued per-role prompt makes the role due by itself (`isEligible`,
@@ -105,7 +109,7 @@ function warnMainRedOnce(
   lastHealKey = healKey;
   if (baseRoleOf(foundBy) !== "ci") {
     try {
-      enqueueRolePrompt(root, "ci", mainRedHealPrompt(red.sha));
+      queueHealPrompt(root, mainRedHealPrompt(red.sha));
     } catch (err) {
       // Clear the key so a later verification retries the heal. lastMainRedSha stays set, so a
       // second call for this same SHA still returns early: the retry comes with the next red
@@ -126,7 +130,7 @@ export function mainRedHealPrompt(
   sha: string,
   detail?: { culprit: string; failingTests: readonly string[]; outputTail?: readonly string[]; rerun?: string },
 ): string {
-  const base = `Main was reported red at commit ${shortSha(sha)}. Verify main is green now; if it is still red, reproduce the failure and land the fix.`;
+  const base = `${HEAL_PROMPT_OPENING}${shortSha(sha)}. Verify main is green now; if it is still red, reproduce the failure and land the fix.`;
   if (!detail) return base;
   const tests = detail.failingTests.length > 0 ? ` Failing: ${detail.failingTests.join("; ")}.` : "";
   const rerun = detail.rerun ? ` ${rerunAdvice(detail.rerun)}` : "";
@@ -138,6 +142,64 @@ export function mainRedHealPrompt(
  * for reproducing them and for proving the fix, instead of the whole suite. */
 function rerunAdvice(command: string): string {
   return `Run only the failing tests, to reproduce them and again to prove the fix, with: ${command}`;
+}
+
+/** How every heal prompt opens: mainRedHealPrompt writes it, and queuedHealPrompts recognizes a
+ * waiting heal prompt in ci's inbox by it and reads back the SHA that follows. */
+const HEAL_PROMPT_OPENING = "Main was reported red at commit ";
+
+/** The heal prompts waiting in ci's inbox, oldest first: each queue file's basename and the
+ * short SHA it was reported red at. Every other prompt in the inbox (an operator's, a resume's
+ * re-queued non-heal request) is left out. An inbox that cannot be listed is warned and reads
+ * as holding none. */
+function queuedHealPrompts(root: string): Array<{ file: string; sha: string }> {
+  try {
+    return queuedRolePromptRecords(root, "ci").flatMap((e) => {
+      if (!e.text.startsWith(HEAL_PROMPT_OPENING)) return [];
+      const sha = /^[0-9a-f]+(?=\.)/.exec(e.text.slice(HEAL_PROMPT_OPENING.length))?.[0];
+      return sha ? [{ file: e.file, sha }] : [];
+    });
+  } catch (err) {
+    warnEventBestEffort(root, TUMWATER_SOURCE, `could not list ci's inbox for waiting heal prompts: ${errorMessage(err)}`);
+    return [];
+  }
+}
+
+/** Remove waiting heal prompts from ci's inbox, each logged as a prompt_cancelled under ci
+ * (cancelQueuedFile). Best-effort: a prompt that cannot be removed is warned and stays queued,
+ * so the heal just queued or the green just settled never fails on it. */
+function dropHealPrompts(root: string, files: readonly string[]): void {
+  for (const file of files) {
+    try {
+      cancelQueuedFile(root, "ci", file);
+    } catch (err) {
+      warnEventBestEffort(root, TUMWATER_SOURCE, `could not drop the stale heal prompt ${file} from ci's inbox: ${errorMessage(err)}`);
+    }
+  }
+}
+
+/** Queue `prompt` for the ci healer in place of every heal prompt already waiting. A waiting one
+ * names an older red, and the healer verifies main as it is now whichever prompt it reads, so
+ * one waiting heal prompt is enough: without the replacement each red commit on a long red
+ * added one, and a healer that clears one per run fell 69 behind (2026-10-30 to 11-01). The new
+ * prompt is written first, so a write that fails throws with the older prompts still queued. */
+function queueHealPrompt(root: string, prompt: string): void {
+  const queued = path.basename(enqueueRolePrompt(root, "ci", prompt));
+  dropHealPrompts(root, queuedHealPrompts(root).filter((p) => p.file !== queued).map((p) => p.file));
+}
+
+/** Drop each heal prompt waiting in ci's inbox whose red commit `greenSha` contains: main has
+ * passed its check since that red, so the run the prompt would start could only find main
+ * green. A prompt naming a commit `greenSha` does not contain (a red reported on a newer tip)
+ * stays queued. `wt` is any checkout of the repository, for the ancestry check. Called beside
+ * clearHealKeyOnGreen by the main watch's settled green and the ci hand-off's own green.
+ * Never throws. */
+export async function dropHealPromptsCoveredBy(root: string, wt: string, greenSha: string): Promise<void> {
+  const covered: string[] = [];
+  for (const { file, sha } of queuedHealPrompts(root)) {
+    if (await isMergedInto(wt, sha, greenSha)) covered.push(file);
+  }
+  dropHealPrompts(root, covered);
 }
 
 /** The command line that re-runs `red`'s named failures on their own (rerunCommandLine), or
@@ -156,7 +218,8 @@ function healRerunLine(
 /** Queue the heal prompt for ci with the culprit's detail: the one way a named red-main culprit
  * is answered (Forward, never back, part 4/6): the watch's onCulprit hand-off routes through
  * this, and nothing is ever reverted. (The ci gate's own red-main hand-off is the separate
- * direct `enqueueRolePrompt` in warnMainRedOnce.) Never throws: a prompt that cannot be
+ * queueHealPrompt call in warnMainRedOnce; both replace a heal prompt already waiting.) Never
+ * throws: a prompt that cannot be
  * queued (an unwritable inbox) is warned, like that hand-off guard in warnMainRedOnce — so
  * the watch's onCulprit (whose caller discards the result) cannot derail a watch run or end
  * the orchestrator. */
@@ -172,7 +235,7 @@ export function queueCulpritHeal(
 ): void {
   try {
     const rerun = healRerunLine(root, liveConfig(root), { failingTests: [...detail.failingTests], failingTestFiles: detail.failingTestFiles });
-    enqueueRolePrompt(root, "ci", mainRedHealPrompt(tip, { ...detail, ...(rerun ? { rerun } : {}) }));
+    queueHealPrompt(root, mainRedHealPrompt(tip, { ...detail, ...(rerun ? { rerun } : {}) }));
   } catch (err) {
     warnEventBestEffort(root, TUMWATER_SOURCE, `could not queue the heal prompt for ci: ${errorMessage(err)}`);
   }
@@ -213,7 +276,10 @@ export async function mainRedHealNote(root: string, role: string, wt: string): P
     ? { baseline: await watchedBaseline(wt) }
     : await checkMainBaseline(wt, config, baselineCheckLogger(root, role));
   const red = baseline.baseline;
-  if (red?.status === "green") clearHealKeyOnGreen();
+  if (red?.status === "green") {
+    clearHealKeyOnGreen();
+    await dropHealPromptsCoveredBy(root, wt, red.sha);
+  }
   if (red?.status !== "red") return undefined;
   warnMainRedOnce(root, red, role);
   return buildMainRedNote(red.sha, red.script, failureHeadline(red.outputTail), red.outputTail, healRerunLine(wt, config, red));

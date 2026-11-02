@@ -271,7 +271,10 @@ never has to wait a parked check out.
   merge waits for the watch. On a red tip it names that head as the culprit and queues ci's
   heal prompt (Forward, never back, part 4/6): the same `mainRedHealPrompt` wording a red-main
   hold uses — `Main was reported red at commit <sha>; verify main is green now; if it is still
-  red, reproduce the failure and land the fix` — naming the commit and the failing tests. Nothing
+  red, reproduce the failure and land the fix` — naming the commit and the failing tests. A new
+  heal prompt replaces the one already waiting in ci's inbox, and a green tip drops the waiting
+  heal prompts for reds it contains, so ci never works through a backlog of reds main has
+  already passed. Nothing
   is ever taken off main for a red tip, and no revision is handed back or parked for one; the
   only way a commit leaves main is the operator's own deliberate `tumwater revert <sha>`.
   A main left red over 30 minutes is surfaced: `tumwater doctor`'s `main's check` row and the

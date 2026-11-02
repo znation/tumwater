@@ -1,7 +1,7 @@
 import { distinctOrdered } from "../collections.js";
 import { checkMainBaseline, settleRedByRerun } from "./main-baseline.js";
 import { canRerun, rerunTests } from "../build/build-check-rerun.js";
-import { baselineCheckLogger, clearHealKeyOnGreen, withMainTipWorktree } from "./main-red.js";
+import { baselineCheckLogger, clearHealKeyOnGreen, dropHealPromptsCoveredBy, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
 import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
@@ -361,11 +361,12 @@ export function createMainWatch(
       // names the whole tip as the culprit, so the two red kinds are judged independently.
       await watchRules(wt, previous, baseline.sha);
       // A settled non-red verdict (a green, or a red naming only quarantined tests) clears the
-      // heal-dedup key, so a failing set that returns after a green main is healed again. A
-      // settled red verdict below does NOT clear it: the heal-dedup key stays set while main
-      // is red.
+      // heal-dedup key, so a failing set that returns after a green main is healed again, and
+      // drops the heal prompts still waiting for a red this tip has passed. A settled red
+      // verdict below does NOT clear it: the heal-dedup key stays set while main is red.
       if (!red) {
         clearHealKeyOnGreen();
+        await dropHealPromptsCoveredBy(root, wt, baseline.sha);
         redSpellOpeners.delete(root); // a green closes the red spell; the next red names its own opener
         return;
       }

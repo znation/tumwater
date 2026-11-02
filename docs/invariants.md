@@ -3374,6 +3374,24 @@ opener blames the opener, not the newest tip"; `test/status-polls.test.ts` — "
 naming the open spell's opener carries red detail even when it is not the newest tip" and "a
 main_culprit whose spell a later passing check closed carries no red detail".
 
+### INV-AZ5: ci's inbox holds at most one heal prompt, and a green main drops the ones it passed
+
+**Guarantee.** Queueing a heal prompt (the culprit hand-off or a red-main hold) removes every
+heal prompt already waiting in ci's inbox, so a long red leaves ci one prompt to act on, not one
+per red commit. A green main, settled by the main watch or found by the ci hand-off, drops every
+waiting heal prompt whose red commit the green tip contains, and keeps one naming a commit it
+does not contain. Each removal logs a `prompt_cancelled` under ci; other prompts in ci's inbox
+are never touched. The cap holds across restarts because it reads the inbox, not process memory.
+
+**Binds.** `src/baseline/main-red.ts` (`queueHealPrompt`, `dropHealPromptsCoveredBy`,
+`queuedHealPrompts`, `mainRedHealNote`); `src/baseline/main-watch.ts` (`watchOnce`).
+
+**Pinned by.** `test/main-red-heal.test.ts` — "a heal prompt for a new failing set replaces the
+heal prompt waiting, and other prompts stay", "queueCulpritHeal replaces the heal prompt
+waiting, so a long red leaves ci one prompt", "a green main drops the waiting heal prompts for
+reds it contains and keeps the rest", and "a failing set queues one heal prompt in any order,
+and queues another after main turns green".
+
 ## Maintenance allowance: maintenance merges stop at the rolling-day allowance, counted from the event log
 
 `src/gates/maintenance-quota-gates.ts` caps code-maintenance merges in a rolling 24 h window:
