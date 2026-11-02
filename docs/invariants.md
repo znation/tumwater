@@ -3773,15 +3773,18 @@ warns and records nothing instead of throwing".
 
 ### INV-BI6: a quarantine read-modify-write loses no concurrent writer's update
 
-**Guarantee.** Every read-modify-write of `quarantine.json` — `quarantineTests`,
-`releaseQuarantinedTest`, `markQuarantineFiled`, `releaseQuarantine` — holds the cross-process
-`quarantine.lock` for the whole read-and-rewrite, so a writer in the orchestrator (the main-watch
+**Guarantee.** Every WRITE to `quarantine.json` — `quarantineTests`, `releaseQuarantinedTest`,
+`markQuarantineFiled`, and `releaseQuarantine` when it actually releases — holds the
+`quarantine.lock` for its whole read-and-rewrite, so a writer in the orchestrator (the main-watch
 settlement or the review gate) and a writer in a separate `tumwater quarantine --release` process
 (CLI, TUI, GUI) can never interleave: no release is overwritten back into the list, and no newly
 quarantined flake is dropped by a last-writer overwrite. An update a write cannot land is still
-warned (INV-BI5), never silently lost.
+warned (INV-BI5), never silently lost. `releaseQuarantine` makes its release DECISION without the
+lock, so a steady-state poll (nothing releasable) takes no lock at all; the decision is a pure
+read, so a stale one can only DELAY a release to the next poll — it can never drop a concurrent
+writer's update, because the actual write still recomputes under the lock from a fresh read.
 
-**Binds.** `src/review/known-flakes.ts` (`withQuarantineStore`); `src/paths.ts`
+**Binds.** `src/review/known-flakes.ts` (`withQuarantineStore`, `releaseQuarantine`); `src/paths.ts`
 (`quarantineLockPath`).
 
 **Pinned by.** `test/known-flakes-quarantine.test.ts` — "quarantine: a --release in another process

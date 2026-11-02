@@ -19,6 +19,7 @@ import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { parseEntryDetails } from "../backlog/backlog-md.js";
 import { readTextOrNull } from "../files/files.js";
 import { quarantineLockPath, quarantinePath } from "../paths.js";
@@ -113,6 +114,30 @@ export interface QuarantineEntry {
 
 /** How many quarantined tests are kept; the oldest by lastSeen fall off. */
 export const QUARANTINE_MAX = 100;
+
+/** BUGS.md's `## Open` titles per file, stat-keyed: the main watch's settleQuarantine polls
+ * releaseQuarantine on every orchestrator poll (src/orchestrator/orchestrator.ts POLL_MS), and
+ * the `## Open` parse is what made each poll re-read and re-parse the whole file while any
+ * test was quarantined. A BUGS.md whose stat (dev/ino/mtime/size) is unchanged reads as the
+ * same open titles; a filing commit or an operator edit changes it, so the next poll re-parses —
+ * one stat per poll in steady state. */
+const openTitlesByFile = new Map<string, StatKeyedValue<Set<string>>>();
+
+/** The headings under BUGS.md's `## Open` for `root`, or null when BUGS.md is missing or
+ * unreadable — the no-data the release rule treats as "release nothing" (INV-BI4). */
+function openBugsOf(root: string): Set<string> | null {
+  const file = path.join(root, "BUGS.md");
+  return cachedByStat(
+    openTitlesByFile,
+    file,
+    file,
+    () => {
+      const md = readTextOrNull(file);
+      return md === null ? null : new Set(parseEntryDetails(md, "Open").map((e) => e.title));
+    },
+    (titles) => new Set(titles),
+  );
+}
 
 /** The quarantine list, a malformed file or entry reading as no data. */
 export function loadQuarantine(root: string): QuarantineEntry[] {
@@ -232,16 +257,35 @@ export function markQuarantineFiled(root: string, bugs: ReadonlyMap<string, stri
 }
 
 /** Release the quarantined tests whose filed BUGS.md entry is no longer under `## Open`; a later
- * flake of one puts it back. Returns the released tests. A missing BUGS.md releases nothing. */
+ * flake of one puts it back. Returns the released tests. A missing BUGS.md releases nothing.
+ *
+ * The decision (which entries are releasable) is read WITHOUT the store lock, and only when it
+ * names at least one release does the read-and-rewrite take the lock (INV-BI6). settleQuarantine
+ * polls this on every orchestrator poll, so the steady state — something quarantined whose filed
+ * bug is still open, or nothing quarantined — skips the cross-process lock entirely; taking it
+ * on a no-op poll cost a lock round-trip every poll. Skipping it is safe because no concurrent
+ * writer can turn a "keep" into a "release" in a way a skipped lock would drop: quarantineTests
+ * only adds or bumps count/lastSeen, releaseQuarantinedTest only removes, and markQuarantineFiled
+ * only sets a still-open bug (which the entry is not releasable for yet) — so a stale lock-free
+ * decision can only DELAY a release to the next poll, never miss a concurrent writer's update.
+ * Under the lock the release is recomputed from a fresh read, so the rewrite never drops an
+ * update that landed between the lock-free read and the lock. */
 export function releaseQuarantine(root: string): string[] {
+  const entries = loadQuarantine(root);
+  if (entries.length === 0) return [];
+  const open = openBugsOf(root);
+  if (open === null) return [];
+  if (!entries.some((e) => e.bug !== "" && !open.has(e.bug))) return [];
+  // Something is (probably) releasable: the read-and-rewrite takes the store lock and recomputes
+  // from a fresh read, so a markQuarantineFiled that landed after the lock-free read is not
+  // clobbered by a release decided on the older state (INV-BI6).
   return withQuarantineStore(root, () => {
-    const entries = loadQuarantine(root);
-    const md = readTextOrNull(path.join(root, "BUGS.md"));
-    if (md === null || entries.length === 0) return [];
-    const open = new Set(parseEntryDetails(md, "Open").map((e) => e.title));
-    const released = entries.filter((e) => e.bug !== "" && !open.has(e.bug));
+    const current = loadQuarantine(root);
+    const currentOpen = openBugsOf(root);
+    if (currentOpen === null) return [];
+    const released = current.filter((e) => e.bug !== "" && !currentOpen.has(e.bug));
     if (released.length === 0) return [];
-    saveQuarantine(root, entries.filter((e) => !released.includes(e)));
+    saveQuarantine(root, current.filter((e) => !released.includes(e)));
     return released.map((e) => e.test);
   });
 }
