@@ -25,7 +25,7 @@ import {
   writeMergeOutcome,
 } from "../src/merge/merge-slot.js";
 import { eventsLogPath, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
-import { refSha } from "../src/git/git.js";
+import { refSha, setRef } from "../src/git/git.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -40,7 +40,7 @@ import type { MergeEntry } from "../src/merge/merge-queue.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
-import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
+import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
@@ -533,6 +533,46 @@ test("a foreign changes shape or a null record degrades instead of crashing a me
   const after = mergeChanges(readMergeMarker(root)!);
   assert.deepEqual(after.map((c) => c.role), ["y"]);
   assert.equal(after[0]!.status, "approved");
+});
+
+test("a queued merge's record names the gate's pre-check stage while it runs", async () => {
+  const root = makeRepo();
+  // A pinned change ahead of main, exactly what a run leaves behind for the pipeline.
+  const sha = pinOffMain(
+    root,
+    (d) => fs.appendFileSync(path.join(d, "seed.txt"), "the work\n"),
+    "the work",
+  );
+  await setRef(root, mergeRefName("improve"), sha);
+  const entry: MergeEntry = { role: "improve", sha, run: 3, summary: "the work", enqueuedAt: Date.now() };
+  enqueueMerge(root, entry);
+
+  // Every observation point appends the marker's stage as the observers would read it. Since
+  // part 4l/3 ("Every commit is verified on main") the merge slot's in-lock build re-check is
+  // gone: a merge is a rebase and a fast-forward, so the only build check a queued merge's
+  // record names is the verification's gate pre-check (then the fast-forward). With no pre-merge
+  // reviewer, the deterministic gate approves on the green pre-check and every merged commit is
+  // reviewed after landing (part 3d/3). The pinned change moves main by a file edit — the gate's
+  // pre-check judges the rebased tree and the merge's fast-forward lands it.
+  const rec = path.join(tmpdir(), "stages");
+  const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${mergeStatePath(root)}' | head -n 1`;
+  const config = {
+    ...defaultConfig(),
+    check: {
+      command: `echo "check:$(${stageOf})" >> '${rec}'`,
+    },
+  };
+  const author = makeRoleRunner(root, "improve", config);
+
+  const result = await mergeHead(root, author, config, "improve");
+
+  assert.equal(result, "changed", `the merge succeeds: ${author.state.lastError ?? ""}`);
+  assert.deepEqual(
+    fs.readFileSync(rec, "utf8").trim().split("\n"),
+    ["check:build-check"],
+    "the gate pre-check ran under the build-check stage, and no in-lock re-check runs (part 4l/3)",
+  );
+  assert.equal(readMergeMarker(root), null, "the marker is removed after the outcome");
 });
 
 // The marker is cross-process display state: observers poll it every second while a pipeline

@@ -91,13 +91,11 @@ and one serial merge step merges them, so other roles keep running while a chang
   itself runs no in-lock build re-check (a merge is a rebase and a fast-forward — see below).
   The main watch runs the full check on main's tip after a merge: a break it finds queues the
   red-main heal prompt for the `ci` healer.
-- **Review.** The pre-merge gate is deterministic — the diff rules and the exempt fast path:
-  it rejects, md-only diffs included, an edit to the brief's prompt block or to PRINCIPLES.md
-  from any role but the director and steward, and a change that newly writes a secret
-  environment variable's value, or a credential pi stores in `auth.json`/`models.json`, into a
-  file (INV-G2) — the three findings a later commit cannot repair. It runs no build check
-  (Subtract part 3b/7), so main has exactly one full check per merged commit, the main watch's
-  post-landing one. A conflict marker, a
+- **Review.** The pre-merge gate is deterministic — the diff rules, the exempt fast path and
+  the build pre-check: it rejects, md-only diffs included, an edit to the brief's prompt block
+  or to PRINCIPLES.md from any role but the director and steward, and a change that newly writes
+  a secret environment variable's value, or a credential pi stores in `auth.json`/`models.json`,
+  into a file (INV-G2) — the three findings a later commit cannot repair. A conflict marker, a
   false fix claim on an exempt diff and a broken backlog structure can all be repaired by a
   later commit, so the gate lets them land and the main watch reports each on main's tip after
   it lands; a markdown-only diff is exempt; and a healthy change approves with no
@@ -109,6 +107,7 @@ and one serial merge step merges them, so other roles keep running while a chang
   a loaded box is not killed at the wall by load it does not control. A reviewer still making
   progress at that deadline gets one extension of the same length before it is killed. One that
   runs over fails without a strike.
+  An already-approved change is not judged again; its check still runs.
 - **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear. A
   merge is a rebase and a fast-forward: no in-lock build re-check runs, because the pre-merge
   verify gate judged the tree before it reached the merge slot and the main watch verifies every
@@ -130,7 +129,8 @@ and one serial merge step merges them, so other roles keep running while a chang
   merges approved changes in queue order, without waiting on a slower review ahead of them.
 
 Errors keep the commit for re-review, up to three strikes. `tumwater abort --role <id>`
-discards a role's in-flight merge — an abort never has to wait a parked run out.
+discards a role's in-flight merge and stops the change's gate build check mid-run — an abort
+never has to wait a parked check out.
 
 ## Scheduling
 
@@ -198,7 +198,7 @@ discards a role's in-flight merge — an abort never has to wait a parked run ou
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
   once: pipeline, merge, batch, and main-baseline checks share it, the rest queue, and merges go
   first. A scoped check whose permit wait reaches 30 s logs a `check_wait` event (role, scope,
-  waitedMs, and the checks holding the slots and the cap when it parked), and `tumwater doctor`'s "check contention" row sums the last 24 h, names what the waits sat behind (merge or batch checks, or the main baseline), and warns at
+  waitedMs, and the checks holding the slots and the cap when it parked), and `tumwater doctor`'s "check contention" row sums the last 24 h, names what the waits sat behind (merge, gate or batch checks, or the main baseline), and warns at
   10 minutes, naming `maxConcurrentChecks` to raise. `tumwater report` and the dashboard's Report
   tab show the per-day median of those waits as "Check wait median" (team scope only).
   While a check runs or waits, `tumwater status`, the TUI header and the dashboard's team panel
@@ -282,8 +282,8 @@ discards a role's in-flight merge — an abort never has to wait a parked run ou
   how long main has had no passing full check, the sha it has been red since, and its newest
   failing test.
 - Every change now merges with no reviewer run before it — the gate is deterministic (see
-  **Review.**) — and is reviewed after merging: its change passes the deterministic rejects, then
-  merges. The `merged` commit
+  **Review.**) — and is reviewed after merging: its change passes the deterministic rejects and
+  the gate check, then merges. The `merged` commit
   is recorded in `.tumwater/state/post-review.json`, and the merge poll runs one review at a time
   over `git diff <commit>^ <commit>` when a permit is free (`review_start`, `review_verdict` and
   `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection never reverts:
@@ -298,10 +298,10 @@ discards a role's in-flight merge — an abort never has to wait a parked run ou
   keep draining. The post-merge review queue holds only where that gate's no-role form holds — a
   restart or disk hold, or a hold on the reviewer's provider — and never on the unresolvable
   strong tier, which never reaches the post-merge review queue.
-- A test that fails and then passes on the same tree is quarantined at once: the watch's
-  confirming re-run adds the failing tests that passed on the re-run to
+- A test that fails and then passes on the same tree is quarantined at once: the gate's re-run and
+the watch's confirming re-run each add the failing tests that passed on the re-run to
   `.tumwater/state/quarantine.json` (newest 100). A quarantined test counts as a known failure
-  everywhere: a check failing only known tests goes on, the watch records a red
+  everywhere: a gate or merge check failing only known tests goes on, the watch records a red
   naming only quarantined tests as passed (`quarantined: [tests]`) with no culprit, and such a red
   is never attributed. The watch files one BUGS.md `## Open` entry per newly
   quarantined test, committed on main under the merge and primary-worktree locks (it warns and

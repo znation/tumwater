@@ -1,5 +1,7 @@
 import { deleteRef, headOf, setRef } from "../git/git.js";
 import { mergeRefName, mergeWorktreePath, rejectedRefName, reviewRunSessionDir } from "../paths.js";
+import { tryLeaseSlot } from "../git/worktree-pool.js";
+import { slotCount } from "../config/config.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { mergeToMain } from "./merge-to-main.js";
@@ -15,6 +17,7 @@ import { shortSha } from "../text/format.js";
 import { setMergeStage } from "./merge-slot.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunResult } from "../run/run-outcome.js";
+import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { PriorReview } from "./merge-queue.js";
 import type { WatchWait } from "../baseline/main-red.js";
 
@@ -53,6 +56,10 @@ export interface MergeRequest {
    * (plans/revise-rejected.md part 2/2): carried from the MergeEntry so the re-review sees the
    * prior objections and the interdiff. Absent on a recovery merge. */
   priorReview?: PriorReview;
+  /** The head its verify's gate pre-check ran green on, when it ran one on exactly `sha`
+   * (GateResult.verifiedHead, carried by merge-batch.ts's VerifyVerdict) — so a merge whose
+   * in-lock rebase is a no-op seeds the red-main baseline with the SHA that becomes main. */
+  verifiedHead?: string;
   /** How this change came back after its gate kept it for the main watch's verdict, carried
    * from the MergeEntry (MergeEntry.watchWait) to the gate's attribution. */
   watchWait?: WatchWait;
@@ -69,6 +76,13 @@ export interface MergeScopeContext {
   config: TumwaterConfig;
   /** The task's abort signal, fresh per call. */
   signal(): AbortSignal;
+  /** Whether the reviewer's provider is held: a failed reviewer run's in-place retry waits for
+   * the hold to lift (ReviewContext.reviewHeld). */
+  reviewHeld?(): boolean;
+  /** Test seams for the reviewer's in-place retries (ReviewContext.retries / retryDelayMs);
+   * production callers leave them unset. */
+  reviewRetries?: number;
+  reviewRetryDelayMs?: number;
 }
 
 /** MergerContext: what the merger (merge-batch.ts and merge-core.ts) needs from its owning
@@ -123,6 +137,10 @@ export async function syncPinToMain(
   return { ...req, sha: syncedHead };
 }
 
+/** Set to "0" to run every gate check before its review, as before Fast merge part 12 (a test seam
+ * for the suites that pin the sequential merge stages). */
+const REVIEW_OVERLAP_ENV = "TUMWATER_REVIEW_CHECK_OVERLAP";
+
 /** The ReviewContext for judging merge request `req` in worktree `wt` — the single
  * home of that argument object, shared by reviewPinnedChange's pinned verify and
  * mergeApprovedChange's re-review of a resolved conflict (its recheckResolved callback), so the
@@ -130,9 +148,10 @@ export async function syncPinToMain(
  * (ReviewGateContext and MergerContext) carry the root/mainBranch/config/signal/runGatePi fields
  * this reads. */
 function reviewContextFor(
-  ctx: Pick<ReviewGateContext, "root" | "mainBranch" | "config" | "signal" | "runGatePi">,
+  ctx: Pick<ReviewGateContext, "root" | "mainBranch" | "config" | "signal" | "runGatePi" | "reviewHeld" | "reviewRetries" | "reviewRetryDelayMs">,
   req: MergeRequest,
   wt: string,
+  foldUsage: (run: PiRunResult) => void,
 ): ReviewContext {
   return {
     root: ctx.root,
@@ -146,6 +165,17 @@ function reviewContextFor(
     sessionDir: reviewRunSessionDir(ctx.root, req.role, `${req.runNumber}-${shortSha(req.sha)}`),
     signal: ctx.signal(),
     runGatePi: ctx.runGatePi,
+    foldUsage,
+    // The check overlaps the review unless a test that pins the sequential stages opts out.
+    ...(process.env[REVIEW_OVERLAP_ENV] === "0"
+      ? {}
+      : {
+          leaseCheckSlot: (ref: string) =>
+            tryLeaseSlot(ctx.root, { role: req.role, purpose: "verify-check", ref, slotBudget: slotCount(ctx.config) }),
+        }),
+    ...(ctx.reviewRetries !== undefined ? { retries: ctx.reviewRetries } : {}),
+    ...(ctx.reviewRetryDelayMs !== undefined ? { retryDelayMs: ctx.reviewRetryDelayMs } : {}),
+    ...(ctx.reviewHeld ? { reviewHeld: () => ctx.reviewHeld!() } : {}),
     revisionRound: req.revisionRound,
     priorReview: req.priorReview,
     ...(req.watchWait !== undefined ? { watchWait: req.watchWait } : {}),
@@ -154,19 +184,23 @@ function reviewContextFor(
 
 /** Run one pinned change through the review gate in its leased pool slot `wt` and handle the
  * immediate bookkeeping — the heart of every verify (merge-batch.ts's verifyRequest). Persists the
- * verdict at once and routes the terminal outcomes: aborted (ref kept — fail closed, the next run
- * re-merges it) and rejected (ref deleted — final for this sha). Since Subtract part 3b/7 the
- * gate is deterministic (the diff rules) and runs no build check or model reviewer, so the only
- * outcomes are aborted, rejected, or approved/exempt. Returns the gate result only when the
- * change may be merged, alongside the head to merge it at. An abort that has already fired is
- * observed HERE, before the gate starts: the gate runs no pi (Subtract part 3b/7), so a stopping
- * merge (a restart hand-off past its deadline, BUGS.md 2026-09-23) would otherwise sail through
- * its gate into the check. */
+ * verdict at once, folds the reviewer's usage, and routes
+ * the three terminal outcomes: aborted (ref kept — fail closed, the next run re-merges it),
+ * rejected (ref deleted — final for this sha), and failed (a strike-cap discard — the gate
+ * reports it as `discarded` — deletes the ref; an under-cap failure, a red main's included,
+ * keeps it for the next re-merge). Returns
+ * the gate result only when the change may be merged, alongside the head to merge it at. An
+ * abort that has already fired is observed HERE, before the gate starts, not only by the
+ * gate's pi runs: a gate that short-circuits on an already-approved head (a re-verified change's)
+ * runs no pi at all, and one that does still spends its build pre-check first — so a stopping
+ * merge (a restart hand-off past its deadline, BUGS.md 2026-09-23) would otherwise sail
+ * through its gate into the check. */
 export async function reviewPinnedChange(
   ctx: ReviewGateContext,
   req: MergeRequest,
   wt: string,
   state: RunnerState,
+  foldUsage: (run: PiRunResult) => void,
 ): Promise<GateOutcome> {
   const { root } = ctx;
   const { role } = req;
@@ -182,7 +216,7 @@ export async function reviewPinnedChange(
   // (fail closed) exactly as for an abort mid-review below.
   if (ctx.signal().aborted) return { kind: "result", result: "aborted" };
   const gate = await reviewAheadOfMain(
-    reviewContextFor(ctx, req, wt),
+    reviewContextFor(ctx, req, wt, foldUsage),
     state,
     req.summary,
     req.body,
@@ -212,20 +246,58 @@ export async function reviewPinnedChange(
   // save is best-effort (it warns "could not save the role's state"): a throw here would skip
   // the reviewer's usage fold below, and the merge write-back saves the same state later.
   saveRunnerStateBestEffort(root, state);
-  // The gate runs no model reviewer (Subtract part 3b/7), so there is no reviewer usage to fold.
+  // The reviewer's usage is folded exactly once per attempt: runGatePi folds a RETRIED first
+  // attempt at retry time (stamping the team-wide rate-limit hold promptly, BUGS.md
+  // 2026-10-01), and the final run is folded HERE — not also inside the wiring, which would
+  // count the reviewer twice.
+  if (gate.run) foldUsage(gate.run);
+  // The verdict-recovery follow-up (review.ts) charges to the same role totals as the run
+  // that produced it — one more line here, because a GateResult carries two runs now.
+  if (gate.followUpRun) foldUsage(gate.followUpRun);
+  // The no-re-run nudge turn (review.ts) charges to the same role totals as the run that
+  // produced it — one more line here, because a GateResult carries a third run now.
+  if (gate.nudgeRun) foldUsage(gate.nudgeRun);
 
-  // A rejection is final for this sha: the gate already reset the worktree to main; delete the
-  // ref.
+  // Shutdown/user abort mid-review: fail closed — the ref stays and the next run re-merges it.
+  // The caller routes "aborted" through its own abort handling (which discards the pin too when
+  // the abort was a deliberate user stop).
+  if (gate.aborted) return { kind: "result", result: "aborted" };
+
   if (gate.decision === "rejected") {
+    // The gate already reset this worktree to main; the verdict is final for this sha.
     await discardPin();
     return { kind: "result", result: "rejected" };
   }
 
+  if (gate.decision === "failed" && gate.mainRed) {
+    // Main is red at its tip: nothing judged this diff and nothing is wrong with the reviewer,
+    // so it is main_red, not review_error — the pin stays; the poll's
+    // requeueMainRedPin re-queues it once main's head moves and the watch has not found it red.
+    // A change kept for the watch's verdict (awaitingWatch) is kept the same way, and the
+    // commit it waits on rides along so the re-queue waits for that verdict instead.
+    state.lastError = `gate check failed: ${gate.detail}`;
+    const awaiting = gate.awaitingWatch !== undefined ? { awaitingWatch: gate.awaitingWatch } : {};
+    return { kind: "result", result: "main_red", ...awaiting };
+  }
+
+  if (gate.decision === "failed") {
+    state.lastError = `review failed: ${gate.detail}`;
+    // Strike-cap discard: the gate says so directly (it reset the worktree off the pin) — the
+    // commit is gone and the ref goes too. An under-cap failure — a dead reviewer — keeps the
+    // pin as it is: the gate never commits, so the pin still names the tree the next re-merge
+    // reviews.
+    if (gate.discarded) {
+      await discardPin();
+      return { kind: "result", result: "review_error", discarded: true };
+    }
+    return { kind: "result", result: "review_error" };
+  }
+
   // Approved or exempt: track the pin to the head the verdict judged, so a merge that cannot
-  // finish (conflict/blocked) leaves recovery re-merging that tree, not a stale pin. The gate
-  // runs no build check (Subtract part 3b/7), so the head is the worktree's; an unreadable head
-  // keeps the old pin (fail closed).
-  const sha = await headOf(wt, "HEAD").catch(() => req.sha);
+  // finish (conflict/blocked) leaves recovery re-merging that tree, not a stale pin.
+  // verifiedHead carries it when the pre-check ran green; otherwise the worktree head does. An
+  // unreadable head keeps the old pin (fail closed).
+  const sha = gate.verifiedHead ?? (await headOf(wt, "HEAD").catch(() => req.sha));
   if (sha !== req.sha) {
     await setRef(root, ref, sha);
     req = { ...req, sha };
@@ -343,33 +415,48 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
         // convention as reviewPinnedChange: the reject path records the verdict, resets the
         // worktree to main and logs review_rejected itself; the ref and the lastError are ours.
         const gate = await reviewAheadOfMain(
-          reviewContextFor(ctx, req, resolvedWt),
+          reviewContextFor(ctx, req, resolvedWt, ctx.foldUsage),
           ctx.state,
           req.summary,
           req.body,
           req.highFriction,
         );
+        if (gate.run) ctx.foldUsage(gate.run);
+        if (gate.followUpRun) ctx.foldUsage(gate.followUpRun);
+        if (gate.nudgeRun) ctx.foldUsage(gate.nudgeRun);
         setMergeStage(ctx.root, req.role, "merging");
         saveRunnerStateBestEffort(ctx.root, ctx.state);
+        if (gate.aborted) return { verdict: "retry" };
         if (gate.decision === "approved" || gate.decision === "exempt") {
           return { verdict: "approved" };
         }
-        // A rejection here is a gate rejection too: send the resolved change back to its
-        // author for revision (plans/revise-rejected.md), exactly as a pinned change's
-        // rejection does, then drop this pin. Persist before returning — the state save above
-        // predates this bookkeeping.
-        await recordRejectedChange(
-          ctx.root,
-          req.role,
-          ctx.state,
-          ctx.state.lastReview?.head ?? req.sha,
-          req.revisionRound,
-          req.priorReview?.counts,
-        );
-        saveRunnerStateBestEffort(ctx.root, ctx.state);
-        await deleteRef(ctx.root, mergeRefName(req.role)); // the verdict is final for this pin
-        ctx.state.lastError = "merge failed: conflict resolution rejected on re-review";
-        return { verdict: "rejected" };
+        if (gate.decision === "rejected") {
+          // A rejection here is a gate rejection too: send the resolved change back to its
+          // author for revision (plans/revise-rejected.md), exactly as a pinned change's
+          // rejection does, then drop this pin. Persist before returning — the state save above
+          // predates this bookkeeping.
+          await recordRejectedChange(
+            ctx.root,
+            req.role,
+            ctx.state,
+            ctx.state.lastReview?.head ?? req.sha,
+            req.revisionRound,
+            req.priorReview?.counts,
+          );
+          saveRunnerStateBestEffort(ctx.root, ctx.state);
+          await deleteRef(ctx.root, mergeRefName(req.role)); // the verdict is final for this pin
+          ctx.state.lastError = "merge failed: conflict resolution rejected on re-review";
+          return { verdict: "rejected" };
+        }
+        // A failed gate (dead reviewer, aborted run) is no verdict about the tree: under the
+        // strike cap the pin stays for recovery's re-merge (the gate's own discard fires here as
+        // "discarded", and then the commit is gone anyway).
+        ctx.state.lastError = `merge failed: re-review failed: ${gate.detail}`;
+        if (gate.discarded) {
+          await deleteRef(ctx.root, mergeRefName(req.role));
+          return { verdict: "rejected" };
+        }
+        return { verdict: "retry" };
       },
     },
     wt,

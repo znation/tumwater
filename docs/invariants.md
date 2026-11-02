@@ -4647,8 +4647,8 @@ as a conflict or a failed rebase".
 ### INV-CV2: a resolution whose diff git cannot produce never skips its re-review
 
 **Guarantee.** `resolvedDiffDiverges` throws when either diff fails, rather than comparing an
-empty resolved diff — a subset of any approved one — and merging the resolution without judging
-its diff.
+empty resolved diff, a subset of any approved one, and merging the resolution on the build check
+alone.
 
 **Binds.** `src/merge/merge-diff.ts` (`resolvedDiffDiverges`) and `src/merge/merge-to-main.ts`
 (`mergeToMain`).
@@ -4726,17 +4726,33 @@ instead of skipping its re-review".
 
 **Pinned by.** `test/pi-watchdogs.test.ts` — "a deadline whose checkpoint read the same drained count resumes a run that proves progress in the grace (regression)", "a gate run's extension is one-shot: the second deadline kills it at twice the budget" and "an authoring run is not extended even while it is progressing"; `test/runner-4.test.ts` — the 3500-vs-3000 deadline pin.
 
-## The recovered-pin re-queue: a change kept for the watch is re-queued once the watch's verdict covers its base
+## Gate attribution under the main watch: no full check of the gate's own, and no verdict older than the change's base
+
+### INV-CY1: with the main watch verifying main, a twice-failed gate check is judged from the watch's verdicts, never from a full check of the gate's own
+
+**Guarantee.** When `watchVerifiesMain` holds, a pre-check that fails twice (naming no known main failure and no recorded flake) is judged from the main watch's newest observed verdict at or below main's tip. A verdict that covers the change's base — observed on that commit or on one containing it — answers at once: green rejects the change, red is judged by the failures main does not share (INV-CZ1). A verdict that does not cover the base keeps the change with no strike, its `awaitingWatch` naming the base. An inherited green is never that verdict. Main is asked for the attribution (`mainTipFailures`) only on the retry after a timed-out wait, or on a covered retry that finds no observed verdict at all — by re-running only the gate's failing tests on main's tip when they can be re-run alone, else main's full check.
+
+**Binds.** `src/review/review-precheck.ts` (`gateBuildPrecheck`), `src/baseline/main-red.ts` (`watchedMainVerdict`, `watchVerdictCovering`, `mainTipFailures`), `src/baseline/main-baseline.ts` (`newestObservedBaseline`).
+
+**Pinned by.** `test/review-precheck-watch.test.ts` — "a twice-failed gate whose base the watch checked green is rejected with no run of main's own", "a twice-failed gate whose base the watch checked red is rejected for the failures main does not share", "a twice-failed gate the watch has not caught up with is kept, naming the commit it waits on", "after a covered wait the newest verdict answers even when main moved past it again", "after a timed-out wait the gate runs main's check itself" and "after a timed-out wait the gate re-runs only its failing tests on main's tip, not main's check".
 
 ### INV-CY2: a change kept for the watch is re-queued once the watch's verdict covers its base, or MAIN_RED_VERDICT_WAIT_MS after it was kept, and its gate does not wait twice
 
-**Guarantee.** `requeueMainRedPin` re-queues a `mainRedRetry` that carries `awaitingWatch` as soon as the watch's newest observed verdict at or below main's head covers that commit, whether or not main moved, and otherwise once `MAIN_RED_VERDICT_WAIT_MS` has passed since `waitingSince` (the moment it was kept). The re-queued entry carries `watchWait` (`covered` or `timed_out`) through the verify, and any later re-queue drops it.
+**Guarantee.** `requeueMainRedPin` re-queues a `mainRedRetry` that carries `awaitingWatch` as soon as the watch's newest observed verdict at or below main's head covers that commit, whether or not main moved, and otherwise once `MAIN_RED_VERDICT_WAIT_MS` has passed since `waitingSince` (the moment it was kept). The re-queued entry carries `watchWait` (`covered` or `timed_out`) through the verify to the gate, and any later re-queue drops it.
 
 **Binds.** `src/merge/merge-requeue.ts` (`requeueKeptChange`, `requeueMainRedPin`), `src/merge/merge-core.ts`, `src/merge/merge-verify.ts`, `src/merge/merge-pipeline.ts` (`settleMergeOutcome`), `src/merge/merge-queue.ts` (`MergeEntry.watchWait`), `src/runner/runner-state.ts` (`mainRedRetry.awaitingWatch`).
 
-**Pinned by.** `test/merge-requeue-watch.test.ts` — "a change kept for the watch is re-queued once the watch checks its base, without main moving", "a verdict on a later main commit covers the base; an inherited green does not", "a change kept for the watch is re-queued as timed out once MAIN_RED_VERDICT_WAIT_MS passes" and "a later re-queue drops the entry's watchWait".
+**Pinned by.** `test/merge-requeue-watch.test.ts` — "a change kept for the watch is re-queued once the watch checks its base, without main moving", "a verdict on a later main commit covers the base; an inherited green does not", "a change kept for the watch is re-queued as timed out once MAIN_RED_VERDICT_WAIT_MS passes" and "a later re-queue drops the entry's watchWait"; `test/merge-pipeline-watch.test.ts` — "a change the watch has not caught up with is kept, re-queued once the watch checks its base, then judged".
 
-## The main watch confirms a red tip by re-running only its failing tests
+## Red main: it excuses only its own failures, and its failures are re-run alone
+
+### INV-CZ1: a red main never keeps a change for a failure main does not share
+
+**Guarantee.** A pre-check that fails twice while main's verdict is red is judged against main's failures (the red's named tests, the watch's newest known failures and the quarantined tests): a check that names only those goes on to review; one that names any other test is rejected for those tests, as on a green main; one that names no test is rejected when main's red names its tests, since it failed outside them. Only when neither names a test is the change kept as `main_red` with no strike. A red that names no test is first asked about the change's named tests by re-running them on main's tip, when they can be. A kept `main_red` pin is re-queued as soon as main moves to a head with a verdict, red or green.
+
+**Binds.** `src/review/review-precheck.ts` (`gateBuildPrecheck`, `attributeOnRedMain`), `src/baseline/main-red.ts` (`rerunAtMainTip`), `src/merge/merge-requeue.ts` (`requeueMainRedPin`).
+
+**Pinned by.** `test/review-precheck.test.ts` — "a gate failure of a known failure plus another test is rejected for the other test", "a gate failure naming no test on a main red with named tests is rejected" and "a pre-check that fails twice on a red main fails without a strike and keeps the commit"; `test/review-precheck-watch.test.ts` — "a failing test the re-run finds failing on main's tip too is main's, and the change goes on" and "a twice-failed gate on a red main that names no test is kept, as nothing tells the failures apart"; `test/merge-requeue.test.ts` — "a main_red pin re-queues as soon as main moves to a head cached red".
 
 ### INV-CZ2: the main watch runs the full check at most once per main commit when the failing tests can be re-run alone
 

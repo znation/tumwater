@@ -20,7 +20,7 @@ import { mergeRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { enqueueMerge, headMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner, roleWt, runAbortedDirectorMerge } from "./fixtures/runner-fixtures.js";
 import { mergeHead, mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, headSha, initializedRepo, mainSha, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -475,3 +475,12 @@ test("a failed gate keeps the recovered pinned commit for the next run's retry",
   );
 });
 
+test("a shutdown mid-merge fails closed: the pinned commit survives for next-start recovery", async () => {
+  const repo = await initializedRepo();
+  // Author run (the run prompt): make a change and finish. The director's merge then runs its
+  // gate (the declared check parks until released), and the shutdown aborts it — simulating
+  // Ctrl+C while the MERGE is under its gate. Since merge queue 3/5 the gate runs in the
+  // merge, not the run, so the shutdown hits the merge's signal — the same wiring the
+  // orchestrator's pipeline uses. The park is the deterministic gate check, not the reviewer.
+  await runAbortedDirectorMerge(repo);
+});

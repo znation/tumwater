@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { reviewAheadOfMain } from "../src/review/review.js";
+import { reviewAheadOfMain, reviewRetryDelayMs } from "../src/review/review.js";
 import { aheadOfMain } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -18,14 +18,39 @@ import { gateCtx, gateFixture, reviewGate, ROLE } from "./fixtures/gate-fixtures
 // PATH, covering the gate's deterministic reject and no-run branches (part 3l/3 retired the
 // reviewer-run cases); the parser's own
 // cases live in review-verdict.test.ts (exemption matching in exemptions.test.ts). The gate's
-// deterministic diff rules live in review-precheck-verdict.test.ts; the build pre-check they
-// replaced is gone (Subtract part 3b/7).
+// build pre-check lives in the review-precheck*.test.ts slices (extracted 2026-09-29, split
+// 2026-11-01), on fixtures/precheck-fixtures.ts beside the gate-fixtures.ts this file uses.
 
 
 // ── Gate orchestration (reviewAheadOfMain) ────────────────────────────────────────────────
 // Each fixture is a real git repo whose worktree sits one commit ahead of main, with a fake pi
 // on PATH. A marker file OUTSIDE the worktree records whether the reviewer ran at all (so "no
 // run" branches are asserted, not merely assumed).
+
+test("the review retry delay falls back to the default on a malformed TUMWATER_REVIEW_RETRY_DELAY_MS", () => {
+  // The knob is read through the plain-decimal rule, so a spelling Number() would silently
+  // coerce ("0x1f0" → 496, "1e3" → 1000) or yield NaN ("abc") falls back to the 30 s default
+  // instead of firing the retries back-to-back at ~0 ms; only the context override is 0 in the
+  // gate tests (gateCtx sets retryDelayMs), so this env path is dead without direct coverage.
+  const prior = process.env.TUMWATER_REVIEW_RETRY_DELAY_MS;
+  try {
+    delete process.env.TUMWATER_REVIEW_RETRY_DELAY_MS;
+    assert.equal(reviewRetryDelayMs(undefined), 30_000, "absent knob uses the default");
+    for (const malformed of ["abc", "0x1f0", "1e3", " 30000 "]) {
+      process.env.TUMWATER_REVIEW_RETRY_DELAY_MS = malformed;
+      assert.equal(reviewRetryDelayMs(undefined), 30_000, `${malformed} is not plain decimal, so it falls back`);
+    }
+    process.env.TUMWATER_REVIEW_RETRY_DELAY_MS = "0";
+    assert.equal(reviewRetryDelayMs(undefined), 0, "0 is a valid retry delay");
+    process.env.TUMWATER_REVIEW_RETRY_DELAY_MS = "30000";
+    assert.equal(reviewRetryDelayMs(undefined), 30_000, "a plain decimal is honored");
+    assert.equal(reviewRetryDelayMs(500), 500, "the context override wins over the env");
+  } finally {
+    if (prior === undefined) delete process.env.TUMWATER_REVIEW_RETRY_DELAY_MS;
+    else process.env.TUMWATER_REVIEW_RETRY_DELAY_MS = prior;
+  }
+});
+
 
 test("gate exempts a doc-only diff without running pi", async () => {
   const root = makeRepo();

@@ -1,19 +1,184 @@
-/** The deterministic diff rules the gate rejects on, split from review-precheck.test.ts with the
- * other gate slices. Since Subtract part 3b/7 the gate runs only these rules and approves — it
- * runs no build check and no model reviewer — so this file covers the rules the gate still
- * enforces pre-merge: the gate scope (the three findings a later commit cannot repair) and the
- * watch scope (which also reports the repairable findings). The check's own unit tests live in
- * build-check.test.ts. */
+/** The review gate deciding alone, with no reviewer run: a failing build pre-check rejects with
+ * zero pi runs, naming the script that ran and the failing assertion rather than the stack frame
+ * its tail opens on; a configured check.command gates a repo with no npm install; a green
+ * pre-check approves; and the gate's diff rules run in order, the gate scope keeping only the
+ * three a later commit cannot repair. Part 3l/3 retired the pre-merge reviewer's dedicated
+ * cases, so no case here drives a reviewer run. Split from review-precheck.test.ts (a red
+ * main); the other sibling slices are review-precheck-green.test.ts (a green main or none),
+ * review-precheck-closed.test.ts (a pre-check with no verdict about the tree fails closed) and
+ * review-precheck-watch.test.ts (the attribution when the main watch verifies main). The
+ * check's own unit tests live in build-check.test.ts; the shared scaffolding lives in
+ * fixtures/gate-fixtures.ts and fixtures/precheck-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { reviewAheadOfMain } from "../src/review/review.js";
 import { diffRuleReasons } from "../src/review/diff-rules.js";
-import { headOf } from "../src/git/git.js";
+import { aheadOfMain, headOf } from "../src/git/git.js";
 import { treeDiffFiles } from "../src/git/git-diff.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { commitIn, makeRepo } from "./fixtures/repo-fixtures.js";
-import { ROLE } from "./fixtures/gate-fixtures.js";
+import { defaultConfig } from "../src/config/config.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
+import { readEvents } from "../src/events/event-read.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { commitIn, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
+import { piRanMarker, withPi } from "./fakes/fake-pi.js";
+import { gateCtx, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
+import { buildCheckEvents, gateBuildFixture, seedGreenMain } from "./fixtures/precheck-fixtures.js";
+
+test("gate pre-check rejects a failing build with zero reviewer runs", async () => {
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    "#!/bin/sh\necho 'src/bad.ts(3,5): error TS2345: Argument of type string is not assignable'\nexit 1\n",
+    undefined,
+    "echo ok",
+  );
+  seedGreenMain(root);
+
+  // Any pi run at all touches the marker: none may start — not a fix run, not the reviewer.
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const { state, result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "rejected");
+    assert.ok(!fs.existsSync(marker), "no pi run: the check and main's verdict decided alone");
+    assert.equal(result.run, undefined, "the reviewer never ran");
+    // The failure is re-run once before it is attributed, both runs priced as gate build_check
+    // events; main's fresh re-check (BUGS.md 2026-10-06) passes against the root manifest, so a
+    // baseline run is priced too.
+    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "baseline:passed"]);
+    assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
+    assert.match(result.detail ?? "", /^check failed \(\`npm run build\`\): /);
+    assert.equal(state.lastReview?.verdict, "reject");
+    const reasons = state.lastReview?.reasons ?? [];
+    assert.match(reasons[0] ?? "", /^check failed \(\`npm run build\`\): src\/bad\.ts\(3,5\)/); // header + first output line
+    assert.ok(!reasons.some((r) => r.includes("baseline")), "a green main needs no attribution note");
+    assert.equal(state.unreviewFailures, 0); // a deterministic verdict resets strikes like a model reject
+    const rejected = readEvents(root).find((e) => e.type === "review_rejected");
+    assert.ok(rejected, "the rejection is logged for tumwater logs");
+    assert.match(String(rejected?.reasons), /TS2345/); // the compiler tail rides on the event
+  });
+});
+
+test("a red pre-check on the declared test script rejects with zero pi runs", async () => {
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    "#!/bin/sh\necho '1 failing of 3 tests: assert.equal'\nexit 1\n",
+    "test",
+    "echo ok",
+  );
+  seedGreenMain(root);
+
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const { state, result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "rejected");
+    assert.ok(!fs.existsSync(marker), "no pi run before the reject");
+    assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
+    assert.match(result.detail ?? "", /^check failed \(\`npm run test\`\): /);
+    const reasons = state.lastReview?.reasons ?? [];
+    assert.match(reasons[0] ?? "", /^check failed \(\`npm run test\`\): 1 failing/); // header names the script that ran
+    assert.equal(state.unreviewFailures, 0); // a deterministic verdict resets strikes like a model reject
+  });
+});
+
+test("gate pre-check names the failing assertion, not the stack frame the tail opens on", async () => {
+  // A suite that dies on an unhandled rejection leaves a tail whose window opens mid-stack; the
+  // headline must be the assertion line the suite reported, and the real diff content must
+  // survive — not be skipped as noise (BUGS.md 2026-09-19).
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    [
+      "#!/bin/sh",
+      "cat <<'BUILD_OUT'",
+      "AssertionError [ERR_ASSERTION]: 1 == 2",
+      "at TestContext.<anonymous> (file:///w/dist/test/x.test.js:3:35)",
+      "at Test.runInAsyncScope (node:async_hooks:226:14)",
+      "at Test.run (node:internal/test_runner/test:1397:25)",
+      "at Test.start (node:internal/test_runner/test:1257:17)",
+      "at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)",
+      "generatedMessage: true,",
+      "code: 'ERR_ASSERTION',",
+      "actual: 1,",
+      "expected: 2,",
+      "operator: '==',",
+      "diff: 'simple'",
+      "}",
+      "BUILD_OUT",
+      "exit 1",
+      "",
+    ].join("\n"),
+    "test",
+    "echo ok",
+  );
+  seedGreenMain(root);
+
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const { state, result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "rejected");
+    assert.ok(!fs.existsSync(marker), "no pi run before the reject");
+    const reasons = state.lastReview?.reasons ?? [];
+    assert.equal(reasons[0], "check failed (`npm run test`): AssertionError [ERR_ASSERTION]: 1 == 2");
+    assert.ok(reasons.some((r) => r.startsWith("at ")), "the rest of the clipped tail still follows");
+    assert.ok(reasons.includes("actual: 1,"), "real diff content is not skipped as noise");
+  });
+});
+
+test("a configured check.command gates a merge in a repo with no npm install at all", async () => {
+  // plans/portability.md §6/7: no package.json and no node_modules anywhere — today's walk-up
+  // detection finds nothing and every gate silently turns off; a configured command must run
+  // at the review gate instead, failing the diff deterministically with the command's tail.
+  const root = makeRepo();
+  seedGreenMain(root);
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
+  commitIn(wt, "wip change");
+  const ctx = {
+    ...gateCtx(root, wt),
+    // Fails only where the change lands the marker, so main's fresh re-check (BUGS.md
+    // 2026-10-06) still passes in its own worktree.
+    config: { ...defaultConfig(), check: { command: "if [ -f ./change-marker ]; then echo 'pytest: 3 failing'; exit 1; fi; echo ok" } },
+  };
+  fs.writeFileSync(path.join(wt, "change-marker"), "");
+
+  // Main is green (seeded), so the repeat failure is the change's: rejected with no pi run.
+  const marker = path.join(tmpdir(), "pi-ran-command-check");
+  await withPi(`touch '${marker}'`, async () => {
+    const state = freshRunnerState(ROLE);
+    const result = await reviewAheadOfMain(ctx, state);
+    assert.equal(result.decision, "rejected", "the configured check's failure gates the merge");
+    assert.equal(result.run, undefined, "the reviewer never ran: the check decided alone");
+    assert.ok(!fs.existsSync(marker), "no pi run");
+    assert.equal(state.lastReview?.verdict, "reject");
+    const reasons = state.lastReview?.reasons ?? [];
+    assert.ok(reasons[0]?.includes("if [ -f ./change-marker ]"), "the configured command is named");
+    assert.match(reasons[0] ?? "", /pytest: 3 failing$/);
+    const rejected = readEvents(root).find((e) => e.type === "review_rejected");
+    assert.ok(rejected, "the rejection is logged");
+  });
+});
+
+test("a green pre-check approves with no reviewer run", async () => {
+  // The pre-merge gate is deterministic (part 3h/3): a passing build pre-check approves
+  // directly, with no model reviewer — the marker that a fake reviewer would touch stays
+  // absent and no `review_start` is logged.
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool",
+    "#!/bin/sh\necho ok\nexit 0\n",
+  );
+  const head = await headOf(wt, "HEAD");
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const state = freshRunnerState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "approved");
+    assert.equal(result.verifiedHead, head, "the green tree's head is handed to the merge path");
+    assert.equal(state.lastApprovedHead, head, "the green head is recorded as approved");
+    assert.ok(!fs.existsSync(marker), "no reviewer run at all");
+    assert.deepEqual(eventsOfType(root, "review_start"), [], "no model review starts");
+  });
+});
 
 test("diffRuleReasons returns the gate's rules in order", async () => {
   const changedFiles = async (wt: string, base: string): Promise<string[]> =>

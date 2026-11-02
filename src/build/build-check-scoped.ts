@@ -272,7 +272,7 @@ function warnScopedCheck(
  * declared check plus its classified outcome. A "skipped" outcome also logs its standard warning
  * here (wording keyed on the scope, the timeout as actually set — and, when its deadline fired
  * late, as actually enforced); "failed" and "passed" are the caller's to decide (deterministic
- * reject vs. baseline seeding). A timeout or signal kill at a merge scope is
+ * reject vs. verifiedHead / baseline seeding). A timeout or signal kill at a merge scope is
  * remapped to a deterministic "failed" — the tree is unverified, so it must not merge. A check
  * killed by a signal the harness did not send is retried once at any scope — the first run's death
  * says nothing about the tree (it is another run's `pkill`), so one verdict from a clean attempt is
