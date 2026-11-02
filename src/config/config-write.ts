@@ -121,6 +121,70 @@ type SetConfigKeyResult =
   | { ok: true; value: unknown; oldValue: unknown; note?: string; unchanged?: true }
   | { ok: false; error: string };
 
+// The key-shape predicates for exponentRefusal's two numeric families, lifted out of its
+// body so "which keys take a plain integer or a plain second count" is read from the
+// key families instead of inline OR chains over `parsed`.
+/** The integer-bound keys: the top-level run-concurrency knobs (see
+ * PLAIN_INTEGER_TOP_LEVEL_KEYS), the per-role `instances` count and the
+ * `bootstrap.untilPlansDone` section field. For these, an exponent spelling is refused
+ * with the "plain integer" message. */
+function isPlainIntegerKey(
+  parsed: ReturnType<typeof parseConfigKey>,
+  key: string,
+): boolean {
+  return (
+    (parsed.kind === "top" && PLAIN_INTEGER_TOP_LEVEL_KEYS.has(key)) ||
+    (parsed.kind === "role" && parsed.field === "instances") ||
+    (parsed.kind === "section" && parsed.section === "bootstrap" && parsed.field === "untilPlansDone")
+  );
+}
+
+/** The duration-typed keys: a top-level second-count knob, the section fields a dotted
+ * key names (review/check's timeoutSeconds, idleBackoff's second counts), or the
+ * per-role minRunIntervalSeconds. They take plain decimals, not integers, so the
+ * refusal says "plain second count" — the wording the TUI interval editor, the CLI's
+ * `role --min-run-interval`, and the GUI drawer all use for the same misread. */
+function isPlainDurationKey(parsed: ReturnType<typeof parseConfigKey>): boolean {
+  return (
+    (parsed.kind === "top" && PLAIN_DURATION_KEYS.has(parsed.key)) ||
+    (parsed.kind === "section" &&
+      ((parsed.section === "review" && parsed.field === "timeoutSeconds") ||
+        (parsed.section === "check" && parsed.field === "timeoutSeconds") ||
+        (parsed.section === "idleBackoff" && (parsed.field === "initialSeconds" || parsed.field === "maxSeconds")))) ||
+    (parsed.kind === "role" && parsed.field === "minRunIntervalSeconds")
+  );
+}
+
+/** The dollar-typed keys: the team-wide daily cost cap and the per-role cap map. For
+ * these, an exponent spelling is refused with the "plain dollar amount" message. */
+function isPlainDollarKey(parsed: ReturnType<typeof parseConfigKey>): boolean {
+  return (
+    (parsed.kind === "top" && parsed.key === "maxDailyCostUsd") ||
+    (parsed.kind === "map" && parsed.map === "maxDailyCostUsdPerRole")
+  );
+}
+
+// The shape screen that stops setConfigKey's JSON.parse from silently writing an exponent
+// spelling ("4e1" → 40, "1e2" → 100) past a plain-integer, plain-second-count or
+// plain-dollar key's numeric check: each family's refusal names the key and writes
+// nothing — the twin of the per-role guards, the TUI team-key and budget editors, and the
+// GUI Settings rows and cap drawer. A blank or non-exponent spelling passes through to
+// the parse below (a non-exponent invalid is left for validateConfig's own message).
+function exponentRefusal(
+  parsed: ReturnType<typeof parseConfigKey>,
+  key: string,
+  trimmed: string,
+): string | null {
+  if (trimmed === "" || !isExponentSpelling(trimmed)) return null;
+  if (isPlainIntegerKey(parsed, key))
+    return `${key} must be a plain integer — no exponent notation`;
+  if (isPlainDurationKey(parsed))
+    return `${key} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation`;
+  if (isPlainDollarKey(parsed))
+    return `${key} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation`;
+  return null;
+}
+
 /** Set ONE top-level key of tumwater.json from its raw CLI text (`tumwater config set`'s
  * engine): the key must be a member of TOP_LEVEL_KEYS — the same protection checkKnownKeys
  * gives the file itself, so `config set modle x` cannot write a dead key the runtime would
@@ -146,45 +210,6 @@ export function setConfigKey(
   // The helpers are declared here — above the body — so they close over `root`; the two
   // write dispatches (writeDottedKey / writeTopLevelKey) each own one writeConfigMutation
   // and the per-kind merge groups close over that call's `value`/`unchanged`/`oldValue`.
-  const exponentRefusal = (
-    parsed: ReturnType<typeof parseConfigKey>,
-    key: string,
-    trimmed: string,
-  ): string | null => {
-    const isPlainIntegerKey =
-      (parsed.kind === "top" && PLAIN_INTEGER_TOP_LEVEL_KEYS.has(key)) ||
-      (parsed.kind === "role" && parsed.field === "instances") ||
-      (parsed.kind === "section" && parsed.section === "bootstrap" && parsed.field === "untilPlansDone");
-    if (isPlainIntegerKey && trimmed !== "" && isExponentSpelling(trimmed))
-      return `${key} must be a plain integer — no exponent notation`;
-    // The duration-typed keys: a top-level second-count knob, the section fields a dotted
-    // key names (review/check's timeoutSeconds, idleBackoff's second counts), or the
-    // per-role minRunIntervalSeconds. They take plain decimals, not integers, so the
-    // refusal says "plain second count" — the wording the TUI interval editor, the CLI's
-    // `role --min-run-interval`, and the GUI drawer all use for the same misread.
-    const isPlainDurationKey =
-      (parsed.kind === "top" && PLAIN_DURATION_KEYS.has(key)) ||
-      (parsed.kind === "section" &&
-        ((parsed.section === "review" && parsed.field === "timeoutSeconds") ||
-          (parsed.section === "check" && parsed.field === "timeoutSeconds") ||
-          (parsed.section === "idleBackoff" && (parsed.field === "initialSeconds" || parsed.field === "maxSeconds")))) ||
-      (parsed.kind === "role" && parsed.field === "minRunIntervalSeconds");
-    if (isPlainDurationKey && trimmed !== "" && isExponentSpelling(trimmed))
-      return `${key} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation`;
-    // The dollar-typed keys: the team-wide daily cost cap and the per-role cap map. An
-    // exponent spelling like "1e2" is itself the JSON number 100 — a cap no one means when
-    // typing a USD amount — that setConfigKey's JSON.parse would read past
-    // checkDailyBudgetUsd's non-negative check and silently write, the same silent misread
-    // the TUI Ctrl+B budget editor, the CLI's `role --cap`, and the GUI cap drawer refuse —
-    // so the refusal says "plain dollar amount", the wording those surfaces use.
-    const isPlainDollarKey =
-      (parsed.kind === "top" && parsed.key === "maxDailyCostUsd") ||
-      (parsed.kind === "map" && parsed.map === "maxDailyCostUsdPerRole");
-    if (isPlainDollarKey && trimmed !== "" && isExponentSpelling(trimmed))
-      return `${key} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation`;
-    return null;
-  };
-
   // One named handler per parsed dotted-key kind: the shape/validator screen, then one
   // writeConfigMutation whose callback is the `switch (parsed.kind)` over the merge helpers.
   const writeDottedKey = (
