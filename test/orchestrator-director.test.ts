@@ -138,12 +138,8 @@ test("director: a queued prompt runs without a permit even while the only slot i
 
 test("director: once recovers a kept merge pin and drains the queue before exit", async () => {
   const repo = await makeFastRepo("once director leftover", ["director"]);
-  // The recoverable pin's change fails the gate's declared check only where the change is
-  // checked out (kept.txt exists on the change's tree, not on main, so main stays green), and
-  // the gate rejects the change deterministically — the gate's own finding, no reviewer
-  // verdict — ending the merge rejected, re-queuing the pin and draining the queue.
-  const cfg = loadConfig(repo);
-  saveConfig(repo, { ...cfg, check: { command: "test ! -f kept.txt" } });
+  // The gate is deterministic after Subtract part 3b/7: the recovered pin passes the diff
+  // rules, merges on main, and the queue drains before the once round exits.
   const sha = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "kept.txt"), "kept\n"), "kept director change");
   await setRef(repo, mergeRefName("director"), sha);
   const restore = fakePiIdle();
@@ -151,7 +147,8 @@ test("director: once recovers a kept merge pin and drains the queue before exit"
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.runsDone?.get("director"), 1, "the director got its recovery run");
-    assert.ok(eventsOfType(repo, "merge_queued").some((e) => e.commit === sha), "the pin was re-queued");
+    assert.ok(eventsOfType(repo, "merged").some((e) => e.commit === sha), "the pin merged");
+    assert.equal(eventsOfType(repo, "merge_failed").length, 0, "the recovered pin did not fail");
     assert.equal(queueDepth(repo), 0, "the merge queue drained before exit");
     assert.equal(eventsOfType(repo, "prompt_taken").length, 0);
   } finally {
@@ -267,27 +264,22 @@ test("merge queue: a role whose queued merge is still resolving a conflict start
 
 test("restart hand-off: an in-flight merge outliving its deadline is aborted, not waited out", async () => {
   const repo = await makeFastRepo("restart hand-off abort test", ["clean"]);
-  // Fast merge "Defaults" merges clean on its gate alone and reviews it AFTER it lands; this test
-  // pins the restart hand-off aborting an IN-FLIGHT merge, held this time by a parked gate build
-  // check. The check parks only on the change's tree (it touches the marker and sleeps where the
-  // queued change's interlock-note.txt is checked out; on main's tree it exits 0), so the
-  // verify's gate pre-check holds the merge in flight for the hand-off's abort (part 4e/3) to
-  // stop it.
+  // Fast merge "Defaults" merges clean on its gate alone and reviews it AFTER it lands. This
+  // test pins the restart hand-off aborting an IN-FLIGHT merge, held by a parked conflict
+  // resolver: the queued change edits interlock-note.txt and main edits it too, so the merge
+  // reaches its one resolution run, which parks until the hand-off's deadline aborts it.
   const cfg = loadConfig(repo);
   const parked = path.join(tmpdir(), "handoff-abort-parked");
   saveConfig(repo, {
     ...cfg,
-    check: { command: `if [ -f interlock-note.txt ]; then touch '${parked}'; sleep 60; fi` },
     roles: { ...cfg.roles, clean: { ...cfg.roles.clean!, minRunIntervalSeconds: 300 } },
   });
-  // If the parked check ever fails to park (its alpha flake mode), the merge would proceed past
-  // the verify into a clean run — so a pi shim stays on PATH and answers idle rather than calling
-  // a real model (a test never does).
-  const restore = fakePiIdle();
-  // The queued change's gate check holds the merge in flight. Its queued entry no longer holds
-  // clean's own runs (Subtract part 3a/7), so a just-ran seed and the 300 s gap above keep them
-  // off: the parked check is the only work the hand-off waits on — the drain's bounded wait,
-  // then its abort callback, is what this pins.
+  const restore = fakePi(
+    `for a in "$@"; do case "$a" in *-conflict) touch '${parked}'; exec sleep 60;; esac; done`,
+  );
+  // The queued entry no longer holds clean's own runs (Subtract part 3a/7), so a just-ran seed
+  // and the 300 s gap above keep role runs off: the parked resolver is the only work the
+  // hand-off waits on — the drain's bounded wait, then its abort callback, is what this pins.
   const state = loadRunnerState(repo, "clean");
   state.lastRunEndedAt = Date.now();
   saveRunnerState(repo, state);
@@ -298,16 +290,19 @@ test("restart hand-off: an in-flight merge outliving its deadline is aborted, no
     summary: "hand-off sentinel change",
     enqueuedAt: Date.now(),
   });
-  // Staleness is re-evaluated only when main moves: stale once the gate check is parked, and
-  // the test moves main then — the restart takes effect mid-check, with no role run in flight.
+  // Main edits the same file after the pin, so the merge's rebase conflicts and its resolver
+  // parks. Staleness is re-evaluated only when main moves: stale once the resolver is parked.
+  fs.writeFileSync(path.join(repo, "interlock-note.txt"), "main's edit\n");
+  sh(repo, "git", "add", "interlock-note.txt");
+  sh(repo, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "main edits the interlock note");
   const { redeployer, swaps } = scriptedRedeployer(repo, { stale: () => fs.existsSync(parked) });
   const { run, stop } = startRedeployRun(repo, redeployer, {
     timeoutMs: 90_000,
     handoffMergeWindowMs: 500,
   });
   try {
-    await waitFor(() => fs.existsSync(parked), "the verify's parked gate check to be in flight");
-    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the verify");
+    await waitFor(() => fs.existsSync(parked), "the merge's parked conflict resolver to be in flight");
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the merge");
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
     assert.equal(swaps.length, 1, "the new build was swapped in");

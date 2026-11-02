@@ -11,16 +11,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
+import { withLock } from "../src/concurrency/lock.js";
 import { readEvents } from "../src/events/event-read.js";
-import { piLogPath } from "../src/paths.js";
+import { queueDepth } from "../src/merge/merge-queue.js";
+import { mergeLockDir, piLogPath } from "../src/paths.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
-import { declareCheck, parkUntil } from "./fixtures/merger-fixtures.js";
-import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { firstRunThenIdle, logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
-import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
+import { withPi } from "./fakes/fake-pi.js";
+import { waitFor, waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, errorLine, leasedRoleShell } from "./fixtures/pi-events.js";
 
 test("a run that recovers from a predict-stream timeout internally is not re-run by the harness", async () => {
@@ -104,68 +104,6 @@ test("a transient timeout on both attempts errors with the real cause (regressio
   );
 });
 
-test("a change whose build fails is rejected by the pre-check and its compiler tail rides on the next prompt", async () => {
-  const repo = await initializedRepo();
-  // Install signature at the repo root: detectBuildCheck walks up from the worktree to it,
-  // and npm resolves the toolchain from there. The build script fails with a compiler-style
-  // line only while broken.ts exists — pristine main must stay green so the main baseline
-  // reports no red that would mask this test's
-  // pre-check rejection.
-  fs.mkdirSync(path.join(repo, "node_modules", ".bin"), { recursive: true });
-  const tool = path.join(repo, "node_modules", ".bin", "buildcheck-tool");
-  writeScript(
-    tool,
-    "if [ -f broken.ts ]; then echo 'src/bad.ts(3,5): error TS2345: not assignable'; exit 1; fi\nexit 0",
-  );
-  fs.writeFileSync(
-    path.join(repo, "package.json"),
-    projManifest({ build: "buildcheck-tool --fail" }),
-  );
-  // Commit package.json (node_modules stays untracked — the install marker): a git worktree
-  // checks out tracked files, and npm re-roots `npm run` at the nearest package.json. With one
-  // in the worktree the script runs there, compiling branch state exactly as dogfood does.
-  sh(repo, "git", "add", "package.json");
-  sh(repo, "git", "commit", "-m", "declare build check");
-
-  // The reviewer branch (any run whose prompt asks for a VERDICT) approves — it must never be
-  // reached, because the pre-check decides first. Author runs record their full argv so the
-  // test can assert what each run was actually told.
-  const promptsFile = path.join(tmpdir(), "prompts.log");
-  const marker = path.join(tmpdir(), "changed-once");
-  await withPi(
-    [
-      APPROVE_PI,
-      logPromptsTo(promptsFile),
-      ...firstRunThenIdle(marker, [
-        `printf '%s\n' '${assistantLine("did it\nSUMMARY: add broken code")}'`,
-        `echo bad > broken.ts`,
-      ]),
-    ].join("\n"),
-    async () => {
-      const runner = makeRoleRunner(repo, "improve");
-      // Run 1: the change is committed and enqueued; the MERGE's build pre-check rejects it
-      // (red twice, on a main that is green) — no pi run at all, reviewer or otherwise.
-      assert.equal((await runner.run()).result, "queued");
-      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "rejected");
-      assert.ok(!fs.existsSync(path.join(repo, "broken.ts")), "the failing build did not merge");
-
-      // Run 2: the machine-generated reasons are the cross-run memory of what broke — every
-      // run starts a fresh pi session. Since revise-rejected, the rejected diff is re-applied
-      // as uncommitted edits and the revision note carries the reasons; the idle run then
-      // declares nothing-to-do, so the revision is dropped and the worktree reset clean. The
-      // prompts log holds exactly the two author runs: the merge spent none.
-      assert.equal((await runner.run()).result, "no_change");
-      const runs = readRunBlocks(promptsFile);
-      assert.equal(runs.length, 2, "two author runs and nothing from the merge");
-      assert.ok(!runs[0]?.includes("it is this run's primary task"), "run 1's prompt had no rejection note yet");
-      const second = runs[1] ?? "";
-      assert.match(second, /is already in the worktree as uncommitted edits/);
-      assert.match(second, /revision 1\b/);
-      assert.match(second, /check failed \(\`npm run build\`\): src\/bad\.ts\(3,5\)/);
-    },
-  );
-});
-
 // Questions outbox (plans/questions-outbox.md): a merged diff that adds an entry under
 // QUESTIONS.md's ## Open emits one question_posted per new heading alongside the merged event,
 // so `tumwater logs` shows what the team is asking for. The emission lives in tryMerge
@@ -239,44 +177,31 @@ test("a run that changes other files emits no question_posted event", async () =
   );
 });
 
-test("the merge slot is the only merge-lock holder: another runner runs and queues behind it", async () => {
+test("the merge lock is the only merge-lock holder: another role's run and queue entry do not need it", async () => {
   const repo = await initializedRepo();
-  const marker = path.join(tmpdir(), "a-merge");
+  const lockHeld = path.join(tmpdir(), "a-merge-lock");
   const bDone = path.join(tmpdir(), "b-done");
-  // A's MERGE (drained right after its run) is held in flight by its gate's declared build
-  // check, which parks (touches `marker`, waits for `b-done`) — A holds the merge lock, the
-  // merger's run, until B's run is done, bounded at ~60s. B waits for that marker, then does
-  // its whole run (author + commit + pin + enqueue). Since merge queue 3/5 a run never needs
-  // the lock: B must finish while A's merge is still mid-flight. The merge slot serializes
-  // merges, not authoring. A run that did need the lock would wait out A's bound and finish
-  // after A's merge. No pre-merge reviewer verdict holds the lock (part 4g/3) — the parked
-  // gate check does.
-  declareCheck(repo, `#!/bin/sh\n${parkUntil(marker, bDone)}\necho ok\n`);
-  const approveLine = assistantLine("VERDICT: approve");
+  // Hold the merge lock directly, then start A's author run and merge while it is held. B's
+  // whole run (author + commit + pin + enqueue) must finish inside that window: the merge slot
+  // serializes merges, not authoring, and no role run waits on the lock.
+  let releaseLock!: () => void;
+  const holding = withLock(mergeLockDir(repo), async () => {
+    fs.writeFileSync(lockHeld, "");
+    await new Promise<void>((resolve) => (releaseLock = resolve));
+  });
+  await waitForFile(lockHeld);
   await withPi(
     [
       leasedRoleShell(),
-      // Author runs and review runs now share pooled slots, so tell them apart by the review
-      // prompt's VERDICT and key both on the leased role.
-      `is_review=0; for a in "$@"; do case "$a" in *"VERDICT:"*) is_review=1;; esac; done`,
-      `case "$role:$is_review" in`,
-      // A's merge's reviewer run (slot for improve): plain approve — the parked gate check,
-      // not this review, is what holds the merge lock.
-      `improve:1)`,
-      `  printf '%s\n' '${approveLine}'; exit 0;;`,
-      // B's merge's reviewer run (slot for organize): plain approve.
-      `organize:1)`,
-      `  printf '%s\n' '${approveLine}'; exit 0;;`,
-      // The leased slots cover the authoring runs.
-      `improve:0)`,
+      `case "$role" in`,
+      `improve)`,
       `  printf '%s\n' '${assistantLine("slow work\\nSUMMARY: slow change")}'`,
       `  echo a > a.txt`,
       `  ;;`,
-      // B's run's author run: wait for A to be mid-merge, then work fast.
-      `organize:0)`,
-      `  i=0; while [ ! -f "${marker}" ] && [ $i -lt 60 ]; do sleep 0.2; i=$((i+1)); done`,
+      `organize)`,
       `  printf '%s\n' '${assistantLine("fast work\\nSUMMARY: fast change")}'`,
       `  echo b > b.txt`,
+      `  touch '${bDone}'`,
       `  ;;`,
       `esac`,
     ].join("\n"),
@@ -286,30 +211,23 @@ test("the merge slot is the only merge-lock holder: another runner runs and queu
       let bEndAt = 0;
       let aMergeEndAt = 0;
       const pa = (async () => {
-        const runOutcome = await a.run();
-        assert.equal(runOutcome.result, "queued");
+        assert.equal((await a.run()).result, "queued");
         const mergeDone = await mergeHead(repo, a, defaultConfig(), "improve");
         aMergeEndAt = Date.now();
         return mergeDone;
       })();
-      const pb = (async () => {
-        const outcome = await b.run();
-        bEndAt = Date.now();
-        fs.writeFileSync(bDone, "");
-        return outcome;
-      })();
-      const [aMergeDone, bOutcome] = await Promise.all([pa, pb]);
-      assert.equal(aMergeDone, "changed");
-      assert.equal(bOutcome.result, "queued");
-      // B's run (commit + enqueue) finished while A's merge held the merge lock — the
-      // merge slot is the only place the lock is ever needed.
-      assert.ok(
-        bEndAt < aMergeEndAt,
-        `B finished at ${bEndAt} before A's merge ended at ${aMergeEndAt}: its run must not need the lock`,
-      );
-      // Then B drains behind A: the slot is free again and both merges complete linearly.
+      await waitFor(() => queueDepth(repo) === 1, "A's change to be queued", 30_000);
+      const bOutcome = await b.run();
+      bEndAt = Date.now();
+      await waitForFile(bDone, 30_000);
+      assert.equal(bOutcome.result, "queued", "B's run committed and queued while A's merge waited");
+      assert.equal(aMergeEndAt, 0, "A's merge is still waiting on the held lock");
+
+      releaseLock();
+      await holding;
+      assert.equal(await pa, "changed");
+      assert.ok(bEndAt < aMergeEndAt, `B finished at ${bEndAt} before A's merge ended at ${aMergeEndAt}: its run must not need the lock`);
       assert.equal(await mergeHead(repo, b, defaultConfig(), "organize"), "changed");
-      // Both commits are on main, linearly — no lock contention broke either merge.
       assert.ok(fs.existsSync(path.join(repo, "a.txt")));
       assert.ok(fs.existsSync(path.join(repo, "b.txt")));
       assert.equal(sh(repo, "git", "log", "--merges", "--oneline"), "", "main's history stays linear");
