@@ -39,13 +39,13 @@ export interface BatchRoleWiring extends PiRunWiring {
   state: RunnerState;
 }
 
-/** One change's verify verdict: `stack` — approved or exempt, to merge at `sha` (the synced
- * pin, which the merge ref now names), with `verifiedHead` set when the gate's pre-check ran
- * green on exactly that head; `result` — an outcome that keeps the change out of the merge:
- * rejected, review_error (`discarded` on a strike-cap discard), main_red, a lost-pin "error",
- * or aborted. */
+/** One change's verify verdict: `approved` — the gate cleared (approved or exempt), so the
+ * change merges at `sha` (the synced pin, which the merge ref now names), with `verifiedHead`
+ * set when the gate's pre-check ran green on exactly that head; `result` — an outcome that
+ * keeps the change out of the merge: rejected, review_error (`discarded` on a strike-cap
+ * discard), main_red, a lost-pin "error", or aborted. */
 export type VerifyVerdict =
-  | { kind: "stack"; sha: string; verifiedHead?: string }
+  | { kind: "approved"; sha: string; verifiedHead?: string }
   | { kind: "result"; result: RunResult; discarded?: true; awaitingWatch?: string };
 
 /** Verify one request — the whole of a verify-stage task: lease a pooled slot for the role, check
@@ -97,5 +97,7 @@ async function verifyRequestIn(ctx: BatchContext, req: MergeRequest, w: BatchRol
   // The gate's green pre-check names the head it ran on; it rides to the merge, which seeds the
   // red-main baseline with it when nothing moved in between (mergeToMain).
   const { verifiedHead } = outcome.gate;
-  return verifiedHead === outcome.sha ? { kind: "stack", sha: outcome.sha, verifiedHead } : { kind: "stack", sha: outcome.sha };
+  return verifiedHead === outcome.sha
+    ? { kind: "approved", sha: outcome.sha, verifiedHead }
+    : { kind: "approved", sha: outcome.sha };
 }

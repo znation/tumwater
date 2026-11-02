@@ -249,7 +249,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
       } finally {
         lease.release();
       }
-      if (verdict.kind === "stack" && !verify.userAborted) {
+      if (verdict.kind === "approved" && !verify.userAborted) {
         p.approved.set(role, {
           entry,
           file,
@@ -265,7 +265,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
         });
         setMergeChangeStatus(root, role, "approved");
       } else {
-        const result = verdict.kind === "stack" ? "aborted" : verdict.result;
+        const result = verdict.kind === "approved" ? "aborted" : verdict.result;
         const awaitingWatch = verdict.kind === "result" ? verdict.awaitingWatch : undefined;
         await settleMergeOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file, mainBranch, awaitingWatch);
         if (verify.userAborted) await discardPinnedRefs(root, [role]);
