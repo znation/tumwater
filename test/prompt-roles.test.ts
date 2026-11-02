@@ -518,6 +518,10 @@ test("the bugfix find text hands an unreproducible bug to the director before pa
   // needs-review note is with the director.
   assert.match(find, /Skip an entry whose newest Progress note names a director handoff/);
   assert.match(find, /by director: …\*\*\*? note/);
+  // The body is size-bounded: the harness truncates it to fit the cap once the fixed framing
+  // rides in, so the guidance says so rather than leaving an unbounded body to be dropped.
+  assert.match(find, /truncates the body to at most ~3659 chars/);
+  assert.match(find, /composed prompt fits the 4096-char cap/);
 });
 test("the bugfix role bounds its latent-bug hunt and demands a reproduction", () => {
   const find = oneLine(roleById("bugfix")!.find);

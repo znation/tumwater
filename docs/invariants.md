@@ -255,19 +255,25 @@ subscribers or the event write".
 `resolveRunVerdict`'s bugfix block — after the abort return and before every staging path,
 beside the config-request block — and queues exactly one director prompt whose text carries the
 request body between the fixed preamble and the fixed ask, logging the `prompt_enqueued` event
-under `director`. The request file is deleted on every path — absent (no file reads null, no
-prompt), empty or whitespace-only body, over-cap body (rejected by `submitRolePrompt`'s length
-cap), and enqueue throw — so it never enters a commit's diff, a review prompt, or the project's
-history, and a re-run starts clean instead of retrying a stale request. Only a bugfix instance
-consumes the file; every other role's run leaves it untouched. A failed unlink surfaces as an
-error the run warns, so a surviving file is never silent.
+under `director`. A body too long to ride the fixed framing (104-char preamble + 329-char ask +
+four newlines = 437) under `DIRECTOR_PROMPT_MAX_CHARS` (4096) is truncated to fit first — with a
+visible `…[body over the prompt cap; truncated]` note and a surrogate-safe cut — so the composed
+prompt always fits the cap and the request is always queued: it is never rejected and dropped,
+so the handoff entry is never latched behind a director prompt that was never sent. The request
+file is deleted on every path — absent (no file reads null, no prompt), empty or whitespace-only
+body, over-cap body (truncated to fit and queued), and enqueue throw — so it never enters a
+commit's diff, a review prompt, or the project's history, and a re-run starts clean instead of
+retrying a stale request. Only a bugfix instance consumes the file; every other role's run leaves
+it untouched. A failed unlink surfaces as an error the run warns, so a surviving file is never
+silent.
 
-**Binds.** `src/inbox/director-request.ts` (`applyDirectorRequest`), `src/paths.ts`
+**Binds.** `src/inbox/director-request.ts` (`applyDirectorRequest`, `fitBody`), `src/paths.ts`
 (`directorRequestPath`), `src/run/run-verdict.ts` (the bugfix `applyDirectorRequest` call).
 
-**Pinned by.** `test/director-request.test.ts` (absent/valid/empty/over-cap/throw paths and the
-delete-on-every-path guarantee), `test/run-verdict.test.ts` (a bugfix run consumes the file
-before a dirty/staging outcome and a feature run leaves it).
+**Pinned by.** `test/director-request.test.ts` (absent/valid/empty/over-cap-truncated/over-cap-
+surrogate-cut/throw paths and the delete-on-every-path guarantee), `test/prompt-roles.test.ts`
+(the bugfix find text names the body's ~3659-char bound), `test/run-verdict.test.ts` (a bugfix
+run consumes the file before a dirty/staging outcome and a feature run leaves it).
 
 ## Sibling result shapes a classifier treats alike
 

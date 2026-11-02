@@ -111,7 +111,10 @@ should not be done at all, which is the user's call to decide.`,
       the director before parking it for the user: record a Progress note that names the director handoff,
       write \`.tumwater-director-request.md\` at your worktree root holding the entry's heading, every
       attempted reproduction, and the failure message (it is queued as one director prompt and deleted
-      before staging — never commit it), and end the run. Do not keep investigating without new
+      before staging — never commit it). tumwater truncates the body to at most ~3659 chars so the
+      composed prompt fits the 4096-char cap (the 437-char framing rides in too) and appends a visible
+      truncation note — so keep the heading, the decisive failure message, and the narrowest repro first
+      and the longest repro detail last. End the run. Do not keep investigating without new
       evidence. Skip an entry whose newest Progress note names a director handoff and that carries no
       **Needs review … by director: …** note: it is with the director until the director resolves or parks it.
       If the request file cannot be written, keep the old park: write a **Needs review <YYYY-MM-DD> by bugfix: <what the next failure's message

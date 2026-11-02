@@ -51,17 +51,38 @@ test("an empty or whitespace-only body is an error and the file is still deleted
   assert.equal(inboxSize(root, "director"), 0, "nothing was queued");
 });
 
-test("an over-cap body is rejected by the queue cap and the file is still deleted", async () => {
+test("an over-cap body is truncated to fit, queued, and the file is deleted", async () => {
   const { root, wt } = await initializedWorktree("bugfix");
-  // A body over the cap makes the composed text (preamble + body + ask) over it too: the cap
-  // is enforced on the final queued text, not the body alone.
+  // A body over ~3659 chars makes the composed text (preamble + body + ask) over the 4096 cap
+  // too: rather than reject and drop the request, the body is truncated to fit so the request
+  // is always queued and the director is always told.
   fs.writeFileSync(directorRequestPath(wt), "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 10));
 
   const out = applyDirectorRequest(root, wt);
-  assert.ok(out && "error" in out, "an error is returned");
-  assert.match(out.error, /shorten it to at most/, "the cap's message names the length");
+  assert.deepEqual(out, { queued: true }, "an over-cap body is truncated and queued, not rejected");
   assert.ok(!fs.existsSync(directorRequestPath(wt)), "the over-cap file is deleted too");
-  assert.equal(inboxSize(root, "director"), 0, "nothing was queued");
+  const queued = queuedRolePrompts(root, "director");
+  assert.equal(queued.length, 1, "exactly one director prompt");
+  assert.ok(queued[0]!.includes("…[body over the prompt cap; truncated]"), "the visible note signals the cap");
+  assert.ok(queued[0]!.length <= DIRECTOR_PROMPT_MAX_CHARS, "the composed prompt fits the cap");
+  assert.ok(!queued[0]!.includes("x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 10)), "the body was truncated, not queued whole");
+});
+
+test("an over-cap body carrying astral characters is truncated safely and still queued", async () => {
+  const { root, wt } = await initializedWorktree("bugfix");
+  // An astral-character body over the cap: the cut must leave the composed text valid UTF-16
+  // (no lone surrogate) and under the cap, with the visible note.
+  const pair = "\u{1F600}"; // 😀 — a two-code-unit astral character
+  fs.writeFileSync(directorRequestPath(wt), (pair + "x").repeat(4000));
+
+  const out = applyDirectorRequest(root, wt);
+  assert.deepEqual(out, { queued: true }, "the over-cap body is truncated and queued, not dropped");
+  const text = queuedRolePrompts(root, "director")[0]!;
+  assert.ok(text.length <= DIRECTOR_PROMPT_MAX_CHARS, "the composed prompt fits the cap");
+  assert.ok(text.includes("…[body over the prompt cap; truncated]"), "the visible note signals the cap");
+  // A lone high surrogate (a high unit not followed by a low unit) would be a broken cut.
+  const lone = /[\ud800-\udbff](?![\udc00-\udfff])/.exec(text);
+  assert.equal(lone, null, "no lone high surrogate in the composed text");
 });
 
 test("an injected queue throw returns its error and still deletes the file", async () => {
