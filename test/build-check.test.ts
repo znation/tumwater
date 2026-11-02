@@ -387,6 +387,36 @@ test("a merge-scope timeout late on both attempts rejects unverified, without th
   assert.match(String(warning?.message ?? ""), /rejecting the merge/);
 });
 
+// BUGS.md 2026-09-30: a FAILED build the host slept through — the suite exited nonzero INSIDE
+// the deadline because a dark wake expired a test's own wait — is the same weather a late
+// deadline is: no verdict about the tree. Unlike the late-timeout arm above (a timeout the
+// deadline clock explains), this arm is a genuine red build carrying a measured sleptMs, and a
+// merge scope must still read it unverified rather than as a deterministic failure the tree
+// caused. The reason names the measured sleep, not a timeout bound that never fired.
+test("a merge-scope build failure the host slept through is unverified, naming the sleep — not a timeout", async () => {
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "exit 1" }));
+  // Both attempts open awake and close after a ~119 s sleep (well past SLEEP_SPAN_TOLERANCE_MS
+  // of 5 s): the retry sleeps too, so the final failed+slept outcome is the one that stands —
+  // the sleepFailed arm of the merge-scope reject, whose wording is sleptPhrase.
+  const slept = scriptedSampler([
+    woke(1_000),
+    woke(121_000, 2_000),
+    woke(121_000),
+    woke(241_000, 122_000),
+  ]);
+  const result = await runScopedBuildCheck(root, ROLE, "merge", wt, undefined, 30_000, slept, undefined, undefined, IDLE_HOST);
+  assert.equal(result!.outcome.status, "failed", "an unverified tree must not merge");
+  assert.equal(result!.outcome.unverified, true, "a slept failure is weather, not a red build");
+  assert.match(
+    result!.outcome.outputTail?.[0] ?? "",
+    /merge check ran while the host slept \d+(?:\.\d+)?s mid-run; the tree is unverified/,
+  );
+  assert.doesNotMatch(result!.outcome.outputTail?.[0] ?? "", /timed out/);
+  const warning = readEvents(root).find((e) => e.type === "warning");
+  assert.match(String(warning?.message ?? ""), /ran while the host slept.*rejecting the merge/);
+});
+
 test("a gate check killed on every attempt stays skipped, and the warning names the signal — not the timeout", async () => {
   // The killed-skip warning's with-info arm: the gate scope (fail-open, one retry) is the only
   // surface that can still be "skipped" after a kill — a merge scope remaps the kill to a
