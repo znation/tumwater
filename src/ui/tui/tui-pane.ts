@@ -107,10 +107,6 @@ function paneCacheLines(state: TuiPaneState, budget: number, width: number): str
   return state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, budget, width).lines : [];
 }
 
-/** Compose the body lines for one pane at this frame's width and budgets. Same rules
- * tui.tsx's inline builder followed: transcripts keep the tail, the backlog list keeps
- * the head with the selected entry's full body in entry mode, usage/failures re-window
- * the cached Markdown set on view entry, and the activity pane keeps the event tail. */
 /** The slice of the keypress handler's state each pane builder consumes: the backlog
  * selection and its scroll, the usage/failures pane's cached Markdown and its scroll, the
  * queued/pending/health/brief/history caches, and the activity scroll. Plain data, so tests

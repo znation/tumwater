@@ -82,8 +82,6 @@ interface LaunchContext {
   directorInFlight: Set<Promise<void>>;
   /** The recent work-bearing role-run duration ring buffer the drain window samples. */
   roleRunDurationsMs: number[];
-  /** The start gate a waiter meets at permit time: the restart hold plus the failure hold
-   * for role runs (the director is exempt, as at scheduling). */
   /** The run semaphore's admission wait threshold (default PROVIDER_WAIT_EVENT_MS): a test
    * seam mirroring breakerNow — providerWaitMs: 0 forces every admission's wait to be logged. */
   providerWaitMs?: number;
